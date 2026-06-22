@@ -36,6 +36,8 @@
 				<string>com.local.burrete10.smiles</string>
 				<string>com.local.burrete10.csv</string>
 				<string>com.local.burrete10.tsv</string>
+				<string>public.comma-separated-values-text</string>
+				<string>public.tab-separated-values-text</string>
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
 				<string>com.schrodinger.mol</string>

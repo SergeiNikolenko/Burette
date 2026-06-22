@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security issue
+    url: https://github.com/SergeiNikolenko/Burrete/security/advisories/new
+    about: Report vulnerabilities privately instead of opening a public issue.

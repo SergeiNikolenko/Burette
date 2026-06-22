@@ -27,6 +27,7 @@ const [
   documentsCommand,
   gridCommand,
   previewCacheCommand,
+  runtimeDoctorCommand,
   shellCommand,
   performanceSource,
   shellActionsSource,
@@ -53,13 +54,16 @@ const [
   gridViewerJS,
   gridUiTSX,
   viewerShell,
+  buretteAgentJS,
   tauriConfigSource,
   tauriPermissionSource,
   defaultCapabilitySource,
   buildScript,
+  quickLookXyzrenderLauncherScript,
   buildDevScript,
   ciScript,
   ciWorkflow,
+  toolchainAction,
   releaseWorkflow,
   releaseVersionCheck,
   releaseScript,
@@ -101,6 +105,7 @@ const [
   source('apps/desktop/src-tauri/src/commands/documents.rs'),
   source('apps/desktop/src-tauri/src/commands/grid.rs'),
   source('apps/desktop/src-tauri/src/commands/preview_cache.rs'),
+  source('apps/desktop/src-tauri/src/commands/runtime_doctor.rs'),
   source('apps/desktop/src-tauri/src/commands/shell.rs'),
   source('apps/desktop/src/lib/performance.ts'),
   source('apps/desktop/src/components/types.ts'),
@@ -127,13 +132,16 @@ const [
   source('PreviewExtension/Web/grid-viewer.js'),
   source('apps/desktop/src/preview-grid/grid-ui.tsx'),
   source('PreviewExtension/Web/viewer-shell.js'),
+  source('PreviewExtension/Web/burette-agent.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
   source('apps/desktop/src-tauri/permissions/burrete.toml'),
   source('apps/desktop/src-tauri/capabilities/default.json'),
   source('scripts/build.sh'),
+  source('scripts/bundle-quicklook-xyzrender-launcher.sh'),
   source('scripts/build-dev.sh'),
   source('scripts/ci.sh'),
   source('.github/workflows/ci.yml'),
+  source('.github/actions/setup-burrete-toolchain/action.yml'),
   source('.github/workflows/release.yml'),
   source('scripts/check-release-version.mjs'),
   source('scripts/release.sh'),
@@ -195,6 +203,26 @@ assert.ok(defaultCapability.permissions.includes('core:menu:allow-new'));
 assert.ok(defaultCapability.permissions.includes('core:menu:allow-popup'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-internal-toggle-maximize'));
 assert.deepEqual(defaultCapability.windows, ['main', 'workspace-*']);
+assert.equal(defaultCapability.webviews, undefined);
+assert.equal(defaultCapability.remote, undefined);
+assert.ok(defaultCapability.permissions.includes('allow-viewer-commands'));
+for (const windowLabel of defaultCapability.windows) {
+  assert.doesNotMatch(windowLabel, /quicklook|quick-look|preview|viewer/i);
+}
+for (const permission of defaultCapability.permissions) {
+  if (typeof permission === 'string') {
+    assert.doesNotMatch(permission, /^(fs|shell|process|updater):/);
+  }
+}
+const tauriIpcSurface = /@tauri-apps\/api|__TAURI__|window\.__TAURI__|\bcore\.invoke\b|\binvoke\s*\(|ipc:/;
+for (const [artifactName, artifactSource] of [
+  ['viewer.js', viewerJS],
+  ['grid-viewer.js', gridViewerJS],
+  ['viewer-shell.js', viewerShell],
+  ['burette-agent.js', buretteAgentJS],
+]) {
+  assert.doesNotMatch(artifactSource, tauriIpcSurface, `${artifactName} must use the host bridge instead of direct Tauri IPC`);
+}
 assert.match(tauriConfig.app.security.csp, /script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' asset: http:\/\/asset\.localhost/);
 assert.match(tauriConfig.app.security.csp, /connect-src[^;]*asset: http:\/\/asset\.localhost/);
 assert.match(tauriConfig.app.security.csp, /worker-src 'self' asset: http:\/\/asset\.localhost/);
@@ -228,14 +256,14 @@ for (const fixture of [
   'samples/mini.cif',
   'samples/mini.sdf',
   'samples/mini.xyz',
-  'build/smoke/single.xyzr',
+  'samples/quantum/inputs/caffeine.com',
 ]) {
   assert.match(nightlySmokeWorkflow, new RegExp(fixture.replaceAll('/', '\\/')));
 }
-assert.match(nightlySmokeWorkflow, /cp samples\/mini\.xyz build\/smoke\/single\.xyzr/);
+assert.doesNotMatch(nightlySmokeWorkflow, /cp samples\/mini\.xyz build\/smoke\/single\.xyzr/);
 assert.match(nightlySmokeWorkflow, /scripts\/perf-smoke\.sh/);
 
-for (const moduleName of ['agent_integration', 'documents', 'grid', 'preview_cache', 'quicklook', 'shell', 'startup', 'updater']) {
+for (const moduleName of ['agent_integration', 'documents', 'grid', 'preview_cache', 'quicklook', 'runtime_doctor', 'shell', 'startup', 'updater']) {
   assert.match(commandsIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
 }
 
@@ -251,6 +279,10 @@ for (const commandPath of [
   'commands::documents::generate_3d_conformer',
   'commands::documents::open_text_structure',
   'commands::documents::save_text_as',
+  'commands::descriptors::descriptor_calculate_grid',
+  'commands::descriptors::descriptor_start_grid',
+  'commands::descriptors::descriptor_grid_job_status',
+  'commands::descriptors::descriptor_cancel_grid',
   'commands::grid::grid_fetch_page',
   'commands::grid::grid_append_records',
   'commands::grid::grid_delimited_columns',
@@ -259,6 +291,7 @@ for (const commandPath of [
   'commands::documents::render_xyzrender_sheet_items',
   'commands::documents::sync_viewer_preferences',
   'commands::preview_cache::clear_preview_cache',
+  'commands::runtime_doctor::external_runtime_doctor',
   'commands::shell::export_diagnostics_bundle',
   'commands::shell::open_logs_folder',
   'commands::shell::open_external_url',
@@ -373,7 +406,15 @@ assert.match(documentsCommand, /fn open_combined_pose_document/);
 assert.match(documentsCommand, /fn open_combined_grid_document/);
 assert.match(documentsCommand, /create_combined_sdf_pose_runtime/);
 assert.match(documentsCommand, /create_grid_runtime_with_options/);
-assert.match(documentsCommand, /runtime_document_id\(\n        window_label,/);
+assert.match(documentsCommand, /runtime_document_id\(\s*window_label,/);
+assert.match(previewRuntimeGrid, /pub\(crate\) fn create_grid_runtime_with_options<R: Runtime>\(\s*app: &tauri::AppHandle<R>,\s*document_id: &str,\s*registry_document_id: &str,/s);
+assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,/s);
+assert.match(previewRuntimeGrid, /"documentId": document_id,/);
+assert.doesNotMatch(previewRuntimeGrid, /"documentId": registry_document_id/);
+assert.match(previewRuntime, /let runtime_document_id = crate::windows::runtime_document_id\(window_label, &document_id\);\s*if let Some\(runtime_path\) = create_grid_runtime_with_options\(\s*app,\s*&document_id,\s*&runtime_document_id,/s);
+assert.match(documentsCommand, /let document_id = crate::preview::runtime_utils::stable_id\(Path::new\(&path\)\);/);
+assert.match(documentsCommand, /let runtime_document_id = crate::windows::runtime_document_id\(window_label, &document_id\);/);
+assert.match(documentsCommand, /create_grid_runtime_with_options\(\s*app,\s*&document_id,\s*&runtime_document_id,/s);
 assert.match(documentsCommand, /fn combined_sdf_data/);
 assert.match(documentsCommand, /data\.ends_with\(b"\$\$\$\$"\)/);
 assert.match(documentsCommand, /ViewerDocument::virtual_structure/);
@@ -406,6 +447,19 @@ assert.match(documentsCommand, /fn expand_open_targets/);
 assert.match(documentsCommand, /fn collect_supported_files/);
 assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
+assert.match(runtimeDoctorCommand, /#\[tauri::command\]\s+pub\(crate\) fn external_runtime_doctor/);
+assert.match(runtimeDoctorCommand, /burrete\.external-runtime-doctor\.v1/);
+for (const checkId of ['xyzrender', 'descriptors-python', 'datamol-conformer-python', 'rdkit-conformer-python', 'crest', 'prism', 'xtb', 'schrodinger']) {
+  assert.match(runtimeDoctorCommand, new RegExp(`"${checkId}"`));
+}
+assert.match(runtimeDoctorCommand, /descriptors::descriptor_runtime_status\(\)/);
+assert.match(runtimeDoctorCommand, /documents::conformer_python_runtime_status\("datamol"\)/);
+assert.match(runtimeDoctorCommand, /documents::conformer_python_runtime_status\("rdkit"\)/);
+assert.match(runtimeDoctorCommand, /conformer::conformer_status\(\)/);
+assert.match(runtimeDoctorCommand, /xtb::xtb_status\(\)/);
+assert.match(runtimeDoctorCommand, /xyzrender::xyzrender_runtime_status\(\)/);
+assert.doesNotMatch(runtimeDoctorCommand, /descriptor_runtime_install|install_xtb|run_xtb_job|run_conformer_job|create_xyzrender_artifact/);
+assert.match(previewXyzrender, /pub\(crate\) fn xyzrender_runtime_status/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn export_diagnostics_bundle/);
 assert.match(shellCommand, /timestamp level subsystem documentId event elapsedMs message/);
 assert.match(shellCommand, /BurreteApp\.log/);
@@ -481,15 +535,16 @@ assert.match(ciScript, /\.\/scripts\/build\.sh\n/);
 assert.doesNotMatch(ciScript, /\.\/scripts\/build\.sh\s+samples\/mini\.sdf/);
 assert.match(ciScript, /bun run check:vendor-assets/);
 assert.match(ciScript, /bun run test:update/);
-assert.match(ciWorkflow, /Install xyzrender runtime/);
-assert.match(ciWorkflow, /python3 -m pip install --user --break-system-packages uv/);
-assert.match(ciWorkflow, /"\$\(python3 -m site --user-base\)\/bin\/uv" tool install xyzrender/);
+assert.match(ciWorkflow, /uses: \.\/\.github\/actions\/setup-burrete-toolchain/);
+assert.match(ciWorkflow, /install-xyzrender: "true"/);
+assert.match(toolchainAction, /Install xyzrender runtime/);
+assert.match(toolchainAction, /python3 -m pip install --user --break-system-packages uv/);
+assert.match(toolchainAction, /"\$\(python3 -m site --user-base\)\/bin\/uv" tool install xyzrender/);
 assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
 assert.match(releaseWorkflow, /BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM/);
 assert.match(releaseWorkflow, /BURRETE_BUILD_MODE: release/);
-assert.match(releaseWorkflow, /Install xyzrender runtime/);
-assert.match(releaseWorkflow, /python3 -m pip install --user --break-system-packages uv/);
-assert.match(releaseWorkflow, /"\$\(python3 -m site --user-base\)\/bin\/uv" tool install xyzrender/);
+assert.match(releaseWorkflow, /uses: \.\/\.github\/actions\/setup-burrete-toolchain/);
+assert.match(releaseWorkflow, /install-xyzrender: "true"/);
 assert.match(releaseWorkflow, /allow_adhoc=true/);
 assert.match(releaseWorkflow, /BURRETE_RELEASE_ALLOW_ADHOC/);
 assert.match(releaseWorkflow, /hdiutil create -volname Burrete/);
@@ -518,7 +573,17 @@ assert.equal(packageConfig.packageManager, 'bun@1.3.8');
 assert.deepEqual(packageConfig.workspaces, ['apps/*', 'packages/*']);
 assert.equal(packageConfig.scripts['check:formats'], 'bun scripts/check-preview-format-registry.mjs');
 assert.equal(packageConfig.scripts['check:vendor-assets'], 'bun scripts/check-vendor-assets.mjs');
-assert.equal(packageConfig.scripts['test:update'], 'bun tests/test-update-versioning.mjs && bun tests/test-bun-installer-behavior.mjs && bun tests/test-dev-namespace.mjs && bun tests/test-quicklook-preview-smoke-contract.mjs');
+for (const updateTest of [
+  'bun tests/test-update-versioning.mjs',
+  'bun tests/test-bun-installer-behavior.mjs',
+  'bun tests/test-dev-namespace.mjs',
+  'bun tests/test-quicklook-preview-smoke-contract.mjs',
+  'bun tests/test-install-health-contract.mjs',
+  'bun tests/test-preview-format-matrix.mjs',
+  'bun tests/test-cross-platform-preview-contract.mjs',
+]) {
+  assert.ok(packageConfig.scripts['test:update'].split(/\s*&&\s*/u).includes(updateTest), `test:update must include ${updateTest}`);
+}
 assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite build --config vite.config.ts');
 assert.doesNotMatch(desktopPackageConfig.scripts.build, /bun --bun vite build/);
 assert.match(packageConfig.scripts['check:js'], /scripts\/dev-namespace\.mjs/);
@@ -595,6 +660,17 @@ assert.match(xcodeProjectSource, /path = "config\/preview-formats\.json"/);
 assert.match(xcodeProjectSource, /BurreteThumbnail/);
 assert.match(xcodeProjectSource, /ThumbnailProvider\.swift in Sources/);
 assert.match(xcodeProjectSource, /INFOPLIST_FILE = PreviewExtension\/ThumbnailInfo\.plist/);
+assert.match(xcodeProjectSource, /Bundle xyzrender launcher/);
+assert.match(xcodeProjectSource, /Contents\/Resources\/xyzrender-python3/);
+assert.match(xcodeProjectSource, /Contents\/lib\/\.xyzrender-python-library\.stamp/);
+assert.match(xcodeProjectSource, /bundle-quicklook-xyzrender-launcher\.sh/);
+assert.doesNotMatch(xcodeProjectSource, /Contents\/lib\/libpython3\.13\.dylib/);
+assert.match(quickLookXyzrenderLauncherScript, /otool -L "\$PYTHON_EXE"/);
+assert.match(quickLookXyzrenderLauncherScript, /Python\\\.framework\\\/Versions\\\/\.\*\\\/Python/);
+assert.match(quickLookXyzrenderLauncherScript, /install_name_tool -change/);
+assert.match(quickLookXyzrenderLauncherScript, /@executable_path\/\.\.\/lib\/\$PYTHON_LIBRARY_NAME/);
+assert.match(quickLookXyzrenderLauncherScript, /libpython3\*\.dylib/);
+assert.doesNotMatch(quickLookXyzrenderLauncherScript, /Contents\/lib\/libpython3\.13\.dylib/);
 assert.match(xcodeThumbnailScheme, /BlueprintName = "BurreteThumbnail"/);
 assert.match(xcodeThumbnailScheme, /BuildableName = "BurreteThumbnail\.appex"/);
 assert.match(thumbnailInfoPlist, /com\.apple\.quicklook\.thumbnail/);
@@ -644,6 +720,7 @@ assert.deepEqual(webRuntimeProfiles.bundleTargets.quicklook.profiles, [
 assert.match(xcodeProjectSource, /check-vendor-assets\.mjs --profile quicklook-molstar --profile quicklook-grid --profile external-artifact/);
 assert.match(previewEntitlements, /com\.apple\.security\.app-sandbox/);
 assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.read-only/);
+assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.executable/);
 assert.match(appInfoPlist, /<key>LSUIElement<\/key>\s*<false\/>/);
 assert.match(releaseVersionCheck, /semver release or prerelease/);
 assert.doesNotMatch(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Alternate<\/string>/);
@@ -657,8 +734,8 @@ assert.match(thumbnailProviderSource, /parseCube/);
 const quickLookSupportedContentTypesBlock = previewExtensionInfoPlist.match(
   /<key>QLSupportedContentTypes<\/key>\s*<array>([\s\S]*?)<\/array>/,
 )?.[1] ?? '';
-assert.doesNotMatch(quickLookSupportedContentTypesBlock, /public\.comma-separated-values-text/);
-assert.doesNotMatch(quickLookSupportedContentTypesBlock, /public\.tab-separated-values-text/);
+assert.match(quickLookSupportedContentTypesBlock, /public\.comma-separated-values-text/);
+assert.match(quickLookSupportedContentTypesBlock, /public\.tab-separated-values-text/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.csv/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.tsv/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.smiles/);
@@ -674,9 +751,21 @@ assert.match(quickLookPreviewController, /shouldUseFepGraphMLPreview\(fileExtens
 assert.match(quickLookPreviewController, /return fileExtension\.lowercased\(\) == "graphml"/);
 assert.match(quickLookPreviewController, /detected\.previewMode=fep-graphml/);
 assert.match(quickLookPreviewController, /layoutFepGraphMLPreview/);
+assert.match(quickLookPreviewController, /webDirectory: webDirectory/);
+assert.match(quickLookPreviewController, /requiresRDKit: true/);
+assert.match(quickLookPreviewController, /molblock: graphMLMolblock\(label: label, atoms: atoms, bonds: bonds\)/);
+assert.match(quickLookPreviewController, /private static func graphMLMolblock/);
+assert.match(quickLookPreviewController, /private static func graphMLKekuleAromaticBondTypes/);
 assert.match(quickLookPreviewController, /let denseMode = graph\.nodes\.count > 12/);
 assert.match(quickLookPreviewController, /class="node-dot"/);
 assert.match(quickLookPreviewController, /class="node-card"/);
+assert.match(quickLookPreviewController, /class="node-molecule"/);
+assert.match(quickLookPreviewController, /const fepNodeMolblocks =/);
+assert.match(quickLookPreviewController, /<script src="preview-rdkit-wasm\.js"><\/script>/);
+assert.match(quickLookPreviewController, /<script src="\.\.\/assets\/rdkit\/RDKit_minimal\.js"><\/script>/);
+assert.match(quickLookPreviewController, /rdkit\.get_mol\(String\(entry\.molblock \|\| ''\)\)/);
+assert.match(quickLookPreviewController, /mol\.set_new_coords\?\.\(\)/);
+assert.match(quickLookPreviewController, /rdkitImages: rdkitImages/);
 assert.match(quickLookPreviewController, /score: " \+ String\(format: "%\.3f", \$0\)/);
 assert.match(quickLookPreviewController, /shouldUseTextArtifactPreview\(fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
 assert.match(quickLookPreviewController, /detected\.previewMode=text-artifact/);
@@ -685,21 +774,74 @@ assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
 assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);
 assert.match(installLocalScript, /Contents\/Resources\/ViewerWeb/);
 assert.match(buildScript, /LOCAL_XYZRENDER_ENV="\$HOME\/\.local\/share\/uv\/tools\/xyzrender"/);
+assert.match(buildScript, /XYZRENDER_RUNTIME_PYTHON_PACKAGES=\("datamol==0\.12\.5"\)/);
 assert.match(buildScript, /require_xyzrender_runtime_for_release\(\)\s*\{/);
 assert.match(buildScript, /release builds require bundled xyzrender runtime source/);
+assert.match(buildScript, /ensure_xyzrender_runtime_python_packages\(\)\s*\{/);
+assert.match(buildScript, /uv pip install --python "\$LOCAL_XYZRENDER_ENV\/bin\/python3" "\$\{XYZRENDER_RUNTIME_PYTHON_PACKAGES\[@\]\}"/);
+assert.match(buildScript, /import datamol/);
 assert.match(buildScript, /bundle_xyzrender_runtime "\$TAURI_BUILT_APP"/);
 assert.match(buildScript, /rsync -aL --delete "\$LOCAL_XYZRENDER_ENV\/" "\$runtime\/"/);
+assert.match(buildScript, /Contents\/Resources\/xyzrender-runtime/);
+assert.match(buildScript, /Contents\/Resources\/xyzrender-python/);
+assert.doesNotMatch(buildScript, /bundle_quicklook_xyzrender_python/);
+assert.doesNotMatch(buildScript, /rsync -aL --delete "\$source_runtime\/" "\$appex_runtime\/"/);
+assert.doesNotMatch(buildScript, /rsync -aL --delete "\$source_python\/" "\$appex_python\/"/);
+assert.doesNotMatch(buildScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-runtime/);
+assert.doesNotMatch(buildScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-python/);
+assert.match(buildScript, /bundle_quicklook_xyzrender_launcher\(\)/);
+assert.match(buildScript, /Contents\/Resources\/xyzrender-python3/);
+assert.doesNotMatch(buildScript, /Contents\/MacOS\/xyzrender-python3/);
+assert.match(buildScript, /-name 'libpython3\*\.dylib'/);
+assert.match(buildScript, /-name 'Python'/);
+assert.match(buildScript, /Contents\/lib\/\{libpython3\*\.dylib,Python\}/);
+assert.doesNotMatch(buildScript, /Contents\/lib\/libpython3\.13\.dylib/);
+assert.doesNotMatch(buildScript, /ditto --norsrc --noextattr "\$python_root\/bin\/python3" "\$appex\/Contents\/Resources\/xyzrender-python3"/);
+assert.doesNotMatch(buildScript, /ditto --norsrc --noextattr "\$source_python\/bin\/python3" "\$appex_launch_python"/);
+assert.doesNotMatch(buildScript, /install_name_tool -change "@executable_path\/\.\.\/lib\/libpython3\.13\.dylib" "@executable_path\/libpython3\.13\.dylib"/);
+assert.doesNotMatch(buildScript, /Contents\/MacOS\/xyzrender-python\/bin\/python3/);
+assert.doesNotMatch(buildScript, /bundle_quicklook_xyzrender_runtime/);
+assert.doesNotMatch(buildScript, /rsync -aL --delete "\$app_runtime\/" "\$appex_runtime\/"/);
+assert.doesNotMatch(buildScript, /Quick Look bundled xyzrender runtime missing/);
+assert.doesNotMatch(buildScript, /Quick Look bundled xyzrender python home missing/);
+assert.doesNotMatch(buildScript, /Quick Look bundled xyzrender launch python missing/);
+assert.match(buildScript, /\[ ! -f "\$PYTHON_ROOT\/bin\/python3" \]/);
 assert.match(buildScript, /exec "\$PYTHON_ROOT\/bin\/python3" -m xyzrender\.cli "\$@"/);
 assert.match(buildScript, /sign_bundled_xyzrender_runtime "\$TAURI_BUILT_APP"/);
+assert.doesNotMatch(buildScript, /sign_quicklook_xyzrender_python/);
+assert.match(buildScript, /sign_quicklook_xyzrender_launcher\(\)/);
+assert.doesNotMatch(buildScript, /XYZRENDER_CODESIGN_ENTITLEMENTS/);
+assert.doesNotMatch(buildScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$entitlements" "\$binary"/);
 assert.match(buildScript, /assert_bundled_xyzrender_runtime "\$LOCAL_APP" "in build output"/);
 assert.match(buildScript, /assert_bundled_xyzrender_runtime "\$VERIFY_APP" "before codesign verification"/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runtime\(\)\s*\{/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runner\(\)\s*\{/);
-assert.match(installLocalScript, /sign_bundled_xyzrender_runtime\(\)\s*\{/);
-assert.match(installLocalScript, /find "\$runtime" "\$python_root" -type f/);
-assert.match(installLocalScript, /sign_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON"/);
+assert.doesNotMatch(installLocalScript, /assert_quicklook_xyzrender_python\(\)\s*\{/);
+assert.doesNotMatch(installLocalScript, /sign_bundled_xyzrender_runtime\(\)\s*\{/);
+assert.doesNotMatch(installLocalScript, /sign_quicklook_xyzrender_python\(\)\s*\{/);
+assert.doesNotMatch(installLocalScript, /sign_xyzrender_binaries\(\)\s*\{/);
+assert.doesNotMatch(installLocalScript, /find "\$@" -type f/);
+assert.doesNotMatch(installLocalScript, /sign_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON"/);
+assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$LOCAL_XYZRENDER_ENV\/" "\$STAGING_XYZRENDER_ENV\/"/);
+assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$LOCAL_XYZRENDER_PYTHON_ROOT\/" "\$STAGING_XYZRENDER_PYTHON\/"/);
+assert.doesNotMatch(installLocalScript, /APPEX_XYZRENDER/);
+assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$STAGING_XYZRENDER_ENV\/" "\$STAGING_APPEX_XYZRENDER_ENV\/"/);
+assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$STAGING_XYZRENDER_PYTHON\/" "\$STAGING_APPEX_XYZRENDER_PYTHON\/"/);
+assert.doesNotMatch(installLocalScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-runtime/);
+assert.doesNotMatch(installLocalScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-python/);
+assert.doesNotMatch(installLocalScript, /bundle_quicklook_xyzrender_launcher\(\)/);
+assert.match(installLocalScript, /Contents\/Resources\/xyzrender-python3/);
+assert.doesNotMatch(installLocalScript, /Contents\/MacOS\/xyzrender-python3/);
+assert.match(installLocalScript, /-name 'libpython3\*\.dylib'/);
+assert.match(installLocalScript, /-name 'Python'/);
+assert.match(installLocalScript, /Contents\/lib\/\{libpython3\*\.dylib,Python\}/);
+assert.doesNotMatch(installLocalScript, /Contents\/lib\/libpython3\.13\.dylib/);
 assert.match(installLocalScript, /SIGN_IDENTITY="\$\{BURRETE_CODESIGN_IDENTITY:--\}"/);
 assert.match(installLocalScript, /CODESIGN_ARGS=\(--force --sign "\$SIGN_IDENTITY"\)/);
+assert.doesNotMatch(installLocalScript, /XYZRENDER_CODESIGN_ENTITLEMENTS/);
+assert.doesNotMatch(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$entitlements" "\$binary"/);
+assert.doesNotMatch(installLocalScript, /sign_quicklook_xyzrender_launcher\(\)/);
+assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" "\$STAGING_APPEX\/Contents\/Resources\/burrete-core-bridge"/);
 assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$ROOT\/PreviewExtension\/BurretePreview\.entitlements" "\$STAGING_APPEX"/);
 assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" "\$STAGING_DEST"/);
 assert.doesNotMatch(installLocalScript, /codesign --force --deep --sign - "\$STAGING_DEST"/);
@@ -709,8 +851,9 @@ assert.match(installLocalScript, /local timeout_seconds=10/);
 assert.match(installLocalScript, /return 124/);
 assert.match(installLocalScript, /\[\[ "\$IS_DEV_FLAVOR" == "1" && "\$\{BURRETE_SKIP_XYZRENDER_RUNNER_CHECK:-0\}" == "1" \]\]/);
 assert.match(installLocalScript, /for attempt in \$\(seq 1 6\)/);
-assert.match(installLocalScript, /assert_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "before signing"/);
-assert.match(installLocalScript, /assert_bundled_xyzrender_runner "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "after signing"/);
+assert.match(installLocalScript, /assert_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "from build output"/);
+assert.match(installLocalScript, /local python="\$python_root\/bin\/python3"/);
+assert.match(installLocalScript, /assert_bundled_xyzrender_runner "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "after app signing"/);
 assert.doesNotMatch(installLocalScript, /\$STAGING_XYZRENDER_ENV\/bin\/xyzrender" --help/);
 assert.match(previewXyzrender, /bundled_xyzrender_candidates_from_executable/);
 assert.match(previewXyzrender, /Contents"\)\s*\.join\("Resources"\)\s*\.join\("xyzrender-runtime"\)/);
@@ -822,7 +965,7 @@ assert.match(previewRuntimeGrid, /build_grid_store/);
 assert.match(previewRuntimeGrid, /include_single_sdf: options\.include_single_sdf\s*\|\|\s*normalize_renderer_mode\(&preferences\.renderer_mode\) == "grid2d"/);
 assert.match(previewGridStore, /!options\.include_single_sdf\s*&& \(\(extension == "sdf" \|\| extension == "sd"\) && records_indexed <= 1\)/);
 assert.match(previewRuntimeGrid, /"sourcePath": file_path\.to_string_lossy\(\)/);
-assert.match(previewRuntimeGrid, /register\(\s*document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*\)/);
+assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*\)/);
 assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
 assert.match(previewRuntimeGrid, /"recordsIndexed": collection\.records_indexed/);
 assert.match(previewRuntimeGrid, /"indexReady": collection\.index_ready/);
@@ -873,7 +1016,9 @@ assert.match(gridViewerJS, /body\.type === 'gridRecordsAppended'/);
 assert.match(gridViewerJS, /void refreshRemote\(config\(\)\)/);
 assert.match(gridViewerJS, /function xyzrenderFragmentText\(record\)/);
 assert.match(gridViewerJS, /const smiles = firstLine\.trim\(\)\.split\(\/\\s\+\/u\)\[0\]/);
-assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderFragmentText\(record\)\)/);
+assert.match(gridViewerJS, /function xyzrenderCardInputText\(row, record\)/);
+assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(row, record\)\)/);
+assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(job\.row, job\.record\)\)/);
 assert.match(gridViewerJS, /preset: currentXyzrenderPreset\(cfg\)/);
 assert.match(gridViewerJS, /preset: currentXyzrenderPreset\(job\.cfg\)/);
 assert.match(gridViewerJS, /function prepareXyzrenderCardSVG\(svg\)/);
@@ -898,6 +1043,9 @@ assert.match(quickLookPreviewController, /elapsed\.runtimeWriteMs/);
 assert.match(quickLookPreviewController, /elapsed\.wkLoadStartMs/);
 assert.match(quickLookPreviewController, /elapsed\.jsReadyMs/);
 assert.match(quickLookPreviewController, /elapsed\.renderCompleteMs/);
+assert.match(quickLookPreviewController, /requiresRDKit: structurePreview\.renderer == BurreteRendererMode\.molstar/);
+assert.match(quickLookPreviewController, /let rdkitWasmAsset: String/);
+assert.match(quickLookPreviewController, /rdkitWasmAsset = """\s*<script src="preview-rdkit-wasm\.js"><\/script>/);
 assert.match(quickLookPreviewController, /<script src="preview-rdkit-wasm\.js"><\/script>/);
 assert.match(quickLookPreviewController, /burette-quicklook-host/);
 assert.match(quickLookPreviewController, /window\.BurreteRDKitWasmBase64 = \\"\\\(wasmData\.base64EncodedString\(\)\)\\";\\n/);
@@ -943,6 +1091,10 @@ assert.match(previewRuntimeViewer, /window\.BurreteDockingPayloads = \{payload_t
 assert.match(previewRuntimeViewer, /window\.BurretePreviewConfigURL = \{config_js:\?\};/);
 assert.match(previewRuntimeViewer, /window\.BurretePreviewDataScriptURL = \{data_js:\?\};/);
 assert.match(previewRuntimeViewer, /window\.BurreteDataURL = \{data_bin_js:\?\};/);
+assert.match(previewRuntimeViewer, /let rdkit_js = asset_url\(&assets\.join\("rdkit\/RDKit_minimal\.js"\)\)/);
+assert.match(previewRuntimeViewer, /let rdkit_wasm = asset_url\(&assets\.join\("rdkit\/RDKit_minimal\.wasm"\)\)/);
+assert.match(previewRuntimeViewer, /window\.BurreteRDKitJSURL = \{rdkit_js:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BurreteRDKitWasmURL = \{rdkit_wasm:\?\};/);
 assert.match(previewRuntimeViewer, /include_data_script: bool/);
 assert.match(previewRuntimeViewer, /viewer_html\(file_path, &runtime, &assets, &renderer, preferences, true\)/);
 assert.match(previewRuntimeViewer, /viewer_html\(&title_path, &runtime, &assets, "molstar", preferences, true\)/);

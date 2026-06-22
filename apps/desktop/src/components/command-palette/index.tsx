@@ -232,6 +232,13 @@ export function CommandPalette({
         run: actions.exportDiagnostics,
       },
       {
+        id: "runtime-doctor",
+        group: "Suggested",
+        label: "Runtime Doctor",
+        description: "Check external molecular runtime availability",
+        run: actions.runExternalRuntimeDoctor,
+      },
+      {
         id: "check-updates",
         group: "Suggested",
         label: "Check for Updates",
