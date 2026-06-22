@@ -3727,6 +3727,9 @@
     const toolbarRect = toolbar && !panelState.open ? toolbar.getBoundingClientRect() : null;
     root.style.setProperty('--buret-toolbar-current-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : '0px');
     root.style.setProperty('--buret-toolbar-current-height', toolbarRect ? Math.ceil(toolbarRect.height) + 'px' : '0px');
+    root.style.setProperty('--buret-selection-controls-left', toolbarRect ? Math.ceil(toolbarRect.left) + 'px' : `${TOOLBAR_MARGIN}px`);
+    root.style.setProperty('--buret-selection-controls-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : 'min(430px, calc(100vw - 24px))');
+    root.style.setProperty('--buret-selection-controls-max-width', toolbarRect ? Math.max(180, Math.floor(window.innerWidth - toolbarRect.left - TOOLBAR_MARGIN)) + 'px' : 'calc(100vw - 24px)');
     root.style.setProperty('--buret-selection-controls-top', toolbarRect ? Math.ceil(toolbarRect.bottom + FLOATING_LAYOUT_GAP) + 'px' : `calc(var(--buret-toolbar-safe-top) + 48px)`);
     const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
     const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');

@@ -378,12 +378,12 @@ body .msp-plugin .msp-viewport-controls-panel .msp-help-text em {
   color: var(--buret-molstar-muted-text) !important;
 }
 body .msp-plugin .msp-selection-viewport-controls {
-  position: absolute !important;
+  position: fixed !important;
   top: var(--buret-selection-controls-top, calc(var(--buret-toolbar-safe-top) + 48px)) !important;
-  right: var(--buret-control-island-right) !important;
-  left: auto !important;
-  width: auto !important;
-  max-width: calc(100vw - (var(--buret-control-island-right) * 2)) !important;
+  right: auto !important;
+  left: var(--buret-selection-controls-left, var(--buret-control-island-right)) !important;
+  width: min(var(--buret-selection-controls-width, 430px), var(--buret-selection-controls-max-width, calc(100vw - 24px))) !important;
+  max-width: var(--buret-selection-controls-max-width, calc(100vw - (var(--buret-control-island-right) * 2))) !important;
   margin: 0 !important;
   z-index: 2147483645 !important;
 }
@@ -396,6 +396,8 @@ body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row {
   display: inline-flex !important;
   align-items: center;
   gap: var(--buret-control-island-gap);
+  width: 100%;
+  box-sizing: border-box;
   min-height: 0;
   max-width: 100%;
   overflow-x: auto;
