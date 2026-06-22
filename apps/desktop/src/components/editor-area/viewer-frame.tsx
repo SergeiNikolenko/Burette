@@ -27,6 +27,7 @@ export function ViewerFrame({
     sandbox,
     referrerPolicy: "no-referrer" as const,
     "data-document-id": document.id,
+    "data-renderer": document.renderer,
   };
   return tauriRuntime ? (
     <iframe key={document.runtimePath} {...commonProps} src={convertFileSrc(document.runtimePath)} />

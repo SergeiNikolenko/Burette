@@ -199,6 +199,7 @@ export async function openBrowserDevDocuments(
   paths: string[],
   preferences: ViewerPreferences,
   reloadOptions?: ViewerReloadOptions,
+  documentIds: Record<string, string> = {},
 ): Promise<OpenDocumentsResult> {
   const results: Array<{ document?: ViewerDocument; error?: string } | undefined> = Array.from({ length: paths.length });
   let nextIndex = 0;
@@ -210,7 +211,7 @@ export async function openBrowserDevDocuments(
       const path = paths[index];
       if (!path) continue;
       try {
-        results[index] = { document: await openBrowserDevDocument(path, preferences, reloadOptions) };
+        results[index] = { document: await openBrowserDevDocument(path, preferences, reloadOptions, documentIds[path]) };
       } catch (error) {
         results[index] = { error: error instanceof Error ? error.message : String(error) };
       }
@@ -579,6 +580,7 @@ async function openBrowserDevDocument(
   path: string,
   preferences: ViewerPreferences,
   reloadOptions?: ViewerReloadOptions,
+  documentId?: string,
 ): Promise<ViewerDocument> {
   const extension = fileExtension(path);
   const desmondPreview = await requestBrowserDevDesmondPreview(path, extension);
@@ -590,6 +592,7 @@ async function openBrowserDevDocument(
       desmondPreview.sourceByteCount,
       preferences,
       reloadOptions,
+      documentId,
     );
   }
   const useBoundedMaestroPreview = isMaestroPreviewExtension(extension) && extension !== "maegz";
@@ -606,7 +609,7 @@ async function openBrowserDevDocument(
   }
 
   const sourceByteCount = browserDevSourceByteCount(response, bytes.length);
-  return openBrowserDevDocumentFromBytes(path, extension, bytes, sourceByteCount, preferences, reloadOptions);
+  return openBrowserDevDocumentFromBytes(path, extension, bytes, sourceByteCount, preferences, reloadOptions, documentId);
 }
 
 async function requestBrowserDevDesmondPreview(path: string, extension: string) {
