@@ -3725,6 +3725,7 @@
     const panelState = refreshMolstarViewportPanelState();
     const toolbar = document.getElementById('buret-toolbar');
     const toolbarRect = toolbar && !panelState.open ? toolbar.getBoundingClientRect() : null;
+    root.style.setProperty('--buret-toolbar-current-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : '0px');
     const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
     const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
     const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
@@ -3803,7 +3804,7 @@
     if (panelOpen !== molstarViewportPanelOpen || selectionOpen !== molstarSelectionControlsOpen) {
       molstarViewportPanelOpen = panelOpen;
       molstarSelectionControlsOpen = selectionOpen;
-      const suppressToolbar = panelOpen || selectionOpen;
+      const suppressToolbar = panelOpen;
       document.body?.classList.toggle('buret-molstar-viewport-panel-open', panelOpen);
       document.body?.classList.toggle('buret-molstar-selection-controls-open', selectionOpen);
       const toolbar = document.getElementById('buret-toolbar');

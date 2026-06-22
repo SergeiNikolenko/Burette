@@ -375,15 +375,25 @@ body .msp-plugin .msp-viewport-controls-panel .msp-help-text i,
 body .msp-plugin .msp-viewport-controls-panel .msp-help-text em {
   color: var(--buret-molstar-muted-text) !important;
 }
+body .msp-plugin .msp-selection-viewport-controls {
+  top: var(--buret-toolbar-safe-top) !important;
+  right: calc(18px + var(--buret-toolbar-current-width, 0px)) !important;
+  left: auto !important;
+  max-width: calc(100vw - var(--buret-toolbar-current-width, 0px) - 36px) !important;
+}
 body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row {
+  min-height: 40px;
+  max-width: 100%;
   overflow: hidden;
   border: 1px solid var(--buret-toolbar-border) !important;
   border-radius: 12px;
   color: var(--buret-toolbar-color) !important;
   background: var(--buret-toolbar-background) !important;
-  box-shadow: 0 12px 28px var(--buret-molstar-shadow);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row > * {
   border-left: 1px solid var(--buret-toolbar-border) !important;
@@ -395,9 +405,19 @@ body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row > *:first-chil
 }
 body .msp-plugin .msp-selection-viewport-controls button,
 body .msp-plugin .msp-selection-viewport-controls .msp-btn {
+  min-width: 40px !important;
+  min-height: 38px !important;
   border-radius: 8px;
   color: var(--buret-toolbar-color) !important;
   background: transparent !important;
+}
+body .msp-plugin .msp-selection-viewport-controls select {
+  max-width: min(220px, 28vw) !important;
+  min-height: 38px !important;
+  border: 0 !important;
+  color: var(--buret-toolbar-color) !important;
+  background: transparent !important;
+  text-overflow: ellipsis;
 }
 body .msp-plugin .msp-selection-viewport-controls button:hover,
 body .msp-plugin .msp-selection-viewport-controls .msp-btn:hover,
