@@ -1025,6 +1025,7 @@ function viewerHtml(
     sdfPosePager: renderer === "molstar" && format.molstarFormat === "sdf" && !format.binary,
     trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1,
     trajectoryFrameCount,
+    rdkitWasmPath: "/__burette/rdkit-wasm",
     ...(reloadOptions?.sdfPoseControlLabel ? { sdfPoseControlLabel: reloadOptions.sdfPoseControlLabel } : {}),
     ...(stagedEntries?.some((entry) => entry?.representation === "structure-scene-entry") ? { structureSceneMode: "structurePoses" } : {}),
     appViewer: true,

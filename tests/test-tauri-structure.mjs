@@ -1075,6 +1075,10 @@ assert.match(previewRuntimeViewer, /window\.BurreteDockingPayloads = \{payload_t
 assert.match(previewRuntimeViewer, /window\.BurretePreviewConfigURL = \{config_js:\?\};/);
 assert.match(previewRuntimeViewer, /window\.BurretePreviewDataScriptURL = \{data_js:\?\};/);
 assert.match(previewRuntimeViewer, /window\.BurreteDataURL = \{data_bin_js:\?\};/);
+assert.match(previewRuntimeViewer, /let rdkit_js = asset_url\(&assets\.join\("rdkit\/RDKit_minimal\.js"\)\)/);
+assert.match(previewRuntimeViewer, /let rdkit_wasm = asset_url\(&assets\.join\("rdkit\/RDKit_minimal\.wasm"\)\)/);
+assert.match(previewRuntimeViewer, /window\.BurreteRDKitJSURL = \{rdkit_js:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BurreteRDKitWasmURL = \{rdkit_wasm:\?\};/);
 assert.match(previewRuntimeViewer, /include_data_script: bool/);
 assert.match(previewRuntimeViewer, /viewer_html\(file_path, &runtime, &assets, &renderer, preferences, true\)/);
 assert.match(previewRuntimeViewer, /viewer_html\(&title_path, &runtime, &assets, "molstar", preferences, true\)/);
