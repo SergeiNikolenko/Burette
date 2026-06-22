@@ -30,7 +30,7 @@
   const SVG_FIT_PADDING_FRACTION = 0.08;
   const XYZRENDER_CARD_CONCURRENCY = 4;
   const GRID_LOAD_AHEAD_PX = 720;
-  const RDKIT_CARD_ROOT_MARGIN = '900px 0px';
+  const RDKIT_CARD_ROOT_MARGIN = 900;
   const XYZRENDER_CARD_ROOT_MARGIN = '120px 0px';
   const XYZRENDER_CARD_BATCH_SIZE = 12;
   const XYZRENDER_CARD_BATCH_MIN_CONCURRENCY = 1;
@@ -2112,6 +2112,7 @@
         scheduleRdkitCard(nextCard, row);
         scheduleXyzrenderCard(nextCard, row, cfg);
       }
+      requestAnimationFrame(startVisibleRdkitCards);
       state.windowStart = range.start;
       state.windowEnd = range.end;
       state.renderedCount = Math.max(0, range.end - range.start);
@@ -4564,7 +4565,7 @@
         if (!entry.isIntersecting) continue;
         startLazyRdkitCard(entry.target);
       }
-    }, { root: null, rootMargin: RDKIT_CARD_ROOT_MARGIN });
+    }, { root: null, rootMargin: `${RDKIT_CARD_ROOT_MARGIN}px 0px` });
     return state.rdkitCardObserver;
   }
 
@@ -4574,6 +4575,25 @@
     if (!start) return;
     state.rdkitCardLazyJobs.delete(target);
     start();
+  }
+
+  function startVisibleRdkitCards() {
+    const targets = [...state.rdkitCardLazyTargets];
+    for (const target of targets) {
+      if (!isElementNearViewport(target, RDKIT_CARD_ROOT_MARGIN)) continue;
+      startLazyRdkitCard(target);
+    }
+  }
+
+  function isElementNearViewport(target, margin) {
+    if (!target || typeof target.getBoundingClientRect !== 'function') return false;
+    const rect = target.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    return rect.bottom >= -margin
+      && rect.top <= viewportHeight + margin
+      && rect.right >= -margin
+      && rect.left <= viewportWidth + margin;
   }
 
   function enqueueRdkitCard(row, key, target) {

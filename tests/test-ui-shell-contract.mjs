@@ -1429,7 +1429,8 @@ assert.match(gridViewer, /types\.includes\(STRUCTURE_DRAG_MIME\) \|\| types\.inc
 assert.match(gridViewer, /hostRequest\('renderXyzrenderCard', request\)/);
 assert.match(gridViewer, /hostRequest\('renderXyzrenderCards', \{/);
 assert.match(gridViewer, /function prepareXyzrenderCardSVG\(svg\)/);
-assert.match(gridViewer, /const RDKIT_CARD_ROOT_MARGIN = '900px 0px';/);
+assert.match(gridViewer, /const RDKIT_CARD_ROOT_MARGIN = 900;/);
+assert.match(gridViewer, /rootMargin: `\$\{RDKIT_CARD_ROOT_MARGIN\}px 0px`/);
 assert.match(gridViewer, /const XYZRENDER_CARD_ROOT_MARGIN = '120px 0px';/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_SIZE = 12;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_MIN_CONCURRENCY = 1;/);
@@ -1492,6 +1493,8 @@ assert.match(gridViewer, /\['open', 'Preview molecule'\]/);
 assert.match(gridViewer, /function scheduleRdkitCard\(card, row\)/);
 assert.match(gridViewer, /function pumpRdkitCardQueue\(\)/);
 assert.match(gridViewer, /window\.setTimeout\(pumpRdkitCardQueue, 0\)/);
+assert.match(gridViewer, /requestAnimationFrame\(startVisibleRdkitCards\)/);
+assert.match(gridViewer, /function startVisibleRdkitCards\(\)/);
 assert.match(gridViewer, /function scheduleXyzrenderCard\(card, row, cfg\)/);
 assert.match(gridViewer, /new IntersectionObserver\(entries => \{/);
 assert.match(gridViewer, /function enqueueXyzrenderCard\(row, cfg, record, key, target\)/);
