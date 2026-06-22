@@ -339,13 +339,16 @@ checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 
 [[package]]
 name = "burrete"
-version = "0.10.40"
+version = "1.0.3"
 dependencies = [
  "base64 0.22.1",
+ "burrete-core",
  "cocoa",
+ "core-foundation",
  "ed25519-dalek",
  "flate2",
  "objc",
+ "plist",
  "rusqlite",
  "serde",
  "serde_json",
@@ -357,6 +360,14 @@ dependencies = [
  "tauri-plugin-single-instance",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "burrete-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3248,9 +3259,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.149"
+version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
+checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
  "itoa",
  "memchr",
