@@ -285,8 +285,9 @@ if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
     echo "error: built Quick Look xyzrender launcher is missing: $STAGING_APPEX/Contents/Resources/xyzrender-python3" >&2
     exit 1
   }
-  [[ -f "$STAGING_APPEX/Contents/lib/libpython3.13.dylib" ]] || {
-    echo "error: built Quick Look libpython is missing: $STAGING_APPEX/Contents/lib/libpython3.13.dylib" >&2
+  quicklook_libpython="$(find "$STAGING_APPEX/Contents/lib" -maxdepth 1 -type f -name 'libpython3*.dylib' | head -n 1 || true)"
+  [[ -n "$quicklook_libpython" && -f "$quicklook_libpython" ]] || {
+    echo "error: built Quick Look libpython is missing: $STAGING_APPEX/Contents/lib/libpython3*.dylib" >&2
     exit 1
   }
 fi
