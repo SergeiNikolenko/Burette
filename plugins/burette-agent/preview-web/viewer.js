@@ -3504,6 +3504,23 @@
     scheduleViewerResize(viewer, 40);
   }
 
+  function activateToolbarGrip(toolbar, viewer) {
+    if (toolbar.classList.contains('buret-suppressed-by-molstar-panel')) {
+      toolbar.dataset.molstarPanelSuppressOverride = '1';
+      toolbar.classList.remove('buret-suppressed-by-molstar-panel');
+      if (toolbar.classList.contains('collapsed')) {
+        setToolbarCollapsed(toolbar, false, viewer);
+      } else {
+        toolbar.dataset.defaultPosition = '1';
+        repositionToolbar(toolbar);
+        updateFloatingLayoutOffsets();
+        scheduleViewerResize(viewer, 40);
+      }
+      return;
+    }
+    setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), viewer);
+  }
+
   function initToolbarDrag(toolbar) {
     if (toolbar.dataset.dragBound === '1') return;
     toolbar.dataset.dragBound = '1';
@@ -3537,7 +3554,7 @@
         ignoreNextGripClick = false;
         return;
       }
-      setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), resizeState.viewer);
+      activateToolbarGrip(toolbar, resizeState.viewer);
     });
     toolbar.addEventListener('pointerdown', event => {
       if (event.target.closest('[data-buret-toggle]')) return;
@@ -3581,7 +3598,7 @@
       drag = null;
       if (shouldToggle) {
         ignoreNextGripClick = true;
-        setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), resizeState.viewer);
+        activateToolbarGrip(toolbar, resizeState.viewer);
       } else if (shouldSavePosition) {
         ignoreNextGripClick = startedOnHandle;
         toolbar.dataset.defaultPosition = '0';
@@ -3768,7 +3785,10 @@
       document.body?.classList.toggle('buret-molstar-selection-controls-open', selectionOpen);
       const toolbar = document.getElementById('buret-toolbar');
       if (toolbar) {
-        toolbar.classList.toggle('buret-suppressed-by-molstar-panel', suppressToolbar);
+        if (!suppressToolbar) {
+          delete toolbar.dataset.molstarPanelSuppressOverride;
+        }
+        toolbar.classList.toggle('buret-suppressed-by-molstar-panel', suppressToolbar && toolbar.dataset.molstarPanelSuppressOverride !== '1');
         if (toolbar.dataset.defaultPosition === '1') {
           requestAnimationFrame(() => applyDefaultToolbarPosition(toolbar));
         }
