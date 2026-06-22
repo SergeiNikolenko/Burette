@@ -1026,6 +1026,7 @@ function viewerHtml(
     trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1,
     trajectoryFrameCount,
     ...(reloadOptions?.sdfPoseControlLabel ? { sdfPoseControlLabel: reloadOptions.sdfPoseControlLabel } : {}),
+    ...(stagedEntries?.some((entry) => entry?.representation === "structure-scene-entry") ? { structureSceneMode: "structurePoses" } : {}),
     appViewer: true,
     tauriViewer: false,
     molstarStyle: preferences.molstarStyle,
@@ -2262,7 +2263,8 @@ export function maestroPdbDataFromText(text: string) {
   }
   if (!models.length) return null;
 
-  const pdb = models.length > 1 && !maestroModelsShareTopology(models)
+  const independentEntries = models.length > 1 && !maestroModelsShareTopology(models);
+  const pdb = independentEntries
     ? maestroIndependentEntriesToPdb(models)
     : models.length === 1
     ? [
@@ -2274,6 +2276,17 @@ export function maestroPdbDataFromText(text: string) {
     : maestroModelsToPdb(models);
   const bytes = new TextEncoder().encode(pdb);
   const stagedEntries: Array<Record<string, unknown>> = [];
+  if (independentEntries) {
+    models.forEach((atoms, index) => {
+      stagedEntries.push({
+        label: `Structure ${index + 1}`,
+        format: "pdb",
+        binary: false,
+        representation: "structure-scene-entry",
+        dataBase64: bytesToBase64(new TextEncoder().encode(maestroSingleEntryToPdb(atoms, `Structure ${index + 1}`))),
+      });
+    });
+  }
   if (hasNonSolventPrimary) {
     const solventAtoms = maestroStagedSolventAtoms(blocks);
     if (solventAtoms.length) {
@@ -2312,6 +2325,16 @@ function maestroIndependentEntriesToPdb(models: MaestroAtom[][]) {
   });
   lines.push("END", "");
   return lines.join("\n");
+}
+
+function maestroSingleEntryToPdb(atoms: MaestroAtom[], label: string) {
+  return [
+    `REMARK ${label}`,
+    ...atoms.slice(0, 99999).map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
+    ...pdbConectLines(atoms.slice(0, 99999)),
+    "END",
+    "",
+  ].join("\n");
 }
 
 function groPdbDataFromText(text: string, label: string) {

@@ -2069,6 +2069,7 @@
       const poseCount = Number(prepared?.poseCount || 0);
       return Number.isFinite(poseCount) && poseCount > 1;
     }
+    if (prepared?.pdbModelOverlayAvailable === true) return true;
     if (prepared?.sdfPoseOverlayAvailable === true || prepared?.xyzFrameOverlayAvailable === true) return true;
     const poseCount = Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || prepared?.xyzFrameCount || activeConfig?.trajectoryFrameCount || 0);
     if (!Number.isFinite(poseCount) || poseCount <= 1) return false;
@@ -2080,6 +2081,7 @@
     const format = normalizeFormat(activeConfig?.molstarFormat || activeConfig?.format);
     if (prepared?.dockingSceneMode) return 'structures';
     if (prepared?.kind === 'sdf-collection') return 'molecules';
+    if (prepared?.pdbModelOverlayAvailable === true) return 'models';
     return prepared?.xyzFrameOverlayAvailable === true || format === 'xyz' ? 'XYZ frames' : 'SDF poses';
   }
 
@@ -2133,6 +2135,10 @@
       const poseCount = Number(activeMolstarPrepared.poseCount || activeMolstarPrepared.xyzFrameCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
       await applyXyzFrameOverlayVisibility(activeViewer, activeMolstarPrepared, activePose);
+      return;
+    }
+    if (activeMolstarPrepared?.pdbModelOverlayAvailable === true) {
+      await reloadActiveMolstarStructure();
       return;
     }
     await reloadActiveMolstarStructure();
@@ -4251,6 +4257,23 @@
     return entry.binary ? bytes : new TextDecoder('utf-8', { fatal: false }).decode(bytes);
   }
 
+  function isStructureSceneEntry(entry) {
+    return entry?.representation === 'structure-scene-entry';
+  }
+
+  function structureSceneEntriesFromConfig(config) {
+    const entries = Array.isArray(config?.stagedEntries) ? config.stagedEntries : [];
+    return entries
+      .filter(entry => isStructureSceneEntry(entry) && entry?.binary !== true && typeof entry?.dataBase64 === 'string' && entry.dataBase64.trim())
+      .map((entry, index) => ({
+        data: base64ToText(entry.dataBase64),
+        format: normalizeFormat(entry.format || 'pdb'),
+        label: entry.label || `Structure ${index + 1}`,
+        sourcePath: config?.sourcePath || ''
+      }))
+      .filter(entry => entry.data.trim());
+  }
+
   function normalizeFormat(format) {
     const value = String(format || 'auto').toLowerCase();
     if (value === 'cifcore' || value === 'corecif' || value === 'core-cif') return 'cifCore';
@@ -4338,7 +4361,7 @@
   }
 
   function dockingSceneMode(config) {
-    const mode = String(config?.docking?.sceneMode || '').trim();
+    const mode = String(config?.docking?.sceneMode || config?.structureSceneMode || '').trim();
     return mode === 'structureAll' || mode === 'structurePoses' ? mode : '';
   }
 
@@ -4489,17 +4512,18 @@
         collectionSinglePdbs: prepared?.collectionSinglePdbs || []
       };
     }
-    if (prepared?.xyzFrameMode === 'all' || prepared?.sdfPoseMode === 'all') {
-      const poseCount = Number(prepared?.xyzFrameCount || prepared?.sdfPoseRecordCount || activeConfig?.trajectoryFrameCount || 0);
+    if (prepared?.xyzFrameMode === 'all' || prepared?.sdfPoseMode === 'all' || prepared?.pdbModelMode === 'all') {
+      const poseCount = Number(prepared?.xyzFrameCount || prepared?.sdfPoseRecordCount || prepared?.pdbModelCount || activeConfig?.trajectoryFrameCount || 0);
       return {
         kind: 'trajectory-overlay',
         activePose: 0,
         poseCount: Number.isFinite(poseCount) && poseCount > 0 ? poseCount : 1,
         nativeTrajectoryControls: false,
         ligandLabel: prepared?.label || activeConfig?.label || 'Mol* overlay',
-        controlLabel: prepared?.xyzFrameOverlayAvailable === true ? 'Frame' : 'Pose',
+        controlLabel: prepared?.xyzFrameOverlayAvailable === true ? 'Frame' : prepared?.pdbModelOverlayAvailable === true ? 'Model' : 'Pose',
         sdfPoseOverlayAvailable: prepared?.sdfPoseOverlayAvailable === true,
         xyzFrameOverlayAvailable: prepared?.xyzFrameOverlayAvailable === true,
+        pdbModelOverlayAvailable: prepared?.pdbModelOverlayAvailable === true,
         overlayOnly: true
       };
     }
@@ -4707,6 +4731,10 @@
     }
     const normalized = normalizeFormat(config.format);
     const sourceFormat = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
+    const sceneEntries = structureSceneEntriesFromConfig(config);
+    if (sceneEntries.length > 1) {
+      return prepareStagedStructureScene(config, sceneEntries);
+    }
     if (isMolViewSpecFormat(normalized)) {
       return {
         kind: 'mvs',
@@ -4729,26 +4757,58 @@
     if (normalized === 'xyz') {
       return prepareXyzStructure(rawStructureData(config), config);
     }
-    if ((normalized === 'pdb' || normalized === 'pdbqt') && sourceFormat === 'pdbqt') {
-      const data = rawStructureData(config);
-      const modelTexts = splitPdbModelTexts(data);
-      const poseCount = modelTexts.length;
-      return {
-        data,
-        format: 'pdb',
-        label: config.label || 'structure',
-        loadPreset: 'default',
-        nativeTrajectoryControls: poseCount > 1,
-        poseCount,
-        activePose: readTrajectoryControlIndex(config, { controlLabel: 'Pose' }, poseCount),
-        controlLabel: 'Pose'
-      };
+    if (normalized === 'pdb' || normalized === 'pdbqt') {
+      const preparedPdbModels = preparePdbModelStructure(rawStructureData(config), config, sourceFormat);
+      if (preparedPdbModels) return preparedPdbModels;
     }
 
     return {
       data: rawStructureData(config),
       format: normalized,
       label: config.label || 'structure'
+    };
+  }
+
+  function prepareStagedStructureScene(config, entries) {
+    const activePose = readTrajectoryControlIndex(config, { kind: 'docking' }, entries.length);
+    const allMode = activeSdfPoseMode === 'all';
+    const poses = entries.map((entry, poseIndex) => ({
+      ...entry,
+      ligandIndex: poseIndex,
+      poseIndex,
+      poseCount: entries.length
+    }));
+    return {
+      kind: 'docking',
+      dockingSceneMode: 'structurePoses',
+      label: config.label || 'Mol* scene',
+      activePose,
+      poseCount: poses.length,
+      ligandLabel: poses[activePose]?.label || config.label || 'Structure',
+      controlLabel: 'Structure',
+      poses,
+      entries: allMode ? poses : [poses[activePose]]
+    };
+  }
+
+  function preparePdbModelStructure(data, config, sourceFormat) {
+    const modelTexts = splitPdbModelTexts(data);
+    const poseCount = modelTexts.length;
+    if (poseCount <= 1) return null;
+    const controlLabel = sourceFormat === 'pdbqt' ? 'Pose' : 'Model';
+    const allMode = activeSdfPoseMode === 'all';
+    return {
+      data,
+      format: 'pdb',
+      label: config.label || 'structure',
+      loadPreset: allMode ? 'all-models' : 'default',
+      nativeTrajectoryControls: !allMode,
+      poseCount,
+      activePose: readTrajectoryControlIndex(config, { controlLabel }, poseCount),
+      controlLabel,
+      pdbModelOverlayAvailable: true,
+      pdbModelCount: poseCount,
+      pdbModelMode: allMode ? 'all' : 'single'
     };
   }
 
@@ -7301,7 +7361,7 @@
   }
 
   async function loadStagedMolstarEntries(viewer, config, cb) {
-    const entries = Array.isArray(config?.stagedEntries) ? config.stagedEntries : [];
+    const entries = Array.isArray(config?.stagedEntries) ? config.stagedEntries.filter(entry => !isStructureSceneEntry(entry)) : [];
     if (!entries.length) return;
     setStatus(`[web] Loading ${entries[0]?.label || 'staged structure'}…`);
     await waitForAnimationFrame();
