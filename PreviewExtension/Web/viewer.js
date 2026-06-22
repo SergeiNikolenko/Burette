@@ -3103,10 +3103,26 @@
   }
 
   function normalizeElementSymbol(value) {
+    const atomicNumber = Number.parseInt(String(value || '').trim(), 10);
+    if (Number.isFinite(atomicNumber) && String(atomicNumber) === String(value || '').trim()) {
+      return ATOMIC_SYMBOLS[atomicNumber - 1] || 'X';
+    }
     const match = String(value || 'X').trim().match(/[A-Za-z]{1,3}/u);
     if (!match) return 'X';
     return match[0].slice(0, 1).toUpperCase() + match[0].slice(1).toLowerCase();
   }
+
+  const ATOMIC_SYMBOLS = [
+    'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne',
+    'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca',
+    'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn',
+    'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr',
+    'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn',
+    'Sb', 'Te', 'I', 'Xe', 'Cs', 'Ba', 'La', 'Ce', 'Pr', 'Nd',
+    'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb',
+    'Lu', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg',
+    'Tl', 'Pb', 'Bi', 'Po', 'At', 'Rn'
+  ];
 
   function readCameraSnapshot(viewer) {
     const camera = viewer?.plugin?.canvas3d?.camera;
@@ -4538,7 +4554,7 @@
         collectionSinglePdbs: prepared?.collectionSinglePdbs || []
       };
     }
-    if (prepared?.xyzFrameMode === 'all' || prepared?.sdfPoseMode === 'all' || prepared?.pdbModelMode === 'all') {
+    if (prepared?.sdfPoseMode === 'all' || prepared?.pdbModelMode === 'all') {
       const poseCount = Number(prepared?.xyzFrameCount || prepared?.sdfPoseRecordCount || prepared?.pdbModelCount || activeConfig?.trajectoryFrameCount || 0);
       return {
         kind: 'trajectory-overlay',
@@ -4553,7 +4569,7 @@
         overlayOnly: true
       };
     }
-    if (prepared?.xyzFrameOverlayAvailable === true && activeSdfPoseMode === 'all') {
+    if (prepared?.xyzFrameOverlayAvailable === true) {
       const poseCount = Number(prepared?.poseCount || prepared?.xyzFrameCount || activeConfig?.trajectoryFrameCount || 0);
       if (!Number.isFinite(poseCount) || poseCount <= 1) return null;
       return {
@@ -5916,7 +5932,7 @@
         format: 'xyz',
         label: `${label} (${frames.length} XYZ frames)`,
         loadPreset: 'default',
-        nativeTrajectoryControls: true,
+        nativeTrajectoryControls: false,
         poseCount: frames.length,
         controlLabel: 'Frame',
         xyzFrameMode: 'single',
@@ -7213,7 +7229,7 @@
       await applySdfCollectionVisibility(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount));
       return;
     }
-    if (prepared.xyzFrameOverlayAvailable === true && activeSdfPoseMode === 'all') {
+    if (prepared.xyzFrameOverlayAvailable === true) {
       await applyXyzFrameOverlayVisibility(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount || prepared.xyzFrameCount));
       return;
     }
@@ -8004,13 +8020,13 @@
         updateSdfPoseButton(prepared);
       }
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
-      if (prepared.nativeTrajectoryControls) {
+      if (prepared.xyzFrameOverlayAvailable === true) {
+        await applyXyzFrameOverlayVisibility(activeViewer, prepared, index);
+      } else if (prepared.nativeTrajectoryControls) {
         const switched = await setNativeTrajectoryPose(index, poseCount);
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
       } else if (prepared.kind === 'sdf-collection') {
         await applySdfCollectionVisibility(activeViewer, prepared, index);
-      } else if (prepared.xyzFrameOverlayAvailable === true) {
-        await applyXyzFrameOverlayVisibility(activeViewer, prepared, index);
       } else {
         await reloadActiveMolstarStructure();
       }
