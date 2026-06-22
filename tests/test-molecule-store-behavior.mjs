@@ -29,13 +29,13 @@ globalThis.window = {
 
 const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store.ts");
 
-function document(id, path, title = path.split("/").at(-1) ?? id) {
+function document(id, path, title = path.split("/").at(-1) ?? id, renderer = "molstar") {
   return {
     id,
     path,
     title,
     extension: path.split(".").at(-1) ?? "pdb",
-    renderer: "molstar",
+    renderer,
     runtimePath: "<html></html>",
     byteCount: 128,
   };
@@ -80,6 +80,29 @@ assert.deepEqual(updated.tabs[0].location, {
 });
 assert.equal(updated.activeTabId, "tab-file");
 assert.equal(updated.activeDocumentId, "new-doc");
+
+resetStore();
+useMoleculeStore.setState({
+  documents: [document("molstar-doc", "/tmp/mini.pdb", "mini.pdb", "molstar")],
+  tabs: [{
+    id: "tab-file",
+    location: { kind: "file", documentId: "molstar-doc", path: "/tmp/mini.pdb" },
+    back: [],
+    forward: [],
+  }],
+  activeTabId: "tab-file",
+  activeDocumentId: "molstar-doc",
+});
+
+useMoleculeStore.getState().addBackgroundDocuments([
+  document("dock:bottom:/tmp/mini.pdb", "/tmp/mini.pdb", "mini.pdb", "xyzrender-external"),
+]);
+
+const withDockDocument = useMoleculeStore.getState();
+assert.equal(withDockDocument.documents.length, 2);
+assert.equal(withDockDocument.documents.find((item) => item.id === "molstar-doc")?.renderer, "molstar");
+assert.equal(withDockDocument.documents.find((item) => item.id === "dock:bottom:/tmp/mini.pdb")?.renderer, "xyzrender-external");
+assert.equal(withDockDocument.activeDocumentId, "molstar-doc");
 
 resetStore();
 useMoleculeStore.setState({

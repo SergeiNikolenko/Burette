@@ -22,6 +22,15 @@ globalThis.window = { localStorage: globalThis.localStorage };
 
 const { useShellStore } = await import("../apps/desktop/src/stores/shell-store.ts");
 
+const initial = useShellStore.getState();
+assert.equal(initial.rightDockOpen, true);
+assert.deepEqual(initial.rightDockTabs.map((tab) => tab.kind), [
+  "xyzrender",
+  "inspector",
+  "text",
+  "files",
+]);
+
 useShellStore.setState({
   projectRoots: ["/tmp/live-project", "/tmp/missing-project"],
   pinnedProjectRoots: ["/tmp/live-project", "/tmp/missing-project"],

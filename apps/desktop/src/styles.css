@@ -1481,6 +1481,7 @@ img.radix-menu-item-icon {
   height: 100%;
   min-width: 0;
   max-width: 100%;
+  container-type: inline-size;
 }
 .dock-panel[data-area="bottom"] .dock-panel-inner {
   width: 100%;
@@ -1553,6 +1554,12 @@ img.radix-menu-item-icon {
   align-items: center;
   gap: 4px;
   overflow: hidden;
+}
+.dock-panel[data-area="right"] .dock-tab-strip {
+  flex: 0 1 auto;
+}
+.dock-panel[data-area="right"] .dock-header > .dock-icon-button:last-child {
+  margin-left: auto;
 }
 .dock-tab-shell {
   position: relative;
@@ -1646,6 +1653,23 @@ img.radix-menu-item-icon {
 }
 .dock-panel[data-area="right"] .dock-tab-close {
   right: 8px;
+}
+@container (min-width: 360px) {
+  .dock-panel[data-area="right"] .dock-tab-shell {
+    flex: 0 1 auto;
+  }
+
+  .dock-panel[data-area="right"] .dock-tab {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    justify-content: flex-start;
+    padding: 0 9px;
+  }
+
+  .dock-panel[data-area="right"] .dock-tab:not([data-active]) span {
+    display: block;
+  }
 }
 .dock-icon-button {
   width: 30px;
