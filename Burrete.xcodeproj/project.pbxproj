@@ -303,11 +303,11 @@
 			outputFileListPaths = ();
 			outputPaths = (
 				"$(CODESIGNING_FOLDER_PATH)/Contents/Resources/xyzrender-python3",
-				"$(CODESIGNING_FOLDER_PATH)/Contents/lib/.xyzrender-python-dylib.stamp",
+				"$(CODESIGNING_FOLDER_PATH)/Contents/lib/.xyzrender-python-library.stamp",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\n\nLOCAL_XYZRENDER_ENV=\"${HOME}/.local/share/uv/tools/xyzrender\"\nPYVENV_CFG=\"${LOCAL_XYZRENDER_ENV}/pyvenv.cfg\"\nif [ ! -f \"${PYVENV_CFG}\" ]; then\n  echo \"warning: xyzrender uv tool is not installed; skipping Quick Look xyzrender launcher\"\n  exit 0\nfi\nPYTHON_HOME=\"$(sed -n 's/^home = //p' \"${PYVENV_CFG}\" | head -n 1)\"\nif [ -z \"${PYTHON_HOME}\" ] || [ ! -x \"${PYTHON_HOME}/../bin/python3\" ]; then\n  echo \"error: could not resolve xyzrender Python runtime from ${PYVENV_CFG}\" >&2\n  exit 1\nfi\nPYTHON_ROOT=\"$(cd -P \"${PYTHON_HOME}/..\" && pwd -P)\"\nPYTHON_DYLIB=\"\"\nfor candidate in \"${PYTHON_ROOT}\"/lib/libpython3*.dylib; do\n  if [ -f \"${candidate}\" ]; then\n    PYTHON_DYLIB=\"${candidate}\"\n    break\n  fi\ndone\nif [ -z \"${PYTHON_DYLIB}\" ]; then\n  echo \"error: could not resolve xyzrender Python dylib under ${PYTHON_ROOT}/lib\" >&2\n  exit 1\nfi\nPYTHON_DYLIB_NAME=\"$(basename \"${PYTHON_DYLIB}\")\"\nmkdir -p \"${CODESIGNING_FOLDER_PATH}/Contents/Resources\" \"${CODESIGNING_FOLDER_PATH}/Contents/lib\"\nrm -f \"${CODESIGNING_FOLDER_PATH}\"/Contents/lib/libpython3*.dylib\nditto --norsrc --noextattr \"${PYTHON_ROOT}/bin/python3\" \"${CODESIGNING_FOLDER_PATH}/Contents/Resources/xyzrender-python3\"\nditto --norsrc --noextattr \"${PYTHON_DYLIB}\" \"${CODESIGNING_FOLDER_PATH}/Contents/lib/${PYTHON_DYLIB_NAME}\"\nchmod 755 \"${CODESIGNING_FOLDER_PATH}/Contents/Resources/xyzrender-python3\" \"${CODESIGNING_FOLDER_PATH}/Contents/lib/${PYTHON_DYLIB_NAME}\"\ntouch \"${CODESIGNING_FOLDER_PATH}/Contents/lib/.xyzrender-python-dylib.stamp\"\nif [ \"${CODE_SIGNING_ALLOWED:-NO}\" = \"YES\" ]; then\n  SIGN_IDENTITY=\"${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY:-}}\"\n  if [ -n \"${SIGN_IDENTITY}\" ]; then\n    /usr/bin/codesign --force --sign \"${SIGN_IDENTITY}\" -o runtime --timestamp=none \"${CODESIGNING_FOLDER_PATH}/Contents/lib/${PYTHON_DYLIB_NAME}\"\n    /usr/bin/codesign --force --sign \"${SIGN_IDENTITY}\" -o runtime --timestamp=none \"${CODESIGNING_FOLDER_PATH}/Contents/Resources/xyzrender-python3\"\n  fi\nfi\n";
+			shellScript = "set -euo pipefail\n\"${SRCROOT}/scripts/bundle-quicklook-xyzrender-launcher.sh\"\n";
 		};
 
 /* End PBXShellScriptBuildPhase section */

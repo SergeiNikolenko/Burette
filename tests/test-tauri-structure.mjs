@@ -59,6 +59,7 @@ const [
   tauriPermissionSource,
   defaultCapabilitySource,
   buildScript,
+  quickLookXyzrenderLauncherScript,
   buildDevScript,
   ciScript,
   ciWorkflow,
@@ -136,6 +137,7 @@ const [
   source('apps/desktop/src-tauri/permissions/burrete.toml'),
   source('apps/desktop/src-tauri/capabilities/default.json'),
   source('scripts/build.sh'),
+  source('scripts/bundle-quicklook-xyzrender-launcher.sh'),
   source('scripts/build-dev.sh'),
   source('scripts/ci.sh'),
   source('.github/workflows/ci.yml'),
@@ -659,10 +661,16 @@ assert.match(xcodeProjectSource, /BurreteThumbnail/);
 assert.match(xcodeProjectSource, /ThumbnailProvider\.swift in Sources/);
 assert.match(xcodeProjectSource, /INFOPLIST_FILE = PreviewExtension\/ThumbnailInfo\.plist/);
 assert.match(xcodeProjectSource, /Bundle xyzrender launcher/);
-assert.match(xcodeProjectSource, /CODESIGNING_FOLDER_PATH\}\/Contents\/Resources\/xyzrender-python3/);
-assert.match(xcodeProjectSource, /CODESIGNING_FOLDER_PATH\}\/Contents\/lib\/\.xyzrender-python-dylib\.stamp/);
-assert.match(xcodeProjectSource, /lib\/libpython3\*\.dylib/);
+assert.match(xcodeProjectSource, /Contents\/Resources\/xyzrender-python3/);
+assert.match(xcodeProjectSource, /Contents\/lib\/\.xyzrender-python-library\.stamp/);
+assert.match(xcodeProjectSource, /bundle-quicklook-xyzrender-launcher\.sh/);
 assert.doesNotMatch(xcodeProjectSource, /Contents\/lib\/libpython3\.13\.dylib/);
+assert.match(quickLookXyzrenderLauncherScript, /otool -L "\$PYTHON_EXE"/);
+assert.match(quickLookXyzrenderLauncherScript, /Python\\\.framework\\\/Versions\\\/\.\*\\\/Python/);
+assert.match(quickLookXyzrenderLauncherScript, /install_name_tool -change/);
+assert.match(quickLookXyzrenderLauncherScript, /@executable_path\/\.\.\/lib\/\$PYTHON_LIBRARY_NAME/);
+assert.match(quickLookXyzrenderLauncherScript, /libpython3\*\.dylib/);
+assert.doesNotMatch(quickLookXyzrenderLauncherScript, /Contents\/lib\/libpython3\.13\.dylib/);
 assert.match(xcodeThumbnailScheme, /BlueprintName = "BurreteThumbnail"/);
 assert.match(xcodeThumbnailScheme, /BuildableName = "BurreteThumbnail\.appex"/);
 assert.match(thumbnailInfoPlist, /com\.apple\.quicklook\.thumbnail/);
@@ -784,7 +792,9 @@ assert.doesNotMatch(buildScript, /Contents\/PlugIns\/BurretePreview\.appex\/Cont
 assert.match(buildScript, /bundle_quicklook_xyzrender_launcher\(\)/);
 assert.match(buildScript, /Contents\/Resources\/xyzrender-python3/);
 assert.doesNotMatch(buildScript, /Contents\/MacOS\/xyzrender-python3/);
-assert.match(buildScript, /Contents\/lib\/libpython3\*\.dylib/);
+assert.match(buildScript, /-name 'libpython3\*\.dylib'/);
+assert.match(buildScript, /-name 'Python'/);
+assert.match(buildScript, /Contents\/lib\/\{libpython3\*\.dylib,Python\}/);
 assert.doesNotMatch(buildScript, /Contents\/lib\/libpython3\.13\.dylib/);
 assert.doesNotMatch(buildScript, /ditto --norsrc --noextattr "\$python_root\/bin\/python3" "\$appex\/Contents\/Resources\/xyzrender-python3"/);
 assert.doesNotMatch(buildScript, /ditto --norsrc --noextattr "\$source_python\/bin\/python3" "\$appex_launch_python"/);
@@ -822,7 +832,9 @@ assert.doesNotMatch(installLocalScript, /Contents\/PlugIns\/BurretePreview\.appe
 assert.doesNotMatch(installLocalScript, /bundle_quicklook_xyzrender_launcher\(\)/);
 assert.match(installLocalScript, /Contents\/Resources\/xyzrender-python3/);
 assert.doesNotMatch(installLocalScript, /Contents\/MacOS\/xyzrender-python3/);
-assert.match(installLocalScript, /Contents\/lib\/libpython3\*\.dylib/);
+assert.match(installLocalScript, /-name 'libpython3\*\.dylib'/);
+assert.match(installLocalScript, /-name 'Python'/);
+assert.match(installLocalScript, /Contents\/lib\/\{libpython3\*\.dylib,Python\}/);
 assert.doesNotMatch(installLocalScript, /Contents\/lib\/libpython3\.13\.dylib/);
 assert.match(installLocalScript, /SIGN_IDENTITY="\$\{BURRETE_CODESIGN_IDENTITY:--\}"/);
 assert.match(installLocalScript, /CODESIGN_ARGS=\(--force --sign "\$SIGN_IDENTITY"\)/);
