@@ -3704,6 +3704,8 @@
     const toolbar = document.getElementById('buret-toolbar');
     const toolbarRect = toolbar && !panelState.open ? toolbar.getBoundingClientRect() : null;
     root.style.setProperty('--buret-toolbar-current-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : '0px');
+    root.style.setProperty('--buret-toolbar-current-height', toolbarRect ? Math.ceil(toolbarRect.height) + 'px' : '0px');
+    root.style.setProperty('--buret-selection-controls-top', toolbarRect ? Math.ceil(toolbarRect.bottom + FLOATING_LAYOUT_GAP) + 'px' : `calc(var(--buret-toolbar-safe-top) + 48px)`);
     const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
     const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
     const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
@@ -3714,8 +3716,13 @@
     const panelOpenTop = selectionToolbarRect
       ? Math.ceil(selectionToolbarRect.bottom + FLOATING_LAYOUT_GAP)
       : defaultViewportTop;
+    const controlsOpenTop = selectionToolbarRect
+      ? Math.max(defaultViewportTop, panelOpenTop)
+      : defaultViewportTop;
     const viewportControlsViewportTop = panelState.open
       ? Math.max(defaultViewportTop, panelOpenTop)
+      : selectionToolbarRect
+      ? controlsOpenTop
       : toolbarRect && (!viewportControlsRect || rectsOverlapX(toolbarRect, viewportControlsRect, 18))
       ? Math.max(defaultViewportTop, Math.ceil(toolbarBottom))
       : defaultViewportTop;

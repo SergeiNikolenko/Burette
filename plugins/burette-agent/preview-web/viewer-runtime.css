@@ -376,15 +376,23 @@ body .msp-plugin .msp-viewport-controls-panel .msp-help-text em {
   color: var(--buret-molstar-muted-text) !important;
 }
 body .msp-plugin .msp-selection-viewport-controls {
-  top: var(--buret-toolbar-safe-top) !important;
-  right: calc(18px + var(--buret-toolbar-current-width, 0px)) !important;
+  top: var(--buret-selection-controls-top, calc(var(--buret-toolbar-safe-top) + 48px)) !important;
+  right: 12px !important;
   left: auto !important;
-  max-width: calc(100vw - var(--buret-toolbar-current-width, 0px) - 36px) !important;
+  max-width: calc(100vw - 24px) !important;
+  z-index: 2147483645 !important;
+}
+body.buret-toolbar-collapsed .msp-plugin .msp-selection-viewport-controls {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row {
   min-height: 40px;
   max-width: 100%;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   border: 1px solid var(--buret-toolbar-border) !important;
   border-radius: 12px;
   color: var(--buret-toolbar-color) !important;
@@ -394,6 +402,9 @@ body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row {
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
+}
+body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row::-webkit-scrollbar {
+  display: none;
 }
 body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row > * {
   border-left: 1px solid var(--buret-toolbar-border) !important;
