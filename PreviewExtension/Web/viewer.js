@@ -3103,10 +3103,26 @@
   }
 
   function normalizeElementSymbol(value) {
+    const atomicNumber = Number.parseInt(String(value || '').trim(), 10);
+    if (Number.isFinite(atomicNumber) && String(atomicNumber) === String(value || '').trim()) {
+      return ATOMIC_SYMBOLS[atomicNumber - 1] || 'X';
+    }
     const match = String(value || 'X').trim().match(/[A-Za-z]{1,3}/u);
     if (!match) return 'X';
     return match[0].slice(0, 1).toUpperCase() + match[0].slice(1).toLowerCase();
   }
+
+  const ATOMIC_SYMBOLS = [
+    'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne',
+    'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca',
+    'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn',
+    'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr',
+    'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn',
+    'Sb', 'Te', 'I', 'Xe', 'Cs', 'Ba', 'La', 'Ce', 'Pr', 'Nd',
+    'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb',
+    'Lu', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg',
+    'Tl', 'Pb', 'Bi', 'Po', 'At', 'Rn'
+  ];
 
   function readCameraSnapshot(viewer) {
     const camera = viewer?.plugin?.canvas3d?.camera;
