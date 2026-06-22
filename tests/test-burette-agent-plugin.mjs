@@ -145,6 +145,10 @@ for (const widget of [
   assert.match(source, /__BURETTE_AGENT_WIDGET_JS__/);
 }
 
+const workspaceWidgetScript = await read("mcp/widget-assets/molecular-workspace/widget.js");
+assert.match(workspaceWidgetScript, /ui\/notifications\/tool-result/);
+assert.match(workspaceWidgetScript, /structuredContent\?\.observe/);
+
 const widgetResource = await read("mcp/lib/widget-resource.mjs");
 assert.match(widgetResource, /Missing widget asset/);
 assert.match(widgetResource, /Continuing with a diagnostic widget so MCP tools remain available/);
