@@ -389,6 +389,20 @@ function structurePoseControlsFor(document: ViewerDocument, summary: StructureCo
     };
   }
   if (!summary) return null;
+  const maestroEntryCount = maestroPreviewEntryCount(summary);
+  if (maestroEntryCount !== null && maestroEntryCount > 1 && maestroEntryCount <= INFO_TRAJECTORY_CONTROL_LIMIT) {
+    return {
+      kind: "frames",
+      title: "Structures",
+      detail: `${maestroEntryCount} structures`,
+      controlLabel: "Structure",
+      actions: Array.from({ length: maestroEntryCount }, (_, index) => ({
+        type: "set_structure_pose",
+        label: `Show structure ${index + 1}`,
+        index,
+      })),
+    };
+  }
   const frameCount = numberFromSummaryRows(summary.rows, "Frames") ?? numberFromSummaryRows(summary.rows, "Models");
   if (frameCount && frameCount > 1 && frameCount <= INFO_TRAJECTORY_CONTROL_LIMIT) {
     const controlLabel = numberFromSummaryRows(summary.rows, "Models") === frameCount ? "Model" : "Frame";
@@ -438,6 +452,15 @@ function structureContextStyleCardFor(
       opacityAriaLabel: "All background opacity",
     };
   }
+  const maestroEntryCount = maestroPreviewEntryCount(summary);
+  if (maestroEntryCount !== null && maestroEntryCount > 1 && maestroEntryCount <= INFO_TRAJECTORY_CONTROL_LIMIT) {
+    return {
+      title: "All background",
+      detail: "Context structures",
+      styleAriaLabel: "All background style",
+      opacityAriaLabel: "All background opacity",
+    };
+  }
   const frameCount = numberFromSummaryRows(summary.rows, "Frames") ?? numberFromSummaryRows(summary.rows, "Models");
   if (frameCount !== null && frameCount > 1 && frameCount <= INFO_TRAJECTORY_CONTROL_LIMIT) {
     return {
@@ -457,6 +480,10 @@ function isVirtualMolstarScene(document: ViewerDocument) {
 function molstarSceneStructureCount(document: ViewerDocument) {
   if (!isVirtualMolstarScene(document)) return 0;
   return Math.max(1, 1 + (document.dockingRequest?.ligandPaths?.length ?? 0));
+}
+
+function maestroPreviewEntryCount(summary: StructureCompositionSummary) {
+  return numberFromSummaryRows(summary.rows, "Preview entries") ?? (summary.maestroRows && summary.maestroRows.length > 1 ? summary.maestroRows.length : null);
 }
 
 function numberFromSummaryRows(rows: BriefRow[], label: string) {
