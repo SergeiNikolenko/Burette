@@ -3485,6 +3485,7 @@
   function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
     if (collapsed) setXyzrenderPopoverVisibility(toolbar, false);
     toolbar.classList.toggle('collapsed', collapsed);
+    document.body?.classList.toggle('buret-toolbar-collapsed', collapsed);
     const grip = toolbar.querySelector('[data-drag-handle]');
     if (grip) {
       grip.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
