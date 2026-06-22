@@ -15,7 +15,7 @@ export const defaultPreferences: ViewerPreferences = {
   openInDefaultDestination: "finder",
   rendererMode: "auto",
   molstarStyle: "illustrative",
-  conformerEngine: "datamol",
+  conformerEngine: "rdkit",
   conformerCandidateCount: 128,
   conformerRmsdCutoff: 0.75,
   themeLightAccent: "#AF52DE",

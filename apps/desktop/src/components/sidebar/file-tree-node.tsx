@@ -397,7 +397,11 @@ function ProjectTreeNodeView({
           <FolderExpandCollapseIcon collapse={expanded} />
         </button>
       </div>
-      {expanded && (
+      <div
+        className="project-folder-children-shell"
+        data-expanded={expanded ? "true" : "false"}
+        aria-hidden={!expanded}
+      >
         <div className="project-folder-children" role="list">
           {visibleChildren.map((child) => (
             <ProjectTreeNodeView
@@ -427,7 +431,7 @@ function ProjectTreeNodeView({
             </button>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

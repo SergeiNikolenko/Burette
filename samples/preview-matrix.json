@@ -21,6 +21,11 @@
       "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook", "ios-mobile"]
     },
     {
+      "formatId": "mmcif",
+      "path": "samples/structures/mmcif/mini.mmcif",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook", "ios-mobile"]
+    },
+    {
       "formatId": "sdf",
       "path": "samples/mini.sdf",
       "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook", "ios-mobile"]
@@ -41,6 +46,11 @@
       "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
     },
     {
+      "formatId": "mol",
+      "path": "samples/structures/small-molecules/benzene.mol",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook"]
+    },
+    {
       "formatId": "mol2",
       "path": "samples/structures/small-molecules/water.mol2",
       "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook"]
@@ -51,8 +61,23 @@
       "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook", "ios-mobile"]
     },
     {
+      "formatId": "gro",
+      "path": "samples/structures/gromacs/water.gro",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "mol-view-spec-json",
+      "path": "samples/mvs/docking_story.mvsj",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "mol-view-spec-archive",
+      "path": "samples/mvs/docking_story.mvsx",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
       "formatId": "xyzrender-input",
-      "path": "samples/quantum/volumes/base-pair-density.cube",
+      "path": "samples/quantum/inputs/caffeine.com",
       "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
     },
     {
@@ -71,20 +96,27 @@
       "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
     },
     {
+      "formatId": "pharmacophore-model",
+      "path": "samples/pharmacophore/basic.ph4",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "openmm-coordinate-artifact",
+      "path": "samples/openmm/water.xml",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
       "formatId": "spectrum",
       "path": "samples/spectra/massspecgym-0075191.ms",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
+      "formatId": "openmm-workflow-text-artifact",
+      "path": "samples/workflow/protein.fasta",
       "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
     }
   ],
   "extensionCoverageGaps": {
-    "pdb": {
-      "extensions": ["ent"],
-      "reason": "Need a compact ENT fixture that can be redistributed."
-    },
-    "mmcif": {
-      "extensions": ["mcif", "mmcif"],
-      "reason": "Need explicit mmCIF fixtures separate from CIF fixtures."
-    },
     "bcif": {
       "extensions": ["bcif"],
       "reason": "Need a compact BinaryCIF fixture."
@@ -92,30 +124,6 @@
     "mmtf": {
       "extensions": ["mmtf"],
       "reason": "Need a compact MMTF fixture."
-    },
-    "sdf": {
-      "extensions": ["sd"],
-      "reason": "SD is an SDF alias; add a named alias fixture when alias smoke is required."
-    },
-    "smiles": {
-      "extensions": ["smiles"],
-      "reason": "SMILES alias coverage currently uses .smi fixtures."
-    },
-    "mol": {
-      "extensions": ["mol"],
-      "reason": "Need a compact MDL molfile fixture."
-    },
-    "gro": {
-      "extensions": ["gro"],
-      "reason": "Need a compact GROMACS structure fixture."
-    },
-    "mol-view-spec-json": {
-      "extensions": ["mvsj"],
-      "reason": "MolViewSpec sample coverage needs a valid scene fixture."
-    },
-    "mol-view-spec-archive": {
-      "extensions": ["mvsx"],
-      "reason": "MolViewSpec archive coverage needs a valid archive fixture."
     },
     "xyzrender-input": {
       "extensions": ["fhiaims", "gms", "log", "out", "xyzr"],
@@ -151,7 +159,6 @@
         "top",
         "tpr",
         "trc",
-        "trj",
         "trr",
         "trz",
         "txyz",
@@ -160,24 +167,12 @@
       "reason": "Trajectory/topology aliases need small paired fixtures and expected pairing metadata."
     },
     "schrodinger": {
-      "extensions": ["cms", "mae.gz"],
-      "reason": "Schrodinger coverage has .mae/.maegz fixtures; CMS and literal .mae.gz aliases still need redistributable samples."
-    },
-    "pharmacophore-model": {
-      "extensions": ["ph4"],
-      "reason": "Need a compact pharmacophore fixture."
-    },
-    "openmm-coordinate-artifact": {
-      "extensions": ["crd", "inpcrd", "restrt", "rst", "rst7", "state", "xml"],
-      "reason": "Need compact OpenMM coordinate artifacts with expected converter behavior."
+      "extensions": ["cms"],
+      "reason": "Schrodinger coverage has .mae/.maegz/.mae.gz fixtures; CMS still needs a compact redistributable sample."
     },
     "openmm-workflow-text-artifact": {
-      "extensions": ["checkpoint", "chk", "dms", "edr", "fasta", "fdef", "key", "par", "prm", "rtf", "str", "xvg"],
+      "extensions": ["checkpoint", "chk", "dms", "edr", "fdef", "key", "par", "prm", "rtf", "str", "xvg"],
       "reason": "Need representative workflow text/metadata fixtures."
-    },
-    "spectrum": {
-      "extensions": ["mgf", "msp", "mzml", "mzxml"],
-      "reason": "Spectrum smoke currently covers MS and MAGMa text formats; XML/list formats need compact fixtures."
     }
   },
   "documentTypeOnlyExtensions": {
@@ -192,7 +187,7 @@
       "samples/mini.cif",
       "samples/mini.sdf",
       "samples/mini.xyz",
-      "build/smoke/single.xyzr"
+      "samples/quantum/inputs/caffeine.com"
     ],
     "browserQuickLookCore": [
       "samples/mini.pdb",

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { join, resourceDir } from "@tauri-apps/api/path";
 import type { ViewerDocument } from "../../../types";
 import { parseFepGraphml, type FepNetworkData, type FepNetworkEdge, type FepNetworkNode } from "../../../lib/fep-graphml";
+import { isTauriRuntime } from "../../../lib/tauri";
 import { showNativeContextMenu } from "../../native-context-menu";
 import type { ShellActions } from "../../types";
 import { ViewerFrame } from "../viewer-frame";
@@ -785,18 +788,37 @@ async function loadRDKit() {
 }
 
 async function loadRDKitWasmBinary() {
-  const candidates = [rdkitWasmUrl, "/__burette/rdkit-wasm"];
-  let lastError: Error | null = null;
+  const candidates = await rdkitWasmCandidates();
+  const failures: string[] = [];
   for (const path of candidates) {
     try {
       const response = await fetch(path, { cache: "force-cache" });
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim());
       return { path, bytes: new Uint8Array(await response.arrayBuffer()) };
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+      failures.push(`${path}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  throw new Error(`Could not load RDKit wasm: ${lastError?.message ?? "unknown error"}`);
+  throw new Error(`Could not load RDKit wasm: ${failures.join("; ") || "no candidate paths"}`);
+}
+
+async function rdkitWasmCandidates() {
+  const paths: string[] = [];
+  const push = (value: string | null | undefined) => {
+    const path = String(value || "").trim();
+    if (path && !paths.includes(path)) paths.push(path);
+  };
+  if (isTauriRuntime()) {
+    try {
+      push(convertFileSrc(await join(await resourceDir(), "ViewerWeb", "rdkit", "RDKit_minimal.wasm")));
+    } catch (_) {}
+  }
+  push(rdkitWasmUrl);
+  try {
+    push(new URL("rdkit/RDKit_minimal.wasm", gridAssetsBaseUrl).href);
+  } catch (_) {}
+  push("/__burette/rdkit-wasm");
+  return paths;
 }
 
 function loadScript(src: string) {

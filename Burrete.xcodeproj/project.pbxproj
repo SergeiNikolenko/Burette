@@ -143,6 +143,7 @@
 				163085407F6A19FD620C881A /* Sources */,
 				EDE31F8E8E26065E582B8440 /* Frameworks */,
 				789E2D0E9032EB7EA72BA43E /* Resources */,
+				C0F026400000000000000001 /* Bundle xyzrender launcher */,
 				7E7F01C829F8540000010001 /* Clean bundle detritus before codesign */,
 			);
 			buildRules = ();
@@ -290,6 +291,23 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -euo pipefail\n\necho \"Cleaning extended attributes and AppleDouble files before codesign...\"\n\nclean_path() {\n  local path=\"$1\"\n  [ -e \"$path\" ] || return 0\n  if command -v xattr >/dev/null 2>&1; then\n    xattr -cr \"$path\" || true\n  fi\n  if command -v dot_clean >/dev/null 2>&1; then\n    dot_clean -m \"$path\" || true\n  fi\n  find \"$path\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\n}\n\nclean_path \"${SRCROOT}/PreviewExtension/Web\"\nclean_path \"${CODESIGNING_FOLDER_PATH}\"\n";
+		};
+		C0F026400000000000000001 /* Bundle xyzrender launcher */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = ();
+			inputFileListPaths = ();
+			inputPaths = ();
+			name = "Bundle xyzrender launcher";
+			outputFileListPaths = ();
+			outputPaths = (
+				"$(CODESIGNING_FOLDER_PATH)/Contents/Resources/xyzrender-python3",
+				"$(CODESIGNING_FOLDER_PATH)/Contents/lib/libpython3.13.dylib",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\nLOCAL_XYZRENDER_ENV=\"${HOME}/.local/share/uv/tools/xyzrender\"\nPYVENV_CFG=\"${LOCAL_XYZRENDER_ENV}/pyvenv.cfg\"\nif [ ! -f \"${PYVENV_CFG}\" ]; then\n  echo \"warning: xyzrender uv tool is not installed; skipping Quick Look xyzrender launcher\"\n  exit 0\nfi\nPYTHON_HOME=\"$(sed -n 's/^home = //p' \"${PYVENV_CFG}\" | head -n 1)\"\nif [ -z \"${PYTHON_HOME}\" ] || [ ! -x \"${PYTHON_HOME}/../bin/python3\" ]; then\n  echo \"error: could not resolve xyzrender Python runtime from ${PYVENV_CFG}\" >&2\n  exit 1\nfi\nPYTHON_ROOT=\"$(cd -P \"${PYTHON_HOME}/..\" && pwd -P)\"\nmkdir -p \"${CODESIGNING_FOLDER_PATH}/Contents/Resources\" \"${CODESIGNING_FOLDER_PATH}/Contents/lib\"\nditto --norsrc --noextattr \"${PYTHON_ROOT}/bin/python3\" \"${CODESIGNING_FOLDER_PATH}/Contents/Resources/xyzrender-python3\"\nditto --norsrc --noextattr \"${PYTHON_ROOT}/lib/libpython3.13.dylib\" \"${CODESIGNING_FOLDER_PATH}/Contents/lib/libpython3.13.dylib\"\nchmod 755 \"${CODESIGNING_FOLDER_PATH}/Contents/Resources/xyzrender-python3\" \"${CODESIGNING_FOLDER_PATH}/Contents/lib/libpython3.13.dylib\"\nif [ \"${CODE_SIGNING_ALLOWED:-NO}\" = \"YES\" ]; then\n  SIGN_IDENTITY=\"${EXPANDED_CODE_SIGN_IDENTITY:-${CODE_SIGN_IDENTITY:-}}\"\n  if [ -n \"${SIGN_IDENTITY}\" ]; then\n    /usr/bin/codesign --force --sign \"${SIGN_IDENTITY}\" -o runtime --timestamp=none \"${CODESIGNING_FOLDER_PATH}/Contents/lib/libpython3.13.dylib\"\n    /usr/bin/codesign --force --sign \"${SIGN_IDENTITY}\" -o runtime --timestamp=none \"${CODESIGNING_FOLDER_PATH}/Contents/Resources/xyzrender-python3\"\n  fi\nfi\n";
 		};
 
 /* End PBXShellScriptBuildPhase section */

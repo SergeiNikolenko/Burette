@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mzML xmlns="http://psi.hupo.org/ms/mzml">
+  <run>
+    <spectrumList count="1">
+      <spectrum id="scan=1">
+        <peak mz="50.0000" intensity="12.0" />
+        <peak mz="75.5000" intensity="44.0" />
+        <peak mz="101.0710" intensity="100.0" />
+      </spectrum>
+    </spectrumList>
+  </run>
+</mzML>

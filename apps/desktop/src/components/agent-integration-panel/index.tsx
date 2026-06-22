@@ -229,10 +229,11 @@ function codexSummary(status: AgentIntegrationStatus | null) {
 
 function codexSetupPrompt(status: AgentIntegrationStatus | null) {
   const version = status?.bundledPlugin.version ?? "0.1.0";
+  const pluginPath = status?.bundledPlugin.path ?? "plugins/burette-agent";
   return [
     `Install or update the local Codex plugin @Burrete (id \`burrete\`) to version ${version}.`,
-    "Use the bundled plugin directory `plugins/burette-agent` from the current Burrete repository or app bundle.",
-    "If Codex cannot resolve that relative path, ask for the explicit bundle path from Burrete.",
+    `Use the bundled plugin directory \`${pluginPath}\`.`,
+    "Install it with `bun run install:plugin`. On a fresh machine the marketplace name defaults to `burrete`, so the plugin id is `burrete@burrete`. If a local marketplace already exists, the installer keeps that marketplace name unless `BURRETE_PLUGIN_MARKETPLACE=burrete` is set.",
     "After installation, verify @Burrete is available in Codex, its skills load, and its MCP server is registered.",
   ].join("\n");
 }

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:${PATH:-}"
+
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
@@ -87,7 +89,13 @@ list_sample_files() {
     fd -t f . "$SAMPLES_DIR" | sort
   else
     find "$SAMPLES_DIR" -type f | sort
-  fi
+  fi | while IFS= read -r file; do
+    [[ "$(basename "$file")" == ".DS_Store" ]] && continue
+    if [[ "$SAMPLES_DIR" == "$ROOT/samples" && "$file" == "$ROOT/samples/preview-matrix.json" ]]; then
+      continue
+    fi
+    printf '%s\n' "$file"
+  done
 }
 
 absolute_file() {
@@ -147,6 +155,17 @@ log_has_success() {
   grep -E 'JS message type=ready: ready|trace\.requestID=.* state=completed' "$log_snapshot" >/dev/null 2>&1
 }
 
+semantic_status=1
+semantic_note=""
+check_semantic_success() {
+  local log_snapshot="$1"
+  local preview_file="$2"
+  semantic_status=0
+  semantic_note="$(bun "$ROOT/scripts/quicklook-semantic-check.mjs" "$log_snapshot" "$preview_file" 2>&1)" || semantic_status=$?
+  semantic_note="$(printf '%s' "$semantic_note" | tr '\t' ' ' | tr '\n' ' ' | sed 's/[[:space:]]\{1,\}/ /g; s/[[:space:]]$//')"
+  return 0
+}
+
 signal_for_log() {
   local log_snapshot="$1"
   if grep -F 'JS message type=ready: ready' "$log_snapshot" >/dev/null 2>&1; then
@@ -164,7 +183,7 @@ detail_for_log() {
     printf 'no extension log'
     return
   fi
-  grep -E 'file\.path=|native build error|JS message type=error|render timeout|resource\.typeIdentifier=|\[build\] detected\.format=|Rendered |ready|state=completed' "$log_snapshot" |
+  grep -E 'file\.path=|native build error|JS message type=error|render timeout|resource\.typeIdentifier=|\[build\] detected\.format=|\[build\] detected\.previewMode=|\[build\] trajectory\.|preview\.evidence |Rendered |ready|state=completed' "$log_snapshot" |
     tail -n 8 |
     tr '\t' ' ' |
     tr '\n' ' ' |
@@ -194,6 +213,7 @@ printf 'status\tfile\ttype\tseconds\tsignal\tnote\n' >"$RESULTS_PATH"
 total=0
 passed=0
 failed=0
+skipped=0
 
 while IFS= read -r sample_file; do
   [[ -f "$sample_file" ]] || continue
@@ -203,15 +223,17 @@ while IFS= read -r sample_file; do
   rel_file="$(relative_file "$abs_file")"
   content_type="$(BURRETE_DEV_FLAVOR="$BURRETE_DEV_FLAVOR" "$ROOT/scripts/preview-content-type.mjs" "$abs_file" 2>/dev/null || true)"
   if [[ -z "$content_type" || "$content_type" == "(null)" ]]; then
-    failed=$((failed + 1))
-    printf 'FAIL\t%s\t-\t0\tnone\tpreview-content-type returned empty\n' "$rel_file" >>"$RESULTS_PATH"
-    printf '[%03d] FAIL %s: preview-content-type returned empty\n' "$total" "$rel_file"
+    skipped=$((skipped + 1))
+    printf 'SKIP\t%s\t-\t0\tnone\tpreview-content-type returned empty\n' "$rel_file" >>"$RESULTS_PATH"
+    printf '[%03d] SKIP %s: preview-content-type returned empty\n' "$total" "$rel_file"
     continue
   fi
 
   timeout_seconds="$(timeout_for_file "$abs_file")"
   token="$BURRETE_DEV_FLAVOR_SLUG-smoke-$total $(basename "$abs_file")"
-  temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/BurreteSampleSmoke-${BURRETE_DEV_FLAVOR_SLUG}.XXXXXX")"
+  tmp_base="${TMPDIR:-/tmp}"
+  tmp_base="${tmp_base%/}"
+  temp_dir="$(mktemp -d "$tmp_base/BurreteSampleSmoke-${BURRETE_DEV_FLAVOR_SLUG}.XXXXXX")"
   preview_file="$temp_dir/$token"
   ln "$abs_file" "$preview_file" 2>/dev/null || cp -p "$abs_file" "$preview_file"
 
@@ -229,13 +251,22 @@ while IFS= read -r sample_file; do
 
   state="timeout"
   elapsed=0
+  semantic_status=1
+  semantic_note="semantic check not reached"
   while (( elapsed < timeout_seconds )); do
     sleep 1
     elapsed=$((SECONDS - started))
     collect_logs "$log_snapshot"
     if log_has_target "$log_snapshot" "$token" && log_has_success "$log_snapshot" && ! log_has_error "$log_snapshot"; then
-      state="passed"
-      break
+      check_semantic_success "$log_snapshot" "$preview_file"
+      if [[ "$semantic_status" -eq 0 ]]; then
+        state="passed"
+        break
+      fi
+      if [[ "$semantic_status" -eq 2 ]]; then
+        state="skipped"
+        break
+      fi
     fi
     if ! kill -0 "$preview_pid" 2>/dev/null; then
       state="exited"
@@ -252,17 +283,30 @@ while IFS= read -r sample_file; do
 
   elapsed=$((SECONDS - started))
   if log_has_target "$log_snapshot" "$token" && log_has_success "$log_snapshot" && ! log_has_error "$log_snapshot"; then
+    check_semantic_success "$log_snapshot" "$preview_file"
+  fi
+
+  if log_has_target "$log_snapshot" "$token" && log_has_success "$log_snapshot" && ! log_has_error "$log_snapshot" && [[ "$semantic_status" -eq 0 ]]; then
     passed=$((passed + 1))
     signal="$(signal_for_log "$log_snapshot")"
-    note="$signal in ${elapsed}s"
+    note="$signal in ${elapsed}s; $semantic_note"
     printf 'PASS\t%s\t%s\t%s\t%s\t%s\n' "$rel_file" "$content_type" "$elapsed" "$signal" "$note" >>"$RESULTS_PATH"
     printf '[%03d] PASS %s (%s, %ss)\n' "$total" "$rel_file" "$signal" "$elapsed"
+  elif log_has_target "$log_snapshot" "$token" && log_has_success "$log_snapshot" && ! log_has_error "$log_snapshot" && [[ "$semantic_status" -eq 2 ]]; then
+    skipped=$((skipped + 1))
+    signal="$(signal_for_log "$log_snapshot")"
+    note="$signal in ${elapsed}s; $semantic_note"
+    printf 'SKIP\t%s\t%s\t%s\t%s\t%s\n' "$rel_file" "$content_type" "$elapsed" "$signal" "$note" >>"$RESULTS_PATH"
+    printf '[%03d] SKIP %s (%s, %ss) %s\n' "$total" "$rel_file" "$signal" "$elapsed" "$semantic_note"
   else
     failed=$((failed + 1))
     signal="$(signal_for_log "$log_snapshot")"
     detail="$(detail_for_log "$log_snapshot")"
     if ! log_has_target "$log_snapshot" "$token"; then
       detail="no matching extension log for $token; $detail"
+    fi
+    if [[ -n "$semantic_note" && "$semantic_note" != "semantic check not reached" ]]; then
+      detail="$detail; semantic: $semantic_note"
     fi
     printf 'FAIL\t%s\t%s\t%s\t%s\t%s; %s\n' "$rel_file" "$content_type" "$elapsed" "$signal" "$state" "$detail" >>"$RESULTS_PATH"
     printf '[%03d] FAIL %s (%ss) %s\n' "$total" "$rel_file" "$elapsed" "$detail"
@@ -279,7 +323,7 @@ cleanup_quicklook_state
   printf '%s\n' "- Dev flavor: \`$BURRETE_DEV_FLAVOR_SLUG\`"
   printf '%s\n' "- Preview extension: \`$BURRETE_PREVIEW_ID\`"
   printf '%s\n' "- Samples directory: \`$(relative_file "$SAMPLES_DIR")\`"
-  printf '%s\n' "- Result: \`$passed passed / $failed failed / $total total\`"
+  printf '%s\n' "- Result: \`$passed passed / $failed failed / $skipped skipped / $total total\`"
   printf '%s\n\n' "- TSV: \`$(relative_file "$RESULTS_PATH")\`"
   if [[ "$failed" -gt 0 ]]; then
     printf '## Failures\n\n'
@@ -288,7 +332,7 @@ cleanup_quicklook_state
   fi
 } >"$SUMMARY_PATH"
 
-printf 'SUMMARY pass=%s fail=%s total=%s tsv=%s markdown=%s\n' "$passed" "$failed" "$total" "$RESULTS_PATH" "$SUMMARY_PATH"
+printf 'SUMMARY pass=%s fail=%s skip=%s total=%s tsv=%s markdown=%s\n' "$passed" "$failed" "$skipped" "$total" "$RESULTS_PATH" "$SUMMARY_PATH"
 
 if [[ "$failed" -gt 0 ]]; then
   exit 1

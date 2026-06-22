@@ -385,13 +385,12 @@ fn open_combined_grid_document<R: Runtime>(
     let combined = combined_sdf_data(&sdf_paths)?;
     let path = format!("{}#combined-sdf-grid", label_path.to_string_lossy());
     let title = combined_sdf_title(&label_path, "SDF grid", "Combined SDF grid");
-    let document_id = crate::windows::runtime_document_id(
-        window_label,
-        &crate::preview::runtime_utils::stable_id(Path::new(&path)),
-    );
+    let document_id = crate::preview::runtime_utils::stable_id(Path::new(&path));
+    let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
     let runtime_path = create_grid_runtime_with_options(
         app,
         &document_id,
+        &runtime_document_id,
         &label_path,
         "sdf",
         &combined.data,
@@ -732,6 +731,7 @@ pub(crate) fn generate_3d_conformer(
         let mut command = Command::new(&python.command);
         command
             .args(&python.args)
+            .envs(python.envs.iter().map(|(key, value)| (key, value)))
             .arg("-c")
             .arg(script)
             .stdin(Stdio::piped())
@@ -816,6 +816,7 @@ struct PythonCommand {
     label: String,
     command: String,
     args: Vec<String>,
+    envs: Vec<(String, String)>,
 }
 
 #[derive(Debug, Serialize)]
@@ -896,8 +897,14 @@ fn conformer_python_candidates(engine: &str) -> Vec<PythonCommand> {
                 label: value.to_string(),
                 command: value.to_string(),
                 args: Vec::new(),
+                envs: Vec::new(),
             });
         }
+    }
+    if let Ok(executable) = env::current_exe() {
+        candidates.extend(bundled_conformer_python_candidates_from_executable(
+            &executable,
+        ));
     }
     if let Some(uvx) = resolve_executable(
         "uvx",
@@ -917,24 +924,83 @@ fn conformer_python_candidates(engine: &str) -> Vec<PythonCommand> {
                 package_name.to_string(),
                 "python".to_string(),
             ],
+            envs: Vec::new(),
         });
     }
     candidates.push(PythonCommand {
         label: "python3".to_string(),
         command: "python3".to_string(),
         args: Vec::new(),
+        envs: Vec::new(),
     });
     candidates.push(PythonCommand {
         label: "python".to_string(),
         command: "python".to_string(),
         args: Vec::new(),
+        envs: Vec::new(),
     });
     let mut seen = HashSet::new();
     candidates.retain(|candidate| {
-        let key = format!("{}\0{}", candidate.command, candidate.args.join("\0"));
+        let key = format!(
+            "{}\0{}\0{}",
+            candidate.command,
+            candidate.args.join("\0"),
+            candidate
+                .envs
+                .iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+                .join("\0")
+        );
         seen.insert(key)
     });
     candidates
+}
+
+fn bundled_conformer_python_candidates_from_executable(executable: &Path) -> Vec<PythonCommand> {
+    let mut candidates = Vec::new();
+    for ancestor in executable.ancestors() {
+        for resources in [
+            ancestor.join("Resources"),
+            ancestor.join("Contents").join("Resources"),
+        ] {
+            let python = resources
+                .join("xyzrender-python")
+                .join("bin")
+                .join("python3");
+            if !python.is_file() || !is_executable(&python) {
+                continue;
+            }
+            let runtime_lib = resources.join("xyzrender-runtime").join("lib");
+            let Some(site_packages) = find_bundled_site_packages(&runtime_lib) else {
+                continue;
+            };
+            candidates.push(PythonCommand {
+                label: format!("bundled conformer Python ({})", python.display()),
+                command: python.to_string_lossy().to_string(),
+                args: Vec::new(),
+                envs: vec![
+                    (
+                        "PYTHONPATH".to_string(),
+                        site_packages.to_string_lossy().to_string(),
+                    ),
+                    ("PYTHONNOUSERSITE".to_string(), "1".to_string()),
+                ],
+            });
+        }
+    }
+    candidates
+}
+
+fn find_bundled_site_packages(runtime_lib: &Path) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(runtime_lib).ok()?;
+    for entry in entries.flatten() {
+        let candidate = entry.path().join("site-packages");
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 impl PythonCommand {
@@ -990,6 +1056,7 @@ fn conformer_python_status_probe(
 ) -> Result<Option<String>, String> {
     let mut child = Command::new(&python.command)
         .args(&python.args)
+        .envs(python.envs.iter().map(|(key, value)| (key, value)))
         .arg("-c")
         .arg(script)
         .stdin(Stdio::null())
@@ -1050,6 +1117,19 @@ fn resolve_executable(name: &str, preferred_paths: &[Option<PathBuf>]) -> Option
         }
     }
     None
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.metadata()
+        .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
 }
 
 fn generated_conformer_title(title: &str) -> String {
@@ -2161,7 +2241,8 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_open_paths, conformer_python_candidates, conformer_python_runtime_spec,
+        bundled_conformer_python_candidates_from_executable, classify_open_paths,
+        conformer_python_candidates, conformer_python_runtime_spec,
         conformer_python_status_candidates, expand_open_document_paths, expand_open_targets,
         expand_project_structure_targets, generated_conformer_title, list_project_structure_files,
         looks_like_supported_structure_file, normalize_inline_structure_extension,
@@ -2223,6 +2304,42 @@ mod tests {
         assert!(candidates
             .iter()
             .any(|candidate| candidate.label == "python"));
+    }
+
+    #[test]
+    fn bundled_conformer_python_candidate_uses_runtime_site_packages() {
+        let directory =
+            std::env::temp_dir().join(format!("burrete-conformer-python-{}", uuid::Uuid::new_v4()));
+        let app_executable = directory.join("Burrete.app/Contents/MacOS/burrete");
+        let python = directory.join("Burrete.app/Contents/Resources/xyzrender-python/bin/python3");
+        let site_packages = directory
+            .join("Burrete.app/Contents/Resources/xyzrender-runtime/lib/python3.13/site-packages");
+        fs::create_dir_all(app_executable.parent().expect("app executable parent")).unwrap();
+        fs::create_dir_all(python.parent().expect("python parent")).unwrap();
+        fs::create_dir_all(&site_packages).unwrap();
+        fs::write(&app_executable, "").unwrap();
+        fs::write(&python, "").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&python).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&python, permissions).unwrap();
+        }
+
+        let candidates = bundled_conformer_python_candidates_from_executable(&app_executable);
+
+        assert!(candidates.iter().any(|candidate| {
+            candidate.command == python.to_string_lossy()
+                && candidate.envs.iter().any(|(key, value)| {
+                    key == "PYTHONPATH" && value == &site_packages.to_string_lossy().to_string()
+                })
+                && candidate
+                    .envs
+                    .iter()
+                    .any(|(key, value)| key == "PYTHONNOUSERSITE" && value == "1")
+        }));
+        let _ = fs::remove_dir_all(&directory);
     }
 
     #[test]

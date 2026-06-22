@@ -40,6 +40,7 @@ import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppShellActions } from "./hooks/use-app-shell-actions";
 import { useAppShellNavigationActions } from "./hooks/use-app-shell-navigation-actions";
 import { useAppShellViewState } from "./hooks/use-app-shell-view-state";
+import { useAppSpectrumDockLifecycle } from "./hooks/use-app-spectrum-dock-lifecycle";
 import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
@@ -211,6 +212,19 @@ export default function App() {
     openDockTab,
     rightDockActiveTab,
     rightDockOpen,
+    setDockOpen,
+  });
+  useAppSpectrumDockLifecycle({
+    activeDocument,
+    bottomDockActiveTab,
+    bottomDockDocumentId,
+    bottomDockTabs,
+    closeDockTab,
+    documents,
+    rightDockActiveTab,
+    rightDockDocumentId,
+    setDockActiveTab,
+    setDockDocument,
     setDockOpen,
   });
 

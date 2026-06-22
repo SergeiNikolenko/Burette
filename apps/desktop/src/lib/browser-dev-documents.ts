@@ -1599,6 +1599,7 @@ function proteinLikeAtomRecordCount(text: string) {
 function shouldUseConvertedMolstarData(format: FormatInfo, converted: ConvertedStructureData | null, extension: string) {
   if (!converted?.bytes) return false;
   if (isPharmacophorePreviewExtension(extension)) return true;
+  if ((extension === "lammpstrj" || extension === "dump") && converted.molstarFormat === "xyz") return true;
   if (format.externalOnly) return true;
   if (format.binary) return false;
   if (["gro", "mmcif", "cifCore"].includes(format.molstarFormat)) return true;
@@ -1856,6 +1857,10 @@ function convertedDataFromText(text: string, extension: string, label: string): 
   if (extension === "gro") {
     const converted = groPdbDataFromText(text, label);
     return converted ? { molstarFormat: "pdb", ...converted } : null;
+  }
+  if (extension === "lammpstrj" || extension === "dump") {
+    const bytes = lammpsDumpXyzDataFromText(text, label);
+    return bytes ? { bytes, molstarFormat: "xyz" } : null;
   }
   const bytes = pdbDataFromText(text, extension, label);
   return bytes ? { bytes, molstarFormat: "pdb" } : null;
@@ -2171,6 +2176,18 @@ function pdbDataFromText(text: string, extension: string, label: string) {
     "",
   ].join("\n");
   return new TextEncoder().encode(pdb);
+}
+
+function lammpsDumpXyzDataFromText(text: string, label: string) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const frames = parseLammpsDumpFrames(lines);
+  if (!frames.length) return null;
+  const xyz = frames.flatMap((atoms, index) => [
+    String(atoms.length),
+    `Converted from ${label} frame ${index + 1}`,
+    ...atoms.map((atom) => `${atom.symbol} ${formatCoordinate(atom.x)} ${formatCoordinate(atom.y)} ${formatCoordinate(atom.z)}`),
+  ]).join("\n") + "\n";
+  return new TextEncoder().encode(xyz);
 }
 
 function atomsFromText(text: string, extension: string) {
@@ -3123,6 +3140,11 @@ function parseCharmmCoordinateAtoms(lines: string[]) {
 }
 
 function parseLammpsDumpAtoms(lines: string[]) {
+  return parseLammpsDumpFrames(lines)[0] ?? null;
+}
+
+function parseLammpsDumpFrames(lines: string[]) {
+  const frames: Atom[][] = [];
   const atoms: Atom[] = [];
   let inAtoms = false;
   let columns: string[] = [];
@@ -3133,7 +3155,9 @@ function parseLammpsDumpAtoms(lines: string[]) {
   let typeIndex = -1;
   for (const line of lines) {
     if (line.startsWith("ITEM: ")) {
-      if (inAtoms && atoms.length > 0) break;
+      if (inAtoms && atoms.length > 0) {
+        frames.push(atoms.splice(0, atoms.length));
+      }
       inAtoms = false;
       if (line.startsWith("ITEM: ATOMS")) {
         columns = line.slice("ITEM: ATOMS".length).trim().split(/\s+/u).filter(Boolean);
@@ -3157,7 +3181,10 @@ function parseLammpsDumpAtoms(lines: string[]) {
       ?? "C";
     atoms.push({ symbol, x, y, z });
   }
-  return atoms.length > 0 ? atoms : null;
+  if (inAtoms && atoms.length > 0) {
+    frames.push(atoms);
+  }
+  return frames;
 }
 
 function coordinateColumnIndex(columns: string[], names: string[]) {

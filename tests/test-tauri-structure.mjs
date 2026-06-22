@@ -254,11 +254,11 @@ for (const fixture of [
   'samples/mini.cif',
   'samples/mini.sdf',
   'samples/mini.xyz',
-  'build/smoke/single.xyzr',
+  'samples/quantum/inputs/caffeine.com',
 ]) {
   assert.match(nightlySmokeWorkflow, new RegExp(fixture.replaceAll('/', '\\/')));
 }
-assert.match(nightlySmokeWorkflow, /cp samples\/mini\.xyz build\/smoke\/single\.xyzr/);
+assert.doesNotMatch(nightlySmokeWorkflow, /cp samples\/mini\.xyz build\/smoke\/single\.xyzr/);
 assert.match(nightlySmokeWorkflow, /scripts\/perf-smoke\.sh/);
 
 for (const moduleName of ['agent_integration', 'documents', 'grid', 'preview_cache', 'quicklook', 'runtime_doctor', 'shell', 'startup', 'updater']) {
@@ -277,6 +277,10 @@ for (const commandPath of [
   'commands::documents::generate_3d_conformer',
   'commands::documents::open_text_structure',
   'commands::documents::save_text_as',
+  'commands::descriptors::descriptor_calculate_grid',
+  'commands::descriptors::descriptor_start_grid',
+  'commands::descriptors::descriptor_grid_job_status',
+  'commands::descriptors::descriptor_cancel_grid',
   'commands::grid::grid_fetch_page',
   'commands::grid::grid_append_records',
   'commands::grid::grid_delimited_columns',
@@ -400,7 +404,15 @@ assert.match(documentsCommand, /fn open_combined_pose_document/);
 assert.match(documentsCommand, /fn open_combined_grid_document/);
 assert.match(documentsCommand, /create_combined_sdf_pose_runtime/);
 assert.match(documentsCommand, /create_grid_runtime_with_options/);
-assert.match(documentsCommand, /runtime_document_id\(\n        window_label,/);
+assert.match(documentsCommand, /runtime_document_id\(\s*window_label,/);
+assert.match(previewRuntimeGrid, /pub\(crate\) fn create_grid_runtime_with_options<R: Runtime>\(\s*app: &tauri::AppHandle<R>,\s*document_id: &str,\s*registry_document_id: &str,/s);
+assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,/s);
+assert.match(previewRuntimeGrid, /"documentId": document_id,/);
+assert.doesNotMatch(previewRuntimeGrid, /"documentId": registry_document_id/);
+assert.match(previewRuntime, /let runtime_document_id = crate::windows::runtime_document_id\(window_label, &document_id\);\s*if let Some\(runtime_path\) = create_grid_runtime_with_options\(\s*app,\s*&document_id,\s*&runtime_document_id,/s);
+assert.match(documentsCommand, /let document_id = crate::preview::runtime_utils::stable_id\(Path::new\(&path\)\);/);
+assert.match(documentsCommand, /let runtime_document_id = crate::windows::runtime_document_id\(window_label, &document_id\);/);
+assert.match(documentsCommand, /create_grid_runtime_with_options\(\s*app,\s*&document_id,\s*&runtime_document_id,/s);
 assert.match(documentsCommand, /fn combined_sdf_data/);
 assert.match(documentsCommand, /data\.ends_with\(b"\$\$\$\$"\)/);
 assert.match(documentsCommand, /ViewerDocument::virtual_structure/);
@@ -646,6 +658,9 @@ assert.match(xcodeProjectSource, /path = "config\/preview-formats\.json"/);
 assert.match(xcodeProjectSource, /BurreteThumbnail/);
 assert.match(xcodeProjectSource, /ThumbnailProvider\.swift in Sources/);
 assert.match(xcodeProjectSource, /INFOPLIST_FILE = PreviewExtension\/ThumbnailInfo\.plist/);
+assert.match(xcodeProjectSource, /Bundle xyzrender launcher/);
+assert.match(xcodeProjectSource, /CODESIGNING_FOLDER_PATH\}\/Contents\/Resources\/xyzrender-python3/);
+assert.match(xcodeProjectSource, /CODESIGNING_FOLDER_PATH\}\/Contents\/lib\/libpython3\.13\.dylib/);
 assert.match(xcodeThumbnailScheme, /BlueprintName = "BurreteThumbnail"/);
 assert.match(xcodeThumbnailScheme, /BuildableName = "BurreteThumbnail\.appex"/);
 assert.match(thumbnailInfoPlist, /com\.apple\.quicklook\.thumbnail/);
@@ -695,6 +710,7 @@ assert.deepEqual(webRuntimeProfiles.bundleTargets.quicklook.profiles, [
 assert.match(xcodeProjectSource, /check-vendor-assets\.mjs --profile quicklook-molstar --profile quicklook-grid --profile external-artifact/);
 assert.match(previewEntitlements, /com\.apple\.security\.app-sandbox/);
 assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.read-only/);
+assert.match(previewEntitlements, /com\.apple\.security\.files\.user-selected\.executable/);
 assert.match(appInfoPlist, /<key>LSUIElement<\/key>\s*<false\/>/);
 assert.match(releaseVersionCheck, /semver release or prerelease/);
 assert.doesNotMatch(appMetadata, /<key>LSHandlerRank<\/key>\s*<string>Alternate<\/string>/);
@@ -708,8 +724,8 @@ assert.match(thumbnailProviderSource, /parseCube/);
 const quickLookSupportedContentTypesBlock = previewExtensionInfoPlist.match(
   /<key>QLSupportedContentTypes<\/key>\s*<array>([\s\S]*?)<\/array>/,
 )?.[1] ?? '';
-assert.doesNotMatch(quickLookSupportedContentTypesBlock, /public\.comma-separated-values-text/);
-assert.doesNotMatch(quickLookSupportedContentTypesBlock, /public\.tab-separated-values-text/);
+assert.match(quickLookSupportedContentTypesBlock, /public\.comma-separated-values-text/);
+assert.match(quickLookSupportedContentTypesBlock, /public\.tab-separated-values-text/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.csv/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.tsv/);
 assert.match(previewExtensionInfoPlist, /com\.local\.burrete10\.smiles/);
@@ -725,9 +741,21 @@ assert.match(quickLookPreviewController, /shouldUseFepGraphMLPreview\(fileExtens
 assert.match(quickLookPreviewController, /return fileExtension\.lowercased\(\) == "graphml"/);
 assert.match(quickLookPreviewController, /detected\.previewMode=fep-graphml/);
 assert.match(quickLookPreviewController, /layoutFepGraphMLPreview/);
+assert.match(quickLookPreviewController, /webDirectory: webDirectory/);
+assert.match(quickLookPreviewController, /requiresRDKit: true/);
+assert.match(quickLookPreviewController, /molblock: graphMLMolblock\(label: label, atoms: atoms, bonds: bonds\)/);
+assert.match(quickLookPreviewController, /private static func graphMLMolblock/);
+assert.match(quickLookPreviewController, /private static func graphMLKekuleAromaticBondTypes/);
 assert.match(quickLookPreviewController, /let denseMode = graph\.nodes\.count > 12/);
 assert.match(quickLookPreviewController, /class="node-dot"/);
 assert.match(quickLookPreviewController, /class="node-card"/);
+assert.match(quickLookPreviewController, /class="node-molecule"/);
+assert.match(quickLookPreviewController, /const fepNodeMolblocks =/);
+assert.match(quickLookPreviewController, /<script src="preview-rdkit-wasm\.js"><\/script>/);
+assert.match(quickLookPreviewController, /<script src="\.\.\/assets\/rdkit\/RDKit_minimal\.js"><\/script>/);
+assert.match(quickLookPreviewController, /rdkit\.get_mol\(String\(entry\.molblock \|\| ''\)\)/);
+assert.match(quickLookPreviewController, /mol\.set_new_coords\?\.\(\)/);
+assert.match(quickLookPreviewController, /rdkitImages: rdkitImages/);
 assert.match(quickLookPreviewController, /score: " \+ String\(format: "%\.3f", \$0\)/);
 assert.match(quickLookPreviewController, /shouldUseTextArtifactPreview\(fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
 assert.match(quickLookPreviewController, /detected\.previewMode=text-artifact/);
@@ -736,21 +764,68 @@ assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
 assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);
 assert.match(installLocalScript, /Contents\/Resources\/ViewerWeb/);
 assert.match(buildScript, /LOCAL_XYZRENDER_ENV="\$HOME\/\.local\/share\/uv\/tools\/xyzrender"/);
+assert.match(buildScript, /XYZRENDER_RUNTIME_PYTHON_PACKAGES=\("datamol==0\.12\.5"\)/);
 assert.match(buildScript, /require_xyzrender_runtime_for_release\(\)\s*\{/);
 assert.match(buildScript, /release builds require bundled xyzrender runtime source/);
+assert.match(buildScript, /ensure_xyzrender_runtime_python_packages\(\)\s*\{/);
+assert.match(buildScript, /uv pip install --python "\$LOCAL_XYZRENDER_ENV\/bin\/python3" "\$\{XYZRENDER_RUNTIME_PYTHON_PACKAGES\[@\]\}"/);
+assert.match(buildScript, /import datamol/);
 assert.match(buildScript, /bundle_xyzrender_runtime "\$TAURI_BUILT_APP"/);
 assert.match(buildScript, /rsync -aL --delete "\$LOCAL_XYZRENDER_ENV\/" "\$runtime\/"/);
+assert.match(buildScript, /Contents\/Resources\/xyzrender-runtime/);
+assert.match(buildScript, /Contents\/Resources\/xyzrender-python/);
+assert.doesNotMatch(buildScript, /bundle_quicklook_xyzrender_python/);
+assert.doesNotMatch(buildScript, /rsync -aL --delete "\$source_runtime\/" "\$appex_runtime\/"/);
+assert.doesNotMatch(buildScript, /rsync -aL --delete "\$source_python\/" "\$appex_python\/"/);
+assert.doesNotMatch(buildScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-runtime/);
+assert.doesNotMatch(buildScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-python/);
+assert.match(buildScript, /bundle_quicklook_xyzrender_launcher\(\)/);
+assert.match(buildScript, /Contents\/Resources\/xyzrender-python3/);
+assert.doesNotMatch(buildScript, /Contents\/MacOS\/xyzrender-python3/);
+assert.match(buildScript, /Contents\/lib\/libpython3\.13\.dylib/);
+assert.doesNotMatch(buildScript, /ditto --norsrc --noextattr "\$python_root\/bin\/python3" "\$appex\/Contents\/Resources\/xyzrender-python3"/);
+assert.doesNotMatch(buildScript, /ditto --norsrc --noextattr "\$source_python\/bin\/python3" "\$appex_launch_python"/);
+assert.doesNotMatch(buildScript, /install_name_tool -change "@executable_path\/\.\.\/lib\/libpython3\.13\.dylib" "@executable_path\/libpython3\.13\.dylib"/);
+assert.doesNotMatch(buildScript, /Contents\/MacOS\/xyzrender-python\/bin\/python3/);
+assert.doesNotMatch(buildScript, /bundle_quicklook_xyzrender_runtime/);
+assert.doesNotMatch(buildScript, /rsync -aL --delete "\$app_runtime\/" "\$appex_runtime\/"/);
+assert.doesNotMatch(buildScript, /Quick Look bundled xyzrender runtime missing/);
+assert.doesNotMatch(buildScript, /Quick Look bundled xyzrender python home missing/);
+assert.doesNotMatch(buildScript, /Quick Look bundled xyzrender launch python missing/);
+assert.match(buildScript, /\[ ! -f "\$PYTHON_ROOT\/bin\/python3" \]/);
 assert.match(buildScript, /exec "\$PYTHON_ROOT\/bin\/python3" -m xyzrender\.cli "\$@"/);
 assert.match(buildScript, /sign_bundled_xyzrender_runtime "\$TAURI_BUILT_APP"/);
+assert.doesNotMatch(buildScript, /sign_quicklook_xyzrender_python/);
+assert.match(buildScript, /sign_quicklook_xyzrender_launcher\(\)/);
+assert.doesNotMatch(buildScript, /XYZRENDER_CODESIGN_ENTITLEMENTS/);
+assert.doesNotMatch(buildScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$entitlements" "\$binary"/);
 assert.match(buildScript, /assert_bundled_xyzrender_runtime "\$LOCAL_APP" "in build output"/);
 assert.match(buildScript, /assert_bundled_xyzrender_runtime "\$VERIFY_APP" "before codesign verification"/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runtime\(\)\s*\{/);
 assert.match(installLocalScript, /assert_bundled_xyzrender_runner\(\)\s*\{/);
-assert.match(installLocalScript, /sign_bundled_xyzrender_runtime\(\)\s*\{/);
-assert.match(installLocalScript, /find "\$runtime" "\$python_root" -type f/);
-assert.match(installLocalScript, /sign_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON"/);
+assert.doesNotMatch(installLocalScript, /assert_quicklook_xyzrender_python\(\)\s*\{/);
+assert.doesNotMatch(installLocalScript, /sign_bundled_xyzrender_runtime\(\)\s*\{/);
+assert.doesNotMatch(installLocalScript, /sign_quicklook_xyzrender_python\(\)\s*\{/);
+assert.doesNotMatch(installLocalScript, /sign_xyzrender_binaries\(\)\s*\{/);
+assert.doesNotMatch(installLocalScript, /find "\$@" -type f/);
+assert.doesNotMatch(installLocalScript, /sign_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON"/);
+assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$LOCAL_XYZRENDER_ENV\/" "\$STAGING_XYZRENDER_ENV\/"/);
+assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$LOCAL_XYZRENDER_PYTHON_ROOT\/" "\$STAGING_XYZRENDER_PYTHON\/"/);
+assert.doesNotMatch(installLocalScript, /APPEX_XYZRENDER/);
+assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$STAGING_XYZRENDER_ENV\/" "\$STAGING_APPEX_XYZRENDER_ENV\/"/);
+assert.doesNotMatch(installLocalScript, /rsync -aL --delete "\$STAGING_XYZRENDER_PYTHON\/" "\$STAGING_APPEX_XYZRENDER_PYTHON\/"/);
+assert.doesNotMatch(installLocalScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-runtime/);
+assert.doesNotMatch(installLocalScript, /Contents\/PlugIns\/BurretePreview\.appex\/Contents\/Resources\/xyzrender-python/);
+assert.doesNotMatch(installLocalScript, /bundle_quicklook_xyzrender_launcher\(\)/);
+assert.match(installLocalScript, /Contents\/Resources\/xyzrender-python3/);
+assert.doesNotMatch(installLocalScript, /Contents\/MacOS\/xyzrender-python3/);
+assert.match(installLocalScript, /Contents\/lib\/libpython3\.13\.dylib/);
 assert.match(installLocalScript, /SIGN_IDENTITY="\$\{BURRETE_CODESIGN_IDENTITY:--\}"/);
 assert.match(installLocalScript, /CODESIGN_ARGS=\(--force --sign "\$SIGN_IDENTITY"\)/);
+assert.doesNotMatch(installLocalScript, /XYZRENDER_CODESIGN_ENTITLEMENTS/);
+assert.doesNotMatch(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$entitlements" "\$binary"/);
+assert.doesNotMatch(installLocalScript, /sign_quicklook_xyzrender_launcher\(\)/);
+assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" "\$STAGING_APPEX\/Contents\/Resources\/burrete-core-bridge"/);
 assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" --entitlements "\$ROOT\/PreviewExtension\/BurretePreview\.entitlements" "\$STAGING_APPEX"/);
 assert.match(installLocalScript, /codesign "\$\{CODESIGN_ARGS\[@\]\}" "\$STAGING_DEST"/);
 assert.doesNotMatch(installLocalScript, /codesign --force --deep --sign - "\$STAGING_DEST"/);
@@ -760,8 +835,9 @@ assert.match(installLocalScript, /local timeout_seconds=10/);
 assert.match(installLocalScript, /return 124/);
 assert.match(installLocalScript, /\[\[ "\$IS_DEV_FLAVOR" == "1" && "\$\{BURRETE_SKIP_XYZRENDER_RUNNER_CHECK:-0\}" == "1" \]\]/);
 assert.match(installLocalScript, /for attempt in \$\(seq 1 6\)/);
-assert.match(installLocalScript, /assert_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "before signing"/);
-assert.match(installLocalScript, /assert_bundled_xyzrender_runner "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "after signing"/);
+assert.match(installLocalScript, /assert_bundled_xyzrender_runtime "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "from build output"/);
+assert.match(installLocalScript, /local python="\$python_root\/bin\/python3"/);
+assert.match(installLocalScript, /assert_bundled_xyzrender_runner "\$STAGING_XYZRENDER_ENV" "\$STAGING_XYZRENDER_PYTHON" "after app signing"/);
 assert.doesNotMatch(installLocalScript, /\$STAGING_XYZRENDER_ENV\/bin\/xyzrender" --help/);
 assert.match(previewXyzrender, /bundled_xyzrender_candidates_from_executable/);
 assert.match(previewXyzrender, /Contents"\)\s*\.join\("Resources"\)\s*\.join\("xyzrender-runtime"\)/);
@@ -873,7 +949,7 @@ assert.match(previewRuntimeGrid, /build_grid_store/);
 assert.match(previewRuntimeGrid, /include_single_sdf: options\.include_single_sdf\s*\|\|\s*normalize_renderer_mode\(&preferences\.renderer_mode\) == "grid2d"/);
 assert.match(previewGridStore, /!options\.include_single_sdf\s*&& \(\(extension == "sdf" \|\| extension == "sd"\) && records_indexed <= 1\)/);
 assert.match(previewRuntimeGrid, /"sourcePath": file_path\.to_string_lossy\(\)/);
-assert.match(previewRuntimeGrid, /register\(\s*document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*\)/);
+assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*\)/);
 assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
 assert.match(previewRuntimeGrid, /"recordsIndexed": collection\.records_indexed/);
 assert.match(previewRuntimeGrid, /"indexReady": collection\.index_ready/);
@@ -924,7 +1000,9 @@ assert.match(gridViewerJS, /body\.type === 'gridRecordsAppended'/);
 assert.match(gridViewerJS, /void refreshRemote\(config\(\)\)/);
 assert.match(gridViewerJS, /function xyzrenderFragmentText\(record\)/);
 assert.match(gridViewerJS, /const smiles = firstLine\.trim\(\)\.split\(\/\\s\+\/u\)\[0\]/);
-assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderFragmentText\(record\)\)/);
+assert.match(gridViewerJS, /function xyzrenderCardInputText\(row, record\)/);
+assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(row, record\)\)/);
+assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(job\.row, job\.record\)\)/);
 assert.match(gridViewerJS, /preset: currentXyzrenderPreset\(cfg\)/);
 assert.match(gridViewerJS, /preset: currentXyzrenderPreset\(job\.cfg\)/);
 assert.match(gridViewerJS, /function prepareXyzrenderCardSVG\(svg\)/);

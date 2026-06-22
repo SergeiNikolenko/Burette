@@ -25,6 +25,10 @@ substitute for runtime `observe`.
 
 Choose the smallest focused workflow that covers the request:
 
+- [external-agent-contract](../external-agent-contract/SKILL.md): operate
+  Burrete through a short `workspaceSessionId` contract for external agents,
+  hiding URL/session-directory transport details unless advanced control is
+  needed.
 - [open-workspace](../open-workspace/SKILL.md): open local structures,
   collections, trajectories, or result bundles in Browser preview or desktop
   app.
@@ -47,10 +51,20 @@ The CLI is the execution contract. MCP tools wrap it. Browser and Computer
 verify visual reality. Do not replace typed `observe` and `act` with screenshot
 interpretation.
 
+For external agent workflows, prefer the short MCP facade first:
+`burrete.get_context`, `burrete.open_workspace`,
+`burrete.observe_workspace`, `burrete.control_viewer`, and
+`burrete.render_panel`. These tools return a stable `workspaceSessionId` and
+compact `modelContext`; the advanced Burrete tools remain available for
+docking, fragments, reports, trajectories, and lower-level scene operations.
+
 For Browser work, distinguish two local surfaces:
 
-- `browser-dev-shell`: the full Burrete Browser shell, started by
-  `scripts/burrete-agent.mjs open --mode browser-dev-shell ...` on a fresh
+- `auto`: the default route. It starts the full browser agent shell when the
+  shell can start and falls back to tokenized browser-preview when the shell
+  runtime is unavailable.
+- `browser-agent-shell`: the full Burrete Browser shell, started by
+  `scripts/burrete-agent.mjs open --mode browser-agent-shell ...` on a fresh
   local port and opened as
   `http://127.0.0.1:<fresh-port>/?devFiles=<encoded absolute path>`. Use it
   when the user wants the normal app UI: sidebar, files/projects, tabs, right
