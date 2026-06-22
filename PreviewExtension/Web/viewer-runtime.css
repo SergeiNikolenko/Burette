@@ -355,30 +355,33 @@ body .msp-plugin .msp-viewport-controls-panel .msp-help-text em {
 }
 body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row {
   overflow: hidden;
-  border: 1px solid var(--buret-molstar-border) !important;
-  border-radius: 10px;
-  color: var(--buret-molstar-text) !important;
-  background: var(--buret-molstar-panel-background) !important;
+  border: 1px solid var(--buret-toolbar-border) !important;
+  border-radius: 12px;
+  color: var(--buret-toolbar-color) !important;
+  background: var(--buret-toolbar-background) !important;
   box-shadow: 0 12px 28px var(--buret-molstar-shadow);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
 }
 body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row > * {
-  border-left: 1px solid var(--buret-molstar-border) !important;
-  color: var(--buret-molstar-text) !important;
-  background: var(--buret-molstar-row-background) !important;
+  border-left: 1px solid var(--buret-toolbar-border) !important;
+  color: var(--buret-toolbar-color) !important;
+  background: transparent !important;
 }
 body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row > *:first-child {
   border-left: 0 !important;
 }
 body .msp-plugin .msp-selection-viewport-controls button,
 body .msp-plugin .msp-selection-viewport-controls .msp-btn {
-  color: var(--buret-molstar-text) !important;
+  border-radius: 8px;
+  color: var(--buret-toolbar-color) !important;
   background: transparent !important;
 }
 body .msp-plugin .msp-selection-viewport-controls button:hover,
 body .msp-plugin .msp-selection-viewport-controls .msp-btn:hover,
 body .msp-plugin .msp-selection-viewport-controls .msp-btn-link-toggle-on {
-  color: var(--buret-molstar-accent) !important;
-  background: var(--buret-molstar-hover-background) !important;
+  color: var(--buret-toolbar-color) !important;
+  background: var(--buret-toolbar-hover) !important;
   outline: 0 !important;
 }
 body .msp-plugin .msp-semi-transparent-background {
@@ -442,14 +445,30 @@ body .msp-plugin .msp-viewport-controls {
 }
 body .msp-plugin .msp-viewport-controls-buttons > div {
   overflow: hidden;
-  border: 1px solid var(--buret-molstar-border);
-  border-radius: 8px;
-  background: var(--buret-molstar-row-background) !important;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 12px;
+  background: var(--buret-toolbar-background) !important;
   box-shadow: 0 8px 20px var(--buret-molstar-shadow);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+body .msp-plugin .msp-viewport-controls-buttons > div > div {
+  overflow: hidden;
+  border-radius: 8px;
 }
 body .msp-plugin .msp-viewport-controls-buttons button {
-  color: var(--buret-molstar-text) !important;
+  border-radius: 8px;
+  color: var(--buret-toolbar-color) !important;
   background: transparent !important;
+}
+body .msp-plugin .msp-viewport-controls-buttons button:hover,
+body .msp-plugin .msp-viewport-controls-buttons .msp-btn-link-toggle-on {
+  color: var(--buret-toolbar-color) !important;
+  background: var(--buret-toolbar-hover) !important;
 }
 body .msp-plugin .msp-viewport-controls-buttons button[disabled] {
   color: var(--buret-molstar-muted-text) !important;
@@ -924,6 +943,34 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 .buret-button svg { width: 17px; height: 17px; display: block; }
 .buret-pose-toggle { width: auto; min-width: 34px; }
 .buret-grip { width: 30px; padding: 0; cursor: grab; color: currentColor; opacity: 0.66; }
+.buret-molstar-lasso.active {
+  background: var(--buret-toolbar-hover);
+  box-shadow: inset 0 0 0 1px var(--buret-toolbar-border);
+}
+body.buret-molstar-lasso-active .msp-plugin canvas {
+  cursor: crosshair;
+}
+.buret-molstar-lasso-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483645;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+.buret-molstar-lasso-overlay polygon {
+  fill: color-mix(in srgb, var(--buret-molstar-accent, #af52de) 18%, transparent);
+  stroke: none;
+}
+.buret-molstar-lasso-overlay polyline {
+  fill: none;
+  stroke: color-mix(in srgb, var(--buret-molstar-accent, #af52de) 88%, white);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.36));
+}
 .buret-generate-3d-control {
   position: absolute;
   top: var(--buret-viewport-controls-top);
