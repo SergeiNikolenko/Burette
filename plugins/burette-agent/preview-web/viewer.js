@@ -3708,11 +3708,12 @@
     root.style.setProperty('--buret-selection-controls-left', toolbarRect ? Math.ceil(toolbarRect.left) + 'px' : `${TOOLBAR_MARGIN}px`);
     root.style.setProperty('--buret-selection-controls-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : 'min(430px, calc(100vw - 24px))');
     root.style.setProperty('--buret-selection-controls-max-width', toolbarRect ? Math.max(180, Math.floor(window.innerWidth - toolbarRect.left - TOOLBAR_MARGIN)) + 'px' : 'calc(100vw - 24px)');
-    root.style.setProperty('--buret-selection-controls-top', toolbarRect ? Math.ceil(toolbarRect.bottom + FLOATING_LAYOUT_GAP) + 'px' : `calc(var(--buret-toolbar-safe-top) + 48px)`);
+    root.style.setProperty('--buret-selection-controls-top', toolbarRect ? Math.ceil(toolbarRect.bottom - 1) + 'px' : `calc(var(--buret-toolbar-safe-top) + 48px)`);
     const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
     const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
     const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
     const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row');
+    document.body?.classList.toggle('buret-selection-toolbar-open', !!selectionToolbarRect && !!toolbarRect);
     const mainRect = visibleRect('.msp-plugin .msp-layout-main');
     const mainTop = mainRect ? mainRect.top : 0;
     const defaultViewportTop = mainTop + 64;

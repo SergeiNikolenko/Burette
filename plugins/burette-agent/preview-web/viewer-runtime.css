@@ -414,6 +414,15 @@ body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row {
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
+body.buret-selection-toolbar-open #buret-toolbar {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+body.buret-selection-toolbar-open .msp-plugin .msp-selection-viewport-controls > .msp-flex-row {
+  border-top-right-radius: 0;
+  border-top-left-radius: 0;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
+}
 body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row::-webkit-scrollbar {
   display: none;
 }
