@@ -334,6 +334,7 @@ function renderPlot(
   onPeakSelect: (index: number | null) => void,
 ) {
   const selectedPeakSet = new Set(selectedPeakIndices);
+  const hoverTheme = spectrumHoverTheme(element);
   const stickTrace = {
     type: "bar",
     x: peaks.map((peak) => peak.x),
@@ -382,9 +383,9 @@ function renderPlot(
     plot_bgcolor: "rgba(0,0,0,0)",
     font: { color: "var(--text-secondary)", family: "var(--ui-font)", size: 12 },
     hoverlabel: {
-      bgcolor: "var(--surface-elevated)",
-      bordercolor: "var(--line-subtle)",
-      font: { color: "var(--text-primary)", family: "var(--ui-font)", size: 12 },
+      bgcolor: hoverTheme.background,
+      bordercolor: hoverTheme.border,
+      font: { color: hoverTheme.text, family: "var(--ui-font)", size: 12 },
       align: "left",
     },
     bargap: 0.98,
@@ -418,6 +419,23 @@ function renderPlot(
     });
     return value;
   });
+}
+
+function spectrumHoverTheme(element: HTMLElement) {
+  const appShell = element.closest<HTMLElement>(".app-shell");
+  const theme = appShell?.dataset.effectiveTheme ?? appShell?.dataset.theme ?? "dark";
+  if (theme === "light") {
+    return {
+      background: "rgba(246, 246, 248, 0.96)",
+      border: "rgba(0, 0, 0, 0.14)",
+      text: "#1d1d1f",
+    };
+  }
+  return {
+    background: "rgba(31, 31, 34, 0.96)",
+    border: "rgba(255, 255, 255, 0.14)",
+    text: "#f5f5f7",
+  };
 }
 
 function SpectrumMetadata({
