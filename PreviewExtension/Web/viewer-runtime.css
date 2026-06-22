@@ -11,6 +11,8 @@
   --buret-toolbar-border: rgba(255, 255, 255, 0.10);
   --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
   --buret-toolbar-color: rgba(255, 255, 255, 0.94);
+  --buret-control-island-right: 12px;
+  --buret-control-island-gap: 6px;
   --buret-viewport-controls-top: calc(var(--buret-toolbar-safe-top) + 42px);
   --buret-viewport-panel-max-height: calc(100vh - 96px);
   --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
@@ -376,10 +378,13 @@ body .msp-plugin .msp-viewport-controls-panel .msp-help-text em {
   color: var(--buret-molstar-muted-text) !important;
 }
 body .msp-plugin .msp-selection-viewport-controls {
+  position: absolute !important;
   top: var(--buret-selection-controls-top, calc(var(--buret-toolbar-safe-top) + 48px)) !important;
-  right: 12px !important;
+  right: var(--buret-control-island-right) !important;
   left: auto !important;
-  max-width: calc(100vw - 24px) !important;
+  width: auto !important;
+  max-width: calc(100vw - (var(--buret-control-island-right) * 2)) !important;
+  margin: 0 !important;
   z-index: 2147483645 !important;
 }
 body.buret-toolbar-collapsed .msp-plugin .msp-selection-viewport-controls {
@@ -388,10 +393,14 @@ body.buret-toolbar-collapsed .msp-plugin .msp-selection-viewport-controls {
   pointer-events: none;
 }
 body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row {
-  min-height: 40px;
+  display: inline-flex !important;
+  align-items: center;
+  gap: var(--buret-control-island-gap);
+  min-height: 0;
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
+  padding: 6px;
   scrollbar-width: none;
   border: 1px solid var(--buret-toolbar-border) !important;
   border-radius: 12px;
@@ -407,25 +416,32 @@ body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row::-webkit-scrol
   display: none;
 }
 body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row > * {
-  border-left: 1px solid var(--buret-toolbar-border) !important;
+  flex: 0 0 auto;
+  border-left: 0 !important;
   color: var(--buret-toolbar-color) !important;
   background: transparent !important;
 }
-body .msp-plugin .msp-selection-viewport-controls > .msp-flex-row > *:first-child {
-  border-left: 0 !important;
-}
 body .msp-plugin .msp-selection-viewport-controls button,
 body .msp-plugin .msp-selection-viewport-controls .msp-btn {
-  min-width: 40px !important;
-  min-height: 38px !important;
+  width: auto !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
   border-radius: 8px;
+  padding: 0 7px !important;
   color: var(--buret-toolbar-color) !important;
   background: transparent !important;
 }
 body .msp-plugin .msp-selection-viewport-controls select {
-  max-width: min(220px, 28vw) !important;
-  min-height: 38px !important;
+  flex: 0 1 auto !important;
+  width: auto !important;
+  min-width: 96px !important;
+  max-width: min(180px, 28vw) !important;
+  height: 30px !important;
+  min-height: 30px !important;
   border: 0 !important;
+  border-radius: 8px;
+  padding: 0 9px !important;
   color: var(--buret-toolbar-color) !important;
   background: transparent !important;
   text-overflow: ellipsis;
@@ -862,8 +878,8 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   background: rgba(255, 255, 255, 0.20);
 }
 #buret-toolbar {
-  position: absolute; top: var(--buret-toolbar-safe-top); right: 12px; left: auto; z-index: 2147483646;
-  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - 24px); gap: 6px; padding: 6px;
+  position: absolute; top: var(--buret-toolbar-safe-top); right: var(--buret-control-island-right); left: auto; z-index: 2147483646;
+  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 6px;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 12px; color: var(--buret-toolbar-color);
   background: var(--buret-toolbar-background);
