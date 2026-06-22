@@ -10,6 +10,7 @@ const pluginRoot = resolve(repoRoot, 'plugins/burette-agent');
 const shellDist = resolve(pluginRoot, 'browser-shell-dist');
 const previewWeb = resolve(pluginRoot, 'preview-web');
 const runtimeScripts = [
+  'amber_nc_preview_extract.py',
   'agent-preview.mjs',
   'agent-shell-server.mjs',
   'burrete-agent.mjs',
