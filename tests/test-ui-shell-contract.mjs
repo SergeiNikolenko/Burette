@@ -1959,11 +1959,13 @@ assert.match(structureInfoPanel, /const contextStyleCard = structureContextStyle
 assert.match(structureInfoPanel, /function structureContextStyleCardFor\(/);
 assert.match(structureInfoPanel, /if \(structureOverlayMode !== "all"\) return null/);
 assert.match(structureInfoPanel, /if \(!summary && isVirtualMolstarScene\(document\)\) \{/);
+assert.match(structureInfoPanel, /const maestroEntryCount = maestroPreviewEntryCount\(summary\)/);
 assert.match(structureInfoPanel, /detail: "Context structures"/);
 assert.match(structureInfoPanel, /detail: "Context molecules"/);
 assert.match(structureInfoPanel, /detail: "Background frames"/);
 assert.match(structureInfoPanel, /function structurePoseControlsFor\(/);
 assert.match(structureInfoPanel, /sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT/);
+assert.match(structureInfoPanel, /function maestroPreviewEntryCount\(summary: StructureCompositionSummary\)/);
 assert.match(structureInfoPanel, /function SdfContextStyleCard/);
 assert.match(structureInfoPanel, /<StructureSectionHeader title=\{copy\.title\} detail=\{copy\.detail\} \/>/);
 assert.match(structureInfoPanel, /aria-label=\{copy\.styleAriaLabel\}/);
