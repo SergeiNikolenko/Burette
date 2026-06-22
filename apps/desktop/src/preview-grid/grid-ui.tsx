@@ -13,7 +13,7 @@ type XyzrenderPresetOption = {
 };
 
 type GridControlProps = {
-  format: "sdf" | "smiles";
+  format: "csv" | "sdf" | "smiles" | "tsv";
   label: string;
   exportEnabled: boolean;
   selectionEnabled: boolean;
@@ -142,6 +142,7 @@ function GridViewControls(props: GridControlProps) {
 }
 
 function GridRenderControls(props: GridControlProps) {
+  if (!props.substructureSearch && !props.rendererSwitch) return null;
   return (
     <div className="buret-grid-control-group buret-grid-render-group">
       <span className="buret-grid-control-label">Render</span>
@@ -161,6 +162,13 @@ function GridRenderControls(props: GridControlProps) {
 
 function XyzrenderStyleControl(props: GridControlProps) {
   if (!props.supportsXyzrenderCards) return null;
+  const selectedPresetLabel = props.xyzrenderPresetOptions.find(
+    (option) => option.value === props.xyzrenderPreset,
+  )?.label ?? "Default";
+  const presetWidth = Math.max(74, Math.min(128, selectedPresetLabel.length * 7 + 42));
+  const presetWidthStyle = {
+    "--buret-xyzrender-preset-width": `${presetWidth}px`,
+  } as React.CSSProperties;
   return (
     <label
       id="xyzrender-preset-control"
@@ -173,6 +181,7 @@ function XyzrenderStyleControl(props: GridControlProps) {
         value={props.xyzrenderPreset}
         disabled={props.cardRenderer !== "xyzrender"}
         aria-label="xyzrender card style"
+        style={presetWidthStyle}
         onChange={(event) => props.onXyzrenderPresetChange(event.currentTarget.value)}
       >
         {props.xyzrenderPresetOptions.map((option) => (
@@ -215,10 +224,16 @@ function SelectedOpenActions(props: GridControlProps) {
 }
 
 function GridControls(props: GridControlProps) {
-  const collectionType = props.format === "sdf" ? "SDF collection" : "SMILES collection";
+  const collectionType = props.format === "sdf"
+    ? "SDF collection"
+    : props.format === "csv"
+      ? "CSV table"
+      : props.format === "tsv"
+        ? "TSV table"
+        : "SMILES collection";
   const searchPlaceholder = props.substructureSearch
     ? "name, SMILES, metadata, SMARTS"
-    : "name, SMILES, metadata";
+    : "name or table value";
 
   return (
     <>

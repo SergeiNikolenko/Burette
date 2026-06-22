@@ -838,11 +838,12 @@ kbd span { margin-left: 2px; }
   gap: 1px;
 }
 .project-folder-row {
+  position: relative;
   width: 100%;
   min-height: 28px;
   border-radius: 8px;
   color: var(--text-faint);
-  padding: 5px 10px 5px calc(6px + (var(--project-depth, 0) * 6px));
+  padding: 5px 34px 5px calc(6px + (var(--project-depth, 0) * 6px));
   display: flex;
   align-items: center;
   gap: 4px;
@@ -859,15 +860,34 @@ kbd span { margin-left: 2px; }
 .project-folder-row:focus-visible .project-folder-name {
   color: var(--text-secondary);
 }
+.project-folder-row > .project-folder-toggle-button {
+  right: 4px;
+}
 .project-folder-name {
   min-width: 0;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
   font-weight: 400;
 }
+.project-folder-children-shell {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;
+}
+.project-folder-children-shell[data-expanded="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+}
 .project-folder-children {
+  min-height: 0;
+  overflow: hidden;
   display: grid;
   gap: 1px;
 }

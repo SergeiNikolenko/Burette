@@ -1,13 +1,41 @@
-import { createWriteStream, existsSync, readdirSync, readFileSync, statSync, watch, type Dirent, type Stats } from "node:fs";
+import { createWriteStream, existsSync, readFileSync, statSync, watch } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename as pathBasename, delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
-import { gunzipSync, inflateRawSync } from "node:zlib";
-import { defineConfig, type Plugin } from "vite";
+import { gunzipSync } from "node:zlib";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import {
+  deferKetcherCssPlugin,
+  desktopManualChunks,
+  ketcherRaphaelImportShimPlugin,
+  resolveModulePreloadDependencies,
+} from "./vite/build-plugins";
+import {
+  registerBrowserDevAppIconRoute,
+  registerBrowserDevRdkitWasmRoute,
+} from "./vite/browser-dev/assets";
+import { registerBrowserDevAgentSessionRoute } from "./vite/browser-dev/agent-session";
+import { registerBrowserDevConformerJobRoutes } from "./vite/browser-dev/conformer-jobs";
+import { registerBrowserDevInlineConformerRoute } from "./vite/browser-dev/conformer-inline";
+import { registerBrowserDevDescriptorRoutes } from "./vite/browser-dev/descriptors";
+import { registerBrowserDevDesmondPreviewRoute } from "./vite/browser-dev/desmond";
+import {
+  registerBrowserDevFileContentRoutes,
+  registerBrowserDevFileDiscoveryRoute,
+} from "./vite/browser-dev/files";
+import {
+  isNumpyArtifactExtension,
+  numpyArtifactTextSummary,
+  registerBrowserDevFoldingResultRoute,
+} from "./vite/browser-dev/folding-results";
+import { registerBrowserDevMsbuddyRoutes } from "./vite/browser-dev/msbuddy";
+import { registerBrowserDevRuntimeDoctorRoute } from "./vite/browser-dev/runtime-doctor";
+import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
+import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
@@ -58,6 +86,9 @@ const BROWSER_DEV_CHEMISTRY_PREP_PROJECT = join(repoRoot, "tools", "chemistry-pr
 const BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR = process.env.BURRETE_DESCRIPTOR_RUNTIME_DIR
   ? resolve(process.env.BURRETE_DESCRIPTOR_RUNTIME_DIR)
   : join(homedir(), "Library", "Application Support", "Burrete", "descriptor-python");
+const BROWSER_DEV_MSBUDDY_RUNTIME_DIR = process.env.BURRETE_MSBUDDY_RUNTIME_DIR
+  ? resolve(process.env.BURRETE_MSBUDDY_RUNTIME_DIR)
+  : join(homedir(), "Library", "Application Support", "Burrete", "msbuddy-python");
 const XTB_RUN_METADATA_FILE = ".burrete-xtb-run.json";
 const CONFORMER_RUN_METADATA_FILE = ".burrete-conformer-run.json";
 const XTB_LOG_CAPTURE_BYTES = 128 * 1024;
@@ -68,6 +99,8 @@ const DESCRIPTOR_STATUS_TIMEOUT_MS = 10_000;
 const DESCRIPTOR_RUN_TIMEOUT_MS = 30_000;
 const DESCRIPTOR_GRID_BATCH_TIMEOUT_MS = 300_000;
 const DESCRIPTOR_INSTALL_TIMEOUT_MS = 600_000;
+const CONFORMER_PYTHON_STATUS_TIMEOUT_MS = 10_000;
+const MSBUDDY_RUN_TIMEOUT_MS = 180_000;
 const runningBrowserDevJobs = new Map<string, ChildProcess>();
 const cancelledBrowserDevJobs = new Set<string>();
 const browserDevDescriptorJobs = new Map<string, BrowserDevGridDescriptorJobStatus>();
@@ -76,6 +109,7 @@ type PythonCommand = {
   command: string;
   args: string[];
 };
+type ConformerPythonEngine = "datamol" | "rdkit";
 type BrowserDevDescriptorCellValue = {
   id: string;
   label: string;
@@ -89,6 +123,24 @@ type BrowserDevGridRecord = {
   name: string;
   smiles?: string;
   molblock?: string;
+};
+
+type BrowserDevMsbuddyPeak = {
+  index: number;
+  mz: number;
+  intensity: number;
+  annotation?: string;
+  annotations?: Record<string, unknown>;
+};
+
+type BrowserDevMsbuddyCandidate = {
+  rank: number;
+  formula: string;
+  score: number | null;
+  massErrorPpm: number | null;
+  explainedPeakIndexes: number[];
+  evidence: string;
+  source: "msbuddy" | "spectrum";
 };
 
 type BrowserDevGridDescriptorResultRow = {
@@ -127,76 +179,18 @@ type StructureFileBundle = {
   inputPath: string;
   attachments: Array<{ role: StructureAttachmentRole; path: string }>;
 };
-type BrowserDevNumpyArraySummary = {
-  name: string;
-  dtype: string;
-  shape: number[];
-  valueCount: number;
-  min: number | null;
-  max: number | null;
-  mean: number | null;
-  nanCount: number;
-  values: Array<number | null>;
-  unsupported: string | null;
-};
-type BrowserDevFoldingArtifact = {
-  path: string;
-  title: string;
-  extension: string;
-  kind: string;
-  byteCount: number;
-};
-type BrowserDevFoldingMetric = {
-  key: string;
-  label: string;
-  value: number;
-  formatted: string;
-};
-type BrowserDevFoldingModel = {
-  id: string;
-  title: string;
-  backend: string;
-  seed: number | null;
-  modelIndex: number | null;
-  structurePath: string;
-  structureTitle: string;
-  metrics: BrowserDevFoldingMetric[];
-  plddtProfile: null | {
-    label: string;
-    path: string;
-    values: number[];
-    min: number;
-    max: number;
-    mean: number;
-  };
-  matrixPreview: null | {
-    kind: string;
-    label: string;
-    path: string;
-    shape: number[];
-    values: Array<Array<number | null>>;
-    xLabels: string[];
-    yLabels: string[];
-    min: number | null;
-    max: number | null;
-    mean: number | null;
-  };
-  artifacts: BrowserDevFoldingArtifact[];
-};
-type BrowserDevFoldingResultBundle = {
-  rootPath: string;
-  title: string;
-  source: string;
-  models: BrowserDevFoldingModel[];
-  artifacts: BrowserDevFoldingArtifact[];
-  warnings: string[];
-};
 const DEV_FILE_EXTENSIONS = new Set([
   ...previewFormatRegistry.documentTypes.extensions,
   "dtr",
+  "magma",
   "md",
   "markdown",
   "mdx",
+  "mgf",
+  "ms",
+  "msp",
+  "mzml",
+  "mzxml",
   "txt",
   "log",
   "err",
@@ -258,7 +252,7 @@ import traceback
 
 
 def emit(payload):
-    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), flush=True)
+    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), file=sys.__stdout__, flush=True)
 
 
 def import_engine():
@@ -413,6 +407,166 @@ try:
     main()
 except Exception as exc:
     emit({"ok": False, "error": str(exc), "traceback": traceback.format_exc(limit=8)})
+`;
+const BROWSER_DEV_MSBUDDY_RUNNER = `
+import contextlib
+import io
+import json
+import math
+import sys
+import traceback
+
+
+def emit(payload):
+    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), file=sys.__stdout__, flush=True)
+
+
+def finite_number(value):
+    try:
+        number = float(value)
+    except Exception:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def adduct_charge(adduct):
+    text = str(adduct or "").strip()
+    if text.endswith("-") or "]-" in text:
+        return -1
+    return 1
+
+
+def clean_adduct(value):
+    text = str(value or "").strip()
+    return text if text else "[M+H]+"
+
+
+def normalize_peaks(peaks):
+    mz_values = []
+    intensity_values = []
+    for peak in peaks or []:
+        if not isinstance(peak, dict):
+            continue
+        mz = finite_number(peak.get("mz"))
+        intensity = finite_number(peak.get("intensity"))
+        if mz is None or intensity is None or mz <= 0 or intensity < 0:
+            continue
+        mz_values.append(mz)
+        intensity_values.append(intensity)
+    return mz_values, intensity_values
+
+
+def best_precursor(input_payload, mz_values, intensity_values):
+    precursor = finite_number(input_payload.get("precursorMz"))
+    if precursor is not None and precursor > 0:
+        return precursor, "metadata"
+    if mz_values:
+        base_index = max(range(len(mz_values)), key=lambda index: intensity_values[index])
+        return mz_values[base_index], "base peak fallback"
+    return None, "missing"
+
+
+def summary_candidates(summary):
+    candidates = []
+    estimated_fdr = finite_number(summary.get("estimated_fdr"))
+    for rank in range(1, 6):
+        formula = summary.get(f"formula_rank_{rank}")
+        if not formula:
+            continue
+        score = None
+        if rank == 1 and estimated_fdr is not None:
+            score = max(0.0, min(1.0, 1.0 - estimated_fdr))
+        candidates.append({
+            "rank": rank,
+            "formula": str(formula),
+            "score": score,
+            "massErrorPpm": None,
+            "explainedPeakIndexes": [],
+            "evidence": "msbuddy annotate_formula",
+            "source": "msbuddy",
+        })
+    return candidates
+
+
+def mz_candidates(engine, precursor, adduct):
+    candidates = []
+    for rank, formula_result in enumerate(engine.mz_to_formula(precursor, adduct=adduct, mz_tol=10, ppm=True, halogen=True)[:5], start=1):
+        candidates.append({
+            "rank": rank,
+            "formula": str(getattr(formula_result, "formula", "")),
+            "score": None,
+            "massErrorPpm": finite_number(getattr(formula_result, "mass_error_ppm", None)),
+            "explainedPeakIndexes": [],
+            "evidence": "msbuddy mz_to_formula",
+            "source": "msbuddy",
+        })
+    return [candidate for candidate in candidates if candidate["formula"]]
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+        input_payload = payload.get("input") if isinstance(payload.get("input"), dict) else payload
+        if not isinstance(input_payload, dict):
+            raise ValueError("msbuddy input must be an object.")
+
+        mz_values, intensity_values = normalize_peaks(input_payload.get("peaks"))
+        if not mz_values:
+            raise ValueError("Spectrum has no usable peaks.")
+
+        precursor, precursor_source = best_precursor(input_payload, mz_values, intensity_values)
+        if precursor is None:
+            raise ValueError("Spectrum has no precursor or usable base peak.")
+
+        adduct = clean_adduct(input_payload.get("candidateIon"))
+
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            import numpy as np
+            from msbuddy import MetaFeature, Msbuddy, MsbuddyConfig, Spectrum
+
+            config = MsbuddyConfig(
+                ms_instr="orbitrap",
+                ppm=True,
+                ms1_tol=10,
+                ms2_tol=10,
+                halogen=True,
+                parallel=False,
+                timeout_secs=90,
+                batch_size=1,
+            )
+            engine = Msbuddy(config)
+            feature = MetaFeature(
+                str(input_payload.get("title") or "spectrum"),
+                mz=float(precursor),
+                charge=adduct_charge(adduct),
+                adduct=adduct,
+                ms2=Spectrum(np.array(mz_values, dtype=float), np.array(intensity_values, dtype=float)),
+            )
+            engine.add_data([feature])
+            engine.annotate_formula()
+            summary = engine.get_summary()[0]
+            candidates = summary_candidates(summary)
+            if not candidates:
+                candidates = mz_candidates(engine, precursor, adduct)
+
+        emit({
+            "ok": True,
+            "runtime": "msbuddy",
+            "message": f"msbuddy annotated this spectrum using {adduct}; precursor from {precursor_source}.",
+            "precursorMz": precursor,
+            "adduct": adduct,
+            "candidates": candidates,
+        })
+    except Exception as exc:
+        emit({
+            "ok": False,
+            "error": str(exc),
+            "traceback": traceback.format_exc(limit=4),
+        })
+
+
+if __name__ == "__main__":
+    main()
 `;
 
 function readOptionalNumber(value: unknown) {
@@ -653,6 +807,52 @@ function resolveXyzrenderExecutable() {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
+function sourceForRuntimePath(path: string) {
+  if (path.includes("xyzrender-runtime")) return "bundled";
+  if (path.includes(".local/bin") || path.includes(".local/share")) return "user-local";
+  if (path.includes("/opt/") || path.includes("/usr/local/") || path.includes("/opt/homebrew/")) return "system";
+  return "resolved-path";
+}
+
+function browserDevXyzrenderStatus() {
+  const executable = resolveXyzrenderExecutable();
+  return executable
+    ? {
+        installed: true,
+        executablePath: executable,
+        source: sourceForRuntimePath(executable),
+        installHint: "Install xyzrender in ~/.local/bin or make it available on PATH.",
+        message: "External xyzrender runtime is available",
+      }
+    : {
+        installed: false,
+        executablePath: null,
+        source: null,
+        installHint: "Install xyzrender in ~/.local/bin or make it available on PATH.",
+        message: "External xyzrender executable was not found.",
+      };
+}
+
+function browserDevSchrodingerStatus() {
+  const configuredRun = process.env.SCHRODINGER ? join(process.env.SCHRODINGER, "run") : "";
+  const executable = [configuredRun, SCHRODINGER_RUN].filter(Boolean).find((candidate) => existsSync(candidate)) ?? null;
+  return executable
+    ? {
+        installed: true,
+        executablePath: executable,
+        source: sourceForRuntimePath(executable),
+        installHint: "Schrodinger runtime is available.",
+        message: "Schrodinger runtime is available",
+      }
+    : {
+        installed: false,
+        executablePath: null,
+        source: null,
+        installHint: "Install Schrodinger or set SCHRODINGER to a suite directory that contains run.",
+        message: "Schrodinger runtime was not found",
+      };
+}
+
 function conformerPythonCandidates(engine: string) {
   const candidates: PythonCommand[] = [];
   const configuredPython = String(engine === "datamol" ? process.env.BURRETE_DATAMOL_PYTHON || "" : process.env.BURRETE_RDKIT_PYTHON || "").trim();
@@ -675,6 +875,76 @@ function conformerPythonCandidates(engine: string) {
     seen.add(key);
     return true;
   });
+}
+
+function conformerPythonStatusCandidates(engine: ConformerPythonEngine) {
+  return conformerPythonCandidates(engine).filter((candidate) => !isUvxFromPythonCandidate(candidate));
+}
+
+function isUvxFromPythonCandidate(candidate: PythonCommand) {
+  return candidate.args[0] === "--from" && candidate.args.at(-1) === "python";
+}
+
+function conformerPythonRuntimeSpec(engine: ConformerPythonEngine) {
+  return engine === "datamol"
+    ? {
+        engine,
+        packageName: "datamol",
+        envName: "BURRETE_DATAMOL_PYTHON",
+        label: "Datamol",
+        script: "import datamol as dm\nprint(getattr(dm, '__version__', 'unknown'))",
+      }
+    : {
+        engine,
+        packageName: "rdkit",
+        envName: "BURRETE_RDKIT_PYTHON",
+        label: "RDKit",
+        script: "import rdkit\nprint(getattr(rdkit, '__version__', 'unknown'))",
+      };
+}
+
+async function browserDevConformerPythonStatus(engine: ConformerPythonEngine) {
+  const spec = conformerPythonRuntimeSpec(engine);
+  let lastError: string | null = null;
+  for (const python of conformerPythonStatusCandidates(engine)) {
+    try {
+      const version = await browserDevConformerPythonVersion(python, spec.script);
+      return {
+        available: true,
+        engine: spec.engine,
+        packageName: spec.packageName,
+        pythonLabel: python.label,
+        executablePath: python.command,
+        command: [python.command, ...python.args],
+        version,
+        message: `${spec.label} conformer Python is available`,
+        installHint: null,
+        lastError: null,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? `${python.label}: ${error.message}` : `${python.label}: ${String(error)}`;
+    }
+  }
+  return {
+    available: false,
+    engine: spec.engine,
+    packageName: spec.packageName,
+    pythonLabel: null,
+    executablePath: null,
+    command: null,
+    version: null,
+    message: lastError ? `${spec.label} conformer Python was not found: ${lastError}` : `${spec.label} conformer Python was not found`,
+    installHint: `Set ${spec.envName} to a Python executable with ${spec.packageName} installed, or install ${spec.packageName} into python3.`,
+    lastError,
+  };
+}
+
+async function browserDevConformerPythonVersion(python: PythonCommand, script: string) {
+  const { stdout } = await execFileAsync(python.command, [...python.args, "-c", script], {
+    timeout: CONFORMER_PYTHON_STATUS_TIMEOUT_MS,
+    maxBuffer: 128 * 1024,
+  });
+  return String(stdout || "").split(/\r?\n/u).map((line) => line.trim()).find(Boolean) ?? null;
 }
 
 function resolveExecutable(name: string, preferredPaths: string[] = []) {
@@ -707,6 +977,21 @@ function browserDevDescriptorPythonCandidates() {
     "/opt/homebrew/bin/python3",
     "/usr/local/bin/python3",
     "/usr/bin/python3",
+  ].filter(Boolean);
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = resolve(candidate);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return existsSync(candidate);
+  });
+}
+
+function browserDevMsbuddyPythonCandidates() {
+  const candidates = [
+    process.env.BURRETE_MSBUDDY_PYTHON || "",
+    join(BROWSER_DEV_MSBUDDY_RUNTIME_DIR, "bin", "python3"),
+    ...browserDevDescriptorPythonCandidates(),
   ].filter(Boolean);
   const seen = new Set<string>();
   return candidates.filter((candidate) => {
@@ -803,6 +1088,211 @@ function parseBrowserDevDescriptorRunnerOutput(output: string) {
     throw new Error(typeof payload.error === "string" ? payload.error : "Descriptor calculation failed.");
   }
   return payload;
+}
+
+function runBrowserDevMsbuddyRunner(pythonPath: string, payload: Record<string, unknown>, timeoutMs: number): Promise<Record<string, unknown>> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(pythonPath, ["-c", BROWSER_DEV_MSBUDDY_RUNNER], { stdio: ["pipe", "pipe", "pipe"] });
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    const timeout = setTimeout(() => {
+      child.kill();
+      rejectPromise(new Error("msbuddy annotation timed out."));
+    }, timeoutMs);
+    child.stdout.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      rejectPromise(error);
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timeout);
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8").trim();
+      const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+      if (code !== 0 || !stdout) {
+        rejectPromise(new Error(stderr || `msbuddy runner exited with ${signal || code}`));
+        return;
+      }
+      try {
+        const payload = parseBrowserDevMsbuddyRunnerOutput(stdout);
+        resolvePromise(payload);
+      } catch (error) {
+        rejectPromise(error);
+      }
+    });
+    child.stdin.end(JSON.stringify(payload));
+  });
+}
+
+function parseBrowserDevMsbuddyRunnerOutput(output: string) {
+  const lastLine = output.trim().split(/\r?\n/u).filter(Boolean).at(-1) || "{}";
+  const payload = JSON.parse(lastLine) as Record<string, unknown>;
+  if (payload.ok === false) {
+    throw new Error(typeof payload.error === "string" ? payload.error : "msbuddy annotation failed.");
+  }
+  return payload;
+}
+
+async function browserDevMsbuddyStatus() {
+  for (const pythonPath of browserDevMsbuddyPythonCandidates()) {
+    try {
+      await execFileAsync(pythonPath, ["-c", "import msbuddy"], { timeout: 20_000, maxBuffer: 128 * 1024 });
+      return { available: true, pythonPath };
+    } catch (_) {
+      // Try the next interpreter candidate.
+    }
+  }
+  return { available: false, pythonPath: browserDevMsbuddyPythonCandidates()[0] ?? null };
+}
+
+async function annotateBrowserDevSpectrumWithMsbuddy(body: Record<string, unknown>) {
+  const input = body.input && typeof body.input === "object" ? body.input as Record<string, unknown> : {};
+  const status = await browserDevMsbuddyStatus();
+  const fallbackCandidates = buildBrowserDevSpectrumFormulaCandidates(input);
+  if (!status.available) {
+    return {
+      ok: true,
+      runtime: "fallback",
+      message: "msbuddy Python package is not available in this browser-dev runtime; showing formula candidates from spectrum annotations.",
+      candidates: fallbackCandidates,
+    };
+  }
+  const pythonPath = status.pythonPath;
+  if (!pythonPath) {
+    return {
+      ok: true,
+      runtime: "fallback",
+      message: "msbuddy Python interpreter was not resolved; showing formula candidates from spectrum annotations.",
+      candidates: fallbackCandidates,
+    };
+  }
+  try {
+    const result = await runBrowserDevMsbuddyRunner(pythonPath, { input }, MSBUDDY_RUN_TIMEOUT_MS);
+    const candidates = mergeBrowserDevMsbuddyCandidates(result.candidates, fallbackCandidates);
+    return {
+      ok: true,
+      runtime: "msbuddy",
+      message: typeof result.message === "string" ? result.message : "msbuddy annotated this spectrum.",
+      precursorMz: result.precursorMz ?? null,
+      adduct: result.adduct ?? null,
+      candidates: candidates.length > 0 ? candidates : fallbackCandidates,
+    };
+  } catch (error) {
+    return {
+      ok: true,
+      runtime: "fallback",
+      message: `msbuddy runtime failed (${error instanceof Error ? error.message : String(error)}); showing formula candidates from spectrum annotations.`,
+      candidates: fallbackCandidates,
+    };
+  }
+}
+
+function mergeBrowserDevMsbuddyCandidates(rawCandidates: unknown, fallbackCandidates: BrowserDevMsbuddyCandidate[]) {
+  if (!Array.isArray(rawCandidates)) return [];
+  const fallbackByFormula = new Map(fallbackCandidates.map((candidate) => [candidate.formula, candidate]));
+  const merged: BrowserDevMsbuddyCandidate[] = [];
+  for (const rawCandidate of rawCandidates) {
+    if (!rawCandidate || typeof rawCandidate !== "object") continue;
+    const row = rawCandidate as Record<string, unknown>;
+    const formula = typeof row.formula === "string" ? row.formula.trim() : "";
+    if (!formula) continue;
+    const fallback = fallbackByFormula.get(formula);
+    const rank = Number(row.rank);
+    const score = numericAnnotation(row.score);
+    const massErrorPpm = numericAnnotation(row.massErrorPpm);
+    const explainedPeakIndexes = Array.isArray(row.explainedPeakIndexes)
+      ? row.explainedPeakIndexes.filter((index): index is number => Number.isInteger(index))
+      : [];
+    const fallbackIndexes = fallback?.explainedPeakIndexes ?? [];
+    const allIndexes = [...new Set([...explainedPeakIndexes, ...fallbackIndexes])].sort((left, right) => left - right);
+    const evidence = typeof row.evidence === "string" && row.evidence.trim()
+      ? row.evidence.trim()
+      : "msbuddy";
+    merged.push({
+      rank: Number.isFinite(rank) && rank > 0 ? rank : merged.length + 1,
+      formula,
+      score: score ?? fallback?.score ?? null,
+      massErrorPpm: massErrorPpm ?? fallback?.massErrorPpm ?? null,
+      explainedPeakIndexes: allIndexes,
+      evidence: fallback && !evidence.includes(fallback.evidence) ? `${evidence}, ${fallback.evidence}` : evidence,
+      source: "msbuddy",
+    });
+  }
+  return merged.sort((left, right) => left.rank - right.rank).slice(0, 16);
+}
+
+function buildBrowserDevSpectrumFormulaCandidates(input: Record<string, unknown>) {
+  const peaks = Array.isArray(input.peaks) ? input.peaks.filter((peak): peak is BrowserDevMsbuddyPeak => Boolean(peak && typeof peak === "object")) : [];
+  const formulas = new Map<string, BrowserDevMsbuddyCandidate>();
+  const addFormula = (rawFormula: unknown, evidence: string, peakIndex: number | null, score: number | null, massErrorPpm: number | null) => {
+    if (typeof rawFormula !== "string") return;
+    for (const formula of extractChemicalFormulas(rawFormula)) {
+      const current = formulas.get(formula);
+      if (current) {
+        current.score = Math.max(current.score ?? 0, score ?? 0);
+        if (massErrorPpm !== null && (current.massErrorPpm === null || Math.abs(massErrorPpm) < Math.abs(current.massErrorPpm))) {
+          current.massErrorPpm = massErrorPpm;
+        }
+        if (peakIndex !== null && !current.explainedPeakIndexes.includes(peakIndex)) current.explainedPeakIndexes.push(peakIndex);
+        if (!current.evidence.includes(evidence)) current.evidence = `${current.evidence}, ${evidence}`;
+        continue;
+      }
+      formulas.set(formula, {
+        rank: 0,
+        formula,
+        score,
+        massErrorPpm,
+        explainedPeakIndexes: peakIndex === null ? [] : [peakIndex],
+        evidence,
+        source: "spectrum",
+      });
+    }
+  };
+  addFormula(input.candidateFormula, "candidate formula", null, 1, null);
+  if (Array.isArray(input.fragmentFormulas)) {
+    for (const formula of input.fragmentFormulas) addFormula(formula, "fragment formula", null, 0.8, null);
+  }
+  const metadata = input.metadata && typeof input.metadata === "object" ? input.metadata as Record<string, unknown> : {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (/formula|cand_form|parent|precursor/iu.test(key)) addFormula(String(value), key, null, 0.75, null);
+  }
+  for (const peak of peaks) {
+    const peakIndex = Number.isInteger(peak.index) ? peak.index : null;
+    const annotations = peak.annotations && typeof peak.annotations === "object" ? peak.annotations : {};
+    const massErrorPpm = numericAnnotation(annotations.ppm_diff);
+    const intensityScore = Number.isFinite(peak.intensity) ? Math.max(0.1, Math.min(1, peak.intensity / 100)) : 0.25;
+    addFormula(peak.annotation, "peak annotation", peakIndex, intensityScore, massErrorPpm);
+    addFormula(annotations.frag_base_form, "fragment base formula", peakIndex, intensityScore, massErrorPpm);
+    addFormula(annotations.formula, "peak formula", peakIndex, intensityScore, massErrorPpm);
+  }
+  return [...formulas.values()]
+    .sort((left, right) => {
+      const scoreDiff = (right.score ?? 0) - (left.score ?? 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      return right.explainedPeakIndexes.length - left.explainedPeakIndexes.length;
+    })
+    .slice(0, 16)
+    .map((candidate, index) => ({
+      ...candidate,
+      rank: index + 1,
+      explainedPeakIndexes: candidate.explainedPeakIndexes.sort((left, right) => left - right),
+    }));
+}
+
+function extractChemicalFormulas(value: string) {
+  const formulas = new Set<string>();
+  for (const match of value.matchAll(/\b(?:[A-Z][a-z]?\d*){2,}\b/gu)) {
+    const formula = match[0];
+    if (!/[A-Z][a-z]?\d*/u.test(formula)) continue;
+    if (/^[A-Z]{2,}$/u.test(formula)) continue;
+    formulas.add(formula);
+  }
+  return formulas;
+}
+
+function numericAnnotation(value: unknown) {
+  const number = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(number) ? number : null;
 }
 
 async function calculateBrowserDevDescriptors(body: Record<string, unknown>) {
@@ -2889,794 +3379,84 @@ export function browserDevXyzrenderPlugin() {
   return {
     name: "burrete-browser-dev-xyzrender",
     configureServer(server: import("vite").ViteDevServer) {
-      server.middlewares.use("/__burette/dev-files", async (req, res) => {
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const root = url.searchParams.get("root");
-          let files: string[];
-          if (root) {
-            const rootPath = resolve(root);
-            if (!isDevFileReadAllowed(rootPath)) {
-              res.statusCode = 403;
-              res.setHeader("Content-Type", "application/json; charset=utf-8");
-              res.end(JSON.stringify({ error: "Forbidden" }));
-              return;
-            }
-            files = [];
-            await collectDevFiles(rootPath, files);
-            files = Array.from(new Set(files)).sort((left, right) => left.localeCompare(right));
-          } else {
-            files = await collectDefaultDevFiles();
-          }
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ files }));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/rdkit-wasm", async (_req, res) => {
-        try {
-          const bytes = await readFile(RDKIT_WASM_PATH);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/wasm");
-          res.setHeader("Content-Length", String(bytes.length));
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(bytes);
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/generate-3d-conformer", async (req, res) => {
-        const reply = (status: number, body: unknown) => {
-          res.statusCode = status;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify(body));
-        };
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          reply(405, { error: "Method not allowed" });
-          return;
-        }
-        try {
-          reply(200, await generate3DConformerForBrowserDev(await readJsonBody(req)));
-        } catch (error) {
-          reply(500, { error: error instanceof Error ? error.message : String(error) });
-        }
+      const fileRoutes = {
+        collectDefaultDevFiles,
+        collectDevFiles,
+        devFileExtensions: DEV_FILE_EXTENSIONS,
+        devFileSizeLimit: DEV_FILE_SIZE_LIMIT,
+        fileExtension,
+        fileTitle,
+        isDevFileReadAllowed,
+        isNumpyArtifactExtension,
+        languageForTextExtension,
+        looksBinary,
+        molecularBinaryArtifactSummary,
+        molecularBinaryMetadataExtensions: MOLECULAR_BINARY_METADATA_EXTENSIONS,
+        numpyArtifactTextSummary,
+        readableTextBytes,
+        resolveStructureFileBundle,
+        textFileReadLimit,
+      };
+      registerBrowserDevFileDiscoveryRoute(server, fileRoutes);
+      registerBrowserDevRdkitWasmRoute(server, RDKIT_WASM_PATH);
+      registerBrowserDevInlineConformerRoute(server, generate3DConformerForBrowserDev);
+      registerBrowserDevMsbuddyRoutes(server, {
+        annotateSpectrum: annotateBrowserDevSpectrumWithMsbuddy,
+        status: browserDevMsbuddyStatus,
       });
 
-server.middlewares.use("/__burette/descriptors", async (req, res) => {
-        const reply = (status: number, body: unknown) => {
-          res.statusCode = status;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(body));
-        };
-        const method = (req.method || "GET").toUpperCase();
-        const url = new URL(req.url || "/", "http://127.0.0.1");
-        const endpoint = url.pathname
-          .replace(/^\/+/, "")
-          .replace(/^__burette\/descriptors\/?/u, "")
-          || "status";
-        try {
-          if (endpoint === "status") {
-            if (method !== "GET") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            reply(200, await browserDevDescriptorStatus());
-            return;
-          }
-          if (endpoint === "install") {
-            if (method !== "POST") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            reply(200, await installBrowserDevDescriptorRuntime());
-            return;
-          }
-          if (endpoint === "calculate") {
-            if (method !== "POST") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            reply(200, await calculateBrowserDevDescriptors(await readJsonBody(req)));
-            return;
-          }
-          if (endpoint === "grid") {
-            if (method !== "POST") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            reply(200, await calculateBrowserDevGridDescriptors(await readJsonBody(req)));
-            return;
-          }
-          if (endpoint === "grid-summary") {
-            const body = method === "POST" ? await readJsonBody(req) : {};
-            const documentId = typeof body.documentId === "string" ? body.documentId : url.searchParams.get("documentId") || "browser-dev-grid";
-            const path = typeof body.path === "string" ? body.path : url.searchParams.get("path") || "";
-            reply(200, await browserDevDescriptorGridSummary(documentId, path));
-            return;
-          }
-          if (endpoint === "grid-job-status") {
-            if (method !== "GET") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            const documentId = url.searchParams.get("documentId") || "browser-dev-grid";
-            reply(200, browserDevDescriptorJobs.get(documentId) ?? {
-              documentId,
-              status: "idle",
-              running: false,
-              totalRows: 0,
-              processedRows: 0,
-              calculatedRows: 0,
-              failedRows: 0,
-              message: "No descriptor job has run yet.",
-              startedAtMs: Date.now(),
-              finishedAtMs: Date.now(),
-              summary: null,
-              rows: [],
-            });
-            return;
-          }
-          if (endpoint === "grid-cancel") {
-            if (method !== "POST") {
-              reply(405, { error: "Method not allowed" });
-              return;
-            }
-            const body = await readJsonBody(req);
-            const documentId = typeof body.documentId === "string" ? body.documentId : "browser-dev-grid";
-            const previous = browserDevDescriptorJobs.get(documentId);
-            const cancelled = {
-              ...(previous ?? {
-                documentId,
-                totalRows: 0,
-                processedRows: 0,
-                calculatedRows: 0,
-                failedRows: 0,
-                startedAtMs: Date.now(),
-                summary: null,
-                rows: [],
-              }),
-              documentId,
-              status: "cancelled" as const,
-              running: false,
-              message: "Descriptor calculation cancelled.",
-              finishedAtMs: Date.now(),
-            };
-            browserDevDescriptorJobs.set(documentId, cancelled);
-            reply(200, cancelled);
-            return;
-          }
-          reply(404, { error: "Descriptor endpoint not found" });
-        } catch (error) {
-          reply(500, { error: error instanceof Error ? error.message : String(error) });
-        }
+      registerBrowserDevDescriptorRoutes(server, {
+        calculate: calculateBrowserDevDescriptors,
+        calculateGrid: calculateBrowserDevGridDescriptors,
+        gridJobs: browserDevDescriptorJobs,
+        gridSummary: browserDevDescriptorGridSummary,
+        install: installBrowserDevDescriptorRuntime,
+        status: browserDevDescriptorStatus,
       });
-      server.middlewares.use("/__burette/conformer-status", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(await browserDevConformerStatus()));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
+      registerBrowserDevConformerJobRoutes(server, {
+        cancel: cancelBrowserDevJob,
+        prepare: prepareBrowserDevConformerJob,
+        run: runBrowserDevConformerJob,
+        status: browserDevConformerStatus,
       });
-      server.middlewares.use("/__burette/prepare-conformer-job", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(await prepareBrowserDevConformerJob(body)));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
+      registerBrowserDevXtbRoutes(server, {
+        cancel: cancelBrowserDevJob,
+        install: installBrowserDevXtb,
+        run: runBrowserDevXtbJob,
+        status: browserDevXtbStatus,
       });
-      server.middlewares.use("/__burette/run-conformer-job", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(await runBrowserDevConformerJob(body)));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
+      registerBrowserDevRuntimeDoctorRoute(server, {
+        conformerStatus: browserDevConformerStatus,
+        datamolConformerStatus: () => browserDevConformerPythonStatus("datamol"),
+        descriptorStatus: browserDevDescriptorStatus,
+        rdkitConformerStatus: () => browserDevConformerPythonStatus("rdkit"),
+        schrodingerStatus: browserDevSchrodingerStatus,
+        xtbStatus: browserDevXtbStatus,
+        xyzrenderStatus: browserDevXyzrenderStatus,
       });
-      server.middlewares.use("/__burette/cancel-conformer-job", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(cancelBrowserDevJob("conformer", body?.jobId)));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
+      registerBrowserDevAgentSessionRoute(server);
+      registerBrowserDevAppIconRoute(server, BROWSER_DEV_APP_ICONS, execFileAsync);
+      registerBrowserDevFileContentRoutes(server, fileRoutes);
+      registerBrowserDevFoldingResultRoute(server, { isDevFileReadAllowed });
+      registerBrowserDevDesmondPreviewRoute(server, {
+        desmondPreviewExtractor: DESMOND_PREVIEW_EXTRACTOR,
+        execFileAsync,
+        isDevFileReadAllowed,
+        resolveStructureFileBundle,
+        schrodingerRun: SCHRODINGER_RUN,
+        targetMb: DESMOND_PREVIEW_TARGET_MB,
       });
-      server.middlewares.use("/__burette/xtb-status", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(await browserDevXtbStatus()));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/install-xtb", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify(await installBrowserDevXtb()));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/run-xtb-job", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify(await runBrowserDevXtbJob(body)));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/cancel-xtb-job", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(cancelBrowserDevJob("xtb", body?.jobId)));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-
-      server.middlewares.use("/__burette/agent-session/", async (req, res) => {
-        const sessionDir = process.env.BURRETE_AGENT_SHELL_SESSION_DIR
-          ? resolve(process.env.BURRETE_AGENT_SHELL_SESSION_DIR)
-          : null;
-        const method = (req.method || "GET").toUpperCase();
-        const url = new URL(req.url || "", "http://127.0.0.1");
-        const fileName = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-        if (!sessionDir || !["actions.json", "observe.json", "session.json", "events"].includes(fileName)) {
-          res.statusCode = sessionDir ? 404 : 403;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: sessionDir ? "Not found" : "Agent shell session is not enabled" }));
-          return;
-        }
-        if (fileName === "events") {
-          if (method !== "GET") {
-            res.statusCode = 405;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Method not allowed" }));
-            return;
-          }
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache, no-transform");
-          res.setHeader("Connection", "keep-alive");
-          const sendActionsEvent = () => {
-            res.write(`event: actions\ndata: ${JSON.stringify({ file: "actions.json", at: new Date().toISOString() })}\n\n`);
-          };
-          sendActionsEvent();
-          const watcher = watch(sessionDir, (_eventType, changedFileName) => {
-            if (changedFileName === "actions.json") sendActionsEvent();
-          });
-          req.on("close", () => watcher.close());
-          return;
-        }
-        const filePath = resolve(sessionDir, fileName);
-        if (!filePath.startsWith(`${sessionDir}/`)) {
-          res.statusCode = 403;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Forbidden" }));
-          return;
-        }
-        try {
-          if (method === "GET") {
-            const fallback = fileName === "actions.json"
-              ? { apiVersion: "burette-agent-control/v1", actions: [] }
-              : {};
-            let value = fallback;
-            if (existsSync(filePath)) value = JSON.parse(await readFile(filePath, "utf8"));
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.setHeader("Cache-Control", "no-cache");
-            res.end(JSON.stringify(value));
-            return;
-          }
-          if (method === "PUT") {
-            if (fileName === "session.json") {
-              res.statusCode = 405;
-              res.setHeader("Content-Type", "application/json; charset=utf-8");
-              res.end(JSON.stringify({ error: "session.json is read-only" }));
-              return;
-            }
-            const body = await readJsonBody(req);
-            await mkdir(sessionDir, { recursive: true });
-            await writeFile(filePath, `${JSON.stringify(body, null, 2)}\n`);
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ ok: true }));
-            return;
-          }
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/app-icon/", async (req, res) => {
-        const method = (req.method || "GET").toUpperCase();
-        if (method !== "GET" && method !== "HEAD") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const id = decodeURIComponent(url.pathname.replace(/^\/+/, "")).replace(/\.png$/u, "");
-          const iconPath = BROWSER_DEV_APP_ICONS[id];
-          if (!iconPath || !existsSync(iconPath)) {
-            res.statusCode = 404;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Icon not found" }));
-            return;
-          }
-          const cacheDir = join(tmpdir(), "burrete-app-icons");
-          const outputPath = join(cacheDir, `${id}.png`);
-          if (!existsSync(outputPath)) {
-            await mkdir(cacheDir, { recursive: true });
-            await execFileAsync("/usr/bin/sips", ["-s", "format", "png", iconPath, "--out", outputPath]);
-          }
-          const bytes = await readFile(outputPath);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "image/png");
-          res.setHeader("Content-Length", String(bytes.length));
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(method === "HEAD" ? undefined : bytes);
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/read-file", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const path = url.searchParams.get("path");
-          if (!path) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Missing path" }));
-            return;
-          }
-          const filePath = resolve(path);
-          if (!isDevFileReadAllowed(filePath)) {
-            res.statusCode = 403;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Forbidden" }));
-            return;
-          }
-          const info = await stat(filePath);
-          if (!info.isFile() || info.size > DEV_FILE_SIZE_LIMIT || !DEV_FILE_EXTENSIONS.has(fileExtension(filePath))) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Unsupported file" }));
-            return;
-          }
-          const bytes = await readFile(filePath);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/octet-stream");
-          res.setHeader("Content-Length", String(bytes.length));
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(bytes);
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/read-text-file", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const path = url.searchParams.get("path");
-          const maxBytes = textFileReadLimit(url.searchParams.get("maxBytes"));
-          if (!path) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Missing path" }));
-            return;
-          }
-          const filePath = resolve(path);
-          if (!isDevFileReadAllowed(filePath)) {
-            res.statusCode = 403;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Forbidden" }));
-            return;
-          }
-          const info = await stat(filePath);
-          if (!info.isFile() || info.size > DEV_FILE_SIZE_LIMIT) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Unsupported file" }));
-            return;
-          }
-          const bytes = await readFile(filePath);
-          const extension = fileExtension(filePath);
-          if (isNumpyArtifactExtension(extension)) {
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.setHeader("Cache-Control", "no-cache");
-            res.end(JSON.stringify({
-              id: `browser-dev-${filePath}-${info.mtimeMs}`,
-              path: filePath,
-              title: fileTitle(filePath),
-              extension,
-              language: "markdown",
-              byteCount: info.size,
-              content: numpyArtifactTextSummary(filePath, bytes, info.size),
-              truncated: false,
-              modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
-            }));
-            return;
-          }
-          const textBytes = readableTextBytes(bytes, extension);
-          if (looksBinary(textBytes)) {
-            if (MOLECULAR_BINARY_METADATA_EXTENSIONS.has(extension)) {
-              res.statusCode = 200;
-              res.setHeader("Content-Type", "application/json; charset=utf-8");
-              res.setHeader("Cache-Control", "no-cache");
-              res.end(JSON.stringify({
-                id: `browser-dev-${filePath}-${info.mtimeMs}`,
-                path: filePath,
-                title: fileTitle(filePath),
-                extension,
-                language: "text",
-                byteCount: info.size,
-                content: molecularBinaryArtifactSummary(filePath, info.size),
-                truncated: false,
-                modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
-              }));
-              return;
-            }
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: `${filePath} is not a text file` }));
-            return;
-          }
-          const truncated = textBytes.length > maxBytes;
-          const readableBytes = truncated ? textBytes.subarray(0, maxBytes) : textBytes;
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify({
-            id: `browser-dev-${filePath}-${info.mtimeMs}`,
-            path: filePath,
-            title: fileTitle(filePath),
-            extension,
-            language: languageForTextExtension(extension),
-            byteCount: info.size,
-            content: readableBytes.toString("utf8"),
-            truncated,
-            modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
-          }));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/folding-result", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const path = url.searchParams.get("path");
-          if (!path) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Missing path" }));
-            return;
-          }
-          const filePath = resolve(path);
-          if (!isDevFileReadAllowed(filePath)) {
-            res.statusCode = 403;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Forbidden" }));
-            return;
-          }
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(readBrowserDevFoldingResultBundle(filePath)));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/file-bundle", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const path = url.searchParams.get("path");
-          if (!path) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Missing path" }));
-            return;
-          }
-          const filePath = resolve(path);
-          if (!isDevFileReadAllowed(filePath)) {
-            res.statusCode = 403;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Forbidden" }));
-            return;
-          }
-          const bundle = resolveStructureFileBundle(filePath);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.setHeader("Cache-Control", "no-cache");
-          res.end(JSON.stringify(bundle));
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/desmond-preview", async (req, res) => {
-        if ((req.method || "GET").toUpperCase() !== "GET") {
-          res.statusCode = 405;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: "Method not allowed" }));
-          return;
-        }
-        try {
-          const url = new URL(req.url || "", "http://127.0.0.1");
-          const path = url.searchParams.get("path");
-          if (!path) {
-            res.statusCode = 400;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Missing path" }));
-            return;
-          }
-          const filePath = resolve(path);
-          if (!isDevFileReadAllowed(filePath)) {
-            res.statusCode = 403;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Forbidden" }));
-            return;
-          }
-          const bundle = resolveStructureFileBundle(filePath);
-          if (bundle.kind !== "desmond") {
-            res.statusCode = 404;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "No Desmond trajectory candidate found." }));
-            return;
-          }
-          if (!existsSync(SCHRODINGER_RUN) || !existsSync(DESMOND_PREVIEW_EXTRACTOR)) {
-            res.statusCode = 404;
-            res.setHeader("Content-Type", "application/json; charset=utf-8");
-            res.end(JSON.stringify({ error: "Schrodinger Desmond preview extractor is unavailable." }));
-            return;
-          }
-          const tempDirectory = await mkdtemp(join(tmpdir(), "burrete-desmond-preview-"));
-          const outputPath = join(tempDirectory, "desmond-preview.pdb");
-          try {
-            await execFileAsync(
-              SCHRODINGER_RUN,
-              [
-                "python3",
-                DESMOND_PREVIEW_EXTRACTOR,
-                bundle.inputPath,
-                "--frames",
-                "0",
-                "--atoms",
-                "0",
-                "--target-mb",
-                String(DESMOND_PREVIEW_TARGET_MB),
-                "--output",
-                outputPath,
-              ],
-              { timeout: 0, maxBuffer: 16 * 1024 * 1024 },
-            );
-            const bytes = await readFile(outputPath);
-            if (!bytes.length) {
-              res.statusCode = 500;
-              res.setHeader("Content-Type", "application/json; charset=utf-8");
-              res.end(JSON.stringify({ error: "Desmond preview extractor produced an empty PDB file." }));
-              return;
-            }
-            res.statusCode = 200;
-            res.setHeader("Content-Type", "application/octet-stream");
-            res.setHeader("Content-Length", String(bytes.length));
-            res.setHeader("Cache-Control", "no-cache");
-            res.setHeader("X-Burrete-Preview-Extension", "pdb");
-            res.end(bytes);
-          } finally {
-            await rm(tempDirectory, { recursive: true, force: true });
-          }
-        } catch (error) {
-          res.statusCode = 500;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
-      });
-      server.middlewares.use("/__burette/xyzrender", async (req, res) => {
-        const reply = (status: number, body: unknown) => {
-          res.statusCode = status;
-          res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(JSON.stringify(body));
-        };
-        if ((req.method || "GET").toUpperCase() !== "POST") {
-          reply(405, { error: "Method not allowed" });
-          return;
-        }
-        try {
-          const body = await readJsonBody(req);
-          const inputPath = typeof body.path === "string" ? body.path : null;
-          if (!inputPath) {
-            reply(400, { error: "Missing path" });
-            return;
-          }
-          const preset = normalizeXyzrenderPreset(typeof body.preset === "string" ? body.preset : null);
-          const orientationRef = normalizeOrientationRef(typeof body.orientationRef === "string" ? body.orientationRef : null);
-          const controls = normalizeXyzrenderControls(body.controls);
-          const inputData = typeof body.inputDataBase64 === "string"
-            ? Buffer.from(body.inputDataBase64, "base64")
-            : null;
-          const inputExtension = normalizeXyzrenderInputExtension(typeof body.inputExtension === "string" ? body.inputExtension : null);
-          const executable = resolveXyzrenderExecutable();
-          if (!executable) {
-            reply(404, { error: "External xyzrender executable was not found." });
-            return;
-          }
-          const tempDirectory = await mkdtemp(join(tmpdir(), "burrete-xyzrender-"));
-          const outputPath = join(tempDirectory, "xyzrender.svg");
-          const convertedInputPath = join(tempDirectory, `xyzrender-input.${inputExtension}`);
-          const orientationRefPath = join(tempDirectory, "orientation-ref.xyz");
-          const startedAt = Date.now();
-          try {
-            const effectiveInputPath = inputData?.length ? convertedInputPath : inputPath;
-            if (inputData?.length) {
-              await writeFile(convertedInputPath, inputData);
-            }
-            const args = buildXyzrenderArgs(
-              effectiveInputPath,
-              outputPath,
-              preset,
-              orientationRef ? orientationRefPath : null,
-              controls,
-            );
-            if (orientationRef) {
-              await writeFile(orientationRefPath, orientationRef, "utf8");
-            }
-            const { stdout, stderr } = await execFileAsync(
-              executable,
-              args,
-              { timeout: 25_000, maxBuffer: 8 * 1024 * 1024 },
-            );
-            const svg = await readFile(outputPath, "utf8");
-            if (!svg.trim()) {
-              reply(500, { error: "External xyzrender produced an empty SVG output file." });
-              return;
-            }
-            reply(200, {
-              svg,
-              preset: resolveEffectivePreset(preset, controls),
-              configArgument: resolveConfigArgument(preset, controls),
-              elapsedMs: Date.now() - startedAt,
-              log: `${stdout || ""}${stderr || ""}`,
-              xyzrenderControls: controls,
-              xyzrenderPresetOptions: XYZRENDER_PRESET_OPTIONS,
-            });
-          } finally {
-            await rm(tempDirectory, { recursive: true, force: true });
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          reply(500, { error: message });
-        }
+      registerBrowserDevXyzrenderRoute(server, {
+        buildArgs: buildXyzrenderArgs,
+        execFileAsync,
+        normalizeControls: normalizeXyzrenderControls,
+        normalizeInputExtension: normalizeXyzrenderInputExtension,
+        normalizeOrientationRef,
+        normalizePreset: normalizeXyzrenderPreset,
+        presetOptions: XYZRENDER_PRESET_OPTIONS,
+        resolveConfigArgument,
+        resolveEffectivePreset,
+        resolveExecutable: resolveXyzrenderExecutable,
       });
     },
   };
@@ -3775,732 +3555,6 @@ function languageForTextExtension(extension: string) {
   if (extension === "xml") return "xml";
   if (extension === "mae" || extension === "maegz" || extension === "cms") return "maestro";
   return "text";
-}
-
-function isNumpyArtifactExtension(extension: string) {
-  return extension === "npy" || extension === "npz";
-}
-
-function numpyArtifactTextSummary(path: string, bytes: Buffer, byteCount: number) {
-  const arrays = parseNumpyArrays(path, bytes, 4096);
-  const title = fileExtension(path) === "npz" ? "NumPy NPZ archive" : "NumPy NPY array";
-  const lines = [
-    title,
-    "",
-    `File: ${path}`,
-    `Size: ${byteCount} bytes`,
-    "",
-    "| Array | Shape | Dtype | Values | Min | Max | Mean | NaN | Notes |",
-    "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |",
-  ];
-  for (const array of arrays) {
-    lines.push(`| ${markdownCell(array.name)} | ${markdownCell(formatNumpyShape(array.shape))} | ${markdownCell(array.dtype)} | ${array.valueCount} | ${formatOptionalNumber(array.min)} | ${formatOptionalNumber(array.max)} | ${formatOptionalNumber(array.mean)} | ${array.nanCount} | ${markdownCell(array.unsupported || "")} |`);
-  }
-  lines.push("");
-  return lines.join("\n");
-}
-
-function parseNumpyArrays(path: string, bytes: Buffer, maxValues: number): BrowserDevNumpyArraySummary[] {
-  const extension = fileExtension(path);
-  if (extension === "npy") return [parseNpyArray(fileTitle(path), bytes, maxValues)];
-  if (extension !== "npz") throw new Error(`${path} is not a NumPy artifact`);
-  const arrays: BrowserDevNumpyArraySummary[] = [];
-  let offset = 0;
-  while (offset + 4 <= bytes.length) {
-    if (bufferHasMagic(bytes, offset, "PK\u0001\u0002") || bufferHasMagic(bytes, offset, "PK\u0005\u0006")) break;
-    if (!bufferHasMagic(bytes, offset, "PK\u0003\u0004")) throw new Error(`invalid NPZ local file header at byte ${offset}`);
-    if (offset + 30 > bytes.length) throw new Error("truncated NPZ local file header");
-    const flags = bytes.readUInt16LE(offset + 6);
-    const compression = bytes.readUInt16LE(offset + 8);
-    const rawCompressedSize = bytes.readUInt32LE(offset + 18);
-    const rawUncompressedSize = bytes.readUInt32LE(offset + 22);
-    const nameLength = bytes.readUInt16LE(offset + 26);
-    const extraLength = bytes.readUInt16LE(offset + 28);
-    const nameStart = offset + 30;
-    const nameEnd = nameStart + nameLength;
-    const dataStart = nameEnd + extraLength;
-    if (nameEnd > bytes.length || dataStart > bytes.length) throw new Error("truncated NPZ entry metadata");
-    const extra = bytes.subarray(nameEnd, dataStart);
-    const compressedSize = zipEntryCompressedSize(extra, rawUncompressedSize, rawCompressedSize);
-    const dataEnd = dataStart + compressedSize;
-    if ((flags & 0x08) !== 0) throw new Error("NPZ entries with data descriptors are not supported");
-    if (dataEnd > bytes.length) throw new Error("truncated NPZ entry data");
-    const name = bytes.subarray(nameStart, nameEnd).toString("utf8");
-    if (name.endsWith(".npy")) {
-      const compressed = bytes.subarray(dataStart, dataEnd);
-      const entryBytes = compression === 0
-        ? compressed
-        : compression === 8
-          ? inflateRawSync(compressed)
-          : null;
-      if (entryBytes) {
-        arrays.push(parseNpyArray(name.replace(/\.npy$/u, ""), entryBytes, maxValues));
-      } else {
-        arrays.push({
-          name,
-          dtype: "",
-          shape: [],
-          valueCount: 0,
-          min: null,
-          max: null,
-          mean: null,
-          nanCount: 0,
-          values: [],
-          unsupported: `ZIP compression method ${compression} is not supported`,
-        });
-      }
-    }
-    offset = dataEnd;
-  }
-  if (!arrays.length) throw new Error("NPZ archive contains no .npy arrays");
-  return arrays;
-}
-
-function parseNpyArray(name: string, bytes: Buffer, maxValues: number): BrowserDevNumpyArraySummary {
-  if (bytes.length < 10 || bytes.subarray(0, 6).toString("latin1") !== "\x93NUMPY") {
-    throw new Error("invalid NPY magic header");
-  }
-  const major = bytes[6];
-  const headerLength = major === 1 ? bytes.readUInt16LE(8) : major === 2 || major === 3 ? bytes.readUInt32LE(8) : null;
-  const headerStart = major === 1 ? 10 : 12;
-  if (headerLength === null) throw new Error(`unsupported NPY version ${major}.${bytes[7]}`);
-  const headerEnd = headerStart + headerLength;
-  if (headerEnd > bytes.length) throw new Error("truncated NPY header");
-  const header = bytes.subarray(headerStart, headerEnd).toString("latin1");
-  const dtype = header.match(/['"]descr['"]\s*:\s*['"]([^'"]+)['"]/u)?.[1] || "";
-  const shapeText = header.match(/['"]shape['"]\s*:\s*\(([^)]*)\)/u)?.[1] || "";
-  const fortranOrder = /['"]fortran_order['"]\s*:\s*True/u.test(header);
-  const shape = shapeText.split(",").map((part) => Number.parseInt(part.trim(), 10)).filter((value) => Number.isFinite(value));
-  const valueCount = shape.length ? shape.reduce((acc, value) => acc * value, 1) : 1;
-  const parsedDtype = parseNumpyDtype(dtype);
-  if (!parsedDtype) {
-    return numpyUnsupportedSummary(name, dtype, shape, valueCount, "structured, object, complex, or string dtype is not previewed");
-  }
-  if (fortranOrder && shape.length > 1) {
-    return numpyUnsupportedSummary(name, dtype, shape, valueCount, "Fortran-order arrays are summarized as metadata only");
-  }
-  const availableValues = Math.min(valueCount, Math.floor((bytes.length - headerEnd) / parsedDtype.size));
-  const values: Array<number | null> = [];
-  let min: number | null = null;
-  let max: number | null = null;
-  let sum = 0;
-  let count = 0;
-  let nanCount = 0;
-  for (let index = 0; index < availableValues; index += 1) {
-    const value = readNumpyDtypeValue(bytes, headerEnd + index * parsedDtype.size, parsedDtype);
-    if (Number.isFinite(value)) {
-      min = min === null ? value : Math.min(min, value);
-      max = max === null ? value : Math.max(max, value);
-      sum += value;
-      count += 1;
-      if (values.length < maxValues) values.push(value);
-    } else {
-      nanCount += 1;
-      if (values.length < maxValues) values.push(null);
-    }
-  }
-  return {
-    name,
-    dtype,
-    shape,
-    valueCount,
-    min,
-    max,
-    mean: count > 0 ? sum / count : null,
-    nanCount,
-    values,
-    unsupported: availableValues < valueCount ? "array payload is shorter than the declared shape" : null,
-  };
-}
-
-function numpyUnsupportedSummary(name: string, dtype: string, shape: number[], valueCount: number, unsupported: string): BrowserDevNumpyArraySummary {
-  return { name, dtype, shape, valueCount, min: null, max: null, mean: null, nanCount: 0, values: [], unsupported };
-}
-
-function parseNumpyDtype(dtype: string): null | { endian: "little" | "big" | "native"; kind: string; size: number } {
-  if (!dtype || dtype.startsWith("[") || /[OSUc]/u.test(dtype)) return null;
-  let endian: "little" | "big" | "native" = "native";
-  let offset = 0;
-  if (dtype[0] === "<") {
-    endian = "little";
-    offset = 1;
-  } else if (dtype[0] === ">") {
-    endian = "big";
-    offset = 1;
-  } else if (dtype[0] === "|" || dtype[0] === "=") {
-    offset = 1;
-  }
-  const kind = dtype[offset];
-  const size = kind === "?" ? 1 : Number.parseInt(dtype.slice(offset + 1), 10);
-  if (!kind || !Number.isFinite(size) || size <= 0 || !["f", "i", "u", "b", "?"].includes(kind)) return null;
-  return { endian, kind, size };
-}
-
-function readNumpyDtypeValue(bytes: Buffer, offset: number, dtype: { endian: "little" | "big" | "native"; kind: string; size: number }) {
-  const little = dtype.endian !== "big";
-  if (dtype.kind === "f" && dtype.size === 4) return little ? bytes.readFloatLE(offset) : bytes.readFloatBE(offset);
-  if (dtype.kind === "f" && dtype.size === 8) return little ? bytes.readDoubleLE(offset) : bytes.readDoubleBE(offset);
-  if (dtype.kind === "i" && dtype.size === 1) return bytes.readInt8(offset);
-  if (dtype.kind === "i" && dtype.size === 2) return little ? bytes.readInt16LE(offset) : bytes.readInt16BE(offset);
-  if (dtype.kind === "i" && dtype.size === 4) return little ? bytes.readInt32LE(offset) : bytes.readInt32BE(offset);
-  if (dtype.kind === "i" && dtype.size === 8) return Number(little ? bytes.readBigInt64LE(offset) : bytes.readBigInt64BE(offset));
-  if (dtype.kind === "u" && dtype.size === 1) return bytes.readUInt8(offset);
-  if (dtype.kind === "u" && dtype.size === 2) return little ? bytes.readUInt16LE(offset) : bytes.readUInt16BE(offset);
-  if (dtype.kind === "u" && dtype.size === 4) return little ? bytes.readUInt32LE(offset) : bytes.readUInt32BE(offset);
-  if (dtype.kind === "u" && dtype.size === 8) return Number(little ? bytes.readBigUInt64LE(offset) : bytes.readBigUInt64BE(offset));
-  if (dtype.kind === "b" || dtype.kind === "?") return bytes.readUInt8(offset) === 0 ? 0 : 1;
-  return Number.NaN;
-}
-
-function bufferHasMagic(bytes: Buffer, offset: number, magic: string) {
-  return bytes.subarray(offset, offset + magic.length).toString("latin1") === magic;
-}
-
-function zipEntryCompressedSize(extra: Buffer, rawUncompressedSize: number, rawCompressedSize: number) {
-  if (rawCompressedSize !== 0xffffffff) return rawCompressedSize;
-  let offset = 0;
-  while (offset + 4 <= extra.length) {
-    const tag = extra.readUInt16LE(offset);
-    const size = extra.readUInt16LE(offset + 2);
-    const dataStart = offset + 4;
-    const dataEnd = dataStart + size;
-    if (dataEnd > extra.length) throw new Error("truncated NPZ extra field");
-    if (tag === 0x0001) {
-      let cursor = dataStart;
-      if (rawUncompressedSize === 0xffffffff) cursor += 8;
-      const compressedSize = Number(extra.readBigUInt64LE(cursor));
-      if (!Number.isSafeInteger(compressedSize)) throw new Error("NPZ entry is too large to preview");
-      return compressedSize;
-    }
-    offset = dataEnd;
-  }
-  throw new Error("NPZ entry uses ZIP64 sizes but has no ZIP64 extra field");
-}
-
-function formatNumpyShape(shape: number[]) {
-  return shape.length ? `(${shape.join(", ")})` : "()";
-}
-
-function markdownCell(value: string) {
-  return value.replace(/\|/gu, "\\|");
-}
-
-function formatOptionalNumber(value: number | null) {
-  if (value === null || !Number.isFinite(value)) return "-";
-  if (Math.abs(value) >= 1000 || (value !== 0 && Math.abs(value) < 0.001)) return value.toExponential(3);
-  return value.toFixed(4);
-}
-
-function readBrowserDevFoldingResultBundle(inputPath: string): BrowserDevFoldingResultBundle {
-  const roots = candidateFoldingRoots(inputPath);
-  let fallback: BrowserDevFoldingResultBundle | null = null;
-  for (const [distance, root] of roots.entries()) {
-    const bundle = scanBrowserDevFoldingRoot(root, inputPath);
-    if (!browserDevFoldingBundleHasContent(bundle)) continue;
-    if (distance === 0 || browserDevFoldingBundleReferencesInput(bundle, inputPath)) return bundle;
-    fallback ||= bundle;
-  }
-  return fallback || emptyBrowserDevFoldingBundle(inputPath, inputPath, []);
-}
-
-function browserDevFoldingBundleHasContent(bundle: BrowserDevFoldingResultBundle) {
-  return bundle.models.length > 0 || bundle.artifacts.length > 0;
-}
-
-function browserDevFoldingBundleReferencesInput(bundle: BrowserDevFoldingResultBundle, inputPath: string) {
-  return bundle.models.some((model) => model.structurePath === inputPath)
-    || bundle.artifacts.some((artifact) => artifact.path === inputPath)
-    || bundle.models.some((model) => model.artifacts.some((artifact) => artifact.path === inputPath));
-}
-
-function scanBrowserDevFoldingRoot(root: string, inputPath: string): BrowserDevFoldingResultBundle {
-  const files: Array<{ path: string; title: string; extension: string; byteCount: number }> = [];
-  collectBrowserDevFoldingFiles(root, 0, files);
-  const foldingEntries = files.filter((entry) => foldingArtifactKind(entry) !== null);
-  if (!foldingEntries.length) return emptyBrowserDevFoldingBundle(root, inputPath, []);
-  const structures = files.filter((entry) => isFoldingStructureExtension(entry.extension));
-  const warnings: string[] = [];
-  const models: BrowserDevFoldingModel[] = [];
-  structures.forEach((structure, index) => {
-    const modelIndex = modelIndexForPath(structure.path);
-    const seed = seedForPath(structure.path);
-    const artifacts = matchingBrowserDevFoldingArtifacts(structure, modelIndex, structures, foldingEntries);
-    if (!artifacts.length) return;
-    const outputs = browserDevModelOutputsForArtifacts(artifacts);
-    warnings.push(...outputs.warnings);
-    const backend = backendForBrowserDevFoldingModel(structure, artifacts, root);
-    models.push({
-      id: `folding:${structure.path}:${index}`,
-      title: browserDevModelTitle(backend, index, modelIndex, seed),
-      backend,
-      seed,
-      modelIndex,
-      structurePath: structure.path,
-      structureTitle: structure.title,
-      metrics: outputs.metrics,
-      plddtProfile: outputs.plddtProfile,
-      matrixPreview: outputs.matrixPreview,
-      artifacts: artifacts.map(browserDevFoldingArtifact),
-    });
-  });
-  const artifacts = foldingEntries.map(browserDevFoldingArtifact);
-  return {
-    rootPath: root,
-    title: fileTitle(root),
-    source: browserDevFoldingSource(root, models, artifacts),
-    models,
-    artifacts,
-    warnings,
-  };
-}
-
-function browserDevModelOutputsForArtifacts(artifacts: Array<{ path: string; title: string; extension: string; byteCount: number }>) {
-  const metrics: BrowserDevFoldingMetric[] = [];
-  const metricKeys = new Set<string>();
-  let plddtProfile: BrowserDevFoldingModel["plddtProfile"] = null;
-  let matrixPreview: BrowserDevFoldingModel["matrixPreview"] = null;
-  const warnings: string[] = [];
-  for (const artifact of artifacts) {
-    if (artifact.extension === "json") {
-      try {
-        const value = JSON.parse(readFileSync(artifact.path, "utf8"));
-        collectBrowserDevJsonMetrics(value, "", metrics, metricKeys);
-        plddtProfile ||= browserDevPlddtProfileForJson(value, artifact);
-        const preview = matrixPreview ? null : browserDevMatrixPreviewForJson(value, artifact);
-        if (preview) {
-          addBrowserDevMatrixMetric(preview, metrics, metricKeys);
-          matrixPreview = preview;
-        }
-      } catch (_) {
-        warnings.push(`Could not parse ${artifact.title}`);
-      }
-      continue;
-    }
-    if (artifact.extension === "html" || artifact.extension === "htm") {
-      if (!matrixPreview) {
-        const preview = browserDevMatrixPreviewForAbcfoldHtml(artifact);
-        if (preview) {
-          addBrowserDevMatrixMetric(preview, metrics, metricKeys);
-          matrixPreview = preview;
-        }
-      }
-      continue;
-    }
-    if (!isNumpyArtifactExtension(artifact.extension)) continue;
-    try {
-      for (const array of parseNumpyArrays(artifact.path, readFileSync(artifact.path), 1_000_000)) {
-        addBrowserDevArrayMetrics(array, artifact, metrics, metricKeys);
-        plddtProfile ||= browserDevPlddtProfileForArray(array, artifact);
-        matrixPreview ||= browserDevMatrixPreviewForArray(array, artifact);
-      }
-    } catch (error) {
-      warnings.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-  return { metrics, plddtProfile, matrixPreview, warnings };
-}
-
-function collectBrowserDevJsonMetrics(value: unknown, prefix: string, metrics: BrowserDevFoldingMetric[], keys: Set<string>) {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    for (const [key, child] of Object.entries(value)) {
-      collectBrowserDevJsonMetrics(child, prefix ? `${prefix}.${key}` : key, metrics, keys);
-    }
-    return;
-  }
-  if (typeof value !== "number" || !Number.isFinite(value)) return;
-  const key = normalizeFoldingMetricKey(prefix);
-  if (isBrowserDevConfidenceMetric(key)) addBrowserDevMetric(metrics, keys, key, browserDevMetricLabel(key), value);
-}
-
-function addBrowserDevMatrixMetric(preview: NonNullable<BrowserDevFoldingModel["matrixPreview"]>, metrics: BrowserDevFoldingMetric[], keys: Set<string>) {
-  if (preview.mean === null) return;
-  if (preview.kind === "pae") addBrowserDevMetric(metrics, keys, "pae_mean", "Mean PAE", preview.mean);
-  if (preview.kind === "pde") addBrowserDevMetric(metrics, keys, "pde_mean", "Mean PDE", preview.mean);
-}
-
-function addBrowserDevArrayMetrics(array: BrowserDevNumpyArraySummary, artifact: { title: string }, metrics: BrowserDevFoldingMetric[], keys: Set<string>) {
-  const name = normalizeFoldingMetricKey(array.name);
-  const path = normalizeFoldingMetricKey(artifact.title);
-  if (array.mean === null) return;
-  if (name.includes("plddt") || path.includes("plddt")) {
-    addBrowserDevMetric(metrics, keys, "plddt_mean", "Mean pLDDT", array.mean <= 1.5 ? array.mean * 100 : array.mean);
-  } else if (name.includes("pae") || path.includes("pae")) {
-    addBrowserDevMetric(metrics, keys, "pae_mean", "Mean PAE", array.mean);
-  } else if (name.includes("pde") || path.includes("pde")) {
-    addBrowserDevMetric(metrics, keys, "pde_mean", "Mean PDE", array.mean);
-  }
-}
-
-function browserDevPlddtProfileForArray(array: BrowserDevNumpyArraySummary, artifact: { path: string; title: string }) {
-  const name = normalizeFoldingMetricKey(array.name);
-  const path = normalizeFoldingMetricKey(artifact.title);
-  if (!(name.includes("plddt") || path.includes("plddt")) || array.shape.length !== 1) return null;
-  const scale = (array.max ?? 0) <= 1.5;
-  const values = array.values.filter((value): value is number => value !== null).map((value) => scale ? value * 100 : value);
-  const stats = finiteNumberStats(values);
-  if (!stats) return null;
-  return { label: "pLDDT", path: artifact.path, values, min: stats.min, max: stats.max, mean: stats.mean };
-}
-
-function browserDevPlddtProfileForJson(value: unknown, artifact: { path: string }) {
-  const payload = browserDevJsonObjectPayload(value);
-  const rawValues = payload ? browserDevNumericVector(payload.plddt ?? payload.plddts ?? payload.predicted_lddt) : null;
-  if (!rawValues) return null;
-  const scale = Math.max(...rawValues) <= 1.5;
-  const values = rawValues.map((value) => scale ? value * 100 : value);
-  const stats = finiteNumberStats(values);
-  if (!stats) return null;
-  return { label: "pLDDT", path: artifact.path, values, min: stats.min, max: stats.max, mean: stats.mean };
-}
-
-function browserDevMatrixPreviewForArray(array: BrowserDevNumpyArraySummary, artifact: { path: string; title: string }) {
-  if (array.shape.length !== 2) return null;
-  const name = normalizeFoldingMetricKey(array.name);
-  const path = normalizeFoldingMetricKey(artifact.title);
-  const kind = name.includes("pae") || path.includes("pae") ? "pae" : name.includes("pde") || path.includes("pde") ? "pde" : null;
-  if (!kind) return null;
-  const rows = array.shape[0];
-  const cols = array.shape[1];
-  if (!rows || !cols || rows * cols > array.values.length) return null;
-  const rowCount = Math.min(rows, 72);
-  const colCount = Math.min(cols, 72);
-  const values: Array<Array<number | null>> = [];
-  for (let row = 0; row < rowCount; row += 1) {
-    const sourceRow = Math.floor(row * rows / rowCount);
-    const previewRow: Array<number | null> = [];
-    for (let col = 0; col < colCount; col += 1) {
-      const sourceCol = Math.floor(col * cols / colCount);
-      previewRow.push(array.values[sourceRow * cols + sourceCol] ?? null);
-    }
-    values.push(previewRow);
-  }
-  return { kind, label: kind.toUpperCase(), path: artifact.path, shape: array.shape, values, xLabels: [], yLabels: [], min: array.min, max: array.max, mean: array.mean };
-}
-
-function browserDevMatrixPreviewForJson(value: unknown, artifact: { path: string; title: string }) {
-  const payload = browserDevJsonObjectPayload(value);
-  const artifactKey = normalizeFoldingMetricKey(artifact.title);
-  const matrixValue = payload?.pae ?? payload?.predicted_aligned_error ?? (artifactKey.includes("pae") || artifactKey.includes("predicted_aligned_error") ? value : null);
-  const matrix = browserDevNumericMatrix(matrixValue);
-  if (!matrix) return null;
-  return browserDevMatrixPreviewFromMatrix("pae", "PAE", artifact.path, matrix, payload ? browserDevTokenLabelsForJson(payload, matrix.length) : null);
-}
-
-function browserDevMatrixPreviewForAbcfoldHtml(artifact: { path: string; title: string }) {
-  if (!artifact.title.toLowerCase().includes("pae")) return null;
-  const sessionText = browserDevHtmlJsonScriptContent(readFileSync(artifact.path, "utf8"), "session-data");
-  if (!sessionText) return null;
-  const session = JSON.parse(sessionText);
-  const scoresContent = browserDevJsonObjectPayload(session)?.scoresFile;
-  if (scoresContent && typeof scoresContent === "object" && !Array.isArray(scoresContent) && typeof scoresContent.content === "string") {
-    return browserDevMatrixPreviewForJson(JSON.parse(scoresContent.content), artifact);
-  }
-  return browserDevMatrixPreviewForJson(session, artifact);
-}
-
-function browserDevMatrixPreviewFromMatrix(
-  kind: string,
-  label: string,
-  path: string,
-  matrix: Array<Array<number | null>>,
-  labels: string[] | null,
-) {
-  const rows = matrix.length;
-  const cols = matrix[0]?.length ?? 0;
-  if (!rows || !cols) return null;
-  const rowCount = Math.min(rows, 72);
-  const colCount = Math.min(cols, 72);
-  const values: Array<Array<number | null>> = [];
-  const xLabels: string[] = [];
-  const yLabels: string[] = [];
-  for (let col = 0; col < colCount; col += 1) {
-    const sourceCol = Math.floor(col * cols / colCount);
-    xLabels.push(labels?.[sourceCol] ?? String(sourceCol + 1));
-  }
-  for (let row = 0; row < rowCount; row += 1) {
-    const sourceRow = Math.floor(row * rows / rowCount);
-    yLabels.push(labels?.[sourceRow] ?? String(sourceRow + 1));
-    const previewRow: Array<number | null> = [];
-    for (let col = 0; col < colCount; col += 1) {
-      const sourceCol = Math.floor(col * cols / colCount);
-      previewRow.push(matrix[sourceRow]?.[sourceCol] ?? null);
-    }
-    values.push(previewRow);
-  }
-  const stats = finiteNumberStats(matrix.flat().filter((value): value is number => value !== null));
-  if (!stats) return null;
-  return { kind, label, path, shape: [rows, cols], values, xLabels, yLabels, min: stats.min, max: stats.max, mean: stats.mean };
-}
-
-function browserDevJsonObjectPayload(value: unknown): Record<string, unknown> | null {
-  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
-  if (Array.isArray(value)) {
-    const object = value.find((item) => item && typeof item === "object" && !Array.isArray(item));
-    return object ? object as Record<string, unknown> : null;
-  }
-  return null;
-}
-
-function browserDevNumericVector(value: unknown) {
-  if (!Array.isArray(value) || !value.length) return null;
-  const output: number[] = [];
-  for (const item of value) {
-    if (typeof item !== "number" || !Number.isFinite(item)) return null;
-    output.push(item);
-  }
-  return output;
-}
-
-function browserDevNumericMatrix(value: unknown) {
-  if (!Array.isArray(value) || !value.length) return null;
-  const first = value[0];
-  if (!Array.isArray(first) || !first.length) return null;
-  const colCount = first.length;
-  const matrix: Array<Array<number | null>> = [];
-  for (const row of value) {
-    if (!Array.isArray(row) || row.length !== colCount) return null;
-    const outputRow: Array<number | null> = [];
-    for (const item of row) {
-      if (item === null) {
-        outputRow.push(null);
-      } else if (typeof item === "number" && Number.isFinite(item) && item >= 0) {
-        outputRow.push(item);
-      } else {
-        return null;
-      }
-    }
-    matrix.push(outputRow);
-  }
-  return matrix;
-}
-
-function browserDevTokenLabelsForJson(payload: Record<string, unknown>, expectedLength: number) {
-  const residueLabels = browserDevJsonLabelArray(payload.token_res_ids ?? payload.residue_ids ?? payload.residue_index);
-  if (!residueLabels || residueLabels.length !== expectedLength) return null;
-  const chainLabels = browserDevJsonLabelArray(payload.token_chain_ids ?? payload.chain_ids);
-  if (!chainLabels || chainLabels.length !== expectedLength) return residueLabels;
-  return residueLabels.map((residue, index) => `${chainLabels[index]}:${residue}`);
-}
-
-function browserDevJsonLabelArray(value: unknown) {
-  if (!Array.isArray(value) || !value.length) return null;
-  const labels: string[] = [];
-  for (const item of value) {
-    if (typeof item === "string") labels.push(item);
-    else if (typeof item === "number" && Number.isFinite(item)) labels.push(String(item));
-    else return null;
-  }
-  return labels;
-}
-
-function browserDevHtmlJsonScriptContent(html: string, scriptId: string) {
-  const idPosition = html.indexOf(`id="${scriptId}"`);
-  if (idPosition < 0) return null;
-  const scriptStart = html.lastIndexOf("<script", idPosition);
-  if (scriptStart < 0) return null;
-  const contentStart = html.indexOf(">", scriptStart);
-  if (contentStart < 0) return null;
-  const contentEnd = html.indexOf("</script>", contentStart + 1);
-  if (contentEnd < 0) return null;
-  return html.slice(contentStart + 1, contentEnd).trim();
-}
-
-function matchingBrowserDevFoldingArtifacts(
-  structure: { path: string },
-  modelIndex: number | null,
-  structures: Array<{ path: string }>,
-  artifacts: Array<{ path: string }>,
-) {
-  const parent = dirname(structure.path);
-  const stem = fileTitle(structure.path).replace(/\.[^.]+$/u, "").toLowerCase();
-  return artifacts.filter((artifact) => {
-    const lower = artifact.path.toLowerCase();
-    return structures.length === 1
-      || dirname(artifact.path) === parent
-      || (modelIndex !== null && filenameMentionsModel(lower, modelIndex))
-      || (stem && lower.includes(stem));
-  });
-}
-
-function collectBrowserDevFoldingFiles(root: string, depth: number, files: Array<{ path: string; title: string; extension: string; byteCount: number }>) {
-  if (depth > 6 || files.length >= 5000 || !existsSync(root)) return;
-  let dirents: Dirent[];
-  try {
-    dirents = readdirSync(root, { withFileTypes: true });
-  } catch (_) {
-    return;
-  }
-  for (const dirent of dirents) {
-    if (files.length >= 5000) return;
-    const path = join(root, dirent.name);
-    if (dirent.isDirectory()) {
-      collectBrowserDevFoldingFiles(path, depth + 1, files);
-      continue;
-    }
-    if (!dirent.isFile()) continue;
-    let info: Stats;
-    try {
-      info = statSync(path);
-    } catch (_) {
-      continue;
-    }
-    files.push({ path, title: fileTitle(path), extension: fileExtension(path), byteCount: info.size });
-  }
-}
-
-function candidateFoldingRoots(inputPath: string) {
-  const info = statSync(inputPath);
-  let root = info.isDirectory() ? inputPath : dirname(inputPath);
-  const roots = [root];
-  for (let index = 0; index < 6; index += 1) {
-    const parent = dirname(root);
-    if (!parent || parent === root) break;
-    root = parent;
-    roots.push(root);
-  }
-  return roots;
-}
-
-function foldingArtifactKind(entry: { title: string; extension: string }) {
-  const lower = entry.title.toLowerCase();
-  if (entry.extension === "json" && (lower.includes("confidence") || lower.includes("score"))) return "confidence";
-  if (entry.extension === "json" && lower.includes("affinity")) return "affinity";
-  if (entry.extension === "json") return "metadata";
-  if ((entry.extension === "npz" || entry.extension === "npy") && lower.includes("plddt")) return "plddt";
-  if ((entry.extension === "npz" || entry.extension === "npy") && lower.includes("pae")) return "pae";
-  if ((entry.extension === "npz" || entry.extension === "npy") && lower.includes("pde")) return "pde";
-  if (entry.extension === "npz" || entry.extension === "npy") return "array";
-  if (entry.extension === "pkl" || entry.extension === "pickle") return "pickle";
-  if (entry.extension === "pml" || entry.extension === "pse") return "pymol";
-  if (entry.extension === "html" || entry.extension === "htm") return "report";
-  return null;
-}
-
-function browserDevFoldingArtifact(entry: { path: string; title: string; extension: string; byteCount: number }): BrowserDevFoldingArtifact {
-  return {
-    path: entry.path,
-    title: entry.title,
-    extension: entry.extension,
-    kind: foldingArtifactKind(entry) || "artifact",
-    byteCount: entry.byteCount,
-  };
-}
-
-function isFoldingStructureExtension(extension: string) {
-  return ["pdb", "cif", "mmcif", "mcif", "bcif"].includes(extension);
-}
-
-function modelIndexForPath(path: string) {
-  return digitsAfterAny(path.toLowerCase(), ["model_idx_", "model_idx-", "model_", "model-", "sample_", "sample-"]);
-}
-
-function seedForPath(path: string) {
-  return digitsAfterAny(path.toLowerCase(), ["seed_", "seed-"]);
-}
-
-function digitsAfterAny(value: string, needles: string[]) {
-  for (const needle of needles) {
-    const index = value.indexOf(needle);
-    if (index < 0) continue;
-    const match = value.slice(index + needle.length).match(/^\d+/u);
-    if (match) return Number.parseInt(match[0], 10);
-  }
-  return null;
-}
-
-function filenameMentionsModel(lowerPath: string, index: number) {
-  return [`model_idx_${index}`, `model_idx-${index}`, `model_${index}`, `model-${index}`, `sample_${index}`, `sample-${index}`]
-    .some((needle) => lowerPath.includes(needle));
-}
-
-function backendForBrowserDevFoldingModel(structure: { path: string }, artifacts: Array<{ path: string }>, root: string) {
-  const combined = [structure.path, ...artifacts.map((artifact) => artifact.path), root].join("\n").toLowerCase();
-  if (combined.includes("boltz") || combined.includes("affinity_")) return "Boltz";
-  if (combined.includes("chai") || combined.includes("model_idx")) return "Chai-1";
-  if (combined.includes("protenix")) return "Protenix";
-  if (combined.includes("openfold")) return "OpenFold";
-  if (combined.includes("alphafold") || combined.includes("seed-") || combined.includes("summary_confidences")) return "AlphaFold3";
-  return "Folding";
-}
-
-function browserDevModelTitle(backend: string, ordinal: number, modelIndex: number | null, seed: number | null) {
-  const parts = [backend, modelIndex === null ? `model ${ordinal + 1}` : `model ${modelIndex}`];
-  if (seed !== null) parts.push(`seed ${seed}`);
-  return parts.join(" / ");
-}
-
-function browserDevFoldingSource(root: string, models: BrowserDevFoldingModel[], artifacts: BrowserDevFoldingArtifact[]) {
-  const lower = root.toLowerCase();
-  if (lower.includes("abcfold")) return "ABCFold result bundle";
-  const backends = Array.from(new Set(models.map((model) => model.backend))).filter((backend) => backend !== "Folding");
-  if (backends.length) return `${backends.join(" + ")} folding output`;
-  if (artifacts.some((artifact) => artifact.kind === "affinity")) return "Boltz-style folding output";
-  return "Folding result bundle";
-}
-
-function addBrowserDevMetric(metrics: BrowserDevFoldingMetric[], keys: Set<string>, key: string, label: string, value: number) {
-  if (!Number.isFinite(value) || keys.has(key)) return;
-  keys.add(key);
-  metrics.push({ key, label, value, formatted: formatBrowserDevMetricValue(key, value) });
-}
-
-function isBrowserDevConfidenceMetric(key: string) {
-  return [
-    "ptm", "iptm", "ranking_score", "ranking_confidence", "confidence_score", "fraction_disordered",
-    "has_clash", "complex_plddt", "complex_iplddt", "complex_pde", "complex_ipde",
-    "affinity_pred_value", "affinity_probability_binary", "affinity_pred_probability",
-  ].includes(key) || key.includes("plddt") || key.includes("iptm") || key.includes("ptm") || key.includes("affinity");
-}
-
-function browserDevMetricLabel(key: string) {
-  const labels: Record<string, string> = {
-    ptm: "pTM",
-    iptm: "ipTM",
-    ranking_score: "Ranking",
-    ranking_confidence: "Ranking confidence",
-    confidence_score: "Confidence",
-    fraction_disordered: "Disordered fraction",
-    complex_plddt: "Complex pLDDT",
-    complex_iplddt: "Complex ipLDDT",
-    complex_pde: "Complex PDE",
-    complex_ipde: "Complex ipDE",
-    affinity_pred_value: "Affinity",
-    affinity_probability_binary: "Affinity probability",
-    affinity_pred_probability: "Affinity probability",
-  };
-  return labels[key] || key.split("_").filter(Boolean).map((part) => `${part[0]?.toUpperCase() || ""}${part.slice(1)}`).join(" ");
-}
-
-function formatBrowserDevMetricValue(key: string, value: number) {
-  if ((key.includes("probability") || key.includes("confidence") || key.includes("fraction")) && value >= 0 && value <= 1) return `${(value * 100).toFixed(1)}%`;
-  if (key.includes("plddt")) return value.toFixed(1);
-  if (Math.abs(value) >= 1000 || (value !== 0 && Math.abs(value) < 0.001)) return value.toExponential(3);
-  return value.toFixed(3);
-}
-
-function finiteNumberStats(values: number[]) {
-  const finite = values.filter(Number.isFinite);
-  if (!finite.length) return null;
-  const min = Math.min(...finite);
-  const max = Math.max(...finite);
-  const mean = finite.reduce((sum, value) => sum + value, 0) / finite.length;
-  return { min, max, mean };
-}
-
-function normalizeFoldingMetricKey(value: string) {
-  const lower = value.toLowerCase().replace(/\.(npy|npz|json)$/u, "");
-  return (lower.split(".").pop() || lower).replace(/[- /]/gu, "_");
-}
-
-function emptyBrowserDevFoldingBundle(root: string, inputPath: string, warnings: string[]): BrowserDevFoldingResultBundle {
-  return {
-    rootPath: root,
-    title: fileTitle(inputPath),
-    source: "Folding result bundle",
-    models: [],
-    artifacts: [],
-    warnings,
-  };
 }
 
 function candidateDesmondBaseNames(stem: string) {
@@ -4622,15 +3676,6 @@ function isDesmondPreviewCandidate(path: string) {
   return resolveDesmondFileBundle(path) !== null;
 }
 
-async function readJsonBody(req: import("node:http").IncomingMessage) {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const text = Buffer.concat(chunks).toString("utf8").trim();
-  return text ? JSON.parse(text) as Record<string, unknown> : {};
-}
-
 function normalizeOrientationRef(value: string | null) {
   if (!value) return null;
   const normalized = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -4639,54 +3684,6 @@ function normalizeOrientationRef(value: string | null) {
   const atomCount = Number.parseInt((lines[0] || "").trim().split(/\s+/u)[0] || "", 10);
   if (!Number.isFinite(atomCount) || atomCount <= 0 || lines.length < atomCount + 2) return null;
   return normalized.endsWith("\n") ? normalized : `${normalized}\n`;
-}
-
-function ketcherRaphaelImportShimPlugin(): Plugin {
-  const target = "raphaelModule = require('raphael');";
-  const replacement = "raphaelModule = __burreteRaphael;";
-
-  return {
-    name: "burrete-ketcher-raphael-import-shim",
-    transform(code, id) {
-      const normalized = id.replaceAll("\\", "/");
-      if (!normalized.endsWith("/node_modules/ketcher-core/dist/index.modern.js")) return null;
-      if (!code.includes(target)) return null;
-      return {
-        code: `import __burreteRaphael from "raphael";\n${code.replaceAll(target, replacement)}`,
-        map: null,
-      };
-    },
-  };
-}
-
-function deferKetcherCssPlugin(): Plugin {
-  return {
-    name: "burrete-defer-ketcher-css",
-    transformIndexHtml(html) {
-      return html.replace(/\n\s*<link rel="stylesheet" crossorigin href="\.\/assets\/ketcher-[^"]+\.css">/gu, "");
-    },
-  };
-}
-
-function desktopManualChunks(id: string) {
-  const normalized = id.replaceAll("\\", "/");
-  if (normalized.includes("/node_modules/molstar/")) return "molstar";
-  if (
-    normalized.includes("/node_modules/raphael/")
-    || normalized.includes("/node_modules/eve-raphael/")
-    || normalized.includes("/node_modules/ketcher-core/")
-    || normalized.includes("/node_modules/ketcher-react/")
-    || normalized.includes("/node_modules/ketcher-standalone/")
-    || normalized.includes("/node_modules/indigo-ketcher/")
-  ) {
-    return "ketcher";
-  }
-  return undefined;
-}
-
-function resolveModulePreloadDependencies(_url: string, deps: string[], context: { hostType: "html" | "js" }) {
-  if (context.hostType !== "html") return deps;
-  return deps.filter((dep) => !dep.includes("ketcher"));
 }
 
 export default defineConfig({

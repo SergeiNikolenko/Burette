@@ -5,15 +5,32 @@ contains only documents that describe the active project.
 
 ## Current Docs
 
+- [Changelog](../CHANGELOG.md): pointer to GitHub Releases, which are the
+  human-readable changelog for each version.
 - [Architecture](architecture.md): repository boundaries and runtime shape.
+- [Repository layout](repository-layout.md): top-level code map, app surfaces,
+  checked-in samples, and scratch-file policy.
+- [Product direction](product.md): current product surfaces, users, core jobs,
+  principles, non-goals, and product voice.
+- [Design direction](design-system.md): current shell reality, source-of-truth
+  theme files, surface rules, and component guidance.
+- [Configuration](configuration.md): source-of-truth config files, development
+  overrides, runtime environment, release secrets, and smoke/perf variables.
+- [Security and permissions](security-and-permissions.md): local file access,
+  Tauri permissions, browser/agent surfaces, local servers, release secrets,
+  diagnostics, and security reporting.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
   payloads, grid search, and no-regression guardrails.
 - [Stability program](stability.md): preview trace, runtime manifest, nightly
   smoke, and staged stability guardrails.
+- [Installing and building](installing-building.md): source build, local
+  install, development entrypoints, and Quick Look refresh commands.
 - [Vite+ workflow](vite-plus.md): `vp` entrypoints for frontend development and
   JavaScript validation.
+- [Modular runtime refactor](modular-runtime-refactor.md): staged extraction
+  plan for `vite.config.ts`, `App.tsx`, and browser-dev runtime modules.
 - [Development loops](development-loops.md): fast edit, debug, patch, and remote
   check paths that avoid full local rebuilds.
 - [Control affordances](control-affordances.md): tooltip and menu-detail rules
@@ -22,17 +39,37 @@ contains only documents that describe the active project.
   cache reset workflow.
 - [iOS mobile app](../ios/BurreteMobile/README.md): source-built iPhone preview
   app target, runtime reuse, signing, and real-device install flow.
+  Agent-facing local rules live in
+  [ios/BurreteMobile/AGENTS.md](../ios/BurreteMobile/AGENTS.md).
+- Apple-platform agent routes are dispatched from [AGENTS.md](../AGENTS.md):
+  use `@build-ios-apps`, `@build-macos-apps`, `@product-design`, and
+  `$apple-design` where those platform/design rules apply.
 - [Launch modes](launch-modes.md): normal, file-open, tray, and registration
   launch semantics.
 - [Releasing](releasing.md): version, build, signing, update, and artifact
   requirements.
 - [Keyboard shortcuts](keyboard-shortcuts.md): app shortcuts and command palette
   actions.
+- [Agent platform](agent-platform.md): CLI, Browser shell, desktop session,
+  plugin, MCP, observe/action, and visual QA boundaries.
+- [Repo-local Codex maintenance skills](../.codex/README.md): development-time
+  review, PR body, release readiness, contract, and testing skills. These are
+  not packaged product workflow skills.
+- [Agent tool index](tools/index.md): focused validation and runtime helper
+  commands for agents.
+- [Testing surfaces](tools/testing-surfaces.md): strict dev-server, browser
+  Quick Look, native Quick Look, tokenized preview, and contract-test flows.
 
 ## Maintenance Rules
 
 - Keep user-facing installation and usage in [README.md](../README.md).
 - Keep current engineering docs in `docs/`.
+- Keep product and design direction in `docs/product.md` and
+  `docs/design-system.md`, not as top-level scratch notes.
+- Keep repository maintenance skills in `.codex/skills`; keep packaged
+  molecular workflow skills in `plugins/burette-agent/skills`.
+- Keep directory-local README files for ordinary code architecture guidance and
+  directory-local AGENTS files only for high-risk agent/runtime boundaries.
 - Do not keep imported reference snapshots or migration handoff logs in the
   active docs graph.
 - Verify doc claims against code, scripts, or runtime output before changing

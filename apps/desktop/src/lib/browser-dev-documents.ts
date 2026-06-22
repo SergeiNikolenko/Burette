@@ -260,10 +260,12 @@ export async function openBrowserDevDockingDocument(
   const receptor = await readBrowserDevDockingPayload(receptorPath);
   const ligands = await Promise.all(Array.from(new Set(ligandPaths)).map(readBrowserDevDockingPayload));
   if (ligands.length === 0) throw new Error("Choose at least one ligand or pose file for docking view");
-  const dockingLigands = options.sceneMode ? ligands : expandBrowserDevDockingLigandPoses(ligands);
+  const hasCoordinateTrajectory = ligands.some(isCoordinateTrajectoryPayload);
+  const effectiveSceneMode = hasCoordinateTrajectory ? null : (options.sceneMode ?? null);
+  const dockingLigands = effectiveSceneMode ? ligands : expandBrowserDevDockingLigandPoses(ligands);
 
   const id = stableId(`docking:${receptor.path}:${ligands.map((ligand) => ligand.path).join("|")}`);
-  const label = options.sceneMode
+  const label = effectiveSceneMode
     ? `Mol* scene: ${receptor.title} + ${ligands.length} more structure${ligands.length === 1 ? "" : "s"}`
     : `Docking: ${receptor.title} + ${dockingLigands.length} ligand${dockingLigands.length === 1 ? "" : "s"}`;
   const visuals = resolvePreviewVisuals(preferences);
@@ -305,7 +307,7 @@ export async function openBrowserDevDockingDocument(
     defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
     docking: {
       activePose: options.activePose ?? null,
-      sceneMode: options.sceneMode ?? null,
+      sceneMode: effectiveSceneMode,
       receptor: dockingConfigSource(receptor),
       ligands: dockingLigands.map(dockingConfigSource),
     },
@@ -343,8 +345,8 @@ export async function openBrowserDevDockingDocument(
       receptorPath: receptor.path,
       ligandPaths: ligands.map((ligand) => ligand.path),
       activePose: options.activePose ?? null,
-      sceneMode: options.sceneMode ?? null,
-      poseMode: options.sceneMode === "structureAll" ? "all" : "single",
+      sceneMode: effectiveSceneMode,
+      poseMode: effectiveSceneMode === "structureAll" ? "all" : "single",
     } satisfies DockingDocumentRequest,
   };
 }
@@ -777,6 +779,10 @@ type BrowserDevContextPayload = BrowserDevDockingPayload & {
   role?: BrowserDevMolstarContextEntry["role"];
 };
 
+function isCoordinateTrajectoryPayload(payload: BrowserDevDockingPayload) {
+  return ["xtc", "trr", "dcd", "nctraj", "lammpstrj"].includes(payload.format.molstarFormat);
+}
+
 async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDockingPayload> {
   const extension = fileExtension(path);
   const response = await fetch(browserDevReadUrl(path, extension));
@@ -1019,7 +1025,9 @@ function viewerHtml(
     sdfPosePager: renderer === "molstar" && format.molstarFormat === "sdf" && !format.binary,
     trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1,
     trajectoryFrameCount,
+    rdkitWasmPath: "/__burette/rdkit-wasm",
     ...(reloadOptions?.sdfPoseControlLabel ? { sdfPoseControlLabel: reloadOptions.sdfPoseControlLabel } : {}),
+    ...(stagedEntries?.some((entry) => entry?.representation === "structure-scene-entry") ? { structureSceneMode: "structurePoses" } : {}),
     appViewer: true,
     tauriViewer: false,
     molstarStyle: preferences.molstarStyle,
@@ -1193,6 +1201,7 @@ async function gridHtml(
 ) {
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
+  const hasMoleculeRecords = records.some((record) => Boolean(record.smiles?.trim() || record.molblock?.trim()));
   const config = {
     mode: "grid2d",
     format,
@@ -1249,8 +1258,8 @@ async function gridHtml(
     capabilities: {
       selection: true,
       export: true,
-      substructureSearch: true,
-      rendererSwitch: true,
+      substructureSearch: hasMoleculeRecords,
+      rendererSwitch: hasMoleculeRecords,
     },
   };
   return `<!doctype html>
@@ -1365,7 +1374,7 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
     ? []
     : inferDelimitedSmilesColumns(rows.slice(1), headers.length);
   const smilesIndexes = [...new Set([...namedSmilesIndexes, ...inferredSmilesIndexes])].sort((left, right) => left - right);
-  if (!smilesIndexes.length) return [];
+  if (!smilesIndexes.length) return parseDelimitedTableRows(rows, headers);
   const smilesIndexSet = new Set(smilesIndexes);
   const hasMultipleSmilesColumns = smilesIndexes.length > 1;
   const nameIndex = headers.findIndex((header, index) => !smilesIndexSet.has(index) && isDelimitedNameHeader(header));
@@ -1411,9 +1420,30 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
   });
 }
 
+function parseDelimitedTableRows(rows: string[][], headers: string[]): GridRecord[] {
+  const normalizedHeaders = headers.map((header) => header.trim().toLowerCase().replace(/\s+/gu, "_"));
+  const nameIndex = normalizedHeaders.findIndex((header) =>
+    ["compound_id", "id", "name", "title", "compound"].includes(header)
+  );
+  return rows.slice(1).flatMap((row, rowIndex) => {
+    if (!row.some((cell) => cell.trim())) return [];
+    const rawName = nameIndex >= 0 ? row[nameIndex]?.trim() || "" : "";
+    const props: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      const value = row[index]?.trim();
+      if (value) props[header || `Column ${index + 1}`] = value;
+    });
+    return [{
+      index: rowIndex,
+      name: rawName || `Row ${rowIndex + 1}`,
+      props,
+    }];
+  });
+}
+
 function isDelimitedSmilesHeader(header: string) {
   const normalized = header.trim().toLowerCase().replace(/\s+/gu, "_");
-  return normalized === "smile" || normalized.includes("smiles");
+  return normalized === "smile" || normalized === "smiels" || normalized.includes("smiles");
 }
 
 function isDelimitedNameHeader(header: string) {
@@ -1593,6 +1623,7 @@ function proteinLikeAtomRecordCount(text: string) {
 function shouldUseConvertedMolstarData(format: FormatInfo, converted: ConvertedStructureData | null, extension: string) {
   if (!converted?.bytes) return false;
   if (isPharmacophorePreviewExtension(extension)) return true;
+  if ((extension === "lammpstrj" || extension === "dump") && converted.molstarFormat === "xyz") return true;
   if (format.externalOnly) return true;
   if (format.binary) return false;
   if (["gro", "mmcif", "cifCore"].includes(format.molstarFormat)) return true;
@@ -1850,6 +1881,10 @@ function convertedDataFromText(text: string, extension: string, label: string): 
   if (extension === "gro") {
     const converted = groPdbDataFromText(text, label);
     return converted ? { molstarFormat: "pdb", ...converted } : null;
+  }
+  if (extension === "lammpstrj" || extension === "dump") {
+    const bytes = lammpsDumpXyzDataFromText(text, label);
+    return bytes ? { bytes, molstarFormat: "xyz" } : null;
   }
   const bytes = pdbDataFromText(text, extension, label);
   return bytes ? { bytes, molstarFormat: "pdb" } : null;
@@ -2167,6 +2202,18 @@ function pdbDataFromText(text: string, extension: string, label: string) {
   return new TextEncoder().encode(pdb);
 }
 
+function lammpsDumpXyzDataFromText(text: string, label: string) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const frames = parseLammpsDumpFrames(lines);
+  if (!frames.length) return null;
+  const xyz = frames.flatMap((atoms, index) => [
+    String(atoms.length),
+    `Converted from ${label} frame ${index + 1}`,
+    ...atoms.map((atom) => `${atom.symbol} ${formatCoordinate(atom.x)} ${formatCoordinate(atom.y)} ${formatCoordinate(atom.z)}`),
+  ]).join("\n") + "\n";
+  return new TextEncoder().encode(xyz);
+}
+
 function atomsFromText(text: string, extension: string) {
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
   let atoms: Atom[] | null = null;
@@ -2217,7 +2264,8 @@ export function maestroPdbDataFromText(text: string) {
   }
   if (!models.length) return null;
 
-  const pdb = models.length > 1 && !maestroModelsShareTopology(models)
+  const independentEntries = models.length > 1 && !maestroModelsShareTopology(models);
+  const pdb = independentEntries
     ? maestroIndependentEntriesToPdb(models)
     : models.length === 1
     ? [
@@ -2229,6 +2277,17 @@ export function maestroPdbDataFromText(text: string) {
     : maestroModelsToPdb(models);
   const bytes = new TextEncoder().encode(pdb);
   const stagedEntries: Array<Record<string, unknown>> = [];
+  if (independentEntries) {
+    models.forEach((atoms, index) => {
+      stagedEntries.push({
+        label: `Structure ${index + 1}`,
+        format: "pdb",
+        binary: false,
+        representation: "structure-scene-entry",
+        dataBase64: bytesToBase64(new TextEncoder().encode(maestroSingleEntryToPdb(atoms, `Structure ${index + 1}`))),
+      });
+    });
+  }
   if (hasNonSolventPrimary) {
     const solventAtoms = maestroStagedSolventAtoms(blocks);
     if (solventAtoms.length) {
@@ -2267,6 +2326,16 @@ function maestroIndependentEntriesToPdb(models: MaestroAtom[][]) {
   });
   lines.push("END", "");
   return lines.join("\n");
+}
+
+function maestroSingleEntryToPdb(atoms: MaestroAtom[], label: string) {
+  return [
+    `REMARK ${label}`,
+    ...atoms.slice(0, 99999).map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
+    ...pdbConectLines(atoms.slice(0, 99999)),
+    "END",
+    "",
+  ].join("\n");
 }
 
 function groPdbDataFromText(text: string, label: string) {
@@ -3117,6 +3186,11 @@ function parseCharmmCoordinateAtoms(lines: string[]) {
 }
 
 function parseLammpsDumpAtoms(lines: string[]) {
+  return parseLammpsDumpFrames(lines)[0] ?? null;
+}
+
+function parseLammpsDumpFrames(lines: string[]) {
+  const frames: Atom[][] = [];
   const atoms: Atom[] = [];
   let inAtoms = false;
   let columns: string[] = [];
@@ -3127,7 +3201,9 @@ function parseLammpsDumpAtoms(lines: string[]) {
   let typeIndex = -1;
   for (const line of lines) {
     if (line.startsWith("ITEM: ")) {
-      if (inAtoms && atoms.length > 0) break;
+      if (inAtoms && atoms.length > 0) {
+        frames.push(atoms.splice(0, atoms.length));
+      }
       inAtoms = false;
       if (line.startsWith("ITEM: ATOMS")) {
         columns = line.slice("ITEM: ATOMS".length).trim().split(/\s+/u).filter(Boolean);
@@ -3151,7 +3227,10 @@ function parseLammpsDumpAtoms(lines: string[]) {
       ?? "C";
     atoms.push({ symbol, x, y, z });
   }
-  return atoms.length > 0 ? atoms : null;
+  if (inAtoms && atoms.length > 0) {
+    frames.push(atoms);
+  }
+  return frames;
 }
 
 function coordinateColumnIndex(columns: string[], names: string[]) {

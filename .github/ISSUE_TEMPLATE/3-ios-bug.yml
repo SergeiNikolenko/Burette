@@ -1,0 +1,43 @@
+name: iPhone App Bug
+description: Report an issue with the source-built BurreteMobile iPhone app.
+labels:
+  - bug
+  - iOS
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The iPhone app is source-built. Simulator success and real-device success are different; please specify which surface failed.
+  - type: textarea
+    id: issue
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: dropdown
+    id: device-surface
+    attributes:
+      label: Device surface
+      options:
+        - Simulator
+        - Real iPhone
+        - Both
+        - Build/signing only
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Include Xcode command, target, device type, and sample file when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Build, install, or runtime logs
+      description: Redact device identifiers, signing identities, and private account details.
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior

@@ -641,7 +641,12 @@ pub fn supported_structure_extensions() -> Result<BTreeSet<String>, String> {
     Ok(format_registry()?
         .formats
         .iter()
-        .filter(|format| !matches!(format.preview.as_ref().map(|preview| &preview.strategy), Some(PreviewStrategy::Text)))
+        .filter(|format| {
+            !matches!(
+                format.preview.as_ref().map(|preview| &preview.strategy),
+                Some(PreviewStrategy::Text)
+            )
+        })
         .flat_map(|format| format.extensions.iter().cloned())
         .collect())
 }
@@ -685,15 +690,15 @@ pub fn normalize_renderer_mode(raw: &str) -> &'static str {
 pub fn resolve_renderer(format: &FormatInfo, requested: &str) -> String {
     let normalized = normalize_renderer_mode(requested);
     if format.external_only {
-        return if normalized == "xyzrender-external" {
-            "xyzrender-external"
-        } else {
+        return if normalized == "molstar" {
             "molstar"
+        } else {
+            "xyzrender-external"
         }
         .to_string();
     }
-    let can_use_xyzrender = (format.molstar_format == "xyz" && !format.is_binary)
-        || can_use_external_xyzrender(format);
+    let can_use_xyzrender =
+        (format.molstar_format == "xyz" && !format.is_binary) || can_use_external_xyzrender(format);
     match normalized {
         "molstar" => "molstar".to_string(),
         "xyzrender-external" => if can_use_xyzrender {
@@ -824,10 +829,44 @@ mod tests {
     }
 
     #[test]
-    fn defaults_external_only_formats_to_molstar_with_explicit_xyzrender() {
+    fn renderer_policy_matrix_preserves_desktop_and_quicklook_routing() {
+        let cases = [
+            ("pdb", "auto", "molstar"),
+            ("pdb", "molstar", "molstar"),
+            ("pdb", "xyzrender-external", "xyzrender-external"),
+            ("cif", "auto", "molstar"),
+            ("cif", "xyzrender", "xyzrender-external"),
+            ("sdf", "auto", "molstar"),
+            ("sdf", "grid2d", "molstar"),
+            ("sdf", "external-xyzrender", "xyzrender-external"),
+            ("xyz", "auto", "molstar"),
+            ("xyz", "mol*", "molstar"),
+            ("xyz", "xyzrender-external", "xyzrender-external"),
+            ("xtc", "xyzrender-external", "molstar"),
+            ("cube", "auto", "xyzrender-external"),
+            ("cube", "molstar", "molstar"),
+            ("cube", "xyzrender-external", "xyzrender-external"),
+            ("maegz", "auto", "xyzrender-external"),
+            ("maegz", "xyzrender-external", "xyzrender-external"),
+        ];
+
+        for (extension, requested, expected) in cases {
+            let format = format_for_extension(extension)
+                .unwrap_or_else(|_| panic!("{extension} should be supported"));
+
+            assert_eq!(
+                resolve_renderer(&format, requested),
+                expected,
+                "{extension} requested as {requested} should resolve to {expected}",
+            );
+        }
+    }
+
+    #[test]
+    fn defaults_external_only_formats_to_xyzrender_with_explicit_molstar() {
         let cube = format_for_extension("cube").expect("cube should be supported");
         assert!(cube.external_only);
-        assert_eq!(resolve_renderer(&cube, "auto"), "molstar");
+        assert_eq!(resolve_renderer(&cube, "auto"), "xyzrender-external");
         assert_eq!(resolve_renderer(&cube, "molstar"), "molstar");
         assert_eq!(
             resolve_renderer(&cube, "external-xyzrender"),
@@ -836,19 +875,22 @@ mod tests {
 
         let cub = format_for_extension("cub").expect("cub should be supported");
         assert!(cub.external_only);
-        assert_eq!(resolve_renderer(&cub, "auto"), "molstar");
+        assert_eq!(resolve_renderer(&cub, "auto"), "xyzrender-external");
     }
 
     #[test]
-    fn supports_quantum_chemistry_input_extensions_with_molstar_default() {
+    fn supports_quantum_chemistry_input_extensions_with_xyzrender_default() {
         for extension in [
             "abi", "com", "fdf", "inp", "log", "nw", "out", "psi4", "qcin",
         ] {
             let format = format_for_extension(extension)
                 .unwrap_or_else(|_| panic!("{extension} should be supported"));
             assert_eq!(format.molstar_format, "xyz");
-            assert!(format.external_only, "{extension} should use external conversion");
-            assert_eq!(resolve_renderer(&format, "auto"), "molstar");
+            assert!(
+                format.external_only,
+                "{extension} should use external conversion"
+            );
+            assert_eq!(resolve_renderer(&format, "auto"), "xyzrender-external");
             assert_eq!(
                 resolve_renderer(&format, "external-xyzrender"),
                 "xyzrender-external"
@@ -862,8 +904,11 @@ mod tests {
             let format = format_for_extension(extension)
                 .unwrap_or_else(|_| panic!("{extension} should be supported"));
             assert_eq!(format.molstar_format, "xyz");
-            assert!(format.external_only, "{extension} should use external conversion");
-            assert_eq!(resolve_renderer(&format, "auto"), "molstar");
+            assert!(
+                format.external_only,
+                "{extension} should use external conversion"
+            );
+            assert_eq!(resolve_renderer(&format, "auto"), "xyzrender-external");
             assert_eq!(
                 resolve_renderer(&format, "external-xyzrender"),
                 "xyzrender-external"
@@ -1153,7 +1198,7 @@ mod tests {
 
         let cube = preview_plan_for_extension("cube", "auto").expect("cube plan should resolve");
         assert_eq!(cube.strategy, PreviewStrategy::External);
-        assert_eq!(cube.renderer, "molstar");
+        assert_eq!(cube.renderer, "xyzrender-external");
         assert_eq!(
             cube.converter
                 .as_ref()
@@ -1163,7 +1208,8 @@ mod tests {
         assert!(cube
             .fallbacks
             .iter()
-            .any(|fallback| fallback.renderer == "xyzrender-external"));
+            .any(|fallback| fallback.renderer == "molstar"
+                && fallback.converter.as_deref() == Some("text-coordinates-to-pdb")));
 
         let xtc = preview_plan_for_extension("xtc", "auto").expect("xtc plan should resolve");
         assert_eq!(xtc.strategy, PreviewStrategy::Trajectory);

@@ -1,5 +1,6 @@
 .DS_Store
 .thoughts/
+.tmp/
 .codegraph/
 build/
 build-dev/

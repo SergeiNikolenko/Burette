@@ -27,13 +27,25 @@ if [[ -n "$DEV_FLAVOR_SLUG" ]]; then
   PREVIEW_FILE="$DEV_PREVIEW_DIR/${DEV_FLAVOR_SLUG} $(basename "$FILE")"
   ln "$FILE" "$PREVIEW_FILE" 2>/dev/null || cp -p "$FILE" "$PREVIEW_FILE"
 fi
-TYPE="$("$ROOT/scripts/preview-content-type.mjs" --reject-table "$FILE")"
-if [[ -z "$TYPE" ]]; then
+set +e
+TYPE="$("$ROOT/scripts/preview-content-type.mjs" --reject-table "$FILE" 2>/dev/null)"
+TYPE_STATUS=$?
+set -e
+if [[ "$TYPE_STATUS" -eq 2 || -z "$TYPE" ]]; then
   TYPE="$(mdls -raw -name kMDItemContentType "$FILE" 2>/dev/null || true)"
+elif [[ "$TYPE_STATUS" -ne 0 ]]; then
+  echo "error: could not determine registry content type for $FILE" >&2
+  exit "$TYPE_STATUS"
+fi
+if [[ "$TYPE" == "public.comma-separated-values-text" ||
+      "$TYPE" == "public.tab-separated-values-text" ]]; then
+  echo "error: native Finder Quick Look for public CSV/TSV is owned by the system table generator." >&2
+  echo "Use browser-dev or the desktop app to verify Burrete grid rendering for: $FILE" >&2
+  exit 2
 fi
 if [[ "$TYPE" == "$XYZ_CONTENT_TYPE" ]]; then
   # qlmanage aborts when forcing XYZ UTIs after the preview extension starts.
-  # Normal Quick Look resolves XYZ to the registered Open Babel alias.
+  # Normal Quick Look resolves XYZ to the registered preview.
   set +e
   qlmanage -p "$PREVIEW_FILE"
   STATUS=$?

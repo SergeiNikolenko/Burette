@@ -23,10 +23,12 @@
 			<key>LSHandlerRank</key>
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
-			<array>
-				<string>com.local.burrete10.csv</string>
-				<string>com.local.burrete10.tsv</string>
-			</array>
+				<array>
+					<string>com.local.burrete10.csv</string>
+					<string>com.local.burrete10.tsv</string>
+					<string>public.comma-separated-values-text</string>
+					<string>public.tab-separated-values-text</string>
+				</array>
 		</dict>
 		<dict>
 			<key>CFBundleTypeExtensions</key>

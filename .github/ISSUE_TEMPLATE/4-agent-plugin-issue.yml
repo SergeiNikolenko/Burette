@@ -1,0 +1,44 @@
+name: Agent / Plugin / MCP Issue
+description: Report an issue with Burrete agent workflows, plugin skills, MCP tools, or browser session actions.
+labels:
+  - bug
+  - agent
+body:
+  - type: textarea
+    id: issue
+    attributes:
+      label: What happened?
+      description: Describe the CLI, MCP, plugin, widget, observe, or action failure.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Agent surface
+      options:
+        - Repository CLI
+        - Browser-dev session
+        - Tokenized browser preview
+        - Desktop app session
+        - MCP registration
+        - Plugin skill
+        - Widget/report rendering
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or workflow
+      description: Include the command, tool call, or skill workflow. Redact private file paths if needed.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output or observe/action JSON
+      description: Include bounded JSON/output only. Do not paste large files, credentials, or proprietary data.
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior

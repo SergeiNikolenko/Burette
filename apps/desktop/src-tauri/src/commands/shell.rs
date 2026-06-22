@@ -203,8 +203,8 @@ pub(crate) fn export_diagnostics_bundle<R: Runtime>(
     fs::create_dir_all(&output_dir).map_err(|err| err.to_string())?;
 
     let app_log_path = cache_dir.join(APP_LOG_NAME);
-    copy_or_create_empty(&app_log_path, &output_dir.join("app-log.txt"))?;
-    let preview_trace_copied = copy_or_create_empty(
+    copy_redacted_or_create_empty(&app_log_path, &output_dir.join("app-log.txt"))?;
+    let preview_trace_copied = copy_redacted_or_create_empty(
         &cache_dir.join(PREVIEW_TRACE_FILE),
         &output_dir.join(PREVIEW_TRACE_FILE),
     )?;
@@ -293,8 +293,11 @@ fn write_manifest<R: Runtime>(
         .into_iter()
         .map(|error| {
             json!({
-                "message": error.message,
-                "details": error.details,
+                "message": redact_diagnostic_text(&error.message),
+                "details": error.details
+                    .into_iter()
+                    .map(|detail| redact_diagnostic_text(&detail))
+                    .collect::<Vec<_>>(),
                 "timestampMs": error.timestamp_ms,
             })
         })
@@ -316,7 +319,9 @@ fn write_manifest<R: Runtime>(
         "recentErrors": recent_errors,
         "privacy": {
             "externalTelemetry": false,
-            "rawMoleculeContentIncluded": false
+            "rawMoleculeContentIncluded": false,
+            "localPathsRedacted": true,
+            "copiedLogsRedacted": true
         }
     });
     let payload = serde_json::to_string_pretty(&manifest).map_err(|err| err.to_string())?;
@@ -387,7 +392,7 @@ fn copy_quicklook_logs(output_dir: &Path) -> Result<Vec<String>, String> {
     let mut copied = Vec::new();
     for source in quicklook_log_candidates() {
         if let Some(name) = source.file_name().and_then(|name| name.to_str()) {
-            if copy_if_exists(&source, &quicklook_dir.join(name))? {
+            if copy_redacted_if_exists(&source, &quicklook_dir.join(name))? {
                 copied.push(format!("quicklook-logs/{name}"));
             }
         }
@@ -413,9 +418,9 @@ fn quicklook_log_candidates() -> Vec<PathBuf> {
     candidates
 }
 
-fn copy_or_create_empty(source: &Path, destination: &Path) -> Result<bool, String> {
+fn copy_redacted_or_create_empty(source: &Path, destination: &Path) -> Result<bool, String> {
     if source.exists() {
-        fs::copy(source, destination).map_err(|err| err.to_string())?;
+        copy_redacted_text_file(source, destination)?;
         Ok(true)
     } else {
         fs::write(destination, "").map_err(|err| err.to_string())?;
@@ -423,12 +428,76 @@ fn copy_or_create_empty(source: &Path, destination: &Path) -> Result<bool, Strin
     }
 }
 
-fn copy_if_exists(source: &Path, destination: &Path) -> Result<bool, String> {
+fn copy_redacted_if_exists(source: &Path, destination: &Path) -> Result<bool, String> {
     if !source.exists() {
         return Ok(false);
     }
-    fs::copy(source, destination).map_err(|err| err.to_string())?;
+    copy_redacted_text_file(source, destination)?;
     Ok(true)
+}
+
+fn copy_redacted_text_file(source: &Path, destination: &Path) -> Result<(), String> {
+    let bytes = fs::read(source).map_err(|err| err.to_string())?;
+    let text = String::from_utf8_lossy(&bytes);
+    fs::write(destination, redact_diagnostic_text(&text)).map_err(|err| err.to_string())
+}
+
+fn redact_diagnostic_text(value: &str) -> String {
+    let mut redacted = String::with_capacity(value.len());
+    let mut index = 0;
+    while index < value.len() {
+        let rest = &value[index..];
+        if starts_with_sensitive_path(rest) {
+            redacted.push_str("[redacted-local-path]");
+            index += sensitive_path_len(rest);
+            continue;
+        }
+        let Some(ch) = rest.chars().next() else {
+            break;
+        };
+        redacted.push(ch);
+        index += ch.len_utf8();
+    }
+    redacted
+}
+
+fn starts_with_sensitive_path(value: &str) -> bool {
+    value.starts_with("file:///")
+        || value.starts_with("~/")
+        || value.starts_with("/Users/")
+        || value.starts_with("/home/")
+        || value.starts_with("/private/")
+        || value.starts_with("/tmp/")
+        || value.starts_with("/var/folders/")
+        || value.starts_with("/Volumes/")
+        || starts_with_windows_path(value)
+}
+
+fn starts_with_windows_path(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'\\' | b'/')
+}
+
+fn sensitive_path_len(value: &str) -> usize {
+    let is_file_url = value.starts_with("file:///");
+    let is_windows_path = starts_with_windows_path(value);
+    for (index, ch) in value.char_indices().skip(1) {
+        if ch.is_whitespace()
+            || matches!(
+                ch,
+                '"' | '\'' | '`' | '<' | '>' | ')' | ']' | '}' | ',' | ';'
+            )
+        {
+            return index;
+        }
+        if ch == ':' && index > 2 && !is_file_url && !is_windows_path {
+            return index;
+        }
+    }
+    value.len()
 }
 
 fn elapsed_ms(started: SystemTime) -> u128 {
@@ -448,8 +517,8 @@ fn unix_timestamp_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::{
-        read_external_preview_svg, write_base64_file, write_text_file, WriteBase64FileRequest,
-        WriteTextFileRequest,
+        copy_redacted_text_file, read_external_preview_svg, redact_diagnostic_text,
+        write_base64_file, write_text_file, WriteBase64FileRequest, WriteTextFileRequest,
     };
     use base64::Engine;
     use std::fs;
@@ -521,6 +590,40 @@ mod tests {
         assert_eq!(written_binary, binary_path.to_string_lossy());
         assert_eq!(fs::read_to_string(&text_path).unwrap(), "hello\n");
         assert_eq!(fs::read(&binary_path).unwrap(), [0, 1, 2, 255]);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn redacts_local_paths_from_diagnostic_text() {
+        let redacted = redact_diagnostic_text(
+            "Could not read /Users/alice/Research/ligand.pdb: see file:///private/tmp/Burrete/run.log, C:\\Users\\alice\\secret.sdf and /__burette/read-file",
+        );
+
+        assert!(!redacted.contains("/Users/alice"));
+        assert!(!redacted.contains("file:///private/tmp"));
+        assert!(!redacted.contains("C:\\Users\\alice"));
+        assert!(redacted.contains("/__burette/read-file"));
+        assert_eq!(redacted.matches("[redacted-local-path]").count(), 3);
+    }
+
+    #[test]
+    fn copies_diagnostic_text_with_local_paths_redacted() {
+        let root = temp_dir("diagnostic-redaction");
+        fs::create_dir_all(&root).expect("root dir should be created");
+        let source = root.join("app.log");
+        let destination = root.join("bundle.log");
+        fs::write(
+            &source,
+            "open /Users/alice/Documents/private.pdb\ntrace /private/var/folders/run.log\n",
+        )
+        .expect("source log should be writable");
+
+        copy_redacted_text_file(&source, &destination).expect("redacted copy should succeed");
+        let copied = fs::read_to_string(&destination).expect("destination should be readable");
+
+        assert!(!copied.contains("/Users/alice"));
+        assert!(!copied.contains("/private/var"));
+        assert_eq!(copied.matches("[redacted-local-path]").count(), 2);
         let _ = fs::remove_dir_all(root);
     }
 }

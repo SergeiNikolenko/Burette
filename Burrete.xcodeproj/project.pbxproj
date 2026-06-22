@@ -143,6 +143,7 @@
 				163085407F6A19FD620C881A /* Sources */,
 				EDE31F8E8E26065E582B8440 /* Frameworks */,
 				789E2D0E9032EB7EA72BA43E /* Resources */,
+				C0F026400000000000000001 /* Bundle xyzrender launcher */,
 				7E7F01C829F8540000010001 /* Clean bundle detritus before codesign */,
 			);
 			buildRules = ();
@@ -290,6 +291,23 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -euo pipefail\n\necho \"Cleaning extended attributes and AppleDouble files before codesign...\"\n\nclean_path() {\n  local path=\"$1\"\n  [ -e \"$path\" ] || return 0\n  if command -v xattr >/dev/null 2>&1; then\n    xattr -cr \"$path\" || true\n  fi\n  if command -v dot_clean >/dev/null 2>&1; then\n    dot_clean -m \"$path\" || true\n  fi\n  find \"$path\" \\( -name \"._*\" -o -name \".DS_Store\" \\) -delete || true\n}\n\nclean_path \"${SRCROOT}/PreviewExtension/Web\"\nclean_path \"${CODESIGNING_FOLDER_PATH}\"\n";
+		};
+		C0F026400000000000000001 /* Bundle xyzrender launcher */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = ();
+			inputFileListPaths = ();
+			inputPaths = ();
+			name = "Bundle xyzrender launcher";
+			outputFileListPaths = ();
+			outputPaths = (
+				"$(CODESIGNING_FOLDER_PATH)/Contents/Resources/xyzrender-python3",
+				"$(CODESIGNING_FOLDER_PATH)/Contents/lib/.xyzrender-python-library.stamp",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\n\"${SRCROOT}/scripts/bundle-quicklook-xyzrender-launcher.sh\"\n";
 		};
 
 /* End PBXShellScriptBuildPhase section */

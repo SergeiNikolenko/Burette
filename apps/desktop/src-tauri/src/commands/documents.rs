@@ -5,11 +5,13 @@ use std::env;
 #[cfg(target_os = "macos")]
 use std::ffi::CString;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 #[cfg(target_os = "macos")]
 use std::sync::mpsc;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 use tauri::{Manager, Runtime};
 #[cfg(not(target_os = "macos"))]
 use tauri_plugin_dialog::DialogExt;
@@ -33,6 +35,20 @@ use crate::preview::xyzrender::{
 
 const XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE: u64 = 10 * 1024 * 1024;
+const PROJECT_STRUCTURE_SCAN_MAX_FILES: usize = 2_000;
+const PROJECT_STRUCTURE_SCAN_MAX_DIRECTORIES: usize = 400;
+const CONFORMER_PYTHON_STATUS_TIMEOUT: Duration = Duration::from_secs(10);
+
+#[derive(Clone, Copy)]
+struct ProjectStructureScanLimits {
+    max_files: usize,
+    max_directories: usize,
+}
+
+const PROJECT_STRUCTURE_SCAN_LIMITS: ProjectStructureScanLimits = ProjectStructureScanLimits {
+    max_files: PROJECT_STRUCTURE_SCAN_MAX_FILES,
+    max_directories: PROJECT_STRUCTURE_SCAN_MAX_DIRECTORIES,
+};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -369,13 +385,12 @@ fn open_combined_grid_document<R: Runtime>(
     let combined = combined_sdf_data(&sdf_paths)?;
     let path = format!("{}#combined-sdf-grid", label_path.to_string_lossy());
     let title = combined_sdf_title(&label_path, "SDF grid", "Combined SDF grid");
-    let document_id = crate::windows::runtime_document_id(
-        window_label,
-        &crate::preview::runtime_utils::stable_id(Path::new(&path)),
-    );
+    let document_id = crate::preview::runtime_utils::stable_id(Path::new(&path));
+    let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
     let runtime_path = create_grid_runtime_with_options(
         app,
         &document_id,
+        &runtime_document_id,
         &label_path,
         "sdf",
         &combined.data,
@@ -525,7 +540,8 @@ pub(crate) fn list_project_structure_files(
     let mut files = BTreeSet::new();
     let mut errors = Vec::new();
     for path in paths {
-        match expand_open_targets(PathBuf::from(&path)) {
+        match expand_project_structure_targets(PathBuf::from(&path), PROJECT_STRUCTURE_SCAN_LIMITS)
+        {
             Ok(expanded) => {
                 files.extend(expanded);
             }
@@ -567,6 +583,31 @@ pub(crate) fn list_project_structure_files(
         });
     }
     Ok(entries)
+}
+
+fn expand_project_structure_targets(
+    path: PathBuf,
+    limits: ProjectStructureScanLimits,
+) -> Result<Vec<PathBuf>, String> {
+    let canonical = path
+        .canonicalize()
+        .map_err(|err| format!("{}: {err}", path.display()))?;
+    let metadata =
+        fs::metadata(&canonical).map_err(|err| format!("{}: {err}", canonical.display()))?;
+    if metadata.is_file() {
+        return expand_open_targets(canonical);
+    }
+    if !metadata.is_dir() {
+        return Err(format!(
+            "{} is neither a file nor a directory",
+            canonical.display()
+        ));
+    }
+
+    let supported_extensions = supported_open_target_extensions()?;
+    let mut scan = ProjectStructureScan::new(limits);
+    scan.collect(&canonical, &supported_extensions)?;
+    Ok(scan.into_paths())
 }
 
 #[tauri::command]
@@ -690,6 +731,7 @@ pub(crate) fn generate_3d_conformer(
         let mut command = Command::new(&python.command);
         command
             .args(&python.args)
+            .envs(python.envs.iter().map(|(key, value)| (key, value)))
             .arg("-c")
             .arg(script)
             .stdin(Stdio::piped())
@@ -774,6 +816,71 @@ struct PythonCommand {
     label: String,
     command: String,
     args: Vec<String>,
+    envs: Vec<(String, String)>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConformerPythonRuntimeStatus {
+    available: bool,
+    engine: &'static str,
+    package_name: &'static str,
+    python_label: Option<String>,
+    executable_path: Option<String>,
+    command: Option<Vec<String>>,
+    version: Option<String>,
+    message: String,
+    install_hint: Option<String>,
+    last_error: Option<String>,
+}
+
+struct ConformerPythonRuntimeSpec {
+    engine: &'static str,
+    package_name: &'static str,
+    env_name: &'static str,
+    label: &'static str,
+}
+
+pub(crate) fn conformer_python_runtime_status(engine: &str) -> ConformerPythonRuntimeStatus {
+    let spec = conformer_python_runtime_spec(engine);
+    let mut last_error = None;
+    for python in conformer_python_status_candidates(spec.engine) {
+        match conformer_python_status_probe(&python, conformer_python_status_script(spec.engine)) {
+            Ok(version) => {
+                return ConformerPythonRuntimeStatus {
+                    available: true,
+                    engine: spec.engine,
+                    package_name: spec.package_name,
+                    python_label: Some(python.label.clone()),
+                    executable_path: Some(python.command.clone()),
+                    command: Some(python.argv()),
+                    version,
+                    message: format!("{} conformer Python is available", spec.label),
+                    install_hint: None,
+                    last_error: None,
+                };
+            }
+            Err(error) => last_error = Some(error),
+        }
+    }
+    ConformerPythonRuntimeStatus {
+        available: false,
+        engine: spec.engine,
+        package_name: spec.package_name,
+        python_label: None,
+        executable_path: None,
+        command: None,
+        version: None,
+        message: match &last_error {
+            Some(error) => format!("{} conformer Python was not found: {error}", spec.label),
+            None => format!("{} conformer Python was not found", spec.label),
+        },
+        install_hint: Some(format!(
+            "Set {} to a Python executable with {} installed, or install {} into python3.",
+            spec.env_name, spec.package_name, spec.package_name
+        )),
+        last_error,
+    }
 }
 
 fn conformer_python_candidates(engine: &str) -> Vec<PythonCommand> {
@@ -790,8 +897,14 @@ fn conformer_python_candidates(engine: &str) -> Vec<PythonCommand> {
                 label: value.to_string(),
                 command: value.to_string(),
                 args: Vec::new(),
+                envs: Vec::new(),
             });
         }
+    }
+    if let Ok(executable) = env::current_exe() {
+        candidates.extend(bundled_conformer_python_candidates_from_executable(
+            &executable,
+        ));
     }
     if let Some(uvx) = resolve_executable(
         "uvx",
@@ -811,24 +924,182 @@ fn conformer_python_candidates(engine: &str) -> Vec<PythonCommand> {
                 package_name.to_string(),
                 "python".to_string(),
             ],
+            envs: Vec::new(),
         });
     }
     candidates.push(PythonCommand {
         label: "python3".to_string(),
         command: "python3".to_string(),
         args: Vec::new(),
+        envs: Vec::new(),
     });
     candidates.push(PythonCommand {
         label: "python".to_string(),
         command: "python".to_string(),
         args: Vec::new(),
+        envs: Vec::new(),
     });
     let mut seen = HashSet::new();
     candidates.retain(|candidate| {
-        let key = format!("{}\0{}", candidate.command, candidate.args.join("\0"));
+        let key = format!(
+            "{}\0{}\0{}",
+            candidate.command,
+            candidate.args.join("\0"),
+            candidate
+                .envs
+                .iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+                .join("\0")
+        );
         seen.insert(key)
     });
     candidates
+}
+
+fn bundled_conformer_python_candidates_from_executable(executable: &Path) -> Vec<PythonCommand> {
+    let mut candidates = Vec::new();
+    for ancestor in executable.ancestors() {
+        for resources in [
+            ancestor.join("Resources"),
+            ancestor.join("Contents").join("Resources"),
+        ] {
+            let python = resources
+                .join("xyzrender-python")
+                .join("bin")
+                .join("python3");
+            if !python.is_file() || !is_executable(&python) {
+                continue;
+            }
+            let runtime_lib = resources.join("xyzrender-runtime").join("lib");
+            let Some(site_packages) = find_bundled_site_packages(&runtime_lib) else {
+                continue;
+            };
+            candidates.push(PythonCommand {
+                label: format!("bundled conformer Python ({})", python.display()),
+                command: python.to_string_lossy().to_string(),
+                args: Vec::new(),
+                envs: vec![
+                    (
+                        "PYTHONPATH".to_string(),
+                        site_packages.to_string_lossy().to_string(),
+                    ),
+                    ("PYTHONNOUSERSITE".to_string(), "1".to_string()),
+                ],
+            });
+        }
+    }
+    candidates
+}
+
+fn find_bundled_site_packages(runtime_lib: &Path) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(runtime_lib).ok()?;
+    for entry in entries.flatten() {
+        let candidate = entry.path().join("site-packages");
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+impl PythonCommand {
+    fn argv(&self) -> Vec<String> {
+        let mut argv = Vec::with_capacity(self.args.len() + 1);
+        argv.push(self.command.clone());
+        argv.extend(self.args.clone());
+        argv
+    }
+}
+
+fn conformer_python_runtime_spec(engine: &str) -> ConformerPythonRuntimeSpec {
+    if engine == "datamol" {
+        ConformerPythonRuntimeSpec {
+            engine: "datamol",
+            package_name: "datamol",
+            env_name: "BURRETE_DATAMOL_PYTHON",
+            label: "Datamol",
+        }
+    } else {
+        ConformerPythonRuntimeSpec {
+            engine: "rdkit",
+            package_name: "rdkit",
+            env_name: "BURRETE_RDKIT_PYTHON",
+            label: "RDKit",
+        }
+    }
+}
+
+fn conformer_python_status_candidates(engine: &str) -> Vec<PythonCommand> {
+    conformer_python_candidates(engine)
+        .into_iter()
+        .filter(|candidate| !is_uvx_from_python_candidate(candidate))
+        .collect()
+}
+
+fn is_uvx_from_python_candidate(candidate: &PythonCommand) -> bool {
+    candidate.args.first().map(String::as_str) == Some("--from")
+        && candidate.args.last().map(String::as_str) == Some("python")
+}
+
+fn conformer_python_status_script(engine: &str) -> &'static str {
+    if engine == "datamol" {
+        "import datamol as dm\nprint(getattr(dm, '__version__', 'unknown'))"
+    } else {
+        "import rdkit\nprint(getattr(rdkit, '__version__', 'unknown'))"
+    }
+}
+
+fn conformer_python_status_probe(
+    python: &PythonCommand,
+    script: &str,
+) -> Result<Option<String>, String> {
+    let mut child = Command::new(&python.command)
+        .args(&python.args)
+        .envs(python.envs.iter().map(|(key, value)| (key, value)))
+        .arg("-c")
+        .arg(script)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("{}: {error}", python.label))?;
+    let deadline = Instant::now() + CONFORMER_PYTHON_STATUS_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let mut stdout = String::new();
+                let mut stderr = String::new();
+                if let Some(mut pipe) = child.stdout.take() {
+                    let _ = pipe.read_to_string(&mut stdout);
+                }
+                if let Some(mut pipe) = child.stderr.take() {
+                    let _ = pipe.read_to_string(&mut stderr);
+                }
+                if status.success() {
+                    return Ok(stdout
+                        .lines()
+                        .map(str::trim)
+                        .find(|line| !line.is_empty())
+                        .map(str::to_string));
+                }
+                let error = stderr
+                    .lines()
+                    .map(str::trim)
+                    .find(|line| !line.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| status.to_string());
+                return Err(format!("{}: {error}", python.label));
+            }
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("{}: status probe timed out", python.label));
+            }
+            Ok(None) => sleep(Duration::from_millis(50)),
+            Err(error) => return Err(format!("{}: {error}", python.label)),
+        }
+    }
 }
 
 fn resolve_executable(name: &str, preferred_paths: &[Option<PathBuf>]) -> Option<PathBuf> {
@@ -846,6 +1117,19 @@ fn resolve_executable(name: &str, preferred_paths: &[Option<PathBuf>]) -> Option
         }
     }
     None
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.metadata()
+        .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
 }
 
 fn generated_conformer_title(title: &str) -> String {
@@ -1468,7 +1752,7 @@ fn expand_open_targets(path: PathBuf) -> Result<Vec<PathBuf>, String> {
         ));
     }
 
-    let supported_extensions = supported_structure_extensions()?;
+    let supported_extensions = supported_open_target_extensions()?;
     let mut collected = BTreeSet::new();
     let mut visited_directories = HashSet::new();
     collect_supported_files(
@@ -1609,6 +1893,103 @@ fn write_text_atomically(path: &Path, text: &str) -> Result<(), String> {
         return Err(format!("{}: {error}", path.display()));
     }
     Ok(())
+}
+
+fn supported_open_target_extensions() -> Result<BTreeSet<String>, String> {
+    let mut supported = supported_structure_extensions()?;
+    supported.extend(
+        ["ms", "magma", "mgf", "msp", "mzml", "mzxml"]
+            .into_iter()
+            .map(str::to_string),
+    );
+    Ok(supported)
+}
+
+struct ProjectStructureScan {
+    limits: ProjectStructureScanLimits,
+    visited_directories: HashSet<PathBuf>,
+    collected: BTreeSet<PathBuf>,
+    visited_count: usize,
+    truncated: bool,
+}
+
+impl ProjectStructureScan {
+    fn new(limits: ProjectStructureScanLimits) -> Self {
+        Self {
+            limits,
+            visited_directories: HashSet::new(),
+            collected: BTreeSet::new(),
+            visited_count: 0,
+            truncated: false,
+        }
+    }
+
+    fn collect(
+        &mut self,
+        directory: &Path,
+        supported_extensions: &BTreeSet<String>,
+    ) -> Result<(), String> {
+        if self.truncated {
+            return Ok(());
+        }
+        let canonical_directory = directory
+            .canonicalize()
+            .map_err(|err| format!("{}: {err}", directory.display()))?;
+        if !self.visited_directories.insert(canonical_directory) {
+            return Ok(());
+        }
+        self.visited_count += 1;
+        if self.visited_count > self.limits.max_directories {
+            self.truncated = true;
+            return Ok(());
+        }
+
+        let mut entries = fs::read_dir(directory)
+            .map_err(|err| format!("{}: {err}", directory.display()))?
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+        entries.sort_by_key(|entry| entry.path());
+
+        for entry in entries {
+            if self.collected.len() >= self.limits.max_files {
+                self.truncated = true;
+                return Ok(());
+            }
+            let path = entry.path();
+            let Ok(metadata) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if metadata.file_type().is_symlink() {
+                let Ok(target_metadata) = fs::metadata(&path) else {
+                    continue;
+                };
+                if target_metadata.is_dir() {
+                    let _ = self.collect(&path, supported_extensions);
+                    continue;
+                }
+                if target_metadata.is_file()
+                    && looks_like_supported_structure_file(&path, supported_extensions)
+                {
+                    self.collected.insert(path);
+                }
+                continue;
+            }
+            if metadata.is_dir() {
+                let _ = self.collect(&path, supported_extensions);
+                continue;
+            }
+            if metadata.is_file()
+                && looks_like_supported_structure_file(&path, supported_extensions)
+            {
+                self.collected.insert(path);
+            }
+        }
+        Ok(())
+    }
+
+    fn into_paths(self) -> Vec<PathBuf> {
+        self.collected.into_iter().collect()
+    }
 }
 
 fn collect_supported_files(
@@ -1860,12 +2241,14 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_open_paths, conformer_python_candidates, expand_open_document_paths,
-        expand_open_targets, generated_conformer_title, list_project_structure_files,
+        bundled_conformer_python_candidates_from_executable, classify_open_paths,
+        conformer_python_candidates, conformer_python_runtime_spec,
+        conformer_python_status_candidates, expand_open_document_paths, expand_open_targets,
+        expand_project_structure_targets, generated_conformer_title, list_project_structure_files,
         looks_like_supported_structure_file, normalize_inline_structure_extension,
-        open_text_structure_for_window_label, smiles_from_sheet_data, TextStructureRequest,
+        open_text_structure_for_window_label, smiles_from_sheet_data,
+        supported_open_target_extensions, ProjectStructureScanLimits, TextStructureRequest,
     };
-    use crate::preview::formats::supported_structure_extensions;
     use crate::preview::grid_store::GridRuntimeRegistry;
     use crate::preview::runtime::ViewerPreferences;
     use std::fs;
@@ -1924,9 +2307,63 @@ mod tests {
     }
 
     #[test]
+    fn bundled_conformer_python_candidate_uses_runtime_site_packages() {
+        let directory =
+            std::env::temp_dir().join(format!("burrete-conformer-python-{}", uuid::Uuid::new_v4()));
+        let app_executable = directory.join("Burrete.app/Contents/MacOS/burrete");
+        let python = directory.join("Burrete.app/Contents/Resources/xyzrender-python/bin/python3");
+        let site_packages = directory
+            .join("Burrete.app/Contents/Resources/xyzrender-runtime/lib/python3.13/site-packages");
+        fs::create_dir_all(app_executable.parent().expect("app executable parent")).unwrap();
+        fs::create_dir_all(python.parent().expect("python parent")).unwrap();
+        fs::create_dir_all(&site_packages).unwrap();
+        fs::write(&app_executable, "").unwrap();
+        fs::write(&python, "").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&python).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&python, permissions).unwrap();
+        }
+
+        let candidates = bundled_conformer_python_candidates_from_executable(&app_executable);
+
+        assert!(candidates.iter().any(|candidate| {
+            candidate.command == python.to_string_lossy()
+                && candidate.envs.iter().any(|(key, value)| {
+                    key == "PYTHONPATH" && value == &site_packages.to_string_lossy().to_string()
+                })
+                && candidate
+                    .envs
+                    .iter()
+                    .any(|(key, value)| key == "PYTHONNOUSERSITE" && value == "1")
+        }));
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn conformer_python_status_candidates_skip_uvx_from_python_probe() {
+        let status_candidates = conformer_python_status_candidates("datamol");
+        assert!(status_candidates.iter().all(|candidate| !(candidate
+            .args
+            .first()
+            .map(String::as_str)
+            == Some("--from")
+            && candidate.args.last().map(String::as_str) == Some("python"))));
+
+        let datamol = conformer_python_runtime_spec("datamol");
+        assert_eq!(datamol.package_name, "datamol");
+        assert_eq!(datamol.env_name, "BURRETE_DATAMOL_PYTHON");
+        let rdkit = conformer_python_runtime_spec("rdkit");
+        assert_eq!(rdkit.package_name, "rdkit");
+        assert_eq!(rdkit.env_name, "BURRETE_RDKIT_PYTHON");
+    }
+
+    #[test]
     fn recognizes_supported_structure_files() {
         let supported_extensions =
-            supported_structure_extensions().expect("supported extensions should load");
+            supported_open_target_extensions().expect("supported extensions should load");
         assert!(looks_like_supported_structure_file(
             std::path::Path::new("mini.pdb"),
             &supported_extensions
@@ -1957,6 +2394,14 @@ mod tests {
         ));
         assert!(looks_like_supported_structure_file(
             std::path::Path::new("mn-h2.log"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("MassSpecGymID0075191.ms"),
+            &supported_extensions
+        ));
+        assert!(looks_like_supported_structure_file(
+            std::path::Path::new("candidate.magma"),
             &supported_extensions
         ));
         assert!(!looks_like_supported_structure_file(
@@ -2096,11 +2541,17 @@ mod tests {
         let cif = nested.join("mini.cif");
         let input = nested.join("caffeine.com");
         let log = root.join("mn-h2.log");
+        let spectrum = nested.join("MassSpecGymID0075191.ms");
         let txt = nested.join("notes.txt");
         fs::write(&pdb, "HEADER TEST\n").unwrap();
         fs::write(&cif, "data_test\n").unwrap();
         fs::write(&input, "%chk=test\n").unwrap();
         fs::write(&log, "SCF DONE\n").unwrap();
+        fs::write(
+            &spectrum,
+            ">compound MassSpecGymID0075191\n>ms2peaks\n100 42\n",
+        )
+        .unwrap();
         fs::write(&txt, "ignore\n").unwrap();
 
         let canonical_root = root.canonicalize().unwrap();
@@ -2110,12 +2561,16 @@ mod tests {
             vec![
                 canonical_root.join("mini.pdb"),
                 canonical_root.join("mn-h2.log"),
+                canonical_root
+                    .join("nested")
+                    .join("MassSpecGymID0075191.ms"),
                 canonical_root.join("nested").join("caffeine.com"),
                 canonical_root.join("nested").join("mini.cif")
             ]
         );
 
         fs::remove_file(txt).unwrap();
+        fs::remove_file(spectrum).unwrap();
         fs::remove_file(log).unwrap();
         fs::remove_file(cif).unwrap();
         fs::remove_file(input).unwrap();
@@ -2186,6 +2641,71 @@ mod tests {
         fs::remove_file(cif).unwrap();
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn project_structure_scan_limits_file_count() {
+        let root = std::env::temp_dir().join(format!(
+            "burrete-project-files-limit-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        for file_name in ["a.pdb", "b.cif", "c.sdf"] {
+            fs::write(root.join(file_name), "structure\n").unwrap();
+        }
+
+        let files = expand_project_structure_targets(
+            root.clone(),
+            ProjectStructureScanLimits {
+                max_files: 2,
+                max_directories: 16,
+            },
+        )
+        .expect("bounded project scan should succeed");
+        let file_names = files
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(file_names, vec!["a.pdb", "b.cif"]);
+        fs::remove_file(root.join("a.pdb")).unwrap();
+        fs::remove_file(root.join("b.cif")).unwrap();
+        fs::remove_file(root.join("c.sdf")).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn project_structure_scan_limits_directory_count() {
+        let root = std::env::temp_dir().join(format!(
+            "burrete-project-directory-limit-{}",
+            std::process::id()
+        ));
+        let first = root.join("a-first");
+        let second = root.join("b-second");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        fs::write(first.join("inside.pdb"), "HEADER FIRST\n").unwrap();
+        fs::write(second.join("inside.cif"), "data_second\n").unwrap();
+
+        let files = expand_project_structure_targets(
+            root.clone(),
+            ProjectStructureScanLimits {
+                max_files: 16,
+                max_directories: 2,
+            },
+        )
+        .expect("bounded project scan should succeed");
+        let file_names = files
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(file_names, vec!["inside.pdb"]);
+        fs::remove_file(first.join("inside.pdb")).unwrap();
+        fs::remove_file(second.join("inside.cif")).unwrap();
+        fs::remove_dir(first).unwrap();
+        fs::remove_dir(second).unwrap();
         fs::remove_dir(root).unwrap();
     }
 

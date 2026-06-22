@@ -95,7 +95,7 @@ export function MarkdownRichViewer({
 
     return () => {
       disposedRef.current = true;
-      view.destroy();
+      viewRef.current?.destroy();
       viewRef.current = null;
     };
   }, [document, openPaths]);

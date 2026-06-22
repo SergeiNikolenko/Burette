@@ -310,6 +310,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let heavyAtoms: Int
         let bonds: Int
         let dockingScore: Double?
+        let molblock: String
         let x: Double
         let y: Double
     }
@@ -477,6 +478,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             diag("previewPlan.unavailable=true")
         }
 
+        if shouldUseSpectrumPreview(fileExtension: pathExtension, previewPlan: previewPlan, data: structureData, url: url) {
+            return try buildSpectrumPreviewResult(
+                for: url,
+                requestID: requestID,
+                fileExtension: pathExtension,
+                spectrumData: structureData,
+                webDirectory: webDirectory,
+                fileManager: fileManager,
+                diagnostics: &diagnostics
+            )
+        }
+
         if shouldUseTextArtifactPreview(fileExtension: pathExtension, previewPlan: previewPlan) {
             return try buildTextArtifactPreviewResult(
                 for: url,
@@ -494,6 +507,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 for: url,
                 requestID: requestID,
                 structureData: structureData,
+                webDirectory: webDirectory,
                 fileManager: fileManager,
                 diagnostics: &diagnostics
             )
@@ -540,6 +554,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             }
         }
         diag("detected.format=\(structurePreview.format.molstarFormat) binary=\(structurePreview.format.isBinary) renderer=\(structurePreview.renderer)")
+        if let trajectoryFrameCount = structurePreview.trajectoryFrameCount {
+            diag("trajectory.frames=\(trajectoryFrameCount) controls=\(structurePreview.renderer == BurreteRendererMode.molstar && trajectoryFrameCount > 1)")
+        }
 
         let configJSON = try previewConfigJSON(
             format: structurePreview.format,
@@ -585,7 +602,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             auxiliaryFiles: structurePreview.auxiliaryFiles,
             gridRecordsScript: nil,
             requiredAssets: runtimeAssets(for: structurePreview.renderer),
-            requiresRDKit: false,
+            requiresRDKit: structurePreview.renderer == BurreteRendererMode.molstar,
             externalArtifactSourceURL: structurePreview.externalArtifactSourceURL,
             fileManager: fileManager,
             diagnostics: &diagnostics
@@ -607,24 +624,27 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         for url: URL,
         requestID: String,
         structureData: Data,
+        webDirectory: URL,
         fileManager: FileManager,
         diagnostics: inout [String]
     ) throws -> BuildResult {
         func diag(_ message: String) { diagnostics.append("[build] " + message) }
 
         let graph = try fepGraphMLPreview(from: structureData)
-        diag("detected.previewMode=fep-graphml nodes=\(graph.nodes.count) edges=\(graph.edges.count)")
+        let moleculesWithAtoms = graph.nodes.filter { $0.atoms > 0 }.count
+        let totalAtoms = graph.nodes.reduce(0) { $0 + $1.atoms }
+        diag("detected.previewMode=fep-graphml nodes=\(graph.nodes.count) edges=\(graph.edges.count) moleculesWithAtoms=\(moleculesWithAtoms) atoms=\(totalAtoms)")
         let html = fepGraphMLInlineHTML(title: url.lastPathComponent, graph: graph, requestID: requestID)
         let runtimeWriteStarted = Date()
         let runtimePreview = try createRuntimePreview(
-            bundledWebDirectory: fileManager.temporaryDirectory,
+            bundledWebDirectory: webDirectory,
             html: html,
             configJSON: try configJSONWithRequestID("{}", requestID: requestID),
             structureData: nil,
             auxiliaryFiles: [],
             gridRecordsScript: nil,
             requiredAssets: [],
-            requiresRDKit: false,
+            requiresRDKit: true,
             externalArtifactSourceURL: nil,
             fileManager: fileManager,
             diagnostics: &diagnostics
@@ -684,6 +704,59 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         )
         diagnostics.append("[build] textArtifact.html.bytes=\(html.utf8.count)")
         diagnostics.append("[build] runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
+        return BuildResult(
+            html: html,
+            indexURL: runtimePreview.indexURL,
+            readAccessURL: runtimePreview.readAccessURL,
+            diagnostics: diagnostics,
+            renderTimeoutSeconds: defaultRenderTimeoutSeconds
+        )
+    }
+
+    private static func buildSpectrumPreviewResult(
+        for url: URL,
+        requestID: String,
+        fileExtension: String,
+        spectrumData: Data,
+        webDirectory: URL,
+        fileManager: FileManager,
+        diagnostics: inout [String]
+    ) throws -> BuildResult {
+        func diag(_ message: String) { diagnostics.append("[build] " + message) }
+
+        let content = decodeText(spectrumData)
+        guard let spectrum = try parseQuickLookSpectrum(
+            title: url.lastPathComponent,
+            fileExtension: fileExtension,
+            content: content
+        ), !spectrum.primary.peaks.isEmpty else {
+            throw PreviewError.unsupportedStructureFile("Spectrum preview found no drawable peaks in \(url.lastPathComponent)")
+        }
+        diag("detected.previewMode=spectrum format=\(spectrum.format) peaks=\(spectrum.primary.peaks.count)")
+        let html = spectrumInlineHTML(title: url.lastPathComponent, spectrum: spectrum, requestID: requestID)
+        let runtimeWriteStarted = Date()
+        let runtimePreview = try createRuntimePreview(
+            bundledWebDirectory: webDirectory,
+            html: html,
+            configJSON: try spectrumConfigJSON(
+                title: url.lastPathComponent,
+                fileExtension: fileExtension,
+                byteCount: spectrumData.count,
+                requestID: requestID,
+                format: spectrum.format
+            ),
+            structureData: nil,
+            auxiliaryFiles: [],
+            gridRecordsScript: nil,
+            requiredAssets: [],
+            requiresRDKit: false,
+            externalArtifactSourceURL: nil,
+            fileManager: fileManager,
+            diagnostics: &diagnostics
+        )
+        diag("elapsed.runtimeWriteMs=\(elapsedMs(since: runtimeWriteStarted))")
+        diag("runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
+        diag("runtime.index.exists=\(fileManager.fileExists(atPath: runtimePreview.indexURL.path))")
         return BuildResult(
             html: html,
             indexURL: runtimePreview.indexURL,
@@ -814,6 +887,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
         let xyzrenderPreset = BurreteXyzrenderPreset.normalize(xyzrenderPresetOverride ?? preferences.xyzrenderPreset)
         let xyzPayload = state.format.molstarFormat == "xyz" && !state.format.isBinary ? makeXYZPayload(from: state.structureData) : nil
+        let estimatedTrajectoryFrameCount = estimateTrajectoryFrameCount(
+            fileExtension: pathExtension,
+            sourceData: structureData,
+            previewData: state.structureData,
+            format: state.format
+        )
+        if let estimatedTrajectoryFrameCount, estimatedTrajectoryFrameCount > 1 {
+            diag("trajectory.detected.frames=\(estimatedTrajectoryFrameCount)")
+        }
+        let resolvedTrajectoryFrameCount = max(xyzPayload?.frameCount ?? 0, estimatedTrajectoryFrameCount ?? 0)
         let isXYZTrajectory = (xyzPayload?.frameCount ?? 0) > 1
         if isXYZTrajectory,
            rendererOverride == nil,
@@ -865,7 +948,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             temporaryExternalDirectory: state.temporaryExternalDirectory,
             xyzrenderPreset: xyzrenderPreset,
             xyzrenderControls: state.xyzrenderControls,
-            trajectoryFrameCount: state.renderer == BurreteRendererMode.molstar ? xyzPayload?.frameCount : nil,
+            trajectoryFrameCount: state.renderer == BurreteRendererMode.molstar && resolvedTrajectoryFrameCount > 0 ? resolvedTrajectoryFrameCount : nil,
             molstarAvailable: molstarAvailable
         )
     }
@@ -911,27 +994,20 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             )
             state.externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
         } catch {
-            if state.format.isExternalXyzrenderOnly,
-               rendererOverride == nil,
-               let convertedStructure = preparedConversion {
-                state.renderer = BurreteRendererMode.molstar
-                state.applyConvertedStructure(convertedStructure)
-                state.externalStatus = [
-                    "status": "fallback",
-                    "requested": BurreteRendererMode.xyzrenderExternal,
-                    "message": "Using built-in text structure parser because external xyzrender is unavailable in Quick Look."
-                ]
-                diag("xyzrender.fallback=built-in-text-parser error=\(error.localizedDescription)")
-            } else if state.format.isExternalXyzrenderOnly {
+            if rendererOverride == BurreteRendererMode.xyzrenderExternal {
+                throw error
+            }
+            if state.format.isExternalXyzrenderOnly {
                 throw error
             } else {
                 state.renderer = BurreteRendererPolicy.fallbackRenderer(for: BurreteRendererFormat(state.format))
                 state.externalStatus = [
-                    "status": "fallback",
+                    "status": "error",
                     "requested": BurreteRendererMode.xyzrenderExternal,
                     "message": error.localizedDescription
                 ]
-                diag("xyzrender.fallback=\(error.localizedDescription)")
+                diag("xyzrender.error=\(error.localizedDescription)")
+                throw error
             }
         }
     }
@@ -1545,16 +1621,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             let props = moldict["molprops"] as? [String: Any] ?? [:]
             let atoms = moldict["atoms"] as? [Any] ?? []
             let bonds = moldict["bonds"] as? [Any] ?? []
+            let label = graphMLString(props["ofe-name"]) ?? id
             let angle = nodeCount == 1 ? 0 : (Double(index) / Double(nodeCount)) * Double.pi * 2 - Double.pi / 2
             let radius = nodeCount == 1 ? 0 : 34.0
             let heavyAtoms = atoms.filter { graphMLAtomicNumber($0) != 1 }.count
             return FepGraphMLNode(
                 id: id,
-                label: graphMLString(props["ofe-name"]) ?? id,
+                label: label,
                 atoms: atoms.count,
                 heavyAtoms: heavyAtoms,
                 bonds: bonds.count,
                 dockingScore: graphMLDouble(props["docking score"]),
+                molblock: graphMLMolblock(label: label, atoms: atoms, bonds: bonds),
                 x: 50 + cos(angle) * radius,
                 y: 50 + sin(angle) * radius
             )
@@ -1620,6 +1698,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             heavyAtoms: node.heavyAtoms,
             bonds: node.bonds,
             dockingScore: node.dockingScore,
+            molblock: node.molblock,
             x: x,
             y: y
         )
@@ -1683,6 +1762,124 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return nil
     }
 
+    private static func graphMLMolblock(label: String, atoms: [Any], bonds: [Any]) -> String {
+        var heavyIndexByAtom: [Int: Int] = [:]
+        var atomLines: [String] = []
+        for (atomIndex, atom) in atoms.enumerated() {
+            let atomicNumber = graphMLAtomicNumber(atom)
+            if atomicNumber == 1 { continue }
+            heavyIndexByAtom[atomIndex] = atomLines.count + 1
+            atomLines.append("\(molCoord(0))\(molCoord(0))\(molCoord(0)) \(graphMLAtomSymbol(atomicNumber).padding(toLength: 3, withPad: " ", startingAt: 0)) 0  0  0  0  0  0  0  0  0  0  0  0")
+        }
+
+        let aromaticBondTypes = graphMLKekuleAromaticBondTypes(atoms: atoms, bonds: bonds)
+        var bondLines: [String] = []
+        for (bondIndex, bond) in bonds.enumerated() {
+            let indexes = graphMLBondAtomIndexes(bond)
+            guard let left = indexes.left,
+                  let right = indexes.right,
+                  let from = heavyIndexByAtom[left],
+                  let to = heavyIndexByAtom[right] else {
+                continue
+            }
+            let bondType = aromaticBondTypes[bondIndex] ?? graphMLMolBondType(bond)
+            bondLines.append("\(String(format: "%3d", from))\(String(format: "%3d", to))\(String(format: "%3d", bondType))  0  0  0  0")
+        }
+
+        return ([
+            String(label.prefix(80)),
+            "Burrete FEP GraphML",
+            "",
+            "\(String(format: "%3d", atomLines.count))\(String(format: "%3d", bondLines.count))  0  0  0  0            999 V2000"
+        ] + atomLines + bondLines + ["M  END", ""]).joined(separator: "\n")
+    }
+
+    private static func graphMLMolblocksJSON(_ nodes: [FepGraphMLNode]) -> String {
+        let payload = nodes.map { ["id": $0.id, "molblock": $0.molblock] }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.withoutEscapingSlashes]),
+              let json = String(data: data, encoding: .utf8) else {
+            return "[]"
+        }
+        return json
+    }
+
+    private static func graphMLBondAtomIndexes(_ bond: Any) -> (left: Int?, right: Int?) {
+        guard let values = bond as? [Any], values.count >= 2 else { return (nil, nil) }
+        return (graphMLInt(values[0]), graphMLInt(values[1]))
+    }
+
+    private static func graphMLMolBondType(_ bond: Any) -> Int {
+        guard let values = bond as? [Any], values.count >= 3 else { return 1 }
+        let value = graphMLInt(values[2]) ?? 1
+        if value == 12 { return 4 }
+        return [1, 2, 3, 4].contains(value) ? value : 1
+    }
+
+    private static func graphMLKekuleAromaticBondTypes(atoms: [Any], bonds: [Any]) -> [Int: Int] {
+        let aromaticEdges = bonds.enumerated().compactMap { bondIndex, bond -> (bondIndex: Int, left: Int, right: Int)? in
+            guard graphMLBondIsAromatic(bond) else { return nil }
+            let indexes = graphMLBondAtomIndexes(bond)
+            guard let left = indexes.left,
+                  let right = indexes.right,
+                  graphMLAtomIsAromatic(graphMLAtom(atoms, at: left)),
+                  graphMLAtomIsAromatic(graphMLAtom(atoms, at: right)) else {
+                return nil
+            }
+            return (bondIndex, left, right)
+        }
+        var result: [Int: Int] = [:]
+        var usedAtoms = Set<Int>()
+        for edge in aromaticEdges {
+            if usedAtoms.contains(edge.left) || usedAtoms.contains(edge.right) {
+                result[edge.bondIndex] = 1
+                continue
+            }
+            result[edge.bondIndex] = 2
+            usedAtoms.insert(edge.left)
+            usedAtoms.insert(edge.right)
+        }
+        for edge in aromaticEdges where result[edge.bondIndex] == nil {
+            result[edge.bondIndex] = 1
+        }
+        return result
+    }
+
+    private static func graphMLBondIsAromatic(_ bond: Any) -> Bool {
+        guard let values = bond as? [Any], values.count >= 3 else { return false }
+        return graphMLInt(values[2]) == 12
+    }
+
+    private static func graphMLAtomIsAromatic(_ atom: Any?) -> Bool {
+        guard let values = atom as? [Any], values.count >= 4 else { return false }
+        return (values[3] as? Bool) == true
+    }
+
+    private static func graphMLAtom(_ atoms: [Any], at index: Int) -> Any? {
+        guard index >= 0, index < atoms.count else { return nil }
+        return atoms[index]
+    }
+
+    private static func graphMLAtomSymbol(_ atomicNumber: Int) -> String {
+        switch atomicNumber {
+        case 1: return "H"
+        case 5: return "B"
+        case 6: return "C"
+        case 7: return "N"
+        case 8: return "O"
+        case 9: return "F"
+        case 15: return "P"
+        case 16: return "S"
+        case 17: return "Cl"
+        case 35: return "Br"
+        case 53: return "I"
+        default: return "C"
+        }
+    }
+
+    private static func molCoord(_ value: Double) -> String {
+        String(format: "%10.4f", value)
+    }
+
     private static func graphMLString(_ value: Any?) -> String? {
         if let value = value as? String, !value.isEmpty { return value }
         return nil
@@ -1690,6 +1887,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func fepGraphMLInlineHTML(title: String, graph: FepGraphMLPreview, requestID: String) -> String {
         let nodeByID = Dictionary(uniqueKeysWithValues: graph.nodes.map { ($0.id, $0) })
+        let molblocksJSON = escapeScriptEnd(graphMLMolblocksJSON(graph.nodes))
         let denseMode = graph.nodes.count > 12
         let edges = graph.edges.compactMap { edge -> String? in
             guard let source = nodeByID[edge.source], let target = nodeByID[edge.target] else { return nil }
@@ -1722,8 +1920,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return """
             <article class="node-card" style="left:\(node.x)%;top:\(node.y)%">
               <strong>\(escapeHTML(shortGraphMLLabel(node.label)))</strong>
-              <span>\(node.heavyAtoms)/\(node.atoms) atoms</span>
-              <span>\(node.bonds) bonds - score \(escapeHTML(score))</span>
+              <div class="node-molecule" data-node-id="\(escapeHTML(node.id))"><span>Rendering molecule</span></div>
+              <footer>
+                <span>\(node.heavyAtoms)/\(node.atoms) atoms</span>
+                <span>\(node.bonds) bonds - score \(escapeHTML(score))</span>
+              </footer>
             </article>
             """
         }.joined(separator: "\n")
@@ -1739,7 +1940,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <meta http-equiv="Content-Security-Policy" content="\(minimalRuntimeCSP)" />
+          <meta http-equiv="Content-Security-Policy" content="\(gridRuntimeCSP)" />
           <title>Burrete FEP Network - \(safeTitle)</title>
           <style>
             html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f8fafc;color:#172033}
@@ -1754,9 +1955,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             svg{position:absolute;inset:0;width:100%;height:100%}
             line{stroke:#af52de;stroke-width:.42;stroke-linecap:round;stroke-opacity:.62}
             .edge-score{font-size:3px;fill:#334155;paint-order:stroke;stroke:#f8fafc;stroke-width:1.1px}
-            .node-card{position:absolute;z-index:2;width:clamp(112px,22vw,164px);min-height:72px;transform:translate(-50%,-50%);box-sizing:border-box;padding:9px 10px;border:1px solid rgba(175,82,222,.22);border-radius:8px;background:rgba(255,255,255,.96);box-shadow:0 8px 22px rgba(15,23,42,.12)}
+            .node-card{position:absolute;z-index:2;width:clamp(142px,24vw,188px);min-height:126px;transform:translate(-50%,-50%);box-sizing:border-box;padding:9px 10px;border:1px solid rgba(175,82,222,.22);border-radius:8px;background:rgba(255,255,255,.96);box-shadow:0 8px 22px rgba(15,23,42,.12)}
             .node-card strong{display:block;font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .node-card span{display:block;margin-top:6px;color:#475569;font-size:11px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .node-card footer{display:grid;gap:3px;margin-top:4px}
+            .node-card span{display:block;color:#475569;font-size:10px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .node-molecule{height:76px;margin-top:5px;border-radius:6px;background:rgba(248,250,252,.86);display:grid;place-items:center;overflow:hidden}
+            .node-molecule svg{position:static;width:100%;height:100%;display:block}
+            .node-molecule span{margin:0;color:#94a3b8;font-size:10px}
             .node-dot{position:absolute;z-index:2;transform:translate(-50%,-50%);display:grid;justify-items:center;gap:3px;color:#172033}
             .node-dot i{display:block;width:12px;height:12px;border-radius:50%;box-sizing:border-box;border:2px solid #f8fafc;background:#af52de;box-shadow:0 0 0 1px rgba(175,82,222,.26),0 5px 12px rgba(15,23,42,.18)}
             .node-dot span{display:block;max-width:84px;padding:2px 5px;border-radius:6px;background:rgba(255,255,255,.86);font-size:10px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1776,9 +1981,74 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
               \(nodes)
             </section>
           </main>
+          <script src="preview-rdkit-wasm.js"></script>
+          <script src="../assets/rdkit/RDKit_minimal.js"></script>
           <script>
-            window.addEventListener('load', function () {
-              try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: 'ready', message: 'ready', requestID: '\(requestID)' }); } catch (_) {}
+            const fepNodeMolblocks = \(molblocksJSON);
+            function base64ToBytes(value) {
+              const binary = atob(String(value || ''));
+              const bytes = new Uint8Array(binary.length);
+              for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+              return bytes;
+            }
+            function sanitizeSVG(svg) {
+              const template = document.createElement('template');
+              template.innerHTML = String(svg || '');
+              template.content.querySelectorAll('script,foreignObject').forEach(node => node.remove());
+              template.content.querySelectorAll('*').forEach(node => {
+                for (const attribute of Array.from(node.attributes || [])) {
+                  if (/^on/i.test(attribute.name)) node.removeAttribute(attribute.name);
+                }
+              });
+              return template.content.querySelector('svg');
+            }
+            async function renderFepMolecules() {
+              if (typeof window.initRDKitModule !== 'function') throw new Error('RDKit_minimal.js is missing');
+              const options = { locateFile: () => '../assets/rdkit/RDKit_minimal.wasm' };
+              if (window.BurreteRDKitWasmBase64) {
+                options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
+                window.BurreteRDKitWasmBase64 = '';
+              }
+              const rdkit = await window.initRDKitModule(options);
+              let rendered = 0;
+              for (const entry of fepNodeMolblocks) {
+                const target = Array.from(document.querySelectorAll('.node-molecule')).find(node => node.getAttribute('data-node-id') === String(entry.id));
+                if (!target) continue;
+                let mol = null;
+                try {
+                  mol = rdkit.get_mol(String(entry.molblock || ''));
+                  if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
+                  try { mol.set_new_coords?.(); } catch (_) {}
+                  const svg = sanitizeSVG(mol.get_svg(190, 110));
+                  if (!svg) throw new Error('empty drawing');
+                  target.replaceChildren(svg);
+                  rendered += 1;
+                } catch (error) {
+                  const span = document.createElement('span');
+                  span.textContent = error?.message || 'Molecule unavailable';
+                  target.replaceChildren(span);
+                } finally {
+                  try { mol?.delete?.(); } catch (_) {}
+                }
+              }
+              return rendered;
+            }
+            window.addEventListener('load', async function () {
+              let rdkitImages = 0;
+              try { rdkitImages = await renderFepMolecules(); } catch (_) {}
+              try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({
+                type: 'ready',
+                message: 'ready',
+                requestID: '\(requestID)',
+                mode: 'fep-graphml',
+                renderer: 'fep-graphml',
+                rowCount: \(graph.nodes.count),
+                renderedCount: \(graph.edges.count),
+                edgeCount: \(graph.edges.count),
+                rdkitImages: rdkitImages,
+                moleculesWithAtoms: \(graph.nodes.filter { $0.atoms > 0 }.count),
+                atomCount: \(graph.nodes.reduce(0) { $0 + $1.atoms })
+              }); } catch (_) {}
             });
           </script>
         </body>
@@ -1798,11 +2068,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let csp = runtimeCSP(for: renderer)
         let initialStatus: String
         let rendererAssets: String
+        let rdkitWasmAsset: String
         if renderer == "xyzrender-external" {
             initialStatus = "[web] HTML body created. Waiting for xyzrender artifact…"
             rendererAssets = ""
+            rdkitWasmAsset = ""
         } else {
             initialStatus = "[web] HTML body created. Waiting for embedded data and Mol* script…"
+            rdkitWasmAsset = """
+              <script src="preview-rdkit-wasm.js"></script>
+            """
             rendererAssets = """
               <script>
                 window.__mqlStatus && window.__mqlStatus('[web] About to load molstar.js from bundled resource…');
@@ -1895,6 +2170,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           </script>
           \(rendererAssets)
           <script src="preview-config.js"></script>
+          \(rdkitWasmAsset)
           <script>
             window.__mqlStatus && window.__mqlStatus('[web] About to load viewer.js from bundled resource…');
           </script>
@@ -2078,6 +2354,47 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return frames > 0 ? frames : nil
     }
 
+    private static func estimateTrajectoryFrameCount(
+        fileExtension: String,
+        sourceData: Data,
+        previewData: Data,
+        format: StructureFormat
+    ) -> Int? {
+        if format.molstarFormat == "xyz", !format.isBinary,
+           let frameCount = makeXYZPayload(from: previewData)?.frameCount {
+            return frameCount
+        }
+
+        let lowercasedExtension = fileExtension.lowercased()
+        if ["lammpstrj", "dump"].contains(lowercasedExtension) {
+            let lines = normalizedTextLines(from: sourceData)
+            let frameCount = PreviewStructureTextConverter.lammpsDumpFrameCount(lines)
+            return frameCount > 0 ? frameCount : nil
+        }
+
+        if ["pdb", "ent", "pdbqt", "pqr", "xpdb"].contains(lowercasedExtension) || format.molstarFormat == "pdb" {
+            let frameCount = pdbModelFrameCount(normalizedTextLines(from: previewData))
+            return frameCount > 0 ? frameCount : nil
+        }
+
+        return nil
+    }
+
+    private static func normalizedTextLines(from data: Data) -> [String] {
+        decodeText(data)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+    }
+
+    private static func pdbModelFrameCount(_ lines: [String]) -> Int {
+        let models = lines.reduce(0) { count, line in
+            count + (line.trimmingCharacters(in: .whitespaces).hasPrefix("MODEL") ? 1 : 0)
+        }
+        return models > 0 ? models : 1
+    }
+
     private static func decodeText(_ data: Data) -> String {
         if let value = String(data: data, encoding: .utf8) { return value }
         if let value = String(data: data, encoding: .isoLatin1) { return value }
@@ -2104,7 +2421,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func shouldTrySpectrumPreview(fileExtension: String, data: Data, url: URL) -> Bool {
         let lowercasedExtension = fileExtension.lowercased()
-        if ["ms", "magma", "mgf", "msp"].contains(lowercasedExtension) { return true }
+        if ["ms", "magma", "mgf", "msp", "mzml", "mzxml"].contains(lowercasedExtension) { return true }
         if lowercasedExtension == "json" {
             return looksLikeSubformulaSpectrumJSON(data: data)
         }
@@ -2112,6 +2429,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return looksLikeTabularSpectrum(data: data, delimiter: lowercasedExtension == "tsv" ? "\t" : ",")
         }
         return false
+    }
+
+    private static func shouldUseSpectrumPreview(
+        fileExtension: String,
+        previewPlan: BurretePreviewPlan?,
+        data: Data,
+        url: URL
+    ) -> Bool {
+        if let previewPlan {
+            return previewPlan.strategy == "custom" && previewPlan.renderer == "spectrum"
+        }
+        return shouldTrySpectrumPreview(fileExtension: fileExtension, data: data, url: url)
     }
 
     private static func looksLikeSubformulaSpectrumJSON(data: Data) -> Bool {
@@ -2187,6 +2516,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return parseMgfSpectrum(title: title, content: content)
         case "msp":
             return parseMspSpectrum(title: title, content: content)
+        case "mzml":
+            return parseMzmlSpectrum(title: title, content: content)
+        case "mzxml":
+            return parseMzxmlSpectrum(title: title, content: content)
         case "json":
             return try parseSubformulaSpectrum(title: title, content: content)
         case "csv":
@@ -2282,6 +2615,60 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
         guard !peaks.isEmpty else { return nil }
         return makeSpectrum(title: title, format: "MSP", peaks: peaks, metadata: metadata)
+    }
+
+    private static func parseMzmlSpectrum(title: String, content: String) -> QuickLookSpectrum? {
+        guard let document = try? XMLDocument(xmlString: content, options: []) else { return nil }
+        let spectrumElements = (try? document.nodes(forXPath: "//*[local-name()='spectrum']").compactMap { $0 as? XMLElement }) ?? []
+        for (index, element) in spectrumElements.prefix(250).enumerated() {
+            let arrays = (try? element.nodes(forXPath: ".//*[local-name()='binaryDataArray']").compactMap { $0 as? XMLElement }) ?? []
+            let mzValues = decodeMzmlArray(arrays.first { xmlElementHasCV($0, accession: "MS:1000514") })
+            let intensityValues = decodeMzmlArray(arrays.first { xmlElementHasCV($0, accession: "MS:1000515") })
+            let peaks = zipSpectrumPeaks(mzValues, intensityValues)
+            if !peaks.isEmpty {
+                return makeSpectrum(
+                    title: title,
+                    format: "MZML",
+                    peaks: peaks,
+                    metadata: ["id": element.attribute(forName: "id")?.stringValue ?? "spectrum-\(index + 1)"]
+                )
+            }
+            let fallbackPeaks = xmlPeakList(in: element)
+            if !fallbackPeaks.isEmpty {
+                return makeSpectrum(title: title, format: "MZML", peaks: fallbackPeaks, metadata: ["parser": "xml peak list"])
+            }
+        }
+        return nil
+    }
+
+    private static func parseMzxmlSpectrum(title: String, content: String) -> QuickLookSpectrum? {
+        guard let document = try? XMLDocument(xmlString: content, options: []) else { return nil }
+        let scanElements = (try? document.nodes(forXPath: "//*[local-name()='scan']").compactMap { $0 as? XMLElement }) ?? []
+        for (index, element) in scanElements.prefix(250).enumerated() {
+            if let peaksElement = (try? element.nodes(forXPath: ".//*[local-name()='peaks']").first as? XMLElement),
+               let text = peaksElement.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !text.isEmpty,
+               (peaksElement.attribute(forName: "compressionType")?.stringValue ?? "none").lowercased() == "none" {
+                let precision = Int(peaksElement.attribute(forName: "precision")?.stringValue ?? "32") ?? 32
+                let values = decodeBase64FloatArray(text, precision: precision, endian: "big")
+                let mzValues = stride(from: 0, to: values.count, by: 2).map { values[$0] }
+                let intensityValues = stride(from: 1, to: values.count, by: 2).map { values[$0] }
+                let peaks = zipSpectrumPeaks(mzValues, intensityValues)
+                if !peaks.isEmpty {
+                    return makeSpectrum(
+                        title: title,
+                        format: "MZXML",
+                        peaks: peaks,
+                        metadata: ["scan": element.attribute(forName: "num")?.stringValue ?? "\(index + 1)"]
+                    )
+                }
+            }
+            let fallbackPeaks = xmlPeakList(in: element)
+            if !fallbackPeaks.isEmpty {
+                return makeSpectrum(title: title, format: "MZXML", peaks: fallbackPeaks, metadata: ["parser": "xml peak list"])
+            }
+        }
+        return nil
     }
 
     private static func parseSubformulaSpectrum(title: String, content: String) throws -> QuickLookSpectrum? {
@@ -2385,6 +2772,71 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             .map(String.init)
         guard parts.count >= 2, let x = Double(parts[0]), let y = Double(parts[1]) else { return nil }
         return (x, y)
+    }
+
+    private static func zipSpectrumPeaks(_ xValues: [Double], _ yValues: [Double]) -> [QuickLookSpectrumPeak] {
+        let count = min(xValues.count, yValues.count)
+        guard count > 0 else { return [] }
+        return (0..<count).compactMap { index in
+            let x = xValues[index]
+            let y = yValues[index]
+            guard x.isFinite, y.isFinite else { return nil }
+            return QuickLookSpectrumPeak(x: x, y: y, label: nil, annotations: [:])
+        }
+    }
+
+    private static func decodeMzmlArray(_ element: XMLElement?) -> [Double] {
+        guard let element,
+              (try? element.nodes(forXPath: ".//*[local-name()='cvParam'][@accession='MS:1000574']"))?.isEmpty != false,
+              let binary = (try? element.nodes(forXPath: ".//*[local-name()='binary']").first)?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !binary.isEmpty else {
+            return []
+        }
+        let precision = xmlElementHasCV(element, accession: "MS:1000523") ? 64 : 32
+        return decodeBase64FloatArray(binary, precision: precision, endian: "little")
+    }
+
+    private static func xmlPeakList(in element: XMLElement) -> [QuickLookSpectrumPeak] {
+        let peakElements = (try? element.nodes(forXPath: ".//*[local-name()='peak']").compactMap { $0 as? XMLElement }) ?? []
+        return peakElements.compactMap { peak in
+            let x = xmlDoubleAttribute(peak, names: ["mz", "m_z", "mOverZ", "x"])
+            let y = xmlDoubleAttribute(peak, names: ["intensity", "inten", "abundance", "y"])
+            guard let x, let y else { return nil }
+            return QuickLookSpectrumPeak(x: x, y: y, label: peak.attribute(forName: "label")?.stringValue, annotations: [:])
+        }
+    }
+
+    private static func xmlDoubleAttribute(_ element: XMLElement, names: [String]) -> Double? {
+        for name in names {
+            if let value = element.attribute(forName: name)?.stringValue,
+               let number = Double(value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return number
+            }
+        }
+        return nil
+    }
+
+    private static func xmlElementHasCV(_ element: XMLElement, accession: String) -> Bool {
+        ((try? element.nodes(forXPath: ".//*[local-name()='cvParam'][@accession='\(accession)']"))?.isEmpty == false)
+    }
+
+    private static func decodeBase64FloatArray(_ text: String, precision: Int, endian: String) -> [Double] {
+        guard let data = Data(base64Encoded: text) else { return [] }
+        let step = precision == 64 ? 8 : 4
+        guard data.count >= step else { return [] }
+        return stride(from: 0, through: data.count - step, by: step).compactMap { offset in
+            let chunk = data[offset..<(offset + step)]
+            if step == 8 {
+                let bits = chunk.reduce(UInt64(0)) { value, byte in
+                    endian == "big" ? (value << 8) | UInt64(byte) : (value >> 8) | (UInt64(byte) << 56)
+                }
+                return Double(bitPattern: bits)
+            }
+            let bits = chunk.reduce(UInt32(0)) { value, byte in
+                endian == "big" ? (value << 8) | UInt32(byte) : (value >> 8) | (UInt32(byte) << 24)
+            }
+            return Double(Float(bitPattern: bits))
+        }
     }
 
     private static func numericArray(from value: Any?) -> [Double] {
@@ -2728,7 +3180,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             window.webkit?.messageHandlers?.burrete?.postMessage({
               type: 'ready',
               requestID: '\(requestID)',
-              message: 'spectrum ready'
+              message: 'ready',
+              mode: 'spectrum',
+              renderer: 'spectrum',
+              format: '\(htmlEscape(spectrum.format))',
+              peakCount: \(spectrum.primary.peaks.count)
             });
           </script>
         </body>
@@ -2940,6 +3396,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 return
             }
             if type == "setRenderer", let value = body["value"] as? String {
+                appendLog("JS message type=setRenderer value=\(value)")
                 setRendererOverride(value, orientationRefText: body["orientationRef"] as? String)
                 return
             }
@@ -2976,6 +3433,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 return
             }
             appendLog("JS message type=\(type): \(text.prefix(1600))")
+            if let evidence = Self.previewEvidenceLogLine(type: type, body: body) {
+                appendLog(evidence)
+            }
             if type == "ready" {
                 appendLog("elapsed.jsReadyMs=0")
                 guard let messageRequestID else {
@@ -3418,6 +3878,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if message.hasPrefix("resource.typeIdentifier=") { return true }
         if message.hasPrefix("elapsed.") { return true }
         if message.hasPrefix("[build] detected.format=") { return true }
+        if message.hasPrefix("[build] detected.previewMode=") { return true }
+        if message.hasPrefix("[build] trajectory.frames=") { return true }
         if message.hasPrefix("[build] elapsed.") { return true }
         if message.hasPrefix("[build] runtimeDirectory=") { return true }
         if message.hasPrefix("[build] runtime.index.exists=") { return true }
@@ -3443,11 +3905,52 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if message.contains("JS message type=status: [web] Parsing structure") { return true }
         if message.contains("JS message type=status: [web] Rendered") { return true }
         if message.contains("JS message type=ready: ready") { return true }
+        if message.hasPrefix("preview.evidence ") { return true }
         if message.hasPrefix("previewSourceMonitor.started") { return true }
         if message.hasPrefix("previewSource.changed") { return true }
         if message.hasPrefix("preview source changed on disk") { return true }
         if message.hasPrefix("reloading preview reason=source-changed") { return true }
         return false
+    }
+
+    private static func previewEvidenceLogLine(type: String, body: [String: Any]) -> String? {
+        let keys = [
+            "mode",
+            "renderer",
+            "format",
+            "sourceExtension",
+            "peakCount",
+            "rowCount",
+            "moleculeRowCount",
+            "renderedCount",
+            "edgeCount",
+            "moleculesWithAtoms",
+            "atomCount",
+            "rdkitLoaded",
+            "rdkitImages",
+            "rdkitPending",
+            "xyzrenderImages",
+            "externalArtifact",
+            "xyzrenderSvgBytes",
+            "molstarStructureCount",
+            "poseCount",
+            "trajectoryFrameCount"
+        ]
+        let parts = keys.compactMap { key -> String? in
+            guard let value = body[key], !(value is NSNull) else { return nil }
+            return "\(key)=\(previewEvidenceValue(value))"
+        }
+        guard !parts.isEmpty else { return nil }
+        return "preview.evidence type=\(type) " + parts.joined(separator: " ")
+    }
+
+    private static func previewEvidenceValue(_ value: Any) -> String {
+        if let value = value as? String {
+            let sanitized = value.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\t", with: " ")
+            return sanitized.isEmpty ? "\"\"" : sanitized
+        }
+        if let value = value as? Bool { return value ? "true" : "false" }
+        return String(describing: value)
     }
 
     private static func timestamp() -> String {
@@ -3759,6 +4262,10 @@ private enum PreviewStructureTextConverter {
            let pdb = pdbData(from: data, fileExtension: fileExtension, label: label) {
             return ConvertedStructure(data: pdb, format: .convertedPDB, auxiliaryFiles: [], stagedEntries: [])
         }
+        if ["lammpstrj", "dump"].contains(fileExtension.lowercased()),
+           let xyz = lammpsDumpXYZData(from: data, label: label) {
+            return ConvertedStructure(data: xyz, format: .convertedXYZ, auxiliaryFiles: [], stagedEntries: [])
+        }
         guard let xyz = xyzData(from: data, fileExtension: fileExtension, label: label) else { return nil }
         return ConvertedStructure(data: xyz, format: .convertedXYZ, auxiliaryFiles: [], stagedEntries: [])
     }
@@ -3811,6 +4318,28 @@ private enum PreviewStructureTextConverter {
 
     fileprivate static func shouldPreferConvertedMolstarData(fileExtension: String) -> Bool {
         ["ph4", "json"].contains(fileExtension.lowercased()) || isGROExtension(fileExtension) || isMOL2Extension(fileExtension)
+    }
+
+    fileprivate static func lammpsDumpFrameCount(_ lines: [String]) -> Int {
+        parseLammpsDumpFrames(lines).count
+    }
+
+    private static func lammpsDumpXYZData(from data: Data, label: String) -> Data? {
+        let text = decodeText(data)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let frames = parseLammpsDumpFrames(lines)
+        guard !frames.isEmpty else { return nil }
+
+        var xyz = ""
+        for (frameIndex, atoms) in frames.enumerated() {
+            xyz += "\(atoms.count)\nConverted from \(label) frame \(frameIndex + 1)\n"
+            for atom in atoms {
+                xyz += "\(atom.symbol) \(format(atom.x)) \(format(atom.y)) \(format(atom.z))\n"
+            }
+        }
+        return Data(xyz.utf8)
     }
 
     private static func pharmacophorePDBData(from data: Data, fileExtension: String, label: String) -> Data? {
@@ -5196,44 +5725,50 @@ private enum PreviewStructureTextConverter {
     }
 
     private static func parseLammpsDump(_ lines: [String]) -> [Atom]? {
-        var atoms: [Atom] = []
-        var inAtoms = false
-        var columns: [String] = []
-        var xIndex: Int?
-        var yIndex: Int?
-        var zIndex: Int?
-        var symbolIndex: Int?
-        var typeIndex: Int?
-        for line in lines {
-            if line.hasPrefix("ITEM: ") {
-                if inAtoms && !atoms.isEmpty { break }
-                inAtoms = false
-                if line.hasPrefix("ITEM: ATOMS") {
-                    columns = fields(String(line.dropFirst("ITEM: ATOMS".count)))
-                    xIndex = coordinateColumnIndex(columns, ["x", "xu", "xs", "xsu"])
-                    yIndex = coordinateColumnIndex(columns, ["y", "yu", "ys", "ysu"])
-                    zIndex = coordinateColumnIndex(columns, ["z", "zu", "zs", "zsu"])
-                    symbolIndex = coordinateColumnIndex(columns, ["element", "symbol", "name"])
-                    typeIndex = coordinateColumnIndex(columns, ["type"])
-                    inAtoms = xIndex != nil && yIndex != nil && zIndex != nil
+        parseLammpsDumpFrames(lines).first
+    }
+
+    private static func parseLammpsDumpFrames(_ lines: [String]) -> [[Atom]] {
+        var frames: [[Atom]] = []
+        var index = 0
+        while index < lines.count && frames.count < 100_000 {
+            let line = lines[index]
+            guard line.hasPrefix("ITEM: ATOMS") else {
+                index += 1
+                continue
+            }
+
+            let columns = fields(String(line.dropFirst("ITEM: ATOMS".count)))
+            guard let xIndex = coordinateColumnIndex(columns, ["x", "xu", "xs", "xsu"]),
+                  let yIndex = coordinateColumnIndex(columns, ["y", "yu", "ys", "ysu"]),
+                  let zIndex = coordinateColumnIndex(columns, ["z", "zu", "zs", "zsu"]) else {
+                index += 1
+                continue
+            }
+            let symbolIndex = coordinateColumnIndex(columns, ["element", "symbol", "name"])
+            let typeIndex = coordinateColumnIndex(columns, ["type"])
+            var atoms: [Atom] = []
+            index += 1
+
+            while index < lines.count && !lines[index].hasPrefix("ITEM: ") {
+                let line = lines[index]
+                index += 1
+                let parts = fields(line)
+                guard xIndex < parts.count, yIndex < parts.count, zIndex < parts.count,
+                      let x = Double(parts[xIndex]),
+                      let y = Double(parts[yIndex]),
+                      let z = Double(parts[zIndex]) else {
+                    continue
                 }
-                continue
+                let symbol = symbolIndex.flatMap { $0 < parts.count ? elementSymbol(fromAtomName: parts[$0]) : nil }
+                    ?? typeIndex.flatMap { $0 < parts.count ? elementSymbol(fromAtomName: parts[$0]) : nil }
+                    ?? "C"
+                atoms.append(Atom(symbol: symbol, x: x, y: y, z: z))
             }
-            guard inAtoms else { continue }
-            let parts = fields(line)
-            guard let xIndex, let yIndex, let zIndex,
-                  xIndex < parts.count, yIndex < parts.count, zIndex < parts.count,
-                  let x = Double(parts[xIndex]),
-                  let y = Double(parts[yIndex]),
-                  let z = Double(parts[zIndex]) else {
-                continue
-            }
-            let symbol = symbolIndex.flatMap { $0 < parts.count ? elementSymbol(fromAtomName: parts[$0]) : nil }
-                ?? typeIndex.flatMap { $0 < parts.count ? elementSymbol(fromAtomName: parts[$0]) : nil }
-                ?? "C"
-            atoms.append(Atom(symbol: symbol, x: x, y: y, z: z))
+
+            if !atoms.isEmpty { frames.append(atoms) }
         }
-        return atoms.isEmpty ? nil : atoms
+        return frames
     }
 
     private static func coordinateColumnIndex(_ columns: [String], _ names: [String]) -> Int? {
@@ -5592,7 +6127,7 @@ private enum PreviewExternalXyzrenderWorker {
             configArgument: configArgument,
             controls: normalizedControls,
             orientationRefText: orientationRefText,
-            executablePath: launch.executablePath
+            executablePath: launch.cacheKeyPath
         )
         if let cacheEntry = cacheEntryURL(for: cacheKey) {
             pruneCache(cacheEntry.deletingLastPathComponent())
@@ -5637,7 +6172,13 @@ private enum PreviewExternalXyzrenderWorker {
         let semaphore = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in semaphore.signal() }
         let started = Date()
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            throw PreviewExternalXyzrenderError.launchFailed(
+                diagnostics: launchFailureDiagnostics(error: error, launch: launch, arguments: arguments)
+            )
+        }
 
         if semaphore.wait(timeout: .now() + 25) == .timedOut {
             process.terminate()
@@ -5847,50 +6388,145 @@ private enum PreviewExternalXyzrenderWorker {
     }
 
     private static func resolvedExecutable(_ configuredExecutable: String) throws -> String {
-        if let bundledExecutable = bundledExecutablePath() {
+        var diagnostics: [String] = []
+        if let bundledExecutable = bundledExecutablePath(diagnostics: &diagnostics) {
             return bundledExecutable
         }
-        if !configuredExecutable.isEmpty { return configuredExecutable }
         let fileManager = FileManager.default
+        if !configuredExecutable.isEmpty {
+            diagnostics.append("configured=\(configuredExecutable)")
+            if configuredExecutable.hasPrefix("/") {
+                guard fileManager.isExecutableFile(atPath: configuredExecutable) else {
+                    diagnostics.append(candidateDiagnostic(path: configuredExecutable, label: "configured"))
+                    throw PreviewExternalXyzrenderError.missingExecutable(diagnostics: diagnostics.joined(separator: "; "))
+                }
+                return configuredExecutable
+            }
+            for directory in executableSearchPaths() {
+                let candidate = URL(fileURLWithPath: directory).appendingPathComponent(configuredExecutable).path
+                if fileManager.isExecutableFile(atPath: candidate) {
+                    return candidate
+                }
+            }
+            throw PreviewExternalXyzrenderError.missingExecutable(diagnostics: diagnostics.joined(separator: "; "))
+        }
         for directory in executableSearchPaths() {
             let candidate = URL(fileURLWithPath: directory).appendingPathComponent("xyzrender").path
-            if fileManager.fileExists(atPath: candidate) {
+            if fileManager.isExecutableFile(atPath: candidate) {
                 return candidate
             }
         }
-        throw PreviewExternalXyzrenderError.missingExecutable
+        throw PreviewExternalXyzrenderError.missingExecutable(diagnostics: diagnostics.joined(separator: "; "))
     }
 
-    private static func bundledExecutablePath() -> String? {
-        let appexURL = Bundle.main.bundleURL
-        let appURL = appexURL
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let candidate = appURL
-            .appendingPathComponent("Contents", isDirectory: true)
-            .appendingPathComponent("Resources", isDirectory: true)
-            .appendingPathComponent("xyzrender-runtime", isDirectory: true)
-            .appendingPathComponent("bin", isDirectory: true)
-            .appendingPathComponent("xyzrender", isDirectory: false)
-            .path
-        return FileManager.default.fileExists(atPath: candidate) ? candidate : nil
+    private static func bundledExecutablePath(diagnostics: inout [String]) -> String? {
+        for url in bundledExecutableStartURLs() {
+            if let candidate = bundledExecutablePath(startingAt: url, diagnostics: &diagnostics) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    private static func bundledExecutableStartURLs() -> [URL] {
+        var urls: [URL] = []
+        for bundle in [Bundle(for: PreviewViewController.self), Bundle.main] {
+            urls.append(bundle.bundleURL)
+            if let resourceURL = bundle.resourceURL { urls.append(resourceURL) }
+            if let executableURL = bundle.executableURL { urls.append(executableURL) }
+        }
+        if let argument0 = ProcessInfo.processInfo.arguments.first, !argument0.isEmpty {
+            urls.append(URL(fileURLWithPath: argument0))
+        }
+        var seen = Set<String>()
+        return urls.compactMap { url in
+            let path = url.standardizedFileURL.path
+            guard !seen.contains(path) else { return nil }
+            seen.insert(path)
+            return url
+        }
+    }
+
+    private static func bundledExecutablePath(startingAt bundleURL: URL, diagnostics: inout [String]) -> String? {
+        let fileManager = FileManager.default
+        var current = bundleURL.standardizedFileURL
+        for _ in 0..<8 {
+            let candidate = current
+                .appendingPathComponent("Contents", isDirectory: true)
+                .appendingPathComponent("Resources", isDirectory: true)
+                .appendingPathComponent("xyzrender-runtime", isDirectory: true)
+                .appendingPathComponent("bin", isDirectory: true)
+                .appendingPathComponent("xyzrender", isDirectory: false)
+                .path
+            let wrapperExists = fileManager.fileExists(atPath: candidate)
+            let isExecutable = fileManager.isExecutableFile(atPath: candidate)
+            if diagnostics.count < 12 {
+                diagnostics.append(candidateDiagnostic(path: candidate, label: "bundled"))
+            }
+            if wrapperExists {
+                if bundledPythonLaunch(for: candidate) != nil {
+                    return candidate
+                }
+                if diagnostics.count < 12 {
+                    diagnostics.append(bundledPythonDiagnostic(for: candidate))
+                }
+            }
+            if isExecutable {
+                return candidate
+            }
+            let parent = current.deletingLastPathComponent()
+            if parent.path == current.path { break }
+            current = parent
+        }
+        return nil
+    }
+
+    private static func candidateDiagnostic(path: String, label: String) -> String {
+        let fileManager = FileManager.default
+        return "\(label)=\(path) exists=\(fileManager.fileExists(atPath: path)) executable=\(fileManager.isExecutableFile(atPath: path))"
     }
 
     private struct PreviewXyzrenderLaunch {
         let executablePath: String
         let argumentPrefix: [String]
         let environment: [String: String]
+        let cacheKeyPath: String
+    }
+
+    private struct BundledXyzrenderPythonPaths {
+        let python: URL
+        let pythonHome: URL
+        let sitePackages: URL
     }
 
     private static func launchConfiguration(for executablePath: String) -> PreviewXyzrenderLaunch {
         if let bundledLaunch = bundledPythonLaunch(for: executablePath) {
             return bundledLaunch
         }
-        return PreviewXyzrenderLaunch(executablePath: executablePath, argumentPrefix: [], environment: [:])
+        return PreviewXyzrenderLaunch(
+            executablePath: executablePath,
+            argumentPrefix: [],
+            environment: [:],
+            cacheKeyPath: executablePath
+        )
     }
 
     private static func bundledPythonLaunch(for executablePath: String) -> PreviewXyzrenderLaunch? {
+        guard let paths = bundledPythonPaths(for: executablePath) else { return nil }
+        return PreviewXyzrenderLaunch(
+            executablePath: paths.python.path,
+            argumentPrefix: ["-m", "xyzrender.cli"],
+            environment: [
+                "PYTHONHOME": paths.pythonHome.path,
+                "PYTHONNOUSERSITE": "1",
+                "PYTHONPATH": paths.sitePackages.path
+            ],
+            cacheKeyPath: executablePath
+        )
+    }
+
+    private static func bundledPythonPaths(for executablePath: String) -> BundledXyzrenderPythonPaths? {
+        let fileManager = FileManager.default
         let executableURL = URL(fileURLWithPath: executablePath)
         guard executableURL.lastPathComponent == "xyzrender" else { return nil }
         let runtimeRoot = executableURL
@@ -5898,22 +6534,138 @@ private enum PreviewExternalXyzrenderWorker {
             .deletingLastPathComponent()
         guard runtimeRoot.lastPathComponent == "xyzrender-runtime" else { return nil }
         let resources = runtimeRoot.deletingLastPathComponent()
-        let python = resources
+        guard fileManager.fileExists(atPath: executablePath) else { return nil }
+        guard let sitePackages = bundledSitePackages(in: runtimeRoot) else { return nil }
+        guard let python = bundledPythonCandidates(appResources: resources).first(where: {
+            fileManager.fileExists(atPath: $0.path)
+        }) else { return nil }
+        return BundledXyzrenderPythonPaths(
+            python: python,
+            pythonHome: bundledPythonHome(for: python),
+            sitePackages: sitePackages
+        )
+    }
+
+    private static func bundledPythonDiagnostic(for executablePath: String) -> String {
+        let executableURL = URL(fileURLWithPath: executablePath)
+        let runtimeRoot = executableURL
+            .deletingLastPathComponent()
+                .deletingLastPathComponent()
+        let resources = runtimeRoot.deletingLastPathComponent()
+        let sitePackages = bundledSitePackages(in: runtimeRoot)
+            ?? runtimeRoot
+                .appendingPathComponent("lib", isDirectory: true)
+                .appendingPathComponent("python3.13", isDirectory: true)
+                .appendingPathComponent("site-packages", isDirectory: true)
+        let pythonDiagnostics = bundledPythonCandidates(appResources: resources)
+            .enumerated()
+            .map { index, python in candidateDiagnostic(path: python.path, label: "bundledPython\(index + 1)") }
+        return (pythonDiagnostics + [
+            candidateDiagnostic(path: sitePackages.path, label: "bundledSitePackages")
+        ]).joined(separator: "; ")
+    }
+
+    private static func bundledPythonCandidates(appResources: URL) -> [URL] {
+        var candidates: [URL] = []
+        for bundle in [Bundle(for: PreviewViewController.self), Bundle.main] {
+            if let resourceURL = bundle.resourceURL {
+                candidates.append(resourceURL.appendingPathComponent("xyzrender-python3", isDirectory: false))
+                candidates.append(bundledPythonURL(resources: resourceURL))
+            }
+            if let executableURL = bundle.executableURL {
+                candidates.append(bundledPythonURL(resources: executableURL.deletingLastPathComponent()))
+            }
+        }
+        candidates.append(bundledPythonURL(resources: appResources))
+        var seen = Set<String>()
+        return candidates.filter { seen.insert($0.standardizedFileURL.path).inserted }
+    }
+
+    private static func bundledPythonURL(resources: URL) -> URL {
+        resources
             .appendingPathComponent("xyzrender-python", isDirectory: true)
             .appendingPathComponent("bin", isDirectory: true)
             .appendingPathComponent("python3", isDirectory: false)
-        guard FileManager.default.isExecutableFile(atPath: python.path) else { return nil }
-        guard let sitePackages = findSitePackages(in: runtimeRoot.appendingPathComponent("lib", isDirectory: true), depth: 0) else {
-            return nil
+    }
+
+    private static func bundledPythonHome(for python: URL) -> URL {
+        if python.lastPathComponent == "xyzrender-python3" {
+            var current = python.deletingLastPathComponent()
+            for _ in 0..<8 {
+                let candidates = [
+                    current.appendingPathComponent("xyzrender-python", isDirectory: true),
+                    current
+                        .appendingPathComponent("Resources", isDirectory: true)
+                        .appendingPathComponent("xyzrender-python", isDirectory: true),
+                    current
+                        .appendingPathComponent("Contents", isDirectory: true)
+                        .appendingPathComponent("Resources", isDirectory: true)
+                        .appendingPathComponent("xyzrender-python", isDirectory: true)
+                ]
+                if let resourcesRoot = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
+                    return resourcesRoot
+                }
+                let parent = current.deletingLastPathComponent()
+                if parent.path == current.path { break }
+                current = parent
+            }
         }
-        return PreviewXyzrenderLaunch(
-            executablePath: python.path,
-            argumentPrefix: ["-m", "xyzrender.cli"],
-            environment: [
-                "PYTHONNOUSERSITE": "1",
-                "PYTHONPATH": sitePackages.path
-            ]
-        )
+        let pythonRoot = python
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        if pythonRoot.deletingLastPathComponent().lastPathComponent == "MacOS" {
+            let resourcesRoot = pythonRoot
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Resources", isDirectory: true)
+                .appendingPathComponent("xyzrender-python", isDirectory: true)
+            if FileManager.default.fileExists(atPath: resourcesRoot.path) {
+                return resourcesRoot
+            }
+        }
+        return pythonRoot
+    }
+
+    private static func bundledSitePackages(in runtimeRoot: URL) -> URL? {
+        let fileManager = FileManager.default
+        let libDirectory = runtimeRoot.appendingPathComponent("lib", isDirectory: true)
+        if let entries = try? fileManager.contentsOfDirectory(
+            at: libDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) {
+            for entry in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where entry.lastPathComponent.hasPrefix("python") {
+                let sitePackages = entry.appendingPathComponent("site-packages", isDirectory: true)
+                if fileManager.fileExists(atPath: sitePackages.path) {
+                    return sitePackages
+                }
+            }
+        }
+        for version in ["python3.13", "python3.12", "python3.11"] {
+            let sitePackages = libDirectory
+                .appendingPathComponent(version, isDirectory: true)
+                .appendingPathComponent("site-packages", isDirectory: true)
+            if fileManager.fileExists(atPath: sitePackages.path) {
+                return sitePackages
+            }
+        }
+        return findSitePackages(in: libDirectory, depth: 0)
+    }
+
+    private static func launchFailureDiagnostics(error: Error, launch: PreviewXyzrenderLaunch, arguments: [String]) -> String {
+        let nsError = error as NSError
+        var diagnostics = [
+            "domain=\(nsError.domain)",
+            "code=\(nsError.code)",
+            "message=\(nsError.localizedDescription)",
+            candidateDiagnostic(path: launch.executablePath, label: "launch"),
+            candidateDiagnostic(path: launch.cacheKeyPath, label: "cacheKey"),
+            "args=\(arguments.prefix(4).joined(separator: " "))"
+        ]
+        if let firstArgument = launch.argumentPrefix.first {
+            diagnostics.append(candidateDiagnostic(path: firstArgument, label: "launch.arg0"))
+        }
+        return diagnostics.joined(separator: "; ")
     }
 
     private static func findSitePackages(in directory: URL, depth: Int) -> URL? {
@@ -6280,15 +7032,20 @@ private enum PreviewExternalXyzrenderWorker {
 }
 
 private enum PreviewExternalXyzrenderError: LocalizedError {
-    case missingExecutable
+    case missingExecutable(diagnostics: String)
+    case launchFailed(diagnostics: String)
     case timedOut
     case missingOutput
     case failed(status: Int32, log: String)
 
     var errorDescription: String? {
         switch self {
-        case .missingExecutable:
-            return "External xyzrender executable was not found. Set an absolute xyzrender path in Burrete settings."
+        case .missingExecutable(let diagnostics):
+            let details = diagnostics.isEmpty ? "" : " Checked: \(diagnostics.prefix(900))"
+            return "External xyzrender executable was not found. Set an absolute xyzrender path in Burrete settings.\(details)"
+        case .launchFailed(let diagnostics):
+            let details = diagnostics.isEmpty ? "" : " Checked: \(diagnostics.prefix(900))"
+            return "External xyzrender process could not be launched.\(details)"
         case .timedOut:
             return "External xyzrender timed out after 25 seconds."
         case .missingOutput:
@@ -6369,7 +7126,7 @@ private struct PreviewPreferences {
     }
 
     static func load() -> PreviewPreferences {
-        let appID = "com.local.BurreteV10" as CFString
+        let appID = preferenceAppID()
         let showPanelControls = (CFPreferencesCopyAppValue("showPreviewPanelControls" as CFString, appID) as? Bool) ?? true
         let transparentBackground = (CFPreferencesCopyAppValue("useTransparentPreviewBackground" as CFString, appID) as? Bool) ?? false
         let viewerTheme = (CFPreferencesCopyAppValue("viewerTheme" as CFString, appID) as? String) ?? "auto"
@@ -6431,6 +7188,30 @@ private struct PreviewPreferences {
                 "bottom": "hidden"
             ]
         )
+    }
+
+    private static func preferenceAppID() -> CFString {
+        for bundle in [Bundle(for: PreviewViewController.self), Bundle.main] {
+            if let identifier = containingAppBundleIdentifier(startingAt: bundle.bundleURL) {
+                return identifier as CFString
+            }
+        }
+        return "com.local.BurreteV10" as CFString
+    }
+
+    private static func containingAppBundleIdentifier(startingAt bundleURL: URL) -> String? {
+        var current = bundleURL.standardizedFileURL
+        for _ in 0..<8 {
+            if current.pathExtension == "app",
+               let identifier = Bundle(url: current)?.bundleIdentifier,
+               !identifier.isEmpty {
+                return identifier
+            }
+            let parent = current.deletingLastPathComponent()
+            if parent.path == current.path { break }
+            current = parent
+        }
+        return nil
     }
 }
 
