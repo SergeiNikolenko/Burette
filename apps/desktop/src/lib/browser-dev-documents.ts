@@ -780,7 +780,8 @@ type BrowserDevContextPayload = BrowserDevDockingPayload & {
 };
 
 function isCoordinateTrajectoryPayload(payload: BrowserDevDockingPayload) {
-  return ["xtc", "trr", "dcd", "nctraj", "lammpstrj"].includes(payload.format.molstarFormat);
+  return ["xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj"]
+    .includes(payload.format.molstarFormat);
 }
 
 async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDockingPayload> {
