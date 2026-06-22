@@ -381,6 +381,12 @@ function renderPlot(
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
     font: { color: "var(--text-secondary)", family: "var(--ui-font)", size: 12 },
+    hoverlabel: {
+      bgcolor: "var(--surface-elevated)",
+      bordercolor: "var(--line-subtle)",
+      font: { color: "var(--text-primary)", family: "var(--ui-font)", size: 12 },
+      align: "left",
+    },
     bargap: 0.98,
     xaxis: {
       title: spectrum.xLabel,
@@ -577,13 +583,33 @@ function peakBarWidths(peaks: SpectrumPeak[]) {
 }
 
 function peakHoverData(peak: SpectrumPeak) {
-  const formula = peak.annotations?.frag_base_form ?? peak.label;
-  const annotationRows = Object.entries(peak.annotations ?? {})
-    .slice(0, 8)
-    .map(([key, value]) => `<br>${escapeHtml(key)}: ${escapeHtml(String(value))}`)
-    .join("");
-  const formulaRow = formula ? `<br>formula: ${escapeHtml(String(formula))}` : "";
-  return `m/z ${formatNumber(peak.x)}<br>intensity ${formatNumber(peak.y)}${formulaRow}${annotationRows}`;
+  const rows = [
+    `<b>m/z ${formatNumber(peak.x)}</b>`,
+    `Intensity ${formatNumber(peak.y)}`,
+  ];
+  const formula = annotationText(peak, "frag_base_form") || annotationText(peak, "formula") || peak.label || "";
+  if (formula) rows.push(escapeHtml(formula));
+  const details = [
+    annotationText(peak, "row") ? `Row ${escapeHtml(annotationText(peak, "row"))}` : "",
+    annotationNumberText(peak, "ppm_diff") ? `ppm ${annotationNumberText(peak, "ppm_diff")}` : "",
+  ].filter(Boolean);
+  if (details.length > 0) rows.push(details.join(" · "));
+  const fragmentMass = annotationNumberText(peak, "frag_mass");
+  if (fragmentMass) rows.push(`Fragment mass ${fragmentMass}`);
+  return rows.join("<br>");
+}
+
+function annotationText(peak: SpectrumPeak, key: string) {
+  const value = peak.annotations?.[key];
+  if (value === null || value === undefined || value === "") return "";
+  return String(value);
+}
+
+function annotationNumberText(peak: SpectrumPeak, key: string) {
+  const value = annotationText(peak, key);
+  if (!value) return "";
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? formatNumber(numeric) : escapeHtml(value);
 }
 
 function formatNumber(value: number) {
