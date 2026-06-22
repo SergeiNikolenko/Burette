@@ -84,6 +84,14 @@ export function ProjectGroup({
     event.stopPropagation();
     void showNativeContextMenu(projectMenuItems(project, actions), { x: event.clientX, y: event.clientY });
   };
+  const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (writeSidebarProjectItemsDrag(event.dataTransfer, project.items)) {
+      actions.setStructureDragActive(true);
+    }
+  };
+  const handleDragEnd = () => {
+    actions.setStructureDragActive(false);
+  };
 
   const toggleFolderPath = (path: string) => {
     const descendantPaths = collectProjectFolderPathsFor(projectTree, path).slice(1);
@@ -128,8 +136,11 @@ export function ProjectGroup({
         role="button"
         tabIndex={0}
         className="project-group-row"
+        draggable={project.items.length > 0}
         onClick={handleToggle}
         onContextMenu={handleContextMenu}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         onKeyDown={handleKeyDown}
         aria-expanded={expanded}
         aria-label={`${project.title}, ${project.items.length} structure${project.items.length === 1 ? "" : "s"}`}
@@ -342,6 +353,7 @@ function ProjectTreeNodeView({
     return <ProjectItem item={node.item} state={state} actions={actions} depth={depth} />;
   }
 
+  const nodeItems = projectTreeNodeItems(node);
   const expanded = forceExpanded || !collapsedFolderPaths.has(node.path);
   const handleToggle = () => {
     if (!forceExpanded) toggleFolderPath(node.path);
@@ -356,6 +368,14 @@ function ProjectTreeNodeView({
     event.preventDefault();
     event.stopPropagation();
     void showNativeContextMenu(projectFolderMenuItems(project, node.path, actions), { x: event.clientX, y: event.clientY });
+  };
+  const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (writeSidebarProjectItemsDrag(event.dataTransfer, nodeItems)) {
+      actions.setStructureDragActive(true);
+    }
+  };
+  const handleDragEnd = () => {
+    actions.setStructureDragActive(false);
   };
   const showAllChildren = showAllFolderPaths.has(node.path);
   const shouldLimitChildren = !forceExpanded
@@ -373,8 +393,11 @@ function ProjectTreeNodeView({
         tabIndex={0}
         className="project-folder-row"
         style={projectDepthStyle(depth)}
+        draggable={nodeItems.length > 0}
         onClick={handleToggle}
         onContextMenu={handleContextMenu}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         onKeyDown={handleKeyDown}
         aria-expanded={expanded}
         aria-label={node.path}
@@ -472,17 +495,9 @@ export function ProjectItem({
   };
 
   const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
-    writeStructureDragPayload(event.dataTransfer, {
-      paths: [item.path],
-      records: [],
-      items: [{
-        kind: "file",
-        title: item.title,
-        detail: item.relativePath,
-        path: item.path,
-      }],
-    });
-    actions.setStructureDragActive(true);
+    if (writeSidebarProjectItemsDrag(event.dataTransfer, [item])) {
+      actions.setStructureDragActive(true);
+    }
   };
 
   const handleDragEnd = () => {
@@ -651,6 +666,33 @@ function collectProjectFolderPathsFor(nodes: ProjectTreeNode[], path: string): s
     if (childPaths.length > 0) return childPaths;
   }
   return [];
+}
+
+function projectTreeNodeItems(node: ProjectTreeNode): SidebarProjectItem[] {
+  if (node.kind === "item") {
+    return [node.item];
+  }
+  return node.children.flatMap(projectTreeNodeItems);
+}
+
+function writeSidebarProjectItemsDrag(
+  dataTransfer: DataTransfer,
+  items: SidebarProjectItem[],
+) {
+  const draggableItems = items.filter((item) => item.path.trim().length > 0);
+  if (draggableItems.length === 0) {
+    return false;
+  }
+  return writeStructureDragPayload(dataTransfer, {
+    paths: draggableItems.map((item) => item.path),
+    records: [],
+    items: draggableItems.map((item) => ({
+      kind: "file",
+      title: item.title,
+      detail: item.relativePath,
+      path: item.path,
+    })),
+  });
 }
 
 function projectDepthStyle(depth: number): CSSProperties {
