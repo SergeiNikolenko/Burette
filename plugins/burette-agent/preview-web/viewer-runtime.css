@@ -283,6 +283,9 @@ body .msp-plugin .msp-control-row-label .msp-help {
   background-color: var(--buret-molstar-field-background) !important;
   border-color: var(--buret-molstar-border) !important;
 }
+body .msp-plugin .msp-control-row-label .msp-help.msp-btn-link {
+  background-color: transparent !important;
+}
 body .msp-plugin .msp-control-row > span.msp-control-row-label,
 body .msp-plugin .msp-control-row > button.msp-control-button-label,
 body .msp-plugin .msp-control-group-header > button,
@@ -332,11 +335,30 @@ body .msp-plugin .msp-viewport-controls-panel .msp-control-group-header > button
 body .msp-plugin .msp-viewport-controls-panel .msp-control-row {
   border-top: 1px solid var(--buret-molstar-border) !important;
   background: var(--buret-molstar-row-background) !important;
+  opacity: 1 !important;
+}
+body .msp-plugin .msp-control-row > span.msp-control-row-label,
+body .msp-plugin .msp-control-row > span.msp-control-row-label *,
+body .msp-plugin .msp-viewport-controls-panel .msp-control-row > span.msp-control-row-label,
+body .msp-plugin .msp-viewport-controls-panel .msp-control-row > span.msp-control-row-label * {
+  color: var(--buret-molstar-text) !important;
+  opacity: 1 !important;
 }
 body .msp-plugin .msp-viewport-controls-panel .msp-control-row > div,
 body .msp-plugin .msp-viewport-controls-panel .msp-control-row > div.msp-control-row-text,
 body .msp-plugin .msp-viewport-controls-panel .msp-control-current {
   background: var(--buret-molstar-field-background) !important;
+}
+body .msp-plugin .msp-viewport-controls-panel.buret-draggable-viewport-panel .msp-viewport-controls-panel-controls > .msp-control-row {
+  opacity: 1 !important;
+}
+body .msp-plugin .msp-viewport-controls-panel.buret-draggable-viewport-panel .msp-viewport-controls-panel-controls > .msp-control-row > .msp-control-row-label,
+body .msp-plugin .msp-viewport-controls-panel.buret-draggable-viewport-panel .msp-viewport-controls-panel-controls > .msp-control-row > .msp-control-row-label .msp-help,
+body .msp-plugin .msp-viewport-controls-panel.buret-draggable-viewport-panel .msp-viewport-controls-panel-controls > .msp-control-row > .msp-control-row-label .msp-btn-link {
+  color: var(--buret-molstar-text) !important;
+  -webkit-text-fill-color: var(--buret-molstar-text) !important;
+  font-weight: 500 !important;
+  opacity: 1 !important;
 }
 body .msp-plugin .msp-viewport-controls-panel .msp-help-text,
 body .msp-plugin .msp-viewport-controls-panel .msp-help-text div,
