@@ -39,11 +39,14 @@ const tauriFoldingResults = source("apps/desktop/src-tauri/src/commands/folding_
 assert.match(viteConfig, /registerBrowserDevFoldingResultRoute\(server, \{ isDevFileReadAllowed \}\)/);
 assert.match(browserDevFoldingResults, /server\.middlewares\.use\("\/__burette\/folding-result"/);
 assert.match(browserDevFoldingResults, /readBrowserDevFoldingResultBundle/);
-assert.match(browserDevFoldingResults, /if \(distance === 0 \|\| browserDevFoldingBundleReferencesInput\(bundle, inputPath\)\) return bundle;/);
+assert.match(browserDevFoldingResults, /if \(browserDevFoldingBundleReferencesInput\(bundle, inputPath\)\) return bundle;/);
 assert.doesNotMatch(browserDevFoldingResults, /fallback \|\| emptyBrowserDevFoldingBundle/);
-assert.match(tauriFoldingResults, /if distance == 0 \|\| folding_bundle_references_input\(&bundle, &input\) \{/);
+assert.match(tauriFoldingResults, /if folding_bundle_references_input\(&bundle, &input\) \{/);
 assert.doesNotMatch(tauriFoldingResults, /fallback\.unwrap_or_else/);
 assert.match(browserDevFoldingResults, /export function isNumpyArtifactExtension\(extension: string\)/);
+assert.doesNotMatch(browserDevFoldingResults, /distance === 0/);
+assert.doesNotMatch(browserDevFoldingResults, /fallback \|\| emptyBrowserDevFoldingBundle/);
+assert.doesNotMatch(browserDevFoldingResults, /dirname\(artifact\.path\) === parent/);
 assert.match(browserDevFiles, /isNumpyArtifactExtension\(extension\)/);
 assert.match(browserDevFiles, /numpyArtifactTextSummary\(filePath, bytes, info\.size\)/);
 assert.match(viteConfig, /"npy"/);
