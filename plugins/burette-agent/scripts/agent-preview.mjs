@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { createReadStream, existsSync } from 'node:fs';
-import { basename, extname, join, resolve, normalize } from 'node:path';
+import { basename, dirname, extname, join, resolve, normalize } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -13,8 +15,11 @@ const webRoot = process.env.BURRETE_AGENT_PREVIEW_WEB_ROOT
 const agentControlApiVersion = 'burette-agent-control/v1';
 const renderPanelReadLimit = 512 * 1024;
 const mvsReadLimit = 25 * 1024 * 1024;
+const amberNcPreviewFrameLimit = 100;
 const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt', 'crd', 'rst', 'state', 'lammpstrj', 'dump']);
 const textArtifactExtensions = new Set(['par', 'prm', 'rtf', 'str', 'key', 'chk', 'checkpoint']);
+const amberNetcdfExtensions = new Set(['nc', 'ncdf', 'netcdf', 'ncrst']);
+const topologyPreviewExtensions = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb']);
 
 function defaultPreviewWebRoot() {
   const pluginPreviewWeb = resolve(repoRoot, 'preview-web');
@@ -61,6 +66,10 @@ function isMaestroPreviewFile(file) {
   return ext === 'cms' || ext === 'mae';
 }
 
+function isAmberNetcdfFile(file) {
+  return amberNetcdfExtensions.has(extname(file).toLowerCase().replace(/^\./, ''));
+}
+
 function preparePreviewPayload(file, bytes) {
   const extension = extname(file).toLowerCase().replace(/^\./, '');
   if (coordinateArtifactExtensions.has(extension)) {
@@ -74,6 +83,92 @@ function preparePreviewPayload(file, bytes) {
   const converted = maestroPdbDataFromText(bytes.toString('utf8'));
   if (!converted) return { bytes, format: inferFormat(file), binary: isBinaryFormat(file) };
   return { bytes: Buffer.from(converted, 'utf8'), format: 'pdb', binary: false };
+}
+
+async function amberNcPreviewPayload(file) {
+  if (!isAmberNetcdfFile(file)) return null;
+  const topology = await findAmberNcTopology(file);
+  if (!topology) {
+    throw new Error(`${file}: Amber NetCDF trajectory requires a matching PDB topology/reference file in the same folder.`);
+  }
+  const tempDir = await mkdtemp(resolve(tmpdir(), 'burrete-amber-nc-preview-'));
+  const outputPath = resolve(tempDir, 'amber-nc-preview.pdb');
+  try {
+    const frameCount = runAmberNcExtractor(topology, file, outputPath);
+    const bytes = await readFile(outputPath);
+    return {
+      bytes,
+      format: 'pdb',
+      binary: false,
+      topologyPath: topology,
+      trajectoryPath: file,
+      trajectoryFrameCount: frameCount || countPdbModels(bytes.toString('utf8')),
+    };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function findAmberNcTopology(trajectoryPath) {
+  const folder = dirname(trajectoryPath);
+  const stem = basename(trajectoryPath).replace(/\.[^.]+$/u, '');
+  const preferred = [
+    'reference.pdb',
+    `${stem}.pdb`,
+    'topology.pdb',
+    'structure.pdb',
+    'system.pdb',
+    'top.pdb',
+  ].map((name) => resolve(folder, name));
+  const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+  const discovered = entries
+    .filter((entry) => entry.isFile() && topologyPreviewExtensions.has(extname(entry.name).toLowerCase().replace(/^\./, '')))
+    .map((entry) => resolve(folder, entry.name))
+    .sort((left, right) => left.localeCompare(right));
+  const candidates = Array.from(new Set([...preferred, ...discovered]));
+  const errors = [];
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) continue;
+    const tempDir = await mkdtemp(resolve(tmpdir(), 'burrete-amber-nc-probe-'));
+    const outputPath = resolve(tempDir, 'probe.pdb');
+    try {
+      runAmberNcExtractor(candidate, trajectoryPath, outputPath);
+      return candidate;
+    } catch (error) {
+      errors.push(`${basename(candidate)}: ${error?.message || String(error)}`);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+  if (errors.length) {
+    throw new Error(`${trajectoryPath}: no matching PDB topology found. ${errors.join('; ')}`);
+  }
+  return null;
+}
+
+function runAmberNcExtractor(topologyPath, trajectoryPath, outputPath) {
+  const extractor = resolve(__dirname, 'amber_nc_preview_extract.py');
+  if (!existsSync(extractor)) throw new Error(`Missing Amber NetCDF extractor: ${extractor}`);
+  const result = spawnSync('python3', [
+    extractor,
+    topologyPath,
+    trajectoryPath,
+    '--frames',
+    String(amberNcPreviewFrameLimit),
+    '--output',
+    outputPath,
+  ], { encoding: 'utf8' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const details = (result.stderr || result.stdout || '').trim();
+    throw new Error(details || `extractor exited with status ${result.status}`);
+  }
+  const match = String(result.stdout || '').match(/frames=(\d+)/u);
+  return match ? Number(match[1]) : 0;
+}
+
+function countPdbModels(text) {
+  return text.match(/^MODEL\b/gmu)?.length ?? 0;
 }
 
 function genericPdbDataFromText(text, extension, label) {
@@ -918,14 +1013,20 @@ async function main() {
   const structurePath = resolve(args.structure);
   const sourceBytes = await readFile(structurePath);
   const st = await stat(structurePath);
-  const preview = preparePreviewPayload(structurePath, sourceBytes);
+  const preview = await amberNcPreviewPayload(structurePath) ?? preparePreviewPayload(structurePath, sourceBytes);
   const extension = extname(structurePath).toLowerCase().replace(/^\./, '');
+  const trajectoryFrameCount = Number(preview.trajectoryFrameCount || 0);
   const config = {
-    label: basename(structurePath),
+    label: preview.topologyPath ? `${basename(structurePath)} + ${basename(preview.topologyPath)}` : basename(structurePath),
     format: preview.format,
     binary: preview.binary,
     byteCount: st.size,
     sourceExtension: extension,
+    sourcePath: structurePath,
+    topologyPath: preview.topologyPath || null,
+    trajectoryPath: preview.trajectoryPath || null,
+    trajectoryControls: trajectoryFrameCount > 1,
+    trajectoryFrameCount,
     textPreview: Boolean(preview.textPreview),
     showPanelControls: true,
     enablePreviewDocks: true,
