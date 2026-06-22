@@ -893,7 +893,11 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 }
 #buret-toolbar.collapsed .buret-grip,
 #buret-toolbar.buret-suppressed-by-molstar-panel .buret-grip {
-  min-width: 30px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  border-radius: 12px;
   cursor: pointer;
   background: var(--buret-toolbar-background);
   border: 1px solid var(--buret-toolbar-border);
@@ -1585,7 +1589,6 @@ body.buret-theme-light.burette-mobile-host .msp-plugin .msp-animation-viewport-c
   border-color: transparent !important;
   background: transparent !important;
 }
-body.burette-mobile-host .msp-plugin .msp-viewport-controls-buttons button,
 body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls button,
 body.burette-mobile-host .msp-plugin .msp-btn-icon,
 body.burette-mobile-host .msp-plugin .msp-btn-icon-small {
@@ -1595,15 +1598,23 @@ body.burette-mobile-host .msp-plugin .msp-btn-icon-small {
   font-size: 16px !important;
 }
 body.burette-mobile-host .msp-plugin .msp-viewport-controls-buttons button {
-  border: 0.5px solid rgba(255, 255, 255, 0.20) !important;
-  background: rgba(28, 28, 30, 0.70) !important;
-  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
-  -webkit-backdrop-filter: blur(32px) saturate(1.6);
-  backdrop-filter: blur(32px) saturate(1.6);
+  width: 40px !important;
+  min-width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  border: 1px solid var(--buret-toolbar-border) !important;
+  border-radius: 12px !important;
+  color: var(--buret-toolbar-color) !important;
+  background: var(--buret-toolbar-background) !important;
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-viewport-controls-buttons button {
-  border-color: rgba(0, 0, 0, 0.10) !important;
-  background: rgba(246, 246, 242, 0.76) !important;
+  border-color: var(--buret-toolbar-border) !important;
+  background: var(--buret-toolbar-background) !important;
 }
 body.burette-mobile-host .msp-plugin .msp-control-group-header,
 body.burette-mobile-host .msp-plugin .msp-control-group-header > button,
