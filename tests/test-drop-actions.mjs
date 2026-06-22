@@ -595,6 +595,32 @@ assert.deepEqual(groOnTrajectory, {
   },
 });
 
+const netcdfTrajectoryOnReference = resolveDropAction(payload(["/tmp/trajectory.nc"]), {
+  kind: "active-viewer",
+  documentPath: "/tmp/reference.pdb",
+  renderer: "molstar",
+});
+assert.deepEqual(netcdfTrajectoryOnReference, {
+  kind: "open-docking",
+  request: {
+    receptorPath: "/tmp/reference.pdb",
+    ligandPaths: ["/tmp/trajectory.nc"],
+  },
+});
+
+const referenceOnNetcdfTrajectory = resolveDropAction(payload(["/tmp/reference.pdb"]), {
+  kind: "active-viewer",
+  documentPath: "/tmp/trajectory.nc",
+  renderer: "molstar",
+});
+assert.deepEqual(referenceOnNetcdfTrajectory, {
+  kind: "open-docking",
+  request: {
+    receptorPath: "/tmp/reference.pdb",
+    ligandPaths: ["/tmp/trajectory.nc"],
+  },
+});
+
 const dragDropMatrix = [
   {
     name: "protein target plus ligand file opens docking view",
@@ -682,6 +708,21 @@ const dragDropMatrix = [
       request: {
         receptorPath: "/tmp/frame.gro",
         ligandPaths: ["/tmp/frame.xtc"],
+      },
+    },
+  },
+  {
+    name: "structure target plus NetCDF trajectory opens combined view",
+    actual: resolveDropAction(payload(["/tmp/trajectory.nc"]), {
+      kind: "active-viewer",
+      documentPath: "/tmp/reference.pdb",
+      renderer: "molstar",
+    }),
+    expected: {
+      kind: "open-docking",
+      request: {
+        receptorPath: "/tmp/reference.pdb",
+        ligandPaths: ["/tmp/trajectory.nc"],
       },
     },
   },
