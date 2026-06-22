@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { StatusKind } from "../components/types";
 import { openBrowserDevDocuments } from "../lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "../lib/browser-dev-text-files";
-import type { DockArea, DockDropInput, DockToolKind } from "../lib/dock";
+import type { DockArea, DockDropInput, DockTabKind, DockToolKind } from "../lib/dock";
 import {
   NOT_RENDERABLE_RENDERER,
   pathExtension,
@@ -43,6 +43,21 @@ type UseAppDockPayloadOpenOptions = {
   setDockDocument: (area: DockArea, documentId: string | null) => void;
   setDockTool: (area: DockArea, tool: DockToolKind | null) => void;
 };
+
+function browserDevDockDocumentIds(area: DockArea, paths: string[]) {
+  return Object.fromEntries(paths.map((path) => [path, `dock:${area}:${path}`]));
+}
+
+function openedDockTabKind(
+  input: DockDropInput,
+  openedStructures: ViewerDocument[],
+  openedTextDocuments: TextFileDocument[],
+) {
+  if (input.area !== "right" || input.tabKind !== "files") return input.tabKind;
+  if (openedStructures.length > 0) return "inspector";
+  if (openedTextDocuments.length > 0) return "text";
+  return input.tabKind;
+}
 
 export function useAppDockPayloadOpen({
   preferences,
@@ -92,7 +107,7 @@ export function useAppDockPayloadOpen({
           if (textResult.documents.length > 0) {
             addBackgroundTextDocuments(textResult.documents);
             setDockDocument(input.area, textResult.documents[0].id);
-            addDockDrop(input);
+            addDockDrop({ ...input, tabKind: openedDockTabKind(input, [], textResult.documents) });
           }
           const openedText = `Opened ${textResult.documents.length} text file${textResult.documents.length === 1 ? "" : "s"} in right dock`;
           if (textResult.errors.length > 0) {
@@ -127,7 +142,7 @@ export function useAppDockPayloadOpen({
       const structurePathResult = structurePaths.length > 0
         ? isTauriRuntime()
           ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences, reloadOptions: undefined })
-          : await openBrowserDevDocuments(structurePaths, preferences, undefined)
+          : await openBrowserDevDocuments(structurePaths, preferences, undefined, browserDevDockDocumentIds(input.area, structurePaths))
         : { documents: [], errors: [] };
       const spectrumTextResult = spectrumPaths.length > 0
         ? isTauriRuntime()
@@ -140,7 +155,7 @@ export function useAppDockPayloadOpen({
         try {
           const result = isTauriRuntime()
             ? await invoke<OpenDocumentsResult>("open_documents", { paths: [path], preferences, reloadOptions: undefined })
-            : await openBrowserDevDocuments([path], preferences, undefined);
+            : await openBrowserDevDocuments([path], preferences, undefined, browserDevDockDocumentIds(input.area, [path]));
           const documents = result.documents.filter((document) => document.renderer !== NOT_RENDERABLE_RENDERER);
           if (documents.length > 0 || result.errors.length > 0) {
             structureAndTextResults.push({ documents, errors: result.errors });
@@ -180,7 +195,7 @@ export function useAppDockPayloadOpen({
       const firstDockDocumentId = openedStructures[0]?.id ?? openedTextDocuments[0]?.id ?? null;
       if (firstDockDocumentId) {
         setDockDocument(input.area, firstDockDocumentId);
-        addDockDrop(input);
+        addDockDrop({ ...input, tabKind: openedDockTabKind(input, openedStructures, openedTextDocuments) });
       }
       const openedCount = openedStructures.length + openedTextDocuments.length;
       const openedText = `Opened ${openedCount} item${openedCount === 1 ? "" : "s"} in ${input.area === "right" ? "right dock" : "bottom dock"}`;

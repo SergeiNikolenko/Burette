@@ -338,9 +338,9 @@ export const useMoleculeStore = create<MoleculeState>()(
       addBackgroundDocuments: (incoming) =>
         set((state) => {
           if (incoming.length === 0) return state;
-          const byPath = new Map(state.documents.map((document) => [document.path, document]));
-          for (const document of incoming) byPath.set(document.path, document);
-          const documents = Array.from(byPath.values());
+          const byId = new Map(state.documents.map((document) => [document.id, document]));
+          for (const document of incoming) byId.set(document.id, document);
+          const documents = Array.from(byId.values());
           return { documents, activeDocumentId: activeDocumentIdFrom(state.tabs, state.activeTabId, documents) };
         }),
       openDocumentsInActiveTab: (incoming, options = {}) =>

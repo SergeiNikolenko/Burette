@@ -42,7 +42,7 @@ export function useAppViewerReloadActions({
       ...reloadOptions,
       xyzrenderOrientationRef: reloadOptions.xyzrenderOrientationRef ?? xyzrenderOrientationRefRef.current,
     };
-    const iframe = activeViewerIframeForDocument(document.id);
+    const iframe = activeViewerIframeForDocument(document.id, document.renderer);
     if (iframe?.contentWindow) {
       iframe.contentWindow.postMessage({
         source: "burrete-host",
