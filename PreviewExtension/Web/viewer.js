@@ -3193,7 +3193,6 @@
       toolbar.dataset.panelTogglesBound = '1';
     }
     bindThemeButton(toolbar, viewer);
-    bindMolstarEditUndoButton(toolbar);
     bindSaveModifiedStructureButton(toolbar);
     installMolstarEditUndoShortcuts();
     bindMolstarStyleControls(toolbar);
@@ -3220,29 +3219,6 @@
   function setMolstarStructureDirty(dirty) {
     molstarStructureDirty = dirty === true;
     updateSaveModifiedStructureButton();
-    updateMolstarEditUndoButton();
-  }
-
-  function updateMolstarEditUndoButton() {
-    const button = document.querySelector('#buret-toolbar [data-buret-action="undo-molstar-edit"]');
-    if (!button) return;
-    const visible = molstarEditUndoStack.length > 0 && !!activeViewer;
-    button.classList.toggle('hidden', !visible);
-    button.classList.toggle('active', visible);
-    button.setAttribute('aria-hidden', visible ? 'false' : 'true');
-    button.disabled = !visible;
-  }
-
-  function bindMolstarEditUndoButton(toolbar) {
-    const button = toolbar?.querySelector('[data-buret-action="undo-molstar-edit"]');
-    if (!button || button.dataset.bound === '1') return;
-    button.dataset.bound = '1';
-    button.addEventListener('click', () => {
-      void undoMolstarLastEdit().catch(error => {
-        setStatus(`[web] Undo failed.\n\n${error?.message || String(error)}`, 'error');
-      });
-    });
-    updateMolstarEditUndoButton();
   }
 
   function isMolstarEditUndoKeyboardTarget(target) {
@@ -9725,12 +9701,10 @@
     if (!snapshot?.payload?.text) return;
     molstarEditUndoStack.push(snapshot);
     while (molstarEditUndoStack.length > MOLSTAR_EDIT_HISTORY_LIMIT) molstarEditUndoStack.shift();
-    updateMolstarEditUndoButton();
   }
 
   function clearMolstarEditUndoHistory() {
     molstarEditUndoStack.length = 0;
-    updateMolstarEditUndoButton();
   }
 
   async function restoreMolstarEditUndoSnapshot(snapshot) {
@@ -9781,7 +9755,6 @@
 
   async function undoMolstarLastEdit() {
     const snapshot = molstarEditUndoStack.pop();
-    updateMolstarEditUndoButton();
     if (!snapshot) {
       setStatus('[web] Nothing to undo.');
       return;
@@ -9790,7 +9763,6 @@
       await restoreMolstarEditUndoSnapshot(snapshot);
     } catch (error) {
       molstarEditUndoStack.push(snapshot);
-      updateMolstarEditUndoButton();
       throw error;
     }
     setStatus(`[web] Undid ${snapshot.label}.`);
