@@ -4461,7 +4461,7 @@
         collectionSinglePdbs: prepared?.collectionSinglePdbs || []
       };
     }
-    if (prepared?.xyzFrameMode === 'all' || prepared?.sdfPoseMode === 'all') {
+    if (prepared?.sdfPoseMode === 'all') {
       const poseCount = Number(prepared?.xyzFrameCount || prepared?.sdfPoseRecordCount || activeConfig?.trajectoryFrameCount || 0);
       return {
         kind: 'trajectory-overlay',
@@ -4475,7 +4475,7 @@
         overlayOnly: true
       };
     }
-    if (prepared?.xyzFrameOverlayAvailable === true && activeSdfPoseMode === 'all') {
+    if (prepared?.xyzFrameOverlayAvailable === true) {
       const poseCount = Number(prepared?.poseCount || prepared?.xyzFrameCount || activeConfig?.trajectoryFrameCount || 0);
       if (!Number.isFinite(poseCount) || poseCount <= 1) return null;
       return {
@@ -5798,7 +5798,7 @@
         format: 'xyz',
         label: `${label} (${frames.length} XYZ frames)`,
         loadPreset: 'default',
-        nativeTrajectoryControls: true,
+        nativeTrajectoryControls: false,
         poseCount: frames.length,
         controlLabel: 'Frame',
         xyzFrameMode: 'single',
@@ -7094,7 +7094,7 @@
       await applySdfCollectionVisibility(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount));
       return;
     }
-    if (prepared.xyzFrameOverlayAvailable === true && activeSdfPoseMode === 'all') {
+    if (prepared.xyzFrameOverlayAvailable === true) {
       await applyXyzFrameOverlayVisibility(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount || prepared.xyzFrameCount));
       return;
     }
@@ -7885,13 +7885,13 @@
         updateSdfPoseButton(prepared);
       }
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
-      if (prepared.nativeTrajectoryControls) {
+      if (prepared.xyzFrameOverlayAvailable === true) {
+        await applyXyzFrameOverlayVisibility(activeViewer, prepared, index);
+      } else if (prepared.nativeTrajectoryControls) {
         const switched = await setNativeTrajectoryPose(index, poseCount);
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
       } else if (prepared.kind === 'sdf-collection') {
         await applySdfCollectionVisibility(activeViewer, prepared, index);
-      } else if (prepared.xyzFrameOverlayAvailable === true) {
-        await applyXyzFrameOverlayVisibility(activeViewer, prepared, index);
       } else {
         await reloadActiveMolstarStructure();
       }
