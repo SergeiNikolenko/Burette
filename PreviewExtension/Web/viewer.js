@@ -10164,9 +10164,39 @@
     throw lastError || new Error('RDKit_minimal.js is missing.');
   }
 
+  function molstarPreviewRDKitWasmCandidates() {
+    const candidates = [];
+    const add = value => {
+      const text = String(value || '').trim();
+      if (text && !candidates.includes(text)) candidates.push(text);
+    };
+    add(window.BurreteConfig?.rdkitWasmPath);
+    add(runtimeURL('BurreteRDKitWasmURL', ''));
+    add('rdkit/RDKit_minimal.wasm');
+    add('../assets/rdkit/RDKit_minimal.wasm');
+    add('/__burette/rdkit-wasm');
+    return candidates;
+  }
+
+  async function molstarPreviewLoadRDKitWasmBinary() {
+    let lastError = null;
+    for (const path of molstarPreviewRDKitWasmCandidates()) {
+      try {
+        const response = await fetch(path, { cache: 'force-cache' });
+        if (!response.ok) throw new Error(`Failed to load RDKit wasm from ${path}: ${response.status} ${response.statusText}`);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (!bytes.length) throw new Error(`Failed to load RDKit wasm from ${path}: empty response`);
+        return bytes;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError || new Error('RDKit_minimal.wasm is missing.');
+  }
+
   function molstarPreviewRDKitWasmPath(file) {
     if (!String(file || '').endsWith('.wasm')) return file;
-    return window.BurreteConfig?.rdkitWasmPath || 'rdkit/RDKit_minimal.wasm';
+    return molstarPreviewRDKitWasmCandidates()[0] || 'rdkit/RDKit_minimal.wasm';
   }
 
   async function molstarPreviewInitRDKit() {
@@ -10181,6 +10211,8 @@
       if (window.BurreteRDKitWasmBase64) {
         options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
         window.BurreteRDKitWasmBase64 = '';
+      } else {
+        options.wasmBinary = await molstarPreviewLoadRDKitWasmBinary();
       }
       molstarPreviewRdkit = await window.initRDKitModule(options);
       return molstarPreviewRdkit;
@@ -10201,23 +10233,125 @@
       });
   }
 
+  function molstarPreviewParseMolblock2D(data) {
+    const lines = String(data || '').replace(/\r\n/gu, '\n').replace(/\r/gu, '\n').split('\n');
+    const countsIndex = lines.findIndex(line => /\bV2000\b/u.test(line));
+    if (countsIndex < 0) return null;
+    const countsLine = lines[countsIndex] || '';
+    const countsTokens = countsLine.trim().split(/\s+/u);
+    const atomCount = Number.parseInt(countsLine.slice(0, 3).trim() || countsTokens[0], 10);
+    const bondCount = Number.parseInt(countsLine.slice(3, 6).trim() || countsTokens[1], 10);
+    if (!Number.isFinite(atomCount) || atomCount <= 0 || atomCount > 512) return null;
+    const atoms = [];
+    for (let i = 0; i < atomCount; i++) {
+      const line = lines[countsIndex + 1 + i] || '';
+      const tokens = line.trim().split(/\s+/u);
+      const x = Number.parseFloat(line.slice(0, 10).trim() || tokens[0]);
+      const y = Number.parseFloat(line.slice(10, 20).trim() || tokens[1]);
+      const z = Number.parseFloat(line.slice(20, 30).trim() || tokens[2]);
+      const element = (line.slice(31, 34).trim() || tokens[3] || 'C').replace(/[^A-Za-z0-9+-]/gu, '') || 'C';
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      atoms.push({ x, y, z: Number.isFinite(z) ? z : 0, element });
+    }
+    const bonds = [];
+    for (let i = 0; i < bondCount; i++) {
+      const line = lines[countsIndex + 1 + atomCount + i] || '';
+      const tokens = line.trim().split(/\s+/u);
+      const a = Number.parseInt(line.slice(0, 3).trim() || tokens[0], 10) - 1;
+      const b = Number.parseInt(line.slice(3, 6).trim() || tokens[1], 10) - 1;
+      const order = Number.parseInt(line.slice(6, 9).trim() || tokens[2], 10);
+      if (Number.isInteger(a) && Number.isInteger(b) && atoms[a] && atoms[b]) {
+        bonds.push({ a, b, order: Number.isFinite(order) ? Math.max(1, Math.min(3, order)) : 1 });
+      }
+    }
+    return { atoms, bonds };
+  }
+
+  function molstarPreviewAtomColor(element) {
+    const key = String(element || '').toUpperCase();
+    if (key === 'O') return '#ef3124';
+    if (key === 'N') return '#3157d8';
+    if (key === 'S') return '#d6c51d';
+    if (key === 'P') return '#f28c28';
+    if (key === 'F' || key === 'CL') return '#52b947';
+    if (key === 'BR') return '#8f4b2e';
+    if (key === 'I') return '#7442a8';
+    if (key === 'H') return '#f7f7f7';
+    return '#8f9499';
+  }
+
+  function molstarMoleculePreviewFallbackSVG(entry) {
+    const parsed = molstarPreviewParseMolblock2D(entry?.data);
+    if (!parsed?.atoms?.length) return '';
+    const size = MOLSTAR_PREVIEW_RDKIT_SVG_SIZE;
+    const pad = 18;
+    let atoms = parsed.atoms;
+    let minX = Math.min(...atoms.map(atom => atom.x));
+    let maxX = Math.max(...atoms.map(atom => atom.x));
+    let minY = Math.min(...atoms.map(atom => atom.y));
+    let maxY = Math.max(...atoms.map(atom => atom.y));
+    if (Math.abs(maxX - minX) < 0.001 && Math.abs(maxY - minY) < 0.001) {
+      atoms = atoms.map((atom, index) => {
+        const angle = (Math.PI * 2 * index) / Math.max(1, parsed.atoms.length);
+        return { ...atom, x: Math.cos(angle), y: Math.sin(angle) };
+      });
+      minX = Math.min(...atoms.map(atom => atom.x));
+      maxX = Math.max(...atoms.map(atom => atom.x));
+      minY = Math.min(...atoms.map(atom => atom.y));
+      maxY = Math.max(...atoms.map(atom => atom.y));
+    }
+    const width = Math.max(0.001, maxX - minX);
+    const height = Math.max(0.001, maxY - minY);
+    const scale = Math.min((size - pad * 2) / width, (size - pad * 2) / height);
+    const dx = (size - width * scale) / 2;
+    const dy = (size - height * scale) / 2;
+    const point = atom => ({
+      x: dx + (atom.x - minX) * scale,
+      y: size - (dy + (atom.y - minY) * scale)
+    });
+    const bondLines = parsed.bonds.map(bond => {
+      const a = point(atoms[bond.a]);
+      const b = point(atoms[bond.b]);
+      return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="#4c5258" stroke-width="${Math.max(2, bond.order + 1)}" stroke-linecap="round" />`;
+    }).join('');
+    const atomNodes = atoms.map(atom => {
+      const p = point(atom);
+      const color = molstarPreviewAtomColor(atom.element);
+      const label = escapeHTML(atom.element);
+      return `<g><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="8.5" fill="${color}" stroke="#202326" stroke-width="1.5" /><text x="${p.x.toFixed(1)}" y="${(p.y + 3.5).toFixed(1)}" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="8" font-weight="700" fill="#111">${label}</text></g>`;
+    }).join('');
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" data-buret-rdkit-svg="fallback" style="width:100%;height:100%;display:block"><rect width="${size}" height="${size}" rx="14" fill="#fff"/>${bondLines}${atomNodes}</svg>`;
+  }
+
+  function molstarPreviewCacheSVG(key, svg) {
+    molstarPreviewSvgCache.set(key, svg);
+    while (molstarPreviewSvgCache.size > 64) molstarPreviewSvgCache.delete(molstarPreviewSvgCache.keys().next().value);
+  }
+
   async function molstarMoleculePreviewRDKitSVG(entry) {
     if (normalizeFormat(entry?.format) !== 'sdf') return '';
     const key = molstarPreviewKey(entry);
     if (molstarPreviewSvgCache.has(key)) return molstarPreviewSvgCache.get(key);
-    const rdkit = await molstarPreviewInitRDKit();
-    let mol = null;
     try {
-      mol = rdkit.get_mol(String(entry.data || ''));
-      if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
-      try { mol.set_new_coords?.(); } catch (_) {}
-      const svg = molstarPreviewCleanRDKitSVG(mol.get_svg(MOLSTAR_PREVIEW_RDKIT_SVG_SIZE, MOLSTAR_PREVIEW_RDKIT_SVG_SIZE));
-      if (!svg.includes('<svg')) throw new Error('empty drawing');
-      molstarPreviewSvgCache.set(key, svg);
-      while (molstarPreviewSvgCache.size > 64) molstarPreviewSvgCache.delete(molstarPreviewSvgCache.keys().next().value);
-      return svg;
-    } finally {
-      try { mol?.delete?.(); } catch (_) {}
+      const rdkit = await molstarPreviewInitRDKit();
+      let mol = null;
+      try {
+        mol = rdkit.get_mol(String(entry.data || ''));
+        if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
+        try { mol.set_new_coords?.(); } catch (_) {}
+        const svg = molstarPreviewCleanRDKitSVG(mol.get_svg(MOLSTAR_PREVIEW_RDKIT_SVG_SIZE, MOLSTAR_PREVIEW_RDKIT_SVG_SIZE));
+        if (!svg.includes('<svg')) throw new Error('empty drawing');
+        molstarPreviewCacheSVG(key, svg);
+        return svg;
+      } finally {
+        try { mol?.delete?.(); } catch (_) {}
+      }
+    } catch (error) {
+      debug(`RDKit molecule preview failed; using SVG fallback: ${error?.message || error}`);
+      const fallback = molstarMoleculePreviewFallbackSVG(entry);
+      if (!fallback) throw error;
+      molstarPreviewCacheSVG(key, fallback);
+      return fallback;
     }
   }
 
@@ -10255,7 +10389,10 @@
         if (imageEl) imageEl.innerHTML = svg;
       })
       .catch(() => {
-        if (!image && molstarMoleculePreview?.dataset?.buretPreviewKey === key) hideMolstarMoleculePreview({ force: true });
+        if (!image && molstarMoleculePreview?.dataset?.buretPreviewKey === key) {
+          const imageEl = molstarMoleculePreview.querySelector('.buret-molstar-molecule-preview-image');
+          if (imageEl) imageEl.textContent = '2D preview unavailable';
+        }
       });
   }
 
