@@ -602,7 +602,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             auxiliaryFiles: structurePreview.auxiliaryFiles,
             gridRecordsScript: nil,
             requiredAssets: runtimeAssets(for: structurePreview.renderer),
-            requiresRDKit: false,
+            requiresRDKit: structurePreview.renderer == BurreteRendererMode.molstar,
             externalArtifactSourceURL: structurePreview.externalArtifactSourceURL,
             fileManager: fileManager,
             diagnostics: &diagnostics
@@ -2068,11 +2068,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let csp = runtimeCSP(for: renderer)
         let initialStatus: String
         let rendererAssets: String
+        let rdkitWasmAsset: String
         if renderer == "xyzrender-external" {
             initialStatus = "[web] HTML body created. Waiting for xyzrender artifact…"
             rendererAssets = ""
+            rdkitWasmAsset = ""
         } else {
             initialStatus = "[web] HTML body created. Waiting for embedded data and Mol* script…"
+            rdkitWasmAsset = """
+              <script src="preview-rdkit-wasm.js"></script>
+            """
             rendererAssets = """
               <script>
                 window.__mqlStatus && window.__mqlStatus('[web] About to load molstar.js from bundled resource…');
@@ -2165,6 +2170,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           </script>
           \(rendererAssets)
           <script src="preview-config.js"></script>
+          \(rdkitWasmAsset)
           <script>
             window.__mqlStatus && window.__mqlStatus('[web] About to load viewer.js from bundled resource…');
           </script>
