@@ -19,6 +19,7 @@
   const MOLSTAR_TOUCH_PICK_STEP_PX = 6;
   const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 260;
   const MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300;
+  const MOLSTAR_EDIT_HISTORY_LIMIT = 20;
   const VIEWER_THEME_STORAGE_KEY = 'buret.viewer.theme';
   const SDF_POSE_MODE_STORAGE_KEY = 'buret.sdf.poseMode';
   const SDF_CONTEXT_STYLE_STORAGE_KEY = 'buret.sdf.contextStyle';
@@ -106,6 +107,7 @@
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
   const molstarPreviewSvgCache = new Map();
+  const molstarEditUndoStack = [];
   let activeDockingPrepared = null;
   let burreteAgentActionPollTimer = 0;
   let burreteAgentActionPollBusy = false;
@@ -1852,6 +1854,7 @@
     const transitionFrame = captureMolstarTransitionFrame();
     let prepared = null;
     try {
+      clearMolstarEditUndoHistory();
       if (typeof plugin?.clear === 'function') await plugin.clear();
       prepared = structureDataForMolstar(nextConfig);
       await withTimeout(
@@ -3190,7 +3193,9 @@
       toolbar.dataset.panelTogglesBound = '1';
     }
     bindThemeButton(toolbar, viewer);
+    bindMolstarEditUndoButton(toolbar);
     bindSaveModifiedStructureButton(toolbar);
+    installMolstarEditUndoShortcuts();
     bindMolstarStyleControls(toolbar);
     bindXyzrenderControls(toolbar);
     const sdfPoseButton = toolbar.querySelector('[data-buret-action="sdf-poses"]');
@@ -3215,6 +3220,51 @@
   function setMolstarStructureDirty(dirty) {
     molstarStructureDirty = dirty === true;
     updateSaveModifiedStructureButton();
+    updateMolstarEditUndoButton();
+  }
+
+  function updateMolstarEditUndoButton() {
+    const button = document.querySelector('#buret-toolbar [data-buret-action="undo-molstar-edit"]');
+    if (!button) return;
+    const visible = molstarEditUndoStack.length > 0 && !!activeViewer;
+    button.classList.toggle('hidden', !visible);
+    button.classList.toggle('active', visible);
+    button.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    button.disabled = !visible;
+  }
+
+  function bindMolstarEditUndoButton(toolbar) {
+    const button = toolbar?.querySelector('[data-buret-action="undo-molstar-edit"]');
+    if (!button || button.dataset.bound === '1') return;
+    button.dataset.bound = '1';
+    button.addEventListener('click', () => {
+      void undoMolstarLastEdit().catch(error => {
+        setStatus(`[web] Undo failed.\n\n${error?.message || String(error)}`, 'error');
+      });
+    });
+    updateMolstarEditUndoButton();
+  }
+
+  function isMolstarEditUndoKeyboardTarget(target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest('#buret-toolbar, .buret-molecule-context-menu')) return true;
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return false;
+    return true;
+  }
+
+  function installMolstarEditUndoShortcuts() {
+    if (window.__buretteMolstarEditUndoShortcutsInstalled) return;
+    window.__buretteMolstarEditUndoShortcutsInstalled = true;
+    document.addEventListener('keydown', event => {
+      const key = String(event.key || '').toLowerCase();
+      if (key !== 'z' || event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)) return;
+      if (!molstarEditUndoStack.length || !isMolstarEditUndoKeyboardTarget(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void undoMolstarLastEdit().catch(error => {
+        setStatus(`[web] Undo failed.\n\n${error?.message || String(error)}`, 'error');
+      });
+    }, true);
   }
 
   function updateSaveModifiedStructureButton() {
@@ -9645,6 +9695,108 @@
     return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayloadForFormat(format, target));
   }
 
+  function molstarEditSnapshotFormat(payload) {
+    const explicit = String(payload?.format || '').trim();
+    if (explicit) return normalizeFormat(explicit);
+    const name = String(payload?.name || '').toLowerCase();
+    const mimeType = String(payload?.mimeType || '').toLowerCase();
+    if (mimeType.includes('pdb') || name.endsWith('.pdb')) return 'pdb';
+    if (mimeType.includes('cif') || name.endsWith('.cif') || name.endsWith('.mcif') || name.endsWith('.mmcif')) return 'mmcif';
+    return normalizeFormat(activeConfig?.molstarFormat || activeConfig?.format || 'mmcif');
+  }
+
+  function captureMolstarEditUndoSnapshot(label) {
+    const payload = molstarModifiedStructureExportPayload();
+    const text = String(payload?.text || '');
+    if (!text.trim()) throw new Error('Mol* returned an empty undo snapshot.');
+    return {
+      label: String(label || payload.name || 'Mol* edit'),
+      dirty: molstarStructureDirty,
+      payload: {
+        name: payload.name,
+        mimeType: payload.mimeType,
+        text,
+        format: molstarEditSnapshotFormat(payload)
+      }
+    };
+  }
+
+  function pushMolstarEditUndoSnapshot(snapshot) {
+    if (!snapshot?.payload?.text) return;
+    molstarEditUndoStack.push(snapshot);
+    while (molstarEditUndoStack.length > MOLSTAR_EDIT_HISTORY_LIMIT) molstarEditUndoStack.shift();
+    updateMolstarEditUndoButton();
+  }
+
+  function clearMolstarEditUndoHistory() {
+    molstarEditUndoStack.length = 0;
+    updateMolstarEditUndoButton();
+  }
+
+  async function restoreMolstarEditUndoSnapshot(snapshot) {
+    if (!activeViewer) throw new Error('Mol* viewer is not ready.');
+    const payload = snapshot?.payload || {};
+    const text = String(payload.text || '');
+    if (!text.trim()) throw new Error('Undo snapshot is empty.');
+    const format = molstarEditSnapshotFormat(payload);
+    const label = String(snapshot.label || payload.name || 'Mol* undo snapshot');
+    const prepared = {
+      data: text,
+      format,
+      label,
+      molstarStyleOverride: configuredMolstarStyle(activeConfig || window.BurreteConfig || {})
+    };
+    const plugin = activeViewer.plugin;
+    const transitionFrame = captureMolstarTransitionFrame();
+    try {
+      if (typeof plugin?.clear !== 'function') throw new Error('Mol* cannot replace the current structure in this runtime.');
+      await plugin.clear();
+      await withTimeout(
+        loadPreparedStructure(activeViewer, prepared),
+        45000,
+        `Mol* timed out while restoring ${label}.`
+      );
+      applyLayoutState(activeViewer);
+      scheduleLayoutStateReapply(activeViewer);
+      try { activeViewer.handleResize(); } catch (_) {}
+      fadeMolstarTransitionFrame(transitionFrame);
+    } catch (error) {
+      removeMolstarTransitionFrame(transitionFrame);
+      throw error;
+    }
+    setMolstarStructureDirty(snapshot.dirty === true);
+    clearMolstarSelection();
+    try {
+      window.BurreteAgent?.notifyStructureLoaded?.({
+        viewer: activeViewer,
+        plugin: activeViewer.plugin,
+        config: activeConfig || window.BurreteConfig || {},
+        prepared
+      });
+      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
+    } catch (error) {
+      debug('BurreteAgent notifyStructureLoaded failed after Mol* undo: ' + (error && error.message || String(error)));
+    }
+  }
+
+  async function undoMolstarLastEdit() {
+    const snapshot = molstarEditUndoStack.pop();
+    updateMolstarEditUndoButton();
+    if (!snapshot) {
+      setStatus('[web] Nothing to undo.');
+      return;
+    }
+    try {
+      await restoreMolstarEditUndoSnapshot(snapshot);
+    } catch (error) {
+      molstarEditUndoStack.push(snapshot);
+      updateMolstarEditUndoButton();
+      throw error;
+    }
+    setStatus(`[web] Undid ${snapshot.label}.`);
+    setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+  }
+
   async function resetMolstarCameraForContext() {
     try {
       const result = await window.BurreteAgent?.run?.({
@@ -9877,26 +10029,36 @@
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(`[web] Selected ${targetLabel}.`);
       } else if (action === 'remove') {
+        const undoSnapshot = captureMolstarEditUndoSnapshot(`delete ${targetLabel}`);
         if (!await deleteMolstarContextPick(target)) throw new Error('No editable Mol* residue or ligand is available to delete.');
+        pushMolstarEditUndoSnapshot(undoSnapshot);
         setMolstarStructureDirty(true);
         setStatus(`[web] Deleted ${targetLabel}.`);
       } else if (action === 'remove-type') {
         const bulkLabel = molstarContextBulkDeleteLabel(target);
+        const undoSnapshot = captureMolstarEditUndoSnapshot(`delete ${bulkLabel}`);
         if (!await deleteMolstarContextBulkType(target)) throw new Error(`No editable Mol* ${bulkLabel} is available to delete.`);
+        pushMolstarEditUndoSnapshot(undoSnapshot);
         setMolstarStructureDirty(true);
         setStatus(`[web] Deleted ${bulkLabel}.`);
       } else if (action === 'remove-chain') {
+        const chainLabel = molstarContextChainLabel(target.atom);
+        const undoSnapshot = captureMolstarEditUndoSnapshot(`delete ${chainLabel}`);
         if (!await deleteMolstarContextChain(target)) throw new Error('No editable Mol* protein chain is available to delete.');
+        pushMolstarEditUndoSnapshot(undoSnapshot);
         setMolstarStructureDirty(true);
-        setStatus(`[web] Deleted ${molstarContextChainLabel(target.atom)}.`);
+        setStatus(`[web] Deleted ${chainLabel}.`);
       } else if (action === 'select-atom') {
         if (!target.atomLoci || !selectMolstarContextPick({ ...target, loci: target.atomLoci }, { additive: molstarContextMenuMode === 'atom', applyGranularity: false })) throw new Error('No Mol* atom is available to select.');
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(`[web] Selected ${molstarContextAtomLabel(target)}.`);
       } else if (action === 'remove-atom') {
+        const atomLabel = molstarContextAtomLabel(target);
+        const undoSnapshot = captureMolstarEditUndoSnapshot(`delete ${atomLabel}`);
         if (!target.atomLoci || !await deleteMolstarContextLoci(target, target.atomLoci, false)) throw new Error('No editable Mol* atom is available to delete.');
+        pushMolstarEditUndoSnapshot(undoSnapshot);
         setMolstarStructureDirty(true);
-        setStatus(`[web] Deleted ${molstarContextAtomLabel(target)}.`);
+        setStatus(`[web] Deleted ${atomLabel}.`);
       } else if (action === 'molstar') {
         const contextDocument = molstarContextDocumentPayload(target);
         if (!contextDocument) throw new Error('No molecule-level Mol* context is available for this target.');
@@ -10945,6 +11107,7 @@
 
   function disposeActiveMolstarViewer() {
     setMolstarStructureDirty(false);
+    clearMolstarEditUndoHistory();
     const viewer = activeViewer || window.BurreteViewer || window.BuretteViewer;
     try { viewer?.plugin?.dispose?.(); } catch (_) {}
     if (molstarContainerResizeCleanup) {
