@@ -206,7 +206,7 @@ async function openBrowserPreview(file, options, fallback = null) {
   });
   try {
     await waitForHttpReady(new URL(`http://${host}:${port}/healthz`), 10000, {
-      childExit: () => childExit,
+      childExit: () => childExit || (child.exitCode !== null || child.signalCode ? { code: child.exitCode, signal: child.signalCode } : null),
       logPath,
       failureCode: 'BROWSER_PREVIEW_FAILED',
       timeoutCode: 'BROWSER_PREVIEW_TIMEOUT',
@@ -312,7 +312,7 @@ async function openBrowserAgentShell(file, options) {
   });
   try {
     await waitForHttpReady(url, 30000, {
-      childExit: () => childExit,
+      childExit: () => childExit || (child.exitCode !== null || child.signalCode ? { code: child.exitCode, signal: child.signalCode } : null),
       logPath,
       failureCode: 'BROWSER_AGENT_SHELL_FAILED',
       timeoutCode: 'BROWSER_AGENT_SHELL_TIMEOUT',

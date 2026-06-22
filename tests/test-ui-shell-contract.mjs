@@ -4826,7 +4826,9 @@ assert.match(previewViewer, /typeParams: withAlpha\(\{ sizeFactor: ghost \? 0\.0
 assert.match(previewViewer, /function sdfCollectionCartoonRepresentation\(alpha = 1\)/);
 assert.match(previewViewer, /type: 'cartoon'/);
 assert.match(previewViewer, /color: 'chain-id'/);
-assert.match(previewViewer, /function sdfCollectionLigandRepresentationForStyle\(style, alpha = 1\)/);
+assert.match(previewViewer, /sdfCollectionLigandRepresentationForStyle\(normalized, alpha, colorMode\)/);
+assert.match(previewViewer, /function sdfCollectionLigandRepresentationForStyle\(style, alpha = 1, colorMode = 'gray'\)/);
+assert.match(previewViewer, /const \{ ghost, withAlpha, themed \} = sdfCollectionAlphaHelpers\(alpha, colorMode\)/);
 assert.match(previewViewer, /const lineLigands = normalized === 'cartoon'/);
 assert.match(previewViewer, /type: lineLigands \? 'line' : 'ball-and-stick'/);
 assert.match(previewViewer, /async function applyMolstarRepresentationsToStructures\(viewer, structures, representation\)/);
