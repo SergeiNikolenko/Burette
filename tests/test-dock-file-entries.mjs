@@ -90,11 +90,11 @@ assert.deepEqual(activeTextWithDroppedStructureEntries.map((entry) => entry.key)
 ]);
 assert.ok(activeTextWithDroppedStructureEntries.some((entry) => entry.key === "text-document:text-1"));
 
-assert.deepEqual(defaultDockTabs("right").map((tab) => tab.kind), ["xyzrender", "inspector", "descriptors", "text", "files"]);
+assert.deepEqual(defaultDockTabs("right").map((tab) => tab.kind), ["xyzrender", "inspector", "text", "files"]);
 assert.deepEqual(
   ensureDefaultDockTabs("right", [{ id: "dock-inspector", kind: "inspector" }, { id: "dock-files", kind: "files" }])
     .map((tab) => tab.kind),
-  ["xyzrender", "inspector", "descriptors", "text", "files"],
+  ["xyzrender", "inspector", "text", "files"],
 );
 assert.deepEqual(
   persistentDockTabs("bottom", [{ id: "dock-folding", kind: "folding" }, { id: "dock-files", kind: "files" }])

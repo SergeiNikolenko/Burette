@@ -92,7 +92,6 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
 export const RIGHT_DOCK_DEFAULT_TABS: DockTabKind[] = [
   "xyzrender",
   "inspector",
-  "descriptors",
   "text",
   "files",
 ];
