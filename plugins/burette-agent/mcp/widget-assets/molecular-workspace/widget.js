@@ -1,6 +1,41 @@
 (function () {
-  const data = window.__BURETTE_AGENT_WIDGET_DATA__ || window.openai?.widgetData || {};
+  const data = readPayload();
   render(data);
+
+  window.addEventListener(
+    "message",
+    event => {
+      if (event.source !== window.parent) return;
+      const message = event.data;
+      if (!message || message.jsonrpc !== "2.0") return;
+      if (message.method !== "ui/notifications/tool-result") return;
+      render(normalizePayload(message.params));
+    },
+    { passive: true },
+  );
+
+  function readPayload() {
+    return normalizePayload(
+      window.__BURETTE_AGENT_WIDGET_DATA__ ||
+      window.openai?.widgetData ||
+      window.openai?.toolOutput ||
+      window.openai?.toolResponseMetadata ||
+      {},
+    );
+  }
+
+  function normalizePayload(value) {
+    const payload = value || {};
+    if (payload._meta?.widgetData) return payload._meta.widgetData;
+    if (payload.structuredContent?.observe) {
+      return {
+        title: payload.structuredContent.title,
+        observe: payload.structuredContent.observe,
+      };
+    }
+    if (payload.structuredContent) return payload.structuredContent;
+    return payload;
+  }
 
   function render(payload) {
     const observe = payload.observe || payload.result || payload;
