@@ -119,8 +119,8 @@ assert.match(workspaceRegistration, /act_molstar_scene/);
 assert.match(workspaceRegistration, /declarative Mol\* scene action/);
 assert.match(workspaceRegistration, /runBurreteAgent/);
 assert.match(workspaceRegistration, /visibility: \["model"\]/);
-assert.match(workspaceRegistration, /openai\/outputTemplate/);
-assert.match(workspaceRegistration, /widgetData/);
+assert.doesNotMatch(workspaceRegistration, /openai\/outputTemplate/);
+assert.doesNotMatch(workspaceRegistration, /widgetData/);
 
 for (const registration of [
   "mcp/registrations/molecule-table/register.mjs",
@@ -135,7 +135,6 @@ for (const registration of [
 }
 
 for (const widget of [
-  "mcp/widget-assets/molecular-workspace/widget.html",
   "mcp/widget-assets/molecule-table/widget.html",
   "mcp/widget-assets/trajectory-review/widget.html",
   "mcp/widget-assets/molecular-report/widget.html",
@@ -144,10 +143,6 @@ for (const widget of [
   assert.match(source, /__BURETTE_AGENT_WIDGET_CSS__/);
   assert.match(source, /__BURETTE_AGENT_WIDGET_JS__/);
 }
-
-const workspaceWidgetScript = await read("mcp/widget-assets/molecular-workspace/widget.js");
-assert.match(workspaceWidgetScript, /ui\/notifications\/tool-result/);
-assert.match(workspaceWidgetScript, /structuredContent\?\.observe/);
 
 const widgetResource = await read("mcp/lib/widget-resource.mjs");
 assert.match(widgetResource, /Missing widget asset/);
@@ -160,9 +155,6 @@ const packPayload = JSON.parse(packDryRun.stdout);
 const packedFiles = new Set(packPayload[0].files.map(file => file.path));
 for (const asset of [
   "browser-shell-dist/index.html",
-  "mcp/widget-assets/molecular-workspace/widget.html",
-  "mcp/widget-assets/molecular-workspace/widget.css",
-  "mcp/widget-assets/molecular-workspace/widget.js",
   "mcp/widget-assets/molecule-table/widget.html",
   "mcp/widget-assets/trajectory-review/widget.html",
   "mcp/widget-assets/molecular-report/widget.html",
