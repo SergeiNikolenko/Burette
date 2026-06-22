@@ -6603,7 +6603,7 @@
         viewer,
         targets,
         sdfCollectionCartoonRepresentation(alpha),
-        sdfCollectionLigandRepresentationForStyle(normalized, alpha)
+        sdfCollectionLigandRepresentationForStyle(normalized, alpha, colorMode)
       );
     } else {
       await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
@@ -6648,9 +6648,9 @@
     };
   }
 
-  function sdfCollectionLigandRepresentationForStyle(style, alpha = 1) {
+  function sdfCollectionLigandRepresentationForStyle(style, alpha = 1, colorMode = 'gray') {
     const normalized = normalizeMolstarStyle(style);
-    const { ghost, withAlpha, themed } = sdfCollectionAlphaHelpers(alpha);
+    const { ghost, withAlpha, themed } = sdfCollectionAlphaHelpers(alpha, colorMode);
     const lineLigands = normalized === 'cartoon';
     return themed({
       type: lineLigands ? 'line' : 'ball-and-stick',
