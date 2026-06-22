@@ -281,13 +281,23 @@
 
   function capabilities(cfg) {
     const caps = cfg.capabilities || {};
+    const molecularGrid = effectiveMolecularGrid(cfg);
     return {
       selection: !!caps.selection,
       export: !!caps.export,
-      substructureSearch: !!caps.substructureSearch,
+      substructureSearch: molecularGrid && !!caps.substructureSearch,
       ketcherOpen: cfg.appViewer === true && !!caps.rendererSwitch,
-      rendererSwitch: (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch
+      rendererSwitch: molecularGrid && (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch
     };
+  }
+
+  function rowHasMolecule(row) {
+    return !!String(row?.smiles || '').trim() || !!String(row?.molblock || '').trim();
+  }
+
+  function effectiveMolecularGrid(cfg) {
+    if (state.remoteMode) return true;
+    return state.all.some(rowHasMolecule);
   }
 
   function isRemoteMode(cfg) {
@@ -576,9 +586,18 @@
   }
 
   function normalizeCardRenderer(cfg) {
+    if (!effectiveMolecularGrid(cfg)) {
+      state.cardRenderer = 'rdkit';
+      return;
+    }
     if (state.cardRenderer !== 'xyzrender' || supportsXyzrenderCards(cfg)) return;
     state.cardRenderer = 'rdkit';
     store(CARD_RENDERER_STORAGE_KEY, 'rdkit');
+  }
+
+  function normalizeGridViewMode(cfg) {
+    if (effectiveMolecularGrid(cfg)) return;
+    state.viewMode = 'table';
   }
 
   function storedBoolean(key, fallback) {
@@ -724,7 +743,7 @@
       throw new Error('BurreteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
     }
     window.BurreteGridUI.mountGridControls(host, {
-      format: cfg.format === 'sdf' ? 'sdf' : 'smiles',
+      format: ['csv', 'sdf', 'smiles', 'tsv'].includes(cfg.format) ? cfg.format : 'smiles',
       label: cfg.label || 'Molecule collection',
       exportEnabled: caps.export,
       selectionEnabled: caps.selection,
@@ -5403,6 +5422,7 @@
       installThemeListener(cfg);
       installHostMessageListener();
       normalizeCardRenderer(cfg);
+      normalizeGridViewMode(cfg);
       buildUI(cfg);
       refresh(cfg);
       try {

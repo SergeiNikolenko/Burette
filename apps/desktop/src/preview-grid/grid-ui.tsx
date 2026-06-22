@@ -13,7 +13,7 @@ type XyzrenderPresetOption = {
 };
 
 type GridControlProps = {
-  format: "sdf" | "smiles";
+  format: "csv" | "sdf" | "smiles" | "tsv";
   label: string;
   exportEnabled: boolean;
   selectionEnabled: boolean;
@@ -142,6 +142,7 @@ function GridViewControls(props: GridControlProps) {
 }
 
 function GridRenderControls(props: GridControlProps) {
+  if (!props.substructureSearch && !props.rendererSwitch) return null;
   return (
     <div className="buret-grid-control-group buret-grid-render-group">
       <span className="buret-grid-control-label">Render</span>
@@ -223,10 +224,16 @@ function SelectedOpenActions(props: GridControlProps) {
 }
 
 function GridControls(props: GridControlProps) {
-  const collectionType = props.format === "sdf" ? "SDF collection" : "SMILES collection";
+  const collectionType = props.format === "sdf"
+    ? "SDF collection"
+    : props.format === "csv"
+      ? "CSV table"
+      : props.format === "tsv"
+        ? "TSV table"
+        : "SMILES collection";
   const searchPlaceholder = props.substructureSearch
     ? "name, SMILES, metadata, SMARTS"
-    : "name, SMILES, metadata";
+    : "name or table value";
 
   return (
     <>
