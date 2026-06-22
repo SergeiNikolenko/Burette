@@ -910,10 +910,17 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   transform: translate(-50%, -4px) scale(0.98);
   transform-origin: top center;
   transition: opacity 110ms ease-out, transform 130ms ease-out, visibility 0s linear 110ms;
+}
+#buret-toolbar .buret-tooltip {
+  right: 0;
+  left: auto;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top right;
 }
 .buret-button:hover > .buret-tooltip,
 .buret-button:focus-visible > .buret-tooltip,
@@ -927,6 +934,14 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   visibility: visible;
   transform: translate(-50%, 0) scale(1);
   transition-delay: 180ms, 180ms, 0s;
+}
+#buret-toolbar .buret-button:hover > .buret-tooltip,
+#buret-toolbar .buret-button:focus-visible > .buret-tooltip,
+#buret-toolbar .buret-molstar-style-slot:hover > .buret-tooltip,
+#buret-toolbar .buret-molstar-style-slot:focus-within > .buret-tooltip,
+#buret-toolbar .buret-xyzrender-preset-slot:hover > .buret-tooltip,
+#buret-toolbar .buret-xyzrender-preset-slot:focus-within > .buret-tooltip {
+  transform: translateY(0) scale(1);
 }
 .buret-button:hover, .buret-button.active { background: var(--buret-toolbar-hover); }
 .buret-molstar-tooltip {
