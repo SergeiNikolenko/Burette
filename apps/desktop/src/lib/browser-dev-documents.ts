@@ -1199,6 +1199,7 @@ async function gridHtml(
 ) {
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
+  const hasMoleculeRecords = records.some((record) => Boolean(record.smiles?.trim() || record.molblock?.trim()));
   const config = {
     mode: "grid2d",
     format,
@@ -1255,8 +1256,8 @@ async function gridHtml(
     capabilities: {
       selection: true,
       export: true,
-      substructureSearch: true,
-      rendererSwitch: true,
+      substructureSearch: hasMoleculeRecords,
+      rendererSwitch: hasMoleculeRecords,
     },
   };
   return `<!doctype html>
@@ -1371,7 +1372,7 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
     ? []
     : inferDelimitedSmilesColumns(rows.slice(1), headers.length);
   const smilesIndexes = [...new Set([...namedSmilesIndexes, ...inferredSmilesIndexes])].sort((left, right) => left - right);
-  if (!smilesIndexes.length) return [];
+  if (!smilesIndexes.length) return parseDelimitedTableRows(rows, headers);
   const smilesIndexSet = new Set(smilesIndexes);
   const hasMultipleSmilesColumns = smilesIndexes.length > 1;
   const nameIndex = headers.findIndex((header, index) => !smilesIndexSet.has(index) && isDelimitedNameHeader(header));
@@ -1414,6 +1415,27 @@ function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
       recordIndex += 1;
     }
     return records;
+  });
+}
+
+function parseDelimitedTableRows(rows: string[][], headers: string[]): GridRecord[] {
+  const normalizedHeaders = headers.map((header) => header.trim().toLowerCase().replace(/\s+/gu, "_"));
+  const nameIndex = normalizedHeaders.findIndex((header) =>
+    ["compound_id", "id", "name", "title", "compound"].includes(header)
+  );
+  return rows.slice(1).flatMap((row, rowIndex) => {
+    if (!row.some((cell) => cell.trim())) return [];
+    const rawName = nameIndex >= 0 ? row[nameIndex]?.trim() || "" : "";
+    const props: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      const value = row[index]?.trim();
+      if (value) props[header || `Column ${index + 1}`] = value;
+    });
+    return [{
+      index: rowIndex,
+      name: rawName || `Row ${rowIndex + 1}`,
+      props,
+    }];
   });
 }
 
