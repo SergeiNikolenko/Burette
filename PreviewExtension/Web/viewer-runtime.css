@@ -582,19 +582,6 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 .buret-molstar-molecule-preview-image svg {
   padding: 9px;
 }
-.buret-molstar-molecule-preview-bonds line {
-  stroke: currentColor;
-  stroke-width: 0.085;
-  stroke-linecap: round;
-}
-.buret-molstar-molecule-preview-atoms text {
-  font: 0.42px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  font-weight: 700;
-  letter-spacing: 0;
-  paint-order: stroke;
-  stroke: #ffffff;
-  stroke-width: 0.11px;
-}
 .buret-molstar-molecule-preview-title {
   margin-top: 5px;
   overflow: hidden;
