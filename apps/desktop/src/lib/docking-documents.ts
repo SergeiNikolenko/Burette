@@ -3,7 +3,17 @@ import previewFormatRegistry from "../../../../config/preview-formats.json";
 
 export type DockingDropCandidate = DockingDocumentRequest;
 
-const MOLSTAR_COORDINATE_TRAJECTORY_EXTENSIONS = new Set(["xtc", "trr", "dcd", "nctraj", "lammpstrj"]);
+const MOLSTAR_COORDINATE_TRAJECTORY_EXTENSIONS = new Set([
+  "xtc",
+  "trr",
+  "dcd",
+  "nctraj",
+  "nc",
+  "ncdf",
+  "netcdf",
+  "ncrst",
+  "lammpstrj",
+]);
 const MOLSTAR_TRAJECTORY_EXTENSIONS = new Set([...MOLSTAR_COORDINATE_TRAJECTORY_EXTENSIONS, "top", "psf", "prmtop"]);
 const MOLSTAR_VIEWER_EXTENSIONS = new Set([
   ...previewFormatRegistry.formats
