@@ -48,7 +48,9 @@ assert.doesNotMatch(installLocalScript, /STAGING_APPEX\/Contents\/Resources\/xyz
 assert.doesNotMatch(installLocalScript, /bundle_quicklook_xyzrender_launcher\(\)/);
 assert.match(installLocalScript, /Contents\/Resources\/xyzrender-python3/);
 assert.doesNotMatch(installLocalScript, /Contents\/MacOS\/xyzrender-python3/);
-assert.match(installLocalScript, /Contents\/lib\/libpython3\*\.dylib/);
+assert.match(installLocalScript, /-name 'libpython3\*\.dylib'/);
+assert.match(installLocalScript, /-name 'Python'/);
+assert.match(installLocalScript, /Contents\/lib\/\{libpython3\*\.dylib,Python\}/);
 assert.doesNotMatch(installLocalScript, /Contents\/lib\/libpython3\.13\.dylib/);
 assert.doesNotMatch(installLocalScript, /install_name_tool -change "@executable_path\/\.\.\/lib\/libpython3\.13\.dylib" "@executable_path\/libpython3\.13\.dylib"/);
 assert.doesNotMatch(installLocalScript, /Contents\/MacOS\/xyzrender-python\/bin\/python3/);

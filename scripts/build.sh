@@ -270,13 +270,13 @@ bundle_quicklook_xyzrender_launcher() {
   local appex="$app/Contents/PlugIns/BurretePreview.appex"
   [[ -d "$appex" ]] || return 0
   local libpython=""
-  libpython="$(find "$appex/Contents/lib" -maxdepth 1 -type f -name 'libpython3*.dylib' | head -n 1 || true)"
+  libpython="$(find "$appex/Contents/lib" -maxdepth 1 -type f \( -name 'libpython3*.dylib' -o -name 'Python' \) | head -n 1 || true)"
   [[ -x "$appex/Contents/Resources/xyzrender-python3" ]] || {
     echo "error: Quick Look xyzrender launcher missing from Xcode-built extension: $appex/Contents/Resources/xyzrender-python3" >&2
     exit 1
   }
   [[ -n "$libpython" && -f "$libpython" ]] || {
-    echo "error: Quick Look libpython missing from Xcode-built extension: $appex/Contents/lib/libpython3*.dylib" >&2
+    echo "error: Quick Look Python shared library missing from Xcode-built extension: $appex/Contents/lib/{libpython3*.dylib,Python}" >&2
     exit 1
   }
 }
@@ -284,7 +284,7 @@ sign_quicklook_xyzrender_launcher() {
   local app="$1"
   local appex="$app/Contents/PlugIns/BurretePreview.appex"
   local libpython=""
-  libpython="$(find "$appex/Contents/lib" -maxdepth 1 -type f -name 'libpython3*.dylib' | head -n 1 || true)"
+  libpython="$(find "$appex/Contents/lib" -maxdepth 1 -type f \( -name 'libpython3*.dylib' -o -name 'Python' \) | head -n 1 || true)"
   [[ -f "$appex/Contents/Resources/xyzrender-python3" && -n "$libpython" && -f "$libpython" ]] || return 0
   codesign "${CODESIGN_ARGS[@]}" "$libpython" >/dev/null
   codesign "${CODESIGN_ARGS[@]}" "$appex/Contents/Resources/xyzrender-python3" >/dev/null
