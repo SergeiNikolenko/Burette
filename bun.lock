@@ -25,7 +25,7 @@
         "@tauri-apps/plugin-opener": "^2.5.0",
         "beautiful-mermaid": "^1.1.3",
         "cmdk": "^1.1.1",
-        "dompurify": "^3.3.3",
+        "dompurify": "^3.4.10",
         "lucide-react": "^1.17.0",
         "molstar": "5.7.0",
         "plotly.js-basic-dist-min": "^3.6.0",
@@ -877,7 +877,7 @@
 
     "dom-helpers": ["dom-helpers@5.2.1", "", { "dependencies": { "@babel/runtime": "^7.8.7", "csstype": "^3.0.2" } }, "sha512-nRCa7CK3VTrM2NmGkIy4cbK7IZlgBE/PYMn55rrXefr5xXDP0LdtfPnblFDoVdcAfslJ7or6iqAUnx0CCGIWQA=="],
 
-    "dompurify": ["dompurify@3.4.8", "", { "optionalDependencies": { "@types/trusted-types": "^2.0.7" } }, "sha512-yb1cEmaOum7wFvOCSQxyfgVlv5D47Rc30iZWoMpbDIWTnJ6grDDQyu2KFJzB2k7u0pMuJcQ1zphH//fFnw2tjQ=="],
+    "dompurify": ["dompurify@3.4.10", "", { "optionalDependencies": { "@types/trusted-types": "^2.0.7" } }, "sha512-0xzNv0e7oYC6yyuOGZIABPM4qtg3QxLFniDNPP4ZP90wR8Yq3zgwpRbrNiT4N3IKqDbbYFEJLV+JWEs19aZ//w=="],
 
     "draft-js": ["draft-js@0.11.7", "", { "dependencies": { "fbjs": "^2.0.0", "immutable": "~3.7.4", "object-assign": "^4.1.1" }, "peerDependencies": { "react": ">=0.14.0", "react-dom": ">=0.14.0" } }, "sha512-ne7yFfN4sEL82QPQEn80xnADR8/Q6ALVworbC5UOSzOvjffmYfFsr3xSZtxbIirti14R7Y33EZC5rivpLgIbsg=="],
 
