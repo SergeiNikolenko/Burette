@@ -1,18 +1,25 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
-import { existsSync, watch } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync, watch } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
-import { basename, extname, join, relative, resolve } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
+const AMBER_NC_PREVIEW_FRAME_LIMIT = 100;
+const scriptDir = dirname(fileURLToPath(import.meta.url));
 const STRUCTURE_EXTENSIONS = new Set([
   'pdb', 'ent', 'pdbqt', 'pqr', 'xpdb',
   'cif', 'mmcif', 'mcif', 'bcif', 'mmtf',
   'sdf', 'sd', 'smi', 'smiles', 'csv', 'tsv',
   'mol', 'mol2', 'xyz', 'gro', 'mae', 'maegz', 'cms', 'dtr',
+  'nc', 'ncdf', 'netcdf', 'ncrst',
 ]);
+const AMBER_NC_EXTENSIONS = new Set(['nc', 'ncdf', 'netcdf', 'ncrst']);
+const TOPOLOGY_PREVIEW_EXTENSIONS = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb']);
 const TEXT_EXTENSIONS = new Set([
   ...STRUCTURE_EXTENSIONS,
   'md', 'markdown', 'mdx', 'txt', 'log', 'err',
@@ -149,6 +156,10 @@ async function handleRequest(req, res) {
     await handleFileBundle(res, method, url);
     return;
   }
+  if (url.pathname === '/__burette/trajectory-preview') {
+    await handleTrajectoryPreview(res, method, url);
+    return;
+  }
   if (url.pathname === '/__burette/dev-files') {
     await handleDevFiles(res, method, url);
     return;
@@ -283,6 +294,115 @@ async function handleFileBundle(res, method, url) {
     inputPath: filePath,
     attachments: [],
   });
+}
+
+async function handleTrajectoryPreview(res, method, url) {
+  if (method !== 'GET') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  const filePath = allowedPathFromQuery(url);
+  if (!filePath) {
+    sendJson(res, 400, { error: 'Missing, forbidden, or unsupported path' });
+    return;
+  }
+  if (!AMBER_NC_EXTENSIONS.has(fileExtension(filePath))) {
+    sendJson(res, 404, { error: 'No trajectory preview converter is available for this file type' });
+    return;
+  }
+  try {
+    const preview = await createAmberNcPreview(filePath);
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'chemical/x-pdb; charset=us-ascii');
+    res.setHeader('Content-Length', String(preview.bytes.length));
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('X-Burrete-Source-Byte-Count', String(preview.sourceByteCount));
+    res.setHeader('X-Burrete-Trajectory-Topology', preview.topologyPath);
+    res.setHeader('X-Burrete-Trajectory-Frame-Count', String(preview.frameCount));
+    res.end(preview.bytes);
+  } catch (error) {
+    sendJson(res, 400, { error: error?.message || String(error) });
+  }
+}
+
+async function createAmberNcPreview(trajectoryPath) {
+  const trajectoryInfo = await stat(trajectoryPath);
+  const candidates = await amberNcTopologyCandidates(trajectoryPath);
+  const errors = [];
+  for (const topologyPath of candidates) {
+    const outputPath = resolve(sessionDir, `${safeFileStem(basename(trajectoryPath))}.amber-preview.pdb`);
+    try {
+      const frameCount = runAmberNcExtractor(topologyPath, trajectoryPath, outputPath);
+      return {
+        bytes: await readFile(outputPath),
+        topologyPath,
+        frameCount,
+        sourceByteCount: trajectoryInfo.size,
+      };
+    } catch (error) {
+      errors.push(`${basename(topologyPath)}: ${error?.message || String(error)}`);
+    }
+  }
+  const details = errors.length ? ` Tried: ${errors.join('; ')}` : '';
+  throw new Error(`Amber NetCDF trajectory requires a matching PDB topology/reference file in the same folder.${details}`);
+}
+
+async function amberNcTopologyCandidates(trajectoryPath) {
+  const folder = dirname(trajectoryPath);
+  const stem = basename(trajectoryPath).replace(/\.[^.]+$/u, '');
+  const preferredNames = [
+    'reference.pdb',
+    `${stem}.pdb`,
+    'topology.pdb',
+    'structure.pdb',
+    'system.pdb',
+    'top.pdb',
+  ];
+  const preferred = preferredNames.map((name) => resolve(folder, name));
+  const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+  const discovered = entries
+    .filter((entry) => entry.isFile() && TOPOLOGY_PREVIEW_EXTENSIONS.has(fileExtension(entry.name)))
+    .map((entry) => resolve(folder, entry.name))
+    .sort((left, right) => left.localeCompare(right));
+  const unique = Array.from(new Set([...preferred, ...discovered]));
+  const candidates = [];
+  for (const candidate of unique) {
+    if (!isAllowed(candidate)) continue;
+    const info = await stat(candidate).catch(() => null);
+    if (info?.isFile()) candidates.push(candidate);
+  }
+  return candidates;
+}
+
+function runAmberNcExtractor(topologyPath, trajectoryPath, outputPath) {
+  const extractor = resolve(scriptDir, 'amber_nc_preview_extract.py');
+  if (!existsSync(extractor)) throw new Error(`Missing Amber NetCDF extractor: ${extractor}`);
+  const result = spawnSync('python3', [
+    extractor,
+    topologyPath,
+    trajectoryPath,
+    '--frames',
+    String(AMBER_NC_PREVIEW_FRAME_LIMIT),
+    '--output',
+    outputPath,
+  ], { encoding: 'utf8' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const details = (result.stderr || result.stdout || '').trim();
+    throw new Error(details || `extractor exited with status ${result.status}`);
+  }
+  const match = String(result.stdout || '').match(/frames=(\d+)/u);
+  return match ? Number(match[1]) : countPdbModelsFromFile(outputPath);
+}
+
+function countPdbModelsFromFile(path) {
+  const text = existsSync(path) ? readFileSync(path, 'utf8') : '';
+  const matches = text.match(/^MODEL\b/gmu);
+  return matches?.length ?? 0;
+}
+
+function safeFileStem(value) {
+  return String(value || 'trajectory').replace(/[^A-Za-z0-9._-]+/gu, '_').slice(0, 80) || 'trajectory';
 }
 
 async function handleDevFiles(res, method, url) {
