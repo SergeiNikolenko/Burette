@@ -26,6 +26,7 @@ async function runCase(name, filePath, lines) {
 
 const xyzrenderFile = path.join(root, "samples", "quantum", "inputs", "caffeine.com");
 const sdfFile = path.join(root, "samples", "collections", "sdf", "multi.sdf");
+const csvTableFile = path.join(root, "samples", "collections", "tables", "no-molecule-column.csv");
 
 const xyzrenderSuccess = await runCase("xyzrender-success", xyzrenderFile, [
   `[AAAA0001] file.path=${xyzrenderFile}`,
@@ -66,5 +67,13 @@ const gridNoImages = await runCase("grid-no-images", sdfFile, [
 ]);
 assert.equal(gridNoImages.status, 1);
 assert.match(gridNoImages.stderr, /did not produce RDKit molecule images/);
+
+const tabularGridSuccess = await runCase("tabular-grid-success", csvTableFile, [
+  `[FFFF0001] file.path=${csvTableFile}`,
+  "[FFFF0001] [build] detected.previewMode=grid2d format=csv records=2/2",
+  "[FFFF0001] preview.evidence type=ready mode=grid2d renderer=rdkit rowCount=2 moleculeRowCount=0 renderedCount=2 rdkitLoaded=false rdkitImages=0",
+]);
+assert.equal(tabularGridSuccess.status, 0);
+assert.match(tabularGridSuccess.stdout, /grid rows=2 tableRows=2/);
 
 console.log("quicklook semantic check tests passed");
