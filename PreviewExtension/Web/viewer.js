@@ -6541,10 +6541,13 @@
       const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
       const backgroundEntries = poses.filter((_, index) => index !== activeIndex);
       if (resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative') {
+        const sceneStructures = [];
         for (const entry of [...backgroundEntries, activeEntry]) {
-          await loadMolstarEntry(viewer, entry);
+          sceneStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
         }
-        await applyMolstarStyle(viewer, resolvedContextStyle);
+        if (sceneStructures.length) {
+          await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, sceneStructures, 1, 'colored');
+        }
       } else {
         const contextStructures = [];
         for (const entry of backgroundEntries) {
