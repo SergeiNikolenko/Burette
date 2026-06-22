@@ -25,6 +25,10 @@
             <span class="buret-tooltip" role="tooltip">Choose Mol* representation style</span>
           </div>
           <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light<span class="buret-tooltip" role="tooltip">Switch to light theme</span></button>
+          <button class="buret-button buret-undo-edit hidden" type="button" data-buret-action="undo-molstar-edit" aria-label="Undo last Mol* edit" title="Undo last Mol* edit">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 7.5 5 12l4.5 4.5 1.4-1.4L8.8 13H17a3 3 0 1 1 0 6h-3v2h3a5 5 0 1 0 0-10H8.8l2.1-2.1-1.4-1.4Z" fill="currentColor"/></svg>
+            <span class="buret-tooltip" role="tooltip">Undo last Mol* edit</span>
+          </button>
           <button class="buret-button buret-save-modified hidden" type="button" data-buret-action="save-modified-structure" aria-label="Save modified structure" title="Save modified structure">Save<span class="buret-tooltip" role="tooltip">Save modified Mol* structure</span></button>
           <button class="buret-button hidden" type="button" data-buret-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">Ketcher<span class="buret-tooltip" role="tooltip">Open this structure in Ketcher</span></button>
           <div class="buret-xyzrender-preset-slot" data-buret-xyzrender-preset-slot>
