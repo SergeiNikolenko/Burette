@@ -192,54 +192,17 @@ Burrete settings cover:
 Optional integrations include a local `xyzrender` executable, VESTA, and
 external chemistry editors discovered by macOS.
 
-## Build From Source
+## Docs
 
-Most users should install Burrete with Homebrew, the Bun CLI, or
-[GitHub Releases](https://github.com/SergeiNikolenko/Burrete/releases/latest).
-If you want to build it yourself, clone the repository and run:
-
-```bash
-./scripts/doctor.sh
-./scripts/build.sh
-./scripts/install.sh
-```
-
-The local installer places the app here:
-
-```text
-~/Applications/Burrete.app
-```
-
-Current project documentation starts at [docs/README.md](docs/README.md).
-
-## Development
-
-Burrete follows the Writer Computer development convention of using Vite+
-through the `vp` CLI. Use `vp` as the entrypoint for frontend work and
-JavaScript validation:
-
-```bash
-vp install
-vp dev
-vp check
-vp test
-vp build
-```
-
-Existing Burrete package scripts may still be run through `vp run <script>` for
-project-specific checks, but day-to-day development and JavaScript validation
-should use the Vite+ built-ins above. Rust validation runs from
-`apps/desktop/src-tauri`; native release scripts remain under `scripts/`. See
-[docs/vite-plus.md](docs/vite-plus.md) and [docs/releasing.md](docs/releasing.md).
-
-The Quick Look extension caches generated runtime files under the extension
-container. After replacing the app, refresh Quick Look with:
-
-```bash
-qlmanage -r
-qlmanage -r cache
-killall quicklookd 2>/dev/null || true
-```
+- [Documentation map](docs/README.md)
+- [Changelog](CHANGELOG.md)
+- [Installing and building from source](docs/installing-building.md)
+- [Configuration](docs/configuration.md)
+- [Security and permissions](docs/security-and-permissions.md)
+- [Renderer support](docs/renderer-support.md)
+- [Quick Look debugging](docs/quicklook-debugging.md)
+- [iPhone preview app](ios/BurreteMobile/README.md)
+- [Contributing](.github/CONTRIBUTING.md)
 
 ## License
 

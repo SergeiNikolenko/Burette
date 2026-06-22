@@ -67,6 +67,13 @@ pub(crate) fn converted_data_from_text(
     if extension == "gro" {
         return gro_pdb_data_from_text(data, label);
     }
+    if matches!(extension, "lammpstrj" | "dump") {
+        return lammps_dump_xyz_data_from_text(data, label).map(|data| ConvertedStructureData {
+            data,
+            extension: "xyz",
+            staged_entries: Vec::new(),
+        });
+    }
     pdb_data_from_text(data, extension, label).map(|data| ConvertedStructureData {
         data,
         extension: "pdb",
@@ -88,6 +95,33 @@ fn pdb_data_from_text(data: &[u8], extension: &str, label: &str) -> Option<Vec<u
         return None;
     }
     Some(generic_atoms_to_pdb(&atoms, label).into_bytes())
+}
+
+fn lammps_dump_xyz_data_from_text(data: &[u8], label: &str) -> Option<Vec<u8>> {
+    let decoded = decode_structure_text(data, "lammpstrj")?;
+    let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
+    let lines: Vec<&str> = text.lines().collect();
+    let frames = parse_lammps_dump_frames(&lines);
+    if frames.is_empty() {
+        return None;
+    }
+
+    let mut xyz = String::new();
+    for (frame_index, atoms) in frames.iter().enumerate() {
+        xyz.push_str(&format!(
+            "{}\nConverted from {} frame {}\n",
+            atoms.len(),
+            label,
+            frame_index + 1
+        ));
+        for atom in atoms {
+            xyz.push_str(&format!(
+                "{} {:.6} {:.6} {:.6}\n",
+                atom.symbol, atom.x, atom.y, atom.z
+            ));
+        }
+    }
+    Some(xyz.into_bytes())
 }
 
 fn atoms_from_text(data: &[u8], extension: &str) -> Option<Vec<Atom>> {
@@ -804,6 +838,11 @@ fn parse_charmm_coordinate_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
 }
 
 fn parse_lammps_dump_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
+    parse_lammps_dump_frames(lines).into_iter().next()
+}
+
+fn parse_lammps_dump_frames(lines: &[&str]) -> Vec<Vec<Atom>> {
+    let mut frames = Vec::new();
     let mut atoms = Vec::new();
     let mut in_atoms = false;
     let mut x_index = None;
@@ -814,7 +853,7 @@ fn parse_lammps_dump_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
     for line in lines {
         if line.starts_with("ITEM: ") {
             if in_atoms && !atoms.is_empty() {
-                break;
+                frames.push(std::mem::take(&mut atoms));
             }
             in_atoms = false;
             if let Some(rest) = line.strip_prefix("ITEM: ATOMS") {
@@ -855,11 +894,10 @@ fn parse_lammps_dump_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
             .unwrap_or_else(|| "C".to_string());
         atoms.push(Atom { symbol, x, y, z });
     }
-    if atoms.is_empty() {
-        None
-    } else {
-        Some(atoms)
+    if in_atoms && !atoms.is_empty() {
+        frames.push(atoms);
     }
+    frames
 }
 
 fn coordinate_column_index(columns: &[&str], names: &[&str]) -> Option<usize> {
@@ -2352,7 +2390,7 @@ xangst
     }
 
     #[test]
-    fn converts_lammps_dump_first_frame_to_pdb_for_molstar() {
+    fn converts_lammps_dump_frames_to_xyz_for_molstar() {
         let data = br#"ITEM: TIMESTEP
 0
 ITEM: NUMBER OF ATOMS
@@ -2364,13 +2402,26 @@ ITEM: BOX BOUNDS pp pp pp
 ITEM: ATOMS id element x y z
 1 C 0.0 0.0 0.0
 2 O 1.2 0.0 0.0
+ITEM: TIMESTEP
+1
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0 10
+0 10
+0 10
+ITEM: ATOMS id element x y z
+1 C 0.5 0.0 0.0
+2 O 1.7 0.0 0.0
 "#;
         let converted = converted_data_from_text(data, "lammpstrj", "dump.lammpstrj").unwrap();
-        let pdb = String::from_utf8(converted.data).unwrap();
+        let xyz = String::from_utf8(converted.data).unwrap();
 
-        assert_eq!(converted.extension, "pdb");
-        assert!(pdb.starts_with("REMARK Converted from dump.lammpstrj\nHETATM"));
-        assert!(pdb.contains("HETATM    2 O    MOL A   1       1.200   0.000   0.000"));
+        assert_eq!(converted.extension, "xyz");
+        assert!(xyz.starts_with("2\nConverted from dump.lammpstrj frame 1\n"));
+        assert!(xyz.contains("O 1.200000 0.000000 0.000000\n"));
+        assert!(xyz.contains("2\nConverted from dump.lammpstrj frame 2\n"));
+        assert!(xyz.contains("O 1.700000 0.000000 0.000000\n"));
     }
 
     #[test]

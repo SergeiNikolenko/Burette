@@ -233,6 +233,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                     actionRow("Quick Look", "Refresh Finder preview registration and cache.", "Reset", () => void actions.resetQuickLook(), false, true),
                     actionRow("Logs", "Open the Quick Look extension log folder.", "Open", () => void actions.openLogs()),
                     actionRow("Diagnostics", "Export logs, environment, size report, performance marks, and recent errors.", "Export", () => void actions.exportDiagnostics()),
+                    actionRow("Runtime doctor", "Check external runtime availability for molecular workflows.", "Run", () => void actions.runExternalRuntimeDoctor()),
                     actionRow("Preview cache", "Delete generated viewer runtimes except shared assets.", "Clear", () => void actions.clearCache(), false, true),
                   ]}
                 />

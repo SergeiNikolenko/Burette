@@ -228,6 +228,7 @@ export type ShellActions = {
   clearRecentStructures: () => void;
   clearCache: () => void | Promise<void>;
   resetQuickLook: () => void | Promise<void>;
+  runExternalRuntimeDoctor: () => void | Promise<void>;
   openLogs: () => void | Promise<void>;
   exportDiagnostics: () => void | Promise<void>;
   checkForUpdates: () => void | Promise<void>;

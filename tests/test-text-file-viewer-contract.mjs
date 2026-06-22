@@ -8,6 +8,11 @@ async function source(path) {
 
 const [
   app,
+  appFileOpen,
+  appDockPayloadOpen,
+  appOpenDropController,
+  appQuickLookDocumentOpen,
+  fileRouting,
   types,
   tabsHook,
   moleculeStore,
@@ -33,6 +38,11 @@ const [
   packageJson,
 ] = await Promise.all([
   source("apps/desktop/src/App.tsx"),
+  source("apps/desktop/src/hooks/use-app-file-open.ts"),
+  source("apps/desktop/src/hooks/use-app-dock-payload-open.ts"),
+  source("apps/desktop/src/hooks/use-app-open-drop-controller.ts"),
+  source("apps/desktop/src/hooks/use-app-quick-look-document-open.ts"),
+  source("apps/desktop/src/lib/file-routing.ts"),
   source("apps/desktop/src/types.ts"),
   source("apps/desktop/src/hooks/use-tabs.ts"),
   source("apps/desktop/src/stores/molecule-store.ts"),
@@ -172,38 +182,40 @@ for (const extension of ["inpcrd", "rst7", "crd", "rst", "state", "xml"]) {
   assert.match(viteConfig, new RegExp(`"${extension}"`), `${extension} should be allowed by browser-dev read-file`);
 }
 
-assert.match(app, /const openTextDocuments = useCallback/);
-assert.match(app, /import \{ openBrowserDevTextFiles \} from "\.\/lib\/browser-dev-text-files";/);
-assert.match(app, /: await openBrowserDevTextFiles\(cleanPaths\)/);
+assert.match(appFileOpen, /const openTextDocuments = useCallback/);
+assert.match(appQuickLookDocumentOpen, /import \{ openBrowserDevTextFiles \} from "\.\.\/lib\/browser-dev-text-files";/);
+assert.doesNotMatch(app, /import \{ openBrowserDevTextFiles \} from "\.\/lib\/browser-dev-text-files";/);
+assert.match(appFileOpen, /: await openBrowserDevTextFiles\(cleanPaths\)/);
 assert.doesNotMatch(app, /Text file viewer is available in the desktop app only/);
-assert.match(app, /const openPaths = useCallback/);
-assert.match(app, /"par"[\s\S]*"checkpoint"/);
-assert.match(app, /preferredTextExtensions = new Set\(\[[\s\S]*"log"[\s\S]*"out"[\s\S]*"json"[\s\S]*"yaml"[\s\S]*\]\)/);
-assert.match(app, /structureAndTextExtensions = new Set\(\[[\s\S]*"nw"[\s\S]*"vasp"[\s\S]*\]\)/);
-const structureAndTextBlock = app.match(/structureAndTextExtensions = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
+assert.match(appFileOpen, /const openPaths = useCallback/);
+assert.match(fileRouting, /"par"[\s\S]*"checkpoint"/);
+assert.match(fileRouting, /preferredTextExtensions = new Set\(\[[\s\S]*"log"[\s\S]*"out"[\s\S]*"json"[\s\S]*"yaml"[\s\S]*\]\)/);
+assert.match(fileRouting, /structureAndTextExtensions = new Set\(\[[\s\S]*"nw"[\s\S]*"vasp"[\s\S]*\]\)/);
+const structureAndTextBlock = fileRouting.match(/structureAndTextExtensions = new Set\(\[([\s\S]*?)\]\);/)?.[1] ?? "";
 assert.ok(structureAndTextBlock, "structureAndTextExtensions should be declared");
 assert.doesNotMatch(structureAndTextBlock, /"log"/);
 assert.doesNotMatch(structureAndTextBlock, /"out"/);
 for (const extension of ["abi", "cms", "com", "csv", "cub", "cube", "fdf", "graphml", "in", "inp", "inpcrd", "mae", "maegz", "nw", "psi4", "qcin", "crd", "rst", "rst7", "state", "tsv", "vasp", "xml"]) {
-  assert.match(app, new RegExp(`"${extension}"`), `${extension} should be a structure-and-text open extension`);
+  assert.match(fileRouting, new RegExp(`"${extension}"`), `${extension} should be a structure-and-text open extension`);
 }
-assert.match(app, /preferredTextExtensions\.has\(extension\)[\s\S]*extension\.length > 0 && !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\)[\s\S]*textPaths\.push\(path\);/);
-assert.match(app, /if \(structureAndTextExtensions\.has\(extension\)\) \{\s*structureAndTextPaths\.push\(path\);/);
-assert.match(app, /const openedStructureAndTextPaths = new Set<string>\(\);/);
-assert.match(app, /const result = await openDocuments\(structureAndTextPaths\);/);
-assert.match(app, /openedStructureAndTextPaths\.add\(document\.path\);/);
-assert.match(app, /structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\)/);
-assert.match(app, /let dockOpenPaths = cleanPaths;/);
-assert.match(app, /const rightDockTextPaths = cleanPaths\.filter\(\(path\) => \{/);
-assert.match(app, /return !isSpectrumExtension\(extension\) && !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\);/);
-assert.match(app, /dockOpenPaths = cleanPaths\.filter\(\(path\) => !rightDockTextPaths\.includes\(path\)\);/);
-assert.match(app, /open_text_files", \{ paths: rightDockTextPaths \}/);
-assert.match(app, /for \(const path of dockOpenPaths\) \{/);
-const rightDockTextOpenBlock = app.match(/if \(input\.area === "right" && cleanPaths\.length > 0\) \{[\s\S]*?return;\s*\}/)?.[0] ?? "";
+assert.match(appFileOpen, /preferredTextExtensions\.has\(extension\)[\s\S]*extension\.length > 0 && !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\)[\s\S]*textPaths\.push\(path\);/);
+assert.match(appFileOpen, /if \(structureAndTextExtensions\.has\(extension\)\) \{\s*structureAndTextPaths\.push\(path\);/);
+assert.match(appFileOpen, /const openedStructureAndTextPaths = new Set<string>\(\);/);
+assert.match(appFileOpen, /const result = await openDocuments\(structureAndTextPaths\);/);
+assert.match(appFileOpen, /openedStructureAndTextPaths\.add\(document\.path\);/);
+assert.match(appFileOpen, /structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\)/);
+assert.match(appDockPayloadOpen, /let dockOpenPaths = cleanPaths;/);
+assert.match(appDockPayloadOpen, /const rightDockContentSpectrumPaths = await detectContentSpectrumPaths\(cleanPaths\);/);
+assert.match(appDockPayloadOpen, /const rightDockTextPaths = cleanPaths\.filter\(\(path\) => \{/);
+assert.match(appDockPayloadOpen, /return !isSpectrumPath\(path, extension\) && !rightDockContentSpectrumPaths\.has\(path\) && !structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\);/);
+assert.match(appDockPayloadOpen, /dockOpenPaths = cleanPaths\.filter\(\(path\) => !rightDockTextPaths\.includes\(path\)\);/);
+assert.match(appDockPayloadOpen, /open_text_files", \{ paths: rightDockTextPaths \}/);
+assert.match(appDockPayloadOpen, /for \(const path of dockOpenPaths\) \{/);
+const rightDockTextOpenBlock = appDockPayloadOpen.match(/if \(input\.area === "right" && cleanPaths\.length > 0\) \{[\s\S]*?return;\s*\}/)?.[0] ?? "";
 assert.match(rightDockTextOpenBlock, /pathExtension|structureExtensions|structureAndTextExtensions/);
 assert.doesNotMatch(rightDockTextOpenBlock, /preferredTextExtensions/);
-assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
-assert.match(app, /useOpenDrop\(openPaths, pushStatus/);
+assert.match(appOpenDropController, /useOpenEvents\(openPaths, pushErrorStatus\)/);
+assert.match(appOpenDropController, /useOpenDrop\(openPaths, pushStatus/);
 assert.match(app, /showTextFileMetadata/);
 assert.match(app, /activeTextDocument/);
 

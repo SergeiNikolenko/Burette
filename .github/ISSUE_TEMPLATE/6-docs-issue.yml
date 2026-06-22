@@ -1,0 +1,32 @@
+name: Documentation Issue
+description: Report missing, incorrect, or confusing Burrete documentation.
+labels:
+  - documentation
+body:
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: What is wrong?
+      multiple: true
+      options:
+        - Documentation is missing
+        - Documentation is incorrect
+        - Documentation is confusing
+        - Command or example does not work
+        - Link is broken
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: location
+    attributes:
+      label: Where did you find it?
+      description: Link the page, file, heading, or command.
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What should change?
+    validations:
+      required: true

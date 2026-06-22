@@ -1,0 +1,51 @@
+name: Quick Look / Finder Preview Bug
+description: Report a Finder Quick Look preview or thumbnail issue.
+labels:
+  - bug
+  - quick-look
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search existing issues first. Include text logs when possible and redact private paths or proprietary molecule data.
+  - type: textarea
+    id: issue
+    attributes:
+      label: What happened?
+      description: Describe the preview, thumbnail, registration, or Finder behavior you see.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Include the file type, install method, and exact Finder/Quick Look action.
+    validations:
+      required: true
+  - type: dropdown
+    id: file-type
+    attributes:
+      label: File type
+      options:
+        - PDB
+        - CIF/mmCIF
+        - SDF/MOL/SMILES
+        - XYZ/XYZR
+        - Spectrum/text
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or smoke output
+      description: Paste output from force-preview, quicklook smoke, Console, or qlmanage if available.
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: macOS version, Burrete version, install method, Apple Silicon/Intel.

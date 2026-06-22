@@ -579,6 +579,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
         if let Some(runtime_path) = create_grid_runtime_with_options(
             app,
+            &document_id,
             &runtime_document_id,
             &canonical,
             &extension,
@@ -1163,11 +1164,20 @@ mod document_open_tests {
     }
 
     fn fixture_path(relative: &str) -> PathBuf {
-        repo_root()
-            .join("tests")
-            .join("fixtures")
-            .join("BurettePreviewSamples")
-            .join(relative)
+        repo_root().join("samples").join(relative)
+    }
+
+    fn temp_fixture_path(relative: &str) -> PathBuf {
+        let source = fixture_path(relative);
+        let directory = create_temp_directory();
+        let file_name = source
+            .file_name()
+            .expect("fixture path should have a file name");
+        let target = directory.join(file_name);
+        fs::copy(&source, &target).unwrap_or_else(|error| {
+            panic!("{} should copy to temp fixture: {error}", source.display())
+        });
+        target
     }
 
     fn prepend_fake_xyzrender_environment(script: &str) -> PathBuf {
@@ -1274,17 +1284,6 @@ mod document_open_tests {
     fn remove_runtime_artifacts(runtime_path: &str) {
         if let Some(runtime_dir) = Path::new(runtime_path).parent() {
             let _ = fs::remove_dir_all(runtime_dir);
-            if let Some(viewer_dir) = runtime_dir.parent() {
-                let _ = fs::remove_dir_all(viewer_dir.join("assets").join("rdkit"));
-                let _ = fs::remove_file(viewer_dir.join("assets").join("molstar.js"));
-                let _ = fs::remove_file(viewer_dir.join("assets").join("molstar.css"));
-                let _ = fs::remove_file(viewer_dir.join("assets").join("viewer-runtime.css"));
-                let _ = fs::remove_file(viewer_dir.join("assets").join("viewer-shell.js"));
-                let _ = fs::remove_file(viewer_dir.join("assets").join("burette-agent.js"));
-                let _ = fs::remove_file(viewer_dir.join("assets").join("viewer.js"));
-                let _ = fs::remove_file(viewer_dir.join("assets").join("grid-viewer.js"));
-                let _ = fs::remove_file(viewer_dir.join("assets").join("grid.css"));
-            }
         }
     }
 
@@ -1343,19 +1342,23 @@ mod document_open_tests {
             created_files.push(com.clone());
             created_files.push(mae_gz.clone());
 
+            let mini_xyz = temp_fixture_path("mini.xyz");
+            let mini_pdb = temp_fixture_path("mini.pdb");
+            let single_sdf = temp_fixture_path("collections/sdf/single.sdf");
+            let multi_sdf = temp_fixture_path("collections/sdf/multi.sdf");
+            let lammps_dump = temp_fixture_path("md/paired/paired.lammpstrj");
+            created_files.push(mini_xyz.clone());
+            created_files.push(mini_pdb.clone());
+            created_files.push(single_sdf.clone());
+            created_files.push(multi_sdf.clone());
+            created_files.push(lammps_dump.clone());
+
             let cases = vec![
-                (fixture_path("xyz/single.xyz"), "molstar"),
-                (fixture_path("1HTB.pdb"), "molstar"),
-                (fixture_path("sdf/single.sdf"), "molstar"),
-                (fixture_path("sdf/multi.sdf"), "grid2d"),
-                (fixture_path("md/minimal.xtc"), "molstar"),
-                (fixture_path("md/minimal.trr"), "molstar"),
-                (fixture_path("md/minimal.dcd"), "molstar"),
-                (fixture_path("md/minimal.nctraj"), "molstar"),
-                (fixture_path("md/minimal.lammpstrj"), "molstar"),
-                (fixture_path("md/minimal.top"), "molstar"),
-                (fixture_path("md/minimal.psf"), "molstar"),
-                (fixture_path("md/minimal.prmtop"), "molstar"),
+                (mini_xyz, "molstar"),
+                (mini_pdb, "molstar"),
+                (single_sdf, "molstar"),
+                (multi_sdf, "grid2d"),
+                (lammps_dump, "molstar"),
                 (cube, "xyzrender-external"),
                 (com, "xyzrender-external"),
                 (mae_gz, "xyzrender-external"),
@@ -1491,6 +1494,57 @@ xangst
             .expect("preview config should be written");
         assert!(config.contains("\"trajectoryControls\":true"));
         assert!(config.contains("\"trajectoryFrameCount\":2"));
+
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn opens_lammps_dump_as_multiframe_xyz_in_molstar_on_auto() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = create_temp_file(
+            "lammpstrj",
+            br#"ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0 10
+0 10
+0 10
+ITEM: ATOMS id element x y z
+1 C 0.0 0.0 0.0
+2 O 1.2 0.0 0.0
+ITEM: TIMESTEP
+1
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0 10
+0 10
+0 10
+ITEM: ATOMS id element x y z
+1 C 0.5 0.0 0.0
+2 O 1.7 0.0 0.0
+"#,
+        );
+
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "molstar");
+        let runtime_dir = Path::new(&document.runtime_path)
+            .parent()
+            .expect("runtime html should have a parent");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
+        let preview_data = fs::read_to_string(runtime_dir.join("preview-data.bin"))
+            .expect("converted preview data should be written");
+        assert!(config.contains("\"molstarFormat\":\"xyz\""));
+        assert!(preview_data.contains("Converted from probe.lammpstrj frame 1"));
+        assert!(preview_data.contains("Converted from probe.lammpstrj frame 2"));
 
         remove_runtime_artifacts(&document.runtime_path);
         if let Some(parent) = path.parent() {
@@ -1646,7 +1700,7 @@ f_m_ct {
     fn default_desktop_runtime_embeds_preview_data_script_for_tauri_asset_protocol() {
         let app = mock_app_with_grid_registry();
         let preferences = viewer_preferences();
-        let path = fixture_path("1HTB.pdb");
+        let path = temp_fixture_path("structures/proteins/1htb.pdb");
 
         let document = open_document(app.handle(), path.clone(), &preferences, None)
             .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
@@ -1666,13 +1720,16 @@ f_m_ct {
         assert!(data_script.contains("window.BurreteDataURL = null;"));
 
         remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
     }
 
     #[test]
     fn grid_runtime_embeds_rdkit_wasm_binary_for_tauri_asset_protocol() {
         let app = mock_app_with_grid_registry();
         let preferences = viewer_preferences();
-        let path = fixture_path("sdf/multi.sdf");
+        let path = temp_fixture_path("collections/sdf/multi.sdf");
 
         let document = open_document(app.handle(), path.clone(), &preferences, None)
             .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
@@ -1692,6 +1749,9 @@ f_m_ct {
         assert!(html.contains("RDKit_minimal.js"));
 
         remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
     }
 
     #[test]
@@ -1761,12 +1821,15 @@ f_m_ct {
         let app = mock_app_with_grid_registry();
         let mut preferences = viewer_preferences();
         preferences.renderer_mode = "xyzrender-external".to_string();
-        let path = fixture_path("sdf/single.sdf");
+        let path = temp_fixture_path("collections/sdf/single.sdf");
 
         let document = open_document(app.handle(), path.clone(), &preferences, None)
             .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
         assert_eq!(document.renderer, "molstar");
         remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
     }
 
     #[test]
@@ -1775,7 +1838,7 @@ f_m_ct {
             let app = mock_app_with_grid_registry();
             let mut preferences = viewer_preferences();
             preferences.renderer_mode = "xyzrender-external".to_string();
-            let path = fixture_path("mini.cif");
+            let path = temp_fixture_path("mini.cif");
 
             let document = open_document(app.handle(), path.clone(), &preferences, None)
                 .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
@@ -1788,6 +1851,9 @@ f_m_ct {
             assert!(config.contains("\"externalRendererStatus\""));
             assert!(config.contains("Using Mol* because external xyzrender failed"));
             remove_runtime_artifacts(&document.runtime_path);
+            if let Some(parent) = path.parent() {
+                let _ = fs::remove_dir_all(parent);
+            }
         });
     }
 

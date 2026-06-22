@@ -33,9 +33,14 @@ assert.match(textFiles, /numpy_artifact_text_summary/);
 assert.match(textFiles, /renders_numpy_arrays_as_text_summary/);
 
 const viteConfig = source("apps/desktop/vite.config.ts");
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/folding-result"/);
-assert.match(viteConfig, /readBrowserDevFoldingResultBundle/);
-assert.match(viteConfig, /isNumpyArtifactExtension\(extension\)/);
+const browserDevFoldingResults = source("apps/desktop/vite/browser-dev/folding-results.ts");
+const browserDevFiles = source("apps/desktop/vite/browser-dev/files.ts");
+assert.match(viteConfig, /registerBrowserDevFoldingResultRoute\(server, \{ isDevFileReadAllowed \}\)/);
+assert.match(browserDevFoldingResults, /server\.middlewares\.use\("\/__burette\/folding-result"/);
+assert.match(browserDevFoldingResults, /readBrowserDevFoldingResultBundle/);
+assert.match(browserDevFoldingResults, /export function isNumpyArtifactExtension\(extension: string\)/);
+assert.match(browserDevFiles, /isNumpyArtifactExtension\(extension\)/);
+assert.match(browserDevFiles, /numpyArtifactTextSummary\(filePath, bytes, info\.size\)/);
 assert.match(viteConfig, /"npy"/);
 assert.match(viteConfig, /"npz"/);
 

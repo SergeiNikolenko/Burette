@@ -633,7 +633,10 @@ fn should_use_converted_molstar_data(
 ) -> bool {
     data.is_some()
         && !format.is_binary
-        && matches!(format.molstar_format.as_str(), "gro" | "mmcif" | "cifCore")
+        && matches!(
+            format.molstar_format.as_str(),
+            "gro" | "mmcif" | "cifCore" | "lammpstrj" | "dump"
+        )
 }
 
 fn xyzrender_available_for_document(format: &FormatInfo, data: &[u8]) -> bool {
@@ -1014,6 +1017,8 @@ fn viewer_html(
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
     let molstar_js = asset_url(&assets.join("molstar.js"));
+    let rdkit_js = asset_url(&assets.join("rdkit/RDKit_minimal.js"));
+    let rdkit_wasm = asset_url(&assets.join("rdkit/RDKit_minimal.wasm"));
     let (renderer_styles, renderer_scripts) = match renderer {
         "xyzrender-external" => (
             format!(r#"<link rel="stylesheet" href="{molstar_css}" />"#),
@@ -1040,6 +1045,8 @@ fn viewer_html(
     window.BurretePreviewDataScriptURL = {data_js:?};
     window.BurreteDataURL = {data_bin_js:?};
     window.BurreteMolstarURL = {molstar_js:?};
+    window.BurreteRDKitJSURL = {rdkit_js:?};
+    window.BurreteRDKitWasmURL = {rdkit_wasm:?};
   </script>
 </head>
 <body class="{background_class}">

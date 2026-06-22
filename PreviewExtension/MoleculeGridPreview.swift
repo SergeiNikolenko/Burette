@@ -123,6 +123,9 @@ enum MoleculeGridPreviewBuilder {
             return payload
         }
 
+        let hasMoleculeRecords = includedRecords.contains { record in
+            !(record.smiles ?? "").isEmpty || !(record.molblock ?? "").isEmpty
+        }
         var config: [String: Any] = [
             "mode": "grid2d",
             "format": collection.format,
@@ -144,8 +147,8 @@ enum MoleculeGridPreviewBuilder {
             "capabilities": [
                 "selection": allowSelection,
                 "export": allowExport,
-                "substructureSearch": true,
-                "rendererSwitch": collection.format == "sdf"
+                "substructureSearch": hasMoleculeRecords,
+                "rendererSwitch": hasMoleculeRecords && collection.format == "sdf"
             ]
         ]
         if let themeTokens {
@@ -307,7 +310,9 @@ enum MoleculeGridPreviewBuilder {
         do {
             return try parseDelimitedTable(text, separator: separator, format: format, maxRecords: maxRecords)
         } catch MoleculeGridPreviewError.missingMoleculeColumn {
-            return parseDelimitedRowsAsSmiles(text, separator: separator, format: format, maxRecords: maxRecords)
+            let smilesRows = parseDelimitedRowsAsSmiles(text, separator: separator, format: format, maxRecords: maxRecords)
+            if smilesRows.recordsTotal > 0 { return smilesRows }
+            return parseDelimitedRowsAsTable(text, separator: separator, format: format, maxRecords: maxRecords)
         }
     }
 
@@ -346,6 +351,51 @@ enum MoleculeGridPreviewBuilder {
                 index: recordsTotal,
                 name: clipped(name, limit: 160),
                 smiles: clipped(smiles, limit: 2048),
+                molblock: nil,
+                props: props
+            ))
+        }
+        return MoleculeGridCollection(format: format, records: records, recordsTotal: recordsTotal)
+    }
+
+    private static func parseDelimitedRowsAsTable(
+        _ text: String,
+        separator: Character,
+        format: String,
+        maxRecords: Int
+    ) -> MoleculeGridCollection {
+        let rows = normalizedLines(text).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard let headerLine = rows.first else {
+            return MoleculeGridCollection(format: format, records: [], recordsTotal: 0)
+        }
+        let headers = parseDelimitedLine(headerLine, separator: separator).map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let normalizedHeaders = headers.map { $0.lowercased().replacingOccurrences(of: " ", with: "_") }
+        let nameIndex = normalizedHeaders.enumerated().first(where: { _, value in
+            ["compound_id", "id", "name", "title", "compound"].contains(value)
+        })?.offset
+        var records: [MoleculeGridRecord] = []
+        var recordsTotal = 0
+        for (rowIndex, line) in rows.dropFirst().enumerated() {
+            let cells = parseDelimitedLine(line, separator: separator)
+            guard cells.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { continue }
+            defer { recordsTotal += 1 }
+            guard records.count < maxRecords else { continue }
+            let rawName = nameIndex.flatMap { $0 < cells.count ? cells[$0].trimmingCharacters(in: .whitespacesAndNewlines) : nil } ?? ""
+            let name = rawName.isEmpty ? "Row \(rowIndex + 1)" : rawName
+            var props: [String: String] = [:]
+            for (index, header) in headers.enumerated() where props.count < 64 {
+                guard index < cells.count else { continue }
+                let value = cells[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !value.isEmpty {
+                    props[clipped(header.isEmpty ? "Column \(index + 1)" : header, limit: 80)] = clipped(value, limit: 500)
+                }
+            }
+            records.append(MoleculeGridRecord(
+                index: recordsTotal,
+                name: clipped(name, limit: 160),
+                smiles: nil,
                 molblock: nil,
                 props: props
             ))

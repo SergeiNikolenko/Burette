@@ -10,8 +10,70 @@ async function source(path) {
 const [
   desktopIndex,
   app,
+  appActiveTextDocumentHook,
+  appAgentSessionActionsHook,
+  appBrowserDevStartupHook,
   uiStore,
+  appChemistryJobsHook,
+  appConformerWorkflowsHook,
+  appGenerate3DConformerHook,
   commandPaletteHook,
+  appClipboardHook,
+  appDescriptorsHook,
+  appDiagnosticsHook,
+  appDockActionsHook,
+  appDirtyGridHook,
+  appDockingPoseMessagesHook,
+  appDockingPoseSelectionHook,
+  appDockingWorkflowsHook,
+  appDropActionsHook,
+  appFileActionsHook,
+  appFileOpenHook,
+  appFepWorkflowsHook,
+  appGridControlMessagesHook,
+  appGridConformerMessagesHook,
+  appGridFileActionsHook,
+  appGridRuntimeMessagesHook,
+  appGridWorkflowsHook,
+  appHostRuntimeOperationsHook,
+  appDockPayloadHook,
+  appKetcherActionsHook,
+  appKetcherViewerMessagesHook,
+  appBootstrapHook,
+  appMaintenanceHook,
+  appMolstarActionSendersHook,
+  appMolstarContextMessagesHook,
+  appMolstarXtbContextHook,
+  appXtbWorkflowsHook,
+  appOpenActionsHook,
+  appOpenDropMergeCollectionsHook,
+  appOpenDropControllerHook,
+  appPreferenceEffectsHook,
+  appQuickLookHook,
+  appQuickLookDocumentOpenHook,
+  appResizeHook,
+  appRendererMessageHook,
+  appSidebarProjectsHook,
+  appSdfViewerMessagesHook,
+  appShellActionsHook,
+  appShellNavigationActionsHook,
+  appShellViewStateHook,
+  appSpectrumDockLifecycleHook,
+  appStartupEffectsHook,
+  appUpdatesHook,
+  appViewerBridgeMessagesHook,
+  appViewerBridgeControllerHook,
+  appViewerConformerMessagesHook,
+  appViewerFileActionsHook,
+  appViewerHostMessagesHook,
+  appViewerReloadActionsHook,
+  appViewerRuntimeRefsHook,
+  appViewerRuntimeFileMessagesHook,
+  appViewerRuntimeMessagesHook,
+  appViewerStateMessagesHook,
+  appWorkspaceActionsHook,
+  appXyzrenderSheetMessagesHook,
+  appStatusHook,
   tabsHook,
   sidebarHook,
   moleculeStore,
@@ -21,7 +83,13 @@ const [
   structureBrief,
   structureComposition,
   structureText,
+  fileRouting,
+  fileExport,
+  directChemistryGuard,
   dock,
+  chemistryJobRequests,
+  chemistrySettings,
+  conformerGeneration,
   packageJson,
   themeSource,
   appLayout,
@@ -65,6 +133,7 @@ const [
   ketcherPage,
   ketcherEditor,
   ketcherBrowserRequire,
+  ketcherWorkflow,
   componentTypes,
   launcherKind,
   settingsKind,
@@ -82,11 +151,32 @@ const [
   instance,
   tauriSource,
   settingsSections,
+  browserDevStartup,
   browserDevDocuments,
+  browserDevStructureBundles,
+  clipboardLib,
+  contentSpectrumDetection,
   agentSessionHook,
+  previewImageExport,
   temporaryDocuments,
   windowScope,
+  viewerBridgeLib,
+  viewerBridgeMessagesLib,
   viteConfig,
+  viteBuildPlugins,
+  browserDevAssets,
+  browserDevFiles,
+  browserDevFoldingResults,
+  browserDevHttp,
+  browserDevAgentSession,
+  browserDevConformerInline,
+  browserDevConformerJobs,
+  browserDevDescriptors,
+  browserDevDesmond,
+  browserDevMsbuddy,
+  browserDevRuntimeDoctor,
+  browserDevXtb,
+  browserDevXyzrender,
   bundleReportScript,
   previewRuntimeViewer,
   previewRuntimeSource,
@@ -101,7 +191,6 @@ const [
   previewViewer,
   previewShell,
   previewRuntimeCss,
-  mobilePreviewRuntime,
   updateSource,
   readme,
   buildScript,
@@ -114,8 +203,70 @@ const [
 ] = await Promise.all([
   source('apps/desktop/index.html'),
   source('apps/desktop/src/App.tsx'),
+  source('apps/desktop/src/hooks/use-app-active-text-document.ts'),
+  source('apps/desktop/src/hooks/use-app-agent-session-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-browser-dev-startup.ts'),
   source('apps/desktop/src/stores/ui-store.ts'),
+  source('apps/desktop/src/hooks/use-app-chemistry-jobs.ts'),
+  source('apps/desktop/src/hooks/use-app-conformer-workflows.ts'),
+  source('apps/desktop/src/hooks/use-app-generate-3d-conformer.ts'),
   source('apps/desktop/src/hooks/use-command-palette.ts'),
+  source('apps/desktop/src/hooks/use-app-clipboard.ts'),
+  source('apps/desktop/src/hooks/use-app-descriptors.ts'),
+  source('apps/desktop/src/hooks/use-app-diagnostics.ts'),
+  source('apps/desktop/src/hooks/use-app-dock-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-dirty-grid-documents.ts'),
+  source('apps/desktop/src/hooks/use-app-docking-pose-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-docking-pose-selection.ts'),
+  source('apps/desktop/src/hooks/use-app-docking-workflows.ts'),
+  source('apps/desktop/src/hooks/use-app-drop-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-file-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-file-open.ts'),
+  source('apps/desktop/src/hooks/use-app-fep-workflows.ts'),
+  source('apps/desktop/src/hooks/use-app-grid-control-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-grid-conformer-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-grid-file-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-grid-runtime-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-grid-workflows.ts'),
+  source('apps/desktop/src/hooks/use-app-host-runtime-operations.ts'),
+  source('apps/desktop/src/hooks/use-app-dock-payload-open.ts'),
+  source('apps/desktop/src/hooks/use-app-ketcher-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-ketcher-viewer-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-bootstrap.ts'),
+  source('apps/desktop/src/hooks/use-app-maintenance.ts'),
+  source('apps/desktop/src/hooks/use-app-molstar-action-senders.ts'),
+  source('apps/desktop/src/hooks/use-app-molstar-context-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-molstar-xtb-context.ts'),
+  source('apps/desktop/src/hooks/use-app-xtb-workflows.ts'),
+  source('apps/desktop/src/hooks/use-app-open-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-open-drop-merge-collections.ts'),
+  source('apps/desktop/src/hooks/use-app-open-drop-controller.ts'),
+  source('apps/desktop/src/hooks/use-app-preference-effects.ts'),
+  source('apps/desktop/src/hooks/use-app-quick-look.ts'),
+  source('apps/desktop/src/hooks/use-app-quick-look-document-open.ts'),
+  source('apps/desktop/src/hooks/use-app-resize.ts'),
+  source('apps/desktop/src/hooks/use-app-renderer-message.ts'),
+  source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
+  source('apps/desktop/src/hooks/use-app-sdf-viewer-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-shell-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-shell-navigation-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-shell-view-state.ts'),
+  source('apps/desktop/src/hooks/use-app-spectrum-dock-lifecycle.ts'),
+  source('apps/desktop/src/hooks/use-app-startup-effects.ts'),
+  source('apps/desktop/src/hooks/use-app-updates.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-bridge-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-bridge-controller.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-conformer-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-file-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-host-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-reload-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-runtime-refs.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-runtime-file-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-runtime-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-viewer-state-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-workspace-actions.ts'),
+  source('apps/desktop/src/hooks/use-app-xyzrender-sheet-messages.ts'),
+  source('apps/desktop/src/hooks/use-app-status.ts'),
   source('apps/desktop/src/hooks/use-tabs.ts'),
   source('apps/desktop/src/hooks/use-sidebar.ts'),
   source('apps/desktop/src/stores/molecule-store.ts'),
@@ -125,7 +276,13 @@ const [
   source('apps/desktop/src/lib/structure-brief.ts'),
   source('apps/desktop/src/lib/structure-composition.ts'),
   source('apps/desktop/src/lib/structure-text.ts'),
+  source('apps/desktop/src/lib/file-routing.ts'),
+  source('apps/desktop/src/lib/file-export.ts'),
+  source('apps/desktop/src/lib/direct-chemistry-guard.ts'),
   source('apps/desktop/src/lib/dock.ts'),
+  source('apps/desktop/src/lib/chemistry-job-requests.ts'),
+  source('apps/desktop/src/lib/chemistry-settings.ts'),
+  source('apps/desktop/src/lib/conformer-generation.ts'),
   source('package.json'),
   source('apps/desktop/src/lib/theme.ts'),
   source('apps/desktop/src/components/app-layout.tsx'),
@@ -169,6 +326,7 @@ const [
   source('apps/desktop/src/components/ketcher-page.tsx'),
   source('apps/desktop/src/components/ketcher-editor.tsx'),
   source('apps/desktop/src/lib/ketcher-browser-require.ts'),
+  source('apps/desktop/src/lib/ketcher-workflow.ts'),
   source('apps/desktop/src/components/types.ts'),
   source('apps/desktop/src/components/editor-area/page-kinds/launcher.tsx'),
   source('apps/desktop/src/components/editor-area/page-kinds/settings.tsx'),
@@ -186,11 +344,32 @@ const [
   source('apps/desktop/src/lib/instance.ts'),
   source('apps/desktop/src/lib/tauri.ts'),
   source('apps/desktop/src/lib/settings-sections.ts'),
+  source('apps/desktop/src/lib/browser-dev-startup.ts'),
   source('apps/desktop/src/lib/browser-dev-documents.ts'),
+  source('apps/desktop/src/lib/browser-dev-structure-bundles.ts'),
+  source('apps/desktop/src/lib/clipboard.ts'),
+  source('apps/desktop/src/lib/content-spectrum-detection.ts'),
   source('apps/desktop/src/hooks/use-agent-session.ts'),
+  source('apps/desktop/src/lib/preview-image-export.ts'),
   source('apps/desktop/src/lib/temporary-documents.ts'),
   source('apps/desktop/src/lib/window-scope.ts'),
+  source('apps/desktop/src/lib/viewer-bridge.ts'),
+  source('apps/desktop/src/lib/viewer-bridge-messages.ts'),
   source('apps/desktop/vite.config.ts'),
+  source('apps/desktop/vite/build-plugins.ts'),
+  source('apps/desktop/vite/browser-dev/assets.ts'),
+  source('apps/desktop/vite/browser-dev/files.ts'),
+  source('apps/desktop/vite/browser-dev/folding-results.ts'),
+  source('apps/desktop/vite/browser-dev/http.ts'),
+  source('apps/desktop/vite/browser-dev/agent-session.ts'),
+  source('apps/desktop/vite/browser-dev/conformer-inline.ts'),
+  source('apps/desktop/vite/browser-dev/conformer-jobs.ts'),
+  source('apps/desktop/vite/browser-dev/descriptors.ts'),
+  source('apps/desktop/vite/browser-dev/desmond.ts'),
+  source('apps/desktop/vite/browser-dev/msbuddy.ts'),
+  source('apps/desktop/vite/browser-dev/runtime-doctor.ts'),
+  source('apps/desktop/vite/browser-dev/xtb.ts'),
+  source('apps/desktop/vite/browser-dev/xyzrender.ts'),
   source('scripts/bundle-report.mjs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime.rs'),
@@ -205,7 +384,6 @@ const [
   source('PreviewExtension/Web/viewer.js'),
   source('PreviewExtension/Web/viewer-shell.js'),
   source('PreviewExtension/Web/viewer-runtime.css'),
-  source('ios/BurreteMobile/MobilePreviewRuntime.swift'),
   source('apps/desktop/src/update.ts'),
   source('README.md'),
   source('scripts/build.sh'),
@@ -213,7 +391,7 @@ const [
   source('scripts/check-remote.sh'),
   source('scripts/patch-web-assets.sh'),
   source('scripts/desmond_preview_extract.py'),
-  source('prototypes/ligand_network.graphml'),
+  source('samples/fep/ligand_network.graphml'),
   source('scripts/rdkit_conformer.py'),
 ]);
 const viewerShell = previewShell;
@@ -290,11 +468,12 @@ assert.match(sidebarHook, /projectNameOverrides/);
 assert.match(sidebarHook, /expandedProjectIds/);
 assert.match(sidebarHook, /hiddenProjectRoots/);
 assert.match(sidebarHook, /pinnedStructurePaths/);
-assert.match(app, /body\?\.type === "requestData" \|\| body\?\.type === "requestRuntimeFile"/);
-assert.match(app, /source: "burrete-native-host"/);
-assert.match(app, /invoke<string>\("read_viewer_runtime_file_base64"/);
-assert.match(app, /preview-data\.bin/);
-assert.match(app, /relativePath: fileName/);
+assert.match(viewerBridgeMessagesLib, /handleViewerRuntimeFileMessage\(source, body, eventSource\)/);
+assert.match(appViewerRuntimeFileMessagesHook, /body\?\.type !== "requestData" && body\?\.type !== "requestRuntimeFile"/);
+assert.match(appViewerRuntimeFileMessagesHook, /source: "burrete-native-host"/);
+assert.match(appViewerRuntimeFileMessagesHook, /invoke<string>\("read_viewer_runtime_file_base64"/);
+assert.match(appViewerRuntimeFileMessagesHook, /preview-data\.bin/);
+assert.match(appViewerRuntimeFileMessagesHook, /relativePath: fileName/);
 assert.match(sidebarHook, /sidebarQuery/);
 assert.match(sidebarHook, /toggleProjectsOpen/);
 assert.match(sidebarHook, /setExpandedProjectIds/);
@@ -334,14 +513,15 @@ assert.match(viewer, /updateXyzrenderFormVisibility\(toolbar\);\s*scheduleXyzren
 assert.match(viewer, /updateXyzrenderFormVisibility\(toolbar\);\s*scheduleXyzrenderControlsApply\(toolbar, 260\);/);
 assert.match(viewer, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(viewer, /function bindXyzrenderControls\(toolbar\)/);
-assert.match(viewer, /XYZRENDER_POPOVER_OPEN_KEY_PREFIX/);
-assert.match(viewer, /buret\.xyzrender\.popover\.open\.v2/);
-assert.doesNotMatch(viewer, /buret\.xyzrender\.popover\.open';/);
 assert.match(viewer, /function setXyzrenderPopoverVisibility\(toolbar, open, options = \{\}\)/);
 assert.match(viewer, /toolbar\?\.classList\.toggle\('buret-popover-open', open\)/);
-assert.match(viewer, /function shouldRestoreXyzrenderPopoverOpen\(config = \{\}\)/);
-assert.match(viewer, /function shouldOpenXyzrenderPopoverByDefault\(config = \{\}\)/);
-assert.match(viewer, /config\.xyzrenderViewer === true/);
+assert.match(viewer, /function xyzrenderPopoverDocumentKey\(config = \{\}\)/);
+assert.match(viewer, /function syncXyzrenderPopoverDocument\(toolbar, config = \{\}\)/);
+assert.match(viewer, /toolbar\.dataset\.xyzrenderPopoverDocumentKey = key/);
+assert.match(viewer, /const popoverWasOpen = popover\?\.classList\.contains\('hidden'\) === false && !popoverDocumentChanged/);
+assert.doesNotMatch(viewer, /buret\.xyzrender\.popover\.open/);
+assert.doesNotMatch(viewer, /shouldRestoreXyzrenderPopoverOpen/);
+assert.doesNotMatch(viewer, /shouldOpenXyzrenderPopoverByDefault/);
 assert.match(viewer, /function syncXyzrenderSliders\(toolbar\)/);
 assert.match(viewer, /function requestBrowserDevXyzrenderUpdate\(options = \{\}\)/);
 assert.match(viewer, /fetch\(endpoint, \{/);
@@ -360,7 +540,7 @@ assert.match(viewer, /buret-xyzrender-rotate-current/);
 assert.match(viewer, /buret-xyzrender-rotate-current span/);
 assert.match(viewer, /buret-rotate-radius\) \+ 18px/);
 assert.match(viewer, /data-buret-xctrl-slider/);
-assert.match(viewer, /setXyzrenderPopoverOpenPersisted\(open\)/);
+assert.doesNotMatch(viewer, /setXyzrenderPopoverOpenPersisted/);
 assert.match(viewer, /setXyzrenderPopoverVisibility\(toolbar, hidden, \{ resetScroll: hidden \}\)/);
 assert.match(viewer, /setXyzrenderPopoverVisibility\(toolbar, false\)/);
 assert.match(viewer, /if \(event\.target\.closest\('\[data-buret-xyzrender-popover\]'\)\) return;/);
@@ -405,30 +585,31 @@ assert.match(viteConfig, /base: "\.\/"/);
 assert.doesNotMatch(viteConfig, /const KETCHER_CHUNK_PACKAGES = \[/);
 assert.match(viteConfig, /onlyExplicitManualChunks: true/);
 assert.doesNotMatch(viteConfig, /require: "globalThis\.__burreteRequire"/);
-assert.match(viteConfig, /function desktopManualChunks\(id: string\)/);
+assert.match(viteConfig, /desktopManualChunks/);
 assert.match(viteConfig, /manualChunks: desktopManualChunks/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/molstar\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/raphael\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/eve-raphael\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-core\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-react\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/ketcher-standalone\/"\)/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/indigo-ketcher\/"\)/);
-assert.match(viteConfig, /return "ketcher";/);
-assert.doesNotMatch(viteConfig, /return "ketcher-raphael";/);
-assert.match(viteConfig, /normalized\.includes\("\/node_modules\/raphael\/"\)[\s\S]*normalized\.includes\("\/node_modules\/ketcher-core\/"\)[\s\S]*return "ketcher";/);
-assert.match(viteConfig, /function resolveModulePreloadDependencies\(_url: string, deps: string\[\], context: \{ hostType: "html" \| "js" \}\)/);
+assert.match(viteBuildPlugins, /function desktopManualChunks\(id: string\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/molstar\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/raphael\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/eve-raphael\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/ketcher-core\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/ketcher-react\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/ketcher-standalone\/"\)/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/indigo-ketcher\/"\)/);
+assert.match(viteBuildPlugins, /return "ketcher";/);
+assert.doesNotMatch(viteBuildPlugins, /return "ketcher-raphael";/);
+assert.match(viteBuildPlugins, /normalized\.includes\("\/node_modules\/raphael\/"\)[\s\S]*normalized\.includes\("\/node_modules\/ketcher-core\/"\)[\s\S]*return "ketcher";/);
+assert.match(viteBuildPlugins, /function resolveModulePreloadDependencies\(_url: string, deps: string\[\], context: \{ hostType: "html" \| "js" \}\)/);
 assert.match(viteConfig, /resolveDependencies: resolveModulePreloadDependencies/);
-assert.match(viteConfig, /function ketcherRaphaelImportShimPlugin\(\)/);
-assert.match(viteConfig, /const target = "raphaelModule = require\('raphael'\);"/);
-assert.match(viteConfig, /const replacement = "raphaelModule = __burreteRaphael;"/);
-assert.match(viteConfig, /transform\(code, id\)/);
-assert.match(viteConfig, /normalized\.endsWith\("\/node_modules\/ketcher-core\/dist\/index\.modern\.js"\)/);
-assert.match(viteConfig, /import __burreteRaphael from "raphael";/);
-assert.match(viteConfig, /code\.replaceAll\(target, replacement\)/);
-assert.match(viteConfig, /function deferKetcherCssPlugin\(\)/);
-assert.match(viteConfig, /burrete-defer-ketcher-css/);
-assert.match(viteConfig, /assets\\\/ketcher-\[\^"\]\+\\\.css/);
+assert.match(viteBuildPlugins, /function ketcherRaphaelImportShimPlugin\(\)/);
+assert.match(viteBuildPlugins, /const target = "raphaelModule = require\('raphael'\);"/);
+assert.match(viteBuildPlugins, /const replacement = "raphaelModule = __burreteRaphael;"/);
+assert.match(viteBuildPlugins, /transform\(code, id\)/);
+assert.match(viteBuildPlugins, /normalized\.endsWith\("\/node_modules\/ketcher-core\/dist\/index\.modern\.js"\)/);
+assert.match(viteBuildPlugins, /import __burreteRaphael from "raphael";/);
+assert.match(viteBuildPlugins, /code\.replaceAll\(target, replacement\)/);
+assert.match(viteBuildPlugins, /function deferKetcherCssPlugin\(\)/);
+assert.match(viteBuildPlugins, /burrete-defer-ketcher-css/);
+assert.match(viteBuildPlugins, /assets\\\/ketcher-\[\^"\]\+\\\.css/);
 for (const script of [buildScript, buildDevScript]) {
   assert.match(script, /printf 'APPL\?\?\?\?' > "\$app\/Contents\/PkgInfo"/);
   assert.match(script, /Delete :LSRequiresCarbon/);
@@ -468,6 +649,10 @@ assert.doesNotMatch(patchWebAssetsScript, /cargo build/);
 assert.doesNotMatch(patchWebAssetsScript, /build:tauri/);
 assert.equal(JSON.parse(tauriConfig).bundle.resources['../../../PreviewExtension/Web'], 'ViewerWeb');
 assert.match(previewRuntimeViewer, /resolve\("ViewerWeb", tauri::path::BaseDirectory::Resource\)/);
+assert.match(previewRuntimeViewer, /let rdkit_js = asset_url\(&assets\.join\("rdkit\/RDKit_minimal\.js"\)\)/);
+assert.match(previewRuntimeViewer, /let rdkit_wasm = asset_url\(&assets\.join\("rdkit\/RDKit_minimal\.wasm"\)\)/);
+assert.match(previewRuntimeViewer, /window\.BurreteRDKitJSURL = \{rdkit_js:\?\};/);
+assert.match(previewRuntimeViewer, /window\.BurreteRDKitWasmURL = \{rdkit_wasm:\?\};/);
 assert.match(buildScript, /built desktop app Resources\/Web was overwritten by the preview shell/);
 assert.match(buildScript, /Contents\/Resources\/ViewerWeb\/viewer-shell\.js/);
 assert.match(desmondPreviewExtract, /from schrodinger\.application\.desmond\.packages import topo, traj/);
@@ -497,13 +682,27 @@ assert.match(desmondPreviewExtract, /0 means all atoms unless --target-mb is set
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--target-mb"/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
 assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
+assert.doesNotMatch(viteConfig, /join\(homedir\(\), "Desktop"\),/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
 assert.match(viteConfig, /join\(repoRoot, "samples", "large", "moses_10k\.csv"\)/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/dev-files"/);
+assert.match(viteConfig, /registerBrowserDevFileDiscoveryRoute\(server, fileRoutes\)/);
+assert.match(viteConfig, /registerBrowserDevFoldingResultRoute\(server, \{ isDevFileReadAllowed \}\)/);
+assert.match(browserDevFiles, /server\.middlewares\.use\("\/__burette\/dev-files"/);
+assert.match(browserDevFiles, /isNumpyArtifactExtension\(extension\)/);
+assert.match(browserDevFiles, /numpyArtifactTextSummary\(filePath, bytes, info\.size\)/);
+assert.match(browserDevFoldingResults, /server\.middlewares\.use\("\/__burette\/folding-result"/);
+assert.match(browserDevFoldingResults, /readBrowserDevFoldingResultBundle/);
+assert.match(browserDevFoldingResults, /export function isNumpyArtifactExtension/);
+assert.match(browserDevFoldingResults, /export function numpyArtifactTextSummary/);
+assert.match(viteConfig, /"ms",\s*"msp",\s*"mzml",\s*"mzxml"/);
+assert.match(viteConfig, /"npy"/);
+assert.match(viteConfig, /"npz"/);
+assert.match(viteConfig, /"pkl"/);
 assert.match(viteConfig, /const RDKIT_WASM_PATH = join\(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal\.wasm"\)/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/rdkit-wasm"/);
-assert.match(viteConfig, /res\.setHeader\("Content-Type", "application\/wasm"\)/);
+assert.match(viteConfig, /registerBrowserDevRdkitWasmRoute\(server, RDKIT_WASM_PATH\)/);
+assert.match(browserDevAssets, /server\.middlewares\.use\("\/__burette\/rdkit-wasm"/);
+assert.match(browserDevAssets, /res\.setHeader\("Content-Type", "application\/wasm"\)/);
 assert.match(viteConfig, /const RDKIT_CONFORMER_SCRIPT_PATH = join\(repoRoot, "scripts", "rdkit_conformer\.py"\)/);
 assert.match(viteConfig, /type PythonCommand = \{/);
 assert.match(viteConfig, /function conformerPythonCandidates\(engine: string\)/);
@@ -516,8 +715,38 @@ assert.match(viteConfig, /const mode = String\(request\.mode \|\| "single"\).*"e
 assert.match(viteConfig, /const candidateCount = boundedNumber\(request\.candidateCount, 128, 1, 512\)/);
 assert.match(viteConfig, /const rmsdCutoff = boundedNumber\(request\.rmsdCutoff, 0\.75, 0, 5\)/);
 assert.match(viteConfig, /function boundedNumber\(value: unknown, fallback: number, min: number, max: number\)/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/generate-3d-conformer"/);
-assert.match(viteConfig, /await generate3DConformerForBrowserDev\(await readJsonBody\(req\)\)/);
+assert.match(viteConfig, /registerBrowserDevInlineConformerRoute\(server, generate3DConformerForBrowserDev\)/);
+assert.match(browserDevConformerInline, /server\.middlewares\.use\("\/__burette\/generate-3d-conformer"/);
+assert.match(browserDevConformerInline, /await generate3DConformerForBrowserDev\(await readJsonBody\(req\)\)/);
+assert.match(browserDevHttp, /export async function readJsonBody/);
+assert.match(browserDevHttp, /JSON\.parse\(text\) as Record<string, unknown>/);
+assert.match(viteConfig, /registerBrowserDevMsbuddyRoutes\(server,/);
+assert.match(browserDevMsbuddy, /server\.middlewares\.use\("\/__burette\/msbuddy"/);
+assert.match(browserDevMsbuddy, /sendJsonError\(res, 500, error, "no-cache"\)/);
+assert.match(viteConfig, /registerBrowserDevDescriptorRoutes\(server,/);
+assert.match(browserDevDescriptors, /server\.middlewares\.use\("\/__burette\/descriptors"/);
+assert.match(browserDevDescriptors, /sendJsonError\(res, 500, error, "no-cache"\)/);
+assert.match(viteConfig, /registerBrowserDevConformerJobRoutes\(server,/);
+assert.match(browserDevConformerJobs, /server\.middlewares\.use\("\/__burette\/conformer-status"/);
+assert.match(browserDevConformerJobs, /server\.middlewares\.use\("\/__burette\/prepare-conformer-job"/);
+assert.match(viteConfig, /registerBrowserDevXtbRoutes\(server,/);
+assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/xtb-status"/);
+assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/run-xtb-job"/);
+assert.match(viteConfig, /registerBrowserDevRuntimeDoctorRoute\(server,/);
+assert.match(viteConfig, /xyzrenderStatus: browserDevXyzrenderStatus/);
+assert.match(viteConfig, /datamolConformerStatus: \(\) => browserDevConformerPythonStatus\("datamol"\)/);
+assert.match(viteConfig, /rdkitConformerStatus: \(\) => browserDevConformerPythonStatus\("rdkit"\)/);
+assert.match(viteConfig, /schrodingerStatus: browserDevSchrodingerStatus/);
+assert.match(browserDevRuntimeDoctor, /server\.middlewares\.use\("\/__burette\/external-runtime-doctor"/);
+assert.match(browserDevRuntimeDoctor, /burrete\.external-runtime-doctor\.v1/);
+assert.match(browserDevRuntimeDoctor, /runtime: "browser-dev"/);
+assert.match(browserDevRuntimeDoctor, /"datamol-conformer-python"/);
+assert.match(browserDevRuntimeDoctor, /"rdkit-conformer-python"/);
+assert.match(browserDevRuntimeDoctor, /Promise\.all\(\[/);
+assert.doesNotMatch(browserDevRuntimeDoctor, /installBrowserDev|runBrowserDevXtbJob|runBrowserDevConformerJob|createXyzrender/);
+assert.match(viteConfig, /const CONFORMER_PYTHON_STATUS_TIMEOUT_MS = 10_000/);
+assert.match(viteConfig, /function browserDevConformerPythonStatus\(engine: ConformerPythonEngine\)/);
+assert.match(viteConfig, /Set \$\{spec\.envName\} to a Python executable with \$\{spec\.packageName\} installed/);
 assert.match(viteConfig, /function conformerGenerationTimeoutMs\(candidateCount: number\)/);
 assert.match(viteConfig, /Math\.max\(30_000, candidateCount \* 1_000\)/);
 assert.match(viteConfig, /function runPythonWithStdin\(python: PythonCommand, script: string, input: string, timeoutMs = 30_000\): Promise<string>/);
@@ -537,19 +766,23 @@ assert.match(rdkitConformer, /"conformerCount": len\(records\)/);
 assert.match(rdkitConformer, /value\.GetAtomWithIdx\(atom_idx\)\.GetAtomicNum\(\) == 1/);
 assert.match(rdkitConformer, /conformer_plane_thickness\(mol, conf_id\)/);
 assert.match(rdkitConformer, /method = "ETKDG\+" \+ family \+ \("\+fixed-core" if core is not None else "\+ensemble"\)/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/read-file"/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/read-text-file"/);
+assert.match(viteConfig, /registerBrowserDevFileContentRoutes\(server, fileRoutes\)/);
+assert.match(browserDevFiles, /server\.middlewares\.use\("\/__burette\/read-file"/);
+assert.match(browserDevFiles, /server\.middlewares\.use\("\/__burette\/read-text-file"/);
 assert.match(viteConfig, /const TEXT_FILE_READ_LIMIT = 12 \* 1024 \* 1024/);
-assert.match(viteConfig, /const maxBytes = textFileReadLimit\(url\.searchParams\.get\("maxBytes"\)\)/);
+assert.match(browserDevFiles, /const maxBytes = options\.textFileReadLimit\(url\.searchParams\.get\("maxBytes"\)\)/);
 assert.match(viteConfig, /function textFileReadLimit\(value: string \| null\)/);
 assert.match(viteConfig, /function languageForTextExtension/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/file-bundle"/);
+assert.match(browserDevFiles, /server\.middlewares\.use\("\/__burette\/file-bundle"/);
+assert.match(viteConfig, /registerBrowserDevAppIconRoute\(server, BROWSER_DEV_APP_ICONS, execFileAsync\)/);
+assert.match(browserDevAssets, /server\.middlewares\.use\("\/__burette\/app-icon\/"/);
 assert.match(viteConfig, /const SCHRODINGER_RUN = "\/opt\/schrodinger\/suites2026-1\/run"/);
 assert.match(viteConfig, /const DESMOND_PREVIEW_TARGET_MB = 24/);
 assert.match(viteConfig, /desmond_preview_extract\.py/);
-assert.match(viteConfig, /"--frames",\s*"0",\s*"--atoms",\s*"0",\s*"--target-mb",\s*String\(DESMOND_PREVIEW_TARGET_MB\)/s);
-assert.match(viteConfig, /timeout: 0/);
-assert.match(viteConfig, /server\.middlewares\.use\("\/__burette\/desmond-preview"/);
+assert.match(viteConfig, /registerBrowserDevDesmondPreviewRoute\(server,/);
+assert.match(browserDevDesmond, /"--frames",\s*"0",\s*"--atoms",\s*"0",\s*"--target-mb",\s*String\(options\.targetMb\)/s);
+assert.match(browserDevDesmond, /timeout: 0/);
+assert.match(browserDevDesmond, /server\.middlewares\.use\("\/__burette\/desmond-preview"/);
 assert.match(viteConfig, /function isDesmondPreviewCandidate/);
 assert.match(viteConfig, /function resolveStructureFileBundle\(path: string\): StructureFileBundle/);
 assert.match(viteConfig, /function resolveDesmondFileBundle\(path: string\): StructureFileBundle \| null/);
@@ -580,7 +813,9 @@ assert.match(viteConfig, /function isDevFileReadAllowed\(path: string\)/);
 assert.match(viteConfig, /async function collectDefaultDevFiles\(\)/);
 assert.match(viteConfig, /if \(path\.endsWith\("\/no-molecule-column\.csv"\)\) return;/);
 assert.match(viteConfig, /function normalizeXyzrenderInputExtension\(value: string \| null\)/);
-assert.match(viteConfig, /const convertedInputPath = join\(tempDirectory, `xyzrender-input\.\$\{inputExtension\}`\);/);
+assert.match(viteConfig, /registerBrowserDevXyzrenderRoute\(server,/);
+assert.match(browserDevXyzrender, /server\.middlewares\.use\("\/__burette\/xyzrender"/);
+assert.match(browserDevXyzrender, /const convertedInputPath = join\(tempDirectory, `xyzrender-input\.\$\{inputExtension\}`\);/);
 assert.match(previewViewController, /Set\(\["-o", "--output", "-go", "--gif-output", "--config", "--ref"\]\)/);
 assert.match(previewXyzrender, /config_argument: resolved_config_argument/);
 assert.match(viewer, /left: 'hidden'/);
@@ -676,21 +911,43 @@ assert.match(moleculeStore, /tab\.location\.kind !== "file"/);
 assert.match(moleculeStore, /recentStructures: recentStructures\.filter\(isPersistentRecentStructure\)/);
 assert.match(moleculeStore, /if \(isPersistentViewerDocument\(document\)\) byPath\.set\(document\.path, toRecentStructure\(document\)\)/);
 assert.match(moleculeStore, /const storedTabs = \(stored\?\.tabs \?\? current\.tabs\)\.filter/);
-assert.match(app, /async function browserDevFilesFromLocation\(\)/);
-assert.match(app, /if \(params\.has\("devDocking"\)\) return \[\];/);
-assert.match(app, /params\.has\("devFiles"\)/);
-assert.match(app, /return \[\];\s*}\s*function splitDevFiles/);
+assert.match(browserDevStartup, /export async function browserDevFilesFromLocation\(\)/);
+assert.match(browserDevStartup, /if \(params\.has\("devDocking"\)\) return \[\];/);
+assert.match(browserDevStartup, /params\.has\("devFiles"\)/);
+assert.match(browserDevStructureBundles, /!isSpectrumPath\(path, extension\) &&\s*!structureAndTextExtensions\.has\(extension\)/);
+assert.match(browserDevStartup, /export function browserDevFolderFromLocation\(\)/);
+assert.match(browserDevStartup, /get\("devFolder"\)\?\.trim\(\)/);
+assert.ok(browserDevStartup.includes('return folder ? folder.replace(/\\\\/g, "/").replace(/\\/+$/u, "") : null;'));
+assert.match(browserDevStartup, /export function browserDevHasExplicitWorkspace\(\)/);
+assert.match(browserDevStartup, /return params\.has\("devFiles"\) \|\| params\.has\("devFolder"\);/);
+assert.match(app, /from "\.\/hooks\/use-app-browser-dev-startup"/);
+assert.match(app, /browserDevExplicitFolder,[\s\S]*browserDevHasExplicitWorkspaceQuery,[\s\S]*\} = useAppBrowserDevStartup\(\)/);
+assert.doesNotMatch(app, /browserDevFolderFromLocation\(/);
+assert.doesNotMatch(app, /browserDevHasExplicitWorkspace\(/);
+assert.match(appBrowserDevStartupHook, /export function useAppBrowserDevStartup\(\)/);
+assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevFolderFromLocation\(\), \[\]\)/);
+assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevHasExplicitWorkspace\(\), \[\]\)/);
+assert.match(appSidebarProjectsHook, /if \(browserDevExplicitFolder\) return \[browserDevExplicitFolder\];/);
+assert.match(appSidebarProjectsHook, /const sidebarRecentStructures = browserDevExplicitFolder \? \[\] : recentStructures;/);
+assert.match(appSidebarProjectsHook, /recentStructures: sidebarRecentStructures,/);
+assert.match(browserDevStartup, /return \[\];\s*}\s*export function browserDevFolderFromLocation/);
+assert.match(browserDevStartup, /export function splitDevFiles\(rawFiles: string\)/);
 assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
-assert.match(app, /function splitDevFiles\(rawFiles: string\)/);
-assert.match(app, /const NOT_RENDERABLE_RENDERER = "not-renderable";/);
-assert.match(app, /if \(document\.renderer === NOT_RENDERABLE_RENDERER\) \{\s*closeDocument\(document\.id\);/);
-assert.match(app, /const documents = result\.documents\.filter\(\(document\) => document\.renderer !== NOT_RENDERABLE_RENDERER\);/);
-assert.match(app, /const backgroundTextPaths = structureAndTextPaths\.filter\(\(path\) => openedStructureAndTextPaths\.has\(path\)\);/);
-assert.match(app, /await openTextDocuments\(backgroundTextPaths, \{ background: true \}\);/);
-assert.match(app, /const fallbackTextPaths = structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\);/);
-assert.match(app, /function browserDevDockingFromLocation\(\): DockingDocumentRequest \| null/);
-assert.match(app, /params\.has\("devDocking"\)/);
-assert.match(app, /await openPaths\(paths\)/);
+assert.match(fileRouting, /export const NOT_RENDERABLE_RENDERER = "not-renderable";/);
+assert.match(fileRouting, /export function summarizeErrorText\(message: string\)/);
+assert.match(app, /from "\.\/lib\/file-routing"/);
+assert.match(app, /from "\.\/hooks\/use-app-file-open"/);
+assert.match(app, /from "\.\/hooks\/use-app-dock-payload-open"/);
+assert.match(appFileOpenHook, /from "\.\.\/lib\/file-routing"/);
+assert.match(appDockPayloadHook, /from "\.\.\/lib\/file-routing"/);
+assert.match(appFileOpenHook, /if \(document\.renderer === NOT_RENDERABLE_RENDERER\) \{\s*closeDocument\(document\.id\);/);
+assert.match(appDockPayloadHook, /const documents = result\.documents\.filter\(\(document\) => document\.renderer !== NOT_RENDERABLE_RENDERER\);/);
+assert.match(appFileOpenHook, /const backgroundTextPaths = structureAndTextPaths\.filter\(\(path\) => openedStructureAndTextPaths\.has\(path\)\);/);
+assert.match(appFileOpenHook, /await openTextDocuments\(backgroundTextPaths, \{ background: true \}\);/);
+assert.match(appFileOpenHook, /const fallbackTextPaths = structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\);/);
+assert.match(browserDevStartup, /export function browserDevDockingFromLocation\(\): DockingDocumentRequest \| null/);
+assert.match(browserDevStartup, /params\.has\("devDocking"\)/);
+assert.match(appOpenActionsHook, /await openPaths\(paths\)/);
 assert.match(tabsHook, /from "\.\.\/stores\/molecule-store"/);
 assert.match(tabsHook, /getSessionSnapshot/);
 assert.match(tabsHook, /restoreSession/);
@@ -702,7 +959,7 @@ assert.doesNotMatch(tabsHook, /useAppStore/);
 assert.match(settingsStore, /export const useSettingsStore = create<SettingsState>/);
 assert.match(settingsStore, /name: "burrete\.shell"/);
 assert.match(settingsStore, /preferences: defaultPreferences/);
-assert.match(settingsStore, /conformerEngine: "datamol"/);
+assert.match(settingsStore, /conformerEngine: "rdkit"/);
 assert.match(settingsStore, /conformerCandidateCount: 128/);
 assert.match(settingsStore, /conformerRmsdCutoff: 0\.75/);
 assert.match(settingsHook, /useViewerPreferences/);
@@ -715,7 +972,12 @@ assert.match(app, /from "\.\/hooks\/use-tabs"/);
 assert.match(app, /from "\.\/hooks\/use-settings"/);
 assert.match(app, /useOpenSettingsSection/);
 assert.match(app, /useActivateLastNonSettingsTab/);
-assert.match(app, /const openSettingsSection = useCallback/);
+assert.match(app, /const \{\s*backToApp,\s*focusSidebarSearch,\s*openSettings,\s*openSettingsSection,\s*selectDocument,\s*\} = useAppShellNavigationActions/s);
+assert.doesNotMatch(app, /const selectDocument = useCallback/);
+assert.doesNotMatch(app, /const focusSidebarSearch = useCallback/);
+assert.match(appShellNavigationActionsHook, /const selectDocument = useCallback\(\(id: string\) => \{\s*setActiveDocument\(id\);/);
+assert.match(appShellNavigationActionsHook, /const focusSidebarSearch = useCallback\(\(\) => \{\s*openCommandPalette\("search"\);/);
+assert.match(appShellNavigationActionsHook, /const openSettingsSection = useCallback/);
 assert.match(app, /openSettingsSection,/);
 assert.match(componentsTypes, /openSettingsSection: \(section: AppSettingsSectionId\) => void/);
 assert.match(componentsTypes, /backToApp: \(\) => void/);
@@ -724,9 +986,9 @@ assert.match(moleculeStore, /activateLastNonSettingsTab: \(\) => void/);
 assert.match(moleculeStore, /location: \{ kind: "settings" as const, section \}/);
 assert.doesNotMatch(editorArea, /state\.page === "agent"/);
 assert.match(app, /lazy\(\(\) => import\("\.\/components\/command-palette"\)/);
-assert.match(app, /markPerformanceOnce\("app:shell-visible"\)/);
-assert.match(app, /markPerformanceOnce\("app:first-document-opened"\)/);
-assert.match(app, /markPerformanceOnce\("viewer:first-render"\)/);
+assert.match(appBootstrapHook, /markPerformanceOnce\("app:shell-visible"\)/);
+assert.match(appFileOpenHook, /markPerformanceOnce\("app:first-document-opened"\)/);
+assert.match(appViewerRuntimeMessagesHook, /markPerformanceOnce\("viewer:first-render"\)/);
 assert.match(desktopIndex, /<script src="\.\/boot-overlay\.js"><\/script>[\s\S]*?<body>\s*<div id="root"><\/div>\s*<script type="module" src="\/src\/main\.tsx"><\/script>/);
 assert.doesNotMatch(desktopIndex, /<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/);
 assert.match(main, /import "\.\/performance-start"/);
@@ -737,6 +999,8 @@ assert.match(bootOverlayScript, /let mounted = false/);
 assert.match(bootOverlayScript, /function whenBodyReady/);
 assert.match(bootOverlayScript, /function ensureOverlay\(\) \{\s*if \(mounted\) return null;/);
 assert.match(bootOverlayScript, /function removeOverlay\(\) \{\s*mounted = true;/);
+assert.doesNotMatch(bootOverlayScript, /function hasMountedApp\(\)/);
+assert.match(bootOverlayScript, /function setOverlay\(message, details\) \{\s*mounted = false;/);
 assert.match(bootOverlayScript, /whenBodyReady\(\(\) => \{\s*if \(mounted\) return;/);
 assert.match(bootOverlayScript, /window\.addEventListener\("error"/);
 assert.match(bootOverlayScript, /window\.addEventListener\("unhandledrejection"/);
@@ -747,7 +1011,13 @@ assert.match(bootOverlayScript, /document\.getElementById\(styleId\)/);
 assert.doesNotMatch(bootOverlayScript, /\bimport\b/);
 assert.doesNotThrow(() => new Function(bootOverlayScript));
 assert.match(packageJson, /scripts\/bundle-report\.mjs/);
-assert.match(app, /useEffect\(\(\) => \{\s*window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\);[\s\S]*?markPerformanceOnce\("app:shell-visible"\);/);
+assert.match(app, /useAppUpdates\(\{ pushErrorStatus, pushStatus \}\)/);
+assert.match(appUpdatesHook, /const \{ buildInfo, buildInfoLoaded \} = useAppBootstrap\(setUpdate\)/);
+assert.match(appBootstrapHook, /window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\);[\s\S]*?markPerformanceOnce\("app:shell-visible"\);/);
+assert.match(appBootstrapHook, /void loadBuildInfo\(\)\.then\(\(info\) => \{/);
+assert.match(appBootstrapHook, /setBuildInfo\(info\);/);
+assert.match(appBootstrapHook, /setBuildInfoLoaded\(true\);/);
+assert.match(appBootstrapHook, /statusText: "Updates are disabled for dev builds\."/);
 assert.match(bundleReportScript, /source\.includes\("ketcher-core"\)/);
 assert.match(bundleReportScript, /source\.includes\("indigo-ketcher"\)/);
 assert.match(bundleReportScript, /relativePath\.toLowerCase\(\)\.includes\("ketcher"\)/);
@@ -755,33 +1025,154 @@ assert.match(bundleReportScript, /const initialKetcherAssets = assets\.filter\(\
 assert.match(bundleReportScript, /const mainImportsKetcher = \/from\\s\*\["'\]\\\.\\\/ketcher-/);
 assert.match(bundleReportScript, /const ketcherBoundaryOk = ketcherChunks\.length > 0 && initialKetcherAssets\.length === 0 && !mainImportsKetcher/);
 assert.match(bundleReportScript, /Ketcher lazy boundary failed/);
-assert.match(app, /useState<StatusNotice \| null>\(null\)/);
-assert.match(app, /const pushStatus = useCallback/);
-assert.match(app, /const pushErrorStatus = useCallback/);
+assert.match(app, /const \{ status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef \} = useAppStatus\(\)/);
+assert.match(appStatusHook, /useState<StatusNotice \| null>\(null\)/);
+assert.match(appStatusHook, /const pushStatus = useCallback/);
+assert.match(appStatusHook, /const pushErrorStatus = useCallback/);
+assert.match(appStatusHook, /recentErrorsRef\.current = recentErrorsRef\.current\.slice\(-20\)/);
+assert.match(appStatusHook, /window\.setTimeout/);
+assert.match(appStatusHook, /current\?\.id === status\.id \? null : current/);
+assert.match(app, /useAppDescriptors\(\{\s*documents,\s*openDockTab,\s*pushStatus,\s*\}\)/s);
+assert.match(appDescriptorsHook, /const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job"/);
+assert.match(appDescriptorsHook, /type: "gridDescriptorControls"/);
+assert.match(appDescriptorsHook, /type: "gridDescriptorResults"/);
+assert.match(appDescriptorsHook, /runGridDescriptorCalculation\(documentId, targetDocument\.path, targetCount \? \{ rowIndexes \} : \{\}\)/);
+assert.match(appDescriptorsHook, /Descriptor calculation failed:/);
+assert.match(app, /useAppDirtyGridDocuments\(\)/);
+assert.doesNotMatch(app, /setDirtyGridDocuments/);
+assert.match(appGridControlMessagesHook, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
+assert.match(appGridFileActionsHook, /forgetDirtyGridDocument\(typeof body\.documentId === "string" \? body\.documentId : null\)/);
+assert.match(appShellActionsHook, /clearDirtyGridDocuments\(\);/);
+assert.match(appDirtyGridHook, /useState<Set<string>>\(\(\) => new Set\(\)\)/);
+assert.match(appDirtyGridHook, /This grid has unsaved changes/);
+assert.match(appDirtyGridHook, /dirtyCount === 1 \? " has" : "s have"/);
+assert.doesNotMatch(app, /useAppQuickLook/);
+assert.doesNotMatch(app, /useAppQuickLookDocumentOpen/);
+assert.doesNotMatch(appShellActionsHook, /closeQuickLookPreview/);
+assert.match(app, /useAppMaintenance\(\{ pushErrorStatus, pushStatus \}\)/);
+assert.match(appMaintenanceHook, /invoke\("clear_preview_cache"\)/);
+assert.match(appMaintenanceHook, /invoke<\{ ok: boolean \}>\("reset_quick_look"\)/);
+assert.match(appMaintenanceHook, /invoke\("open_logs_folder"\)/);
+assert.match(appMaintenanceHook, /invoke<ExternalRuntimeDoctorReport>\("external_runtime_doctor"\)/);
+assert.match(appMaintenanceHook, /fetch\("\/__burette\/external-runtime-doctor", \{ cache: "no-store" \}\)/);
+assert.match(appMaintenanceHook, /Runtime doctor is available in the desktop app or browser-dev only/);
+assert.match(appMaintenanceHook, /Runtime doctor failed/);
+assert.match(appMaintenanceHook, /invoke<string>\("open_new_workspace_window"\)/);
+assert.match(app, /runExternalRuntimeDoctor,\s*\} = useAppMaintenance\(\{ pushErrorStatus, pushStatus \}\)/);
+assert.match(app, /runExternalRuntimeDoctor,/);
+assert.match(appShellActionsHook, /runExternalRuntimeDoctor: ShellActions\["runExternalRuntimeDoctor"\]/);
+assert.match(appShellActionsHook, /runExternalRuntimeDoctor,/);
+assert.match(componentsTypes, /runExternalRuntimeDoctor: \(\) => void \| Promise<void>;/);
+assert.match(settingsPanel, /actionRow\("Runtime doctor"/);
+assert.match(commandPalette, /id: "runtime-doctor"/);
+assert.match(app, /useAppDiagnostics\(\{\s*pushErrorStatus,\s*pushStatus,\s*recentErrorsRef,\s*\}\)/s);
+assert.doesNotMatch(app, /collectPerformanceMarks/);
+assert.doesNotMatch(app, /measureAsync\("ipc:export-diagnostics"/);
+assert.match(appDiagnosticsHook, /Diagnostics export is available in the desktop app only/);
+assert.match(appDiagnosticsHook, /measureAsync\("ipc:export-diagnostics"/);
+assert.match(appDiagnosticsHook, /invoke<string>\("export_diagnostics_bundle"/);
+assert.match(appDiagnosticsHook, /performanceMarks: collectPerformanceMarks\(\)/);
+assert.match(appDiagnosticsHook, /recentErrors: recentErrorsRef\.current/);
+assert.match(appDiagnosticsHook, /Diagnostics export failed/);
+assert.match(appConformerWorkflowsHook, /from "\.\.\/lib\/chemistry-settings"/);
+assert.match(appConformerWorkflowsHook, /from "\.\.\/lib\/chemistry-job-requests"/);
+assert.match(appConformerWorkflowsHook, /from "\.\.\/lib\/direct-chemistry-guard"/);
+assert.match(app, /useAppChemistryJobs\(\{ pushErrorStatus, pushStatus \}\)/);
+assert.match(app, /useAppConformerWorkflows\(\{\s*activeDocument,\s*cancelledConformerJobIdsRef,\s*conformerSettings,/s);
+assert.doesNotMatch(app, /const \[conformerStatus, setConformerStatus\]/);
+assert.doesNotMatch(app, /const \[xtbStatus, setXtbStatus\]/);
+assert.match(appChemistryJobsHook, /readConformerSettings\(\)/);
+assert.match(appChemistryJobsHook, /readXtbSettings\(\)/);
+assert.match(appChemistryJobsHook, /normalizeConformerSettings\(settings\)/);
+assert.match(appChemistryJobsHook, /saveConformerSettings\(normalized\)/);
+assert.match(appChemistryJobsHook, /normalizeXtbSettings\(settings\)/);
+assert.match(appChemistryJobsHook, /saveXtbSettings\(normalized\)/);
+assert.match(appChemistryJobsHook, /requestConformerStatus\(\)/);
+assert.match(appChemistryJobsHook, /pushStatus\(conformerStatusLine\(status\)\)/);
+assert.match(appChemistryJobsHook, /requestXtbStatus\(\)/);
+assert.match(appChemistryJobsHook, /installXtbRequest\(\)/);
+assert.match(appChemistryJobsHook, /cancelConformerRequest\(jobId\)/);
+assert.match(appChemistryJobsHook, /cancelXtbRequest\(jobId\)/);
+assert.doesNotMatch(app, /async function requestXtbStatus/);
+assert.doesNotMatch(app, /const runConformerJob = useCallback/);
+assert.doesNotMatch(app, /function selectedPdbLigandConformerInput/);
+assert.doesNotMatch(app, /function conformerInputForMolstarContextDocument/);
+assert.doesNotMatch(app, /function conformerOutputDirectory/);
+assert.match(appConformerWorkflowsHook, /prepareConformerRequest\(fullRequest\)/);
+assert.match(appConformerWorkflowsHook, /runConformerRequest\(\{ \.\.\.fullRequest, workDir: preparedRun\.workDir \}\)/);
+assert.match(appConformerWorkflowsHook, /requestConformerStatus\(\)\.then\(setConformerStatus\)\.catch\(\(\) => \{\}\)/);
+assert.match(appConformerWorkflowsHook, /directChemistryJobGuardMessage\(/);
+assert.match(appConformerWorkflowsHook, /selectedPdbLigandConformerInput\(document, selection\)/);
+assert.match(appConformerWorkflowsHook, /conformerInputForMolstarContextDocument\(contextDocument\)/);
+assert.match(appConformerWorkflowsHook, /molstarContextEntryExtension\(entry\.format\)/);
+assert.match(appConformerWorkflowsHook, /canInspectConformerEnsemble\(document\.extension\)/);
+assert.match(appConformerWorkflowsHook, /inputDataBase64: inputText === null \? null : textToBase64\(inputText\)/);
+assert.doesNotMatch(app, /browserDevConformerJson/);
+assert.doesNotMatch(app, /DIRECT_CHEMISTRY_JOB_ATOM_LIMIT/);
+assert.doesNotMatch(app, /function estimateStructureAtomCount/);
+assert.match(directChemistryGuard, /const DIRECT_CHEMISTRY_JOB_ATOM_LIMIT = 300/);
+assert.match(directChemistryGuard, /const DIRECT_CHEMISTRY_JOB_READ_LIMIT = 4 \* 1024 \* 1024/);
+assert.match(directChemistryGuard, /readStructureText\(path, \{ maxBytes: DIRECT_CHEMISTRY_JOB_READ_LIMIT \}/);
+assert.match(directChemistryGuard, /parseStructureComposition\(text, normalizedExtension\)/);
+assert.match(directChemistryGuard, /atoms detected/);
+assert.match(directChemistryGuard, /fallbackStructureAtomCount/);
+assert.match(chemistryJobRequests, /invoke<XtbStatus>\("xtb_status"\)/);
+assert.match(chemistryJobRequests, /"\/__burette\/xtb-status"/);
+assert.match(chemistryJobRequests, /invoke<ConformerStatus>\("conformer_status"\)/);
+assert.match(chemistryJobRequests, /"\/__burette\/conformer-status"/);
+assert.match(chemistryJobRequests, /"\/__burette\/prepare-conformer-job"/);
+assert.match(chemistryJobRequests, /"\/__burette\/run-conformer-job"/);
+assert.match(chemistryJobRequests, /"\/__burette\/cancel-conformer-job"/);
+assert.match(chemistryJobRequests, /"\/__burette\/install-xtb"/);
+assert.match(chemistryJobRequests, /"\/__burette\/run-xtb-job"/);
+assert.match(chemistryJobRequests, /"\/__burette\/cancel-xtb-job"/);
+assert.match(chemistryJobRequests, /xTB browser-dev request failed with HTTP/);
+assert.match(chemistryJobRequests, /CREST\/PRISM browser-dev request failed with HTTP/);
+assert.doesNotMatch(app, /const DEFAULT_CONFORMER_SETTINGS/);
+assert.doesNotMatch(app, /const DEFAULT_XTB_SETTINGS/);
+assert.match(chemistrySettings, /const CONFORMER_SETTINGS_STORAGE_KEY = "burrete\.conformer\.settings"/);
+assert.match(chemistrySettings, /const XTB_SETTINGS_STORAGE_KEY = "burrete\.xtb\.settings"/);
+assert.match(chemistrySettings, /export function normalizeConformerSettings/);
+assert.match(chemistrySettings, /export function normalizeXtbSettings/);
+assert.match(chemistrySettings, /return operation === "prism-prune" \? "PRISM Prune" : "CREST Generate"/);
+assert.match(chemistrySettings, /case "optimize":\s*return "xTB Optimize";/s);
+assert.match(chemistrySettings, /migrateLegacyXtbMdDefaults/);
 assert.doesNotMatch(app, /setCommandPaletteOpen/);
 assert.doesNotMatch(app, /useState\(false\).*commandPalette/i);
-assert.match(app, /refreshedPersistedSessionRef/);
-assert.match(app, /syncingBrowserDevFilesRef/);
-assert.match(app, /openedBrowserDevDockingRef/);
-assert.match(app, /browserDevRuntimeNeedsRefresh/);
-assert.match(app, /openedPersistedTabsRef/);
-assert.match(app, /void openPaths\(paths\)\.then\(\(\) => \{/);
-assert.equal((app.match(/useOpenEvents\(/g) || []).length, 1);
-assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
+assert.match(app, /from "\.\/hooks\/use-app-startup-effects"/);
+assert.match(app, /useAppStartupEffects\(\{/);
+assert.match(appStartupEffectsHook, /refreshedPersistedSessionRef/);
+assert.match(appStartupEffectsHook, /syncingBrowserDevFilesRef/);
+assert.match(appStartupEffectsHook, /openedBrowserDevDockingRef/);
+assert.match(appStartupEffectsHook, /browserDevRuntimeNeedsRefresh/);
+assert.match(appStartupEffectsHook, /openedPersistedTabsRef/);
+assert.match(appStartupEffectsHook, /void Promise\.resolve\(openPaths\(paths\)\)\.then\(\(\) => \{/);
+assert.match(app, /useAppOpenDropController\(\{/);
+assert.equal((appOpenDropControllerHook.match(/useOpenEvents\(/g) || []).length, 1);
+assert.match(appOpenDropControllerHook, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.doesNotMatch(app, /isTauriRuntime\(\) && !startupOpenSettled/);
-assert.match(app, /buildSidebarProjects/);
-assert.match(app, /buildSidebarProjects\(\{\s*documents,\s*recentStructures,/);
+assert.match(app, /useAppSidebarProjects/);
+assert.match(appSidebarProjectsHook, /buildSidebarProjects/);
+assert.match(appSidebarProjectsHook, /buildSidebarProjects\(\{\s*documents,\s*recentStructures: sidebarRecentStructures,/);
 assert.doesNotMatch(app, /recentStructures:\s*documents\.length === 0 \? recentStructures : \[\]/);
-assert.match(app, /from "\.\/lib\/temporary-documents"/);
-assert.match(app, /!isTemporaryDocumentPath\(activeTab\.location\.path\)/);
-assert.match(app, /typeof path === "string" && !isTemporaryDocumentPath\(path\)/);
+assert.doesNotMatch(app, /from "\.\/lib\/temporary-documents"/);
+assert.doesNotMatch(app, /!isTemporaryDocumentPath\(activeTab\.location\.path\)/);
+assert.match(appPreferenceEffectsHook, /from "\.\.\/lib\/temporary-documents"/);
+assert.match(appPreferenceEffectsHook, /!isTemporaryDocumentPath\(activeTab\.location\.path\)/);
+assert.match(appStartupEffectsHook, /typeof path === "string" && !isTemporaryDocumentPath\(path\)/);
 assert.match(app, /pinnedStructurePaths,/);
 assert.match(app, /pinnedProjectRoots,/);
 assert.match(app, /projectNameOverrides,/);
 assert.match(app, /hiddenProjectRoots,/);
 assert.match(app, /sidebarProjects/);
-assert.match(app, /!isTauriRuntime\(\) \|\| documents\.length === 0/);
-assert.match(app, /void openPaths\(paths\)\.then\(\(\) => \{/);
+assert.match(appSidebarProjectsHook, /!import\.meta\.env\.DEV \|\| isTauriRuntime\(\) \|\| browserDevHasExplicitWorkspace/);
+assert.match(appSidebarProjectsHook, /list_project_structure_files/);
+assert.match(appSidebarProjectsHook, /prunedPersistedPathsRef/);
+assert.match(appSidebarProjectsHook, /pruneSidebarPaths\(existingPaths\)/);
+assert.match(appSidebarProjectsHook, /pruneRecentStructures\(existingPaths\)/);
+assert.match(appStartupEffectsHook, /const workspace = browserDevExplicitFolder \?\? \(paths\[0\] \? parentDirectory\(paths\[0\]\) : null\);/);
+assert.match(appStartupEffectsHook, /!isTauriRuntime\(\) \|\| documents\.length === 0/);
+assert.match(appStartupEffectsHook, /void Promise\.resolve\(openPaths\(paths\)\)\.then\(\(\) => \{/);
 assert.match(openEventsHook, /return startupOpenSettled/);
 assert.match(openEventsHook, /openPendingDocuments\(\{ replace: true \}, true\)/);
 assert.match(appLayout, /from "\.\/editor-area"/);
@@ -789,6 +1180,7 @@ assert.match(appLayout, /from "\.\/editor-area\/editor-tabs"/);
 assert.match(appLayout, /from "\.\/sidebar"/);
 assert.match(appLayout, /from "\.\/notification-popup"/);
 assert.doesNotMatch(appLayout, /SidebarLeftIcon/);
+assert.doesNotMatch(appLayout, /from "\.\/system-icon"/);
 assert.match(appLayout, /function DockToggleIcon\(\{ className \}: \{ className\?: string \}\)/);
 assert.match(appLayout, /function clampRightDockWidth\(width: number, viewportWidth: number, sidebarLayoutWidth: number\)/);
 assert.match(appLayout, /<rect x="2\.25" y="2\.25" width="13\.5" height="13\.5" rx="3\.25" stroke="currentColor" strokeWidth="1\.8" \/>/);
@@ -964,11 +1356,13 @@ assert.match(viewer, /records: \[\]/);
 assert.match(viewer, /function requestHostXyzrenderSheetItem\(entry, preset, controls\)/);
 assert.match(viewer, /inputDataBase64: sheetEntryInputDataBase64\(entry\)/);
 assert.match(viewer, /type: 'renderXyzrenderSheetItem'/);
-assert.match(app, /body\?\.type === "renderXyzrenderSheetItem"/);
-assert.match(app, /inputDataBase64: body\.inputDataBase64 \?\? null/);
-assert.match(app, /invoke<\{[\s\S]*\}>\("render_xyzrender_sheet_item"/);
-assert.match(app, /body\?\.type === "renderXyzrenderCards"/);
-assert.match(app, /"render_xyzrender_sheet_items"/);
+assert.match(viewerBridgeMessagesLib, /handleXyzrenderSheetMessage\(source, body, eventSource\)/);
+assert.match(appXyzrenderSheetMessagesHook, /body\?\.type !== "renderXyzrenderSheetItem"/);
+assert.match(appXyzrenderSheetMessagesHook, /inputDataBase64: body\.inputDataBase64 \?\? null/);
+assert.match(appXyzrenderSheetMessagesHook, /invoke<\{[\s\S]*\}>\("render_xyzrender_sheet_item"/);
+assert.match(appXyzrenderSheetMessagesHook, /sourceName === "burrete-grid" \? "burrete-grid-host" : "burrete-host"/);
+assert.match(appGridRuntimeMessagesHook, /body\?\.type === "renderXyzrenderCards"/);
+assert.match(appGridRuntimeMessagesHook, /"render_xyzrender_sheet_items"/);
 assert.match(commandDocuments, /pub\(crate\) async fn render_xyzrender_sheet_item/);
 assert.match(commandDocuments, /pub\(crate\) async fn render_xyzrender_sheet_items/);
 assert.match(commandDocuments, /tauri::async_runtime::spawn_blocking/);
@@ -1039,15 +1433,16 @@ assert.match(gridViewer, /types\.includes\(STRUCTURE_DRAG_MIME\) \|\| types\.inc
 assert.match(gridViewer, /hostRequest\('renderXyzrenderCard', request\)/);
 assert.match(gridViewer, /hostRequest\('renderXyzrenderCards', \{/);
 assert.match(gridViewer, /function prepareXyzrenderCardSVG\(svg\)/);
-assert.match(gridViewer, /const RDKIT_CARD_ROOT_MARGIN = '900px 0px';/);
+assert.match(gridViewer, /const RDKIT_CARD_ROOT_MARGIN = 900;/);
+assert.match(gridViewer, /rootMargin: `\$\{RDKIT_CARD_ROOT_MARGIN\}px 0px`/);
 assert.match(gridViewer, /const XYZRENDER_CARD_ROOT_MARGIN = '120px 0px';/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_SIZE = 12;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_MIN_CONCURRENCY = 1;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_MAX_CONCURRENCY = 3;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_DELAY_MS = 16;/);
 assert.match(gridViewer, /return cfg\?\.appViewer === true && \(\s*cfg\?\.gridDataMode === 'bridge'\s*\|\|\s*\(typeof cfg\?\.xyzrenderEndpoint === 'string' && cfg\.xyzrenderEndpoint\.trim\(\)\.length > 0\)\s*\);/);
-assert.match(app, /body\?\.type === "readStructureText"/);
-assert.match(app, /invoke<string>\("read_structure_text"/);
+assert.match(appGridRuntimeMessagesHook, /body\?\.type === "readStructureText"/);
+assert.match(appGridRuntimeMessagesHook, /invoke<string>\("read_structure_text"/);
 assert.match(structureText, /function isCompressedMaestroPath\(path: string\)/);
 assert.match(structureText, /export async function readStructureTextDocument/);
 assert.match(structureText, /invoke<TextFileReadResult>\("read_text_file", \{ path, maxBytes \}\)/);
@@ -1102,6 +1497,8 @@ assert.match(gridViewer, /\['open', 'Preview molecule'\]/);
 assert.match(gridViewer, /function scheduleRdkitCard\(card, row\)/);
 assert.match(gridViewer, /function pumpRdkitCardQueue\(\)/);
 assert.match(gridViewer, /window\.setTimeout\(pumpRdkitCardQueue, 0\)/);
+assert.match(gridViewer, /requestAnimationFrame\(startVisibleRdkitCards\)/);
+assert.match(gridViewer, /function startVisibleRdkitCards\(\)/);
 assert.match(gridViewer, /function scheduleXyzrenderCard\(card, row, cfg\)/);
 assert.match(gridViewer, /new IntersectionObserver\(entries => \{/);
 assert.match(gridViewer, /function enqueueXyzrenderCard\(row, cfg, record, key, target\)/);
@@ -1346,6 +1743,7 @@ assert.match(styles, /\.tab-shell:focus-within \.tab-close \{[^}]*transform: tra
 assert.match(styles, /\.tab-close:hover \{ color: var\(--text-secondary\); \}/);
 assert.match(closeIcon, /export function CloseIcon/);
 assert.match(closeIcon, /className="close-glyph"/);
+assert.doesNotMatch(closeIcon, /from "\.\/system-icon"/);
 assert.match(closeIcon, /strokeLinecap="round"/);
 for (const sourceText of [dockPanel, editorTabs, notificationPopup, settingControl]) {
   assert.doesNotMatch(sourceText, /className="(?:tab-close|dock-tab-close|radix-dialog-close)"[\s\S]*?>\s*[x×]\s*<\/button>/);
@@ -1357,14 +1755,14 @@ assert.doesNotMatch(styles, /\.dock-tab\[data-active\] \+ \.dock-tab-close/);
 assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab \{\s*padding-right: 27px;/);
 assert.doesNotMatch(styles, /\.dock-tab-shell:hover \.dock-tab svg,\s*\.dock-tab-shell:focus-within \.dock-tab svg \{\s*opacity: 0/s);
 assert.doesNotMatch(styles, /\.dock-tab\[data-active\] svg \{\s*opacity: 0/s);
-assert.match(app, /const RIGHT_DOCK_CLOSE_THRESHOLD = 180/);
-assert.match(app, /const BOTTOM_DOCK_CLOSE_THRESHOLD = 120/);
-assert.match(app, /if \(nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD\) \{/);
-assert.match(app, /setDockOpen\("right", false\)/);
-assert.match(app, /if \(nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD\) \{/);
-assert.match(app, /setDockOpen\("bottom", false\)/);
-assert.match(app, /\[rightDockWidth, setDockOpen, setDockSize\]/);
-assert.match(app, /\[bottomDockHeight, setDockOpen, setDockSize\]/);
+assert.match(appResizeHook, /const RIGHT_DOCK_CLOSE_THRESHOLD = 180/);
+assert.match(appResizeHook, /const BOTTOM_DOCK_CLOSE_THRESHOLD = 120/);
+assert.match(appResizeHook, /if \(nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD\) \{/);
+assert.match(appResizeHook, /setDockOpen\("right", false\)/);
+assert.match(appResizeHook, /if \(nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD\) \{/);
+assert.match(appResizeHook, /setDockOpen\("bottom", false\)/);
+assert.match(appResizeHook, /\[rightDockWidth, setDockOpen, setDockSize\]/);
+assert.match(appResizeHook, /\[bottomDockHeight, setDockOpen, setDockSize\]/);
 assert.match(dockPanel, /data-open=\{open \? "true" : "false"\}/);
 assert.match(dockPanel, /data-active-tab=\{activeTab\.kind\}/);
 assert.match(dockPanel, /data-dragging=\{dragging \|\| undefined\}/);
@@ -1384,88 +1782,155 @@ assert.match(dockPanel, /actions\.copyPath\(document\.path, "file"\)/);
 assert.match(dockPanel, /onStructureSelection=\{actions\.selectTextStructure\}/);
 assert.match(dockPanel, /readStructureTextDocument\(activeDocument\.path/);
 assert.match(dockPanel, /isMaestroStructure\(activeDocument\) \? 1_500_000 : 3_000_000/);
-assert.match(app, /const selectTextStructure = useCallback/);
-assert.match(app, /source: "burrete-agent-host"/);
-assert.match(app, /type: "agent-action"/);
-assert.match(app, /type: "select_residues"/);
-assert.match(app, /granularity: selection\.granularity/);
-assert.match(app, /const runStructureViewerAction = useCallback/);
-assert.match(app, /id: `structure-action-\$\{Date\.now\(\)\}`/);
+assert.match(app, /useAppMolstarActionSenders\(\{\s*activeDocument,\s*activeViewerIframeForDocument,\s*documents,\s*pushStatus,/s);
+assert.doesNotMatch(app, /const selectTextStructure = useCallback/);
+assert.doesNotMatch(app, /const runStructureViewerAction = useCallback/);
+assert.match(appMolstarActionSendersHook, /const selectTextStructure = useCallback/);
+assert.match(appMolstarActionSendersHook, /source: "burrete-agent-host"/);
+assert.match(appMolstarActionSendersHook, /type: "agent-action"/);
+assert.match(appMolstarActionSendersHook, /type: "select_residues"/);
+assert.match(appMolstarActionSendersHook, /granularity: selection\.granularity/);
+assert.match(appMolstarActionSendersHook, /const runStructureViewerAction = useCallback/);
+assert.match(appMolstarActionSendersHook, /id: `structure-action-\$\{Date\.now\(\)\}`/);
 assert.match(componentTypes, /generate3DConformer: \(document: ViewerDocument\) => void \| Promise<void>;/);
-assert.match(app, /const generate3DConformer = useCallback\(async \(document: ViewerDocument, mode: ConformerGenerationMode = "single", molstarStyle\?: MolstarStylePreference \| null\) =>/);
-assert.match(app, /invoke<ConformerGenerationResult>\("generate_3d_conformer"/);
-assert.match(app, /generateBrowserDev3DConformer\(request\)/);
-assert.match(app, /\.\.\.conformerGenerationPreferences\(preferences\)/);
-assert.match(app, /mode,/);
-assert.match(app, /pushStatus\(`Generating \$\{conformerGenerationTaskLabel\(mode\)\} with \$\{preferences\.conformerEngine\.toUpperCase\(\)\}\.\.\.`\)/);
+assert.match(app, /useAppGenerate3DConformer\(\{\s*activeViewerIframeForDocument,\s*openDocumentsInActiveTab,\s*pendingMolstarReplaceRef,/s);
+assert.doesNotMatch(app, /const generate3DConformer = useCallback/);
+assert.match(appGenerate3DConformerHook, /const generate3DConformer = useCallback\(async \(/);
+assert.match(appGenerate3DConformerHook, /invoke<ConformerGenerationResult>\("generate_3d_conformer"/);
+assert.match(appGenerate3DConformerHook, /generateBrowserDev3DConformer\(request\)/);
+assert.match(appGenerate3DConformerHook, /\.\.\.conformerGenerationPreferences\(preferences\)/);
+assert.match(appGenerate3DConformerHook, /mode,/);
+assert.match(appGenerate3DConformerHook, /pushStatus\(`Generating \$\{conformerGenerationTaskLabel\(mode\)\} with \$\{preferences\.conformerEngine\.toUpperCase\(\)\}\.\.\.`\)/);
 assert.doesNotMatch(app, /browserDevGeneratedConformerDocument/);
-assert.match(app, /const poseSetText = generated3DPoseSetText\(text, document\.extension, conformer\.text, mode\)/);
-assert.match(app, /const poseSetTitle = generated3DPoseSetTitle\(document\.title, poseSetText\)/);
-assert.match(app, /const effectiveMolstarStyle = molstarStyle \?\? preferences\.molstarStyle/);
-assert.match(app, /const molstarPreferences = \{ \.\.\.preferences, rendererMode: "molstar" as const, molstarStyle: effectiveMolstarStyle \}/);
-assert.match(app, /openBrowserDevTextDocument\([\s\S]*poseSetTitle,[\s\S]*conformer\.extension,[\s\S]*poseSetText,[\s\S]*molstarPreferences,[\s\S]*\{\},[\s\S]*\)/);
+assert.match(appGenerate3DConformerHook, /const poseSetText = generated3DPoseSetText\(text, document\.extension, conformer\.text, mode\)/);
+assert.match(appGenerate3DConformerHook, /const poseSetTitle = generated3DPoseSetTitle\(document\.title, poseSetText\)/);
+assert.match(appGenerate3DConformerHook, /const effectiveMolstarStyle = molstarStyle \?\? preferences\.molstarStyle/);
+assert.match(appGenerate3DConformerHook, /const molstarPreferences = \{ \.\.\.preferences, rendererMode: "molstar" as const, molstarStyle: effectiveMolstarStyle \}/);
+assert.match(appGenerate3DConformerHook, /openBrowserDevTextDocument\([\s\S]*poseSetTitle,[\s\S]*conformer\.extension,[\s\S]*poseSetText,[\s\S]*molstarPreferences,[\s\S]*\{\},[\s\S]*\)/);
 assert.doesNotMatch(app, /const updatedDocument = \{[\s\S]*?runtimePath: document\.runtimePath[\s\S]*?setDocuments/);
-assert.match(app, /const pendingMolstarReplaceRef = useRef<Map<string, PendingMolstarReplaceResolver>>\(new Map\(\)\)/);
-assert.match(app, /const replacedInPlace = await replaceMolstarStructureInPlace\([\s\S]*pendingMolstarReplaceRef\.current,[\s\S]*\)/);
-assert.match(app, /writeBrowserDevVirtualTextDocument\(generatedDocument\.path, poseSetText\)/);
-assert.match(app, /openDocumentsInActiveTab\(\[generatedDocument\], \{\s*backLocation: \{ kind: "file", documentId: document\.id, path: document\.path \},\s*\}\)/);
-assert.match(app, /pushStatus\(generated3DStatus\(conformer, "added it as a new Molstar pose"\)\)/);
-assert.match(app, /openDocumentsInActiveTab\(\[generatedDocument\]\)/);
-assert.match(app, /3D conformer was generated, but the current Molstar viewer did not apply it in place/);
-assert.match(app, /source3d: null/);
+assert.match(appViewerRuntimeRefsHook, /const pendingMolstarReplaceRef = useRef<Map<string, PendingMolstarReplaceResolver>>\(new Map\(\)\)/);
+assert.match(appGenerate3DConformerHook, /const replacedInPlace = await replaceMolstarStructureInPlace\([\s\S]*pendingMolstarReplaceRef\.current,[\s\S]*activeViewerIframeForDocument,[\s\S]*\)/);
+assert.match(appGenerate3DConformerHook, /writeBrowserDevVirtualTextDocument\(generatedDocument\.path, poseSetText\)/);
+assert.match(appGenerate3DConformerHook, /openDocumentsInActiveTab\(\[generatedDocument\], \{\s*backLocation: \{ kind: "file", documentId: document\.id, path: document\.path \},\s*\}\)/);
+assert.match(appGenerate3DConformerHook, /pushStatus\(generated3DStatus\(conformer, "added it as a new Molstar pose"\)\)/);
+assert.match(appGenerate3DConformerHook, /openDocumentsInActiveTab\(\[generatedDocument\]\)/);
+assert.match(appGenerate3DConformerHook, /3D conformer was generated, but the current Molstar viewer did not apply it in place/);
+assert.match(appGenerate3DConformerHook, /source3d: null/);
 assert.doesNotMatch(app, /Generate 3D runs in the desktop app runtime\. Browser dev shows the control placement only\./);
-assert.match(app, /pushStatus\(generated3DStatus\(conformer, "opened it in Molstar"\)\)/);
+assert.match(appGenerate3DConformerHook, /pushStatus\(generated3DStatus\(conformer, "opened it in Molstar"\)\)/);
 assert.doesNotMatch(app, /Generated 3D conformer with \$\{conformer\.method\} and replaced the current view/);
-assert.match(app, /function generated3DStatus\(conformer: ConformerGenerationResult, action: string\)/);
-assert.match(app, /function conformerGenerationPreferences\(preferences: ViewerPreferences\)/);
-assert.match(app, /candidateCount: preferences\.conformerCandidateCount/);
-assert.match(app, /rmsdCutoff: preferences\.conformerRmsdCutoff/);
-assert.match(app, /const subject = count > 1 \? `\$\{count\} 3D conformers` : "3D conformer"/);
-assert.match(app, /function generated3DPoseSetText\(sourceText: string, sourceExtension: string, generatedText: string, mode: ConformerGenerationMode = "single"\)/);
-assert.match(app, /function sourcePoseRecordBlocks\(text: string, extension: string\)/);
-assert.match(app, /function sdfRecordBlocks\(text: string\)/);
-assert.match(app, /const alignedGeneratedRecords = alignGeneratedPoseRecordsToSource\(generatedRecords, sourceRecords\[0\]\)/);
-assert.match(app, /const records = mode === "ensemble" \? alignedGeneratedRecords : \[\.\.\.alignedGeneratedRecords, \.\.\.sourceRecords\]/);
-assert.match(app, /function alignGeneratedPoseRecordsToSource\(records: string\[\], sourceRecord: string \| undefined\)/);
-assert.match(app, /function alignMolBlockCentroid\(record: string, source: MolBlockAtomCoordinates\)/);
-assert.match(app, /function readMolBlockAtomCoordinates\(record: string\): MolBlockAtomCoordinates \| null/);
-assert.match(app, /function formatMolCoordinate\(value: number\)/);
-assert.match(app, /function normalizeMolstarStylePreference\(value: unknown\): MolstarStylePreference \| null/);
-assert.match(app, /function conformerGenerationTaskLabel\(mode: ConformerGenerationMode\)/);
-assert.match(app, /mode === "ensemble" \? "3D conformer set" : "3D conformer"/);
-assert.match(app, /function conformerZDepth\(text: string\)/);
-assert.match(app, /z-depth \$\{depth\.toFixed\(2\)\} A/);
-assert.match(app, /function replaceMolstarStructureInPlace\(/);
-assert.match(app, /type: "replaceMolstarStructure"/);
-assert.match(app, /const requestId = `molstar-replace-\$\{Date\.now\(\)\}-\$\{Math\.random\(\)\.toString\(36\)\.slice\(2\)\}`/);
-assert.match(app, /requestId,/);
-assert.match(app, /textBase64: textToBase64\(conformer\.text\)/);
-assert.match(app, /body\?\.type === "molstarStructureReplaced"/);
-assert.match(app, /pendingMolstarReplaceRef\.current\.get\(requestId\)/);
+assert.doesNotMatch(app, /from "\.\/lib\/conformer-generation"/);
+assert.match(appGenerate3DConformerHook, /from "\.\.\/lib\/conformer-generation"/);
+assert.doesNotMatch(app, /function generated3DStatus/);
+assert.doesNotMatch(app, /function generated3DPoseSetText/);
+assert.match(conformerGeneration, /export function generated3DStatus\(conformer: ConformerGenerationResult, action: string\)/);
+assert.match(conformerGeneration, /export function conformerGenerationPreferences\(preferences: ViewerPreferences\)/);
+assert.match(conformerGeneration, /candidateCount: preferences\.conformerCandidateCount/);
+assert.match(conformerGeneration, /rmsdCutoff: preferences\.conformerRmsdCutoff/);
+assert.match(conformerGeneration, /const subject = count > 1 \? `\$\{count\} 3D conformers` : "3D conformer"/);
+assert.match(conformerGeneration, /export function generated3DPoseSetText\(sourceText: string, sourceExtension: string, generatedText: string, mode: ConformerGenerationMode = "single"\)/);
+assert.match(conformerGeneration, /function sourcePoseRecordBlocks\(text: string, extension: string\)/);
+assert.match(conformerGeneration, /function sdfRecordBlocks\(text: string\)/);
+assert.match(conformerGeneration, /const alignedGeneratedRecords = alignGeneratedPoseRecordsToSource\(generatedRecords, sourceRecords\[0\]\)/);
+assert.match(conformerGeneration, /const records = mode === "ensemble" \? alignedGeneratedRecords : \[\.\.\.alignedGeneratedRecords, \.\.\.sourceRecords\]/);
+assert.match(conformerGeneration, /function alignGeneratedPoseRecordsToSource\(records: string\[\], sourceRecord: string \| undefined\)/);
+assert.match(conformerGeneration, /function alignMolBlockCentroid\(record: string, source: MolBlockAtomCoordinates\)/);
+assert.match(conformerGeneration, /function readMolBlockAtomCoordinates\(record: string\): MolBlockAtomCoordinates \| null/);
+assert.match(conformerGeneration, /function formatMolCoordinate\(value: number\)/);
+assert.match(conformerGeneration, /export function normalizeMolstarStylePreference\(value: unknown\): MolstarStylePreference \| null/);
+assert.match(conformerGeneration, /export function conformerGenerationTaskLabel\(mode: ConformerGenerationMode\)/);
+assert.match(conformerGeneration, /mode === "ensemble" \? "3D conformer set" : "3D conformer"/);
+assert.match(conformerGeneration, /function conformerZDepth\(text: string\)/);
+assert.match(conformerGeneration, /z-depth \$\{depth\.toFixed\(2\)\} A/);
+assert.doesNotMatch(app, /function replaceMolstarStructureInPlace\(/);
+assert.match(appGenerate3DConformerHook, /function replaceMolstarStructureInPlace\(/);
+assert.match(appGenerate3DConformerHook, /type: "replaceMolstarStructure"/);
+assert.match(appGenerate3DConformerHook, /const requestId = `molstar-replace-\$\{Date\.now\(\)\}-\$\{Math\.random\(\)\.toString\(36\)\.slice\(2\)\}`/);
+assert.match(appGenerate3DConformerHook, /requestId,/);
+assert.match(appGenerate3DConformerHook, /textBase64: textToBase64\(conformer\.text\)/);
+assert.match(app, /useAppViewerBridgeController\(\{/);
+assert.doesNotMatch(app, /useAppViewerBridgeMessages\(\{/);
+for (const messageHook of [
+  "useAppGridControlMessages",
+  "useAppGridFileActions",
+  "useAppGridRuntimeMessages",
+  "useAppKetcherViewerMessages",
+  "useAppMolstarContextMessages",
+  "useAppViewerFileActions",
+  "useAppViewerRuntimeMessages",
+]) {
+  assert.doesNotMatch(app, new RegExp(`${messageHook}\\(`));
+}
+assert.match(appViewerBridgeControllerHook, /useAppViewerBridgeMessages\(\{/);
+for (const handlerName of [
+  "handleDockingPoseMessage",
+  "handleGridConformerMessage",
+  "handleGridControlMessage",
+  "handleGridFileMessage",
+  "handleGridRuntimeMessage",
+  "handleKetcherViewerMessage",
+  "handleMolstarContextMessage",
+  "handleRendererMessage",
+  "handleSdfViewerMessage",
+  "handleViewerConformerMessage",
+  "handleViewerFileMessage",
+  "handleViewerHostMessage",
+  "handleViewerRuntimeFileMessage",
+  "handleViewerRuntimeMessage",
+  "handleViewerStateMessage",
+  "handleXyzrenderSheetMessage",
+]) {
+  assert.match(appViewerBridgeControllerHook, new RegExp(`${handlerName},`));
+}
+assert.match(viewerBridgeMessagesLib, /handleViewerHostMessage\(source, body\)/);
+assert.match(appViewerHostMessagesHook, /body\?\.type === "molstarStructureReplaced"/);
+assert.match(appViewerHostMessagesHook, /pendingMolstarReplaceRef\.current\.get\(requestId\)/);
 assert.match(app, /generate3DConformer,/);
-assert.match(app, /body\?\.type === "generate3dConformer"/);
-const generate3dHandlerStart = app.indexOf('if (body?.type === "generate3dConformer")');
-const generate3dHandlerEnd = app.indexOf('if (body?.type === "openMolstarContextDocument")', generate3dHandlerStart);
+assert.match(viewerBridgeMessagesLib, /handleViewerConformerMessage\(body, eventSource\)/);
+assert.match(appViewerConformerMessagesHook, /body\?\.type !== "generate3dConformer"/);
+const generate3dHandlerStart = appViewerConformerMessagesHook.indexOf('if (body?.type !== "generate3dConformer") return false;');
+const generate3dHandlerEnd = appViewerConformerMessagesHook.indexOf('return true;', generate3dHandlerStart);
 assert.ok(generate3dHandlerStart >= 0);
 assert.ok(generate3dHandlerEnd > generate3dHandlerStart);
-const generate3dHandler = app.slice(generate3dHandlerStart, generate3dHandlerEnd);
-assert.match(app, /const requestDocumentId = typeof body\.documentId === "string" && body\.documentId\.trim\(\)\.length > 0/);
-assert.match(app, /const requestPath = typeof body\.path === "string" && body\.path\.trim\(\)\.length > 0/);
-assert.match(app, /const mode: ConformerGenerationMode = body\.mode === "ensemble" \? "ensemble" : "single"/);
-assert.match(app, /documents\.find\(\(document\) => document\.id === requestDocumentId\)[\s\S]*documents\.find\(\(document\) => document\.path === requestPath\)/);
+const generate3dHandler = appViewerConformerMessagesHook.slice(generate3dHandlerStart, generate3dHandlerEnd);
+assert.match(appViewerConformerMessagesHook, /const requestDocumentId = bodyString\(body\.documentId\)\.trim\(\) \|\| null/);
+assert.match(appViewerConformerMessagesHook, /const requestPath = bodyString\(body\.path\)\.trim\(\) \|\| null/);
+assert.match(appViewerConformerMessagesHook, /const mode: ConformerGenerationMode = body\.mode === "ensemble" \? "ensemble" : "single"/);
+assert.match(appViewerConformerMessagesHook, /documents\.find\(\(document\) => document\.id === requestDocumentId\)[\s\S]*documents\.find\(\(document\) => document\.path === requestPath\)/);
 assert.doesNotMatch(generate3dHandler, /const targetDocument = \(body\.documentId\s*\?\s*documents\.find\(\(document\) => document\.id === body\.documentId\)\s*:\s*null\) \?\? activeDocument/);
 assert.match(generate3dHandler, /"generate3dConformerStarted"/);
 assert.match(generate3dHandler, /"generate3dConformerFinished"/);
 assert.match(generate3dHandler, /void generate3DConformer\(targetDocument, mode, molstarStyle\)[\s\S]*\.finally\(\(\) => notifyGeneratorState\("generate3dConformerFinished"\)\)/);
-assert.match(app, /data\?\.source !== "burrete-viewer" && data\?\.source !== "burrete-grid" && data\?\.source !== "burrete-agent-viewer"/);
-assert.match(app, /data\.source === "burrete-agent-viewer" && body\?\.type === "agent-action-result"/);
-assert.match(app, /const \[structureOverlayModes, setStructureOverlayModes\] = useState<Record<string, "single" \| "all">>\(\{\}\)/);
-assert.match(app, /body\?\.type === "structureOverlayModeChanged"/);
-assert.match(app, /setStructureOverlayModes\(\(previous\) => \(\{ \.\.\.previous, \[documentId\]: mode \}\)\)/);
-assert.match(app, /structureOverlayMode: activeDocument \? structureOverlayModes\[activeDocument\.id\] \?\? "single" : "single"/);
-assert.match(app, /body\.id === "string" && body\.id\.startsWith\("text-selection-"\)/);
+assert.match(viewerBridgeMessagesLib, /value === "burrete-viewer" \|\| value === "burrete-grid" \|\| value === "burrete-agent-viewer"/);
+assert.match(appViewerHostMessagesHook, /source === "burrete-agent-viewer" && body\?\.type === "agent-action-result"/);
+assert.match(app, /useAppMolstarXtbContext\(\{\s*activeViewerIframeForDocument,\s*isKnownViewerMessageSource,\s*\}\)/);
+assert.doesNotMatch(app, /action: \{ type: "get_xtb_context" \}/);
+assert.match(appMolstarXtbContextHook, /const actionId = `xtb-context-\$\{Date\.now\(\)\}-\$\{Math\.random\(\)\.toString\(36\)\.slice\(2, 8\)\}`/);
+assert.match(appMolstarXtbContextHook, /window\.removeEventListener\("message", onMessage\)/);
+assert.match(appMolstarXtbContextHook, /data\?\.source !== "burrete-agent-viewer" \|\| body\?\.type !== "agent-action-result" \|\| body\.id !== actionId/);
+assert.match(appMolstarXtbContextHook, /isKnownViewerMessageSource\(event\.source, document\.id\)/);
+assert.match(appMolstarXtbContextHook, /window\.setTimeout\(\(\) => finish\(null\), 500\)/);
+assert.match(appMolstarXtbContextHook, /action: \{ type: "get_xtb_context" \}/);
+assert.match(app, /useAppXtbWorkflows\(\{\s*activeDocument,\s*addDockDrop,\s*cancelledXtbJobIdsRef,/s);
+assert.doesNotMatch(app, /const runXtbJob = useCallback/);
+assert.doesNotMatch(app, /function countXyzFrames\(text: string\)/);
+assert.doesNotMatch(app, /function xtbInputRequestForDocument/);
+assert.doesNotMatch(app, /function xtbInputRequestForMolstarContextDocument/);
+assert.match(appXtbWorkflowsHook, /directChemistryJobGuardMessage\("xTB"/);
+assert.match(appXtbWorkflowsHook, /runXtbRequest\(\{/);
+assert.match(appXtbWorkflowsHook, /requestXtbStatus\(\)\.then\(setXtbStatus\)\.catch\(\(\) => \{\}\)/);
+assert.match(appXtbWorkflowsHook, /openOptimizedPoseInCurrentView/);
+assert.match(appXtbWorkflowsHook, /xtbOperationLabel\(operation\)/);
+assert.match(appXtbWorkflowsHook, /molstarContextEntryExtension\(entry\.format\)/);
+assert.match(appXtbWorkflowsHook, /operation === "dock"/);
+assert.match(appViewerHostMessagesHook, /Structure action did not match the structure/);
+assert.match(appViewerHostMessagesHook, /bodyString\(body\.id\)\.startsWith\("text-selection-"\)/);
 assert.doesNotMatch(app, /pushStatus\("Text selection applied"/);
-assert.match(app, /pushStatus\(action\.label\)/);
+assert.match(appMolstarActionSendersHook, /pushStatus\(action\.label\)/);
+assert.match(app, /const \[structureOverlayModes, setStructureOverlayModes\] = useState<Record<string, StructureOverlayMode>>\(\{\}\)/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "structureOverlayModeChanged"/);
+assert.match(appViewerStateMessagesHook, /setStructureOverlayModes\(\(previous\) => \(\{ \.\.\.previous, \[documentId\]: mode \}\)\)/);
+assert.match(app, /structureOverlayMode: activeDocument \? structureOverlayModes\[activeDocument\.id\] \?\? "single" : "single"/);
 assert.match(dock, /inspector: "Info"/);
 assert.match(structureInfoPanel, /Molecular Inspector/);
 assert.match(structureInfoPanel, /No active structure/);
@@ -1533,12 +1998,6 @@ assert.match(structureInfoPanel, /if \(hasSdfMoleculeCollection\(summary\)\) \{/
 assert.match(structureInfoPanel, /writeSdfContextStylePreference\(document, style\)/);
 assert.match(structureInfoPanel, /type: "set_sdf_context_style"[\s\S]*?notify: false[\s\S]*?style,/);
 assert.match(structureInfoPanel, /buret\.sdf\.contextStyle\.\$\{document\.id\}/);
-assert.match(structureInfoPanel, /type: "set_sdf_context_color"/);
-assert.match(structureInfoPanel, /type: "set_sdf_context_color"[\s\S]*?notify: false[\s\S]*?color: normalized/);
-assert.match(structureInfoPanel, /buret\.sdf\.contextColor\.\$\{document\.id\}/);
-assert.match(structureInfoPanel, /aria-label="All background color"/);
-assert.match(structureInfoPanel, /\{ value: "gray" as const, label: "Gray" \}/);
-assert.match(structureInfoPanel, /\{ value: "colored" as const, label: "Colored" \}/);
 assert.match(structureInfoPanel, /SDF_CONTEXT_OPACITY_DEFAULT = 0\.4/);
 assert.match(structureInfoPanel, /function normalizeSdfContextOpacity/);
 assert.match(structureInfoPanel, /type: "set_sdf_context_opacity"/);
@@ -1554,7 +2013,6 @@ assert.ok(
 );
 assert.match(styles, /\.structure-inspector-style-options \{/);
 assert.match(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
-assert.match(styles, /\.structure-inspector-color-row \{/);
 assert.match(styles, /\.structure-inspector-opacity-control \{/);
 assert.match(structureInfoPanel, /structure-inspector-selection-pill/);
 assert.match(structureInfoPanel, /inspectorSummaryLine\(brief\.kind, compositionSummary, compositionPending, compositionError\)/);
@@ -1597,8 +2055,6 @@ assert.match(structureComposition, /style: string;/);
 assert.match(structureComposition, /type: "set_sdf_context_opacity";/);
 assert.match(structureComposition, /notify\?: boolean;/);
 assert.match(structureComposition, /opacity: number;/);
-assert.match(structureComposition, /type: "set_sdf_context_color";/);
-assert.match(structureComposition, /color: "gray" \| "colored";/);
 assert.match(structureComposition, /type: "set_sdf_pose_mode";/);
 assert.match(structureComposition, /mode: "all" \| "single";/);
 assert.match(structureComposition, /type: "set_sdf_pose_index";/);
@@ -1676,7 +2132,7 @@ assert.match(sidebarWorkspaceSwitcher, /\{showBuildBadge \? \(/);
 assert.doesNotMatch(sidebarWorkspaceSwitcher, /return `v\$\{info\.version\}`;/);
 assert.match(sidebarWorkspaceSwitcher, /AGENT SHELL · v\$\{info\.version\}/);
 assert.match(sidebarWorkspaceSwitcher, /DEV \$\{info\.flavor \?\? "local"\} · v\$\{info\.version\}/);
-assert.match(sidebarFileBrowser, /const hideProjectPreviews = state\.buildInfo\.isAgentShell/);
+assert.match(sidebarFileBrowser, /const hideProjectPreviews = state\.buildInfo\.isAgentShell && !state\.workspacePath/);
 assert.match(sidebarFileBrowser, /const visibleProjects = hideProjectPreviews \? \[\] : filterSidebarProjects/);
 assert.match(sidebarFileBrowser, /\{!hideProjectPreviews && \(/);
 assert.match(ketcherKind, /export const ketcherKind = definePageKind/);
@@ -1878,32 +2334,36 @@ assert.match(styles, /\.ketcher-dock-portal:has\(\.ketcher-dock-workflow\) > \.d
 assert.match(ketcherPage, />\s*Copy\s*<ShortcutTooltip label="Copy exported text" side="top" \/>/);
 assert.match(ketcherPage, />\s*Save\s*<ShortcutTooltip label="Save exported output to a file" side="top" \/>/);
 assert.match(ketcherPage, />\s*Open raw\s*<ShortcutTooltip label="Open exported text in a raw document tab" side="top" \/>/);
-assert.match(app, /const openKetcherExportRaw = useCallback/);
-assert.match(app, /path: `burrete-ketcher-export:\/\/\$\{id\}\/\$\{title\}`/);
-assert.match(app, /addTextDocuments\(\[document\]\)/);
-assert.match(app, /const saveKetcherExportFile = useCallback\(async/);
-assert.match(app, /invoke<string>\("save_text_as", \{ text: request\.text, outputPath \}\)/);
+assert.match(app, /from "\.\/hooks\/use-app-ketcher-actions"/);
+assert.match(appKetcherActionsHook, /const openKetcherExportRaw = useCallback/);
+assert.match(appKetcherActionsHook, /path: `burrete-ketcher-export:\/\/\$\{id\}\/\$\{title\}`/);
+assert.match(appKetcherActionsHook, /addTextDocuments\(\[document\]\)/);
+assert.match(appKetcherActionsHook, /const saveKetcherExportFile = useCallback\(async/);
+assert.match(appKetcherActionsHook, /invoke<string>\("save_text_as", \{ text: request\.text, outputPath \}\)/);
 assert.match(componentTypes, /openKetcherExportRaw: \(request: \{/);
 assert.match(componentTypes, /saveKetcherExportFile: \(request: \{/);
+assert.match(appKetcherViewerMessagesHook, /from "\.\.\/lib\/ketcher-workflow"/);
 assert.match(ketcherPage, /function withKetcherTimeout<T>\(operation: Promise<T>, label: string\): Promise<T>/);
 assert.match(ketcherPage, /Ketcher did not return a sketch\. Draw a molecule first or try again\./);
 assert.match(app, /const openDocumentsInActiveTab = useOpenDocumentsInActiveTab\(\)/);
-assert.match(app, /const \[ketcherDraftMolfile, setKetcherDraftMolfile\] = useState\(""\)/);
-assert.match(app, /saveKetcherDraft: setKetcherDraftMolfile/);
-assert.match(app, /openDocumentsInActiveTab\(result\.documents\)/);
-assert.match(app, /addDocuments\(\[document\]\)/);
+assert.match(appKetcherActionsHook, /const \[ketcherDraftMolfile, setKetcherDraftMolfile\] = useState\(""\)/);
+assert.match(appKetcherActionsHook, /saveKetcherDraft: setKetcherDraftMolfile/);
+assert.match(appFileOpenHook, /openDocumentsInActiveTab\(result\.documents\)/);
+assert.match(appKetcherActionsHook, /addDocuments\(\[document\]\)/);
 assert.doesNotMatch(app, /openDocumentsInActiveTab\(\[document\], \{\s*backLocation: request\.draftKet\?\.trim\(\) \|\| request\.draftMolfile\?\.trim\(\)/s);
-assert.match(app, /request\.target === "molstar" \|\| request\.target === "generate3d"/);
-assert.match(app, /invoke<ConformerGenerationResult>\("generate_3d_conformer"/);
-assert.match(app, /generateBrowserDev3DConformer\(conformerRequest\)/);
-assert.match(app, /\.\.\.conformerGenerationPreferences\(preferences\)/);
-assert.match(app, /source3d: request\.source3d \?\? null/);
-assert.match(app, /source3d: ketcherSource3DFromText\(basename\(path\), virtualText, pathExtension\(path\)\)/);
-assert.match(app, /openDocumentsInActiveTab\(\[document\]\)/);
-assert.match(app, /request\.target === "collection" && request\.collectionTargetPath/);
-assert.match(app, /request\.target === "collection"[\s\S]*save\(\{[\s\S]*defaultPath: "ketcher-collection\.sdf"/);
-assert.match(app, /invoke<ViewerDocument>\("create_molecule_collection"/);
-assert.match(app, /request\.target === "grid"\s*\?\s*"grid2d"/);
+assert.match(appKetcherActionsHook, /request\.target === "molstar" \|\| request\.target === "generate3d"/);
+assert.match(appKetcherActionsHook, /invoke<ConformerGenerationResult>\("generate_3d_conformer"/);
+assert.match(appKetcherActionsHook, /generateBrowserDev3DConformer\(conformerRequest\)/);
+assert.match(appKetcherActionsHook, /\.\.\.conformerGenerationPreferences\(preferences\)/);
+assert.match(appKetcherActionsHook, /source3d: request\.source3d \?\? null/);
+assert.match(appKetcherActionsHook, /source3d: ketcherSource3DFromText\(basename\(path\), virtualText, pathExtension\(path\)\)/);
+assert.match(ketcherWorkflow, /export function ketcherSource3DFromText/);
+assert.match(ketcherWorkflow, /if \(!\["sdf", "sd", "mol"\]\.includes\(cleanExtension\)\) return undefined/);
+assert.match(appKetcherActionsHook, /openDocumentsInActiveTab\(\[document\]\)/);
+assert.match(appKetcherActionsHook, /request\.target === "collection" && request\.collectionTargetPath/);
+assert.match(appKetcherActionsHook, /request\.target === "collection"[\s\S]*save\(\{[\s\S]*defaultPath: "ketcher-collection\.sdf"/);
+assert.match(appKetcherActionsHook, /invoke<ViewerDocument>\("create_molecule_collection"/);
+assert.match(appKetcherActionsHook, /request\.target === "grid"\s*\?\s*"grid2d"/);
 assert.match(browserDevDocuments, /\["grid2d", "grid", "grid-2d"\]\.includes\(value\)/);
 assert.match(componentTypes, /KetcherSketchTarget = "grid" \| "molstar" \| "generate3d" \| "xyzrender" \| "collection"/);
 assert.match(componentTypes, /extension: "sdf" \| "smi" \| "csv" \| "tsv";/);
@@ -2027,7 +2487,7 @@ assert.match(fepSetupKind, /<ViewerFrame document=\{grid\} \/>/);
 assert.match(fepNetworkKind, /export const fepNetworkKind = definePageKind/);
 assert.match(fepNetworkKind, /kind: "fep-network"/);
 assert.match(fepNetworkKind, /parseFepGraphml/);
-assert.match(fepNetworkKind, /sampleGraphmlUrl = new URL\("[^"]*prototypes\/ligand_network\.graphml"/);
+assert.match(fepNetworkKind, /sampleGraphmlUrl = new URL\("[^"]*samples\/fep\/ligand_network\.graphml"/);
 assert.match(fepNetworkKind, /graphmlText\?: string/);
 assert.match(fepNetworkKind, /title: \(location\) => location\.title \? `FEP Network: \$\{location\.title\}` : "FEP Network Preview"/);
 assert.match(fepNetworkKind, /serialize: \(\) => null/);
@@ -2057,6 +2517,11 @@ assert.match(fepNetworkKind, /function readableEdgeAngle/);
 assert.match(fepNetworkKind, /function edgeLabelPlacement/);
 assert.match(fepNetworkKind, /function edgeLabelBox/);
 assert.match(fepNetworkKind, /function loadRDKitWasmBinary/);
+assert.match(fepNetworkKind, /async function rdkitWasmCandidates/);
+assert.match(fepNetworkKind, /convertFileSrc\(await join\(await resourceDir\(\), "ViewerWeb", "rdkit", "RDKit_minimal\.wasm"\)\)/);
+assert.match(fepNetworkKind, /new URL\("rdkit\/RDKit_minimal\.wasm", gridAssetsBaseUrl\)\.href/);
+assert.match(fepNetworkKind, /"\/__burette\/rdkit-wasm"/);
+assert.match(fepNetworkKind, /failures\.push\(`\$\{path\}: \$\{error instanceof Error \? error\.message : String\(error\)\}`\)/);
 assert.match(fepNetworkKind, /wasmBinary: wasm\.bytes/);
 assert.doesNotMatch(fepNetworkKind, /function arrowBadgePath/);
 assert.match(fepNetworkKind, /function fepGridDocument/);
@@ -2263,17 +2728,25 @@ assert.match(ketcherPage, /className="ketcher-dock-format">\{panelFormatLabel\}/
 assert.match(ketcherPage, /disabled=\{!ketcher \|\| exportingSketch \|\| \(gridEditSource \? false : !output\.trim\(\)\)\}/);
 assert.match(ketcherPage, /\{gridEditSource \? "Apply" : "Load"\}/);
 assert.doesNotMatch(ketcherPage, /actions\.openCommandPalette/);
-assert.match(app, /body\?\.type === "openInKetcher"/);
-assert.match(app, /const openKetcherWithFragment = useCallback/);
-assert.match(app, /textBase64/);
-assert.match(app, /function queueKetcherImportRequest\(request: KetcherImportRequest\)/);
-assert.match(app, /window\.dispatchEvent\(new CustomEvent\("burette:ketcher-import", \{ detail: request \}\)\)/);
-assert.match(app, /queueKetcherImportRequest\(request\);\s*setKetcherImportRequest\(request\);\s*openKetcherTab\(\{ kind: "ketcher", importRequestId: request\.id, importRequest: request \}\);/);
+assert.match(viewerBridgeMessagesLib, /handleKetcherViewerMessage\(body\)/);
+assert.match(appKetcherViewerMessagesHook, /body\?\.type === "openInKetcher"/);
+assert.match(appGridControlMessagesHook, /body\?\.type === "openInKetcher"/);
+assert.match(appGridControlMessagesHook, /openKetcherWithFragment\(title, text/);
+assert.match(appGridControlMessagesHook, /openKetcherWithStructures\(\[targetPath\]\)/);
+assert.match(appKetcherActionsHook, /const openKetcherWithFragment = useCallback/);
+assert.match(appKetcherViewerMessagesHook, /textBase64/);
+assert.match(appKetcherViewerMessagesHook, /readBrowserDevVirtualTextDocument\(targetPath\)/);
+assert.match(appKetcherViewerMessagesHook, /openKetcherWithFragment\(title, virtualText\)/);
+assert.match(ketcherWorkflow, /export function queueKetcherImportRequest\(request: KetcherImportRequest\)/);
+assert.match(ketcherWorkflow, /window\.dispatchEvent\(new CustomEvent\("burette:ketcher-import", \{ detail: request \}\)\)/);
+assert.match(appKetcherActionsHook, /queueKetcherImportRequest\(request\);\s*setKetcherImportRequest\(request\);\s*openKetcherTab\(\{ kind: "ketcher", importRequestId: request\.id, importRequest: request \}\);/);
 assert.doesNotMatch(app, /openKetcherTab\(\);\s*window\.setTimeout\(\(\) => \{\s*queueKetcherImportRequest\(request\)/);
 assert.match(app, /applyKetcherToGridRow,/);
-assert.match(app, /const ketcherTabId = tabs\.find\(\(tab\) => tab\.location\.kind === "ketcher"\)\?\.id \?\? null;/);
-assert.match(app, /if \(ketcherTabId\) \{\s*window\.setTimeout\(\(\) => \{\s*setActiveDocument\(request\.documentId\);\s*closeTab\(ketcherTabId\);\s*\}, 0\);\s*\}/);
-assert.match(app, /openKetcherWithStructures = useCallback\(\(paths: string\[\], fragments: KetcherImportRequest\["fragments"\] = \[\]\)/);
+assert.match(appKetcherActionsHook, /const ketcherTabId = tabs\.find\(\(tab\) => tab\.location\.kind === "ketcher"\)\?\.id \?\? null;/);
+assert.match(appKetcherActionsHook, /if \(ketcherTabId\) \{\s*window\.setTimeout\(\(\) => \{\s*setActiveDocument\(request\.documentId\);\s*closeTab\(ketcherTabId\);\s*\}, 0\);\s*\}/);
+assert.match(appKetcherActionsHook, /openKetcherWithStructures = useCallback\(\(paths: string\[\], fragments: KetcherImportRequest\["fragments"\] = \[\]\)/);
+assert.match(ketcherWorkflow, /export function ketcherDraftMolfileFromImportText\(text: string\)/);
+assert.match(ketcherWorkflow, /function looksLikeMolfile\(text: string\)/);
 assert.match(ketcherPage, /const \[gridEditSource, setGridEditSource\]/);
 assert.match(ketcherPage, /actions\.applyKetcherToGridRow\(\{/);
 assert.match(ketcherPage, /gridEditSource \? applyGridEdit\(\) : applyOutput\(\)/);
@@ -2303,6 +2776,8 @@ assert.match(agentIntegrationPanel, /data-agent-integration-panel/);
 assert.match(agentIntegrationPanel, /embedded = false/);
 assert.match(agentIntegrationPanel, /browserPreviewStatus/);
 assert.match(agentIntegrationPanel, /Codex setup prompt/);
+assert.match(agentIntegrationPanel, /Open Install/);
+assert.match(agentIntegrationPanel, /Copy Path/);
 assert.match(agentIntegrationPanel, /Copy Prompt/);
 assert.match(agentIntegrationPanel, /function codexSetupPrompt/);
 assert.match(agentIntegrationPanel, /Install or update the local Codex plugin @Burrete \(id \\`burrete\\`\) to version/);
@@ -2349,6 +2824,7 @@ assert.match(sidebarSurface, /actions\.setExpandedProjectIds/);
 assert.match(sidebarSurface, /actions\.openRecentStructure/);
 assert.match(sidebarSurface, /from "@hugeicons\/core-free-icons"/);
 assert.match(sidebarSurface, /from "@hugeicons\/react"/);
+assert.doesNotMatch(sidebarSurface, /from "\.\.\/system-icon"/);
 assert.match(sidebarSurface, /actions\.openCommandPalette/);
 assert.doesNotMatch(sidebarFileBrowser, /from "\.\.\/shortcut-tooltip"/);
 assert.doesNotMatch(sidebarFileBrowser, /<ShortcutTooltip label="Search projects and structures" shortcut="⌘P" \/>/);
@@ -2365,8 +2841,17 @@ assert.match(sidebarSurface, /const toggleFolderPath = \(path: string\) => \{/);
 assert.match(sidebarSurface, /className="project-folder-row"/);
 assert.match(sidebarSurface, /onClick=\{handleToggle\}/);
 assert.match(sidebarSurface, /aria-expanded=\{expanded\}/);
+assert.match(sidebarSurface, /className="project-folder-children-shell"/);
+assert.match(sidebarSurface, /data-expanded=\{expanded \? "true" : "false"\}/);
+assert.match(sidebarSurface, /aria-hidden=\{!expanded\}/);
 assert.match(sidebarSurface, /className="project-folder-children"/);
 assert.doesNotMatch(sidebarSurface, /project-folder-disclosure/);
+assert.match(styles, /\.project-folder-row \{[^}]*position: relative;[^}]*padding: 5px 34px 5px calc\(6px \+ \(var\(--project-depth, 0\) \* 6px\)\);/s);
+assert.match(styles, /\.project-folder-row > \.project-folder-toggle-button \{\s*right: 4px;\s*\}/);
+assert.match(styles, /\.project-folder-name \{[^}]*flex: 1;/s);
+assert.match(styles, /\.project-folder-children-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;/s);
+assert.match(styles, /\.project-folder-children-shell\[data-expanded="true"\] \{[^}]*grid-template-rows: 1fr;[^}]*pointer-events: auto;/s);
+assert.match(styles, /\.project-folder-children \{[^}]*min-height: 0;[^}]*overflow: hidden;/s);
 assert.match(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{\s*background: transparent;\s*outline: none;\s*\}/);
 assert.match(styles, /\.project-folder-row:hover \.project-folder-name,\s*\.project-folder-row:focus-visible \.project-folder-name\s*\{\s*color: var\(--text-secondary\);\s*\}/);
 assert.doesNotMatch(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{[^}]*background: var\(--surface-subtle\)/);
@@ -2468,7 +2953,16 @@ assert.match(settingsSidebar, /actions\.openNewTab\(\)/);
 assert.match(settingsSidebar, /actions\.openSettingsSection\(item\.id\)/);
 assert.match(settingsSidebar, /Burrete|SettingsItemIcon/);
 assert.doesNotMatch(sidebarSurface, /Open preferences/);
-assert.match(app, /openPath/);
+assert.match(app, /from "\.\/hooks\/use-app-workspace-actions"/);
+assert.match(app, /useAppWorkspaceActions\(\{/);
+assert.match(appWorkspaceActionsHook, /from "@tauri-apps\/plugin-opener"/);
+assert.match(appWorkspaceActionsHook, /const chooseWorkspace = useCallback/);
+assert.match(appWorkspaceActionsHook, /await open\(\{ directory: true, multiple: false \}\)/);
+assert.match(appWorkspaceActionsHook, /setWorkspacePath\(selection\)/);
+assert.match(appWorkspaceActionsHook, /const openWorkspaceFolder = useCallback/);
+assert.match(appWorkspaceActionsHook, /await chooseWorkspace\(\)/);
+assert.match(appWorkspaceActionsHook, /await openPath\(path\)/);
+assert.match(appWorkspaceActionsHook, /const openProjectFolder = useCallback/);
 assert.match(app, /chooseWorkspace/);
 assert.match(app, /openWorkspaceFolder/);
 assert.match(app, /openProjectFolder/);
@@ -2579,25 +3073,99 @@ assert.match(commandPalette, /placeholder="Search commands and structures\.\.\."
 assert.match(commandPalette, /heading=\{group\.heading\}/);
 assert.match(commandPalette, /value=\{item\.id\}/);
 assert.match(commandPalette, /onSelect=\{\(\) => runItem\(item\)\}/);
+assert.match(app, /const actions = useAppShellActions\(\{/);
+assert.doesNotMatch(app, /const actions = useMemo<ShellActions>/);
+assert.match(appShellActionsHook, /createAppShellActions\(actions: ShellActions\): ShellActions/);
+assert.match(appShellActionsHook, /export type AppShellActionSlices = \{/);
+assert.match(appShellActionsHook, /export function createAppShellActionSlices\(actions: ShellActions\): AppShellActionSlices/);
+assert.match(appShellActionsHook, /export function flattenAppShellActionSlices\(slices: AppShellActionSlices\): ShellActions/);
+assert.match(appShellActionsHook, /return flattenAppShellActionSlices\(createAppShellActionSlices\(actions\)\);/);
+for (const sliceName of [
+  "opening",
+  "navigation",
+  "ketcher",
+  "grid",
+  "chemistry",
+  "workspace",
+  "dock",
+  "documents",
+  "docking",
+  "viewer",
+  "maintenance",
+  "settings",
+]) {
+  assert.match(appShellActionsHook, new RegExp(`\\.\\.\\.slices\\.${sliceName}`));
+}
+assert.match(appShellActionsHook, /export function useAppShellActions\(\{/);
+assert.match(appShellActionsHook, /useMemo<ShellActions>\(\(\) => createAppShellActions\(\{/);
+assert.match(appShellActionsHook, /\.\.\.createJobHistoryShellActions\(\{ pushStatus, setConformerJobs, setXtbJobs \}\)/);
+assert.match(appShellActionsHook, /createJobHistoryShellActions/);
+assert.match(appShellActionsHook, /pushStatus\("Job history cleared"\)/);
+assert.match(appShellActionsHook, /pushStatus\("xTB job history cleared"\)/);
+assert.match(appShellActionsHook, /\.\.\.createProjectShellActions\(\{ pushStatus, removeProjectRoot, renameProjectRoot, togglePinnedProjectRoot \}\)/);
+assert.match(appShellActionsHook, /createProjectShellActions/);
+assert.match(appShellActionsHook, /pushStatus\("Project pin updated"\)/);
+assert.match(appShellActionsHook, /pushStatus\(name\.trim\(\) \? "Project renamed" : "Project name reset"\)/);
+assert.match(appShellActionsHook, /\.\.\.createDockDropShellActions\(\{ addDockDrop, pushStatus \}\)/);
+assert.match(appShellActionsHook, /createDockDropShellActions/);
+assert.match(appShellActionsHook, /input\.payload\.paths\.length \+ input\.payload\.records\.length \+ \(input\.payload\.items\?\.length \?\? 0\)/);
+assert.match(appShellActionsHook, /\.\.\.createDocumentCloseShellActions\(\{/);
+assert.match(appShellActionsHook, /createDocumentCloseShellActions/);
+assert.match(appShellActionsHook, /confirmDiscardDirtyGridDocument\(activeDocument\?\.id\)/);
+assert.match(appShellActionsHook, /closeGridRuntime\(targetDocumentId\)/);
+assert.match(appShellActionsHook, /forgetDirtyGridDocuments\(documentIds\)/);
+assert.match(appShellActionsHook, /\.\.\.createRecentShellActions\(\{ clearRecentStructures, pushStatus \}\)/);
+assert.match(appShellActionsHook, /pushStatus\("Recent structures cleared"\)/);
+assert.match(appShellActionsHook, /\.\.\.createUpdateShellActions\(\{ checkForUpdates, installUpdate \}\)/);
+assert.match(appShellActionsHook, /await checkForUpdates\(false\)/);
+assert.match(app, /from "\.\/hooks\/use-app-shell-view-state"/);
+assert.match(app, /const state = useAppShellViewState\(\{/);
+assert.doesNotMatch(app, /const state = createAppShellViewState\(\{/);
+assert.match(appShellViewStateHook, /export function createAppShellViewState\(input: AppShellViewStateInput\): ShellViewState/);
+assert.match(appShellViewStateHook, /export type AppShellViewStateSlices = \{/);
+assert.match(appShellViewStateHook, /export function createAppShellViewStateSlices\(input: AppShellViewStateInput\): AppShellViewStateSlices/);
+assert.match(appShellViewStateHook, /export function flattenAppShellViewStateSlices\(slices: AppShellViewStateSlices\): ShellViewState/);
+assert.match(appShellViewStateHook, /return flattenAppShellViewStateSlices\(createAppShellViewStateSlices\(input\)\);/);
+for (const sliceName of [
+  "documents",
+  "workspace",
+  "layout",
+  "dock",
+  "ketcher",
+  "grid",
+  "docking",
+  "viewer",
+  "chemistry",
+  "settings",
+]) {
+  assert.match(appShellViewStateHook, new RegExp(`\\.\\.\\.slices\\.${sliceName}`));
+}
+assert.match(appShellViewStateHook, /export function useAppShellViewState\(input: AppShellViewStateInput\): ShellViewState/);
+assert.match(appShellViewStateHook, /return createAppShellViewState\(input\)/);
+assert.match(appShellViewStateHook, /activeDocumentId: state\.activeDocument\?\.id \?\? null/);
+assert.match(appShellViewStateHook, /visibleDocuments: state\.documents/);
+assert.match(appShellViewStateHook, /viewerLigandSelection: state\.activeDocument/);
+assert.match(appShellViewStateHook, /viewerLigandSelections\[state\.activeDocument\.id\] \?\? null/);
 assert.match(app, /useKeyboardShortcuts\(state, actions, toggleSidebar, !commandPaletteOpen\)/);
-assert.match(app, /const SIDEBAR_DRAG_CLOSE_WIDTH = 180/);
-assert.match(app, /const resizeTarget = event\.currentTarget/);
-assert.match(app, /const pointerId = event\.pointerId/);
-assert.match(app, /let didStop = false/);
-assert.match(app, /if \(didStop\) return/);
-assert.match(app, /resizeTarget\.setPointerCapture\(pointerId\)/);
-assert.match(app, /resizeTarget\.releasePointerCapture\(pointerId\)/);
-assert.match(app, /move\.buttons === 0/);
-assert.match(app, /const nextWidth = startWidth \+ move\.clientX - startX/);
-assert.match(app, /nextWidth < SIDEBAR_DRAG_CLOSE_WIDTH/);
-assert.match(app, /closeSidebar\(\)/);
-assert.match(app, /stop\(\);\s*return;/);
-assert.match(app, /window\.addEventListener\("blur", stop\)/);
-assert.match(app, /document\.addEventListener\("visibilitychange", onVisibilityChange\)/);
-assert.match(app, /resizeTarget\.addEventListener\("lostpointercapture", stop\)/);
-assert.match(app, /window\.removeEventListener\("blur", stop\)/);
-assert.match(app, /document\.removeEventListener\("visibilitychange", onVisibilityChange\)/);
-assert.match(app, /resizeTarget\.removeEventListener\("lostpointercapture", stop\)/);
+assert.match(appResizeHook, /const SIDEBAR_DRAG_CLOSE_WIDTH = 180/);
+assert.match(app, /const \{\s*bottomDockDragging,\s*rightDockDragging,\s*sidebarDragging,\s*startBottomDockResize,\s*startRightDockResize,\s*startSidebarResize,\s*\} = useAppResize/);
+assert.match(appResizeHook, /const resizeTarget = event\.currentTarget/);
+assert.match(appResizeHook, /const pointerId = event\.pointerId/);
+assert.match(appResizeHook, /let didStop = false/);
+assert.match(appResizeHook, /if \(didStop\) return/);
+assert.match(appResizeHook, /resizeTarget\.setPointerCapture\(pointerId\)/);
+assert.match(appResizeHook, /resizeTarget\.releasePointerCapture\(pointerId\)/);
+assert.match(appResizeHook, /move\.buttons === 0/);
+assert.match(appResizeHook, /const nextWidth = startWidth \+ move\.clientX - startX/);
+assert.match(appResizeHook, /nextWidth < SIDEBAR_DRAG_CLOSE_WIDTH/);
+assert.match(appResizeHook, /closeSidebar\(\)/);
+assert.match(appResizeHook, /stop\(\);\s*return;/);
+assert.match(appResizeHook, /window\.addEventListener\("blur", stop\)/);
+assert.match(appResizeHook, /document\.addEventListener\("visibilitychange", onVisibilityChange\)/);
+assert.match(appResizeHook, /resizeTarget\.addEventListener\("lostpointercapture", stop\)/);
+assert.match(appResizeHook, /window\.removeEventListener\("blur", stop\)/);
+assert.match(appResizeHook, /document\.removeEventListener\("visibilitychange", onVisibilityChange\)/);
+assert.match(appResizeHook, /resizeTarget\.removeEventListener\("lostpointercapture", stop\)/);
 assert.match(styles, /--focus-ring: color-mix\(in srgb, var\(--fg-base\) calc\(var\(--contrast\) \* 95%\), transparent\)/);
 assert.match(styles, /--focus-ring: color-mix\(in srgb, black calc\(var\(--contrast\) \* 120%\), transparent\)/);
 assert.doesNotMatch(styles, /\[cmdk-input\]:focus-visible/);
@@ -2611,12 +3179,22 @@ assert.match(styles, /\[cmdk-dialog\] \{[\s\S]*overflow: hidden/);
 assert.match(styles, /\[cmdk-dialog\]::before \{[\s\S]*background: color-mix\(in srgb, var\(--bg-base\) 55%, transparent\)/);
 assert.match(styles, /\[cmdk-item\]\[data-selected="true"\]/);
 assert.match(styles, /\[cmdk-item\]:hover,[\s\S]*\[cmdk-item\]\[data-selected="true"\] \{[\s\S]*background: var\(--surface-subtle\)/);
-assert.match(app, /useOpenDrop\(openPaths, pushStatus, \{/);
+assert.doesNotMatch(app, /from "\.\/hooks\/use-app-open-drop-merge-collections"/);
+assert.match(appOpenDropControllerHook, /useAppOpenDropMergeCollections\(\{/);
+assert.match(appOpenDropControllerHook, /mergeMoleculeCollections: mergeDroppedMoleculeCollections/);
+assert.doesNotMatch(app, /mergeMoleculeCollections: activeDocument\?\.renderer === "grid2d"/);
+assert.doesNotMatch(app, /isMoleculeCollectionPath/);
+assert.match(appOpenDropMergeCollectionsHook, /export function useAppOpenDropMergeCollections\(\{/);
+assert.match(appOpenDropMergeCollectionsHook, /activeDocument\?\.renderer !== "grid2d"/);
+assert.match(appOpenDropMergeCollectionsHook, /paths\.some\(isMoleculeCollectionPath\)/);
+assert.match(appOpenDropMergeCollectionsHook, /void mergeMoleculeCollections\(activeDocument\.path, paths\)/);
+assert.match(appOpenDropControllerHook, /useOpenDrop\(openPaths, pushStatus, \{/);
 assert.match(tauriSource, /export function trackTauriListener\(registration: Promise<TauriUnlisten>, label: string\)/);
 assert.match(tauriSource, /if \(disposed\) \{\s*disposeTauriListener\(next, label\);/s);
 assert.match(tauriSource, /listener setup failed/);
 assert.match(tauriSource, /listener cleanup failed/);
 assert.match(tauriSource, /typeof result\.catch === "function"/);
+assert.match(tauriSource, /void result\.catch/);
 assert.match(openEventsHook, /trackTauriListener\(/);
 assert.match(openEventsHook, /listen\("open-documents"/);
 assert.doesNotMatch(openEventsHook, /let unlisten/);
@@ -2631,117 +3209,194 @@ assert.match(menuEventsHook, /for \(const cleanup of cleanups\) cleanup\(\)/);
 assert.doesNotMatch(menuEventsHook, /let unlisten/);
 assert.doesNotMatch(menuEventsHook, /unlisten\?\.\(\)/);
 assert.match(app, /documents,/);
-assert.match(app, /openClipboardText/);
-assert.match(app, /navigator\.clipboard\?\.readText/);
-assert.match(app, /await navigator\.clipboard\.readText\(\)/);
-assert.match(app, /openClipboardText\(text\)/);
+assert.match(appOpenDropControllerHook, /useAppClipboard\(\{ openClipboardText, pushErrorStatus, pushStatus \}\)/);
+assert.match(appClipboardHook, /navigator\.clipboard\?\.readText/);
+assert.match(appClipboardHook, /await navigator\.clipboard\.readText\(\)/);
+assert.match(appClipboardHook, /openClipboardText\(text\)/);
+assert.match(appClipboardHook, /Clipboard text is not available in this environment\./);
+assert.match(appClipboardHook, /Open from clipboard failed/);
 assert.match(app, /openClipboard,/);
-assert.match(app, /openStructurePaths: async \(paths: string\[\], options\?: \{ mode\?: OpenDocumentsMode \}\) => \{\s*await openDocuments\(paths, undefined, undefined, options\);\s*\}/s);
+assert.match(appShellActionsHook, /openStructurePaths: async \(paths: string\[\], options\?: \{ mode\?: OpenDocumentsMode \}\) => \{\s*await openDocuments\(paths, undefined, undefined, options\);\s*\}/s);
 assert.match(app, /openPaths,/);
-assert.match(app, /openStructurePaths: async \(paths: string\[\], options\?: \{ mode\?: OpenDocumentsMode \}\) => \{/);
+assert.match(appShellActionsHook, /openStructurePaths: async \(paths: string\[\], options\?: \{ mode\?: OpenDocumentsMode \}\) => \{/);
 assert.match(app, /openStructureRecords,/);
 assert.match(app, /activeTabKind: activeTab\?\.location\.kind \?\? null/);
-assert.match(app, /activeDocumentPath: activeDocument\?\.path \?\? null/);
+assert.match(appOpenDropControllerHook, /activeDocumentPath: activeDocument\?\.path \?\? null/);
+assert.match(app, /from "\.\/hooks\/use-app-docking-workflows"/);
 assert.match(app, /openDockingDocument,/);
-assert.match(app, /const openStructureRecordDocuments = useCallback/);
-assert.match(app, /const openDockingStructureRecords = useCallback/);
-assert.match(app, /if \(opened\.length > 0\) addDocuments\(opened\)/);
-assert.match(app, /addDocuments\(\[dockingDocument\]\)/);
+assert.match(appFileOpenHook, /const openStructureRecordDocuments = useCallback/);
+assert.match(appDockingWorkflowsHook, /const openDockingStructureRecords = useCallback/);
+assert.match(appDockingWorkflowsHook, /if \(opened\.length > 0\) addDocuments\(opened\)/);
+assert.match(appDockingWorkflowsHook, /addDocuments\(\[dockingDocument\]\)/);
 assert.match(app, /openDockingStructureRecords,/);
-assert.match(app, /const openStructureRecords = useCallback/);
-assert.match(app, /invoke<ViewerDocument>\("open_text_structure"/);
-assert.match(app, /openBrowserDevTextDocument\(record\.path, record\.inputExtension, record\.text, preferences\)/);
+assert.match(appFileOpenHook, /const openStructureRecords = useCallback/);
+assert.match(appFileOpenHook, /invoke<ViewerDocument>\("open_text_structure"/);
+assert.match(appFileOpenHook, /openBrowserDevTextDocument\(record\.path, record\.inputExtension, record\.text, preferences\)/);
 assert.match(app, /openStructureRecords,/);
 assert.match(app, /openKetcherWithStructures,/);
-assert.match(app, /existingDockingRequest = documents\.find/);
-assert.match(app, /dockingRequestForDrop\(targetPath, droppedPaths, existingDockingRequest\)/);
-assert.match(app, /useOpenEvents\(openPaths, pushErrorStatus\)/);
+assert.match(appDockingWorkflowsHook, /existingDockingRequest = documents\.find/);
+assert.match(appDockingWorkflowsHook, /dockingRequestForDrop\(targetPath, droppedPaths, existingDockingRequest\)/);
+assert.match(appOpenDropControllerHook, /useOpenEvents\(openPaths, pushErrorStatus\)/);
+assert.match(app, /from "\.\/hooks\/use-app-open-actions"/);
+assert.match(app, /useAppOpenActions\(\{/);
+assert.match(appOpenActionsHook, /import previewFormatRegistry from "\.\.\/\.\.\/\.\.\/\.\.\/config\/preview-formats\.json"/);
+assert.match(appOpenActionsHook, /const openRecentStructure = useCallback/);
+assert.match(appOpenActionsHook, /const openMostRecentStructure = useCallback/);
+assert.match(appOpenActionsHook, /No recent structures to open/);
+assert.match(appOpenActionsHook, /const chooseFiles = useCallback/);
 assert.match(
   app,
   /useMenuEvents\(\{\s*chooseFiles,\s*openMostRecentStructure,\s*revealActiveDocument,\s*copyActiveDocumentPath,\s*showActiveDocumentMetadata,\s*exportActivePreviewAsPng,\s*exportActivePreviewAsSvg,\s*clearCache,\s*resetQuickLook,\s*openLogs,\s*openSettings,\s*checkForUpdates,\s*\}\)/s,
 );
-assert.match(app, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
-assert.match(app, /await invoke<string\[]>\("pick_open_targets"\)/);
+assert.match(app, /from "\.\/hooks\/use-app-host-runtime-operations"/);
+assert.match(app, /from "\.\/hooks\/use-app-preference-effects"/);
+assert.match(app, /from "\.\/hooks\/use-app-shell-navigation-actions"/);
+assert.doesNotMatch(app, /from "@tauri-apps\/api\/core"/);
+assert.doesNotMatch(app, /from "@tauri-apps\/plugin-dialog"/);
+assert.doesNotMatch(app, /const readActiveExternalPreviewSvg = useCallback/);
+assert.doesNotMatch(app, /const exportActivePreviewAsSvg = useCallback/);
+assert.doesNotMatch(app, /const exportActivePreviewAsPng = useCallback/);
+assert.doesNotMatch(app, /const writeGridPerfMetric = useCallback/);
+assert.doesNotMatch(app, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
+assert.match(app, /useAppHostRuntimeOperations\(\{\s*activeDocument,\s*pushErrorStatus,\s*pushStatus,\s*\}\)/s);
+assert.match(appHostRuntimeOperationsHook, /export function useAppHostRuntimeOperations\(\{/);
+assert.match(appHostRuntimeOperationsHook, /invoke\("grid_close_runtime", \{ documentId \}\)/);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("read_external_preview_svg", \{ runtimePath: activeDocument\.runtimePath \}\)/);
+assert.match(appHostRuntimeOperationsHook, /save\(\{\s*defaultPath: `\$\{activeDocument\?\.title \?\? "preview"\}\.svg`/s);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("write_text_file", \{\s*request: \{ outputPath, contents: svg \},\s*\}\)/s);
+assert.match(appHostRuntimeOperationsHook, /save\(\{\s*defaultPath: `\$\{activeDocument\?\.title \?\? "preview"\}\.png`/s);
+assert.match(appHostRuntimeOperationsHook, /svgToPngBase64\(svg\)/);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("write_base64_file", \{\s*request: \{ outputPath, contentsBase64: pngBase64 \},\s*\}\)/s);
+assert.match(appHostRuntimeOperationsHook, /GRID_PERF_REPORT_PATH = "\/private\/tmp\/burrete-grid-real-app-perf\.jsonl"/);
+assert.match(appHostRuntimeOperationsHook, /gridPerfMetricsRef\.current = \[\.\.\.gridPerfMetricsRef\.current\.slice\(-399\), line\]/);
+assert.match(app, /useAppPreferenceEffects\(\{\s*activeTab,\s*activeTabId,\s*openDocuments,\s*preferences,\s*pushErrorStatus,\s*setActiveTab,\s*skipNextPreferenceRefreshRef,\s*\}\)/s);
+assert.match(appPreferenceEffectsHook, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
+assert.match(appPreferenceEffectsHook, /isTemporaryDocumentPath\(activeTab\.location\.path\)/);
+assert.match(appPreferenceEffectsHook, /const restoreTabId = activeTabId/);
+assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\]\)\.then\(\(\) => \{/);
+assert.match(appPreferenceEffectsHook, /eslint-disable-next-line react-hooks\/exhaustive-deps/);
+assert.match(app, /useAppShellNavigationActions\(\{/);
+assert.match(appShellNavigationActionsHook, /export function useAppShellNavigationActions\(\{/);
+assert.match(appShellNavigationActionsHook, /if \(!sidebarOpen\) toggleSidebar\(\);/);
+assert.match(appShellNavigationActionsHook, /openSettingsTab\(\)/);
+assert.match(appShellNavigationActionsHook, /openSettingsSectionTab\(section\)/);
+assert.match(appShellNavigationActionsHook, /activateLastNonSettingsTab\(\)/);
+assert.match(appOpenActionsHook, /await invoke<string\[]>\("pick_open_targets"\)/);
+assert.match(appOpenActionsHook, /await open\(\{ multiple: true, filters \}\)/);
 assert.match(app, /<WindowTitle activeDocument=\{activeDocument\} \/>/);
-assert.match(app, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
-assert.match(app, /const pendingViewerReloadDocumentIdRef = useRef<string \| null>\(null\)/);
-assert.match(app, /const xyzrenderOrientationRefRef = useRef<string \| null>\(null\)/);
-assert.match(app, /const skipNextPreferenceRefreshRef = useRef\(false\)/);
-assert.match(app, /source: "burrete-host"[\s\S]*type: "setXyzrenderControls"/);
-assert.match(app, /body\?\.type === "error"/);
-assert.match(app, /summarizeErrors\(result\.errors\)/);
-assert.match(app, /if \(body\?\.type === "setXyzrenderOrientation"\)/);
-assert.match(app, /if \(body\?\.type === "setXyzrenderPreset"\)/);
-assert.match(app, /pendingViewerReloadDocumentIdRef\.current = body\.documentId \?\? null/);
-assert.match(app, /xyzrenderPreset: body\.value \?\? null/);
-assert.match(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
-assert.match(app, /const reloadOptions = renderer === "xyzrender-external"\s*\?\s*\{\s*xyzrenderOrientationRef: body\.orientationRef \?\? xyzrenderOrientationRefRef\.current,\s*xyzrenderPreset: body\.preset \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderPreset \?\? null,\s*xyzrenderControls: body\.controls \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderControls \?\? null,\s*\}\s*: renderer === "molstar"\s*\?\s*\{\}/s);
-assert.match(app, /const targetDocument = \(body\.documentId/);
-assert.match(app, /pendingViewerReloadDocumentIdRef\.current = renderer === "xyzrender-external"/);
-assert.match(app, /skipNextPreferenceRefreshRef\.current = true/);
-assert.match(app, /setPreference\("rendererMode", renderer\)/);
-assert.match(app, /void openDocuments\(\[targetDocument\.path\], reloadOptions, \{ rendererMode: renderer \}, \{ inActiveTab: true \}\)/);
-assert.match(app, /body\?\.type === "openSdfMolstarDocument"/);
-assert.match(app, /pushErrorStatus\("Select one or more molecules before opening Molstar\.", "Molstar view failed"\)/);
-assert.match(app, /invoke<ViewerDocument>\("open_text_structure"/);
-assert.match(app, /rendererMode: "molstar" as const/);
-assert.match(app, /void openDockingDocument\(receptorDocument\.path, \[document\.path\]\)/);
-assert.match(app, /pushStatus\("Opening selected molecules in Molstar docking view\.\.\."\)/);
-assert.match(app, /pushStatus\("Opened selected molecules in Molstar"\)/);
-assert.match(app, /openDocumentsInActiveTab\(\[document\]\)/);
-assert.match(app, /body\?\.type === "openSdfPoseDocument"/);
-assert.match(app, /const targetPath = typeof body\.path === "string" && body\.path\.trim\(\)\.length > 0/);
-assert.match(app, /const requestedReceptorPath = typeof body\.receptorPath === "string"/);
-assert.match(app, /document\.path === requestedReceptorPath/);
-assert.match(app, /isProteinLikeDockingSource\(document\.path\)/);
-assert.match(app, /body\?\.type === "dockingPoseChanged"/);
-assert.match(app, /setPoseReviewSelections/);
-assert.match(app, /notifyGridPoseReviewSelection/);
-assert.match(app, /pushStatus\("Opening pose-review workspace\.\.\."\)/);
-assert.match(app, /const openPoseReviewWorkspace = useCallback/);
-assert.match(app, /openPoseReviewTab\(\{/);
-assert.match(app, /const openFepSetupWorkspace = useCallback/);
-assert.match(app, /const openFepNetworkPreview = useCallback/);
-assert.match(app, /openFepSetupTab\(\{/);
-assert.match(app, /kind: "fep-setup"/);
-assert.match(app, /pushStatus\("Opened FEP setup workspace"\)/);
-assert.match(app, /const graphmlPaths = cleanPaths\.filter\(isFepGraphmlPath\)/);
-assert.match(app, /const structurePaths = cleanPaths\.filter\(\(path\) => !isFepGraphmlPath\(path\)\)/);
-assert.match(app, /const graphmlText = await readStructureText\(path\)/);
-assert.match(app, /openFepNetworkTab\(\{ kind: "fep-network", title: basename\(path\), graphmlText \}\)/);
-assert.match(app, /openFepNetworkTab\(\{ kind: "fep-network", \.\.\.request \}\)/);
-assert.match(app, /function isFepGraphmlPath\(path: string\)/);
-assert.match(app, /pushStatus\("Opened FEP network preview"\)/);
-assert.match(app, /const currentFepSetupRequest = useMemo<FepSetupRequest \| null>/);
+assert.match(app, /useAppViewerRuntimeRefs\(\)/);
+assert.match(appViewerRuntimeRefsHook, /const pendingViewerReloadOptionsRef = useRef<ViewerReloadOptions \| null>\(null\)/);
+assert.match(appViewerRuntimeRefsHook, /const pendingViewerReloadDocumentIdRef = useRef<string \| null>\(null\)/);
+assert.match(appViewerRuntimeRefsHook, /const xyzrenderOrientationRefRef = useRef<string \| null>\(null\)/);
+assert.match(appViewerRuntimeRefsHook, /const skipNextPreferenceRefreshRef = useRef\(false\)/);
+assert.match(app, /from "\.\/hooks\/use-app-viewer-reload-actions"/);
+assert.match(app, /const \{ reloadActive, reloadXyzrenderDocument \} = useAppViewerReloadActions\(\{/);
+assert.doesNotMatch(app, /const reloadActive = useCallback/);
+assert.doesNotMatch(app, /const reloadXyzrenderDocument = useCallback/);
+assert.doesNotMatch(app, /source: "burrete-host"[\s\S]*type: "setXyzrenderControls"/);
+assert.match(appViewerReloadActionsHook, /export function useAppViewerReloadActions\(\{/);
+assert.match(appViewerReloadActionsHook, /const reloadActive = useCallback/);
+assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
+assert.match(appViewerReloadActionsHook, /source: "burrete-host"[\s\S]*type: "setXyzrenderControls"/);
+assert.match(appViewerReloadActionsHook, /preset: effectiveReloadOptions\.xyzrenderPreset \?\? null/);
+assert.match(appViewerReloadActionsHook, /controls: effectiveReloadOptions\.xyzrenderControls \?\? null/);
+assert.match(appViewerReloadActionsHook, /pendingViewerReloadDocumentIdRef\.current = document\.id/);
+assert.match(appViewerReloadActionsHook, /await openDocuments\(\[document\.path\], effectiveReloadOptions, undefined, \{ inActiveTab: true \}\)/);
+assert.match(appViewerRuntimeMessagesHook, /body\?\.type === "error"/);
+assert.match(appGridWorkflowsHook, /summarizeErrors\(result\.errors\)/);
+assert.match(appViewerRuntimeMessagesHook, /body\?\.type === "setXyzrenderOrientation"/);
+assert.match(appViewerRuntimeMessagesHook, /body\?\.type === "setXyzrenderPreset"/);
+assert.match(appViewerRuntimeMessagesHook, /pendingViewerReloadDocumentIdRef\.current = bodyString\(body\.documentId\) \?\? null/);
+assert.match(appViewerRuntimeMessagesHook, /xyzrenderPreset: bodyString\(body\.value\) \?\? null/);
+assert.doesNotMatch(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
+assert.match(viewerBridgeMessagesLib, /handleRendererMessage\(body\)/);
+assert.match(appRendererMessageHook, /body\?\.type !== "setRenderer"/);
+assert.match(appRendererMessageHook, /const reloadOptions = renderer === "xyzrender-external"\s*\?\s*\{\s*xyzrenderOrientationRef: orientationRef \?\? xyzrenderOrientationRefRef\.current,\s*xyzrenderPreset: preset \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderPreset \?\? null,\s*xyzrenderControls: body\.controls \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderControls \?\? null,\s*\}\s*: renderer === "molstar"\s*\?\s*\{\}/s);
+assert.match(appRendererMessageHook, /const targetDocument = \(documentId/);
+assert.match(appRendererMessageHook, /pendingViewerReloadDocumentIdRef\.current = renderer === "xyzrender-external"/);
+assert.match(appRendererMessageHook, /skipNextPreferenceRefreshRef\.current = true/);
+assert.match(appRendererMessageHook, /setPreference\("rendererMode", renderer\)/);
+assert.match(appRendererMessageHook, /void openDocuments\(\[targetDocument\.path\], reloadOptions, \{ rendererMode: renderer \}, \{ inActiveTab: true \}\)/);
+assert.match(viewerBridgeMessagesLib, /await handlers\.handleSdfViewerMessage\(body\)/);
+assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfMolstarDocument"/);
+assert.match(appSdfViewerMessagesHook, /pushErrorStatus\("Select one or more molecules before opening Molstar\.", "Molstar view failed"\)/);
+assert.match(appSdfViewerMessagesHook, /invoke<ViewerDocument>\("open_text_structure"/);
+assert.match(appSdfViewerMessagesHook, /rendererMode: "molstar" as const/);
+assert.match(appSdfViewerMessagesHook, /void openDockingDocument\(receptorDocument\.path, \[document\.path\]\)/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening selected molecules in Molstar docking view\.\.\."\)/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opened selected molecules in Molstar"\)/);
+assert.match(appSdfViewerMessagesHook, /openDocumentsInActiveTab\(\[document\]\)/);
+assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfPoseDocument"/);
+assert.match(appSdfViewerMessagesHook, /const targetPath = requestedPath\.length > 0/);
+assert.match(appSdfViewerMessagesHook, /const requestedReceptorPath = bodyString\(body\.receptorPath\)\.trim\(\)/);
+assert.match(appSdfViewerMessagesHook, /document\.path === requestedReceptorPath/);
+assert.match(appSdfViewerMessagesHook, /isProteinLikeDockingSource\(document\.path\)/);
+assert.match(viewerBridgeMessagesLib, /handleDockingPoseMessage\(source, body\)/);
+assert.match(appDockingPoseMessagesHook, /body\?\.type !== "dockingPoseChanged"/);
+assert.match(appDockingPoseMessagesHook, /setPoseReviewSelections/);
+assert.match(appDockingPoseMessagesHook, /notifyGridPoseReviewSelection/);
+assert.match(app, /from "\.\/hooks\/use-app-docking-pose-selection"/);
+assert.match(app, /const \{ notifyGridPoseReviewSelection \} = useAppDockingPoseSelection\(\)/);
+assert.doesNotMatch(app, /const notifyGridPoseReviewSelection = useCallback/);
+assert.match(appDockingPoseSelectionHook, /export function useAppDockingPoseSelection\(\)/);
+assert.match(appDockingPoseSelectionHook, /const notifyGridPoseReviewSelection = useCallback/);
+assert.match(appDockingPoseSelectionHook, /document\.querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
+assert.match(appDockingPoseSelectionHook, /item\.dataset\.documentId === targetDocumentId/);
+assert.match(appDockingPoseSelectionHook, /source: "burrete-grid-host"/);
+assert.match(appDockingPoseSelectionHook, /type: "poseReviewSelection"/);
+assert.match(appDockingPoseSelectionHook, /documentId: targetDocumentId/);
+assert.match(appDockingPoseSelectionHook, /activePose/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening pose-review workspace\.\.\."\)/);
+assert.match(appDockingWorkflowsHook, /const openPoseReviewWorkspace = useCallback/);
+assert.match(appDockingWorkflowsHook, /openPoseReviewTab\(\{/);
+assert.match(app, /from "\.\/hooks\/use-app-fep-workflows"/);
+assert.match(app, /useAppFepWorkflows\(\{/);
+assert.match(appFepWorkflowsHook, /const openFepSetupWorkspace = useCallback/);
+assert.match(appFepWorkflowsHook, /const openFepNetworkPreview = useCallback/);
+assert.match(appFepWorkflowsHook, /openFepSetupTab\(\{/);
+assert.match(appFepWorkflowsHook, /kind: "fep-setup"/);
+assert.match(appFepWorkflowsHook, /pushStatus\("Opened FEP setup workspace"\)/);
+assert.match(appFileOpenHook, /const graphmlPaths = cleanPaths\.filter\(isFepGraphmlPath\)/);
+assert.match(appFileOpenHook, /const structurePaths = cleanPaths\.filter\(\(path\) => !isFepGraphmlPath\(path\)\)/);
+assert.match(appFileOpenHook, /const graphmlText = await readStructureText\(path\)/);
+assert.match(appFileOpenHook, /openFepNetworkTab\(\{ kind: "fep-network", title: basename\(path\), graphmlText \}\)/);
+assert.match(appFepWorkflowsHook, /openFepNetworkTab\(\{ kind: "fep-network", \.\.\.request \}\)/);
+assert.match(fileRouting, /export function isFepGraphmlPath\(path: string\)/);
+assert.match(appFepWorkflowsHook, /pushStatus\("Opened FEP network preview"\)/);
+assert.match(appFepWorkflowsHook, /const currentFepSetupRequest = useMemo<FepSetupRequest \| null>/);
 assert.match(app, /fepSetupRequest: currentFepSetupRequest/);
 assert.match(app, /openFepSetupWorkspace,/);
-assert.match(app, /void openPoseReviewWorkspace\(receptorDocument, poseTargetDocument, activePose\)/);
-assert.match(app, /pushStatus\("Opening SDF poses in Molstar docking view\.\.\."\)/);
-assert.match(app, /void openDockingDocument\(receptorDocument\.path, \[targetPath\]\)/);
-assert.match(app, /pushStatus\("Opening SDF poses in Molstar\.\.\."\)/);
-assert.match(app, /void openDocuments\(\[targetPath\], \{\}, \{ rendererMode: "molstar" \}, \{ inActiveTab: true \}\)/);
-assert.match(app, /body\?\.type === "openSdfGridDocument"/);
-assert.match(app, /const targetPath = typeof body\.path === "string" && body\.path\.trim\(\)\.length > 0/);
-assert.match(app, /pushStatus\("Opening SDF grid\.\.\."\)/);
-assert.match(app, /void openDocuments\(\[targetPath\], undefined, \{ rendererMode: "grid2d" \}, \{ inActiveTab: true \}\)/);
-assert.match(app, /body\?\.type === "openMolstarContextDocument"/);
-assert.match(app, /pushStatus\("Opening separate Molstar docking view\.\.\."\)/);
-assert.match(app, /void openDockingDocument\(targetDocument\.dockingRequest\.receptorPath, targetDocument\.dockingRequest\.ligandPaths\)/);
-assert.match(app, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
-assert.match(app, /const reloadOptions = pendingViewerReloadOptionsRef\.current \?\? undefined/);
-assert.match(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
-assert.match(app, /from "\.\/components\/native-context-menu"/);
-assert.match(app, /import type \{ DropActionChoice \} from "\.\/lib\/drop-actions"/);
-assert.match(app, /const chooseDropAction = useCallback/);
-assert.match(app, /choices\.length < 2/);
-assert.match(app, /showNativeContextMenu\(/);
-assert.match(app, /text: choice\.confidence === "default" \? `\$\{choice\.label\} \(default\)` : choice\.label/);
-assert.match(app, /pushErrorStatus\(error, "Drop action menu failed"\)/);
-assert.match(app, /runChoice\(choices\[0\]\)/);
+assert.match(appSdfViewerMessagesHook, /void openPoseReviewWorkspace\(receptorDocument, poseTargetDocument, activePose\)/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening SDF poses in Molstar docking view\.\.\."\)/);
+assert.match(appSdfViewerMessagesHook, /void openDockingDocument\(receptorDocument\.path, \[targetPath\]\)/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening SDF poses in Molstar\.\.\."\)/);
+assert.match(appSdfViewerMessagesHook, /void openDocuments\(\[targetPath\], \{\}, \{ rendererMode: "molstar" \}, \{ inActiveTab: true \}\)/);
+assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfGridDocument"/);
+assert.match(appSdfViewerMessagesHook, /const targetPath = bodyString\(body\.path\)\.trim\(\) \|\| targetDocument\?\.path/);
+assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening SDF grid\.\.\."\)/);
+assert.match(appSdfViewerMessagesHook, /void openDocuments\(\[targetPath\], undefined, \{ rendererMode: "grid2d" \}, \{ inActiveTab: true \}\)/);
+assert.match(viewerBridgeMessagesLib, /handleMolstarContextMessage\(body\)/);
+assert.match(appMolstarContextMessagesHook, /body\?\.type !== "openMolstarContextDocument"/);
+assert.match(appMolstarContextMessagesHook, /pushStatus\("Opening separate Molstar docking view\.\.\."\)/);
+assert.match(appMolstarContextMessagesHook, /void openDockingDocument\(targetDocument\.dockingRequest\.receptorPath, targetDocument\.dockingRequest\.ligandPaths\)/);
+assert.doesNotMatch(app, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
+assert.match(appViewerReloadActionsHook, /const targetDocument = \(pendingViewerReloadDocumentIdRef\.current/);
+assert.match(appViewerReloadActionsHook, /const reloadOptions = pendingViewerReloadOptionsRef\.current \?\? undefined/);
+assert.match(appViewerReloadActionsHook, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
+assert.match(app, /from "\.\/hooks\/use-app-drop-actions"/);
+assert.match(app, /useAppDropActions\(\{/);
+assert.match(appDropActionsHook, /from "\.\.\/components\/native-context-menu"/);
+assert.match(appDropActionsHook, /import type \{ DropActionChoice \} from "\.\.\/lib\/drop-actions"/);
+assert.match(appDropActionsHook, /const chooseDropAction = useCallback/);
+assert.match(appDropActionsHook, /choices\.length < 2/);
+assert.match(appDropActionsHook, /showNativeContextMenu\(/);
+assert.match(appDropActionsHook, /text: choice\.confidence === "default" \? `\$\{choice\.label\} \(default\)` : choice\.label/);
+assert.match(appDropActionsHook, /pushErrorStatus\(error, "Drop action menu failed"\)/);
+assert.match(appDropActionsHook, /runChoice\(choices\[0\]\)/);
 assert.match(app, /chooseDropAction,/);
-assert.match(app, /const addDroppedProjectRoots = useCallback/);
-assert.match(app, /for \(const path of cleanPaths\) addProjectRoot\(path\)/);
-assert.match(app, /setWorkspacePath\(cleanPaths\[0\]\)/);
+assert.match(appDropActionsHook, /const addDroppedProjectRoots = useCallback/);
+assert.match(appDropActionsHook, /for \(const path of cleanPaths\) addProjectRoot\(path\)/);
+assert.match(appDropActionsHook, /setWorkspacePath\(cleanPaths\[0\]\)/);
 assert.match(app, /addProjectRoots: addDroppedProjectRoots/);
 assert.match(app, /handleBrowserPaste/);
 assert.match(app, /onPaste=\{handleBrowserPaste\}/);
@@ -2816,6 +3471,35 @@ assert.match(openDropHook, /document\.elementFromPoint\(position\.x, position\.y
 assert.match(openDropHook, /candidates\.find\(\(element\) => element\.closest\("\.dock-panel"\)\) \?\? candidates\[0\]/);
 assert.match(openDropHook, /const dockTarget = element\?\.closest<HTMLElement>\("\.dock-panel\[data-area\]\[data-active-tab\]"\)/);
 assert.match(openDropHook, /void openDockPayload\?\.\(\{ area: target\.area, tabKind: target\.tabKind, payload \}\)/);
+assert.match(app, /from "\.\/hooks\/use-app-dock-actions"/);
+assert.match(app, /const \{ toggleDockTab \} = useAppDockActions\(\{/);
+assert.match(app, /from "\.\/hooks\/use-app-spectrum-dock-lifecycle"/);
+assert.match(app, /useAppSpectrumDockLifecycle\(\{[\s\S]*activeDocument,[\s\S]*bottomDockActiveTab,[\s\S]*bottomDockDocumentId,[\s\S]*bottomDockTabs,[\s\S]*closeDockTab,[\s\S]*documents,[\s\S]*rightDockActiveTab,[\s\S]*rightDockDocumentId,[\s\S]*setDockActiveTab,[\s\S]*setDockDocument,[\s\S]*setDockOpen,[\s\S]*\}\)/);
+assert.doesNotMatch(app, /const toggleDockTab = useCallback/);
+assert.match(appDockActionsHook, /export function useAppDockActions\(\{/);
+assert.match(appDockActionsHook, /const toggleDockTab = useCallback/);
+assert.match(appDockActionsHook, /const open = area === "right" \? rightDockOpen : bottomDockOpen/);
+assert.match(appDockActionsHook, /const activeKind = area === "right" \? rightDockActiveTab : bottomDockActiveTab/);
+assert.match(appDockActionsHook, /if \(open && activeKind === kind\)/);
+assert.match(appDockActionsHook, /setDockOpen\(area, false\)/);
+assert.match(appDockActionsHook, /openDockTab\(area, kind\)/);
+assert.match(appDockPayloadHook, /export function useAppDockPayloadOpen/);
+assert.match(appDockPayloadHook, /const ketcherItem = input\.payload\.items\?\.find\(\(item\) => item\.kind === "ketcher"\) \?\? null/);
+assert.match(appDockPayloadHook, /setDockTool\(input\.area, "ketcher"\)/);
+assert.match(appDockPayloadHook, /const rightDockTextPaths = cleanPaths\.filter\(\(path\) => \{/);
+assert.match(appDockPayloadHook, /invoke<OpenTextFilesResult>\("open_text_files"/);
+assert.match(appDockPayloadHook, /openBrowserDevDocuments\(structurePaths, preferences, undefined\)/);
+assert.match(appDockPayloadHook, /const textOpenPaths = \[\.\.\.textPaths, \.\.\.structureAndTextPaths\]/);
+assert.match(appDockPayloadHook, /const recordResult = cleanRecords\.length > 0/);
+assert.match(appDockPayloadHook, /setDockDocument\(input\.area, firstDockDocumentId\)/);
+assert.match(appDockPayloadHook, /pushErrorStatus\(error, "Dock open failed"\)/);
+assert.match(appSpectrumDockLifecycleHook, /export function useAppSpectrumDockLifecycle/);
+assert.match(appSpectrumDockLifecycleHook, /if \(activeDocument\?\.renderer === "spectrum"\) return/);
+assert.match(appSpectrumDockLifecycleHook, /bottomDockTabs\.find\(\(tab\) => tab\.kind === "spectrum"\)/);
+assert.match(appSpectrumDockLifecycleHook, /closeDockTab\("bottom", spectrumTab\.id\)/);
+assert.match(appSpectrumDockLifecycleHook, /if \(bottomDockActiveTab === "spectrum"\) setDockActiveTab\("bottom", "files"\)/);
+assert.match(appSpectrumDockLifecycleHook, /rightDockDocument\?\.renderer !== "spectrum"/);
+assert.match(appSpectrumDockLifecycleHook, /setDockDocument\("right", activeDocument\?\.id \?\? null\)/);
 assert.match(editorTabs, /import type \{ DockArea, DockTabKind \} from "\.\.\/\.\.\/lib\/dock";/);
 assert.match(editorTabs, /const dockDropTargetAtPoint = useCallback\(\(clientX: number, clientY: number\): \{ area: DockArea; tabKind: DockTabKind \} \| null => \{/);
 assert.match(editorTabs, /document\.elementFromPoint\(clientX, clientY\)/);
@@ -2859,12 +3543,19 @@ assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v138"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v66"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
-assert.match(viteConfig, /__burette\/agent-session\//);
-assert.match(viteConfig, /BURRETE_AGENT_SHELL_SESSION_DIR/);
-assert.match(viteConfig, /"actions\.json", "observe\.json", "session\.json", "events"/);
-assert.match(viteConfig, /text\/event-stream/);
-assert.match(viteConfig, /watch\(sessionDir/);
-assert.match(viteConfig, /changedFileName === "actions\.json"/);
+assert.match(viteConfig, /registerBrowserDevAgentSessionRoute\(server\)/);
+assert.match(browserDevAgentSession, /__burette\/agent-session\//);
+assert.match(browserDevAgentSession, /BURRETE_AGENT_SHELL_SESSION_DIR/);
+assert.match(browserDevAgentSession, /"actions\.json", "observe\.json", "session\.json", "events"/);
+assert.match(browserDevAgentSession, /text\/event-stream/);
+assert.match(browserDevAgentSession, /watch\(sessionDir/);
+assert.match(browserDevAgentSession, /changedFileName === "actions\.json"/);
+assert.doesNotMatch(app, /from "\.\/hooks\/use-app-agent-session-actions"/);
+assert.doesNotMatch(app, /const agentTabActions = useAppAgentSessionActions\(\{/);
+assert.doesNotMatch(app, /tabActions: agentTabActions/);
+assert.match(appOpenDropControllerHook, /useAgentSession\(\{\s*activeDocument,\s*documents,\s*openTextDocuments,\s*openPaths,\s*pushErrorStatus,\s*setDockDocument,\s*\}\);/s);
+assert.match(agentSessionHook, /type UseAgentSessionArgs = \{\s*activeDocument: ViewerDocument \| null \| undefined;\s*documents: ViewerDocument\[\];\s*openTextDocuments: OpenTextDocuments;\s*openPaths: OpenPaths;\s*pushErrorStatus: \(error: unknown, prefix\?: string\) => void;\s*setDockDocument: \(area: DockArea, documentId: string \| null\) => void;\s*\};/s);
+assert.doesNotMatch(agentSessionHook, /tabActions:/);
 assert.match(agentSessionHook, /type AgentSceneAction = \{/);
 assert.match(agentSessionHook, /type AgentSceneSelection = \{/);
 assert.match(agentSessionHook, /viewerAgentStateWithActionResult/);
@@ -2907,18 +3598,22 @@ assert.match(viteConfig, /if \(controls\.fieldDensityColor\) args\.push\("--dens
 assert.match(viteConfig, /if \(controls\.fieldCmapPalette\) args\.push\("--cmap-palette", controls\.fieldCmapPalette\)/);
 assert.match(viteConfig, /if \(controls\.fieldCmapMin != null && controls\.fieldCmapMax != null\) args\.push\("--cmap-range", String\(controls\.fieldCmapMin\), String\(controls\.fieldCmapMax\)\)/);
 assert.match(browserDevDocuments, /export async function openBrowserDevDockingDocument\(/);
-assert.match(browserDevDocuments, /options\.sceneMode\s*\?\s*`Mol\* scene: \$\{receptor\.title\} \+ \$\{ligands\.length\} more structure/);
+assert.match(browserDevDocuments, /const hasCoordinateTrajectory = ligands\.some\(isCoordinateTrajectoryPayload\)/);
+assert.match(browserDevDocuments, /const effectiveSceneMode = hasCoordinateTrajectory \? null : \(options\.sceneMode \?\? null\)/);
+assert.match(browserDevDocuments, /effectiveSceneMode\s*\?\s*`Mol\* scene: \$\{receptor\.title\} \+ \$\{ligands\.length\} more structure/);
 assert.match(browserDevDocuments, /:\s*`Docking: \$\{receptor\.title\} \+ \$\{dockingLigands\.length\} ligand/);
 assert.match(browserDevDocuments, /path: `burrete-docking:\/\/\$\{id\}`/);
 assert.match(browserDevDocuments, /virtual: true/);
 assert.match(browserDevDocuments, /dockingRequest: \{/);
 assert.match(browserDevDocuments, /receptorPath: receptor\.path/);
 assert.match(browserDevDocuments, /ligandPaths: ligands\.map\(\(ligand\) => ligand\.path\)/);
-assert.match(browserDevDocuments, /sceneMode: options\.sceneMode \?\? null/);
-assert.match(browserDevDocuments, /poseMode: options\.sceneMode === "structureAll" \? "all" : "single"/);
+assert.match(browserDevDocuments, /sceneMode: effectiveSceneMode/);
+assert.match(browserDevDocuments, /poseMode: effectiveSceneMode === "structureAll" \? "all" : "single"/);
 assert.match(browserDevDocuments, /window\.BurreteDockingPayloads =/);
 assert.match(browserDevDocuments, /sdfGrid: false/);
 assert.match(browserDevDocuments, /xyzrenderAvailable: false/);
+assert.match(browserDevDocuments, /function isCoordinateTrajectoryPayload\(payload: BrowserDevDockingPayload\)/);
+assert.match(browserDevDocuments, /\["xtc", "trr", "dcd", "nctraj", "lammpstrj"\]\.includes\(payload\.format\.molstarFormat\)/);
 assert.match(browserDevDocuments, /function readBrowserDevDockingPayload/);
 assert.match(browserDevDocuments, /cannot be added to Mol\* docking view because it needs xyzrender conversion/);
 assert.match(browserDevDocuments, /const explicitSdfViewer = isSdfExtension\(extension\)\s*&& Boolean\(reloadOptions\)\s*&& \(requestedMode === "molstar" \|\| requestedMode === "xyzrender-external"\);/);
@@ -2946,7 +3641,7 @@ assert.match(browserDevDocuments, /rmsdCutoff\?: number/);
 assert.match(browserDevDocuments, /export async function openBrowserDevTextDocument\([\s\S]*documentId\?: string/);
 assert.match(browserDevDocuments, /openBrowserDevDocumentFromBytes\(path, cleanExtension, bytes, bytes\.length, preferences, reloadOptions, documentId\)/);
 assert.match(browserDevDocuments, /function isDelimitedSmilesHeader\(header: string\)/);
-assert.match(browserDevDocuments, /normalized === "smile" \|\| normalized\.includes\("smiles"\)/);
+assert.match(browserDevDocuments, /normalized === "smile" \|\| normalized === "smiels" \|\| normalized\.includes\("smiles"\)/);
 assert.match(browserDevDocuments, /function isDelimitedNameHeader\(header: string\)/);
 assert.match(browserDevDocuments, /"CSV row": String\(rowIndex \+ 1\)/);
 assert.match(browserDevDocuments, /"SMILES column": columnName/);
@@ -3012,6 +3707,7 @@ assert.match(previewViewController, /private static func prepareConvertStructure
 assert.match(previewViewController, /guard strategy == \.convert else \{ return \}/);
 assert.match(previewViewController, /diag\("previewPlan\.convert\.primary=\\\(pathExtension\)-pdb staged=\\\(convertedStructure\.stagedEntries\.count\)"\)/);
 assert.match(previewViewController, /private static func preferBuiltInParserForDefaultExternalPreviewIfAvailable\(/);
+assert.match(previewViewController, /case "abi", "com", "cub", "cube", "fdf", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp":[\s\S]*isExternalXyzrenderOnly: true/);
 assert.match(previewViewController, /guard state\.renderer == BurreteRendererMode\.xyzrenderExternal,[\s\S]*rendererOverride == nil,[\s\S]*state\.format\.isExternalXyzrenderOnly,[\s\S]*let convertedStructure = preparedConversion else \{/);
 assert.match(previewViewController, /private static func buildFepGraphMLPreviewResult\(/);
 assert.match(previewViewController, /return try buildFepGraphMLPreviewResult\(/);
@@ -3029,6 +3725,7 @@ assert.match(previewViewController, /let preparedConversion = PreviewStructureTe
 assert.match(previewViewController, /prepareConvertStructurePreviewIfNeeded\([\s\S]*strategy: structureStrategy,[\s\S]*preparedConversion: preparedConversion,/);
 assert.match(previewViewController, /strategy\.requiresPreparedConversion\(previewPlan: previewPlan\),[\s\S]*preparedConversion == nil,[\s\S]*strategy\.supportsFallbackRenderer\(BurreteRendererMode\.xyzrenderExternal, previewPlan: previewPlan\)/);
 assert.match(previewViewController, /preferBuiltInParserForDefaultExternalPreviewIfAvailable\([\s\S]*rendererOverride: rendererOverride,[\s\S]*preparedConversion: preparedConversion,/);
+assert.match(previewViewController, /preferBuiltInParserForDefaultExternalPreviewIfAvailable\([\s\S]*fileExtension: pathExtension,/);
 assert.match(previewViewController, /structureStrategy\.requiresExtractedStandaloneCoordinates\(fileExtension: pathExtension\),[\s\S]*state\.format\.isExternalXyzrenderOnly,[\s\S]*preparedConversion == nil/);
 assert.match(previewViewController, /try renderExternalXyzrenderIfNeeded\(/);
 assert.match(previewViewController, /private static func renderExternalXyzrenderIfNeeded\(/);
@@ -3062,7 +3759,9 @@ assert.match(browserDevDocuments, /function parseCifCoreAtoms\(lines: string\[\]
 assert.match(browserDevDocuments, /function xyzDataFromText\(text: string, extension: string, label: string\)/);
 assert.match(browserDevDocuments, /function convertedDataFromText\(text: string, extension: string, label: string\)/);
 assert.match(browserDevDocuments, /return converted \? \{ molstarFormat: "pdb", \.\.\.converted \} : null/);
+assert.match(browserDevDocuments, /extension === "lammpstrj" \|\| extension === "dump"[\s\S]*return bytes \? \{ bytes, molstarFormat: "xyz" \} : null/);
 assert.match(browserDevDocuments, /function pdbDataFromText\(text: string, extension: string, label: string\)/);
+assert.match(browserDevDocuments, /function lammpsDumpXyzDataFromText\(text: string, label: string\)/);
 assert.match(browserDevDocuments, /extension === "abi"[\s\S]*parseAbinitAtoms\(lines\)/);
 assert.match(browserDevDocuments, /function parseAbinitAtoms\(lines: string\[\]\)/);
 assert.match(previewTextXyz, /"abi" => parse_abinit_atoms\(&lines\)/);
@@ -3081,7 +3780,7 @@ assert.match(browserDevDocuments, /dataBase64: bytesToBase64\(new TextEncoder\(\
 assert.match(browserDevDocuments, /if \(ctType === "full_system"\) return 4/);
 assert.match(browserDevDocuments, /if \(ctType === "solute"\) return 3/);
 assert.match(browserDevDocuments, /function parseOrcaAtoms\(lines: string\[\]\)/);
-assert.match(app, /if \(fileName\.toLowerCase\(\)\.endsWith\("\.mae\.gz"\)\) return "maegz";/);
+assert.match(fileRouting, /if \(fileName\.toLowerCase\(\)\.endsWith\("\.mae\.gz"\)\) return "maegz";/);
 assert.match(browserDevDocuments, /if \(name\.toLowerCase\(\)\.endsWith\("\.mae\.gz"\)\) return "maegz";/);
 assert.match(browserDevDocuments, /isMaestroPreviewExtension\(extension\) && extension !== "maegz"/);
 assert.match(browserDevDocuments, /function browserDevReadUrl\(path: string, extension: string\)/);
@@ -3167,17 +3866,35 @@ assert.match(previewViewController, /case "in", "inp":\s*return parseQuantumEspr
 assert.match(previewViewController, /case "nw", "psi4", "qcin":\s*return parseBestCoordinateBlock\(lines\)/);
 assert.match(previewViewController, /case "log", "out":\s*return parseOrcaOutput\(lines\) \?\? parseGaussianOutput\(lines\) \?\? parseBestCoordinateBlock\(lines\)/);
 assert.match(previewViewController, /let coordinateScale = axisCounts\.allSatisfy \{ \$0 > 0 \} \? 0\.529177210903 : 1\.0/);
-assert.match(previewViewController, /catch \{\s*if state\.format\.isExternalXyzrenderOnly,\s*rendererOverride == nil,\s*let convertedStructure = preparedConversion/s);
+assert.doesNotMatch(previewViewController, /PreviewExternalXyzrenderWorker\.nativeCoordinateArtifact/);
+assert.doesNotMatch(previewViewController, /xyzrender\.fallback=native-coordinate-svg/);
+assert.doesNotMatch(previewViewController, /xyzrender\.fallback=built-in-text-parser/);
+assert.match(previewViewController, /catch \{\s*if rendererOverride == BurreteRendererMode\.xyzrenderExternal \{\s*throw error\s*\}\s*if state\.format\.isExternalXyzrenderOnly \{\s*throw error\s*\}/s);
 assert.match(previewViewController, /private struct PreviewXyzrenderLaunch/);
 assert.match(previewViewController, /let launch = launchConfiguration\(for: resolvedExecutablePath\)/);
+assert.match(previewViewController, /appendingPathComponent\("xyzrender-python", isDirectory: true\)/);
+assert.match(previewViewController, /appendingPathComponent\("bin", isDirectory: true\)/);
+assert.match(previewViewController, /appendingPathComponent\("python3", isDirectory: false\)/);
+assert.match(previewViewController, /appendingPathComponent\("xyzrender-python3", isDirectory: false\)/);
 assert.match(previewViewController, /process\.executableURL = URL\(fileURLWithPath: launch\.executablePath\)/);
 assert.match(previewViewController, /var arguments = launch\.argumentPrefix \+ \[inputURL\.path, "-o", outputURL\.path\]/);
 assert.match(previewViewController, /process\.environment = mergedEnvironment\(overrides: launch\.environment\)/);
 assert.match(previewViewController, /private static func bundledPythonLaunch\(for executablePath: String\) -> PreviewXyzrenderLaunch\?/);
+assert.match(previewViewController, /"PYTHONHOME": paths\.pythonHome\.path/);
+assert.match(previewViewController, /let wrapperExists = fileManager\.fileExists\(atPath: candidate\)/);
+assert.match(previewViewController, /if wrapperExists \{\s*if bundledPythonLaunch\(for: candidate\) != nil \{\s*return candidate\s*\}/s);
+assert.match(previewViewController, /executableURL\.deletingLastPathComponent\(\)/);
 assert.match(previewViewController, /appendingPathComponent\("xyzrender-python", isDirectory: true\)/);
+assert.match(previewViewController, /private struct BundledXyzrenderPythonPaths/);
+assert.match(previewViewController, /private static func bundledSitePackages\(in runtimeRoot: URL\) -> URL\?/);
+assert.match(previewViewController, /for version in \["python3\.13", "python3\.12", "python3\.11"\]/);
+assert.match(previewViewController, /let cacheKeyPath: String/);
+assert.match(previewViewController, /executablePath: launch\.cacheKeyPath/);
+assert.match(previewViewController, /executablePath: paths\.python\.path/);
 assert.match(previewViewController, /argumentPrefix: \["-m", "xyzrender\.cli"\]/);
 assert.match(previewViewController, /"PYTHONNOUSERSITE": "1"/);
-assert.match(previewViewController, /"PYTHONPATH": sitePackages\.path/);
+assert.match(previewViewController, /"PYTHONPATH": paths\.sitePackages\.path/);
+assert.match(previewViewController, /cacheKeyPath: executablePath/);
 assert.match(browserDevDocuments, /defaultLayoutState: \{ left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" \}/);
 assert.match(browserDevDocuments, /const runtimeAssetVersion = `\$\{VIEWER_ASSET_VERSION\}-\$\{Date\.now\(\)\}`/);
 assert.match(browserDevDocuments, /<link rel="stylesheet" href="viewer-runtime\.css\?v=\$\{runtimeAssetVersion\}" \/>/);
@@ -3213,6 +3930,8 @@ assert.match(previewShell, /Toggle Mol\* left object tree/);
 assert.match(previewShell, /Choose Mol\* representation style/);
 assert.match(previewShell, /Use external xyzrender SVG/);
 assert.match(previewShell, /Open xyzrender controls/);
+assert.doesNotMatch(previewShell, /data-buret-action="undo-molstar-edit"/);
+assert.doesNotMatch(previewShell, /aria-label="Undo last Mol\* edit"/);
 assert.match(previewShell, /data-buret-action="save-modified-structure"/);
 assert.match(previewShell, /class="buret-button buret-save-modified hidden"/);
 assert.match(previewShell, /title="Save modified structure"/);
@@ -3259,6 +3978,9 @@ assert.match(previewViewer, /fadeMolstarTransitionFrame\(transitionFrame\)/);
 assert.match(previewViewer, /function captureMolstarTransitionFrame\(\)/);
 assert.match(previewViewer, /canvas\.toDataURL\('image\/png'\)/);
 assert.match(previewViewer, /function requestGenerated3DCameraView\(viewer\)/);
+assert.match(previewViewer, /requestMolstarStructureFocus\(viewer, \{/);
+assert.match(previewViewer, /function molstarAutoFocusEnabled\(config\) \{\s*return config\?\.autoFocusStructure === true;\s*\}/);
+assert.match(previewViewer, /function requestMolstarStructureFocus\(viewer, options = \{\}\)/);
 assert.match(previewViewer, /camera\.getFocus\(target, Math\.max\(0\.1, safeRadius \* radiusScale\), \[0, 1, 0\], \[0\.85, -0\.38, 0\.92\]\)/);
 assert.match(previewViewer, /snapshot\.mode = 'perspective'/);
 assert.match(previewViewer, /window\.BurreteDataBase64 = textBase64/);
@@ -3363,6 +4085,15 @@ assert.match(previewRuntimeViewer, /config\["stagedEntries"\]/);
 assert.match(previewRuntimeViewer, /"requiredForReady": true/);
 assert.match(previewViewController, /"requiredForReady": true/);
 assert.match(previewViewer, /const stagedEntries = Array\.isArray\(config\.stagedEntries\) \? config\.stagedEntries : \[\];[\s\S]*await loadStagedMolstarEntries\(viewer, config, cb\);[\s\S]*stagedEntries\.some\(entry => entry\?\.requiredForReady === true\)[\s\S]*setStatus\(`\[web\] Rendered \$\{config\.label \|\| 'structure'\}`\);/);
+assert.match(browserDevDocuments, /representation: "structure-scene-entry"/);
+assert.match(browserDevDocuments, /structureSceneMode: "structurePoses"/);
+assert.match(previewViewer, /function isStructureSceneEntry\(entry\)/);
+assert.match(previewViewer, /function structureSceneEntriesFromConfig\(config\)/);
+assert.match(previewViewer, /config\?\.docking\?\.sceneMode \|\| config\?\.structureSceneMode/);
+assert.match(previewViewer, /const sceneEntries = structureSceneEntriesFromConfig\(config\);/);
+assert.match(previewViewer, /function prepareStagedStructureScene\(config, entries\)/);
+assert.match(previewViewer, /dockingSceneMode: 'structurePoses'/);
+assert.match(previewViewer, /config\?\.stagedEntries\) \? config\.stagedEntries\.filter\(entry => !isStructureSceneEntry\(entry\)\) : \[\]/);
 assert.match(previewTextXyz, /fn gro_pdb_data_from_text\(/);
 assert.match(previewTextXyz, /fn parse_maestro_pdb_blocks\(lines: &\[&str\], atom_limit: usize\) -> Option<Vec<MaestroPdbBlock>>/);
 assert.match(previewTextXyz, /fn maestro_staged_solvent_atoms\(blocks: &\[MaestroPdbBlock\]\) -> Vec<MaestroAtom>/);
@@ -3414,7 +4145,6 @@ assert.match(previewViewer, /tryCreateComponentStatic\(target, 'water'\)/);
 assert.match(previewViewer, /function shouldUseMolstarWaterLines\(config\)/);
 assert.match(previewViewer, /waterRepresentation \|\| 'line'/);
 assert.match(previewViewer, /async function applyMolstarWaterLineRepresentation\(viewer\)/);
-assert.match(previewViewer, /includeTransparent: false/);
 assert.match(previewViewer, /function molstarWaterLineRepresentation\(\)/);
 assert.match(buretteAgent, /'SPC', 'SPCE', 'SOL'/);
 assert.match(previewViewer, /await plugin\.managers\.structure\.component\.removeRepresentations\(waterComponents\)/);
@@ -3512,9 +4242,16 @@ assert.match(previewViewer, /function bindThemeButton\(toolbar, viewer\)/);
 assert.match(previewViewer, /bindThemeButton\(toolbar, null\);/);
 assert.match(previewViewer, /const toolbar = document\.getElementById\('buret-toolbar'\)/);
 assert.match(previewViewer, /let molstarStructureDirty = false;/);
+assert.match(previewViewer, /const MOLSTAR_EDIT_HISTORY_LIMIT = 20/);
+assert.match(previewViewer, /const molstarEditUndoStack = \[\]/);
+assert.match(previewViewer, /installMolstarEditUndoShortcuts\(\);/);
 assert.match(previewViewer, /bindSaveModifiedStructureButton\(toolbar\);/);
 assert.match(previewViewer, /function setMolstarStructureDirty\(dirty\)/);
 assert.match(previewViewer, /molstarStructureDirty = dirty === true;/);
+assert.doesNotMatch(previewViewer, /data-buret-action="undo-molstar-edit"/);
+assert.doesNotMatch(previewViewer, /function bindMolstarEditUndoButton\(toolbar\)/);
+assert.match(previewViewer, /function installMolstarEditUndoShortcuts\(\)/);
+assert.match(previewViewer, /document\.addEventListener\('keydown'[\s\S]*key !== 'z'[\s\S]*!\(event\.metaKey \|\| event\.ctrlKey\)[\s\S]*undoMolstarLastEdit\(\)/);
 assert.match(previewViewer, /function updateSaveModifiedStructureButton\(\)/);
 assert.match(previewViewer, /const visible = molstarStructureDirty && !!activeViewer;/);
 assert.match(previewViewer, /button\.classList\.toggle\('hidden', !visible\)/);
@@ -3592,8 +4329,11 @@ assert.match(previewViewer, /const controlLabel = normalizeFormat\(config\?\.sou
 assert.match(previewViewer, /function splitPdbModelTexts\(text\)/);
 assert.match(previewViewer, /const sourceFormat = normalizeFormat\(config\.sourceExtension \|\| config\.molstarFormat \|\| config\.format\);/);
 assert.match(previewViewer, /sourceFormat === 'pdbqt'/);
-assert.match(previewViewer, /nativeTrajectoryControls: poseCount > 1/);
-assert.match(previewViewer, /controlLabel: 'Pose'/);
+assert.match(previewViewer, /const preparedPdbModels = preparePdbModelStructure\(rawStructureData\(config\), config, sourceFormat\);/);
+assert.match(previewViewer, /function preparePdbModelStructure\(data, config, sourceFormat\)/);
+assert.match(previewViewer, /nativeTrajectoryControls: !allMode/);
+assert.match(previewViewer, /pdbModelOverlayAvailable: true/);
+assert.match(previewViewer, /pdbModelMode: allMode \? 'all' : 'single'/);
 assert.match(previewViewer, /formatSdfCountsLine\(parsedAtoms\.length, sdfBonds\.length\)/);
 assert.match(previewViewer, /if \(format === 'sdf'\) return orientationFrameFromSdfText\(text\);/);
 assert.match(previewViewer, /if \(format === 'mmcif' \|\| format === 'cifCore'\) return orientationFrameFromCifText\(text\);/);
@@ -3605,7 +4345,7 @@ assert.match(previewViewer, /const trajectoryFrameCount = Number\(config\.trajec
 assert.match(previewViewer, /trajectoryControls: config\.trajectoryControls === true \|\| trajectoryFrameCount > 1/);
 assert.match(previewViewer, /await ensureBrowserDevStructureData\(nextConfig, cb\);\s*await startMolstar\(nextConfig, cb\);/s);
 assert.doesNotMatch(previewViewer, /startXYZFast/);
-assert.match(previewViewer, /Keep the native Mol\* top-left animation button on every Mol\* screen\. Do not remove\.\s*viewportShowAnimation: option\('viewportShowAnimation', true\),/);
+assert.match(previewViewer, /Keep the native Mol\* top-left animation button on every Mol\* screen\. Do not remove\.\s*viewportShowAnimation: true,/);
 assert.match(previewViewer, /function embeddedStructureDataByteLength\(\)/);
 assert.match(previewViewer, /async function ensureBrowserDevStructureData\(config, cb\)/);
 assert.match(previewViewer, /window\.BurreteDataBytes = null;\s*window\.BurreteDataBase64 = null;\s*await loadStructureData\(config, cb\);/);
@@ -3619,6 +4359,7 @@ assert.doesNotMatch(previewViewer, /value === 'xyz-fast'/);
 assert.doesNotMatch(browserDevDocuments, /"xyz-fast"/);
 assert.match(previewViewer, /if \(value === 'xyzrender-external'\) return !xyzrenderAvailable \|\| !canUseExternalXyzrender\(format\);/);
 assert.match(previewViewer, /function prepareDockingStructure\(config\)/);
+assert.match(previewViewer, /const trajectoryPair = dockingTrajectoryPair\(entries\);[\s\S]*if \(trajectoryPair\)[\s\S]*const sceneMode = dockingSceneMode\(config\);/);
 assert.match(previewViewer, /if \(config\.docking\) \{\s*return prepareDockingStructure\(config\);/);
 assert.match(browserDevDocuments, /return records\.length >= 1 \? \{ format: "sdf", records \} : null;/);
 assert.match(previewViewer, /records\.length >= 1 && config\.sdfPosePager === true/);
@@ -3646,7 +4387,7 @@ assert.match(previewViewer, /function prepareXyzStructure\(text, config\)/);
 assert.match(previewViewer, /function splitXyzFrames\(text\)/);
 assert.match(previewViewer, /function buildXyzFrameOverlay\(frames, label\)/);
 assert.match(previewViewer, /xyzFrameOverlayAvailable: Boolean\(overlay\)/);
-assert.match(previewViewer, /if \(prepared\?\.xyzFrameMode === 'all' \|\| prepared\?\.sdfPoseMode === 'all'\) \{/);
+assert.match(previewViewer, /if \(prepared\?\.xyzFrameMode === 'all' \|\| prepared\?\.sdfPoseMode === 'all' \|\| prepared\?\.pdbModelMode === 'all'\) \{/);
 assert.match(previewViewer, /kind: 'trajectory-overlay'/);
 assert.match(previewViewer, /overlayOnly: true/);
 assert.match(previewViewer, /nativeTrajectoryControls: true/);
@@ -3660,9 +4401,7 @@ assert.match(previewViewer, /function installMolstarContextMenu\(viewer\)/);
 assert.match(previewViewer, /document\.addEventListener\('contextmenu', onContextMenu, true\)/);
 assert.match(previewViewer, /if \(!viewer \|\| \(!picked && !isMolstarContextMenuTarget\(event\.target\)\)\) \{\s*hideMolstarContextMenu\(\);\s*return false;/);
 assert.match(previewViewer, /const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;/);
-assert.match(previewViewer, /const MOLSTAR_TOUCH_PICK_RADIUS_PX = 18;/);
 assert.match(previewViewer, /let contextPointer = null;/);
-assert.match(previewViewer, /let touchContextPointer = null;/);
 assert.match(previewViewer, /if \(event\.button === 2\) \{[\s\S]*?contextPointer = \{/);
 assert.match(previewViewer, /const contextPick = molstarContextPickFromEvent\(event\);[\s\S]*?event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{[\s\S]*?pick: contextPick/);
 assert.doesNotMatch(previewViewer, /if \(event\.button === 2\) \{\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);[\s\S]*?contextPointer = \{/);
@@ -3678,21 +4417,10 @@ assert.doesNotMatch(previewViewer, /function molstarContextCanvasPixelLooksEmpty
 assert.doesNotMatch(previewViewer, /gl\.readPixels/);
 assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: 0 \}\)/);
 assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: previousPickPadding \}\)/);
-assert.match(previewViewer, /for \(const \[dx, dy\] of offsets\)/);
+assert.match(previewViewer, /const radius = Math\.max\(0, Number\(options\.radiusPx\) \|\| 0\);/);
+assert.match(previewViewer, /const offsets = \[\[0, 0\]\];/);
 assert.match(previewViewer, /canvas3d\.identify\(\[x - rect\.left, y - rect\.top\]\)/);
 assert.match(previewViewer, /canvas3d\.getLoci\(picking\.id\)/);
-assert.match(previewViewer, /if \(molstarContextEventIsTouch\(event\) && event\.isPrimary !== false && event\.button === 0/);
-assert.match(previewViewer, /const pixelScale = numberOption\('molstarPixelScale'\);/);
-assert.match(previewViewer, /const pickScale = numberOption\('molstarPickScale'\);/);
-assert.match(previewViewer, /const resolutionMode = stringOption\('molstarResolutionMode', \['auto', 'scaled', 'native'\]\);/);
-assert.match(previewViewer, /preferWebgl1: option\('molstarPreferWebgl1', true\),/);
-assert.match(previewViewer, /disableAntialiasing: option\('molstarDisableAntialiasing', true\),/);
-assert.match(previewViewer, /\.\.\.\(resolutionMode !== undefined \? \{ resolutionMode \} : \{\}\),/);
-assert.match(mobilePreviewRuntime, /"molstarDisableAntialiasing": false,/);
-assert.match(mobilePreviewRuntime, /"molstarPickScale": 1,/);
-assert.match(mobilePreviewRuntime, /"molstarPixelScale": 1,/);
-assert.match(mobilePreviewRuntime, /"molstarPreferWebgl1": false,/);
-assert.match(mobilePreviewRuntime, /"molstarResolutionMode": "native",/);
 assert.match(previewViewer, /\.msp-plugin \.msp-viewport-host/);
 assert.match(previewViewer, /className = 'buret-molecule-context-menu'/);
 assert.match(previewViewer, /function molstarContextScopeForAtom\(atom\)/);
@@ -3759,10 +4487,20 @@ assert.match(previewViewer, /function molstarContextChainLociFromPick\(target\)/
 assert.match(previewViewer, /function deleteMolstarContextChain\(target\)/);
 assert.match(previewViewer, /if \(target\?\.scope !== 'residue'\) return false;/);
 assert.match(previewViewer, /return deleteMolstarContextLoci\(target, chainLoci, false\);/);
+assert.match(previewViewer, /function captureMolstarEditUndoSnapshot\(label\)/);
+assert.match(previewViewer, /function pushMolstarEditUndoSnapshot\(snapshot\)/);
+assert.match(previewViewer, /function clearMolstarEditUndoHistory\(\)/);
+assert.match(previewViewer, /function restoreMolstarEditUndoSnapshot\(snapshot\)/);
+assert.match(previewViewer, /function undoMolstarLastEdit\(\)/);
+assert.match(previewViewer, /await plugin\.clear\(\);[\s\S]*loadPreparedStructure\(activeViewer, prepared\)[\s\S]*setMolstarStructureDirty\(snapshot\.dirty === true\);/);
+assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*setMolstarStructureDirty\(false\);\s*clearMolstarEditUndoHistory\(\);/);
 assert.match(previewViewer, /action === 'remove-chain'/);
+assert.match(previewViewer, /captureMolstarEditUndoSnapshot\(`delete \$\{targetLabel\}`\)[\s\S]*deleteMolstarContextPick\(target\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
+assert.match(previewViewer, /captureMolstarEditUndoSnapshot\(`delete \$\{bulkLabel\}`\)[\s\S]*deleteMolstarContextBulkType\(target\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
+assert.match(previewViewer, /captureMolstarEditUndoSnapshot\(`delete \$\{chainLabel\}`\)[\s\S]*deleteMolstarContextChain\(target\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
 assert.match(previewViewer, /deleteMolstarContextPick\(target\)[\s\S]*?setMolstarStructureDirty\(true\);[\s\S]*?Deleted \$\{targetLabel\}/);
 assert.match(previewViewer, /deleteMolstarContextBulkType\(target\)[\s\S]*?setMolstarStructureDirty\(true\);[\s\S]*?Deleted \$\{bulkLabel\}/);
-assert.match(previewViewer, /deleteMolstarContextChain\(target\)[\s\S]*?setMolstarStructureDirty\(true\);[\s\S]*?Deleted \$\{molstarContextChainLabel\(target\.atom\)\}/);
+assert.match(previewViewer, /deleteMolstarContextChain\(target\)[\s\S]*?setMolstarStructureDirty\(true\);[\s\S]*?Deleted \$\{chainLabel\}/);
 assert.match(previewViewer, /function molstarContextBulkDeleteLoci\(target\)/);
 assert.match(previewViewer, /target\.scope === 'water'\) return kind === 'water';/);
 assert.match(previewViewer, /target\.scope === 'ion'\) return kind === 'ion' && molstarContextComponentId\(atom\) === molstarContextComponentId\(target\.atom\);/);
@@ -3772,6 +4510,7 @@ assert.match(previewViewer, /action === 'select-atom'/);
 assert.match(previewViewer, /selectMolstarContextPick\(\{ \.\.\.target, loci: target\.atomLoci \}, \{ additive: molstarContextMenuMode === 'atom', applyGranularity: false \}\)/);
 assert.match(previewViewer, /if \(!\(action === 'select-atom' && molstarContextMenuMode === 'atom'\)\) hideMolstarContextMenu\(\);/);
 assert.match(previewViewer, /action === 'remove-atom'/);
+assert.match(previewViewer, /captureMolstarEditUndoSnapshot\(`delete \$\{atomLabel\}`\)[\s\S]*deleteMolstarContextLoci\(target, target\.atomLoci, false\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
 assert.match(previewViewer, /deleteMolstarContextLoci\(target, target\.atomLoci, false\)/);
 assert.match(previewViewer, /action === 'focus-atom'/);
 assert.match(previewViewer, /function molstarContextSelectionLociForStructure\(structureRef\)/);
@@ -3825,8 +4564,6 @@ assert.match(previewViewer, /if \(resolved\?\.selectionBased && resolved\.atom\)
 assert.match(previewViewer, /const scope = molstarContextScopeForAtom\(resolved\.atom\);/);
 assert.match(previewViewer, /label: resolved\.selectedEntry\?\.label \|\| molstarContextResidueLabel\(resolved\.atom\) \|\| resolved\.label/);
 assert.match(previewViewer, /MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300/);
-assert.match(previewViewer, /let molstarStandalonePreviewTarget = null/);
-assert.match(previewViewer, /molstarStandalonePreviewTarget = molstarStandaloneMoleculePreviewTarget\(config\)/);
 assert.match(previewViewer, /function molstarStandaloneMoleculePreviewTarget\(config\)/);
 assert.match(previewViewer, /format === 'pdb' \|\| format === 'pdbqt' \|\| format === 'mmcif' \|\| format === 'cifCore'/);
 assert.match(previewViewer, /standalonePreviewSdfFromAtoms\(frame\?\.atoms, config\.label \|\| 'Molecule'\)/);
@@ -3836,12 +4573,30 @@ assert.match(previewViewer, /function inferStandalonePreviewBonds\(atoms\)/);
 assert.match(previewViewer, /function standalonePreviewBondLimit\(a, b\)/);
 assert.match(previewViewer, /function showMolstarMoleculePreview\(target\)/);
 assert.match(previewViewer, /if \(normalizeFormat\(entry\?\.format\) !== 'sdf'\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
-assert.match(previewViewer, /const image = molstarPreviewSvgCache\.get\(key\) \|\| molstarMoleculePreviewSVG\(entry\)/);
+assert.match(previewViewer, /const image = molstarPreviewSvgCache\.get\(key\) \|\| ''/);
+assert.match(previewViewer, /function molstarPreviewParseMolblock2D\(data\)/);
+assert.match(previewViewer, /function molstarMoleculePreviewFallbackSVG\(entry\)/);
+assert.match(previewViewer, /data-buret-rdkit-svg="fallback"/);
 assert.doesNotMatch(previewViewer, /if \(!image\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
 assert.match(previewViewer, /\$\{image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\}/);
+assert.match(previewViewer, /function molstarPreviewLoadRDKitScript\(\)/);
+assert.match(previewViewer, /runtimeURL\('BurreteRDKitJSURL', '\.\.\/assets\/rdkit\/RDKit_minimal\.js'\)/);
+assert.match(previewViewer, /function molstarPreviewRDKitWasmCandidates\(\)/);
+assert.match(previewViewer, /runtimeURL\('BurreteRDKitWasmURL', ''\)/);
+assert.match(previewViewer, /'\/__burette\/rdkit-wasm'/);
+assert.match(previewViewer, /function molstarPreviewLoadRDKitWasmBinary\(\)/);
+assert.match(previewViewer, /function molstarPreviewRDKitWasmPath\(file\)/);
+assert.match(previewViewer, /return molstarPreviewRDKitWasmCandidates\(\)\[0\] \|\| 'rdkit\/RDKit_minimal\.wasm'/);
+assert.match(previewViewer, /options\.wasmBinary = base64ToBytes\(window\.BurreteRDKitWasmBase64\)/);
+assert.match(previewViewer, /options\.wasmBinary = await molstarPreviewLoadRDKitWasmBinary\(\)/);
+assert.match(previewViewer, /RDKit molecule preview failed; using SVG fallback/);
+assert.match(previewViewer, /2D preview unavailable/);
 assert.match(previewViewer, /function showMolstarSelectedMoleculePreview\(fallbackTarget = null\)/);
-assert.match(previewViewer, /if \(molstarStandalonePreviewTarget && showMolstarPersistentMoleculePreview\(molstarStandalonePreviewTarget\)\) return true/);
+assert.doesNotMatch(previewViewer, /showMolstarPersistentMoleculePreview/);
+assert.doesNotMatch(previewViewer, /molstarStandalonePreviewTarget/);
 assert.match(previewViewer, /function scheduleMolstarSelectedMoleculePreview\(fallbackTarget = null\)/);
+assert.match(previewViewer, /const hasCandidate = Boolean\(molstarSelectedMoleculePreviewTarget\(\) \|\| fallbackTarget\)/);
+assert.match(previewViewer, /hideMolstarMoleculePreview\(\{ force: true \}\)/);
 assert.match(previewViewer, /if \(handled\) scheduleMolstarSelectedMoleculePreview\(target\);/);
 assert.match(previewViewer, /function hideMolstarContextMenu\(options = \{\}\)/);
 assert.match(previewViewer, /if \(options\.keepMoleculePreview\) return;/);
@@ -3899,14 +4654,16 @@ assert.match(previewViewer, /saveMolstarModifiedStructureAs\(format, target\)/);
 assert.match(previewViewer, /if \(normalizeFormat\(format\) !== 'sdf'\) setMolstarStructureDirty\(false\);/);
 assert.match(previewViewer, /contextDocument = molstarContextDocumentPayload\(target\)/);
 assert.match(previewViewer, /if \(!contextDocument\) throw new Error\('No molecule-level Mol\* context is available for this target\.'\)/);
-assert.match(app, /const molstarPreferences = \{ \.\.\.preferences, rendererMode: "molstar" as const \};/);
-assert.match(app, /if \(!isTauriRuntime\(\)\) return openBrowserDevMolstarContextDocument\(contextDocument, molstarPreferences\);/);
-assert.match(app, /invoke<ViewerDocument>\("open_text_structure", \{\s*request: \{\s*title: `\$\{label\}\.\$\{extension\}`,\s*extension,\s*text: entry\.data,/s);
-assert.match(app, /reloadOptions: \{\},/);
-assert.match(app, /data\.source === "burrete-viewer" && body\?\.type === "exportText"/);
-assert.match(app, /data\.source === "burrete-viewer" && body\?\.type === "exportData"/);
-assert.match(app, /invoke<string>\("write_base64_file", \{\s*request: \{ outputPath, contentsBase64: base64 \},\s*\}\)/s);
-assert.match(app, /pushErrorStatus\(error, "Molstar export failed"\)/);
+assert.match(appMolstarContextMessagesHook, /const molstarPreferences = \{[\s\S]*rendererMode: "molstar" as const,[\s\S]*molstarStyle: requestedMolstarStyle \?\? preferences\.molstarStyle,/);
+assert.match(appMolstarContextMessagesHook, /if \(!isTauriRuntime\(\)\) return openBrowserDevMolstarContextDocument\(contextDocument, molstarPreferences\);/);
+assert.match(appMolstarContextMessagesHook, /invoke<ViewerDocument>\("open_text_structure", \{\s*request: \{\s*title: `\$\{label\}\.\$\{extension\}`,\s*extension,\s*text: entry\.data,/s);
+assert.match(appMolstarContextMessagesHook, /reloadOptions: \{\},/);
+assert.match(appViewerBridgeControllerHook, /useAppViewerFileActions\(\{\s*pushErrorStatus,\s*pushStatus,\s*\}\)/s);
+assert.match(viewerBridgeMessagesLib, /source === "burrete-viewer" && handlers\.handleViewerFileMessage\(body\)/);
+assert.match(appViewerFileActionsHook, /body\?\.type === "exportText"/);
+assert.match(appViewerFileActionsHook, /body\?\.type === "exportData"/);
+assert.match(appViewerFileActionsHook, /invoke<string>\("write_base64_file", \{\s*request: \{ outputPath, contentsBase64: base64 \},\s*\}\)/s);
+assert.match(appViewerFileActionsHook, /pushErrorStatus\(error, "Molstar export failed"\)/);
 assert.match(previewViewController, /if type == "exportText" \{\s*handleJavaScriptTextExport\(body\)\s*return\s*\}/s);
 assert.match(previewViewController, /if type == "exportData" \{\s*handleJavaScriptDataExport\(body\)\s*return\s*\}/s);
 assert.match(previewViewController, /private func presentJavaScriptExportSavePanel\(data: Data, name: String\)/);
@@ -3938,6 +4695,8 @@ assert.match(previewViewer, /function readNativeTrajectoryPosition\(expectedCoun
 assert.match(previewViewer, /function nativeAnimationSelectButton\(\)/);
 assert.match(previewViewer, /function trajectoryControlsForPrepared\(prepared\)/);
 assert.match(previewViewer, /if \(prepared\?\.kind === 'sdf-collection'\) \{/);
+assert.match(previewViewer, /prepared\?\.pdbModelMode === 'all'/);
+assert.match(previewViewer, /pdbModelOverlayAvailable: prepared\?\.pdbModelOverlayAvailable === true/);
 assert.match(previewViewer, /const label = prepared\?\.controlLabel \|\| \(activeConfig\?\.sdfPosePager === true \? 'Pose' : 'Model'\)/);
 assert.match(previewViewer, /installDockingPoseControls\(viewer, trajectoryControlsForPrepared\(prepared\)\)/);
 assert.match(previewViewer, /async function reloadActiveMolstarStructure\(\)/);
@@ -3976,30 +4735,13 @@ assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls\) \{/);
 assert.match(previewViewer, /const switched = await setNativeTrajectoryPose\(nextIndex, prepared\.poseCount\)/);
 assert.match(previewViewer, /else if \(prepared\.kind === 'sdf-collection'\) \{/);
 assert.match(previewViewer, /await applySdfCollectionVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex\)/);
-assert.match(previewViewer, /kind: 'xyz-frame-overlay'/);
-assert.match(previewViewer, /else if \(prepared\.kind === 'xyz-frame-overlay'\) \{/);
-assert.match(previewViewer, /await applyXyzFrameOverlayVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ installControls: false \}\)/);
 assert.match(previewViewer, /if \(type === 'set_sdf_molecule'\) \{/);
 assert.match(previewViewer, /return setSdfCollectionMoleculeFromAction\(action\)/);
 assert.match(previewViewer, /if \(type === 'set_sdf_context_style'\) \{/);
 assert.match(previewViewer, /return setSdfCollectionContextStyleFromAction\(action\)/);
 assert.match(previewViewer, /prepared\?\.xyzFrameOverlayAvailable !== true/);
-assert.match(previewViewer, /if \(type === 'set_sdf_context_color'\) \{/);
-assert.match(previewViewer, /return setSdfCollectionContextColorFromAction\(action\)/);
-assert.match(previewViewer, /async function applyXyzFrameOverlayVisibility\(viewer, prepared, activePose = 0, options = \{\}\)/);
-assert.match(previewViewer, /const frames = splitXyzFrames\(rawStructureData\(activeConfig\)\)/);
-assert.match(previewViewer, /const XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT = 80/);
-assert.match(previewViewer, /function xyzFramesCombinedEntry\(frames, indexes, label\)/);
-assert.match(previewViewer, /function sampledXyzFrameBackgroundIndexes\(frameCount, activeIndex\)/);
-assert.match(previewViewer, /const backgroundIndexes = sampledXyzFrameBackgroundIndexes\(frames\.length, activeIndex\)/);
-assert.match(previewViewer, /if \(resolvedContextStyle === 'molecular-surface'\) \{/);
-assert.match(previewViewer, /xyzFramesCombinedEntry\(frames, backgroundIndexes,/);
-assert.match(previewViewer, /function xyzFrameBackgroundStyle\(contextStyle, foregroundStyle\)/);
-assert.match(previewViewer, /if \(contextStyle !== 'match'\) return normalizeMolstarStyle\(contextStyle\)/);
-assert.match(previewViewer, /function xyzFrameBackgroundStyle\(contextStyle, foregroundStyle\) \{\s*if \(contextStyle !== 'match'\) return normalizeMolstarStyle\(contextStyle\);\s*return normalizeMolstarStyle\(foregroundStyle\);\s*\}/s);
-assert.doesNotMatch(previewViewer, /if \(activeSdfPoseMode !== 'all'\) setSdfPoseMode\('all'\)/);
-assert.match(previewViewer, /if \(!scopedActiveStructures\.length\) throw new Error\('Mol\* did not expose the active XYZ frame structure\.'\)/);
-assert.match(previewViewer, /await applyXyzFrameOverlayVisibility\(activeViewer, prepared, activePose, \{ contextStyle: style \}\)/);
+assert.match(previewViewer, /if \(activeMolstarPrepared\?\.xyzFrameOverlayAvailable === true\) \{[\s\S]*?await applyXyzFrameOverlayVisibility\(activeViewer, activeMolstarPrepared, activePose\);/);
+assert.match(previewViewer, /async function setSdfPoseModeFromAction\(action = \{\}\) \{[\s\S]*?await reloadSdfPoseMode\(\);/);
 assert.doesNotMatch(previewViewer, /setStatus\(`\[web\] All background style:/);
 assert.match(previewViewer, /if \(type === 'set_sdf_context_opacity'\) \{/);
 assert.doesNotMatch(previewViewer, /setStatus\(`\[web\] All background opacity:/);
@@ -4010,20 +4752,11 @@ assert.match(previewViewer, /if \(type === 'set_sdf_pose_index'\) \{/);
 assert.match(previewViewer, /return setSdfPoseIndexFromAction\(action\)/);
 assert.match(previewViewer, /const SDF_CONTEXT_STYLE_STORAGE_KEY = 'buret\.sdf\.contextStyle'/);
 assert.match(previewViewer, /const SDF_CONTEXT_OPACITY_STORAGE_KEY = 'buret\.sdf\.contextOpacity'/);
-assert.match(previewViewer, /const SDF_CONTEXT_COLOR_STORAGE_KEY = 'buret\.sdf\.contextColor'/);
-assert.match(previewViewer, /function readSdfPoseMode\(config\)/);
-assert.match(previewViewer, /const format = normalizeFormat\(config\?\.molstarFormat \|\| config\?\.format\);\s*if \(format !== 'sdf' && format !== 'xyz'\) return 'single';\s*return 'single';/s);
-assert.doesNotMatch(previewViewer, /const defaultMode = config\?\.defaultSdfPoseMode === 'all' \? 'all' : 'single'/);
 assert.match(previewViewer, /function normalizeSdfCollectionContextStyle\(value\)/);
 assert.match(previewViewer, /function normalizeSdfCollectionContextOpacity\(value\)/);
-assert.match(previewViewer, /function normalizeSdfCollectionContextColor\(value\)/);
 assert.match(previewViewer, /if \(!Number\.isFinite\(opacity\)\) return 0\.4/);
 assert.match(previewViewer, /function readSdfCollectionContextStyle\(config\)/);
 assert.match(previewViewer, /function readSdfCollectionContextOpacity\(config\)/);
-assert.match(previewViewer, /function readSdfCollectionContextColor\(config\)/);
-assert.match(previewViewer, /function setSdfCollectionContextColor\(color\)/);
-assert.match(previewViewer, /type: 'structureOverlayModeChanged'/);
-assert.match(previewViewer, /documentId,/);
 assert.match(previewViewer, /let activeSdfCollectionPoseSetter = null/);
 assert.match(previewViewer, /async function setSdfCollectionMoleculeFromAction\(action = \{\}\)/);
 assert.match(previewViewer, /if \(activeSdfCollectionPoseSetter\) \{/);
@@ -4035,26 +4768,17 @@ assert.match(previewViewer, /await applySdfCollectionVisibility\(activeViewer, p
 assert.match(previewViewer, /async function setSdfCollectionContextOpacityFromAction\(action = \{\}\)/);
 assert.match(previewViewer, /const opacity = setSdfCollectionContextOpacity\(action\.opacity\)/);
 assert.match(previewViewer, /await applySdfCollectionVisibility\(activeViewer, prepared, activePose, \{ contextOpacity: opacity \}\)/);
-assert.match(previewViewer, /await applyXyzFrameOverlayVisibility\(activeViewer, prepared, activePose, \{ contextOpacity: opacity \}\)/);
-assert.match(previewViewer, /async function setSdfCollectionContextColorFromAction\(action = \{\}\)/);
-assert.match(previewViewer, /const color = setSdfCollectionContextColor\(action\.color\)/);
-assert.match(previewViewer, /await applySdfCollectionVisibility\(activeViewer, prepared, activePose, \{ contextColor: color \}\)/);
-assert.match(previewViewer, /await applyXyzFrameOverlayVisibility\(activeViewer, prepared, activePose, \{ contextColor: color \}\)/);
 assert.match(previewViewer, /prepared\?\.kind !== 'sdf-collection' && !prepared\?\.dockingSceneMode/);
 assert.match(previewViewer, /await applyDockingSceneVisibility\(activeViewer, prepared, activePose\)/);
 assert.match(previewViewer, /else if \(activeSdfPoseMode === 'all'\) \{/);
 assert.match(previewViewer, /async function applySdfCollectionMolstarStyle\(viewer, style, structures = null, alpha = 1, colorMode = 'gray'\)/);
-assert.match(previewViewer, /const raw = await plugin\.builders\.data\.rawData\(\{ data, label \}\)/);
-assert.match(previewViewer, /const trajectory = await plugin\.builders\.structure\.parseTrajectory\(raw, 'pdb'\)/);
-assert.match(previewViewer, /const preset = await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default', \{ representationPreset: 'empty' \}\)/);
-assert.match(previewViewer, /const structure = preset\?\.structureProperties \|\| preset\?\.structure \|\| null/);
-assert.match(previewViewer, /return structure \? \[structure\] : \[\]/);
 assert.match(previewViewer, /const backgroundData = sdfCollectionBackgroundPdb\(prepared, activeIndex\)/);
 assert.match(previewViewer, /if \(backgroundData\) \{/);
 assert.match(previewViewer, /const contextStructures = await loadSdfCollectionPdbLayer\(viewer, backgroundData,/);
 assert.doesNotMatch(previewViewer, /const contextStructures = await loadSdfCollectionPdbLayer\(viewer, prepared\.data,/);
 assert.match(previewViewer, /const contextStyle = options\.contextStyle \?\? readSdfCollectionContextStyle\(activeConfig\)/);
 assert.match(previewViewer, /const contextOpacity = options\.contextOpacity \?\? readSdfCollectionContextOpacity\(activeConfig\)/);
+assert.match(previewViewer, /const contextColor = options\.contextColor \?\? readSdfCollectionContextColor\(activeConfig\)/);
 assert.match(previewViewer, /await applySdfCollectionMolstarStyle\(viewer, contextStyle === 'match' \? style : contextStyle, contextStructures, contextOpacity, contextColor\)/);
 assert.match(previewViewer, /const structures = await loadSdfCollectionPdbLayer\(viewer, activeData, label\)/);
 assert.match(previewViewer, /await applySdfCollectionMolstarStyle\(viewer, style, structures, 1, 'colored'\)/);
@@ -4069,11 +4793,11 @@ assert.match(previewViewer, /const backgroundEntries = poses\.filter\(\(_, index
 assert.match(previewViewer, /if \(resolvedContextStyle === 'default' \|\| resolvedContextStyle === 'illustrative'\) \{/);
 assert.match(previewViewer, /for \(const entry of \[\.\.\.backgroundEntries, activeEntry\]\) \{\s*await loadMolstarEntry\(viewer, entry\);\s*\}\s*await applyMolstarStyle\(viewer, resolvedContextStyle\);/s);
 assert.match(previewViewer, /for \(const entry of backgroundEntries\) \{\s*contextStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\);\s*\}/s);
+assert.match(previewViewer, /const contextColor = readSdfCollectionContextColor\(activeConfig\);/);
 assert.match(previewViewer, /if \(contextStructures\.length\) \{\s*await applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor\);\s*\}/s);
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarIllustrativePostprocessing\(viewer\);/s);
 assert.match(previewViewer, /function dockingSceneBackgroundStyle\(contextStyle, foregroundStyle\)/);
-assert.match(previewViewer, /if \(contextStyle !== 'match'\) return normalizeMolstarStyle\(contextStyle\)/);
-assert.match(previewViewer, /function dockingSceneBackgroundStyle\(contextStyle, foregroundStyle\) \{\s*if \(contextStyle !== 'match'\) return normalizeMolstarStyle\(contextStyle\);\s*return normalizeMolstarStyle\(foregroundStyle\);\s*\}/s);
+assert.match(previewViewer, /if \(resolved === 'cartoon' \|\| resolved === 'spacefill'\) return 'line'/);
 assert.match(previewViewer, /updateStructureOverlayToggleButton\(document\.querySelector\('\[data-buret-action="structure-overlay-toggle"\]'\), prepared\);\s*scheduleMolstarStructureFocus\(viewer, \{ reason: 'docking-scene', durationMs: 180 \}\);\s*return;/);
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarStyle\(viewer, style\)/);
 assert.match(previewViewer, /function sdfCollectionRepresentationForStyle\(style, alpha = 1, colorMode = 'gray'\)/);
@@ -4108,10 +4832,6 @@ assert.match(previewViewer, /speed\.max = formatTrajectoryFps\(maximumTrajectory
 assert.match(previewViewer, /speed\.inputMode = 'decimal'/);
 assert.match(previewViewer, /speed\.value = formatTrajectoryFps\(readTrajectoryLoopFps\(activeConfig, prepared\)\)/);
 assert.match(previewViewer, /speed\.title = 'Frames per second \(FPS\)'/);
-assert.match(previewViewer, /function setMobileTrajectorySpeed\(value\)/);
-assert.match(previewViewer, /speed\.dispatchEvent\(new Event\('input', \{ bubbles: true \}\)\)/);
-assert.match(previewViewer, /speed\.dispatchEvent\(new Event\('change', \{ bubbles: true \}\)\)/);
-assert.match(previewViewer, /name\.startsWith\('trajectory-speed:'\)/);
 assert.match(previewViewer, /function createStructureOverlayToggleButton\(prepared = activeMolstarPrepared\)/);
 assert.match(previewViewer, /button\.dataset\.buretAction = 'structure-overlay-toggle'/);
 assert.match(previewViewer, /root\.classList\.add\('buret-docking-poses-overlay-only'\)/);
@@ -4131,13 +4851,9 @@ assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\
 assert.match(previewViewer, /loopTimer = window\.setTimeout\(\(\) => \{/);
 assert.match(previewViewer, /const nextIndex = loopTargetIndex\(\)/);
 assert.match(previewViewer, /if \(nextIndex === activePose\) \{/);
-assert.match(previewViewer, /setPose\(nextIndex, \{ loopStep: true \}\)/);
-assert.match(previewViewer, /if \(options\.loopStep !== true && loopActive\) \{/);
-assert.match(previewViewer, /loopStartPose = activePose/);
-assert.match(previewViewer, /if \(options\.loopStep !== true\) \{\s*scheduleMolstarStructureFocus\(viewer, \{ reason: 'native-trajectory-pose', durationMs: 180 \}\);\s*\}/);
 assert.match(previewViewer, /slider\.className = 'buret-docking-pose-slider'/);
 assert.match(previewViewer, /const scheduleSliderInputPose = \(index\) => \{/);
-assert.match(previewViewer, /prepared\.nativeTrajectoryControls \|\| prepared\.kind === 'sdf-collection' \|\| prepared\.kind === 'xyz-frame-overlay'/);
+assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls \|\| prepared\.kind === 'sdf-collection' \|\| prepared\.kind === 'xyz-frame-overlay'\) scheduleSliderInputPose\(previewIndex\)/);
 assert.match(previewViewer, /slider\.addEventListener\('change', \(\) => \{/);
 assert.match(previewViewer, /function installDockingPoseInteractionIsolation\(root\)/);
 assert.match(previewViewer, /root\.addEventListener\('wheel', isolateWheel, \{ passive: false \}\)/);
@@ -4229,54 +4945,115 @@ assert.match(editorTabs, /id: "reveal-tab-text-file"/);
 assert.match(editorTabs, /id: "copy-tab-text-file-path"/);
 assert.match(editorTabs, /id: "show-tab-text-file-metadata"/);
 assert.match(windowTitle, /activeDocument\.path/);
-assert.match(app, /invoke\("reveal_path"/);
-assert.match(app, /const copyPath = useCallback/);
-assert.match(app, /await writeClipboardText\(path\)/);
-assert.match(app, /invoke<string>\("read_external_preview_svg"/);
-assert.match(app, /invoke<string>\("write_text_file"/);
-assert.match(app, /invoke<string>\("write_base64_file"/);
-assert.match(app, /isKnownViewerMessageSource\(event\.source, body\?\.documentId\)/);
-assert.match(app, /data\?\.source !== "burrete-grid"/);
-assert.match(app, /body\?\.type === "copyText"/);
-assert.match(app, /navigator\.clipboard\.writeText\(text\)/);
-assert.match(app, /body\?\.type === "exportText"/);
-assert.match(app, /const outputPath = await save\(/);
-assert.match(app, /invoke<string>\("save_text_as"/);
-assert.match(app, /body\?\.type === "saveGridAs"/);
-assert.match(app, /body\?\.type === "saveGrid"/);
-assert.match(app, /body\?\.type === "gridDirtyChanged"/);
-assert.match(app, /This grid has unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
-assert.match(app, /\$\{dirtyCount\} grid document\$\{dirtyCount === 1 \? " has" : "s have"\} unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
-assert.match(app, /body\?\.type === "exportGridMolecule"/);
-assert.match(app, /type: "gridSavedAs"/);
-assert.match(app, /type: "gridSaveAsError"/);
-assert.match(app, /type: "gridSaved"/);
-assert.match(app, /type: "gridSaveError"/);
-assert.match(app, /type: "gridMoleculeExported"/);
-assert.match(app, /type: "gridMoleculeExportError"/);
-assert.match(app, /pushErrorStatus\(error, "Grid Save As failed"\)/);
-assert.match(app, /pushErrorStatus\(error, "Grid Save failed"\)/);
-assert.match(app, /function safeExportFileName\(name: string\)/);
-assert.match(app, /function exportDialogFilters\(fileName: string, mimeType: string\)/);
-assert.match(app, /if \(body\?\.type === "gridFetchPage"\) \{\s*if \(!body\.requestId \|\| !body\.documentId\) return;/s);
-assert.match(app, /invoke\("grid_fetch_page"/);
-assert.match(app, /source: "burrete-grid-host"/);
-assert.match(app, /type GridDelimitedColumnChoice = \{/);
-assert.match(app, /function isDelimitedColumnAmbiguity\(error: unknown\)/);
-assert.match(app, /multiple possible structure columns/);
-assert.match(app, /const openDelimitedGridDocument = useCallback/);
-assert.match(app, /invoke<ViewerDocument>\("open_delimited_grid_document"/);
-assert.match(app, /const showDelimitedGridColumnOpenMenu = useCallback/);
-assert.match(app, /invoke<GridDelimitedColumnChoice\[\]>\("grid_delimited_columns"/);
-assert.match(app, /void showDelimitedGridColumnOpenMenu\(cleanPaths\[0\], effectivePreferences, options\.replace === true\)/);
-assert.match(app, /const appendGridRecords = useCallback/);
-assert.match(app, /invoke<GridAppendResult>\("grid_append_records"/);
-assert.match(app, /const appendDelimitedGridRecords = useCallback/);
-assert.match(app, /invoke<GridAppendResult>\("grid_append_delimited_records"/);
-assert.match(app, /const showDelimitedGridColumnAppendMenu = useCallback/);
-assert.match(app, /void showDelimitedGridColumnAppendMenu\(targetDocument, payload\.paths\[0\]\)/);
-assert.match(app, /notifyGridRecordsAppended\(targetDocument\.id, result\)/);
-assert.match(app, /type: "gridRecordsAppended"/);
+assert.match(app, /from "\.\/hooks\/use-app-active-text-document"/);
+assert.match(app, /const activeTextDocument = useAppActiveTextDocument\(\{ activeTab, textDocuments \}\)/);
+assert.doesNotMatch(app, /const activeTextDocument = useMemo/);
+assert.match(appActiveTextDocumentHook, /export function useAppActiveTextDocument\(\{/);
+assert.match(appActiveTextDocumentHook, /const location = activeTab\?\.location/);
+assert.match(appActiveTextDocumentHook, /location\?\.kind !== "text-file"/);
+assert.match(appActiveTextDocumentHook, /document\.id === location\.documentId \|\| document\.path === location\.path/);
+assert.match(app, /useAppFileActions\(\{/);
+assert.match(appFileActionsHook, /invoke\("reveal_path"/);
+assert.match(appFileActionsHook, /const copyPath = useCallback/);
+assert.match(appFileActionsHook, /await writeClipboardText\(path\)/);
+assert.match(app, /from "\.\/lib\/browser-dev-structure-bundles"/);
+assert.match(app, /from "\.\/lib\/clipboard"/);
+assert.match(app, /from "\.\/lib\/content-spectrum-detection"/);
+assert.doesNotMatch(app, /from "\.\/lib\/preview-image-export"/);
+assert.match(appHostRuntimeOperationsHook, /from "\.\.\/lib\/preview-image-export"/);
+assert.doesNotMatch(app, /async function expandBrowserDevStructureBundles/);
+assert.doesNotMatch(app, /async function detectContentSpectrumPaths/);
+assert.doesNotMatch(app, /async function svgToPngBase64/);
+assert.doesNotMatch(app, /function arrayBufferToBase64/);
+assert.doesNotMatch(app, /async function writeClipboardText/);
+assert.doesNotMatch(app, /function copyTextWithSelectionFallback/);
+assert.doesNotMatch(app, /function isXtbOptimizationTrajectoryLogPath/);
+assert.match(browserDevStructureBundles, /export async function expandBrowserDevStructureBundles/);
+assert.match(browserDevStructureBundles, /export function isXtbOptimizationTrajectoryLogPath/);
+assert.match(browserDevStructureBundles, /\/__burette\/file-bundle\?path=\$\{encodeURIComponent\(path\)\}/);
+assert.match(browserDevStructureBundles, /Browser-dev companion discovery is opportunistic/);
+assert.match(contentSpectrumDetection, /export async function detectContentSpectrumPaths/);
+assert.match(contentSpectrumDetection, /readStructureText\(path, \{ maxBytes: 256 \* 1024 \}\)/);
+assert.match(contentSpectrumDetection, /isSubformulaSpectrumJsonText\(text\)/);
+assert.match(previewImageExport, /export function arrayBufferToBase64/);
+assert.match(previewImageExport, /export async function svgToPngBase64/);
+assert.match(previewImageExport, /Preview SVG could not be rasterized/);
+assert.match(clipboardLib, /export async function writeClipboardText/);
+assert.match(clipboardLib, /navigator\.clipboard\?\.writeText/);
+assert.match(clipboardLib, /export function copyTextWithSelectionFallback/);
+assert.doesNotMatch(app, /invoke<string>\("read_external_preview_svg"/);
+assert.doesNotMatch(app, /invoke<string>\("write_text_file"/);
+assert.doesNotMatch(app, /invoke<string>\("write_base64_file"/);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("read_external_preview_svg"/);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("write_text_file"/);
+assert.match(appHostRuntimeOperationsHook, /invoke<string>\("write_base64_file"/);
+assert.match(app, /from "\.\/lib\/viewer-bridge"/);
+assert.doesNotMatch(app, /function isKnownViewerMessageSource/);
+assert.doesNotMatch(app, /function postMessageToViewerSource/);
+assert.doesNotMatch(app, /function activeViewerIframeForDocument/);
+assert.match(viewerBridgeLib, /export type ActiveViewerIframeForDocument/);
+assert.match(viewerBridgeLib, /export type KnownViewerMessageSource/);
+assert.match(viewerBridgeLib, /export type PostMessageToViewerSource/);
+assert.match(viewerBridgeLib, /document\.querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
+assert.match(viewerBridgeLib, /CSS\.escape\(documentId\)/);
+assert.match(appMolstarXtbContextHook, /import type \{ ActiveViewerIframeForDocument, KnownViewerMessageSource \} from "\.\.\/lib\/viewer-bridge"/);
+assert.match(appViewerBridgeMessagesHook, /parseViewerBridgeMessage\(event\)/);
+assert.match(appViewerBridgeMessagesHook, /dispatchViewerBridgeMessage\(message, \{/);
+assert.doesNotMatch(appViewerBridgeMessagesHook, /body\?\.documentId/);
+assert.match(viewerBridgeMessagesLib, /export function viewerBridgeSource\(value: unknown\)/);
+assert.match(viewerBridgeMessagesLib, /export function viewerBridgeBodyDocumentId\(body: ViewerBridgeMessageBody\)/);
+assert.match(viewerBridgeMessagesLib, /isKnownViewerMessageSource\(eventSource, viewerBridgeBodyDocumentId\(body\)\)/);
+assert.match(viewerBridgeMessagesLib, /source === "burrete-grid"/);
+assert.match(viewerBridgeMessagesLib, /handleGridControlMessage\(body\)/);
+assert.match(appGridControlMessagesHook, /body\?\.type === "copyText"/);
+assert.match(appGridControlMessagesHook, /writeClipboardText\(text\)/);
+assert.match(appGridControlMessagesHook, /body\?\.type === "calculateGridDescriptors"/);
+assert.match(appGridControlMessagesHook, /calculateGridDescriptors\(documentId, rowIndexes\.length \? \{ rowIndexes \} : \{\}\)/);
+assert.match(appGridControlMessagesHook, /body\?\.type === "gridPerfMetric"/);
+assert.match(appGridControlMessagesHook, /writeGridPerfMetric\(body\)/);
+assert.match(viewerBridgeMessagesLib, /handleGridFileMessage\(body, eventSource\)/);
+assert.match(appGridFileActionsHook, /body\?\.type === "exportText"/);
+assert.match(appGridFileActionsHook, /const outputPath = await save\(/);
+assert.match(appGridFileActionsHook, /invoke<string>\("save_text_as"/);
+assert.match(appGridFileActionsHook, /body\?\.type === "saveGridAs"/);
+assert.match(appGridFileActionsHook, /body\?\.type === "saveGrid"/);
+assert.match(appGridControlMessagesHook, /body\?\.type === "gridDirtyChanged"/);
+assert.match(appGridControlMessagesHook, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
+assert.match(appDirtyGridHook, /This grid has unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
+assert.match(appDirtyGridHook, /\$\{dirtyCount\} grid document\$\{dirtyCount === 1 \? " has" : "s have"\} unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
+assert.match(appGridFileActionsHook, /body\?\.type === "exportGridMolecule"/);
+assert.match(appGridFileActionsHook, /type: "gridSavedAs"/);
+assert.match(appGridFileActionsHook, /type: "gridSaveAsError"/);
+assert.match(appGridFileActionsHook, /type: "gridSaved"/);
+assert.match(appGridFileActionsHook, /type: "gridSaveError"/);
+assert.match(appGridFileActionsHook, /type: "gridMoleculeExported"/);
+assert.match(appGridFileActionsHook, /type: "gridMoleculeExportError"/);
+assert.match(appGridFileActionsHook, /pushErrorStatus\(error, "Grid Save As failed"\)/);
+assert.match(appGridFileActionsHook, /pushErrorStatus\(error, "Grid Save failed"\)/);
+assert.match(appViewerFileActionsHook, /from "\.\.\/lib\/file-export"/);
+assert.match(fileExport, /export function safeExportFileName\(name: string\)/);
+assert.match(fileExport, /export function exportDialogFilters\(fileName: string, mimeType: string\)/);
+assert.match(viewerBridgeMessagesLib, /handleGridRuntimeMessage\(body, eventSource\)/);
+assert.match(appGridRuntimeMessagesHook, /if \(body\?\.type === "gridFetchPage"\) \{\s*if \(!body\.requestId \|\| !body\.documentId\) return true;/s);
+assert.match(appGridRuntimeMessagesHook, /invoke\("grid_fetch_page"/);
+assert.match(appGridRuntimeMessagesHook, /source: "burrete-grid-host"/);
+assert.match(fileRouting, /export type GridDelimitedColumnChoice = \{/);
+assert.match(fileRouting, /export function isDelimitedColumnAmbiguity\(error: unknown\)/);
+assert.match(fileRouting, /multiple possible structure columns/);
+assert.match(appFileOpenHook, /const openDelimitedGridDocument = useCallback/);
+assert.match(appFileOpenHook, /invoke<ViewerDocument>\("open_delimited_grid_document"/);
+assert.match(appFileOpenHook, /const showDelimitedGridColumnOpenMenu = useCallback/);
+assert.match(appFileOpenHook, /invoke<GridDelimitedColumnChoice\[\]>\("grid_delimited_columns"/);
+assert.match(appFileOpenHook, /void showDelimitedGridColumnOpenMenu\(cleanPaths\[0\], effectivePreferences, options\.replace === true\)/);
+assert.match(app, /from "\.\/hooks\/use-app-grid-workflows"/);
+assert.match(appGridWorkflowsHook, /const appendGridRecords = useCallback/);
+assert.match(appGridWorkflowsHook, /invoke<GridAppendResult>\("grid_append_records"/);
+assert.match(appGridWorkflowsHook, /const appendDelimitedGridRecords = useCallback/);
+assert.match(appGridWorkflowsHook, /invoke<GridAppendResult>\("grid_append_delimited_records"/);
+assert.match(appGridWorkflowsHook, /const showDelimitedGridColumnAppendMenu = useCallback/);
+assert.match(appGridWorkflowsHook, /void showDelimitedGridColumnAppendMenu\(targetDocument, payload\.paths\[0\]\)/);
+assert.match(appGridWorkflowsHook, /notifyGridRecordsAppended\(targetDocument\.id, result\)/);
+assert.match(appGridWorkflowsHook, /type: "gridRecordsAppended"/);
 assert.match(app, /appendGridRecords,/);
 assert.match(gridViewer, /dirty: false/);
 assert.match(gridViewer, /dirtyReason: ''/);
@@ -4299,8 +5076,12 @@ assert.match(gridUi, /<ControlTooltip label="Open selected molecules in Molstar"
 assert.doesNotMatch(gridUi, /data-buret-grid-generate-3d/);
 assert.doesNotMatch(gridUi, /Generate 3D/);
 assert.doesNotMatch(gridUi, /Calculate selected descriptors/);
+assert.match(gridUi, /const selectedPresetLabel = props\.xyzrenderPresetOptions\.find\(/);
+assert.match(gridUi, /"--buret-xyzrender-preset-width": `\$\{presetWidth\}px`/);
 assert.match(gridCss, /\.buret-control-tooltip \{/);
 assert.match(gridCss, /\.buret-actions button:hover > \.buret-control-tooltip/);
+assert.match(gridCss, /\.buret-grid-toolbar \.buret-grid-xyzrender-preset-control select \{[^}]*width: var\(--buret-xyzrender-preset-width, 86px\);/s);
+assert.doesNotMatch(gridCss, /\.buret-grid-toolbar \.buret-grid-xyzrender-preset-control select \{[^}]*width: 104px;/s);
 assert.match(gridViewer, /onSaveGrid\(\) \{ saveGrid\(cfg\); \}/);
 assert.match(gridViewer, /onSaveGridAs\(\) \{ saveGridAs\(cfg\); \}/);
 assert.match(gridViewer, /onUndoGridEdit\(\) \{ undoLastGridEdit\(cfg\); \}/);
@@ -4322,29 +5103,37 @@ assert.match(gridViewer, /if \(state\.dirty\) summaryParts\.push\(`unsaved \$\{s
 assert.match(gridViewer, /Unsaved changes\. Use Save to overwrite the source file, Save As to write a new file, or Undo to revert the last edit\./);
 assert.match(gridViewer, /function markGridDirty\(reason\)/);
 assert.match(gridViewer, /function markGridClean\(\)/);
-assert.match(app, /if \(body\?\.type === "renderXyzrenderCard"\) \{/);
-assert.match(app, /type: "xyzrenderCard"/);
-assert.match(app, /cacheScope: "grid-card"/);
-assert.match(app, /cacheHit: result\.cacheHit \?\? false/);
-assert.match(app, /CSS\.escape\(documentId\)/);
-assert.match(app, /iframe\?\.contentWindow\?\.postMessage\(payload, "\*"\)/);
+assert.match(appGridRuntimeMessagesHook, /if \(body\?\.type === "renderXyzrenderCard"\) \{/);
+assert.match(appGridRuntimeMessagesHook, /type: "xyzrenderCard"/);
+assert.match(appGridRuntimeMessagesHook, /cacheScope: "grid-card"/);
+assert.match(appGridRuntimeMessagesHook, /cacheHit: result\.cacheHit \?\? false/);
+assert.match(viewerBridgeLib, /CSS\.escape\(documentId\)/);
+assert.match(viewerBridgeLib, /iframe\?\.contentWindow\?\.postMessage\(payload, "\*"\)/);
 assert.match(browserDevDocuments, /if \(window\.BurreteConfig && window\.BurreteConfig\.documentId\) body\.documentId = String\(window\.BurreteConfig\.documentId\);/);
-assert.match(app, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
+assert.match(viewerBridgeLib, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
 assert.match(viewer, /function initShellShortcutBridge\(\)/);
 assert.match(viewer, /const togglesSidebar = commandKey && !event\.altKey && !event\.shiftKey && key === 'b'/);
 assert.match(viewer, /postHostMessage\(\{ type: togglesSidebar \? 'toggleSidebar' : 'openCommandPalette' \}\)/);
 assert.match(gridViewer, /function initShellShortcutBridge\(\)/);
 assert.match(gridViewer, /const togglesSidebar = commandKey && !event\.altKey && !event\.shiftKey && key === 'b'/);
 assert.match(gridViewer, /post\(togglesSidebar \? 'toggleSidebar' : 'openCommandPalette'\)/);
-assert.match(app, /body\?\.type === "openCommandPalette"/);
-assert.match(app, /openCommandPalette\(\);\s*return;/);
-assert.match(app, /body\?\.type === "toggleSidebar"/);
-assert.match(app, /toggleSidebar\(\);\s*return;/);
-assert.match(app, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
-assert.match(app, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
-assert.match(app, /void openDocuments\(\[path\]\)\.then/);
-assert.match(app, /Quick Look reset completed/);
-assert.match(app, /Quick Look reset reported issues/);
+assert.match(viewerBridgeMessagesLib, /handleViewerStateMessage\(source, body\)/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "openCommandPalette"/);
+assert.match(appViewerStateMessagesHook, /openCommandPalette\(\);\s*return true;/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "toggleSidebar"/);
+assert.match(appViewerStateMessagesHook, /toggleSidebar\(\);\s*return true;/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "selectionChanged"/);
+assert.match(appViewerStateMessagesHook, /setViewerLigandSelections/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "rendererChanged"/);
+assert.match(appViewerStateMessagesHook, /xyzrenderPresetOptions: presetOptions/);
+assert.doesNotMatch(app, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
+assert.doesNotMatch(app, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
+assert.doesNotMatch(app, /void openDocuments\(\[path\]\)\.then/);
+assert.match(appPreferenceEffectsHook, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
+assert.match(appPreferenceEffectsHook, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
+assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\]\)\.then/);
+assert.match(appMaintenanceHook, /Quick Look reset completed/);
+assert.match(appMaintenanceHook, /Quick Look reset reported issues/);
 assert.doesNotMatch(app, /Quick Look reset requested/);
 
 assert.match(shortcutDocs, /\| Cmd\+P or \/ \| Open command palette \|/);
@@ -4373,14 +5162,14 @@ assert.match(updateSource, /const installExtensions = \["\.zip"\]/);
 assert.doesNotMatch(updateSource, /"\.dmg"|"\.pkg"/);
 assert.match(updateSource, /sha256AssetFor\(assets, asset\.name!\)/);
 assert.match(updateSource, /sha256AssetName: selected\.digest\.name!/);
-assert.match(app, /sha256BrowserDownloadUrl: release\.installAsset\.sha256BrowserDownloadUrl/);
+assert.match(appUpdatesHook, /sha256BrowserDownloadUrl: release\.installAsset\.sha256BrowserDownloadUrl/);
 assert.match(updateSource, /manifestAssetFor\(assets, asset\.name!\)/);
 assert.match(updateSource, /manifestSignatureAssetFor\(assets, asset\.name!\)/);
-assert.match(app, /manifestSignatureBrowserDownloadUrl: release\.installAsset\.manifestSignatureBrowserDownloadUrl/);
-assert.match(app, /const \[buildInfoLoaded, setBuildInfoLoaded\] = useState\(false\)/);
-assert.match(app, /if \(!buildInfoLoaded\) \{\s*if \(!automatic\) pushStatus\("Update checks are not ready yet\."\);\s*return;\s*\}\s*if \(buildInfo\.isDevBuild\) \{/s);
-assert.match(app, /statusText: "Updates are disabled for dev builds\."/);
-assert.match(app, /if \(!buildInfoLoaded \|\| buildInfo\.isDevBuild\) return undefined;\s*const loadedPreferences = loadUpdatePreferences\(\);/s);
+assert.match(appUpdatesHook, /manifestSignatureBrowserDownloadUrl: release\.installAsset\.manifestSignatureBrowserDownloadUrl/);
+assert.match(appBootstrapHook, /const \[buildInfoLoaded, setBuildInfoLoaded\] = useState\(false\)/);
+assert.match(appUpdatesHook, /if \(!buildInfoLoaded\) \{\s*if \(!automatic\) pushStatus\("Update checks are not ready yet\."\);\s*return;\s*\}\s*if \(buildInfo\.isDevBuild\) \{/s);
+assert.match(appBootstrapHook, /statusText: "Updates are disabled for dev builds\."/);
+assert.match(appUpdatesHook, /if \(!buildInfoLoaded \|\| buildInfo\.isDevBuild\) return undefined;\s*const loadedPreferences = loadUpdatePreferences\(\);/s);
 assert.match(browserDevDocuments, /documentId: documentId \?\? stableId\(path\)/);
 assert.match(browserDevDocuments, /const html = await gridHtml\(path, id, grid\.records, grid\.format, preferences, bytes\.length\)/);
 assert.match(browserDevDocuments, /browserDevVirtualTextDocuments\.set\(path, merged\.text\)/);
@@ -4607,7 +5396,11 @@ assert.match(gridViewer, /state\.xyzrenderBatchesRunning < concurrency/);
 assert.match(gridViewer, /batchConcurrency: xyzrenderCardBatchConcurrency\(\)/);
 assert.match(gridViewer, /window\.setTimeout\(\(\) => \{\s*state\.xyzrenderBatchTimer = 0;\s*pumpXyzrenderCardBatchQueue\(\);/);
 assert.match(gridViewer, /window\.clearTimeout\(state\.xyzrenderBatchTimer\)/);
-assert.match(gridViewer, /const preview = drawRdkitPlaceholder\(row\);/);
+assert.match(gridViewer, /function xyzrenderCardInputText\(row, record\)/);
+assert.match(gridViewer, /const preview = '<div class="buret-molecule-loading" aria-label="Rendering molecule with xyzrender"><\/div>';/);
+assert.match(gridViewer, /hash\(xyzrenderCardInputText\(row, record\)\)/);
+assert.match(gridViewer, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(row, record\)\)/);
+assert.match(gridViewer, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(job\.row, job\.record\)\)/);
 assert.doesNotMatch(gridViewer, /function drawXyzrenderPlaceholder\(row\)/);
 assert.doesNotMatch(gridViewer, /target\.classList\.remove\('buret-xyzrender-preview'\)/);
 assert.match(gridUi, /dataAttribute="buret-grid-card-renderer"/);
@@ -4618,6 +5411,9 @@ assert.match(gridUi, /onXyzrenderPresetChange/);
 assert.match(gridViewer, /const DEFAULT_XYZRENDER_PRESETS = \[/);
 assert.match(gridViewer, /function normalizeXyzrenderPreset\(value\)/);
 assert.match(gridViewer, /function setXyzrenderPreset\(value, cfg\)/);
+assert.match(gridViewer, /function refreshGridControls\(cfg\)/);
+assert.match(gridViewer, /setXyzrenderPreset\(value, cfg\)[\s\S]*refreshGridControls\(cfg\);[\s\S]*applyGridPreferences\(cfg\);/);
+assert.match(gridViewer, /setCardRenderer\(value, cfg\)[\s\S]*refreshGridControls\(cfg\);[\s\S]*applyGridPreferences\(cfg\);/);
 assert.match(gridViewer, /state\.xyzrenderCardCache\.clear\(\);/);
 assert.match(gridViewer, /preset: currentXyzrenderPreset\(cfg\)/);
 assert.match(gridViewer, /preset: currentXyzrenderPreset\(job\.cfg\)/);
@@ -4631,7 +5427,8 @@ assert.match(gridUi, /id="open-selected-molstar"/);
 assert.match(gridUi, /onClick=\{\(\) => props\.onRendererSwitch\("molstar"\)\}/);
 assert.match(gridUi, /id="open-selected-ketcher"/);
 assert.match(gridViewer, /onOpenKetcher\(\) \{ requestSelectedKetcherDocument\(cfg\); \}/);
-assert.match(browserDevDocuments, /rendererSwitch: true/);
+assert.match(browserDevDocuments, /const hasMoleculeRecords = records\.some/);
+assert.match(browserDevDocuments, /rendererSwitch: hasMoleculeRecords/);
 assert.doesNotMatch(gridViewer, /data-buret-grid-renderer="xyzrender-external">xyzrender/);
 assert.match(gridViewer, /function requestSdfPoseDocument\(cfg\)/);
 assert.match(gridViewer, /setStatus\('\[grid\] Select one or more molecules before opening Molstar\.', 'error'\)/);
@@ -4666,20 +5463,22 @@ assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg\)/);
 assert.match(gridViewer, /data-buret-detail-action="molstar">Open in Mol\*/);
 assert.match(gridViewer, /data-buret-detail-action="ketcher">Edit in Ketcher/);
 assert.match(gridViewer, /data-buret-detail-action="generate3d">Generate 3D/);
-assert.match(app, /body\?\.type === "generate3dGridSelection"/);
-assert.match(app, /reply\("gridGenerate3DStarted"\)/);
-assert.match(app, /reply\("gridGenerate3DError"/);
-assert.match(app, /invoke<ConformerGenerationResult>\("generate_3d_conformer", \{ request \}\)/);
-assert.match(app, /generateBrowserDev3DConformer\(request\)/);
-assert.match(app, /\.\.\.conformerGenerationPreferences\(preferences\)/);
-assert.match(app, /generatedTexts\.push\(generated3DPoseSetText\(text, extension, conformer\.text, "single"\)\.trimEnd\(\)\)/);
-assert.match(app, /Generated 3D for \$\{generatedTexts\.length\} molecule/);
-assert.match(app, /body\?\.type === "openSdfKetcherDocument"/);
-assert.match(app, /const controlLabel = typeof body\.controlLabel === "string" && body\.controlLabel\.trim\(\)/);
-assert.match(app, /reloadOptions: \{ sdfPoseControlLabel: controlLabel \}/);
-assert.match(app, /\{ sdfPoseControlLabel: controlLabel \}/);
+assert.match(viewerBridgeMessagesLib, /handleGridConformerMessage\(body, eventSource\)/);
+assert.match(appGridConformerMessagesHook, /body\?\.type !== "generate3dGridSelection"/);
+assert.match(appGridConformerMessagesHook, /reply\("gridGenerate3DStarted"\)/);
+assert.match(appGridConformerMessagesHook, /reply\("gridGenerate3DError"/);
+assert.match(appGridConformerMessagesHook, /invoke<ConformerGenerationResult>\("generate_3d_conformer", \{ request \}\)/);
+assert.match(appGridConformerMessagesHook, /generateBrowserDev3DConformer\(request\)/);
+assert.match(appGridConformerMessagesHook, /\.\.\.conformerGenerationPreferences\(preferences\)/);
+assert.match(appGridConformerMessagesHook, /generatedTexts\.push\(generated3DPoseSetText\(text, extension, conformer\.text, "single"\)\.trimEnd\(\)\)/);
+assert.match(appGridConformerMessagesHook, /Generated 3D for \$\{generatedTexts\.length\} molecule/);
+assert.match(appKetcherViewerMessagesHook, /body\?\.type === "openSdfKetcherDocument"/);
+assert.match(appSdfViewerMessagesHook, /const controlLabel = bodyString\(body\.controlLabel\)\.trim\(\) \|\| "Molecule"/);
+assert.match(appSdfViewerMessagesHook, /reloadOptions: \{ sdfPoseControlLabel: controlLabel \}/);
+assert.match(appSdfViewerMessagesHook, /\{ sdfPoseControlLabel: controlLabel \}/);
 assert.match(browserDevDocuments, /\.\.\.\(reloadOptions\?\.sdfPoseControlLabel \? \{ sdfPoseControlLabel: reloadOptions\.sdfPoseControlLabel \} : \{\}\)/);
-assert.match(app, /openKetcherWithStructures\(\[\], fragments\)/);
+assert.match(appKetcherViewerMessagesHook, /source3d: ketcherSource3DFromText\(title, text, pathExtension\(title\)\)/);
+assert.match(appKetcherViewerMessagesHook, /openKetcherWithStructures\(\[\], fragments\)/);
 assert.match(gridViewer, /setStatus\(`\[grid\] Opening \$\{label\} in Molstar\.`\)/);
 assert.match(gridViewer, /body\.type === 'poseReviewSelection'/);
 assert.match(gridViewer, /function selectPoseReviewRow\(activePose, cfg\)/);
@@ -4697,7 +5496,8 @@ assert.match(gridViewer, /mol\.get_smiles\(\)/);
 assert.match(gridViewer, /const filledSmiles = !state\.remoteMode && fillMissingSmilesFromMolblocks\(\)/);
 assert.match(gridViewer, /function drawXyzrenderCard\(row, cfg\)/);
 assert.match(gridViewer, /function xyzrenderFragmentText\(record\)/);
-assert.match(gridViewer, /inputDataBase64: textToBase64\(xyzrenderFragmentText\(record\)\)/);
+assert.match(gridViewer, /function xyzrenderCardInputText\(row, record\)/);
+assert.match(gridViewer, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(row, record\)\)/);
 assert.match(gridViewer, /function prepareXyzrenderCardSVG\(svg\)/);
 assert.match(gridViewer, /markSVGForFitting\(html, 'data-buret-xyzrender-svg'\)/);
 assert.match(gridViewer, /cacheHit: payload\?\.cacheHit === true/);
@@ -4801,7 +5601,9 @@ assert.match(gridViewer, /async function collectAllRemoteRows\(cfg, query = stat
 assert.match(gridViewer, /state\.remoteMode && state\.selected\.size === 0 && !state\.smarts\.trim\(\)/);
 assert.match(gridViewer, /if \(kind === 'error' && status && !window\.BurreteDebug && cfg\.appViewer === true\) status\.classList\.add\('hidden'\);/);
 assert.doesNotMatch(gridViewer, /post\('error', message\);/);
-assert.match(gridViewer, /buildUI\(cfg\);\s*refresh\(cfg\);\s*try \{\s*await initRDKit\(\);\s*state\.rdkitError = '';\s*const filledSmiles = !state\.remoteMode && fillMissingSmilesFromMolblocks\(\);\s*if \(state\.cardRenderer === 'rdkit'\) \{\s*if \(state\.remoteMode\) \{\s*if \(state\.rows\.length\) void renderVirtualWindow\(cfg, state\.token, \{ force: true \}\);\s*\} else \{\s*render\(cfg\);\s*\}\s*\} else if \(filledSmiles\) \{\s*refresh\(cfg\);\s*\}\s*\} catch \(rdkitError\) \{/s);
+assert.match(gridViewer, /function pumpRdkitCardQueue\(\) \{\s*if \(state\.rdkitCardRendering \|\| !state\.rdkitCardQueue\.length\) return;\s*if \(!state\.rdkit && !state\.rdkitError\) return;/);
+assert.match(gridViewer, /await initRDKit\(\);\s*state\.rdkitError = '';\s*pumpRdkitCardQueue\(\);/);
+assert.match(gridViewer, /catch \(rdkitError\) \{\s*state\.rdkitError = rdkitError\?\.message \|\| String\(rdkitError\);\s*pumpRdkitCardQueue\(\);/);
 assert.match(structureDrag, /export const STRUCTURE_DRAG_MIME = "application\/x-burrete-structure-paths"/);
 assert.match(structureDrag, /export function writeStructureDrag/);
 assert.match(structureDrag, /export function writeStructureDragRecords/);
@@ -4887,7 +5689,7 @@ assert.match(openDropHook, /action\.kind === "open-documents-combined-poses"/);
 assert.match(openDropHook, /openDocuments\(action\.paths, undefined, undefined, \{ mode: "combinePoses" \}\)/);
 assert.match(openDropHook, /action\.kind === "open-documents-combined-grid"/);
 assert.match(openDropHook, /openDocuments\(action\.paths, undefined, undefined, \{ mode: "combineGrid" \}\)/);
-assert.match(app, /mode: options\.mode/);
+assert.match(appFileOpenHook, /mode: options\.mode/);
 assert.match(componentsTypes, /openDockingStructureRecords: \(receptorPath: string, ligandPaths: string\[\], records: StructureDragPayload\["records"\]\)/);
 assert.match(componentsTypes, /addXyzrenderSheetItems: \(targetDocumentId: string, payload: StructureDragPayload\) => boolean/);
 assert.match(editorTabs, /from "\.\.\/\.\.\/lib\/structure-drag"/);
@@ -4983,23 +5785,23 @@ assert.match(fileKind, /targetDocumentId === document\.id && postXyzrenderSheetI
 assert.doesNotMatch(fileKind, /dockingRequestForDrop/);
 assert.doesNotMatch(fileKind, /hasGridAppendInput/);
 assert.match(fileKind, /Add to Mol\* docking view/);
-assert.match(app, /openBrowserDevDockingDocument/);
-assert.match(app, /const openDockingDocument = useCallback/);
-assert.match(app, /browserDevDockingFromLocation\(\)/);
-assert.match(app, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
-assert.match(app, /request\.activePose = options\.activePose \?\? null/);
-assert.match(app, /request\.sceneMode = options\.sceneMode \?\? null/);
-assert.match(app, /request\.poseMode = options\.sceneMode === "structureAll" \? "all" : "single"/);
-assert.match(app, /const poseMode = body\.poseMode === "all" \? "all" : "single"/);
-assert.match(app, /if \(dockingDocument\?\.dockingRequest && dockingDocument\.dockingRequest\.poseMode !== poseMode\) \{/);
-assert.match(app, /addBackgroundDocuments\(\[\{/);
-assert.match(app, /poseMode,/);
-assert.match(app, /if \(request\.sceneMode && rightDockOpen && rightDockActiveTab === "descriptors"\) \{\s*setDockOpen\("right", false\);\s*\}/);
-assert.match(app, /openBrowserDevDockingDocument\(request\.receptorPath, request\.ligandPaths, preferences, options\)/);
-assert.match(app, /const point = payload\.point && Number\.isFinite\(payload\.point\.x\) && Number\.isFinite\(payload\.point\.y\)/);
-assert.match(app, /point,/);
-assert.match(app, /invoke<ViewerDocument>\("open_docking_document"/);
-assert.match(app, /rememberRecentStructures\(\[document\]\)/);
+assert.match(appDockingWorkflowsHook, /openBrowserDevDockingDocument/);
+assert.match(appDockingWorkflowsHook, /const openDockingDocument = useCallback/);
+assert.match(appStartupEffectsHook, /browserDevDockingFromLocation\(\)/);
+assert.match(appStartupEffectsHook, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
+assert.match(appDockingWorkflowsHook, /request\.activePose = options\.activePose \?\? null/);
+assert.match(appDockingWorkflowsHook, /request\.sceneMode = options\.sceneMode \?\? null/);
+assert.match(appDockingWorkflowsHook, /request\.poseMode = options\.sceneMode === "structureAll" \? "all" : "single"/);
+assert.match(appDockingPoseMessagesHook, /const poseMode = body\.poseMode === "all" \? "all" : "single"/);
+assert.match(appDockingPoseMessagesHook, /if \(dockingDocument\?\.dockingRequest && dockingDocument\.dockingRequest\.poseMode !== poseMode\) \{/);
+assert.match(appDockingPoseMessagesHook, /addBackgroundDocuments\(\[\{/);
+assert.match(appDockingPoseMessagesHook, /poseMode,/);
+assert.match(appDockingWorkflowsHook, /if \(request\.sceneMode && rightDockOpen && rightDockActiveTab === "descriptors"\) \{\s*setDockOpen\("right", false\);\s*\}/);
+assert.match(appDockingWorkflowsHook, /openBrowserDevDockingDocument\(request\.receptorPath, request\.ligandPaths, preferences, options\)/);
+assert.match(appGridWorkflowsHook, /const point = payload\.point && Number\.isFinite\(payload\.point\.x\) && Number\.isFinite\(payload\.point\.y\)/);
+assert.match(appGridWorkflowsHook, /point,/);
+assert.match(appDockingWorkflowsHook, /invoke<ViewerDocument>\("open_docking_document"/);
+assert.match(appDockingWorkflowsHook, /rememberRecentStructures\(\[document\]\)/);
 assert.match(app, /setStructureDragActive/);
 assert.match(previewViewer, /let dockingPoseKeydownDisposer = null/);
 assert.match(viewer, /function structureDropPathsFromPlainText\(text\)/);

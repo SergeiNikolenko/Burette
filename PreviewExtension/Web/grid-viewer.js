@@ -30,7 +30,7 @@
   const SVG_FIT_PADDING_FRACTION = 0.08;
   const XYZRENDER_CARD_CONCURRENCY = 4;
   const GRID_LOAD_AHEAD_PX = 720;
-  const RDKIT_CARD_ROOT_MARGIN = '900px 0px';
+  const RDKIT_CARD_ROOT_MARGIN = 900;
   const XYZRENDER_CARD_ROOT_MARGIN = '120px 0px';
   const XYZRENDER_CARD_BATCH_SIZE = 12;
   const XYZRENDER_CARD_BATCH_MIN_CONCURRENCY = 1;
@@ -156,6 +156,37 @@
     } catch (_) {}
   }
 
+  function gridReadyPayload(cfg = config(), extra = {}) {
+    const cards = root ? root.querySelectorAll('.buret-card').length : 0;
+    const rdkitImages = root ? root.querySelectorAll('.buret-rdkit-card-image').length : 0;
+    const rdkitPending = (root ? root.querySelectorAll('[data-buret-rdkit-card-key]').length : 0)
+      + state.rdkitCardQueue.length
+      + state.rdkitCardPending.size;
+    const xyzrenderImages = root ? root.querySelectorAll('.buret-xyzrender-card-image').length : 0;
+    const moleculeRowCount = state.rows.reduce((count, row) => (
+      count + (String(row?.molblock || row?.smiles || '').trim() ? 1 : 0)
+    ), 0);
+    return {
+      mode: 'grid2d',
+      renderer: state.cardRenderer === 'xyzrender' ? 'xyzrender-grid' : 'rdkit',
+      format: cfg?.format || '',
+      sourceExtension: cfg?.sourceExtension || cfg?.format || '',
+      rowCount: state.rows.length,
+      moleculeRowCount,
+      renderedCount: state.renderedCount,
+      rdkitLoaded: Boolean(state.rdkit),
+      rdkitImages,
+      rdkitPending,
+      xyzrenderImages,
+      cards,
+      ...extra
+    };
+  }
+
+  function postGridReady(cfg = config(), extra = {}) {
+    post('ready', 'ready', gridReadyPayload(cfg, extra));
+  }
+
   function isEditableShortcutTarget(target) {
     const tagName = target?.tagName?.toLowerCase();
     return target?.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select';
@@ -250,13 +281,23 @@
 
   function capabilities(cfg) {
     const caps = cfg.capabilities || {};
+    const molecularGrid = effectiveMolecularGrid(cfg);
     return {
       selection: !!caps.selection,
       export: !!caps.export,
-      substructureSearch: !!caps.substructureSearch,
+      substructureSearch: molecularGrid && !!caps.substructureSearch,
       ketcherOpen: cfg.appViewer === true && !!caps.rendererSwitch,
-      rendererSwitch: (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch
+      rendererSwitch: molecularGrid && (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch
     };
+  }
+
+  function rowHasMolecule(row) {
+    return !!String(row?.smiles || '').trim() || !!String(row?.molblock || '').trim();
+  }
+
+  function effectiveMolecularGrid(cfg) {
+    if (state.remoteMode) return true;
+    return state.all.some(rowHasMolecule);
   }
 
   function isRemoteMode(cfg) {
@@ -545,9 +586,18 @@
   }
 
   function normalizeCardRenderer(cfg) {
+    if (!effectiveMolecularGrid(cfg)) {
+      state.cardRenderer = 'rdkit';
+      return;
+    }
     if (state.cardRenderer !== 'xyzrender' || supportsXyzrenderCards(cfg)) return;
     state.cardRenderer = 'rdkit';
     store(CARD_RENDERER_STORAGE_KEY, 'rdkit');
+  }
+
+  function normalizeGridViewMode(cfg) {
+    if (effectiveMolecularGrid(cfg)) return;
+    state.viewMode = 'table';
   }
 
   function storedBoolean(key, fallback) {
@@ -693,7 +743,7 @@
       throw new Error('BurreteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
     }
     window.BurreteGridUI.mountGridControls(host, {
-      format: cfg.format === 'sdf' ? 'sdf' : 'smiles',
+      format: ['csv', 'sdf', 'smiles', 'tsv'].includes(cfg.format) ? cfg.format : 'smiles',
       label: cfg.label || 'Molecule collection',
       exportEnabled: caps.export,
       selectionEnabled: caps.selection,
@@ -752,6 +802,11 @@
       }
     });
     bindGridEditControlHandlers(cfg);
+  }
+
+  function refreshGridControls(cfg) {
+    const currentCfg = cfg || config();
+    mountGridControls(currentCfg, capabilities(currentCfg));
   }
 
   function bindGridEditControlHandlers(cfg) {
@@ -847,7 +902,8 @@
     resetXyzrenderCardObserver();
     state.xyzrenderCardCache.clear();
     resetCardRenderQueues();
-    syncXyzrenderPresetControl(cfg);
+    refreshGridControls(cfg);
+    applyGridPreferences(cfg);
     if (state.cardRenderer === 'xyzrender') render(cfg);
   }
 
@@ -874,9 +930,8 @@
     if (state.cardRenderer === next) return;
     state.cardRenderer = next;
     store(CARD_RENDERER_STORAGE_KEY, next);
-    syncCardRendererSwitch();
-    syncXyzrenderPresetControl(cfg);
-    syncRdkitCoordinatesControl();
+    refreshGridControls(cfg);
+    applyGridPreferences(cfg);
     render(cfg);
   }
 
@@ -1478,6 +1533,16 @@
     return text;
   }
 
+  function xyzrenderCardInputText(row, record) {
+    const molblock = String(row?.molblock || '').trimEnd();
+    if (molblock.trim()) {
+      return `${molblock.replace(/\n?\$\$\$\$\s*$/u, '').trimEnd()}\n$$$$\n`;
+    }
+    const smiles = String(row?.smiles || '').trim();
+    if (smiles) return `${smiles}\n`;
+    return xyzrenderFragmentText(record);
+  }
+
   function normalizeRenderer(renderer) {
     const value = String(renderer || 'molstar').toLowerCase();
     return value === 'xyzrender-external' || value === 'xyzrender' ? 'xyzrender-external' : 'molstar';
@@ -1712,7 +1777,7 @@
     if (!state.rows.length) {
       grid.innerHTML = '<div class="buret-empty">No molecules match this search.</div>';
       updateChrome(cfg);
-      post('ready', '');
+      postGridReady(cfg);
       return;
     }
     await renderVirtualWindow(cfg, token, { force: true });
@@ -2029,7 +2094,7 @@
         updateChrome(cfg);
         scrollPendingGridRow();
         maybeLoadMoreForRenderedRange(cfg, range);
-        post('ready', '');
+        postGridReady(cfg);
         emitGridPerfMetric(cfg, 'window-render', startedAt, { force: true });
         if (status && !window.BurreteDebug) status.classList.add('hidden');
         return;
@@ -2047,6 +2112,7 @@
         scheduleRdkitCard(nextCard, row);
         scheduleXyzrenderCard(nextCard, row, cfg);
       }
+      requestAnimationFrame(startVisibleRdkitCards);
       state.windowStart = range.start;
       state.windowEnd = range.end;
       state.renderedCount = Math.max(0, range.end - range.start);
@@ -2054,7 +2120,7 @@
       updateChrome(cfg);
       scrollPendingGridRow();
       maybeLoadMoreForRenderedRange(cfg, range);
-      post('ready', '');
+      postGridReady(cfg);
       emitGridPerfMetric(cfg, 'window-render', startedAt, { force: true });
       if (status && !window.BurreteDebug) status.classList.add('hidden');
     } finally {
@@ -4499,7 +4565,7 @@
         if (!entry.isIntersecting) continue;
         startLazyRdkitCard(entry.target);
       }
-    }, { root: null, rootMargin: RDKIT_CARD_ROOT_MARGIN });
+    }, { root: null, rootMargin: `${RDKIT_CARD_ROOT_MARGIN}px 0px` });
     return state.rdkitCardObserver;
   }
 
@@ -4509,6 +4575,25 @@
     if (!start) return;
     state.rdkitCardLazyJobs.delete(target);
     start();
+  }
+
+  function startVisibleRdkitCards() {
+    const targets = [...state.rdkitCardLazyTargets];
+    for (const target of targets) {
+      if (!isElementNearViewport(target, RDKIT_CARD_ROOT_MARGIN)) continue;
+      startLazyRdkitCard(target);
+    }
+  }
+
+  function isElementNearViewport(target, margin) {
+    if (!target || typeof target.getBoundingClientRect !== 'function') return false;
+    const rect = target.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    return rect.bottom >= -margin
+      && rect.top <= viewportHeight + margin
+      && rect.right >= -margin
+      && rect.left <= viewportWidth + margin;
   }
 
   function enqueueRdkitCard(row, key, target) {
@@ -4526,6 +4611,7 @@
 
   function pumpRdkitCardQueue() {
     if (state.rdkitCardRendering || !state.rdkitCardQueue.length) return;
+    if (!state.rdkit && !state.rdkitError) return;
     state.rdkitCardQueue.sort(compareCardRenderJobs);
     state.rdkitCardRendering = true;
     requestAnimationFrame(() => {
@@ -4543,6 +4629,7 @@
       } finally {
         try {
           emitGridPerfMetric(config(), 'rdkit-batch', startedAt, { processed });
+          if (processed > 0) postGridReady(config(), { phase: 'rdkit-batch', rdkitRenderedInBatch: processed });
         } catch (_) {}
         state.rdkitCardRendering = false;
         if (state.rdkitCardQueue.length) window.setTimeout(pumpRdkitCardQueue, 0);
@@ -4590,12 +4677,12 @@
     const cached = state.xyzrenderCardCache.get(key);
     if (cached?.html) return cached.html;
     if (cached?.error) return `<div class="buret-molecule-error"><strong>${escapeHTML(row.name || `Molecule ${Number(row.index) + 1}`)}</strong><span>${escapeHTML(cached.error)}</span></div>`;
-    const preview = drawRdkitPlaceholder(row);
+    const preview = '<div class="buret-molecule-loading" aria-label="Rendering molecule with xyzrender"></div>';
     return `<div class="buret-molecule-picture buret-xyzrender-preview" data-buret-xyzrender-card-key="${escapeAttr(key)}">${preview}</div>`;
   }
 
   function xyzrenderCardKey(row, record) {
-    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|${hash(record.text || '')}|${state.smarts}`;
+    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|${hash(xyzrenderCardInputText(row, record))}|${state.smarts}`;
   }
 
   function scheduleXyzrenderCard(card, row, cfg) {
@@ -4708,7 +4795,7 @@
       const request = {
         path: record.path,
         preset: currentXyzrenderPreset(cfg),
-        inputDataBase64: textToBase64(xyzrenderFragmentText(record)),
+        inputDataBase64: textToBase64(xyzrenderCardInputText(row, record)),
         inputExtension: record.inputExtension
       };
       let payload;
@@ -4761,7 +4848,7 @@
           id: job.key,
           path: job.record.path,
           preset: currentXyzrenderPreset(job.cfg),
-          inputDataBase64: textToBase64(xyzrenderFragmentText(job.record)),
+          inputDataBase64: textToBase64(xyzrenderCardInputText(job.row, job.record)),
           inputExtension: job.record.inputExtension
         }))
       });
@@ -4926,6 +5013,11 @@
       let next = tag;
       if (!/\sdata-buret-rdkit-svg=/i.test(attrs)) {
         next = next.replace('<svg', '<svg data-buret-rdkit-svg="true"');
+      }
+      if (!/\sclass=/i.test(attrs)) {
+        next = next.replace('<svg', '<svg class="buret-rdkit-card-image"');
+      } else if (!/\bclass="[^"]*\bburet-rdkit-card-image\b/i.test(attrs)) {
+        next = next.replace(/\sclass="([^"]*)"/i, ' class="$1 buret-rdkit-card-image"');
       }
       if (!/\spreserveAspectRatio=/i.test(attrs)) {
         next = next.replace('<svg', '<svg preserveAspectRatio="xMidYMid meet"');
@@ -5350,11 +5442,13 @@
       installThemeListener(cfg);
       installHostMessageListener();
       normalizeCardRenderer(cfg);
+      normalizeGridViewMode(cfg);
       buildUI(cfg);
       refresh(cfg);
       try {
         await initRDKit();
         state.rdkitError = '';
+        pumpRdkitCardQueue();
         const filledSmiles = !state.remoteMode && fillMissingSmilesFromMolblocks();
         if (state.cardRenderer === 'rdkit') {
           if (state.remoteMode) {
@@ -5367,6 +5461,7 @@
         }
       } catch (rdkitError) {
         state.rdkitError = rdkitError?.message || String(rdkitError);
+        pumpRdkitCardQueue();
         setStatus(`RDKit renderer unavailable: ${state.rdkitError}`, 'error');
       }
     } catch (error) {
