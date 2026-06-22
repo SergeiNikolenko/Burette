@@ -1,10 +1,7 @@
-import { readFileSync } from "node:fs";
-
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 
 import { runBurreteAgent } from "../../lib/cli-bridge.mjs";
-import { pluginPath } from "../../lib/plugin-root.mjs";
 import {
   createWorkspaceSession,
   listWorkspaceSessions,
@@ -13,9 +10,8 @@ import {
 } from "../../lib/session-registry.mjs";
 import { componentSelector, editStructureFragmentFile, extractStructureComponentFile } from "../../lib/structure-components.mjs";
 import { summarizeStructureFile } from "../../lib/structure-summary.mjs";
-import { registerWidgetResource, toolText, widgetHtml } from "../../lib/widget-resource.mjs";
+import { toolText } from "../../lib/widget-resource.mjs";
 
-const WIDGET_URI = "ui://widget/burette-agent/molecular-workspace-20260607.html";
 const actionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
 const externalActionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
 const PUBLIC_CONTRACT = {
@@ -49,14 +45,6 @@ const PUBLIC_CONTRACT = {
 };
 
 export function registerMolecularWorkspace(server) {
-  registerWidgetResource(server, {
-    name: "burette-molecular-workspace-widget",
-    uri: WIDGET_URI,
-    title: "Burrete Molecular Workspace",
-    description: "A compact review surface for Burrete observe payloads, active documents, viewer status, panels, and recent actions.",
-    html: injectInitialData(widgetHtml("molecular-workspace")),
-  });
-
   registerAppTool(
     server,
     "burrete.get_context",
@@ -135,11 +123,8 @@ export function registerMolecularWorkspace(server) {
       },
       _meta: {
         ui: {
-          resourceUri: WIDGET_URI,
-          visibility: ["model", "app"],
+          visibility: ["model"],
         },
-        "openai/outputTemplate": WIDGET_URI,
-        "openai/widgetAccessible": true,
       },
     },
     async input => {
@@ -201,11 +186,8 @@ export function registerMolecularWorkspace(server) {
       },
       _meta: {
         ui: {
-          resourceUri: WIDGET_URI,
-          visibility: ["model", "app"],
+          visibility: ["model"],
         },
-        "openai/outputTemplate": WIDGET_URI,
-        "openai/widgetAccessible": true,
       },
     },
     async input => {
@@ -448,11 +430,8 @@ export function registerMolecularWorkspace(server) {
       },
       _meta: {
         ui: {
-          resourceUri: WIDGET_URI,
-          visibility: ["model", "app"],
+          visibility: ["model"],
         },
-        "openai/outputTemplate": WIDGET_URI,
-        "openai/widgetAccessible": true,
       },
     },
     async input => {
@@ -468,13 +447,6 @@ export function registerMolecularWorkspace(server) {
           tool: "observe_burrete_workspace",
           observe,
           error: result.ok ? null : result.error,
-        },
-        _meta: {
-          "openai/outputTemplate": WIDGET_URI,
-          widgetData: {
-            title: observe?.activeDocument?.title || "Burrete Workspace",
-            observe,
-          },
         },
       };
     },
@@ -910,47 +882,6 @@ export function registerMolecularWorkspace(server) {
     },
   );
 
-  registerAppTool(
-    server,
-    "render_molecular_workspace_widget",
-    {
-      title: "Render Molecular Workspace Widget",
-      description: "Render a bounded Burrete observe payload as an inline molecular workspace review surface.",
-      inputSchema: {
-        title: z.string().trim().optional(),
-        summary: z.string().trim().optional(),
-        observe: z.record(z.unknown()),
-      },
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false,
-      },
-      _meta: {
-        ui: {
-          resourceUri: WIDGET_URI,
-          visibility: ["model", "app"],
-        },
-        "openai/outputTemplate": WIDGET_URI,
-        "openai/widgetAccessible": true,
-      },
-    },
-    async input => ({
-      content: toolText("Rendered Burrete molecular workspace widget."),
-      structuredContent: {
-        version: 1,
-        widget: "molecular-workspace",
-        title: input.title || input.observe?.activeDocument?.title || "Molecular Workspace",
-        ready: Boolean(input.observe?.activeDocument?.ready),
-        mode: input.observe?.mode || null,
-      },
-      _meta: {
-        "openai/outputTemplate": WIDGET_URI,
-        widgetData: input,
-      },
-    }),
-  );
 }
 
 async function observeWorkspaceSession(session) {
@@ -1003,7 +934,6 @@ function publicContractResult(tool, {
   exitCode = null,
 }) {
   const modelContext = buildModelContext({ session, observe, structureSummary: structureSummary || session?.structureSummary || null });
-  const title = observe?.activeDocument?.title || session?.result?.activeDocument?.title || "Burrete Workspace";
   return {
     content: toolText(ok ? `${tool} completed.` : `${tool} failed: ${error?.message || "unknown error"}`),
     structuredContent: {
@@ -1025,15 +955,6 @@ function publicContractResult(tool, {
       error: ok ? null : error,
       exitCode,
     },
-    _meta: observe
-      ? {
-          "openai/outputTemplate": WIDGET_URI,
-          widgetData: {
-            title,
-            observe,
-          },
-        }
-      : undefined,
   };
 }
 
@@ -1323,15 +1244,4 @@ function cliToolResult(tool, result, extra = {}) {
       exitCode: result.exitCode,
     },
   };
-}
-
-function injectInitialData(html) {
-  const manifestPath = pluginPath(".codex-plugin", "plugin.json");
-  let version = "0.1.0";
-  try {
-    version = JSON.parse(readFileSync(manifestPath, "utf8")).version || version;
-  } catch {
-    // Static widget rendering does not depend on manifest availability.
-  }
-  return html.replace("</head>", `<script>window.__BURETTE_AGENT_PLUGIN_VERSION__=${JSON.stringify(version)};</script></head>`);
 }
