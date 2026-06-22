@@ -163,7 +163,6 @@ async function testMcpRegistrations(tempRoot) {
   const server = await registerAll(pluginRoot);
   assert.deepEqual([...server.resources.keys()].sort(), [
     "ui://widget/burette-agent/molecular-report-20260607.html",
-    "ui://widget/burette-agent/molecular-workspace-20260607.html",
     "ui://widget/burette-agent/molecule-table-20260607.html",
     "ui://widget/burette-agent/trajectory-review-20260607.html",
   ]);
@@ -183,7 +182,6 @@ async function testMcpRegistrations(tempRoot) {
     "open_burrete_docking_view",
     "open_burrete_workspace",
     "render_molecular_report_widget",
-    "render_molecular_workspace_widget",
     "render_molecule_table_widget",
     "render_trajectory_review_widget",
     "set_burrete_representation_style",
@@ -200,8 +198,6 @@ async function testMcpRegistrations(tempRoot) {
     assert.equal(payload.contents[0].mimeType, "text/html+skybridge");
     assert.match(payload.contents[0].text, /<!doctype html>/i);
   }
-  const workspaceResource = await server.resources.get("ui://widget/burette-agent/molecular-workspace-20260607.html").handler();
-  assert.match(workspaceResource.contents[0].text, /__BURETTE_AGENT_PLUGIN_VERSION__/);
 }
 
 async function testValidationAndRenderHandlers(tempRoot) {
@@ -381,7 +377,7 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   coveredTools.add("observe_burrete_workspace");
   assert.equal(observed.structuredContent.ok, true);
   assert.equal(observed.structuredContent.observe.activeDocument.path, sampleMini);
-  assert.equal(observed._meta.widgetData.observe.activeTabId, "tab-structure");
+  assert.equal(observed._meta, undefined);
 
   const summarizedFromWorkspace = await server.tools.get("summarize_burrete_structure").handler({
     url: opened.structuredContent.result.url,
@@ -543,15 +539,6 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   ]);
   await rm(editedFragment.structuredContent.edited.outputPath, { force: true });
 
-  const workspaceWidget = await server.tools.get("render_molecular_workspace_widget").handler({
-    title: "Mock Workspace",
-    observe: observed.structuredContent.observe,
-  });
-  coveredTools.add("render_molecular_workspace_widget");
-  assert.equal(workspaceWidget.structuredContent.widget, "molecular-workspace");
-  assert.equal(workspaceWidget.structuredContent.ready, true);
-  assert.equal(workspaceWidget._meta.widgetData.observe.activeDocument.path, sampleMini);
-
   assert.deepEqual([...coveredTools].sort(), [
     "act_molstar_scene",
     "burrete.control_viewer",
@@ -566,7 +553,6 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
     "observe_burrete_workspace",
     "open_burrete_docking_view",
     "open_burrete_workspace",
-    "render_molecular_workspace_widget",
     "set_burrete_representation_style",
     "set_burrete_trajectory",
     "summarize_burrete_structure",
