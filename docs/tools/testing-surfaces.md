@@ -122,7 +122,17 @@ BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/smoke-samples-quicklook.sh samples
 ```
 
 Use native Quick Look scripts for bundle identifiers, content types, extension
-container logs, trace/manifest validation, and Launch Services behavior.
+container logs, trace/manifest validation, Launch Services behavior, and
+semantic preview evidence. The all-samples smoke requires format-specific
+signals such as spectrum peaks, RDKit grid images, FEP molecule atoms,
+multi-frame trajectory evidence, and xyzrender SVG artifacts.
+
+Native Finder Quick Look is not the authoritative grid test for public
+`.csv`/`.tsv` files. macOS can route `public.comma-separated-values-text` and
+`public.tab-separated-values-text` to the system table generator before Burrete's
+extension sees the file. `quicklook-preview-smoke.sh` reports those inputs as
+`SKIP`; verify Burrete grid rendering through browser-dev or the packaged
+desktop app instead.
 
 ## Contract Checks
 

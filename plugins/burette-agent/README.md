@@ -13,6 +13,7 @@ plugin is intentionally layered:
 ```text
 skills/
   index/                 router skill
+  external-agent-contract/ short handle-based agent facade
   user-context/          scoped preflight and capability registry
   open-workspace/        open Browser preview or desktop sessions
   molstar-scene/         allowlisted Mol* actions and scene inspection
@@ -52,8 +53,9 @@ plugin-by-plugin alignment checklist.
 The source of truth is the repository CLI:
 
 ```bash
+bun scripts/burrete-agent.mjs open --mode auto samples/mini.pdb
 bun scripts/burrete-agent.mjs open --mode browser-preview samples/mini.pdb
-bun scripts/burrete-agent.mjs open --mode browser-dev-shell samples/mini.pdb
+bun scripts/burrete-agent.mjs open --mode browser-agent-shell samples/mini.pdb
 bun scripts/burrete-agent.mjs open --mode desktop-app samples/mini.pdb
 bun scripts/burrete-agent.mjs observe --session-dir /tmp/burrete-agent-session
 bun scripts/burrete-agent.mjs act --session-dir /tmp/burrete-agent-session '{"type":"reset_camera"}'
@@ -62,6 +64,90 @@ bun scripts/burrete-agent.mjs render-panel --session-dir /tmp/burrete-agent-sess
 ```
 
 MCP tools wrap this CLI instead of reimplementing the app control layer.
+
+External agents should use the short facade first:
+
+```text
+burrete.get_context
+burrete.open_workspace
+burrete.observe_workspace
+burrete.control_viewer
+burrete.render_panel
+```
+
+`burrete.open_workspace` returns a stable `workspaceSessionId` and a
+`viewerSessionId` compatibility alias. Follow-up calls should pass that handle
+instead of carrying raw URLs, session directories, or transport modes. The
+advanced tools remain available for docking setup, fragment extraction,
+trajectory review, bounded report rendering, and lower-level scene operations.
+
+`auto` is the default because it does not require the full Browser shell to be
+available. It tries `browser-agent-shell` first and falls back to the tokenized
+`browser-preview` server for basic molecular opening and observation.
+
+The full `browser-agent-shell` is self-contained when the plugin bundle is built
+with:
+
+```bash
+bun run build:agent-shell
+```
+
+That command writes the runtime files into the plugin bundle:
+
+- `plugins/burette-agent/scripts/burrete-agent.mjs`
+- `plugins/burette-agent/scripts/agent-shell-server.mjs`
+- `plugins/burette-agent/scripts/agent-preview.mjs`
+- `plugins/burette-agent/browser-shell-dist/`
+- `plugins/burette-agent/preview-web/`
+
+When `browser-shell-dist/index.html` is present, the plugin-local CLI serves
+those static assets plus the runtime `/__burette/agent-session/*`,
+`/__burette/read-file`, and `/__burette/file-bundle` endpoints without `vp` and
+without needing the source repository checkout. If the prebuilt bundle is
+missing in a source checkout, the CLI falls back to `vp dev`.
+
+## Local Codex Installation
+
+The current Codex CLI does not expose a direct
+`codex plugin install <plugin-dir>` command. For a clean local install from this
+repository, build the self-contained plugin runtime, install the bundle into the
+local plugin cache, install the MCP dependencies, and enable the plugin in the
+Codex config:
+
+```bash
+cd /path/to/Burette
+bun run install:plugin
+```
+
+The installer runs `bun run build:agent-shell` when it is executed from a source
+checkout, copies the self-contained plugin bundle into
+`~/.codex/plugins/cache/<marketplace>/burrete/0.1.0`, installs production MCP
+dependencies, registers `burrete` in `~/.agents/plugins/marketplace.json`,
+updates the `~/.agents/plugins/burrete` symlink, and enables
+`burrete@<marketplace>` in `~/.codex/config.toml`.
+
+On a fresh machine, `<marketplace>` defaults to `burrete`, so the plugin id is
+`burrete@burrete`. If `~/.agents/plugins/marketplace.json` already exists, the
+installer keeps its existing marketplace name to avoid renaming unrelated local
+plugins. To force the Burrete marketplace name, run:
+
+```bash
+BURRETE_PLUGIN_MARKETPLACE=burrete bun run install:plugin
+```
+
+Use `--skip-build` only when installing an already prebuilt plugin directory:
+
+```bash
+bun scripts/install-local.mjs --skip-build
+```
+
+The `.burette-agent-install.json` file is useful for source-checkout fallbacks
+and repository-local summaries, but the Browser shell and Browser preview paths
+must work from the plugin cache itself after `bun run build:agent-shell`.
+
+Restart Codex after changing the marketplace or plugin config. A running Codex
+process can keep the old MCP tool surface and cached plugin process alive until
+the next session.
 
 ## MolViewSpec Scene Language
 

@@ -36,6 +36,7 @@ APP_METADATA_PLIST="$ROOT/apps/desktop/src-tauri/AppMetadata.plist"
 LOCAL_XYZRENDER_ENV="$HOME/.local/share/uv/tools/xyzrender"
 LOCAL_XYZRENDER_PYTHON_HOME="$(sed -n 's/^home = //p' "$LOCAL_XYZRENDER_ENV/pyvenv.cfg" 2>/dev/null | head -n 1 || true)"
 LOCAL_XYZRENDER_PYTHON_ROOT=""
+XYZRENDER_RUNTIME_PYTHON_PACKAGES=("datamol==0.12.5")
 if [[ -n "$LOCAL_XYZRENDER_PYTHON_HOME" ]]; then
   LOCAL_XYZRENDER_PYTHON_ROOT="$(cd -P "$LOCAL_XYZRENDER_PYTHON_HOME/.." && pwd -P)"
 fi
@@ -169,12 +170,31 @@ require_xyzrender_runtime_for_release() {
     exit 1
   }
 }
+ensure_xyzrender_runtime_python_packages() {
+  [[ -d "$LOCAL_XYZRENDER_ENV" ]] || return 0
+  [[ -x "$LOCAL_XYZRENDER_ENV/bin/python3" ]] || {
+    echo "error: local xyzrender runtime is missing Python: $LOCAL_XYZRENDER_ENV/bin/python3" >&2
+    exit 1
+  }
+  if "$LOCAL_XYZRENDER_ENV/bin/python3" - <<'PY' >/dev/null 2>&1
+import datamol
+PY
+  then
+    return 0
+  fi
+  require_tool uv "Install uv to refresh the bundled xyzrender Python runtime."
+  uv pip install --python "$LOCAL_XYZRENDER_ENV/bin/python3" "${XYZRENDER_RUNTIME_PYTHON_PACKAGES[@]}"
+  "$LOCAL_XYZRENDER_ENV/bin/python3" - <<'PY' >/dev/null
+import datamol
+PY
+}
 bundle_xyzrender_runtime() {
   local app="$1"
   local runtime="$app/Contents/Resources/xyzrender-runtime"
   local python_root="$app/Contents/Resources/xyzrender-python"
   require_xyzrender_runtime_for_release
   [[ -d "$LOCAL_XYZRENDER_ENV" ]] || return 0
+  ensure_xyzrender_runtime_python_packages
   [[ -n "$LOCAL_XYZRENDER_PYTHON_ROOT" && -x "$LOCAL_XYZRENDER_PYTHON_ROOT/bin/python3" ]] || {
     echo "error: could not resolve relocatable xyzrender python runtime from $LOCAL_XYZRENDER_ENV/pyvenv.cfg" >&2
     exit 1
@@ -193,7 +213,7 @@ RUNTIME_ROOT="$(CDPATH= cd -- "$SELF_DIR/.." && pwd)"
 PYTHON_ROOT="$(CDPATH= cd -- "$RUNTIME_ROOT/../xyzrender-python" && pwd)"
 SITE_PACKAGES="$(find "$RUNTIME_ROOT/lib" -maxdepth 2 -type d -name site-packages | head -n 1)"
 
-if [ ! -x "$PYTHON_ROOT/bin/python3" ]; then
+if [ ! -f "$PYTHON_ROOT/bin/python3" ]; then
   echo "missing bundled python runtime: $PYTHON_ROOT/bin/python3" >&2
   exit 1
 fi
@@ -225,21 +245,45 @@ assert_bundled_xyzrender_runtime() {
     exit 1
   }
 }
+sign_xyzrender_binaries() {
+  while IFS= read -r binary; do
+    codesign --remove-signature "$binary" >/dev/null 2>&1 || true
+    codesign "${CODESIGN_ARGS[@]}" "$binary" >/dev/null
+  done < <(find "$@" -type f \( \
+      -name python3 -o \
+      -name 'python3.*' -o \
+      -name '*.dylib' -o \
+      -name '*.so' \
+    \))
+}
 sign_bundled_xyzrender_runtime() {
   local app="$1"
   local runtime="$app/Contents/Resources/xyzrender-runtime"
   local python_root="$app/Contents/Resources/xyzrender-python"
   [[ -d "$runtime" && -d "$python_root" ]] || return 0
-  while IFS= read -r binary; do
-    codesign "${CODESIGN_ARGS[@]}" "$binary" >/dev/null
-  done < <(
-    find "$runtime" "$python_root" -type f \( \
-      -name python3 -o \
-      -name 'python3.*' -o \
-      -name '*.dylib' -o \
-      -name '*.so' \
-    \)
-  )
+  sign_xyzrender_binaries "$runtime" "$python_root"
+  clean_detritus "$runtime"
+  clean_detritus "$python_root"
+}
+bundle_quicklook_xyzrender_launcher() {
+  local app="$1"
+  local appex="$app/Contents/PlugIns/BurretePreview.appex"
+  [[ -d "$appex" ]] || return 0
+  [[ -x "$appex/Contents/Resources/xyzrender-python3" ]] || {
+    echo "error: Quick Look xyzrender launcher missing from Xcode-built extension: $appex/Contents/Resources/xyzrender-python3" >&2
+    exit 1
+  }
+  [[ -f "$appex/Contents/lib/libpython3.13.dylib" ]] || {
+    echo "error: Quick Look libpython missing from Xcode-built extension: $appex/Contents/lib/libpython3.13.dylib" >&2
+    exit 1
+  }
+}
+sign_quicklook_xyzrender_launcher() {
+  local app="$1"
+  local appex="$app/Contents/PlugIns/BurretePreview.appex"
+  [[ -f "$appex/Contents/Resources/xyzrender-python3" && -f "$appex/Contents/lib/libpython3.13.dylib" ]] || return 0
+  codesign "${CODESIGN_ARGS[@]}" "$appex/Contents/lib/libpython3.13.dylib" >/dev/null
+  codesign "${CODESIGN_ARGS[@]}" "$appex/Contents/Resources/xyzrender-python3" >/dev/null
 }
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2; exit 1; }; }
 
@@ -341,12 +385,14 @@ ditto --norsrc --noextattr "$THUMBNAIL_APPEX" "$TAURI_BUILT_APP/Contents/PlugIns
 mark_regular_desktop_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
 bundle_xyzrender_runtime "$TAURI_BUILT_APP"
+bundle_quicklook_xyzrender_launcher "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
 CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
   CODESIGN_ARGS+=(--options runtime --timestamp)
 fi
 sign_bundled_xyzrender_runtime "$TAURI_BUILT_APP"
+sign_quicklook_xyzrender_launcher "$TAURI_BUILT_APP"
 codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/burrete-core-bridge" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurreteThumbnail.appex" >/dev/null

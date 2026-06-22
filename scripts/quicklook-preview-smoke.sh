@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:${PATH:-}"
+
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 PREVIEW_ID="com.local.BurreteV10.Preview"
 XYZ_CONTENT_TYPE="com.local.burrete10.xyz"
@@ -169,6 +171,31 @@ print("trace+manifest")
 PY
 }
 
+validate_semantic_preview() {
+  local preview_file="$1"
+  local note
+  local status=0
+  local deadline=$((SECONDS + 8))
+
+  while [[ "$SECONDS" -le "$deadline" ]]; do
+    status=0
+    note="$(bun "$ROOT/scripts/quicklook-semantic-check.mjs" "$LOG_PATH" "$preview_file" 2>&1)" || status=$?
+    note="$(printf '%s' "$note" | tr '\t' ' ' | tr '\n' ' ' | sed 's/[[:space:]]\{1,\}/ /g; s/[[:space:]]$//')"
+    if [[ "$status" -eq 0 ]]; then
+      printf 'semantic: %s\n' "$note"
+      return 0
+    fi
+    if [[ "$status" -eq 2 ]]; then
+      printf 'semantic skipped: %s\n' "$note"
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  printf 'semantic preview failed: %s\n' "$note"
+  return 1
+}
+
 cleanup_file_preview() {
   local file="$1"
   local victims
@@ -178,6 +205,22 @@ cleanup_file_preview() {
       kill "$victim" 2>/dev/null || true
     done
   fi
+}
+
+cleanup_quicklook_ui() {
+  killall qlmanage >/dev/null 2>&1 || true
+  killall QuickLookUIService >/dev/null 2>&1 || true
+}
+
+requires_normal_quicklook() {
+  local type="$1"
+  [[ "$type" == "$XYZ_CONTENT_TYPE" ]]
+}
+
+is_system_table_type() {
+  local type="$1"
+  [[ "$type" == "public.comma-separated-values-text" ||
+     "$type" == "public.tab-separated-values-text" ]]
 }
 
 wait_for_preview_result() {
@@ -231,7 +274,7 @@ run_preview() {
   local type="$1"
   local preview_file="$2"
 
-  if [[ "$type" == "$XYZ_CONTENT_TYPE" ]]; then
+  if requires_normal_quicklook "$type"; then
     qlmanage -p "$preview_file"
   else
     qlmanage -p -c "$type" "$preview_file"
@@ -241,6 +284,7 @@ run_preview() {
 total=0
 passed=0
 failed=0
+skipped=0
 
 for file in "$@"; do
   if [[ ! -f "$file" ]]; then
@@ -249,19 +293,36 @@ for file in "$@"; do
   fi
 
   abs_file="$(cd -P "$(dirname "$file")" && pwd -P)/$(basename "$file")"
-  type="$("$ROOT/scripts/preview-content-type.mjs" --reject-table "$abs_file")"
-  if [[ -z "$type" ]]; then
+  set +e
+  type="$("$ROOT/scripts/preview-content-type.mjs" --reject-table "$abs_file" 2>/dev/null)"
+  content_type_status=$?
+  set -e
+  if [[ "$content_type_status" -eq 2 || -z "$type" ]]; then
     type="$(mdls -raw -name kMDItemContentType "$abs_file" 2>/dev/null || true)"
+  elif [[ "$content_type_status" -ne 0 ]]; then
+    echo "error: could not determine registry content type for $abs_file" >&2
+    exit "$content_type_status"
   fi
   if [[ -z "$type" || "$type" == "(null)" ]]; then
     echo "error: could not determine content type for $abs_file" >&2
     exit 1
   fi
 
+  total=$((total + 1))
+  if is_system_table_type "$type"; then
+    note="SKIP: system Quick Look owns public table UTI; verify CSV/TSV grid in browser-dev or desktop instead"
+    printf 'SKIP\t%s\t0\t\t%s\t%s\n' "$type" "$abs_file" "$note" >>"$RESULTS_PATH"
+    skipped=$((skipped + 1))
+    printf '[%02d] SKIP %s %s\n' "$total" "$(basename "$abs_file")" "$note"
+    continue
+  fi
+
   preview_file="$abs_file"
   dev_preview_dir=""
   if [[ -n "$DEV_FLAVOR_SLUG" ]]; then
-    dev_preview_dir="$(mktemp -d "${TMPDIR:-/tmp}/BurretePreview-${DEV_FLAVOR_SLUG}.XXXXXX")"
+    tmp_base="${TMPDIR:-/tmp}"
+    tmp_base="${tmp_base%/}"
+    dev_preview_dir="$(mktemp -d "$tmp_base/BurretePreview-${DEV_FLAVOR_SLUG}.XXXXXX")"
     preview_file="$dev_preview_dir/${DEV_FLAVOR_SLUG} $(basename "$abs_file")"
     ln "$abs_file" "$preview_file" 2>/dev/null || cp -p "$abs_file" "$preview_file"
   fi
@@ -269,6 +330,7 @@ for file in "$@"; do
     [[ -z "$dev_preview_dir" ]] || rm -rf "$dev_preview_dir" 2>/dev/null || true
   }
 
+  cleanup_quicklook_ui
   cleanup_file_preview "$preview_file"
   if [[ "$RESET_CACHE" == "1" ]]; then
     qlmanage -r cache >/dev/null 2>&1 || true
@@ -284,13 +346,6 @@ for file in "$@"; do
   preview_pid=$!
 
   result="$(wait_for_preview_result "$preview_file" "$before_request_id")"
-  cleanup_file_preview "$preview_file"
-  if kill -0 "$preview_pid" 2>/dev/null; then
-    kill "$preview_pid" 2>/dev/null || true
-  fi
-  wait "$preview_pid" 2>/dev/null || true
-  cleanup_preview_dir
-  rm -f "$stdout_path"
 
   seconds=$((SECONDS - started))
   status="$(printf '%s' "$result" | cut -f1)"
@@ -306,10 +361,26 @@ for file in "$@"; do
       status="FAIL"
       note="$stability_note"
     fi
+    if [[ "$status" == "OK" ]]; then
+      if semantic_note="$(validate_semantic_preview "$preview_file")"; then
+        note="$note; $semantic_note"
+      else
+        status="FAIL"
+        note="$semantic_note"
+      fi
+    fi
   fi
+
+  cleanup_file_preview "$preview_file"
+  if kill -0 "$preview_pid" 2>/dev/null; then
+    kill "$preview_pid" 2>/dev/null || true
+  fi
+  wait "$preview_pid" 2>/dev/null || true
+  cleanup_preview_dir
+  rm -f "$stdout_path"
+
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$status" "$type" "$seconds" "$request_id" "$abs_file" "$note" >>"$RESULTS_PATH"
 
-  total=$((total + 1))
   if [[ "$status" == "OK" ]]; then
     passed=$((passed + 1))
     printf '[%02d] OK %s (%ss)\n' "$total" "$(basename "$abs_file")" "$seconds"
@@ -319,7 +390,9 @@ for file in "$@"; do
   fi
 done
 
-printf 'SUMMARY ok=%s fail=%s total=%s result=%s\n' "$passed" "$failed" "$total" "$RESULTS_PATH"
+cleanup_quicklook_ui
+
+printf 'SUMMARY ok=%s fail=%s skip=%s total=%s result=%s\n' "$passed" "$failed" "$skipped" "$total" "$RESULTS_PATH"
 
 if [[ "$failed" -gt 0 ]]; then
   exit 1

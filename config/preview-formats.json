@@ -458,6 +458,8 @@
       "com.local.burrete10.smiles",
       "com.local.burrete10.csv",
       "com.local.burrete10.tsv",
+      "public.comma-separated-values-text",
+      "public.tab-separated-values-text",
       "com.local.burrete10.mol",
       "com.local.burrete10.mol2",
       "com.schrodinger.mol",
