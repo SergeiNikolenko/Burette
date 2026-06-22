@@ -3,7 +3,6 @@ import { browserDevRuntimeNeedsRefresh } from "../lib/browser-dev-documents";
 import {
   browserDevDockingFromLocation,
   browserDevFilesFromLocation,
-  browserDevHasExplicitFiles,
 } from "../lib/browser-dev-startup";
 import { dockingRequestForDrop, isMolstarCoordinateTrajectorySource } from "../lib/docking-documents";
 import { parentDirectory } from "../lib/sidebar-projects";
@@ -75,10 +74,15 @@ export function useAppStartupEffects({
       if (!needsInitialOpen && !needsRuntimeRefresh) return;
       openedBrowserDevFilesRef.current = normalizedFiles;
       syncingBrowserDevFilesRef.current = true;
-      const workspace = browserDevExplicitFolder ?? (paths[0] ? parentDirectory(paths[0]) : null);
-      if (workspace && !browserDevHasExplicitFiles()) {
+      const browserDevProjectRoots = browserDevExplicitFolder
+        ? [browserDevExplicitFolder]
+        : uniqueParentDirectories(paths);
+      const workspace = browserDevExplicitFolder ?? commonParentDirectory(browserDevProjectRoots);
+      if (workspace) {
         setWorkspacePath(workspace);
-        addProjectRoot(workspace);
+      }
+      for (const root of browserDevProjectRoots) {
+        addProjectRoot(root);
       }
       closeAllDocuments();
       const trajectoryDockingRequest = browserDevTrajectoryDockingRequest(paths);
@@ -139,4 +143,19 @@ export function useAppStartupEffects({
     closeAllDocuments();
     void openDockingDocument(request.receptorPath, request.ligandPaths);
   }, [addProjectRoot, closeAllDocuments, openDockingDocument, setWorkspacePath]);
+}
+
+function uniqueParentDirectories(paths: string[]) {
+  return Array.from(new Set(paths.map((path) => parentDirectory(path)).filter((path): path is string => Boolean(path))));
+}
+
+function commonParentDirectory(paths: string[]) {
+  if (paths.length === 0) return null;
+  if (paths.length === 1) return paths[0];
+  const [first, ...rest] = paths;
+  let candidate = first;
+  while (candidate && rest.some((path) => path !== candidate && !path.startsWith(`${candidate}/`))) {
+    candidate = parentDirectory(candidate) ?? "";
+  }
+  return candidate || null;
 }
