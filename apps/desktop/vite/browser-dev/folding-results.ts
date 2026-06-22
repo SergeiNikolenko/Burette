@@ -322,14 +322,12 @@ function formatOptionalNumber(value: number | null) {
 
 function readBrowserDevFoldingResultBundle(inputPath: string): BrowserDevFoldingResultBundle {
   const roots = candidateFoldingRoots(inputPath);
-  let fallback: BrowserDevFoldingResultBundle | null = null;
   for (const [distance, root] of roots.entries()) {
     const bundle = scanBrowserDevFoldingRoot(root, inputPath);
     if (!browserDevFoldingBundleHasContent(bundle)) continue;
     if (distance === 0 || browserDevFoldingBundleReferencesInput(bundle, inputPath)) return bundle;
-    fallback ||= bundle;
   }
-  return fallback || emptyBrowserDevFoldingBundle(inputPath, inputPath, []);
+  return emptyBrowserDevFoldingBundle(inputPath, inputPath, []);
 }
 
 function browserDevFoldingBundleHasContent(bundle: BrowserDevFoldingResultBundle) {
