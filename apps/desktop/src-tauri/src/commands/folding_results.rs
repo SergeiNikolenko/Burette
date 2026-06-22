@@ -98,7 +98,6 @@ pub(crate) fn read_folding_result_bundle(path: String) -> Result<FoldingResultBu
 fn read_folding_result_bundle_impl(path: PathBuf) -> Result<FoldingResultBundle, String> {
     let input = fs::canonicalize(&path).map_err(|err| format!("{}: {err}", path.display()))?;
     let roots = candidate_roots(&input)?;
-    let mut fallback: Option<FoldingResultBundle> = None;
     for (distance, root) in roots.iter().enumerate() {
         let bundle = scan_folding_root(root, &input)?;
         if !folding_bundle_has_content(&bundle) {
@@ -107,9 +106,8 @@ fn read_folding_result_bundle_impl(path: PathBuf) -> Result<FoldingResultBundle,
         if distance == 0 || folding_bundle_references_input(&bundle, &input) {
             return Ok(bundle);
         }
-        fallback.get_or_insert(bundle);
     }
-    Ok(fallback.unwrap_or_else(|| empty_bundle(&input, &input, Vec::new())))
+    Ok(empty_bundle(&input, &input, Vec::new()))
 }
 
 fn scan_folding_root(root: &Path, input: &Path) -> Result<FoldingResultBundle, String> {
