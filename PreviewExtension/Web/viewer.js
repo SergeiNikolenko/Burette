@@ -996,7 +996,7 @@
 
   function normalizeSdfCollectionContextStyle(value) {
     const normalized = String(value || '').trim().toLowerCase();
-    if (['line', 'ball-and-stick', 'spacefill', 'molecular-surface', 'match'].includes(normalized)) return normalized;
+    if (['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'match'].includes(normalized)) return normalized;
     return 'line';
   }
 
@@ -2142,6 +2142,12 @@
     }
     if (activeMolstarPrepared?.pdbModelOverlayAvailable === true) {
       await reloadActiveMolstarStructure();
+      return;
+    }
+    if (activeMolstarPrepared?.kind === 'docking' && activeMolstarPrepared?.dockingSceneMode) {
+      const poseCount = Number(activeMolstarPrepared.poseCount || 0);
+      const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
+      await applyDockingSceneVisibility(activeViewer, activeMolstarPrepared, activePose);
       return;
     }
     await reloadActiveMolstarStructure();
@@ -6551,10 +6557,13 @@
       const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
       const backgroundEntries = poses.filter((_, index) => index !== activeIndex);
       if (resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative') {
+        const sceneStructures = [];
         for (const entry of [...backgroundEntries, activeEntry]) {
-          await loadMolstarEntry(viewer, entry);
+          sceneStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
         }
-        await applyMolstarStyle(viewer, resolvedContextStyle);
+        if (sceneStructures.length) {
+          await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, sceneStructures, 1, 'colored');
+        }
       } else {
         const contextStructures = [];
         for (const entry of backgroundEntries) {
@@ -6565,8 +6574,16 @@
         if (contextStructures.length) {
           await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor);
         }
-        await loadMolstarEntry(viewer, activeEntry);
-        await applyMolstarIllustrativePostprocessing(viewer);
+        const activeStyle = normalizeMolstarStyle(style);
+        if (activeStyle === 'default' || activeStyle === 'illustrative') {
+          await loadMolstarEntry(viewer, activeEntry);
+          await applyMolstarIllustrativePostprocessing(viewer);
+        } else {
+          const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
+          if (activeStructures.length) {
+            await applySdfCollectionMolstarStyle(viewer, activeStyle, activeStructures, 1, 'colored');
+          }
+        }
       }
       await applyMolstarWaterLineRepresentation(viewer);
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
@@ -6582,9 +6599,7 @@
   }
 
   function dockingSceneBackgroundStyle(contextStyle, foregroundStyle) {
-    const resolved = contextStyle !== 'match' ? normalizeMolstarStyle(contextStyle) : normalizeMolstarStyle(foregroundStyle);
-    if (resolved === 'cartoon' || resolved === 'spacefill') return 'line';
-    return resolved;
+    return contextStyle !== 'match' ? normalizeMolstarStyle(contextStyle) : normalizeMolstarStyle(foregroundStyle);
   }
 
   async function loadSdfCollectionPdbLayer(viewer, data, label) {
@@ -6599,7 +6614,16 @@
   async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray') {
     const normalized = normalizeMolstarStyle(style);
     const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
-    await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
+    if (normalized === 'default' || normalized === 'illustrative' || normalized === 'cartoon' || normalized === 'polymer-ligand') {
+      await applyMolstarPolymerLigandRepresentationToStructures(
+        viewer,
+        targets,
+        sdfCollectionCartoonRepresentation(alpha),
+        sdfCollectionLigandRepresentationForStyle(normalized, alpha, colorMode)
+      );
+    } else {
+      await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
+    }
     if (normalized === 'illustrative') await applyMolstarIllustrativePostprocessing(viewer);
     else await applyMolstarNonIllustrativePostprocessing(viewer);
   }
@@ -6640,12 +6664,13 @@
     };
   }
 
-  function sdfCollectionLigandRepresentationForStyle(style, alpha = 1) {
+  function sdfCollectionLigandRepresentationForStyle(style, alpha = 1, colorMode = 'gray') {
     const normalized = normalizeMolstarStyle(style);
-    const { ghost, withAlpha, themed } = sdfCollectionAlphaHelpers(alpha);
+    const { ghost, withAlpha, themed } = sdfCollectionAlphaHelpers(alpha, colorMode);
+    const lineLigands = normalized === 'cartoon';
     return themed({
-      type: normalized === 'cartoon' ? 'line' : 'ball-and-stick',
-      typeParams: normalized === 'cartoon'
+      type: lineLigands ? 'line' : 'ball-and-stick',
+      typeParams: lineLigands
         ? withAlpha({ sizeFactor: ghost ? 0.035 : 0.08 })
         : withAlpha({ sizeFactor: ghost ? 0.095 : 0.16 })
     });
@@ -8248,6 +8273,10 @@
           updateControls();
         } else if (prepared.kind === 'xyz-frame-overlay') {
           await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false });
+          activePose = nextIndex;
+          updateControls();
+        } else if (prepared.kind === 'docking' && prepared.dockingSceneMode) {
+          await applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, nextIndex);
           activePose = nextIndex;
           updateControls();
         } else {
