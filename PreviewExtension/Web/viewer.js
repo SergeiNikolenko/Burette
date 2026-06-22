@@ -996,7 +996,7 @@
 
   function normalizeSdfCollectionContextStyle(value) {
     const normalized = String(value || '').trim().toLowerCase();
-    if (['line', 'ball-and-stick', 'spacefill', 'molecular-surface', 'match'].includes(normalized)) return normalized;
+    if (['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'match'].includes(normalized)) return normalized;
     return 'line';
   }
 
@@ -6575,9 +6575,7 @@
   }
 
   function dockingSceneBackgroundStyle(contextStyle, foregroundStyle) {
-    const resolved = contextStyle !== 'match' ? normalizeMolstarStyle(contextStyle) : normalizeMolstarStyle(foregroundStyle);
-    if (resolved === 'cartoon' || resolved === 'spacefill') return 'line';
-    return resolved;
+    return contextStyle !== 'match' ? normalizeMolstarStyle(contextStyle) : normalizeMolstarStyle(foregroundStyle);
   }
 
   async function loadSdfCollectionPdbLayer(viewer, data, label) {
@@ -6592,7 +6590,16 @@
   async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray') {
     const normalized = normalizeMolstarStyle(style);
     const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
-    await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
+    if (normalized === 'cartoon') {
+      await applyMolstarPolymerLigandRepresentationToStructures(
+        viewer,
+        targets,
+        sdfCollectionCartoonRepresentation(alpha),
+        sdfCollectionLigandRepresentationForStyle(normalized, alpha)
+      );
+    } else {
+      await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
+    }
     if (normalized === 'illustrative') await applyMolstarIllustrativePostprocessing(viewer);
     else await applyMolstarNonIllustrativePostprocessing(viewer);
   }

@@ -35,6 +35,7 @@ type XtbSettingsCategory = "core" | "solvation" | "properties" | "dynamics" | "o
 const SDF_CONTEXT_STYLE_OPTIONS = [
   { value: "line", label: "Line" },
   { value: "ball-and-stick", label: "Ball+Stick" },
+  { value: "cartoon", label: "Cartoon" },
   { value: "spacefill", label: "Spacefill" },
   { value: "molecular-surface", label: "Surface" },
   { value: "match", label: "Match" },
