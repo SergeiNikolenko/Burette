@@ -269,20 +269,24 @@ bundle_quicklook_xyzrender_launcher() {
   local app="$1"
   local appex="$app/Contents/PlugIns/BurretePreview.appex"
   [[ -d "$appex" ]] || return 0
+  local libpython=""
+  libpython="$(find "$appex/Contents/lib" -maxdepth 1 -type f -name 'libpython3*.dylib' | head -n 1 || true)"
   [[ -x "$appex/Contents/Resources/xyzrender-python3" ]] || {
     echo "error: Quick Look xyzrender launcher missing from Xcode-built extension: $appex/Contents/Resources/xyzrender-python3" >&2
     exit 1
   }
-  [[ -f "$appex/Contents/lib/libpython3.13.dylib" ]] || {
-    echo "error: Quick Look libpython missing from Xcode-built extension: $appex/Contents/lib/libpython3.13.dylib" >&2
+  [[ -n "$libpython" && -f "$libpython" ]] || {
+    echo "error: Quick Look libpython missing from Xcode-built extension: $appex/Contents/lib/libpython3*.dylib" >&2
     exit 1
   }
 }
 sign_quicklook_xyzrender_launcher() {
   local app="$1"
   local appex="$app/Contents/PlugIns/BurretePreview.appex"
-  [[ -f "$appex/Contents/Resources/xyzrender-python3" && -f "$appex/Contents/lib/libpython3.13.dylib" ]] || return 0
-  codesign "${CODESIGN_ARGS[@]}" "$appex/Contents/lib/libpython3.13.dylib" >/dev/null
+  local libpython=""
+  libpython="$(find "$appex/Contents/lib" -maxdepth 1 -type f -name 'libpython3*.dylib' | head -n 1 || true)"
+  [[ -f "$appex/Contents/Resources/xyzrender-python3" && -n "$libpython" && -f "$libpython" ]] || return 0
+  codesign "${CODESIGN_ARGS[@]}" "$libpython" >/dev/null
   codesign "${CODESIGN_ARGS[@]}" "$appex/Contents/Resources/xyzrender-python3" >/dev/null
 }
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2; exit 1; }; }
