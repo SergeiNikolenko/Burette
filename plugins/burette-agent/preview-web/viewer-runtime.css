@@ -517,7 +517,17 @@ body .msp-plugin .msp-viewport-controls {
 body .msp-plugin .msp-viewport-controls-buttons {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--buret-control-island-gap);
+  padding: 6px;
+  border: 1px solid var(--buret-toolbar-border) !important;
+  border-radius: 12px;
+  color: var(--buret-toolbar-color) !important;
+  background: var(--buret-toolbar-background) !important;
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   transform-origin: top center;
   transition: opacity 150ms ease, transform 170ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0s;
 }
@@ -532,7 +542,7 @@ body .msp-plugin .msp-viewport-controls-buttons > div {
   overflow: visible;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--buret-control-island-gap);
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -546,17 +556,17 @@ body .msp-plugin .msp-viewport-controls-buttons > div > div {
   border-radius: 0;
 }
 body .msp-plugin .msp-viewport-controls-buttons button {
-  width: 40px !important;
-  min-width: 40px !important;
-  height: 40px !important;
-  min-height: 40px !important;
-  border: 1px solid var(--buret-toolbar-border) !important;
-  border-radius: 12px;
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  border: 0 !important;
+  border-radius: 8px;
   color: var(--buret-toolbar-color) !important;
-  background: var(--buret-toolbar-background) !important;
-  box-shadow: 0 8px 20px var(--buret-molstar-shadow);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  background: transparent !important;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 body .msp-plugin .msp-viewport-controls-buttons button:hover,
 body .msp-plugin .msp-viewport-controls-buttons .msp-btn-link-toggle-on {
