@@ -6665,14 +6665,10 @@
   }
 
   function sdfCollectionLigandRepresentationForStyle(style, alpha = 1, colorMode = 'gray') {
-    const normalized = normalizeMolstarStyle(style);
     const { ghost, withAlpha, themed } = sdfCollectionAlphaHelpers(alpha, colorMode);
-    const lineLigands = normalized === 'cartoon';
     return themed({
-      type: lineLigands ? 'line' : 'ball-and-stick',
-      typeParams: lineLigands
-        ? withAlpha({ sizeFactor: ghost ? 0.035 : 0.08 })
-        : withAlpha({ sizeFactor: ghost ? 0.095 : 0.16 })
+      type: 'ball-and-stick',
+      typeParams: withAlpha({ sizeFactor: ghost ? 0.095 : 0.16 })
     });
   }
 
