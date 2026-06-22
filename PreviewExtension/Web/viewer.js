@@ -6558,8 +6558,16 @@
         if (contextStructures.length) {
           await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor);
         }
-        await loadMolstarEntry(viewer, activeEntry);
-        await applyMolstarIllustrativePostprocessing(viewer);
+        const activeStyle = normalizeMolstarStyle(style);
+        if (activeStyle === 'default' || activeStyle === 'illustrative') {
+          await loadMolstarEntry(viewer, activeEntry);
+          await applyMolstarIllustrativePostprocessing(viewer);
+        } else {
+          const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
+          if (activeStructures.length) {
+            await applySdfCollectionMolstarStyle(viewer, activeStyle, activeStructures, 1, 'colored');
+          }
+        }
       }
       await applyMolstarWaterLineRepresentation(viewer);
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
@@ -6590,7 +6598,7 @@
   async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray') {
     const normalized = normalizeMolstarStyle(style);
     const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
-    if (normalized === 'cartoon') {
+    if (normalized === 'default' || normalized === 'illustrative' || normalized === 'cartoon' || normalized === 'polymer-ligand') {
       await applyMolstarPolymerLigandRepresentationToStructures(
         viewer,
         targets,
@@ -6643,9 +6651,10 @@
   function sdfCollectionLigandRepresentationForStyle(style, alpha = 1) {
     const normalized = normalizeMolstarStyle(style);
     const { ghost, withAlpha, themed } = sdfCollectionAlphaHelpers(alpha);
+    const lineLigands = normalized === 'cartoon';
     return themed({
-      type: normalized === 'cartoon' ? 'line' : 'ball-and-stick',
-      typeParams: normalized === 'cartoon'
+      type: lineLigands ? 'line' : 'ball-and-stick',
+      typeParams: lineLigands
         ? withAlpha({ sizeFactor: ghost ? 0.035 : 0.08 })
         : withAlpha({ sizeFactor: ghost ? 0.095 : 0.16 })
     });

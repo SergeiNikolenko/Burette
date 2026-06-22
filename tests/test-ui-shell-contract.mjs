@@ -4802,14 +4802,16 @@ assert.match(previewViewer, /const sceneStructures = \[\];\s*for \(const entry o
 assert.match(previewViewer, /for \(const entry of backgroundEntries\) \{\s*contextStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\);\s*\}/s);
 assert.match(previewViewer, /const contextColor = readSdfCollectionContextColor\(activeConfig\);/);
 assert.match(previewViewer, /if \(contextStructures\.length\) \{\s*await applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor\);\s*\}/s);
-assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarIllustrativePostprocessing\(viewer\);/s);
+assert.match(previewViewer, /const activeStyle = normalizeMolstarStyle\(style\)/);
+assert.match(previewViewer, /if \(activeStyle === 'default' \|\| activeStyle === 'illustrative'\) \{\s*await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarIllustrativePostprocessing\(viewer\);/s);
+assert.match(previewViewer, /const activeStructures = await loadMolstarEntryWithStructureRefs\(viewer, activeEntry, \{ representationPreset: 'empty' \}\);[\s\S]*await applySdfCollectionMolstarStyle\(viewer, activeStyle, activeStructures, 1, 'colored'\);/);
 assert.match(previewViewer, /function dockingSceneBackgroundStyle\(contextStyle, foregroundStyle\)/);
 assert.doesNotMatch(previewViewer, /if \(resolved === 'cartoon' \|\| resolved === 'spacefill'\) return 'line'/);
 assert.match(previewViewer, /updateStructureOverlayToggleButton\(document\.querySelector\('\[data-buret-action="structure-overlay-toggle"\]'\), prepared\);\s*scheduleMolstarStructureFocus\(viewer, \{ reason: 'docking-scene', durationMs: 180 \}\);\s*return;/);
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*await applyMolstarStyle\(viewer, style\)/);
 assert.match(previewViewer, /function sdfCollectionRepresentationForStyle\(style, alpha = 1, colorMode = 'gray'\)/);
 assert.doesNotMatch(previewViewer, /if \(normalized === 'illustrative' \|\| normalized === 'cartoon' \|\| normalized === 'polymer-ligand'\) \{/);
-assert.match(previewViewer, /if \(normalized === 'cartoon'\) \{\s*await applyMolstarPolymerLigandRepresentationToStructures\(/s);
+assert.match(previewViewer, /if \(normalized === 'default' \|\| normalized === 'illustrative' \|\| normalized === 'cartoon' \|\| normalized === 'polymer-ligand'\) \{\s*await applyMolstarPolymerLigandRepresentationToStructures\(/s);
 assert.match(previewViewer, /await applyMolstarRepresentationsToStructures\(viewer, targets, sdfCollectionRepresentationForStyle\(normalized, alpha, colorMode\)\)/);
 assert.match(previewViewer, /if \(normalized === 'spacefill'\) \{\s*return themed\(\{ type: 'spacefill'/s);
 assert.match(previewViewer, /if \(normalized === 'molecular-surface'\) \{\s*return themed\(\{ type: 'molecular-surface'/s);
@@ -4825,7 +4827,8 @@ assert.match(previewViewer, /function sdfCollectionCartoonRepresentation\(alpha 
 assert.match(previewViewer, /type: 'cartoon'/);
 assert.match(previewViewer, /color: 'chain-id'/);
 assert.match(previewViewer, /function sdfCollectionLigandRepresentationForStyle\(style, alpha = 1\)/);
-assert.match(previewViewer, /type: normalized === 'cartoon' \? 'line' : 'ball-and-stick'/);
+assert.match(previewViewer, /const lineLigands = normalized === 'cartoon'/);
+assert.match(previewViewer, /type: lineLigands \? 'line' : 'ball-and-stick'/);
 assert.match(previewViewer, /async function applyMolstarRepresentationsToStructures\(viewer, structures, representation\)/);
 assert.match(previewViewer, /async function applyMolstarPolymerLigandRepresentationToStructures\(viewer, structures, polymerRepresentation, ligandRepresentation\)/);
 assert.match(previewViewer, /const polymer = await tryCreateMolstarComponent\(plugin, structure, 'polymer'\)/);
