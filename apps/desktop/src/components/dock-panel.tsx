@@ -463,6 +463,8 @@ const DEFAULT_XYZRENDER_DOCK_CONTROLS: XyzrenderControls = {
   fog: null,
   showVdw: false,
   hideBonds: false,
+  displayHydrogens: "auto",
+  bondNotation: "aromatic",
   fieldMode: "auto",
   fieldIso: 0.8,
   fieldOpacity: 1,
@@ -481,6 +483,14 @@ const XYZRENDER_README_PRESET_GALLERY = [
   { value: "graph", label: "Graph", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_graph.svg" },
   { value: "mtube", label: "MTube", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_mtube.svg" },
   { value: "vdw", label: "vdW", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_vdw.svg" },
+] as const;
+
+const XYZRENDER_README_DISPLAY_OPTIONS = [
+  { group: "hydrogens", value: "all", label: "All H", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/ethanol_all_h.svg" },
+  { group: "hydrogens", value: "auto", label: "Some H", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/ethanol_some_h.svg" },
+  { group: "hydrogens", value: "none", label: "No H", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/ethanol_no_h.svg" },
+  { group: "bonds", value: "aromatic", label: "Aromatic", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/benzene.svg" },
+  { group: "bonds", value: "kekule", label: "Kekule", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_kekule.svg" },
 ] as const;
 
 function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
@@ -548,6 +558,13 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
             apply(controls, value);
           }}
         />
+        <XyzrenderDisplayOptionsGallery
+          controls={controls}
+          onSelect={(nextControls) => {
+            setControls(nextControls);
+            apply(nextControls, preset);
+          }}
+        />
         <XyzrenderDockCheckbox
           label="Transparent"
           checked={controls.transparentBackground === true}
@@ -605,6 +622,41 @@ function XyzrenderPresetGallery({ preset, onSelect }: { preset: string; onSelect
           <img src={option.image} alt="" loading="lazy" draggable={false} />
         </button>
       ))}
+    </div>
+  );
+}
+
+function XyzrenderDisplayOptionsGallery({
+  controls,
+  onSelect,
+}: {
+  controls: XyzrenderControls;
+  onSelect: (controls: XyzrenderControls) => void;
+}) {
+  return (
+    <div className="xyzrender-dock-display-options" aria-label="xyzrender display options">
+      <div className="xyzrender-dock-subtitle">Display options</div>
+      <div className="xyzrender-dock-display-grid">
+        {XYZRENDER_README_DISPLAY_OPTIONS.map((option) => {
+          const active = option.group === "hydrogens"
+            ? (controls.displayHydrogens ?? "auto") === option.value
+            : (controls.bondNotation ?? "aromatic") === option.value;
+          return (
+            <button
+              type="button"
+              className="xyzrender-dock-preset-tile"
+              key={`${option.group}-${option.value}`}
+              aria-pressed={active}
+              onClick={() => onSelect(option.group === "hydrogens"
+                ? { ...controls, displayHydrogens: option.value as XyzrenderControls["displayHydrogens"] }
+                : { ...controls, bondNotation: option.value as XyzrenderControls["bondNotation"] })}
+            >
+              <span>{option.label}</span>
+              <img src={option.image} alt="" loading="lazy" draggable={false} />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

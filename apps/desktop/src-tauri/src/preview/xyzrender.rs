@@ -1202,6 +1202,16 @@ fn build_xyzrender_args(
         if controls.hide_bonds == Some(true) {
             args.push("--no-bonds".to_string());
         }
+        match normalized_display_hydrogens(controls.display_hydrogens.as_deref()) {
+            Some("all") => args.push("--hy".to_string()),
+            Some("none") => args.push("--no-hy".to_string()),
+            _ => {}
+        }
+        match normalized_bond_notation(controls.bond_notation.as_deref()) {
+            Some("aromatic") => args.push("--bo".to_string()),
+            Some("kekule") => args.push("--no-bo".to_string()),
+            _ => {}
+        }
         if let Some(value) = controls.show_cell {
             args.push(if value { "--cell" } else { "--no-cell" }.to_string());
         }
@@ -1301,6 +1311,23 @@ fn normalized_field_mode(value: Option<&str>) -> Option<&'static str> {
         Some("esp") => Some("esp"),
         Some("nci") => Some("nci"),
         Some("auto") | Some("off") | None => None,
+        _ => None,
+    }
+}
+
+fn normalized_display_hydrogens(value: Option<&str>) -> Option<&'static str> {
+    match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("all") => Some("all"),
+        Some("auto") => Some("auto"),
+        Some("none") => Some("none"),
+        _ => None,
+    }
+}
+
+fn normalized_bond_notation(value: Option<&str>) -> Option<&'static str> {
+    match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("aromatic") => Some("aromatic"),
+        Some("kekule") => Some("kekule"),
         _ => None,
     }
 }
@@ -1509,6 +1536,7 @@ fn sanitized_extra_arguments(value: Option<&str>, strip_field_arguments: bool) -
     let mut blocked = blocked_value_flags.clone();
     blocked.push("--region");
     blocked_value_count_flags.push(("--region", 2usize));
+    blocked.extend(["--hy", "--no-hy", "--bo", "--no-bo"]);
     if strip_field_arguments {
         blocked_value_flags.extend([
             "--esp",
@@ -2103,6 +2131,8 @@ mod tests {
             vdw_opacity: Some(0.4),
             vdw_scale: Some(1.1),
             hide_bonds: Some(true),
+            display_hydrogens: Some("all".into()),
+            bond_notation: Some("kekule".into()),
             show_cell: Some(true),
             show_ghosts: Some(false),
             show_axes: Some(true),
@@ -2119,7 +2149,7 @@ mod tests {
             field_cmap_min: Some(-0.2),
             field_cmap_max: Some(0.4),
             custom_config_path: Some("/tmp/custom.json".into()),
-            extra_arguments: Some("--output hacked.svg --axis 111 --measure d --opacity 0.9 --mo-colors red blue --cmap-range -1 1 --region 7 flat".into()),
+            extra_arguments: Some("--output hacked.svg --axis 111 --measure d --opacity 0.9 --mo-colors red blue --cmap-range -1 1 --region 7 flat --no-hy --bo".into()),
             regions: Some(vec![XyzrenderRegion {
                 atoms: "1-3, 5".into(),
                 preset: "tube".into(),
@@ -2143,6 +2173,16 @@ mod tests {
         assert!(joined.contains("--fog"));
         assert!(joined.contains("--vdw"));
         assert!(joined.contains("--no-bonds"));
+        assert_eq!(args.iter().filter(|arg| arg.as_str() == "--hy").count(), 1);
+        assert_eq!(
+            args.iter().filter(|arg| arg.as_str() == "--no-hy").count(),
+            0
+        );
+        assert_eq!(
+            args.iter().filter(|arg| arg.as_str() == "--no-bo").count(),
+            1
+        );
+        assert_eq!(args.iter().filter(|arg| arg.as_str() == "--bo").count(), 0);
         assert!(joined.contains("--cell"));
         assert!(joined.contains("--no-ghosts"));
         assert!(joined.contains("--axes"));

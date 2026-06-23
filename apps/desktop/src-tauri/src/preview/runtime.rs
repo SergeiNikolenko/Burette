@@ -143,6 +143,8 @@ pub(crate) struct XyzrenderControls {
     pub(crate) vdw_opacity: Option<f64>,
     pub(crate) vdw_scale: Option<f64>,
     pub(crate) hide_bonds: Option<bool>,
+    pub(crate) display_hydrogens: Option<String>,
+    pub(crate) bond_notation: Option<String>,
     pub(crate) show_cell: Option<bool>,
     pub(crate) show_ghosts: Option<bool>,
     pub(crate) show_axes: Option<bool>,

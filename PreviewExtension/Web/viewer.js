@@ -1575,6 +1575,8 @@
       vdwOpacity: positiveNumberOrNull(source.vdwOpacity),
       vdwScale: positiveNumberOrNull(source.vdwScale),
       hideBonds: source.hideBonds === true,
+      displayHydrogens: normalizeXyzrenderHydrogens(source.displayHydrogens),
+      bondNotation: normalizeXyzrenderBondNotation(source.bondNotation),
       showCell: triStateBoolean(source.showCell),
       showGhosts: triStateBoolean(source.showGhosts),
       showAxes: triStateBoolean(source.showAxes),
@@ -1594,6 +1596,16 @@
       extraArguments: nonEmptyText(source.extraArguments),
       regions: normalizeXyzrenderRegions(source.regions)
     };
+  }
+
+  function normalizeXyzrenderHydrogens(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return text === 'all' || text === 'auto' || text === 'none' ? text : null;
+  }
+
+  function normalizeXyzrenderBondNotation(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return text === 'aromatic' || text === 'kekule' ? text : null;
   }
 
   function normalizeXyzrenderRegions(value) {

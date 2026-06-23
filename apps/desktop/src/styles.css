@@ -1803,6 +1803,21 @@ img.radix-menu-item-icon {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
+.xyzrender-dock-display-options {
+  display: grid;
+  gap: 6px;
+}
+.xyzrender-dock-subtitle {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+.xyzrender-dock-display-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
 .xyzrender-dock-preset-tile {
   display: grid;
   grid-template-rows: 16px 58px;
@@ -1846,6 +1861,14 @@ img.radix-menu-item-icon {
   object-fit: contain;
   border-radius: 5px;
   background: #fff;
+}
+.xyzrender-dock-display-grid .xyzrender-dock-preset-tile {
+  grid-template-rows: 16px 50px;
+  height: 76px;
+  padding: 4px;
+}
+.xyzrender-dock-display-grid .xyzrender-dock-preset-tile img {
+  height: 50px;
 }
 .xyzrender-dock-field,
 .xyzrender-dock-check {

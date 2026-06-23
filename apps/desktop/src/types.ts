@@ -14,6 +14,8 @@ export type XyzrenderControls = {
   vdwOpacity?: number | null;
   vdwScale?: number | null;
   hideBonds?: boolean | null;
+  displayHydrogens?: "all" | "auto" | "none" | null;
+  bondNotation?: "aromatic" | "kekule" | null;
   showCell?: boolean | null;
   showGhosts?: boolean | null;
   showAxes?: boolean | null;
