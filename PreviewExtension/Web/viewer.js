@@ -5850,11 +5850,12 @@
     const atomNodes = xyzrenderAtomNodes(item);
     for (const element of elements || []) {
       const directIndex = xyzrenderAtomIndexFromElement(element);
-      if (directIndex) {
-        atoms.add(directIndex);
-        continue;
+      if (directIndex) atoms.add(directIndex);
+    }
+    if (atoms.size === 0) {
+      for (const element of elements || []) {
+        addAtomsNearXyzrenderElement(atoms, atomNodes, element);
       }
-      addAtomsNearXyzrenderElement(atoms, atomNodes, element);
     }
     return compactXyzrenderAtomSelector(atoms);
   }
