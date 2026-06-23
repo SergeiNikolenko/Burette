@@ -106,6 +106,12 @@
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
   let molstarLassoOverlay = null;
+  let xyzrenderLassoEnabled = false;
+  let xyzrenderLassoStroke = null;
+  let xyzrenderLassoOverlay = null;
+  const xyzrenderSelectedElements = new Set();
+  const xyzrenderStyledElements = new Set();
+  const xyzrenderSelectionOriginals = new WeakMap();
   let molstarSelectionPreserveClick = null;
   let molstarLassoSuppressClickUntil = 0;
   let molstarMoleculePreview = null;
@@ -1392,11 +1398,13 @@
       molstarStyleSelect.value = configuredMolstarStyle(config);
       molstarStyleSelect.disabled = renderer !== 'molstar';
     }
-    lassoButton?.classList.toggle('hidden', renderer !== 'molstar');
+    const lassoAvailable = renderer === 'molstar' || renderer === 'xyzrender-external';
+    lassoButton?.classList.toggle('hidden', !lassoAvailable);
     if (lassoButton) {
-      lassoButton.disabled = renderer !== 'molstar';
-      lassoButton.setAttribute('aria-hidden', renderer === 'molstar' ? 'false' : 'true');
+      lassoButton.disabled = !lassoAvailable;
+      lassoButton.setAttribute('aria-hidden', lassoAvailable ? 'false' : 'true');
     }
+    updateMolstarLassoButton();
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     presetSlot?.classList.remove('visible');
     const canOpenSdfGrid = canOpenSdfGridFromConfig(config);
@@ -2277,8 +2285,13 @@
     const external = normalized === 'xyzrender-external';
     molstarStyleSlot?.classList.toggle('visible', !external);
     if (molstarStyleSelect) molstarStyleSelect.disabled = external;
-    lassoButton?.classList.toggle('hidden', external);
-    if (lassoButton) lassoButton.disabled = external;
+    const lassoAvailable = normalized === 'molstar' || external;
+    lassoButton?.classList.toggle('hidden', !lassoAvailable);
+    if (lassoButton) {
+      lassoButton.disabled = !lassoAvailable;
+      lassoButton.setAttribute('aria-hidden', lassoAvailable ? 'false' : 'true');
+    }
+    updateMolstarLassoButton();
     presetSlot?.classList.toggle('visible', external);
     if (preset) preset.disabled = !external;
     tuneButton?.classList.toggle('hidden', !external);
@@ -2885,6 +2898,10 @@
 
   function requestXyzrenderControls(toolbar) {
     const controls = readXyzrenderControlsForm(toolbar);
+    if (hasXyzrenderSelection()) {
+      applyXyzrenderSelectionControls(controls);
+      return;
+    }
     if (requestBrowserDevXyzrenderUpdate({ controls })) return;
     const sent = postHostMessage({ type: 'setXyzrenderControls', controls });
     if (!sent) {
@@ -3384,7 +3401,8 @@
         molstarLassoSuppressClickUntil = Date.now() + 500;
         event.preventDefault();
         event.stopPropagation();
-        setMolstarLassoEnabled(!molstarLassoEnabled);
+        if (isXyzrenderLassoSurfaceActive()) setXyzrenderLassoEnabled(!xyzrenderLassoEnabled);
+        else setMolstarLassoEnabled(!molstarLassoEnabled);
         return;
       }
     }, true);
@@ -3406,19 +3424,24 @@
       event.preventDefault();
       event.stopPropagation();
       if (Date.now() < molstarLassoSuppressClickUntil) return;
-      setMolstarLassoEnabled(!molstarLassoEnabled);
+      if (isXyzrenderLassoSurfaceActive()) setXyzrenderLassoEnabled(!xyzrenderLassoEnabled);
+      else setMolstarLassoEnabled(!molstarLassoEnabled);
     });
   }
 
   function updateMolstarLassoButton() {
     const button = document.querySelector('#buret-toolbar [data-buret-action="molstar-lasso"]');
     if (!button) return;
-    button.classList.toggle('active', molstarLassoEnabled);
-    button.setAttribute('aria-pressed', molstarLassoEnabled ? 'true' : 'false');
-    const label = molstarLassoEnabled ? 'Exit lasso select' : 'Lasso select';
+    const xyzrender = isXyzrenderLassoSurfaceActive();
+    const active = xyzrender ? xyzrenderLassoEnabled : molstarLassoEnabled;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    const label = active ? 'Exit lasso select' : 'Lasso select';
     button.setAttribute('aria-label', label);
     button.setAttribute('title', label);
-    setTooltipLabel(button, molstarLassoEnabled ? 'Drag over visible residues to select' : 'Lasso select visible residues');
+    setTooltipLabel(button, xyzrender
+      ? (active ? 'Drag over xyzrender graphics to select' : 'Lasso select xyzrender graphics')
+      : (active ? 'Drag over visible residues to select' : 'Lasso select visible residues'));
   }
 
   function setMolstarLassoEnabled(enabled) {
@@ -3430,10 +3453,30 @@
     setStatus(molstarLassoEnabled ? '[web] Lasso selection enabled.' : '[web] Lasso selection disabled.');
   }
 
+  function isXyzrenderLassoSurfaceActive() {
+    const config = activeConfig || window.BurreteConfig || {};
+    return normalizeRenderer(config.renderer) === 'xyzrender-external' || !!document.querySelector('.buret-external-artifact-root');
+  }
+
+  function setXyzrenderLassoEnabled(enabled) {
+    const next = enabled === true;
+    xyzrenderLassoEnabled = next;
+    if (!next) cancelXyzrenderLassoStroke();
+    document.body?.classList.toggle('buret-xyzrender-lasso-active', xyzrenderLassoEnabled);
+    updateMolstarLassoButton();
+    setStatus(xyzrenderLassoEnabled ? '[web] xyzrender lasso enabled.' : '[web] xyzrender lasso disabled.');
+  }
+
   function bindXyzrenderControls(toolbar) {
     if (!toolbar || toolbar.dataset.xyzrenderControlsBound === '1') return;
     toolbar.querySelector('[data-buret-xyzrender-preset]')?.addEventListener('change', () => updateXyzrenderFormVisibility(toolbar));
     toolbar.querySelector('[data-buret-action="xyzrender-reset"]')?.addEventListener('click', () => {
+      if (hasXyzrenderSelection()) {
+        resetXyzrenderSelectionStyles();
+        setStatus('[web] Reset xyzrender lasso selection styles.');
+        setTimeout(hideStatus, 900);
+        return;
+      }
       populateXyzrenderControlsForm(toolbar, {});
       requestXyzrenderControls(toolbar);
     });
@@ -5223,6 +5266,26 @@
       setStatus(`[web] Hid xyzrender display: ${baseName}`);
       setTimeout(hideStatus, 900);
     });
+    if (hasXyzrenderSelection()) {
+      appendXyzrenderMenuButton(actions, 'Apply Current Settings', () => {
+        const toolbar = document.getElementById('buret-toolbar');
+        if (!toolbar) throw new Error('xyzrender settings toolbar is unavailable.');
+        applyXyzrenderSelectionControls(readXyzrenderControlsForm(toolbar));
+        hideXyzrenderSheetContextMenu();
+      });
+      appendXyzrenderMenuButton(actions, 'Dim Others', () => {
+        dimUnselectedXyzrenderElements(item);
+        hideXyzrenderSheetContextMenu();
+      });
+      appendXyzrenderMenuButton(actions, 'Reset Selection', () => {
+        resetXyzrenderSelectionStyles();
+        hideXyzrenderSheetContextMenu();
+      });
+      appendXyzrenderMenuButton(actions, 'Clear Selection', () => {
+        clearXyzrenderSelection();
+        hideXyzrenderSheetContextMenu();
+      });
+    }
 
     document.body.appendChild(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
@@ -5254,7 +5317,10 @@
       .buret-xyzrender-sheet-item.dragging { cursor: grabbing; }
       .buret-xyzrender-sheet-item.rotating { cursor: grabbing; }
       .buret-xyzrender-sheet-item.resizing { cursor: nwse-resize; }
+      body.buret-xyzrender-lasso-active .buret-xyzrender-sheet-item { cursor: crosshair; }
       .buret-xyzrender-sheet-item.selected { outline: 0 solid transparent; box-shadow: none; }
+      .buret-xyzrender-sheet-item.has-xyzrender-selection { box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); }
+      .buret-xyzrender-svg-selection { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent)); }
       .buret-xyzrender-sheet-item:has(.buret-xyzrender-resize-handle:hover),
       .buret-xyzrender-sheet-item.resizing { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
@@ -5907,6 +5973,7 @@
     let startLeft = 0;
     let startTop = 0;
     const onPointerDown = event => {
+      if (xyzrenderLassoEnabled) return;
       if (event.button !== 0) return;
       if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle]')) return;
       event.preventDefault();
@@ -8853,12 +8920,30 @@
     document.addEventListener('pointermove', onMolstarLassoPointerMove, true);
     document.addEventListener('pointerup', onMolstarLassoPointerUp, true);
     document.addEventListener('pointercancel', onMolstarLassoPointerCancel, true);
+    document.addEventListener('pointerdown', onXyzrenderLassoPointerDown, true);
+    document.addEventListener('pointermove', onXyzrenderLassoPointerMove, true);
+    document.addEventListener('pointerup', onXyzrenderLassoPointerUp, true);
+    document.addEventListener('pointercancel', onXyzrenderLassoPointerCancel, true);
     document.addEventListener('keydown', onMolstarLassoKeyDown, true);
     window.addEventListener('resize', cancelMolstarLassoStroke);
+    window.addEventListener('resize', cancelXyzrenderLassoStroke);
   }
 
   function onMolstarLassoKeyDown(event) {
     if (event.key !== 'Escape') return;
+    if (xyzrenderLassoStroke) {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelXyzrenderLassoStroke();
+      setStatus('[web] xyzrender lasso canceled.');
+      return;
+    }
+    if (xyzrenderLassoEnabled) {
+      event.preventDefault();
+      event.stopPropagation();
+      setXyzrenderLassoEnabled(false);
+      return;
+    }
     if (molstarLassoStroke) {
       event.preventDefault();
       event.stopPropagation();
@@ -9070,6 +9155,319 @@
     }
     if (selected > 0) scheduleMolstarSelectedMoleculePreview();
     return selected;
+  }
+
+  function onXyzrenderLassoPointerDown(event) {
+    if (!xyzrenderLassoEnabled || event.button !== 0) return;
+    const item = xyzrenderSheetItemFromEvent(event);
+    if (!item) return;
+    hideXyzrenderSheetContextMenu();
+    xyzrenderLassoStroke = {
+      pointerId: event.pointerId,
+      item,
+      additive: event.shiftKey || event.metaKey || event.ctrlKey,
+      dragging: false,
+      points: [{ x: event.clientX, y: event.clientY }]
+    };
+    try { item.setPointerCapture?.(event.pointerId); } catch (_) {}
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function onXyzrenderLassoPointerMove(event) {
+    const stroke = xyzrenderLassoStroke;
+    if (!stroke || event.pointerId !== stroke.pointerId) return;
+    const last = stroke.points[stroke.points.length - 1];
+    if (Math.hypot(event.clientX - last.x, event.clientY - last.y) >= MOLSTAR_LASSO_MIN_DISTANCE_PX) {
+      if (!stroke.dragging) {
+        stroke.dragging = true;
+        hideXyzrenderSheetContextMenu();
+        ensureXyzrenderLassoOverlay();
+        try { stroke.item.setPointerCapture?.(event.pointerId); } catch (_) {}
+      }
+      stroke.points.push({ x: event.clientX, y: event.clientY });
+      updateXyzrenderLassoOverlay(stroke.points);
+    }
+    if (!stroke.dragging) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function onXyzrenderLassoPointerUp(event) {
+    const stroke = xyzrenderLassoStroke;
+    if (!stroke || event.pointerId !== stroke.pointerId) return;
+    if (!stroke.dragging) {
+      xyzrenderLassoStroke = null;
+      return;
+    }
+    if (Math.hypot(event.clientX - stroke.points[0].x, event.clientY - stroke.points[0].y) >= MOLSTAR_LASSO_MIN_DISTANCE_PX) {
+      stroke.points.push({ x: event.clientX, y: event.clientY });
+    }
+    finishXyzrenderLassoStroke(stroke);
+    try { stroke.item.releasePointerCapture?.(event.pointerId); } catch (_) {}
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function onXyzrenderLassoPointerCancel(event) {
+    const stroke = xyzrenderLassoStroke;
+    if (!stroke || event.pointerId !== stroke.pointerId) return;
+    cancelXyzrenderLassoStroke();
+    if (!stroke.dragging) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function xyzrenderSheetItemFromEvent(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || target.closest('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle], #buret-toolbar, .buret-xyzrender-popover')) return null;
+    const item = target.closest('.buret-xyzrender-sheet-item');
+    if (!item || !item.querySelector('.buret-xyzrender-sheet-item-body svg')) return null;
+    return item;
+  }
+
+  function ensureXyzrenderLassoOverlay() {
+    if (xyzrenderLassoOverlay) return xyzrenderLassoOverlay;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('buret-molstar-lasso-overlay', 'buret-xyzrender-lasso-overlay');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML = '<polygon data-buret-lasso-fill></polygon><polyline data-buret-lasso-line></polyline>';
+    document.body.appendChild(svg);
+    xyzrenderLassoOverlay = svg;
+    return svg;
+  }
+
+  function updateXyzrenderLassoOverlay(points) {
+    const overlay = ensureXyzrenderLassoOverlay();
+    const value = points.map(point => `${Math.round(point.x)},${Math.round(point.y)}`).join(' ');
+    overlay.querySelector('[data-buret-lasso-fill]')?.setAttribute('points', value);
+    overlay.querySelector('[data-buret-lasso-line]')?.setAttribute('points', value);
+  }
+
+  function removeXyzrenderLassoOverlay() {
+    xyzrenderLassoOverlay?.remove();
+    xyzrenderLassoOverlay = null;
+  }
+
+  function cancelXyzrenderLassoStroke() {
+    xyzrenderLassoStroke = null;
+    removeXyzrenderLassoOverlay();
+  }
+
+  function finishXyzrenderLassoStroke(stroke) {
+    xyzrenderLassoStroke = null;
+    removeXyzrenderLassoOverlay();
+    const bounds = molstarLassoBounds(stroke.points);
+    if (stroke.points.length < MOLSTAR_LASSO_MIN_POINTS || bounds.width < MOLSTAR_LASSO_SAMPLE_STEP_PX || bounds.height < MOLSTAR_LASSO_SAMPLE_STEP_PX) {
+      setStatus('[web] xyzrender lasso was too small.');
+      return;
+    }
+    const selected = selectXyzrenderElementsInLasso(stroke.item, stroke.points, stroke.additive);
+    setStatus(selected > 0
+      ? `[web] Selected ${selected} xyzrender graphic${selected === 1 ? '' : 's'} with lasso.`
+      : '[web] xyzrender lasso did not match visible graphics.');
+    if (selected > 0) showXyzrenderSelectionContextMenu(stroke.item, bounds);
+  }
+
+  function selectXyzrenderElementsInLasso(item, points, additive) {
+    if (!additive) clearXyzrenderSelection();
+    let selected = 0;
+    for (const element of xyzrenderSelectableElements(item)) {
+      if (!svgElementIntersectsLasso(element, points, item)) continue;
+      markXyzrenderElementSelected(element);
+      selected += 1;
+    }
+    updateXyzrenderSelectionRoots();
+    return selected;
+  }
+
+  function xyzrenderSelectableElements(item) {
+    const svg = item?.querySelector?.('.buret-xyzrender-sheet-item-body svg');
+    if (!svg) return [];
+    return Array.from(svg.querySelectorAll('path,circle,ellipse,rect,line,polyline,polygon,text')).filter(element => {
+      if (!element.getBoundingClientRect) return false;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return false;
+      if (element.tagName.toLowerCase() === 'rect') {
+        const itemRect = item.getBoundingClientRect();
+        if (rect.width > itemRect.width * 0.82 && rect.height > itemRect.height * 0.82) return false;
+      }
+      const style = window.getComputedStyle(element);
+      return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || 1) > 0.01;
+    });
+  }
+
+  function svgElementIntersectsLasso(element, points, item) {
+    const rect = element.getBoundingClientRect();
+    const itemRect = item.getBoundingClientRect();
+    if (rect.right < itemRect.left || rect.left > itemRect.right || rect.bottom < itemRect.top || rect.top > itemRect.bottom) return false;
+    const candidates = [
+      { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+      { x: rect.left, y: rect.top },
+      { x: rect.right, y: rect.top },
+      { x: rect.right, y: rect.bottom },
+      { x: rect.left, y: rect.bottom }
+    ];
+    return candidates.some(point => molstarPointInPolygon(point, points));
+  }
+
+  function markXyzrenderElementSelected(element) {
+    ensureXyzrenderOriginalStyle(element);
+    element.classList.add('buret-xyzrender-svg-selection');
+    element.setAttribute('data-buret-xyzrender-selected', 'true');
+    xyzrenderSelectedElements.add(element);
+  }
+
+  function ensureXyzrenderOriginalStyle(element) {
+    xyzrenderStyledElements.add(element);
+    if (xyzrenderSelectionOriginals.has(element)) return;
+    xyzrenderSelectionOriginals.set(element, {
+      style: element.getAttribute('style'),
+      fill: element.getAttribute('fill'),
+      stroke: element.getAttribute('stroke'),
+      strokeWidth: element.getAttribute('stroke-width'),
+      opacity: element.getAttribute('opacity'),
+      display: element.getAttribute('display'),
+      visibility: element.getAttribute('visibility')
+    });
+  }
+
+  function restoreXyzrenderOriginalStyle(element) {
+    const original = xyzrenderSelectionOriginals.get(element);
+    if (!original) return;
+    restoreNullableAttribute(element, 'style', original.style);
+    restoreNullableAttribute(element, 'fill', original.fill);
+    restoreNullableAttribute(element, 'stroke', original.stroke);
+    restoreNullableAttribute(element, 'stroke-width', original.strokeWidth);
+    restoreNullableAttribute(element, 'opacity', original.opacity);
+    restoreNullableAttribute(element, 'display', original.display);
+    restoreNullableAttribute(element, 'visibility', original.visibility);
+  }
+
+  function restoreNullableAttribute(element, name, value) {
+    if (value == null) element.removeAttribute(name);
+    else element.setAttribute(name, value);
+  }
+
+  function hasXyzrenderSelection() {
+    cleanupXyzrenderSelectionSet();
+    return xyzrenderSelectedElements.size > 0;
+  }
+
+  function cleanupXyzrenderSelectionSet() {
+    for (const element of Array.from(xyzrenderSelectedElements)) {
+      if (!element.isConnected) xyzrenderSelectedElements.delete(element);
+    }
+    updateXyzrenderSelectionRoots();
+  }
+
+  function updateXyzrenderSelectionRoots() {
+    document.querySelectorAll('.buret-xyzrender-sheet-item').forEach(item => {
+      item.classList.toggle('has-xyzrender-selection', !!item.querySelector('[data-buret-xyzrender-selected="true"]'));
+    });
+  }
+
+  function clearXyzrenderSelection() {
+    for (const element of Array.from(xyzrenderSelectedElements)) {
+      element.classList.remove('buret-xyzrender-svg-selection');
+      element.removeAttribute('data-buret-xyzrender-selected');
+    }
+    xyzrenderSelectedElements.clear();
+    updateXyzrenderSelectionRoots();
+  }
+
+  function resetXyzrenderSelectionStyles() {
+    for (const element of Array.from(xyzrenderStyledElements)) {
+      if (element.isConnected) restoreXyzrenderOriginalStyle(element);
+      else xyzrenderStyledElements.delete(element);
+    }
+    updateXyzrenderSelectionRoots();
+  }
+
+  function dimUnselectedXyzrenderElements(item) {
+    const selected = new Set(Array.from(xyzrenderSelectedElements).filter(element => element.isConnected));
+    let dimmed = 0;
+    for (const element of xyzrenderSelectableElements(item)) {
+      ensureXyzrenderOriginalStyle(element);
+      if (selected.has(element)) {
+        const original = xyzrenderSelectionOriginals.get(element);
+        restoreNullableAttribute(element, 'opacity', original?.opacity ?? null);
+        continue;
+      }
+      element.setAttribute('opacity', '0.18');
+      dimmed += 1;
+    }
+    setStatus(`[web] Dimmed ${dimmed} unselected xyzrender graphic${dimmed === 1 ? '' : 's'}.`);
+    setTimeout(hideStatus, 900);
+  }
+
+  function applyXyzrenderSelectionControls(controls) {
+    const elements = Array.from(xyzrenderSelectedElements).filter(element => element.isConnected);
+    if (!elements.length) {
+      clearXyzrenderSelection();
+      return;
+    }
+    const color = nonEmptyText(controls?.molColor);
+    const opacity = Number.isFinite(Number(controls?.vdwOpacity))
+      ? Number(controls.vdwOpacity)
+      : (Number.isFinite(Number(controls?.fieldOpacity)) ? Number(controls.fieldOpacity) : null);
+    const strokeWidth = positiveNumberOrNull(controls?.bondWidth);
+    const hidden = controls?.hideBonds === true;
+    for (const element of elements) {
+      ensureXyzrenderOriginalStyle(element);
+      if (hidden) {
+        element.setAttribute('display', 'none');
+        continue;
+      }
+      element.removeAttribute('display');
+      element.removeAttribute('visibility');
+      if (color) applySvgElementColor(element, color);
+      if (opacity != null) element.setAttribute('opacity', String(Math.max(0, Math.min(1, opacity))));
+      if (strokeWidth != null && svgElementHasStroke(element)) element.setAttribute('stroke-width', String(strokeWidth));
+    }
+    setStatus(`[web] Applied xyzrender settings to ${elements.length} selected graphic${elements.length === 1 ? '' : 's'}.`);
+    setTimeout(hideStatus, 900);
+  }
+
+  function applySvgElementColor(element, color) {
+    const tag = element.tagName.toLowerCase();
+    const fill = element.getAttribute('fill');
+    const stroke = element.getAttribute('stroke');
+    const style = window.getComputedStyle(element);
+    if (tag === 'line' || tag === 'polyline') {
+      element.setAttribute('stroke', color);
+      return;
+    }
+    if (fill == null || fill.toLowerCase() !== 'none') {
+      const computedFill = String(style.fill || '').toLowerCase();
+      if (computedFill !== 'none') element.setAttribute('fill', color);
+    }
+    if (stroke == null || stroke.toLowerCase() !== 'none') {
+      const computedStroke = String(style.stroke || '').toLowerCase();
+      if (computedStroke !== 'none') element.setAttribute('stroke', color);
+    }
+  }
+
+  function svgElementHasStroke(element) {
+    const tag = element.tagName.toLowerCase();
+    if (tag === 'line' || tag === 'polyline' || tag === 'path' || tag === 'polygon') return true;
+    const stroke = element.getAttribute('stroke') || window.getComputedStyle(element).stroke;
+    return !!stroke && String(stroke).toLowerCase() !== 'none';
+  }
+
+  function showXyzrenderSelectionContextMenu(item, bounds) {
+    const x = Math.min(bounds.right, Math.max(bounds.left, bounds.left + bounds.width / 2));
+    const y = Math.min(bounds.bottom, Math.max(bounds.top, bounds.top + bounds.height / 2));
+    showXyzrenderSheetContextMenu({
+      preventDefault() {},
+      stopPropagation() {},
+      clientX: x,
+      clientY: y
+    }, item);
   }
 
   function molstarCurrentSelectionLociList() {
