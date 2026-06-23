@@ -728,7 +728,6 @@ function sanitizedExtraArguments(value: string | null, stripFieldArguments = fal
 }
 
 function resolveConfigArgument(preset: string, controls: ReturnType<typeof normalizeXyzrenderControls>) {
-  if (preset === "vdw") return "default";
   if (preset !== "custom") return preset;
   return controls.customConfigPath || "default";
 }
@@ -757,7 +756,7 @@ function buildXyzrenderArgs(
   if (controls.fog === true) args.push("--fog");
   if (controls.fog === false) args.push("--no-fog");
   if (controls.fogStrength) args.push("-F", String(controls.fogStrength));
-  if (preset === "vdw" || controls.showVdw === true) args.push("--vdw");
+  if (preset !== "vdw" && controls.showVdw === true) args.push("--vdw");
   if (controls.vdwOpacity) args.push("--vdw-opacity", String(controls.vdwOpacity));
   if (controls.vdwScale) args.push("--vdw-scale", String(controls.vdwScale));
   if (controls.hideBonds === true) args.push("--no-bonds");

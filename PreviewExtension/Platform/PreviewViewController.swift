@@ -6156,7 +6156,7 @@ private enum PreviewExternalXyzrenderWorker {
         if (normalizedControls["transparentBackground"] as? Bool) == true || transparent {
             arguments.append("--transparent")
         }
-        arguments += cliArguments(from: normalizedControls, inputPath: inputURL.path)
+        arguments += cliArguments(from: normalizedControls, inputPath: inputURL.path, preset: safePreset)
         arguments += sanitizedExtraArguments(
             (normalizedControls["extraArguments"] as? String) ?? extraArguments,
             stripFieldArguments: normalizedControls["fieldMode"] != nil
@@ -6756,7 +6756,7 @@ private enum PreviewExternalXyzrenderWorker {
         return result
     }
 
-    private static func cliArguments(from controls: [String: Any], inputPath: String) -> [String] {
+    private static func cliArguments(from controls: [String: Any], inputPath: String, preset: String) -> [String] {
         var arguments: [String] = []
         if let value = finitePositive(controls["canvasSize"]) {
             arguments += ["-S", formatCLI(value)]
@@ -6782,7 +6782,7 @@ private enum PreviewExternalXyzrenderWorker {
         if let value = finitePositive(controls["fogStrength"]) {
             arguments += ["-F", formatCLI(value)]
         }
-        if (controls["showVdw"] as? Bool) == true {
+        if preset != "vdw", (controls["showVdw"] as? Bool) == true {
             arguments.append("--vdw")
         }
         if let value = finitePositive(controls["vdwOpacity"]) {

@@ -1127,9 +1127,6 @@ fn build_xyzrender_args(
         args.push("--ref".to_string());
         args.push(path.display().to_string());
     }
-    if preset == "vdw" {
-        args.push("--vdw".to_string());
-    }
     if let Some(controls) = controls {
         if controls.transparent_background == Some(true) {
             args.push("--transparent".to_string());
@@ -1306,9 +1303,6 @@ fn resolve_config_argument<'a>(
     preset: &'static str,
     controls: Option<&'a XyzrenderControls>,
 ) -> &'a str {
-    if preset == "vdw" {
-        return "default";
-    }
     if preset != "custom" {
         return preset;
     }
@@ -2133,8 +2127,8 @@ mod tests {
 
         let vdw_args = build_xyzrender_args(&input, &output, "vdw", None, None, None);
         let vdw_joined = vdw_args.join(" ");
-        assert!(vdw_joined.contains("--config default"));
-        assert!(vdw_joined.contains("--vdw"));
+        assert!(vdw_joined.contains("--config vdw"));
+        assert!(!vdw_joined.contains("--vdw"));
     }
 
     #[test]
