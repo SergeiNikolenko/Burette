@@ -1868,6 +1868,9 @@ img.radix-menu-item-icon {
   border-radius: 5px;
   background: #fff;
 }
+.xyzrender-dock-preset-gallery .xyzrender-dock-preset-tile img {
+  margin-top: -10px;
+}
 .xyzrender-dock-display-grid .xyzrender-dock-preset-tile {
   grid-template-rows: 16px 50px;
   height: 76px;
@@ -1875,6 +1878,7 @@ img.radix-menu-item-icon {
 }
 .xyzrender-dock-display-grid .xyzrender-dock-preset-tile img {
   height: 50px;
+  margin-top: -5px;
 }
 .xyzrender-dock-vdw-grid .xyzrender-dock-preset-tile {
   height: 82px;
