@@ -11,6 +11,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use super::runtime::XyzrenderControls;
+#[cfg(test)]
+use super::runtime::XyzrenderRegion;
 
 const XYZRENDER_TIMEOUT: Duration = Duration::from_secs(20);
 const XYZRENDER_LOG_CAPTURE_BYTES: usize = 64 * 1024;
@@ -1104,6 +1106,31 @@ fn normalize_preset(value: Option<&str>) -> &'static str {
     }
 }
 
+fn normalize_atom_selector(value: &str) -> Option<String> {
+    let text = value.split_whitespace().collect::<String>();
+    if text.is_empty() {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for part in text.split(',') {
+        let mut bounds = part.split('-');
+        let start = bounds.next()?.parse::<usize>().ok()?;
+        let end = match bounds.next() {
+            Some(value) => value.parse::<usize>().ok()?,
+            None => start,
+        };
+        if bounds.next().is_some() || start == 0 || end == 0 || end < start {
+            return None;
+        }
+        parts.push(if start == end {
+            start.to_string()
+        } else {
+            format!("{start}-{end}")
+        });
+    }
+    Some(parts.join(","))
+}
+
 fn build_xyzrender_args(
     input_path: &Path,
     output_path: &Path,
@@ -1194,6 +1221,15 @@ fn build_xyzrender_args(
         {
             args.push("--supercell".to_string());
             args.extend(values.iter().map(ToString::to_string));
+        }
+        if let Some(regions) = controls.regions.as_ref() {
+            for region in regions {
+                if let Some(atoms) = normalize_atom_selector(&region.atoms) {
+                    args.push("--region".to_string());
+                    args.push(atoms);
+                    args.push(normalize_preset(Some(&region.preset)).to_string());
+                }
+            }
         }
         args.extend(sanitized_extra_arguments(
             controls.extra_arguments.as_deref(),
@@ -1471,6 +1507,8 @@ fn sanitized_extra_arguments(value: Option<&str>, strip_field_arguments: bool) -
         vec!["-o", "--output", "-go", "--gif-output", "--config", "--ref"];
     let mut blocked_value_count_flags = Vec::new();
     let mut blocked = blocked_value_flags.clone();
+    blocked.push("--region");
+    blocked_value_count_flags.push(("--region", 2usize));
     if strip_field_arguments {
         blocked_value_flags.extend([
             "--esp",
@@ -2081,7 +2119,11 @@ mod tests {
             field_cmap_min: Some(-0.2),
             field_cmap_max: Some(0.4),
             custom_config_path: Some("/tmp/custom.json".into()),
-            extra_arguments: Some("--output hacked.svg --axis 111 --measure d --opacity 0.9 --mo-colors red blue --cmap-range -1 1".into()),
+            extra_arguments: Some("--output hacked.svg --axis 111 --measure d --opacity 0.9 --mo-colors red blue --cmap-range -1 1 --region 7 flat".into()),
+            regions: Some(vec![XyzrenderRegion {
+                atoms: "1-3, 5".into(),
+                preset: "tube".into(),
+            }]),
         };
 
         let args = build_xyzrender_args(
@@ -2105,6 +2147,7 @@ mod tests {
         assert!(joined.contains("--no-ghosts"));
         assert!(joined.contains("--axes"));
         assert!(joined.contains("--supercell 2 3 4"));
+        assert!(joined.contains("--region 1-3,5 tube"));
         assert!(joined.contains("--mo"));
         assert!(joined.contains("--iso 0.35"));
         assert!(joined.contains("--opacity 0.55"));
@@ -2118,6 +2161,7 @@ mod tests {
         assert!(!joined.contains("--opacity 0.9"));
         assert!(!joined.contains("--mo-colors red blue"));
         assert!(!joined.contains("--cmap-range -1 1"));
+        assert!(!joined.contains("--region 7 flat"));
         assert!(!joined.contains("hacked.svg"));
 
         controls.field_iso = Some(0.0);
