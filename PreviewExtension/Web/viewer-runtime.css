@@ -529,8 +529,8 @@ body .msp-plugin .msp-viewport-controls-buttons {
   display: flex;
   flex-direction: column;
   gap: var(--buret-control-island-gap);
-  width: 33px;
-  margin-left: -3px;
+  width: 36px;
+  margin-left: -5px;
   padding: 0;
   border: 1px solid var(--buret-toolbar-border) !important;
   border-radius: 12px;
@@ -572,8 +572,8 @@ body .msp-plugin .msp-viewport-controls-buttons button {
   display: grid !important;
   place-items: center;
   box-sizing: border-box;
-  width: 33px !important;
-  min-width: 33px !important;
+  width: 36px !important;
+  min-width: 36px !important;
   height: 30px !important;
   min-height: 30px !important;
   border: 0 !important;
