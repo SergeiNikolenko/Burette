@@ -610,7 +610,12 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
           controls={controls}
           onSelect={(mode) => {
             const nextMode: XyzrenderControls["hullMode"] = controls.hullMode === mode ? "off" : mode;
-            const nextControls = { ...controls, hullMode: nextMode, hullAtoms: null };
+            const nextControls = {
+              ...controls,
+              hullMode: nextMode,
+              hullAtoms: null,
+              hullOpacity: nextMode === "off" ? null : (controls.hullOpacity ?? 0.45),
+            };
             setControls(nextControls);
             apply(nextControls, preset);
           }}
@@ -619,7 +624,13 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
           controls={controls}
           onSelect={(mode) => {
             const nextMode: XyzrenderControls["hullMode"] = controls.hullMode === mode ? "off" : mode;
-            const nextControls = { ...controls, hullMode: nextMode, hullAtoms: null };
+            const nextControls = {
+              ...controls,
+              hullMode: nextMode,
+              hullAtoms: null,
+              hullOpacity: nextMode === "off" ? null : (controls.hullOpacity ?? 0.45),
+              poreOpacity: nextMode === "off" ? null : (controls.poreOpacity ?? 0.6),
+            };
             setControls(nextControls);
             apply(nextControls, preset);
           }}
