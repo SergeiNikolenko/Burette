@@ -114,6 +114,9 @@
   const xyzrenderSelectionOriginals = new WeakMap();
   const xyzrenderActionUndoStack = [];
   const xyzrenderActionRedoStack = [];
+  const XYZRENDER_HISTORY_STATE_KEY = '__buretteXyzrenderHistoryIndex';
+  let xyzrenderSystemHistoryIndex = 0;
+  let xyzrenderSystemHistoryInstalled = false;
   let molstarSelectionPreserveClick = null;
   let molstarLassoSuppressClickUntil = 0;
   let molstarMoleculePreview = null;
@@ -3296,18 +3299,18 @@
     window.__buretteMolstarEditUndoShortcutsInstalled = true;
     document.addEventListener('keydown', event => {
       const key = String(event.key || '').toLowerCase();
-      if (key !== 'z' || event.altKey || !(event.metaKey || event.ctrlKey)) return;
+      if (!['z', 'я'].includes(key) || event.altKey || !(event.metaKey || event.ctrlKey)) return;
       if (!isMolstarEditUndoKeyboardTarget(event.target)) return;
       if (event.shiftKey && xyzrenderActionRedoStack.length) {
         event.preventDefault();
         event.stopPropagation();
-        redoXyzrenderLastAction();
+        goForwardXyzrenderSystemHistory();
         return;
       }
       if (!event.shiftKey && xyzrenderActionUndoStack.length) {
         event.preventDefault();
         event.stopPropagation();
-        undoXyzrenderLastAction();
+        goBackXyzrenderSystemHistory();
         return;
       }
       if (event.shiftKey || !molstarEditUndoStack.length) return;
@@ -5233,13 +5236,6 @@
     actions.appendChild(button);
   }
 
-  function appendXyzrenderMenuSeparator(actions) {
-    const separator = document.createElement('div');
-    separator.className = 'buret-molecule-context-menu-separator';
-    separator.setAttribute('role', 'separator');
-    actions.appendChild(separator);
-  }
-
   function showXyzrenderSheetContextMenu(event, item) {
     event.preventDefault();
     event.stopPropagation();
@@ -5325,22 +5321,6 @@
         hideXyzrenderSheetContextMenu();
       });
     }
-    if (xyzrenderActionUndoStack.length || xyzrenderActionRedoStack.length) {
-      appendXyzrenderMenuSeparator(actions);
-      if (xyzrenderActionUndoStack.length) {
-        appendXyzrenderMenuButton(actions, 'Undo', () => {
-          undoXyzrenderLastAction();
-          hideXyzrenderSheetContextMenu();
-        });
-      }
-      if (xyzrenderActionRedoStack.length) {
-        appendXyzrenderMenuButton(actions, 'Redo', () => {
-          redoXyzrenderLastAction();
-          hideXyzrenderSheetContextMenu();
-        });
-      }
-    }
-
     document.body.appendChild(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
   }
@@ -5364,7 +5344,6 @@
       .buret-external-artifact-stage { position: absolute; inset: 0; transform: translate(0px, 0px) scale(1); transform-origin: 50% 50%; will-change: transform; cursor: grab; }
       .buret-external-artifact-stage.dragging { cursor: grabbing; }
       .buret-external-artifact-root.sheet-drop-active::after { content: "Drop onto xyzrender sheet"; position: absolute; inset: 14px; z-index: 36; border: 2px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); display: flex; align-items: center; justify-content: center; font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
-      .buret-xyzrender-context-menu .buret-molecule-context-menu-separator { height: 1px; margin: 5px 0; background: color-mix(in srgb, var(--buret-toolbar-color, rgba(255,255,255,0.92)) 16%, transparent); }
       .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: auto; }
       .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; --buret-rotate-radius: 76px; --buret-rotate-lift: 24px; --buret-rotate-handle-scale: 1; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
       .buret-xyzrender-sheet-item:not(.buret-xyzrender-sheet-item-base) { z-index: 2; }
@@ -9493,15 +9472,59 @@
     cleanupXyzrenderSelectionSet();
   }
 
+  function installXyzrenderSystemHistory() {
+    if (xyzrenderSystemHistoryInstalled) return;
+    xyzrenderSystemHistoryInstalled = true;
+    window.addEventListener('popstate', event => {
+      const nextIndex = xyzrenderSystemHistoryIndexFromState(event.state);
+      if (nextIndex < xyzrenderSystemHistoryIndex) {
+        undoXyzrenderLastAction({ fromSystemHistory: true });
+      } else if (nextIndex > xyzrenderSystemHistoryIndex) {
+        redoXyzrenderLastAction({ fromSystemHistory: true });
+      }
+      xyzrenderSystemHistoryIndex = nextIndex;
+    });
+  }
+
+  function xyzrenderSystemHistoryIndexFromState(state) {
+    const value = state && typeof state === 'object' ? Number(state[XYZRENDER_HISTORY_STATE_KEY]) : 0;
+    return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  }
+
+  function pushXyzrenderSystemHistoryEntry() {
+    installXyzrenderSystemHistory();
+    try {
+      const current = history.state && typeof history.state === 'object' ? history.state : {};
+      const nextIndex = xyzrenderSystemHistoryIndex + 1;
+      history.pushState({ ...current, [XYZRENDER_HISTORY_STATE_KEY]: nextIndex }, '', window.location.href);
+      xyzrenderSystemHistoryIndex = nextIndex;
+    } catch (_) {}
+  }
+
+  function goBackXyzrenderSystemHistory() {
+    installXyzrenderSystemHistory();
+    if (xyzrenderSystemHistoryIndex > 0) {
+      history.back();
+      return;
+    }
+    undoXyzrenderLastAction({ fromSystemHistory: true });
+  }
+
+  function goForwardXyzrenderSystemHistory() {
+    installXyzrenderSystemHistory();
+    history.forward();
+  }
+
   function pushXyzrenderActionHistory(item, label) {
     const snapshot = captureXyzrenderActionSnapshot(item, label);
     if (!snapshot.elements.length) return;
+    pushXyzrenderSystemHistoryEntry();
     xyzrenderActionUndoStack.push(snapshot);
     if (xyzrenderActionUndoStack.length > 50) xyzrenderActionUndoStack.shift();
     xyzrenderActionRedoStack.length = 0;
   }
 
-  function undoXyzrenderLastAction() {
+  function undoXyzrenderLastAction(options = {}) {
     const snapshot = xyzrenderActionUndoStack.pop();
     if (!snapshot) {
       setStatus('[web] Nothing to undo.');
@@ -9512,10 +9535,11 @@
     restoreXyzrenderActionSnapshot(snapshot);
     setStatus(`[web] Undid xyzrender ${snapshot.label}.`);
     setTimeout(hideStatus, 900);
+    if (!options.fromSystemHistory) goBackXyzrenderSystemHistory();
     return true;
   }
 
-  function redoXyzrenderLastAction() {
+  function redoXyzrenderLastAction(options = {}) {
     const snapshot = xyzrenderActionRedoStack.pop();
     if (!snapshot) {
       setStatus('[web] Nothing to redo.');
@@ -9526,6 +9550,7 @@
     restoreXyzrenderActionSnapshot(snapshot);
     setStatus(`[web] Redid xyzrender ${snapshot.label}.`);
     setTimeout(hideStatus, 900);
+    if (!options.fromSystemHistory) goForwardXyzrenderSystemHistory();
     return true;
   }
 
