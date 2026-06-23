@@ -17,6 +17,10 @@
   const MOLSTAR_TOUCH_CONTEXT_MENU_MOVE_THRESHOLD_PX = 12;
   const MOLSTAR_TOUCH_PICK_RADIUS_PX = 18;
   const MOLSTAR_TOUCH_PICK_STEP_PX = 6;
+  const MOLSTAR_LASSO_MIN_POINTS = 4;
+  const MOLSTAR_LASSO_MIN_DISTANCE_PX = 3;
+  const MOLSTAR_LASSO_SAMPLE_STEP_PX = 8;
+  const MOLSTAR_LASSO_SAMPLE_LIMIT = 4500;
   const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 260;
   const MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300;
   const MOLSTAR_EDIT_HISTORY_LIMIT = 20;
@@ -99,6 +103,11 @@
   let molstarSelectionPreviewCleanup = null;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
+  let molstarLassoEnabled = false;
+  let molstarLassoStroke = null;
+  let molstarLassoOverlay = null;
+  let molstarSelectionPreserveClick = null;
+  let molstarLassoSuppressClickUntil = 0;
   let molstarMoleculePreview = null;
   let molstarMoleculePreviewFrame = 0;
   let molstarMoleculePreviewDrag = null;
@@ -1373,6 +1382,7 @@
     const generate3dButton = document.querySelector('[data-buret-action="generate-3d-conformer"]');
     const generate3dMenu = document.querySelector('[data-buret-generate-3d-menu]');
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
+    const lassoButton = toolbar.querySelector('[data-buret-action="molstar-lasso"]');
     control.classList.toggle('visible', canSwitchRenderer);
     const molstarStyleSlot = toolbar.querySelector('[data-buret-molstar-style-slot]');
     const molstarStyleSelect = toolbar.querySelector('[data-buret-molstar-style]');
@@ -1381,6 +1391,11 @@
       populateMolstarStyleSelect(molstarStyleSelect);
       molstarStyleSelect.value = configuredMolstarStyle(config);
       molstarStyleSelect.disabled = renderer !== 'molstar';
+    }
+    lassoButton?.classList.toggle('hidden', renderer !== 'molstar');
+    if (lassoButton) {
+      lassoButton.disabled = renderer !== 'molstar';
+      lassoButton.setAttribute('aria-hidden', renderer === 'molstar' ? 'false' : 'true');
     }
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     presetSlot?.classList.remove('visible');
@@ -2258,9 +2273,12 @@
     const molstarStyleSelect = toolbar.querySelector('[data-buret-molstar-style]');
     const tuneButton = toolbar.querySelector('[data-buret-action="xyzrender-tune"]');
     const popover = toolbar.querySelector('[data-buret-xyzrender-popover]');
+    const lassoButton = toolbar.querySelector('[data-buret-action="molstar-lasso"]');
     const external = normalized === 'xyzrender-external';
     molstarStyleSlot?.classList.toggle('visible', !external);
     if (molstarStyleSelect) molstarStyleSelect.disabled = external;
+    lassoButton?.classList.toggle('hidden', external);
+    if (lassoButton) lassoButton.disabled = external;
     presetSlot?.classList.toggle('visible', external);
     if (preset) preset.disabled = !external;
     tuneButton?.classList.toggle('hidden', !external);
@@ -3218,6 +3236,10 @@
     bindSaveModifiedStructureButton(toolbar);
     installMolstarEditUndoShortcuts();
     bindMolstarStyleControls(toolbar);
+    bindMolstarLassoButton(toolbar);
+    bindMolstarLassoKeyboardButton(toolbar);
+    installMolstarLassoSelection();
+    installMolstarToolbarActionDelegates();
     bindXyzrenderControls(toolbar);
     const sdfPoseButton = toolbar.querySelector('[data-buret-action="sdf-poses"]');
     if (sdfPoseButton && sdfPoseButton.dataset.bound !== '1') {
@@ -3344,6 +3366,70 @@
     toolbar.dataset.molstarStyleBound = '1';
   }
 
+  function bindMolstarLassoButton(toolbar) {
+    const button = toolbar?.querySelector('[data-buret-action="molstar-lasso"]');
+    if (!button || button.dataset.bound === '1') return;
+    button.dataset.bound = '1';
+    updateMolstarLassoButton();
+  }
+
+  function installMolstarToolbarActionDelegates() {
+    if (window.__buretteMolstarToolbarActionDelegatesInstalled) return;
+    window.__buretteMolstarToolbarActionDelegatesInstalled = true;
+    document.addEventListener('pointerdown', event => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || event.button !== 0) return;
+      const lassoButton = target.closest('[data-buret-action="molstar-lasso"]');
+      if (lassoButton) {
+        molstarLassoSuppressClickUntil = Date.now() + 500;
+        event.preventDefault();
+        event.stopPropagation();
+        setMolstarLassoEnabled(!molstarLassoEnabled);
+        return;
+      }
+    }, true);
+    document.addEventListener('click', event => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      if (target.closest('[data-buret-action="molstar-lasso"]') && Date.now() < molstarLassoSuppressClickUntil) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, true);
+  }
+
+  function bindMolstarLassoKeyboardButton(toolbar) {
+    const button = toolbar?.querySelector('[data-buret-action="molstar-lasso"]');
+    if (!button || button.dataset.keyboardBound === '1') return;
+    button.dataset.keyboardBound = '1';
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (Date.now() < molstarLassoSuppressClickUntil) return;
+      setMolstarLassoEnabled(!molstarLassoEnabled);
+    });
+  }
+
+  function updateMolstarLassoButton() {
+    const button = document.querySelector('#buret-toolbar [data-buret-action="molstar-lasso"]');
+    if (!button) return;
+    button.classList.toggle('active', molstarLassoEnabled);
+    button.setAttribute('aria-pressed', molstarLassoEnabled ? 'true' : 'false');
+    const label = molstarLassoEnabled ? 'Exit lasso select' : 'Lasso select';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    setTooltipLabel(button, molstarLassoEnabled ? 'Drag over visible residues to select' : 'Lasso select visible residues');
+  }
+
+  function setMolstarLassoEnabled(enabled) {
+    const next = enabled === true;
+    molstarLassoEnabled = next;
+    if (!next) cancelMolstarLassoStroke();
+    document.body?.classList.toggle('buret-molstar-lasso-active', molstarLassoEnabled);
+    updateMolstarLassoButton();
+    setStatus(molstarLassoEnabled ? '[web] Lasso selection enabled.' : '[web] Lasso selection disabled.');
+  }
+
   function bindXyzrenderControls(toolbar) {
     if (!toolbar || toolbar.dataset.xyzrenderControlsBound === '1') return;
     toolbar.querySelector('[data-buret-xyzrender-preset]')?.addEventListener('change', () => updateXyzrenderFormVisibility(toolbar));
@@ -3421,6 +3507,7 @@
   function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
     if (collapsed) setXyzrenderPopoverVisibility(toolbar, false);
     toolbar.classList.toggle('collapsed', collapsed);
+    document.body?.classList.toggle('buret-toolbar-collapsed', collapsed);
     const grip = toolbar.querySelector('[data-drag-handle]');
     if (grip) {
       grip.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
@@ -3438,6 +3525,23 @@
     repositionToolbar(toolbar);
     updateFloatingLayoutOffsets();
     scheduleViewerResize(viewer, 40);
+  }
+
+  function activateToolbarGrip(toolbar, viewer) {
+    if (toolbar.classList.contains('buret-suppressed-by-molstar-panel')) {
+      toolbar.dataset.molstarPanelSuppressOverride = '1';
+      toolbar.classList.remove('buret-suppressed-by-molstar-panel');
+      if (toolbar.classList.contains('collapsed')) {
+        setToolbarCollapsed(toolbar, false, viewer);
+      } else {
+        toolbar.dataset.defaultPosition = '1';
+        repositionToolbar(toolbar);
+        updateFloatingLayoutOffsets();
+        scheduleViewerResize(viewer, 40);
+      }
+      return;
+    }
+    setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), viewer);
   }
 
   function initToolbarDrag(toolbar) {
@@ -3473,7 +3577,7 @@
         ignoreNextGripClick = false;
         return;
       }
-      setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), resizeState.viewer);
+      activateToolbarGrip(toolbar, resizeState.viewer);
     });
     toolbar.addEventListener('pointerdown', event => {
       if (event.target.closest('[data-buret-toggle]')) return;
@@ -3517,7 +3621,7 @@
       drag = null;
       if (shouldToggle) {
         ignoreNextGripClick = true;
-        setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), resizeState.viewer);
+        activateToolbarGrip(toolbar, resizeState.viewer);
       } else if (shouldSavePosition) {
         ignoreNextGripClick = startedOnHandle;
         toolbar.dataset.defaultPosition = '0';
@@ -3621,18 +3725,30 @@
     const panelState = refreshMolstarViewportPanelState();
     const toolbar = document.getElementById('buret-toolbar');
     const toolbarRect = toolbar && !panelState.open ? toolbar.getBoundingClientRect() : null;
+    root.style.setProperty('--buret-toolbar-current-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : '0px');
+    root.style.setProperty('--buret-toolbar-current-height', toolbarRect ? Math.ceil(toolbarRect.height) + 'px' : '0px');
+    root.style.setProperty('--buret-selection-controls-left', toolbarRect ? Math.ceil(toolbarRect.left) + 'px' : `${TOOLBAR_MARGIN}px`);
+    root.style.setProperty('--buret-selection-controls-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : 'min(430px, calc(100vw - 24px))');
+    root.style.setProperty('--buret-selection-controls-max-width', toolbarRect ? Math.max(180, Math.floor(window.innerWidth - toolbarRect.left - TOOLBAR_MARGIN)) + 'px' : 'calc(100vw - 24px)');
+    root.style.setProperty('--buret-selection-controls-top', toolbarRect ? Math.ceil(toolbarRect.bottom - 1) + 'px' : `calc(var(--buret-toolbar-safe-top) + 48px)`);
     const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
     const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
     const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
     const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row');
+    document.body?.classList.toggle('buret-selection-toolbar-open', !!selectionToolbarRect && !!toolbarRect);
     const mainRect = visibleRect('.msp-plugin .msp-layout-main');
     const mainTop = mainRect ? mainRect.top : 0;
     const defaultViewportTop = mainTop + 64;
     const panelOpenTop = selectionToolbarRect
       ? Math.ceil(selectionToolbarRect.bottom + FLOATING_LAYOUT_GAP)
       : defaultViewportTop;
+    const controlsOpenTop = selectionToolbarRect
+      ? Math.max(defaultViewportTop, panelOpenTop)
+      : defaultViewportTop;
     const viewportControlsViewportTop = panelState.open
       ? Math.max(defaultViewportTop, panelOpenTop)
+      : selectionToolbarRect
+      ? controlsOpenTop
       : toolbarRect && (!viewportControlsRect || rectsOverlapX(toolbarRect, viewportControlsRect, 18))
       ? Math.max(defaultViewportTop, Math.ceil(toolbarBottom))
       : defaultViewportTop;
@@ -3699,12 +3815,15 @@
     if (panelOpen !== molstarViewportPanelOpen || selectionOpen !== molstarSelectionControlsOpen) {
       molstarViewportPanelOpen = panelOpen;
       molstarSelectionControlsOpen = selectionOpen;
-      const suppressToolbar = panelOpen || selectionOpen;
+      const suppressToolbar = panelOpen;
       document.body?.classList.toggle('buret-molstar-viewport-panel-open', panelOpen);
       document.body?.classList.toggle('buret-molstar-selection-controls-open', selectionOpen);
       const toolbar = document.getElementById('buret-toolbar');
       if (toolbar) {
-        toolbar.classList.toggle('buret-suppressed-by-molstar-panel', suppressToolbar);
+        if (!suppressToolbar) {
+          delete toolbar.dataset.molstarPanelSuppressOverride;
+        }
+        toolbar.classList.toggle('buret-suppressed-by-molstar-panel', suppressToolbar && toolbar.dataset.molstarPanelSuppressOverride !== '1');
         if (toolbar.dataset.defaultPosition === '1') {
           requestAnimationFrame(() => applyDefaultToolbarPosition(toolbar));
         }
@@ -8503,6 +8622,22 @@
     return target.closest('canvas') || target.closest('.msp-plugin')?.querySelector('canvas') || null;
   }
 
+  function molstarPickFromCanvasPoint(canvas, clientX, clientY) {
+    const canvas3d = activeViewer?.plugin?.canvas3d;
+    if (!canvas || !canvas3d || typeof canvas3d.identify !== 'function' || typeof canvas3d.getLoci !== 'function') return null;
+    const rect = canvas.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
+    try {
+      const picking = canvas3d.identify([clientX - rect.left, clientY - rect.top]);
+      const pick = picking?.id ? canvas3d.getLoci(picking.id) : null;
+      if (!pick?.loci || molstarLociIsEmpty(pick.loci)) return null;
+      return { ...pick, position: picking.position };
+    } catch (error) {
+      debug('Mol* canvas pick failed: ' + (error?.message || String(error)));
+      return null;
+    }
+  }
+
   function molstarContextPickFromEvent(event, options = {}) {
     const canvas3d = activeViewer?.plugin?.canvas3d;
     if (!canvas3d || typeof canvas3d.identify !== 'function' || typeof canvas3d.getLoci !== 'function') return null;
@@ -8532,10 +8667,9 @@
         const x = event.clientX + dx;
         const y = event.clientY + dy;
         if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue;
-        const picking = canvas3d.identify([x - rect.left, y - rect.top]);
-        const pick = picking?.id ? canvas3d.getLoci(picking.id) : null;
+        const pick = molstarPickFromCanvasPoint(canvas, x, y);
         if (!pick?.loci || molstarLociIsEmpty(pick.loci)) continue;
-        return { ...pick, position: picking.position, touchAdjusted: dx !== 0 || dy !== 0 };
+        return { ...pick, touchAdjusted: dx !== 0 || dy !== 0 };
       }
       return null;
     } catch (error) {
@@ -8552,6 +8686,281 @@
     return molstarContextEventIsTouch(event)
       ? { radiusPx: MOLSTAR_TOUCH_PICK_RADIUS_PX, stepPx: MOLSTAR_TOUCH_PICK_STEP_PX }
       : {};
+  }
+
+  function installMolstarLassoSelection() {
+    if (window.__buretteMolstarLassoSelectionInstalled) return;
+    window.__buretteMolstarLassoSelectionInstalled = true;
+    document.addEventListener('pointerdown', onMolstarLassoPointerDown, true);
+    document.addEventListener('pointermove', onMolstarLassoPointerMove, true);
+    document.addEventListener('pointerup', onMolstarLassoPointerUp, true);
+    document.addEventListener('pointercancel', onMolstarLassoPointerCancel, true);
+    document.addEventListener('keydown', onMolstarLassoKeyDown, true);
+    window.addEventListener('resize', cancelMolstarLassoStroke);
+  }
+
+  function onMolstarLassoKeyDown(event) {
+    if (event.key !== 'Escape') return;
+    if (molstarLassoStroke) {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelMolstarLassoStroke();
+      setStatus('[web] Lasso selection canceled.');
+      return;
+    }
+    if (molstarLassoEnabled) {
+      event.preventDefault();
+      event.stopPropagation();
+      setMolstarLassoEnabled(false);
+    }
+  }
+
+  function onMolstarLassoPointerDown(event) {
+    if (!molstarLassoEnabled || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
+    const canvas = molstarContextCanvasFromEvent(event);
+    if (!canvas) return;
+    hideMolstarContextMenu();
+    hideMolstarMoleculePreview();
+    molstarLassoStroke = {
+      pointerId: event.pointerId,
+      canvas,
+      additive: event.shiftKey || event.metaKey || event.ctrlKey,
+      dragging: false,
+      points: [{ x: event.clientX, y: event.clientY }]
+    };
+    try { canvas.setPointerCapture?.(event.pointerId); } catch (_) {}
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function onMolstarLassoPointerMove(event) {
+    const stroke = molstarLassoStroke;
+    if (!stroke || event.pointerId !== stroke.pointerId) return;
+    const last = stroke.points[stroke.points.length - 1];
+    if (Math.hypot(event.clientX - last.x, event.clientY - last.y) >= MOLSTAR_LASSO_MIN_DISTANCE_PX) {
+      if (!stroke.dragging) {
+        stroke.dragging = true;
+        hideMolstarContextMenu();
+        hideMolstarMoleculePreview();
+        ensureMolstarLassoOverlay();
+        try { stroke.canvas.setPointerCapture?.(event.pointerId); } catch (_) {}
+      }
+      stroke.points.push({ x: event.clientX, y: event.clientY });
+      updateMolstarLassoOverlay(stroke.points);
+    }
+    if (!stroke.dragging) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function onMolstarLassoPointerUp(event) {
+    const stroke = molstarLassoStroke;
+    if (!stroke || event.pointerId !== stroke.pointerId) return;
+    if (!stroke.dragging) {
+      molstarLassoStroke = null;
+      return;
+    }
+    if (Math.hypot(event.clientX - stroke.points[0].x, event.clientY - stroke.points[0].y) >= MOLSTAR_LASSO_MIN_DISTANCE_PX) {
+      stroke.points.push({ x: event.clientX, y: event.clientY });
+    }
+    finishMolstarLassoStroke(stroke);
+    try { stroke.canvas.releasePointerCapture?.(event.pointerId); } catch (_) {}
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function onMolstarLassoPointerCancel(event) {
+    const stroke = molstarLassoStroke;
+    if (!stroke || event.pointerId !== stroke.pointerId) return;
+    cancelMolstarLassoStroke();
+    if (!stroke.dragging) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function ensureMolstarLassoOverlay() {
+    if (molstarLassoOverlay) return molstarLassoOverlay;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('buret-molstar-lasso-overlay');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML = '<polygon data-buret-lasso-fill></polygon><polyline data-buret-lasso-line></polyline>';
+    document.body.appendChild(svg);
+    molstarLassoOverlay = svg;
+    return svg;
+  }
+
+  function updateMolstarLassoOverlay(points) {
+    const overlay = ensureMolstarLassoOverlay();
+    const value = points.map(point => `${Math.round(point.x)},${Math.round(point.y)}`).join(' ');
+    overlay.querySelector('[data-buret-lasso-fill]')?.setAttribute('points', value);
+    overlay.querySelector('[data-buret-lasso-line]')?.setAttribute('points', value);
+  }
+
+  function removeMolstarLassoOverlay() {
+    molstarLassoOverlay?.remove();
+    molstarLassoOverlay = null;
+  }
+
+  function cancelMolstarLassoStroke() {
+    molstarLassoStroke = null;
+    removeMolstarLassoOverlay();
+  }
+
+  function finishMolstarLassoStroke(stroke) {
+    molstarLassoStroke = null;
+    removeMolstarLassoOverlay();
+    const bounds = molstarLassoBounds(stroke.points);
+    if (stroke.points.length < MOLSTAR_LASSO_MIN_POINTS || bounds.width < MOLSTAR_LASSO_SAMPLE_STEP_PX || bounds.height < MOLSTAR_LASSO_SAMPLE_STEP_PX) {
+      setStatus('[web] Lasso selection was too small.');
+      return;
+    }
+    const picks = molstarLassoPicks(stroke);
+    if (!picks.length) {
+      setStatus('[web] No visible atoms inside lasso.');
+      return;
+    }
+    const selected = applyMolstarLassoPicks(picks, stroke.additive);
+    setStatus(selected > 0
+      ? `[web] Selected ${selected} visible target${selected === 1 ? '' : 's'} with lasso.`
+      : '[web] Lasso selection did not match selectable atoms.');
+  }
+
+  function molstarLassoBounds(points) {
+    const xs = points.map(point => point.x);
+    const ys = points.map(point => point.y);
+    const left = Math.min(...xs);
+    const right = Math.max(...xs);
+    const top = Math.min(...ys);
+    const bottom = Math.max(...ys);
+    return { left, right, top, bottom, width: right - left, height: bottom - top };
+  }
+
+  function molstarPointInPolygon(point, polygon) {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const pi = polygon[i];
+      const pj = polygon[j];
+      const intersects = ((pi.y > point.y) !== (pj.y > point.y)) &&
+        point.x < ((pj.x - pi.x) * (point.y - pi.y)) / ((pj.y - pi.y) || 1e-6) + pi.x;
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  }
+
+  function molstarLassoPickKey(pick, fallback) {
+    const atom = molstarContextAtomFromLoci(pick?.loci);
+    if (atom) {
+      return [
+        atom.model?.id || atom.model?.entryId || 'model',
+        atom.label_entity_id || '',
+        atom.label_asym_id || atom.auth_asym_id || '',
+        atom.label_seq_id ?? atom.auth_seq_id ?? '',
+        atom.label_comp_id || atom.auth_comp_id || '',
+        atom.atomIndex ?? ''
+      ].join(':');
+    }
+    return `${pick?.loci?.kind || 'loci'}:${fallback}`;
+  }
+
+  function molstarLassoPicks(stroke) {
+    const bounds = molstarLassoBounds(stroke.points);
+    const picks = [];
+    const seen = new Set();
+    let sampled = 0;
+    const addPick = (x, y) => {
+      if (sampled >= MOLSTAR_LASSO_SAMPLE_LIMIT) return;
+      sampled += 1;
+      const pick = molstarPickFromCanvasPoint(stroke.canvas, x, y);
+      if (!pick?.loci) return;
+      const key = molstarLassoPickKey(pick, `${Math.round(x)}:${Math.round(y)}`);
+      if (seen.has(key)) return;
+      seen.add(key);
+      picks.push(pick);
+    };
+    for (const point of stroke.points) {
+      addPick(point.x, point.y);
+    }
+    for (let y = bounds.top; y <= bounds.bottom; y += MOLSTAR_LASSO_SAMPLE_STEP_PX) {
+      for (let x = bounds.left; x <= bounds.right; x += MOLSTAR_LASSO_SAMPLE_STEP_PX) {
+        if (molstarPointInPolygon({ x, y }, stroke.points)) addPick(x, y);
+      }
+    }
+    return picks;
+  }
+
+  function applyMolstarLassoPicks(picks, additive) {
+    const selects = activeViewer?.plugin?.managers?.interactivity?.lociSelects;
+    const selection = activeViewer?.plugin?.managers?.structure?.selection;
+    const canSelect = typeof selects?.select === 'function';
+    const canSelectStructure = typeof selection?.fromLoci === 'function';
+    if (!canSelect && !canSelectStructure) return 0;
+    if (!additive) {
+      selects?.deselectAll?.();
+      selection?.clear?.();
+    }
+    let selected = 0;
+    for (const pick of picks) {
+      const loci = molstarContextNormalizeLoci(pick?.loci, 'residue');
+      if (!loci || molstarLociIsEmpty(loci)) continue;
+      if (canSelect) selects.select({ loci }, true);
+      if (canSelectStructure) selection.fromLoci('add', loci, true);
+      selected += 1;
+    }
+    if (selected > 0) scheduleMolstarSelectedMoleculePreview();
+    return selected;
+  }
+
+  function molstarCurrentSelectionLociList() {
+    return molstarContextStructures()
+      .map(structure => molstarContextSelectionLociForStructure(structure))
+      .filter(loci => loci && !molstarLociIsEmpty(loci));
+  }
+
+  function restoreMolstarSelectionLociList(lociList) {
+    if (!Array.isArray(lociList) || !lociList.length) return false;
+    const selects = activeViewer?.plugin?.managers?.interactivity?.lociSelects;
+    const selection = activeViewer?.plugin?.managers?.structure?.selection;
+    const canSelect = typeof selects?.select === 'function';
+    const canSelectStructure = typeof selection?.fromLoci === 'function';
+    if (!canSelect && !canSelectStructure) return false;
+    selects?.deselectAll?.();
+    selection?.clear?.();
+    for (const loci of lociList) {
+      if (!loci || molstarLociIsEmpty(loci)) continue;
+      if (canSelect) selects.select({ loci }, false);
+      if (canSelectStructure) selection.fromLoci('add', loci, false);
+    }
+    scheduleMolstarSelectedMoleculePreview();
+    return true;
+  }
+
+  function beginMolstarEmptyClickSelectionPreserve(event) {
+    if (molstarLassoEnabled || molstarLassoStroke || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
+    const lociList = molstarCurrentSelectionLociList();
+    if (!lociList.length) return;
+    if (molstarContextPickFromEvent(event, molstarContextTouchPickOptions(event))) return;
+    molstarSelectionPreserveClick = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lociList
+    };
+  }
+
+  function finishMolstarEmptyClickSelectionPreserve(event) {
+    const preserve = molstarSelectionPreserveClick;
+    if (!preserve || event.pointerId !== preserve.pointerId) return;
+    molstarSelectionPreserveClick = null;
+    const moved = Math.hypot(event.clientX - preserve.startX, event.clientY - preserve.startY) > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
+    if (moved) return;
+    setTimeout(() => {
+      if (molstarCurrentSelectionLociList().length) return;
+      restoreMolstarSelectionLociList(preserve.lociList);
+    }, 0);
   }
 
   function molstarContextStructures() {
@@ -10792,6 +11201,7 @@
       contextPointer = null;
     };
     const onPointerDown = (event) => {
+      beginMolstarEmptyClickSelectionPreserve(event);
       clearTouchContextPointer();
       if (event.button === 2) {
         if (!viewer || !isMolstarContextMenuTarget(event.target)) {
@@ -10873,6 +11283,7 @@
         Math.abs(event.clientY - contextPointer.startY) > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
     };
     const onPointerUp = (event) => {
+      finishMolstarEmptyClickSelectionPreserve(event);
       if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) {
         const opened = touchContextPointer.opened;
         clearTouchContextPointer();

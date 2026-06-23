@@ -4430,7 +4430,9 @@ assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: 0 \}\)/)
 assert.doesNotMatch(previewViewer, /canvas3d\.setProps\(\{ pickPadding: previousPickPadding \}\)/);
 assert.match(previewViewer, /const radius = Math\.max\(0, Number\(options\.radiusPx\) \|\| 0\);/);
 assert.match(previewViewer, /const offsets = \[\[0, 0\]\];/);
-assert.match(previewViewer, /canvas3d\.identify\(\[x - rect\.left, y - rect\.top\]\)/);
+assert.match(previewViewer, /function molstarPickFromCanvasPoint\(canvas, clientX, clientY\)/);
+assert.match(previewViewer, /canvas3d\.identify\(\[clientX - rect\.left, clientY - rect\.top\]\)/);
+assert.match(previewViewer, /molstarPickFromCanvasPoint\(canvas, x, y\)/);
 assert.match(previewViewer, /canvas3d\.getLoci\(picking\.id\)/);
 assert.match(previewViewer, /\.msp-plugin \.msp-viewport-host/);
 assert.match(previewViewer, /className = 'buret-molecule-context-menu'/);
