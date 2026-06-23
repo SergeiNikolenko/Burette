@@ -1147,6 +1147,10 @@ assert.match(appStartupEffectsHook, /refreshedPersistedSessionRef/);
 assert.match(appStartupEffectsHook, /syncingBrowserDevFilesRef/);
 assert.match(appStartupEffectsHook, /openedBrowserDevDockingRef/);
 assert.match(appStartupEffectsHook, /browserDevRuntimeNeedsRefresh/);
+assert.match(appStartupEffectsHook, /function browserDevTrajectoryDockingRequest\(paths: string\[\]\)/);
+assert.match(appStartupEffectsHook, /paths\.length !== 2 \|\| !paths\.some\(isMolstarCoordinateTrajectorySource\)/);
+assert.match(appStartupEffectsHook, /dockingRequestForDrop\(paths\[0\], paths\.slice\(1\)\)/);
+assert.match(appStartupEffectsHook, /await openDockingDocument\(trajectoryDockingRequest\.receptorPath, trajectoryDockingRequest\.ligandPaths\)/);
 assert.match(appStartupEffectsHook, /openedPersistedTabsRef/);
 assert.match(appStartupEffectsHook, /void Promise\.resolve\(openPaths\(paths\)\)\.then\(\(\) => \{/);
 assert.match(app, /useAppOpenDropController\(\{/);
@@ -4371,6 +4375,7 @@ assert.match(previewViewer, /if \(value === 'xyzrender-external'\) return !xyzre
 assert.match(previewViewer, /function prepareDockingStructure\(config\)/);
 assert.match(previewViewer, /const trajectoryPair = dockingTrajectoryPair\(entries\);[\s\S]*if \(trajectoryPair\)[\s\S]*const sceneMode = dockingSceneMode\(config\);/);
 assert.match(previewViewer, /DOCKING_COORDINATE_TRAJECTORY_FORMATS[\s\S]*'nc'[\s\S]*'ncdf'[\s\S]*'netcdf'[\s\S]*'ncrst'/);
+assert.match(previewViewer, /value === 'nc' \|\| value === 'ncdf' \|\| value === 'netcdf' \|\| value === 'ncrst'\) return 'nctraj'/);
 assert.match(previewViewer, /if \(config\.docking\) \{\s*return prepareDockingStructure\(config\);/);
 assert.match(browserDevDocuments, /return records\.length >= 1 \? \{ format: "sdf", records \} : null;/);
 assert.match(previewViewer, /records\.length >= 1 && config\.sdfPosePager === true/);

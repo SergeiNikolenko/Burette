@@ -4426,6 +4426,7 @@
     if (value === 'bcif' || value === 'binarycif') return 'mmcif';
     if (value === 'sd') return 'sdf';
     if (value === 'xyzr') return 'xyz';
+    if (value === 'nc' || value === 'ncdf' || value === 'netcdf' || value === 'ncrst') return 'nctraj';
     if (value === 'molviewspec' || value === 'mol-view-spec') return 'mvsj';
     return value;
   }
