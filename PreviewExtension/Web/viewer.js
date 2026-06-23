@@ -121,6 +121,7 @@
   let xyzrenderSystemHistoryInstalled = false;
   let molstarSelectionPreserveClick = null;
   let molstarLassoSuppressClickUntil = 0;
+  let xyzrenderLassoSuppressClickUntil = 0;
   let molstarMoleculePreview = null;
   let molstarMoleculePreviewFrame = 0;
   let molstarMoleculePreviewDrag = null;
@@ -5421,7 +5422,7 @@
       .buret-xyzrender-sheet-item.resizing { cursor: nwse-resize; }
       body.buret-xyzrender-lasso-active .buret-xyzrender-sheet-item { cursor: crosshair; }
       .buret-xyzrender-sheet-item.selected { outline: 0 solid transparent; box-shadow: none; }
-      .buret-xyzrender-sheet-item.has-xyzrender-selection { box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 24%, transparent); }
+      .buret-xyzrender-sheet-item.has-xyzrender-selection { box-shadow: none; }
       .buret-xyzrender-svg-selection { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent)); }
       .buret-xyzrender-sheet-item:has(.buret-xyzrender-resize-handle:hover),
       .buret-xyzrender-sheet-item.resizing { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
@@ -9249,6 +9250,7 @@
     document.addEventListener('pointermove', onXyzrenderLassoPointerMove, true);
     document.addEventListener('pointerup', onXyzrenderLassoPointerUp, true);
     document.addEventListener('pointercancel', onXyzrenderLassoPointerCancel, true);
+    document.addEventListener('click', onXyzrenderLassoClearClick, true);
     document.addEventListener('keydown', onMolstarLassoKeyDown, true);
     window.addEventListener('resize', cancelMolstarLassoStroke);
     window.addEventListener('resize', cancelXyzrenderLassoStroke);
@@ -9525,6 +9527,7 @@
     if (!stroke || event.pointerId !== stroke.pointerId) return;
     if (!stroke.dragging) {
       xyzrenderLassoStroke = null;
+      clearXyzrenderSelection();
       return;
     }
     if (Math.hypot(event.clientX - stroke.points[0].x, event.clientY - stroke.points[0].y) >= MOLSTAR_LASSO_MIN_DISTANCE_PX) {
@@ -9535,6 +9538,14 @@
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation?.();
+  }
+
+  function onXyzrenderLassoClearClick(event) {
+    if (!xyzrenderLassoEnabled || event.button !== 0) return;
+    if (Date.now() < xyzrenderLassoSuppressClickUntil) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || target.closest('#buret-toolbar, .buret-xyzrender-popover, .buret-molecule-context-menu')) return;
+    clearXyzrenderSelection();
   }
 
   function onXyzrenderLassoPointerCancel(event) {
@@ -9586,6 +9597,7 @@
 
   function finishXyzrenderLassoStroke(stroke) {
     xyzrenderLassoStroke = null;
+    xyzrenderLassoSuppressClickUntil = Date.now() + 250;
     removeXyzrenderLassoOverlay();
     const bounds = molstarLassoBounds(stroke.points);
     if (stroke.points.length < MOLSTAR_LASSO_MIN_POINTS || bounds.width < MOLSTAR_LASSO_SAMPLE_STEP_PX || bounds.height < MOLSTAR_LASSO_SAMPLE_STEP_PX) {
