@@ -31,6 +31,11 @@ type StructureInfoPanelProps = {
 
 type XtbSettingsScope = "general" | "optimize" | "properties" | "optimized-hessian" | "vipea" | "vfukui" | "md" | "metadyn";
 type XtbSettingsCategory = "core" | "solvation" | "properties" | "dynamics" | "output";
+type InspectorStructureTextSource = {
+  path: string;
+  extension: string;
+  virtual: boolean;
+};
 
 const SDF_CONTEXT_STYLE_OPTIONS = [
   { value: "line", label: "Line" },
@@ -1000,13 +1005,14 @@ function useStructureComposition(document: ViewerDocument | null) {
     }
     let cancelled = false;
     setState({ documentId: document.id, loading: true, summary: null, error: null });
-    void readInspectorStructureText(document)
+    const source = structureCompositionSourceForDocument(document);
+    void readInspectorStructureText(source)
       .then((text) => {
         if (cancelled) return;
         setState({
           documentId: document.id,
           loading: false,
-          summary: parseStructureComposition(text, document.extension),
+          summary: parseStructureComposition(text, source.extension),
           error: null,
         });
       })
@@ -1027,17 +1033,28 @@ function useStructureComposition(document: ViewerDocument | null) {
   return state;
 }
 
-function readInspectorStructureText(document: ViewerDocument) {
-  const maxBytes = compositionReadLimit(document);
-  const virtualText = document.virtual ? readBrowserDevVirtualTextDocument(document.path) : null;
+function structureCompositionSourceForDocument(document: ViewerDocument): InspectorStructureTextSource {
+  if (document.dockingRequest?.receptorPath) {
+    return {
+      path: document.dockingRequest.receptorPath,
+      extension: extensionForDocking(document.dockingRequest.receptorPath),
+      virtual: false,
+    };
+  }
+  return { path: document.path, extension: document.extension, virtual: document.virtual };
+}
+
+function readInspectorStructureText(source: InspectorStructureTextSource) {
+  const maxBytes = compositionReadLimit(source);
+  const virtualText = source.virtual ? readBrowserDevVirtualTextDocument(source.path) : null;
   if (virtualText !== null) {
     return Promise.resolve(maxBytes === undefined ? virtualText : virtualText.slice(0, maxBytes));
   }
-  return readStructureText(document.path, { maxBytes });
+  return readStructureText(source.path, { maxBytes });
 }
 
-function compositionReadLimit(document: ViewerDocument) {
-  const extension = document.extension.toLowerCase();
+function compositionReadLimit(source: InspectorStructureTextSource) {
+  const extension = source.extension.toLowerCase();
   if (["mae", "maegz", "cms"].includes(extension)) return 12 * 1024 * 1024;
   return undefined;
 }
