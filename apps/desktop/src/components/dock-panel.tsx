@@ -58,6 +58,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
   const activeStructureDocument = dockDocument ?? state.activeDocument;
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
+  const descriptorDockAvailable = !descriptorDockBlocked(area, activeStructureDocument);
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   const foldingState = useFoldingResult(area === "bottom" ? activeStructureDocument : null);
@@ -66,7 +67,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
   const tabs = rawTabs.filter((tab) => {
     if (tab.kind === "spectrum") return spectrumDockAvailable;
     if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
-    if (tab.kind === "descriptors") return !(area === "right" && spectrumDocumentActive);
+    if (tab.kind === "descriptors") return descriptorDockAvailable && !(area === "right" && spectrumDocumentActive);
     return true;
   });
   const activeTabKind = tabs.some((tab) => tab.kind === storedActiveTabKind) ? storedActiveTabKind : tabs[0]?.kind ?? "files";
@@ -95,7 +96,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
       dockTabCatalog(area).filter((kind) => {
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
-        if (kind === "descriptors") return !(area === "right" && spectrumDocumentActive);
+        if (kind === "descriptors") return descriptorDockAvailable && !(area === "right" && spectrumDocumentActive);
         return true;
       }).map((kind) => ({
         kind: "item" as const,
@@ -228,6 +229,11 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
       </div>
     </aside>
   );
+}
+
+function descriptorDockBlocked(area: DockArea, document: ViewerDocument | null | undefined) {
+  if (area !== "right" || !document) return false;
+  return Boolean(document.dockingRequest) || (document.virtual && document.renderer === "molstar");
 }
 
 function DockPanelContent({
