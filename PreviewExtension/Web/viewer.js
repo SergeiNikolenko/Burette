@@ -3414,6 +3414,11 @@
     updateMolstarLassoButton();
   }
 
+  function toggleActiveLassoSurface() {
+    if (isXyzrenderLassoSurfaceActive()) setXyzrenderLassoEnabled(!xyzrenderLassoEnabled);
+    else setMolstarLassoEnabled(!molstarLassoEnabled);
+  }
+
   function installMolstarToolbarActionDelegates() {
     if (window.__buretteMolstarToolbarActionDelegatesInstalled) return;
     window.__buretteMolstarToolbarActionDelegatesInstalled = true;
@@ -3425,8 +3430,7 @@
         molstarLassoSuppressClickUntil = Date.now() + 500;
         event.preventDefault();
         event.stopPropagation();
-        if (isXyzrenderLassoSurfaceActive()) setXyzrenderLassoEnabled(!xyzrenderLassoEnabled);
-        else setMolstarLassoEnabled(!molstarLassoEnabled);
+        toggleActiveLassoSurface();
         return;
       }
     }, true);
@@ -3448,8 +3452,7 @@
       event.preventDefault();
       event.stopPropagation();
       if (Date.now() < molstarLassoSuppressClickUntil) return;
-      if (isXyzrenderLassoSurfaceActive()) setXyzrenderLassoEnabled(!xyzrenderLassoEnabled);
-      else setMolstarLassoEnabled(!molstarLassoEnabled);
+      toggleActiveLassoSurface();
     });
   }
 
@@ -9308,7 +9311,8 @@
   function xyzrenderSheetItemFromEvent(event) {
     const target = event.target instanceof Element ? event.target : null;
     if (!target || target.closest('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle], #buret-toolbar, .buret-xyzrender-popover')) return null;
-    const item = target.closest('.buret-xyzrender-sheet-item');
+    const item = target.closest('.buret-xyzrender-sheet-item')
+      || xyzrenderSheetItemFromContextEvent(event, document);
     if (!item || !item.querySelector('.buret-xyzrender-sheet-item-body svg')) return null;
     return item;
   }
