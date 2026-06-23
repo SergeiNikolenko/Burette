@@ -1124,7 +1124,7 @@ assert.match(previewRuntimeGrid, /runtime\.join\("preview-rdkit-wasm\.js"\)/);
 assert.match(previewRuntimeGrid, /<script src="\{rdkit_wasm_js\}"><\/script>/);
 assert.match(previewRuntimeViewer, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(viewerRuntimeCSS, /--buret-toolbar-safe-top: 12px/);
-assert.match(viewerRuntimeCSS, /--buret-viewport-controls-top: 64px/);
+assert.match(viewerRuntimeCSS, /--buret-viewport-controls-top: calc\(var\(--buret-toolbar-safe-top\) \+ 42px\)/);
 assert.match(viewerRuntimeCSS, /#buret-toolbar\.collapsed/);
 assert.match(viewerRuntimeCSS, /#buret-toolbar\.buret-suppressed-by-molstar-panel/);
 assert.doesNotMatch(viewerRuntimeCSS, /#buret-toolbar\.collapsed:hover/);
