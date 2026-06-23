@@ -568,6 +568,13 @@ body .msp-plugin .msp-viewport-controls-buttons > div > div {
   overflow: visible;
   border-radius: 0;
 }
+body .msp-plugin .msp-viewport-controls-buttons .msp-hover-box-wrapper .msp-hover-box-body,
+body .msp-plugin .msp-viewport-controls-buttons .msp-viewport-controls-panel {
+  right: 40px !important;
+}
+body .msp-plugin .msp-viewport-controls-buttons .msp-hover-box-wrapper .msp-hover-box-spacer {
+  right: 36px !important;
+}
 body .msp-plugin .msp-viewport-controls-buttons button {
   display: grid !important;
   place-items: center;
