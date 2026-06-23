@@ -5,6 +5,7 @@ import {
   browserDevFilesFromLocation,
   browserDevHasExplicitFiles,
 } from "../lib/browser-dev-startup";
+import { dockingRequestForDrop, isMolstarCoordinateTrajectorySource } from "../lib/docking-documents";
 import { parentDirectory } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
@@ -34,6 +35,11 @@ type UseAppStartupEffectsOptions = {
   setWorkspacePath: (path: string | null) => void;
   tabs: MoleculeTab[];
 };
+
+function browserDevTrajectoryDockingRequest(paths: string[]) {
+  if (paths.length !== 2 || !paths.some(isMolstarCoordinateTrajectorySource)) return null;
+  return dockingRequestForDrop(paths[0], paths.slice(1));
+}
 
 export function useAppStartupEffects({
   activeDocument,
@@ -75,7 +81,12 @@ export function useAppStartupEffects({
         addProjectRoot(workspace);
       }
       closeAllDocuments();
-      await openPaths(paths);
+      const trajectoryDockingRequest = browserDevTrajectoryDockingRequest(paths);
+      if (trajectoryDockingRequest) {
+        await openDockingDocument(trajectoryDockingRequest.receptorPath, trajectoryDockingRequest.ligandPaths);
+      } else {
+        await openPaths(paths);
+      }
       syncingBrowserDevFilesRef.current = false;
     })().catch((error) => {
       if (!cancelled) pushErrorStatus(error, "Open dev files failed");
@@ -84,7 +95,7 @@ export function useAppStartupEffects({
     return () => {
       cancelled = true;
     };
-  }, [addProjectRoot, browserDevExplicitFolder, closeAllDocuments, documents, openPaths, pushErrorStatus, setWorkspacePath]);
+  }, [addProjectRoot, browserDevExplicitFolder, closeAllDocuments, documents, openDockingDocument, openPaths, pushErrorStatus, setWorkspacePath]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;

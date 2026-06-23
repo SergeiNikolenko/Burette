@@ -87,7 +87,7 @@ export function useAppDockingWorkflows({
         : await openBrowserDevDockingDocument(request.receptorPath, request.ligandPaths, preferences, options);
       addDocuments([document]);
       rememberRecentStructures([document]);
-      if (request.sceneMode && rightDockOpen && rightDockActiveTab === "descriptors") {
+      if (rightDockOpen && rightDockActiveTab === "descriptors") {
         setDockOpen("right", false);
       }
       setStructureDragActive(false);
@@ -126,6 +126,9 @@ export function useAppDockingWorkflows({
       if (opened.length > 0) addDocuments(opened);
       addDocuments([dockingDocument]);
       rememberRecentStructures([...opened, dockingDocument]);
+      if (rightDockOpen && rightDockActiveTab === "descriptors") {
+        setDockOpen("right", false);
+      }
       setStructureDragActive(false);
       const message = "Opened docking view";
       if (errors.length > 0) {
@@ -137,7 +140,7 @@ export function useAppDockingWorkflows({
       setStructureDragActive(false);
       pushErrorStatus(error, "Docking view failed");
     }
-  }, [addDocuments, openStructureRecordDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setStructureDragActive]);
+  }, [addDocuments, openStructureRecordDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, rightDockActiveTab, rightDockOpen, setDockOpen, setStructureDragActive]);
 
   const collectionSourcePaths = useCallback((path: string | null) => {
     if (!path) return [];
