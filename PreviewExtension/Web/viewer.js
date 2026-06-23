@@ -112,6 +112,8 @@
   const xyzrenderSelectedElements = new Set();
   const xyzrenderStyledElements = new Set();
   const xyzrenderSelectionOriginals = new WeakMap();
+  const xyzrenderActionUndoStack = [];
+  const xyzrenderActionRedoStack = [];
   let molstarSelectionPreserveClick = null;
   let molstarLassoSuppressClickUntil = 0;
   let molstarMoleculePreview = null;
@@ -3294,8 +3296,21 @@
     window.__buretteMolstarEditUndoShortcutsInstalled = true;
     document.addEventListener('keydown', event => {
       const key = String(event.key || '').toLowerCase();
-      if (key !== 'z' || event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)) return;
-      if (!molstarEditUndoStack.length || !isMolstarEditUndoKeyboardTarget(event.target)) return;
+      if (key !== 'z' || event.altKey || !(event.metaKey || event.ctrlKey)) return;
+      if (!isMolstarEditUndoKeyboardTarget(event.target)) return;
+      if (event.shiftKey && xyzrenderActionRedoStack.length) {
+        event.preventDefault();
+        event.stopPropagation();
+        redoXyzrenderLastAction();
+        return;
+      }
+      if (!event.shiftKey && xyzrenderActionUndoStack.length) {
+        event.preventDefault();
+        event.stopPropagation();
+        undoXyzrenderLastAction();
+        return;
+      }
+      if (event.shiftKey || !molstarEditUndoStack.length) return;
       event.preventDefault();
       event.stopPropagation();
       void undoMolstarLastEdit().catch(error => {
@@ -5218,6 +5233,13 @@
     actions.appendChild(button);
   }
 
+  function appendXyzrenderMenuSeparator(actions) {
+    const separator = document.createElement('div');
+    separator.className = 'buret-molecule-context-menu-separator';
+    separator.setAttribute('role', 'separator');
+    actions.appendChild(separator);
+  }
+
   function showXyzrenderSheetContextMenu(event, item) {
     event.preventDefault();
     event.stopPropagation();
@@ -5267,29 +5289,56 @@
       setStatus(`[web] Hid xyzrender display: ${baseName}`);
       setTimeout(hideStatus, 900);
     });
+    if (hasHiddenXyzrenderElements(item)) {
+      appendXyzrenderMenuButton(actions, 'Show Hidden', () => {
+        pushXyzrenderActionHistory(item, 'show hidden');
+        showHiddenXyzrenderElements(item);
+        hideXyzrenderSheetContextMenu();
+      });
+    }
     if (hasXyzrenderSelection()) {
       appendXyzrenderMenuButton(actions, 'Hide Selected', () => {
+        pushXyzrenderActionHistory(item, 'hide selected');
         hideSelectedXyzrenderElements();
         hideXyzrenderSheetContextMenu();
       });
       appendXyzrenderMenuButton(actions, 'Apply Current Settings', () => {
         const toolbar = document.getElementById('buret-toolbar');
         if (!toolbar) throw new Error('xyzrender settings toolbar is unavailable.');
+        pushXyzrenderActionHistory(item, 'apply settings');
         applyXyzrenderSelectionControls(readXyzrenderControlsForm(toolbar));
         hideXyzrenderSheetContextMenu();
       });
       appendXyzrenderMenuButton(actions, 'Dim Others', () => {
+        pushXyzrenderActionHistory(item, 'dim others');
         dimUnselectedXyzrenderElements(item);
         hideXyzrenderSheetContextMenu();
       });
       appendXyzrenderMenuButton(actions, 'Reset Selection', () => {
+        pushXyzrenderActionHistory(item, 'reset selection');
         resetXyzrenderSelectionStyles();
         hideXyzrenderSheetContextMenu();
       });
       appendXyzrenderMenuButton(actions, 'Clear Selection', () => {
+        pushXyzrenderActionHistory(item, 'clear selection');
         clearXyzrenderSelection();
         hideXyzrenderSheetContextMenu();
       });
+    }
+    if (xyzrenderActionUndoStack.length || xyzrenderActionRedoStack.length) {
+      appendXyzrenderMenuSeparator(actions);
+      if (xyzrenderActionUndoStack.length) {
+        appendXyzrenderMenuButton(actions, 'Undo', () => {
+          undoXyzrenderLastAction();
+          hideXyzrenderSheetContextMenu();
+        });
+      }
+      if (xyzrenderActionRedoStack.length) {
+        appendXyzrenderMenuButton(actions, 'Redo', () => {
+          redoXyzrenderLastAction();
+          hideXyzrenderSheetContextMenu();
+        });
+      }
     }
 
     document.body.appendChild(menu);
@@ -5315,6 +5364,7 @@
       .buret-external-artifact-stage { position: absolute; inset: 0; transform: translate(0px, 0px) scale(1); transform-origin: 50% 50%; will-change: transform; cursor: grab; }
       .buret-external-artifact-stage.dragging { cursor: grabbing; }
       .buret-external-artifact-root.sheet-drop-active::after { content: "Drop onto xyzrender sheet"; position: absolute; inset: 14px; z-index: 36; border: 2px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); display: flex; align-items: center; justify-content: center; font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
+      .buret-xyzrender-context-menu .buret-molecule-context-menu-separator { height: 1px; margin: 5px 0; background: color-mix(in srgb, var(--buret-toolbar-color, rgba(255,255,255,0.92)) 16%, transparent); }
       .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: auto; }
       .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; --buret-rotate-radius: 76px; --buret-rotate-lift: 24px; --buret-rotate-handle-scale: 1; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
       .buret-xyzrender-sheet-item:not(.buret-xyzrender-sheet-item-base) { z-index: 2; }
@@ -5972,7 +6022,11 @@
     return Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item')).find(item => {
       const rect = item.getBoundingClientRect();
       return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
-    }) || null;
+    }) || (() => {
+      const rootRect = root.getBoundingClientRect?.();
+      if (!rootRect || event.clientX < rootRect.left || event.clientX > rootRect.right || event.clientY < rootRect.top || event.clientY > rootRect.bottom) return null;
+      return Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item')).find(item => hasHiddenXyzrenderElements(item)) || null;
+    })();
   }
 
   function installXyzrenderSheetItemInteractions(item, getStageScale, options = {}) {
@@ -9317,9 +9371,7 @@
   }
 
   function xyzrenderSelectableElements(item) {
-    const svg = item?.querySelector?.('.buret-xyzrender-sheet-item-body svg');
-    if (!svg) return [];
-    return Array.from(svg.querySelectorAll('path,circle,ellipse,rect,line,polyline,polygon,text')).filter(element => {
+    return xyzrenderGraphicElements(item).filter(element => {
       if (!element.getBoundingClientRect) return false;
       const rect = element.getBoundingClientRect();
       const tagName = element.tagName.toLowerCase();
@@ -9385,6 +9437,126 @@
   function restoreNullableAttribute(element, name, value) {
     if (value == null) element.removeAttribute(name);
     else element.setAttribute(name, value);
+  }
+
+  function xyzrenderGraphicElements(item) {
+    const svg = item?.querySelector?.('.buret-xyzrender-sheet-item-body svg');
+    if (!svg) return [];
+    return Array.from(svg.querySelectorAll('path,circle,ellipse,rect,line,polyline,polygon,text'));
+  }
+
+  function xyzrenderElementSnapshot(element) {
+    return {
+      element,
+      style: element.getAttribute('style'),
+      fill: element.getAttribute('fill'),
+      stroke: element.getAttribute('stroke'),
+      strokeWidth: element.getAttribute('stroke-width'),
+      opacity: element.getAttribute('opacity'),
+      display: element.getAttribute('display'),
+      visibility: element.getAttribute('visibility'),
+      selected: element.getAttribute('data-buret-xyzrender-selected') === 'true',
+      selectionClass: element.classList.contains('buret-xyzrender-svg-selection')
+    };
+  }
+
+  function captureXyzrenderActionSnapshot(item, label = 'xyzrender action') {
+    return {
+      item,
+      label,
+      elements: xyzrenderGraphicElements(item).map(xyzrenderElementSnapshot)
+    };
+  }
+
+  function restoreXyzrenderActionSnapshot(snapshot) {
+    if (!snapshot) return;
+    for (const entry of snapshot.elements || []) {
+      const element = entry.element;
+      if (!element?.isConnected) continue;
+      restoreNullableAttribute(element, 'style', entry.style);
+      restoreNullableAttribute(element, 'fill', entry.fill);
+      restoreNullableAttribute(element, 'stroke', entry.stroke);
+      restoreNullableAttribute(element, 'stroke-width', entry.strokeWidth);
+      restoreNullableAttribute(element, 'opacity', entry.opacity);
+      restoreNullableAttribute(element, 'display', entry.display);
+      restoreNullableAttribute(element, 'visibility', entry.visibility);
+      element.classList.toggle('buret-xyzrender-svg-selection', entry.selectionClass);
+      if (entry.selected) {
+        element.setAttribute('data-buret-xyzrender-selected', 'true');
+        xyzrenderSelectedElements.add(element);
+      } else {
+        element.removeAttribute('data-buret-xyzrender-selected');
+        xyzrenderSelectedElements.delete(element);
+      }
+      ensureXyzrenderOriginalStyle(element);
+    }
+    cleanupXyzrenderSelectionSet();
+  }
+
+  function pushXyzrenderActionHistory(item, label) {
+    const snapshot = captureXyzrenderActionSnapshot(item, label);
+    if (!snapshot.elements.length) return;
+    xyzrenderActionUndoStack.push(snapshot);
+    if (xyzrenderActionUndoStack.length > 50) xyzrenderActionUndoStack.shift();
+    xyzrenderActionRedoStack.length = 0;
+  }
+
+  function undoXyzrenderLastAction() {
+    const snapshot = xyzrenderActionUndoStack.pop();
+    if (!snapshot) {
+      setStatus('[web] Nothing to undo.');
+      setTimeout(hideStatus, 900);
+      return false;
+    }
+    xyzrenderActionRedoStack.push(captureXyzrenderActionSnapshot(snapshot.item, snapshot.label));
+    restoreXyzrenderActionSnapshot(snapshot);
+    setStatus(`[web] Undid xyzrender ${snapshot.label}.`);
+    setTimeout(hideStatus, 900);
+    return true;
+  }
+
+  function redoXyzrenderLastAction() {
+    const snapshot = xyzrenderActionRedoStack.pop();
+    if (!snapshot) {
+      setStatus('[web] Nothing to redo.');
+      setTimeout(hideStatus, 900);
+      return false;
+    }
+    xyzrenderActionUndoStack.push(captureXyzrenderActionSnapshot(snapshot.item, snapshot.label));
+    restoreXyzrenderActionSnapshot(snapshot);
+    setStatus(`[web] Redid xyzrender ${snapshot.label}.`);
+    setTimeout(hideStatus, 900);
+    return true;
+  }
+
+  function hasHiddenXyzrenderElements(item) {
+    return xyzrenderGraphicElements(item).some(element => {
+      const style = window.getComputedStyle(element);
+      return element.getAttribute('display') === 'none'
+        || element.getAttribute('visibility') === 'hidden'
+        || style.display === 'none'
+        || style.visibility === 'hidden';
+    });
+  }
+
+  function showHiddenXyzrenderElements(item) {
+    let shown = 0;
+    for (const element of xyzrenderGraphicElements(item)) {
+      const style = window.getComputedStyle(element);
+      const hidden = element.getAttribute('display') === 'none'
+        || element.getAttribute('visibility') === 'hidden'
+        || style.display === 'none'
+        || style.visibility === 'hidden';
+      if (!hidden) continue;
+      if (xyzrenderSelectionOriginals.has(element)) restoreXyzrenderOriginalStyle(element);
+      else {
+        element.removeAttribute('display');
+        element.removeAttribute('visibility');
+      }
+      shown += 1;
+    }
+    setStatus(`[web] Restored ${shown} hidden xyzrender graphic${shown === 1 ? '' : 's'}.`);
+    setTimeout(hideStatus, 900);
   }
 
   function hasXyzrenderSelection() {
