@@ -1407,6 +1407,8 @@ assert.match(viewer, /item\.className = 'buret-xyzrender-sheet-item buret-xyzren
 assert.match(viewer, /const xyzrenderSheetItemEntries = new WeakMap\(\)/);
 assert.match(viewer, /function requestSelectedXyzrenderSheetItemsUpdate\(options = \{\}\)/);
 assert.match(viewer, /if \(requestSelectedXyzrenderSheetItemsUpdate\(\{ controls \}\)\) return;/);
+assert.match(viewer, /function applyXyzrenderSelectionPreset\(preset, controls\)/);
+assert.match(viewer, /if \(hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(value, controls\);\s*return;\s*\}/s);
 assert.match(viewer, /if \(requestSelectedXyzrenderSheetItemsUpdate\(\{ preset: value, controls \}\)\) return;/);
 assert.match(viewer, /setXyzrenderSheetItemEntry\(item, entry\)/);
 assert.match(viewer, /setXyzrenderSheetItemEntry\(item, baseXyzrenderSheetEntry\(\)\)/);
@@ -1436,6 +1438,8 @@ const finishXyzrenderLassoStrokeBody = viewer.match(/function finishXyzrenderLas
 assert.doesNotMatch(finishXyzrenderLassoStrokeBody, /showXyzrenderSelectionContextMenu/);
 assert.match(viewer, /const hasStrokeExtent = svgElementHasStroke\(element\) && \(rect\.width > 0 \|\| rect\.height > 0\)/);
 assert.match(viewer, /function applyXyzrenderSelectionControls\(controls\)/);
+assert.match(viewer, /function applyXyzrenderElementPresentation\(targetElement, sourceElement\)/);
+assert.match(viewer, /restoreNullableAttribute\(targetElement, name, sourceElement\.getAttribute\(name\)\)/);
 assert.match(viewer, /function hideSelectedXyzrenderElements\(\)/);
 assert.match(viewer, /function showHiddenXyzrenderElements\(item\)/);
 assert.match(viewer, /function pushXyzrenderActionHistory\(item, label\)/);
