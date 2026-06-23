@@ -9445,7 +9445,6 @@
     setStatus(selected > 0
       ? `[web] Selected ${selected} xyzrender graphic${selected === 1 ? '' : 's'} with lasso.`
       : '[web] xyzrender lasso did not match visible graphics.');
-    if (selected > 0) showXyzrenderSelectionContextMenu(stroke.item, bounds);
   }
 
   function selectXyzrenderElementsInLasso(item, points, additive) {
