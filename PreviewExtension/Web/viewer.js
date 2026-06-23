@@ -5093,7 +5093,7 @@
   function externalArtifactBaseItemHTML(content, label) {
     const safeLabel = escapeHTML(label || 'xyzrender artifact');
     return `
-      <div class="buret-xyzrender-sheet-item buret-xyzrender-sheet-item-base" aria-label="${safeLabel}">
+      <div class="buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large buret-xyzrender-sheet-item-base" aria-label="${safeLabel}">
         <div class="buret-xyzrender-sheet-item-background"></div>
         <div class="buret-xyzrender-sheet-item-body">${content}</div>
         ${rotatableArtifactControlsHTML()}
@@ -5347,7 +5347,8 @@
       .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: auto; }
       .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; --buret-rotate-radius: 76px; --buret-rotate-lift: 24px; --buret-rotate-handle-scale: 1; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
       .buret-xyzrender-sheet-item:not(.buret-xyzrender-sheet-item-base) { z-index: 2; }
-      .buret-xyzrender-sheet-item-base { width: max(180px, min(calc(100vw - 220px), 860px)); height: max(180px, min(calc(100vh - 230px), 620px)); border-radius: 8px; z-index: 1; }
+      .buret-xyzrender-sheet-item-large { width: max(180px, min(calc(100vw - 220px), 860px)); height: max(180px, min(calc(100vh - 230px), 620px)); border-radius: 8px; }
+      .buret-xyzrender-sheet-item-base { z-index: 1; }
       .buret-xyzrender-sheet-item.dragging { cursor: grabbing; }
       .buret-xyzrender-sheet-item.rotating { cursor: grabbing; }
       .buret-xyzrender-sheet-item.resizing { cursor: nwse-resize; }
@@ -5358,7 +5359,7 @@
       .buret-xyzrender-sheet-item:has(.buret-xyzrender-resize-handle:hover),
       .buret-xyzrender-sheet-item.resizing { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
-      .buret-xyzrender-sheet-item-base .buret-xyzrender-sheet-item-background { border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
+      .buret-xyzrender-sheet-item-large .buret-xyzrender-sheet-item-background { border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
       .buret-xyzrender-sheet-item-body { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
       .buret-xyzrender-sheet-item-body > svg,
       .buret-external-artifact-object { display: block; width: 100%; height: 100%; overflow: visible; border: 0; border-radius: inherit; }
@@ -5716,7 +5717,7 @@
 
   function addXyzrenderSheetItem(sheet, svg, path, point, serial, getStageScale) {
     const item = document.createElement('div');
-    item.className = 'buret-xyzrender-sheet-item selected';
+    item.className = 'buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large selected';
     item.setAttribute('role', 'button');
     item.setAttribute('tabindex', '0');
     item.setAttribute('aria-label', `Sheet structure ${path}`);
@@ -5878,6 +5879,15 @@
     };
   }
 
+  function initializeSheetItemCenterPosition(item) {
+    const inlineLeft = String(item?.style?.left || '');
+    const inlineTop = String(item?.style?.top || '');
+    if (inlineLeft.endsWith('px') && inlineTop.endsWith('px')) return;
+    const position = sheetItemCenterPosition(item);
+    item.style.left = `${position.left}px`;
+    item.style.top = `${position.top}px`;
+  }
+
   function installRotatableArtifactResize(item, getStageScale) {
     if (!item || item.dataset.buretResizeInstalled === 'true') return;
     item.dataset.buretResizeInstalled = 'true';
@@ -5974,8 +5984,9 @@
     if (!root) return;
     installRotatableArtifactSelectionClear(root);
     installXyzrenderContextMenuInterception(root);
+    const readStageScale = getStageScale || (() => parseFloat(root.dataset.buretXyzrenderStageScale || '1') || 1);
     root.querySelectorAll('.buret-xyzrender-sheet-item-base').forEach(item => {
-      installXyzrenderSheetItemInteractions(item, getStageScale, { removable: false });
+      installXyzrenderSheetItemInteractions(item, readStageScale, { removable: false });
     });
   }
 
@@ -6011,6 +6022,7 @@
   function installXyzrenderSheetItemInteractions(item, getStageScale, options = {}) {
     if (!item || item.dataset.buretRotatableInstalled === 'true') return;
     item.dataset.buretRotatableInstalled = 'true';
+    initializeSheetItemCenterPosition(item);
     item.addEventListener('contextmenu', event => showXyzrenderSheetContextMenu(event, item));
     item.addEventListener('click', event => {
       if (event.button !== 0) return;
@@ -6159,6 +6171,7 @@
     };
     const apply = () => {
       clampTranslation();
+      root.dataset.buretXyzrenderStageScale = String(scale);
       stage.style.transform = `translate(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px) scale(${scale.toFixed(4)})`;
     };
     const zoomAt = (nextScale, clientX, clientY) => {
