@@ -610,6 +610,16 @@ function readFieldSurfaceStyle(value: unknown) {
   return text && ["solid", "mesh", "contour", "dot"].includes(text) ? text : null;
 }
 
+function readDisplayHydrogens(value: unknown) {
+  const text = readOptionalText(value);
+  return text && ["all", "auto", "none"].includes(text) ? text : null;
+}
+
+function readBondNotation(value: unknown) {
+  const text = readOptionalText(value);
+  return text && ["aromatic", "kekule"].includes(text) ? text : null;
+}
+
 function normalizeSupercell(value: unknown) {
   if (!Array.isArray(value) || value.length !== 3) return null;
   const parsed = value.map((item) => readOptionalInteger(item));
@@ -658,6 +668,8 @@ function normalizeXyzrenderControls(value: unknown) {
     vdwOpacity: readOptionalNumber(source.vdwOpacity),
     vdwScale: readOptionalNumber(source.vdwScale),
     hideBonds: readOptionalBoolean(source.hideBonds),
+    displayHydrogens: readDisplayHydrogens(source.displayHydrogens),
+    bondNotation: readBondNotation(source.bondNotation),
     showCell: readOptionalBoolean(source.showCell),
     showGhosts: readOptionalBoolean(source.showGhosts),
     showAxes: readOptionalBoolean(source.showAxes),
@@ -726,6 +738,7 @@ function sanitizedExtraArguments(value: string | null, stripFieldArguments = fal
   const blockedValueCounts = new Map<string, number>();
   blocked.add("--region");
   blockedValueCounts.set("--region", 2);
+  ["--hy", "--no-hy", "--bo", "--no-bo"].forEach((flag) => blocked.add(flag));
   if (stripFieldArguments) {
     ["--esp", "--nci-surf", "--iso", "--opacity", "--surface-style", "--dens-color", "--cmap-palette"].forEach((flag) => {
       blocked.add(flag);
@@ -788,6 +801,10 @@ function buildXyzrenderArgs(
   if (controls.vdwOpacity) args.push("--vdw-opacity", String(controls.vdwOpacity));
   if (controls.vdwScale) args.push("--vdw-scale", String(controls.vdwScale));
   if (controls.hideBonds === true) args.push("--no-bonds");
+  if (controls.displayHydrogens === "all") args.push("--hy");
+  if (controls.displayHydrogens === "none") args.push("--no-hy");
+  if (controls.bondNotation === "aromatic") args.push("--bo");
+  if (controls.bondNotation === "kekule") args.push("--no-bo");
   if (controls.showCell === true) args.push("--cell");
   if (controls.showCell === false) args.push("--no-cell");
   if (controls.showGhosts === true) args.push("--ghosts");
