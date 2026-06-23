@@ -153,11 +153,11 @@ export function resolveDropActionChoices(
   }
 
   if (target.renderer === "xyzrender-external" && (payload.paths.length > 0 || payload.records.length > 0)) {
-    return withOpenSeparately(payload, {
+    return [choice("add-xyzrender-sheet-items", "Add to xyzrender sheet", "default", {
       kind: "add-xyzrender-sheet-items",
       targetDocumentId: target.documentId,
       payload,
-    }, "Add to xyzrender sheet", source);
+    }, source)];
   }
 
   const dockingChoices = dockingActionChoices(target.documentPath, payload, target.dockingRequest);
