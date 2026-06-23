@@ -617,6 +617,31 @@ function normalizeSupercell(value: unknown) {
   return parsed as [number, number, number];
 }
 
+function normalizeXyzrenderAtomSelector(value: unknown) {
+  const text = String(value || "").replace(/\s+/gu, "");
+  if (!text || !/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/u.test(text)) return null;
+  const parts: string[] = [];
+  for (const part of text.split(",")) {
+    const [rawStart, rawEnd] = part.split("-");
+    const start = Number(rawStart);
+    const end = rawEnd == null ? start : Number(rawEnd);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end <= 0 || end < start) return null;
+    parts.push(start === end ? String(start) : `${start}-${end}`);
+  }
+  return parts.join(",");
+}
+
+function normalizeXyzrenderRegions(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((region) => {
+    if (!region || typeof region !== "object") return null;
+    const source = region as Record<string, unknown>;
+    const atoms = normalizeXyzrenderAtomSelector(source.atoms);
+    if (!atoms) return null;
+    return { atoms, preset: normalizeXyzrenderPreset(readOptionalText(source.preset)) };
+  }).filter((region): region is { atoms: string; preset: string } => Boolean(region));
+}
+
 function normalizeXyzrenderControls(value: unknown) {
   const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
   return {
@@ -650,6 +675,7 @@ function normalizeXyzrenderControls(value: unknown) {
     fieldCmapMax: readOptionalFiniteNumber(source.fieldCmapMax),
     customConfigPath: readOptionalText(source.customConfigPath),
     extraArguments: readOptionalText(source.extraArguments),
+    regions: normalizeXyzrenderRegions(source.regions),
   };
 }
 
@@ -698,6 +724,8 @@ function sanitizedExtraArguments(value: string | null, stripFieldArguments = fal
   const blockedValueFlags = new Set(["-o", "--output", "-go", "--gif-output", "--config", "--ref"]);
   const blocked = new Set(blockedValueFlags);
   const blockedValueCounts = new Map<string, number>();
+  blocked.add("--region");
+  blockedValueCounts.set("--region", 2);
   if (stripFieldArguments) {
     ["--esp", "--nci-surf", "--iso", "--opacity", "--surface-style", "--dens-color", "--cmap-palette"].forEach((flag) => {
       blocked.add(flag);
@@ -768,6 +796,7 @@ function buildXyzrenderArgs(
   if (controls.showAxes === false) args.push("--no-axes");
   if (controls.cellWidth) args.push("--cell-width", String(controls.cellWidth));
   if (controls.supercell) args.push("--supercell", ...controls.supercell.map(String));
+  for (const region of controls.regions) args.push("--region", region.atoms, region.preset);
   args.push(...sanitizedExtraArguments(controls.extraArguments, Boolean(controls.fieldMode)));
   if (controls.fieldMode && controls.fieldMode !== "auto") {
     if (controls.fieldMode === "density") args.push("--dens");

@@ -1591,8 +1591,33 @@
       fieldCmapMin: finiteNumberOrNull(source.fieldCmapMin),
       fieldCmapMax: finiteNumberOrNull(source.fieldCmapMax),
       customConfigPath: nonEmptyText(source.customConfigPath),
-      extraArguments: nonEmptyText(source.extraArguments)
+      extraArguments: nonEmptyText(source.extraArguments),
+      regions: normalizeXyzrenderRegions(source.regions)
     };
+  }
+
+  function normalizeXyzrenderRegions(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map(region => {
+      if (!region || typeof region !== 'object') return null;
+      const atoms = normalizeXyzrenderAtomSelector(region.atoms);
+      if (!atoms) return null;
+      return { atoms, preset: normalizeXyzrenderPreset(region.preset) };
+    }).filter(Boolean);
+  }
+
+  function normalizeXyzrenderAtomSelector(value) {
+    const text = String(value || '').replace(/\s+/gu, '');
+    if (!text || !/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/u.test(text)) return null;
+    const parts = [];
+    for (const rawPart of text.split(',')) {
+      const [rawStart, rawEnd] = rawPart.split('-');
+      const start = Number(rawStart);
+      const end = rawEnd == null ? start : Number(rawEnd);
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end <= 0 || end < start) return null;
+      parts.push(start === end ? String(start) : `${start}-${end}`);
+    }
+    return parts.join(',');
   }
 
   function positiveNumberOrNull(value) {
@@ -5750,6 +5775,150 @@
     return Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item.selected'));
   }
 
+  function xyzrenderSheetItemPreset(item, config = activeConfig || window.BurreteConfig || {}) {
+    return normalizeXyzrenderPreset(
+      item?.dataset?.buretXyzrenderPreset ||
+      config.externalArtifact?.preset ||
+      config.xyzrenderPreset ||
+      'default'
+    );
+  }
+
+  function xyzrenderSheetItemRegions(item) {
+    const raw = item?.dataset?.buretXyzrenderRegions;
+    if (!raw) return [];
+    try {
+      return normalizeXyzrenderRegions(JSON.parse(raw));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function setXyzrenderSheetItemRegions(item, regions) {
+    if (!item) return;
+    const normalized = normalizeXyzrenderRegions(regions);
+    if (!normalized.length) {
+      delete item.dataset.buretXyzrenderRegions;
+      return;
+    }
+    item.dataset.buretXyzrenderRegions = JSON.stringify(normalized);
+  }
+
+  function xyzrenderAtomIndexFromElement(element) {
+    if (!element?.getAttribute) return null;
+    const values = [
+      element.getAttribute('fill'),
+      element.getAttribute('stroke'),
+      element.getAttribute('style')
+    ].filter(Boolean).join(' ');
+    const match = values.match(/url\(#x\d+g(\d+)\)/u);
+    if (!match) return null;
+    const index = Number(match[1]) + 1;
+    return Number.isInteger(index) && index > 0 ? index : null;
+  }
+
+  function xyzrenderAtomNodes(item) {
+    return xyzrenderGraphicElements(item).map(element => {
+      const index = xyzrenderAtomIndexFromElement(element);
+      if (!index || !element.getBoundingClientRect) return null;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      return {
+        element,
+        index,
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    }).filter(Boolean);
+  }
+
+  function xyzrenderAtomSelectorForElements(item, elements) {
+    const atoms = new Set();
+    const atomNodes = xyzrenderAtomNodes(item);
+    for (const element of elements || []) {
+      const directIndex = xyzrenderAtomIndexFromElement(element);
+      if (directIndex) {
+        atoms.add(directIndex);
+        continue;
+      }
+      addAtomsNearXyzrenderElement(atoms, atomNodes, element);
+    }
+    return compactXyzrenderAtomSelector(atoms);
+  }
+
+  function addAtomsNearXyzrenderElement(atoms, atomNodes, element) {
+    if (!element?.getBoundingClientRect) return;
+    const tagName = String(element.tagName || '').toLowerCase();
+    if (tagName === 'line') {
+      const x1 = Number(element.getAttribute('x1'));
+      const y1 = Number(element.getAttribute('y1'));
+      const x2 = Number(element.getAttribute('x2'));
+      const y2 = Number(element.getAttribute('y2'));
+      const svg = element.ownerSVGElement;
+      if (svg && [x1, y1, x2, y2].every(Number.isFinite)) {
+        const p1 = svgPointToClient(svg, x1, y1);
+        const p2 = svgPointToClient(svg, x2, y2);
+        for (const atom of atomNodes) {
+          if (distanceToSegment(atom.x, atom.y, p1.x, p1.y, p2.x, p2.y) <= 18) atoms.add(atom.index);
+        }
+        return;
+      }
+    }
+    const rect = element.getBoundingClientRect();
+    const padding = Math.max(16, Math.min(34, Math.max(rect.width, rect.height) * 0.18));
+    for (const atom of atomNodes) {
+      if (
+        atom.x >= rect.left - padding &&
+        atom.x <= rect.right + padding &&
+        atom.y >= rect.top - padding &&
+        atom.y <= rect.bottom + padding
+      ) {
+        atoms.add(atom.index);
+      }
+    }
+  }
+
+  function svgPointToClient(svg, x, y) {
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return { x, y };
+    const point = svg.createSVGPoint();
+    point.x = x;
+    point.y = y;
+    const transformed = point.matrixTransform(matrix);
+    return { x: transformed.x, y: transformed.y };
+  }
+
+  function distanceToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    if (dx === 0 && dy === 0) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
+
+  function compactXyzrenderAtomSelector(values) {
+    const atoms = Array.from(values || [])
+      .map(Number)
+      .filter(value => Number.isInteger(value) && value > 0)
+      .sort((a, b) => a - b);
+    if (!atoms.length) return null;
+    const parts = [];
+    let start = atoms[0];
+    let previous = atoms[0];
+    for (const atom of atoms.slice(1)) {
+      if (atom === previous) continue;
+      if (atom === previous + 1) {
+        previous = atom;
+        continue;
+      }
+      parts.push(start === previous ? String(start) : `${start}-${previous}`);
+      start = atom;
+      previous = atom;
+    }
+    parts.push(start === previous ? String(start) : `${start}-${previous}`);
+    return parts.join(',');
+  }
+
   function requestSelectedXyzrenderSheetItemsUpdate(options = {}) {
     const items = selectedXyzrenderSheetItems().filter(item => item.querySelector('.buret-xyzrender-sheet-item-body'));
     if (items.length === 0) return false;
@@ -5764,87 +5933,35 @@
       return;
     }
     const normalizedPreset = normalizeXyzrenderPreset(preset);
-    setStatus(`[web] Applying ${normalizedPreset} preset to selected xyzrender graphics…`);
+    setStatus(`[web] Applying ${normalizedPreset} preset to selected xyzrender atoms…`);
     let updated = 0;
     for (const group of groups) {
       const entry = xyzrenderSheetItemEntry(group.item);
       if (!entry) continue;
-      const currentElements = xyzrenderGraphicElements(group.item);
-      const selectedIndexes = group.elements
-        .map(element => currentElements.indexOf(element))
-        .filter(index => index >= 0);
-      if (!selectedIndexes.length) continue;
+      const atomSelector = xyzrenderAtomSelectorForElements(group.item, group.elements);
+      if (!atomSelector) continue;
       try {
-        const payload = await renderXyzrenderSheetItemPayload(entry, normalizedPreset, controls);
-        const sourceSvg = parseXyzrenderSvg(payload.svg);
-        if (!sourceSvg) throw new Error('xyzrender preset returned no SVG payload');
-        const targetSvg = group.item.querySelector('.buret-xyzrender-sheet-item-body svg');
-        mergeXyzrenderSvgDefs(targetSvg, sourceSvg);
-        const sourceElements = xyzrenderGraphicElementsFromSvg(sourceSvg);
-        pushXyzrenderActionHistory(group.item, `apply ${normalizedPreset} preset`);
-        for (const index of selectedIndexes) {
-          const targetElement = currentElements[index];
-          const sourceElement = sourceElements[index];
-          if (!targetElement || !sourceElement) continue;
-          applyXyzrenderElementPresentation(targetElement, sourceElement);
-          updated += 1;
-        }
+        const regions = [...xyzrenderSheetItemRegions(group.item), { atoms: atomSelector, preset: normalizedPreset }];
+        const nextControls = normalizeXyzrenderControls({ ...controls, regions }, activeConfig || window.BurreteConfig || {});
+        const basePreset = xyzrenderSheetItemPreset(group.item);
+        const payload = await renderXyzrenderSheetItemPayload(entry, basePreset, nextControls);
+        pushXyzrenderActionHistory(group.item, `apply ${normalizedPreset} region`);
+        updateXyzrenderSheetItemBody(group.item, payload.svg);
+        setXyzrenderSheetItemEntry(group.item, entry);
+        group.item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || basePreset);
+        setXyzrenderSheetItemRegions(group.item, regions);
+        updated += atomSelector.split(',').reduce((count, part) => {
+          const [start, end] = part.split('-').map(Number);
+          return count + (end ? end - start + 1 : 1);
+        }, 0);
       } catch (error) {
         setStatus(`Could not apply ${normalizedPreset} preset to ${sheetEntryLabel(entry)}: ${error instanceof Error ? error.message : String(error)}`, 'error');
       }
     }
     if (updated > 0) {
-      setStatus(`[web] Applied ${normalizedPreset} preset to ${updated} selected xyzrender graphic${updated === 1 ? '' : 's'}.`);
+      clearXyzrenderSelection();
+      setStatus(`[web] Applied ${normalizedPreset} preset to ${updated} selected xyzrender atom${updated === 1 ? '' : 's'}.`);
       setTimeout(hideStatus, 900);
-    }
-  }
-
-  function parseXyzrenderSvg(svgText) {
-    if (typeof svgText !== 'string' || !svgText.trim()) return null;
-    const parsed = new DOMParser().parseFromString(svgText, 'image/svg+xml');
-    if (parsed.querySelector('parsererror')) return null;
-    return parsed.querySelector('svg');
-  }
-
-  function mergeXyzrenderSvgDefs(targetSvg, sourceSvg) {
-    if (!targetSvg || !sourceSvg) return;
-    const sourceDefs = Array.from(sourceSvg.querySelectorAll('defs > [id]'));
-    if (!sourceDefs.length) return;
-    let targetDefs = targetSvg.querySelector('defs');
-    if (!targetDefs) {
-      targetDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-      targetSvg.insertBefore(targetDefs, targetSvg.firstChild);
-    }
-    for (const node of sourceDefs) {
-      const id = node.getAttribute('id');
-      if (!id || targetSvg.querySelector(`#${CSS.escape(id)}`)) continue;
-      targetDefs.appendChild(document.importNode(node, true));
-    }
-  }
-
-  function applyXyzrenderElementPresentation(targetElement, sourceElement) {
-    ensureXyzrenderOriginalStyle(targetElement);
-    const presentationAttributes = [
-      'style',
-      'fill',
-      'fill-opacity',
-      'stroke',
-      'stroke-opacity',
-      'stroke-width',
-      'stroke-linecap',
-      'stroke-linejoin',
-      'stroke-miterlimit',
-      'stroke-dasharray',
-      'opacity',
-      'filter',
-      'r',
-      'rx',
-      'ry',
-      'font-size',
-      'font-weight'
-    ];
-    for (const name of presentationAttributes) {
-      restoreNullableAttribute(targetElement, name, sourceElement.getAttribute(name));
     }
   }
 
@@ -5858,7 +5975,8 @@
       const entry = xyzrenderSheetItemEntry(item);
       if (!entry) continue;
       try {
-        const payload = await renderXyzrenderSheetItemPayload(entry, preset, controls, options);
+        const itemControls = normalizeXyzrenderControls({ ...controls, regions: xyzrenderSheetItemRegions(item) }, config);
+        const payload = await renderXyzrenderSheetItemPayload(entry, preset, itemControls, options);
         updateXyzrenderSheetItemBody(item, payload.svg);
         setXyzrenderSheetItemEntry(item, entry);
         item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || preset);
@@ -9715,15 +9833,31 @@
   }
 
   function captureXyzrenderActionSnapshot(item, label = 'xyzrender action') {
+    const body = item?.querySelector?.('.buret-xyzrender-sheet-item-body');
     return {
       item,
       label,
+      bodyHtml: body ? body.innerHTML : null,
+      regions: item?.dataset?.buretXyzrenderRegions || null,
+      preset: item?.dataset?.buretXyzrenderPreset || null,
       elements: xyzrenderGraphicElements(item).map(xyzrenderElementSnapshot)
     };
   }
 
   function restoreXyzrenderActionSnapshot(snapshot) {
     if (!snapshot) return;
+    const body = snapshot.item?.querySelector?.('.buret-xyzrender-sheet-item-body');
+    if (body && typeof snapshot.bodyHtml === 'string') {
+      body.innerHTML = snapshot.bodyHtml;
+      restoreNullableAttribute(snapshot.item, 'data-buret-xyzrender-regions', snapshot.regions);
+      restoreNullableAttribute(snapshot.item, 'data-buret-xyzrender-preset', snapshot.preset);
+      body.querySelectorAll('[data-buret-xyzrender-selected="true"]').forEach(element => {
+        xyzrenderSelectedElements.add(element);
+        ensureXyzrenderOriginalStyle(element);
+      });
+      cleanupXyzrenderSelectionSet();
+      return;
+    }
     for (const entry of snapshot.elements || []) {
       const element = entry.element;
       if (!element?.isConnected) continue;
