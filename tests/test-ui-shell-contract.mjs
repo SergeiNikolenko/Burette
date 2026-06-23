@@ -1417,6 +1417,7 @@ assert.match(viewer, /function requestSelectedXyzrenderSheetItemsUpdate\(options
 assert.match(viewer, /if \(requestSelectedXyzrenderSheetItemsUpdate\(\{ controls \}\)\) return;/);
 assert.match(viewer, /function applyXyzrenderSelectionPreset\(preset, controls\)/);
 assert.match(viewer, /if \(hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(value, controls\);\s*return;\s*\}/s);
+assert.match(viewer, /if \(body\.type === 'setXyzrenderControls'\) \{[\s\S]*?if \(hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(preset, controls\);\s*return;\s*\}[\s\S]*?requestBrowserDevXyzrenderUpdate\(\{ controls, preset \}\)/);
 assert.match(viewer, /if \(!activeViewer \|\| !canUseExternalXyzrender\(format\)\) return latestXyzrenderOrientationRef/);
 assert.match(viewer, /if \(requestSelectedXyzrenderSheetItemsUpdate\(\{ preset: value, controls \}\)\) return;/);
 assert.match(viewer, /setXyzrenderSheetItemEntry\(item, entry\)/);
