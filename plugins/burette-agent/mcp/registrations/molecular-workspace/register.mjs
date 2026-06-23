@@ -10,10 +10,11 @@ import {
 } from "../../lib/session-registry.mjs";
 import { componentSelector, editStructureFragmentFile, extractStructureComponentFile } from "../../lib/structure-components.mjs";
 import { summarizeStructureFile } from "../../lib/structure-summary.mjs";
-import { toolText } from "../../lib/widget-resource.mjs";
+import { registerWidgetResource, toolText, widgetHtml } from "../../lib/widget-resource.mjs";
 
 const actionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
 const externalActionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
+const WORKSPACE_WIDGET_URI = "ui://widget/burette-agent/molecular-workspace-20260624.html";
 const PUBLIC_CONTRACT = {
   apiVersion: "burrete-external-agent/v1",
   tools: [
@@ -45,6 +46,16 @@ const PUBLIC_CONTRACT = {
 };
 
 export function registerMolecularWorkspace(server) {
+  registerWidgetResource(server, {
+    name: "burette-molecular-workspace-widget",
+    uri: WORKSPACE_WIDGET_URI,
+    title: "Burrete Molecular Workspace",
+    description: "An interactive Burrete workspace preview with compact observe state.",
+    html: widgetHtml("molecular-workspace"),
+    resourceDomains: ["data:", "blob:", "http://127.0.0.1:*", "http://localhost:*"],
+    connectDomains: ["http://127.0.0.1:*", "http://localhost:*"],
+  });
+
   registerAppTool(
     server,
     "burrete.get_context",
@@ -447,6 +458,66 @@ export function registerMolecularWorkspace(server) {
           tool: "observe_burrete_workspace",
           observe,
           error: result.ok ? null : result.error,
+        },
+      };
+    },
+  );
+
+  registerAppTool(
+    server,
+    "render_molecular_workspace_widget",
+    {
+      title: "Render Molecular Workspace Widget",
+      description: "Render an interactive inline Burrete workspace preview backed by a local Browser shell or preview URL.",
+      inputSchema: {
+        title: z.string().trim().optional(),
+        summary: z.string().trim().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        observe: z.record(z.unknown()).optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          resourceUri: WORKSPACE_WIDGET_URI,
+          visibility: ["model", "app"],
+        },
+        "openai/outputTemplate": WORKSPACE_WIDGET_URI,
+        "openai/widgetAccessible": true,
+      },
+    },
+    async input => {
+      const previewUrl = safeLocalWorkspaceUrl(input.url);
+      const observe = input.observe || null;
+      const activeDocument = observe?.activeDocument || null;
+      const title = input.title || activeDocument?.title || "Molecular Workspace";
+      const widgetData = {
+        version: 1,
+        title,
+        summary: input.summary || workspaceWidgetSummary({ observe, previewUrl }),
+        previewUrl,
+        sessionDir: input.sessionDir || null,
+        observe,
+      };
+      return {
+        content: toolText(previewUrl ? "Rendered interactive molecular workspace widget." : "Rendered molecular workspace status widget without a local preview URL."),
+        structuredContent: {
+          ok: true,
+          tool: "render_molecular_workspace_widget",
+          widget: "molecular-workspace",
+          title,
+          interactive: Boolean(previewUrl),
+          activeDocument,
+          viewerReady: Boolean(observe?.activeDocument?.ready || observe?.viewerAgent?.ready || observe?.viewer?.ready),
+        },
+        _meta: {
+          "openai/outputTemplate": WORKSPACE_WIDGET_URI,
+          widgetData,
         },
       };
     },
@@ -882,6 +953,28 @@ export function registerMolecularWorkspace(server) {
     },
   );
 
+}
+
+function safeLocalWorkspaceUrl(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:") return null;
+    if (parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function workspaceWidgetSummary({ observe, previewUrl }) {
+  const activeDocument = observe?.activeDocument;
+  if (activeDocument?.title) {
+    const ready = activeDocument.ready ? "ready" : "loading";
+    return `${activeDocument.title} (${ready})`;
+  }
+  if (previewUrl) return "Interactive Burrete workspace preview.";
+  return "No local workspace preview URL supplied.";
 }
 
 async function observeWorkspaceSession(session) {

@@ -163,6 +163,7 @@ async function testMcpRegistrations(tempRoot) {
   const server = await registerAll(pluginRoot);
   assert.deepEqual([...server.resources.keys()].sort(), [
     "ui://widget/burette-agent/molecular-report-20260607.html",
+    "ui://widget/burette-agent/molecular-workspace-20260624.html",
     "ui://widget/burette-agent/molecule-table-20260607.html",
     "ui://widget/burette-agent/trajectory-review-20260607.html",
   ]);
@@ -182,6 +183,7 @@ async function testMcpRegistrations(tempRoot) {
     "open_burrete_docking_view",
     "open_burrete_workspace",
     "render_molecular_report_widget",
+    "render_molecular_workspace_widget",
     "render_molecule_table_widget",
     "render_trajectory_review_widget",
     "set_burrete_representation_style",
@@ -252,6 +254,19 @@ async function testValidationAndRenderHandlers(tempRoot) {
   assert.equal(renderedTrajectory.structuredContent.widget, "trajectory-review");
   assert.equal(renderedTrajectory.structuredContent.metricCount, 1);
   assert.equal(renderedTrajectory.structuredContent.artifactCount, 1);
+
+  const renderedWorkspace = await server.tools.get("render_molecular_workspace_widget").handler({
+    title: "Mini Workspace",
+    url: "http://127.0.0.1:49000/?devFiles=mini.pdb",
+    observe: {
+      activeDocument: { title: "mini.pdb", ready: true },
+      viewerAgent: { ready: true },
+    },
+  });
+  assert.equal(renderedWorkspace.structuredContent.widget, "molecular-workspace");
+  assert.equal(renderedWorkspace.structuredContent.interactive, true);
+  assert.equal(renderedWorkspace._meta["openai/outputTemplate"], "ui://widget/burette-agent/molecular-workspace-20260624.html");
+  assert.equal(renderedWorkspace._meta.widgetData.previewUrl, "http://127.0.0.1:49000/?devFiles=mini.pdb");
 }
 
 async function testFetchAndWorkspaceHandlers(tempRoot) {

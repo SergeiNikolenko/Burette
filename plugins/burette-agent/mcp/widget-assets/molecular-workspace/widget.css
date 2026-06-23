@@ -1,0 +1,143 @@
+body {
+  margin: 0;
+  background: #07110f;
+  color: #eef6f4;
+  font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.shell {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 12px;
+  min-height: 560px;
+  padding: 14px;
+}
+
+.preview-panel,
+.status-panel {
+  min-width: 0;
+  border: 1px solid #26423d;
+  border-radius: 8px;
+  background: #0d1b18;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #203a35;
+}
+
+.eyebrow {
+  margin: 0 0 2px;
+  color: #20d4ca;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+button,
+a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #2e514b;
+  border-radius: 6px;
+  background: #102520;
+  color: #e8f5f2;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+button:hover,
+a:hover {
+  background: #17352f;
+}
+
+.frame-wrap {
+  position: relative;
+  height: 500px;
+  background: #050908;
+}
+
+iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #ffffff;
+}
+
+.empty-preview {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  color: #b9cac6;
+  text-align: center;
+}
+
+.status-panel {
+  padding: 14px;
+}
+
+.summary {
+  margin: 0 0 14px;
+  color: #b9cac6;
+}
+
+dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+dl > div {
+  padding: 10px;
+  border: 1px solid #203a35;
+  border-radius: 8px;
+  background: #10201c;
+}
+
+dt {
+  margin-bottom: 4px;
+  color: #8da6a0;
+  font-size: 12px;
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .frame-wrap {
+    height: 420px;
+  }
+}

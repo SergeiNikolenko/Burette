@@ -115,12 +115,14 @@ assert.match(workspaceRegistration, /type: "focus_selection"/);
 assert.match(workspaceRegistration, /edit_burrete_fragment/);
 assert.match(workspaceRegistration, /editStructureFragmentFile/);
 assert.match(workspaceRegistration, /observe_burrete_workspace/);
+assert.match(workspaceRegistration, /render_molecular_workspace_widget/);
+assert.match(workspaceRegistration, /molecular-workspace-20260624\.html/);
 assert.match(workspaceRegistration, /act_molstar_scene/);
 assert.match(workspaceRegistration, /declarative Mol\* scene action/);
 assert.match(workspaceRegistration, /runBurreteAgent/);
 assert.match(workspaceRegistration, /visibility: \["model"\]/);
-assert.doesNotMatch(workspaceRegistration, /openai\/outputTemplate/);
-assert.doesNotMatch(workspaceRegistration, /widgetData/);
+assert.match(workspaceRegistration, /openai\/outputTemplate/);
+assert.match(workspaceRegistration, /widgetData/);
 
 for (const registration of [
   "mcp/registrations/molecule-table/register.mjs",
@@ -135,6 +137,7 @@ for (const registration of [
 }
 
 for (const widget of [
+  "mcp/widget-assets/molecular-workspace/widget.html",
   "mcp/widget-assets/molecule-table/widget.html",
   "mcp/widget-assets/trajectory-review/widget.html",
   "mcp/widget-assets/molecular-report/widget.html",
@@ -155,6 +158,7 @@ const packPayload = JSON.parse(packDryRun.stdout);
 const packedFiles = new Set(packPayload[0].files.map(file => file.path));
 for (const asset of [
   "browser-shell-dist/index.html",
+  "mcp/widget-assets/molecular-workspace/widget.html",
   "mcp/widget-assets/molecule-table/widget.html",
   "mcp/widget-assets/trajectory-review/widget.html",
   "mcp/widget-assets/molecular-report/widget.html",

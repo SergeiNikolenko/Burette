@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Burrete Molecular Workspace</title>
+  <style>/* __BURETTE_AGENT_WIDGET_CSS__ */</style>
+</head>
+<body>
+  <main class="shell">
+    <section class="preview-panel" aria-label="Interactive molecular workspace preview">
+      <div class="toolbar">
+        <div>
+          <p class="eyebrow">Burrete</p>
+          <h1 id="title">Molecular Workspace</h1>
+        </div>
+        <div class="toolbar-actions">
+          <button id="reload-preview" type="button">Reload</button>
+          <a id="open-preview" target="_blank" rel="noreferrer">Open</a>
+        </div>
+      </div>
+      <div id="preview-frame-wrap" class="frame-wrap">
+        <iframe id="preview-frame" title="Burrete workspace preview"></iframe>
+        <div id="empty-preview" class="empty-preview" hidden>
+          <strong>No interactive preview URL</strong>
+          <span>Pass a local Burrete Browser shell or preview URL to embed the workspace here.</span>
+        </div>
+      </div>
+    </section>
+    <aside class="status-panel" aria-label="Workspace observe state">
+      <p id="summary" class="summary">Workspace status.</p>
+      <dl>
+        <div>
+          <dt>Document</dt>
+          <dd id="document-title">-</dd>
+        </div>
+        <div>
+          <dt>Ready</dt>
+          <dd id="document-ready">-</dd>
+        </div>
+        <div>
+          <dt>Viewer Agent</dt>
+          <dd id="viewer-agent">-</dd>
+        </div>
+        <div>
+          <dt>Panels</dt>
+          <dd id="workspace-panels">-</dd>
+        </div>
+      </dl>
+    </aside>
+  </main>
+  <script>/* __BURETTE_AGENT_WIDGET_JS__ */</script>
+</body>
+</html>
