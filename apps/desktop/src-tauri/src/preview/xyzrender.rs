@@ -1098,6 +1098,7 @@ fn normalize_preset(value: Option<&str>) -> &'static str {
         "mtube" => "mtube",
         "wire" => "wire",
         "graph" => "graph",
+        "vdw" => "vdw",
         "custom" => "custom",
         _ => "default",
     }
@@ -1125,6 +1126,9 @@ fn build_xyzrender_args(
     if let Some(path) = orientation_ref_path {
         args.push("--ref".to_string());
         args.push(path.display().to_string());
+    }
+    if preset == "vdw" {
+        args.push("--vdw".to_string());
     }
     if let Some(controls) = controls {
         if controls.transparent_background == Some(true) {
@@ -1160,7 +1164,7 @@ fn build_xyzrender_args(
             args.push("-F".to_string());
             args.push(value.to_string());
         }
-        if controls.show_vdw == Some(true) {
+        if preset != "vdw" && controls.show_vdw == Some(true) {
             args.push("--vdw".to_string());
         }
         if let Some(value) = finite_positive(controls.vdw_opacity) {
@@ -1302,6 +1306,9 @@ fn resolve_config_argument<'a>(
     preset: &'static str,
     controls: Option<&'a XyzrenderControls>,
 ) -> &'a str {
+    if preset == "vdw" {
+        return "default";
+    }
     if preset != "custom" {
         return preset;
     }
@@ -1720,6 +1727,7 @@ pub(crate) fn xyzrender_preset_options() -> serde_json::Value {
         { "value": "mtube", "label": "MTube" },
         { "value": "wire", "label": "Wire" },
         { "value": "graph", "label": "Graph" },
+        { "value": "vdw", "label": "vdW" },
         { "value": "custom", "label": "Custom JSON" }
     ])
 }
@@ -2122,6 +2130,11 @@ mod tests {
         let zero_iso_args =
             build_xyzrender_args(&input, &output, "default", None, Some(&controls), None);
         assert!(!zero_iso_args.join(" ").contains("--iso 0"));
+
+        let vdw_args = build_xyzrender_args(&input, &output, "vdw", None, None, None);
+        let vdw_joined = vdw_args.join(" ");
+        assert!(vdw_joined.contains("--config default"));
+        assert!(vdw_joined.contains("--vdw"));
     }
 
     #[test]
