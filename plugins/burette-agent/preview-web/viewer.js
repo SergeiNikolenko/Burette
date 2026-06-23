@@ -54,6 +54,7 @@
     { value: 'mtube', label: 'MTube' },
     { value: 'wire', label: 'Wire' },
     { value: 'graph', label: 'Graph' },
+    { value: 'vdw', label: 'vdW' },
     { value: 'custom', label: 'Custom JSON' }
   ];
   const DEFAULT_XYZRENDER_CONTROLS = {
