@@ -71,9 +71,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
     return true;
   });
   const activeTabKind = tabs.some((tab) => tab.kind === storedActiveTabKind) ? storedActiveTabKind : tabs[0]?.kind ?? "files";
-  const xyzrenderDockDocument = area === "right"
-    ? (dockDocument?.renderer === "xyzrender-external" ? dockDocument : state.activeDocument?.renderer === "xyzrender-external" ? state.activeDocument : null)
-    : null;
+  const xyzrenderDockDocument = area === "right" ? (state.activeDocument ?? dockDocument) : null;
   const visibleTabs = xyzrenderDockDocument ? tabs : tabs.filter((tab) => tab.kind !== "xyzrender");
   const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0];
   const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
@@ -346,8 +344,9 @@ function DockPanelContent({
     );
   }
   if (activeTabKind === "xyzrender") {
-    if (dockStructureDocument?.renderer === "xyzrender-external") {
-      return <XyzrenderDockPanel document={dockStructureDocument} actions={actions} />;
+    const xyzrenderDocument = area === "right" ? activeDocument ?? dockDocument : dockStructureDocument;
+    if (xyzrenderDocument) {
+      return <XyzrenderDockPanel document={xyzrenderDocument} actions={actions} />;
     }
     return (
       <div className="dock-content dock-content-empty">
@@ -503,17 +502,14 @@ const XYZRENDER_README_VDW_OPTIONS = [
 ] as const;
 
 const XYZRENDER_README_HULL_OPTIONS = [
-  { value: "benzene-ring", label: "Benzene ring", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/benzene_ring_hull.svg" },
-  { value: "anthracene-rings", label: "Anthracene rings", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/anthracene_hull.svg" },
-  { value: "auto-rings", label: "Auto rings", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mnh_hull_rings.svg" },
+  { value: "off", label: "Off", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_default.svg" },
+  { value: "auto-rings", label: "Rings", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/anthracene_hull.svg" },
+  { value: "faces", label: "Faces", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/buckyball_faces.svg" },
 ] as const;
 
 const XYZRENDER_README_PORE_OPTIONS = [
-  { value: "faces", label: "Buckyball faces", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/buckyball_faces.svg" },
-  { value: "pore", label: "Buckyball pore", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/buckyball_pore.svg" },
-  { value: "mof5-faces", label: "MOF-5 faces", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mof5_faces.svg" },
-  { value: "mof5-pore", label: "MOF-5 pore", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mof5_pore.svg" },
-  { value: "faces-pore", label: "MOF-5 combo", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mof5_faces_pore.svg" },
+  { value: "pore", label: "Pore", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/buckyball_pore.svg" },
+  { value: "faces-pore", label: "Faces + pore", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mof5_faces_pore.svg" },
 ] as const;
 
 function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
@@ -609,12 +605,13 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         <XyzrenderHullGallery
           controls={controls}
           onSelect={(mode) => {
-            const nextMode: XyzrenderControls["hullMode"] = controls.hullMode === mode ? "off" : mode;
+            const nextMode: XyzrenderControls["hullMode"] = mode === "off" || controls.hullMode === mode ? "off" : mode;
             const nextControls = {
               ...controls,
               hullMode: nextMode,
               hullAtoms: null,
               hullOpacity: nextMode === "off" ? null : (controls.hullOpacity ?? 0.45),
+              poreOpacity: nextMode === "off" ? null : controls.poreOpacity,
             };
             setControls(nextControls);
             apply(nextControls, preset);
@@ -872,14 +869,25 @@ function XyzrenderDockNumber({
 }
 
 function xyzrenderDockControls(document: ViewerDocument): XyzrenderControls {
-  return {
+  const controls = {
     ...DEFAULT_XYZRENDER_DOCK_CONTROLS,
     ...document.xyzrenderControls,
+  };
+  return {
+    ...controls,
+    hullMode: xyzrenderDockHullMode(controls.hullMode),
   };
 }
 
 function xyzrenderDockSignature(controls: XyzrenderControls, preset: string) {
   return JSON.stringify({ preset, controls });
+}
+
+function xyzrenderDockHullMode(mode: XyzrenderControls["hullMode"]): XyzrenderControls["hullMode"] {
+  if (mode === "benzene-ring" || mode === "anthracene-rings") return "auto-rings";
+  if (mode === "mof5-faces") return "faces";
+  if (mode === "mof5-pore") return "pore";
+  return mode ?? "off";
 }
 
 function xyzrenderPresetOptions(document: ViewerDocument) {
