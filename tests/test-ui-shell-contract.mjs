@@ -5604,7 +5604,7 @@ assert.match(viteConfig, /bondNotation: readBondNotation\(source\.bondNotation\)
 assert.match(viteConfig, /if \(controls\.displayHydrogens === "all"\) args\.push\("--hy"\)/);
 assert.match(viteConfig, /if \(controls\.displayHydrogens === "none"\) args\.push\("--no-hy"\)/);
 assert.match(viteConfig, /if \(controls\.bondNotation === "aromatic"\) args\.push\("--bo"\)/);
-assert.match(viteConfig, /if \(controls\.bondNotation === "kekule"\) args\.push\("--no-bo"\)/);
+assert.match(viteConfig, /if \(controls\.bondNotation === "kekule"\) args\.push\("--bo", "-k"\)/);
 assert.match(viteConfig, /function normalizeXyzrenderRegions\(value: unknown\)/);
 assert.match(viteConfig, /regions: normalizeXyzrenderRegions\(source\.regions\)/);
 assert.match(viteConfig, /for \(const region of controls\.regions\) args\.push\("--region", region\.atoms, region\.preset\)/);

@@ -739,7 +739,7 @@ function sanitizedExtraArguments(value: string | null, stripFieldArguments = fal
   const blockedValueCounts = new Map<string, number>();
   blocked.add("--region");
   blockedValueCounts.set("--region", 2);
-  ["--hy", "--no-hy", "--bo", "--no-bo"].forEach((flag) => blocked.add(flag));
+  ["--hy", "--no-hy", "--bo", "--no-bo", "-k"].forEach((flag) => blocked.add(flag));
   if (stripFieldArguments) {
     ["--esp", "--nci-surf", "--iso", "--opacity", "--surface-style", "--dens-color", "--cmap-palette"].forEach((flag) => {
       blocked.add(flag);
@@ -808,7 +808,7 @@ function buildXyzrenderArgs(
   if (controls.displayHydrogens === "all") args.push("--hy");
   if (controls.displayHydrogens === "none") args.push("--no-hy");
   if (controls.bondNotation === "aromatic") args.push("--bo");
-  if (controls.bondNotation === "kekule") args.push("--no-bo");
+  if (controls.bondNotation === "kekule") args.push("--bo", "-k");
   if (controls.showCell === true) args.push("--cell");
   if (controls.showCell === false) args.push("--no-cell");
   if (controls.showGhosts === true) args.push("--ghosts");
