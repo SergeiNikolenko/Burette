@@ -160,6 +160,14 @@ pub(crate) struct XyzrenderControls {
     pub(crate) field_cmap_max: Option<f64>,
     pub(crate) custom_config_path: Option<String>,
     pub(crate) extra_arguments: Option<String>,
+    pub(crate) regions: Option<Vec<XyzrenderRegion>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderRegion {
+    pub(crate) atoms: String,
+    pub(crate) preset: String,
 }
 
 impl ViewerPreferences {

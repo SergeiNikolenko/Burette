@@ -31,6 +31,7 @@ export type XyzrenderControls = {
   fieldCmapMax?: number | null;
   customConfigPath?: string | null;
   extraArguments?: string | null;
+  regions?: Array<{ atoms: string; preset: string }> | null;
 };
 
 export type OpenDocumentsResult = {
