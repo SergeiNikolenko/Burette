@@ -97,6 +97,7 @@
   let xyzrenderInlineRequestSerial = 0;
   let xyzrenderSheetRequestSerial = 0;
   const xyzrenderSheetRequests = new Map();
+  const xyzrenderSheetItemEntries = new WeakMap();
   let molstarWindowResizeHandler = null;
   let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
@@ -2628,6 +2629,11 @@
 
   function requestXyzrenderPreset(preset) {
     const value = normalizeXyzrenderPreset(preset);
+    const toolbar = document.getElementById('buret-toolbar');
+    const controls = toolbar
+      ? readXyzrenderControlsForm(toolbar)
+      : normalizeXyzrenderControls((activeConfig && activeConfig.xyzrenderControls) || DEFAULT_XYZRENDER_CONTROLS, activeConfig || {});
+    if (requestSelectedXyzrenderSheetItemsUpdate({ preset: value, controls })) return;
     if (requestBrowserDevXyzrenderUpdate({ preset: value })) return;
     const sent = postHostMessage({ type: 'setXyzrenderPreset', value });
     if (!sent) setStatus('xyzrender preset switching is available only in the app or Quick Look viewer.', 'error');
@@ -2913,6 +2919,7 @@
       applyXyzrenderSelectionControls(controls);
       return;
     }
+    if (requestSelectedXyzrenderSheetItemsUpdate({ controls })) return;
     if (requestBrowserDevXyzrenderUpdate({ controls })) return;
     const sent = postHostMessage({ type: 'setXyzrenderControls', controls });
     if (!sent) {
@@ -5536,24 +5543,6 @@
     const sheet = ensureXyzrenderSheet(stage);
     let sheetItemSerial = sheet.querySelectorAll('.buret-xyzrender-sheet-item').length;
 
-    const renderSheetItem = async (entry, preset, controls) => {
-      const config = activeConfig || window.BurreteConfig || {};
-      const endpoint = String(config.xyzrenderEndpoint || '').trim();
-      const path = sheetEntryLabel(entry);
-      const inputDataBase64 = sheetEntryInputDataBase64(entry);
-      const inputExtension = sheetEntryInputExtension(entry);
-      if (!endpoint) return requestHostXyzrenderSheetItem(entry, preset, controls);
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, preset, controls, inputDataBase64, inputExtension })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender sheet request failed with status ${response.status}`);
-      if (typeof payload?.svg !== 'string' || !payload.svg.trim()) throw new Error('xyzrender sheet endpoint returned no SVG payload');
-      return payload;
-    };
-
     const addSheetItems = async (entries, point = null) => {
       const config = activeConfig || window.BurreteConfig || {};
       const cleanEntries = uniqueSheetEntries(entries);
@@ -5572,9 +5561,9 @@
       for (const entry of cleanEntries) {
         const label = sheetEntryLabel(entry);
         try {
-          const payload = await renderSheetItem(entry, preset, controls);
+          const payload = await renderXyzrenderSheetItemPayload(entry, preset, controls);
           sheetItemSerial += 1;
-          addXyzrenderSheetItem(sheet, payload.svg, label, point, sheetItemSerial, getStageScale);
+          addXyzrenderSheetItem(sheet, payload.svg, label, point, sheetItemSerial, getStageScale, entry);
         } catch (error) {
           setStatus(`Could not add ${label} to xyzrender sheet: ${error instanceof Error ? error.message : String(error)}`, 'error');
         }
@@ -5670,9 +5659,94 @@
 
   function sheetEntryInputDataBase64(entry) {
     if (typeof entry === 'string') return undefined;
+    if (typeof entry?.inputDataBase64 === 'string' && entry.inputDataBase64.trim()) {
+      return entry.inputDataBase64.trim();
+    }
     const text = String(entry?.text || '');
     if (!text) return undefined;
     return bytesToBase64(new TextEncoder().encode(text));
+  }
+
+  function baseXyzrenderSheetEntry(config = activeConfig || window.BurreteConfig || {}) {
+    const path = String(config.xyzrenderSourcePath || config.sourcePath || config.label || 'structure.xyz');
+    const inputDataBase64 = typeof config.xyzrenderInputDataBase64 === 'string'
+      ? config.xyzrenderInputDataBase64.trim()
+      : '';
+    if (!inputDataBase64) return path;
+    return {
+      path,
+      inputDataBase64,
+      inputExtension: typeof config.xyzrenderInputExtension === 'string' ? config.xyzrenderInputExtension : ''
+    };
+  }
+
+  function setXyzrenderSheetItemEntry(item, entry) {
+    if (!item || !entry) return;
+    xyzrenderSheetItemEntries.set(item, entry);
+    item.dataset.buretXyzrenderSourcePath = sheetEntryLabel(entry);
+  }
+
+  function xyzrenderSheetItemEntry(item) {
+    if (!item) return null;
+    const stored = xyzrenderSheetItemEntries.get(item);
+    if (stored) return stored;
+    if (item.classList?.contains('buret-xyzrender-sheet-item-base')) return baseXyzrenderSheetEntry();
+    const path = item.dataset?.buretXyzrenderSourcePath;
+    return path ? path : null;
+  }
+
+  function selectedXyzrenderSheetItems(root = document) {
+    return Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item.selected'));
+  }
+
+  function requestSelectedXyzrenderSheetItemsUpdate(options = {}) {
+    const items = selectedXyzrenderSheetItems().filter(item => item.querySelector('.buret-xyzrender-sheet-item-body'));
+    if (items.length === 0) return false;
+    void updateSelectedXyzrenderSheetItems(items, options);
+    return true;
+  }
+
+  async function updateSelectedXyzrenderSheetItems(items, options = {}) {
+    const config = activeConfig || window.BurreteConfig || {};
+    const controls = normalizeXyzrenderControls(options.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
+    const preset = normalizeXyzrenderPreset(options.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+    setStatus(`[web] Updating ${items.length} selected xyzrender structure${items.length === 1 ? '' : 's'}…`);
+    let updated = 0;
+    for (const item of items) {
+      const entry = xyzrenderSheetItemEntry(item);
+      if (!entry) continue;
+      try {
+        const payload = await renderXyzrenderSheetItemPayload(entry, preset, controls);
+        updateXyzrenderSheetItemBody(item, payload.svg);
+        setXyzrenderSheetItemEntry(item, entry);
+        item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || preset);
+        updated += 1;
+      } catch (error) {
+        setStatus(`Could not update ${sheetEntryLabel(entry)}: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      }
+    }
+    if (updated > 0) {
+      setStatus(`[web] Updated ${updated} selected xyzrender structure${updated === 1 ? '' : 's'}.`);
+      setTimeout(hideStatus, 700);
+    }
+  }
+
+  async function renderXyzrenderSheetItemPayload(entry, preset, controls) {
+    const config = activeConfig || window.BurreteConfig || {};
+    const endpoint = String(config.xyzrenderEndpoint || '').trim();
+    const path = sheetEntryLabel(entry);
+    const inputDataBase64 = sheetEntryInputDataBase64(entry);
+    const inputExtension = sheetEntryInputExtension(entry);
+    if (!endpoint) return requestHostXyzrenderSheetItem(entry, preset, controls);
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, preset, controls, inputDataBase64, inputExtension })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender sheet request failed with status ${response.status}`);
+    if (typeof payload?.svg !== 'string' || !payload.svg.trim()) throw new Error('xyzrender sheet endpoint returned no SVG payload');
+    return payload;
   }
 
   function requestHostXyzrenderSheetItem(entry, preset, controls) {
@@ -5724,12 +5798,13 @@
     });
   }
 
-  function addXyzrenderSheetItem(sheet, svg, path, point, serial, getStageScale) {
+  function addXyzrenderSheetItem(sheet, svg, path, point, serial, getStageScale, entry = path) {
     const item = document.createElement('div');
     item.className = 'buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large selected';
     item.setAttribute('role', 'button');
     item.setAttribute('tabindex', '0');
     item.setAttribute('aria-label', `Sheet structure ${path}`);
+    setXyzrenderSheetItemEntry(item, entry);
     const rect = sheet.getBoundingClientRect();
     const fallbackX = rect.width * (0.42 + ((serial - 1) % 4) * 0.06);
     const fallbackY = rect.height * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
@@ -5801,6 +5876,12 @@
       if (existing !== item) existing.classList.remove('selected');
     });
     item.classList.add('selected');
+  }
+
+  function selectAllRotatableArtifacts(root = document) {
+    root.querySelectorAll('.buret-xyzrender-sheet-item').forEach(item => {
+      item.classList.add('selected');
+    });
   }
 
   function clearRotatableArtifactSelection(root = document) {
@@ -5995,6 +6076,7 @@
     installXyzrenderContextMenuInterception(root);
     const readStageScale = getStageScale || (() => parseFloat(root.dataset.buretXyzrenderStageScale || '1') || 1);
     root.querySelectorAll('.buret-xyzrender-sheet-item-base').forEach(item => {
+      setXyzrenderSheetItemEntry(item, baseXyzrenderSheetEntry());
       installXyzrenderSheetItemInteractions(item, readStageScale, { removable: false });
     });
   }
@@ -6038,6 +6120,12 @@
       event.stopPropagation();
       selectRotatableArtifact(item);
       try { item.focus({ preventScroll: true }); } catch (_) {}
+    });
+    item.addEventListener('dblclick', event => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      selectAllRotatableArtifacts(item.closest('.buret-external-artifact-root') || document);
     });
     installXyzrenderSheetItemDrag(item, getStageScale);
     installXyzrenderSheetItemRotation(item);
