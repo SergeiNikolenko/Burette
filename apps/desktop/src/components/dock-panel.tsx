@@ -468,6 +468,21 @@ const DEFAULT_XYZRENDER_DOCK_CONTROLS: XyzrenderControls = {
   fieldOpacity: 1,
 };
 
+const XYZRENDER_README_PRESET_GALLERY = [
+  { value: "default", label: "Default", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_default.svg" },
+  { value: "flat", label: "Flat", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_flat.svg" },
+  { value: "paton", label: "Paton", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_paton.svg" },
+  { value: "pmol", label: "PMol", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_pmol.svg" },
+  { value: "skeletal", label: "Skeletal", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_skeletal.svg" },
+  { value: "bubble", label: "Bubble", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_bubble.svg" },
+  { value: "tube", label: "Tube", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_tube.svg" },
+  { value: "btube", label: "BTube", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_btube.svg" },
+  { value: "wire", label: "Wire", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_wire.svg" },
+  { value: "graph", label: "Graph", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_graph.svg" },
+  { value: "mtube", label: "MTube", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_mtube.svg" },
+  { value: "vdw", label: "vdW", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_vdw.svg" },
+] as const;
+
 function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
   const [preset, setPreset] = useState(document.xyzrenderPreset || "default");
   const [controls, setControls] = useState<XyzrenderControls>(() => xyzrenderDockControls(document));
@@ -526,6 +541,13 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
             ))}
           </select>
         </label>
+        <XyzrenderPresetGallery
+          preset={preset}
+          onSelect={(value) => {
+            setPreset(value);
+            apply(controls, value);
+          }}
+        />
         <XyzrenderDockCheckbox
           label="Transparent"
           checked={controls.transparentBackground === true}
@@ -564,6 +586,25 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         <button type="button" className="dock-action" onClick={() => apply()}>Apply</button>
         <button type="button" className="dock-action" onClick={reset}>Reset</button>
       </div>
+    </div>
+  );
+}
+
+function XyzrenderPresetGallery({ preset, onSelect }: { preset: string; onSelect: (preset: string) => void }) {
+  return (
+    <div className="xyzrender-dock-preset-gallery" aria-label="xyzrender preset gallery">
+      {XYZRENDER_README_PRESET_GALLERY.map((option) => (
+        <button
+          type="button"
+          className="xyzrender-dock-preset-tile"
+          key={option.value}
+          aria-pressed={preset === option.value}
+          onClick={() => onSelect(option.value)}
+        >
+          <span>{option.label}</span>
+          <img src={option.image} alt="" loading="lazy" draggable={false} />
+        </button>
+      ))}
     </div>
   );
 }

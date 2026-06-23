@@ -1798,6 +1798,55 @@ img.radix-menu-item-icon {
   letter-spacing: 0;
   text-transform: uppercase;
 }
+.xyzrender-dock-preset-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.xyzrender-dock-preset-tile {
+  display: grid;
+  grid-template-rows: 16px 58px;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 84px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  padding: 5px;
+  font: inherit;
+  cursor: pointer;
+}
+.xyzrender-dock-preset-tile:hover {
+  background: var(--surface-hover);
+}
+.xyzrender-dock-preset-tile:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 1px;
+}
+.xyzrender-dock-preset-tile[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--line-subtler));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.xyzrender-dock-preset-tile span {
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.xyzrender-dock-preset-tile img {
+  display: block;
+  width: 100%;
+  height: 58px;
+  object-fit: contain;
+  border-radius: 5px;
+  background: #fff;
+}
 .xyzrender-dock-field,
 .xyzrender-dock-check {
   display: grid;
