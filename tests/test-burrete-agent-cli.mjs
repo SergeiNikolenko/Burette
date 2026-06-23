@@ -154,6 +154,9 @@ try {
       assert.equal(prebuiltPayload.ok, true);
       assert.equal(prebuiltPayload.result.mode, 'browser-agent-shell');
       assert.equal(prebuiltPayload.result.runtime, 'prebuilt-static');
+      const fsResponse = await fetch(new URL(`/@fs/${resolve('samples/mini.pdb').replace(/^\/+/u, '')}`, prebuiltPayload.result.url));
+      assert.equal(fsResponse.status, 200);
+      assert.match(await fsResponse.text(), /^HEADER\s+MINI GLY-ALA PEPTIDE/u);
       if (prebuiltPayload.result.processId) {
         try {
           process.kill(prebuiltPayload.result.processId, 'SIGTERM');

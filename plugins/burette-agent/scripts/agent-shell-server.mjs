@@ -164,6 +164,10 @@ async function handleRequest(req, res) {
     await handleDevFiles(res, method, url);
     return;
   }
+  if (url.pathname.startsWith('/@fs/')) {
+    await handleFsFile(res, method, url);
+    return;
+  }
   await handleStatic(res, method, url);
 }
 
@@ -425,6 +429,34 @@ async function handleDevFiles(res, method, url) {
   sendJson(res, 200, { files: Array.from(new Set(files)).sort((left, right) => left.localeCompare(right)) });
 }
 
+async function handleFsFile(res, method, url) {
+  if (method !== 'GET' && method !== 'HEAD') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  const filePath = filePathFromFsUrl(url);
+  if (!filePath || !isAllowed(filePath)) {
+    sendJson(res, 403, { error: 'Forbidden' });
+    return;
+  }
+  const extension = fileExtension(filePath);
+  const info = await stat(filePath).catch(() => null);
+  if (!info?.isFile()) {
+    sendJson(res, 404, { error: 'Not found' });
+    return;
+  }
+  if (info.size > DEV_FILE_SIZE_LIMIT || !STRUCTURE_EXTENSIONS.has(extension)) {
+    sendJson(res, 400, { error: 'Unsupported file' });
+    return;
+  }
+  const bytes = await readFile(filePath);
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Length', String(bytes.length));
+  res.setHeader('Cache-Control', 'no-cache');
+  res.end(method === 'HEAD' ? undefined : bytes);
+}
+
 async function handleStatic(res, method, url) {
   if (method !== 'GET' && method !== 'HEAD') {
     sendJson(res, 405, { error: 'Method not allowed' });
@@ -446,6 +478,12 @@ async function handleStatic(res, method, url) {
   res.setHeader('Content-Length', String(bytes.length));
   res.setHeader('Cache-Control', filePath === indexPath ? 'no-cache' : 'public, max-age=31536000, immutable');
   res.end(method === 'HEAD' ? undefined : bytes);
+}
+
+function filePathFromFsUrl(url) {
+  const rawPath = decodeURIComponent(url.pathname.slice('/@fs/'.length));
+  if (!rawPath) return null;
+  return resolve(rawPath.startsWith('/') ? rawPath : `/${rawPath}`);
 }
 
 async function collectDevFiles(path, files) {
