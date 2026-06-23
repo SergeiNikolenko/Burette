@@ -5775,6 +5775,19 @@
     return Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item.selected'));
   }
 
+  function frontmostXyzrenderSheetItem(root = document) {
+    const items = Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item'))
+      .filter(item => item.querySelector('.buret-xyzrender-sheet-item-body'));
+    if (!items.length) return null;
+    return items.reduce((frontmost, item) => {
+      const frontmostZ = Number.parseFloat(window.getComputedStyle(frontmost).zIndex);
+      const itemZ = Number.parseFloat(window.getComputedStyle(item).zIndex);
+      return (Number.isFinite(itemZ) ? itemZ : 0) >= (Number.isFinite(frontmostZ) ? frontmostZ : 0)
+        ? item
+        : frontmost;
+    }, items[0]);
+  }
+
   function xyzrenderSheetItemPreset(item, config = activeConfig || window.BurreteConfig || {}) {
     return normalizeXyzrenderPreset(
       item?.dataset?.buretXyzrenderPreset ||
@@ -5920,7 +5933,9 @@
   }
 
   function requestSelectedXyzrenderSheetItemsUpdate(options = {}) {
-    const items = selectedXyzrenderSheetItems().filter(item => item.querySelector('.buret-xyzrender-sheet-item-body'));
+    const selectedItems = selectedXyzrenderSheetItems().filter(item => item.querySelector('.buret-xyzrender-sheet-item-body'));
+    const frontmostItem = selectedItems.length === 0 ? frontmostXyzrenderSheetItem() : null;
+    const items = selectedItems.length > 0 ? selectedItems : (frontmostItem ? [frontmostItem] : []);
     if (items.length === 0) return false;
     void updateSelectedXyzrenderSheetItems(items, options);
     return true;
