@@ -575,6 +575,9 @@ body .msp-plugin .msp-viewport-controls-buttons .msp-viewport-controls-panel {
 body .msp-plugin .msp-viewport-controls-buttons .msp-hover-box-wrapper .msp-hover-box-spacer {
   right: 36px !important;
 }
+body .msp-plugin .msp-viewport-controls-buttons > div:nth-of-type(3) > button:first-of-type {
+  display: none !important;
+}
 body .msp-plugin .msp-viewport-controls-buttons button {
   display: grid !important;
   place-items: center;
