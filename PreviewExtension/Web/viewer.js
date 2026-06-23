@@ -5288,7 +5288,7 @@
     }, 1000);
   }
 
-  async function svgTextToPngBlob(svgText, item) {
+  async function svgTextToCanvas(svgText, item) {
     const normalized = normalizeSvgForExport(svgText);
     if (!normalized) throw new Error('No xyzrender SVG payload to export.');
     const rect = item?.getBoundingClientRect?.();
@@ -5313,15 +5313,115 @@
       if (!context) throw new Error('Canvas export is unavailable.');
       context.clearRect(0, 0, width, height);
       context.drawImage(image, 0, 0, width, height);
-      return await new Promise((resolve, reject) => {
-        canvas.toBlob(blob => {
-          if (blob) resolve(blob);
-          else reject(new Error('Could not encode PNG export.'));
-        }, 'image/png');
-      });
+      return canvas;
     } finally {
       URL.revokeObjectURL(imageUrl);
     }
+  }
+
+  async function svgTextToPngBlob(svgText, item) {
+    const canvas = await svgTextToCanvas(svgText, item);
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error('Could not encode PNG export.'));
+      }, 'image/png');
+    });
+  }
+
+  async function svgTextToGifBlob(svgText, item) {
+    return new Blob([encodeCanvasAsGif(await svgTextToCanvas(svgText, item))], { type: 'image/gif' });
+  }
+
+  function encodeCanvasAsGif(canvas) {
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas export is unavailable.');
+    const { width, height } = canvas;
+    if (width > 4096 || height > 4096) throw new Error('GIF export is limited to 4096 px per side.');
+    const pixels = context.getImageData(0, 0, width, height).data;
+    const indexed = new Uint8Array(width * height);
+    for (let pixel = 0, index = 0; pixel < pixels.length; pixel += 4, index += 1) {
+      indexed[index] = ((pixels[pixel] >> 5) << 5) | ((pixels[pixel + 1] >> 5) << 2) | (pixels[pixel + 2] >> 6);
+    }
+    const bytes = [];
+    const writeByte = value => bytes.push(value & 255);
+    const writeText = value => { for (let index = 0; index < value.length; index += 1) writeByte(value.charCodeAt(index)); };
+    const writeWord = value => { writeByte(value); writeByte(value >> 8); };
+    writeText('GIF89a');
+    writeWord(width);
+    writeWord(height);
+    writeByte(0xf7);
+    writeByte(0);
+    writeByte(0);
+    for (let index = 0; index < 256; index += 1) {
+      writeByte(Math.round(((index >> 5) & 7) * 255 / 7));
+      writeByte(Math.round(((index >> 2) & 7) * 255 / 7));
+      writeByte(Math.round((index & 3) * 255 / 3));
+    }
+    writeByte(0x21); writeByte(0xf9); writeByte(4); writeByte(0); writeWord(0); writeByte(0); writeByte(0);
+    writeByte(0x2c); writeWord(0); writeWord(0); writeWord(width); writeWord(height); writeByte(0);
+    writeByte(8);
+    const lzw = gifLzwEncode(indexed);
+    for (let offset = 0; offset < lzw.length; offset += 255) {
+      const chunk = lzw.slice(offset, offset + 255);
+      writeByte(chunk.length);
+      for (const value of chunk) writeByte(value);
+    }
+    writeByte(0);
+    writeByte(0x3b);
+    return new Uint8Array(bytes);
+  }
+
+  function gifLzwEncode(indices) {
+    const minCodeSize = 8;
+    const clearCode = 1 << minCodeSize;
+    const endCode = clearCode + 1;
+    let codeSize = minCodeSize + 1;
+    let nextCode = endCode + 1;
+    let dictionary = new Map();
+    const output = [];
+    let currentByte = 0;
+    let bitCount = 0;
+    const reset = () => {
+      dictionary = new Map();
+      for (let index = 0; index < clearCode; index += 1) dictionary.set(String(index), index);
+      codeSize = minCodeSize + 1;
+      nextCode = endCode + 1;
+    };
+    const writeCode = code => {
+      currentByte |= code << bitCount;
+      bitCount += codeSize;
+      while (bitCount >= 8) {
+        output.push(currentByte & 255);
+        currentByte >>= 8;
+        bitCount -= 8;
+      }
+    };
+    reset();
+    writeCode(clearCode);
+    let phrase = String(indices[0] ?? 0);
+    for (let offset = 1; offset < indices.length; offset += 1) {
+      const symbol = String(indices[offset]);
+      const combined = `${phrase},${symbol}`;
+      if (dictionary.has(combined)) {
+        phrase = combined;
+        continue;
+      }
+      writeCode(dictionary.get(phrase));
+      if (nextCode < 4096) {
+        dictionary.set(combined, nextCode);
+        nextCode += 1;
+        if (nextCode === (1 << codeSize) && codeSize < 12) codeSize += 1;
+      } else {
+        writeCode(clearCode);
+        reset();
+      }
+      phrase = symbol;
+    }
+    writeCode(dictionary.get(phrase));
+    writeCode(endCode);
+    if (bitCount > 0) output.push(currentByte & 255);
+    return output;
   }
 
   function hideXyzrenderSheetContextMenu() {
@@ -5340,6 +5440,13 @@
         .catch(error => setStatus(error instanceof Error ? error.message : String(error), 'error'));
     });
     actions.appendChild(button);
+  }
+
+  function appendXyzrenderMenuLabel(actions, label) {
+    const element = document.createElement('div');
+    element.className = 'buret-molecule-context-menu-section-label';
+    element.textContent = label;
+    actions.appendChild(element);
   }
 
   function showXyzrenderSheetContextMenu(event, item) {
@@ -5370,21 +5477,6 @@
     actions.className = 'buret-molecule-context-menu-actions';
     menu.appendChild(actions);
 
-    appendXyzrenderMenuButton(actions, 'Save SVG', async () => {
-      const svgText = normalizeSvgForExport(await xyzrenderSheetItemSvgText(item));
-      if (!svgText) throw new Error('No xyzrender SVG payload to export.');
-      downloadBlob(new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }), `${baseName}.svg`);
-      hideXyzrenderSheetContextMenu();
-      setStatus(`[web] Saved xyzrender SVG: ${baseName}.svg`);
-      setTimeout(hideStatus, 900);
-    });
-    appendXyzrenderMenuButton(actions, 'Save PNG', async () => {
-      const pngBlob = await svgTextToPngBlob(await xyzrenderSheetItemSvgText(item), item);
-      downloadBlob(pngBlob, `${baseName}.png`);
-      hideXyzrenderSheetContextMenu();
-      setStatus(`[web] Saved xyzrender PNG: ${baseName}.png`);
-      setTimeout(hideStatus, 900);
-    });
     appendXyzrenderMenuButton(actions, 'Hide Display', () => {
       item.remove();
       hideXyzrenderSheetContextMenu();
@@ -5410,6 +5502,29 @@
         hideXyzrenderSheetContextMenu();
       });
     }
+    appendXyzrenderMenuLabel(actions, 'Save to');
+    appendXyzrenderMenuButton(actions, 'SVG', async () => {
+      const svgText = normalizeSvgForExport(await xyzrenderSheetItemSvgText(item));
+      if (!svgText) throw new Error('No xyzrender SVG payload to export.');
+      downloadBlob(new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }), `${baseName}.svg`);
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Saved xyzrender SVG: ${baseName}.svg`);
+      setTimeout(hideStatus, 900);
+    });
+    appendXyzrenderMenuButton(actions, 'PNG', async () => {
+      const pngBlob = await svgTextToPngBlob(await xyzrenderSheetItemSvgText(item), item);
+      downloadBlob(pngBlob, `${baseName}.png`);
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Saved xyzrender PNG: ${baseName}.png`);
+      setTimeout(hideStatus, 900);
+    });
+    appendXyzrenderMenuButton(actions, 'GIF', async () => {
+      const gifBlob = await svgTextToGifBlob(await xyzrenderSheetItemSvgText(item), item);
+      downloadBlob(gifBlob, `${baseName}.gif`);
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Saved xyzrender GIF: ${baseName}.gif`);
+      setTimeout(hideStatus, 900);
+    });
     document.body.appendChild(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
   }

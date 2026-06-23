@@ -795,6 +795,13 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.buret-molecule-context-menu-section-label {
+  margin: 7px 2px 3px;
+  padding: 0 6px;
+  color: var(--buret-molstar-muted-text);
+  font: 600 10px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  letter-spacing: 0.01em;
+}
 .buret-molecule-context-mode {
   display: grid;
   grid-template-columns: 1fr 1fr;
