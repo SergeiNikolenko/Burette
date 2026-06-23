@@ -2654,7 +2654,7 @@
     const toolbar = document.getElementById('buret-toolbar');
     const controls = options.controls || (toolbar ? readXyzrenderControlsForm(toolbar) : normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
     const preset = normalizeXyzrenderPreset(options.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
-    const orientationRef = captureCurrentXyzrenderOrientationRef();
+    const orientationRef = captureCurrentXyzrenderOrientationRef(options);
     const inputDataBase64 = typeof config.xyzrenderInputDataBase64 === 'string' ? config.xyzrenderInputDataBase64.trim() : '';
     const inputExtension = typeof config.xyzrenderInputExtension === 'string' ? config.xyzrenderInputExtension.trim() : '';
     const serial = ++xyzrenderInlineRequestSerial;
@@ -2933,6 +2933,33 @@
     }
   }
 
+  function requestXyzrenderOrientationReset(toolbar) {
+    latestXyzrenderOrientationRef = null;
+    const config = activeConfig || window.BurreteConfig || {};
+    const controls = toolbar
+      ? readXyzrenderControlsForm(toolbar)
+      : normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
+    const preset = normalizeXyzrenderPreset(
+      toolbar?.querySelector('[data-buret-xyzrender-preset]')?.value ||
+      config.externalArtifact?.preset ||
+      config.xyzrenderPreset ||
+      'default'
+    );
+    const options = { preset, controls, useDefaultOrientation: true };
+    if (requestSelectedXyzrenderSheetItemsUpdate(options)) return;
+    if (requestBrowserDevXyzrenderUpdate(options)) return;
+    const sent = postHostMessage({
+      type: 'setRenderer',
+      value: 'xyzrender-external',
+      preset,
+      controls,
+      orientationRef: ''
+    });
+    if (!sent) {
+      setStatus('xyzrender 3D view reset is available only in the app or browser-dev viewer.', 'error');
+    }
+  }
+
   function scheduleXyzrenderControlsApply(toolbar, delayMs = 220) {
     if (!toolbar || toolbar.dataset.syncingXyzrenderForm === '1') return;
     if (xyzrenderControlsApplyTimer) clearTimeout(xyzrenderControlsApplyTimer);
@@ -2942,7 +2969,8 @@
     }, delayMs);
   }
 
-  function captureCurrentXyzrenderOrientationRef() {
+  function captureCurrentXyzrenderOrientationRef(options = {}) {
+    if (options.useDefaultOrientation === true) return null;
     const config = activeConfig || {};
     const format = normalizeFormat(config.molstarFormat || config.format);
     if (config.binary === true) return null;
@@ -3520,6 +3548,9 @@
       }
       populateXyzrenderControlsForm(toolbar, {});
       requestXyzrenderControls(toolbar);
+    });
+    toolbar.querySelector('[data-buret-action="xyzrender-reset-orientation"]')?.addEventListener('click', () => {
+      requestXyzrenderOrientationReset(toolbar);
     });
     toolbar.querySelectorAll('[data-buret-xctrl]').forEach(field => {
       field.addEventListener('change', () => {
@@ -5814,7 +5845,7 @@
       const entry = xyzrenderSheetItemEntry(item);
       if (!entry) continue;
       try {
-        const payload = await renderXyzrenderSheetItemPayload(entry, preset, controls);
+        const payload = await renderXyzrenderSheetItemPayload(entry, preset, controls, options);
         updateXyzrenderSheetItemBody(item, payload.svg);
         setXyzrenderSheetItemEntry(item, entry);
         item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || preset);
@@ -5829,14 +5860,14 @@
     }
   }
 
-  async function renderXyzrenderSheetItemPayload(entry, preset, controls) {
+  async function renderXyzrenderSheetItemPayload(entry, preset, controls, options = {}) {
     const config = activeConfig || window.BurreteConfig || {};
     const endpoint = String(config.xyzrenderEndpoint || '').trim();
     const path = sheetEntryLabel(entry);
     const inputDataBase64 = sheetEntryInputDataBase64(entry);
     const inputExtension = sheetEntryInputExtension(entry);
-    const orientationRef = captureCurrentXyzrenderOrientationRef();
-    if (!endpoint) return requestHostXyzrenderSheetItem(entry, preset, controls);
+    const orientationRef = captureCurrentXyzrenderOrientationRef(options);
+    if (!endpoint) return requestHostXyzrenderSheetItem(entry, preset, controls, options);
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5855,7 +5886,7 @@
     return payload;
   }
 
-  function requestHostXyzrenderSheetItem(entry, preset, controls) {
+  function requestHostXyzrenderSheetItem(entry, preset, controls, options = {}) {
     const requestId = `xyzrender-sheet-${++xyzrenderSheetRequestSerial}`;
     const path = sheetEntryLabel(entry);
     return new Promise((resolve, reject) => {
@@ -5872,7 +5903,7 @@
         controls,
         inputDataBase64: sheetEntryInputDataBase64(entry),
         inputExtension: sheetEntryInputExtension(entry),
-        orientationRef: captureCurrentXyzrenderOrientationRef()?.text || null
+        orientationRef: captureCurrentXyzrenderOrientationRef(options)?.text || null
       });
       if (!sent) {
         clearTimeout(timeout);
