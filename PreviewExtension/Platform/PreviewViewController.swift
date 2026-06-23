@@ -6731,6 +6731,7 @@ private enum PreviewExternalXyzrenderWorker {
         copyBoolean(value, key: "fog", into: &result)
         copyNumber(value, key: "fogStrength", into: &result)
         copyBoolean(value, key: "showVdw", into: &result)
+        copyText(value, key: "vdwAtoms", into: &result)
         copyNumber(value, key: "vdwOpacity", into: &result)
         copyNumber(value, key: "vdwScale", into: &result)
         copyBoolean(value, key: "hideBonds", into: &result)
@@ -6784,6 +6785,9 @@ private enum PreviewExternalXyzrenderWorker {
         }
         if preset != "vdw", (controls["showVdw"] as? Bool) == true {
             arguments.append("--vdw")
+            if let atoms = controls["vdwAtoms"] as? String, atoms.isEmpty == false {
+                arguments.append(atoms)
+            }
         }
         if let value = finitePositive(controls["vdwOpacity"]) {
             arguments += ["--vdw-opacity", formatCLI(value)]

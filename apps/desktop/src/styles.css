@@ -1803,7 +1803,8 @@ img.radix-menu-item-icon {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
-.xyzrender-dock-display-options {
+.xyzrender-dock-display-options,
+.xyzrender-dock-vdw-options {
   display: grid;
   gap: 6px;
 }
@@ -1816,6 +1817,11 @@ img.radix-menu-item-icon {
 .xyzrender-dock-display-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.xyzrender-dock-vdw-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 .xyzrender-dock-preset-tile {
@@ -1869,6 +1875,12 @@ img.radix-menu-item-icon {
 }
 .xyzrender-dock-display-grid .xyzrender-dock-preset-tile img {
   height: 50px;
+}
+.xyzrender-dock-vdw-grid .xyzrender-dock-preset-tile {
+  height: 82px;
+}
+.xyzrender-dock-vdw-grid .xyzrender-dock-preset-tile img {
+  height: 56px;
 }
 .xyzrender-dock-field,
 .xyzrender-dock-check {

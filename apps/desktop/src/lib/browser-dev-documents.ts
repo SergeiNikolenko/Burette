@@ -1278,6 +1278,7 @@ async function gridHtml(
       gradients: null,
       fog: null,
       showVdw: null,
+      vdwAtoms: null,
       hideBonds: null,
       atomScale: null,
       bondWidth: null,
