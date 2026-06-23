@@ -51,6 +51,7 @@ export function useAppViewerReloadActions({
           documentId: document.id,
           preset: effectiveReloadOptions.xyzrenderPreset ?? null,
           controls: effectiveReloadOptions.xyzrenderControls ?? null,
+          selectionAction: effectiveReloadOptions.xyzrenderSelectionAction ?? null,
         },
       }, "*");
       return;

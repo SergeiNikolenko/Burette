@@ -1190,6 +1190,11 @@ fn build_xyzrender_args(
         }
         if preset != "vdw" && controls.show_vdw == Some(true) {
             args.push("--vdw".to_string());
+            if let Some(atoms) =
+                normalize_atom_selector(controls.vdw_atoms.as_deref().unwrap_or_default())
+            {
+                args.push(atoms);
+            }
         }
         if let Some(value) = finite_positive(controls.vdw_opacity) {
             args.push("--vdw-opacity".to_string());
@@ -2128,6 +2133,7 @@ mod tests {
             fog: Some(true),
             fog_strength: Some(0.5),
             show_vdw: Some(true),
+            vdw_atoms: Some("2-4, 6".into()),
             vdw_opacity: Some(0.4),
             vdw_scale: Some(1.1),
             hide_bonds: Some(true),
@@ -2171,7 +2177,7 @@ mod tests {
         assert!(joined.contains("--transparent"));
         assert!(joined.contains("--no-grad"));
         assert!(joined.contains("--fog"));
-        assert!(joined.contains("--vdw"));
+        assert!(joined.contains("--vdw 2-4,6"));
         assert!(joined.contains("--no-bonds"));
         assert_eq!(args.iter().filter(|arg| arg.as_str() == "--hy").count(), 1);
         assert_eq!(

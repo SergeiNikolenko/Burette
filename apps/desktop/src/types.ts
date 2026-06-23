@@ -11,6 +11,7 @@ export type XyzrenderControls = {
   fog?: boolean | null;
   fogStrength?: number | null;
   showVdw?: boolean | null;
+  vdwAtoms?: string | null;
   vdwOpacity?: number | null;
   vdwScale?: number | null;
   hideBonds?: boolean | null;
@@ -52,6 +53,7 @@ export type ViewerReloadOptions = {
   xyzrenderOrientationRef?: string | null;
   xyzrenderPreset?: string | null;
   xyzrenderControls?: XyzrenderControls | null;
+  xyzrenderSelectionAction?: "vdw" | null;
   sdfPoseControlLabel?: string | null;
   trajectoryAutoPlayOnce?: boolean | null;
   molstarStyle?: "default" | "illustrative" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface" | null;
