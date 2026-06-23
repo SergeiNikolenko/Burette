@@ -2684,8 +2684,7 @@
     const object = document.querySelector('.buret-external-artifact-object');
     const label = (activeConfig || {}).label || 'xyzrender artifact';
     if (baseItem) {
-      baseItem.outerHTML = externalArtifactBaseItemHTML(payload.svg, label);
-      installExternalArtifactBaseItemInteractions(document.querySelector('.buret-external-artifact-root'));
+      updateXyzrenderSheetItemBody(baseItem, payload.svg);
     } else if (object) {
       const stage = object.closest('.buret-external-artifact-stage');
       if (stage) {
@@ -2745,6 +2744,13 @@
       externalArtifact: true,
       xyzrenderSvgBytes: String(payload.svg || '').length
     })), 450);
+  }
+
+  function updateXyzrenderSheetItemBody(item, svg) {
+    const body = item?.querySelector?.('.buret-xyzrender-sheet-item-body');
+    if (!body) return false;
+    body.innerHTML = svg;
+    return true;
   }
 
   function populateXyzrenderControlsForm(toolbar, controls) {

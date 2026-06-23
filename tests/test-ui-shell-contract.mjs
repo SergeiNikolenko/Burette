@@ -1405,6 +1405,9 @@ assert.match(viewer, /buret-xyzrender-sheet-item buret-xyzrender-sheet-item-larg
 assert.doesNotMatch(viewer, /buret-xyzrender-sheet-item-base selected/);
 assert.match(viewer, /item\.className = 'buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large selected'/);
 assert.match(viewer, /function initializeSheetItemCenterPosition\(item\)/);
+assert.match(viewer, /function updateXyzrenderSheetItemBody\(item, svg\)/);
+assert.match(viewer, /if \(baseItem\) \{\s*updateXyzrenderSheetItemBody\(baseItem, payload\.svg\);\s*\} else if \(object\)/s);
+assert.doesNotMatch(viewer, /baseItem\.outerHTML = externalArtifactBaseItemHTML/);
 assert.match(viewer, /function showXyzrenderSheetContextMenu\(event, item\)/);
 assert.match(viewer, /function installXyzrenderContextMenuInterception\(root\)/);
 assert.match(viewer, /document\.addEventListener\('contextmenu', intercept, true\)/);
