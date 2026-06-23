@@ -497,6 +497,7 @@ const XYZRENDER_README_DISPLAY_OPTIONS = [
 const XYZRENDER_README_VDW_OPTIONS = [
   { value: "all", label: "All atoms", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw.svg" },
   { value: "partial", label: "Partial", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw_partial.svg" },
+  { value: "off", label: "No vdW", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_default.svg" },
 ] as const;
 
 function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
@@ -575,6 +576,12 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         <XyzrenderVdwGallery
           controls={controls}
           onSelect={(mode) => {
+            if (mode === "off") {
+              const nextControls = { ...controls, showVdw: false, vdwAtoms: null };
+              setControls(nextControls);
+              apply(nextControls, preset);
+              return;
+            }
             const nextControls = { ...controls, showVdw: true, vdwAtoms: null };
             setControls(nextControls);
             apply(nextControls, preset, mode === "partial" ? { xyzrenderSelectionAction: "vdw" } : {});
@@ -684,7 +691,7 @@ function XyzrenderVdwGallery({
 }) {
   const active = controls.showVdw === true
     ? controls.vdwAtoms ? "partial" : "all"
-    : null;
+    : "off";
   return (
     <div className="xyzrender-dock-vdw-options" aria-label="xyzrender vdW spheres">
       <div className="xyzrender-dock-subtitle">vdW spheres</div>

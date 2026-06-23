@@ -1894,11 +1894,11 @@ assert.match(dockPanel, /function XyzrenderDockPanel\(\{ document, actions \}: \
 assert.match(dockPanel, /window\.setTimeout\(\(\) => \{\s*apply\(controls, preset\);\s*\}, 240\)/);
 assert.match(dockPanel, /const XYZRENDER_README_PRESET_GALLERY = \[[\s\S]*?caffeine_default\.svg[\s\S]*?caffeine_flat\.svg[\s\S]*?caffeine_paton\.svg[\s\S]*?caffeine_pmol\.svg[\s\S]*?caffeine_skeletal\.svg[\s\S]*?caffeine_bubble\.svg[\s\S]*?caffeine_tube\.svg[\s\S]*?caffeine_btube\.svg[\s\S]*?caffeine_wire\.svg[\s\S]*?caffeine_graph\.svg[\s\S]*?caffeine_mtube\.svg[\s\S]*?caffeine_vdw\.svg/);
 assert.match(dockPanel, /const XYZRENDER_README_DISPLAY_OPTIONS = \[[\s\S]*?ethanol_all_h\.svg[\s\S]*?ethanol_some_h\.svg[\s\S]*?ethanol_no_h\.svg[\s\S]*?benzene\.svg[\s\S]*?caffeine_kekule\.svg/);
-assert.match(dockPanel, /const XYZRENDER_README_VDW_OPTIONS = \[[\s\S]*?asparagine_vdw\.svg[\s\S]*?asparagine_vdw_partial\.svg/);
+assert.match(dockPanel, /const XYZRENDER_README_VDW_OPTIONS = \[[\s\S]*?asparagine_vdw\.svg[\s\S]*?asparagine_vdw_partial\.svg[\s\S]*?No vdW[\s\S]*?caffeine_default\.svg/);
 assert.doesNotMatch(dockPanel, /asparagine_vdw_paton\.svg/);
 assert.match(dockPanel, /<XyzrenderPresetGallery[\s\S]*?preset=\{preset\}[\s\S]*?onSelect=\{\(value\) => \{[\s\S]*?setPreset\(value\);[\s\S]*?apply\(controls, value\);[\s\S]*?\}\}/);
 assert.match(dockPanel, /<XyzrenderDisplayOptionsGallery[\s\S]*?controls=\{controls\}[\s\S]*?onSelect=\{\(nextControls\) => \{[\s\S]*?setControls\(nextControls\);[\s\S]*?apply\(nextControls, preset\);[\s\S]*?\}\}/);
-assert.match(dockPanel, /<XyzrenderVdwGallery[\s\S]*?controls=\{controls\}[\s\S]*?onSelect=\{\(mode\) => \{[\s\S]*?showVdw: true[\s\S]*?apply\(nextControls, preset, mode === "partial" \? \{ xyzrenderSelectionAction: "vdw" \} : \{\}\)/);
+assert.match(dockPanel, /<XyzrenderVdwGallery[\s\S]*?controls=\{controls\}[\s\S]*?onSelect=\{\(mode\) => \{[\s\S]*?if \(mode === "off"\) \{[\s\S]*?showVdw: false[\s\S]*?vdwAtoms: null[\s\S]*?apply\(nextControls, preset\)[\s\S]*?showVdw: true[\s\S]*?apply\(nextControls, preset, mode === "partial" \? \{ xyzrenderSelectionAction: "vdw" \} : \{\}\)/);
 assert.match(dockPanel, /function XyzrenderPresetGallery\(\{ preset, onSelect \}: \{ preset: string; onSelect: \(preset: string\) => void \}\)/);
 assert.match(dockPanel, /function XyzrenderDisplayOptionsGallery\(\{/);
 assert.match(dockPanel, /function XyzrenderVdwGallery\(\{/);
@@ -1906,7 +1906,7 @@ assert.match(dockPanel, /displayHydrogens: option\.value as XyzrenderControls\["
 assert.match(dockPanel, /bondNotation: option\.value as XyzrenderControls\["bondNotation"\]/);
 assert.match(dockPanel, /<img src=\{option\.image\} alt="" loading="lazy" draggable=\{false\} \/>/);
 assert.doesNotMatch(dockPanel, /label="VdW"/);
-assert.match(styles, /\.xyzrender-dock-vdw-grid \{\s*display: grid;\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+assert.match(styles, /\.xyzrender-dock-vdw-grid \{\s*display: grid;\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(dockPanel, /<StructureInfoPanel\s+document=\{dockStructureDocument\}[\s\S]*?dockDrops=\{dockDrops\}[\s\S]*?conformerStatus=\{state\.conformerStatus\}[\s\S]*?viewerLigandSelection=\{state\.viewerLigandSelection\}[\s\S]*?xtbStatus=\{state\.xtbStatus\}[\s\S]*?preferences=\{state\.preferences\}[\s\S]*?actions=\{actions\}[\s\S]*?\/>/);
 assert.match(dockPanel, /if \(dockTextDocument\) return <TextDocumentInfoPanel document=\{dockTextDocument\} actions=\{actions\} \/>/);
 assert.match(dockPanel, /function TextDocumentInfoPanel/);
