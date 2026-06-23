@@ -1412,6 +1412,8 @@ assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Hide Display'/);
 assert.match(viewer, /function setXyzrenderLassoEnabled\(enabled\)/);
 assert.match(viewer, /function selectXyzrenderElementsInLasso\(item, points, additive\)/);
 assert.match(viewer, /function applyXyzrenderSelectionControls\(controls\)/);
+assert.match(viewer, /function hideSelectedXyzrenderElements\(\)/);
+assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Hide Selected'/);
 assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Apply Current Settings'/);
 assert.match(viewer, /body\.buret-xyzrender-lasso-active \.buret-xyzrender-sheet-item/);
 assert.match(viewer, /function externalArtifactSheetHTML\(content\)/);

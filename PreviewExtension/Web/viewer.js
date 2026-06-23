@@ -5268,6 +5268,10 @@
       setTimeout(hideStatus, 900);
     });
     if (hasXyzrenderSelection()) {
+      appendXyzrenderMenuButton(actions, 'Hide Selected', () => {
+        hideSelectedXyzrenderElements();
+        hideXyzrenderSheetContextMenu();
+      });
       appendXyzrenderMenuButton(actions, 'Apply Current Settings', () => {
         const toolbar = document.getElementById('buret-toolbar');
         if (!toolbar) throw new Error('xyzrender settings toolbar is unavailable.');
@@ -9429,6 +9433,20 @@
       dimmed += 1;
     }
     setStatus(`[web] Dimmed ${dimmed} unselected xyzrender graphic${dimmed === 1 ? '' : 's'}.`);
+    setTimeout(hideStatus, 900);
+  }
+
+  function hideSelectedXyzrenderElements() {
+    const elements = Array.from(xyzrenderSelectedElements).filter(element => element.isConnected);
+    if (!elements.length) {
+      clearXyzrenderSelection();
+      return;
+    }
+    for (const element of elements) {
+      ensureXyzrenderOriginalStyle(element);
+      element.setAttribute('display', 'none');
+    }
+    setStatus(`[web] Hid ${elements.length} selected xyzrender graphic${elements.length === 1 ? '' : 's'}.`);
     setTimeout(hideStatus, 900);
   }
 
