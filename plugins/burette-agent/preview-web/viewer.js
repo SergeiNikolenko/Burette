@@ -5792,6 +5792,14 @@
       if (existing !== item) existing.classList.remove('selected');
     });
     item.classList.add('selected');
+    bringXyzrenderSheetItemToFront(item, root);
+  }
+
+  function bringXyzrenderSheetItemToFront(item, root = document) {
+    const current = Number(root?.dataset?.buretXyzrenderTopZ || 20);
+    const next = Math.max(20, current) + 1;
+    if (root?.dataset) root.dataset.buretXyzrenderTopZ = String(next);
+    item.style.zIndex = String(next);
   }
 
   function clearRotatableArtifactSelection(root = document) {
