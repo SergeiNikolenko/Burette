@@ -58,6 +58,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
   const activeStructureDocument = dockDocument ?? state.activeDocument;
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
+  const descriptorDockAvailable = !descriptorDockBlocked(area, activeStructureDocument);
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   const foldingState = useFoldingResult(area === "bottom" ? activeStructureDocument : null);
@@ -66,7 +67,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
   const tabs = rawTabs.filter((tab) => {
     if (tab.kind === "spectrum") return spectrumDockAvailable;
     if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
-    if (tab.kind === "descriptors") return !(area === "right" && spectrumDocumentActive);
+    if (tab.kind === "descriptors") return descriptorDockAvailable && !(area === "right" && spectrumDocumentActive);
     return true;
   });
   const activeTabKind = tabs.some((tab) => tab.kind === storedActiveTabKind) ? storedActiveTabKind : tabs[0]?.kind ?? "files";
@@ -95,7 +96,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
       dockTabCatalog(area).filter((kind) => {
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
-        if (kind === "descriptors") return !(area === "right" && spectrumDocumentActive);
+        if (kind === "descriptors") return descriptorDockAvailable && !(area === "right" && spectrumDocumentActive);
         return true;
       }).map((kind) => ({
         kind: "item" as const,
@@ -228,6 +229,11 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
       </div>
     </aside>
   );
+}
+
+function descriptorDockBlocked(area: DockArea, document: ViewerDocument | null | undefined) {
+  if (area !== "right" || !document) return false;
+  return Boolean(document.dockingRequest) || (document.virtual && document.renderer === "molstar");
 }
 
 function DockPanelContent({
@@ -1017,6 +1023,42 @@ function ActiveDocumentTextPanel({
   openPaths: ShellActions["openPaths"];
   onStructureSelection: ShellActions["selectTextStructure"];
 }) {
+  const dockingTextSources = dockingTextSourcesForDocument(activeDocument);
+  if (dockingTextSources.length > 0) {
+    return (
+      <DockingDocumentTextPanel
+        activeDocument={activeDocument!}
+        sources={dockingTextSources}
+        textDocuments={textDocuments}
+        openPaths={openPaths}
+        onStructureSelection={onStructureSelection}
+      />
+    );
+  }
+  return (
+    <SingleDocumentTextPanel
+      activeDocument={activeDocument}
+      activeTextDocument={activeTextDocument}
+      textDocuments={textDocuments}
+      openPaths={openPaths}
+      onStructureSelection={onStructureSelection}
+    />
+  );
+}
+
+function SingleDocumentTextPanel({
+  activeDocument,
+  activeTextDocument,
+  textDocuments,
+  openPaths,
+  onStructureSelection,
+}: {
+  activeDocument: ViewerDocument | null;
+  activeTextDocument: TextFileDocument | null;
+  textDocuments: TextFileDocument[];
+  openPaths: ShellActions["openPaths"];
+  onStructureSelection: ShellActions["selectTextStructure"];
+}) {
   const textPreviewLimit = isMaestroStructure(activeDocument) ? 1_500_000 : 3_000_000;
   const existingDocument = activeTextDocument ?? (activeDocument
     ? textDocuments.find((document) => document.path === activeDocument.path) ?? null
@@ -1079,6 +1121,124 @@ function ActiveDocumentTextPanel({
   );
 }
 
+type DockingTextSource = {
+  key: string;
+  path: string;
+  title: string;
+  extension: string;
+};
+
+function DockingDocumentTextPanel({
+  activeDocument,
+  sources,
+  textDocuments,
+  openPaths,
+  onStructureSelection,
+}: {
+  activeDocument: ViewerDocument;
+  sources: DockingTextSource[];
+  textDocuments: TextFileDocument[];
+  openPaths: ShellActions["openPaths"];
+  onStructureSelection: ShellActions["selectTextStructure"];
+}) {
+  const [activeSourceKey, setActiveSourceKey] = useState(sources[0]?.key ?? "");
+  const [loadedDocuments, setLoadedDocuments] = useState<Record<string, TextFileDocument>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const activeSource = sources.find((source) => source.key === activeSourceKey) ?? sources[0];
+  const existingDocument = activeSource ? textDocuments.find((document) => document.path === activeSource.path) ?? null : null;
+  const loadedDocument = activeSource ? loadedDocuments[activeSource.key] ?? null : null;
+
+  useEffect(() => {
+    setActiveSourceKey(sources[0]?.key ?? "");
+    setLoadedDocuments({});
+    setErrors({});
+  }, [activeDocument.id]);
+
+  useEffect(() => {
+    if (!activeSource || existingDocument || loadedDocument || errors[activeSource.key]) return undefined;
+    let cancelled = false;
+    void readStructureTextDocument(activeSource.path, {
+      id: `${activeDocument.id}:${activeSource.key}`,
+      path: activeSource.path,
+      title: activeSource.title,
+      extension: activeSource.extension,
+      byteCount: 0,
+    }, { maxBytes: textPreviewLimitForExtension(activeSource.extension) })
+      .then((document) => {
+        if (cancelled) return;
+        setLoadedDocuments((current) => ({ ...current, [activeSource.key]: document }));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setErrors((current) => ({ ...current, [activeSource.key]: error instanceof Error ? error.message : String(error) }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDocument.id, activeSource, errors, existingDocument, loadedDocument]);
+
+  if (!activeSource) {
+    return (
+      <div className="dock-content dock-content-empty">
+        <div className="dock-empty dock-empty-large">No source files are attached to this view.</div>
+      </div>
+    );
+  }
+
+  const document = existingDocument ?? loadedDocument;
+  return (
+    <div className="dock-files-view">
+      <div className="dock-file-tabs" role="tablist" aria-label="Docking source text files">
+        {sources.map((source) => (
+          <button
+            type="button"
+            key={source.key}
+            className="dock-file-tab"
+            data-active={source.key === activeSource.key || undefined}
+            title={source.path}
+            onClick={() => setActiveSourceKey(source.key)}
+            role="tab"
+            aria-selected={source.key === activeSource.key}
+          >
+            <span>{source.title}</span>
+          </button>
+        ))}
+      </div>
+      {document ? (
+        <div className="dock-viewer">
+          <TextFileViewer document={document} openPaths={openPaths} onStructureSelection={onStructureSelection} />
+        </div>
+      ) : (
+        <div className="dock-content dock-content-empty">
+          <div className="dock-empty dock-empty-large">
+            {errors[activeSource.key] ? `Text preview failed for ${activeSource.title}: ${errors[activeSource.key]}` : `Loading ${activeSource.title}...`}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function dockingTextSourcesForDocument(document: ViewerDocument | null): DockingTextSource[] {
+  if (!document?.dockingRequest) return [];
+  return uniqueDockingTextPaths([
+    document.dockingRequest.receptorPath,
+    ...document.dockingRequest.ligandPaths,
+  ]).map((path, index) => {
+    const title = fileName(path);
+    const extension = extensionFromPath(path);
+    return { key: `${index}:${path}`, path, title, extension };
+  });
+}
+
+function uniqueDockingTextPaths(paths: string[]) {
+  return Array.from(new Set(paths.filter((path) => path.trim().length > 0)));
+}
+
+function textPreviewLimitForExtension(extension: string) {
+  return ["mae", "maegz", "cms"].includes(extension.toLowerCase()) ? 1_500_000 : 3_000_000;
+}
+
 function textDocumentFromVirtualText(document: ViewerDocument, content: string): TextFileDocument {
   return {
     id: document.id,
@@ -1095,6 +1255,17 @@ function textDocumentFromVirtualText(document: ViewerDocument, content: string):
 
 function isMaestroStructure(document: ViewerDocument | null) {
   return document ? ["mae", "maegz", "cms"].includes(document.extension.toLowerCase()) : false;
+}
+
+function extensionFromPath(path: string) {
+  const name = fileName(path).toLowerCase();
+  if (name.endsWith(".mae.gz")) return "maegz";
+  const index = name.lastIndexOf(".");
+  return index >= 0 ? name.slice(index + 1) : "";
+}
+
+function fileName(path: string) {
+  return path.replace(/\\/g, "/").split("/").filter(Boolean).pop() || path;
 }
 
 function activeTextDocumentFromState(state: ShellViewState) {
