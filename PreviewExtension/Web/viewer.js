@@ -5032,7 +5032,7 @@
   function externalArtifactBaseItemHTML(content, label) {
     const safeLabel = escapeHTML(label || 'xyzrender artifact');
     return `
-      <div class="buret-xyzrender-sheet-item buret-xyzrender-sheet-item-base selected" role="button" tabindex="0" aria-label="${safeLabel}">
+      <div class="buret-xyzrender-sheet-item buret-xyzrender-sheet-item-base" aria-label="${safeLabel}">
         <div class="buret-xyzrender-sheet-item-background"></div>
         <div class="buret-xyzrender-sheet-item-body">${content}</div>
         ${rotatableArtifactControlsHTML()}
@@ -5074,6 +5074,158 @@
       `<object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(path)}" type="image/svg+xml" aria-label="${escapeHTML(label || 'xyzrender artifact')}"></object>`,
       label
     );
+  }
+
+  function sheetItemExportLabel(item) {
+    const config = activeConfig || window.BurreteConfig || {};
+    return item?.getAttribute?.('aria-label') || config.label || 'xyzrender';
+  }
+
+  function normalizeSvgForExport(svgText) {
+    let text = String(svgText || '').trim();
+    if (!text) return '';
+    const svgStart = text.search(/<svg[\s>]/iu);
+    if (svgStart > 0) text = text.slice(svgStart);
+    if (!/^<svg[\s>]/iu.test(text)) return '';
+    if (!/\sxmlns=/iu.test(text)) text = text.replace(/<svg\b/iu, '<svg xmlns="http://www.w3.org/2000/svg"');
+    return text;
+  }
+
+  async function xyzrenderSheetItemSvgText(item) {
+    const inlineSvg = item?.querySelector?.('.buret-xyzrender-sheet-item-body > svg');
+    if (inlineSvg) return new XMLSerializer().serializeToString(inlineSvg);
+
+    const object = item?.querySelector?.('.buret-external-artifact-object');
+    const objectSvg = object?.contentDocument?.querySelector?.('svg');
+    if (objectSvg) return new XMLSerializer().serializeToString(objectSvg);
+
+    const data = object?.getAttribute?.('data');
+    if (data) {
+      const response = await fetch(data);
+      if (!response.ok) throw new Error(`Could not read xyzrender SVG: HTTP ${response.status}`);
+      return await response.text();
+    }
+    return '';
+  }
+
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = safeDownloadFileName(name);
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      link.remove();
+    }, 1000);
+  }
+
+  async function svgTextToPngBlob(svgText, item) {
+    const normalized = normalizeSvgForExport(svgText);
+    if (!normalized) throw new Error('No xyzrender SVG payload to export.');
+    const rect = item?.getBoundingClientRect?.();
+    const ratio = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const width = Math.max(256, Math.min(4096, Math.round((rect?.width || 1200) * ratio)));
+    const height = Math.max(256, Math.min(4096, Math.round((rect?.height || 900) * ratio)));
+    const imageBlob = new Blob([normalized], { type: 'image/svg+xml;charset=utf-8' });
+    const imageUrl = URL.createObjectURL(imageBlob);
+    try {
+      const image = new Image();
+      image.decoding = 'async';
+      const loaded = new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error('Could not rasterize xyzrender SVG.'));
+      });
+      image.src = imageUrl;
+      await loaded;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Canvas export is unavailable.');
+      context.clearRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+      return await new Promise((resolve, reject) => {
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('Could not encode PNG export.'));
+        }, 'image/png');
+      });
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+    }
+  }
+
+  function hideXyzrenderSheetContextMenu() {
+    document.querySelector('.buret-xyzrender-context-menu')?.remove();
+  }
+
+  function appendXyzrenderMenuButton(actions, label, action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      Promise.resolve()
+        .then(action)
+        .catch(error => setStatus(error instanceof Error ? error.message : String(error), 'error'));
+    });
+    actions.appendChild(button);
+  }
+
+  function showXyzrenderSheetContextMenu(event, item) {
+    event.preventDefault();
+    event.stopPropagation();
+    hideMolstarContextMenu({ keepMoleculePreview: true });
+    hideXyzrenderSheetContextMenu();
+
+    const label = sheetItemExportLabel(item);
+    const baseName = safeExportBaseName(label, 'xyzrender');
+    const menu = document.createElement('div');
+    menu.className = 'buret-molecule-context-menu buret-xyzrender-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'xyzrender actions');
+
+    const title = document.createElement('div');
+    title.className = 'buret-molecule-context-menu-title';
+    title.textContent = 'xyzrender';
+    menu.appendChild(title);
+
+    const subtitle = document.createElement('div');
+    subtitle.className = 'buret-molecule-context-menu-subtitle';
+    subtitle.textContent = label;
+    menu.appendChild(subtitle);
+
+    const actions = document.createElement('div');
+    actions.className = 'buret-molecule-context-menu-actions';
+    menu.appendChild(actions);
+
+    appendXyzrenderMenuButton(actions, 'Save SVG', async () => {
+      const svgText = normalizeSvgForExport(await xyzrenderSheetItemSvgText(item));
+      if (!svgText) throw new Error('No xyzrender SVG payload to export.');
+      downloadBlob(new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }), `${baseName}.svg`);
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Saved xyzrender SVG: ${baseName}.svg`);
+      setTimeout(hideStatus, 900);
+    });
+    appendXyzrenderMenuButton(actions, 'Save PNG', async () => {
+      const pngBlob = await svgTextToPngBlob(await xyzrenderSheetItemSvgText(item), item);
+      downloadBlob(pngBlob, `${baseName}.png`);
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Saved xyzrender PNG: ${baseName}.png`);
+      setTimeout(hideStatus, 900);
+    });
+    appendXyzrenderMenuButton(actions, 'Hide Display', () => {
+      item.remove();
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Hid xyzrender display: ${baseName}`);
+      setTimeout(hideStatus, 900);
+    });
+
+    document.body.appendChild(menu);
+    positionMolstarContextMenu(menu, event.clientX, event.clientY);
   }
 
   function escapeHTML(value) {
@@ -5652,6 +5804,7 @@
     };
 
     const onPointerDown = event => {
+      if (event.button !== 0) return;
       const handle = event.target?.closest?.('[data-buret-resize-handle]');
       if (!handle || !item.contains(handle)) return;
       event.preventDefault();
@@ -5728,7 +5881,9 @@
   function installXyzrenderSheetItemInteractions(item, getStageScale, options = {}) {
     if (!item || item.dataset.buretRotatableInstalled === 'true') return;
     item.dataset.buretRotatableInstalled = 'true';
+    item.addEventListener('contextmenu', event => showXyzrenderSheetContextMenu(event, item));
     item.addEventListener('click', event => {
+      if (event.button !== 0) return;
       event.stopPropagation();
       selectRotatableArtifact(item);
       try { item.focus({ preventScroll: true }); } catch (_) {}
@@ -5752,6 +5907,7 @@
     let startLeft = 0;
     let startTop = 0;
     const onPointerDown = event => {
+      if (event.button !== 0) return;
       if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle]')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -5807,6 +5963,7 @@
       return Math.atan2(event.clientY - centerY, event.clientX - centerX) * 180 / Math.PI;
     };
     const onPointerDown = event => {
+      if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       selectRotatableArtifact(item);
