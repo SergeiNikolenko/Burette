@@ -1848,11 +1848,13 @@
     if (body.type === 'setXyzrenderControls') {
       const config = activeConfig || window.BurreteConfig || {};
       const documentId = String(config.documentId || '');
-      if (body.documentId && documentId && String(body.documentId) !== documentId) return;
+      const hasXyzrenderArtifact = Boolean(document.querySelector('.buret-external-artifact-root, .buret-xyzrender-sheet-item-base, .buret-external-artifact-object'));
+      if (body.documentId && documentId && String(body.documentId) !== documentId && !hasXyzrenderArtifact) return;
       const controls = normalizeXyzrenderControls(body.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
       const preset = normalizeXyzrenderPreset(body.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
-      if (requestBrowserDevXyzrenderUpdate({ controls, preset })) return;
-      const sent = postHostMessage({ type: 'setXyzrenderControls', documentId, controls, preset });
+      const options = { controls, preset };
+      if (requestBrowserDevXyzrenderUpdate(options)) return;
+      const sent = postHostMessage({ type: 'setXyzrenderControls', documentId, controls, preset, ...xyzrenderOrientationPayload() });
       if (!sent) setStatus('xyzrender controls are available only in the app or Quick Look viewer.', 'error');
       return;
     }
@@ -2659,7 +2661,7 @@
   function requestXyzrenderPreset(preset) {
     const value = normalizeXyzrenderPreset(preset);
     if (requestBrowserDevXyzrenderUpdate({ preset: value })) return;
-    const sent = postHostMessage({ type: 'setXyzrenderPreset', value });
+    const sent = postHostMessage({ type: 'setXyzrenderPreset', value, ...xyzrenderOrientationPayload() });
     if (!sent) setStatus('xyzrender preset switching is available only in the app or Quick Look viewer.', 'error');
   }
 
@@ -2668,7 +2670,8 @@
     const endpoint = String(config.xyzrenderEndpoint || '').trim();
     const sourcePath = String(config.xyzrenderSourcePath || config.sourcePath || '').trim();
     const renderer = options.rendererSwitch === true ? 'xyzrender-external' : normalizeRenderer(config.renderer);
-    if (config.tauriViewer !== false || !endpoint || !sourcePath || renderer !== 'xyzrender-external') {
+    const hasXyzrenderArtifact = Boolean(document.querySelector('.buret-external-artifact-root, .buret-xyzrender-sheet-item-base, .buret-external-artifact-object'));
+    if (config.tauriViewer !== false || !endpoint || !sourcePath || (renderer !== 'xyzrender-external' && !hasXyzrenderArtifact)) {
       return false;
     }
     const toolbar = document.getElementById('buret-toolbar');
@@ -2938,7 +2941,7 @@
       return;
     }
     if (requestBrowserDevXyzrenderUpdate({ controls })) return;
-    const sent = postHostMessage({ type: 'setXyzrenderControls', controls });
+    const sent = postHostMessage({ type: 'setXyzrenderControls', controls, ...xyzrenderOrientationPayload() });
     if (!sent) {
       setStatus('xyzrender controls are available only in the app or Quick Look viewer.', 'error');
     }
@@ -2960,6 +2963,13 @@
     const nextRef = buildXyzrenderOrientationRef(activeViewer, config);
     if (nextRef) latestXyzrenderOrientationRef = nextRef;
     return nextRef || latestXyzrenderOrientationRef;
+  }
+
+  function xyzrenderOrientationPayload() {
+    const orientationRef = captureCurrentXyzrenderOrientationRef();
+    return orientationRef
+      ? { orientationRef: orientationRef.text, orientationAtomCount: orientationRef.atomCount }
+      : {};
   }
 
   function trackMolstarOrientation(viewer, config) {

@@ -78,7 +78,7 @@ export function useAppViewerRuntimeMessages({
       pendingViewerReloadDocumentIdRef.current = bodyString(body.documentId) ?? null;
       pendingViewerReloadOptionsRef.current = {
         xyzrenderPreset: bodyString(body.value) ?? null,
-        xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
+        xyzrenderOrientationRef: bodyString(body.orientationRef) ?? xyzrenderOrientationRefRef.current,
         xyzrenderControls: pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
         xyzrenderSelectionAction: null,
       };
@@ -90,7 +90,7 @@ export function useAppViewerRuntimeMessages({
       pendingViewerReloadDocumentIdRef.current = bodyString(body.documentId) ?? null;
       pendingViewerReloadOptionsRef.current = {
         xyzrenderPreset: bodyString(body.preset) ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
-        xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
+        xyzrenderOrientationRef: bodyString(body.orientationRef) ?? xyzrenderOrientationRefRef.current,
         xyzrenderControls: bodyControls(body.controls),
         xyzrenderSelectionAction: bodySelectionAction(body.selectionAction),
       };
