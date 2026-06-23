@@ -1491,7 +1491,7 @@ assert.match(viewer, /goBackXyzrenderSystemHistory\(\)/);
 assert.match(viewer, /goForwardXyzrenderSystemHistory\(\)/);
 assert.match(viewer, /!\['z', 'я'\]\.includes\(key\)/);
 assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Hide Selected'/);
-assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Apply Current Settings'/);
+assert.doesNotMatch(viewer, /appendXyzrenderMenuButton\(actions, 'Apply Current Settings'/);
 assert.match(viewer, /body\.buret-xyzrender-lasso-active \.buret-xyzrender-sheet-item/);
 assert.match(viewer, /\.buret-xyzrender-sheet-item\.has-xyzrender-selection \{ box-shadow: none; \}/);
 assert.match(viewer, /\.buret-molstar-lasso\.active \{ background: var\(--buret-toolbar-hover/);
