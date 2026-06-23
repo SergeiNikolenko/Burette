@@ -1422,6 +1422,7 @@ assert.match(viewer, /function applyXyzrenderSelectionPreset\(preset, controls\)
 assert.match(viewer, /if \(hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(value, controls\);\s*return;\s*\}/s);
 assert.match(viewer, /if \(body\.type === 'setXyzrenderControls'\) \{[\s\S]*?if \(hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(preset, controls\);\s*return;\s*\}[\s\S]*?requestBrowserDevXyzrenderUpdate\(\{ controls, preset \}\)/);
 assert.match(viewer, /function xyzrenderAtomSelectorForElements\(item, elements\)/);
+assert.match(viewer, /if \(atoms\.size === 0\) \{\s*for \(const element of elements \|\| \[\]\) \{\s*addAtomsNearXyzrenderElement\(atoms, atomNodes, element\);/s);
 assert.match(viewer, /const regions = \[\.\.\.xyzrenderSheetItemRegions\(group\.item\), \{ atoms: atomSelector, preset: normalizedPreset \}\]/);
 assert.match(viewer, /const nextControls = normalizeXyzrenderControls\(\{ \.\.\.controls, regions \}/);
 assert.match(viewer, /renderXyzrenderSheetItemPayload\(entry, basePreset, nextControls\)/);
