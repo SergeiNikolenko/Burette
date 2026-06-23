@@ -2633,6 +2633,10 @@
     const controls = toolbar
       ? readXyzrenderControlsForm(toolbar)
       : normalizeXyzrenderControls((activeConfig && activeConfig.xyzrenderControls) || DEFAULT_XYZRENDER_CONTROLS, activeConfig || {});
+    if (hasXyzrenderSelection()) {
+      void applyXyzrenderSelectionPreset(value, controls);
+      return;
+    }
     if (requestSelectedXyzrenderSheetItemsUpdate({ preset: value, controls })) return;
     if (requestBrowserDevXyzrenderUpdate({ preset: value })) return;
     const sent = postHostMessage({ type: 'setXyzrenderPreset', value });
@@ -2916,6 +2920,8 @@
   function requestXyzrenderControls(toolbar) {
     const controls = readXyzrenderControlsForm(toolbar);
     if (hasXyzrenderSelection()) {
+      const item = xyzrenderFirstSelectionItem();
+      if (item) pushXyzrenderActionHistory(item, 'apply settings');
       applyXyzrenderSelectionControls(controls);
       return;
     }
@@ -5704,6 +5710,97 @@
     if (items.length === 0) return false;
     void updateSelectedXyzrenderSheetItems(items, options);
     return true;
+  }
+
+  async function applyXyzrenderSelectionPreset(preset, controls) {
+    const groups = xyzrenderSelectionGroups();
+    if (!groups.length) {
+      clearXyzrenderSelection();
+      return;
+    }
+    const normalizedPreset = normalizeXyzrenderPreset(preset);
+    setStatus(`[web] Applying ${normalizedPreset} preset to selected xyzrender graphics…`);
+    let updated = 0;
+    for (const group of groups) {
+      const entry = xyzrenderSheetItemEntry(group.item);
+      if (!entry) continue;
+      const currentElements = xyzrenderGraphicElements(group.item);
+      const selectedIndexes = group.elements
+        .map(element => currentElements.indexOf(element))
+        .filter(index => index >= 0);
+      if (!selectedIndexes.length) continue;
+      try {
+        const payload = await renderXyzrenderSheetItemPayload(entry, normalizedPreset, controls);
+        const sourceSvg = parseXyzrenderSvg(payload.svg);
+        if (!sourceSvg) throw new Error('xyzrender preset returned no SVG payload');
+        const targetSvg = group.item.querySelector('.buret-xyzrender-sheet-item-body svg');
+        mergeXyzrenderSvgDefs(targetSvg, sourceSvg);
+        const sourceElements = xyzrenderGraphicElementsFromSvg(sourceSvg);
+        pushXyzrenderActionHistory(group.item, `apply ${normalizedPreset} preset`);
+        for (const index of selectedIndexes) {
+          const targetElement = currentElements[index];
+          const sourceElement = sourceElements[index];
+          if (!targetElement || !sourceElement) continue;
+          applyXyzrenderElementPresentation(targetElement, sourceElement);
+          updated += 1;
+        }
+      } catch (error) {
+        setStatus(`Could not apply ${normalizedPreset} preset to ${sheetEntryLabel(entry)}: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      }
+    }
+    if (updated > 0) {
+      setStatus(`[web] Applied ${normalizedPreset} preset to ${updated} selected xyzrender graphic${updated === 1 ? '' : 's'}.`);
+      setTimeout(hideStatus, 900);
+    }
+  }
+
+  function parseXyzrenderSvg(svgText) {
+    if (typeof svgText !== 'string' || !svgText.trim()) return null;
+    const parsed = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+    if (parsed.querySelector('parsererror')) return null;
+    return parsed.querySelector('svg');
+  }
+
+  function mergeXyzrenderSvgDefs(targetSvg, sourceSvg) {
+    if (!targetSvg || !sourceSvg) return;
+    const sourceDefs = Array.from(sourceSvg.querySelectorAll('defs > [id]'));
+    if (!sourceDefs.length) return;
+    let targetDefs = targetSvg.querySelector('defs');
+    if (!targetDefs) {
+      targetDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      targetSvg.insertBefore(targetDefs, targetSvg.firstChild);
+    }
+    for (const node of sourceDefs) {
+      const id = node.getAttribute('id');
+      if (!id || targetSvg.querySelector(`#${CSS.escape(id)}`)) continue;
+      targetDefs.appendChild(document.importNode(node, true));
+    }
+  }
+
+  function applyXyzrenderElementPresentation(targetElement, sourceElement) {
+    ensureXyzrenderOriginalStyle(targetElement);
+    const presentationAttributes = [
+      'style',
+      'fill',
+      'fill-opacity',
+      'stroke',
+      'stroke-opacity',
+      'stroke-width',
+      'stroke-linecap',
+      'stroke-linejoin',
+      'stroke-miterlimit',
+      'stroke-dasharray',
+      'opacity',
+      'filter',
+      'r',
+      'rx',
+      'ry',
+      'font-size',
+      'font-weight'
+    ];
+    for (const name of presentationAttributes) {
+      restoreNullableAttribute(targetElement, name, sourceElement.getAttribute(name));
+    }
   }
 
   async function updateSelectedXyzrenderSheetItems(items, options = {}) {
@@ -9531,6 +9628,11 @@
   function xyzrenderGraphicElements(item) {
     const svg = item?.querySelector?.('.buret-xyzrender-sheet-item-body svg');
     if (!svg) return [];
+    return xyzrenderGraphicElementsFromSvg(svg);
+  }
+
+  function xyzrenderGraphicElementsFromSvg(svg) {
+    if (!svg?.querySelectorAll) return [];
     return Array.from(svg.querySelectorAll('path,circle,ellipse,rect,line,polyline,polygon,text'));
   }
 
@@ -9697,6 +9799,30 @@
   function hasXyzrenderSelection() {
     cleanupXyzrenderSelectionSet();
     return xyzrenderSelectedElements.size > 0;
+  }
+
+  function xyzrenderFirstSelectionItem() {
+    const groups = xyzrenderSelectionGroups();
+    return groups.length ? groups[0].item : null;
+  }
+
+  function xyzrenderSelectionGroups() {
+    cleanupXyzrenderSelectionSet();
+    const groups = [];
+    const indexes = new Map();
+    for (const element of Array.from(xyzrenderSelectedElements)) {
+      if (!element.isConnected) continue;
+      const item = element.closest('.buret-xyzrender-sheet-item');
+      if (!item) continue;
+      let index = indexes.get(item);
+      if (index == null) {
+        index = groups.length;
+        indexes.set(item, index);
+        groups.push({ item, elements: [] });
+      }
+      groups[index].elements.push(element);
+    }
+    return groups;
   }
 
   function cleanupXyzrenderSelectionSet() {
