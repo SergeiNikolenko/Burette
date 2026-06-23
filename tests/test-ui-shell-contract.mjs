@@ -1411,6 +1411,7 @@ assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Save PNG'/);
 assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Hide Display'/);
 assert.match(viewer, /function setXyzrenderLassoEnabled\(enabled\)/);
 assert.match(viewer, /function selectXyzrenderElementsInLasso\(item, points, additive\)/);
+assert.match(viewer, /const hasStrokeExtent = svgElementHasStroke\(element\) && \(rect\.width > 0 \|\| rect\.height > 0\)/);
 assert.match(viewer, /function applyXyzrenderSelectionControls\(controls\)/);
 assert.match(viewer, /function hideSelectedXyzrenderElements\(\)/);
 assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Hide Selected'/);

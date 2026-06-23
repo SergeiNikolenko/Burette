@@ -9322,8 +9322,11 @@
     return Array.from(svg.querySelectorAll('path,circle,ellipse,rect,line,polyline,polygon,text')).filter(element => {
       if (!element.getBoundingClientRect) return false;
       const rect = element.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return false;
-      if (element.tagName.toLowerCase() === 'rect') {
+      const tagName = element.tagName.toLowerCase();
+      const hasArea = rect.width > 0 && rect.height > 0;
+      const hasStrokeExtent = svgElementHasStroke(element) && (rect.width > 0 || rect.height > 0);
+      if (!hasArea && !hasStrokeExtent) return false;
+      if (tagName === 'rect') {
         const itemRect = item.getBoundingClientRect();
         if (rect.width > itemRect.width * 0.82 && rect.height > itemRect.height * 0.82) return false;
       }
