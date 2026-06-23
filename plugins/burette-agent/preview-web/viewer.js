@@ -5221,6 +5221,7 @@
   function showXyzrenderSheetContextMenu(event, item) {
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation?.();
     hideMolstarContextMenu({ keepMoleculePreview: true });
     hideXyzrenderSheetContextMenu();
 
@@ -5939,9 +5940,35 @@
   function installExternalArtifactBaseItemInteractions(root, getStageScale) {
     if (!root) return;
     installRotatableArtifactSelectionClear(root);
+    installXyzrenderContextMenuInterception(root);
     root.querySelectorAll('.buret-xyzrender-sheet-item-base').forEach(item => {
       installXyzrenderSheetItemInteractions(item, getStageScale, { removable: false });
     });
+  }
+
+  function installXyzrenderContextMenuInterception(root) {
+    if (!root || root.dataset.buretContextMenuInterceptInstalled === 'true') return;
+    root.dataset.buretContextMenuInterceptInstalled = 'true';
+    const intercept = event => {
+      const item = xyzrenderSheetItemFromContextEvent(event, root);
+      if (!item) return;
+      showXyzrenderSheetContextMenu(event, item);
+    };
+    root.addEventListener('contextmenu', intercept, true);
+    document.addEventListener('contextmenu', intercept, true);
+  }
+
+  function xyzrenderSheetItemFromContextEvent(event, root = document) {
+    const target = event.target instanceof Element ? event.target : null;
+    const direct = target?.closest?.('.buret-xyzrender-sheet-item');
+    if (direct && root.contains(direct)) return direct;
+    const hit = document.elementFromPoint?.(event.clientX, event.clientY);
+    const hitItem = hit?.closest?.('.buret-xyzrender-sheet-item');
+    if (hitItem && root.contains(hitItem)) return hitItem;
+    return Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item')).find(item => {
+      const rect = item.getBoundingClientRect();
+      return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+    }) || null;
   }
 
   function installXyzrenderSheetItemInteractions(item, getStageScale, options = {}) {
