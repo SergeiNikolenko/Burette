@@ -1403,6 +1403,9 @@ assert.match(viewer, /buret-xyzrender-sheet-item buret-xyzrender-sheet-item-base
 assert.doesNotMatch(viewer, /buret-xyzrender-sheet-item-base selected/);
 assert.match(viewer, /item\.className = 'buret-xyzrender-sheet-item selected'/);
 assert.match(viewer, /function showXyzrenderSheetContextMenu\(event, item\)/);
+assert.match(viewer, /function installXyzrenderContextMenuInterception\(root\)/);
+assert.match(viewer, /document\.addEventListener\('contextmenu', intercept, true\)/);
+assert.match(viewer, /event\.stopImmediatePropagation\?\.\(\)/);
 assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Save SVG'/);
 assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Save PNG'/);
 assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Hide Display'/);
