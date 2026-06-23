@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, open as openFile, readFile, writeFile } from 'node:fs/p
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { delimiter, dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -276,7 +276,7 @@ async function openBrowserAgentShell(file, options) {
   const env = {
     ...process.env,
     BURRETE_DEV_DEFAULT_FILES: initialFile,
-    BURRETE_DEV_FS_ALLOW: dirname(initialFile),
+    BURRETE_DEV_FS_ALLOW: browserDevFsAllowRoots(initialFile).join(delimiter),
     BURRETE_AGENT_SHELL_SESSION_DIR: sessionDir,
     VITE_BURRETE_AGENT_SHELL: '1',
     VITE_BURRETE_BUILD_IDENTIFIER: 'browser-agent-shell',
@@ -363,7 +363,7 @@ async function openPrebuiltBrowserAgentShell({ initialFile, sessionDir, host, po
     agentShellServerScript,
     '--dist', agentShellDistDir,
     '--session-dir', sessionDir,
-    '--allow', dirname(initialFile),
+    ...browserDevFsAllowRoots(initialFile).flatMap((root) => ['--allow', root]),
     '--host', host,
     '--port', String(port),
   ], {
@@ -412,6 +412,11 @@ async function openPrebuiltBrowserAgentShell({ initialFile, sessionDir, host, po
       act: `node scripts/burrete-agent.mjs act --session-dir ${JSON.stringify(sessionDir)} '<json-action>'`,
     },
   }, null, 2));
+}
+
+function browserDevFsAllowRoots(initialFile) {
+  const explicitRoots = (process.env.BURRETE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
+  return explicitRoots.length > 0 ? explicitRoots : [dirname(initialFile)];
 }
 
 async function allocatePort(host) {
