@@ -1436,6 +1436,10 @@ assert.match(viewer, /displayHydrogens: normalizeXyzrenderHydrogens\(source\.dis
 assert.match(viewer, /bondNotation: normalizeXyzrenderBondNotation\(source\.bondNotation\)/);
 assert.match(viewer, /renderXyzrenderSheetItemPayload\(entry, basePreset, nextControls\)/);
 assert.match(viewer, /vdwAtoms: xyzrenderSheetItemVdwAtoms\(item\) \|\| controls\.vdwAtoms/);
+assert.match(viewer, /function xyzrenderBrowserDevEndpointUrl\(endpoint\)/);
+assert.match(viewer, /fetch\(xyzrenderBrowserDevEndpointUrl\(endpoint\), \{/);
+assert.match(viewer, /const controller = new AbortController\(\)/);
+assert.match(viewer, /controller\.abort\(\), 30000\)/);
 assert.match(viewer, /if \(!activeViewer \|\| !canUseExternalXyzrender\(format\)\) return latestXyzrenderOrientationRef/);
 assert.match(viewer, /if \(requestSelectedXyzrenderSheetItemsUpdate\(\{ preset: value, controls \}\)\) return;/);
 assert.match(viewer, /setXyzrenderSheetItemEntry\(item, entry\)/);
