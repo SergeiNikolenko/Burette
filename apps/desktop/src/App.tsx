@@ -313,7 +313,7 @@ export default function App() {
   });
 
   const {
-    browserDevExplicitFolder,
+    browserDevExplicitFolders,
     browserDevHasExplicitWorkspaceQuery,
   } = useAppBrowserDevStartup();
   const {
@@ -323,7 +323,7 @@ export default function App() {
     workspacePath,
   } = useAppSidebarProjects({
     activeDocumentId: activeDocument?.id ?? null,
-    browserDevExplicitFolder,
+    browserDevExplicitFolders,
     browserDevHasExplicitWorkspace: browserDevHasExplicitWorkspaceQuery,
     documents,
     hiddenProjectRoots,
@@ -480,7 +480,7 @@ export default function App() {
     activeDocument,
     activeTabId,
     addProjectRoot,
-    browserDevExplicitFolder,
+    browserDevExplicitFolders,
     closeAllDocuments,
     documents,
     openDockingDocument,

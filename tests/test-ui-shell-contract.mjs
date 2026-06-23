@@ -177,6 +177,7 @@ const [
   browserDevRuntimeDoctor,
   browserDevXtb,
   browserDevXyzrender,
+  burreteAgentCli,
   bundleReportScript,
   previewRuntimeViewer,
   previewRuntimeSource,
@@ -371,6 +372,7 @@ const [
   source('apps/desktop/vite/browser-dev/runtime-doctor.ts'),
   source('apps/desktop/vite/browser-dev/xtb.ts'),
   source('apps/desktop/vite/browser-dev/xyzrender.ts'),
+  source('scripts/burrete-agent.mjs'),
   source('scripts/bundle-report.mjs'),
   source('apps/desktop/src-tauri/src/preview/runtime_viewer.rs'),
   source('apps/desktop/src-tauri/src/preview/runtime.rs'),
@@ -928,23 +930,30 @@ assert.match(browserDevStartup, /if \(params\.has\("devDocking"\)\) return \[\];
 assert.match(browserDevStartup, /params\.has\("devFiles"\)/);
 assert.match(browserDevStructureBundles, /!isSpectrumPath\(path, extension\) &&\s*!structureAndTextExtensions\.has\(extension\)/);
 assert.match(browserDevStartup, /export function browserDevFolderFromLocation\(\)/);
-assert.match(browserDevStartup, /get\("devFolder"\)\?\.trim\(\)/);
-assert.ok(browserDevStartup.includes('return folder ? folder.replace(/\\\\/g, "/").replace(/\\/+$/u, "") : null;'));
+assert.match(browserDevStartup, /export function browserDevFoldersFromLocation\(\)/);
+assert.match(browserDevStartup, /params\.getAll\("devFolder"\)/);
+assert.match(browserDevStartup, /return browserDevFoldersFromLocation\(\)\[0\] \?\? null;/);
+assert.ok(browserDevStartup.includes('return trimmed ? trimmed.replace(/\\\\/g, "/").replace(/\\/+$/u, "") : null;'));
 assert.match(browserDevStartup, /export function browserDevHasExplicitWorkspace\(\)/);
 assert.match(browserDevStartup, /return params\.has\("devFiles"\) \|\| params\.has\("devFolder"\);/);
 assert.match(app, /from "\.\/hooks\/use-app-browser-dev-startup"/);
-assert.match(app, /browserDevExplicitFolder,[\s\S]*browserDevHasExplicitWorkspaceQuery,[\s\S]*\} = useAppBrowserDevStartup\(\)/);
+assert.match(app, /browserDevExplicitFolders,[\s\S]*browserDevHasExplicitWorkspaceQuery,[\s\S]*\} = useAppBrowserDevStartup\(\)/);
 assert.doesNotMatch(app, /browserDevFolderFromLocation\(/);
 assert.doesNotMatch(app, /browserDevHasExplicitWorkspace\(/);
 assert.match(appBrowserDevStartupHook, /export function useAppBrowserDevStartup\(\)/);
-assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevFolderFromLocation\(\), \[\]\)/);
+assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevFoldersFromLocation\(\), \[\]\)/);
 assert.match(appBrowserDevStartupHook, /useMemo\(\(\) => browserDevHasExplicitWorkspace\(\), \[\]\)/);
-assert.match(appSidebarProjectsHook, /if \(browserDevExplicitFolder\) return \[browserDevExplicitFolder\];/);
-assert.match(appSidebarProjectsHook, /const sidebarRecentStructures = browserDevExplicitFolder \? \[\] : recentStructures;/);
+assert.match(appSidebarProjectsHook, /if \(browserDevExplicitFolders\.length > 0\) return browserDevExplicitFolders;/);
+assert.match(appSidebarProjectsHook, /const sidebarRecentStructures = browserDevExplicitFolders\.length > 0 \? \[\] : recentStructures;/);
 assert.match(appSidebarProjectsHook, /recentStructures: sidebarRecentStructures,/);
-assert.match(browserDevStartup, /return \[\];\s*}\s*export function browserDevFolderFromLocation/);
+assert.match(browserDevStartup, /return \[\];\s*}\s*export function browserDevFoldersFromLocation/);
 assert.match(browserDevStartup, /export function splitDevFiles\(rawFiles: string\)/);
 assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
+assert.match(burreteAgentCli, /function browserDevFsAllowRoots\(initialFile\)/);
+assert.match(burreteAgentCli, /const explicitRoots = \(process\.env\.BURRETE_DEV_FS_ALLOW \?\? ""\)\.split\(delimiter\)\.filter\(Boolean\);/);
+assert.match(burreteAgentCli, /return explicitRoots\.length > 0 \? explicitRoots : \[dirname\(initialFile\)\];/);
+assert.match(burreteAgentCli, /BURRETE_DEV_FS_ALLOW: browserDevFsAllowRoots\(initialFile\)\.join\(delimiter\)/);
+assert.match(burreteAgentCli, /\.\.\.browserDevFsAllowRoots\(initialFile\)\.flatMap\(\(root\) => \['--allow', root\]\)/);
 assert.match(fileRouting, /export const NOT_RENDERABLE_RENDERER = "not-renderable";/);
 assert.match(fileRouting, /export function summarizeErrorText\(message: string\)/);
 assert.match(app, /from "\.\/lib\/file-routing"/);
@@ -1186,8 +1195,8 @@ assert.match(appSidebarProjectsHook, /list_project_structure_files/);
 assert.match(appSidebarProjectsHook, /prunedPersistedPathsRef/);
 assert.match(appSidebarProjectsHook, /pruneSidebarPaths\(existingPaths\)/);
 assert.match(appSidebarProjectsHook, /pruneRecentStructures\(existingPaths\)/);
-assert.match(appStartupEffectsHook, /const browserDevProjectRoots = browserDevExplicitFolder\s*\?\s*\[browserDevExplicitFolder\]\s*:\s*uniqueParentDirectories\(paths\);/);
-assert.match(appStartupEffectsHook, /const workspace = browserDevExplicitFolder \?\? commonParentDirectory\(browserDevProjectRoots\);/);
+assert.match(appStartupEffectsHook, /const browserDevProjectRoots = browserDevExplicitFolders\.length > 0\s*\?\s*browserDevExplicitFolders\s*:\s*uniqueParentDirectories\(paths\);/);
+assert.match(appStartupEffectsHook, /const workspace = commonParentDirectory\(browserDevProjectRoots\);/);
 assert.match(appStartupEffectsHook, /for \(const root of browserDevProjectRoots\) \{\s*addProjectRoot\(root\);/);
 assert.match(appStartupEffectsHook, /function uniqueParentDirectories\(paths: string\[\]\)/);
 assert.match(appStartupEffectsHook, /function commonParentDirectory\(paths: string\[\]\)/);

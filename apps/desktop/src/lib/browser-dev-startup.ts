@@ -9,20 +9,26 @@ export async function browserDevFilesFromLocation() {
   if (params.has("devFiles")) {
     return params.getAll("devFiles").flatMap((value) => splitDevFiles(value));
   }
-  if (params.has("devFolder")) {
-    const folder = params.get("devFolder") ?? "";
-    const response = await fetch(`/__burette/dev-files?root=${encodeURIComponent(folder)}`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`Could not load dev folder: ${response.status}`);
-    const payload = await response.json() as { files?: string[] };
-    return Array.isArray(payload.files) ? payload.files : [];
+  const folders = browserDevFoldersFromParams(params);
+  if (folders.length > 0) {
+    const fileGroups = await Promise.all(folders.map(async (folder) => {
+      const response = await fetch(`/__burette/dev-files?root=${encodeURIComponent(folder)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Could not load dev folder: ${response.status}`);
+      const payload = await response.json() as { files?: string[] };
+      return Array.isArray(payload.files) ? payload.files : [];
+    }));
+    return Array.from(new Set(fileGroups.flat()));
   }
   return [];
 }
 
+export function browserDevFoldersFromLocation() {
+  if (typeof window === "undefined" || isTauriRuntime()) return [];
+  return browserDevFoldersFromParams(new URLSearchParams(window.location.search));
+}
+
 export function browserDevFolderFromLocation() {
-  if (typeof window === "undefined" || isTauriRuntime()) return null;
-  const folder = new URLSearchParams(window.location.search).get("devFolder")?.trim();
-  return folder ? folder.replace(/\\/g, "/").replace(/\/+$/u, "") : null;
+  return browserDevFoldersFromLocation()[0] ?? null;
 }
 
 export function splitDevFiles(rawFiles: string) {
@@ -53,4 +59,15 @@ export function browserDevDockingFromLocation(): DockingDocumentRequest | null {
   const paths = splitDevFiles(params.get("devDocking") ?? "");
   if (paths.length < 2) return null;
   return dockingRequestForDrop(paths[0], paths.slice(1));
+}
+
+function browserDevFoldersFromParams(params: URLSearchParams) {
+  return Array.from(new Set(params.getAll("devFolder")
+    .map(normalizeBrowserDevFolder)
+    .filter((folder): folder is string => Boolean(folder))));
+}
+
+function normalizeBrowserDevFolder(folder: string | null) {
+  const trimmed = folder?.trim();
+  return trimmed ? trimmed.replace(/\\/g, "/").replace(/\/+$/u, "") : null;
 }
