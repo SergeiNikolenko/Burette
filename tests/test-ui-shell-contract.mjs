@@ -818,6 +818,8 @@ assert.match(viteConfig, /function normalizeXyzrenderInputExtension\(value: stri
 assert.match(viteConfig, /registerBrowserDevXyzrenderRoute\(server,/);
 assert.match(browserDevXyzrender, /server\.middlewares\.use\("\/__burette\/xyzrender"/);
 assert.match(browserDevXyzrender, /const convertedInputPath = join\(tempDirectory, `xyzrender-input\.\$\{inputExtension\}`\);/);
+assert.match(browserDevXyzrender, /Retried without --ref because xyzrender does not support --ref for periodic structures/);
+assert.match(browserDevXyzrender, /isXyzrenderRefUnsupportedForPeriodic\(error\)/);
 assert.match(previewViewController, /Set\(\["-o", "--output", "-go", "--gif-output", "--config", "--ref"\]\)/);
 assert.match(previewXyzrender, /config_argument: resolved_config_argument/);
 assert.match(viewer, /left: 'hidden'/);
@@ -3876,6 +3878,8 @@ assert.match(previewRuntimeViewer, /"molstarAvailable": !format\.external_only \
 assert.match(previewXyzrender, /inline_svg: String/);
 assert.match(previewXyzrender, /fn xyzrender_cache_key/);
 assert.match(previewXyzrender, /fn prune_xyzrender_cache/);
+assert.match(previewXyzrender, /fn xyzrender_ref_unsupported_for_periodic/);
+assert.match(previewXyzrender, /Retried without --ref because xyzrender does not support --ref for periodic structures/);
 assert.match(previewXyzrender, /read_cached_xyzrender_artifact/);
 assert.match(previewXyzrender, /let inline_svg = fs::read_to_string\(&output_path\)/);
 assert.match(previewXyzrender, /"sourcePath": if has_content_input \{ None \} else \{ Some\(canonical_path_string\(input_path\)\) \}/);
