@@ -1820,6 +1820,10 @@ img.radix-menu-item-icon {
   font: inherit;
   font-size: 13px;
 }
+.xyzrender-dock-field select {
+  appearance: none;
+  -webkit-appearance: none;
+}
 .xyzrender-dock-field input[type="number"] {
   background: var(--surface-input);
   padding-right: 9px;
