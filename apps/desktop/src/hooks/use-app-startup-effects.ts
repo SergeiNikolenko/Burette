@@ -23,7 +23,7 @@ type UseAppStartupEffectsOptions = {
   activeDocument: ViewerDocument | null | undefined;
   activeTabId: string | null | undefined;
   addProjectRoot: (path: string) => void;
-  browserDevExplicitFolder: string | null;
+  browserDevExplicitFolders: string[];
   closeAllDocuments: () => void;
   documents: ViewerDocument[];
   openDockingDocument: OpenDockingDocument;
@@ -44,7 +44,7 @@ export function useAppStartupEffects({
   activeDocument,
   activeTabId,
   addProjectRoot,
-  browserDevExplicitFolder,
+  browserDevExplicitFolders,
   closeAllDocuments,
   documents,
   openDockingDocument,
@@ -74,10 +74,10 @@ export function useAppStartupEffects({
       if (!needsInitialOpen && !needsRuntimeRefresh) return;
       openedBrowserDevFilesRef.current = normalizedFiles;
       syncingBrowserDevFilesRef.current = true;
-      const browserDevProjectRoots = browserDevExplicitFolder
-        ? [browserDevExplicitFolder]
+      const browserDevProjectRoots = browserDevExplicitFolders.length > 0
+        ? browserDevExplicitFolders
         : uniqueParentDirectories(paths);
-      const workspace = browserDevExplicitFolder ?? commonParentDirectory(browserDevProjectRoots);
+      const workspace = commonParentDirectory(browserDevProjectRoots);
       if (workspace) {
         setWorkspacePath(workspace);
       }
@@ -99,7 +99,7 @@ export function useAppStartupEffects({
     return () => {
       cancelled = true;
     };
-  }, [addProjectRoot, browserDevExplicitFolder, closeAllDocuments, documents, openDockingDocument, openPaths, pushErrorStatus, setWorkspacePath]);
+  }, [addProjectRoot, browserDevExplicitFolders, closeAllDocuments, documents, openDockingDocument, openPaths, pushErrorStatus, setWorkspacePath]);
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
