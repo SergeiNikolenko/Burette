@@ -5409,11 +5409,6 @@
         dimUnselectedXyzrenderElements(item);
         hideXyzrenderSheetContextMenu();
       });
-      appendXyzrenderMenuButton(actions, 'Reset Selection', () => {
-        pushXyzrenderActionHistory(item, 'reset selection');
-        resetXyzrenderSelectionStyles();
-        hideXyzrenderSheetContextMenu();
-      });
       appendXyzrenderMenuButton(actions, 'Clear Selection', () => {
         pushXyzrenderActionHistory(item, 'clear selection');
         clearXyzrenderSelection();
