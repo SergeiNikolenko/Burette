@@ -1399,7 +1399,13 @@ assert.match(viewer, /function addXyzrenderSheetItem\(sheet, svg, path, point, s
 assert.match(viewer, /buret-xyzrender-sheet-rotate-handle/);
 assert.match(viewer, /--buret-sheet-rotation/);
 assert.match(viewer, /function externalArtifactBaseItemHTML\(content, label\)/);
-assert.match(viewer, /buret-xyzrender-sheet-item-base selected/);
+assert.match(viewer, /buret-xyzrender-sheet-item buret-xyzrender-sheet-item-base" aria-label="\$\{safeLabel\}"/);
+assert.doesNotMatch(viewer, /buret-xyzrender-sheet-item-base selected/);
+assert.match(viewer, /item\.className = 'buret-xyzrender-sheet-item selected'/);
+assert.match(viewer, /function showXyzrenderSheetContextMenu\(event, item\)/);
+assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Save SVG'/);
+assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Save PNG'/);
+assert.match(viewer, /appendXyzrenderMenuButton\(actions, 'Hide Display'/);
 assert.match(viewer, /function externalArtifactSheetHTML\(content\)/);
 assert.match(viewer, /\.buret-xyzrender-sheet \{ position: absolute; inset: 0; z-index: 14; pointer-events: auto; \}/);
 assert.match(viewer, /function installExternalArtifactBaseItemInteractions\(root, getStageScale\)/);
