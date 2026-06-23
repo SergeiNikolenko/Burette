@@ -1,7 +1,9 @@
 # Paths are matched exactly, relative to the repository root.
 # Keep this list short and limited to intentional large checked-in assets.
 PreviewExtension/Web/molstar.js
+PreviewExtension/Web/viewer.js
 PreviewExtension/Web/rdkit/RDKit_minimal.wasm
+plugins/burette-agent/preview-web/viewer.js
 docs/public/burrete-quick-look-preview.png
 samples/large/moses_10k.csv
 samples/large/moses_10k_descriptors_preview.csv
