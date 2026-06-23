@@ -157,19 +157,46 @@ pub(crate) fn create_xyzrender_artifact(
     } else {
         input_path
     };
-    let (status, log) = run_xyzrender_command(
+    let orientation_ref_path = write_orientation_ref(orientation_ref_text, &orientation_ref_path)?;
+    let (mut status, mut log) = run_xyzrender_command(
         &executable,
         build_xyzrender_args(
             effective_input_path,
             &output_path,
             resolved_preset,
-            write_orientation_ref(orientation_ref_text, &orientation_ref_path)?,
+            orientation_ref_path,
             controls,
             direct_smiles,
         ),
         &log_path,
         XYZRENDER_TIMEOUT,
     )?;
+    if orientation_ref_path.is_some()
+        && !status.success()
+        && xyzrender_ref_unsupported_for_periodic(&log)
+    {
+        let _ = fs::remove_file(&output_path);
+        let _ = fs::remove_file(&log_path);
+        let (retry_status, retry_log) = run_xyzrender_command(
+            &executable,
+            build_xyzrender_args(
+                effective_input_path,
+                &output_path,
+                resolved_preset,
+                None,
+                controls,
+                direct_smiles,
+            ),
+            &log_path,
+            XYZRENDER_TIMEOUT,
+        )?;
+        status = retry_status;
+        log = format!(
+            "{}\n[burette] Retried without --ref because xyzrender does not support --ref for periodic structures.\n{}",
+            log, retry_log
+        );
+        let _ = fs::write(&log_path, &log);
+    }
     if !status.success() {
         return Err(format!(
             "External xyzrender failed with exit status {}. {}",
@@ -1049,6 +1076,10 @@ fn normalize_orientation_ref(text: Option<&str>) -> Option<String> {
     })
 }
 
+fn xyzrender_ref_unsupported_for_periodic(log: &str) -> bool {
+    log.contains("--ref is not supported for periodic structures")
+}
+
 fn normalize_preset(value: Option<&str>) -> &'static str {
     match value
         .unwrap_or("default")
@@ -1783,6 +1814,16 @@ mod tests {
 
         assert!(text.len() < XYZRENDER_LOG_CAPTURE_BYTES + 128);
         assert!(text.contains("log truncated"));
+    }
+
+    #[test]
+    fn detects_periodic_ref_rejection() {
+        assert!(xyzrender_ref_unsupported_for_periodic(
+            "xyzrender: error: --ref is not supported for periodic structures"
+        ));
+        assert!(!xyzrender_ref_unsupported_for_periodic(
+            "xyzrender: error: input could not be parsed"
+        ));
     }
 
     #[test]
