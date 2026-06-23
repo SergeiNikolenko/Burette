@@ -58,6 +58,7 @@ pub(crate) struct XyzrenderSheetRenderRequest {
     controls: Option<XyzrenderControls>,
     input_data_base64: Option<String>,
     input_extension: Option<String>,
+    orientation_ref: Option<String>,
     cache_scope: Option<String>,
 }
 
@@ -1638,7 +1639,7 @@ fn render_xyzrender_sheet_item_blocking(
         &output_directory,
         cache_directory.as_deref(),
         request.preset.as_deref(),
-        None,
+        request.orientation_ref.as_deref(),
         request.controls.as_ref(),
         direct_smiles.as_deref(),
         converted_xyz.as_deref(),
