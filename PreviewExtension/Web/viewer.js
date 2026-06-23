@@ -2945,7 +2945,8 @@
   function captureCurrentXyzrenderOrientationRef() {
     const config = activeConfig || {};
     const format = normalizeFormat(config.molstarFormat || config.format);
-    if (config.binary === true || !activeViewer || !canUseExternalXyzrender(format)) return null;
+    if (config.binary === true) return null;
+    if (!activeViewer || !canUseExternalXyzrender(format)) return latestXyzrenderOrientationRef;
     const nextRef = buildXyzrenderOrientationRef(activeViewer, config);
     if (nextRef) latestXyzrenderOrientationRef = nextRef;
     return nextRef || latestXyzrenderOrientationRef;
@@ -5834,11 +5835,19 @@
     const path = sheetEntryLabel(entry);
     const inputDataBase64 = sheetEntryInputDataBase64(entry);
     const inputExtension = sheetEntryInputExtension(entry);
+    const orientationRef = captureCurrentXyzrenderOrientationRef();
     if (!endpoint) return requestHostXyzrenderSheetItem(entry, preset, controls);
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, preset, controls, inputDataBase64, inputExtension })
+      body: JSON.stringify({
+        path,
+        preset,
+        controls,
+        inputDataBase64,
+        inputExtension,
+        orientationRef: orientationRef?.text || undefined
+      })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender sheet request failed with status ${response.status}`);
@@ -5862,7 +5871,8 @@
         preset,
         controls,
         inputDataBase64: sheetEntryInputDataBase64(entry),
-        inputExtension: sheetEntryInputExtension(entry)
+        inputExtension: sheetEntryInputExtension(entry),
+        orientationRef: captureCurrentXyzrenderOrientationRef()?.text || null
       });
       if (!sent) {
         clearTimeout(timeout);
