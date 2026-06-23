@@ -68,8 +68,13 @@
     fog: null,
     fogStrength: null,
     showVdw: false,
+    vdwAtoms: null,
     vdwOpacity: null,
     vdwScale: null,
+    hullMode: null,
+    hullAtoms: null,
+    hullOpacity: null,
+    poreOpacity: null,
     hideBonds: false,
     showCell: null,
     showGhosts: null,
@@ -1575,6 +1580,10 @@
       vdwAtoms: normalizeXyzrenderAtomSelector(source.vdwAtoms),
       vdwOpacity: positiveNumberOrNull(source.vdwOpacity),
       vdwScale: positiveNumberOrNull(source.vdwScale),
+      hullMode: normalizeXyzrenderHullMode(source.hullMode),
+      hullAtoms: normalizeXyzrenderAtomSelector(source.hullAtoms),
+      hullOpacity: nonNegativeNumberOrNull(source.hullOpacity),
+      poreOpacity: nonNegativeNumberOrNull(source.poreOpacity),
       hideBonds: source.hideBonds === true,
       displayHydrogens: normalizeXyzrenderHydrogens(source.displayHydrogens),
       bondNotation: normalizeXyzrenderBondNotation(source.bondNotation),
@@ -1607,6 +1616,11 @@
   function normalizeXyzrenderBondNotation(value) {
     const text = String(value || '').trim().toLowerCase();
     return text === 'aromatic' || text === 'kekule' ? text : null;
+  }
+
+  function normalizeXyzrenderHullMode(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return ['off', 'benzene-ring', 'anthracene-rings', 'auto-rings', 'faces', 'pore', 'mof5-faces', 'mof5-pore', 'faces-pore'].includes(text) ? text : null;
   }
 
   function normalizeXyzrenderRegions(value) {

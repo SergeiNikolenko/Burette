@@ -68,8 +68,13 @@
     fog: null,
     fogStrength: null,
     showVdw: false,
+    vdwAtoms: null,
     vdwOpacity: null,
     vdwScale: null,
+    hullMode: null,
+    hullAtoms: null,
+    hullOpacity: null,
+    poreOpacity: null,
     hideBonds: false,
     showCell: null,
     showGhosts: null,
@@ -1571,8 +1576,13 @@
       fog: triStateBoolean(source.fog),
       fogStrength: positiveNumberOrNull(source.fogStrength),
       showVdw: source.showVdw === true,
+      vdwAtoms: normalizeXyzrenderAtomSelector(source.vdwAtoms),
       vdwOpacity: positiveNumberOrNull(source.vdwOpacity),
       vdwScale: positiveNumberOrNull(source.vdwScale),
+      hullMode: normalizeXyzrenderHullMode(source.hullMode),
+      hullAtoms: normalizeXyzrenderAtomSelector(source.hullAtoms),
+      hullOpacity: nonNegativeNumberOrNull(source.hullOpacity),
+      poreOpacity: nonNegativeNumberOrNull(source.poreOpacity),
       hideBonds: source.hideBonds === true,
       showCell: triStateBoolean(source.showCell),
       showGhosts: triStateBoolean(source.showGhosts),
@@ -1628,6 +1638,25 @@
   function normalizeFieldSurfaceStyle(value) {
     const text = String(value || '').trim().toLowerCase();
     return ['solid', 'mesh', 'contour', 'dot'].includes(text) ? text : null;
+  }
+
+  function normalizeXyzrenderHullMode(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return ['off', 'benzene-ring', 'anthracene-rings', 'auto-rings', 'faces', 'pore', 'mof5-faces', 'mof5-pore', 'faces-pore'].includes(text) ? text : null;
+  }
+
+  function normalizeXyzrenderAtomSelector(value) {
+    const text = String(value || '').replace(/\s+/gu, '');
+    if (!text || !/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/u.test(text)) return null;
+    const parts = [];
+    for (const rawPart of text.split(',')) {
+      const [rawStart, rawEnd] = rawPart.split('-');
+      const start = Number(rawStart);
+      const end = rawEnd == null ? start : Number(rawEnd);
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end <= 0 || end < start) return null;
+      parts.push(start === end ? String(start) : `${start}-${end}`);
+    }
+    return parts.join(',');
   }
 
   function normalizeSupercellValue(value) {

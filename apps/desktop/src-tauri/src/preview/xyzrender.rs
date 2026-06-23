@@ -1139,10 +1139,11 @@ fn build_xyzrender_args(
     controls: Option<&XyzrenderControls>,
     direct_smiles: Option<&str>,
 ) -> Vec<String> {
-    let mut args = if let Some(smiles) = direct_smiles.filter(|value| !value.trim().is_empty()) {
+    let direct_smiles = direct_smiles.filter(|value| !value.trim().is_empty());
+    let mut args = if let Some(smiles) = direct_smiles {
         vec!["--smi".to_string(), smiles.trim().to_string()]
     } else {
-        vec![input_path.display().to_string()]
+        Vec::new()
     };
     args.extend([
         "-o".to_string(),
@@ -1153,6 +1154,9 @@ fn build_xyzrender_args(
     if let Some(path) = orientation_ref_path {
         args.push("--ref".to_string());
         args.push(path.display().to_string());
+    }
+    if direct_smiles.is_none() {
+        args.push(input_path.display().to_string());
     }
     if let Some(controls) = controls {
         if controls.transparent_background == Some(true) {
@@ -1202,6 +1206,25 @@ fn build_xyzrender_args(
         }
         if let Some(value) = finite_positive(controls.vdw_scale) {
             args.push("--vdw-scale".to_string());
+            args.push(value.to_string());
+        }
+        let hull_argument = normalize_atom_selector(
+            controls.hull_atoms.as_deref().unwrap_or_default(),
+        )
+        .or_else(|| xyzrender_hull_argument(controls.hull_mode.as_deref()).map(str::to_string));
+        if let Some(argument) = hull_argument {
+            args.push("--hull".to_string());
+            args.push(argument);
+        }
+        if let Some(value) = finite_non_negative(controls.hull_opacity) {
+            args.push("--hull-opacity".to_string());
+            args.push(value.to_string());
+        }
+        if xyzrender_pore_enabled(controls.hull_mode.as_deref()) {
+            args.push("--pore".to_string());
+        }
+        if let Some(value) = finite_non_negative(controls.pore_opacity) {
+            args.push("--pore-opacity".to_string());
             args.push(value.to_string());
         }
         if controls.hide_bonds == Some(true) {
@@ -1338,6 +1361,36 @@ fn normalized_bond_notation(value: Option<&str>) -> Option<&'static str> {
         Some("kekule") => Some("kekule"),
         _ => None,
     }
+}
+
+fn normalized_hull_mode(value: Option<&str>) -> Option<&'static str> {
+    match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("benzene-ring") => Some("benzene-ring"),
+        Some("anthracene-rings") => Some("anthracene-rings"),
+        Some("auto-rings") => Some("auto-rings"),
+        Some("faces") => Some("faces"),
+        Some("pore") => Some("pore"),
+        Some("mof5-faces") => Some("mof5-faces"),
+        Some("mof5-pore") => Some("mof5-pore"),
+        Some("faces-pore") => Some("faces-pore"),
+        Some("off") | None => None,
+        _ => None,
+    }
+}
+
+fn xyzrender_hull_argument(value: Option<&str>) -> Option<&'static str> {
+    match normalized_hull_mode(value) {
+        Some("benzene-ring" | "anthracene-rings" | "auto-rings") => Some("rings"),
+        Some("faces" | "mof5-faces" | "faces-pore") => Some("faces"),
+        _ => None,
+    }
+}
+
+fn xyzrender_pore_enabled(value: Option<&str>) -> bool {
+    matches!(
+        normalized_hull_mode(value),
+        Some("pore" | "mof5-pore" | "faces-pore")
+    )
 }
 
 fn surface_mode_from_controls(controls: &XyzrenderControls) -> Option<String> {
@@ -1544,6 +1597,32 @@ fn sanitized_extra_arguments(value: Option<&str>, strip_field_arguments: bool) -
     let mut blocked = blocked_value_flags.clone();
     blocked.push("--region");
     blocked_value_count_flags.push(("--region", 2usize));
+    blocked.push("--hull");
+    blocked_value_flags.extend([
+        "--hull-color",
+        "--hull-opacity",
+        "--hull-color-type",
+        "--hull-edge-width-ratio",
+        "--ring-max-size",
+        "--ring-min-size",
+        "--face-planarity",
+        "--pore-color",
+        "--pore-opacity",
+    ]);
+    blocked.extend([
+        "--hull-color",
+        "--hull-opacity",
+        "--hull-color-type",
+        "--hull-edge-width-ratio",
+        "--ring-max-size",
+        "--ring-min-size",
+        "--face-planarity",
+        "--pore-color",
+        "--pore-opacity",
+        "--pore",
+        "--hull-edge",
+        "--no-hull-edge",
+    ]);
     blocked.extend(["--hy", "--no-hy", "--bo", "--no-bo", "-k"]);
     if strip_field_arguments {
         blocked_value_flags.extend([
@@ -2139,6 +2218,10 @@ mod tests {
             vdw_atoms: Some("2-4, 6".into()),
             vdw_opacity: Some(0.4),
             vdw_scale: Some(1.1),
+            hull_mode: Some("faces-pore".into()),
+            hull_atoms: Some("8-10".into()),
+            hull_opacity: Some(0.35),
+            pore_opacity: Some(0.5),
             hide_bonds: Some(true),
             display_hydrogens: Some("all".into()),
             bond_notation: Some("kekule".into()),
@@ -2181,6 +2264,10 @@ mod tests {
         assert!(joined.contains("--no-grad"));
         assert!(joined.contains("--fog"));
         assert!(joined.contains("--vdw 2-4,6"));
+        assert!(joined.contains("--hull 8-10"));
+        assert!(joined.contains("--hull-opacity 0.35"));
+        assert!(joined.contains("--pore"));
+        assert!(joined.contains("--pore-opacity 0.5"));
         assert!(joined.contains("--no-bonds"));
         assert_eq!(args.iter().filter(|arg| arg.as_str() == "--hy").count(), 1);
         assert_eq!(
@@ -2213,11 +2300,20 @@ mod tests {
         assert!(!joined.contains("--cmap-range -1 1"));
         assert!(!joined.contains("--region 7 flat"));
         assert!(!joined.contains("hacked.svg"));
+        let hull_index = args.iter().position(|arg| arg == "--hull").unwrap();
+        let input_index = args.iter().position(|arg| arg == "/tmp/in.xyz").unwrap();
+        assert!(input_index < hull_index);
 
         controls.field_iso = Some(0.0);
         let zero_iso_args =
             build_xyzrender_args(&input, &output, "default", None, Some(&controls), None);
         assert!(!zero_iso_args.join(" ").contains("--iso 0"));
+
+        controls.hull_atoms = None;
+        controls.hull_mode = Some("auto-rings".into());
+        let ring_hull_args =
+            build_xyzrender_args(&input, &output, "default", None, Some(&controls), None);
+        assert!(ring_hull_args.join(" ").contains("--hull rings"));
 
         let vdw_args = build_xyzrender_args(&input, &output, "vdw", None, None, None);
         let vdw_joined = vdw_args.join(" ");
