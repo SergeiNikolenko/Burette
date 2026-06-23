@@ -1396,6 +1396,7 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   padding: 1px 4px 0;
 }
 .buret-xyzrender-popover-title {
+  margin-right: auto;
   font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
   color: var(--buret-toolbar-color);
 }
