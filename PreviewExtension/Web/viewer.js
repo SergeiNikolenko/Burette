@@ -5404,13 +5404,6 @@
         hideSelectedXyzrenderElements();
         hideXyzrenderSheetContextMenu();
       });
-      appendXyzrenderMenuButton(actions, 'Apply Current Settings', () => {
-        const toolbar = document.getElementById('buret-toolbar');
-        if (!toolbar) throw new Error('xyzrender settings toolbar is unavailable.');
-        pushXyzrenderActionHistory(item, 'apply settings');
-        applyXyzrenderSelectionControls(readXyzrenderControlsForm(toolbar));
-        hideXyzrenderSheetContextMenu();
-      });
       appendXyzrenderMenuButton(actions, 'Dim Others', () => {
         pushXyzrenderActionHistory(item, 'dim others');
         dimUnselectedXyzrenderElements(item);
