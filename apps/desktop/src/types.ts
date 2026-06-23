@@ -14,6 +14,20 @@ export type XyzrenderControls = {
   vdwAtoms?: string | null;
   vdwOpacity?: number | null;
   vdwScale?: number | null;
+  hullMode?:
+    | "off"
+    | "benzene-ring"
+    | "anthracene-rings"
+    | "auto-rings"
+    | "faces"
+    | "pore"
+    | "mof5-faces"
+    | "mof5-pore"
+    | "faces-pore"
+    | null;
+  hullAtoms?: string | null;
+  hullOpacity?: number | null;
+  poreOpacity?: number | null;
   hideBonds?: boolean | null;
   displayHydrogens?: "all" | "auto" | "none" | null;
   bondNotation?: "aromatic" | "kekule" | null;
