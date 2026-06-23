@@ -120,7 +120,6 @@
   let xyzrenderSystemHistoryInstalled = false;
   let molstarSelectionPreserveClick = null;
   let molstarLassoSuppressClickUntil = 0;
-  let xyzrenderLassoSuppressClickUntil = 0;
   let molstarMoleculePreview = null;
   let molstarMoleculePreviewFrame = 0;
   let molstarMoleculePreviewDrag = null;
@@ -8990,7 +8989,6 @@
     document.addEventListener('pointermove', onXyzrenderLassoPointerMove, true);
     document.addEventListener('pointerup', onXyzrenderLassoPointerUp, true);
     document.addEventListener('pointercancel', onXyzrenderLassoPointerCancel, true);
-    document.addEventListener('click', onXyzrenderLassoClearClick, true);
     document.addEventListener('keydown', onMolstarLassoKeyDown, true);
     window.addEventListener('resize', cancelMolstarLassoStroke);
     window.addEventListener('resize', cancelXyzrenderLassoStroke);
@@ -9280,14 +9278,6 @@
     event.stopImmediatePropagation?.();
   }
 
-  function onXyzrenderLassoClearClick(event) {
-    if (!xyzrenderLassoEnabled || event.button !== 0) return;
-    if (Date.now() < xyzrenderLassoSuppressClickUntil) return;
-    const target = event.target instanceof Element ? event.target : null;
-    if (!target || target.closest('#buret-toolbar, .buret-xyzrender-popover, .buret-molecule-context-menu')) return;
-    clearXyzrenderSelection();
-  }
-
   function onXyzrenderLassoPointerCancel(event) {
     const stroke = xyzrenderLassoStroke;
     if (!stroke || event.pointerId !== stroke.pointerId) return;
@@ -9336,7 +9326,6 @@
 
   function finishXyzrenderLassoStroke(stroke) {
     xyzrenderLassoStroke = null;
-    xyzrenderLassoSuppressClickUntil = Date.now() + 250;
     removeXyzrenderLassoOverlay();
     const bounds = molstarLassoBounds(stroke.points);
     if (stroke.points.length < MOLSTAR_LASSO_MIN_POINTS || bounds.width < MOLSTAR_LASSO_SAMPLE_STEP_PX || bounds.height < MOLSTAR_LASSO_SAMPLE_STEP_PX) {
