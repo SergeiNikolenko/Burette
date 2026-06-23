@@ -2041,6 +2041,7 @@ assert.match(structureInfoPanel, /structure-inspector-selection-pill/);
 assert.match(structureInfoPanel, /inspectorSummaryLine\(brief\.kind, compositionSummary, compositionPending, compositionError\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument/);
 assert.match(structureInfoPanel, /function structureCompositionSourceForDocument\(document: ViewerDocument\): InspectorStructureTextSource/);
+assert.match(structureInfoPanel, /import \{ extensionForDocking \} from "\.\.\/lib\/docking-documents"/);
 assert.match(structureInfoPanel, /path: document\.dockingRequest\.receptorPath/);
 assert.match(structureInfoPanel, /extension: extensionForDocking\(document\.dockingRequest\.receptorPath\)/);
 assert.match(structureInfoPanel, /function readInspectorStructureText\(source: InspectorStructureTextSource\)/);

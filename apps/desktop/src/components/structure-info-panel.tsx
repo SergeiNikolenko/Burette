@@ -9,6 +9,7 @@ import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewe
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow, type StructureViewerSelector } from "../lib/structure-composition";
 import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
+import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings } from "../types";
