@@ -497,7 +497,6 @@ const XYZRENDER_README_DISPLAY_OPTIONS = [
 const XYZRENDER_README_VDW_OPTIONS = [
   { value: "all", label: "All atoms", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw.svg" },
   { value: "partial", label: "Partial", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw_partial.svg" },
-  { value: "paton", label: "Paton-style", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw_paton.svg" },
 ] as const;
 
 function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
@@ -575,13 +574,10 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         />
         <XyzrenderVdwGallery
           controls={controls}
-          preset={preset}
           onSelect={(mode) => {
             const nextControls = { ...controls, showVdw: true, vdwAtoms: null };
-            const nextPreset = mode === "paton" ? "paton" : preset;
             setControls(nextControls);
-            setPreset(nextPreset);
-            apply(nextControls, nextPreset, mode === "partial" ? { xyzrenderSelectionAction: "vdw" } : {});
+            apply(nextControls, preset, mode === "partial" ? { xyzrenderSelectionAction: "vdw" } : {});
           }}
         />
         <XyzrenderDockCheckbox
@@ -681,15 +677,13 @@ function XyzrenderDisplayOptionsGallery({
 
 function XyzrenderVdwGallery({
   controls,
-  preset,
   onSelect,
 }: {
   controls: XyzrenderControls;
-  preset: string;
   onSelect: (mode: (typeof XYZRENDER_README_VDW_OPTIONS)[number]["value"]) => void;
 }) {
   const active = controls.showVdw === true
-    ? controls.vdwAtoms ? "partial" : preset === "paton" ? "paton" : "all"
+    ? controls.vdwAtoms ? "partial" : "all"
     : null;
   return (
     <div className="xyzrender-dock-vdw-options" aria-label="xyzrender vdW spheres">

@@ -1821,7 +1821,7 @@ img.radix-menu-item-icon {
 }
 .xyzrender-dock-vdw-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 .xyzrender-dock-preset-tile {
@@ -1885,6 +1885,7 @@ img.radix-menu-item-icon {
 }
 .xyzrender-dock-vdw-grid .xyzrender-dock-preset-tile img {
   height: 56px;
+  margin-top: -8px;
 }
 .xyzrender-dock-field,
 .xyzrender-dock-check {
