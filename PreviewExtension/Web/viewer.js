@@ -5132,6 +5132,10 @@
     if (!toolbar) return;
     toolbar.querySelectorAll('.buret-panel-toggle').forEach(button => { button.classList.add('hidden'); });
     bindThemeButton(toolbar, null);
+    bindMolstarLassoButton(toolbar);
+    bindMolstarLassoKeyboardButton(toolbar);
+    installMolstarLassoSelection();
+    installMolstarToolbarActionDelegates();
     bindXyzrenderControls(toolbar);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, null);
