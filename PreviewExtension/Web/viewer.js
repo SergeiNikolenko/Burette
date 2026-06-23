@@ -6094,22 +6094,45 @@
     const inputExtension = sheetEntryInputExtension(entry);
     const orientationRef = captureCurrentXyzrenderOrientationRef(options);
     if (!endpoint) return requestHostXyzrenderSheetItem(entry, preset, controls, options);
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        path,
-        preset,
-        controls,
-        inputDataBase64,
-        inputExtension,
-        orientationRef: orientationRef?.text || undefined
-      })
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response;
+    try {
+      response = await fetch(xyzrenderBrowserDevEndpointUrl(endpoint), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          path,
+          preset,
+          controls,
+          inputDataBase64,
+          inputExtension,
+          orientationRef: orientationRef?.text || undefined
+        })
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('xyzrender sheet render timed out');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender sheet request failed with status ${response.status}`);
     if (typeof payload?.svg !== 'string' || !payload.svg.trim()) throw new Error('xyzrender sheet endpoint returned no SVG payload');
     return payload;
+  }
+
+  function xyzrenderBrowserDevEndpointUrl(endpoint) {
+    try {
+      return new URL(endpoint).toString();
+    } catch (_) {}
+    try {
+      const parentLocation = window.parent && window.parent !== window ? window.parent.location.href : '';
+      return new URL(endpoint, parentLocation || window.location.href).toString();
+    } catch (_) {
+      return endpoint;
+    }
   }
 
   function requestHostXyzrenderSheetItem(entry, preset, controls, options = {}) {
