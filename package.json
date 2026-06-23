@@ -77,7 +77,7 @@
     "molstar": "5.7.0",
     "plotly.js-basic-dist-min": "^3.6.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react-dom": "^19.2.7",
     "zustand": "^5.0.7"
   },
   "devDependencies": {
