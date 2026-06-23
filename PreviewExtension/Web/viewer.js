@@ -57,6 +57,20 @@
     { value: 'vdw', label: 'vdW' },
     { value: 'custom', label: 'Custom JSON' }
   ];
+  const XYZRENDER_GALLERY_PRESETS = [
+    'default',
+    'flat',
+    'paton',
+    'pmol',
+    'skeletal',
+    'bubble',
+    'tube',
+    'btube',
+    'wire',
+    'graph',
+    'mtube',
+    'vdw'
+  ];
   const DEFAULT_XYZRENDER_CONTROLS = {
     transparentBackground: false,
     canvasSize: null,
@@ -5324,6 +5338,76 @@
     actions.appendChild(button);
   }
 
+  function xyzrenderPresetLabel(value) {
+    return DEFAULT_XYZRENDER_PRESETS.find(option => option.value === value)?.label || value;
+  }
+
+  function xyzrenderPresetThumbnail(value) {
+    const atoms = value === 'skeletal' || value === 'wire' || value === 'graph' ? '' : `
+      <circle cx="31" cy="48" r="${value === 'bubble' || value === 'vdw' ? 12 : 6}" fill="#b9b9b9" stroke="#161616" stroke-width="2"/>
+      <circle cx="51" cy="40" r="${value === 'bubble' || value === 'vdw' ? 13 : 6}" fill="#a9a9a9" stroke="#161616" stroke-width="2"/>
+      <circle cx="70" cy="51" r="${value === 'bubble' || value === 'vdw' ? 12 : 6}" fill="#2158ff" stroke="#161616" stroke-width="2"/>
+      <circle cx="58" cy="67" r="${value === 'bubble' || value === 'vdw' ? 12 : 6}" fill="#b9b9b9" stroke="#161616" stroke-width="2"/>
+      <circle cx="84" cy="33" r="${value === 'bubble' || value === 'vdw' ? 10 : 5}" fill="#f02020" stroke="#161616" stroke-width="2"/>
+    `;
+    const strokeWidth = value === 'tube' || value === 'btube' || value === 'mtube' ? 8 : value === 'flat' ? 3 : value === 'wire' || value === 'graph' ? 2 : 5;
+    const bondStroke = value === 'paton' || value === 'pmol' || value === 'tube' || value === 'btube' || value === 'mtube'
+      ? '#7a7a7a'
+      : value === 'wire' || value === 'graph'
+        ? '#169ca3'
+        : '#101010';
+    const bonds = `
+      <path d="M31 48 L51 40 L70 51 L58 67 L31 48" fill="none" stroke="${bondStroke}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M51 40 L84 33" fill="none" stroke="${value === 'tube' || value === 'mtube' ? '#ef2424' : bondStroke}" stroke-width="${strokeWidth}" stroke-linecap="round"/>
+      ${value === 'default' || value === 'flat' || value === 'skeletal' ? '<path d="M36 56 L52 62 M55 45 L65 48" fill="none" stroke="#111" stroke-width="2" stroke-dasharray="4 5" stroke-linecap="round"/>' : ''}
+    `;
+    if (value === 'skeletal') {
+      return `<svg viewBox="0 0 112 92" aria-hidden="true">${bonds}<text x="24" y="54" font-size="12" fill="#2458ff">N</text><text x="80" y="32" font-size="12" fill="#f02020">O</text></svg>`;
+    }
+    if (value === 'graph') {
+      return `<svg viewBox="0 0 112 92" aria-hidden="true">${bonds}<circle cx="31" cy="48" r="3" fill="#ddd" stroke="#111"/><circle cx="51" cy="40" r="3" fill="#ddd" stroke="#111"/><circle cx="70" cy="51" r="3" fill="#5f7cff" stroke="#111"/><circle cx="58" cy="67" r="3" fill="#ddd" stroke="#111"/><circle cx="84" cy="33" r="3" fill="#ff5aa2" stroke="#111"/></svg>`;
+    }
+    if (value === 'vdw') {
+      return `<svg viewBox="0 0 112 92" aria-hidden="true"><g opacity="0.72">${atoms}</g></svg>`;
+    }
+    return `<svg viewBox="0 0 112 92" aria-hidden="true">${bonds}${atoms}</svg>`;
+  }
+
+  function appendXyzrenderPresetGallery(menu, currentPreset) {
+    const section = document.createElement('div');
+    section.className = 'buret-xyzrender-preset-gallery';
+    section.setAttribute('role', 'group');
+    section.setAttribute('aria-label', 'xyzrender presets');
+    const heading = document.createElement('div');
+    heading.className = 'buret-xyzrender-preset-gallery-title';
+    heading.textContent = 'Presets';
+    section.appendChild(heading);
+    const grid = document.createElement('div');
+    grid.className = 'buret-xyzrender-preset-grid';
+    for (const value of XYZRENDER_GALLERY_PRESETS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-xyzrender-preset-tile';
+      button.dataset.buretXyzrenderPreset = value;
+      button.setAttribute('role', 'menuitem');
+      button.setAttribute('aria-label', `Apply ${xyzrenderPresetLabel(value)} preset`);
+      button.setAttribute('aria-pressed', value === currentPreset ? 'true' : 'false');
+      button.innerHTML = `
+        <span class="buret-xyzrender-preset-label">${escapeHTML(xyzrenderPresetLabel(value))}</span>
+        <span class="buret-xyzrender-preset-preview">${xyzrenderPresetThumbnail(value)}</span>
+      `;
+      button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        hideXyzrenderSheetContextMenu();
+        requestXyzrenderPreset(value);
+      });
+      grid.appendChild(button);
+    }
+    section.appendChild(grid);
+    menu.appendChild(section);
+  }
+
   function showXyzrenderSheetContextMenu(event, item) {
     event.preventDefault();
     event.stopPropagation();
@@ -5347,6 +5431,8 @@
     subtitle.className = 'buret-molecule-context-menu-subtitle';
     subtitle.textContent = label;
     menu.appendChild(subtitle);
+
+    appendXyzrenderPresetGallery(menu, xyzrenderSheetItemPreset(item));
 
     const actions = document.createElement('div');
     actions.className = 'buret-molecule-context-menu-actions';
@@ -5436,6 +5522,16 @@
       .buret-molstar-lasso-overlay { position: fixed; inset: 0; z-index: 2147483645; width: 100vw; height: 100vh; pointer-events: none; }
       .buret-molstar-lasso-overlay polygon { fill: color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); stroke: none; }
       .buret-molstar-lasso-overlay polyline { fill: none; stroke: color-mix(in srgb, var(--buret-accent, #b45cff) 88%, white); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.36)); }
+      .buret-xyzrender-context-menu { width: min(430px, calc(100vw - 24px)); max-width: min(430px, calc(100vw - 24px)); }
+      .buret-xyzrender-preset-gallery { margin: 10px 0 8px; }
+      .buret-xyzrender-preset-gallery-title { margin: 0 0 6px; color: var(--buret-context-muted, rgba(140,140,150,0.86)); font: 500 11px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; text-transform: uppercase; letter-spacing: 0.02em; }
+      .buret-xyzrender-preset-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+      .buret-xyzrender-preset-tile { display: grid; grid-template-rows: auto 58px; gap: 3px; min-width: 0; height: 86px; padding: 6px 5px 5px; border: 1px solid var(--buret-toolbar-border, rgba(120,120,130,0.18)); border-radius: 8px; background: color-mix(in srgb, var(--buret-toolbar-background, #fff) 78%, transparent); color: var(--buret-toolbar-color, #1f2329); box-shadow: none; }
+      .buret-xyzrender-preset-tile:hover { background: var(--buret-toolbar-hover, rgba(120,120,130,0.14)); }
+      .buret-xyzrender-preset-tile[aria-pressed="true"] { border-color: color-mix(in srgb, var(--buret-accent, #0a84ff) 68%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buret-accent, #0a84ff) 42%, transparent); }
+      .buret-xyzrender-preset-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font: 600 11px/1.15 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+      .buret-xyzrender-preset-preview { display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 6px; background: color-mix(in srgb, #fff 72%, transparent); }
+      .buret-xyzrender-preset-preview svg { width: 100%; height: 100%; display: block; overflow: visible; }
       .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: auto; }
       .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; --buret-rotate-radius: 76px; --buret-rotate-lift: 24px; --buret-rotate-handle-scale: 1; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
       .buret-xyzrender-sheet-item:not(.buret-xyzrender-sheet-item-base) { z-index: 2; }
