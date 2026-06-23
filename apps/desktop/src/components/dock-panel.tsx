@@ -463,6 +463,8 @@ const DEFAULT_XYZRENDER_DOCK_CONTROLS: XyzrenderControls = {
   fog: null,
   showVdw: false,
   vdwAtoms: null,
+  hullMode: "off",
+  hullAtoms: null,
   hideBonds: false,
   displayHydrogens: "auto",
   bondNotation: "aromatic",
@@ -498,6 +500,20 @@ const XYZRENDER_README_VDW_OPTIONS = [
   { value: "all", label: "All atoms", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw.svg" },
   { value: "partial", label: "Partial", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw_partial.svg" },
   { value: "off", label: "No vdW", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_default.svg" },
+] as const;
+
+const XYZRENDER_README_HULL_OPTIONS = [
+  { value: "benzene-ring", label: "Benzene ring", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/benzene_ring_hull.svg" },
+  { value: "anthracene-rings", label: "Anthracene rings", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/anthracene_hull.svg" },
+  { value: "auto-rings", label: "Auto rings", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mnh_hull_rings.svg" },
+] as const;
+
+const XYZRENDER_README_PORE_OPTIONS = [
+  { value: "faces", label: "Buckyball faces", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/buckyball_faces.svg" },
+  { value: "pore", label: "Buckyball pore", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/buckyball_pore.svg" },
+  { value: "mof5-faces", label: "MOF-5 faces", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mof5_faces.svg" },
+  { value: "mof5-pore", label: "MOF-5 pore", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mof5_pore.svg" },
+  { value: "faces-pore", label: "MOF-5 combo", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mof5_faces_pore.svg" },
 ] as const;
 
 function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
@@ -588,6 +604,24 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
             const nextControls = { ...controls, showVdw: true, vdwAtoms: null };
             setControls(nextControls);
             apply(nextControls, preset, mode === "partial" ? { xyzrenderSelectionAction: "vdw" } : {});
+          }}
+        />
+        <XyzrenderHullGallery
+          controls={controls}
+          onSelect={(mode) => {
+            const nextMode: XyzrenderControls["hullMode"] = controls.hullMode === mode ? "off" : mode;
+            const nextControls = { ...controls, hullMode: nextMode, hullAtoms: null };
+            setControls(nextControls);
+            apply(nextControls, preset);
+          }}
+        />
+        <XyzrenderPoreGallery
+          controls={controls}
+          onSelect={(mode) => {
+            const nextMode: XyzrenderControls["hullMode"] = controls.hullMode === mode ? "off" : mode;
+            const nextControls = { ...controls, hullMode: nextMode, hullAtoms: null };
+            setControls(nextControls);
+            apply(nextControls, preset);
           }}
         />
         <XyzrenderDockCheckbox
@@ -705,6 +739,62 @@ function XyzrenderVdwGallery({
             className="xyzrender-dock-preset-tile"
             key={option.value}
             aria-pressed={active === option.value}
+            onClick={() => onSelect(option.value)}
+          >
+            <span>{option.label}</span>
+            <img src={option.image} alt="" loading="lazy" draggable={false} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function XyzrenderHullGallery({
+  controls,
+  onSelect,
+}: {
+  controls: XyzrenderControls;
+  onSelect: (mode: (typeof XYZRENDER_README_HULL_OPTIONS)[number]["value"]) => void;
+}) {
+  return (
+    <div className="xyzrender-dock-hull-options" aria-label="xyzrender convex hull">
+      <div className="xyzrender-dock-subtitle">Convex hull</div>
+      <div className="xyzrender-dock-hull-grid">
+        {XYZRENDER_README_HULL_OPTIONS.map((option) => (
+          <button
+            type="button"
+            className="xyzrender-dock-preset-tile"
+            key={option.value}
+            aria-pressed={controls.hullMode === option.value}
+            onClick={() => onSelect(option.value)}
+          >
+            <span>{option.label}</span>
+            <img src={option.image} alt="" loading="lazy" draggable={false} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function XyzrenderPoreGallery({
+  controls,
+  onSelect,
+}: {
+  controls: XyzrenderControls;
+  onSelect: (mode: (typeof XYZRENDER_README_PORE_OPTIONS)[number]["value"]) => void;
+}) {
+  return (
+    <div className="xyzrender-dock-pore-options" aria-label="xyzrender hull faces and pore detection">
+      <div className="xyzrender-dock-subtitle">Hull faces &amp; pore detection</div>
+      <div className="xyzrender-dock-pore-grid">
+        {XYZRENDER_README_PORE_OPTIONS.map((option) => (
+          <button
+            type="button"
+            className="xyzrender-dock-preset-tile"
+            key={option.value}
+            aria-pressed={controls.hullMode === option.value}
             onClick={() => onSelect(option.value)}
           >
             <span>{option.label}</span>

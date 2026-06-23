@@ -620,6 +620,21 @@ function readBondNotation(value: unknown) {
   return text && ["aromatic", "kekule"].includes(text) ? text : null;
 }
 
+function readHullMode(value: unknown) {
+  const text = readOptionalText(value);
+  return text && ["off", "benzene-ring", "anthracene-rings", "auto-rings", "faces", "pore", "mof5-faces", "mof5-pore", "faces-pore"].includes(text) ? text : null;
+}
+
+function xyzrenderHullArgument(mode: string | null | undefined) {
+  if (mode === "benzene-ring" || mode === "anthracene-rings" || mode === "auto-rings") return "rings";
+  if (mode === "faces" || mode === "mof5-faces" || mode === "faces-pore") return "faces";
+  return null;
+}
+
+function xyzrenderPoreEnabled(mode: string | null | undefined) {
+  return mode === "pore" || mode === "mof5-pore" || mode === "faces-pore";
+}
+
 function normalizeSupercell(value: unknown) {
   if (!Array.isArray(value) || value.length !== 3) return null;
   const parsed = value.map((item) => readOptionalInteger(item));
@@ -668,6 +683,10 @@ function normalizeXyzrenderControls(value: unknown) {
     vdwAtoms: normalizeXyzrenderAtomSelector(source.vdwAtoms),
     vdwOpacity: readOptionalNumber(source.vdwOpacity),
     vdwScale: readOptionalNumber(source.vdwScale),
+    hullMode: readHullMode(source.hullMode),
+    hullAtoms: normalizeXyzrenderAtomSelector(source.hullAtoms),
+    hullOpacity: readOptionalNonNegativeNumber(source.hullOpacity),
+    poreOpacity: readOptionalNonNegativeNumber(source.poreOpacity),
     hideBonds: readOptionalBoolean(source.hideBonds),
     displayHydrogens: readDisplayHydrogens(source.displayHydrogens),
     bondNotation: readBondNotation(source.bondNotation),
@@ -739,6 +758,12 @@ function sanitizedExtraArguments(value: string | null, stripFieldArguments = fal
   const blockedValueCounts = new Map<string, number>();
   blocked.add("--region");
   blockedValueCounts.set("--region", 2);
+  blocked.add("--hull");
+  ["--hull-color", "--hull-opacity", "--hull-color-type", "--hull-edge-width-ratio", "--ring-max-size", "--ring-min-size", "--face-planarity", "--pore-color", "--pore-opacity"].forEach((flag) => {
+    blocked.add(flag);
+    blockedValueFlags.add(flag);
+  });
+  ["--pore", "--hull-edge", "--no-hull-edge"].forEach((flag) => blocked.add(flag));
   ["--hy", "--no-hy", "--bo", "--no-bo", "-k"].forEach((flag) => blocked.add(flag));
   if (stripFieldArguments) {
     ["--esp", "--nci-surf", "--iso", "--opacity", "--surface-style", "--dens-color", "--cmap-palette"].forEach((flag) => {
@@ -785,8 +810,9 @@ function buildXyzrenderArgs(
   orientationRefPath: string | null,
   controls: ReturnType<typeof normalizeXyzrenderControls>,
 ) {
-  const args = [inputPath, "-o", outputPath, "--config", resolveConfigArgument(preset, controls)];
+  const args = ["-o", outputPath, "--config", resolveConfigArgument(preset, controls)];
   if (orientationRefPath) args.push("--ref", orientationRefPath);
+  args.push(inputPath);
   if (controls.transparentBackground === true) args.push("--transparent");
   if (controls.canvasSize) args.push("-S", String(controls.canvasSize));
   if (controls.atomScale) args.push("-a", String(controls.atomScale));
@@ -804,6 +830,14 @@ function buildXyzrenderArgs(
   }
   if (controls.vdwOpacity) args.push("--vdw-opacity", String(controls.vdwOpacity));
   if (controls.vdwScale) args.push("--vdw-scale", String(controls.vdwScale));
+  const hullArgument = controls.hullAtoms || xyzrenderHullArgument(controls.hullMode);
+  if (hullArgument) {
+    args.push("--hull");
+    args.push(hullArgument);
+  }
+  if (controls.hullOpacity != null) args.push("--hull-opacity", String(controls.hullOpacity));
+  if (xyzrenderPoreEnabled(controls.hullMode)) args.push("--pore");
+  if (controls.poreOpacity != null) args.push("--pore-opacity", String(controls.poreOpacity));
   if (controls.hideBonds === true) args.push("--no-bonds");
   if (controls.displayHydrogens === "all") args.push("--hy");
   if (controls.displayHydrogens === "none") args.push("--no-hy");

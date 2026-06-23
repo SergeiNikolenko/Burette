@@ -1804,7 +1804,9 @@ img.radix-menu-item-icon {
   gap: 6px;
 }
 .xyzrender-dock-display-options,
-.xyzrender-dock-vdw-options {
+.xyzrender-dock-vdw-options,
+.xyzrender-dock-hull-options,
+.xyzrender-dock-pore-options {
   display: grid;
   gap: 6px;
 }
@@ -1820,6 +1822,12 @@ img.radix-menu-item-icon {
   gap: 6px;
 }
 .xyzrender-dock-vdw-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.xyzrender-dock-hull-grid,
+.xyzrender-dock-pore-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
@@ -1884,6 +1892,15 @@ img.radix-menu-item-icon {
   height: 82px;
 }
 .xyzrender-dock-vdw-grid .xyzrender-dock-preset-tile img {
+  height: 56px;
+  margin-top: -8px;
+}
+.xyzrender-dock-hull-grid .xyzrender-dock-preset-tile,
+.xyzrender-dock-pore-grid .xyzrender-dock-preset-tile {
+  height: 82px;
+}
+.xyzrender-dock-hull-grid .xyzrender-dock-preset-tile img,
+.xyzrender-dock-pore-grid .xyzrender-dock-preset-tile img {
   height: 56px;
   margin-top: -8px;
 }

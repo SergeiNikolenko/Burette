@@ -189,6 +189,7 @@ const [
   gridUi,
   gridViewer,
   previewViewer,
+  agentPreviewViewer,
   previewShell,
   previewRuntimeCss,
   updateSource,
@@ -382,6 +383,7 @@ const [
   source('apps/desktop/src/preview-grid/grid-ui.tsx'),
   source('PreviewExtension/Web/grid-viewer.js'),
   source('PreviewExtension/Web/viewer.js'),
+  source('plugins/burette-agent/preview-web/viewer.js'),
   source('PreviewExtension/Web/viewer-shell.js'),
   source('PreviewExtension/Web/viewer-runtime.css'),
   source('apps/desktop/src/update.ts'),
@@ -577,6 +579,8 @@ assert.match(browserDevDocuments, /requestedRenderer: normalizeRendererMode\(pre
 assert.match(browserDevDocuments, /sourcePath: path/);
 assert.match(browserDevDocuments, /xyzrenderEndpoint: "\/__burette\/xyzrender"/);
 assert.match(browserDevDocuments, /vdwAtoms: null/);
+assert.match(browserDevDocuments, /hullMode: null/);
+assert.match(browserDevDocuments, /hullAtoms: null/);
 assert.match(browserDevDocuments, /const runtimeFrameText = maestroPreview\?\.bytes \? decodeUtf8\(maestroPreview\.bytes\) : text;/);
 assert.match(browserDevDocuments, /const pdbModelCount = runtimeFormat\.molstarFormat === "pdb" && !runtimeFormat\.binary \? countPdbModels\(runtimeFrameText\) : 0;/);
 assert.match(browserDevDocuments, /const trajectoryFrameCount = Math\.max\(xyzFrameCount, pdbModelCount\);/);
@@ -1434,6 +1438,17 @@ assert.match(viewer, /vdwAtoms: atomSelector/);
 assert.match(viewer, /setXyzrenderSheetItemVdwAtoms\(group\.item, atomSelector\)/);
 assert.match(viewer, /displayHydrogens: normalizeXyzrenderHydrogens\(source\.displayHydrogens\)/);
 assert.match(viewer, /bondNotation: normalizeXyzrenderBondNotation\(source\.bondNotation\)/);
+assert.match(viewer, /function normalizeXyzrenderHullMode\(value\)/);
+assert.match(viewer, /hullMode: normalizeXyzrenderHullMode\(source\.hullMode\)/);
+assert.match(viewer, /hullAtoms: normalizeXyzrenderAtomSelector\(source\.hullAtoms\)/);
+assert.match(viewer, /hullOpacity: nonNegativeNumberOrNull\(source\.hullOpacity\)/);
+assert.match(viewer, /poreOpacity: nonNegativeNumberOrNull\(source\.poreOpacity\)/);
+assert.match(agentPreviewViewer, /function normalizeXyzrenderHullMode\(value\)/);
+assert.match(agentPreviewViewer, /vdwAtoms: normalizeXyzrenderAtomSelector\(source\.vdwAtoms\)/);
+assert.match(agentPreviewViewer, /hullMode: normalizeXyzrenderHullMode\(source\.hullMode\)/);
+assert.match(agentPreviewViewer, /hullAtoms: normalizeXyzrenderAtomSelector\(source\.hullAtoms\)/);
+assert.match(agentPreviewViewer, /hullOpacity: nonNegativeNumberOrNull\(source\.hullOpacity\)/);
+assert.match(agentPreviewViewer, /poreOpacity: nonNegativeNumberOrNull\(source\.poreOpacity\)/);
 assert.match(viewer, /renderXyzrenderSheetItemPayload\(entry, basePreset, nextControls\)/);
 assert.match(viewer, /vdwAtoms: xyzrenderSheetItemVdwAtoms\(item\) \|\| controls\.vdwAtoms/);
 assert.match(viewer, /function xyzrenderBrowserDevEndpointUrl\(endpoint\)/);
@@ -1895,18 +1910,25 @@ assert.match(dockPanel, /window\.setTimeout\(\(\) => \{\s*apply\(controls, prese
 assert.match(dockPanel, /const XYZRENDER_README_PRESET_GALLERY = \[[\s\S]*?caffeine_default\.svg[\s\S]*?caffeine_flat\.svg[\s\S]*?caffeine_paton\.svg[\s\S]*?caffeine_pmol\.svg[\s\S]*?caffeine_skeletal\.svg[\s\S]*?caffeine_bubble\.svg[\s\S]*?caffeine_tube\.svg[\s\S]*?caffeine_btube\.svg[\s\S]*?caffeine_wire\.svg[\s\S]*?caffeine_graph\.svg[\s\S]*?caffeine_mtube\.svg[\s\S]*?caffeine_vdw\.svg/);
 assert.match(dockPanel, /const XYZRENDER_README_DISPLAY_OPTIONS = \[[\s\S]*?ethanol_all_h\.svg[\s\S]*?ethanol_some_h\.svg[\s\S]*?ethanol_no_h\.svg[\s\S]*?benzene\.svg[\s\S]*?caffeine_kekule\.svg/);
 assert.match(dockPanel, /const XYZRENDER_README_VDW_OPTIONS = \[[\s\S]*?asparagine_vdw\.svg[\s\S]*?asparagine_vdw_partial\.svg[\s\S]*?No vdW[\s\S]*?caffeine_default\.svg/);
+assert.match(dockPanel, /const XYZRENDER_README_HULL_OPTIONS = \[[\s\S]*?benzene_ring_hull\.svg[\s\S]*?anthracene_hull\.svg[\s\S]*?mnh_hull_rings\.svg/);
+assert.match(dockPanel, /const XYZRENDER_README_PORE_OPTIONS = \[[\s\S]*?buckyball_faces\.svg[\s\S]*?buckyball_pore\.svg[\s\S]*?mof5_faces\.svg[\s\S]*?mof5_pore\.svg[\s\S]*?mof5_faces_pore\.svg/);
 assert.doesNotMatch(dockPanel, /asparagine_vdw_paton\.svg/);
+assert.doesNotMatch(dockPanel, /anthracene_hull\.gif/);
+assert.doesNotMatch(dockPanel, /mof5_faces_pore\.gif/);
 assert.match(dockPanel, /<XyzrenderPresetGallery[\s\S]*?preset=\{preset\}[\s\S]*?onSelect=\{\(value\) => \{[\s\S]*?setPreset\(value\);[\s\S]*?apply\(controls, value\);[\s\S]*?\}\}/);
 assert.match(dockPanel, /<XyzrenderDisplayOptionsGallery[\s\S]*?controls=\{controls\}[\s\S]*?onSelect=\{\(nextControls\) => \{[\s\S]*?setControls\(nextControls\);[\s\S]*?apply\(nextControls, preset\);[\s\S]*?\}\}/);
 assert.match(dockPanel, /<XyzrenderVdwGallery[\s\S]*?controls=\{controls\}[\s\S]*?onSelect=\{\(mode\) => \{[\s\S]*?const selectedMode = controls\.showVdw === true[\s\S]*?controls\.vdwAtoms \? "partial" : "all"[\s\S]*?if \(mode === "off" \|\| mode === selectedMode\) \{[\s\S]*?showVdw: false[\s\S]*?vdwAtoms: null[\s\S]*?apply\(nextControls, preset\)[\s\S]*?showVdw: true[\s\S]*?apply\(nextControls, preset, mode === "partial" \? \{ xyzrenderSelectionAction: "vdw" \} : \{\}\)/);
 assert.match(dockPanel, /function XyzrenderPresetGallery\(\{ preset, onSelect \}: \{ preset: string; onSelect: \(preset: string\) => void \}\)/);
 assert.match(dockPanel, /function XyzrenderDisplayOptionsGallery\(\{/);
 assert.match(dockPanel, /function XyzrenderVdwGallery\(\{/);
+assert.match(dockPanel, /function XyzrenderHullGallery\(\{/);
+assert.match(dockPanel, /function XyzrenderPoreGallery\(\{/);
 assert.match(dockPanel, /displayHydrogens: option\.value as XyzrenderControls\["displayHydrogens"\]/);
 assert.match(dockPanel, /bondNotation: option\.value as XyzrenderControls\["bondNotation"\]/);
 assert.match(dockPanel, /<img src=\{option\.image\} alt="" loading="lazy" draggable=\{false\} \/>/);
 assert.doesNotMatch(dockPanel, /label="VdW"/);
 assert.match(styles, /\.xyzrender-dock-vdw-grid \{\s*display: grid;\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
+assert.match(styles, /\.xyzrender-dock-hull-grid,[\s\S]*?\.xyzrender-dock-pore-grid \{\s*display: grid;\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(dockPanel, /<StructureInfoPanel\s+document=\{dockStructureDocument\}[\s\S]*?dockDrops=\{dockDrops\}[\s\S]*?conformerStatus=\{state\.conformerStatus\}[\s\S]*?viewerLigandSelection=\{state\.viewerLigandSelection\}[\s\S]*?xtbStatus=\{state\.xtbStatus\}[\s\S]*?preferences=\{state\.preferences\}[\s\S]*?actions=\{actions\}[\s\S]*?\/>/);
 assert.match(dockPanel, /if \(dockTextDocument\) return <TextDocumentInfoPanel document=\{dockTextDocument\} actions=\{actions\} \/>/);
 assert.match(dockPanel, /function TextDocumentInfoPanel/);
@@ -3997,6 +4019,12 @@ assert.match(previewViewController, /state\.xyzrenderControls = xyzrenderControl
 assert.match(previewViewController, /arguments \+= cliArguments\(from: normalizedControls, inputPath: inputURL\.path, preset: safePreset\)/);
 assert.match(previewViewController, /copyText\(value, key: "vdwAtoms", into: &result\)/);
 assert.match(previewViewController, /if preset != "vdw", \(controls\["showVdw"\] as\? Bool\) == true \{\s*arguments\.append\("--vdw"\)[\s\S]*?controls\["vdwAtoms"\] as\? String/);
+assert.match(previewViewController, /copyHullMode\(value, into: &result\)/);
+assert.match(previewViewController, /copyText\(value, key: "hullAtoms", into: &result\)/);
+assert.match(previewViewController, /private static func xyzrenderHullArgument\(_ value: String\?\) -> String\?/);
+assert.match(previewViewController, /if let hullArgument = nonEmptyText\(controls\["hullAtoms"\] as\? String\) \?\? xyzrenderHullArgument\(controls\["hullMode"\] as\? String\) \{\s*arguments \+= \["--hull", hullArgument\]/);
+assert.match(previewViewController, /private static func xyzrenderPoreEnabled\(_ value: String\?\) -> Bool/);
+assert.match(previewViewController, /if xyzrenderPoreEnabled\(controls\["hullMode"\] as\? String\) \{\s*arguments\.append\("--pore"\)/);
 assert.match(previewViewController, /stripFieldArguments: normalizedControls\["fieldMode"\] != nil/);
 assert.match(previewViewController, /copyFieldMode\(value, into: &result\)/);
 assert.match(previewViewController, /copyText\(value, key: "fieldMoPositiveColor", into: &result\)/);
@@ -4043,7 +4071,8 @@ assert.match(previewViewController, /appendingPathComponent\("bin", isDirectory:
 assert.match(previewViewController, /appendingPathComponent\("python3", isDirectory: false\)/);
 assert.match(previewViewController, /appendingPathComponent\("xyzrender-python3", isDirectory: false\)/);
 assert.match(previewViewController, /process\.executableURL = URL\(fileURLWithPath: launch\.executablePath\)/);
-assert.match(previewViewController, /var arguments = launch\.argumentPrefix \+ \[inputURL\.path, "-o", outputURL\.path\]/);
+assert.match(previewViewController, /var arguments = launch\.argumentPrefix \+ \["-o", outputURL\.path, "--config", configArgument\]/);
+assert.match(previewViewController, /arguments\.append\(inputURL\.path\)\s*arguments \+= cliArguments\(from: normalizedControls, inputPath: inputURL\.path, preset: safePreset\)/);
 assert.match(previewViewController, /process\.environment = mergedEnvironment\(overrides: launch\.environment\)/);
 assert.match(previewViewController, /private static func bundledPythonLaunch\(for executablePath: String\) -> PreviewXyzrenderLaunch\?/);
 assert.match(previewViewController, /"PYTHONHOME": paths\.pythonHome\.path/);
@@ -5605,6 +5634,13 @@ assert.match(viteConfig, /function resolveConfigArgument\(preset: string, contro
 assert.doesNotMatch(viteConfig, /if \(preset === "vdw"\) return "default"/);
 assert.match(viteConfig, /vdwAtoms: normalizeXyzrenderAtomSelector\(source\.vdwAtoms\)/);
 assert.match(viteConfig, /if \(preset !== "vdw" && controls\.showVdw === true\) \{\s*args\.push\("--vdw"\);\s*if \(controls\.vdwAtoms\) args\.push\(controls\.vdwAtoms\);\s*\}/);
+assert.match(viteConfig, /hullMode: readHullMode\(source\.hullMode\)/);
+assert.match(viteConfig, /hullAtoms: normalizeXyzrenderAtomSelector\(source\.hullAtoms\)/);
+assert.match(viteConfig, /function xyzrenderHullArgument\(mode: string \| null \| undefined\)/);
+assert.match(viteConfig, /if \(orientationRefPath\) args\.push\("--ref", orientationRefPath\);\s*args\.push\(inputPath\);/);
+assert.match(viteConfig, /const hullArgument = controls\.hullAtoms \|\| xyzrenderHullArgument\(controls\.hullMode\);\s*if \(hullArgument\) \{\s*args\.push\("--hull"\);\s*args\.push\(hullArgument\);/);
+assert.match(viteConfig, /function xyzrenderPoreEnabled\(mode: string \| null \| undefined\)/);
+assert.match(viteConfig, /if \(xyzrenderPoreEnabled\(controls\.hullMode\)\) args\.push\("--pore"\)/);
 assert.match(viteConfig, /displayHydrogens: readDisplayHydrogens\(source\.displayHydrogens\)/);
 assert.match(viteConfig, /bondNotation: readBondNotation\(source\.bondNotation\)/);
 assert.match(viteConfig, /if \(controls\.displayHydrogens === "all"\) args\.push\("--hy"\)/);
