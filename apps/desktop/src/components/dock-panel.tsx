@@ -576,7 +576,10 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         <XyzrenderVdwGallery
           controls={controls}
           onSelect={(mode) => {
-            if (mode === "off") {
+            const selectedMode = controls.showVdw === true
+              ? controls.vdwAtoms ? "partial" : "all"
+              : "off";
+            if (mode === "off" || mode === selectedMode) {
               const nextControls = { ...controls, showVdw: false, vdwAtoms: null };
               setControls(nextControls);
               apply(nextControls, preset);

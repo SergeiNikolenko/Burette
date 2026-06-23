@@ -1898,7 +1898,7 @@ assert.match(dockPanel, /const XYZRENDER_README_VDW_OPTIONS = \[[\s\S]*?asparagi
 assert.doesNotMatch(dockPanel, /asparagine_vdw_paton\.svg/);
 assert.match(dockPanel, /<XyzrenderPresetGallery[\s\S]*?preset=\{preset\}[\s\S]*?onSelect=\{\(value\) => \{[\s\S]*?setPreset\(value\);[\s\S]*?apply\(controls, value\);[\s\S]*?\}\}/);
 assert.match(dockPanel, /<XyzrenderDisplayOptionsGallery[\s\S]*?controls=\{controls\}[\s\S]*?onSelect=\{\(nextControls\) => \{[\s\S]*?setControls\(nextControls\);[\s\S]*?apply\(nextControls, preset\);[\s\S]*?\}\}/);
-assert.match(dockPanel, /<XyzrenderVdwGallery[\s\S]*?controls=\{controls\}[\s\S]*?onSelect=\{\(mode\) => \{[\s\S]*?if \(mode === "off"\) \{[\s\S]*?showVdw: false[\s\S]*?vdwAtoms: null[\s\S]*?apply\(nextControls, preset\)[\s\S]*?showVdw: true[\s\S]*?apply\(nextControls, preset, mode === "partial" \? \{ xyzrenderSelectionAction: "vdw" \} : \{\}\)/);
+assert.match(dockPanel, /<XyzrenderVdwGallery[\s\S]*?controls=\{controls\}[\s\S]*?onSelect=\{\(mode\) => \{[\s\S]*?const selectedMode = controls\.showVdw === true[\s\S]*?controls\.vdwAtoms \? "partial" : "all"[\s\S]*?if \(mode === "off" \|\| mode === selectedMode\) \{[\s\S]*?showVdw: false[\s\S]*?vdwAtoms: null[\s\S]*?apply\(nextControls, preset\)[\s\S]*?showVdw: true[\s\S]*?apply\(nextControls, preset, mode === "partial" \? \{ xyzrenderSelectionAction: "vdw" \} : \{\}\)/);
 assert.match(dockPanel, /function XyzrenderPresetGallery\(\{ preset, onSelect \}: \{ preset: string; onSelect: \(preset: string\) => void \}\)/);
 assert.match(dockPanel, /function XyzrenderDisplayOptionsGallery\(\{/);
 assert.match(dockPanel, /function XyzrenderVdwGallery\(\{/);
