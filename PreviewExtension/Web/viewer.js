@@ -5409,11 +5409,6 @@
         dimUnselectedXyzrenderElements(item);
         hideXyzrenderSheetContextMenu();
       });
-      appendXyzrenderMenuButton(actions, 'Clear Selection', () => {
-        pushXyzrenderActionHistory(item, 'clear selection');
-        clearXyzrenderSelection();
-        hideXyzrenderSheetContextMenu();
-      });
     }
     document.body.appendChild(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
