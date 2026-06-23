@@ -21,7 +21,7 @@ import { DescriptorPanel } from "./descriptor-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
-import type { ConformerJob, TextFileDocument, ViewerDocument, XtbJob, XyzrenderControls } from "../types";
+import type { ConformerJob, TextFileDocument, ViewerDocument, ViewerReloadOptions, XtbJob, XyzrenderControls } from "../types";
 
 type DockPanelProps = {
   area: DockArea;
@@ -462,6 +462,7 @@ const DEFAULT_XYZRENDER_DOCK_CONTROLS: XyzrenderControls = {
   gradients: null,
   fog: null,
   showVdw: false,
+  vdwAtoms: null,
   hideBonds: false,
   displayHydrogens: "auto",
   bondNotation: "aromatic",
@@ -493,6 +494,12 @@ const XYZRENDER_README_DISPLAY_OPTIONS = [
   { group: "bonds", value: "kekule", label: "Kekule", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_kekule.svg" },
 ] as const;
 
+const XYZRENDER_README_VDW_OPTIONS = [
+  { value: "all", label: "All atoms", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw.svg" },
+  { value: "partial", label: "Partial", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw_partial.svg" },
+  { value: "paton", label: "Paton-style", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw_paton.svg" },
+] as const;
+
 function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
   const [preset, setPreset] = useState(document.xyzrenderPreset || "default");
   const [controls, setControls] = useState<XyzrenderControls>(() => xyzrenderDockControls(document));
@@ -509,11 +516,12 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
   const updateControl = <K extends keyof XyzrenderControls>(key: K, value: XyzrenderControls[K]) => {
     setControls((current) => ({ ...current, [key]: value }));
   };
-  const apply = useCallback((nextControls = controls, nextPreset = preset) => {
+  const apply = useCallback((nextControls = controls, nextPreset = preset, options: Partial<ViewerReloadOptions> = {}) => {
     lastAppliedSignature.current = xyzrenderDockSignature(nextControls, nextPreset);
     void actions.reloadXyzrenderDocument(document, {
       xyzrenderPreset: nextPreset,
       xyzrenderControls: nextControls,
+      ...options,
     });
   }, [actions, controls, document, preset]);
 
@@ -565,6 +573,17 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
             apply(nextControls, preset);
           }}
         />
+        <XyzrenderVdwGallery
+          controls={controls}
+          preset={preset}
+          onSelect={(mode) => {
+            const nextControls = { ...controls, showVdw: true, vdwAtoms: null };
+            const nextPreset = mode === "paton" ? "paton" : preset;
+            setControls(nextControls);
+            setPreset(nextPreset);
+            apply(nextControls, nextPreset, mode === "partial" ? { xyzrenderSelectionAction: "vdw" } : {});
+          }}
+        />
         <XyzrenderDockCheckbox
           label="Transparent"
           checked={controls.transparentBackground === true}
@@ -572,7 +591,6 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         />
         <XyzrenderDockTriState label="Gradients" value={controls.gradients} onChange={(value) => updateControl("gradients", value)} />
         <XyzrenderDockTriState label="Fog" value={controls.fog} onChange={(value) => updateControl("fog", value)} />
-        <XyzrenderDockCheckbox label="VdW" checked={controls.showVdw === true} onChange={(checked) => updateControl("showVdw", checked)} />
         <XyzrenderDockCheckbox label="Hide bonds" checked={controls.hideBonds === true} onChange={(checked) => updateControl("hideBonds", checked)} />
       </section>
       <section className="structure-brief-card xyzrender-dock-card">
@@ -656,6 +674,39 @@ function XyzrenderDisplayOptionsGallery({
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function XyzrenderVdwGallery({
+  controls,
+  preset,
+  onSelect,
+}: {
+  controls: XyzrenderControls;
+  preset: string;
+  onSelect: (mode: (typeof XYZRENDER_README_VDW_OPTIONS)[number]["value"]) => void;
+}) {
+  const active = controls.showVdw === true
+    ? controls.vdwAtoms ? "partial" : preset === "paton" ? "paton" : "all"
+    : null;
+  return (
+    <div className="xyzrender-dock-vdw-options" aria-label="xyzrender vdW spheres">
+      <div className="xyzrender-dock-subtitle">vdW spheres</div>
+      <div className="xyzrender-dock-vdw-grid">
+        {XYZRENDER_README_VDW_OPTIONS.map((option) => (
+          <button
+            type="button"
+            className="xyzrender-dock-preset-tile"
+            key={option.value}
+            aria-pressed={active === option.value}
+            onClick={() => onSelect(option.value)}
+          >
+            <span>{option.label}</span>
+            <img src={option.image} alt="" loading="lazy" draggable={false} />
+          </button>
+        ))}
       </div>
     </div>
   );

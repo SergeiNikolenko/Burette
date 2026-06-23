@@ -24,6 +24,10 @@ function bodyControls(value: unknown): ViewerReloadOptions["xyzrenderControls"] 
   return (value ?? null) as ViewerReloadOptions["xyzrenderControls"];
 }
 
+function bodySelectionAction(value: unknown): ViewerReloadOptions["xyzrenderSelectionAction"] {
+  return value === "vdw" ? value : null;
+}
+
 function formatViewerError(
   message: string | undefined,
   documentId: string | undefined,
@@ -76,6 +80,7 @@ export function useAppViewerRuntimeMessages({
         xyzrenderPreset: bodyString(body.value) ?? null,
         xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
         xyzrenderControls: pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
+        xyzrenderSelectionAction: null,
       };
       void reloadActive();
       return true;
@@ -87,6 +92,7 @@ export function useAppViewerRuntimeMessages({
         xyzrenderPreset: bodyString(body.preset) ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
         xyzrenderOrientationRef: xyzrenderOrientationRefRef.current,
         xyzrenderControls: bodyControls(body.controls),
+        xyzrenderSelectionAction: bodySelectionAction(body.selectionAction),
       };
       void reloadActive();
       return true;

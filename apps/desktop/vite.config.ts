@@ -665,6 +665,7 @@ function normalizeXyzrenderControls(value: unknown) {
     fog: readOptionalBoolean(source.fog),
     fogStrength: readOptionalNumber(source.fogStrength),
     showVdw: readOptionalBoolean(source.showVdw),
+    vdwAtoms: normalizeXyzrenderAtomSelector(source.vdwAtoms),
     vdwOpacity: readOptionalNumber(source.vdwOpacity),
     vdwScale: readOptionalNumber(source.vdwScale),
     hideBonds: readOptionalBoolean(source.hideBonds),
@@ -797,7 +798,10 @@ function buildXyzrenderArgs(
   if (controls.fog === true) args.push("--fog");
   if (controls.fog === false) args.push("--no-fog");
   if (controls.fogStrength) args.push("-F", String(controls.fogStrength));
-  if (preset !== "vdw" && controls.showVdw === true) args.push("--vdw");
+  if (preset !== "vdw" && controls.showVdw === true) {
+    args.push("--vdw");
+    if (controls.vdwAtoms) args.push(controls.vdwAtoms);
+  }
   if (controls.vdwOpacity) args.push("--vdw-opacity", String(controls.vdwOpacity));
   if (controls.vdwScale) args.push("--vdw-scale", String(controls.vdwScale));
   if (controls.hideBonds === true) args.push("--no-bonds");

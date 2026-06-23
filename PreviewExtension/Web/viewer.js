@@ -1572,6 +1572,7 @@
       fog: triStateBoolean(source.fog),
       fogStrength: positiveNumberOrNull(source.fogStrength),
       showVdw: source.showVdw === true,
+      vdwAtoms: normalizeXyzrenderAtomSelector(source.vdwAtoms),
       vdwOpacity: positiveNumberOrNull(source.vdwOpacity),
       vdwScale: positiveNumberOrNull(source.vdwScale),
       hideBonds: source.hideBonds === true,
@@ -1860,6 +1861,10 @@
       if (body.documentId && documentId && String(body.documentId) !== documentId) return;
       const controls = normalizeXyzrenderControls(body.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
       const preset = normalizeXyzrenderPreset(body.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+      if (body.selectionAction === 'vdw') {
+        void applyXyzrenderSelectionVdw(controls, preset);
+        return;
+      }
       if (hasXyzrenderSelection()) {
         void applyXyzrenderSelectionPreset(preset, controls);
         return;
@@ -2938,6 +2943,7 @@
       showVdw: readCheckbox('showVdw'),
       vdwOpacity: current.vdwOpacity,
       vdwScale: readNumber('vdwScale'),
+      vdwAtoms: current.vdwAtoms,
       hideBonds: readCheckbox('hideBonds'),
       showCell: readTriState('showCell'),
       showGhosts: readTriState('showGhosts'),
@@ -5829,6 +5835,20 @@
     item.dataset.buretXyzrenderRegions = JSON.stringify(normalized);
   }
 
+  function xyzrenderSheetItemVdwAtoms(item) {
+    return normalizeXyzrenderAtomSelector(item?.dataset?.buretXyzrenderVdwAtoms);
+  }
+
+  function setXyzrenderSheetItemVdwAtoms(item, atoms) {
+    if (!item) return;
+    const normalized = normalizeXyzrenderAtomSelector(atoms);
+    if (!normalized) {
+      delete item.dataset.buretXyzrenderVdwAtoms;
+      return;
+    }
+    item.dataset.buretXyzrenderVdwAtoms = normalized;
+  }
+
   function xyzrenderAtomIndexFromElement(element) {
     if (!element?.getAttribute) return null;
     const values = [
@@ -5993,6 +6013,49 @@
     }
   }
 
+  async function applyXyzrenderSelectionVdw(controls, preset) {
+    const groups = xyzrenderSelectionGroups();
+    if (!groups.length) {
+      setStatus('Select atoms first, then apply partial vdW spheres.', 'error');
+      return;
+    }
+    const normalizedPreset = normalizeXyzrenderPreset(preset);
+    setStatus('[web] Applying partial vdW spheres to selected xyzrender atoms…');
+    let updated = 0;
+    for (const group of groups) {
+      const entry = xyzrenderSheetItemEntry(group.item);
+      if (!entry) continue;
+      const atomSelector = xyzrenderAtomSelectorForElements(group.item, group.elements);
+      if (!atomSelector) continue;
+      try {
+        const nextControls = normalizeXyzrenderControls({
+          ...controls,
+          showVdw: true,
+          vdwAtoms: atomSelector,
+          regions: xyzrenderSheetItemRegions(group.item)
+        }, activeConfig || window.BurreteConfig || {});
+        const basePreset = xyzrenderSheetItemPreset(group.item);
+        const payload = await renderXyzrenderSheetItemPayload(entry, normalizedPreset || basePreset, nextControls);
+        pushXyzrenderActionHistory(group.item, 'apply partial vdW');
+        updateXyzrenderSheetItemBody(group.item, payload.svg);
+        setXyzrenderSheetItemEntry(group.item, entry);
+        group.item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || normalizedPreset || basePreset);
+        setXyzrenderSheetItemVdwAtoms(group.item, atomSelector);
+        updated += atomSelector.split(',').reduce((count, part) => {
+          const [start, end] = part.split('-').map(Number);
+          return count + (end ? end - start + 1 : 1);
+        }, 0);
+      } catch (error) {
+        setStatus(`Could not apply partial vdW spheres to ${sheetEntryLabel(entry)}: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      }
+    }
+    if (updated > 0) {
+      clearXyzrenderSelection();
+      setStatus(`[web] Applied partial vdW spheres to ${updated} selected xyzrender atom${updated === 1 ? '' : 's'}.`);
+      setTimeout(hideStatus, 900);
+    }
+  }
+
   async function updateSelectedXyzrenderSheetItems(items, options = {}) {
     const config = activeConfig || window.BurreteConfig || {};
     const controls = normalizeXyzrenderControls(options.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
@@ -6003,7 +6066,11 @@
       const entry = xyzrenderSheetItemEntry(item);
       if (!entry) continue;
       try {
-        const itemControls = normalizeXyzrenderControls({ ...controls, regions: xyzrenderSheetItemRegions(item) }, config);
+        const itemControls = normalizeXyzrenderControls({
+          ...controls,
+          vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || controls.vdwAtoms,
+          regions: xyzrenderSheetItemRegions(item)
+        }, config);
         const payload = await renderXyzrenderSheetItemPayload(entry, preset, itemControls, options);
         updateXyzrenderSheetItemBody(item, payload.svg);
         setXyzrenderSheetItemEntry(item, entry);
@@ -12313,7 +12380,7 @@
   }
 
   function hideMolstarContextMenu(options = {}) {
-    document.querySelector('.buret-molecule-context-menu')?.remove();
+    document.querySelector('.buret-molecule-context-menu:not(.buret-xyzrender-context-menu)')?.remove();
     molstarContextMenuPick = null;
     if (options.keepMoleculePreview) return;
     scheduleMolstarSelectedMoleculePreview();

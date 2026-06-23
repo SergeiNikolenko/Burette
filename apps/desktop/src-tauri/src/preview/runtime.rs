@@ -140,6 +140,7 @@ pub(crate) struct XyzrenderControls {
     pub(crate) fog: Option<bool>,
     pub(crate) fog_strength: Option<f64>,
     pub(crate) show_vdw: Option<bool>,
+    pub(crate) vdw_atoms: Option<String>,
     pub(crate) vdw_opacity: Option<f64>,
     pub(crate) vdw_scale: Option<f64>,
     pub(crate) hide_bonds: Option<bool>,
