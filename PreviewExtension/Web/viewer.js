@@ -1823,6 +1823,10 @@
       if (body.documentId && documentId && String(body.documentId) !== documentId) return;
       const controls = normalizeXyzrenderControls(body.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
       const preset = normalizeXyzrenderPreset(body.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+      if (hasXyzrenderSelection()) {
+        void applyXyzrenderSelectionPreset(preset, controls);
+        return;
+      }
       if (requestBrowserDevXyzrenderUpdate({ controls, preset })) return;
       const sent = postHostMessage({ type: 'setXyzrenderControls', documentId, controls, preset });
       if (!sent) setStatus('xyzrender controls are available only in the app or Quick Look viewer.', 'error');
