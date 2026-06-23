@@ -86,7 +86,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "lefthook": "^2.1.6",
-    "typescript": "~5.8.3",
+    "typescript": "~6.0.3",
     "vite": "^7.0.4",
     "vite-plus": "^0.1.22"
   },
