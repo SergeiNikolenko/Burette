@@ -13,7 +13,8 @@ collections, and selected molecule review.
 1. Prepare or receive a local SDF/CSV/JSON artifact outside Burrete when
    computation is required.
 2. Validate the collection as a bounded molecular artifact before rendering.
-3. Render a `molecule-table` widget or Burrete side panel.
+3. Render reviewed rows in a Burrete side panel or open the collection as a
+   normal workspace document.
 4. If the user selects a row, hand the selected molecule or derived structure
    back to `open-workspace` or `molstar-scene`.
 

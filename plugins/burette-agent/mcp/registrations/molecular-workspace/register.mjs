@@ -10,7 +10,7 @@ import {
 } from "../../lib/session-registry.mjs";
 import { componentSelector, editStructureFragmentFile, extractStructureComponentFile } from "../../lib/structure-components.mjs";
 import { summarizeStructureFile } from "../../lib/structure-summary.mjs";
-import { toolText } from "../../lib/widget-resource.mjs";
+import { toolText } from "../../lib/tool-response.mjs";
 
 const actionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
 const externalActionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
