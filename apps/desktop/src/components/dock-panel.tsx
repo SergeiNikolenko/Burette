@@ -472,44 +472,46 @@ const DEFAULT_XYZRENDER_DOCK_CONTROLS: XyzrenderControls = {
   fieldOpacity: 1,
 };
 
+const xyzrenderGalleryImage = (name: string) => `${import.meta.env.BASE_URL}xyzrender-gallery/${name}`;
+
 const XYZRENDER_README_PRESET_GALLERY = [
-  { value: "default", label: "Default", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_default.svg" },
-  { value: "flat", label: "Flat", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_flat.svg" },
-  { value: "paton", label: "Paton", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_paton.svg" },
-  { value: "pmol", label: "PMol", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_pmol.svg" },
-  { value: "skeletal", label: "Skeletal", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_skeletal.svg" },
-  { value: "bubble", label: "Bubble", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_bubble.svg" },
-  { value: "tube", label: "Tube", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_tube.svg" },
-  { value: "btube", label: "BTube", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_btube.svg" },
-  { value: "wire", label: "Wire", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_wire.svg" },
-  { value: "graph", label: "Graph", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_graph.svg" },
-  { value: "mtube", label: "MTube", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_mtube.svg" },
-  { value: "vdw", label: "vdW", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_vdw.svg" },
+  { value: "default", label: "Default", image: xyzrenderGalleryImage("caffeine_default.svg") },
+  { value: "flat", label: "Flat", image: xyzrenderGalleryImage("caffeine_flat.svg") },
+  { value: "paton", label: "Paton", image: xyzrenderGalleryImage("caffeine_paton.svg") },
+  { value: "pmol", label: "PMol", image: xyzrenderGalleryImage("caffeine_pmol.svg") },
+  { value: "skeletal", label: "Skeletal", image: xyzrenderGalleryImage("caffeine_skeletal.svg") },
+  { value: "bubble", label: "Bubble", image: xyzrenderGalleryImage("caffeine_bubble.svg") },
+  { value: "tube", label: "Tube", image: xyzrenderGalleryImage("caffeine_tube.svg") },
+  { value: "btube", label: "BTube", image: xyzrenderGalleryImage("caffeine_btube.svg") },
+  { value: "wire", label: "Wire", image: xyzrenderGalleryImage("caffeine_wire.svg") },
+  { value: "graph", label: "Graph", image: xyzrenderGalleryImage("caffeine_graph.svg") },
+  { value: "mtube", label: "MTube", image: xyzrenderGalleryImage("caffeine_mtube.svg") },
+  { value: "vdw", label: "vdW", image: xyzrenderGalleryImage("caffeine_vdw.svg") },
 ] as const;
 
 const XYZRENDER_README_DISPLAY_OPTIONS = [
-  { group: "hydrogens", value: "all", label: "All H", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/ethanol_all_h.svg" },
-  { group: "hydrogens", value: "auto", label: "Some H", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/ethanol_some_h.svg" },
-  { group: "hydrogens", value: "none", label: "No H", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/ethanol_no_h.svg" },
-  { group: "bonds", value: "aromatic", label: "Aromatic", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/benzene.svg" },
-  { group: "bonds", value: "kekule", label: "Kekule", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_kekule.svg" },
+  { group: "hydrogens", value: "all", label: "All H", image: xyzrenderGalleryImage("ethanol_all_h.svg") },
+  { group: "hydrogens", value: "auto", label: "Some H", image: xyzrenderGalleryImage("ethanol_some_h.svg") },
+  { group: "hydrogens", value: "none", label: "No H", image: xyzrenderGalleryImage("ethanol_no_h.svg") },
+  { group: "bonds", value: "aromatic", label: "Aromatic", image: xyzrenderGalleryImage("benzene.svg") },
+  { group: "bonds", value: "kekule", label: "Kekule", image: xyzrenderGalleryImage("caffeine_kekule.svg") },
 ] as const;
 
 const XYZRENDER_README_VDW_OPTIONS = [
-  { value: "all", label: "All atoms", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw.svg" },
-  { value: "partial", label: "Partial", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw_partial.svg" },
-  { value: "off", label: "No vdW", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_default.svg" },
+  { value: "all", label: "All atoms", image: xyzrenderGalleryImage("asparagine_vdw.svg") },
+  { value: "partial", label: "Partial", image: xyzrenderGalleryImage("asparagine_vdw_partial.svg") },
+  { value: "off", label: "No vdW", image: xyzrenderGalleryImage("caffeine_default.svg") },
 ] as const;
 
 const XYZRENDER_README_HULL_OPTIONS = [
-  { value: "off", label: "Off", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_default.svg" },
-  { value: "auto-rings", label: "Rings", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/anthracene_hull.svg" },
-  { value: "faces", label: "Faces", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/buckyball_faces.svg" },
+  { value: "off", label: "Off", image: xyzrenderGalleryImage("caffeine_default.svg") },
+  { value: "auto-rings", label: "Rings", image: xyzrenderGalleryImage("anthracene_hull.svg") },
+  { value: "faces", label: "Faces", image: xyzrenderGalleryImage("buckyball_faces.svg") },
 ] as const;
 
 const XYZRENDER_README_PORE_OPTIONS = [
-  { value: "pore", label: "Pore", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/buckyball_pore.svg" },
-  { value: "faces-pore", label: "Faces + pore", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mof5_faces_pore.svg" },
+  { value: "pore", label: "Pore", image: xyzrenderGalleryImage("buckyball_pore.svg") },
+  { value: "faces-pore", label: "Faces + pore", image: xyzrenderGalleryImage("mof5_faces_pore.svg") },
 ] as const;
 
 const XYZRENDER_DEFAULT_HULL_OPACITY = 0.45;

@@ -3504,7 +3504,7 @@
     button.setAttribute('title', label);
     setTooltipLabel(button, xyzrender
       ? (active ? 'Drag over xyzrender graphics to select' : 'Lasso select xyzrender graphics')
-      : (active ? 'Drag over visible residues to select' : 'Lasso select visible residues'));
+      : (active ? 'Drag over visible atoms to select' : 'Lasso select visible atoms'));
   }
 
   function setMolstarLassoEnabled(enabled) {
@@ -9448,7 +9448,7 @@
     }
     let selected = 0;
     for (const pick of picks) {
-      const loci = molstarContextNormalizeLoci(pick?.loci, 'residue');
+      const loci = molstarContextNormalizeLoci(pick?.loci, 'element');
       if (!loci || molstarLociIsEmpty(loci)) continue;
       if (canSelect) selects.select({ loci }, true);
       if (canSelectStructure) selection.fromLoci('add', loci, true);
@@ -9527,7 +9527,8 @@
   function xyzrenderSheetItemFromEvent(event) {
     const target = event.target instanceof Element ? event.target : null;
     if (!target || target.closest('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle], #buret-toolbar, .buret-xyzrender-popover')) return null;
-    const item = target.closest('.buret-xyzrender-sheet-item');
+    const item = target.closest('.buret-xyzrender-sheet-item')
+      || xyzrenderSheetItemFromContextEvent(event, document);
     if (!item || !item.querySelector('.buret-xyzrender-sheet-item-body svg')) return null;
     return item;
   }
@@ -9572,7 +9573,6 @@
     setStatus(selected > 0
       ? `[web] Selected ${selected} xyzrender graphic${selected === 1 ? '' : 's'} with lasso.`
       : '[web] xyzrender lasso did not match visible graphics.');
-    if (selected > 0) showXyzrenderSelectionContextMenu(stroke.item, bounds);
   }
 
   function selectXyzrenderElementsInLasso(item, points, additive) {

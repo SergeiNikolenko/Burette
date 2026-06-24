@@ -3591,7 +3591,7 @@
     button.setAttribute('title', label);
     setTooltipLabel(button, xyzrender
       ? (active ? 'Drag over xyzrender graphics to select' : 'Lasso select xyzrender graphics')
-      : (active ? 'Drag over visible residues to select' : 'Lasso select visible residues'));
+      : (active ? 'Drag over visible atoms to select' : 'Lasso select visible atoms'));
   }
 
   function setMolstarLassoEnabled(enabled) {
@@ -9933,7 +9933,7 @@
     }
     let selected = 0;
     for (const pick of picks) {
-      const loci = molstarContextNormalizeLoci(pick?.loci, 'residue');
+      const loci = molstarContextNormalizeLoci(pick?.loci, 'element');
       if (!loci || molstarLociIsEmpty(loci)) continue;
       if (canSelect) selects.select({ loci }, true);
       if (canSelectStructure) selection.fromLoci('add', loci, true);
