@@ -29,7 +29,7 @@ Each result bundle should provide:
 - report artifacts: markdown or HTML converted to bounded report blocks;
 - provenance: source path, server/job id, command summary, warnings, errors.
 
-Validate the bounded manifest/snapshot before rendering widgets. Use
+Validate the bounded manifest/snapshot before rendering. Use
 `open-workspace` to display structures and `molecular-report` for notes, plots,
 and result summaries.
 

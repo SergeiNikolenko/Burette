@@ -12,7 +12,7 @@ Reference pattern:
 - scoped user context rather than broad memory;
 - bounded manifest/snapshot artifacts;
 - validate before visible render;
-- delivery-specific widgets and reports.
+- delivery-specific reports.
 
 Burrete implementation:
 
@@ -22,7 +22,7 @@ Burrete implementation:
 - The preflight scope is limited to transport, app, workflow, and capability
   registry state.
 - `mcp/lib/validation.mjs` validates bounded molecular artifacts before report,
-  table, and trajectory widgets render.
+  table, and trajectory content is surfaced.
 
 ## Product Design
 
@@ -48,16 +48,15 @@ Reference pattern:
 
 - MCP server owns stable tool/resource registration;
 - `registrations/` are separate from browser assets;
-- `widget-assets/` contain browser HTML/CSS/JS only;
+- browser assets are kept separate from MCP registration code;
 - durable run/artifact data is passed through bounded payloads.
 
 Burrete implementation:
 
 - `mcp/server.mjs` registers all stable tools/resources.
-- `mcp/registrations/*/register.mjs` define tool schemas and widget metadata.
-- `mcp/widget-assets/*` contains browser assets only.
-- Widget tools pass `structuredContent` to the model and `widgetData` to the
-  review surface.
+- `mcp/registrations/*/register.mjs` define tool schemas.
+- Tool responses pass `structuredContent` to the model and do not expose MCP
+  inline widgets.
 
 ## Browser
 
@@ -97,7 +96,7 @@ Burrete is interface-complete only when all of these exist and pass tests:
 - read-only preflight script;
 - CLI bridge wrappers;
 - MCP server and registrations;
-- widget asset split;
+- browser asset split;
 - molecular artifact validation;
 - Browser/Computer QA guidance;
 - tests that assert the architecture and executable contracts.

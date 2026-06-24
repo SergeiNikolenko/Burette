@@ -110,7 +110,12 @@ if (!args.dist || !args.sessionDir || !args.host || !Number.isInteger(args.port)
 const distRoot = resolve(args.dist);
 const sessionDir = resolve(args.sessionDir);
 const fileAllowRoots = args.allow.map((item) => resolve(item));
-const allowRoots = Array.from(new Set([distRoot, sessionDir, ...fileAllowRoots].map((item) => resolve(item))));
+const allowRoots = Array.from(new Set([
+  distRoot,
+  sessionDir,
+  ...defaultAssetAllowRoots(),
+  ...fileAllowRoots,
+].map((item) => resolve(item))));
 const indexPath = resolve(distRoot, 'index.html');
 if (!existsSync(indexPath)) fail(`Missing prebuilt agent shell index: ${indexPath}`);
 
@@ -162,6 +167,10 @@ async function handleRequest(req, res) {
   }
   if (url.pathname === '/__burette/dev-files') {
     await handleDevFiles(res, method, url);
+    return;
+  }
+  if (url.pathname === '/@fs' || url.pathname.startsWith('/@fs/')) {
+    await handleFsFile(res, method, url);
     return;
   }
   await handleStatic(res, method, url);
@@ -425,6 +434,29 @@ async function handleDevFiles(res, method, url) {
   sendJson(res, 200, { files: Array.from(new Set(files)).sort((left, right) => left.localeCompare(right)) });
 }
 
+async function handleFsFile(res, method, url) {
+  if (method !== 'GET' && method !== 'HEAD') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  const filePath = allowedPathFromFsUrl(url);
+  if (!filePath) {
+    sendJson(res, 403, { error: 'Forbidden' });
+    return;
+  }
+  const info = await stat(filePath).catch(() => null);
+  if (!info?.isFile() || info.size > DEV_FILE_SIZE_LIMIT) {
+    sendJson(res, 404, { error: 'Not found' });
+    return;
+  }
+  const bytes = await readFile(filePath);
+  res.statusCode = 200;
+  res.setHeader('Content-Type', STATIC_MIME_TYPES.get(extname(filePath).toLowerCase()) || 'application/octet-stream');
+  res.setHeader('Content-Length', String(bytes.length));
+  res.setHeader('Cache-Control', 'no-cache');
+  res.end(method === 'HEAD' ? undefined : bytes);
+}
+
 async function handleStatic(res, method, url) {
   if (method !== 'GET' && method !== 'HEAD') {
     sendJson(res, 405, { error: 'Method not allowed' });
@@ -475,6 +507,25 @@ function allowedPathFromQuery(url, options = {}) {
   const extension = fileExtension(filePath);
   if (options.allowText ? !TEXT_EXTENSIONS.has(extension) : !STRUCTURE_EXTENSIONS.has(extension)) return null;
   return filePath;
+}
+
+function allowedPathFromFsUrl(url) {
+  const rawPath = decodeURIComponent(url.pathname.slice('/@fs'.length));
+  if (!rawPath.startsWith('/')) return null;
+  const filePath = resolve(rawPath);
+  if (!isAllowed(filePath)) return null;
+  const extension = fileExtension(filePath);
+  if (!TEXT_EXTENSIONS.has(extension)) return null;
+  return filePath;
+}
+
+function defaultAssetAllowRoots() {
+  return [
+    resolve(scriptDir, '..', 'preview-web'),
+    resolve(scriptDir, '..', 'PreviewExtension', 'Web'),
+    resolve(scriptDir, '..', '..', '..', 'PreviewExtension', 'Web'),
+    resolve(process.cwd(), 'PreviewExtension', 'Web'),
+  ].filter((path) => existsSync(path));
 }
 
 function isAllowed(path) {

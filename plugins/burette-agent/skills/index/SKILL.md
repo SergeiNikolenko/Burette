@@ -10,7 +10,7 @@ direct Burrete invocation as intent to use this plugin.
 
 ## Mandatory Preflight
 
-Before opening files, acting on Mol*, creating widgets, or drafting a handoff,
+Before opening files, acting on Mol*, rendering panels, or drafting a handoff,
 load [user-context](../user-context/SKILL.md) and run:
 
 ```bash
