@@ -2205,7 +2205,7 @@
     button.dataset.buretAction = 'structure-overlay-toggle';
     button.textContent = 'All';
     updateStructureOverlayToggleButton(button, prepared);
-    button.addEventListener('click', toggleSdfPoseMode);
+    button.addEventListener('click', () => toggleSdfPoseMode(prepared));
     return button;
   }
 
@@ -2293,13 +2293,15 @@
     }
   }
 
-  function toggleSdfPoseMode() {
-    if (!structureOverlayAvailable(activeMolstarPrepared)) return;
+  function toggleSdfPoseMode(prepared = activeMolstarPrepared) {
+    if (!structureOverlayAvailable(prepared)) return;
+    if (prepared && activeMolstarPrepared !== prepared) activeMolstarPrepared = prepared;
     const nextMode = activeSdfPoseMode === 'all' ? 'single' : 'all';
-    const noun = structureOverlayNoun(activeMolstarPrepared);
+    const noun = structureOverlayNoun(prepared);
     setSdfPoseMode(nextMode);
-    notifyStructureOverlayModeChanged(activeMolstarPrepared);
-    updateSdfPoseButton(activeMolstarPrepared);
+    notifyStructureOverlayModeChanged(prepared);
+    updateSdfPoseButton(prepared);
+    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     setStatus(nextMode === 'all' ? `[web] Showing all ${noun} together…` : `[web] Showing ${noun} individually…`);
     void reloadSdfPoseMode().catch(error => {
       setStatus(`${noun} mode switch failed.\n\n${error?.message || String(error)}`, 'error');
@@ -4801,6 +4803,10 @@
     return 300;
   }
 
+  function minimumTrajectoryLoopFps(prepared) {
+    return supportsFastVisibilityLoop(prepared) ? DEFAULT_TRAJECTORY_LOOP_FPS : 0.1;
+  }
+
   function minimumTrajectoryLoopTimerDelay(prepared) {
     return supportsFastVisibilityLoop(prepared) ? 8 : 60;
   }
@@ -4811,7 +4817,7 @@
 
   function trajectoryFpsToDelay(value, prepared) {
     const fps = Number(value);
-    const clamped = Number.isFinite(fps) ? Math.min(Math.max(fps, 0.1), maximumTrajectoryLoopFps(prepared)) : DEFAULT_TRAJECTORY_LOOP_FPS;
+    const clamped = Number.isFinite(fps) ? Math.min(Math.max(fps, minimumTrajectoryLoopFps(prepared)), maximumTrajectoryLoopFps(prepared)) : DEFAULT_TRAJECTORY_LOOP_FPS;
     return Math.max(minimumTrajectoryLoopDelay(prepared), Math.round(1000 / clamped));
   }
 
@@ -4863,7 +4869,7 @@
   function readTrajectoryLoopFps(config, prepared) {
     try {
       const stored = Number(localStorage.getItem(trajectoryLoopFpsStorageKey(config, prepared)));
-      if (Number.isFinite(stored) && stored > 0) return Math.min(Math.max(stored, 0.1), maximumTrajectoryLoopFps(prepared));
+      if (Number.isFinite(stored) && stored > 0) return Math.min(Math.max(stored, minimumTrajectoryLoopFps(prepared)), maximumTrajectoryLoopFps(prepared));
     } catch (_) {}
     return DEFAULT_TRAJECTORY_LOOP_FPS;
   }
@@ -5015,24 +5021,13 @@
       nativeTrajectorySdfMolecules.every(Boolean)
       ? sdfMoleculesToPdbCollection(nativeTrajectorySdfMolecules, 'Ligand poses')
       : null;
-    const nativeTrajectoryPdb = nativeTrajectoryPoseCount > 1 && nativeTrajectorySdfMolecules.length === nativeTrajectoryPoseCount &&
-      nativeTrajectorySdfMolecules.every(Boolean)
-      ? sdfMoleculesToPdbTrajectory(nativeTrajectorySdfMolecules, 'Ligand poses')
-      : null;
     if (nativeTrajectoryPoseCount > 1) {
-      entries.push(nativeTrajectoryPdb
-        ? {
-            data: nativeTrajectoryPdb,
-            format: 'pdb',
-            label: 'Ligand poses',
-            loadPreset: 'default'
-          }
-        : {
-            data: `${nativeTrajectorySdfRecords.join('\n$$$$\n')}\n$$$$\n`,
-            format: 'sdf',
-            label: 'Ligand poses',
-            loadPreset: 'default'
-          });
+      entries.push({
+        data: `${nativeTrajectorySdfRecords.join('\n$$$$\n')}\n$$$$\n`,
+        format: 'sdf',
+        label: 'Ligand poses',
+        loadPreset: 'default'
+      });
     }
     const trajectoryPair = dockingTrajectoryPair(entries);
     if (trajectoryPair) {
@@ -5112,8 +5107,8 @@
         label: config.label || 'Docking view',
         activePose,
         poseCount: nativeTrajectoryPoseCount,
-        nativeTrajectoryControls: Boolean(nativeTrajectoryPdb),
-        ligandLabel: 'Mol* trajectory',
+        nativeTrajectoryControls: false,
+        ligandLabel: 'Ligand poses',
         controlLabel: 'Pose',
         receptorEntry,
         poses,
@@ -7240,34 +7235,6 @@
     return { data: lines.join('\n'), residues, singlePdbs, molecules };
   }
 
-  function sdfMoleculesToPdbTrajectory(molecules, label) {
-    if (!Array.isArray(molecules) || molecules.length <= 1) return null;
-    if (!molecules.every(molecule => molecule && molecule.atomCount > 0 && molecule.atomCount <= 99999)) return null;
-    const lines = [
-      `REMARK ${String(label || 'Burrete ligand trajectory').slice(0, 66)}`,
-      `REMARK Burrete SDF trajectory with ${molecules.length} poses`
-    ];
-    molecules.forEach((molecule, modelIndex) => {
-      lines.push(`MODEL     ${String(modelIndex + 1).padStart(4, ' ')}`);
-      for (let index = 0; index < molecule.atoms.length; index += 1) {
-        lines.push(pdbAtomLine(index + 1, molecule.atoms[index]));
-      }
-      const adjacency = new Map();
-      for (const bond of molecule.bonds) {
-        const a = bond.a;
-        const b = bond.b;
-        if (!adjacency.has(a)) adjacency.set(a, new Set());
-        if (!adjacency.has(b)) adjacency.set(b, new Set());
-        adjacency.get(a).add(b);
-        adjacency.get(b).add(a);
-      }
-      appendPdbConectLines(lines, adjacency);
-      lines.push('ENDMDL');
-    });
-    lines.push('END', '');
-    return lines.join('\n');
-  }
-
   function sdfMoleculesToPdbStructure(molecules, label) {
     const totalAtoms = molecules.reduce((sum, molecule) => sum + molecule.atomCount, 0);
     if (totalAtoms <= 0 || totalAtoms > 99999) return null;
@@ -7645,77 +7612,6 @@
     return builder?.struct?.generator?.all?.() || builder?.struct?.generator?.all || null;
   }
 
-  function molstarResidueExpression(residue) {
-    const lib = molstarExportLib();
-    const builder = lib.MolScriptBuilder || lib.molScript?.MolScriptBuilder || lib.script?.MolScriptBuilder;
-    const atomGroups = builder?.struct?.generator?.atomGroups;
-    if (!builder || !atomGroups || !builder.core?.rel?.eq) return null;
-    const property = name => (
-      typeof builder.ammp === 'function'
-        ? builder.ammp(name)
-        : builder.struct?.atomProperty?.macromolecular?.[name]?.()
-    );
-    const equals = (name, value) => {
-      const field = property(name);
-      return field ? builder.core.rel.eq([field, value]) : null;
-    };
-    const anyOf = tests => {
-      const list = tests.filter(Boolean);
-      if (list.length <= 1) return list[0] || null;
-      return builder.core.logic?.or?.(list) || list[0];
-    };
-    const allOf = tests => {
-      const list = tests.filter(Boolean);
-      if (list.length <= 1) return list[0] || null;
-      return builder.core.logic?.and?.(list) || list[0];
-    };
-    const tests = [];
-    const seqId = Number(residue?.seqId);
-    if (Number.isFinite(seqId)) tests.push(anyOf([equals('auth_seq_id', seqId), equals('label_seq_id', seqId)]));
-    const compId = String(residue?.compId || '').trim();
-    if (compId) tests.push(anyOf([equals('label_comp_id', compId), equals('auth_comp_id', compId)]));
-    if (!tests.length || tests.some(test => !test)) return null;
-    const residueTest = allOf(tests);
-    if (!residueTest) return null;
-    const chainId = String(residue?.chainId || '').trim();
-    const query = { 'residue-test': residueTest };
-    const chainTest = chainId ? anyOf([equals('auth_asym_id', chainId), equals('label_asym_id', chainId)]) : null;
-    if (chainTest) query['chain-test'] = chainTest;
-    return atomGroups(query);
-  }
-
-  async function tryCreateMolstarExpressionComponent(plugin, structure, expression, key, label) {
-    if (!expression || !plugin?.builders?.structure?.tryCreateComponentFromExpression) return null;
-    for (const target of [structure?.cell, structure]) {
-      if (!target) continue;
-      try {
-        const component = await plugin.builders.structure.tryCreateComponentFromExpression(
-          target,
-          expression,
-          key,
-          { label }
-        );
-        if (component) return component;
-      } catch (error) {
-        debug('Mol* expression component creation failed: ' + (error && error.message || String(error)));
-      }
-    }
-    return null;
-  }
-
-  function setMolstarComponentsVisibility(viewer, components, visible) {
-    const list = Array.from(components || []).filter(Boolean);
-    const manager = viewer?.plugin?.managers?.structure?.component;
-    if (!list.length || typeof manager?.toggleVisibility !== 'function') return;
-    const targets = list.filter(component => Boolean(component?.cell?.state?.isHidden) === Boolean(visible));
-    if (!targets.length) return;
-    try {
-      manager.toggleVisibility(targets);
-    } catch (error) {
-      debug('Mol* component visibility update failed: ' + (error && error.message || String(error)));
-    }
-  }
-
   async function applySdfCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
     if (!viewer || prepared?.kind !== 'sdf-collection') return;
     const plugin = viewer.plugin;
@@ -7930,24 +7826,24 @@
 
   function dockingSdfPoseStateStillLoaded(viewer, state) {
     if (!state || state.viewer !== viewer) return false;
-    const structures = Array.from(molstarCurrentStructures(viewer));
-    const receptor = Array.isArray(state.receptorStructures) ? state.receptorStructures : [];
-    return receptor.length > 0 && receptor.every(structure => structures.includes(structure));
+    return Array.isArray(state.receptorStructures) && state.receptorStructures.length > 0;
   }
 
   function dockingSdfPoseStateHasPoseCache(state, poseCount) {
     const expectedCount = Math.max(0, Math.trunc(Number(poseCount) || 0));
     if (expectedCount <= 0) return false;
-    if (Array.isArray(state?.poseComponents) && state.poseComponents.length === expectedCount && state.poseComponents.every(Boolean)) return true;
     return Array.isArray(state?.poseStructures) && state.poseStructures.length === expectedCount && state.poseStructures.every(structures => Array.isArray(structures) && structures.length > 0);
   }
 
   async function applyDockingSdfPoseVisibility(viewer, prepared, activePose = 0, options = {}) {
     if (!viewer || prepared?.kind !== 'docking' || prepared.sdfPoseOverlayAvailable !== true) return;
+    const poseEntries = Array.isArray(prepared.poses) ? prepared.poses : [];
     const singlePdbs = Array.isArray(prepared.collectionSinglePdbs) ? prepared.collectionSinglePdbs : [];
-    const activeIndex = Math.max(0, Math.min(singlePdbs.length - 1, Math.trunc(Number(activePose) || 0)));
+    const poseCount = Math.max(poseEntries.length, singlePdbs.length);
+    const activeIndex = Math.max(0, Math.min(poseCount - 1, Math.trunc(Number(activePose) || 0)));
+    const activeEntry = poseEntries[activeIndex] || null;
     const activeData = singlePdbs[activeIndex];
-    if (!activeData) throw new Error('Mol* docking pose data is unavailable.');
+    if (!activeEntry && !activeData) throw new Error('Mol* docking pose data is unavailable.');
     const plugin = viewer.plugin;
     const style = configuredMolstarStyle(activeConfig);
     const allMode = activeSdfPoseMode === 'all';
@@ -7962,7 +7858,7 @@
       contextStyle,
       contextOpacity,
       contextColor,
-      singlePdbs.length
+      poseCount
     ].join('|');
     let state = activeDockingSdfPoseState;
     if (!state || state.key !== stateKey || !dockingSdfPoseStateStillLoaded(viewer, state)) {
@@ -7977,9 +7873,7 @@
         backgroundStructures: [],
         activeStructures: [],
         collectionStructures: [],
-        poseComponents: [],
         poseStructures: [],
-        activeComponents: [],
         activeIndex: -1
       };
       activeDockingSdfPoseState = state;
@@ -7995,23 +7889,35 @@
       state.backgroundStructures = [];
       state.activeStructures = [];
       state.collectionStructures = [];
-      state.poseComponents = [];
       state.poseStructures = [];
-      state.activeComponents = [];
-      const backgroundData = sdfCollectionBackgroundPdb(prepared, activeIndex);
       const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
-      if (backgroundData) {
-        const contextStructures = await loadSdfCollectionPdbLayer(viewer, backgroundData, `${prepared.label || 'Docking poses'} background`);
-        if (contextStructures.length) {
-          await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor);
-          state.backgroundStructures = contextStructures;
+      const contextStructures = [];
+      for (let index = 0; index < poseCount; index += 1) {
+        if (index === activeIndex) continue;
+        const entry = poseEntries[index] || null;
+        const poseData = singlePdbs[index];
+        if (entry) {
+          contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
+        } else if (poseData) {
+          contextStructures.push(...await loadSdfCollectionPdbLayer(viewer, poseData, `${prepared.label || 'Docking poses'} Pose ${index + 1}`));
         }
       }
+      if (contextStructures.length) {
+        await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor);
+        state.backgroundStructures = contextStructures;
+      }
+      const activeStructures = activeEntry
+        ? await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' })
+        : await loadSdfCollectionPdbLayer(viewer, activeData, `${prepared.label || 'Docking poses'} Pose ${activeIndex + 1}`);
+      if (!activeStructures.length) throw new Error('Mol* did not expose the active docking pose structure.');
+      await applySdfCollectionMolstarStyle(viewer, style, activeStructures, 1, 'colored');
+      state.activeStructures = activeStructures;
+      state.activeIndex = activeIndex;
     } else if (state.activeIndex === activeIndex && dockingSdfPoseStateStillLoaded(viewer, state)) {
       if (options.installControls !== false) installDockingPoseControls(viewer, prepared);
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       return;
-    } else if (!dockingSdfPoseStateHasPoseCache(state, singlePdbs.length)) {
+    } else if (!dockingSdfPoseStateHasPoseCache(state, poseCount)) {
       await removeMolstarStructures(viewer, [
         ...state.backgroundStructures,
         ...state.activeStructures,
@@ -8021,72 +7927,27 @@
       state.backgroundStructures = [];
       state.activeStructures = [];
       state.collectionStructures = [];
-      state.poseComponents = [];
       state.poseStructures = [];
-      state.activeComponents = [];
-      const residues = Array.isArray(prepared.collectionResidues) ? prepared.collectionResidues : [];
-      const collectionData = String(prepared.collectionPdbData || '');
-      if (collectionData && residues.length === singlePdbs.length) {
-        const collectionStructures = await loadSdfCollectionPdbLayer(viewer, collectionData, `${prepared.label || 'Docking poses'} collection`);
-        const collectionStructure = collectionStructures[0] || null;
-        if (collectionStructure) {
-          const representation = sdfCollectionLigandRepresentationForStyle(style, 1, 'colored');
-          for (let index = 0; index < residues.length; index += 1) {
-            const component = await tryCreateMolstarExpressionComponent(
-              plugin,
-              collectionStructure,
-              molstarResidueExpression(residues[index]),
-              `burette-docking-pose-${index + 1}`,
-              `${prepared.label || 'Docking poses'} Pose ${index + 1}`
-            );
-            if (!component) {
-              state.poseComponents = [];
-              break;
-            }
-            await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation, { tag: 'burette-docking-pose' });
-            setMolstarComponentsVisibility(viewer, [component], index === activeIndex);
-            state.poseComponents[index] = component;
-          }
-          if (state.poseComponents.length === residues.length) {
-            state.collectionStructures = collectionStructures;
-            state.activeStructures = [];
-            state.activeComponents = [state.poseComponents[activeIndex]].filter(Boolean);
-            state.activeIndex = activeIndex;
-          } else {
-            await removeMolstarStructures(viewer, collectionStructures);
-            state.collectionStructures = [];
-            state.poseComponents = [];
-          }
-        }
+      refreshWaterRepresentation = true;
+      for (let index = 0; index < poseCount; index += 1) {
+        const entry = poseEntries[index] || null;
+        const poseData = singlePdbs[index];
+        const poseStructures = entry
+          ? await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' })
+          : await loadSdfCollectionPdbLayer(viewer, poseData, `${prepared.label || 'Docking poses'} Pose ${index + 1}`);
+        if (!poseStructures.length) throw new Error('Mol* did not expose the active docking pose structure.');
+        await applySdfCollectionMolstarStyle(viewer, style, poseStructures, 1, 'colored');
+        setMolstarStructuresVisibility(viewer, poseStructures, index === activeIndex);
+        state.poseStructures[index] = poseStructures;
       }
-      if (!state.poseComponents.length) {
-        refreshWaterRepresentation = true;
-        for (let index = 0; index < singlePdbs.length; index += 1) {
-          const poseData = singlePdbs[index];
-          const poseStructures = await loadSdfCollectionPdbLayer(viewer, poseData, `${prepared.label || 'Docking poses'} Pose ${index + 1}`);
-          if (!poseStructures.length) throw new Error('Mol* did not expose the active docking pose structure.');
-          await applySdfCollectionMolstarStyle(viewer, style, poseStructures, 1, 'colored');
-          setMolstarStructuresVisibility(viewer, poseStructures, index === activeIndex);
-          state.poseStructures[index] = poseStructures;
-        }
-        state.activeStructures = state.poseStructures[activeIndex] || [];
-        state.activeIndex = activeIndex;
-      }
+      state.activeStructures = state.poseStructures[activeIndex] || [];
+      state.activeIndex = activeIndex;
     } else {
-      if (Array.isArray(state.poseComponents) && state.poseComponents.length === singlePdbs.length) {
-        setMolstarComponentsVisibility(viewer, state.activeComponents, false);
-        const activeComponent = state.poseComponents[activeIndex];
-        if (!activeComponent) throw new Error('Mol* docking pose data is unavailable.');
-        setMolstarComponentsVisibility(viewer, [activeComponent], true);
-        state.activeComponents = [activeComponent];
-        state.activeStructures = [];
-      } else {
-        setMolstarStructuresVisibility(viewer, state.activeStructures, false);
-        const activeStructures = state.poseStructures[activeIndex] || [];
-        if (!activeStructures.length) throw new Error('Mol* docking pose data is unavailable.');
-        setMolstarStructuresVisibility(viewer, activeStructures, true);
-        state.activeStructures = activeStructures;
-      }
+      setMolstarStructuresVisibility(viewer, state.activeStructures, false);
+      const activeStructures = state.poseStructures[activeIndex] || [];
+      if (!activeStructures.length) throw new Error('Mol* docking pose data is unavailable.');
+      setMolstarStructuresVisibility(viewer, activeStructures, true);
+      state.activeStructures = activeStructures;
       state.activeIndex = activeIndex;
     }
 
@@ -8971,7 +8832,11 @@
       installDockingPoseControls(viewer, prepared);
       return;
     }
-    if (prepared.nativeTrajectoryControls !== true && prepared.sdfPoseOverlayAvailable === true && Array.isArray(prepared.collectionSinglePdbs) && prepared.collectionSinglePdbs.length > 1) {
+    const sdfOverlayPoseCount = Math.max(
+      Array.isArray(prepared.poses) ? prepared.poses.length : 0,
+      Array.isArray(prepared.collectionSinglePdbs) ? prepared.collectionSinglePdbs.length : 0
+    );
+    if (prepared.nativeTrajectoryControls !== true && prepared.sdfPoseOverlayAvailable === true && sdfOverlayPoseCount > 1) {
       await applyDockingSdfPoseVisibility(viewer, prepared, prepared.activePose);
       return;
     }
@@ -9653,7 +9518,7 @@
     speed.className = 'buret-docking-pose-speed';
     speed.setAttribute('aria-label', `${controlLabel} loop frames per second`);
     speed.type = 'number';
-    speed.min = '0.1';
+    speed.min = formatTrajectoryFps(minimumTrajectoryLoopFps(prepared));
     speed.max = formatTrajectoryFps(maximumTrajectoryLoopFps(prepared));
     speed.step = '0.1';
     speed.inputMode = 'decimal';
