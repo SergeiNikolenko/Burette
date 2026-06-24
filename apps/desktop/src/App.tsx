@@ -937,6 +937,7 @@ export default function App() {
             query={commandPaletteQuery}
             onQueryChange={setCommandPaletteQuery}
             onClose={closeCommandPalette}
+            onRunError={pushErrorStatus}
           />
         </Suspense>
       ) : null}
