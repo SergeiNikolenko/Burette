@@ -72,18 +72,25 @@ export function FileBrowser({
 
   return (
     <ScrollFade className="sidebar-scroll">
-      <button
-        type="button"
+      <label
         className="sidebar-search-row"
-        onClick={() => actions.openCommandPalette()}
         aria-label="Search projects and structures"
       >
         <span className="sidebar-search-icon" aria-hidden="true">
           <HugeiconsIcon icon={Search01Icon} size={16} color="currentColor" strokeWidth={2} />
         </span>
-        <span className="sidebar-search-label">Search</span>
+        <input
+          type="search"
+          data-sidebar-search
+          value={state.sidebarQuery}
+          onChange={(event) => actions.setSidebarQuery(event.currentTarget.value)}
+          placeholder="Search"
+          aria-label="Search projects and structures"
+          autoComplete="off"
+          spellCheck={false}
+        />
         <kbd>⌘<span>P</span></kbd>
-      </button>
+      </label>
       <button
         type="button"
         className="sidebar-tool-row"

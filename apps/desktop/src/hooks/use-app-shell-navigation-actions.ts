@@ -1,10 +1,8 @@
 import { useCallback } from "react";
 import type { AppSettingsSectionId } from "../components/types";
-import type { CommandPaletteIntent } from "./use-command-palette";
 
 type UseAppShellNavigationActionsOptions = {
   activateLastNonSettingsTab: () => void;
-  openCommandPalette: (intent?: CommandPaletteIntent) => void;
   openSettingsSectionTab: (section: AppSettingsSectionId) => void;
   openSettingsTab: () => void;
   setActiveDocument: (id: string) => void;
@@ -14,7 +12,6 @@ type UseAppShellNavigationActionsOptions = {
 
 export function useAppShellNavigationActions({
   activateLastNonSettingsTab,
-  openCommandPalette,
   openSettingsSectionTab,
   openSettingsTab,
   setActiveDocument,
@@ -26,8 +23,11 @@ export function useAppShellNavigationActions({
   }, [setActiveDocument]);
 
   const focusSidebarSearch = useCallback(() => {
-    openCommandPalette("search");
-  }, [openCommandPalette]);
+    if (!sidebarOpen) toggleSidebar();
+    window.setTimeout(() => {
+      document.querySelector<HTMLInputElement>("[data-sidebar-search]")?.focus();
+    }, 0);
+  }, [sidebarOpen, toggleSidebar]);
 
   const openSettings = useCallback(() => {
     if (!sidebarOpen) toggleSidebar();
