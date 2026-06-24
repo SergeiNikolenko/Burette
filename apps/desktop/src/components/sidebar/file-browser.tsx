@@ -1,6 +1,7 @@
 import { useState, type DragEvent as ReactDragEvent } from "react";
 import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { isRemoteStructureUrl } from "../../lib/remote-structure";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDragItems } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -21,6 +22,7 @@ export function FileBrowser({
   const hideProjectPreviews = state.buildInfo.isAgentShell && !state.workspacePath;
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
+  const canFetchRemoteStructure = isRemoteStructureUrl(sidebarQuery);
   const visibleProjects = hideProjectPreviews ? [] : filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
   const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
   const pinnedExpanded = pinnedOpen || hasSidebarQuery;
@@ -72,18 +74,34 @@ export function FileBrowser({
 
   return (
     <ScrollFade className="sidebar-scroll">
-      <button
-        type="button"
+      <label
         className="sidebar-search-row"
-        onClick={actions.openCommandPalette}
         aria-label="Search projects and structures"
       >
         <span className="sidebar-search-icon" aria-hidden="true">
           <HugeiconsIcon icon={Search01Icon} size={16} color="currentColor" strokeWidth={2} />
         </span>
-        <span className="sidebar-search-label">Search</span>
+        <input
+          type="search"
+          data-sidebar-search
+          value={state.sidebarQuery}
+          onChange={(event) => actions.setSidebarQuery(event.currentTarget.value)}
+          placeholder="Search"
+          aria-label="Search projects and structures"
+          autoComplete="off"
+          spellCheck={false}
+        />
         <kbd>⌘<span>P</span></kbd>
-      </button>
+      </label>
+      {canFetchRemoteStructure && (
+        <button
+          type="button"
+          className="sidebar-search-action-row"
+          onClick={() => actions.openStructureUrlInMolstar(sidebarQuery)}
+        >
+          Fetch URL in Mol*
+        </button>
+      )}
       <button
         type="button"
         className="sidebar-tool-row"

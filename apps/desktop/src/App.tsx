@@ -372,6 +372,7 @@ export default function App() {
     openPaths,
     openStructureRecordDocuments,
     openStructureRecords,
+    openStructureUrlInMolstar,
     openTextDocuments,
   } = useAppFileOpen({
     addBackgroundDocuments,
@@ -554,7 +555,6 @@ export default function App() {
     selectDocument,
   } = useAppShellNavigationActions({
     activateLastNonSettingsTab,
-    openCommandPalette,
     openSettingsSectionTab,
     openSettingsTab,
     setActiveDocument,
@@ -800,6 +800,7 @@ export default function App() {
     openSettings,
     openSettingsSection,
     openStructureRecords,
+    openStructureUrlInMolstar,
     openTextDocuments,
     openUpdateRelease,
     openWorkspaceFolder,
@@ -937,6 +938,7 @@ export default function App() {
             query={commandPaletteQuery}
             onQueryChange={setCommandPaletteQuery}
             onClose={closeCommandPalette}
+            onRunError={pushErrorStatus}
           />
         </Suspense>
       ) : null}

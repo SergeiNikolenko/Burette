@@ -278,6 +278,7 @@ for (const commandPath of [
   'commands::documents::read_structure_text',
   'commands::documents::generate_3d_conformer',
   'commands::documents::open_text_structure',
+  'commands::documents::fetch_remote_structure',
   'commands::documents::save_text_as',
   'commands::descriptors::descriptor_calculate_grid',
   'commands::descriptors::descriptor_start_grid',
@@ -396,6 +397,7 @@ assert.match(rdkitConformerScript, /def select_ensemble_conformer_ids\(scored\):
 assert.match(rdkitConformerScript, /selected_conf_ids = select_ensemble_conformer_ids\(scored\)/);
 assert.match(rdkitConformerScript, /"conformerCount": len\(records\)/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_text_structure/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn fetch_remote_structure/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn save_text_as/);
 assert.match(previewRuntime, /pub\(crate\) fn into_virtual\(mut self\) -> Self/);
 assert.match(previewRuntime, /pub\(crate\) fn virtual_structure/);
