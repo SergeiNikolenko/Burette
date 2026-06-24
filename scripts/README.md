@@ -59,6 +59,20 @@ bun scripts/burrete-agent.mjs act --session-dir /tmp/burrete-agent-session '{"ty
 See `docs/agent-platform.md` and `plugins/burette-agent/AGENTS.md` before
 changing CLI, MCP, or skill behavior.
 
+## Trajectory Preview Extractors
+
+Use the small format extractors when an external trajectory bundle is not a
+direct Mol* structure file:
+
+```bash
+python3 scripts/amber_nc_preview_extract.py reference.pdb trajectory.nc --output preview.pdb
+python3 scripts/biokinema_preview_extract.py /path/to/BioKinema/run --output trajectory.cif
+```
+
+The BioKinema extractor reads the `*_pred_coordinates.npy` coordinate array and
+the first prediction CIF as topology, then writes a multi-model mmCIF that Mol*
+can open as a trajectory.
+
 ## Validation And CI Helpers
 
 | Command | Use When |
