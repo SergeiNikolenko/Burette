@@ -947,6 +947,7 @@
   let activeConfig = null;
   let activeMolstarPrepared = null;
   let activeSdfPoseMode = 'single';
+  let activeXyzFrameOverlayState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
   let latestXyzrenderOrientationRef = null;
@@ -2229,7 +2230,11 @@
     if (activeMolstarPrepared?.xyzFrameOverlayAvailable === true) {
       const poseCount = Number(activeMolstarPrepared.poseCount || activeMolstarPrepared.xyzFrameCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
-      await applyXyzFrameOverlayVisibility(activeViewer, activeMolstarPrepared, activePose);
+      if (activeSdfPoseMode === 'all') {
+        await applyXyzFrameOverlayVisibility(activeViewer, activeMolstarPrepared, activePose);
+      } else {
+        await reloadActiveMolstarStructure();
+      }
       return;
     }
     if (activeMolstarPrepared?.pdbModelOverlayAvailable === true) {
@@ -7335,6 +7340,53 @@
     return Array.from(picked).sort((left, right) => left - right);
   }
 
+  function xyzFrameOverlayRawSignature(raw) {
+    const text = String(raw || '');
+    if (!text) return 'empty';
+    const hashText = text.length > 8192 ? `${text.slice(0, 4096)}\n${text.slice(-4096)}` : text;
+    return `${text.length}:${stableTextHash(hashText)}`;
+  }
+
+  function xyzFrameOverlayStateKey(rawSignature, frames, prepared, style, contextStyle, contextOpacity, contextColor, backgroundIndexes) {
+    return [
+      activeConfig?.documentId || '',
+      prepared?.label || '',
+      rawSignature,
+      frames.length,
+      style,
+      contextStyle,
+      contextOpacity,
+      contextColor,
+      backgroundIndexes.join(',')
+    ].join('|');
+  }
+
+  function resetXyzFrameOverlayState(viewer = null) {
+    if (!viewer || activeXyzFrameOverlayState?.viewer === viewer) {
+      activeXyzFrameOverlayState = null;
+    }
+  }
+
+  async function removeMolstarStructures(viewer, structures) {
+    const list = Array.from(structures || []).filter(Boolean);
+    if (!list.length) return;
+    const hierarchy = viewer?.plugin?.managers?.structure?.hierarchy;
+    if (typeof hierarchy?.remove !== 'function') return;
+    try {
+      await hierarchy.remove(list, false);
+    } catch (error) {
+      debug('Mol* structure removal failed: ' + (error && error.message || String(error)));
+    }
+  }
+
+  function xyzFrameOverlayStateStillLoaded(viewer, state) {
+    if (!state || state.viewer !== viewer) return false;
+    const structures = Array.from(molstarCurrentStructures(viewer));
+    const background = Array.isArray(state.backgroundStructures) ? state.backgroundStructures : [];
+    if (!background.length) return false;
+    return background.every(structure => structures.includes(structure));
+  }
+
   function parseV2000SdfRecord(record) {
     const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const countsIndex = lines.findIndex(line => /\bV2000\b/u.test(line) || /^\s*\d+\s+\d+\s+/.test(line));
@@ -7530,39 +7582,71 @@
     if (!plugin?.builders?.data?.rawData || !plugin?.builders?.structure?.parseTrajectory || !plugin?.builders?.structure?.hierarchy?.applyPreset) {
       throw new Error('Mol* structure builders are not available in this runtime.');
     }
-    const frames = splitXyzFrames(rawStructureData(activeConfig));
+    const raw = rawStructureData(activeConfig);
+    const rawSignature = xyzFrameOverlayRawSignature(raw);
+    let frames = activeXyzFrameOverlayState?.viewer === viewer && activeXyzFrameOverlayState.rawSignature === rawSignature
+      ? activeXyzFrameOverlayState.frames
+      : null;
+    if (!Array.isArray(frames)) frames = splitXyzFrames(raw);
     if (frames.length <= 1) {
+      resetXyzFrameOverlayState(viewer);
       await reloadActiveMolstarStructure();
       return;
     }
-    const allMode = activeSdfPoseMode === 'all';
     const activeIndex = Math.max(0, Math.min(frames.length - 1, Math.trunc(Number(activePose) || 0)));
     const label = activeConfig?.label || prepared?.label || 'XYZ frames';
     const style = configuredMolstarStyle(activeConfig);
-    if (typeof plugin.clear === 'function') await plugin.clear();
-
-    if (allMode) {
+    if (activeSdfPoseMode !== 'all') {
+      resetXyzFrameOverlayState(viewer);
+      if (typeof plugin.clear === 'function') await plugin.clear();
+      const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
+      if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
+      const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
+      if (!activeStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
+      await applySdfCollectionMolstarStyle(viewer, style, activeStructures, 1, 'colored');
+      await applyMolstarWaterLineRepresentation(viewer);
+      if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
+      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'xyz-frame', durationMs: 180 });
+      return;
+    }
+    const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
+    const resolvedContextStyle = xyzFrameBackgroundStyle(contextStyle, style);
+    const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
+    const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
+    const backgroundIndexes = sampledXyzFrameBackgroundIndexes(frames.length, -1);
+    const stateKey = xyzFrameOverlayStateKey(rawSignature, frames, prepared, style, resolvedContextStyle, contextOpacity, contextColor, backgroundIndexes);
+    let state = activeXyzFrameOverlayState;
+    if (!state || state.key !== stateKey || !xyzFrameOverlayStateStillLoaded(viewer, state)) {
+      if (typeof plugin.clear === 'function') await plugin.clear();
       const contextStructures = [];
-      const backgroundIndexes = sampledXyzFrameBackgroundIndexes(frames.length, activeIndex);
-      const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
-      const resolvedContextStyle = xyzFrameBackgroundStyle(contextStyle, style);
-      if (resolvedContextStyle === 'molecular-surface') {
-        const entry = xyzFramesCombinedEntry(frames, backgroundIndexes, `${label} (sampled background frames)`);
-        if (entry) contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
-      } else {
-        for (const index of backgroundIndexes) {
-          const entry = xyzFrameEntry(frames[index], `${label} (background frame ${index + 1})`);
-          if (!entry) continue;
-          contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
-        }
+      for (const index of backgroundIndexes) {
+        const entry = xyzFrameEntry(frames[index], `${label} (background frame ${index + 1})`);
+        if (!entry) continue;
+        contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
       }
       if (contextStructures.length) {
-        const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
-        const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
         await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor);
       }
+      state = {
+        viewer,
+        key: stateKey,
+        rawSignature,
+        frames,
+        backgroundStructures: contextStructures,
+        activeStructures: [],
+        activeIndex: -1
+      };
+      activeXyzFrameOverlayState = state;
     }
 
+    if (state.activeIndex === activeIndex && xyzFrameOverlayStateStillLoaded(viewer, state)) {
+      if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
+      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      return;
+    }
+    await removeMolstarStructures(viewer, state.activeStructures);
+    state.activeStructures = [];
     const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
     if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
     const structuresBeforeActive = new Set(molstarCurrentStructures(viewer));
@@ -7572,6 +7656,8 @@
       : Array.from(molstarCurrentStructures(viewer)).filter(structure => !structuresBeforeActive.has(structure));
     if (!scopedActiveStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
     await applySdfCollectionMolstarStyle(viewer, style, scopedActiveStructures, 1, 'colored');
+    state.activeStructures = scopedActiveStructures;
+    state.activeIndex = activeIndex;
     if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
   }
@@ -8861,8 +8947,11 @@
     const current = readNativeTrajectoryPosition(poseCount);
     if (!current) return false;
     if (current.index === target) return true;
-    const direction = target > current.index ? 1 : -1;
-    for (let step = current.index; step !== target; step += direction) {
+    const forwardSteps = (target - current.index + poseCount) % poseCount;
+    const backwardSteps = (current.index - target + poseCount) % poseCount;
+    const direction = forwardSteps <= backwardSteps ? 1 : -1;
+    const stepCount = direction > 0 ? forwardSteps : backwardSteps;
+    for (let step = 0; step < stepCount; step += 1) {
       const button = nativeTrajectoryStepButton(direction);
       if (!button || button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
       button.click();
@@ -9256,24 +9345,26 @@
       const untilNextFrame = delay - (elapsed % delay);
       return Math.max(minimumTrajectoryLoopTimerDelay(prepared), Math.min(delay, untilNextFrame));
     };
-    const scheduleLoopStep = (delayMs = loopNextDelay()) => {
+    const scheduleLoopStep = (delayMs = prepared.nativeTrajectoryControls ? loopDelayMs() : loopNextDelay()) => {
       loopTimer = window.setTimeout(() => {
         loopTimer = null;
         if (!loopActive) return;
         if (loopBusy) {
-          scheduleLoopStep();
+          scheduleLoopStep(prepared.nativeTrajectoryControls ? loopDelayMs() : undefined);
           return;
         }
-        const nextIndex = loopTargetIndex();
+        const nextIndex = prepared.nativeTrajectoryControls
+          ? (activePose + 1) % prepared.poseCount
+          : loopTargetIndex();
         if (nextIndex === activePose) {
-          scheduleLoopStep();
+          scheduleLoopStep(prepared.nativeTrajectoryControls ? loopDelayMs() : undefined);
           return;
         }
         loopBusy = true;
         void setPose(nextIndex, { loopStep: true }).finally(() => {
           loopBusy = false;
           if (!loopActive) return;
-          scheduleLoopStep();
+          scheduleLoopStep(prepared.nativeTrajectoryControls ? loopDelayMs() : undefined);
         });
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
     };
@@ -13010,6 +13101,7 @@
   function disposeActiveMolstarViewer() {
     setMolstarStructureDirty(false);
     clearMolstarEditUndoHistory();
+    resetXyzFrameOverlayState(activeViewer);
     const viewer = activeViewer || window.BurreteViewer || window.BuretteViewer;
     try { viewer?.plugin?.dispose?.(); } catch (_) {}
     if (molstarContainerResizeCleanup) {

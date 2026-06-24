@@ -512,44 +512,75 @@ const XYZRENDER_README_PORE_OPTIONS = [
   { value: "faces-pore", label: "Faces + pore", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mof5_faces_pore.svg" },
 ] as const;
 
+const XYZRENDER_DEFAULT_HULL_OPACITY = 0.45;
+const XYZRENDER_DEFAULT_PORE_OPACITY = 0.6;
+
 function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
-  const [preset, setPreset] = useState(document.xyzrenderPreset || "default");
-  const [controls, setControls] = useState<XyzrenderControls>(() => xyzrenderDockControls(document));
+  const controlsRef = useRef<XyzrenderControls>(xyzrenderDockControls(document));
+  const presetRef = useRef(document.xyzrenderPreset || "default");
+  const [preset, setPreset] = useState(presetRef.current);
+  const [controls, setControls] = useState<XyzrenderControls>(() => controlsRef.current);
   const lastAppliedSignature = useRef("");
+  const pendingApplyTimerRef = useRef<number | null>(null);
+
+  const clearPendingApply = useCallback(() => {
+    if (pendingApplyTimerRef.current === null) return;
+    window.clearTimeout(pendingApplyTimerRef.current);
+    pendingApplyTimerRef.current = null;
+  }, []);
+
+  const setPresetState = useCallback((nextPreset: string) => {
+    presetRef.current = nextPreset;
+    setPreset(nextPreset);
+  }, []);
+
+  const setControlsState = useCallback((nextControls: XyzrenderControls) => {
+    controlsRef.current = nextControls;
+    setControls(nextControls);
+  }, []);
 
   useEffect(() => {
     const nextPreset = document.xyzrenderPreset || "default";
     const nextControls = xyzrenderDockControls(document);
+    presetRef.current = nextPreset;
+    controlsRef.current = nextControls;
     lastAppliedSignature.current = xyzrenderDockSignature(nextControls, nextPreset);
     setPreset(nextPreset);
     setControls(nextControls);
   }, [document.id, document.xyzrenderControls, document.xyzrenderPreset]);
 
   const updateControl = <K extends keyof XyzrenderControls>(key: K, value: XyzrenderControls[K]) => {
-    setControls((current) => ({ ...current, [key]: value }));
+    setControlsState({ ...controlsRef.current, [key]: value });
   };
-  const apply = useCallback((nextControls = controls, nextPreset = preset, options: Partial<ViewerReloadOptions> = {}) => {
+  const apply = useCallback((nextControls: XyzrenderControls = controlsRef.current, nextPreset = presetRef.current, options: Partial<ViewerReloadOptions> = {}) => {
+    clearPendingApply();
+    controlsRef.current = nextControls;
+    presetRef.current = nextPreset;
     lastAppliedSignature.current = xyzrenderDockSignature(nextControls, nextPreset);
     void actions.reloadXyzrenderDocument(document, {
       xyzrenderPreset: nextPreset,
       xyzrenderControls: nextControls,
       ...options,
     });
-  }, [actions, controls, document, preset]);
+  }, [actions, clearPendingApply, document]);
 
   useEffect(() => {
     const signature = xyzrenderDockSignature(controls, preset);
     if (signature === lastAppliedSignature.current) return;
     const timer = window.setTimeout(() => {
-      apply(controls, preset);
+      apply(controlsRef.current, presetRef.current);
     }, 240);
-    return () => window.clearTimeout(timer);
+    pendingApplyTimerRef.current = timer;
+    return () => {
+      if (pendingApplyTimerRef.current === timer) pendingApplyTimerRef.current = null;
+      window.clearTimeout(timer);
+    };
   }, [apply, controls, preset]);
 
   const reset = () => {
     const nextControls = { ...DEFAULT_XYZRENDER_DOCK_CONTROLS };
-    setControls(nextControls);
-    setPreset("default");
+    setControlsState(nextControls);
+    setPresetState("default");
     apply(nextControls, "default");
   };
 
@@ -565,7 +596,7 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         </div>
         <label className="xyzrender-dock-field">
           <span>Preset</span>
-          <select value={preset} onChange={(event) => setPreset(event.currentTarget.value)}>
+          <select value={preset} onChange={(event) => setPresetState(event.currentTarget.value)}>
             {xyzrenderPresetOptions(document).map((option) => (
               <option value={option.value} key={option.value}>{option.label}</option>
             ))}
@@ -574,62 +605,65 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         <XyzrenderPresetGallery
           preset={preset}
           onSelect={(value) => {
-            setPreset(value);
-            apply(controls, value);
+            setPresetState(value);
+            apply(controlsRef.current, value);
           }}
         />
         <XyzrenderDisplayOptionsGallery
           controls={controls}
           onSelect={(nextControls) => {
-            setControls(nextControls);
-            apply(nextControls, preset);
+            setControlsState(nextControls);
+            apply(nextControls, presetRef.current);
           }}
         />
         <XyzrenderVdwGallery
           controls={controls}
           onSelect={(mode) => {
-            const selectedMode = controls.showVdw === true
-              ? controls.vdwAtoms ? "partial" : "all"
+            const currentControls = controlsRef.current;
+            const selectedMode = currentControls.showVdw === true
+              ? currentControls.vdwAtoms ? "partial" : "all"
               : "off";
             if (mode === "off" || mode === selectedMode) {
-              const nextControls = { ...controls, showVdw: false, vdwAtoms: null };
-              setControls(nextControls);
-              apply(nextControls, preset);
+              const nextControls = { ...currentControls, showVdw: false, vdwAtoms: null };
+              setControlsState(nextControls);
+              apply(nextControls, presetRef.current);
               return;
             }
-            const nextControls = { ...controls, showVdw: true, vdwAtoms: null };
-            setControls(nextControls);
-            apply(nextControls, preset, mode === "partial" ? { xyzrenderSelectionAction: "vdw" } : {});
+            const nextControls = { ...currentControls, showVdw: true, vdwAtoms: null };
+            setControlsState(nextControls);
+            apply(nextControls, presetRef.current, mode === "partial" ? { xyzrenderSelectionAction: "vdw" } : {});
           }}
         />
         <XyzrenderHullGallery
           controls={controls}
           onSelect={(mode) => {
-            const nextMode: XyzrenderControls["hullMode"] = mode === "off" || controls.hullMode === mode ? "off" : mode;
+            const currentControls = controlsRef.current;
+            const nextMode: XyzrenderControls["hullMode"] = mode;
             const nextControls = {
-              ...controls,
+              ...currentControls,
               hullMode: nextMode,
               hullAtoms: null,
-              hullOpacity: nextMode === "off" ? null : (controls.hullOpacity ?? 0.45),
-              poreOpacity: nextMode === "off" ? null : controls.poreOpacity,
+              hullOpacity: nextMode === "off" ? null : xyzrenderVisibleOpacity(currentControls.hullOpacity, XYZRENDER_DEFAULT_HULL_OPACITY),
+              poreOpacity: nextMode === "off" ? null : currentControls.poreOpacity,
             };
-            setControls(nextControls);
-            apply(nextControls, preset);
+            setControlsState(nextControls);
+            apply(nextControls, presetRef.current);
           }}
         />
         <XyzrenderPoreGallery
           controls={controls}
           onSelect={(mode) => {
-            const nextMode: XyzrenderControls["hullMode"] = controls.hullMode === mode ? "off" : mode;
+            const currentControls = controlsRef.current;
+            const nextMode: XyzrenderControls["hullMode"] = mode;
             const nextControls = {
-              ...controls,
+              ...currentControls,
               hullMode: nextMode,
               hullAtoms: null,
-              hullOpacity: nextMode === "off" ? null : (controls.hullOpacity ?? 0.45),
-              poreOpacity: nextMode === "off" ? null : (controls.poreOpacity ?? 0.6),
+              hullOpacity: xyzrenderVisibleOpacity(currentControls.hullOpacity, XYZRENDER_DEFAULT_HULL_OPACITY),
+              poreOpacity: xyzrenderVisibleOpacity(currentControls.poreOpacity, XYZRENDER_DEFAULT_PORE_OPACITY),
             };
-            setControls(nextControls);
-            apply(nextControls, preset);
+            setControlsState(nextControls);
+            apply(nextControls, presetRef.current);
           }}
         />
         <XyzrenderDockCheckbox
@@ -873,9 +907,12 @@ function xyzrenderDockControls(document: ViewerDocument): XyzrenderControls {
     ...DEFAULT_XYZRENDER_DOCK_CONTROLS,
     ...document.xyzrenderControls,
   };
+  const hullMode = xyzrenderDockHullMode(controls.hullMode);
   return {
     ...controls,
-    hullMode: xyzrenderDockHullMode(controls.hullMode),
+    hullMode,
+    hullOpacity: hullMode === "off" ? null : xyzrenderVisibleOpacity(controls.hullOpacity, XYZRENDER_DEFAULT_HULL_OPACITY),
+    poreOpacity: xyzrenderPoreMode(hullMode) ? xyzrenderVisibleOpacity(controls.poreOpacity, XYZRENDER_DEFAULT_PORE_OPACITY) : controls.poreOpacity,
   };
 }
 
@@ -888,6 +925,14 @@ function xyzrenderDockHullMode(mode: XyzrenderControls["hullMode"]): XyzrenderCo
   if (mode === "mof5-faces") return "faces";
   if (mode === "mof5-pore") return "pore";
   return mode ?? "off";
+}
+
+function xyzrenderPoreMode(mode: XyzrenderControls["hullMode"]) {
+  return mode === "pore" || mode === "faces-pore";
+}
+
+function xyzrenderVisibleOpacity(value: number | null | undefined, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function xyzrenderPresetOptions(document: ViewerDocument) {
