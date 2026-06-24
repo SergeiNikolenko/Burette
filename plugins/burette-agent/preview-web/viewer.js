@@ -5122,6 +5122,10 @@
     if (!toolbar) return;
     toolbar.querySelectorAll('.buret-panel-toggle').forEach(button => { button.classList.add('hidden'); });
     bindThemeButton(toolbar, null);
+    bindMolstarLassoButton(toolbar);
+    bindMolstarLassoKeyboardButton(toolbar);
+    installMolstarLassoSelection();
+    installMolstarToolbarActionDelegates();
     bindXyzrenderControls(toolbar);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, null);
@@ -5803,6 +5807,9 @@
 
   function sheetEntryInputDataBase64(entry) {
     if (typeof entry === 'string') return undefined;
+    if (typeof entry?.inputDataBase64 === 'string' && entry.inputDataBase64.trim()) {
+      return entry.inputDataBase64.trim();
+    }
     const text = String(entry?.text || '');
     if (!text) return undefined;
     return bytesToBase64(new TextEncoder().encode(text));
@@ -9569,22 +9576,48 @@
       setStatus('[web] xyzrender lasso was too small.');
       return;
     }
-    const selected = selectXyzrenderElementsInLasso(stroke.item, stroke.points, stroke.additive);
+    const result = selectXyzrenderElementsInLasso(stroke.item, stroke.points, stroke.additive);
+    const selected = result.count;
+    const label = result.kind === 'atom' ? 'atom' : 'graphic';
     setStatus(selected > 0
-      ? `[web] Selected ${selected} xyzrender graphic${selected === 1 ? '' : 's'} with lasso.`
+      ? `[web] Selected ${selected} xyzrender ${label}${selected === 1 ? '' : 's'} with lasso.`
       : '[web] xyzrender lasso did not match visible graphics.');
   }
 
   function selectXyzrenderElementsInLasso(item, points, additive) {
     if (!additive) clearXyzrenderSelection();
-    let selected = 0;
+    const atomNodes = xyzrenderAtomNodes(item);
+    const selectedAtomElements = new Set();
+    let selectedAtoms = 0;
+    if (atomNodes.length > 0) {
+      for (const atom of atomNodes) {
+        if (!xyzrenderAtomIntersectsLasso(atom, points)) continue;
+        markXyzrenderElementSelected(atom.element);
+        selectedAtomElements.add(atom.element);
+        selectedAtoms += 1;
+      }
+    }
+    let selected = selectedAtoms;
     for (const element of xyzrenderSelectableElements(item)) {
+      if (selectedAtomElements.has(element)) continue;
       if (!svgElementIntersectsLasso(element, points, item)) continue;
       markXyzrenderElementSelected(element);
       selected += 1;
     }
     updateXyzrenderSelectionRoots();
-    return selected;
+    return { count: selected, kind: selectedAtoms > 0 ? 'atom' : 'graphic' };
+  }
+
+  function xyzrenderAtomIntersectsLasso(atom, points) {
+    const radius = Math.max(5, Number(atom?.radius) || 0);
+    const candidates = [
+      { x: atom.x, y: atom.y },
+      { x: atom.x - radius, y: atom.y },
+      { x: atom.x + radius, y: atom.y },
+      { x: atom.x, y: atom.y - radius },
+      { x: atom.x, y: atom.y + radius }
+    ];
+    return candidates.some(point => molstarPointInPolygon(point, points));
   }
 
   function xyzrenderSelectableElements(item) {
@@ -9660,6 +9693,51 @@
     const svg = item?.querySelector?.('.buret-xyzrender-sheet-item-body svg');
     if (!svg) return [];
     return Array.from(svg.querySelectorAll('path,circle,ellipse,rect,line,polyline,polygon,text'));
+  }
+
+  function xyzrenderAtomIndexFromElement(element) {
+    if (!element?.getAttribute) return null;
+    const directIndex = Number(
+      element.getAttribute('data-atom-index') ||
+      element.getAttribute('data-atom') ||
+      element.getAttribute('data-index')
+    );
+    if (Number.isInteger(directIndex) && directIndex > 0) return directIndex;
+    const values = [
+      element.getAttribute('fill'),
+      element.getAttribute('stroke'),
+      element.getAttribute('style'),
+      element.getAttribute('id'),
+      element.getAttribute('class'),
+      element.getAttribute('filter'),
+      element.getAttribute('clip-path'),
+      element.getAttribute('mask')
+    ].filter(Boolean).join(' ');
+    const gradientMatch = values.match(/url\(#x\d+g(\d+)\)/u);
+    if (gradientMatch) {
+      const gradientIndex = Number(gradientMatch[1]) + 1;
+      return Number.isInteger(gradientIndex) && gradientIndex > 0 ? gradientIndex : null;
+    }
+    const match = values.match(/(?:atom|idx|index)[-_:\s]*(\d+)/iu);
+    if (!match) return null;
+    const index = Number(match[1]);
+    return Number.isInteger(index) && index > 0 ? index : null;
+  }
+
+  function xyzrenderAtomNodes(item) {
+    return xyzrenderGraphicElements(item).map(element => {
+      const index = xyzrenderAtomIndexFromElement(element);
+      if (!index || !element.getBoundingClientRect) return null;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      return {
+        element,
+        index,
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        radius: Math.max(5, Math.min(18, Math.max(rect.width, rect.height) / 2))
+      };
+    }).filter(Boolean);
   }
 
   function xyzrenderElementSnapshot(element) {

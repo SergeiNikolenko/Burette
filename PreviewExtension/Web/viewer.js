@@ -5893,15 +5893,24 @@
   }
 
   function baseXyzrenderSheetEntry(config = activeConfig || window.BurreteConfig || {}) {
-    const path = String(config.xyzrenderSourcePath || config.sourcePath || config.label || 'structure.xyz');
+    const path = String(
+      config.xyzrenderSourcePath ||
+      config.sourcePath ||
+      config.path ||
+      config.filePath ||
+      config.label ||
+      'structure.xyz'
+    ).trim() || 'structure.xyz';
     const inputDataBase64 = typeof config.xyzrenderInputDataBase64 === 'string'
       ? config.xyzrenderInputDataBase64.trim()
       : '';
-    if (!inputDataBase64) return path;
+    const inputExtension = typeof config.xyzrenderInputExtension === 'string'
+      ? config.xyzrenderInputExtension.trim()
+      : String(config.sourceExtension || config.molstarFormat || config.format || '').trim();
     return {
       path,
-      inputDataBase64,
-      inputExtension: typeof config.xyzrenderInputExtension === 'string' ? config.xyzrenderInputExtension : ''
+      inputDataBase64: inputDataBase64 || undefined,
+      inputExtension: inputDataBase64 && inputExtension ? inputExtension : undefined
     };
   }
 
@@ -5915,7 +5924,11 @@
     if (!item) return null;
     const stored = xyzrenderSheetItemEntries.get(item);
     if (stored) return stored;
-    if (item.classList?.contains('buret-xyzrender-sheet-item-base')) return baseXyzrenderSheetEntry();
+    if (item.classList?.contains('buret-xyzrender-sheet-item-base')) {
+      const entry = baseXyzrenderSheetEntry();
+      setXyzrenderSheetItemEntry(item, entry);
+      return entry;
+    }
     const path = item.dataset?.buretXyzrenderSourcePath;
     return path ? path : null;
   }
@@ -5982,14 +5995,30 @@
 
   function xyzrenderAtomIndexFromElement(element) {
     if (!element?.getAttribute) return null;
+    const directIndex = Number(
+      element.getAttribute('data-atom-index') ||
+      element.getAttribute('data-atom') ||
+      element.getAttribute('data-index')
+    );
+    if (Number.isInteger(directIndex) && directIndex > 0) return directIndex;
     const values = [
       element.getAttribute('fill'),
       element.getAttribute('stroke'),
-      element.getAttribute('style')
+      element.getAttribute('style'),
+      element.getAttribute('id'),
+      element.getAttribute('class'),
+      element.getAttribute('filter'),
+      element.getAttribute('clip-path'),
+      element.getAttribute('mask')
     ].filter(Boolean).join(' ');
-    const match = values.match(/url\(#x\d+g(\d+)\)/u);
+    const gradientMatch = values.match(/url\(#x\d+g(\d+)\)/u);
+    if (gradientMatch) {
+      const gradientIndex = Number(gradientMatch[1]) + 1;
+      return Number.isInteger(gradientIndex) && gradientIndex > 0 ? gradientIndex : null;
+    }
+    const match = values.match(/(?:atom|idx|index)[-_:\s]*(\d+)/iu);
     if (!match) return null;
-    const index = Number(match[1]) + 1;
+    const index = Number(match[1]);
     return Number.isInteger(index) && index > 0 ? index : null;
   }
 
@@ -6003,7 +6032,8 @@
         element,
         index,
         x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2
+        y: rect.top + rect.height / 2,
+        radius: Math.max(5, Math.min(18, Math.max(rect.width, rect.height) / 2))
       };
     }).filter(Boolean);
   }
@@ -10054,22 +10084,48 @@
       setStatus('[web] xyzrender lasso was too small.');
       return;
     }
-    const selected = selectXyzrenderElementsInLasso(stroke.item, stroke.points, stroke.additive);
+    const result = selectXyzrenderElementsInLasso(stroke.item, stroke.points, stroke.additive);
+    const selected = result.count;
+    const label = result.kind === 'atom' ? 'atom' : 'graphic';
     setStatus(selected > 0
-      ? `[web] Selected ${selected} xyzrender graphic${selected === 1 ? '' : 's'} with lasso.`
+      ? `[web] Selected ${selected} xyzrender ${label}${selected === 1 ? '' : 's'} with lasso.`
       : '[web] xyzrender lasso did not match visible graphics.');
   }
 
   function selectXyzrenderElementsInLasso(item, points, additive) {
     if (!additive) clearXyzrenderSelection();
-    let selected = 0;
+    const atomNodes = xyzrenderAtomNodes(item);
+    const selectedAtomElements = new Set();
+    let selectedAtoms = 0;
+    if (atomNodes.length > 0) {
+      for (const atom of atomNodes) {
+        if (!xyzrenderAtomIntersectsLasso(atom, points)) continue;
+        markXyzrenderElementSelected(atom.element);
+        selectedAtomElements.add(atom.element);
+        selectedAtoms += 1;
+      }
+    }
+    let selected = selectedAtoms;
     for (const element of xyzrenderSelectableElements(item)) {
+      if (selectedAtomElements.has(element)) continue;
       if (!svgElementIntersectsLasso(element, points, item)) continue;
       markXyzrenderElementSelected(element);
       selected += 1;
     }
     updateXyzrenderSelectionRoots();
-    return selected;
+    return { count: selected, kind: selectedAtoms > 0 ? 'atom' : 'graphic' };
+  }
+
+  function xyzrenderAtomIntersectsLasso(atom, points) {
+    const radius = Math.max(5, Number(atom?.radius) || 0);
+    const candidates = [
+      { x: atom.x, y: atom.y },
+      { x: atom.x - radius, y: atom.y },
+      { x: atom.x + radius, y: atom.y },
+      { x: atom.x, y: atom.y - radius },
+      { x: atom.x, y: atom.y + radius }
+    ];
+    return candidates.some(point => molstarPointInPolygon(point, points));
   }
 
   function xyzrenderSelectableElements(item) {
