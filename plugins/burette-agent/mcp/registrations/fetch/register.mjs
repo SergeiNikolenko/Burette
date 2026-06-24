@@ -1,7 +1,7 @@
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 
-import { toolText } from "../../lib/widget-resource.mjs";
+import { toolText } from "../../lib/tool-response.mjs";
 
 const MAX_LENGTH = 20000;
 const DEFAULT_LENGTH = 8000;
