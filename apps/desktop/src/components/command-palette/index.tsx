@@ -10,6 +10,7 @@ import {
 import { Description as DialogDescription, Title as DialogTitle } from "@radix-ui/react-dialog";
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
+import { isRemoteStructureUrl } from "../../lib/remote-structure";
 import type { ViewerPreferences } from "../../types";
 
 type CommandPaletteProps = {
@@ -19,6 +20,7 @@ type CommandPaletteProps = {
   query: string;
   onQueryChange: (query: string) => void;
   onClose: () => void;
+  onRunError: (error: unknown, prefix?: string) => void;
 };
 
 type PaletteItem = {
@@ -39,6 +41,12 @@ const rendererCommands: Array<{
   { id: "renderer-xyzrender", label: "Renderer: xyzrender external", value: "xyzrender-external" },
 ];
 
+function promptRemoteStructureUrl(actions: ShellActions) {
+  const url = window.prompt("Structure URL");
+  if (!url?.trim()) return;
+  return actions.openStructureUrlInMolstar(url);
+}
+
 export function CommandPalette({
   state,
   actions,
@@ -46,6 +54,7 @@ export function CommandPalette({
   query,
   onQueryChange,
   onClose,
+  onRunError,
 }: CommandPaletteProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const [portalContainer, setPortalContainer] = useState<HTMLElement>();
@@ -90,6 +99,13 @@ export function CommandPalette({
         label: "Open from Clipboard",
         description: "Open molecular text or copied structure paths",
         run: actions.openClipboard,
+      },
+      {
+        id: "fetch-structure-url",
+        group: "Suggested",
+        label: "Fetch Structure URL in Mol*",
+        description: "Download a remote structure URL into Mol*",
+        run: () => promptRemoteStructureUrl(actions),
       },
       {
         id: "new-window",
@@ -259,12 +275,22 @@ export function CommandPalette({
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return items;
-    return items.filter((item) => (
+    const queryUrl = query.trim();
+    const allItems = isRemoteStructureUrl(queryUrl)
+      ? [{
+          id: `fetch-structure-url:${queryUrl}`,
+          group: "Suggested",
+          label: "Fetch URL in Mol*",
+          description: queryUrl,
+          run: () => actions.openStructureUrlInMolstar(queryUrl),
+        }, ...items]
+      : items;
+    if (!normalized) return allItems;
+    return allItems.filter((item) => (
       item.label.toLowerCase().includes(normalized)
       || item.description.toLowerCase().includes(normalized)
     ));
-  }, [items, query]);
+  }, [actions, items, query]);
 
   const visibleGroups = useMemo(() => {
     const groups: Array<{ heading: string; items: PaletteItem[] }> = [];
@@ -290,7 +316,9 @@ export function CommandPalette({
 
   const runItem = (item: PaletteItem) => {
     onClose();
-    void item.run();
+    void Promise.resolve(item.run()).catch((error) => {
+      onRunError(error, `${item.label} failed`);
+    });
   };
 
   if (!portalContainer) return null;
