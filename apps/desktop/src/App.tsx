@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from "react";
+import { Suspense, lazy, useCallback, useState } from "react";
 import { AppLayout } from "./components/app-layout";
 import type { StructureOverlayMode, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
@@ -228,7 +228,15 @@ export default function App() {
     setDockOpen,
   });
 
-  const [structureDragActive, setStructureDragActive] = useState(false);
+  const [structureDragActive, setStructureDragActiveState] = useState(false);
+  const setStructureDragActive = useCallback((active: boolean) => {
+    setStructureDragActiveState(active);
+    if (typeof document === "undefined") return;
+    const shell = document.querySelector<HTMLElement>(".app-shell");
+    if (!shell) return;
+    if (active) shell.dataset.structureDragActive = "true";
+    else delete shell.dataset.structureDragActive;
+  }, []);
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
   const {
     clearDirtyGridDocuments,
