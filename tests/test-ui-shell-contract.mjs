@@ -4955,7 +4955,11 @@ for (const runtimeSource of [previewViewer, agentPreviewViewer]) {
   assert.match(runtimeSource, /let activeXyzFrameOverlayState = null/);
   assert.match(runtimeSource, /function xyzFrameOverlayRawSignature\(raw\)/);
   assert.match(runtimeSource, /function xyzFrameOverlayStateKey\(rawSignature, frames, prepared, style, contextStyle, contextOpacity, contextColor, backgroundIndexes\)/);
-  assert.match(runtimeSource, /if \(activeSdfPoseMode !== 'all'\) \{[\s\S]*?resetXyzFrameOverlayState\(viewer\);[\s\S]*?const activeEntry = xyzFrameEntry\(frames\[activeIndex\]/);
+  assert.match(runtimeSource, /function setMolstarStructuresVisibility\(viewer, structures, visible\)/);
+  assert.match(runtimeSource, /if \(activeSdfPoseMode !== 'all'\) \{[\s\S]*?singleFrameStructures: \[\],[\s\S]*?setMolstarStructuresVisibility\(viewer, state\.activeStructures, false\)/);
+  assert.match(runtimeSource, /let activeStructures = state\.singleFrameStructures\[activeIndex\]/);
+  assert.match(runtimeSource, /state\.singleFrameStructures\[activeIndex\] = activeStructures/);
+  assert.doesNotMatch(runtimeSource, /if \(activeSdfPoseMode !== 'all'\) \{[\s\S]{0,240}?resetXyzFrameOverlayState\(viewer\)/);
   assert.match(runtimeSource, /await loadMolstarEntryWithStructureRefs\(viewer, activeEntry, \{ representationPreset: 'empty' \}\)/);
   assert.match(runtimeSource, /if \(options\.installControls !== false\) installDockingPoseControls\(viewer, trajectoryControlsForPrepared\(prepared\)\)/);
   assert.match(runtimeSource, /const backgroundIndexes = sampledXyzFrameBackgroundIndexes\(frames\.length, -1\)/);
