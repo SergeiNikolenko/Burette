@@ -3839,6 +3839,8 @@ assert.match(viteConfig, /if \(controls\.fieldCmapMin != null && controls\.field
 assert.match(browserDevDocuments, /export async function openBrowserDevDockingDocument\(/);
 assert.match(browserDevDocuments, /const hasCoordinateTrajectory = ligands\.some\(isCoordinateTrajectoryPayload\)/);
 assert.match(browserDevDocuments, /const effectiveSceneMode = hasCoordinateTrajectory \? null : \(options\.sceneMode \?\? null\)/);
+assert.match(browserDevDocuments, /const dockingLigands = ligands/);
+assert.doesNotMatch(browserDevDocuments, /expandBrowserDevDockingLigandPoses/);
 assert.match(browserDevDocuments, /effectiveSceneMode\s*\?\s*`Mol\* scene: \$\{receptor\.title\} \+ \$\{ligands\.length\} more structure/);
 assert.match(browserDevDocuments, /:\s*`Docking: \$\{receptor\.title\} \+ \$\{dockingLigands\.length\} ligand/);
 assert.match(browserDevDocuments, /path: `burrete-docking:\/\/\$\{id\}`/);
@@ -4956,6 +4958,18 @@ assert.match(previewViewer, /function readNativeTrajectoryPosition\(expectedCoun
 assert.match(previewViewer, /function nativeAnimationSelectButton\(\)/);
 assert.match(previewViewer, /function trajectoryControlsForPrepared\(prepared\)/);
 assert.match(previewViewer, /if \(prepared\?\.kind === 'sdf-collection'\) \{/);
+assert.match(previewViewer, /const nativeTrajectorySdfRecords = \[\]/);
+assert.match(previewViewer, /nativeTrajectorySdfRecords\.push\(\.\.\.records\)/);
+assert.match(previewViewer, /nativeTrajectorySdfMolecules\.push\(\.\.\.records\.map\(parseV2000SdfRecord\)\)/);
+assert.match(previewViewer, /sdfMoleculesToPdbCollection\(nativeTrajectorySdfMolecules, 'Ligand poses'\)/);
+assert.match(previewViewer, /data: `\$\{nativeTrajectorySdfRecords\.join\('\\n\$\$\$\$\\n'\)\}\\n\$\$\$\$\\n`/);
+assert.match(previewViewer, /controlLabel: 'Pose'/);
+assert.match(previewViewer, /\?:Model\|Frame\|Pose/);
+assert.match(previewViewer, /entries: \[receptorEntry, \.\.\.poses\]/);
+assert.match(previewViewer, /sdfPoseOverlayAvailable: true/);
+assert.match(previewViewer, /sdfPoseRecordCount: nativeTrajectoryPoseCount/);
+assert.match(previewViewer, /async function applyDockingSdfPoseVisibility\(viewer, prepared, activePose = 0, options = \{\}\)/);
+assert.match(previewViewer, /await applyDockingSdfPoseVisibility\(viewer, prepared, prepared\.activePose\)/);
 assert.match(previewViewer, /prepared\?\.pdbModelMode === 'all'/);
 assert.match(previewViewer, /pdbModelOverlayAvailable: prepared\?\.pdbModelOverlayAvailable === true/);
 assert.match(previewViewer, /if \(prepared\?\.xyzFrameOverlayAvailable === true\) \{[\s\S]*?kind: 'xyz-frame-overlay'[\s\S]*?nativeTrajectoryControls: false/);
