@@ -264,7 +264,7 @@ export async function openBrowserDevDockingDocument(
   if (ligands.length === 0) throw new Error("Choose at least one ligand or pose file for docking view");
   const hasCoordinateTrajectory = ligands.some(isCoordinateTrajectoryPayload);
   const effectiveSceneMode = hasCoordinateTrajectory ? null : (options.sceneMode ?? null);
-  const dockingLigands = effectiveSceneMode ? ligands : expandBrowserDevDockingLigandPoses(ligands);
+  const dockingLigands = ligands;
 
   const id = stableId(`docking:${receptor.path}:${ligands.map((ligand) => ligand.path).join("|")}`);
   const label = effectiveSceneMode
@@ -845,73 +845,6 @@ async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDoc
     throw new Error(`${path} cannot be added to Mol* docking view because it needs xyzrender conversion`);
   }
   return { path, title, extension, format, bytes: originalBytes, byteCount: originalBytes.length };
-}
-
-function expandBrowserDevDockingLigandPoses(ligands: BrowserDevDockingPayload[]) {
-  return ligands.flatMap((ligand) => {
-    if (ligand.format.binary) return [ligand];
-    const text = decodeUtf8(ligand.bytes);
-    const poseTexts = dockingPoseTextsForLigand(ligand, text);
-    if (poseTexts.length <= 1) return [ligand];
-    return poseTexts.map((poseText, index) => {
-      const bytes = new TextEncoder().encode(poseText);
-      return {
-        ...ligand,
-        title: `${ligand.title} pose ${index + 1}`,
-        bytes,
-        byteCount: bytes.length,
-      };
-    });
-  });
-}
-
-function dockingPoseTextsForLigand(ligand: BrowserDevDockingPayload, text: string) {
-  const format = ligand.format.molstarFormat;
-  if (format === "sdf") return parseSdf(text).map((record) => record.molblock).filter((record): record is string => Boolean(record));
-  if (format === "pdb") return splitPdbModelTexts(text);
-  if (format === "xyz") return splitXyzFrameTexts(text);
-  return [];
-}
-
-function splitPdbModelTexts(text: string) {
-  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  const firstModelIndex = lines.findIndex((line) => /^MODEL\b/u.test(line));
-  if (firstModelIndex < 0) return [];
-  const header = lines.slice(0, firstModelIndex).filter((line) => !/^END\b/u.test(line));
-  const models: string[][] = [];
-  let current: string[] | null = null;
-  for (const line of lines.slice(firstModelIndex)) {
-    if (/^MODEL\b/u.test(line)) {
-      current = [];
-      continue;
-    }
-    if (/^ENDMDL\b/u.test(line)) {
-      if (current?.some((modelLine) => /^(?:ATOM|HETATM)\b/u.test(modelLine))) models.push(current);
-      current = null;
-      continue;
-    }
-    if (current) current.push(line);
-  }
-  if (models.length <= 1) return [];
-  return models.map((model) => [...header, ...model.filter((line) => !/^END\b/u.test(line)), "END", ""].join("\n"));
-}
-
-function splitXyzFrameTexts(text: string) {
-  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  const frames: string[] = [];
-  let index = 0;
-  while (index < lines.length && frames.length < 100000) {
-    while (index < lines.length && !lines[index].trim()) index += 1;
-    const atomCount = Number.parseInt(lines[index]?.trim().split(/\s+/u)[0] ?? "", 10);
-    if (!Number.isFinite(atomCount) || atomCount <= 0) break;
-    if (index + atomCount + 1 >= lines.length) break;
-    const frameLines = lines.slice(index, index + atomCount + 2);
-    const atomLines = frameLines.slice(2);
-    if (atomLines.length !== atomCount || atomLines.some((line) => !line.trim())) break;
-    frames.push(`${frameLines.join("\n")}\n`);
-    index += atomCount + 2;
-  }
-  return frames.length > 1 ? frames : [];
 }
 
 function dockingConfigSource(source: BrowserDevDockingPayload) {

@@ -162,6 +162,11 @@ try {
       const viewerRuntimeResponse = await fetch(viewerRuntimeUrl);
       assert.equal(viewerRuntimeResponse.status, 200);
       assert.match(await viewerRuntimeResponse.text(), /window\.BurreteViewerShell/);
+      const wasmUrl = new URL(`/@fs${resolve('PreviewExtension/Web/rdkit/RDKit_minimal.wasm')}`, prebuiltPayload.result.url);
+      const wasmResponse = await fetch(wasmUrl);
+      assert.equal(wasmResponse.status, 200);
+      assert.equal(wasmResponse.headers.get('content-type'), 'application/wasm');
+      assert.equal(Buffer.from(await wasmResponse.arrayBuffer()).subarray(0, 4).toString('hex'), '0061736d');
       if (prebuiltPayload.result.processId) {
         try {
           process.kill(prebuiltPayload.result.processId, 'SIGTERM');

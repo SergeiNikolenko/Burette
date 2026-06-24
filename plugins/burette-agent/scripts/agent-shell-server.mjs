@@ -515,7 +515,7 @@ function allowedPathFromFsUrl(url) {
   const filePath = resolve(rawPath);
   if (!isAllowed(filePath)) return null;
   const extension = fileExtension(filePath);
-  if (!TEXT_EXTENSIONS.has(extension)) return null;
+  if (!TEXT_EXTENSIONS.has(extension) && !STATIC_MIME_TYPES.has(`.${extension}`)) return null;
   return filePath;
 }
 
