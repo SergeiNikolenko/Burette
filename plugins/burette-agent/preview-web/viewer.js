@@ -3504,7 +3504,7 @@
     button.setAttribute('title', label);
     setTooltipLabel(button, xyzrender
       ? (active ? 'Drag over xyzrender graphics to select' : 'Lasso select xyzrender graphics')
-      : (active ? 'Drag over visible residues to select' : 'Lasso select visible residues'));
+      : (active ? 'Drag over visible atoms to select' : 'Lasso select visible atoms'));
   }
 
   function setMolstarLassoEnabled(enabled) {
@@ -9369,7 +9369,7 @@
     }
     const selected = applyMolstarLassoPicks(picks, stroke.additive);
     setStatus(selected > 0
-      ? `[web] Selected ${selected} visible target${selected === 1 ? '' : 's'} with lasso.`
+      ? `[web] Selected ${selected} visible atom${selected === 1 ? '' : 's'} with lasso.`
       : '[web] Lasso selection did not match selectable atoms.');
   }
 
@@ -9448,10 +9448,10 @@
     }
     let selected = 0;
     for (const pick of picks) {
-      const loci = molstarContextNormalizeLoci(pick?.loci, 'residue');
+      const loci = molstarContextNormalizeLoci(pick?.loci, 'atom');
       if (!loci || molstarLociIsEmpty(loci)) continue;
-      if (canSelect) selects.select({ loci }, true);
-      if (canSelectStructure) selection.fromLoci('add', loci, true);
+      if (canSelect) selects.select({ loci }, false);
+      if (canSelectStructure) selection.fromLoci('add', loci, false);
       selected += 1;
     }
     if (selected > 0) scheduleMolstarSelectedMoleculePreview();
