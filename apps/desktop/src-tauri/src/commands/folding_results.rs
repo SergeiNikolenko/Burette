@@ -98,12 +98,12 @@ pub(crate) fn read_folding_result_bundle(path: String) -> Result<FoldingResultBu
 fn read_folding_result_bundle_impl(path: PathBuf) -> Result<FoldingResultBundle, String> {
     let input = fs::canonicalize(&path).map_err(|err| format!("{}: {err}", path.display()))?;
     let roots = candidate_roots(&input)?;
-    for (distance, root) in roots.iter().enumerate() {
+    for root in roots.iter() {
         let bundle = scan_folding_root(root, &input)?;
         if !folding_bundle_has_content(&bundle) {
             continue;
         }
-        if distance == 0 || folding_bundle_references_input(&bundle, &input) {
+        if folding_bundle_references_input(&bundle, &input) {
             return Ok(bundle);
         }
     }
@@ -629,7 +629,6 @@ fn matching_artifacts(
     structures: &[FileEntry],
     artifacts: &[FileEntry],
 ) -> Vec<FileEntry> {
-    let structure_parent = structure.path.parent();
     let structure_stem = structure
         .path
         .file_stem()
@@ -639,12 +638,11 @@ fn matching_artifacts(
     let mut matches = Vec::new();
     for artifact in artifacts {
         let lower_path = artifact.path.to_string_lossy().to_ascii_lowercase();
-        let same_directory = artifact.path.parent() == structure_parent;
         let model_match = model_index
             .map(|index| filename_mentions_model(&lower_path, index))
             .unwrap_or(false);
         let stem_match = !structure_stem.is_empty() && lower_path.contains(&structure_stem);
-        if structures.len() == 1 || same_directory || model_match || stem_match {
+        if structures.len() == 1 || model_match || stem_match {
             matches.push(artifact.clone());
         }
     }
@@ -1132,6 +1130,28 @@ mod tests {
             canonical_pdb.to_string_lossy()
         );
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ignores_unrelated_sidecars_in_same_directory() {
+        let dir = temp_dir("unrelated-sidecars");
+        let pdb = dir.join("ordinary.pdb");
+        fs::write(&pdb, "ATOM      1  N   GLY A   1       0.0 0.0 0.0\n")
+            .expect("ordinary pdb should write");
+        fs::write(
+            dir.join("folded_model.pdb"),
+            "ATOM      1  N   GLY A   1       0.0 0.0 0.0\n",
+        )
+        .expect("folded model should write");
+        fs::write(
+            dir.join("summary_confidences.json"),
+            r#"{"ranking_score": 0.5}"#,
+        )
+        .expect("confidence json should write");
+        let bundle = read_folding_result_bundle_impl(pdb).expect("bundle should read");
+        assert_eq!(bundle.models.len(), 0);
+        assert_eq!(bundle.artifacts.len(), 0);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

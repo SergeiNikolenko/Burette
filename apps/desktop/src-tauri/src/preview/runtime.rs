@@ -140,9 +140,16 @@ pub(crate) struct XyzrenderControls {
     pub(crate) fog: Option<bool>,
     pub(crate) fog_strength: Option<f64>,
     pub(crate) show_vdw: Option<bool>,
+    pub(crate) vdw_atoms: Option<String>,
     pub(crate) vdw_opacity: Option<f64>,
     pub(crate) vdw_scale: Option<f64>,
+    pub(crate) hull_mode: Option<String>,
+    pub(crate) hull_atoms: Option<String>,
+    pub(crate) hull_opacity: Option<f64>,
+    pub(crate) pore_opacity: Option<f64>,
     pub(crate) hide_bonds: Option<bool>,
+    pub(crate) display_hydrogens: Option<String>,
+    pub(crate) bond_notation: Option<String>,
     pub(crate) show_cell: Option<bool>,
     pub(crate) show_ghosts: Option<bool>,
     pub(crate) show_axes: Option<bool>,
@@ -160,6 +167,14 @@ pub(crate) struct XyzrenderControls {
     pub(crate) field_cmap_max: Option<f64>,
     pub(crate) custom_config_path: Option<String>,
     pub(crate) extra_arguments: Option<String>,
+    pub(crate) regions: Option<Vec<XyzrenderRegion>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XyzrenderRegion {
+    pub(crate) atoms: String,
+    pub(crate) preset: String,
 }
 
 impl ViewerPreferences {

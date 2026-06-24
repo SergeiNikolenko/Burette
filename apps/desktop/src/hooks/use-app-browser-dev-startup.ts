@@ -1,12 +1,12 @@
 import { useMemo } from "react";
-import { browserDevFolderFromLocation, browserDevHasExplicitWorkspace } from "../lib/browser-dev-startup";
+import { browserDevFoldersFromLocation, browserDevHasExplicitWorkspace } from "../lib/browser-dev-startup";
 
 export function useAppBrowserDevStartup() {
-  const browserDevExplicitFolder = useMemo(() => browserDevFolderFromLocation(), []);
+  const browserDevExplicitFolders = useMemo(() => browserDevFoldersFromLocation(), []);
   const browserDevHasExplicitWorkspaceQuery = useMemo(() => browserDevHasExplicitWorkspace(), []);
 
   return {
-    browserDevExplicitFolder,
+    browserDevExplicitFolders,
     browserDevHasExplicitWorkspaceQuery,
   };
 }

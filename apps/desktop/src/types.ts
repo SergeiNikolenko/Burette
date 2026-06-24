@@ -11,9 +11,26 @@ export type XyzrenderControls = {
   fog?: boolean | null;
   fogStrength?: number | null;
   showVdw?: boolean | null;
+  vdwAtoms?: string | null;
   vdwOpacity?: number | null;
   vdwScale?: number | null;
+  hullMode?:
+    | "off"
+    | "benzene-ring"
+    | "anthracene-rings"
+    | "auto-rings"
+    | "faces"
+    | "pore"
+    | "mof5-faces"
+    | "mof5-pore"
+    | "faces-pore"
+    | null;
+  hullAtoms?: string | null;
+  hullOpacity?: number | null;
+  poreOpacity?: number | null;
   hideBonds?: boolean | null;
+  displayHydrogens?: "all" | "auto" | "none" | null;
+  bondNotation?: "aromatic" | "kekule" | null;
   showCell?: boolean | null;
   showGhosts?: boolean | null;
   showAxes?: boolean | null;
@@ -31,6 +48,7 @@ export type XyzrenderControls = {
   fieldCmapMax?: number | null;
   customConfigPath?: string | null;
   extraArguments?: string | null;
+  regions?: Array<{ atoms: string; preset: string }> | null;
 };
 
 export type OpenDocumentsResult = {
@@ -49,6 +67,7 @@ export type ViewerReloadOptions = {
   xyzrenderOrientationRef?: string | null;
   xyzrenderPreset?: string | null;
   xyzrenderControls?: XyzrenderControls | null;
+  xyzrenderSelectionAction?: "vdw" | null;
   sdfPoseControlLabel?: string | null;
   trajectoryAutoPlayOnce?: boolean | null;
   molstarStyle?: "default" | "illustrative" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface" | null;

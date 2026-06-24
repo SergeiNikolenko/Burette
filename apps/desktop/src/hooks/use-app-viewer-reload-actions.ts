@@ -34,7 +34,10 @@ export function useAppViewerReloadActions({
     const reloadOptions = pendingViewerReloadOptionsRef.current ?? undefined;
     pendingViewerReloadOptionsRef.current = null;
     pendingViewerReloadDocumentIdRef.current = null;
-    await openDocuments([targetDocument.path], reloadOptions, undefined, { inActiveTab: true });
+    const preferences = reloadOptions?.xyzrenderControls || reloadOptions?.xyzrenderPreset
+      ? { rendererMode: "xyzrender-external" as const }
+      : undefined;
+    await openDocuments([targetDocument.path], reloadOptions, preferences, { inActiveTab: true });
   }, [activeDocument, documents, openDocuments, pendingViewerReloadDocumentIdRef, pendingViewerReloadOptionsRef]);
 
   const reloadXyzrenderDocument = useCallback(async (document: ViewerDocument, reloadOptions: ViewerReloadOptions) => {
@@ -42,8 +45,12 @@ export function useAppViewerReloadActions({
       ...reloadOptions,
       xyzrenderOrientationRef: reloadOptions.xyzrenderOrientationRef ?? xyzrenderOrientationRefRef.current,
     };
-    const iframe = activeViewerIframeForDocument(document.id, document.renderer);
-    if (iframe?.contentWindow) {
+    const iframe = activeViewerIframeForDocument(document.id);
+    const canPatchXyzrenderIframe = iframe?.dataset.renderer === "xyzrender-external"
+      || Boolean(iframe?.contentDocument?.querySelector(
+        ".buret-external-artifact-root, .buret-xyzrender-sheet-item-base, .buret-external-artifact-object",
+      ));
+    if (iframe?.contentWindow && canPatchXyzrenderIframe) {
       iframe.contentWindow.postMessage({
         source: "burrete-host",
         body: {
@@ -51,13 +58,14 @@ export function useAppViewerReloadActions({
           documentId: document.id,
           preset: effectiveReloadOptions.xyzrenderPreset ?? null,
           controls: effectiveReloadOptions.xyzrenderControls ?? null,
+          selectionAction: effectiveReloadOptions.xyzrenderSelectionAction ?? null,
         },
       }, "*");
       return;
     }
     pendingViewerReloadDocumentIdRef.current = document.id;
     pendingViewerReloadOptionsRef.current = effectiveReloadOptions;
-    await openDocuments([document.path], effectiveReloadOptions, undefined, { inActiveTab: true });
+    await openDocuments([document.path], effectiveReloadOptions, { rendererMode: "xyzrender-external" }, { inActiveTab: true });
     pendingViewerReloadOptionsRef.current = null;
     pendingViewerReloadDocumentIdRef.current = null;
   }, [openDocuments, pendingViewerReloadDocumentIdRef, pendingViewerReloadOptionsRef, xyzrenderOrientationRefRef]);

@@ -11,6 +11,10 @@ type ExecFileAsync = (
   options: { timeout: number; maxBuffer: number },
 ) => Promise<{ stdout?: string; stderr?: string }>;
 
+const XYZRENDER_REF_UNSUPPORTED_FOR_PERIODIC = "--ref is not supported for periodic structures";
+const XYZRENDER_BROWSER_DEV_TIMEOUT = 25_000;
+const XYZRENDER_BROWSER_DEV_MAX_BUFFER = 8 * 1024 * 1024;
+
 type BrowserDevXyzrenderRouteOptions = {
   buildArgs: (
     inputPath: string,
@@ -29,6 +33,16 @@ type BrowserDevXyzrenderRouteOptions = {
   resolveEffectivePreset: (preset: string, controls: any) => unknown;
   resolveExecutable: () => string | null;
 };
+
+function isXyzrenderRefUnsupportedForPeriodic(error: unknown): boolean {
+  const details = error && typeof error === "object"
+    ? error as { message?: unknown; stdout?: unknown; stderr?: unknown }
+    : { message: error };
+  return [details.message, details.stdout, details.stderr]
+    .filter((value): value is string => typeof value === "string")
+    .join("\n")
+    .includes(XYZRENDER_REF_UNSUPPORTED_FOR_PERIODIC);
+}
 
 export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options: BrowserDevXyzrenderRouteOptions) {
   server.middlewares.use("/__burette/xyzrender", async (req, res) => {
@@ -65,21 +79,34 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
         if (inputData?.length) {
           await writeFile(convertedInputPath, inputData);
         }
-        const args = options.buildArgs(
-          effectiveInputPath,
-          outputPath,
-          preset,
-          orientationRef ? orientationRefPath : null,
-          controls,
-        );
         if (orientationRef) {
           await writeFile(orientationRefPath, orientationRef, "utf8");
         }
-        const { stdout, stderr } = await options.execFileAsync(
-          executable,
-          args,
-          { timeout: 25_000, maxBuffer: 8 * 1024 * 1024 },
-        );
+        const execute = async (refPath: string | null) => {
+          const args = options.buildArgs(effectiveInputPath, outputPath, preset, refPath, controls);
+          return options.execFileAsync(
+            executable,
+            args,
+            { timeout: XYZRENDER_BROWSER_DEV_TIMEOUT, maxBuffer: XYZRENDER_BROWSER_DEV_MAX_BUFFER },
+          );
+        };
+        let fallbackLog = "";
+        let stdout = "";
+        let stderr = "";
+        try {
+          const result = await execute(orientationRef ? orientationRefPath : null);
+          stdout = result.stdout || "";
+          stderr = result.stderr || "";
+        } catch (error) {
+          if (!orientationRef || !isXyzrenderRefUnsupportedForPeriodic(error)) {
+            throw error;
+          }
+          await rm(outputPath, { force: true });
+          fallbackLog = "[burette] Retried without --ref because xyzrender does not support --ref for periodic structures.\n";
+          const result = await execute(null);
+          stdout = result.stdout || "";
+          stderr = result.stderr || "";
+        }
         const svg = await readFile(outputPath, "utf8");
         if (!svg.trim()) {
           sendJson(res, 500, { error: "External xyzrender produced an empty SVG output file." });
@@ -90,7 +117,7 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
           preset: options.resolveEffectivePreset(preset, controls),
           configArgument: options.resolveConfigArgument(preset, controls),
           elapsedMs: Date.now() - startedAt,
-          log: `${stdout || ""}${stderr || ""}`,
+          log: `${fallbackLog}${stdout}${stderr}`,
           xyzrenderControls: controls,
           xyzrenderPresetOptions: options.presetOptions,
         });
