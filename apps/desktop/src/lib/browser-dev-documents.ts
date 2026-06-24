@@ -88,6 +88,7 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
+const BROWSER_DEV_INLINE_MOLSTAR_BYTE_LIMIT = 4 * 1024 * 1024;
 const GRID_ASSET_VERSION = "grid-ui-v138";
 const VIEWER_ASSET_VERSION = "viewer-ui-v66";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
@@ -742,6 +743,9 @@ async function openBrowserDevDocumentFromBytes(
   const viewerFormat = renderer === "molstar" && molstarBytes && convertedMolstarData
     ? { ...runtimeFormat, molstarFormat: convertedMolstarData.molstarFormat, binary: false, externalOnly: false }
     : runtimeFormat;
+  const useMolstarDataPath = renderer === "molstar"
+    && !molstarBytes
+    && viewerBytes.length > BROWSER_DEV_INLINE_MOLSTAR_BYTE_LIMIT;
   const html = viewerHtml(
     path,
     viewerFormat,
@@ -762,6 +766,7 @@ async function openBrowserDevDocumentFromBytes(
     convertedMolstarData?.stagedEntries,
     reloadOptions,
     documentId,
+    useMolstarDataPath,
   );
   return browserDocument(path, extension, renderer, html, sourceByteCount, documentId, {
     xyzrenderControls,
@@ -1027,6 +1032,7 @@ function viewerHtml(
   stagedEntries?: Array<Record<string, unknown>>,
   reloadOptions?: ViewerReloadOptions,
   documentId?: string,
+  useMolstarDataPath = false,
 ) {
   const label = fileTitle(path);
   const extension = fileExtension(path);
@@ -1041,7 +1047,7 @@ function viewerHtml(
     label,
     byteCount: sourceByteCount,
     previewByteCount: bytes.length,
-    dataPath: renderer === "xyzrender-external" ? browserDevReadUrl(path, extension) : undefined,
+    dataPath: renderer === "xyzrender-external" || useMolstarDataPath ? browserDevReadUrl(path, extension) : undefined,
     sourcePath: path,
     sourceExtension: extension,
     quickLookBuild: "burrete-browser-dev",
@@ -1090,6 +1096,9 @@ function viewerHtml(
       : `<link rel="stylesheet" href="molstar.css" /><script src="molstar.js"></script>`;
   const runtimeAssetVersion = `${VIEWER_ASSET_VERSION}-${Date.now()}`;
   const embeddedBytes = renderer === "xyzrender-external" ? new Uint8Array([10]) : bytes;
+  const inlineDataScript = useMolstarDataPath
+    ? ""
+    : `<script>window.BurreteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -1106,7 +1115,7 @@ function viewerHtml(
   <script>${viewerBridgeJs()}</script>
   ${rendererAssets}
   <script>window.BurreteConfig = ${JSON.stringify(config)};</script>
-  <script>window.BurreteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>
+  ${inlineDataScript}
   ${extraWindowScript}
   <script src="burette-agent.js?v=${runtimeAssetVersion}"></script>
   <script src="viewer.js?v=${runtimeAssetVersion}"></script>

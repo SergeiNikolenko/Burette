@@ -3781,7 +3781,10 @@ assert.match(previewViewController, /private static func gzipInflatedDataIfNeede
 assert.match(previewViewController, /inflateInit2_\(&stream, 15 \+ 32, ZLIB_VERSION,/);
 assert.match(previewViewController, /case \.couldNotExtractBoundedMaestroPreview\(let name, let limit\):/);
 assert.match(browserDevDocuments, /xyzrenderAvailable,/);
-assert.match(browserDevDocuments, /dataPath: renderer === "xyzrender-external" \? browserDevReadUrl\(path, extension\) : undefined/);
+assert.match(browserDevDocuments, /const BROWSER_DEV_INLINE_MOLSTAR_BYTE_LIMIT = 4 \* 1024 \* 1024/);
+assert.match(browserDevDocuments, /const useMolstarDataPath = renderer === "molstar"[\s\S]*&& !molstarBytes[\s\S]*&& viewerBytes\.length > BROWSER_DEV_INLINE_MOLSTAR_BYTE_LIMIT/);
+assert.match(browserDevDocuments, /dataPath: renderer === "xyzrender-external" \|\| useMolstarDataPath \? browserDevReadUrl\(path, extension\) : undefined/);
+assert.match(browserDevDocuments, /const inlineDataScript = useMolstarDataPath[\s\S]*\? ""[\s\S]*: `<script>window\.BurreteDataBase64 = "\$\{bytesToBase64\(embeddedBytes\)\}";<\/script>`/);
 assert.match(browserDevDocuments, /browserDevVirtualTextDocuments\.has\(path\) \? bytes : null/);
 assert.match(browserDevDocuments, /xyzrenderInputDataBase64: bytesToBase64\(bytes\)/);
 assert.match(browserDevDocuments, /return `data:text\/plain;charset=utf-8,\$\{encodeURIComponent\(virtualText\)\}`;/);

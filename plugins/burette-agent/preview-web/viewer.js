@@ -88,7 +88,7 @@
     customConfigPath: null,
     extraArguments: null
   };
-  const DOCKING_COORDINATE_TRAJECTORY_FORMATS = new Set(['xtc', 'trr', 'dcd', 'nctraj', 'lammpstrj']);
+  const DOCKING_COORDINATE_TRAJECTORY_FORMATS = new Set(['xtc', 'trr', 'dcd', 'nctraj', 'nc', 'ncdf', 'netcdf', 'ncrst', 'lammpstrj']);
   const DOCKING_MODEL_TRAJECTORY_FORMATS = new Set(['pdb', 'pdbqt', 'mmcif', 'gro']);
   const DOCKING_TOPOLOGY_TRAJECTORY_FORMATS = new Set(['top', 'psf', 'prmtop']);
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
@@ -1005,7 +1005,7 @@
 
   function normalizeSdfCollectionContextStyle(value) {
     const normalized = String(value || '').trim().toLowerCase();
-    if (['line', 'ball-and-stick', 'spacefill', 'molecular-surface', 'match'].includes(normalized)) return normalized;
+    if (['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'match'].includes(normalized)) return normalized;
     return 'line';
   }
 
@@ -2159,6 +2159,12 @@
       await reloadActiveMolstarStructure();
       return;
     }
+    if (activeMolstarPrepared?.kind === 'docking' && activeMolstarPrepared?.dockingSceneMode) {
+      const poseCount = Number(activeMolstarPrepared.poseCount || 0);
+      const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
+      await applyDockingSceneVisibility(activeViewer, activeMolstarPrepared, activePose);
+      return;
+    }
     await reloadActiveMolstarStructure();
   }
 
@@ -3121,10 +3127,26 @@
   }
 
   function normalizeElementSymbol(value) {
+    const atomicNumber = Number.parseInt(String(value || '').trim(), 10);
+    if (Number.isFinite(atomicNumber) && String(atomicNumber) === String(value || '').trim()) {
+      return ATOMIC_SYMBOLS[atomicNumber - 1] || 'X';
+    }
     const match = String(value || 'X').trim().match(/[A-Za-z]{1,3}/u);
     if (!match) return 'X';
     return match[0].slice(0, 1).toUpperCase() + match[0].slice(1).toLowerCase();
   }
+
+  const ATOMIC_SYMBOLS = [
+    'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne',
+    'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca',
+    'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn',
+    'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr',
+    'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn',
+    'Sb', 'Te', 'I', 'Xe', 'Cs', 'Ba', 'La', 'Ce', 'Pr', 'Nd',
+    'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb',
+    'Lu', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg',
+    'Tl', 'Pb', 'Bi', 'Po', 'At', 'Rn'
+  ];
 
   function readCameraSnapshot(viewer) {
     const camera = viewer?.plugin?.canvas3d?.camera;
@@ -6655,10 +6677,13 @@
       const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
       const backgroundEntries = poses.filter((_, index) => index !== activeIndex);
       if (resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative') {
+        const sceneStructures = [];
         for (const entry of [...backgroundEntries, activeEntry]) {
-          await loadMolstarEntry(viewer, entry);
+          sceneStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
         }
-        await applyMolstarStyle(viewer, resolvedContextStyle);
+        if (sceneStructures.length) {
+          await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, sceneStructures, 1, 'colored');
+        }
       } else {
         const contextStructures = [];
         for (const entry of backgroundEntries) {
@@ -6669,8 +6694,16 @@
         if (contextStructures.length) {
           await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor);
         }
-        await loadMolstarEntry(viewer, activeEntry);
-        await applyMolstarIllustrativePostprocessing(viewer);
+        const activeStyle = normalizeMolstarStyle(style);
+        if (activeStyle === 'default' || activeStyle === 'illustrative') {
+          await loadMolstarEntry(viewer, activeEntry);
+          await applyMolstarIllustrativePostprocessing(viewer);
+        } else {
+          const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
+          if (activeStructures.length) {
+            await applySdfCollectionMolstarStyle(viewer, activeStyle, activeStructures, 1, 'colored');
+          }
+        }
       }
       await applyMolstarWaterLineRepresentation(viewer);
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
@@ -6686,9 +6719,7 @@
   }
 
   function dockingSceneBackgroundStyle(contextStyle, foregroundStyle) {
-    const resolved = contextStyle !== 'match' ? normalizeMolstarStyle(contextStyle) : normalizeMolstarStyle(foregroundStyle);
-    if (resolved === 'cartoon' || resolved === 'spacefill') return 'line';
-    return resolved;
+    return contextStyle !== 'match' ? normalizeMolstarStyle(contextStyle) : normalizeMolstarStyle(foregroundStyle);
   }
 
   async function loadSdfCollectionPdbLayer(viewer, data, label) {
@@ -6703,7 +6734,16 @@
   async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray') {
     const normalized = normalizeMolstarStyle(style);
     const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
-    await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
+    if (normalized === 'default' || normalized === 'illustrative' || normalized === 'cartoon' || normalized === 'polymer-ligand') {
+      await applyMolstarPolymerLigandRepresentationToStructures(
+        viewer,
+        targets,
+        sdfCollectionCartoonRepresentation(alpha),
+        sdfCollectionLigandRepresentationForStyle(normalized, alpha, colorMode)
+      );
+    } else {
+      await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
+    }
     if (normalized === 'illustrative') await applyMolstarIllustrativePostprocessing(viewer);
     else await applyMolstarNonIllustrativePostprocessing(viewer);
   }
@@ -6744,14 +6784,11 @@
     };
   }
 
-  function sdfCollectionLigandRepresentationForStyle(style, alpha = 1) {
-    const normalized = normalizeMolstarStyle(style);
-    const { ghost, withAlpha, themed } = sdfCollectionAlphaHelpers(alpha);
+  function sdfCollectionLigandRepresentationForStyle(style, alpha = 1, colorMode = 'gray') {
+    const { ghost, withAlpha, themed } = sdfCollectionAlphaHelpers(alpha, colorMode);
     return themed({
-      type: normalized === 'cartoon' ? 'line' : 'ball-and-stick',
-      typeParams: normalized === 'cartoon'
-        ? withAlpha({ sizeFactor: ghost ? 0.035 : 0.08 })
-        : withAlpha({ sizeFactor: ghost ? 0.095 : 0.16 })
+      type: 'ball-and-stick',
+      typeParams: withAlpha({ sizeFactor: ghost ? 0.095 : 0.16 })
     });
   }
 
@@ -8352,6 +8389,10 @@
           updateControls();
         } else if (prepared.kind === 'xyz-frame-overlay') {
           await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false });
+          activePose = nextIndex;
+          updateControls();
+        } else if (prepared.kind === 'docking' && prepared.dockingSceneMode) {
+          await applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, nextIndex);
           activePose = nextIndex;
           updateControls();
         } else {
