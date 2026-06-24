@@ -57,7 +57,7 @@ strong { font-weight: 400; }
   app-region: drag;
   -webkit-app-region: drag;
 }
-button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .tab-history-button, .sidebar-search-row, .sidebar-tool-row, .sidebar-section-title-button, .sidebar-section-menu-button, .project-group-row, .project-folder-row, .project-folder-toggle-button, .project-group-menu-button, .project, .project-show-more, .pin-hit, .splitter {
+button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .tab-history-button, .sidebar-search-row, .sidebar-search-action-row, .sidebar-tool-row, .sidebar-section-title-button, .sidebar-section-menu-button, .project-group-row, .project-folder-row, .project-folder-toggle-button, .project-group-menu-button, .project, .project-show-more, .pin-hit, .splitter {
   app-region: no-drag;
   -webkit-app-region: no-drag;
 }
@@ -181,7 +181,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   height: var(--chrome-drag-height);
   z-index: 2;
 }
-.topbar, .chrome-leading-controls, .chrome-trailing-controls, .sidebar-toggle-root, .tab-strip, .tab-strip-spacer, .chrome-button, .new-tab, .tab-shell, .tab, .sidebar, .sidebar-footer, .project, .sidebar-search-row, .settings-sidebar, .settings-back-button, .settings-search, .settings-nav-item, .dock-panel { pointer-events: auto; }
+.topbar, .chrome-leading-controls, .chrome-trailing-controls, .sidebar-toggle-root, .tab-strip, .tab-strip-spacer, .chrome-button, .new-tab, .tab-shell, .tab, .sidebar, .sidebar-footer, .project, .sidebar-search-row, .sidebar-search-action-row, .settings-sidebar, .settings-back-button, .settings-search, .settings-nav-item, .dock-panel { pointer-events: auto; }
 .chrome-leading-controls {
   position: absolute;
   left: 92px;
@@ -608,6 +608,25 @@ button:focus-visible > .shortcut-tooltip {
 }
 .sidebar-search-row:focus-within {
   outline: none;
+}
+.sidebar-search-action-row {
+  width: 100%;
+  min-height: 32px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  margin: -4px 0 10px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px 0 34px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: left;
+  transition: background 140ms ease-out, color 140ms ease-out;
+}
+.sidebar-search-action-row:hover {
+  background: var(--surface-subtle);
+  color: var(--text-primary);
 }
 .sidebar-tool-row {
   width: 100%;
@@ -1373,6 +1392,7 @@ img.radix-menu-item-icon {
   outline-offset: -1px;
 }
 .sidebar-search-row:focus-within,
+.sidebar-search-action-row:focus-visible,
 .sidebar-tool-row:focus-visible,
 .project-group-row:focus-visible,
 .project:focus-visible,

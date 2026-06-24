@@ -127,6 +127,7 @@ pub fn run() {
             commands::conformer::cancel_conformer_job,
             commands::documents::generate_3d_conformer,
             commands::documents::open_text_structure,
+            commands::documents::fetch_remote_structure,
             commands::documents::open_delimited_grid_document,
             commands::documents::open_docking_document,
             commands::documents::open_merged_collection,

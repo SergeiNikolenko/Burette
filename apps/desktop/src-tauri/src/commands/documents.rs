@@ -6,6 +6,7 @@ use std::env;
 use std::ffi::CString;
 use std::fs;
 use std::io::{Read, Write};
+use std::net::{IpAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 #[cfg(target_os = "macos")]
@@ -132,6 +133,22 @@ pub(crate) struct TextStructureRequest {
     title: String,
     extension: String,
     text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FetchRemoteStructureRequest {
+    url: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FetchRemoteStructureResult {
+    url: String,
+    title: String,
+    extension: String,
+    text: String,
+    byte_count: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1169,6 +1186,61 @@ pub(crate) fn open_text_structure<R: Runtime>(
     open_text_structure_for_window_label(&app, window.label(), request, preferences, reload_options)
 }
 
+#[tauri::command]
+pub(crate) fn fetch_remote_structure(
+    request: FetchRemoteStructureRequest,
+) -> Result<FetchRemoteStructureResult, String> {
+    let parsed =
+        url::Url::parse(request.url.trim()).map_err(|err| format!("Invalid URL: {err}"))?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        _ => return Err("Structure fetch supports only http and https URLs".to_string()),
+    }
+    reject_private_fetch_target(&parsed)?;
+    let title = remote_structure_title(&parsed);
+    let extension = remote_structure_extension(&title)?;
+    let max_size = KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE.to_string();
+    let output = Command::new("/usr/bin/curl")
+        .args([
+            "--fail",
+            "--location",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            "30",
+            "--max-filesize",
+            &max_size,
+            "--header",
+            "User-Agent: Burrete/1.0",
+        ])
+        .arg(parsed.as_str())
+        .output()
+        .map_err(|err| format!("Could not start curl: {err}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("curl failed with status {}", output.status)
+        } else {
+            stderr
+        });
+    }
+    if output.stdout.len() as u64 > KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE {
+        return Err("Fetched structure is too large".to_string());
+    }
+    let text = String::from_utf8(output.stdout)
+        .map_err(|_| "Fetched structure is not valid UTF-8 text".to_string())?;
+    if text.trim().is_empty() {
+        return Err("Fetched structure is empty".to_string());
+    }
+    Ok(FetchRemoteStructureResult {
+        url: parsed.to_string(),
+        title,
+        extension,
+        byte_count: text.len() as u64,
+        text,
+    })
+}
+
 fn open_text_structure_for_window_label<R: Runtime>(
     app: &tauri::AppHandle<R>,
     window_label: &str,
@@ -1716,6 +1788,80 @@ fn safe_text_structure_file_name(title: &str, extension: &str) -> String {
         stem
     };
     format!("{stem}.{extension}")
+}
+
+fn remote_structure_title(url: &url::Url) -> String {
+    url.path_segments()
+        .and_then(|mut segments| segments.next_back())
+        .filter(|segment| !segment.trim().is_empty())
+        .unwrap_or("remote-structure.pdb")
+        .to_string()
+}
+
+fn remote_structure_extension(title: &str) -> Result<String, String> {
+    let extension = structure_path_extension(Path::new(title))
+        .trim_start_matches('.')
+        .to_lowercase();
+    if extension.is_empty() {
+        return Err("Remote structure URL must include a supported file extension".to_string());
+    }
+    let supported = supported_structure_extensions()?;
+    if !supported.contains(&extension) {
+        return Err(format!(
+            "Unsupported remote structure extension: {extension}"
+        ));
+    }
+    Ok(extension)
+}
+
+fn reject_private_fetch_target(url: &url::Url) -> Result<(), String> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| "Remote structure URL must include a host".to_string())?;
+    let normalized_host = host.trim().trim_end_matches('.').to_lowercase();
+    if normalized_host == "localhost" {
+        return Err("Localhost URLs are not supported for remote structure fetch".to_string());
+    }
+    if let Ok(ip) = normalized_host.parse::<IpAddr>() {
+        reject_private_ip(ip)?;
+        return Ok(());
+    }
+    let port = url.port_or_known_default().unwrap_or(443);
+    if let Ok(addresses) = (host, port).to_socket_addrs() {
+        for address in addresses {
+            reject_private_ip(address.ip())?;
+        }
+    }
+    Ok(())
+}
+
+fn reject_private_ip(ip: IpAddr) -> Result<(), String> {
+    match ip {
+        IpAddr::V4(value)
+            if value.is_private()
+                || value.is_loopback()
+                || value.is_link_local()
+                || value.is_unspecified()
+                || value.is_broadcast() =>
+        {
+            Err(
+                "Local and private network URLs are not supported for remote structure fetch"
+                    .to_string(),
+            )
+        }
+        IpAddr::V6(value)
+            if value.is_loopback()
+                || value.is_unspecified()
+                || value.is_unique_local()
+                || value.is_unicast_link_local() =>
+        {
+            Err(
+                "Local and private network URLs are not supported for remote structure fetch"
+                    .to_string(),
+            )
+        }
+        _ => Ok(()),
+    }
 }
 
 #[tauri::command]
