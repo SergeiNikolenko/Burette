@@ -129,25 +129,15 @@ for (const registration of [
 ]) {
   const source = await read(registration);
   assert.match(source, /validateMolecularArtifact/);
-  assert.match(source, /registerWidgetResource/);
   assert.match(source, /visibility: \["model"\]/);
-  assert.match(source, /openai\/outputTemplate/);
+  assert.doesNotMatch(source, /registerWidgetResource/);
+  assert.doesNotMatch(source, /openai\/outputTemplate/);
+  assert.doesNotMatch(source, /widgetData/);
+  assert.doesNotMatch(source, /render_.*_widget/);
 }
 
-for (const widget of [
-  "mcp/widget-assets/molecule-table/widget.html",
-  "mcp/widget-assets/trajectory-review/widget.html",
-  "mcp/widget-assets/molecular-report/widget.html",
-]) {
-  const source = await read(widget);
-  assert.match(source, /__BURETTE_AGENT_WIDGET_CSS__/);
-  assert.match(source, /__BURETTE_AGENT_WIDGET_JS__/);
-}
-
-const widgetResource = await read("mcp/lib/widget-resource.mjs");
-assert.match(widgetResource, /Missing widget asset/);
-assert.match(widgetResource, /Continuing with a diagnostic widget so MCP tools remain available/);
-assert.match(widgetResource, /data-diagnostic="missing-widget-asset"/);
+const toolResponse = await read("mcp/lib/tool-response.mjs");
+assert.match(toolResponse, /toolText/);
 
 const packDryRun = runCommand("npm", ["pack", "--dry-run", "--json", "."], pluginRoot);
 assert.equal(packDryRun.status, 0, packDryRun.stderr);
@@ -155,9 +145,6 @@ const packPayload = JSON.parse(packDryRun.stdout);
 const packedFiles = new Set(packPayload[0].files.map(file => file.path));
 for (const asset of [
   "browser-shell-dist/index.html",
-  "mcp/widget-assets/molecule-table/widget.html",
-  "mcp/widget-assets/trajectory-review/widget.html",
-  "mcp/widget-assets/molecular-report/widget.html",
   "preview-web/index.html",
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
@@ -394,7 +381,7 @@ const syntaxTargets = [
   "plugins/burette-agent/mcp/lib/structure-components.mjs",
   "plugins/burette-agent/mcp/lib/structure-summary.mjs",
   "plugins/burette-agent/mcp/lib/validation.mjs",
-  "plugins/burette-agent/mcp/lib/widget-resource.mjs",
+  "plugins/burette-agent/mcp/lib/tool-response.mjs",
   "plugins/burette-agent/mcp/registrations/fetch/register.mjs",
   "plugins/burette-agent/mcp/registrations/molecular-workspace/register.mjs",
   "plugins/burette-agent/mcp/registrations/molecule-table/register.mjs",

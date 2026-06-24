@@ -14,8 +14,8 @@ frames, RMSD/RMSF/contact plots, and trajectory cleanup outputs.
 2. Identify the trajectory bundle and required companion files.
 3. Open the displayable structure or bundle through `open-workspace`.
 4. Validate trajectory metrics and artifacts as a bounded snapshot.
-5. Render a trajectory review widget or side panel with metrics and artifact
-   provenance.
+5. Render metrics and artifact provenance in a Burrete side panel or adjacent
+   report file.
 6. Use Browser or Computer visual QA when trajectory controls or frame display
    must be verified.
 
