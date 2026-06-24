@@ -554,7 +554,6 @@ export default function App() {
     selectDocument,
   } = useAppShellNavigationActions({
     activateLastNonSettingsTab,
-    openCommandPalette,
     openSettingsSectionTab,
     openSettingsTab,
     setActiveDocument,
