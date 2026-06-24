@@ -54,6 +54,7 @@
     { value: 'mtube', label: 'MTube' },
     { value: 'wire', label: 'Wire' },
     { value: 'graph', label: 'Graph' },
+    { value: 'vdw', label: 'vdW' },
     { value: 'custom', label: 'Custom JSON' }
   ];
   const DEFAULT_XYZRENDER_CONTROLS = {
@@ -67,8 +68,13 @@
     fog: null,
     fogStrength: null,
     showVdw: false,
+    vdwAtoms: null,
     vdwOpacity: null,
     vdwScale: null,
+    hullMode: null,
+    hullAtoms: null,
+    hullOpacity: null,
+    poreOpacity: null,
     hideBonds: false,
     showCell: null,
     showGhosts: null,
@@ -97,6 +103,7 @@
   let xyzrenderInlineRequestSerial = 0;
   let xyzrenderSheetRequestSerial = 0;
   const xyzrenderSheetRequests = new Map();
+  const xyzrenderSheetItemEntries = new WeakMap();
   let molstarWindowResizeHandler = null;
   let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
@@ -106,6 +113,17 @@
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
   let molstarLassoOverlay = null;
+  let xyzrenderLassoEnabled = false;
+  let xyzrenderLassoStroke = null;
+  let xyzrenderLassoOverlay = null;
+  const xyzrenderSelectedElements = new Set();
+  const xyzrenderStyledElements = new Set();
+  const xyzrenderSelectionOriginals = new WeakMap();
+  const xyzrenderActionUndoStack = [];
+  const xyzrenderActionRedoStack = [];
+  const XYZRENDER_HISTORY_STATE_KEY = '__buretteXyzrenderHistoryIndex';
+  let xyzrenderSystemHistoryIndex = 0;
+  let xyzrenderSystemHistoryInstalled = false;
   let molstarSelectionPreserveClick = null;
   let molstarLassoSuppressClickUntil = 0;
   let molstarMoleculePreview = null;
@@ -929,6 +947,7 @@
   let activeConfig = null;
   let activeMolstarPrepared = null;
   let activeSdfPoseMode = 'single';
+  let activeXyzFrameOverlayState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
   let latestXyzrenderOrientationRef = null;
@@ -1392,11 +1411,13 @@
       molstarStyleSelect.value = configuredMolstarStyle(config);
       molstarStyleSelect.disabled = renderer !== 'molstar';
     }
-    lassoButton?.classList.toggle('hidden', renderer !== 'molstar');
+    const lassoAvailable = renderer === 'molstar' || renderer === 'xyzrender-external';
+    lassoButton?.classList.toggle('hidden', !lassoAvailable);
     if (lassoButton) {
-      lassoButton.disabled = renderer !== 'molstar';
-      lassoButton.setAttribute('aria-hidden', renderer === 'molstar' ? 'false' : 'true');
+      lassoButton.disabled = !lassoAvailable;
+      lassoButton.setAttribute('aria-hidden', lassoAvailable ? 'false' : 'true');
     }
+    updateMolstarLassoButton();
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     presetSlot?.classList.remove('visible');
     const canOpenSdfGrid = canOpenSdfGridFromConfig(config);
@@ -1557,9 +1578,16 @@
       fog: triStateBoolean(source.fog),
       fogStrength: positiveNumberOrNull(source.fogStrength),
       showVdw: source.showVdw === true,
+      vdwAtoms: normalizeXyzrenderAtomSelector(source.vdwAtoms),
       vdwOpacity: positiveNumberOrNull(source.vdwOpacity),
       vdwScale: positiveNumberOrNull(source.vdwScale),
+      hullMode: normalizeXyzrenderHullMode(source.hullMode),
+      hullAtoms: normalizeXyzrenderAtomSelector(source.hullAtoms),
+      hullOpacity: nonNegativeNumberOrNull(source.hullOpacity),
+      poreOpacity: nonNegativeNumberOrNull(source.poreOpacity),
       hideBonds: source.hideBonds === true,
+      displayHydrogens: normalizeXyzrenderHydrogens(source.displayHydrogens),
+      bondNotation: normalizeXyzrenderBondNotation(source.bondNotation),
       showCell: triStateBoolean(source.showCell),
       showGhosts: triStateBoolean(source.showGhosts),
       showAxes: triStateBoolean(source.showAxes),
@@ -1576,8 +1604,48 @@
       fieldCmapMin: finiteNumberOrNull(source.fieldCmapMin),
       fieldCmapMax: finiteNumberOrNull(source.fieldCmapMax),
       customConfigPath: nonEmptyText(source.customConfigPath),
-      extraArguments: nonEmptyText(source.extraArguments)
+      extraArguments: nonEmptyText(source.extraArguments),
+      regions: normalizeXyzrenderRegions(source.regions)
     };
+  }
+
+  function normalizeXyzrenderHydrogens(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return text === 'all' || text === 'auto' || text === 'none' ? text : null;
+  }
+
+  function normalizeXyzrenderBondNotation(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return text === 'aromatic' || text === 'kekule' ? text : null;
+  }
+
+  function normalizeXyzrenderHullMode(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return ['off', 'benzene-ring', 'anthracene-rings', 'auto-rings', 'faces', 'pore', 'mof5-faces', 'mof5-pore', 'faces-pore'].includes(text) ? text : null;
+  }
+
+  function normalizeXyzrenderRegions(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map(region => {
+      if (!region || typeof region !== 'object') return null;
+      const atoms = normalizeXyzrenderAtomSelector(region.atoms);
+      if (!atoms) return null;
+      return { atoms, preset: normalizeXyzrenderPreset(region.preset) };
+    }).filter(Boolean);
+  }
+
+  function normalizeXyzrenderAtomSelector(value) {
+    const text = String(value || '').replace(/\s+/gu, '');
+    if (!text || !/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/u.test(text)) return null;
+    const parts = [];
+    for (const rawPart of text.split(',')) {
+      const [rawStart, rawEnd] = rawPart.split('-');
+      const start = Number(rawStart);
+      const end = rawEnd == null ? start : Number(rawEnd);
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end <= 0 || end < start) return null;
+      parts.push(start === end ? String(start) : `${start}-${end}`);
+    }
+    return parts.join(',');
   }
 
   function positiveNumberOrNull(value) {
@@ -1805,11 +1873,21 @@
     if (body.type === 'setXyzrenderControls') {
       const config = activeConfig || window.BurreteConfig || {};
       const documentId = String(config.documentId || '');
-      if (body.documentId && documentId && String(body.documentId) !== documentId) return;
+      const hasXyzrenderArtifact = Boolean(document.querySelector('.buret-external-artifact-root, .buret-xyzrender-sheet-item-base, .buret-external-artifact-object'));
+      if (body.documentId && documentId && String(body.documentId) !== documentId && !hasXyzrenderArtifact) return;
       const controls = normalizeXyzrenderControls(body.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
       const preset = normalizeXyzrenderPreset(body.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
-      if (requestBrowserDevXyzrenderUpdate({ controls, preset })) return;
-      const sent = postHostMessage({ type: 'setXyzrenderControls', documentId, controls, preset });
+      if (body.selectionAction === 'vdw') {
+        void applyXyzrenderSelectionVdw(controls, preset);
+        return;
+      }
+      if (hasXyzrenderSelection()) {
+        void applyXyzrenderSelectionPreset(preset, controls);
+        return;
+      }
+      const options = { controls, preset };
+      if (requestBrowserDevXyzrenderUpdate(options)) return;
+      const sent = postHostMessage({ type: 'setXyzrenderControls', documentId, controls, preset, ...xyzrenderOrientationPayload(options) });
       if (!sent) setStatus('xyzrender controls are available only in the app or Quick Look viewer.', 'error');
       return;
     }
@@ -2152,7 +2230,11 @@
     if (activeMolstarPrepared?.xyzFrameOverlayAvailable === true) {
       const poseCount = Number(activeMolstarPrepared.poseCount || activeMolstarPrepared.xyzFrameCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
-      await applyXyzFrameOverlayVisibility(activeViewer, activeMolstarPrepared, activePose);
+      if (activeSdfPoseMode === 'all') {
+        await applyXyzFrameOverlayVisibility(activeViewer, activeMolstarPrepared, activePose);
+      } else {
+        await reloadActiveMolstarStructure();
+      }
       return;
     }
     if (activeMolstarPrepared?.pdbModelOverlayAvailable === true) {
@@ -2277,8 +2359,13 @@
     const external = normalized === 'xyzrender-external';
     molstarStyleSlot?.classList.toggle('visible', !external);
     if (molstarStyleSelect) molstarStyleSelect.disabled = external;
-    lassoButton?.classList.toggle('hidden', external);
-    if (lassoButton) lassoButton.disabled = external;
+    const lassoAvailable = normalized === 'molstar' || external;
+    lassoButton?.classList.toggle('hidden', !lassoAvailable);
+    if (lassoButton) {
+      lassoButton.disabled = !lassoAvailable;
+      lassoButton.setAttribute('aria-hidden', lassoAvailable ? 'false' : 'true');
+    }
+    updateMolstarLassoButton();
     presetSlot?.classList.toggle('visible', external);
     if (preset) preset.disabled = !external;
     tuneButton?.classList.toggle('hidden', !external);
@@ -2610,8 +2697,17 @@
 
   function requestXyzrenderPreset(preset) {
     const value = normalizeXyzrenderPreset(preset);
+    const toolbar = document.getElementById('buret-toolbar');
+    const controls = toolbar
+      ? readXyzrenderControlsForm(toolbar)
+      : normalizeXyzrenderControls((activeConfig && activeConfig.xyzrenderControls) || DEFAULT_XYZRENDER_CONTROLS, activeConfig || {});
+    if (hasXyzrenderSelection()) {
+      void applyXyzrenderSelectionPreset(value, controls);
+      return;
+    }
+    if (requestSelectedXyzrenderSheetItemsUpdate({ preset: value, controls })) return;
     if (requestBrowserDevXyzrenderUpdate({ preset: value })) return;
-    const sent = postHostMessage({ type: 'setXyzrenderPreset', value });
+    const sent = postHostMessage({ type: 'setXyzrenderPreset', value, ...xyzrenderOrientationPayload({ preset: value, controls }) });
     if (!sent) setStatus('xyzrender preset switching is available only in the app or Quick Look viewer.', 'error');
   }
 
@@ -2620,13 +2716,14 @@
     const endpoint = String(config.xyzrenderEndpoint || '').trim();
     const sourcePath = String(config.xyzrenderSourcePath || config.sourcePath || '').trim();
     const renderer = options.rendererSwitch === true ? 'xyzrender-external' : normalizeRenderer(config.renderer);
-    if (config.tauriViewer !== false || !endpoint || !sourcePath || renderer !== 'xyzrender-external') {
+    const hasXyzrenderArtifact = Boolean(document.querySelector('.buret-external-artifact-root, .buret-xyzrender-sheet-item-base, .buret-external-artifact-object'));
+    if (config.tauriViewer !== false || !endpoint || !sourcePath || (renderer !== 'xyzrender-external' && !hasXyzrenderArtifact)) {
       return false;
     }
     const toolbar = document.getElementById('buret-toolbar');
     const controls = options.controls || (toolbar ? readXyzrenderControlsForm(toolbar) : normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
     const preset = normalizeXyzrenderPreset(options.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
-    const orientationRef = captureCurrentXyzrenderOrientationRef();
+    const orientationRef = captureCurrentXyzrenderOrientationRef(options);
     const inputDataBase64 = typeof config.xyzrenderInputDataBase64 === 'string' ? config.xyzrenderInputDataBase64.trim() : '';
     const inputExtension = typeof config.xyzrenderInputExtension === 'string' ? config.xyzrenderInputExtension.trim() : '';
     const serial = ++xyzrenderInlineRequestSerial;
@@ -2666,8 +2763,7 @@
     const object = document.querySelector('.buret-external-artifact-object');
     const label = (activeConfig || {}).label || 'xyzrender artifact';
     if (baseItem) {
-      baseItem.outerHTML = externalArtifactBaseItemHTML(payload.svg, label);
-      installExternalArtifactBaseItemInteractions(document.querySelector('.buret-external-artifact-root'));
+      updateXyzrenderSheetItemBody(baseItem, payload.svg);
     } else if (object) {
       const stage = object.closest('.buret-external-artifact-stage');
       if (stage) {
@@ -2727,6 +2823,13 @@
       externalArtifact: true,
       xyzrenderSvgBytes: String(payload.svg || '').length
     })), 450);
+  }
+
+  function updateXyzrenderSheetItemBody(item, svg) {
+    const body = item?.querySelector?.('.buret-xyzrender-sheet-item-body');
+    if (!body) return false;
+    body.innerHTML = svg;
+    return true;
   }
 
   function populateXyzrenderControlsForm(toolbar, controls) {
@@ -2862,6 +2965,11 @@
       showVdw: readCheckbox('showVdw'),
       vdwOpacity: current.vdwOpacity,
       vdwScale: readNumber('vdwScale'),
+      vdwAtoms: current.vdwAtoms,
+      hullMode: current.hullMode,
+      hullAtoms: current.hullAtoms,
+      hullOpacity: current.hullOpacity,
+      poreOpacity: current.poreOpacity,
       hideBonds: readCheckbox('hideBonds'),
       showCell: readTriState('showCell'),
       showGhosts: readTriState('showGhosts'),
@@ -2885,10 +2993,44 @@
 
   function requestXyzrenderControls(toolbar) {
     const controls = readXyzrenderControlsForm(toolbar);
+    if (hasXyzrenderSelection()) {
+      const item = xyzrenderFirstSelectionItem();
+      if (item) pushXyzrenderActionHistory(item, 'apply settings');
+      applyXyzrenderSelectionControls(controls);
+      return;
+    }
+    if (requestSelectedXyzrenderSheetItemsUpdate({ controls })) return;
     if (requestBrowserDevXyzrenderUpdate({ controls })) return;
-    const sent = postHostMessage({ type: 'setXyzrenderControls', controls });
+    const sent = postHostMessage({ type: 'setXyzrenderControls', controls, ...xyzrenderOrientationPayload({ controls }) });
     if (!sent) {
       setStatus('xyzrender controls are available only in the app or Quick Look viewer.', 'error');
+    }
+  }
+
+  function requestXyzrenderOrientationReset(toolbar) {
+    latestXyzrenderOrientationRef = null;
+    const config = activeConfig || window.BurreteConfig || {};
+    const controls = toolbar
+      ? readXyzrenderControlsForm(toolbar)
+      : normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
+    const preset = normalizeXyzrenderPreset(
+      toolbar?.querySelector('[data-buret-xyzrender-preset]')?.value ||
+      config.externalArtifact?.preset ||
+      config.xyzrenderPreset ||
+      'default'
+    );
+    const options = { preset, controls, useDefaultOrientation: true };
+    if (requestSelectedXyzrenderSheetItemsUpdate(options)) return;
+    if (requestBrowserDevXyzrenderUpdate(options)) return;
+    const sent = postHostMessage({
+      type: 'setRenderer',
+      value: 'xyzrender-external',
+      preset,
+      controls,
+      orientationRef: ''
+    });
+    if (!sent) {
+      setStatus('xyzrender 3D view reset is available only in the app or browser-dev viewer.', 'error');
     }
   }
 
@@ -2901,13 +3043,22 @@
     }, delayMs);
   }
 
-  function captureCurrentXyzrenderOrientationRef() {
+  function captureCurrentXyzrenderOrientationRef(options = {}) {
+    if (options.useDefaultOrientation === true) return null;
     const config = activeConfig || {};
     const format = normalizeFormat(config.molstarFormat || config.format);
-    if (config.binary === true || !activeViewer || !canUseExternalXyzrender(format)) return null;
+    if (config.binary === true) return null;
+    if (!activeViewer || !canUseExternalXyzrender(format)) return latestXyzrenderOrientationRef;
     const nextRef = buildXyzrenderOrientationRef(activeViewer, config);
     if (nextRef) latestXyzrenderOrientationRef = nextRef;
     return nextRef || latestXyzrenderOrientationRef;
+  }
+
+  function xyzrenderOrientationPayload(options = {}) {
+    const orientationRef = captureCurrentXyzrenderOrientationRef(options);
+    return orientationRef
+      ? { orientationRef: orientationRef.text, orientationAtomCount: orientationRef.atomCount }
+      : {};
   }
 
   function trackMolstarOrientation(viewer, config) {
@@ -3277,8 +3428,21 @@
     window.__buretteMolstarEditUndoShortcutsInstalled = true;
     document.addEventListener('keydown', event => {
       const key = String(event.key || '').toLowerCase();
-      if (key !== 'z' || event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)) return;
-      if (!molstarEditUndoStack.length || !isMolstarEditUndoKeyboardTarget(event.target)) return;
+      if (!['z', 'я'].includes(key) || event.altKey || !(event.metaKey || event.ctrlKey)) return;
+      if (!isMolstarEditUndoKeyboardTarget(event.target)) return;
+      if (event.shiftKey && xyzrenderActionRedoStack.length) {
+        event.preventDefault();
+        event.stopPropagation();
+        goForwardXyzrenderSystemHistory();
+        return;
+      }
+      if (!event.shiftKey && xyzrenderActionUndoStack.length) {
+        event.preventDefault();
+        event.stopPropagation();
+        goBackXyzrenderSystemHistory();
+        return;
+      }
+      if (event.shiftKey || !molstarEditUndoStack.length) return;
       event.preventDefault();
       event.stopPropagation();
       void undoMolstarLastEdit().catch(error => {
@@ -3373,6 +3537,11 @@
     updateMolstarLassoButton();
   }
 
+  function toggleActiveLassoSurface() {
+    if (isXyzrenderLassoSurfaceActive()) setXyzrenderLassoEnabled(!xyzrenderLassoEnabled);
+    else setMolstarLassoEnabled(!molstarLassoEnabled);
+  }
+
   function installMolstarToolbarActionDelegates() {
     if (window.__buretteMolstarToolbarActionDelegatesInstalled) return;
     window.__buretteMolstarToolbarActionDelegatesInstalled = true;
@@ -3384,7 +3553,7 @@
         molstarLassoSuppressClickUntil = Date.now() + 500;
         event.preventDefault();
         event.stopPropagation();
-        setMolstarLassoEnabled(!molstarLassoEnabled);
+        toggleActiveLassoSurface();
         return;
       }
     }, true);
@@ -3406,19 +3575,23 @@
       event.preventDefault();
       event.stopPropagation();
       if (Date.now() < molstarLassoSuppressClickUntil) return;
-      setMolstarLassoEnabled(!molstarLassoEnabled);
+      toggleActiveLassoSurface();
     });
   }
 
   function updateMolstarLassoButton() {
     const button = document.querySelector('#buret-toolbar [data-buret-action="molstar-lasso"]');
     if (!button) return;
-    button.classList.toggle('active', molstarLassoEnabled);
-    button.setAttribute('aria-pressed', molstarLassoEnabled ? 'true' : 'false');
-    const label = molstarLassoEnabled ? 'Exit lasso select' : 'Lasso select';
+    const xyzrender = isXyzrenderLassoSurfaceActive();
+    const active = xyzrender ? xyzrenderLassoEnabled : molstarLassoEnabled;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    const label = active ? 'Exit lasso select' : 'Lasso select';
     button.setAttribute('aria-label', label);
     button.setAttribute('title', label);
-    setTooltipLabel(button, molstarLassoEnabled ? 'Drag over visible residues to select' : 'Lasso select visible residues');
+    setTooltipLabel(button, xyzrender
+      ? (active ? 'Drag over xyzrender graphics to select' : 'Lasso select xyzrender graphics')
+      : (active ? 'Drag over visible residues to select' : 'Lasso select visible residues'));
   }
 
   function setMolstarLassoEnabled(enabled) {
@@ -3430,12 +3603,35 @@
     setStatus(molstarLassoEnabled ? '[web] Lasso selection enabled.' : '[web] Lasso selection disabled.');
   }
 
+  function isXyzrenderLassoSurfaceActive() {
+    const config = activeConfig || window.BurreteConfig || {};
+    return normalizeRenderer(config.renderer) === 'xyzrender-external' || !!document.querySelector('.buret-external-artifact-root');
+  }
+
+  function setXyzrenderLassoEnabled(enabled) {
+    const next = enabled === true;
+    xyzrenderLassoEnabled = next;
+    if (!next) cancelXyzrenderLassoStroke();
+    document.body?.classList.toggle('buret-xyzrender-lasso-active', xyzrenderLassoEnabled);
+    updateMolstarLassoButton();
+    setStatus(xyzrenderLassoEnabled ? '[web] xyzrender lasso enabled.' : '[web] xyzrender lasso disabled.');
+  }
+
   function bindXyzrenderControls(toolbar) {
     if (!toolbar || toolbar.dataset.xyzrenderControlsBound === '1') return;
     toolbar.querySelector('[data-buret-xyzrender-preset]')?.addEventListener('change', () => updateXyzrenderFormVisibility(toolbar));
     toolbar.querySelector('[data-buret-action="xyzrender-reset"]')?.addEventListener('click', () => {
+      if (hasXyzrenderSelection()) {
+        resetXyzrenderSelectionStyles();
+        setStatus('[web] Reset xyzrender lasso selection styles.');
+        setTimeout(hideStatus, 900);
+        return;
+      }
       populateXyzrenderControlsForm(toolbar, {});
       requestXyzrenderControls(toolbar);
+    });
+    toolbar.querySelector('[data-buret-action="xyzrender-reset-orientation"]')?.addEventListener('click', () => {
+      requestXyzrenderOrientationReset(toolbar);
     });
     toolbar.querySelectorAll('[data-buret-xctrl]').forEach(field => {
       field.addEventListener('change', () => {
@@ -5016,6 +5212,10 @@
     if (!toolbar) return;
     toolbar.querySelectorAll('.buret-panel-toggle').forEach(button => { button.classList.add('hidden'); });
     bindThemeButton(toolbar, null);
+    bindMolstarLassoButton(toolbar);
+    bindMolstarLassoKeyboardButton(toolbar);
+    installMolstarLassoSelection();
+    installMolstarToolbarActionDelegates();
     bindXyzrenderControls(toolbar);
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, null);
@@ -5032,7 +5232,7 @@
   function externalArtifactBaseItemHTML(content, label) {
     const safeLabel = escapeHTML(label || 'xyzrender artifact');
     return `
-      <div class="buret-xyzrender-sheet-item buret-xyzrender-sheet-item-base selected" role="button" tabindex="0" aria-label="${safeLabel}">
+      <div class="buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large buret-xyzrender-sheet-item-base" aria-label="${safeLabel}">
         <div class="buret-xyzrender-sheet-item-background"></div>
         <div class="buret-xyzrender-sheet-item-body">${content}</div>
         ${rotatableArtifactControlsHTML()}
@@ -5076,6 +5276,292 @@
     );
   }
 
+  function sheetItemExportLabel(item) {
+    const config = activeConfig || window.BurreteConfig || {};
+    return item?.getAttribute?.('aria-label') || config.label || 'xyzrender';
+  }
+
+  function normalizeSvgForExport(svgText) {
+    let text = String(svgText || '').trim();
+    if (!text) return '';
+    const svgStart = text.search(/<svg[\s>]/iu);
+    if (svgStart > 0) text = text.slice(svgStart);
+    if (!/^<svg[\s>]/iu.test(text)) return '';
+    if (!/\sxmlns=/iu.test(text)) text = text.replace(/<svg\b/iu, '<svg xmlns="http://www.w3.org/2000/svg"');
+    return text;
+  }
+
+  async function xyzrenderSheetItemSvgText(item) {
+    const inlineSvg = item?.querySelector?.('.buret-xyzrender-sheet-item-body > svg');
+    if (inlineSvg) return new XMLSerializer().serializeToString(inlineSvg);
+
+    const object = item?.querySelector?.('.buret-external-artifact-object');
+    const objectSvg = object?.contentDocument?.querySelector?.('svg');
+    if (objectSvg) return new XMLSerializer().serializeToString(objectSvg);
+
+    const data = object?.getAttribute?.('data');
+    if (data) {
+      const response = await fetch(data);
+      if (!response.ok) throw new Error(`Could not read xyzrender SVG: HTTP ${response.status}`);
+      return await response.text();
+    }
+    return '';
+  }
+
+  function downloadBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = safeDownloadFileName(name);
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      link.remove();
+    }, 1000);
+  }
+
+  async function svgTextToCanvas(svgText, item) {
+    const normalized = normalizeSvgForExport(svgText);
+    if (!normalized) throw new Error('No xyzrender SVG payload to export.');
+    const rect = item?.getBoundingClientRect?.();
+    const ratio = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const width = Math.max(256, Math.min(4096, Math.round((rect?.width || 1200) * ratio)));
+    const height = Math.max(256, Math.min(4096, Math.round((rect?.height || 900) * ratio)));
+    const imageBlob = new Blob([normalized], { type: 'image/svg+xml;charset=utf-8' });
+    const imageUrl = URL.createObjectURL(imageBlob);
+    try {
+      const image = new Image();
+      image.decoding = 'async';
+      const loaded = new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error('Could not rasterize xyzrender SVG.'));
+      });
+      image.src = imageUrl;
+      await loaded;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Canvas export is unavailable.');
+      context.clearRect(0, 0, width, height);
+      context.drawImage(image, 0, 0, width, height);
+      return canvas;
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+    }
+  }
+
+  async function svgTextToPngBlob(svgText, item) {
+    const canvas = await svgTextToCanvas(svgText, item);
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error('Could not encode PNG export.'));
+      }, 'image/png');
+    });
+  }
+
+  async function svgTextToGifBlob(svgText, item) {
+    return new Blob([encodeCanvasAsGif(await svgTextToCanvas(svgText, item))], { type: 'image/gif' });
+  }
+
+  function encodeCanvasAsGif(canvas) {
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas export is unavailable.');
+    const { width, height } = canvas;
+    if (width > 4096 || height > 4096) throw new Error('GIF export is limited to 4096 px per side.');
+    const pixels = context.getImageData(0, 0, width, height).data;
+    const indexed = new Uint8Array(width * height);
+    for (let pixel = 0, index = 0; pixel < pixels.length; pixel += 4, index += 1) {
+      indexed[index] = ((pixels[pixel] >> 5) << 5) | ((pixels[pixel + 1] >> 5) << 2) | (pixels[pixel + 2] >> 6);
+    }
+    const bytes = [];
+    const writeByte = value => bytes.push(value & 255);
+    const writeText = value => { for (let index = 0; index < value.length; index += 1) writeByte(value.charCodeAt(index)); };
+    const writeWord = value => { writeByte(value); writeByte(value >> 8); };
+    writeText('GIF89a');
+    writeWord(width);
+    writeWord(height);
+    writeByte(0xf7);
+    writeByte(0);
+    writeByte(0);
+    for (let index = 0; index < 256; index += 1) {
+      writeByte(Math.round(((index >> 5) & 7) * 255 / 7));
+      writeByte(Math.round(((index >> 2) & 7) * 255 / 7));
+      writeByte(Math.round((index & 3) * 255 / 3));
+    }
+    writeByte(0x21); writeByte(0xf9); writeByte(4); writeByte(0); writeWord(0); writeByte(0); writeByte(0);
+    writeByte(0x2c); writeWord(0); writeWord(0); writeWord(width); writeWord(height); writeByte(0);
+    writeByte(8);
+    const lzw = gifLzwEncode(indexed);
+    for (let offset = 0; offset < lzw.length; offset += 255) {
+      const chunk = lzw.slice(offset, offset + 255);
+      writeByte(chunk.length);
+      for (const value of chunk) writeByte(value);
+    }
+    writeByte(0);
+    writeByte(0x3b);
+    return new Uint8Array(bytes);
+  }
+
+  function gifLzwEncode(indices) {
+    const minCodeSize = 8;
+    const clearCode = 1 << minCodeSize;
+    const endCode = clearCode + 1;
+    let codeSize = minCodeSize + 1;
+    let nextCode = endCode + 1;
+    let dictionary = new Map();
+    const output = [];
+    let currentByte = 0;
+    let bitCount = 0;
+    const reset = () => {
+      dictionary = new Map();
+      for (let index = 0; index < clearCode; index += 1) dictionary.set(String(index), index);
+      codeSize = minCodeSize + 1;
+      nextCode = endCode + 1;
+    };
+    const writeCode = code => {
+      currentByte |= code << bitCount;
+      bitCount += codeSize;
+      while (bitCount >= 8) {
+        output.push(currentByte & 255);
+        currentByte >>= 8;
+        bitCount -= 8;
+      }
+    };
+    reset();
+    writeCode(clearCode);
+    let phrase = String(indices[0] ?? 0);
+    for (let offset = 1; offset < indices.length; offset += 1) {
+      const symbol = String(indices[offset]);
+      const combined = `${phrase},${symbol}`;
+      if (dictionary.has(combined)) {
+        phrase = combined;
+        continue;
+      }
+      writeCode(dictionary.get(phrase));
+      if (nextCode < 4096) {
+        dictionary.set(combined, nextCode);
+        nextCode += 1;
+        if (nextCode === (1 << codeSize) && codeSize < 12) codeSize += 1;
+      } else {
+        writeCode(clearCode);
+        reset();
+      }
+      phrase = symbol;
+    }
+    writeCode(dictionary.get(phrase));
+    writeCode(endCode);
+    if (bitCount > 0) output.push(currentByte & 255);
+    return output;
+  }
+
+  function hideXyzrenderSheetContextMenu() {
+    document.querySelector('.buret-xyzrender-context-menu')?.remove();
+  }
+
+  function appendXyzrenderMenuButton(actions, label, action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      Promise.resolve()
+        .then(action)
+        .catch(error => setStatus(error instanceof Error ? error.message : String(error), 'error'));
+    });
+    actions.appendChild(button);
+  }
+
+  function appendXyzrenderMenuLabel(actions, label) {
+    const element = document.createElement('div');
+    element.className = 'buret-molecule-context-menu-section-label';
+    element.textContent = label;
+    actions.appendChild(element);
+  }
+
+  function showXyzrenderSheetContextMenu(event, item) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+    hideMolstarContextMenu({ keepMoleculePreview: true });
+    hideXyzrenderSheetContextMenu();
+
+    const label = sheetItemExportLabel(item);
+    const baseName = safeExportBaseName(label, 'xyzrender');
+    const menu = document.createElement('div');
+    menu.className = 'buret-molecule-context-menu buret-xyzrender-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'xyzrender actions');
+
+    const title = document.createElement('div');
+    title.className = 'buret-molecule-context-menu-title';
+    title.textContent = 'xyzrender';
+    menu.appendChild(title);
+
+    const subtitle = document.createElement('div');
+    subtitle.className = 'buret-molecule-context-menu-subtitle';
+    subtitle.textContent = label;
+    menu.appendChild(subtitle);
+
+    const actions = document.createElement('div');
+    actions.className = 'buret-molecule-context-menu-actions';
+    menu.appendChild(actions);
+
+    appendXyzrenderMenuButton(actions, 'Hide Display', () => {
+      item.remove();
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Hid xyzrender display: ${baseName}`);
+      setTimeout(hideStatus, 900);
+    });
+    if (hasHiddenXyzrenderElements(item)) {
+      appendXyzrenderMenuButton(actions, 'Show Hidden', () => {
+        pushXyzrenderActionHistory(item, 'show hidden');
+        showHiddenXyzrenderElements(item);
+        hideXyzrenderSheetContextMenu();
+      });
+    }
+    if (hasXyzrenderSelection()) {
+      appendXyzrenderMenuButton(actions, 'Hide Selected', () => {
+        pushXyzrenderActionHistory(item, 'hide selected');
+        hideSelectedXyzrenderElements();
+        hideXyzrenderSheetContextMenu();
+      });
+      appendXyzrenderMenuButton(actions, 'Dim Others', () => {
+        pushXyzrenderActionHistory(item, 'dim others');
+        dimUnselectedXyzrenderElements(item);
+        hideXyzrenderSheetContextMenu();
+      });
+    }
+    appendXyzrenderMenuLabel(actions, 'Save to');
+    appendXyzrenderMenuButton(actions, 'SVG', async () => {
+      const svgText = normalizeSvgForExport(await xyzrenderSheetItemSvgText(item));
+      if (!svgText) throw new Error('No xyzrender SVG payload to export.');
+      downloadBlob(new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }), `${baseName}.svg`);
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Saved xyzrender SVG: ${baseName}.svg`);
+      setTimeout(hideStatus, 900);
+    });
+    appendXyzrenderMenuButton(actions, 'PNG', async () => {
+      const pngBlob = await svgTextToPngBlob(await xyzrenderSheetItemSvgText(item), item);
+      downloadBlob(pngBlob, `${baseName}.png`);
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Saved xyzrender PNG: ${baseName}.png`);
+      setTimeout(hideStatus, 900);
+    });
+    appendXyzrenderMenuButton(actions, 'GIF', async () => {
+      const gifBlob = await svgTextToGifBlob(await xyzrenderSheetItemSvgText(item), item);
+      downloadBlob(gifBlob, `${baseName}.gif`);
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Saved xyzrender GIF: ${baseName}.gif`);
+      setTimeout(hideStatus, 900);
+    });
+    document.body.appendChild(menu);
+    positionMolstarContextMenu(menu, event.clientX, event.clientY);
+  }
+
   function escapeHTML(value) {
     return String(value == null ? '' : value)
       .replace(/&/gu, '&amp;')
@@ -5095,18 +5581,26 @@
       .buret-external-artifact-stage { position: absolute; inset: 0; transform: translate(0px, 0px) scale(1); transform-origin: 50% 50%; will-change: transform; cursor: grab; }
       .buret-external-artifact-stage.dragging { cursor: grabbing; }
       .buret-external-artifact-root.sheet-drop-active::after { content: "Drop onto xyzrender sheet"; position: absolute; inset: 14px; z-index: 36; border: 2px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 12%, transparent); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); display: flex; align-items: center; justify-content: center; font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
+      .buret-molstar-lasso.active { background: var(--buret-toolbar-hover, rgba(255,255,255,0.13)); box-shadow: inset 0 0 0 1px var(--buret-toolbar-border, rgba(255,255,255,0.16)); }
+      .buret-molstar-lasso-overlay { position: fixed; inset: 0; z-index: 2147483645; width: 100vw; height: 100vh; pointer-events: none; }
+      .buret-molstar-lasso-overlay polygon { fill: color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); stroke: none; }
+      .buret-molstar-lasso-overlay polyline { fill: none; stroke: color-mix(in srgb, var(--buret-accent, #b45cff) 88%, white); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.36)); }
       .buret-xyzrender-sheet { position: absolute; inset: 0; z-index: 14; pointer-events: auto; }
       .buret-xyzrender-sheet-item { --buret-sheet-rotation: 0deg; --buret-sheet-rotation-negative: 0deg; --buret-active-angle: 0deg; --buret-rotate-radius: 76px; --buret-rotate-lift: 24px; --buret-rotate-handle-scale: 1; position: absolute; left: 50%; top: 50%; width: clamp(118px, 24vw, 280px); height: clamp(118px, 24vw, 280px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation)); transform-origin: 50% 50%; pointer-events: auto; touch-action: none; cursor: grab; border-radius: 10px; outline: 0 solid transparent; }
       .buret-xyzrender-sheet-item:not(.buret-xyzrender-sheet-item-base) { z-index: 2; }
-      .buret-xyzrender-sheet-item-base { width: max(180px, min(calc(100vw - 220px), 860px)); height: max(180px, min(calc(100vh - 230px), 620px)); border-radius: 8px; z-index: 1; }
+      .buret-xyzrender-sheet-item-large { width: max(180px, min(calc(100vw - 220px), 860px)); height: max(180px, min(calc(100vh - 230px), 620px)); border-radius: 8px; }
+      .buret-xyzrender-sheet-item-base { z-index: 1; }
       .buret-xyzrender-sheet-item.dragging { cursor: grabbing; }
       .buret-xyzrender-sheet-item.rotating { cursor: grabbing; }
       .buret-xyzrender-sheet-item.resizing { cursor: nwse-resize; }
+      body.buret-xyzrender-lasso-active .buret-xyzrender-sheet-item { cursor: crosshair; }
       .buret-xyzrender-sheet-item.selected { outline: 0 solid transparent; box-shadow: none; }
+      .buret-xyzrender-sheet-item.has-xyzrender-selection { box-shadow: none; }
+      .buret-xyzrender-svg-selection { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent)); }
       .buret-xyzrender-sheet-item:has(.buret-xyzrender-resize-handle:hover),
       .buret-xyzrender-sheet-item.resizing { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
-      .buret-xyzrender-sheet-item-base .buret-xyzrender-sheet-item-background { border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
+      .buret-xyzrender-sheet-item-large .buret-xyzrender-sheet-item-background { border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
       .buret-xyzrender-sheet-item-body { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
       .buret-xyzrender-sheet-item-body > svg,
       .buret-external-artifact-object { display: block; width: 100%; height: 100%; overflow: visible; border: 0; border-radius: inherit; }
@@ -5274,24 +5768,6 @@
     const sheet = ensureXyzrenderSheet(stage);
     let sheetItemSerial = sheet.querySelectorAll('.buret-xyzrender-sheet-item').length;
 
-    const renderSheetItem = async (entry, preset, controls) => {
-      const config = activeConfig || window.BurreteConfig || {};
-      const endpoint = String(config.xyzrenderEndpoint || '').trim();
-      const path = sheetEntryLabel(entry);
-      const inputDataBase64 = sheetEntryInputDataBase64(entry);
-      const inputExtension = sheetEntryInputExtension(entry);
-      if (!endpoint) return requestHostXyzrenderSheetItem(entry, preset, controls);
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, preset, controls, inputDataBase64, inputExtension })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender sheet request failed with status ${response.status}`);
-      if (typeof payload?.svg !== 'string' || !payload.svg.trim()) throw new Error('xyzrender sheet endpoint returned no SVG payload');
-      return payload;
-    };
-
     const addSheetItems = async (entries, point = null) => {
       const config = activeConfig || window.BurreteConfig || {};
       const cleanEntries = uniqueSheetEntries(entries);
@@ -5310,9 +5786,9 @@
       for (const entry of cleanEntries) {
         const label = sheetEntryLabel(entry);
         try {
-          const payload = await renderSheetItem(entry, preset, controls);
+          const payload = await renderXyzrenderSheetItemPayload(entry, preset, controls);
           sheetItemSerial += 1;
-          addXyzrenderSheetItem(sheet, payload.svg, label, point, sheetItemSerial, getStageScale);
+          addXyzrenderSheetItem(sheet, payload.svg, label, point, sheetItemSerial, getStageScale, entry);
         } catch (error) {
           setStatus(`Could not add ${label} to xyzrender sheet: ${error instanceof Error ? error.message : String(error)}`, 'error');
         }
@@ -5408,12 +5884,389 @@
 
   function sheetEntryInputDataBase64(entry) {
     if (typeof entry === 'string') return undefined;
+    if (typeof entry?.inputDataBase64 === 'string' && entry.inputDataBase64.trim()) {
+      return entry.inputDataBase64.trim();
+    }
     const text = String(entry?.text || '');
     if (!text) return undefined;
     return bytesToBase64(new TextEncoder().encode(text));
   }
 
-  function requestHostXyzrenderSheetItem(entry, preset, controls) {
+  function baseXyzrenderSheetEntry(config = activeConfig || window.BurreteConfig || {}) {
+    const path = String(config.xyzrenderSourcePath || config.sourcePath || config.label || 'structure.xyz');
+    const inputDataBase64 = typeof config.xyzrenderInputDataBase64 === 'string'
+      ? config.xyzrenderInputDataBase64.trim()
+      : '';
+    if (!inputDataBase64) return path;
+    return {
+      path,
+      inputDataBase64,
+      inputExtension: typeof config.xyzrenderInputExtension === 'string' ? config.xyzrenderInputExtension : ''
+    };
+  }
+
+  function setXyzrenderSheetItemEntry(item, entry) {
+    if (!item || !entry) return;
+    xyzrenderSheetItemEntries.set(item, entry);
+    item.dataset.buretXyzrenderSourcePath = sheetEntryLabel(entry);
+  }
+
+  function xyzrenderSheetItemEntry(item) {
+    if (!item) return null;
+    const stored = xyzrenderSheetItemEntries.get(item);
+    if (stored) return stored;
+    if (item.classList?.contains('buret-xyzrender-sheet-item-base')) return baseXyzrenderSheetEntry();
+    const path = item.dataset?.buretXyzrenderSourcePath;
+    return path ? path : null;
+  }
+
+  function selectedXyzrenderSheetItems(root = document) {
+    return Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item.selected'));
+  }
+
+  function frontmostXyzrenderSheetItem(root = document) {
+    const items = Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item'))
+      .filter(item => item.querySelector('.buret-xyzrender-sheet-item-body'));
+    if (!items.length) return null;
+    return items.reduce((frontmost, item) => {
+      const frontmostZ = Number.parseFloat(window.getComputedStyle(frontmost).zIndex);
+      const itemZ = Number.parseFloat(window.getComputedStyle(item).zIndex);
+      return (Number.isFinite(itemZ) ? itemZ : 0) >= (Number.isFinite(frontmostZ) ? frontmostZ : 0)
+        ? item
+        : frontmost;
+    }, items[0]);
+  }
+
+  function xyzrenderSheetItemPreset(item, config = activeConfig || window.BurreteConfig || {}) {
+    return normalizeXyzrenderPreset(
+      item?.dataset?.buretXyzrenderPreset ||
+      config.externalArtifact?.preset ||
+      config.xyzrenderPreset ||
+      'default'
+    );
+  }
+
+  function xyzrenderSheetItemRegions(item) {
+    const raw = item?.dataset?.buretXyzrenderRegions;
+    if (!raw) return [];
+    try {
+      return normalizeXyzrenderRegions(JSON.parse(raw));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function setXyzrenderSheetItemRegions(item, regions) {
+    if (!item) return;
+    const normalized = normalizeXyzrenderRegions(regions);
+    if (!normalized.length) {
+      delete item.dataset.buretXyzrenderRegions;
+      return;
+    }
+    item.dataset.buretXyzrenderRegions = JSON.stringify(normalized);
+  }
+
+  function xyzrenderSheetItemVdwAtoms(item) {
+    return normalizeXyzrenderAtomSelector(item?.dataset?.buretXyzrenderVdwAtoms);
+  }
+
+  function setXyzrenderSheetItemVdwAtoms(item, atoms) {
+    if (!item) return;
+    const normalized = normalizeXyzrenderAtomSelector(atoms);
+    if (!normalized) {
+      delete item.dataset.buretXyzrenderVdwAtoms;
+      return;
+    }
+    item.dataset.buretXyzrenderVdwAtoms = normalized;
+  }
+
+  function xyzrenderAtomIndexFromElement(element) {
+    if (!element?.getAttribute) return null;
+    const values = [
+      element.getAttribute('fill'),
+      element.getAttribute('stroke'),
+      element.getAttribute('style')
+    ].filter(Boolean).join(' ');
+    const match = values.match(/url\(#x\d+g(\d+)\)/u);
+    if (!match) return null;
+    const index = Number(match[1]) + 1;
+    return Number.isInteger(index) && index > 0 ? index : null;
+  }
+
+  function xyzrenderAtomNodes(item) {
+    return xyzrenderGraphicElements(item).map(element => {
+      const index = xyzrenderAtomIndexFromElement(element);
+      if (!index || !element.getBoundingClientRect) return null;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      return {
+        element,
+        index,
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    }).filter(Boolean);
+  }
+
+  function xyzrenderAtomSelectorForElements(item, elements) {
+    const atoms = new Set();
+    const atomNodes = xyzrenderAtomNodes(item);
+    for (const element of elements || []) {
+      const directIndex = xyzrenderAtomIndexFromElement(element);
+      if (directIndex) atoms.add(directIndex);
+    }
+    if (atoms.size === 0) {
+      for (const element of elements || []) {
+        addAtomsNearXyzrenderElement(atoms, atomNodes, element);
+      }
+    }
+    return compactXyzrenderAtomSelector(atoms);
+  }
+
+  function addAtomsNearXyzrenderElement(atoms, atomNodes, element) {
+    if (!element?.getBoundingClientRect) return;
+    const tagName = String(element.tagName || '').toLowerCase();
+    if (tagName === 'line') {
+      const x1 = Number(element.getAttribute('x1'));
+      const y1 = Number(element.getAttribute('y1'));
+      const x2 = Number(element.getAttribute('x2'));
+      const y2 = Number(element.getAttribute('y2'));
+      const svg = element.ownerSVGElement;
+      if (svg && [x1, y1, x2, y2].every(Number.isFinite)) {
+        const p1 = svgPointToClient(svg, x1, y1);
+        const p2 = svgPointToClient(svg, x2, y2);
+        for (const atom of atomNodes) {
+          if (distanceToSegment(atom.x, atom.y, p1.x, p1.y, p2.x, p2.y) <= 18) atoms.add(atom.index);
+        }
+        return;
+      }
+    }
+    const rect = element.getBoundingClientRect();
+    const padding = Math.max(16, Math.min(34, Math.max(rect.width, rect.height) * 0.18));
+    for (const atom of atomNodes) {
+      if (
+        atom.x >= rect.left - padding &&
+        atom.x <= rect.right + padding &&
+        atom.y >= rect.top - padding &&
+        atom.y <= rect.bottom + padding
+      ) {
+        atoms.add(atom.index);
+      }
+    }
+  }
+
+  function svgPointToClient(svg, x, y) {
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return { x, y };
+    const point = svg.createSVGPoint();
+    point.x = x;
+    point.y = y;
+    const transformed = point.matrixTransform(matrix);
+    return { x: transformed.x, y: transformed.y };
+  }
+
+  function distanceToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    if (dx === 0 && dy === 0) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
+
+  function compactXyzrenderAtomSelector(values) {
+    const atoms = Array.from(values || [])
+      .map(Number)
+      .filter(value => Number.isInteger(value) && value > 0)
+      .sort((a, b) => a - b);
+    if (!atoms.length) return null;
+    const parts = [];
+    let start = atoms[0];
+    let previous = atoms[0];
+    for (const atom of atoms.slice(1)) {
+      if (atom === previous) continue;
+      if (atom === previous + 1) {
+        previous = atom;
+        continue;
+      }
+      parts.push(start === previous ? String(start) : `${start}-${previous}`);
+      start = atom;
+      previous = atom;
+    }
+    parts.push(start === previous ? String(start) : `${start}-${previous}`);
+    return parts.join(',');
+  }
+
+  function requestSelectedXyzrenderSheetItemsUpdate(options = {}) {
+    const selectedItems = selectedXyzrenderSheetItems().filter(item => item.querySelector('.buret-xyzrender-sheet-item-body'));
+    const frontmostItem = selectedItems.length === 0 ? frontmostXyzrenderSheetItem() : null;
+    const items = selectedItems.length > 0 ? selectedItems : (frontmostItem ? [frontmostItem] : []);
+    if (items.length === 0) return false;
+    void updateSelectedXyzrenderSheetItems(items, options);
+    return true;
+  }
+
+  async function applyXyzrenderSelectionPreset(preset, controls) {
+    const groups = xyzrenderSelectionGroups();
+    if (!groups.length) {
+      clearXyzrenderSelection();
+      return;
+    }
+    const normalizedPreset = normalizeXyzrenderPreset(preset);
+    setStatus(`[web] Applying ${normalizedPreset} preset to selected xyzrender atoms…`);
+    let updated = 0;
+    for (const group of groups) {
+      const entry = xyzrenderSheetItemEntry(group.item);
+      if (!entry) continue;
+      const atomSelector = xyzrenderAtomSelectorForElements(group.item, group.elements);
+      if (!atomSelector) continue;
+      try {
+        const regions = [...xyzrenderSheetItemRegions(group.item), { atoms: atomSelector, preset: normalizedPreset }];
+        const nextControls = normalizeXyzrenderControls({ ...controls, regions }, activeConfig || window.BurreteConfig || {});
+        const basePreset = xyzrenderSheetItemPreset(group.item);
+        const payload = await renderXyzrenderSheetItemPayload(entry, basePreset, nextControls);
+        pushXyzrenderActionHistory(group.item, `apply ${normalizedPreset} region`);
+        updateXyzrenderSheetItemBody(group.item, payload.svg);
+        setXyzrenderSheetItemEntry(group.item, entry);
+        group.item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || basePreset);
+        setXyzrenderSheetItemRegions(group.item, regions);
+        updated += atomSelector.split(',').reduce((count, part) => {
+          const [start, end] = part.split('-').map(Number);
+          return count + (end ? end - start + 1 : 1);
+        }, 0);
+      } catch (error) {
+        setStatus(`Could not apply ${normalizedPreset} preset to ${sheetEntryLabel(entry)}: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      }
+    }
+    if (updated > 0) {
+      clearXyzrenderSelection();
+      setStatus(`[web] Applied ${normalizedPreset} preset to ${updated} selected xyzrender atom${updated === 1 ? '' : 's'}.`);
+      setTimeout(hideStatus, 900);
+    }
+  }
+
+  async function applyXyzrenderSelectionVdw(controls, preset) {
+    const groups = xyzrenderSelectionGroups();
+    if (!groups.length) {
+      setStatus('Select atoms first, then apply partial vdW spheres.', 'error');
+      return;
+    }
+    const normalizedPreset = normalizeXyzrenderPreset(preset);
+    setStatus('[web] Applying partial vdW spheres to selected xyzrender atoms…');
+    let updated = 0;
+    for (const group of groups) {
+      const entry = xyzrenderSheetItemEntry(group.item);
+      if (!entry) continue;
+      const atomSelector = xyzrenderAtomSelectorForElements(group.item, group.elements);
+      if (!atomSelector) continue;
+      try {
+        const nextControls = normalizeXyzrenderControls({
+          ...controls,
+          showVdw: true,
+          vdwAtoms: atomSelector,
+          regions: xyzrenderSheetItemRegions(group.item)
+        }, activeConfig || window.BurreteConfig || {});
+        const basePreset = xyzrenderSheetItemPreset(group.item);
+        const payload = await renderXyzrenderSheetItemPayload(entry, normalizedPreset || basePreset, nextControls);
+        pushXyzrenderActionHistory(group.item, 'apply partial vdW');
+        updateXyzrenderSheetItemBody(group.item, payload.svg);
+        setXyzrenderSheetItemEntry(group.item, entry);
+        group.item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || normalizedPreset || basePreset);
+        setXyzrenderSheetItemVdwAtoms(group.item, atomSelector);
+        updated += atomSelector.split(',').reduce((count, part) => {
+          const [start, end] = part.split('-').map(Number);
+          return count + (end ? end - start + 1 : 1);
+        }, 0);
+      } catch (error) {
+        setStatus(`Could not apply partial vdW spheres to ${sheetEntryLabel(entry)}: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      }
+    }
+    if (updated > 0) {
+      clearXyzrenderSelection();
+      setStatus(`[web] Applied partial vdW spheres to ${updated} selected xyzrender atom${updated === 1 ? '' : 's'}.`);
+      setTimeout(hideStatus, 900);
+    }
+  }
+
+  async function updateSelectedXyzrenderSheetItems(items, options = {}) {
+    const config = activeConfig || window.BurreteConfig || {};
+    const controls = normalizeXyzrenderControls(options.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
+    const preset = normalizeXyzrenderPreset(options.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+    setStatus(`[web] Updating ${items.length} selected xyzrender structure${items.length === 1 ? '' : 's'}…`);
+    let updated = 0;
+    for (const item of items) {
+      const entry = xyzrenderSheetItemEntry(item);
+      if (!entry) continue;
+      try {
+        const itemControls = normalizeXyzrenderControls({
+          ...controls,
+          vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || controls.vdwAtoms,
+          regions: xyzrenderSheetItemRegions(item)
+        }, config);
+        const payload = await renderXyzrenderSheetItemPayload(entry, preset, itemControls, options);
+        updateXyzrenderSheetItemBody(item, payload.svg);
+        setXyzrenderSheetItemEntry(item, entry);
+        item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || preset);
+        updated += 1;
+      } catch (error) {
+        setStatus(`Could not update ${sheetEntryLabel(entry)}: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      }
+    }
+    if (updated > 0) {
+      setStatus(`[web] Updated ${updated} selected xyzrender structure${updated === 1 ? '' : 's'}.`);
+      setTimeout(hideStatus, 700);
+    }
+  }
+
+  async function renderXyzrenderSheetItemPayload(entry, preset, controls, options = {}) {
+    const config = activeConfig || window.BurreteConfig || {};
+    const endpoint = String(config.xyzrenderEndpoint || '').trim();
+    const path = sheetEntryLabel(entry);
+    const inputDataBase64 = sheetEntryInputDataBase64(entry);
+    const inputExtension = sheetEntryInputExtension(entry);
+    const orientationRef = captureCurrentXyzrenderOrientationRef(options);
+    if (!endpoint) return requestHostXyzrenderSheetItem(entry, preset, controls, options);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response;
+    try {
+      response = await fetch(xyzrenderBrowserDevEndpointUrl(endpoint), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          path,
+          preset,
+          controls,
+          inputDataBase64,
+          inputExtension,
+          orientationRef: orientationRef?.text || undefined
+        })
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('xyzrender sheet render timed out');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : `xyzrender sheet request failed with status ${response.status}`);
+    if (typeof payload?.svg !== 'string' || !payload.svg.trim()) throw new Error('xyzrender sheet endpoint returned no SVG payload');
+    return payload;
+  }
+
+  function xyzrenderBrowserDevEndpointUrl(endpoint) {
+    try {
+      return new URL(endpoint).toString();
+    } catch (_) {}
+    try {
+      const parentLocation = window.parent && window.parent !== window ? window.parent.location.href : '';
+      return new URL(endpoint, parentLocation || window.location.href).toString();
+    } catch (_) {
+      return endpoint;
+    }
+  }
+
+  function requestHostXyzrenderSheetItem(entry, preset, controls, options = {}) {
     const requestId = `xyzrender-sheet-${++xyzrenderSheetRequestSerial}`;
     const path = sheetEntryLabel(entry);
     return new Promise((resolve, reject) => {
@@ -5429,7 +6282,8 @@
         preset,
         controls,
         inputDataBase64: sheetEntryInputDataBase64(entry),
-        inputExtension: sheetEntryInputExtension(entry)
+        inputExtension: sheetEntryInputExtension(entry),
+        orientationRef: captureCurrentXyzrenderOrientationRef(options)?.text || null
       });
       if (!sent) {
         clearTimeout(timeout);
@@ -5462,12 +6316,13 @@
     });
   }
 
-  function addXyzrenderSheetItem(sheet, svg, path, point, serial, getStageScale) {
+  function addXyzrenderSheetItem(sheet, svg, path, point, serial, getStageScale, entry = path) {
     const item = document.createElement('div');
-    item.className = 'buret-xyzrender-sheet-item selected';
+    item.className = 'buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large selected';
     item.setAttribute('role', 'button');
     item.setAttribute('tabindex', '0');
     item.setAttribute('aria-label', `Sheet structure ${path}`);
+    setXyzrenderSheetItemEntry(item, entry);
     const rect = sheet.getBoundingClientRect();
     const fallbackX = rect.width * (0.42 + ((serial - 1) % 4) * 0.06);
     const fallbackY = rect.height * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
@@ -5539,6 +6394,20 @@
       if (existing !== item) existing.classList.remove('selected');
     });
     item.classList.add('selected');
+    bringXyzrenderSheetItemToFront(item, root);
+  }
+
+  function bringXyzrenderSheetItemToFront(item, root = document) {
+    const current = Number(root?.dataset?.buretXyzrenderTopZ || 20);
+    const next = Math.max(20, current) + 1;
+    if (root?.dataset) root.dataset.buretXyzrenderTopZ = String(next);
+    item.style.zIndex = String(next);
+  }
+
+  function selectAllRotatableArtifacts(root = document) {
+    root.querySelectorAll('.buret-xyzrender-sheet-item').forEach(item => {
+      item.classList.add('selected');
+    });
   }
 
   function clearRotatableArtifactSelection(root = document) {
@@ -5626,6 +6495,15 @@
     };
   }
 
+  function initializeSheetItemCenterPosition(item) {
+    const inlineLeft = String(item?.style?.left || '');
+    const inlineTop = String(item?.style?.top || '');
+    if (inlineLeft.endsWith('px') && inlineTop.endsWith('px')) return;
+    const position = sheetItemCenterPosition(item);
+    item.style.left = `${position.left}px`;
+    item.style.top = `${position.top}px`;
+  }
+
   function installRotatableArtifactResize(item, getStageScale) {
     if (!item || item.dataset.buretResizeInstalled === 'true') return;
     item.dataset.buretResizeInstalled = 'true';
@@ -5652,6 +6530,7 @@
     };
 
     const onPointerDown = event => {
+      if (event.button !== 0) return;
       const handle = event.target?.closest?.('[data-buret-resize-handle]');
       if (!handle || !item.contains(handle)) return;
       event.preventDefault();
@@ -5720,18 +6599,59 @@
   function installExternalArtifactBaseItemInteractions(root, getStageScale) {
     if (!root) return;
     installRotatableArtifactSelectionClear(root);
+    installXyzrenderContextMenuInterception(root);
+    const readStageScale = getStageScale || (() => parseFloat(root.dataset.buretXyzrenderStageScale || '1') || 1);
     root.querySelectorAll('.buret-xyzrender-sheet-item-base').forEach(item => {
-      installXyzrenderSheetItemInteractions(item, getStageScale, { removable: false });
+      setXyzrenderSheetItemEntry(item, baseXyzrenderSheetEntry());
+      installXyzrenderSheetItemInteractions(item, readStageScale, { removable: false });
     });
+  }
+
+  function installXyzrenderContextMenuInterception(root) {
+    if (!root || root.dataset.buretContextMenuInterceptInstalled === 'true') return;
+    root.dataset.buretContextMenuInterceptInstalled = 'true';
+    const intercept = event => {
+      const item = xyzrenderSheetItemFromContextEvent(event, root);
+      if (!item) return;
+      showXyzrenderSheetContextMenu(event, item);
+    };
+    root.addEventListener('contextmenu', intercept, true);
+    document.addEventListener('contextmenu', intercept, true);
+  }
+
+  function xyzrenderSheetItemFromContextEvent(event, root = document) {
+    const target = event.target instanceof Element ? event.target : null;
+    const direct = target?.closest?.('.buret-xyzrender-sheet-item');
+    if (direct && root.contains(direct)) return direct;
+    const hit = document.elementFromPoint?.(event.clientX, event.clientY);
+    const hitItem = hit?.closest?.('.buret-xyzrender-sheet-item');
+    if (hitItem && root.contains(hitItem)) return hitItem;
+    return Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item')).find(item => {
+      const rect = item.getBoundingClientRect();
+      return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+    }) || (() => {
+      const rootRect = root.getBoundingClientRect?.();
+      if (!rootRect || event.clientX < rootRect.left || event.clientX > rootRect.right || event.clientY < rootRect.top || event.clientY > rootRect.bottom) return null;
+      return Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item')).find(item => hasHiddenXyzrenderElements(item)) || null;
+    })();
   }
 
   function installXyzrenderSheetItemInteractions(item, getStageScale, options = {}) {
     if (!item || item.dataset.buretRotatableInstalled === 'true') return;
     item.dataset.buretRotatableInstalled = 'true';
+    initializeSheetItemCenterPosition(item);
+    item.addEventListener('contextmenu', event => showXyzrenderSheetContextMenu(event, item));
     item.addEventListener('click', event => {
+      if (event.button !== 0) return;
       event.stopPropagation();
       selectRotatableArtifact(item);
       try { item.focus({ preventScroll: true }); } catch (_) {}
+    });
+    item.addEventListener('dblclick', event => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      selectAllRotatableArtifacts(item.closest('.buret-external-artifact-root') || document);
     });
     installXyzrenderSheetItemDrag(item, getStageScale);
     installXyzrenderSheetItemRotation(item);
@@ -5752,6 +6672,8 @@
     let startLeft = 0;
     let startTop = 0;
     const onPointerDown = event => {
+      if (xyzrenderLassoEnabled) return;
+      if (event.button !== 0) return;
       if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle]')) return;
       event.preventDefault();
       event.stopPropagation();
@@ -5807,6 +6729,7 @@
       return Math.atan2(event.clientY - centerY, event.clientX - centerX) * 180 / Math.PI;
     };
     const onPointerDown = event => {
+      if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
       selectRotatableArtifact(item);
@@ -5871,6 +6794,7 @@
     };
     const apply = () => {
       clampTranslation();
+      root.dataset.buretXyzrenderStageScale = String(scale);
       stage.style.transform = `translate(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px) scale(${scale.toFixed(4)})`;
     };
     const zoomAt = (nextScale, clientX, clientY) => {
@@ -6416,6 +7340,53 @@
     return Array.from(picked).sort((left, right) => left - right);
   }
 
+  function xyzFrameOverlayRawSignature(raw) {
+    const text = String(raw || '');
+    if (!text) return 'empty';
+    const hashText = text.length > 8192 ? `${text.slice(0, 4096)}\n${text.slice(-4096)}` : text;
+    return `${text.length}:${stableTextHash(hashText)}`;
+  }
+
+  function xyzFrameOverlayStateKey(rawSignature, frames, prepared, style, contextStyle, contextOpacity, contextColor, backgroundIndexes) {
+    return [
+      activeConfig?.documentId || '',
+      prepared?.label || '',
+      rawSignature,
+      frames.length,
+      style,
+      contextStyle,
+      contextOpacity,
+      contextColor,
+      backgroundIndexes.join(',')
+    ].join('|');
+  }
+
+  function resetXyzFrameOverlayState(viewer = null) {
+    if (!viewer || activeXyzFrameOverlayState?.viewer === viewer) {
+      activeXyzFrameOverlayState = null;
+    }
+  }
+
+  async function removeMolstarStructures(viewer, structures) {
+    const list = Array.from(structures || []).filter(Boolean);
+    if (!list.length) return;
+    const hierarchy = viewer?.plugin?.managers?.structure?.hierarchy;
+    if (typeof hierarchy?.remove !== 'function') return;
+    try {
+      await hierarchy.remove(list, false);
+    } catch (error) {
+      debug('Mol* structure removal failed: ' + (error && error.message || String(error)));
+    }
+  }
+
+  function xyzFrameOverlayStateStillLoaded(viewer, state) {
+    if (!state || state.viewer !== viewer) return false;
+    const structures = Array.from(molstarCurrentStructures(viewer));
+    const background = Array.isArray(state.backgroundStructures) ? state.backgroundStructures : [];
+    if (!background.length) return false;
+    return background.every(structure => structures.includes(structure));
+  }
+
   function parseV2000SdfRecord(record) {
     const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const countsIndex = lines.findIndex(line => /\bV2000\b/u.test(line) || /^\s*\d+\s+\d+\s+/.test(line));
@@ -6611,39 +7582,71 @@
     if (!plugin?.builders?.data?.rawData || !plugin?.builders?.structure?.parseTrajectory || !plugin?.builders?.structure?.hierarchy?.applyPreset) {
       throw new Error('Mol* structure builders are not available in this runtime.');
     }
-    const frames = splitXyzFrames(rawStructureData(activeConfig));
+    const raw = rawStructureData(activeConfig);
+    const rawSignature = xyzFrameOverlayRawSignature(raw);
+    let frames = activeXyzFrameOverlayState?.viewer === viewer && activeXyzFrameOverlayState.rawSignature === rawSignature
+      ? activeXyzFrameOverlayState.frames
+      : null;
+    if (!Array.isArray(frames)) frames = splitXyzFrames(raw);
     if (frames.length <= 1) {
+      resetXyzFrameOverlayState(viewer);
       await reloadActiveMolstarStructure();
       return;
     }
-    const allMode = activeSdfPoseMode === 'all';
     const activeIndex = Math.max(0, Math.min(frames.length - 1, Math.trunc(Number(activePose) || 0)));
     const label = activeConfig?.label || prepared?.label || 'XYZ frames';
     const style = configuredMolstarStyle(activeConfig);
-    if (typeof plugin.clear === 'function') await plugin.clear();
-
-    if (allMode) {
+    if (activeSdfPoseMode !== 'all') {
+      resetXyzFrameOverlayState(viewer);
+      if (typeof plugin.clear === 'function') await plugin.clear();
+      const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
+      if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
+      const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
+      if (!activeStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
+      await applySdfCollectionMolstarStyle(viewer, style, activeStructures, 1, 'colored');
+      await applyMolstarWaterLineRepresentation(viewer);
+      if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
+      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'xyz-frame', durationMs: 180 });
+      return;
+    }
+    const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
+    const resolvedContextStyle = xyzFrameBackgroundStyle(contextStyle, style);
+    const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
+    const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
+    const backgroundIndexes = sampledXyzFrameBackgroundIndexes(frames.length, -1);
+    const stateKey = xyzFrameOverlayStateKey(rawSignature, frames, prepared, style, resolvedContextStyle, contextOpacity, contextColor, backgroundIndexes);
+    let state = activeXyzFrameOverlayState;
+    if (!state || state.key !== stateKey || !xyzFrameOverlayStateStillLoaded(viewer, state)) {
+      if (typeof plugin.clear === 'function') await plugin.clear();
       const contextStructures = [];
-      const backgroundIndexes = sampledXyzFrameBackgroundIndexes(frames.length, activeIndex);
-      const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
-      const resolvedContextStyle = xyzFrameBackgroundStyle(contextStyle, style);
-      if (resolvedContextStyle === 'molecular-surface') {
-        const entry = xyzFramesCombinedEntry(frames, backgroundIndexes, `${label} (sampled background frames)`);
-        if (entry) contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
-      } else {
-        for (const index of backgroundIndexes) {
-          const entry = xyzFrameEntry(frames[index], `${label} (background frame ${index + 1})`);
-          if (!entry) continue;
-          contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
-        }
+      for (const index of backgroundIndexes) {
+        const entry = xyzFrameEntry(frames[index], `${label} (background frame ${index + 1})`);
+        if (!entry) continue;
+        contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
       }
       if (contextStructures.length) {
-        const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
-        const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
         await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, contextStructures, contextOpacity, contextColor);
       }
+      state = {
+        viewer,
+        key: stateKey,
+        rawSignature,
+        frames,
+        backgroundStructures: contextStructures,
+        activeStructures: [],
+        activeIndex: -1
+      };
+      activeXyzFrameOverlayState = state;
     }
 
+    if (state.activeIndex === activeIndex && xyzFrameOverlayStateStillLoaded(viewer, state)) {
+      if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
+      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      return;
+    }
+    await removeMolstarStructures(viewer, state.activeStructures);
+    state.activeStructures = [];
     const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
     if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
     const structuresBeforeActive = new Set(molstarCurrentStructures(viewer));
@@ -6653,6 +7656,8 @@
       : Array.from(molstarCurrentStructures(viewer)).filter(structure => !structuresBeforeActive.has(structure));
     if (!scopedActiveStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
     await applySdfCollectionMolstarStyle(viewer, style, scopedActiveStructures, 1, 'colored');
+    state.activeStructures = scopedActiveStructures;
+    state.activeIndex = activeIndex;
     if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
   }
@@ -7942,8 +8947,11 @@
     const current = readNativeTrajectoryPosition(poseCount);
     if (!current) return false;
     if (current.index === target) return true;
-    const direction = target > current.index ? 1 : -1;
-    for (let step = current.index; step !== target; step += direction) {
+    const forwardSteps = (target - current.index + poseCount) % poseCount;
+    const backwardSteps = (current.index - target + poseCount) % poseCount;
+    const direction = forwardSteps <= backwardSteps ? 1 : -1;
+    const stepCount = direction > 0 ? forwardSteps : backwardSteps;
+    for (let step = 0; step < stepCount; step += 1) {
       const button = nativeTrajectoryStepButton(direction);
       if (!button || button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
       button.click();
@@ -8337,24 +9345,26 @@
       const untilNextFrame = delay - (elapsed % delay);
       return Math.max(minimumTrajectoryLoopTimerDelay(prepared), Math.min(delay, untilNextFrame));
     };
-    const scheduleLoopStep = (delayMs = loopNextDelay()) => {
+    const scheduleLoopStep = (delayMs = prepared.nativeTrajectoryControls ? loopDelayMs() : loopNextDelay()) => {
       loopTimer = window.setTimeout(() => {
         loopTimer = null;
         if (!loopActive) return;
         if (loopBusy) {
-          scheduleLoopStep();
+          scheduleLoopStep(prepared.nativeTrajectoryControls ? loopDelayMs() : undefined);
           return;
         }
-        const nextIndex = loopTargetIndex();
+        const nextIndex = prepared.nativeTrajectoryControls
+          ? (activePose + 1) % prepared.poseCount
+          : loopTargetIndex();
         if (nextIndex === activePose) {
-          scheduleLoopStep();
+          scheduleLoopStep(prepared.nativeTrajectoryControls ? loopDelayMs() : undefined);
           return;
         }
         loopBusy = true;
         void setPose(nextIndex, { loopStep: true }).finally(() => {
           loopBusy = false;
           if (!loopActive) return;
-          scheduleLoopStep();
+          scheduleLoopStep(prepared.nativeTrajectoryControls ? loopDelayMs() : undefined);
         });
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
     };
@@ -8696,12 +9706,30 @@
     document.addEventListener('pointermove', onMolstarLassoPointerMove, true);
     document.addEventListener('pointerup', onMolstarLassoPointerUp, true);
     document.addEventListener('pointercancel', onMolstarLassoPointerCancel, true);
+    document.addEventListener('pointerdown', onXyzrenderLassoPointerDown, true);
+    document.addEventListener('pointermove', onXyzrenderLassoPointerMove, true);
+    document.addEventListener('pointerup', onXyzrenderLassoPointerUp, true);
+    document.addEventListener('pointercancel', onXyzrenderLassoPointerCancel, true);
     document.addEventListener('keydown', onMolstarLassoKeyDown, true);
     window.addEventListener('resize', cancelMolstarLassoStroke);
+    window.addEventListener('resize', cancelXyzrenderLassoStroke);
   }
 
   function onMolstarLassoKeyDown(event) {
     if (event.key !== 'Escape') return;
+    if (xyzrenderLassoStroke) {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelXyzrenderLassoStroke();
+      setStatus('[web] xyzrender lasso canceled.');
+      return;
+    }
+    if (xyzrenderLassoEnabled) {
+      event.preventDefault();
+      event.stopPropagation();
+      setXyzrenderLassoEnabled(false);
+      return;
+    }
     if (molstarLassoStroke) {
       event.preventDefault();
       event.stopPropagation();
@@ -8913,6 +9941,546 @@
     }
     if (selected > 0) scheduleMolstarSelectedMoleculePreview();
     return selected;
+  }
+
+  function onXyzrenderLassoPointerDown(event) {
+    if (!xyzrenderLassoEnabled || event.button !== 0) return;
+    const item = xyzrenderSheetItemFromEvent(event);
+    if (!item) return;
+    hideXyzrenderSheetContextMenu();
+    xyzrenderLassoStroke = {
+      pointerId: event.pointerId,
+      item,
+      additive: event.shiftKey || event.metaKey || event.ctrlKey,
+      dragging: false,
+      points: [{ x: event.clientX, y: event.clientY }]
+    };
+    try { item.setPointerCapture?.(event.pointerId); } catch (_) {}
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function onXyzrenderLassoPointerMove(event) {
+    const stroke = xyzrenderLassoStroke;
+    if (!stroke || event.pointerId !== stroke.pointerId) return;
+    const last = stroke.points[stroke.points.length - 1];
+    if (Math.hypot(event.clientX - last.x, event.clientY - last.y) >= MOLSTAR_LASSO_MIN_DISTANCE_PX) {
+      if (!stroke.dragging) {
+        stroke.dragging = true;
+        hideXyzrenderSheetContextMenu();
+        ensureXyzrenderLassoOverlay();
+        try { stroke.item.setPointerCapture?.(event.pointerId); } catch (_) {}
+      }
+      stroke.points.push({ x: event.clientX, y: event.clientY });
+      updateXyzrenderLassoOverlay(stroke.points);
+    }
+    if (!stroke.dragging) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function onXyzrenderLassoPointerUp(event) {
+    const stroke = xyzrenderLassoStroke;
+    if (!stroke || event.pointerId !== stroke.pointerId) return;
+    if (!stroke.dragging) {
+      xyzrenderLassoStroke = null;
+      clearXyzrenderSelection();
+      return;
+    }
+    if (Math.hypot(event.clientX - stroke.points[0].x, event.clientY - stroke.points[0].y) >= MOLSTAR_LASSO_MIN_DISTANCE_PX) {
+      stroke.points.push({ x: event.clientX, y: event.clientY });
+    }
+    finishXyzrenderLassoStroke(stroke);
+    try { stroke.item.releasePointerCapture?.(event.pointerId); } catch (_) {}
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function onXyzrenderLassoPointerCancel(event) {
+    const stroke = xyzrenderLassoStroke;
+    if (!stroke || event.pointerId !== stroke.pointerId) return;
+    cancelXyzrenderLassoStroke();
+    if (!stroke.dragging) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }
+
+  function xyzrenderSheetItemFromEvent(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || target.closest('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle], #buret-toolbar, .buret-xyzrender-popover')) return null;
+    const item = target.closest('.buret-xyzrender-sheet-item')
+      || xyzrenderSheetItemFromContextEvent(event, document);
+    if (!item || !item.querySelector('.buret-xyzrender-sheet-item-body svg')) return null;
+    return item;
+  }
+
+  function ensureXyzrenderLassoOverlay() {
+    if (xyzrenderLassoOverlay) return xyzrenderLassoOverlay;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('buret-molstar-lasso-overlay', 'buret-xyzrender-lasso-overlay');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML = '<polygon data-buret-lasso-fill></polygon><polyline data-buret-lasso-line></polyline>';
+    document.body.appendChild(svg);
+    xyzrenderLassoOverlay = svg;
+    return svg;
+  }
+
+  function updateXyzrenderLassoOverlay(points) {
+    const overlay = ensureXyzrenderLassoOverlay();
+    const value = points.map(point => `${Math.round(point.x)},${Math.round(point.y)}`).join(' ');
+    overlay.querySelector('[data-buret-lasso-fill]')?.setAttribute('points', value);
+    overlay.querySelector('[data-buret-lasso-line]')?.setAttribute('points', value);
+  }
+
+  function removeXyzrenderLassoOverlay() {
+    xyzrenderLassoOverlay?.remove();
+    xyzrenderLassoOverlay = null;
+  }
+
+  function cancelXyzrenderLassoStroke() {
+    xyzrenderLassoStroke = null;
+    removeXyzrenderLassoOverlay();
+  }
+
+  function finishXyzrenderLassoStroke(stroke) {
+    xyzrenderLassoStroke = null;
+    removeXyzrenderLassoOverlay();
+    const bounds = molstarLassoBounds(stroke.points);
+    if (stroke.points.length < MOLSTAR_LASSO_MIN_POINTS || bounds.width < MOLSTAR_LASSO_SAMPLE_STEP_PX || bounds.height < MOLSTAR_LASSO_SAMPLE_STEP_PX) {
+      setStatus('[web] xyzrender lasso was too small.');
+      return;
+    }
+    const selected = selectXyzrenderElementsInLasso(stroke.item, stroke.points, stroke.additive);
+    setStatus(selected > 0
+      ? `[web] Selected ${selected} xyzrender graphic${selected === 1 ? '' : 's'} with lasso.`
+      : '[web] xyzrender lasso did not match visible graphics.');
+  }
+
+  function selectXyzrenderElementsInLasso(item, points, additive) {
+    if (!additive) clearXyzrenderSelection();
+    let selected = 0;
+    for (const element of xyzrenderSelectableElements(item)) {
+      if (!svgElementIntersectsLasso(element, points, item)) continue;
+      markXyzrenderElementSelected(element);
+      selected += 1;
+    }
+    updateXyzrenderSelectionRoots();
+    return selected;
+  }
+
+  function xyzrenderSelectableElements(item) {
+    return xyzrenderGraphicElements(item).filter(element => {
+      if (!element.getBoundingClientRect) return false;
+      const rect = element.getBoundingClientRect();
+      const tagName = element.tagName.toLowerCase();
+      const hasArea = rect.width > 0 && rect.height > 0;
+      const hasStrokeExtent = svgElementHasStroke(element) && (rect.width > 0 || rect.height > 0);
+      if (!hasArea && !hasStrokeExtent) return false;
+      if (tagName === 'rect') {
+        const itemRect = item.getBoundingClientRect();
+        if (rect.width > itemRect.width * 0.82 && rect.height > itemRect.height * 0.82) return false;
+      }
+      const style = window.getComputedStyle(element);
+      return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || 1) > 0.01;
+    });
+  }
+
+  function svgElementIntersectsLasso(element, points, item) {
+    const rect = element.getBoundingClientRect();
+    const itemRect = item.getBoundingClientRect();
+    if (rect.right < itemRect.left || rect.left > itemRect.right || rect.bottom < itemRect.top || rect.top > itemRect.bottom) return false;
+    const candidates = [
+      { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+      { x: rect.left, y: rect.top },
+      { x: rect.right, y: rect.top },
+      { x: rect.right, y: rect.bottom },
+      { x: rect.left, y: rect.bottom }
+    ];
+    return candidates.some(point => molstarPointInPolygon(point, points));
+  }
+
+  function markXyzrenderElementSelected(element) {
+    ensureXyzrenderOriginalStyle(element);
+    element.classList.add('buret-xyzrender-svg-selection');
+    element.setAttribute('data-buret-xyzrender-selected', 'true');
+    xyzrenderSelectedElements.add(element);
+  }
+
+  function ensureXyzrenderOriginalStyle(element) {
+    xyzrenderStyledElements.add(element);
+    if (xyzrenderSelectionOriginals.has(element)) return;
+    xyzrenderSelectionOriginals.set(element, {
+      style: element.getAttribute('style'),
+      fill: element.getAttribute('fill'),
+      stroke: element.getAttribute('stroke'),
+      strokeWidth: element.getAttribute('stroke-width'),
+      opacity: element.getAttribute('opacity'),
+      display: element.getAttribute('display'),
+      visibility: element.getAttribute('visibility')
+    });
+  }
+
+  function restoreXyzrenderOriginalStyle(element) {
+    const original = xyzrenderSelectionOriginals.get(element);
+    if (!original) return;
+    restoreNullableAttribute(element, 'style', original.style);
+    restoreNullableAttribute(element, 'fill', original.fill);
+    restoreNullableAttribute(element, 'stroke', original.stroke);
+    restoreNullableAttribute(element, 'stroke-width', original.strokeWidth);
+    restoreNullableAttribute(element, 'opacity', original.opacity);
+    restoreNullableAttribute(element, 'display', original.display);
+    restoreNullableAttribute(element, 'visibility', original.visibility);
+  }
+
+  function restoreNullableAttribute(element, name, value) {
+    if (value == null) element.removeAttribute(name);
+    else element.setAttribute(name, value);
+  }
+
+  function xyzrenderGraphicElements(item) {
+    const svg = item?.querySelector?.('.buret-xyzrender-sheet-item-body svg');
+    if (!svg) return [];
+    return xyzrenderGraphicElementsFromSvg(svg);
+  }
+
+  function xyzrenderGraphicElementsFromSvg(svg) {
+    if (!svg?.querySelectorAll) return [];
+    return Array.from(svg.querySelectorAll('path,circle,ellipse,rect,line,polyline,polygon,text'));
+  }
+
+  function xyzrenderElementSnapshot(element) {
+    return {
+      element,
+      style: element.getAttribute('style'),
+      fill: element.getAttribute('fill'),
+      stroke: element.getAttribute('stroke'),
+      strokeWidth: element.getAttribute('stroke-width'),
+      opacity: element.getAttribute('opacity'),
+      display: element.getAttribute('display'),
+      visibility: element.getAttribute('visibility'),
+      selected: element.getAttribute('data-buret-xyzrender-selected') === 'true',
+      selectionClass: element.classList.contains('buret-xyzrender-svg-selection')
+    };
+  }
+
+  function captureXyzrenderActionSnapshot(item, label = 'xyzrender action') {
+    const body = item?.querySelector?.('.buret-xyzrender-sheet-item-body');
+    return {
+      item,
+      label,
+      bodyHtml: body ? body.innerHTML : null,
+      regions: item?.dataset?.buretXyzrenderRegions || null,
+      preset: item?.dataset?.buretXyzrenderPreset || null,
+      elements: xyzrenderGraphicElements(item).map(xyzrenderElementSnapshot)
+    };
+  }
+
+  function restoreXyzrenderActionSnapshot(snapshot) {
+    if (!snapshot) return;
+    const body = snapshot.item?.querySelector?.('.buret-xyzrender-sheet-item-body');
+    if (body && typeof snapshot.bodyHtml === 'string') {
+      body.innerHTML = snapshot.bodyHtml;
+      restoreNullableAttribute(snapshot.item, 'data-buret-xyzrender-regions', snapshot.regions);
+      restoreNullableAttribute(snapshot.item, 'data-buret-xyzrender-preset', snapshot.preset);
+      body.querySelectorAll('[data-buret-xyzrender-selected="true"]').forEach(element => {
+        xyzrenderSelectedElements.add(element);
+        ensureXyzrenderOriginalStyle(element);
+      });
+      cleanupXyzrenderSelectionSet();
+      return;
+    }
+    for (const entry of snapshot.elements || []) {
+      const element = entry.element;
+      if (!element?.isConnected) continue;
+      restoreNullableAttribute(element, 'style', entry.style);
+      restoreNullableAttribute(element, 'fill', entry.fill);
+      restoreNullableAttribute(element, 'stroke', entry.stroke);
+      restoreNullableAttribute(element, 'stroke-width', entry.strokeWidth);
+      restoreNullableAttribute(element, 'opacity', entry.opacity);
+      restoreNullableAttribute(element, 'display', entry.display);
+      restoreNullableAttribute(element, 'visibility', entry.visibility);
+      element.classList.toggle('buret-xyzrender-svg-selection', entry.selectionClass);
+      if (entry.selected) {
+        element.setAttribute('data-buret-xyzrender-selected', 'true');
+        xyzrenderSelectedElements.add(element);
+      } else {
+        element.removeAttribute('data-buret-xyzrender-selected');
+        xyzrenderSelectedElements.delete(element);
+      }
+      ensureXyzrenderOriginalStyle(element);
+    }
+    cleanupXyzrenderSelectionSet();
+  }
+
+  function installXyzrenderSystemHistory() {
+    if (xyzrenderSystemHistoryInstalled) return;
+    xyzrenderSystemHistoryInstalled = true;
+    window.addEventListener('popstate', event => {
+      const nextIndex = xyzrenderSystemHistoryIndexFromState(event.state);
+      if (nextIndex < xyzrenderSystemHistoryIndex) {
+        undoXyzrenderLastAction({ fromSystemHistory: true });
+      } else if (nextIndex > xyzrenderSystemHistoryIndex) {
+        redoXyzrenderLastAction({ fromSystemHistory: true });
+      }
+      xyzrenderSystemHistoryIndex = nextIndex;
+    });
+  }
+
+  function xyzrenderSystemHistoryIndexFromState(state) {
+    const value = state && typeof state === 'object' ? Number(state[XYZRENDER_HISTORY_STATE_KEY]) : 0;
+    return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  }
+
+  function pushXyzrenderSystemHistoryEntry() {
+    installXyzrenderSystemHistory();
+    try {
+      const current = history.state && typeof history.state === 'object' ? history.state : {};
+      const nextIndex = xyzrenderSystemHistoryIndex + 1;
+      history.pushState({ ...current, [XYZRENDER_HISTORY_STATE_KEY]: nextIndex }, '', window.location.href);
+      xyzrenderSystemHistoryIndex = nextIndex;
+    } catch (_) {}
+  }
+
+  function goBackXyzrenderSystemHistory() {
+    installXyzrenderSystemHistory();
+    if (xyzrenderSystemHistoryIndex > 0) {
+      history.back();
+      return;
+    }
+    undoXyzrenderLastAction({ fromSystemHistory: true });
+  }
+
+  function goForwardXyzrenderSystemHistory() {
+    installXyzrenderSystemHistory();
+    history.forward();
+  }
+
+  function pushXyzrenderActionHistory(item, label) {
+    const snapshot = captureXyzrenderActionSnapshot(item, label);
+    if (!snapshot.elements.length) return;
+    pushXyzrenderSystemHistoryEntry();
+    xyzrenderActionUndoStack.push(snapshot);
+    if (xyzrenderActionUndoStack.length > 50) xyzrenderActionUndoStack.shift();
+    xyzrenderActionRedoStack.length = 0;
+  }
+
+  function undoXyzrenderLastAction(options = {}) {
+    const snapshot = xyzrenderActionUndoStack.pop();
+    if (!snapshot) {
+      setStatus('[web] Nothing to undo.');
+      setTimeout(hideStatus, 900);
+      return false;
+    }
+    xyzrenderActionRedoStack.push(captureXyzrenderActionSnapshot(snapshot.item, snapshot.label));
+    restoreXyzrenderActionSnapshot(snapshot);
+    setStatus(`[web] Undid xyzrender ${snapshot.label}.`);
+    setTimeout(hideStatus, 900);
+    if (!options.fromSystemHistory) goBackXyzrenderSystemHistory();
+    return true;
+  }
+
+  function redoXyzrenderLastAction(options = {}) {
+    const snapshot = xyzrenderActionRedoStack.pop();
+    if (!snapshot) {
+      setStatus('[web] Nothing to redo.');
+      setTimeout(hideStatus, 900);
+      return false;
+    }
+    xyzrenderActionUndoStack.push(captureXyzrenderActionSnapshot(snapshot.item, snapshot.label));
+    restoreXyzrenderActionSnapshot(snapshot);
+    setStatus(`[web] Redid xyzrender ${snapshot.label}.`);
+    setTimeout(hideStatus, 900);
+    if (!options.fromSystemHistory) goForwardXyzrenderSystemHistory();
+    return true;
+  }
+
+  function hasHiddenXyzrenderElements(item) {
+    return xyzrenderGraphicElements(item).some(element => {
+      const style = window.getComputedStyle(element);
+      return element.getAttribute('display') === 'none'
+        || element.getAttribute('visibility') === 'hidden'
+        || style.display === 'none'
+        || style.visibility === 'hidden';
+    });
+  }
+
+  function showHiddenXyzrenderElements(item) {
+    let shown = 0;
+    for (const element of xyzrenderGraphicElements(item)) {
+      const style = window.getComputedStyle(element);
+      const hidden = element.getAttribute('display') === 'none'
+        || element.getAttribute('visibility') === 'hidden'
+        || style.display === 'none'
+        || style.visibility === 'hidden';
+      if (!hidden) continue;
+      if (xyzrenderSelectionOriginals.has(element)) restoreXyzrenderOriginalStyle(element);
+      else {
+        element.removeAttribute('display');
+        element.removeAttribute('visibility');
+      }
+      shown += 1;
+    }
+    setStatus(`[web] Restored ${shown} hidden xyzrender graphic${shown === 1 ? '' : 's'}.`);
+    setTimeout(hideStatus, 900);
+  }
+
+  function hasXyzrenderSelection() {
+    cleanupXyzrenderSelectionSet();
+    return xyzrenderSelectedElements.size > 0;
+  }
+
+  function xyzrenderFirstSelectionItem() {
+    const groups = xyzrenderSelectionGroups();
+    return groups.length ? groups[0].item : null;
+  }
+
+  function xyzrenderSelectionGroups() {
+    cleanupXyzrenderSelectionSet();
+    const groups = [];
+    const indexes = new Map();
+    for (const element of Array.from(xyzrenderSelectedElements)) {
+      if (!element.isConnected) continue;
+      const item = element.closest('.buret-xyzrender-sheet-item');
+      if (!item) continue;
+      let index = indexes.get(item);
+      if (index == null) {
+        index = groups.length;
+        indexes.set(item, index);
+        groups.push({ item, elements: [] });
+      }
+      groups[index].elements.push(element);
+    }
+    return groups;
+  }
+
+  function cleanupXyzrenderSelectionSet() {
+    for (const element of Array.from(xyzrenderSelectedElements)) {
+      if (!element.isConnected) xyzrenderSelectedElements.delete(element);
+    }
+    updateXyzrenderSelectionRoots();
+  }
+
+  function updateXyzrenderSelectionRoots() {
+    document.querySelectorAll('.buret-xyzrender-sheet-item').forEach(item => {
+      item.classList.toggle('has-xyzrender-selection', !!item.querySelector('[data-buret-xyzrender-selected="true"]'));
+    });
+  }
+
+  function clearXyzrenderSelection() {
+    for (const element of Array.from(xyzrenderSelectedElements)) {
+      element.classList.remove('buret-xyzrender-svg-selection');
+      element.removeAttribute('data-buret-xyzrender-selected');
+    }
+    xyzrenderSelectedElements.clear();
+    updateXyzrenderSelectionRoots();
+  }
+
+  function resetXyzrenderSelectionStyles() {
+    for (const element of Array.from(xyzrenderStyledElements)) {
+      if (element.isConnected) restoreXyzrenderOriginalStyle(element);
+      else xyzrenderStyledElements.delete(element);
+    }
+    updateXyzrenderSelectionRoots();
+  }
+
+  function dimUnselectedXyzrenderElements(item) {
+    const selected = new Set(Array.from(xyzrenderSelectedElements).filter(element => element.isConnected));
+    let dimmed = 0;
+    for (const element of xyzrenderSelectableElements(item)) {
+      ensureXyzrenderOriginalStyle(element);
+      if (selected.has(element)) {
+        const original = xyzrenderSelectionOriginals.get(element);
+        restoreNullableAttribute(element, 'opacity', original?.opacity ?? null);
+        continue;
+      }
+      element.setAttribute('opacity', '0.18');
+      dimmed += 1;
+    }
+    setStatus(`[web] Dimmed ${dimmed} unselected xyzrender graphic${dimmed === 1 ? '' : 's'}.`);
+    setTimeout(hideStatus, 900);
+  }
+
+  function hideSelectedXyzrenderElements() {
+    const elements = Array.from(xyzrenderSelectedElements).filter(element => element.isConnected);
+    if (!elements.length) {
+      clearXyzrenderSelection();
+      return;
+    }
+    for (const element of elements) {
+      ensureXyzrenderOriginalStyle(element);
+      element.setAttribute('display', 'none');
+    }
+    setStatus(`[web] Hid ${elements.length} selected xyzrender graphic${elements.length === 1 ? '' : 's'}.`);
+    setTimeout(hideStatus, 900);
+  }
+
+  function applyXyzrenderSelectionControls(controls) {
+    const elements = Array.from(xyzrenderSelectedElements).filter(element => element.isConnected);
+    if (!elements.length) {
+      clearXyzrenderSelection();
+      return;
+    }
+    const color = nonEmptyText(controls?.molColor);
+    const opacity = Number.isFinite(Number(controls?.vdwOpacity))
+      ? Number(controls.vdwOpacity)
+      : (Number.isFinite(Number(controls?.fieldOpacity)) ? Number(controls.fieldOpacity) : null);
+    const strokeWidth = positiveNumberOrNull(controls?.bondWidth);
+    const hidden = controls?.hideBonds === true;
+    for (const element of elements) {
+      ensureXyzrenderOriginalStyle(element);
+      if (hidden) {
+        element.setAttribute('display', 'none');
+        continue;
+      }
+      element.removeAttribute('display');
+      element.removeAttribute('visibility');
+      if (color) applySvgElementColor(element, color);
+      if (opacity != null) element.setAttribute('opacity', String(Math.max(0, Math.min(1, opacity))));
+      if (strokeWidth != null && svgElementHasStroke(element)) element.setAttribute('stroke-width', String(strokeWidth));
+    }
+    setStatus(`[web] Applied xyzrender settings to ${elements.length} selected graphic${elements.length === 1 ? '' : 's'}.`);
+    setTimeout(hideStatus, 900);
+  }
+
+  function applySvgElementColor(element, color) {
+    const tag = element.tagName.toLowerCase();
+    const fill = element.getAttribute('fill');
+    const stroke = element.getAttribute('stroke');
+    const style = window.getComputedStyle(element);
+    if (tag === 'line' || tag === 'polyline') {
+      element.setAttribute('stroke', color);
+      return;
+    }
+    if (fill == null || fill.toLowerCase() !== 'none') {
+      const computedFill = String(style.fill || '').toLowerCase();
+      if (computedFill !== 'none') element.setAttribute('fill', color);
+    }
+    if (stroke == null || stroke.toLowerCase() !== 'none') {
+      const computedStroke = String(style.stroke || '').toLowerCase();
+      if (computedStroke !== 'none') element.setAttribute('stroke', color);
+    }
+  }
+
+  function svgElementHasStroke(element) {
+    const tag = element.tagName.toLowerCase();
+    if (tag === 'line' || tag === 'polyline' || tag === 'path' || tag === 'polygon') return true;
+    const stroke = element.getAttribute('stroke') || window.getComputedStyle(element).stroke;
+    return !!stroke && String(stroke).toLowerCase() !== 'none';
+  }
+
+  function showXyzrenderSelectionContextMenu(item, bounds) {
+    const x = Math.min(bounds.right, Math.max(bounds.left, bounds.left + bounds.width / 2));
+    const y = Math.min(bounds.bottom, Math.max(bounds.top, bounds.top + bounds.height / 2));
+    showXyzrenderSheetContextMenu({
+      preventDefault() {},
+      stopPropagation() {},
+      clientX: x,
+      clientY: y
+    }, item);
   }
 
   function molstarCurrentSelectionLociList() {
@@ -11052,7 +12620,7 @@
   }
 
   function hideMolstarContextMenu(options = {}) {
-    document.querySelector('.buret-molecule-context-menu')?.remove();
+    document.querySelector('.buret-molecule-context-menu:not(.buret-xyzrender-context-menu)')?.remove();
     molstarContextMenuPick = null;
     if (options.keepMoleculePreview) return;
     scheduleMolstarSelectedMoleculePreview();
@@ -11533,6 +13101,7 @@
   function disposeActiveMolstarViewer() {
     setMolstarStructureDirty(false);
     clearMolstarEditUndoHistory();
+    resetXyzFrameOverlayState(activeViewer);
     const viewer = activeViewer || window.BurreteViewer || window.BuretteViewer;
     try { viewer?.plugin?.dispose?.(); } catch (_) {}
     if (molstarContainerResizeCleanup) {

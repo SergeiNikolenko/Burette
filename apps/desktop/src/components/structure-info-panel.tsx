@@ -1042,7 +1042,7 @@ function structureCompositionSourceForDocument(document: ViewerDocument): Inspec
       virtual: false,
     };
   }
-  return { path: document.path, extension: document.extension, virtual: document.virtual };
+  return { path: document.path, extension: document.extension, virtual: document.virtual === true };
 }
 
 function readInspectorStructureText(source: InspectorStructureTextSource) {

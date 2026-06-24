@@ -11,6 +11,8 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use super::runtime::XyzrenderControls;
+#[cfg(test)]
+use super::runtime::XyzrenderRegion;
 
 const XYZRENDER_TIMEOUT: Duration = Duration::from_secs(20);
 const XYZRENDER_LOG_CAPTURE_BYTES: usize = 64 * 1024;
@@ -157,19 +159,46 @@ pub(crate) fn create_xyzrender_artifact(
     } else {
         input_path
     };
-    let (status, log) = run_xyzrender_command(
+    let orientation_ref_path = write_orientation_ref(orientation_ref_text, &orientation_ref_path)?;
+    let (mut status, mut log) = run_xyzrender_command(
         &executable,
         build_xyzrender_args(
             effective_input_path,
             &output_path,
             resolved_preset,
-            write_orientation_ref(orientation_ref_text, &orientation_ref_path)?,
+            orientation_ref_path,
             controls,
             direct_smiles,
         ),
         &log_path,
         XYZRENDER_TIMEOUT,
     )?;
+    if orientation_ref_path.is_some()
+        && !status.success()
+        && xyzrender_ref_unsupported_for_periodic(&log)
+    {
+        let _ = fs::remove_file(&output_path);
+        let _ = fs::remove_file(&log_path);
+        let (retry_status, retry_log) = run_xyzrender_command(
+            &executable,
+            build_xyzrender_args(
+                effective_input_path,
+                &output_path,
+                resolved_preset,
+                None,
+                controls,
+                direct_smiles,
+            ),
+            &log_path,
+            XYZRENDER_TIMEOUT,
+        )?;
+        status = retry_status;
+        log = format!(
+            "{}\n[burette] Retried without --ref because xyzrender does not support --ref for periodic structures.\n{}",
+            log, retry_log
+        );
+        let _ = fs::write(&log_path, &log);
+    }
     if !status.success() {
         return Err(format!(
             "External xyzrender failed with exit status {}. {}",
@@ -1049,6 +1078,10 @@ fn normalize_orientation_ref(text: Option<&str>) -> Option<String> {
     })
 }
 
+fn xyzrender_ref_unsupported_for_periodic(log: &str) -> bool {
+    log.contains("--ref is not supported for periodic structures")
+}
+
 fn normalize_preset(value: Option<&str>) -> &'static str {
     match value
         .unwrap_or("default")
@@ -1067,9 +1100,35 @@ fn normalize_preset(value: Option<&str>) -> &'static str {
         "mtube" => "mtube",
         "wire" => "wire",
         "graph" => "graph",
+        "vdw" => "vdw",
         "custom" => "custom",
         _ => "default",
     }
+}
+
+fn normalize_atom_selector(value: &str) -> Option<String> {
+    let text = value.split_whitespace().collect::<String>();
+    if text.is_empty() {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for part in text.split(',') {
+        let mut bounds = part.split('-');
+        let start = bounds.next()?.parse::<usize>().ok()?;
+        let end = match bounds.next() {
+            Some(value) => value.parse::<usize>().ok()?,
+            None => start,
+        };
+        if bounds.next().is_some() || start == 0 || end == 0 || end < start {
+            return None;
+        }
+        parts.push(if start == end {
+            start.to_string()
+        } else {
+            format!("{start}-{end}")
+        });
+    }
+    Some(parts.join(","))
 }
 
 fn build_xyzrender_args(
@@ -1080,10 +1139,11 @@ fn build_xyzrender_args(
     controls: Option<&XyzrenderControls>,
     direct_smiles: Option<&str>,
 ) -> Vec<String> {
-    let mut args = if let Some(smiles) = direct_smiles.filter(|value| !value.trim().is_empty()) {
+    let direct_smiles = direct_smiles.filter(|value| !value.trim().is_empty());
+    let mut args = if let Some(smiles) = direct_smiles {
         vec!["--smi".to_string(), smiles.trim().to_string()]
     } else {
-        vec![input_path.display().to_string()]
+        Vec::new()
     };
     args.extend([
         "-o".to_string(),
@@ -1094,6 +1154,9 @@ fn build_xyzrender_args(
     if let Some(path) = orientation_ref_path {
         args.push("--ref".to_string());
         args.push(path.display().to_string());
+    }
+    if direct_smiles.is_none() {
+        args.push(input_path.display().to_string());
     }
     if let Some(controls) = controls {
         if controls.transparent_background == Some(true) {
@@ -1129,8 +1192,13 @@ fn build_xyzrender_args(
             args.push("-F".to_string());
             args.push(value.to_string());
         }
-        if controls.show_vdw == Some(true) {
+        if preset != "vdw" && controls.show_vdw == Some(true) {
             args.push("--vdw".to_string());
+            if let Some(atoms) =
+                normalize_atom_selector(controls.vdw_atoms.as_deref().unwrap_or_default())
+            {
+                args.push(atoms);
+            }
         }
         if let Some(value) = finite_positive(controls.vdw_opacity) {
             args.push("--vdw-opacity".to_string());
@@ -1140,8 +1208,40 @@ fn build_xyzrender_args(
             args.push("--vdw-scale".to_string());
             args.push(value.to_string());
         }
+        let hull_argument = normalize_atom_selector(
+            controls.hull_atoms.as_deref().unwrap_or_default(),
+        )
+        .or_else(|| xyzrender_hull_argument(controls.hull_mode.as_deref()).map(str::to_string));
+        if let Some(argument) = hull_argument {
+            args.push("--hull".to_string());
+            args.push(argument);
+        }
+        if let Some(value) = finite_non_negative(controls.hull_opacity) {
+            args.push("--hull-opacity".to_string());
+            args.push(value.to_string());
+        }
+        if xyzrender_pore_enabled(controls.hull_mode.as_deref()) {
+            args.push("--pore".to_string());
+        }
+        if let Some(value) = finite_non_negative(controls.pore_opacity) {
+            args.push("--pore-opacity".to_string());
+            args.push(value.to_string());
+        }
         if controls.hide_bonds == Some(true) {
             args.push("--no-bonds".to_string());
+        }
+        match normalized_display_hydrogens(controls.display_hydrogens.as_deref()) {
+            Some("all") => args.push("--hy".to_string()),
+            Some("none") => args.push("--no-hy".to_string()),
+            _ => {}
+        }
+        match normalized_bond_notation(controls.bond_notation.as_deref()) {
+            Some("aromatic") => args.push("--bo".to_string()),
+            Some("kekule") => {
+                args.push("--bo".to_string());
+                args.push("-k".to_string());
+            }
+            _ => {}
         }
         if let Some(value) = controls.show_cell {
             args.push(if value { "--cell" } else { "--no-cell" }.to_string());
@@ -1162,6 +1262,15 @@ fn build_xyzrender_args(
         {
             args.push("--supercell".to_string());
             args.extend(values.iter().map(ToString::to_string));
+        }
+        if let Some(regions) = controls.regions.as_ref() {
+            for region in regions {
+                if let Some(atoms) = normalize_atom_selector(&region.atoms) {
+                    args.push("--region".to_string());
+                    args.push(atoms);
+                    args.push(normalize_preset(Some(&region.preset)).to_string());
+                }
+            }
         }
         args.extend(sanitized_extra_arguments(
             controls.extra_arguments.as_deref(),
@@ -1235,6 +1344,53 @@ fn normalized_field_mode(value: Option<&str>) -> Option<&'static str> {
         Some("auto") | Some("off") | None => None,
         _ => None,
     }
+}
+
+fn normalized_display_hydrogens(value: Option<&str>) -> Option<&'static str> {
+    match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("all") => Some("all"),
+        Some("auto") => Some("auto"),
+        Some("none") => Some("none"),
+        _ => None,
+    }
+}
+
+fn normalized_bond_notation(value: Option<&str>) -> Option<&'static str> {
+    match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("aromatic") => Some("aromatic"),
+        Some("kekule") => Some("kekule"),
+        _ => None,
+    }
+}
+
+fn normalized_hull_mode(value: Option<&str>) -> Option<&'static str> {
+    match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("benzene-ring") => Some("benzene-ring"),
+        Some("anthracene-rings") => Some("anthracene-rings"),
+        Some("auto-rings") => Some("auto-rings"),
+        Some("faces") => Some("faces"),
+        Some("pore") => Some("pore"),
+        Some("mof5-faces") => Some("mof5-faces"),
+        Some("mof5-pore") => Some("mof5-pore"),
+        Some("faces-pore") => Some("faces-pore"),
+        Some("off") | None => None,
+        _ => None,
+    }
+}
+
+fn xyzrender_hull_argument(value: Option<&str>) -> Option<&'static str> {
+    match normalized_hull_mode(value) {
+        Some("benzene-ring" | "anthracene-rings" | "auto-rings") => Some("rings"),
+        Some("faces" | "mof5-faces" | "faces-pore") => Some("faces"),
+        _ => None,
+    }
+}
+
+fn xyzrender_pore_enabled(value: Option<&str>) -> bool {
+    matches!(
+        normalized_hull_mode(value),
+        Some("pore" | "mof5-pore" | "faces-pore")
+    )
 }
 
 fn surface_mode_from_controls(controls: &XyzrenderControls) -> Option<String> {
@@ -1439,6 +1595,35 @@ fn sanitized_extra_arguments(value: Option<&str>, strip_field_arguments: bool) -
         vec!["-o", "--output", "-go", "--gif-output", "--config", "--ref"];
     let mut blocked_value_count_flags = Vec::new();
     let mut blocked = blocked_value_flags.clone();
+    blocked.push("--region");
+    blocked_value_count_flags.push(("--region", 2usize));
+    blocked.push("--hull");
+    blocked_value_flags.extend([
+        "--hull-color",
+        "--hull-opacity",
+        "--hull-color-type",
+        "--hull-edge-width-ratio",
+        "--ring-max-size",
+        "--ring-min-size",
+        "--face-planarity",
+        "--pore-color",
+        "--pore-opacity",
+    ]);
+    blocked.extend([
+        "--hull-color",
+        "--hull-opacity",
+        "--hull-color-type",
+        "--hull-edge-width-ratio",
+        "--ring-max-size",
+        "--ring-min-size",
+        "--face-planarity",
+        "--pore-color",
+        "--pore-opacity",
+        "--pore",
+        "--hull-edge",
+        "--no-hull-edge",
+    ]);
+    blocked.extend(["--hy", "--no-hy", "--bo", "--no-bo", "-k"]);
     if strip_field_arguments {
         blocked_value_flags.extend([
             "--esp",
@@ -1689,6 +1874,7 @@ pub(crate) fn xyzrender_preset_options() -> serde_json::Value {
         { "value": "mtube", "label": "MTube" },
         { "value": "wire", "label": "Wire" },
         { "value": "graph", "label": "Graph" },
+        { "value": "vdw", "label": "vdW" },
         { "value": "custom", "label": "Custom JSON" }
     ])
 }
@@ -1783,6 +1969,16 @@ mod tests {
 
         assert!(text.len() < XYZRENDER_LOG_CAPTURE_BYTES + 128);
         assert!(text.contains("log truncated"));
+    }
+
+    #[test]
+    fn detects_periodic_ref_rejection() {
+        assert!(xyzrender_ref_unsupported_for_periodic(
+            "xyzrender: error: --ref is not supported for periodic structures"
+        ));
+        assert!(!xyzrender_ref_unsupported_for_periodic(
+            "xyzrender: error: input could not be parsed"
+        ));
     }
 
     #[test]
@@ -2019,9 +2215,16 @@ mod tests {
             fog: Some(true),
             fog_strength: Some(0.5),
             show_vdw: Some(true),
+            vdw_atoms: Some("2-4, 6".into()),
             vdw_opacity: Some(0.4),
             vdw_scale: Some(1.1),
+            hull_mode: Some("faces-pore".into()),
+            hull_atoms: Some("8-10".into()),
+            hull_opacity: Some(0.35),
+            pore_opacity: Some(0.5),
             hide_bonds: Some(true),
+            display_hydrogens: Some("all".into()),
+            bond_notation: Some("kekule".into()),
             show_cell: Some(true),
             show_ghosts: Some(false),
             show_axes: Some(true),
@@ -2038,7 +2241,11 @@ mod tests {
             field_cmap_min: Some(-0.2),
             field_cmap_max: Some(0.4),
             custom_config_path: Some("/tmp/custom.json".into()),
-            extra_arguments: Some("--output hacked.svg --axis 111 --measure d --opacity 0.9 --mo-colors red blue --cmap-range -1 1".into()),
+            extra_arguments: Some("--output hacked.svg --axis 111 --measure d --opacity 0.9 --mo-colors red blue --cmap-range -1 1 --region 7 flat --no-hy --bo -k".into()),
+            regions: Some(vec![XyzrenderRegion {
+                atoms: "1-3, 5".into(),
+                preset: "tube".into(),
+            }]),
         };
 
         let args = build_xyzrender_args(
@@ -2056,12 +2263,28 @@ mod tests {
         assert!(joined.contains("--transparent"));
         assert!(joined.contains("--no-grad"));
         assert!(joined.contains("--fog"));
-        assert!(joined.contains("--vdw"));
+        assert!(joined.contains("--vdw 2-4,6"));
+        assert!(joined.contains("--hull 8-10"));
+        assert!(joined.contains("--hull-opacity 0.35"));
+        assert!(joined.contains("--pore"));
+        assert!(joined.contains("--pore-opacity 0.5"));
         assert!(joined.contains("--no-bonds"));
+        assert_eq!(args.iter().filter(|arg| arg.as_str() == "--hy").count(), 1);
+        assert_eq!(
+            args.iter().filter(|arg| arg.as_str() == "--no-hy").count(),
+            0
+        );
+        assert_eq!(
+            args.iter().filter(|arg| arg.as_str() == "--no-bo").count(),
+            0
+        );
+        assert_eq!(args.iter().filter(|arg| arg.as_str() == "--bo").count(), 1);
+        assert_eq!(args.iter().filter(|arg| arg.as_str() == "-k").count(), 1);
         assert!(joined.contains("--cell"));
         assert!(joined.contains("--no-ghosts"));
         assert!(joined.contains("--axes"));
         assert!(joined.contains("--supercell 2 3 4"));
+        assert!(joined.contains("--region 1-3,5 tube"));
         assert!(joined.contains("--mo"));
         assert!(joined.contains("--iso 0.35"));
         assert!(joined.contains("--opacity 0.55"));
@@ -2075,12 +2298,27 @@ mod tests {
         assert!(!joined.contains("--opacity 0.9"));
         assert!(!joined.contains("--mo-colors red blue"));
         assert!(!joined.contains("--cmap-range -1 1"));
+        assert!(!joined.contains("--region 7 flat"));
         assert!(!joined.contains("hacked.svg"));
+        let hull_index = args.iter().position(|arg| arg == "--hull").unwrap();
+        let input_index = args.iter().position(|arg| arg == "/tmp/in.xyz").unwrap();
+        assert!(input_index < hull_index);
 
         controls.field_iso = Some(0.0);
         let zero_iso_args =
             build_xyzrender_args(&input, &output, "default", None, Some(&controls), None);
         assert!(!zero_iso_args.join(" ").contains("--iso 0"));
+
+        controls.hull_atoms = None;
+        controls.hull_mode = Some("auto-rings".into());
+        let ring_hull_args =
+            build_xyzrender_args(&input, &output, "default", None, Some(&controls), None);
+        assert!(ring_hull_args.join(" ").contains("--hull rings"));
+
+        let vdw_args = build_xyzrender_args(&input, &output, "vdw", None, None, None);
+        let vdw_joined = vdw_args.join(" ");
+        assert!(vdw_joined.contains("--config vdw"));
+        assert!(!vdw_joined.contains("--vdw"));
     }
 
     #[test]

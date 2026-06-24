@@ -305,7 +305,8 @@ enum BurreteXyzrenderPreset {
         ("btube", "BTube"),
         ("mtube", "MTube"),
         ("wire", "Wire"),
-        ("graph", "Graph")
+        ("graph", "Graph"),
+        ("vdw", "vdW")
     ]
 
     static let pickerOptions: [(String, String)] = builtInOptions + [("custom", "Custom JSON")]

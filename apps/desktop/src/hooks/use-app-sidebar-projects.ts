@@ -13,7 +13,7 @@ const browserDevSampleFiles = [
 
 type UseAppSidebarProjectsArgs = {
   activeDocumentId: string | null;
-  browserDevExplicitFolder: string | null;
+  browserDevExplicitFolders: string[];
   browserDevHasExplicitWorkspace: boolean;
   documents: ViewerDocument[];
   hiddenProjectRoots: string[];
@@ -29,7 +29,7 @@ type UseAppSidebarProjectsArgs = {
 
 export function useAppSidebarProjects({
   activeDocumentId,
-  browserDevExplicitFolder,
+  browserDevExplicitFolders,
   browserDevHasExplicitWorkspace,
   documents,
   hiddenProjectRoots,
@@ -51,16 +51,16 @@ export function useAppSidebarProjects({
     [browserDevHasExplicitWorkspace],
   );
   const sidebarProjectRoots = useMemo(() => {
-    if (browserDevExplicitFolder) return [browserDevExplicitFolder];
+    if (browserDevExplicitFolders.length > 0) return browserDevExplicitFolders;
     return browserDevSampleRoot && !projectRoots.includes(browserDevSampleRoot)
       ? [...projectRoots, browserDevSampleRoot]
       : projectRoots;
-  }, [browserDevExplicitFolder, browserDevSampleRoot, projectRoots]);
+  }, [browserDevExplicitFolders, browserDevSampleRoot, projectRoots]);
   const sidebarProjectStructures = useMemo(() => {
     const samples = browserDevSampleProjectStructures(browserDevHasExplicitWorkspace);
     return samples.length > 0 ? [...projectStructures, ...samples] : projectStructures;
   }, [browserDevHasExplicitWorkspace, projectStructures]);
-  const sidebarRecentStructures = browserDevExplicitFolder ? [] : recentStructures;
+  const sidebarRecentStructures = browserDevExplicitFolders.length > 0 ? [] : recentStructures;
 
   const sidebarProjects = useMemo(() => buildSidebarProjects({
     documents,

@@ -53,6 +53,7 @@
           <div class="buret-xyzrender-popover hidden" data-buret-xyzrender-popover role="dialog" aria-label="xyzrender controls">
             <div class="buret-xyzrender-popover-header">
               <div class="buret-xyzrender-popover-title">xyzrender</div>
+              <button class="buret-button buret-xyzrender-header-action" type="button" data-buret-action="xyzrender-reset-orientation" aria-label="Reset xyzrender 3D view" title="Reset xyzrender 3D view">Reset 3D<span class="buret-tooltip" role="tooltip">Reset xyzrender 3D view</span></button>
               <button class="buret-button buret-xyzrender-header-action" type="button" data-buret-action="xyzrender-reset" aria-label="Reset xyzrender controls" title="Reset xyzrender controls">Reset<span class="buret-tooltip" role="tooltip">Reset xyzrender controls</span></button>
             </div>
             <div class="buret-xyzrender-section buret-xyzrender-section-flags">

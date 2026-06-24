@@ -322,10 +322,10 @@ function formatOptionalNumber(value: number | null) {
 
 function readBrowserDevFoldingResultBundle(inputPath: string): BrowserDevFoldingResultBundle {
   const roots = candidateFoldingRoots(inputPath);
-  for (const [distance, root] of roots.entries()) {
+  for (const root of roots) {
     const bundle = scanBrowserDevFoldingRoot(root, inputPath);
     if (!browserDevFoldingBundleHasContent(bundle)) continue;
-    if (distance === 0 || browserDevFoldingBundleReferencesInput(bundle, inputPath)) return bundle;
+    if (browserDevFoldingBundleReferencesInput(bundle, inputPath)) return bundle;
   }
   return emptyBrowserDevFoldingBundle(inputPath, inputPath, []);
 }
@@ -638,12 +638,10 @@ function matchingBrowserDevFoldingArtifacts(
   structures: Array<{ path: string }>,
   artifacts: Array<{ path: string }>,
 ) {
-  const parent = dirname(structure.path);
   const stem = fileTitle(structure.path).replace(/\.[^.]+$/u, "").toLowerCase();
   return artifacts.filter((artifact) => {
     const lower = artifact.path.toLowerCase();
     return structures.length === 1
-      || dirname(artifact.path) === parent
       || (modelIndex !== null && filenameMentionsModel(lower, modelIndex))
       || (stem && lower.includes(stem));
   });

@@ -6147,8 +6147,7 @@ private enum PreviewExternalXyzrenderWorker {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: launch.executablePath)
-        var arguments = launch.argumentPrefix + [inputURL.path, "-o", outputURL.path]
-        arguments += ["--config", configArgument]
+        var arguments = launch.argumentPrefix + ["-o", outputURL.path, "--config", configArgument]
         let orientationRefURL = try writeOrientationRef(orientationRefText, outputDirectory: outputDirectory)
         if let orientationRefURL {
             arguments += ["--ref", orientationRefURL.path]
@@ -6156,7 +6155,8 @@ private enum PreviewExternalXyzrenderWorker {
         if (normalizedControls["transparentBackground"] as? Bool) == true || transparent {
             arguments.append("--transparent")
         }
-        arguments += cliArguments(from: normalizedControls, inputPath: inputURL.path)
+        arguments.append(inputURL.path)
+        arguments += cliArguments(from: normalizedControls, inputPath: inputURL.path, preset: safePreset)
         arguments += sanitizedExtraArguments(
             (normalizedControls["extraArguments"] as? String) ?? extraArguments,
             stripFieldArguments: normalizedControls["fieldMode"] != nil
@@ -6731,8 +6731,13 @@ private enum PreviewExternalXyzrenderWorker {
         copyBoolean(value, key: "fog", into: &result)
         copyNumber(value, key: "fogStrength", into: &result)
         copyBoolean(value, key: "showVdw", into: &result)
+        copyText(value, key: "vdwAtoms", into: &result)
         copyNumber(value, key: "vdwOpacity", into: &result)
         copyNumber(value, key: "vdwScale", into: &result)
+        copyHullMode(value, into: &result)
+        copyText(value, key: "hullAtoms", into: &result)
+        copyNonNegativeNumber(value, key: "hullOpacity", into: &result)
+        copyNonNegativeNumber(value, key: "poreOpacity", into: &result)
         copyBoolean(value, key: "hideBonds", into: &result)
         copyBoolean(value, key: "showCell", into: &result)
         copyBoolean(value, key: "showGhosts", into: &result)
@@ -6756,7 +6761,7 @@ private enum PreviewExternalXyzrenderWorker {
         return result
     }
 
-    private static func cliArguments(from controls: [String: Any], inputPath: String) -> [String] {
+    private static func cliArguments(from controls: [String: Any], inputPath: String, preset: String) -> [String] {
         var arguments: [String] = []
         if let value = finitePositive(controls["canvasSize"]) {
             arguments += ["-S", formatCLI(value)]
@@ -6782,14 +6787,29 @@ private enum PreviewExternalXyzrenderWorker {
         if let value = finitePositive(controls["fogStrength"]) {
             arguments += ["-F", formatCLI(value)]
         }
-        if (controls["showVdw"] as? Bool) == true {
+        if preset != "vdw", (controls["showVdw"] as? Bool) == true {
             arguments.append("--vdw")
+            if let atoms = controls["vdwAtoms"] as? String, atoms.isEmpty == false {
+                arguments.append(atoms)
+            }
         }
         if let value = finitePositive(controls["vdwOpacity"]) {
             arguments += ["--vdw-opacity", formatCLI(value)]
         }
         if let value = finitePositive(controls["vdwScale"]) {
             arguments += ["--vdw-scale", formatCLI(value)]
+        }
+        if let hullArgument = nonEmptyText(controls["hullAtoms"] as? String) ?? xyzrenderHullArgument(controls["hullMode"] as? String) {
+            arguments += ["--hull", hullArgument]
+        }
+        if xyzrenderPoreEnabled(controls["hullMode"] as? String) {
+            arguments.append("--pore")
+        }
+        if let value = finiteNonNegative(controls["hullOpacity"]) {
+            arguments += ["--hull-opacity", formatCLI(value)]
+        }
+        if let value = finiteNonNegative(controls["poreOpacity"]) {
+            arguments += ["--pore-opacity", formatCLI(value)]
         }
         if (controls["hideBonds"] as? Bool) == true {
             arguments.append("--no-bonds")
@@ -6882,6 +6902,12 @@ private enum PreviewExternalXyzrenderWorker {
         }
     }
 
+    private static func copyHullMode(_ source: [String: Any], into result: inout [String: Any]) {
+        if let value = normalizedHullMode(source["hullMode"] as? String) {
+            result["hullMode"] = value
+        }
+    }
+
     private static func copyNonNegativeNumber(_ source: [String: Any], key: String, into result: inout [String: Any]) {
         if let value = finiteNonNegative(source[key]) {
             result[key] = value
@@ -6932,6 +6958,31 @@ private enum PreviewExternalXyzrenderWorker {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private static func normalizedHullMode(_ value: String?) -> String? {
+        let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        return ["benzene-ring", "anthracene-rings", "auto-rings", "faces", "pore", "mof5-faces", "mof5-pore", "faces-pore"].contains(normalized) ? normalized : nil
+    }
+
+    private static func xyzrenderHullArgument(_ value: String?) -> String? {
+        switch normalizedHullMode(value) {
+        case "benzene-ring", "anthracene-rings", "auto-rings":
+            return "rings"
+        case "faces", "mof5-faces", "faces-pore":
+            return "faces"
+        default:
+            return nil
+        }
+    }
+
+    private static func xyzrenderPoreEnabled(_ value: String?) -> Bool {
+        switch normalizedHullMode(value) {
+        case "pore", "mof5-pore", "faces-pore":
+            return true
+        default:
+            return false
+        }
+    }
+
     private static func normalizeSupercell(_ value: Any?) -> [Int]? {
         guard let values = value as? [Any], values.count == 3 else { return nil }
         let parsed = values.compactMap { (($0 as? NSNumber)?.intValue) ?? Int(($0 as? String) ?? "") }
@@ -6949,6 +7000,22 @@ private enum PreviewExternalXyzrenderWorker {
         var blockedValueFlags = Set(["-o", "--output", "-go", "--gif-output", "--config", "--ref"])
         var blocked = blockedValueFlags
         var blockedValueCounts: [String: Int] = [:]
+        blocked.insert("--hull")
+        [
+            "--hull-color",
+            "--hull-opacity",
+            "--hull-color-type",
+            "--hull-edge-width-ratio",
+            "--ring-max-size",
+            "--ring-min-size",
+            "--face-planarity",
+            "--pore-color",
+            "--pore-opacity"
+        ].forEach {
+            blocked.insert($0)
+            blockedValueFlags.insert($0)
+        }
+        ["--pore", "--hull-edge", "--no-hull-edge"].forEach { blocked.insert($0) }
         if stripFieldArguments {
             ["--esp", "--nci-surf", "--iso", "--opacity", "--surface-style", "--dens-color", "--cmap-palette"].forEach {
                 blocked.insert($0)
