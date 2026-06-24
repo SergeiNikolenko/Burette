@@ -322,7 +322,23 @@ assert.equal(resolveDropActionChoices(
     documentPath: "/tmp/sheet.xyz",
     renderer: "xyzrender-external",
   },
-).length, 2);
+).length, 1);
+assert.deepEqual(resolveDropActionChoices(payload(["/tmp/a.xyz", "/tmp/b.xyz"]), {
+  kind: "active-viewer",
+  documentPath: "/tmp/sheet.xyz",
+  renderer: "xyzrender-external",
+}), [
+  {
+    id: "add-xyzrender-sheet-items",
+    label: "Add to xyzrender sheet",
+    confidence: "default",
+    action: {
+      kind: "add-xyzrender-sheet-items",
+      targetDocumentId: undefined,
+      payload: payload(["/tmp/a.xyz", "/tmp/b.xyz"]),
+    },
+  },
+]);
 
 const ligandOnProtein = resolveDropAction(payload(["/tmp/ligand.sdf"]), {
   kind: "active-viewer",

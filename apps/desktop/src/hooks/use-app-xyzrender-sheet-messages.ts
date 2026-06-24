@@ -60,6 +60,7 @@ export function useAppXyzrenderSheetMessages({
             controls: body.controls ?? null,
             inputDataBase64: body.inputDataBase64 ?? null,
             inputExtension: body.inputExtension ?? null,
+            orientationRef: body.orientationRef ?? null,
           },
         });
         reply({

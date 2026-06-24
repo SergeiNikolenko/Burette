@@ -1798,6 +1798,112 @@ img.radix-menu-item-icon {
   letter-spacing: 0;
   text-transform: uppercase;
 }
+.xyzrender-dock-preset-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.xyzrender-dock-display-options,
+.xyzrender-dock-vdw-options,
+.xyzrender-dock-hull-options,
+.xyzrender-dock-pore-options {
+  display: grid;
+  gap: 6px;
+}
+.xyzrender-dock-subtitle {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+.xyzrender-dock-display-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+.xyzrender-dock-vdw-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.xyzrender-dock-hull-grid,
+.xyzrender-dock-pore-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.xyzrender-dock-preset-tile {
+  display: grid;
+  grid-template-rows: 16px 58px;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 84px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+  background: var(--surface-input);
+  color: var(--text-primary);
+  padding: 5px;
+  font: inherit;
+  cursor: pointer;
+}
+.xyzrender-dock-preset-tile:hover {
+  background: var(--surface-hover);
+}
+.xyzrender-dock-preset-tile:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 1px;
+}
+.xyzrender-dock-preset-tile[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--line-subtler));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.xyzrender-dock-preset-tile span {
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.xyzrender-dock-preset-tile img {
+  display: block;
+  width: 100%;
+  height: 58px;
+  object-fit: contain;
+  border-radius: 5px;
+  background: #fff;
+}
+.xyzrender-dock-preset-gallery .xyzrender-dock-preset-tile img {
+  margin-top: -10px;
+}
+.xyzrender-dock-display-grid .xyzrender-dock-preset-tile {
+  grid-template-rows: 16px 50px;
+  height: 76px;
+  padding: 4px;
+}
+.xyzrender-dock-display-grid .xyzrender-dock-preset-tile img {
+  height: 50px;
+  margin-top: -5px;
+}
+.xyzrender-dock-vdw-grid .xyzrender-dock-preset-tile {
+  height: 82px;
+}
+.xyzrender-dock-vdw-grid .xyzrender-dock-preset-tile img {
+  height: 56px;
+  margin-top: -8px;
+}
+.xyzrender-dock-hull-grid .xyzrender-dock-preset-tile,
+.xyzrender-dock-pore-grid .xyzrender-dock-preset-tile {
+  height: 82px;
+}
+.xyzrender-dock-hull-grid .xyzrender-dock-preset-tile img,
+.xyzrender-dock-pore-grid .xyzrender-dock-preset-tile img {
+  height: 56px;
+  margin-top: -8px;
+}
 .xyzrender-dock-field,
 .xyzrender-dock-check {
   display: grid;
@@ -1819,6 +1925,10 @@ img.radix-menu-item-icon {
   padding: 0 28px 0 9px;
   font: inherit;
   font-size: 13px;
+}
+.xyzrender-dock-field select {
+  appearance: none;
+  -webkit-appearance: none;
 }
 .xyzrender-dock-field input[type="number"] {
   background: var(--surface-input);

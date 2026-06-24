@@ -241,6 +241,7 @@ const XYZRENDER_PRESET_OPTIONS = [
   { value: "mtube", label: "MTube" },
   { value: "wire", label: "Wire" },
   { value: "graph", label: "Graph" },
+  { value: "vdw", label: "vdW" },
   { value: "custom", label: "Custom JSON" },
 ];
 const BROWSER_DEV_DESCRIPTOR_RUNNER = `
@@ -609,11 +610,61 @@ function readFieldSurfaceStyle(value: unknown) {
   return text && ["solid", "mesh", "contour", "dot"].includes(text) ? text : null;
 }
 
+function readDisplayHydrogens(value: unknown) {
+  const text = readOptionalText(value);
+  return text && ["all", "auto", "none"].includes(text) ? text : null;
+}
+
+function readBondNotation(value: unknown) {
+  const text = readOptionalText(value);
+  return text && ["aromatic", "kekule"].includes(text) ? text : null;
+}
+
+function readHullMode(value: unknown) {
+  const text = readOptionalText(value);
+  return text && ["off", "benzene-ring", "anthracene-rings", "auto-rings", "faces", "pore", "mof5-faces", "mof5-pore", "faces-pore"].includes(text) ? text : null;
+}
+
+function xyzrenderHullArgument(mode: string | null | undefined) {
+  if (mode === "benzene-ring" || mode === "anthracene-rings" || mode === "auto-rings") return "rings";
+  if (mode === "faces" || mode === "mof5-faces" || mode === "faces-pore") return "faces";
+  return null;
+}
+
+function xyzrenderPoreEnabled(mode: string | null | undefined) {
+  return mode === "pore" || mode === "mof5-pore" || mode === "faces-pore";
+}
+
 function normalizeSupercell(value: unknown) {
   if (!Array.isArray(value) || value.length !== 3) return null;
   const parsed = value.map((item) => readOptionalInteger(item));
   if (parsed.some((item) => !item || item < 1)) return null;
   return parsed as [number, number, number];
+}
+
+function normalizeXyzrenderAtomSelector(value: unknown) {
+  const text = String(value || "").replace(/\s+/gu, "");
+  if (!text || !/^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/u.test(text)) return null;
+  const parts: string[] = [];
+  for (const part of text.split(",")) {
+    const [rawStart, rawEnd] = part.split("-");
+    const start = Number(rawStart);
+    const end = rawEnd == null ? start : Number(rawEnd);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end <= 0 || end < start) return null;
+    parts.push(start === end ? String(start) : `${start}-${end}`);
+  }
+  return parts.join(",");
+}
+
+function normalizeXyzrenderRegions(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((region) => {
+    if (!region || typeof region !== "object") return null;
+    const source = region as Record<string, unknown>;
+    const atoms = normalizeXyzrenderAtomSelector(source.atoms);
+    if (!atoms) return null;
+    return { atoms, preset: normalizeXyzrenderPreset(readOptionalText(source.preset)) };
+  }).filter((region): region is { atoms: string; preset: string } => Boolean(region));
 }
 
 function normalizeXyzrenderControls(value: unknown) {
@@ -629,9 +680,16 @@ function normalizeXyzrenderControls(value: unknown) {
     fog: readOptionalBoolean(source.fog),
     fogStrength: readOptionalNumber(source.fogStrength),
     showVdw: readOptionalBoolean(source.showVdw),
+    vdwAtoms: normalizeXyzrenderAtomSelector(source.vdwAtoms),
     vdwOpacity: readOptionalNumber(source.vdwOpacity),
     vdwScale: readOptionalNumber(source.vdwScale),
+    hullMode: readHullMode(source.hullMode),
+    hullAtoms: normalizeXyzrenderAtomSelector(source.hullAtoms),
+    hullOpacity: readOptionalNonNegativeNumber(source.hullOpacity),
+    poreOpacity: readOptionalNonNegativeNumber(source.poreOpacity),
     hideBonds: readOptionalBoolean(source.hideBonds),
+    displayHydrogens: readDisplayHydrogens(source.displayHydrogens),
+    bondNotation: readBondNotation(source.bondNotation),
     showCell: readOptionalBoolean(source.showCell),
     showGhosts: readOptionalBoolean(source.showGhosts),
     showAxes: readOptionalBoolean(source.showAxes),
@@ -649,6 +707,7 @@ function normalizeXyzrenderControls(value: unknown) {
     fieldCmapMax: readOptionalFiniteNumber(source.fieldCmapMax),
     customConfigPath: readOptionalText(source.customConfigPath),
     extraArguments: readOptionalText(source.extraArguments),
+    regions: normalizeXyzrenderRegions(source.regions),
   };
 }
 
@@ -697,6 +756,15 @@ function sanitizedExtraArguments(value: string | null, stripFieldArguments = fal
   const blockedValueFlags = new Set(["-o", "--output", "-go", "--gif-output", "--config", "--ref"]);
   const blocked = new Set(blockedValueFlags);
   const blockedValueCounts = new Map<string, number>();
+  blocked.add("--region");
+  blockedValueCounts.set("--region", 2);
+  blocked.add("--hull");
+  ["--hull-color", "--hull-opacity", "--hull-color-type", "--hull-edge-width-ratio", "--ring-max-size", "--ring-min-size", "--face-planarity", "--pore-color", "--pore-opacity"].forEach((flag) => {
+    blocked.add(flag);
+    blockedValueFlags.add(flag);
+  });
+  ["--pore", "--hull-edge", "--no-hull-edge"].forEach((flag) => blocked.add(flag));
+  ["--hy", "--no-hy", "--bo", "--no-bo", "-k"].forEach((flag) => blocked.add(flag));
   if (stripFieldArguments) {
     ["--esp", "--nci-surf", "--iso", "--opacity", "--surface-style", "--dens-color", "--cmap-palette"].forEach((flag) => {
       blocked.add(flag);
@@ -742,8 +810,9 @@ function buildXyzrenderArgs(
   orientationRefPath: string | null,
   controls: ReturnType<typeof normalizeXyzrenderControls>,
 ) {
-  const args = [inputPath, "-o", outputPath, "--config", resolveConfigArgument(preset, controls)];
+  const args = ["-o", outputPath, "--config", resolveConfigArgument(preset, controls)];
   if (orientationRefPath) args.push("--ref", orientationRefPath);
+  args.push(inputPath);
   if (controls.transparentBackground === true) args.push("--transparent");
   if (controls.canvasSize) args.push("-S", String(controls.canvasSize));
   if (controls.atomScale) args.push("-a", String(controls.atomScale));
@@ -755,10 +824,25 @@ function buildXyzrenderArgs(
   if (controls.fog === true) args.push("--fog");
   if (controls.fog === false) args.push("--no-fog");
   if (controls.fogStrength) args.push("-F", String(controls.fogStrength));
-  if (controls.showVdw === true) args.push("--vdw");
+  if (preset !== "vdw" && controls.showVdw === true) {
+    args.push("--vdw");
+    if (controls.vdwAtoms) args.push(controls.vdwAtoms);
+  }
   if (controls.vdwOpacity) args.push("--vdw-opacity", String(controls.vdwOpacity));
   if (controls.vdwScale) args.push("--vdw-scale", String(controls.vdwScale));
+  const hullArgument = controls.hullAtoms || xyzrenderHullArgument(controls.hullMode);
+  if (hullArgument) {
+    args.push("--hull");
+    args.push(hullArgument);
+  }
+  if (controls.hullOpacity != null) args.push("--hull-opacity", String(controls.hullOpacity));
+  if (xyzrenderPoreEnabled(controls.hullMode)) args.push("--pore");
+  if (controls.poreOpacity != null) args.push("--pore-opacity", String(controls.poreOpacity));
   if (controls.hideBonds === true) args.push("--no-bonds");
+  if (controls.displayHydrogens === "all") args.push("--hy");
+  if (controls.displayHydrogens === "none") args.push("--no-hy");
+  if (controls.bondNotation === "aromatic") args.push("--bo");
+  if (controls.bondNotation === "kekule") args.push("--bo", "-k");
   if (controls.showCell === true) args.push("--cell");
   if (controls.showCell === false) args.push("--no-cell");
   if (controls.showGhosts === true) args.push("--ghosts");
@@ -767,6 +851,7 @@ function buildXyzrenderArgs(
   if (controls.showAxes === false) args.push("--no-axes");
   if (controls.cellWidth) args.push("--cell-width", String(controls.cellWidth));
   if (controls.supercell) args.push("--supercell", ...controls.supercell.map(String));
+  for (const region of controls.regions) args.push("--region", region.atoms, region.preset);
   args.push(...sanitizedExtraArguments(controls.extraArguments, Boolean(controls.fieldMode)));
   if (controls.fieldMode && controls.fieldMode !== "auto") {
     if (controls.fieldMode === "density") args.push("--dens");

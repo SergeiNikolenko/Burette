@@ -795,6 +795,13 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.buret-molecule-context-menu-section-label {
+  margin: 7px 2px 3px;
+  padding: 0 6px;
+  color: var(--buret-molstar-muted-text);
+  font: 600 10px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  letter-spacing: 0.01em;
+}
 .buret-molecule-context-mode {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1396,6 +1403,7 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   padding: 1px 4px 0;
 }
 .buret-xyzrender-popover-title {
+  margin-right: auto;
   font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
   color: var(--buret-toolbar-color);
 }
