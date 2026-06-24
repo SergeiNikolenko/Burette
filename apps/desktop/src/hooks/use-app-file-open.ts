@@ -21,6 +21,7 @@ import {
   type GridDelimitedColumnChoice,
 } from "../lib/file-routing";
 import { markPerformanceOnce } from "../lib/performance";
+import { fetchRemoteStructure } from "../lib/remote-structure";
 import { basename } from "../lib/sidebar-projects";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { readStructureText } from "../lib/structure-text";
@@ -372,11 +373,40 @@ export function useAppFileOpen({
     pushStatus(openedText);
   }, [addDocuments, openStructureRecordDocuments, pushStatus, rememberRecentStructures]);
 
+  const openStructureUrlInMolstar = useCallback(async (url: string) => {
+    try {
+      pushStatus("Fetching remote structure...");
+      const remote = await fetchRemoteStructure(url);
+      const molstarPreferences: ViewerPreferences = {
+        ...preferences,
+        rendererMode: "molstar",
+      };
+      const document = isTauriRuntime()
+        ? await invoke<ViewerDocument>("open_text_structure", {
+            request: {
+              title: remote.title,
+              extension: remote.extension,
+              text: remote.text,
+            },
+            preferences: molstarPreferences,
+            reloadOptions: undefined,
+          })
+        : await openBrowserDevTextDocument(remote.title, remote.extension, remote.text, molstarPreferences);
+      addDocuments([document]);
+      rememberRecentStructures([document]);
+      setActiveDocument(document.id);
+      pushStatus(`Fetched ${remote.title} in Mol*`, "success");
+    } catch (error) {
+      pushErrorStatus(error, "Fetch structure failed");
+    }
+  }, [addDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument]);
+
   return {
     openDocuments,
     openPaths,
     openStructureRecordDocuments,
     openStructureRecords,
+    openStructureUrlInMolstar,
     openTextDocuments,
   };
 }
