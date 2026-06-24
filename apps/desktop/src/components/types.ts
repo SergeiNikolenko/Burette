@@ -111,6 +111,7 @@ export type ShellActions = {
   openTextPaths: (paths: string[]) => void | Promise<void>;
   openPaths: (paths: string[]) => void | Promise<void>;
   openStructureRecords: (records: StructureDragPayload["records"]) => void | Promise<void>;
+  openStructureUrlInMolstar: (url: string) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
   openMostRecentStructure: () => void | Promise<void>;
   selectDocument: (id: string) => void;

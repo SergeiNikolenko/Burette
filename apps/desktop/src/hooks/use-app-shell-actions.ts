@@ -89,6 +89,7 @@ type UseAppShellActionsOptions = {
   openSettings: ShellActions["openSettings"];
   openSettingsSection: ShellActions["openSettingsSection"];
   openStructureRecords: ShellActions["openStructureRecords"];
+  openStructureUrlInMolstar: ShellActions["openStructureUrlInMolstar"];
   openTextDocuments: (paths: string[]) => void | Promise<unknown>;
   openUpdateRelease: ShellActions["openUpdateRelease"];
   openWorkspaceFolder: ShellActions["openWorkspaceFolder"];
@@ -150,6 +151,7 @@ type OpeningShellActions = Pick<
   | "openTextPaths"
   | "openPaths"
   | "openStructureRecords"
+  | "openStructureUrlInMolstar"
   | "openRecentStructure"
   | "openMostRecentStructure"
   | "openClipboard"
@@ -351,6 +353,7 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       openTextPaths: actions.openTextPaths,
       openPaths: actions.openPaths,
       openStructureRecords: actions.openStructureRecords,
+      openStructureUrlInMolstar: actions.openStructureUrlInMolstar,
       openRecentStructure: actions.openRecentStructure,
       openMostRecentStructure: actions.openMostRecentStructure,
       openClipboard: actions.openClipboard,
@@ -564,6 +567,7 @@ export function useAppShellActions({
   openSettings,
   openSettingsSection,
   openStructureRecords,
+  openStructureUrlInMolstar,
   openTextDocuments,
   openUpdateRelease,
   openWorkspaceFolder,
@@ -627,6 +631,7 @@ export function useAppShellActions({
     },
     openPaths,
     openStructureRecords,
+    openStructureUrlInMolstar,
     openRecentStructure,
     openMostRecentStructure,
     selectDocument,
@@ -746,7 +751,7 @@ export function useAppShellActions({
     openUpdateRelease,
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
 }
 
 export function createJobHistoryShellActions({
