@@ -14,8 +14,7 @@ the source of truth.
 | Browser shell session | `apps/desktop/vite/browser-dev/agent-session.ts`, `apps/desktop/src/hooks/use-agent-session.ts` | Browser-dev shell observe/action files and event delivery. |
 | Desktop app session | `apps/desktop/src/hooks/use-agent-session.ts`, Tauri agent session commands | Desktop file-session observe/action bridge. |
 | Plugin skills | `plugins/burette-agent/skills/*/SKILL.md` | Workflow routing, preflight, task-specific instructions, and completion gates. |
-| MCP registrations | `plugins/burette-agent/mcp/registrations/*` | Stable tools/resources wrapping the CLI and bounded widget artifacts. |
-| Widget assets | `plugins/burette-agent/mcp/widget-assets/*` | Browser-rendered molecular reports, tables, workspace, and trajectory views. |
+| MCP registrations | `plugins/burette-agent/mcp/registrations/*` | Stable tools wrapping the CLI and bounded artifact validation. |
 
 Repository-local maintenance skills under `.codex/skills` are not part of the
 packaged Burrete agent plugin. Use them for development-time PR review, release
@@ -73,11 +72,11 @@ state channel.
 ## Plugin Contract
 
 - Run `node plugins/burette-agent/scripts/burette_agent_preflight.mjs` before
-  plugin workflows that open files, render widgets, or act on Mol*.
+  plugin workflows that open files, render panels, or act on Mol*.
 - Skills route workflows. MCP registrations expose tools. The CLI does app
   control. Keep those responsibilities separate.
-- Validate molecular artifacts before rendering reports, tables, trajectories,
-  or workspace widgets.
+- Validate molecular artifacts before surfacing reports, tables, trajectories,
+  or workspace payloads.
 
 ## Validation
 

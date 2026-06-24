@@ -161,11 +161,7 @@ async function installMockAgentCli(pluginRoot) {
 async function testMcpRegistrations(tempRoot) {
   const pluginRoot = await copyPlugin(tempRoot, "registration-plugin");
   const server = await registerAll(pluginRoot);
-  assert.deepEqual([...server.resources.keys()].sort(), [
-    "ui://widget/burette-agent/molecular-report-20260607.html",
-    "ui://widget/burette-agent/molecule-table-20260607.html",
-    "ui://widget/burette-agent/trajectory-review-20260607.html",
-  ]);
+  assert.deepEqual([...server.resources.keys()].sort(), []);
   assert.deepEqual([...server.tools.keys()].sort(), [
     "act_molstar_scene",
     "burrete.control_viewer",
@@ -181,9 +177,6 @@ async function testMcpRegistrations(tempRoot) {
     "observe_burrete_workspace",
     "open_burrete_docking_view",
     "open_burrete_workspace",
-    "render_molecular_report_widget",
-    "render_molecule_table_widget",
-    "render_trajectory_review_widget",
     "set_burrete_representation_style",
     "set_burrete_trajectory",
     "summarize_burrete_structure",
@@ -191,16 +184,9 @@ async function testMcpRegistrations(tempRoot) {
     "validate_molecule_collection_artifact",
     "validate_trajectory_review_artifact",
   ]);
-
-  for (const [uri, resource] of server.resources) {
-    const payload = await resource.handler();
-    assert.equal(payload.contents[0].uri, uri);
-    assert.equal(payload.contents[0].mimeType, "text/html+skybridge");
-    assert.match(payload.contents[0].text, /<!doctype html>/i);
-  }
 }
 
-async function testValidationAndRenderHandlers(tempRoot) {
+async function testValidationHandlers(tempRoot) {
   const pluginRoot = await copyPlugin(tempRoot, "validation-plugin");
   const server = await registerAll(pluginRoot);
   const manifest = {
@@ -225,33 +211,17 @@ async function testValidationAndRenderHandlers(tempRoot) {
   assert.equal(validReport.structuredContent.ok, true);
   assert.equal(validReport.structuredContent.summary.datasetCount, 1);
 
-  const renderedReport = await server.tools.get("render_molecular_report_widget").handler({ manifest, snapshot });
-  assert.equal(renderedReport.structuredContent.widget, "molecular-report");
-  assert.equal(renderedReport.structuredContent.title, "Ligand Review");
-  assert.equal(renderedReport._meta["openai/outputTemplate"], "ui://widget/burette-agent/molecular-report-20260607.html");
-
-  const blockedReport = await server.tools.get("render_molecular_report_widget").handler({
-    manifest: { ...manifest, blocks: [] },
+  const validTable = await server.tools.get("validate_molecule_collection_artifact").handler({
+    manifest: { ...manifest, surface: "molecule-table" },
     snapshot,
   });
-  assert.equal(blockedReport.structuredContent.ok, false);
-  assert.match(blockedReport.content[0].text, /render blocked/);
+  assert.equal(validTable.structuredContent.ok, true);
 
-  const renderedTable = await server.tools.get("render_molecule_table_widget").handler({
-    title: "Docked Molecules",
-    datasetId: "poses",
-    rows: [{ id: "pose-1" }, { id: "pose-2" }],
+  const validTrajectory = await server.tools.get("validate_trajectory_review_artifact").handler({
+    manifest: { ...manifest, surface: "trajectory-review" },
+    snapshot,
   });
-  assert.equal(renderedTable.structuredContent.widget, "molecule-table");
-  assert.equal(renderedTable.structuredContent.rowCount, 2);
-
-  const renderedTrajectory = await server.tools.get("render_trajectory_review_widget").handler({
-    metrics: [{ name: "rmsd", value: 1.2 }],
-    artifacts: [{ kind: "frame", path: "/tmp/frame.pdb" }],
-  });
-  assert.equal(renderedTrajectory.structuredContent.widget, "trajectory-review");
-  assert.equal(renderedTrajectory.structuredContent.metricCount, 1);
-  assert.equal(renderedTrajectory.structuredContent.artifactCount, 1);
+  assert.equal(validTrajectory.structuredContent.ok, true);
 }
 
 async function testFetchAndWorkspaceHandlers(tempRoot) {
@@ -598,7 +568,7 @@ const tempRoot = await mkdtemp(path.join(tmpdir(), "burrete-agent-mcp-test-"));
 try {
   assert.match(await readFile(path.join(sourcePluginRoot, ".codex-plugin", "plugin.json"), "utf8"), /"name": "burrete"/);
   await testMcpRegistrations(tempRoot);
-  await testValidationAndRenderHandlers(tempRoot);
+  await testValidationHandlers(tempRoot);
   await testFetchAndWorkspaceHandlers(tempRoot);
   await testMockedWorkspaceToolScenarios(tempRoot);
   await testCliBridgeErrors(tempRoot);

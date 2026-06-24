@@ -4,7 +4,7 @@ Burrete turns Burrete into an agent-operable molecular workspace. The
 plugin is intentionally layered:
 
 - skills decide the workflow and user-facing handoff;
-- MCP tools/resources expose stable app and widget surfaces;
+- MCP tools expose stable app surfaces;
 - the repository CLI remains the readable execution contract;
 - Browser and Computer are QA surfaces, not the source of molecular truth.
 
@@ -25,9 +25,8 @@ skills/
 
 mcp/
   server.mjs
-  registrations/         tool/resource registrations
-  widget-assets/         browser assets only
-  lib/                   validation, CLI bridge, resource helpers
+  registrations/         tool registrations
+  lib/                   validation, CLI bridge, response helpers
 
 scripts/
   burette_agent_preflight.mjs
@@ -40,8 +39,8 @@ This mirrors the split used by the reference plugins:
   snapshot validation before rendering, and source-backed artifacts.
 - Product Design: mandatory context gate before visual/build work and focused
   workflows for audit, ideation, prototype, and QA.
-- Creative Production: MCP server registrations separated from browser widget
-  assets and durable run folders.
+- Creative Production: MCP server registrations separated from durable run
+  folders.
 - Browser: in-app browser verification for localhost and visual UI state.
 - Computer: native desktop fallback for accessibility-tree and screenshot QA.
 
@@ -210,7 +209,7 @@ Snapshots must stay bounded and reviewed before rendering:
 - No arbitrary shell execution from the app bridge.
 - Every local HTTP surface is token gated.
 - Desktop mode requires explicit `--burrete-agent-session`.
-- Tools operate on local files, explicit session directories, or bounded widget
+- Tools operate on local files, explicit session directories, or bounded
   payloads.
 - Destructive overwrites and remote job submissions are outside this interface
   and require separate workflow confirmation.
