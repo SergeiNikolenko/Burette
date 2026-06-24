@@ -372,6 +372,7 @@ export default function App() {
     openPaths,
     openStructureRecordDocuments,
     openStructureRecords,
+    openStructureUrlInMolstar,
     openTextDocuments,
   } = useAppFileOpen({
     addBackgroundDocuments,
@@ -799,6 +800,7 @@ export default function App() {
     openSettings,
     openSettingsSection,
     openStructureRecords,
+    openStructureUrlInMolstar,
     openTextDocuments,
     openUpdateRelease,
     openWorkspaceFolder,

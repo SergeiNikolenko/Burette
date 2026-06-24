@@ -28,6 +28,7 @@ commands.allow = [
   "cancel_conformer_job",
   "generate_3d_conformer",
   "open_text_structure",
+  "fetch_remote_structure",
   "open_merged_collection",
   "open_delimited_grid_document",
   "save_text_as",
