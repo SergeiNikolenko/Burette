@@ -19,6 +19,7 @@ type CommandPaletteProps = {
   query: string;
   onQueryChange: (query: string) => void;
   onClose: () => void;
+  onRunError: (error: unknown, prefix?: string) => void;
 };
 
 type PaletteItem = {
@@ -46,6 +47,7 @@ export function CommandPalette({
   query,
   onQueryChange,
   onClose,
+  onRunError,
 }: CommandPaletteProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const [portalContainer, setPortalContainer] = useState<HTMLElement>();
@@ -290,7 +292,9 @@ export function CommandPalette({
 
   const runItem = (item: PaletteItem) => {
     onClose();
-    void item.run();
+    void Promise.resolve(item.run()).catch((error) => {
+      onRunError(error, `${item.label} failed`);
+    });
   };
 
   if (!portalContainer) return null;
