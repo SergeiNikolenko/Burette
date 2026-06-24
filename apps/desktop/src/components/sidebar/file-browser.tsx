@@ -75,7 +75,7 @@ export function FileBrowser({
       <button
         type="button"
         className="sidebar-search-row"
-        onClick={actions.openCommandPalette}
+        onClick={() => actions.openCommandPalette()}
         aria-label="Search projects and structures"
       >
         <span className="sidebar-search-icon" aria-hidden="true">
