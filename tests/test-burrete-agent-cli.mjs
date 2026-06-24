@@ -154,6 +154,14 @@ try {
       assert.equal(prebuiltPayload.ok, true);
       assert.equal(prebuiltPayload.result.mode, 'browser-agent-shell');
       assert.equal(prebuiltPayload.result.runtime, 'prebuilt-static');
+      const fsUrl = new URL(`/@fs${resolve('samples/mini.pdb')}`, prebuiltPayload.result.url);
+      const fsResponse = await fetch(fsUrl);
+      assert.equal(fsResponse.status, 200);
+      assert.match(await fsResponse.text(), /^HEADER\s+MINI GLY-ALA PEPTIDE/u);
+      const viewerRuntimeUrl = new URL(`/@fs${resolve('PreviewExtension/Web/viewer-shell.js')}`, prebuiltPayload.result.url);
+      const viewerRuntimeResponse = await fetch(viewerRuntimeUrl);
+      assert.equal(viewerRuntimeResponse.status, 200);
+      assert.match(await viewerRuntimeResponse.text(), /window\.BurreteViewerShell/);
       if (prebuiltPayload.result.processId) {
         try {
           process.kill(prebuiltPayload.result.processId, 'SIGTERM');
