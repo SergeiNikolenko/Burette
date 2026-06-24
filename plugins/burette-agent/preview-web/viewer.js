@@ -6894,12 +6894,27 @@
     }
   }
 
+  function setMolstarStructuresVisibility(viewer, structures, visible) {
+    const list = Array.from(structures || []).filter(Boolean);
+    if (!list.length) return;
+    const hierarchy = viewer?.plugin?.managers?.structure?.hierarchy;
+    if (typeof hierarchy?.toggleVisibility !== 'function') return;
+    try {
+      hierarchy.toggleVisibility(list, visible ? 'show' : 'hide');
+    } catch (error) {
+      debug('Mol* structure visibility update failed: ' + (error && error.message || String(error)));
+    }
+  }
+
   function xyzFrameOverlayStateStillLoaded(viewer, state) {
     if (!state || state.viewer !== viewer) return false;
     const structures = Array.from(molstarCurrentStructures(viewer));
     const background = Array.isArray(state.backgroundStructures) ? state.backgroundStructures : [];
-    if (!background.length) return false;
-    return background.every(structure => structures.includes(structure));
+    const active = Array.isArray(state.activeStructures) ? state.activeStructures : [];
+    const singleFrames = Array.isArray(state.singleFrameStructures) ? state.singleFrameStructures.flat() : [];
+    const tracked = [...background, ...active, ...singleFrames].filter(Boolean);
+    if (!tracked.length) return false;
+    return tracked.every(structure => structures.includes(structure));
   }
 
   function parseV2000SdfRecord(record) {
@@ -7112,14 +7127,39 @@
     const label = activeConfig?.label || prepared?.label || 'XYZ frames';
     const style = configuredMolstarStyle(activeConfig);
     if (activeSdfPoseMode !== 'all') {
-      resetXyzFrameOverlayState(viewer);
-      if (typeof plugin.clear === 'function') await plugin.clear();
-      const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
-      if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
-      const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
-      if (!activeStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
-      await applySdfCollectionMolstarStyle(viewer, style, activeStructures, 1, 'colored');
-      await applyMolstarWaterLineRepresentation(viewer);
+      const stateKey = xyzFrameOverlayStateKey(rawSignature, frames, prepared, style, 'single', 1, 'colored', []);
+      let state = activeXyzFrameOverlayState;
+      if (!state || state.key !== stateKey || !xyzFrameOverlayStateStillLoaded(viewer, state)) {
+        if (typeof plugin.clear === 'function') await plugin.clear();
+        state = {
+          viewer,
+          key: stateKey,
+          rawSignature,
+          frames,
+          backgroundStructures: [],
+          activeStructures: [],
+          singleFrameStructures: [],
+          activeIndex: -1
+        };
+        activeXyzFrameOverlayState = state;
+      }
+      if (state.activeIndex !== activeIndex) {
+        setMolstarStructuresVisibility(viewer, state.activeStructures, false);
+        let activeStructures = state.singleFrameStructures[activeIndex];
+        if (!Array.isArray(activeStructures) || !activeStructures.length) {
+          const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
+          if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
+          activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
+          if (!activeStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
+          await applySdfCollectionMolstarStyle(viewer, style, activeStructures, 1, 'colored');
+          await applyMolstarWaterLineRepresentation(viewer);
+          state.singleFrameStructures[activeIndex] = activeStructures;
+        } else {
+          setMolstarStructuresVisibility(viewer, activeStructures, true);
+        }
+        state.activeStructures = activeStructures;
+        state.activeIndex = activeIndex;
+      }
       if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'xyz-frame', durationMs: 180 });
