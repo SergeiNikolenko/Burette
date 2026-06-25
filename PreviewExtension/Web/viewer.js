@@ -119,6 +119,8 @@
   const xyzrenderSelectedElements = new Set();
   const xyzrenderStyledElements = new Set();
   const xyzrenderSelectionOriginals = new WeakMap();
+  const xyzrenderSelectionFilterIds = new WeakMap();
+  let xyzrenderSelectionFilterSerial = 0;
   const xyzrenderActionUndoStack = [];
   const xyzrenderActionRedoStack = [];
   const XYZRENDER_HISTORY_STATE_KEY = '__buretteXyzrenderHistoryIndex';
@@ -5596,7 +5598,7 @@
       body.buret-xyzrender-lasso-active .buret-xyzrender-sheet-item { cursor: crosshair; }
       .buret-xyzrender-sheet-item.selected { outline: 0 solid transparent; box-shadow: none; }
       .buret-xyzrender-sheet-item.has-xyzrender-selection { box-shadow: none; }
-      .buret-xyzrender-svg-selection { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent)); }
+      .buret-xyzrender-svg-selection { outline: none; }
       .buret-xyzrender-sheet-item:has(.buret-xyzrender-resize-handle:hover),
       .buret-xyzrender-sheet-item.resizing { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
@@ -10163,6 +10165,7 @@
     ensureXyzrenderOriginalStyle(element);
     element.classList.add('buret-xyzrender-svg-selection');
     element.setAttribute('data-buret-xyzrender-selected', 'true');
+    applyXyzrenderSelectionEffect(element);
     xyzrenderSelectedElements.add(element);
   }
 
@@ -10176,7 +10179,8 @@
       strokeWidth: element.getAttribute('stroke-width'),
       opacity: element.getAttribute('opacity'),
       display: element.getAttribute('display'),
-      visibility: element.getAttribute('visibility')
+      visibility: element.getAttribute('visibility'),
+      filter: element.getAttribute('filter')
     });
   }
 
@@ -10190,6 +10194,7 @@
     restoreNullableAttribute(element, 'opacity', original.opacity);
     restoreNullableAttribute(element, 'display', original.display);
     restoreNullableAttribute(element, 'visibility', original.visibility);
+    restoreNullableAttribute(element, 'filter', original.filter);
   }
 
   function restoreNullableAttribute(element, name, value) {
@@ -10205,7 +10210,18 @@
 
   function xyzrenderGraphicElementsFromSvg(svg) {
     if (!svg?.querySelectorAll) return [];
-    return Array.from(svg.querySelectorAll('path,circle,ellipse,rect,line,polyline,polygon,text'));
+    return Array.from(svg.querySelectorAll('path,circle,ellipse,rect,line,polyline,polygon,text'))
+      .filter(isXyzrenderSelectableGraphicElement);
+  }
+
+  function isXyzrenderSelectableGraphicElement(element) {
+    if (!element || element.closest('[data-buret-xyzrender-selection-overlay="true"]')) return false;
+    const tag = element.tagName?.toLowerCase?.();
+    if (tag !== 'rect') return true;
+    const stroke = element.getAttribute('stroke');
+    const width = element.getAttribute('width');
+    const height = element.getAttribute('height');
+    return !(width === '100%' && height === '100%' && (!stroke || stroke === 'none'));
   }
 
   function xyzrenderElementSnapshot(element) {
@@ -10218,6 +10234,7 @@
       opacity: element.getAttribute('opacity'),
       display: element.getAttribute('display'),
       visibility: element.getAttribute('visibility'),
+      filter: element.getAttribute('filter'),
       selected: element.getAttribute('data-buret-xyzrender-selected') === 'true',
       selectionClass: element.classList.contains('buret-xyzrender-svg-selection')
     };
@@ -10245,6 +10262,7 @@
       body.querySelectorAll('[data-buret-xyzrender-selected="true"]').forEach(element => {
         xyzrenderSelectedElements.add(element);
         ensureXyzrenderOriginalStyle(element);
+        applyXyzrenderSelectionEffect(element);
       });
       cleanupXyzrenderSelectionSet();
       return;
@@ -10259,9 +10277,11 @@
       restoreNullableAttribute(element, 'opacity', entry.opacity);
       restoreNullableAttribute(element, 'display', entry.display);
       restoreNullableAttribute(element, 'visibility', entry.visibility);
+      restoreNullableAttribute(element, 'filter', entry.filter);
       element.classList.toggle('buret-xyzrender-svg-selection', entry.selectionClass);
       if (entry.selected) {
         element.setAttribute('data-buret-xyzrender-selected', 'true');
+        applyXyzrenderSelectionEffect(element);
         xyzrenderSelectedElements.add(element);
       } else {
         element.removeAttribute('data-buret-xyzrender-selected');
@@ -10424,10 +10444,83 @@
     document.querySelectorAll('.buret-xyzrender-sheet-item').forEach(item => {
       item.classList.toggle('has-xyzrender-selection', !!item.querySelector('[data-buret-xyzrender-selected="true"]'));
     });
+    syncXyzrenderSelectionEffects();
+  }
+
+  function removeXyzrenderSelectionOverlays() {
+    document.querySelectorAll('.buret-xyzrender-selection-overlay-root').forEach(overlay => overlay.remove());
+    document.querySelectorAll('[data-buret-xyzrender-selection-overlay="true"]').forEach(overlay => overlay.remove());
+  }
+
+  function syncXyzrenderSelectionEffects() {
+    removeXyzrenderSelectionOverlays();
+    const selectedElements = Array.from(xyzrenderSelectedElements).filter(element => (
+      element?.isConnected && element.getAttribute('data-buret-xyzrender-selected') === 'true'
+    ));
+    for (const element of selectedElements) {
+      applyXyzrenderSelectionEffect(element);
+    }
+  }
+
+  function applyXyzrenderSelectionEffect(element) {
+    const svg = element?.ownerSVGElement;
+    if (!svg) return;
+    const filterId = ensureXyzrenderSelectionFilter(svg);
+    if (filterId) element.setAttribute('filter', `url(#${filterId})`);
+  }
+
+  function ensureXyzrenderSelectionFilter(svg) {
+    let filterId = xyzrenderSelectionFilterIds.get(svg);
+    if (filterId && svg.querySelector(`#${filterId}`)) return filterId;
+    filterId = `buret-xyzrender-selection-glow-${++xyzrenderSelectionFilterSerial}`;
+    xyzrenderSelectionFilterIds.set(svg, filterId);
+    const defs = svg.querySelector('defs') || svg.insertBefore(document.createElementNS('http://www.w3.org/2000/svg', 'defs'), svg.firstChild);
+    const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+    filter.setAttribute('id', filterId);
+    filter.setAttribute('x', '-80%');
+    filter.setAttribute('y', '-80%');
+    filter.setAttribute('width', '260%');
+    filter.setAttribute('height', '260%');
+    filter.setAttribute('color-interpolation-filters', 'sRGB');
+    const glow = createSvgFilterElement('feDropShadow', {
+      in: 'SourceGraphic',
+      dx: '0',
+      dy: '0',
+      stdDeviation: '1.35',
+      'flood-color': '#b45cff',
+      'flood-opacity': '0.52',
+      result: 'selectionGlow'
+    });
+    const halo = createSvgFilterElement('feDropShadow', {
+      in: 'SourceGraphic',
+      dx: '0',
+      dy: '0',
+      stdDeviation: '3.25',
+      'flood-color': '#b45cff',
+      'flood-opacity': '0.18',
+      result: 'selectionHalo'
+    });
+    const merge = createSvgFilterElement('feMerge');
+    merge.append(
+      createSvgFilterElement('feMergeNode', { in: 'selectionHalo' }),
+      createSvgFilterElement('feMergeNode', { in: 'selectionGlow' }),
+      createSvgFilterElement('feMergeNode', { in: 'SourceGraphic' })
+    );
+    filter.append(glow, halo, merge);
+    defs.appendChild(filter);
+    return filterId;
+  }
+
+  function createSvgFilterElement(name, attributes = {}) {
+    const element = document.createElementNS('http://www.w3.org/2000/svg', name);
+    Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+    return element;
   }
 
   function clearXyzrenderSelection() {
     for (const element of Array.from(xyzrenderSelectedElements)) {
+      const original = xyzrenderSelectionOriginals.get(element);
+      restoreNullableAttribute(element, 'filter', original?.filter ?? null);
       element.classList.remove('buret-xyzrender-svg-selection');
       element.removeAttribute('data-buret-xyzrender-selected');
     }

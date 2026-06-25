@@ -6,9 +6,12 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { join, resourceDir } from "@tauri-apps/api/path";
 import { DOCK_TAB_LABELS, dockFileEntries, dockTabCatalog, type DockArea, type DockFileEntry, type DockTabKind } from "../lib/dock";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../lib/structure-drag";
 import type { StructureDragPayload } from "../lib/structure-drag";
+import { isTauriRuntime } from "../lib/tauri";
 import type { ShellActions, ShellViewState } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
 import { ViewerFrame } from "./editor-area/viewer-frame";
@@ -473,6 +476,36 @@ const DEFAULT_XYZRENDER_DOCK_CONTROLS: XyzrenderControls = {
 };
 
 const xyzrenderGalleryImage = (name: string) => `${import.meta.env.BASE_URL}xyzrender-gallery/${name}`;
+const xyzrenderGalleryResourceCache = new Map<string, Promise<string | null>>();
+const XYZRENDER_GALLERY_FILENAME_PATTERN = /^[A-Za-z0-9_.-]+\.svg$/u;
+
+function xyzrenderGalleryFilename(src: string) {
+  try {
+    const path = new URL(src, window.location.href).pathname;
+    return decodeURIComponent(path.split("/").pop() ?? "");
+  } catch {
+    return src.split("/").pop()?.split("?")[0] ?? "";
+  }
+}
+
+async function resolveXyzrenderGalleryResource(src: string) {
+  if (!isTauriRuntime()) return null;
+  const fileName = xyzrenderGalleryFilename(src);
+  if (!XYZRENDER_GALLERY_FILENAME_PATTERN.test(fileName)) return null;
+  let cached = xyzrenderGalleryResourceCache.get(fileName);
+  if (!cached) {
+    cached = (async () => {
+      try {
+        return convertFileSrc(await join(await resourceDir(), "xyzrender-gallery", fileName));
+      } catch (error) {
+        console.warn(`[Burrete] Could not resolve xyzrender gallery asset ${fileName}`, error);
+        return null;
+      }
+    })();
+    xyzrenderGalleryResourceCache.set(fileName, cached);
+  }
+  return cached;
+}
 
 const XYZRENDER_README_PRESET_GALLERY = [
   { value: "default", label: "Default", image: xyzrenderGalleryImage("caffeine_default.svg") },
@@ -721,7 +754,7 @@ function XyzrenderPresetGallery({ preset, onSelect }: { preset: string; onSelect
           onClick={() => onSelect(option.value)}
         >
           <span>{option.label}</span>
-          <img src={option.image} alt="" loading="lazy" draggable={false} />
+          <XyzrenderGalleryTileImage src={option.image} />
         </button>
       ))}
     </div>
@@ -754,7 +787,7 @@ function XyzrenderDisplayOptionsGallery({
                 : { ...controls, bondNotation: option.value as XyzrenderControls["bondNotation"] })}
             >
               <span>{option.label}</span>
-              <img src={option.image} alt="" loading="lazy" draggable={false} />
+              <XyzrenderGalleryTileImage src={option.image} />
             </button>
           );
         })}
@@ -786,7 +819,7 @@ function XyzrenderVdwGallery({
             onClick={() => onSelect(option.value)}
           >
             <span>{option.label}</span>
-            <img src={option.image} alt="" loading="lazy" draggable={false} />
+            <XyzrenderGalleryTileImage src={option.image} />
           </button>
         ))}
       </div>
@@ -814,7 +847,7 @@ function XyzrenderHullGallery({
             onClick={() => onSelect(option.value)}
           >
             <span>{option.label}</span>
-            <img src={option.image} alt="" loading="lazy" draggable={false} />
+            <XyzrenderGalleryTileImage src={option.image} />
           </button>
         ))}
       </div>
@@ -842,12 +875,29 @@ function XyzrenderPoreGallery({
             onClick={() => onSelect(option.value)}
           >
             <span>{option.label}</span>
-            <img src={option.image} alt="" loading="lazy" draggable={false} />
+            <XyzrenderGalleryTileImage src={option.image} />
           </button>
         ))}
       </div>
     </div>
   );
+}
+
+function XyzrenderGalleryTileImage({ src }: { src: string }) {
+  const [resolvedSrc, setResolvedSrc] = useState(src);
+
+  useEffect(() => {
+    setResolvedSrc(src);
+  }, [src]);
+
+  const handleError = useCallback(() => {
+    if (resolvedSrc !== src) return;
+    void resolveXyzrenderGalleryResource(src).then((fallback) => {
+      if (fallback) setResolvedSrc(fallback);
+    });
+  }, [resolvedSrc, src]);
+
+  return <img src={resolvedSrc} alt="" loading="lazy" draggable={false} onError={handleError} />;
 }
 
 function XyzrenderDockCheckbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
