@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import {
   File02Icon,
   Folder01Icon,
@@ -43,9 +43,14 @@ export function ProjectGroup({
   const [showAllItems, setShowAllItems] = useState(false);
   const [collapsedFolderPaths, setCollapsedFolderPaths] = useState<Set<string>>(() => new Set());
   const [showAllFolderPaths, setShowAllFolderPaths] = useState<Set<string>>(() => new Set());
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(project.title);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const skipRenameCommitRef = useRef(false);
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
   const expanded = hasSidebarQuery || state.expandedProjectIds.includes(project.id);
+  const canRenameProject = Boolean(project.rootPath);
   const projectTree = buildProjectTree(project.items);
   const shouldLimitItems = !hasSidebarQuery
     && projectTree.length > COLLAPSED_PROJECT_ITEM_LIMIT
@@ -55,8 +60,60 @@ export function ProjectGroup({
     : projectTree;
   const hiddenItemCount = projectTree.length - COLLAPSED_PROJECT_ITEM_LIMIT;
 
+  useEffect(() => {
+    if (!renaming) setRenameDraft(project.title);
+  }, [project.title, renaming]);
+
+  useEffect(() => {
+    if (!renaming) return;
+    renameInputRef.current?.focus();
+    renameInputRef.current?.select();
+  }, [renaming]);
+
   const handleToggle = () => {
+    if (renaming) return;
     actions.toggleProjectExpanded(project.id);
+  };
+
+  const handleRowClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.detail > 1) {
+      event.preventDefault();
+      return;
+    }
+    handleToggle();
+  };
+
+  const handleRowMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.detail < 2) return;
+    event.preventDefault();
+    event.stopPropagation();
+    startRename();
+  };
+
+  const startRename = () => {
+    if (!canRenameProject) return;
+    skipRenameCommitRef.current = false;
+    setRenameDraft(project.title);
+    setRenaming(true);
+  };
+
+  const cancelRename = () => {
+    skipRenameCommitRef.current = true;
+    setRenameDraft(project.title);
+    setRenaming(false);
+  };
+
+  const commitRename = () => {
+    if (skipRenameCommitRef.current) {
+      skipRenameCommitRef.current = false;
+      return;
+    }
+    if (!project.rootPath) {
+      cancelRename();
+      return;
+    }
+    actions.renameProjectRoot(project.rootPath, renameDraft);
+    setRenaming(false);
   };
 
   const handleRecursiveToggle = () => {
@@ -73,6 +130,12 @@ export function ProjectGroup({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "F2") {
+      event.preventDefault();
+      event.stopPropagation();
+      startRename();
+      return;
+    }
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       handleToggle();
@@ -82,9 +145,13 @@ export function ProjectGroup({
   const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    void showNativeContextMenu(projectMenuItems(project, actions), { x: event.clientX, y: event.clientY });
+    void showNativeContextMenu(projectMenuItems(project, actions, startRename), { x: event.clientX, y: event.clientY });
   };
   const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (renaming) {
+      event.preventDefault();
+      return;
+    }
     if (writeSidebarProjectItemsDrag(event.dataTransfer, project.items)) {
       actions.setStructureDragActive(true);
     }
@@ -136,8 +203,14 @@ export function ProjectGroup({
         role="button"
         tabIndex={0}
         className="project-group-row"
-        draggable={project.items.length > 0}
-        onClick={handleToggle}
+        draggable={!renaming && project.items.length > 0}
+        onMouseDown={handleRowMouseDown}
+        onClick={handleRowClick}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          startRename();
+        }}
         onContextMenu={handleContextMenu}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
@@ -149,7 +222,30 @@ export function ProjectGroup({
           <HugeiconsIcon icon={expanded ? Folder02Icon : Folder01Icon} size={16} color="currentColor" strokeWidth={2} />
         </span>
         <span className="project-group-copy">
-          <span className="project-group-title">{project.title}</span>
+          {renaming ? (
+            <input
+              ref={renameInputRef}
+              className="project-group-title-input"
+              value={renameDraft}
+              aria-label={`Rename ${project.title}`}
+              onChange={(event) => setRenameDraft(event.currentTarget.value)}
+              onClick={(event) => event.stopPropagation()}
+              onDoubleClick={(event) => event.stopPropagation()}
+              onKeyDown={(event: ReactKeyboardEvent<HTMLInputElement>) => {
+                event.stopPropagation();
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commitRename();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancelRename();
+                }
+              }}
+              onBlur={commitRename}
+            />
+          ) : (
+            <span className="project-group-title">{project.title}</span>
+          )}
         </span>
         <button
           type="button"
@@ -164,13 +260,39 @@ export function ProjectGroup({
           <FolderExpandCollapseIcon collapse={expanded} />
         </button>
         <span className="project-group-actions">
+          <button
+            type="button"
+            className="project-group-menu-button"
+            aria-label={`Rename ${project.title}`}
+            title="Rename project"
+            disabled={!canRenameProject}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              startRename();
+            }}
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              startRename();
+            }}
+          >
+            <RenameIcon />
+          </button>
           <RadixDropdownMenu
-            items={projectMenuItems(project, actions)}
+            items={projectMenuItems(project, actions, startRename)}
             trigger={(
               <button
                 type="button"
                 className="project-group-menu-button"
                 aria-label={`${project.title} options`}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                }}
+                onMouseDown={(event) => {
+                  event.stopPropagation();
+                }}
                 onClick={(event) => {
                   event.stopPropagation();
                 }}
@@ -215,7 +337,7 @@ export function ProjectGroup({
   );
 }
 
-function projectMenuItems(project: SidebarProject, actions: ShellActions) {
+function projectMenuItems(project: SidebarProject, actions: ShellActions, startRename: () => void) {
   const scenePaths = molstarScenePathsForProjectFolder(project, null);
   return [
     {
@@ -253,9 +375,7 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions) {
       disabled: !project.rootPath,
       action: () => {
         if (!project.rootPath) return;
-        const nextName = window.prompt("Rename project", project.title);
-        if (nextName === null) return;
-        actions.renameProjectRoot(project.rootPath, nextName);
+        startRename();
       },
     },
     { kind: "separator" as const },
@@ -719,6 +839,16 @@ function MoreIcon() {
       <circle cx="4" cy="8" r="1.2" fill="currentColor" />
       <circle cx="8" cy="8" r="1.2" fill="currentColor" />
       <circle cx="12" cy="8" r="1.2" fill="currentColor" />
+    </svg>
+  );
+}
+
+function RenameIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 11.5 4 8.4 10.8 1.6a1.4 1.4 0 0 1 2 0l1.6 1.6a1.4 1.4 0 0 1 0 2L7.6 12 4.5 13 3 11.5Z" />
+      <path d="m9.6 2.8 3.6 3.6" />
+      <path d="M2.5 14h11" />
     </svg>
   );
 }
