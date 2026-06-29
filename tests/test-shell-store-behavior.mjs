@@ -25,7 +25,12 @@ const { useShellStore } = await import("../apps/desktop/src/stores/shell-store.t
 const initial = useShellStore.getState();
 assert.equal(initial.rightDockOpen, true);
 assert.deepEqual(initial.rightDockTabs.map((tab) => tab.kind), [
-  "xyzrender",
+  "inspector",
+  "text",
+  "files",
+]);
+useShellStore.getState().openDockTab("right", "descriptors");
+assert.deepEqual(useShellStore.getState().rightDockTabs.map((tab) => tab.kind), [
   "inspector",
   "text",
   "files",
