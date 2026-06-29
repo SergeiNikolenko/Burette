@@ -6,9 +6,12 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { DOCK_TAB_LABELS, dockFileEntries, dockTabCatalog, type DockArea, type DockFileEntry, type DockTabKind } from "../lib/dock";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { join, resourceDir } from "@tauri-apps/api/path";
+import { DOCK_TAB_LABELS, createDockTab, dockFileEntries, dockTabCatalog, type DockArea, type DockFileEntry, type DockTabKind } from "../lib/dock";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../lib/structure-drag";
 import type { StructureDragPayload } from "../lib/structure-drag";
+import { isTauriRuntime } from "../lib/tauri";
 import type { ShellActions, ShellViewState } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
 import { ViewerFrame } from "./editor-area/viewer-frame";
@@ -17,7 +20,6 @@ import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel";
-import { DescriptorPanel } from "./descriptor-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
@@ -37,7 +39,6 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   text: File02Icon,
   inspector: Search01Icon,
   folding: Atom01Icon,
-  descriptors: Atom01Icon,
   "structure-basket": Atom01Icon,
   compare: Atom01Icon,
   jobs: File02Icon,
@@ -58,21 +59,26 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
   const activeStructureDocument = dockDocument ?? state.activeDocument;
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
-  const descriptorDockAvailable = !descriptorDockBlocked(area, activeStructureDocument);
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   const foldingState = useFoldingResult(area === "bottom" ? activeStructureDocument : null);
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
   const foldingDockRequested = area === "bottom" && storedActiveTabKind === "folding" && rawTabs.some((tab) => tab.kind === "folding");
+  const catalog = dockTabCatalog(area);
   const tabs = rawTabs.filter((tab) => {
+    if (!catalog.includes(tab.kind)) return false;
     if (tab.kind === "spectrum") return spectrumDockAvailable;
     if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
-    if (tab.kind === "descriptors") return descriptorDockAvailable && !(area === "right" && spectrumDocumentActive);
     return true;
   });
   const activeTabKind = tabs.some((tab) => tab.kind === storedActiveTabKind) ? storedActiveTabKind : tabs[0]?.kind ?? "files";
-  const xyzrenderDockDocument = area === "right" ? (state.activeDocument ?? dockDocument) : null;
-  const visibleTabs = xyzrenderDockDocument ? tabs : tabs.filter((tab) => tab.kind !== "xyzrender");
+  const xyzrenderDockDocument = area === "right" && activeStructureDocument?.renderer === "xyzrender-external"
+    ? activeStructureDocument
+    : null;
+  const runtimeTabs = xyzrenderDockDocument && !tabs.some((tab) => tab.kind === "xyzrender")
+    ? [createDockTab("xyzrender"), ...tabs]
+    : tabs;
+  const visibleTabs = xyzrenderDockDocument ? runtimeTabs : runtimeTabs.filter((tab) => tab.kind !== "xyzrender");
   const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0];
   const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
   const dockDrops = useMemo(
@@ -82,19 +88,23 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
   const autoOpenedXyzrenderDocumentId = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!open || area !== "right" || !xyzrenderDockDocument) return;
+    if (area !== "right") return;
+    if (!xyzrenderDockDocument) {
+      autoOpenedXyzrenderDocumentId.current = null;
+      return;
+    }
+    if (!open) return;
     if (autoOpenedXyzrenderDocumentId.current === xyzrenderDockDocument.id) return;
     autoOpenedXyzrenderDocumentId.current = xyzrenderDockDocument.id;
-    actions.setDockActiveTab("right", "xyzrender");
+    actions.openDockTab("right", "xyzrender");
   }, [actions, area, open, xyzrenderDockDocument]);
 
   const showAddMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu(
-      dockTabCatalog(area).filter((kind) => {
+      catalog.filter((kind) => {
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
-        if (kind === "descriptors") return descriptorDockAvailable && !(area === "right" && spectrumDocumentActive);
         return true;
       }).map((kind) => ({
         kind: "item" as const,
@@ -196,7 +206,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
                     <HugeiconsIcon icon={Icon} size={16} color="currentColor" strokeWidth={2} />
                     <span>{DOCK_TAB_LABELS[tab.kind]}</span>
                   </button>
-                  {active && (
+                  {active && !(tab.kind === "xyzrender" && !rawTabs.some((rawTab) => rawTab.kind === "xyzrender")) && (
                     <button
                       type="button"
                       className="dock-tab-close"
@@ -227,11 +237,6 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
       </div>
     </aside>
   );
-}
-
-function descriptorDockBlocked(area: DockArea, document: ViewerDocument | null | undefined) {
-  if (area !== "right" || !document) return false;
-  return Boolean(document.dockingRequest) || (document.virtual && document.renderer === "molstar");
 }
 
 function DockPanelContent({
@@ -344,7 +349,9 @@ function DockPanelContent({
     );
   }
   if (activeTabKind === "xyzrender") {
-    const xyzrenderDocument = area === "right" ? activeDocument ?? dockDocument : dockStructureDocument;
+    const xyzrenderDocument = area === "right" && dockStructureDocument?.renderer === "xyzrender-external"
+      ? dockStructureDocument
+      : null;
     if (xyzrenderDocument) {
       return <XyzrenderDockPanel document={xyzrenderDocument} actions={actions} />;
     }
@@ -378,9 +385,6 @@ function DockPanelContent({
   }
   if (activeTabKind === "folding") {
     return <FoldingAnalysisPanel document={dockStructureDocument} actions={actions} />;
-  }
-  if (activeTabKind === "descriptors") {
-    return <DescriptorPanel state={state} actions={actions} />;
   }
   if (activeTabKind === "structure-basket") {
     return (
@@ -472,44 +476,76 @@ const DEFAULT_XYZRENDER_DOCK_CONTROLS: XyzrenderControls = {
   fieldOpacity: 1,
 };
 
+const xyzrenderGalleryImage = (name: string) => `${import.meta.env.BASE_URL}xyzrender-gallery/${name}`;
+const xyzrenderGalleryResourceCache = new Map<string, Promise<string | null>>();
+const XYZRENDER_GALLERY_FILENAME_PATTERN = /^[A-Za-z0-9_.-]+\.svg$/u;
+
+function xyzrenderGalleryFilename(src: string) {
+  try {
+    const path = new URL(src, window.location.href).pathname;
+    return decodeURIComponent(path.split("/").pop() ?? "");
+  } catch {
+    return src.split("/").pop()?.split("?")[0] ?? "";
+  }
+}
+
+async function resolveXyzrenderGalleryResource(src: string) {
+  if (!isTauriRuntime()) return null;
+  const fileName = xyzrenderGalleryFilename(src);
+  if (!XYZRENDER_GALLERY_FILENAME_PATTERN.test(fileName)) return null;
+  let cached = xyzrenderGalleryResourceCache.get(fileName);
+  if (!cached) {
+    cached = (async () => {
+      try {
+        return convertFileSrc(await join(await resourceDir(), "xyzrender-gallery", fileName));
+      } catch (error) {
+        console.warn(`[Burrete] Could not resolve xyzrender gallery asset ${fileName}`, error);
+        return null;
+      }
+    })();
+    xyzrenderGalleryResourceCache.set(fileName, cached);
+  }
+  return cached;
+}
+
 const XYZRENDER_README_PRESET_GALLERY = [
-  { value: "default", label: "Default", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_default.svg" },
-  { value: "flat", label: "Flat", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_flat.svg" },
-  { value: "paton", label: "Paton", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_paton.svg" },
-  { value: "pmol", label: "PMol", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_pmol.svg" },
-  { value: "skeletal", label: "Skeletal", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_skeletal.svg" },
-  { value: "bubble", label: "Bubble", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_bubble.svg" },
-  { value: "tube", label: "Tube", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_tube.svg" },
-  { value: "btube", label: "BTube", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_btube.svg" },
-  { value: "wire", label: "Wire", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_wire.svg" },
-  { value: "graph", label: "Graph", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_graph.svg" },
-  { value: "mtube", label: "MTube", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_mtube.svg" },
-  { value: "vdw", label: "vdW", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_vdw.svg" },
+  { value: "default", label: "Default", image: xyzrenderGalleryImage("caffeine_default.svg") },
+  { value: "flat", label: "Flat", image: xyzrenderGalleryImage("caffeine_flat.svg") },
+  { value: "paton", label: "Paton", image: xyzrenderGalleryImage("caffeine_paton.svg") },
+  { value: "pmol", label: "PMol", image: xyzrenderGalleryImage("caffeine_pmol.svg") },
+  { value: "skeletal", label: "Skeletal", image: xyzrenderGalleryImage("caffeine_skeletal.svg") },
+  { value: "bubble", label: "Bubble", image: xyzrenderGalleryImage("caffeine_bubble.svg") },
+  { value: "tube", label: "Tube", image: xyzrenderGalleryImage("caffeine_tube.svg") },
+  { value: "btube", label: "BTube", image: xyzrenderGalleryImage("caffeine_btube.svg") },
+  { value: "wire", label: "Wire", image: xyzrenderGalleryImage("caffeine_wire.svg") },
+  { value: "graph", label: "Graph", image: xyzrenderGalleryImage("caffeine_graph.svg") },
+  { value: "mtube", label: "MTube", image: xyzrenderGalleryImage("caffeine_mtube.svg") },
+  { value: "vdw", label: "vdW", image: xyzrenderGalleryImage("caffeine_vdw.svg") },
 ] as const;
 
 const XYZRENDER_README_DISPLAY_OPTIONS = [
-  { group: "hydrogens", value: "all", label: "All H", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/ethanol_all_h.svg" },
-  { group: "hydrogens", value: "auto", label: "Some H", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/ethanol_some_h.svg" },
-  { group: "hydrogens", value: "none", label: "No H", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/ethanol_no_h.svg" },
-  { group: "bonds", value: "aromatic", label: "Aromatic", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/benzene.svg" },
-  { group: "bonds", value: "kekule", label: "Kekule", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_kekule.svg" },
+  { group: "hydrogens", value: "all", label: "All H", image: xyzrenderGalleryImage("ethanol_all_h.svg") },
+  { group: "hydrogens", value: "auto", label: "Some H", image: xyzrenderGalleryImage("ethanol_some_h.svg") },
+  { group: "hydrogens", value: "none", label: "No H", image: xyzrenderGalleryImage("ethanol_no_h.svg") },
+  { group: "bonds", value: "aromatic", label: "Aromatic", image: xyzrenderGalleryImage("benzene.svg") },
+  { group: "bonds", value: "kekule", label: "Kekule", image: xyzrenderGalleryImage("caffeine_kekule.svg") },
 ] as const;
 
 const XYZRENDER_README_VDW_OPTIONS = [
-  { value: "all", label: "All atoms", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw.svg" },
-  { value: "partial", label: "Partial", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/asparagine_vdw_partial.svg" },
-  { value: "off", label: "No vdW", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_default.svg" },
+  { value: "all", label: "All atoms", image: xyzrenderGalleryImage("asparagine_vdw.svg") },
+  { value: "partial", label: "Partial", image: xyzrenderGalleryImage("asparagine_vdw_partial.svg") },
+  { value: "off", label: "No vdW", image: xyzrenderGalleryImage("caffeine_default.svg") },
 ] as const;
 
 const XYZRENDER_README_HULL_OPTIONS = [
-  { value: "off", label: "Off", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/caffeine_default.svg" },
-  { value: "auto-rings", label: "Rings", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/anthracene_hull.svg" },
-  { value: "faces", label: "Faces", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/buckyball_faces.svg" },
+  { value: "off", label: "Off", image: xyzrenderGalleryImage("caffeine_default.svg") },
+  { value: "auto-rings", label: "Rings", image: xyzrenderGalleryImage("anthracene_hull.svg") },
+  { value: "faces", label: "Faces", image: xyzrenderGalleryImage("buckyball_faces.svg") },
 ] as const;
 
 const XYZRENDER_README_PORE_OPTIONS = [
-  { value: "pore", label: "Pore", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/buckyball_pore.svg" },
-  { value: "faces-pore", label: "Faces + pore", image: "https://raw.githubusercontent.com/aligfellow/xyzrender/main/examples/images/mof5_faces_pore.svg" },
+  { value: "pore", label: "Pore", image: xyzrenderGalleryImage("buckyball_pore.svg") },
+  { value: "faces-pore", label: "Faces + pore", image: xyzrenderGalleryImage("mof5_faces_pore.svg") },
 ] as const;
 
 const XYZRENDER_DEFAULT_HULL_OPACITY = 0.45;
@@ -719,7 +755,7 @@ function XyzrenderPresetGallery({ preset, onSelect }: { preset: string; onSelect
           onClick={() => onSelect(option.value)}
         >
           <span>{option.label}</span>
-          <img src={option.image} alt="" loading="lazy" draggable={false} />
+          <XyzrenderGalleryTileImage src={option.image} />
         </button>
       ))}
     </div>
@@ -752,7 +788,7 @@ function XyzrenderDisplayOptionsGallery({
                 : { ...controls, bondNotation: option.value as XyzrenderControls["bondNotation"] })}
             >
               <span>{option.label}</span>
-              <img src={option.image} alt="" loading="lazy" draggable={false} />
+              <XyzrenderGalleryTileImage src={option.image} />
             </button>
           );
         })}
@@ -784,7 +820,7 @@ function XyzrenderVdwGallery({
             onClick={() => onSelect(option.value)}
           >
             <span>{option.label}</span>
-            <img src={option.image} alt="" loading="lazy" draggable={false} />
+            <XyzrenderGalleryTileImage src={option.image} />
           </button>
         ))}
       </div>
@@ -812,7 +848,7 @@ function XyzrenderHullGallery({
             onClick={() => onSelect(option.value)}
           >
             <span>{option.label}</span>
-            <img src={option.image} alt="" loading="lazy" draggable={false} />
+            <XyzrenderGalleryTileImage src={option.image} />
           </button>
         ))}
       </div>
@@ -840,12 +876,29 @@ function XyzrenderPoreGallery({
             onClick={() => onSelect(option.value)}
           >
             <span>{option.label}</span>
-            <img src={option.image} alt="" loading="lazy" draggable={false} />
+            <XyzrenderGalleryTileImage src={option.image} />
           </button>
         ))}
       </div>
     </div>
   );
+}
+
+function XyzrenderGalleryTileImage({ src }: { src: string }) {
+  const [resolvedSrc, setResolvedSrc] = useState(src);
+
+  useEffect(() => {
+    setResolvedSrc(src);
+  }, [src]);
+
+  const handleError = useCallback(() => {
+    if (resolvedSrc !== src) return;
+    void resolveXyzrenderGalleryResource(src).then((fallback) => {
+      if (fallback) setResolvedSrc(fallback);
+    });
+  }, [resolvedSrc, src]);
+
+  return <img src={resolvedSrc} alt="" loading="lazy" draggable={false} onError={handleError} />;
 }
 
 function XyzrenderDockCheckbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
