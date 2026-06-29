@@ -761,7 +761,7 @@ kbd span { margin-left: 2px; }
   border-radius: 8px;
   background: transparent;
   color: var(--text-muted);
-  padding: 5px 38px 5px 10px;
+  padding: 5px 88px 5px 10px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -796,6 +796,23 @@ kbd span { margin-left: 2px; }
   font-weight: 400;
   line-height: 1.15;
 }
+.project-group-title-input {
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  padding: 0 6px;
+  font: inherit;
+  line-height: 1.15;
+  outline: none;
+}
+.project-group-title-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
 .project-group-actions {
   position: absolute;
   right: 6px;
@@ -803,12 +820,10 @@ kbd span { margin-left: 2px; }
   transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
-  opacity: 0;
-  pointer-events: none;
+  opacity: 1;
+  pointer-events: auto;
   transition: opacity 140ms ease-out;
 }
-.project-group-row:hover .project-group-actions,
-.project-group-row:focus-within .project-group-actions { opacity: 1; pointer-events: auto; }
 .project-group-menu-button {
   width: 22px;
   height: 22px;
@@ -824,9 +839,13 @@ kbd span { margin-left: 2px; }
 }
 .project-group-menu-button:hover,
 .project-group-menu-button:focus-visible { color: var(--text-muted); }
+.project-group-menu-button:disabled {
+  color: var(--text-disabled);
+  pointer-events: none;
+}
 .project-folder-toggle-button {
   position: absolute;
-  right: 42px;
+  right: 58px;
   top: 50%;
   transform: translateY(-50%);
   width: 30px;
