@@ -149,6 +149,7 @@ const [
   windowTitle,
   componentFormat,
   instance,
+  buildInfoLib,
   tauriSource,
   settingsSections,
   browserDevStartup,
@@ -344,6 +345,7 @@ const [
   source('apps/desktop/src/components/window-title/index.tsx'),
   source('apps/desktop/src/components/format.ts'),
   source('apps/desktop/src/lib/instance.ts'),
+  source('apps/desktop/src/lib/build-info.ts'),
   source('apps/desktop/src/lib/tauri.ts'),
   source('apps/desktop/src/lib/settings-sections.ts'),
   source('apps/desktop/src/lib/browser-dev-startup.ts'),
@@ -3860,6 +3862,8 @@ assert.match(instance, /VITE_BURRETE_AGENT_SHELL/);
 assert.match(instance, /"Burette Agent"/);
 assert.match(instance, /Burette Dev \$\{devInstanceSuffix\}/);
 assert.match(instance, /"8a18"/);
+assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
+assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v138"/);
