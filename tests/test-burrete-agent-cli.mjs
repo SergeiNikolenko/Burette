@@ -2,9 +2,24 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
+import { createServer, get as httpGet } from 'node:http';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+
+function get(url) {
+  return new Promise((resolveRequest, rejectRequest) => {
+    httpGet(new URL(url), (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', chunk => { body += chunk; });
+      response.on('end', () => resolveRequest({
+        statusCode: response.statusCode,
+        headers: response.headers,
+        body,
+      }));
+    }).on('error', rejectRequest);
+  });
+}
 
 async function freePort() {
   const server = createServer();
@@ -167,10 +182,40 @@ try {
       assert.equal(wasmResponse.status, 200);
       assert.equal(wasmResponse.headers.get('content-type'), 'application/wasm');
       assert.equal(Buffer.from(await wasmResponse.arrayBuffer()).subarray(0, 4).toString('hex'), '0061736d');
+      const miniFsPath = resolve('samples/mini.pdb').split('/').map(encodeURIComponent).join('/');
+      const miniFs = await get(`${prebuiltPayload.result.url.split('?')[0]}@fs/${miniFsPath}`);
+      assert.equal(miniFs.statusCode, 200);
+      assert.match(miniFs.body, /^HEADER\s+MINI GLY-ALA PEPTIDE/u);
+      assert.doesNotMatch(miniFs.body, /Burrete Agent Shell/);
+      const finderIcon = await get(`${prebuiltPayload.result.url.split('?')[0]}__burette/app-icon/finder.png`);
+      assert.equal(finderIcon.statusCode, 200);
+      assert.match(finderIcon.headers['content-type'] ?? '', /^image\/png\b/u);
+      assert.doesNotMatch(finderIcon.body, /Burrete Agent Shell/);
       if (prebuiltPayload.result.processId) {
         try {
           process.kill(prebuiltPayload.result.processId, 'SIGTERM');
         } catch {}
+      }
+      const staleAssetDist = await mkdtemp(resolve(tmpdir(), 'burrete-agent-stale-shell-dist-'));
+      try {
+        await writeFile(resolve(staleAssetDist, 'index.html'), '<!doctype html><script src="/@fs/tmp/stale/Burette/PreviewExtension/Web/viewer.js"></script>');
+        const staleAssetShell = runCliWithEnv(['open', '--mode', 'browser-agent-shell', 'samples/mini.pdb'], {
+          BURRETE_AGENT_SHELL_DIST_DIR: staleAssetDist,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+        });
+        assert.equal(staleAssetShell.status, 0, staleAssetShell.stderr);
+        const staleAssetPayload = JSON.parse(staleAssetShell.stdout);
+        const staleAsset = await get(`${staleAssetPayload.result.url.split('?')[0]}@fs/tmp/stale/Burette/PreviewExtension/Web/viewer.js`);
+        assert.equal(staleAsset.statusCode, 200);
+        assert.match(staleAsset.body, /BurreteAgent|BurreteDataBase64|molstar/u);
+        assert.doesNotMatch(staleAsset.body, /Burrete Agent Shell/);
+        if (staleAssetPayload.result.processId) {
+          try {
+            process.kill(staleAssetPayload.result.processId, 'SIGTERM');
+          } catch {}
+        }
+      } finally {
+        await rm(staleAssetDist, { recursive: true, force: true });
       }
     } finally {
       await rm(prebuiltDist, { recursive: true, force: true });
