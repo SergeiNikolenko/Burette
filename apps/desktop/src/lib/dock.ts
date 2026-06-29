@@ -11,7 +11,6 @@ export type DockTabKind =
   | "text"
   | "inspector"
   | "folding"
-  | "descriptors"
   | "structure-basket"
   | "jobs"
   | "logs"
@@ -80,7 +79,6 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   text: "Text",
   inspector: "Info",
   folding: "Folding",
-  descriptors: "Descriptors",
   "structure-basket": "Structure Basket",
   jobs: "Jobs",
   logs: "Logs",
@@ -90,7 +88,6 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
 };
 
 export const RIGHT_DOCK_DEFAULT_TABS: DockTabKind[] = [
-  "xyzrender",
   "inspector",
   "text",
   "files",
@@ -103,7 +100,6 @@ export const BOTTOM_DOCK_DEFAULT_TABS: DockTabKind[] = [
 const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
   "xyzrender",
   "inspector",
-  "descriptors",
   "text",
   "files",
 ];

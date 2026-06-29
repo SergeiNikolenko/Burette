@@ -27,6 +27,14 @@ async function readJson(filePath, fallback = null) {
   }
 }
 
+async function previewWebRuntimeExists(dir) {
+  const [hasIndex, hasViewer] = await Promise.all([
+    exists(path.join(dir, "index.html")),
+    exists(path.join(dir, "viewer.js")),
+  ]);
+  return hasIndex && hasViewer;
+}
+
 async function resolveRepoRoot() {
   if (process.env.BURRETE_AGENT_REPO_ROOT) {
     return { path: path.resolve(process.env.BURRETE_AGENT_REPO_ROOT), source: "env" };
@@ -57,9 +65,11 @@ const agentShellDistPath = process.env.BURRETE_AGENT_SHELL_DIST_DIR
   : await exists(path.join(pluginRoot, "browser-shell-dist", "index.html"))
     ? path.join(pluginRoot, "browser-shell-dist")
     : path.join(repoRoot, "apps", "desktop", "dist");
-const previewWebPath = await exists(path.join(pluginRoot, "preview-web", "index.html"))
-  ? path.join(pluginRoot, "preview-web")
-  : path.join(repoRoot, "PreviewExtension", "Web");
+const repoPreviewWebPath = path.join(repoRoot, "PreviewExtension", "Web");
+const pluginPreviewWebPath = path.join(pluginRoot, "preview-web");
+const previewWebPath = await exists(path.join(repoPreviewWebPath, "index.html"))
+  ? repoPreviewWebPath
+  : pluginPreviewWebPath;
 const desktopApp = process.env.BURRETE_AGENT_APP || null;
 const hasVp = commandExists("vp");
 
@@ -68,7 +78,7 @@ const [pluginManifest, repoPackage, hasCli, hasPreview, hasPreviewWeb, hasAgentS
   readJson(repoPackagePath, {}),
   exists(cliPath),
   exists(previewPath),
-  exists(previewWebPath),
+  previewWebRuntimeExists(previewWebPath),
   exists(agentShellServerPath),
   exists(path.join(agentShellDistPath, "index.html")),
   desktopApp ? exists(desktopApp) : Promise.resolve(false),
@@ -220,7 +230,7 @@ const payload = {
     blockers: [
       ...(hasCli ? [] : ["scripts/burrete-agent.mjs is missing"]),
       ...(hasPreview ? [] : ["scripts/agent-preview.mjs is missing"]),
-      ...(hasPreviewWeb ? [] : ["preview-web/index.html is missing"]),
+      ...(hasPreviewWeb ? [] : ["preview web index.html or viewer.js is missing"]),
     ],
   },
 };
