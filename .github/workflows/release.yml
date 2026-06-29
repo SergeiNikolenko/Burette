@@ -15,7 +15,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -188,7 +188,7 @@ jobs:
 
       - name: Checkout Homebrew tap
         if: steps.version.outputs.prerelease != 'true' && steps.capabilities.outputs.homebrew == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: SergeiNikolenko/homebrew-burrete
           path: homebrew-burrete
