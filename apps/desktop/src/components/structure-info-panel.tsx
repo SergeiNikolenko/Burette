@@ -47,18 +47,28 @@ const SDF_CONTEXT_STYLE_OPTIONS = [
   { value: "match", label: "Match" },
 ] as const;
 
-type SdfContextStyle = typeof SDF_CONTEXT_STYLE_OPTIONS[number]["value"];
+type SdfContextStyleOption = typeof SDF_CONTEXT_STYLE_OPTIONS[number];
+type SdfContextStyle = SdfContextStyleOption["value"];
 type SdfContextColor = "gray" | "colored";
+const XYZ_FRAME_CONTEXT_STYLE_OPTIONS = [
+  { value: "line", label: "Line" },
+  { value: "ball-and-stick", label: "Ball+Stick" },
+  { value: "spacefill", label: "Spacefill" },
+  { value: "molecular-surface", label: "Surface" },
+  { value: "match", label: "Match" },
+] as const satisfies readonly SdfContextStyleOption[];
 const SDF_CONTEXT_OPACITY_DEFAULT = 0.4;
 const SDF_CONTEXT_OPACITY_MIN = 0.04;
 const SDF_CONTEXT_OPACITY_MAX = 1;
+const SDF_CONTEXT_STYLE_DEFAULT: SdfContextStyle = "match";
+const SDF_CONTEXT_COLOR_DEFAULT: SdfContextColor = "colored";
 const INFO_TRAJECTORY_CONTROL_LIMIT = 200;
 
 export function StructureInfoPanel({ document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
   const composition = useStructureComposition(document);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
-  const [sdfContextStyle, setSdfContextStyle] = useState<SdfContextStyle>("line");
-  const [sdfContextColor, setSdfContextColor] = useState<SdfContextColor>("gray");
+  const [sdfContextStyle, setSdfContextStyle] = useState<SdfContextStyle>(SDF_CONTEXT_STYLE_DEFAULT);
+  const [sdfContextColor, setSdfContextColor] = useState<SdfContextColor>(SDF_CONTEXT_COLOR_DEFAULT);
   const [sdfContextOpacity, setSdfContextOpacity] = useState(SDF_CONTEXT_OPACITY_DEFAULT);
   const [xtbOpen, setXtbOpen] = useState(true);
   const [xtbSettingsOpen, setXtbSettingsOpen] = useState(false);
@@ -433,6 +443,7 @@ type StructureContextStyleCardCopy = {
   detail: string;
   styleAriaLabel: string;
   opacityAriaLabel: string;
+  styleOptions?: readonly SdfContextStyleOption[];
 };
 
 function structureContextStyleCardFor(
@@ -475,9 +486,14 @@ function structureContextStyleCardFor(
       detail: "Background frames",
       styleAriaLabel: "All background frame style",
       opacityAriaLabel: "All background frame opacity",
+      styleOptions: isXyzStructureDocument(document) ? XYZ_FRAME_CONTEXT_STYLE_OPTIONS : undefined,
     };
   }
   return null;
+}
+
+function isXyzStructureDocument(document: ViewerDocument) {
+  return document.extension.trim().toLowerCase() === "xyz" || document.path.trim().toLowerCase().endsWith(".xyz");
 }
 
 function isVirtualMolstarScene(document: ViewerDocument) {
@@ -691,7 +707,7 @@ function sdfContextColorStorageKey(document: ViewerDocument) {
 }
 
 function normalizeSdfContextStyle(value: string | null | undefined): SdfContextStyle {
-  return SDF_CONTEXT_STYLE_OPTIONS.some((option) => option.value === value) ? value as SdfContextStyle : "line";
+  return SDF_CONTEXT_STYLE_OPTIONS.some((option) => option.value === value) ? value as SdfContextStyle : SDF_CONTEXT_STYLE_DEFAULT;
 }
 
 function normalizeSdfContextOpacity(value: string | number | null | undefined) {
@@ -701,14 +717,14 @@ function normalizeSdfContextOpacity(value: string | number | null | undefined) {
 }
 
 function normalizeSdfContextColor(value: string | null | undefined): SdfContextColor {
-  return value === "colored" ? "colored" : "gray";
+  return value === "gray" ? "gray" : SDF_CONTEXT_COLOR_DEFAULT;
 }
 
 function readSdfContextStylePreference(document: ViewerDocument): SdfContextStyle {
   try {
     return normalizeSdfContextStyle(window.localStorage?.getItem(sdfContextStyleStorageKey(document)));
   } catch (_) {
-    return "line";
+    return SDF_CONTEXT_STYLE_DEFAULT;
   }
 }
 
@@ -736,7 +752,7 @@ function readSdfContextColorPreference(document: ViewerDocument): SdfContextColo
   try {
     return normalizeSdfContextColor(window.localStorage?.getItem(sdfContextColorStorageKey(document)));
   } catch (_) {
-    return "gray";
+    return SDF_CONTEXT_COLOR_DEFAULT;
   }
 }
 
@@ -843,17 +859,23 @@ function SdfContextStyleCard({
       color: normalized,
     });
   };
+  const styleOptions = copy.styleOptions ?? SDF_CONTEXT_STYLE_OPTIONS;
+  const selectedStyle = styleOptions.some((option) => option.value === value)
+    ? value
+    : styleOptions.some((option) => option.value === "line")
+      ? "line"
+      : SDF_CONTEXT_STYLE_DEFAULT;
   return (
     <section className="structure-brief-card structure-inspector-context-style">
       <StructureSectionHeader title={copy.title} detail={copy.detail} />
       <div className="structure-inspector-style-options" role="group" aria-label={copy.styleAriaLabel}>
-        {SDF_CONTEXT_STYLE_OPTIONS.map((option) => (
+        {styleOptions.map((option) => (
           <button
             key={option.value}
             type="button"
             className="structure-inspector-style-option"
-            data-selected={option.value === value || undefined}
-            aria-pressed={option.value === value}
+            data-selected={option.value === selectedStyle || undefined}
+            aria-pressed={option.value === selectedStyle}
             onClick={() => applyStyle(option.value)}
           >
             {option.label}

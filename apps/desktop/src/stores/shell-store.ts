@@ -8,6 +8,7 @@ import {
   type DockTabKind,
   type DockToolKind,
   createDockTab,
+  dockTabCatalog,
   ensureDefaultDockTabs,
   firstDockTabKind,
   normalizeDockActiveTab,
@@ -216,6 +217,7 @@ export const useShellStore = create<ShellState>()(
         : { bottomDockHeight: normalizeBottomDockHeight(size) }),
       openDockTab: (area, kind) =>
         set((state) => {
+          if (!dockTabCatalog(area).includes(kind)) return state;
           const current = dockTabState(area, state);
           const tabs = current.tabs.some((tab) => tab.kind === kind) ? current.tabs : [...current.tabs, createDockTab(kind)];
           return area === "right"
@@ -249,6 +251,7 @@ export const useShellStore = create<ShellState>()(
           : { bottomDockOpen: true, bottomDockDocumentId: null, bottomDockTool: tool, bottomDockActiveTab: "files" }),
       addDockDrop: (input) =>
         set((state) => {
+          if (!dockTabCatalog(input.area).includes(input.tabKind)) return state;
           const items = dockDropItems(input);
           if (items.length === 0) return state;
           const current = dockTabState(input.area, state);

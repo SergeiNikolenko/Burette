@@ -25,7 +25,11 @@ fi
 APP_ID="com.local.BurreteV10"
 PREVIEW_ID="com.local.BurreteV10.Preview"
 LOCAL_APP="$ROOT/build/Burrete.app"
-TAURI_BUILT_APP="$ROOT/apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
+TAURI_BUILT_APP_CANDIDATES=(
+  "$ROOT/apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
+  "$ROOT/target/release/bundle/macos/Burrete.app"
+)
+TAURI_BUILT_APP=""
 XCODE_DERIVED="${BURRETE_DEV_DERIVED_DATA:-/private/tmp/BurreteV10XcodeDev}"
 XCODE_LOG="$ROOT/build/xcode-dev.log"
 QUICKLOOK_APPEX="$XCODE_DERIVED/Build/Products/Debug/BurretePreview.appex"
@@ -156,7 +160,13 @@ else
   echo "Xcode build log: $XCODE_LOG"
 fi
 
-[[ -d "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing: $TAURI_BUILT_APP" >&2; exit 1; }
+for candidate in "${TAURI_BUILT_APP_CANDIDATES[@]}"; do
+  if [[ -d "$candidate" ]]; then
+    TAURI_BUILT_APP="$candidate"
+    break
+  fi
+done
+[[ -n "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing. Checked: ${TAURI_BUILT_APP_CANDIDATES[*]}" >&2; exit 1; }
 [[ -d "$QUICKLOOK_APPEX_SOURCE" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX_SOURCE" >&2; exit 1; }
 
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
