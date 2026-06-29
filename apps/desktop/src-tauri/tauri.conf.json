@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Burrete",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "identifier": "com.local.BurreteV10",
   "build": {
     "beforeDevCommand": "bun run dev -- --host 127.0.0.1",
@@ -52,6 +52,7 @@
     "active": true,
     "targets": "app",
     "resources": {
+      "../public/xyzrender-gallery": "xyzrender-gallery",
       "../../../PreviewExtension/Web": "ViewerWeb",
       "../../../scripts/desmond_preview_extract.py": "desmond_preview_extract.py"
     },

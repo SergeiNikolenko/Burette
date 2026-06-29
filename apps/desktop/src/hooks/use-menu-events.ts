@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 
@@ -42,48 +42,35 @@ export function useMenuEvents({
   openSettings: () => void;
   checkForUpdates: () => void | Promise<void>;
 }) {
+  const handlersRef = useRef({
+    chooseFiles,
+    openMostRecentStructure,
+    revealActiveDocument,
+    copyActiveDocumentPath,
+    showActiveDocumentMetadata,
+    exportActivePreviewAsPng,
+    exportActivePreviewAsSvg,
+    clearCache,
+    resetQuickLook,
+    openLogs,
+    openSettings,
+    checkForUpdates,
+  });
+
   useEffect(() => {
-    if (!isTauriRuntime()) return undefined;
-
-    const cleanups = [
-      trackTauriListener(listen(MENU_OPEN_SETTINGS_EVENT, openSettings), MENU_OPEN_SETTINGS_EVENT),
-      trackTauriListener(listen(MENU_OPEN_FILES_EVENT, () => {
-        void chooseFiles();
-      }), MENU_OPEN_FILES_EVENT),
-      trackTauriListener(listen(MENU_OPEN_RECENT_EVENT, () => {
-        void openMostRecentStructure();
-      }), MENU_OPEN_RECENT_EVENT),
-      trackTauriListener(listen(MENU_REVEAL_ACTIVE_EVENT, () => {
-        void revealActiveDocument();
-      }), MENU_REVEAL_ACTIVE_EVENT),
-      trackTauriListener(listen(MENU_COPY_ACTIVE_PATH_EVENT, () => {
-        void copyActiveDocumentPath();
-      }), MENU_COPY_ACTIVE_PATH_EVENT),
-      trackTauriListener(listen(MENU_SHOW_ACTIVE_METADATA_EVENT, () => {
-        void showActiveDocumentMetadata();
-      }), MENU_SHOW_ACTIVE_METADATA_EVENT),
-      trackTauriListener(listen(MENU_EXPORT_PREVIEW_PNG_EVENT, () => {
-        void exportActivePreviewAsPng();
-      }), MENU_EXPORT_PREVIEW_PNG_EVENT),
-      trackTauriListener(listen(MENU_EXPORT_PREVIEW_SVG_EVENT, () => {
-        void exportActivePreviewAsSvg();
-      }), MENU_EXPORT_PREVIEW_SVG_EVENT),
-      trackTauriListener(listen(MENU_CLEAR_PREVIEW_CACHE_EVENT, () => {
-        void clearCache();
-      }), MENU_CLEAR_PREVIEW_CACHE_EVENT),
-      trackTauriListener(listen(MENU_RESET_QUICK_LOOK_EVENT, () => {
-        void resetQuickLook();
-      }), MENU_RESET_QUICK_LOOK_EVENT),
-      trackTauriListener(listen(MENU_OPEN_LOGS_EVENT, () => {
-        void openLogs();
-      }), MENU_OPEN_LOGS_EVENT),
-      trackTauriListener(listen(MENU_CHECK_UPDATES_EVENT, () => {
-        void checkForUpdates();
-      }), MENU_CHECK_UPDATES_EVENT),
-    ];
-
-    return () => {
-      for (const cleanup of cleanups) cleanup();
+    handlersRef.current = {
+      chooseFiles,
+      openMostRecentStructure,
+      revealActiveDocument,
+      copyActiveDocumentPath,
+      showActiveDocumentMetadata,
+      exportActivePreviewAsPng,
+      exportActivePreviewAsSvg,
+      clearCache,
+      resetQuickLook,
+      openLogs,
+      openSettings,
+      checkForUpdates,
     };
   }, [
     checkForUpdates,
@@ -99,4 +86,51 @@ export function useMenuEvents({
     revealActiveDocument,
     showActiveDocumentMetadata,
   ]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return undefined;
+
+    const cleanups = [
+      trackTauriListener(listen(MENU_OPEN_SETTINGS_EVENT, () => {
+        handlersRef.current.openSettings();
+      }), MENU_OPEN_SETTINGS_EVENT),
+      trackTauriListener(listen(MENU_OPEN_FILES_EVENT, () => {
+        void handlersRef.current.chooseFiles();
+      }), MENU_OPEN_FILES_EVENT),
+      trackTauriListener(listen(MENU_OPEN_RECENT_EVENT, () => {
+        void handlersRef.current.openMostRecentStructure();
+      }), MENU_OPEN_RECENT_EVENT),
+      trackTauriListener(listen(MENU_REVEAL_ACTIVE_EVENT, () => {
+        void handlersRef.current.revealActiveDocument();
+      }), MENU_REVEAL_ACTIVE_EVENT),
+      trackTauriListener(listen(MENU_COPY_ACTIVE_PATH_EVENT, () => {
+        void handlersRef.current.copyActiveDocumentPath();
+      }), MENU_COPY_ACTIVE_PATH_EVENT),
+      trackTauriListener(listen(MENU_SHOW_ACTIVE_METADATA_EVENT, () => {
+        void handlersRef.current.showActiveDocumentMetadata();
+      }), MENU_SHOW_ACTIVE_METADATA_EVENT),
+      trackTauriListener(listen(MENU_EXPORT_PREVIEW_PNG_EVENT, () => {
+        void handlersRef.current.exportActivePreviewAsPng();
+      }), MENU_EXPORT_PREVIEW_PNG_EVENT),
+      trackTauriListener(listen(MENU_EXPORT_PREVIEW_SVG_EVENT, () => {
+        void handlersRef.current.exportActivePreviewAsSvg();
+      }), MENU_EXPORT_PREVIEW_SVG_EVENT),
+      trackTauriListener(listen(MENU_CLEAR_PREVIEW_CACHE_EVENT, () => {
+        void handlersRef.current.clearCache();
+      }), MENU_CLEAR_PREVIEW_CACHE_EVENT),
+      trackTauriListener(listen(MENU_RESET_QUICK_LOOK_EVENT, () => {
+        void handlersRef.current.resetQuickLook();
+      }), MENU_RESET_QUICK_LOOK_EVENT),
+      trackTauriListener(listen(MENU_OPEN_LOGS_EVENT, () => {
+        void handlersRef.current.openLogs();
+      }), MENU_OPEN_LOGS_EVENT),
+      trackTauriListener(listen(MENU_CHECK_UPDATES_EVENT, () => {
+        void handlersRef.current.checkForUpdates();
+      }), MENU_CHECK_UPDATES_EVENT),
+    ];
+
+    return () => {
+      for (const cleanup of cleanups) cleanup();
+    };
+  }, []);
 }

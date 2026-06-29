@@ -13,8 +13,10 @@ cd "$ROOT"
 APP="${BURRETE_APP_PATH:-${1:-$ROOT/build/Burrete.app}}"
 APPEX="$APP/Contents/PlugIns/BurretePreview.appex"
 WEB_SOURCE="$ROOT/PreviewExtension/Web"
+GALLERY_SOURCE="$ROOT/apps/desktop/public/xyzrender-gallery"
 APP_WEB="$APP/Contents/Resources/ViewerWeb"
 APPEX_WEB="$APPEX/Contents/Resources/Web"
+APP_GALLERY="$APP/Contents/Resources/xyzrender-gallery"
 ENTITLEMENTS="$ROOT/PreviewExtension/BurretePreview.entitlements"
 
 require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required." >&2; exit 1; }; }
@@ -56,6 +58,9 @@ require_asset "$WEB_SOURCE/grid-viewer.js"
 require_asset "$WEB_SOURCE/grid.css"
 require_asset "$WEB_SOURCE/rdkit/RDKit_minimal.js"
 require_asset "$WEB_SOURCE/rdkit/RDKit_minimal.wasm"
+require_asset "$GALLERY_SOURCE/caffeine_default.svg"
+require_asset "$GALLERY_SOURCE/asparagine_vdw.svg"
+require_asset "$GALLERY_SOURCE/mof5_faces_pore.svg"
 
 bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/viewer.js \
@@ -68,13 +73,16 @@ cat <<MSG
 Burrete web asset patch
   app: $APP
   source: $WEB_SOURCE
+  gallery: $GALLERY_SOURCE
 MSG
 
-rm -rf "$APP_WEB" "$APPEX_WEB"
+rm -rf "$APP_WEB" "$APPEX_WEB" "$APP_GALLERY"
 ditto --norsrc --noextattr "$WEB_SOURCE" "$APP_WEB"
 ditto --norsrc --noextattr "$WEB_SOURCE" "$APPEX_WEB"
+ditto --norsrc --noextattr "$GALLERY_SOURCE" "$APP_GALLERY"
 clean_detritus "$APP_WEB"
 clean_detritus "$APPEX_WEB"
+clean_detritus "$APP_GALLERY"
 
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APPEX" >/dev/null
 codesign --force --sign - "$APP" >/dev/null
@@ -88,6 +96,8 @@ cmp -s "$WEB_SOURCE/grid-viewer.js" "$APP_WEB/grid-viewer.js" || { echo "error: 
 cmp -s "$WEB_SOURCE/grid-viewer.js" "$APPEX_WEB/grid-viewer.js" || { echo "error: appex grid-viewer.js does not match source." >&2; exit 1; }
 cmp -s "$WEB_SOURCE/grid.css" "$APP_WEB/grid.css" || { echo "error: app grid.css does not match source." >&2; exit 1; }
 cmp -s "$WEB_SOURCE/grid.css" "$APPEX_WEB/grid.css" || { echo "error: appex grid.css does not match source." >&2; exit 1; }
+cmp -s "$GALLERY_SOURCE/caffeine_default.svg" "$APP_GALLERY/caffeine_default.svg" || { echo "error: app xyzrender gallery does not match source." >&2; exit 1; }
+cmp -s "$GALLERY_SOURCE/asparagine_vdw.svg" "$APP_GALLERY/asparagine_vdw.svg" || { echo "error: app xyzrender gallery does not match source." >&2; exit 1; }
 
 cat <<MSG
 WEB ASSET PATCH SUCCEEDED
