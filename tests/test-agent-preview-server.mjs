@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -109,6 +109,23 @@ try {
   assert.match(staticViewerShell.body, /buret-renderer-choice/);
   assert.match(staticViewerShell.body, />Seq</);
   assert.doesNotMatch(staticViewerShell.body, /VESTA/);
+  const canonicalViewer = await readFile('PreviewExtension/Web/viewer.js', 'utf8');
+  const staticViewer = await get(`${base}/viewer.js`);
+  assert.equal(staticViewer.statusCode, 200);
+  assert.equal(staticViewer.body, canonicalViewer);
+
+  const pluginPort = await freePort();
+  const pluginChild = spawn(process.execPath, ['plugins/burette-agent/scripts/agent-preview.mjs', 'samples/mini.pdb', '--port', String(pluginPort)], {
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  try {
+    await waitForReady(pluginChild);
+    const pluginViewer = await get(`http://127.0.0.1:${pluginPort}/viewer.js`);
+    assert.equal(pluginViewer.statusCode, 200);
+    assert.equal(pluginViewer.body, canonicalViewer);
+  } finally {
+    pluginChild.kill('SIGTERM');
+  }
 
   const htmlWithToken = await get(ready.url);
   assert.equal(htmlWithToken.statusCode, 200);

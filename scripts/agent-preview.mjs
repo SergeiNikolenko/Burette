@@ -22,10 +22,22 @@ const amberNetcdfExtensions = new Set(['nc', 'ncdf', 'netcdf', 'ncrst']);
 const topologyPreviewExtensions = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb']);
 
 function defaultPreviewWebRoot() {
+  const sourcePreviewWeb = sourcePreviewWebRoot();
+  if (sourcePreviewWeb) return sourcePreviewWeb;
   const pluginPreviewWeb = resolve(repoRoot, 'preview-web');
   return existsSync(join(pluginPreviewWeb, 'index.html'))
     ? pluginPreviewWeb
     : resolve(repoRoot, 'PreviewExtension', 'Web');
+}
+
+function sourcePreviewWebRoot() {
+  const candidates = [
+    resolve(repoRoot, 'PreviewExtension', 'Web'),
+    resolve(repoRoot, '..', '..', 'PreviewExtension', 'Web'),
+  ];
+  return candidates.find(candidate =>
+    existsSync(join(candidate, 'index.html')) && existsSync(join(candidate, 'viewer.js'))
+  ) || null;
 }
 
 function usage() {
