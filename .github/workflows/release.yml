@@ -51,14 +51,13 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
 
-      - name: Validate Homebrew tap token
+      - name: Check Homebrew tap token
         if: steps.version.outputs.prerelease != 'true'
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           if [[ -z "${HOMEBREW_TAP_TOKEN:-}" ]]; then
-            echo "::error::Stable releases require HOMEBREW_TAP_TOKEN so the Homebrew cask can be updated automatically."
-            exit 1
+            echo "::warning::HOMEBREW_TAP_TOKEN is not set; skipping the Homebrew cask update. The app release is still built and published."
           fi
 
       - name: Resolve release capabilities
@@ -73,6 +72,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX: ${{ secrets.BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX }}
           BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURRETE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
             echo "developer_id=true" >> "$GITHUB_OUTPUT"
@@ -83,6 +83,11 @@ jobs:
             echo "signed_manifest=true" >> "$GITHUB_OUTPUT"
           else
             echo "signed_manifest=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ -n "${HOMEBREW_TAP_TOKEN:-}" ]]; then
+            echo "homebrew=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "homebrew=false" >> "$GITHUB_OUTPUT"
           fi
           if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURRETE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
             echo "allow_adhoc=false" >> "$GITHUB_OUTPUT"
@@ -182,7 +187,7 @@ jobs:
             --generate-notes
 
       - name: Checkout Homebrew tap
-        if: steps.version.outputs.prerelease != 'true'
+        if: steps.version.outputs.prerelease != 'true' && steps.capabilities.outputs.homebrew == 'true'
         uses: actions/checkout@v4
         with:
           repository: SergeiNikolenko/homebrew-burrete
@@ -191,7 +196,7 @@ jobs:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       - name: Update Homebrew cask
-        if: steps.version.outputs.prerelease != 'true'
+        if: steps.version.outputs.prerelease != 'true' && steps.capabilities.outputs.homebrew == 'true'
         working-directory: homebrew-burrete
         run: |
           version="${{ steps.version.outputs.version }}"
