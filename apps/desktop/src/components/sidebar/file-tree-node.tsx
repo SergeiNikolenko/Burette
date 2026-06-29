@@ -260,26 +260,6 @@ export function ProjectGroup({
           <FolderExpandCollapseIcon collapse={expanded} />
         </button>
         <span className="project-group-actions">
-          <button
-            type="button"
-            className="project-group-menu-button"
-            aria-label={`Rename ${project.title}`}
-            title="Rename project"
-            disabled={!canRenameProject}
-            onPointerDown={(event) => {
-              event.stopPropagation();
-              startRename();
-            }}
-            onMouseDown={(event) => {
-              event.stopPropagation();
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              startRename();
-            }}
-          >
-            <RenameIcon />
-          </button>
           <RadixDropdownMenu
             items={projectMenuItems(project, actions, startRename)}
             trigger={(
@@ -839,16 +819,6 @@ function MoreIcon() {
       <circle cx="4" cy="8" r="1.2" fill="currentColor" />
       <circle cx="8" cy="8" r="1.2" fill="currentColor" />
       <circle cx="12" cy="8" r="1.2" fill="currentColor" />
-    </svg>
-  );
-}
-
-function RenameIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 11.5 4 8.4 10.8 1.6a1.4 1.4 0 0 1 2 0l1.6 1.6a1.4 1.4 0 0 1 0 2L7.6 12 4.5 13 3 11.5Z" />
-      <path d="m9.6 2.8 3.6 3.6" />
-      <path d="M2.5 14h11" />
     </svg>
   );
 }
