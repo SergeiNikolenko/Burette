@@ -41,6 +41,24 @@ const STATIC_MIME_TYPES = new Map([
   ['.woff', 'font/woff'],
   ['.woff2', 'font/woff2'],
 ]);
+const RUNTIME_ASSET_NAMES = new Set([
+  'viewer-runtime.css',
+  'viewer-shell.js',
+  'molstar.css',
+  'molstar.js',
+  'burette-agent.js',
+  'viewer.js',
+]);
+const APP_ICONS = {
+  finder: '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns',
+  maestro: '/Applications/SchrodingerSuites2026-1/Maestro.app/Contents/Resources/Maestro.icns',
+  chimerax: '/Applications/ChimeraX-1.10.app/Contents/Resources/chimerax-icon.icns',
+  pymol: '/Applications/PyMOL.app/Contents/Resources/pymol.icns',
+  avogadro2: '/Applications/Avogadro2.app/Contents/Resources/avogadro.icns',
+  datawarrior: '/Applications/DataWarrior.app/Contents/Resources/datawarrior.icns',
+  vesta: '/Applications/VESTA.app/Contents/Resources/VESTA.icns',
+};
+const runtimeAssetRoots = runtimeAssetRootCandidates();
 
 function usage() {
   console.error(`Usage:
@@ -149,6 +167,10 @@ async function handleRequest(req, res) {
     await handleAgentSession(req, res, method, url);
     return;
   }
+  if (url.pathname.startsWith('/__burette/app-icon/')) {
+    await handleAppIcon(res, method, url);
+    return;
+  }
   if (url.pathname === '/__burette/read-file') {
     await handleReadFile(res, method, url);
     return;
@@ -167,10 +189,6 @@ async function handleRequest(req, res) {
   }
   if (url.pathname === '/__burette/dev-files') {
     await handleDevFiles(res, method, url);
-    return;
-  }
-  if (url.pathname === '/@fs' || url.pathname.startsWith('/@fs/')) {
-    await handleFsFile(res, method, url);
     return;
   }
   await handleStatic(res, method, url);
@@ -225,6 +243,30 @@ async function handleAgentSession(req, res, method, url) {
     return;
   }
   sendJson(res, 405, { error: 'Method not allowed' });
+}
+
+async function handleAppIcon(res, method, url) {
+  if (method !== 'GET' && method !== 'HEAD') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  const iconId = decodeURIComponent(url.pathname.replace('/__burette/app-icon/', '').replace(/^\/+/, '')).replace(/\.png$/u, '');
+  const iconPath = APP_ICONS[iconId];
+  if (!iconPath || !existsSync(iconPath)) {
+    sendJson(res, 404, { error: 'Icon not found' });
+    return;
+  }
+  const cacheDir = resolve(sessionDir, 'app-icons');
+  const outputPath = resolve(cacheDir, `${iconId}.png`);
+  if (!existsSync(outputPath)) {
+    await mkdir(cacheDir, { recursive: true });
+    const result = spawnSync('/usr/bin/sips', ['-s', 'format', 'png', iconPath, '--out', outputPath], { encoding: 'utf8' });
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      throw new Error((result.stderr || result.stdout || '').trim() || `sips exited with status ${result.status}`);
+    }
+  }
+  await sendStaticFile(res, method, outputPath, true);
 }
 
 async function handleReadFile(res, method, url) {
@@ -434,13 +476,31 @@ async function handleDevFiles(res, method, url) {
   sendJson(res, 200, { files: Array.from(new Set(files)).sort((left, right) => left.localeCompare(right)) });
 }
 
-async function handleFsFile(res, method, url) {
+async function handleStatic(res, method, url) {
   if (method !== 'GET' && method !== 'HEAD') {
     sendJson(res, 405, { error: 'Method not allowed' });
     return;
   }
-  const filePath = allowedPathFromFsUrl(url);
-  if (!filePath) {
+  const cleanPath = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+  if (cleanPath.startsWith('@fs/')) {
+    await handleFsStatic(res, method, cleanPath);
+    return;
+  }
+  const candidate = resolve(distRoot, cleanPath || 'index.html');
+  const filePath = isWithin(candidate, distRoot) && existsSync(candidate)
+    ? candidate
+    : indexPath;
+  await sendStaticFile(res, method, filePath, filePath === indexPath);
+}
+
+async function handleFsStatic(res, method, cleanPath) {
+  const runtimeAssetPath = findRuntimeAssetPath(cleanPath);
+  if (runtimeAssetPath) {
+    await sendStaticFile(res, method, runtimeAssetPath, false);
+    return;
+  }
+  const filePath = resolve(`/${cleanPath.slice('@fs/'.length)}`);
+  if (!isAllowed(filePath)) {
     sendJson(res, 403, { error: 'Forbidden' });
     return;
   }
@@ -449,25 +509,11 @@ async function handleFsFile(res, method, url) {
     sendJson(res, 404, { error: 'Not found' });
     return;
   }
-  const bytes = await readFile(filePath);
-  res.statusCode = 200;
-  res.setHeader('Content-Type', STATIC_MIME_TYPES.get(extname(filePath).toLowerCase()) || 'application/octet-stream');
-  res.setHeader('Content-Length', String(bytes.length));
-  res.setHeader('Cache-Control', 'no-cache');
-  res.end(method === 'HEAD' ? undefined : bytes);
+  await sendStaticFile(res, method, filePath, false, info);
 }
 
-async function handleStatic(res, method, url) {
-  if (method !== 'GET' && method !== 'HEAD') {
-    sendJson(res, 405, { error: 'Method not allowed' });
-    return;
-  }
-  const cleanPath = decodeURIComponent(url.pathname).replace(/^\/+/, '');
-  const candidate = resolve(distRoot, cleanPath || 'index.html');
-  const filePath = isWithin(candidate, distRoot) && existsSync(candidate)
-    ? candidate
-    : indexPath;
-  const info = await stat(filePath);
+async function sendStaticFile(res, method, filePath, noCache, knownInfo = null) {
+  const info = knownInfo ?? await stat(filePath);
   if (!info.isFile()) {
     sendJson(res, 404, { error: 'Not found' });
     return;
@@ -476,32 +522,28 @@ async function handleStatic(res, method, url) {
   res.statusCode = 200;
   res.setHeader('Content-Type', STATIC_MIME_TYPES.get(extname(filePath).toLowerCase()) || 'application/octet-stream');
   res.setHeader('Content-Length', String(bytes.length));
-  res.setHeader('Cache-Control', filePath === indexPath ? 'no-cache' : 'public, max-age=31536000, immutable');
+  res.setHeader('Cache-Control', noCache ? 'no-cache' : 'public, max-age=31536000, immutable');
   res.end(method === 'HEAD' ? undefined : bytes);
 }
 
-async function handleFsFile(res, method, url) {
-  if (method !== 'GET' && method !== 'HEAD') {
-    sendJson(res, 405, { error: 'Method not allowed' });
-    return;
+function runtimeAssetRootCandidates() {
+  return Array.from(new Set([
+    resolve(scriptDir, '..', 'PreviewExtension', 'Web'),
+    resolve(scriptDir, '..', 'preview-web'),
+    resolve(scriptDir, '..', '..', 'PreviewExtension', 'Web'),
+    resolve(scriptDir, '..', '..', '..', 'PreviewExtension', 'Web'),
+  ]));
+}
+
+function findRuntimeAssetPath(cleanPath) {
+  if (!cleanPath.includes('/PreviewExtension/Web/')) return null;
+  const assetName = basename(cleanPath);
+  if (!RUNTIME_ASSET_NAMES.has(assetName)) return null;
+  for (const root of runtimeAssetRoots) {
+    const candidate = resolve(root, assetName);
+    if (isWithin(candidate, root) && existsSync(candidate)) return candidate;
   }
-  const rawPath = decodeURIComponent(url.pathname).replace(/^\/@fs\/+/u, '/');
-  const filePath = resolve(rawPath);
-  if (!isAllowed(filePath)) {
-    sendJson(res, 403, { error: 'Forbidden' });
-    return;
-  }
-  const info = await stat(filePath).catch(() => null);
-  if (!info?.isFile()) {
-    sendJson(res, 404, { error: 'Not found' });
-    return;
-  }
-  const bytes = await readFile(filePath);
-  res.statusCode = 200;
-  res.setHeader('Content-Type', STATIC_MIME_TYPES.get(extname(filePath).toLowerCase()) || 'application/octet-stream');
-  res.setHeader('Content-Length', String(bytes.length));
-  res.setHeader('Cache-Control', 'no-cache');
-  res.end(method === 'HEAD' ? undefined : bytes);
+  return null;
 }
 
 async function collectDevFiles(path, files) {
@@ -530,16 +572,6 @@ function allowedPathFromQuery(url, options = {}) {
   if (!isAllowed(filePath)) return null;
   const extension = fileExtension(filePath);
   if (options.allowText ? !TEXT_EXTENSIONS.has(extension) : !STRUCTURE_EXTENSIONS.has(extension)) return null;
-  return filePath;
-}
-
-function allowedPathFromFsUrl(url) {
-  const rawPath = decodeURIComponent(url.pathname.slice('/@fs'.length));
-  if (!rawPath.startsWith('/')) return null;
-  const filePath = resolve(rawPath);
-  if (!isAllowed(filePath)) return null;
-  const extension = fileExtension(filePath);
-  if (!TEXT_EXTENSIONS.has(extension) && !STATIC_MIME_TYPES.has(`.${extension}`)) return null;
   return filePath;
 }
 

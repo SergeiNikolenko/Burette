@@ -44,7 +44,7 @@ export const defaultBuildInfo = buildInfoFromValues(
   "Burrete",
   packageInfo.version,
   buildIdentifier ?? (import.meta.env.DEV ? "browser-dev" : RELEASE_IDENTIFIER),
-  import.meta.env.DEV,
+  import.meta.env.DEV || isAgentShell,
   buildFlavor,
 );
 
