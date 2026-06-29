@@ -87,9 +87,6 @@ export function useAppDockingWorkflows({
         : await openBrowserDevDockingDocument(request.receptorPath, request.ligandPaths, preferences, options);
       addDocuments([document]);
       rememberRecentStructures([document]);
-      if (rightDockOpen && rightDockActiveTab === "descriptors") {
-        setDockOpen("right", false);
-      }
       setStructureDragActive(false);
       pushStatus(`Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`);
       return document;
@@ -126,9 +123,6 @@ export function useAppDockingWorkflows({
       if (opened.length > 0) addDocuments(opened);
       addDocuments([dockingDocument]);
       rememberRecentStructures([...opened, dockingDocument]);
-      if (rightDockOpen && rightDockActiveTab === "descriptors") {
-        setDockOpen("right", false);
-      }
       setStructureDragActive(false);
       const message = "Opened docking view";
       if (errors.length > 0) {

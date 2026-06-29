@@ -14,22 +14,19 @@ const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job";
 
 type UseAppDescriptorsArgs = {
   documents: ViewerDocument[];
-  openDockTab: (area: "right", kind: "descriptors") => void;
   pushStatus: (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 };
 
 export function useAppDescriptors({
   documents,
-  openDockTab,
   pushStatus,
 }: UseAppDescriptorsArgs) {
   const [descriptorSource, setDescriptorSource] = useState<DescriptorSourcePayload | null>(null);
 
   const openDescriptorSource = useCallback((source: DescriptorSourcePayload) => {
     setDescriptorSource(source);
-    openDockTab("right", "descriptors");
-    pushStatus(`Opened descriptors for ${source.sourceLabel}`);
-  }, [openDockTab, pushStatus]);
+    pushStatus(`Prepared descriptor source for ${source.sourceLabel}`);
+  }, [pushStatus]);
 
   const clearDescriptorSource = useCallback(() => {
     setDescriptorSource(null);
@@ -83,7 +80,6 @@ export function useAppDescriptors({
         .sort((left, right) => left - right)
       : [];
     const targetCount = rowIndexes.length;
-    openDockTab("right", "descriptors");
     publishGridDescriptorJob({
       documentId,
       status: "running",
@@ -127,7 +123,7 @@ export function useAppDescriptors({
         });
         pushStatus(`Descriptor calculation failed: ${message}`, "error");
       });
-  }, [applyGridDescriptorResults, documents, openDockTab, pushStatus]);
+  }, [applyGridDescriptorResults, documents, pushStatus]);
 
   return {
     applyGridDescriptorControls,
