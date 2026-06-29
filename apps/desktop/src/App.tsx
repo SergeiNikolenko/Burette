@@ -299,7 +299,6 @@ export default function App() {
     openDescriptorSource,
   } = useAppDescriptors({
     documents,
-    openDockTab,
     pushStatus,
   });
   const {

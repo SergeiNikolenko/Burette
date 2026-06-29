@@ -480,6 +480,30 @@ async function handleStatic(res, method, url) {
   res.end(method === 'HEAD' ? undefined : bytes);
 }
 
+async function handleFsFile(res, method, url) {
+  if (method !== 'GET' && method !== 'HEAD') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  const rawPath = decodeURIComponent(url.pathname).replace(/^\/@fs\/+/u, '/');
+  const filePath = resolve(rawPath);
+  if (!isAllowed(filePath)) {
+    sendJson(res, 403, { error: 'Forbidden' });
+    return;
+  }
+  const info = await stat(filePath).catch(() => null);
+  if (!info?.isFile()) {
+    sendJson(res, 404, { error: 'Not found' });
+    return;
+  }
+  const bytes = await readFile(filePath);
+  res.statusCode = 200;
+  res.setHeader('Content-Type', STATIC_MIME_TYPES.get(extname(filePath).toLowerCase()) || 'application/octet-stream');
+  res.setHeader('Content-Length', String(bytes.length));
+  res.setHeader('Cache-Control', 'no-cache');
+  res.end(method === 'HEAD' ? undefined : bytes);
+}
+
 async function collectDevFiles(path, files) {
   let info;
   try {

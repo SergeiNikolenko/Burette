@@ -35,6 +35,9 @@ contains only documents that describe the active project.
   check paths that avoid full local rebuilds.
 - [Control affordances](control-affordances.md): tooltip and menu-detail rules
   for compact controls across React, Mol*, `xyzrender`, Grid, and Ketcher.
+- [Pose playback standardization](pose-playback-standardization.md): current
+  single/all playback problem, controller contract, and browser test matrix for
+  docking poses, SDF collections, XYZ frames, PDB models, and structure scenes.
 - [Quick Look debugging](quicklook-debugging.md): Finder preview diagnosis and
   cache reset workflow.
 - [iOS mobile app](../ios/BurreteMobile/README.md): source-built iPhone preview
