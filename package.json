@@ -78,7 +78,7 @@
     "plotly.js-basic-dist-min": "^3.6.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "zustand": "^5.0.7"
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.2",
