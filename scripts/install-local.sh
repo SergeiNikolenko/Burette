@@ -22,6 +22,7 @@ APP="$ROOT/build/$APP_BUNDLE_NAME"
 DEST_DIR="$HOME/Applications"
 DEST="$DEST_DIR/$APP_BUNDLE_NAME"
 STAGING_DEST="$DEST_DIR/.${APP_BUNDLE_NAME%.app}.installing.app"
+GALLERY_SOURCE="$ROOT/apps/desktop/public/xyzrender-gallery"
 LOCAL_XYZRENDER_ENV="$HOME/.local/share/uv/tools/xyzrender"
 DEST_XYZRENDER_ENV="$DEST/Contents/Resources/xyzrender-runtime"
 STAGING_XYZRENDER_ENV="$STAGING_DEST/Contents/Resources/xyzrender-runtime"
@@ -276,9 +277,10 @@ if [[ -e "$STAGING_DEST" || -e "$DEST" ]]; then
   exit 1
 fi
 ditto --norsrc --noextattr "$APP" "$STAGING_DEST"
-rm -rf "$STAGING_DEST/Contents/Resources/ViewerWeb" "$STAGING_APPEX/Contents/Resources/Web"
+rm -rf "$STAGING_DEST/Contents/Resources/ViewerWeb" "$STAGING_APPEX/Contents/Resources/Web" "$STAGING_DEST/Contents/Resources/xyzrender-gallery"
 ditto --norsrc --noextattr "$ROOT/PreviewExtension/Web" "$STAGING_DEST/Contents/Resources/ViewerWeb"
 ditto --norsrc --noextattr "$ROOT/PreviewExtension/Web" "$STAGING_APPEX/Contents/Resources/Web"
+ditto --norsrc --noextattr "$GALLERY_SOURCE" "$STAGING_DEST/Contents/Resources/xyzrender-gallery"
 if [[ -d "$LOCAL_XYZRENDER_ENV" ]]; then
   assert_bundled_xyzrender_runtime "$STAGING_XYZRENDER_ENV" "$STAGING_XYZRENDER_PYTHON" "from build output"
   [[ -x "$STAGING_APPEX/Contents/Resources/xyzrender-python3" ]] || {
@@ -330,6 +332,14 @@ if ! cmp -s "$ROOT/PreviewExtension/Web/grid.css" "$DEST/Contents/Resources/View
 fi
 if ! cmp -s "$ROOT/PreviewExtension/Web/grid.css" "$DEST_APPEX/Contents/Resources/Web/grid.css"; then
   echo "error: installed Quick Look grid CSS does not match PreviewExtension/Web/grid.css" >&2
+  exit 1
+fi
+if ! cmp -s "$GALLERY_SOURCE/caffeine_default.svg" "$DEST/Contents/Resources/xyzrender-gallery/caffeine_default.svg"; then
+  echo "error: installed app xyzrender gallery does not match source assets" >&2
+  exit 1
+fi
+if ! cmp -s "$GALLERY_SOURCE/asparagine_vdw.svg" "$DEST/Contents/Resources/xyzrender-gallery/asparagine_vdw.svg"; then
+  echo "error: installed app xyzrender gallery does not match source assets" >&2
   exit 1
 fi
 assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after final move"

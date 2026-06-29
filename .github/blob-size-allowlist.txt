@@ -3,7 +3,6 @@
 PreviewExtension/Web/molstar.js
 PreviewExtension/Web/viewer.js
 PreviewExtension/Web/rdkit/RDKit_minimal.wasm
-plugins/burette-agent/preview-web/viewer.js
 tests/test-ui-shell-contract.mjs
 docs/public/burrete-quick-look-preview.png
 samples/large/moses_10k.csv

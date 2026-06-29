@@ -177,6 +177,8 @@ pub(crate) fn create_runtime<R: Runtime>(
     } else {
         format.molstar_format.as_str()
     };
+    let source_path = file_path.to_string_lossy().to_string();
+    let xyzrender_source_path = xyzrender_artifact_input.to_string_lossy().to_string();
     let mut config = json!({
         "format": molstar_format,
         "molstarFormat": molstar_format,
@@ -185,6 +187,8 @@ pub(crate) fn create_runtime<R: Runtime>(
         "requestedRenderer": normalize_renderer_mode(&preferences.renderer_mode),
         "allowMolstarFallback": true,
         "label": label,
+        "sourcePath": source_path,
+        "xyzrenderSourcePath": xyzrender_source_path,
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
         "sourceExtension": extension,
@@ -213,6 +217,11 @@ pub(crate) fn create_runtime<R: Runtime>(
         "showPanelControls": true,
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
+    if let Some(input_data) = xyzrender_input_data {
+        config["xyzrenderInputDataBase64"] =
+            json!(base64::engine::general_purpose::STANDARD.encode(input_data));
+        config["xyzrenderInputExtension"] = json!("xyz");
+    }
 
     if let Some(ketcher_config) = ketcher_edit_config(
         file_path,
