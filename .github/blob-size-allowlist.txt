@@ -3,6 +3,12 @@
 PreviewExtension/Web/molstar.js
 PreviewExtension/Web/viewer.js
 PreviewExtension/Web/rdkit/RDKit_minimal.wasm
+plugins/burette-agent/browser-shell-dist/assets/FileSaver.min-CHAfWQKI.js
+plugins/burette-agent/browser-shell-dist/assets/index-BsTEITWH.js
+plugins/burette-agent/browser-shell-dist/assets/index.modern-BIdDJNyK.js
+plugins/burette-agent/browser-shell-dist/assets/ketcher-CLVw__lC.js
+plugins/burette-agent/browser-shell-dist/assets/objectDestructuringEmpty-CXXgv5Fj.js
+plugins/burette-agent/browser-shell-dist/assets/plotly-basic.min-DNp9Srq6.js
 tests/test-ui-shell-contract.mjs
 docs/public/burrete-quick-look-preview.png
 samples/large/moses_10k.csv
