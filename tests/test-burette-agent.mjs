@@ -166,6 +166,19 @@ assert.equal(selected.result.counts.residues, 2);
 assert.ok(selected.result.selectionId.startsWith('sel-'));
 assert.ok(interactions.some(x => x.action === 'select'));
 
+interactions.length = 0;
+const selectedAtomRange = await context.window.BurreteAgent.run({
+  command: 'selectResidues',
+  args: { selector: { atom_index: [1, 2, 3] }, granularity: 'atom' }
+});
+assert.equal(selectedAtomRange.ok, true);
+assert.equal(selectedAtomRange.result.counts.atoms, 3);
+assert.deepEqual(
+  interactions.filter(x => x.action === 'select' && x.elements).map(x => x.elements.atom_index),
+  [1, 2, 3],
+);
+assert.ok(interactions.every(x => !Array.isArray(x.elements?.atom_index)));
+
 const focus = await context.window.BurreteAgent.run({ command: 'focusSelection', args: { selection: 'last' } });
 assert.equal(focus.ok, true);
 assert.ok(interactions.some(x => x.action === 'focus'));

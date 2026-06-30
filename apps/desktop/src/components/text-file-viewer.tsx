@@ -27,7 +27,6 @@ export function TextFileViewer({
   const parentRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const selectionTimeoutRef = useRef<number | null>(null);
-  const hoverTimeoutRef = useRef<number | null>(null);
   const onStructureSelectionRef = useRef(onStructureSelection);
   const lastStructureSelectionKeyRef = useRef<string | null>(null);
   const lineDragStartRef = useRef<{ from: number; to: number } | null>(null);
@@ -100,22 +99,6 @@ export function TextFileViewer({
       const structureSelection = textStructureSelectionFromRange(document, from, to);
       if (structureSelection) emitStructureSelection(structureSelection);
     };
-    const emitHoveredStructureLine = (lineElement: HTMLElement | null) => {
-      if (hoverTimeoutRef.current !== null) {
-        window.clearTimeout(hoverTimeoutRef.current);
-        hoverTimeoutRef.current = null;
-      }
-      if (!lineElement) return;
-      hoverTimeoutRef.current = window.setTimeout(() => {
-        hoverTimeoutRef.current = null;
-        try {
-          const line = lineRangeFromElement(lineElement);
-          emitStructureRange(line.from, line.to);
-        } catch (_) {
-          // CodeMirror can recycle virtualized line nodes between pointermove and debounce flush.
-        }
-      }, 80);
-    };
     const emitLineDragStructureSelection = (lineElement: HTMLElement) => {
       try {
         const line = lineRangeFromElement(lineElement);
@@ -174,9 +157,7 @@ export function TextFileViewer({
         } else if (target) {
           emitLineDragStructureSelection(target);
         }
-        return;
       }
-      emitHoveredStructureLine(target);
     };
     const onPointerUp = (event: PointerEvent) => {
       const target = lineElementFromEvent(event);
@@ -188,10 +169,7 @@ export function TextFileViewer({
       lineDragStartRef.current = null;
     };
     const onPointerLeave = () => {
-      if (hoverTimeoutRef.current !== null) {
-        window.clearTimeout(hoverTimeoutRef.current);
-        hoverTimeoutRef.current = null;
-      }
+      lineDragStartRef.current = null;
     };
     parent.addEventListener("pointerdown", onPointerDown);
     parent.addEventListener("pointermove", onPointerMove);
@@ -202,10 +180,6 @@ export function TextFileViewer({
       if (selectionTimeoutRef.current !== null) {
         window.clearTimeout(selectionTimeoutRef.current);
         selectionTimeoutRef.current = null;
-      }
-      if (hoverTimeoutRef.current !== null) {
-        window.clearTimeout(hoverTimeoutRef.current);
-        hoverTimeoutRef.current = null;
       }
       lineDragStartRef.current = null;
       window.document.removeEventListener("selectionchange", emitNativeStructureSelection);
