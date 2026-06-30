@@ -159,8 +159,8 @@ export function CommandPalette({
       {
         id: "open-agent-integration",
         group: "Suggested",
-        label: "Burrete",
-        description: "Open Codex integration status",
+        label: "Codex Agent",
+        description: "Open MCP plugin status",
         run: () => actions.openSettingsSection("agent"),
       },
       {
