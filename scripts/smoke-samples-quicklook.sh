@@ -183,7 +183,7 @@ detail_for_log() {
     printf 'no extension log'
     return
   fi
-  grep -E 'file\.path=|native build error|JS message type=error|render timeout|resource\.typeIdentifier=|\[build\] detected\.format=|\[build\] detected\.previewMode=|\[build\] trajectory\.|preview\.evidence |Rendered |ready|state=completed' "$log_snapshot" |
+  grep -E 'file\.path=|native build error|JS message type=error|render timeout|resource\.typeIdentifier=|\[build\] detected\.format=|\[build\] detected\.previewMode=|\[build\] textFallback\.|\[build\] trajectory\.|preview\.evidence |Rendered |ready|state=completed' "$log_snapshot" |
     tail -n 8 |
     tr '\t' ' ' |
     tr '\n' ' ' |
