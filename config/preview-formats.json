@@ -3,6 +3,7 @@
     {
       "id": "pdb",
       "contentType": "com.local.burrete10.pdb",
+      "contentTypeAliases": ["public.pdb"],
       "extensions": ["pdb", "ent", "pdbqt", "pqr", "xpdb"],
       "mimeTypes": ["chemical/x-pdb", "chemical/x-pdbqt"],
       "conformsTo": ["public.plain-text", "public.data"],
@@ -449,6 +450,7 @@
     ],
     "contentTypes": [
       "com.local.burrete10.pdb",
+      "public.pdb",
       "com.local.burrete10.cif",
       "public.cif",
       "com.local.burrete10.mmcif",
