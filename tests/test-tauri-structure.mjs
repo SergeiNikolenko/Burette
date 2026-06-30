@@ -507,6 +507,10 @@ assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn write_base64_f
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn write_text_file/);
 assert.match(quickLookCommand, /#\[tauri::command\]\s+pub\(crate\) fn reset_quick_look/);
 assert.match(updaterCommand, /#\[tauri::command\]\s+pub\(crate\) async fn install_update/);
+assert.match(updaterCommand, /update_progress::show\(app, "Downloading update\.\.\.", None\);/);
+assert.match(updaterCommand, /"--connect-timeout"/);
+assert.match(updaterCommand, /"--speed-limit"/);
+assert.match(updaterCommand, /"--speed-time"/);
 assert.match(quickLookCommand, /QuickLookResetReport/);
 assert.match(quickLookCommand, /launch_services_registered: CommandReport/);
 assert.match(quickLookCommand, /default_handlers_registered: CommandReport/);
@@ -577,6 +581,7 @@ assert.equal(packageConfig.scripts['check:formats'], 'bun scripts/check-preview-
 assert.equal(packageConfig.scripts['check:vendor-assets'], 'bun scripts/check-vendor-assets.mjs');
 for (const updateTest of [
   'bun tests/test-update-versioning.mjs',
+  'bun tests/test-update-auto-prompt-contract.mjs',
   'bun tests/test-bun-installer-behavior.mjs',
   'bun tests/test-dev-namespace.mjs',
   'bun tests/test-quicklook-preview-smoke-contract.mjs',

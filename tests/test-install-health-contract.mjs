@@ -107,6 +107,7 @@ assert.match(packageInstaller, /verifyDigest\(zipPath, asset\.digest\)/);
 const updateTests = packageJson.scripts["test:update"].split(/\s*&&\s*/u);
 for (const command of [
   "bun tests/test-update-versioning.mjs",
+  "bun tests/test-update-auto-prompt-contract.mjs",
   "bun tests/test-bun-installer-behavior.mjs",
   "bun tests/test-dev-namespace.mjs",
   "bun tests/test-quicklook-preview-smoke-contract.mjs",
