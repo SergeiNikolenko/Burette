@@ -957,6 +957,134 @@ fi
 /usr/bin/qlmanage -r >/dev/null 2>&1 || true
 /usr/bin/qlmanage -r cache >/dev/null 2>&1 || true
 /usr/bin/killall quicklookd >/dev/null 2>&1 || true
+sync_burrete_codex_plugin() {{
+  local plugin_src="$DEST_APP/Contents/Resources/plugins/burette-agent"
+  if [ ! -f "$plugin_src/.codex-plugin/plugin.json" ]; then
+    echo "codex plugin sync skipped: bundled plugin not found"
+    return 0
+  fi
+  if [ -z "${{HOME:-}}" ]; then
+    echo "codex plugin sync skipped: HOME is not set"
+    return 0
+  fi
+  local python_bin
+  python_bin="$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v python3 || true)"
+  if [ -z "$python_bin" ]; then
+    echo "codex plugin sync skipped: python3 was not found"
+    return 0
+  fi
+  BURRETE_PLUGIN_SRC="$plugin_src" BURRETE_DEST_APP="$DEST_APP" PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" "$python_bin" <<'PY' || echo "warning: Codex plugin sync failed"
+import json
+import os
+import re
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+plugin_src = Path(os.environ["BURRETE_PLUGIN_SRC"])
+dest_app = os.environ["BURRETE_DEST_APP"]
+home = Path(os.environ["HOME"])
+marketplace_path = home / ".agents" / "plugins" / "marketplace.json"
+plugin_symlink = home / ".agents" / "plugins" / "burrete"
+codex_config = home / ".codex" / "config.toml"
+
+def marketplace_name():
+    if marketplace_path.exists():
+        try:
+            data = json.loads(marketplace_path.read_text(encoding="utf-8"))
+            name = str(data.get("name") or "").strip()
+            if name:
+                return name
+        except Exception:
+            pass
+    return "burrete"
+
+marketplace = marketplace_name()
+install_root = home / ".codex" / "plugins" / "cache" / marketplace / "burrete" / "0.1.0"
+temporary = install_root.with_name(f"{{install_root.name}}.updating")
+backup = install_root.with_name(f"{{install_root.name}}.previous")
+
+shutil.rmtree(temporary, ignore_errors=True)
+shutil.rmtree(backup, ignore_errors=True)
+temporary.parent.mkdir(parents=True, exist_ok=True)
+shutil.copytree(plugin_src, temporary, ignore=shutil.ignore_patterns("node_modules"))
+
+installed_node_modules = install_root / "node_modules"
+if installed_node_modules.is_dir():
+    shutil.copytree(installed_node_modules, temporary / "node_modules", symlinks=True)
+
+bun = shutil.which("bun")
+if bun:
+    subprocess.run([bun, "install", "--production"], cwd=temporary, check=True)
+
+if not (temporary / "node_modules").is_dir():
+    shutil.rmtree(temporary, ignore_errors=True)
+    print("codex plugin sync skipped: node_modules is unavailable and bun was not found")
+    raise SystemExit(0)
+
+(temporary / ".burette-agent-install.json").write_text(
+    json.dumps(
+        {{
+            "appBundle": dest_app,
+            "installedAt": datetime.now(timezone.utc).isoformat(),
+        }},
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+
+if install_root.exists():
+    install_root.rename(backup)
+try:
+    temporary.rename(install_root)
+except Exception:
+    if backup.exists():
+        backup.rename(install_root)
+    raise
+shutil.rmtree(backup, ignore_errors=True)
+
+plugin_symlink.parent.mkdir(parents=True, exist_ok=True)
+if plugin_symlink.is_symlink() or plugin_symlink.is_file():
+    plugin_symlink.unlink()
+if not plugin_symlink.exists():
+    plugin_symlink.symlink_to(install_root)
+
+marketplace_path.parent.mkdir(parents=True, exist_ok=True)
+marketplace_data = {{"name": marketplace, "interface": {{"displayName": "Burrete" if marketplace == "burrete" else marketplace}}, "plugins": []}}
+if marketplace_path.exists():
+    try:
+        marketplace_data = json.loads(marketplace_path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+marketplace_data["name"] = marketplace
+marketplace_data["interface"] = marketplace_data.get("interface") or {{"displayName": "Burrete" if marketplace == "burrete" else marketplace}}
+plugins = [plugin for plugin in marketplace_data.get("plugins", []) if plugin.get("name") != "burrete"]
+plugins.append(
+    {{
+        "name": "burrete",
+        "source": {{"source": "local", "path": "./.agents/plugins/burrete"}},
+        "policy": {{"installation": "AVAILABLE", "authentication": "ON_INSTALL"}},
+        "category": "Science",
+    }}
+)
+marketplace_data["plugins"] = plugins
+marketplace_path.write_text(json.dumps(marketplace_data, indent=2) + "\n", encoding="utf-8")
+
+codex_config.parent.mkdir(parents=True, exist_ok=True)
+existing = codex_config.read_text(encoding="utf-8") if codex_config.exists() else ""
+cleaned = re.sub(r'\n?\[plugins\."burrete@[^"]+"\]\n(?:[^\n\[]*\n)*', "\n", existing)
+cleaned = re.sub(r"\n{{3,}}", "\n\n", cleaned).rstrip()
+plugin_block = f'[plugins."burrete@{{marketplace}}"]\nenabled = true\n'
+if f'[plugins."burrete@{{marketplace}}"]' not in cleaned:
+    cleaned = f"{{cleaned}}\n\n{{plugin_block}}" if cleaned else plugin_block
+codex_config.write_text(cleaned.rstrip() + "\n", encoding="utf-8")
+
+print(f"codex plugin synced: {{install_root}}")
+PY
+}}
+sync_burrete_codex_plugin
 /usr/bin/open "$DEST_APP"
 echo "update installed"
 "#,
