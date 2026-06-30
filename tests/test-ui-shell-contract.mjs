@@ -4982,13 +4982,16 @@ assert.match(previewViewer, /const scope = molstarContextScopeForAtom\(resolved\
 assert.match(previewViewer, /label: resolved\.selectedEntry\?\.label \|\| molstarContextResidueLabel\(resolved\.atom\) \|\| resolved\.label/);
 assert.match(previewViewer, /MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300/);
 assert.match(previewViewer, /function molstarStandaloneMoleculePreviewTarget\(config\)/);
-assert.match(previewViewer, /format === 'pdb' \|\| format === 'pdbqt' \|\| format === 'mmcif' \|\| format === 'cifCore'/);
+assert.match(previewViewer, /format === 'pdb' \|\| format === 'pdbqt' \|\| format === 'mmcif' \|\| format === 'cifCore' \|\| format === 'xyz'/);
 assert.match(previewViewer, /standalonePreviewSdfFromAtoms\(frame\?\.atoms, config\.label \|\| 'Molecule'\)/);
 assert.match(previewViewer, /function standalonePreviewSdfFromAtoms\(atoms, label\)/);
 assert.match(previewViewer, /normalizedAtoms\.length > MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS/);
 assert.match(previewViewer, /function inferStandalonePreviewBonds\(atoms\)/);
 assert.match(previewViewer, /function standalonePreviewBondLimit\(a, b\)/);
 assert.match(previewViewer, /function showMolstarMoleculePreview\(target\)/);
+assert.match(previewViewer, /function molstarStandaloneMoleculePreviewEntryForTarget\(target\)/);
+assert.match(previewViewer, /sourceFormat !== 'xyz'/);
+assert.match(previewViewer, /return molstarStandaloneMoleculePreviewEntryForTarget\(target\) \|\| entry;/);
 assert.match(previewViewer, /if \(normalizeFormat\(entry\?\.format\) !== 'sdf'\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
 assert.match(previewViewer, /const image = molstarPreviewSvgCache\.get\(key\) \|\| ''/);
 assert.match(previewViewer, /function molstarPreviewParseMolblock2D\(data\)/);
