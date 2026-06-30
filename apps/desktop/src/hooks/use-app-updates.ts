@@ -34,6 +34,7 @@ export function useAppUpdates({ pushErrorStatus, pushStatus }: UseAppUpdatesArgs
     availableRelease: null,
   }));
   const { buildInfo, buildInfoLoaded } = useAppBootstrap(setUpdate);
+  const updatesDisabledText = buildInfo.isBrowserDev ? "Updates are disabled in browser sessions." : "Updates are disabled for dev builds.";
 
   const setUpdatePreferences = useCallback((preferences: UpdatePreferences) => {
     saveUpdatePreferences(preferences);
@@ -46,6 +47,10 @@ export function useAppUpdates({ pushErrorStatus, pushStatus }: UseAppUpdatesArgs
   }, []);
 
   const installUpdate = useCallback(async (releaseOverride?: UpdateRelease | null) => {
+    if (buildInfo.isBrowserDev) {
+      pushStatus("Updates are disabled in browser sessions.");
+      return;
+    }
     const release = releaseOverride ?? update.availableRelease;
     if (!release) return;
     if (!release.installAsset) {
@@ -98,9 +103,10 @@ export function useAppUpdates({ pushErrorStatus, pushStatus }: UseAppUpdatesArgs
       }));
       pushErrorStatus(error, "Update install failed");
     }
-  }, [pushErrorStatus, pushStatus, update.availableRelease]);
+  }, [buildInfo.isBrowserDev, pushErrorStatus, pushStatus, update.availableRelease]);
 
   const promptForUpdate = useCallback(async (release: UpdateRelease, automatic: boolean) => {
+    if (buildInfo.isBrowserDev) return;
     if (!shouldPromptForUpdate(release, automatic)) return;
     const canInstall = release.installAsset !== null;
     const message = canInstall
@@ -119,7 +125,7 @@ export function useAppUpdates({ pushErrorStatus, pushStatus }: UseAppUpdatesArgs
     } else {
       dismissUpdate(release);
     }
-  }, [installUpdate]);
+  }, [buildInfo.isBrowserDev, installUpdate]);
 
   const checkForUpdates = useCallback(async (automatic = false, channelOverride?: UpdatePreferences["channel"]) => {
     if (!buildInfoLoaded) {
@@ -131,9 +137,9 @@ export function useAppUpdates({ pushErrorStatus, pushStatus }: UseAppUpdatesArgs
         ...previous,
         isChecking: false,
         availableRelease: null,
-        statusText: "Updates are disabled for dev builds.",
+        statusText: updatesDisabledText,
       }));
-      if (!automatic) pushStatus("Updates are disabled for dev builds.");
+      if (!automatic) pushStatus(updatesDisabledText);
       return;
     }
     const channel = channelOverride ?? update.preferences.channel;
@@ -167,9 +173,13 @@ export function useAppUpdates({ pushErrorStatus, pushStatus }: UseAppUpdatesArgs
       if (automatic) markAutomaticCheck(false);
       if (!automatic) pushErrorStatus(error, "Update check failed");
     }
-  }, [buildInfo.isDevBuild, buildInfoLoaded, promptForUpdate, pushErrorStatus, pushStatus, update.preferences.channel]);
+  }, [buildInfo.isDevBuild, buildInfoLoaded, promptForUpdate, pushErrorStatus, pushStatus, update.preferences.channel, updatesDisabledText]);
 
   const openUpdateRelease = useCallback(async () => {
+    if (buildInfo.isBrowserDev) {
+      pushStatus("Updates are disabled in browser sessions.");
+      return;
+    }
     try {
       const url = releasePageUrl(update.availableRelease);
       if (isTauriRuntime()) {
@@ -181,7 +191,7 @@ export function useAppUpdates({ pushErrorStatus, pushStatus }: UseAppUpdatesArgs
     } catch (error) {
       pushErrorStatus(error, "Open release page failed");
     }
-  }, [pushErrorStatus, pushStatus, update.availableRelease]);
+  }, [buildInfo.isBrowserDev, pushErrorStatus, pushStatus, update.availableRelease]);
 
   useEffect(() => {
     if (!buildInfoLoaded || buildInfo.isDevBuild) return undefined;

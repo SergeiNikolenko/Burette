@@ -191,6 +191,10 @@ async function handleRequest(req, res) {
     await handleDevFiles(res, method, url);
     return;
   }
+  if (url.pathname === '/__burette/rdkit-wasm') {
+    await handleRdkitWasm(res, method);
+    return;
+  }
   await handleStatic(res, method, url);
 }
 
@@ -491,6 +495,21 @@ async function handleStatic(res, method, url) {
     ? candidate
     : indexPath;
   await sendStaticFile(res, method, filePath, filePath === indexPath);
+}
+
+async function handleRdkitWasm(res, method) {
+  if (method !== 'GET' && method !== 'HEAD') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  for (const root of runtimeAssetRoots) {
+    const candidate = resolve(root, 'rdkit', 'RDKit_minimal.wasm');
+    if (isWithin(candidate, root) && existsSync(candidate)) {
+      await sendStaticFile(res, method, candidate, false);
+      return;
+    }
+  }
+  sendJson(res, 404, { error: 'Not found' });
 }
 
 async function handleFsStatic(res, method, cleanPath) {
