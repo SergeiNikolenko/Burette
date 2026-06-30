@@ -23,6 +23,16 @@ const keyboardShortcutRows: ShortcutRow[] = [
     keybindings: ["⇧⌘O"],
   },
   {
+    command: "Undo",
+    description: "Undo the latest workspace or focused preview edit.",
+    keybindings: ["⌘Z"],
+  },
+  {
+    command: "Redo",
+    description: "Redo the latest workspace or focused preview edit when available.",
+    keybindings: ["⇧⌘Z"],
+  },
+  {
     command: "Toggle sidebar",
     description: "Show or hide the project and structure browser.",
     keybindings: ["⌘B"],
