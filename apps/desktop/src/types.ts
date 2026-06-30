@@ -424,6 +424,7 @@ export type ViewerPreferences = {
   openInDefaultDestination: "default-app" | "finder" | `editor:${string}`;
   rendererMode: "auto" | "grid2d" | "molstar" | "xyzrender-external";
   molstarStyle: "default" | "illustrative" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface";
+  desktopPreviewLimitMiB: number;
   conformerEngine: "datamol" | "rdkit";
   conformerCandidateCount: number;
   conformerRmsdCutoff: number;
