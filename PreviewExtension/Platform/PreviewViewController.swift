@@ -120,7 +120,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
-                let result = try Self.buildInlinePreviewHTML(for: url, requestID: requestID.uuidString)
+                let result: BuildResult
+                do {
+                    result = try Self.buildInlinePreviewHTML(for: url, requestID: requestID.uuidString)
+                } catch {
+                    result = try Self.buildTextFallbackPreviewResult(for: url, requestID: requestID.uuidString, originalError: error)
+                }
                 DispatchQueue.main.async { [weak self] in
                     guard let self else {
                         handler(nil)
@@ -324,6 +329,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static let defaultRenderTimeoutSeconds: TimeInterval = 30
     private static let largeStructureRenderTimeoutSeconds: TimeInterval = 120
     private static let largeStructureRenderTimeoutThresholdBytes = 16 * 1024 * 1024
+    private static let textFallbackPreviewReadLimit = 1024 * 1024
 
     private struct PreviewSourceFingerprint: Equatable {
         let fileID: Int64?
@@ -682,7 +688,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             fileExtension: fileExtension,
             byteCount: artifactData.count,
             content: text,
-            requestID: requestID
+            requestID: requestID,
+            renderer: "text"
         )
         let runtimePreview = try createRuntimePreview(
             bundledWebDirectory: webDirectory,
@@ -704,6 +711,75 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         )
         diagnostics.append("[build] textArtifact.html.bytes=\(html.utf8.count)")
         diagnostics.append("[build] runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
+        return BuildResult(
+            html: html,
+            indexURL: runtimePreview.indexURL,
+            readAccessURL: runtimePreview.readAccessURL,
+            diagnostics: diagnostics,
+            renderTimeoutSeconds: defaultRenderTimeoutSeconds
+        )
+    }
+
+    private static func buildTextFallbackPreviewResult(
+        for url: URL,
+        requestID: String,
+        originalError: Error
+    ) throws -> BuildResult {
+        var diagnostics: [String] = []
+        diagnostics.append("[build] detected.previewMode=text-fallback")
+        diagnostics.append("[build] textFallback.originalError=\(originalError.localizedDescription)")
+
+        let accessGranted = url.startAccessingSecurityScopedResource()
+        diagnostics.append("[build] textFallback.securityScopedAccess=\(accessGranted)")
+        defer { if accessGranted { url.stopAccessingSecurityScopedResource() } }
+
+        let fileManager = FileManager.default
+        try ensureUbiquitousFileIsAvailable(url, fileManager: fileManager)
+        let webDirectory = try locateBundledWebDirectory(fileManager: fileManager, diagnostics: &diagnostics)
+        let fileExtension = structurePathExtension(for: url)
+        let byteCount = try fileSize(for: url, fileManager: fileManager)
+        let safeByteCount = Int(min(byteCount, Int64(Int.max)))
+        let previewByteCount = Int(min(byteCount, Int64(textFallbackPreviewReadLimit)))
+        let fallbackData = try readFilePrefix(url, maxBytes: previewByteCount)
+        var content = textArtifactPreviewContent(
+            title: url.lastPathComponent,
+            fileExtension: fileExtension,
+            byteCount: safeByteCount,
+            data: fallbackData
+        )
+        if byteCount > Int64(previewByteCount) {
+            content += "\n\n---\nPreview truncated to the first \(previewByteCount) bytes of \(byteCount) bytes."
+        }
+        let html = inlineTextArtifactHTML(
+            title: url.lastPathComponent,
+            fileExtension: fileExtension,
+            byteCount: safeByteCount,
+            content: content,
+            requestID: requestID,
+            renderer: "text-fallback"
+        )
+        let runtimePreview = try createRuntimePreview(
+            bundledWebDirectory: webDirectory,
+            html: html,
+            configJSON: try textArtifactConfigJSON(
+                title: url.lastPathComponent,
+                fileExtension: fileExtension,
+                byteCount: safeByteCount,
+                requestID: requestID,
+                renderer: "text-fallback"
+            ),
+            structureData: nil,
+            auxiliaryFiles: [],
+            gridRecordsScript: nil,
+            requiredAssets: [],
+            requiresRDKit: false,
+            externalArtifactSourceURL: nil,
+            fileManager: fileManager,
+            diagnostics: &diagnostics
+        )
+        diagnostics.append("[build] textFallback.html.bytes=\(html.utf8.count)")
+        diagnostics.append("[build] runtimeDirectory=\(runtimePreview.runtimeDirectory.path)")
+        diagnostics.append("[build] runtime.index.exists=\(fileManager.fileExists(atPath: runtimePreview.indexURL.path))")
         return BuildResult(
             html: html,
             indexURL: runtimePreview.indexURL,
@@ -2194,11 +2270,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         fileExtension: String,
         byteCount: Int,
         content: String,
-        requestID: String
+        requestID: String,
+        renderer: String
     ) -> String {
         let safeTitle = escapeHTML(title)
         let safeExtension = escapeHTML(fileExtension)
         let safeContent = escapeHTML(content)
+        let rendererJSON = jsonStringLiteral(renderer)
+        let extensionJSON = jsonStringLiteral(fileExtension)
+        let requestIDJSON = jsonStringLiteral(requestID)
         return """
         <!doctype html>
         <html lang="en">
@@ -2228,7 +2308,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           </main>
           <script>
             window.addEventListener('load', function () {
-              try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: 'ready', message: 'ready', requestID: '\(requestID)' }); } catch (_) {}
+              try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: 'ready', message: 'ready', requestID: \(requestIDJSON), mode: 'text', renderer: \(rendererJSON), sourceExtension: \(extensionJSON) }); } catch (_) {}
             });
           </script>
         </body>
@@ -2240,13 +2320,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         title: String,
         fileExtension: String,
         byteCount: Int,
-        requestID: String
+        requestID: String,
+        renderer: String = "text"
     ) throws -> String {
         let payload: [String: Any] = [
             "label": title,
             "format": "text",
             "sourceExtension": fileExtension,
-            "renderer": "text",
+            "renderer": renderer,
             "byteCount": byteCount,
             "previewByteCount": byteCount,
             "quickLookBuild": "burrete-text-quicklook",
@@ -4149,6 +4230,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
             .replacingOccurrences(of: "'", with: "&#39;")
+    }
+
+    private static func jsonStringLiteral(_ value: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: [value], options: [.withoutEscapingSlashes]),
+              let json = String(data: data, encoding: .utf8),
+              json.hasPrefix("["),
+              json.hasSuffix("]") else {
+            return "\"\""
+        }
+        return String(json.dropFirst().dropLast())
     }
 
     private static func escapeScriptEnd(_ value: String) -> String {

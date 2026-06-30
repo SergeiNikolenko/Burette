@@ -52,6 +52,14 @@ const xyzrenderNativeError = await runCase("xyzrender-native-error", xyzrenderFi
 assert.equal(xyzrenderNativeError.status, 1);
 assert.match(xyzrenderNativeError.stderr, /contains an error or timeout/);
 
+const xyzrenderTextFallback = await runCase("xyzrender-text-fallback", xyzrenderFile, [
+  `[CCCC0002] file.path=${xyzrenderFile}`,
+  "[CCCC0002] [build] detected.previewMode=text-fallback",
+  "[CCCC0002] preview.evidence type=ready mode=text renderer=text-fallback sourceExtension=com",
+]);
+assert.equal(xyzrenderTextFallback.status, 0);
+assert.match(xyzrenderTextFallback.stdout, /text fallback ready/);
+
 const gridSuccess = await runCase("grid-success", sdfFile, [
   `[DDDD0001] file.path=${sdfFile}`,
   "[DDDD0001] [build] detected.previewMode=grid2d rows=2 moleculeRows=2",
