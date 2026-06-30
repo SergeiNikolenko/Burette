@@ -2447,7 +2447,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
 
         let lowercasedExtension = fileExtension.lowercased()
-        if ["lammpstrj", "dump"].contains(lowercasedExtension) {
+        if ["lammpstrj", "dump", "pos"].contains(lowercasedExtension) {
             let lines = normalizedTextLines(from: sourceData)
             let frameCount = PreviewStructureTextConverter.lammpsDumpFrameCount(lines)
             return frameCount > 0 ? frameCount : nil
@@ -4353,7 +4353,7 @@ private enum PreviewStructureTextConverter {
            let pdb = pdbData(from: data, fileExtension: fileExtension, label: label) {
             return ConvertedStructure(data: pdb, format: .convertedPDB, auxiliaryFiles: [], stagedEntries: [])
         }
-        if ["lammpstrj", "dump"].contains(fileExtension.lowercased()),
+        if ["lammpstrj", "dump", "pos"].contains(fileExtension.lowercased()),
            let xyz = lammpsDumpXYZData(from: data, label: label) {
             return ConvertedStructure(data: xyz, format: .convertedXYZ, auxiliaryFiles: [], stagedEntries: [])
         }
@@ -4392,8 +4392,10 @@ private enum PreviewStructureTextConverter {
             return parseOrcaOutput(lines) ?? parseGaussianOutput(lines) ?? parseBestCoordinateBlock(lines)
         case "inpcrd", "rst7", "restrt":
             return parseAmberRestart(lines)
-        case "lammpstrj", "dump":
+        case "lammpstrj", "dump", "pos":
             return parseLammpsDump(lines)
+        case "cfg":
+            return parseAtomeyeCFG(lines)
         case "data", "lammps", "lmp":
             return parseLammpsData(lines)
         case "crd":
@@ -5819,6 +5821,90 @@ private enum PreviewStructureTextConverter {
 
     private static func parseLammpsDump(_ lines: [String]) -> [Atom]? {
         parseLammpsDumpFrames(lines).first
+    }
+
+    private static func parseAtomeyeCFG(_ lines: [String]) -> [Atom]? {
+        guard let atomCount = atomeyeCFGAtomCount(lines),
+              let h0 = atomeyeCFGH0(lines),
+              let entryCount = atomeyeCFGEntryCount(lines),
+              entryCount > 0,
+              let entryStart = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("entry_count") }).map({ $0 + 1 }) else {
+            return nil
+        }
+        let scale = atomeyeCFGScale(lines) ?? 1
+        var atoms: [Atom] = []
+        var index = entryStart
+        while atoms.count < atomCount, index + entryCount <= lines.count {
+            let entry = Array(lines[index..<(index + entryCount)])
+            index += entryCount
+            let symbol = entry.compactMap(elementSymbol(fromAtomName:)).first ?? "C"
+            guard let fractional = entry.reversed().compactMap({ values -> Vec3? in
+                let numbers = numericTokens(values)
+                guard numbers.count >= 3 else { return nil }
+                return (numbers[0], numbers[1], numbers[2])
+            }).first else {
+                return nil
+            }
+            atoms.append(Atom(
+                symbol: symbol,
+                x: scale * (h0[0][0] * fractional.0 + h0[0][1] * fractional.1 + h0[0][2] * fractional.2),
+                y: scale * (h0[1][0] * fractional.0 + h0[1][1] * fractional.1 + h0[1][2] * fractional.2),
+                z: scale * (h0[2][0] * fractional.0 + h0[2][1] * fractional.1 + h0[2][2] * fractional.2)
+            ))
+        }
+        return atoms.count == atomCount ? atoms : nil
+    }
+
+    private static func atomeyeCFGAtomCount(_ lines: [String]) -> Int? {
+        for line in lines {
+            let parts = line.components(separatedBy: "=")
+            guard parts.count == 2,
+                  parts[0].trimmingCharacters(in: .whitespaces) == "Number of particles" else { continue }
+            return Int(parts[1].trimmingCharacters(in: .whitespaces))
+        }
+        return nil
+    }
+
+    private static func atomeyeCFGScale(_ lines: [String]) -> Double? {
+        for line in lines {
+            let parts = line.components(separatedBy: "=")
+            guard parts.count == 2,
+                  parts[0].trimmingCharacters(in: .whitespaces) == "A" else { continue }
+            guard let first = fields(parts[1]).first else { continue }
+            return Double(first)
+        }
+        return nil
+    }
+
+    private static func atomeyeCFGEntryCount(_ lines: [String]) -> Int? {
+        for line in lines {
+            let parts = line.components(separatedBy: "=")
+            guard parts.count == 2,
+                  parts[0].trimmingCharacters(in: .whitespaces) == "entry_count" else { continue }
+            return Int(parts[1].trimmingCharacters(in: .whitespaces))
+        }
+        return nil
+    }
+
+    private static func atomeyeCFGH0(_ lines: [String]) -> [[Double]]? {
+        var h0 = Array(repeating: Array(repeating: 0.0, count: 3), count: 3)
+        var seen = 0
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("H0("),
+                  let close = trimmed.firstIndex(of: ")"),
+                  let equals = trimmed.firstIndex(of: "=") else { continue }
+            let indices = trimmed[trimmed.index(trimmed.startIndex, offsetBy: 3)..<close]
+                .split(separator: ",")
+                .compactMap { Int(String($0).trimmingCharacters(in: .whitespaces)) }
+            guard indices.count == 2,
+                  indices[0] >= 1, indices[0] <= 3,
+                  indices[1] >= 1, indices[1] <= 3,
+                  let value = fields(String(trimmed[trimmed.index(after: equals)...])).first.flatMap(Double.init) else { continue }
+            h0[indices[0] - 1][indices[1] - 1] = value
+            seen += 1
+        }
+        return seen == 9 ? h0 : nil
     }
 
     private static func parseLammpsData(_ lines: [String]) -> [Atom]? {

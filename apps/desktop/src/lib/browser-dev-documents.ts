@@ -1591,7 +1591,8 @@ function proteinLikeAtomRecordCount(text: string) {
 function shouldUseConvertedMolstarData(format: FormatInfo, converted: ConvertedStructureData | null, extension: string) {
   if (!converted?.bytes) return false;
   if (isPharmacophorePreviewExtension(extension)) return true;
-  if ((extension === "lammpstrj" || extension === "dump") && converted.molstarFormat === "xyz") return true;
+  if ((extension === "lammpstrj" || extension === "dump" || extension === "pos") && converted.molstarFormat === "xyz") return true;
+  if (extension === "cfg" && converted.molstarFormat === "pdb") return true;
   if ((extension === "data" || extension === "lammps" || extension === "lmp") && converted.molstarFormat === "pdb") return true;
   if (format.externalOnly) return true;
   if (format.binary) return false;
@@ -1858,7 +1859,7 @@ function convertedDataFromText(text: string, extension: string, label: string): 
     const converted = groPdbDataFromText(text, label);
     return converted ? { molstarFormat: "pdb", ...converted } : null;
   }
-  if (extension === "lammpstrj" || extension === "dump") {
+  if (extension === "lammpstrj" || extension === "dump" || extension === "pos") {
     const bytes = lammpsDumpXyzDataFromText(text, label);
     return bytes ? { bytes, molstarFormat: "xyz" } : null;
   }
@@ -2207,8 +2208,10 @@ function atomsFromText(text: string, extension: string) {
     atoms = parseCifCoreAtoms(lines);
   } else if (extension === "inpcrd" || extension === "rst7" || extension === "restrt") {
     atoms = parseAmberRestartAtoms(lines);
-  } else if (extension === "lammpstrj" || extension === "dump") {
+  } else if (extension === "lammpstrj" || extension === "dump" || extension === "pos") {
     atoms = parseLammpsDumpAtoms(lines);
+  } else if (extension === "cfg") {
+    atoms = parseAtomeyeCfgAtoms(lines);
   } else if (extension === "data" || extension === "lammps" || extension === "lmp") {
     atoms = parseLammpsDataAtoms(lines);
   } else if (extension === "crd") {
@@ -3165,6 +3168,72 @@ function parseCharmmCoordinateAtoms(lines: string[]) {
 
 function parseLammpsDumpAtoms(lines: string[]) {
   return parseLammpsDumpFrames(lines)[0] ?? null;
+}
+
+function parseAtomeyeCfgAtoms(lines: string[]) {
+  const atomCount = parseAtomeyeCfgAtomCount(lines);
+  const scale = parseAtomeyeCfgScale(lines) ?? 1;
+  const h0 = parseAtomeyeCfgH0(lines);
+  const entryCount = parseAtomeyeCfgEntryCount(lines);
+  const entryStart = lines.findIndex((line) => line.trim().startsWith("entry_count")) + 1;
+  if (!atomCount || !h0 || !entryCount || entryStart <= 0) return null;
+  const atoms: Atom[] = [];
+  for (let index = entryStart; atoms.length < atomCount && index + entryCount <= lines.length; index += entryCount) {
+    const entry = lines.slice(index, index + entryCount);
+    const symbol = entry.map((line) => elementSymbolFromAtomName(line)).find(Boolean) ?? "C";
+    const fractional = entry
+      .slice()
+      .reverse()
+      .map((line) => numericTokens(line))
+      .find((values) => values.length >= 3);
+    if (!fractional) return null;
+    atoms.push({
+      symbol,
+      x: scale * (h0[0][0] * fractional[0] + h0[0][1] * fractional[1] + h0[0][2] * fractional[2]),
+      y: scale * (h0[1][0] * fractional[0] + h0[1][1] * fractional[1] + h0[1][2] * fractional[2]),
+      z: scale * (h0[2][0] * fractional[0] + h0[2][1] * fractional[1] + h0[2][2] * fractional[2]),
+    });
+  }
+  return atoms.length === atomCount ? atoms : null;
+}
+
+function parseAtomeyeCfgAtomCount(lines: string[]) {
+  for (const line of lines) {
+    const match = /^Number of particles\s*=\s*(\d+)/u.exec(line.trim());
+    if (match) return Number.parseInt(match[1], 10);
+  }
+  return null;
+}
+
+function parseAtomeyeCfgScale(lines: string[]) {
+  for (const line of lines) {
+    const match = /^A\s*=\s*([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)/u.exec(line.trim());
+    if (match) return Number(match[1]);
+  }
+  return null;
+}
+
+function parseAtomeyeCfgEntryCount(lines: string[]) {
+  for (const line of lines) {
+    const match = /^entry_count\s*=\s*(\d+)/u.exec(line.trim());
+    if (match) return Number.parseInt(match[1], 10);
+  }
+  return null;
+}
+
+function parseAtomeyeCfgH0(lines: string[]): [[number, number, number], [number, number, number], [number, number, number]] | null {
+  const h0: [[number, number, number], [number, number, number], [number, number, number]] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  let seen = 0;
+  for (const line of lines) {
+    const match = /^H0\((\d),(\d)\)\s*=\s*([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)/u.exec(line.trim());
+    if (!match) continue;
+    const row = Number.parseInt(match[1], 10) - 1;
+    const column = Number.parseInt(match[2], 10) - 1;
+    if (row < 0 || row >= 3 || column < 0 || column >= 3) continue;
+    h0[row][column] = Number(match[3]);
+    seen += 1;
+  }
+  return seen === 9 ? h0 : null;
 }
 
 function parseLammpsDataAtoms(lines: string[]) {

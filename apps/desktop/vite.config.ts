@@ -215,7 +215,7 @@ const DEV_FILE_EXTENSIONS = new Set([
 ]);
 const MD_COORDINATE_EXTENSIONS = [
   "xtc", "trr", "dcd", "nctraj", "tng", "h5md", "gsd", "trz", "coor", "namdbin",
-  "nc", "ncdf", "netcdf", "ncrst", "lammpstrj", "dump", "trj", "mdcrd", "crdbox",
+  "nc", "ncdf", "netcdf", "ncrst", "lammpstrj", "dump", "pos", "cfg", "trj", "mdcrd", "crdbox",
   "trc", "arc", "config", "history",
 ];
 const MD_TOPOLOGY_EXTENSIONS = [

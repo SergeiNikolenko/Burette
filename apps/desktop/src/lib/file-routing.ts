@@ -46,6 +46,7 @@ export const preferredTextExtensions = new Set([
 
 export const structureAndTextExtensions = new Set([
   "abi",
+  "cfg",
   "cms",
   "com",
   "config",
@@ -84,6 +85,7 @@ export const structureAndTextExtensions = new Set([
   "parm7",
   "prmtop",
   "psf",
+  "pos",
   "psi4",
   "qcin",
   "crd",
