@@ -96,6 +96,8 @@ assert.match(textViewer, /range\.intersectsNode\(lineElement\)/);
 assert.match(textViewer, /textStructureSelectionFromRange\(document, from, to\)/);
 assert.doesNotMatch(textViewer, /textStructureSelectionFromRange\(document, line\.from, line\.to, \{ preferAtom: true \}\)/);
 assert.match(textViewer, /lineDragStartRef/);
+assert.doesNotMatch(textViewer, /hoverTimeoutRef/);
+assert.doesNotMatch(textViewer, /emitHoveredStructureLine/);
 assert.match(textViewer, /parent\.addEventListener\("pointerdown", onPointerDown\)/);
 assert.match(textViewer, /parent\.addEventListener\("pointermove", onPointerMove\)/);
 assert.match(textViewer, /parent\.addEventListener\("pointerup", onPointerUp\)/);

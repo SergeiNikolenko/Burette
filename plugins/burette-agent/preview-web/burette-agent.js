@@ -1120,7 +1120,7 @@
 
   function schemasForSelector(selector, atoms, warnings) {
     const direct = directSchema(selector);
-    if (direct) return [direct];
+    if (direct) return expandSchemaArrays(direct);
     const residueMap = new Map();
     for (const atom of atoms) {
       residueMap.set(residueIdentity(atom), ligandToSelector(residueSummary(atom)));
@@ -1130,6 +1130,16 @@
       warnings?.push(`Selector expands to more than ${MAX_SCHEMA_RESIDUES} residues; Mol* visual application is capped.`);
     }
     return Array.from(residueMap.values()).slice(0, MAX_SCHEMA_RESIDUES).map(directSchema).filter(Boolean);
+  }
+
+  function expandSchemaArrays(schema) {
+    const arrayEntries = Object.entries(schema).filter(([, value]) => Array.isArray(value));
+    if (arrayEntries.length === 0) return [schema];
+    if (arrayEntries.length > 1) {
+      return [schema];
+    }
+    const [[field, values]] = arrayEntries;
+    return values.map(value => ({ ...schema, [field]: value }));
   }
 
   function directSchema(selector = {}) {
