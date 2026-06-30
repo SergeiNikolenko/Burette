@@ -22,6 +22,7 @@ commands.allow = [
   "read_text_file",
   "open_text_files",
   "read_structure_text",
+  "fetch_pdb_structure",
   "conformer_status",
   "prepare_conformer_job",
   "run_conformer_job",

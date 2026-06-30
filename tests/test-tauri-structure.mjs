@@ -276,6 +276,7 @@ for (const commandPath of [
   'commands::documents::open_documents',
   'commands::documents::open_delimited_grid_document',
   'commands::documents::read_structure_text',
+  'commands::documents::fetch_pdb_structure',
   'commands::documents::generate_3d_conformer',
   'commands::documents::open_text_structure',
   'commands::documents::save_text_as',
@@ -371,6 +372,8 @@ assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn classify_o
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_documents/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delimited_grid_document/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) async fn fetch_pdb_structure/);
+assert.match(documentsCommand, /https:\/\/files\.rcsb\.org\/download\/\{pdb_id\}\.pdb/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn generate_3d_conformer/);
 assert.match(documentsCommand, /engine: Option<String>/);
 assert.match(documentsCommand, /mode: Option<String>/);

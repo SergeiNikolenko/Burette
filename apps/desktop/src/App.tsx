@@ -404,10 +404,12 @@ export default function App() {
 
   const {
     chooseFiles,
+    fetchPdbStructure,
     openMostRecentStructure,
     openRecentStructure,
   } = useAppOpenActions({
     openPaths,
+    openStructureRecords,
     pushErrorStatus,
     pushStatus,
     recentStructures,
@@ -755,6 +757,7 @@ export default function App() {
     exportActivePreviewAsPng,
     exportActivePreviewAsSvg,
     exportDiagnostics,
+    fetchPdbStructure,
     focusSidebarSearch,
     forgetDirtyGridDocument,
     forgetDirtyGridDocuments,

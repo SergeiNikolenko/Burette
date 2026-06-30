@@ -1,15 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  CommandDialog,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
+  CommandRoot,
 } from "cmdk";
-import { Description as DialogDescription, Title as DialogTitle } from "@radix-ui/react-dialog";
+import * as Dialog from "@radix-ui/react-dialog";
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
+import { parsePdbFetchCommand, parseSmilesCommand } from "../../lib/structure-fetch";
 import type { ViewerPreferences } from "../../types";
 
 type CommandPaletteProps = {
@@ -55,6 +56,7 @@ export function CommandPalette({
   }, [isOpen]);
 
   const items = useMemo<PaletteItem[]>(() => {
+    const queryItems = commandItemsForQuery(query, actions);
     const projectItems = state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
       id: `${item.source}-${item.path}`,
       group: "Projects",
@@ -84,6 +86,7 @@ export function CommandPalette({
         description: "Choose molecular structure files",
         run: actions.chooseFiles,
       },
+      ...queryItems,
       {
         id: "open-clipboard",
         group: "Suggested",
@@ -255,7 +258,7 @@ export function CommandPalette({
       ...projectItems,
     ];
     return commands;
-  }, [actions, state.preferences.rendererMode, state.sidebarOpen, state.sidebarProjects]);
+  }, [actions, query, state.preferences.rendererMode, state.sidebarOpen, state.sidebarProjects]);
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -296,43 +299,88 @@ export function CommandPalette({
   if (!portalContainer) return null;
 
   return (
-    <CommandDialog
+    <Dialog.Root
       open={isOpen}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      label="Command Palette"
-      shouldFilter={false}
-      value={selectedValue}
-      onValueChange={setSelectedValue}
-      container={portalContainer}
     >
-      <DialogTitle className="command-palette-sr-only">Command Palette</DialogTitle>
-      <DialogDescription className="command-palette-sr-only">
-        Search commands and structures.
-      </DialogDescription>
-      <CommandInput
-        value={query}
-        onValueChange={onQueryChange}
-        placeholder="Search commands and structures..."
-        aria-label="Search commands and open structures"
-      />
-      <CommandList ref={listRef}>
-        {visibleItems.length === 0 ? (
-          <CommandEmpty>No results found.</CommandEmpty>
-        ) : (
-          visibleGroups.map((group) => (
-            <CommandGroup key={group.heading} heading={group.heading}>
-              {group.items.map((item) => (
-                <CommandItem key={item.id} value={item.id} onSelect={() => runItem(item)}>
-                  <span>{item.label}</span>
-                  <small>{item.description}</small>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          ))
-        )}
-      </CommandList>
-    </CommandDialog>
+      <Dialog.Portal container={portalContainer}>
+        <Dialog.Overlay cmdk-overlay="" />
+        <Dialog.Content cmdk-dialog="">
+          <Dialog.Title className="command-palette-sr-only">Command Palette</Dialog.Title>
+          <Dialog.Description className="command-palette-sr-only">
+            Search commands and structures.
+          </Dialog.Description>
+          <CommandRoot
+            label="Command Palette"
+            shouldFilter={false}
+            value={selectedValue}
+            onValueChange={setSelectedValue}
+          >
+            <CommandInput
+              value={query}
+              onValueChange={onQueryChange}
+              placeholder="Search commands and structures..."
+              aria-label="Search commands and open structures"
+            />
+            <CommandList ref={listRef}>
+              {visibleItems.length === 0 ? (
+                <CommandEmpty>No results found.</CommandEmpty>
+              ) : (
+                visibleGroups.map((group) => (
+                  <CommandGroup key={group.heading} heading={group.heading}>
+                    {group.items.map((item) => (
+                      <CommandItem key={item.id} value={item.id} onSelect={() => runItem(item)}>
+                        <span>{item.label}</span>
+                        <small>{item.description}</small>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                ))
+              )}
+            </CommandList>
+          </CommandRoot>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
+}
+
+function commandItemsForQuery(query: string, actions: ShellActions): PaletteItem[] {
+  const fetchCommand = parsePdbFetchCommand(query);
+  const smilesCommand = parseSmilesCommand(query);
+  const items: PaletteItem[] = [];
+  if (fetchCommand) {
+    items.push({
+      id: `fetch-pdb-${fetchCommand.pdbId}`,
+      group: "Commands",
+      label: `Fetch ${fetchCommand.pdbId} from RCSB PDB`,
+      description: `Command: ${fetchCommand.command} · Download and open in Molstar`,
+      run: () => actions.fetchPdbStructure(fetchCommand.pdbId),
+    });
+  }
+  if (smilesCommand) {
+    const title = smilesTitle(smilesCommand.smiles);
+    items.push({
+      id: `draw-smiles-${smilesCommand.smiles}`,
+      group: "Commands",
+      label: `Draw SMILES in Ketcher: ${shortCommandValue(smilesCommand.smiles)}`,
+      description: `Command: ${smilesCommand.command} · Import SMILES into the molecule sketcher`,
+      run: () => actions.openKetcherWithStructures([], [{
+        title,
+        text: `${smilesCommand.smiles}\n`,
+      }]),
+    });
+  }
+  return items;
+}
+
+function smilesTitle(smiles: string) {
+  return `${shortCommandValue(smiles).replace(/[^a-z0-9_.-]+/giu, "-") || "smiles"}.smi`;
+}
+
+function shortCommandValue(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 48 ? `${trimmed.slice(0, 45)}...` : trimmed;
 }

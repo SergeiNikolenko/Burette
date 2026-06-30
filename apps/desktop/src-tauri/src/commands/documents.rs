@@ -34,6 +34,7 @@ use crate::preview::xyzrender::{
 };
 
 const XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+const FETCHED_PDB_MAX_BYTES: usize = 75 * 1024 * 1024;
 const KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE: u64 = 10 * 1024 * 1024;
 const PROJECT_STRUCTURE_SCAN_MAX_FILES: usize = 2_000;
 const PROJECT_STRUCTURE_SCAN_MAX_DIRECTORIES: usize = 400;
@@ -129,6 +130,20 @@ pub(crate) struct CreateCollectionRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TextStructureRequest {
+    title: String,
+    extension: String,
+    text: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FetchPdbStructureRequest {
+    pdb_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FetchStructureResult {
     title: String,
     extension: String,
     text: String,
@@ -651,6 +666,75 @@ pub(crate) fn read_structure_text(path: String) -> Result<String, String> {
         ));
     }
     fs::read_to_string(&input_path).map_err(|err| format!("{}: {err}", input_path.display()))
+}
+
+#[tauri::command]
+pub(crate) async fn fetch_pdb_structure(
+    request: FetchPdbStructureRequest,
+) -> Result<FetchStructureResult, String> {
+    let pdb_id = normalize_pdb_id(&request.pdb_id)?;
+    tauri::async_runtime::spawn_blocking(move || fetch_pdb_structure_blocking(&pdb_id))
+        .await
+        .map_err(|error| format!("PDB fetch task failed: {error}"))?
+}
+
+fn normalize_pdb_id(input: &str) -> Result<String, String> {
+    let pdb_id = input.trim().to_ascii_uppercase();
+    let mut chars = pdb_id.chars();
+    let valid = pdb_id.len() == 4
+        && matches!(chars.next(), Some('1'..='9'))
+        && chars.all(|character| character.is_ascii_alphanumeric());
+    if !valid {
+        return Err("PDB ID must be four characters and start with 1-9".to_string());
+    }
+    Ok(pdb_id)
+}
+
+fn fetch_pdb_structure_blocking(pdb_id: &str) -> Result<FetchStructureResult, String> {
+    let url = format!("https://files.rcsb.org/download/{pdb_id}.pdb");
+    let max_filesize = FETCHED_PDB_MAX_BYTES.to_string();
+    let output = Command::new("/usr/bin/curl")
+        .args([
+            "--fail",
+            "--location",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            "120",
+            "--max-filesize",
+            &max_filesize,
+            "--user-agent",
+            "Burrete/1.0",
+            &url,
+        ])
+        .output()
+        .map_err(|error| format!("Failed to start curl for {url}: {error}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!(
+                "Failed to download {url}: curl exited with {}",
+                output.status
+            )
+        } else {
+            format!("Failed to download {url}: {stderr}")
+        });
+    }
+    if output.stdout.is_empty() {
+        return Err(format!("RCSB PDB returned an empty structure for {pdb_id}"));
+    }
+    if output.stdout.len() > FETCHED_PDB_MAX_BYTES {
+        return Err(format!(
+            "{pdb_id}.pdb is larger than the 75 MB preview limit"
+        ));
+    }
+    let text = String::from_utf8(output.stdout)
+        .map_err(|error| format!("{pdb_id}.pdb is not valid UTF-8: {error}"))?;
+    Ok(FetchStructureResult {
+        title: format!("{pdb_id}.pdb"),
+        extension: "pdb".to_string(),
+        text,
+    })
 }
 
 #[tauri::command]

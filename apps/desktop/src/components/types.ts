@@ -113,6 +113,7 @@ export type ShellActions = {
   openStructureRecords: (records: StructureDragPayload["records"]) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
   openMostRecentStructure: () => void | Promise<void>;
+  fetchPdbStructure: (pdbId: string) => void | Promise<void>;
   selectDocument: (id: string) => void;
   selectTab: (id: string) => void;
   openNewTab: () => void;

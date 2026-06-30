@@ -121,6 +121,7 @@ pub fn run() {
             commands::text_files::read_text_file,
             commands::text_files::open_text_files,
             commands::documents::read_structure_text,
+            commands::documents::fetch_pdb_structure,
             commands::conformer::conformer_status,
             commands::conformer::prepare_conformer_job,
             commands::conformer::run_conformer_job,
