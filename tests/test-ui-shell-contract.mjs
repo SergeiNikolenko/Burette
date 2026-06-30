@@ -2970,6 +2970,12 @@ assert.match(ketcherPage, /const KETCHER_EXPORT_FORMATS: KetcherTextFormat\[\] =
 assert.doesNotMatch(ketcherPage, /const KETCHER_EXPORT_FORMATS[\s\S]*"fasta"/);
 assert.match(ketcherPage, /const KETCHER_IMPORT_FORMATS: KetcherTextFormat\[\] = \[[\s\S]*"rxn-v3000"[\s\S]*"sdf-v3000"[\s\S]*"inchi"/);
 assert.doesNotMatch(ketcherPage, /const KETCHER_IMPORT_FORMATS[\s\S]*"helm"/);
+assert.match(ketcherPage, /const DEFAULT_KETCHER_EXPORT_FORMAT: KetcherTextFormat = "sdf-v2000"/);
+assert.match(ketcherPage, /const DEFAULT_KETCHER_IMPORT_FORMAT: KetcherTextFormat = "sdf-v2000"/);
+assert.match(ketcherPage, /case "sdf-v2000":\s*return exportKetcherSdf\(ketcher, "v2000"\)/);
+assert.match(ketcherPage, /case "sdf-v3000":\s*return exportKetcherSdf\(ketcher, "v3000"\)/);
+assert.match(ketcherPage, /function exportKetcherSdf\(ketcher: KetcherEditorApi, version: "v2000" \| "v3000"\)/);
+assert.match(ketcherPage, /return ketcher\.getMolfile\(version\)\.then\(\(molfile\) => molfileToSdf\(molfile\)\)/);
 assert.match(ketcherPage, /const \[panelMode, setPanelMode\] = useState<KetcherPanelMode \| null>\(null\)/);
 assert.match(ketcherPage, /const \[liveSmilesImportDirty, setLiveSmilesImportDirty\] = useState\(false\)/);
 assert.match(ketcherPage, /const liveSmilesImportSerialRef = useRef\(0\)/);
