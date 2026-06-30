@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_BURRETE_BUILD_FLAVOR?: string;
   readonly VITE_BURRETE_BUILD_IDENTIFIER?: string;
   readonly VITE_BURRETE_AGENT_SHELL?: string;
+  readonly BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT?: string;
   readonly BURRETE_REPO_ROOT?: string;
 }
 
