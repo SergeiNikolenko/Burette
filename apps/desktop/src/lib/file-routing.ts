@@ -44,8 +44,17 @@ export const preferredTextExtensions = new Set([
   "checkpoint",
 ]);
 
+const preferredTextBasenames = new Set([
+  "log.lammps",
+]);
+
+export function isPreferredTextPath(path: string, extension = pathExtension(path)) {
+  return preferredTextExtensions.has(extension) || preferredTextBasenames.has(basename(path).toLowerCase());
+}
+
 export const structureAndTextExtensions = new Set([
   "abi",
+  "cfg",
   "cms",
   "com",
   "config",
@@ -84,6 +93,7 @@ export const structureAndTextExtensions = new Set([
   "parm7",
   "prmtop",
   "psf",
+  "pos",
   "psi4",
   "qcin",
   "crd",

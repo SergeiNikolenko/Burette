@@ -775,7 +775,8 @@ assert.match(quickLookPreviewController, /rdkit\.get_mol\(String\(entry\.molbloc
 assert.match(quickLookPreviewController, /mol\.set_new_coords\?\.\(\)/);
 assert.match(quickLookPreviewController, /rdkitImages: rdkitImages/);
 assert.match(quickLookPreviewController, /score: " \+ String\(format: "%\.3f", \$0\)/);
-assert.match(quickLookPreviewController, /shouldUseTextArtifactPreview\(fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
+assert.match(quickLookPreviewController, /shouldUseTextArtifactPreview\(url: URL, fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
+assert.match(quickLookPreviewController, /private static func isPreferredTextArtifact\(url: URL\) -> Bool \{[\s\S]*url\.lastPathComponent\.lowercased\(\) == "log\.lammps"/);
 assert.match(quickLookPreviewController, /detected\.previewMode=text-artifact/);
 assert.doesNotMatch(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);

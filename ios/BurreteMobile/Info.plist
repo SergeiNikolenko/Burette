@@ -36,6 +36,7 @@
 				<string>abi</string>
 				<string>arc</string>
 				<string>bcif</string>
+				<string>cfg</string>
 				<string>cif</string>
 				<string>cms</string>
 				<string>com</string>
@@ -101,6 +102,7 @@
 				<string>pdb</string>
 				<string>pdbqt</string>
 				<string>pqr</string>
+				<string>pos</string>
 				<string>prm</string>
 				<string>prmtop</string>
 				<string>psf</string>
@@ -624,6 +626,8 @@
 					<string>namdbin</string>
 					<string>lammpstrj</string>
 					<string>dump</string>
+					<string>pos</string>
+					<string>cfg</string>
 					<string>trj</string>
 					<string>mdcrd</string>
 					<string>crdbox</string>
