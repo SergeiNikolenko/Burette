@@ -761,7 +761,7 @@ kbd span { margin-left: 2px; }
   border-radius: 8px;
   background: transparent;
   color: var(--text-secondary);
-  padding: 5px 76px 5px 10px;
+  padding: 5px 64px 5px 10px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -847,7 +847,7 @@ kbd span { margin-left: 2px; }
 }
 .project-folder-toggle-button {
   position: absolute;
-  right: 58px;
+  right: 30px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 1;
