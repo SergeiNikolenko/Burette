@@ -6,9 +6,9 @@ import { openBrowserDevDocuments } from "../lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "../lib/browser-dev-text-files";
 import type { DockArea, DockDropInput, DockTabKind, DockToolKind } from "../lib/dock";
 import {
+  isPreferredTextPath,
   NOT_RENDERABLE_RENDERER,
   pathExtension,
-  preferredTextExtensions,
   structureAndTextExtensions,
   structureExtensions,
   summarizeErrors,
@@ -97,7 +97,9 @@ export function useAppDockPayloadOpen({
         const rightDockContentSpectrumPaths = await detectContentSpectrumPaths(cleanPaths);
         const rightDockTextPaths = cleanPaths.filter((path) => {
           const extension = pathExtension(path);
-          return !isSpectrumPath(path, extension) && !rightDockContentSpectrumPaths.has(path) && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension);
+          return !isSpectrumPath(path, extension)
+            && !rightDockContentSpectrumPaths.has(path)
+            && (isPreferredTextPath(path, extension) || (!structureExtensions.has(extension) && !structureAndTextExtensions.has(extension)));
         });
         dockOpenPaths = cleanPaths.filter((path) => !rightDockTextPaths.includes(path));
         if (rightDockTextPaths.length > 0) {
@@ -128,11 +130,13 @@ export function useAppDockPayloadOpen({
         const extension = pathExtension(path);
         if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
           spectrumPaths.push(path);
+        } else if (isPreferredTextPath(path, extension)) {
+          textPaths.push(path);
         } else if (structureAndTextExtensions.has(extension)) {
           structureAndTextPaths.push(path);
         } else if (structureExtensions.has(extension)) {
           structurePaths.push(path);
-        } else if (preferredTextExtensions.has(extension) || extension.length > 0) {
+        } else if (extension.length > 0) {
           textPaths.push(path);
         } else {
           textPaths.push(path);

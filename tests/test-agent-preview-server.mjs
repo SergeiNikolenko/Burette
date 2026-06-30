@@ -204,6 +204,9 @@ f_m_ct {
   const statePath = join(coordinateTempDir, 'openmm.state');
   const hoomdPath = join(coordinateTempDir, 'hoomd.xml');
   const lammpsPath = join(coordinateTempDir, 'dump.lammpstrj');
+  const posPath = join(coordinateTempDir, 'c60.0.pos');
+  const cfgPath = join(coordinateTempDir, 'c60.0.cfg');
+  const lammpsLogPath = join(coordinateTempDir, 'log.lammps');
   await writeFile(amberPath, `Amber restart
 3
   0.0000000  0.0000000  0.0000000  1.5200000  0.0000000  0.0000000
@@ -244,7 +247,43 @@ ITEM: ATOMS id element x y z
 1 C 0.0 0.0 0.0
 2 O 1.2 0.0 0.0
 `);
-  for (const coordinatePath of [amberPath, charmmPath, statePath, hoomdPath, lammpsPath]) {
+  await writeFile(posPath, `ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0 10
+0 10
+0 10
+ITEM: ATOMS id type x y z
+1 1 8.39336 5.60135 4.68858
+2 1 8.39378 4.31559 5.23490
+`);
+  await writeFile(cfgPath, `Number of particles = 2
+A = 1 Angstrom (basic length-scale)
+H0(1,1) = 10 A
+H0(1,2) = 0 A
+H0(1,3) = 0 A
+H0(2,1) = 0 A
+H0(2,2) = 10 A
+H0(2,3) = 0 A
+H0(3,1) = 0 A
+H0(3,2) = 0 A
+H0(3,3) = 10 A
+.NO_VELOCITY.
+entry_count = 3
+12.010700
+C
+0.839336 0.560135 0.468858
+12.010700
+C
+0.839378 0.431559 0.52349
+`);
+  await writeFile(lammpsLogPath, `LAMMPS (22 Jul 2025 - Update 4)
+thermo_style custom step time temp pe ke etotal
+Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
+`);
+  for (const coordinatePath of [amberPath, charmmPath, statePath, hoomdPath, lammpsPath, posPath, cfgPath]) {
     const coordinatePort = await freePort();
     const coordinateChild = spawn(process.execPath, ['scripts/agent-preview.mjs', coordinatePath, '--port', String(coordinatePort)], {
       stdio: ['ignore', 'pipe', 'pipe']
@@ -269,6 +308,22 @@ ITEM: ATOMS id element x y z
     } finally {
       coordinateChild.kill('SIGTERM');
     }
+  }
+  const lammpsLogPort = await freePort();
+  const lammpsLogChild = spawn(process.execPath, ['scripts/agent-preview.mjs', lammpsLogPath, '--port', String(lammpsLogPort)], {
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  try {
+    const lammpsLogReady = await waitForReady(lammpsLogChild);
+    const lammpsLogHtml = await get(lammpsLogReady.url);
+    const lammpsLogCookie = lammpsLogHtml.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='))?.split(';')[0];
+    assert.ok(lammpsLogCookie, 'authorized log.lammps HTML response should set the preview token cookie');
+    const lammpsLogConfig = await get(`http://127.0.0.1:${lammpsLogPort}/preview-config.js`, { Cookie: lammpsLogCookie });
+    assert.equal(lammpsLogConfig.statusCode, 200);
+    assert.match(lammpsLogConfig.body, /"format":"text"/);
+    assert.match(lammpsLogConfig.body, /"textPreview":true/);
+  } finally {
+    lammpsLogChild.kill('SIGTERM');
   }
   await rm(coordinateTempDir, { recursive: true, force: true });
 

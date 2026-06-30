@@ -2275,7 +2275,7 @@ private extension MobilePreviewDocument {
         case "xyz", "xyzr": "point.3.connected.trianglepath.dotted"
         case "smi": "text.line.first.and.arrowtriangle.forward"
         case "csv", "tsv": "tablecells.badge.ellipsis"
-        case "dcd", "xtc", "trr", "nctraj", "lammpstrj": "waveform.path.ecg"
+        case "cfg", "dcd", "dump", "pos", "xtc", "trr", "nctraj", "lammpstrj": "waveform.path.ecg"
         case "prmtop", "psf", "top": "link"
         default: "doc"
         }
@@ -2287,7 +2287,7 @@ private extension MobilePreviewDocument {
             .poses
         case "xyz", "xyzr":
             xyzFrameCount(frameLimit: 2) > 1 ? .trajectory : nil
-        case "arc", "dcd", "dump", "gsd", "lammpstrj", "nc", "ncdf", "nctraj", "netcdf", "tng", "trr", "trz", "xtc":
+        case "arc", "cfg", "dcd", "dump", "gsd", "lammpstrj", "nc", "ncdf", "nctraj", "netcdf", "pos", "tng", "trr", "trz", "xtc":
             .trajectory
         default:
             nil

@@ -271,7 +271,7 @@
       "contentType": "com.local.burrete10.molecular-dynamics",
       "extensions": [
         "xtc", "trr", "dcd", "nctraj", "tng", "h5md", "gsd", "trz", "coor", "namdbin",
-        "lammpstrj", "dump", "trj", "mdcrd", "crdbox", "trc", "arc", "config", "history",
+        "lammpstrj", "dump", "pos", "cfg", "trj", "mdcrd", "crdbox", "trc", "arc", "config", "history",
         "nc", "ncdf", "netcdf", "ncrst",
         "top", "psf", "prmtop", "tpr", "parm7", "parm", "itp", "data", "lammps", "lmp", "txyz"
       ],
@@ -282,7 +282,7 @@
         "renderer": "molstar",
         "formats": {
           "coordinatesBinary": ["xtc", "trr", "dcd", "nctraj", "tng", "h5md", "gsd", "trz", "coor", "namdbin", "nc", "ncdf", "netcdf", "ncrst"],
-          "coordinatesText": ["lammpstrj", "dump", "trj", "mdcrd", "crdbox", "trc", "arc", "config", "history"],
+          "coordinatesText": ["lammpstrj", "dump", "pos", "cfg", "trj", "mdcrd", "crdbox", "trc", "arc", "config", "history"],
           "topologyText": ["top", "psf", "prmtop", "tpr", "parm7", "parm", "itp", "data", "lammps", "lmp", "txyz"]
         },
         "capabilities": { "hasTrajectoryControls": true }
@@ -413,9 +413,9 @@
   "documentTypes": {
     "name": "Molecular structure files",
     "extensions": [
-      "abi", "arc", "bcif", "cif", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "edr", "ent", "fasta", "fdef", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
+      "abi", "arc", "bcif", "cfg", "cif", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "edr", "ent", "fasta", "fdef", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
       "in", "inp", "inpcrd", "itp", "lammpstrj", "lammps", "lmp", "log", "mae", "mae.gz", "maegz", "magma", "mcif", "mdcrd", "mgf", "mmcif", "mmtf", "mol",
-      "json", "mol2", "ms", "msp", "mvsj", "mvsx", "mzml", "mzxml", "namdbin", "nc", "ncdf", "ncrst", "nctraj", "netcdf", "nw", "out", "par", "parm", "parm7", "pdb", "pdbqt", "pqr", "prm", "prmtop", "psf", "psi4", "qcin",
+      "json", "mol2", "ms", "msp", "mvsj", "mvsx", "mzml", "mzxml", "namdbin", "nc", "ncdf", "ncrst", "nctraj", "netcdf", "nw", "out", "par", "parm", "parm7", "pdb", "pdbqt", "pqr", "pos", "prm", "prmtop", "psf", "psi4", "qcin",
       "restrt", "rst", "rst7", "rtf", "sd", "sdf", "smi", "smiles", "state", "str", "top", "tpr", "tng", "trc", "trj", "trr", "trz", "tsv", "txyz", "vasp", "xtc", "xml", "xpdb", "xvg", "xyz", "xyzr", "ph4",
       "key", "chk", "checkpoint", "crd"
     ]

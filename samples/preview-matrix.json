@@ -132,6 +132,7 @@
     "molecular-dynamics": {
       "extensions": [
         "arc",
+        "cfg",
         "config",
         "coor",
         "crdbox",
@@ -153,6 +154,7 @@
         "netcdf",
         "parm",
         "parm7",
+        "pos",
         "prmtop",
         "psf",
         "tng",

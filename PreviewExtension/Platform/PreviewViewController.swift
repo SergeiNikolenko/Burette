@@ -496,7 +496,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             )
         }
 
-        if shouldUseTextArtifactPreview(fileExtension: pathExtension, previewPlan: previewPlan) {
+        if shouldUseTextArtifactPreview(url: url, fileExtension: pathExtension, previewPlan: previewPlan) {
             return try buildTextArtifactPreviewResult(
                 for: url,
                 requestID: requestID,
@@ -2447,7 +2447,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
 
         let lowercasedExtension = fileExtension.lowercased()
-        if ["lammpstrj", "dump"].contains(lowercasedExtension) {
+        if ["lammpstrj", "dump", "pos"].contains(lowercasedExtension) {
             let lines = normalizedTextLines(from: sourceData)
             let frameCount = PreviewStructureTextConverter.lammpsDumpFrameCount(lines)
             return frameCount > 0 ? frameCount : nil
@@ -3338,11 +3338,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return fileExtension.lowercased() == "graphml"
     }
 
-    private static func shouldUseTextArtifactPreview(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+    private static func shouldUseTextArtifactPreview(url: URL, fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+        if isPreferredTextArtifact(url: url) {
+            return true
+        }
         if let previewPlan {
             return previewPlan.strategy == "text"
         }
         return ["par", "prm", "rtf", "str", "key", "chk", "checkpoint", "fdef"].contains(fileExtension.lowercased())
+    }
+
+    private static func isPreferredTextArtifact(url: URL) -> Bool {
+        url.lastPathComponent.lowercased() == "log.lammps"
     }
 
     private static func requiresGridPreview(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
@@ -4353,7 +4360,7 @@ private enum PreviewStructureTextConverter {
            let pdb = pdbData(from: data, fileExtension: fileExtension, label: label) {
             return ConvertedStructure(data: pdb, format: .convertedPDB, auxiliaryFiles: [], stagedEntries: [])
         }
-        if ["lammpstrj", "dump"].contains(fileExtension.lowercased()),
+        if ["lammpstrj", "dump", "pos"].contains(fileExtension.lowercased()),
            let xyz = lammpsDumpXYZData(from: data, label: label) {
             return ConvertedStructure(data: xyz, format: .convertedXYZ, auxiliaryFiles: [], stagedEntries: [])
         }
@@ -4392,8 +4399,12 @@ private enum PreviewStructureTextConverter {
             return parseOrcaOutput(lines) ?? parseGaussianOutput(lines) ?? parseBestCoordinateBlock(lines)
         case "inpcrd", "rst7", "restrt":
             return parseAmberRestart(lines)
-        case "lammpstrj", "dump":
+        case "lammpstrj", "dump", "pos":
             return parseLammpsDump(lines)
+        case "cfg":
+            return parseAtomeyeCFG(lines)
+        case "data", "lammps", "lmp":
+            return parseLammpsData(lines)
         case "crd":
             return parseCharmmCoordinates(lines)
         case "rst":
@@ -5817,6 +5828,183 @@ private enum PreviewStructureTextConverter {
 
     private static func parseLammpsDump(_ lines: [String]) -> [Atom]? {
         parseLammpsDumpFrames(lines).first
+    }
+
+    private static func parseAtomeyeCFG(_ lines: [String]) -> [Atom]? {
+        guard let atomCount = atomeyeCFGAtomCount(lines),
+              let h0 = atomeyeCFGH0(lines),
+              let entryCount = atomeyeCFGEntryCount(lines),
+              entryCount > 0,
+              let entryStart = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("entry_count") }).map({ $0 + 1 }) else {
+            return nil
+        }
+        let scale = atomeyeCFGScale(lines) ?? 1
+        var atoms: [Atom] = []
+        var index = entryStart
+        while atoms.count < atomCount, index + entryCount <= lines.count {
+            let entry = Array(lines[index..<(index + entryCount)])
+            index += entryCount
+            let symbol = entry.compactMap(elementSymbol(fromAtomName:)).first ?? "C"
+            guard let fractional = entry.reversed().compactMap({ values -> Vec3? in
+                let numbers = numericTokens(values)
+                guard numbers.count >= 3 else { return nil }
+                return (numbers[0], numbers[1], numbers[2])
+            }).first else {
+                return nil
+            }
+            atoms.append(Atom(
+                symbol: symbol,
+                x: scale * (h0[0][0] * fractional.0 + h0[0][1] * fractional.1 + h0[0][2] * fractional.2),
+                y: scale * (h0[1][0] * fractional.0 + h0[1][1] * fractional.1 + h0[1][2] * fractional.2),
+                z: scale * (h0[2][0] * fractional.0 + h0[2][1] * fractional.1 + h0[2][2] * fractional.2)
+            ))
+        }
+        return atoms.count == atomCount ? atoms : nil
+    }
+
+    private static func atomeyeCFGAtomCount(_ lines: [String]) -> Int? {
+        for line in lines {
+            let parts = line.components(separatedBy: "=")
+            guard parts.count == 2,
+                  parts[0].trimmingCharacters(in: .whitespaces) == "Number of particles" else { continue }
+            return Int(parts[1].trimmingCharacters(in: .whitespaces))
+        }
+        return nil
+    }
+
+    private static func atomeyeCFGScale(_ lines: [String]) -> Double? {
+        for line in lines {
+            let parts = line.components(separatedBy: "=")
+            guard parts.count == 2,
+                  parts[0].trimmingCharacters(in: .whitespaces) == "A" else { continue }
+            guard let first = fields(parts[1]).first else { continue }
+            return Double(first)
+        }
+        return nil
+    }
+
+    private static func atomeyeCFGEntryCount(_ lines: [String]) -> Int? {
+        for line in lines {
+            let parts = line.components(separatedBy: "=")
+            guard parts.count == 2,
+                  parts[0].trimmingCharacters(in: .whitespaces) == "entry_count" else { continue }
+            return Int(parts[1].trimmingCharacters(in: .whitespaces))
+        }
+        return nil
+    }
+
+    private static func atomeyeCFGH0(_ lines: [String]) -> [[Double]]? {
+        var h0 = Array(repeating: Array(repeating: 0.0, count: 3), count: 3)
+        var seen = 0
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("H0("),
+                  let close = trimmed.firstIndex(of: ")"),
+                  let equals = trimmed.firstIndex(of: "=") else { continue }
+            let indices = trimmed[trimmed.index(trimmed.startIndex, offsetBy: 3)..<close]
+                .split(separator: ",")
+                .compactMap { Int(String($0).trimmingCharacters(in: .whitespaces)) }
+            guard indices.count == 2,
+                  indices[0] >= 1, indices[0] <= 3,
+                  indices[1] >= 1, indices[1] <= 3,
+                  let value = fields(String(trimmed[trimmed.index(after: equals)...])).first.flatMap(Double.init) else { continue }
+            h0[indices[0] - 1][indices[1] - 1] = value
+            seen += 1
+        }
+        return seen == 9 ? h0 : nil
+    }
+
+    private static func parseLammpsData(_ lines: [String]) -> [Atom]? {
+        let masses = parseLammpsMasses(lines)
+        var inAtoms = false
+        var atoms: [Atom] = []
+        for line in lines {
+            let parts = fields(stripInlineComment(line))
+            guard let first = parts.first else { continue }
+            if first.lowercased() == "atoms" {
+                inAtoms = true
+                continue
+            }
+            if inAtoms, first.first?.isLetter == true { break }
+            guard inAtoms, parts.count >= 5 else { continue }
+            guard let coordinates = lammpsDataCoordinates(parts, masses: masses) else { continue }
+            atoms.append(Atom(
+                symbol: lammpsDataAtomSymbol(parts, masses: masses),
+                x: coordinates.0,
+                y: coordinates.1,
+                z: coordinates.2
+            ))
+        }
+        return atoms.isEmpty ? nil : atoms
+    }
+
+    private static func parseLammpsMasses(_ lines: [String]) -> [String: String] {
+        var masses: [String: String] = [:]
+        var inMasses = false
+        for line in lines {
+            let parts = fields(stripInlineComment(line))
+            guard let first = parts.first else { continue }
+            if first.lowercased() == "masses" {
+                inMasses = true
+                continue
+            }
+            if inMasses, first.first?.isLetter == true { break }
+            guard inMasses, parts.count >= 2 else { continue }
+            let symbol = (parts.count > 2 ? elementSymbol(fromAtomName: parts[2]) : nil)
+                ?? lammpsSymbol(fromMass: parts[1])
+            if let symbol {
+                masses[parts[0]] = symbol
+            }
+        }
+        return masses
+    }
+
+    private static func lammpsDataAtomSymbol(_ parts: [String], masses: [String: String]) -> String {
+        (parts.count > 1 ? masses[parts[1]] : nil)
+            ?? (parts.count > 2 ? masses[parts[2]] : nil)
+            ?? (parts.count > 1 ? elementSymbol(fromAtomName: parts[1]) : nil)
+            ?? (parts.count > 2 ? elementSymbol(fromAtomName: parts[2]) : nil)
+            ?? "C"
+    }
+
+    private static func lammpsDataCoordinates(_ parts: [String], masses: [String: String]) -> Vec3? {
+        var starts: [Int] = []
+        if parts.count > 2, masses[parts[2]] != nil { starts.append(4) }
+        if parts.count > 1, masses[parts[1]] != nil { starts += [3, 2] }
+        starts += [3, 4, 2]
+        for start in starts where start + 2 < parts.count {
+            guard let x = Double(parts[start]),
+                  let y = Double(parts[start + 1]),
+                  let z = Double(parts[start + 2]) else {
+                continue
+            }
+            return (x, y, z)
+        }
+        return nil
+    }
+
+    private static func lammpsSymbol(fromMass value: String) -> String? {
+        guard let mass = Double(value) else { return nil }
+        let masses: [(Double, String)] = [
+            (1.008, "H"),
+            (12.011, "C"),
+            (14.007, "N"),
+            (15.999, "O"),
+            (18.998, "F"),
+            (22.990, "Na"),
+            (24.305, "Mg"),
+            (30.974, "P"),
+            (32.06, "S"),
+            (35.45, "Cl"),
+            (39.098, "K"),
+            (40.078, "Ca"),
+            (55.845, "Fe"),
+            (63.546, "Cu"),
+            (65.38, "Zn"),
+            (79.904, "Br"),
+            (126.904, "I")
+        ]
+        return masses.first { abs(mass - $0.0) <= 0.35 }?.1
     }
 
     private static func parseLammpsDumpFrames(_ lines: [String]) -> [[Atom]] {
