@@ -4394,6 +4394,8 @@ private enum PreviewStructureTextConverter {
             return parseAmberRestart(lines)
         case "lammpstrj", "dump":
             return parseLammpsDump(lines)
+        case "data", "lammps", "lmp":
+            return parseLammpsData(lines)
         case "crd":
             return parseCharmmCoordinates(lines)
         case "rst":
@@ -5817,6 +5819,99 @@ private enum PreviewStructureTextConverter {
 
     private static func parseLammpsDump(_ lines: [String]) -> [Atom]? {
         parseLammpsDumpFrames(lines).first
+    }
+
+    private static func parseLammpsData(_ lines: [String]) -> [Atom]? {
+        let masses = parseLammpsMasses(lines)
+        var inAtoms = false
+        var atoms: [Atom] = []
+        for line in lines {
+            let parts = fields(stripInlineComment(line))
+            guard let first = parts.first else { continue }
+            if first.lowercased() == "atoms" {
+                inAtoms = true
+                continue
+            }
+            if inAtoms, first.first?.isLetter == true { break }
+            guard inAtoms, parts.count >= 5 else { continue }
+            guard let coordinates = lammpsDataCoordinates(parts, masses: masses) else { continue }
+            atoms.append(Atom(
+                symbol: lammpsDataAtomSymbol(parts, masses: masses),
+                x: coordinates.0,
+                y: coordinates.1,
+                z: coordinates.2
+            ))
+        }
+        return atoms.isEmpty ? nil : atoms
+    }
+
+    private static func parseLammpsMasses(_ lines: [String]) -> [String: String] {
+        var masses: [String: String] = [:]
+        var inMasses = false
+        for line in lines {
+            let parts = fields(stripInlineComment(line))
+            guard let first = parts.first else { continue }
+            if first.lowercased() == "masses" {
+                inMasses = true
+                continue
+            }
+            if inMasses, first.first?.isLetter == true { break }
+            guard inMasses, parts.count >= 2 else { continue }
+            let symbol = (parts.count > 2 ? elementSymbol(fromAtomName: parts[2]) : nil)
+                ?? lammpsSymbol(fromMass: parts[1])
+            if let symbol {
+                masses[parts[0]] = symbol
+            }
+        }
+        return masses
+    }
+
+    private static func lammpsDataAtomSymbol(_ parts: [String], masses: [String: String]) -> String {
+        (parts.count > 1 ? masses[parts[1]] : nil)
+            ?? (parts.count > 2 ? masses[parts[2]] : nil)
+            ?? (parts.count > 1 ? elementSymbol(fromAtomName: parts[1]) : nil)
+            ?? (parts.count > 2 ? elementSymbol(fromAtomName: parts[2]) : nil)
+            ?? "C"
+    }
+
+    private static func lammpsDataCoordinates(_ parts: [String], masses: [String: String]) -> Vec3? {
+        var starts: [Int] = []
+        if parts.count > 2, masses[parts[2]] != nil { starts.append(4) }
+        if parts.count > 1, masses[parts[1]] != nil { starts += [3, 2] }
+        starts += [3, 4, 2]
+        for start in starts where start + 2 < parts.count {
+            guard let x = Double(parts[start]),
+                  let y = Double(parts[start + 1]),
+                  let z = Double(parts[start + 2]) else {
+                continue
+            }
+            return (x, y, z)
+        }
+        return nil
+    }
+
+    private static func lammpsSymbol(fromMass value: String) -> String? {
+        guard let mass = Double(value) else { return nil }
+        let masses: [(Double, String)] = [
+            (1.008, "H"),
+            (12.011, "C"),
+            (14.007, "N"),
+            (15.999, "O"),
+            (18.998, "F"),
+            (22.990, "Na"),
+            (24.305, "Mg"),
+            (30.974, "P"),
+            (32.06, "S"),
+            (35.45, "Cl"),
+            (39.098, "K"),
+            (40.078, "Ca"),
+            (55.845, "Fe"),
+            (63.546, "Cu"),
+            (65.38, "Zn"),
+            (79.904, "Br"),
+            (126.904, "I")
+        ]
+        return masses.first { abs(mass - $0.0) <= 0.35 }?.1
     }
 
     private static func parseLammpsDumpFrames(_ lines: [String]) -> [[Atom]] {
