@@ -5117,6 +5117,10 @@ for (const runtimeSource of [previewViewer]) {
   assert.match(runtimeSource, /let activeDockingPoseCollectionState = null/);
   assert.match(runtimeSource, /function xyzFrameOverlayRawSignature\(raw\)/);
   assert.match(runtimeSource, /function xyzFrameOverlayStateKey\(rawSignature, frames, prepared, style, contextStyle, contextOpacity, contextColor, backgroundIndexes\)/);
+  assert.match(runtimeSource, /function structureOverlayToggleAvailable\(prepared = activeMolstarPrepared\)/);
+  assert.match(runtimeSource, /const sourceFormat = normalizeFormat\(activeConfig\?\.sourceExtension \|\| activeConfig\?\.molstarFormat \|\| activeConfig\?\.format\)/);
+  assert.match(runtimeSource, /if \(prepared\?\.xyzFrameOverlayAvailable === true \|\| sourceFormat === 'xyz' \|\| sourceFormat === 'extxyz'\) return false;/);
+  assert.match(runtimeSource, /const overlayToggleAvailable = structureOverlayToggleAvailable\(prepared\);[\s\S]*?const all = overlayToggleAvailable \? createStructureOverlayToggleButton\(prepared\) : null;/);
   assert.match(runtimeSource, /function xyzFrameRepresentationStyle\(style\)/);
   assert.match(runtimeSource, /if \(normalized === 'line' \|\| normalized === 'ball-and-stick' \|\| normalized === 'spacefill' \|\| normalized === 'molecular-surface'\) return normalized;\s*return 'line';/);
   assert.match(runtimeSource, /function xyzFrameForegroundStyle\(style\)/);
