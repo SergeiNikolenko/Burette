@@ -158,12 +158,12 @@ export function useAppUpdates({ pushErrorStatus, pushStatus }: UseAppUpdatesArgs
           ? "Update available: " + release.displayName + " (" + release.tagName + ")." + (release.installAsset ? "" : " No downloadable app archive is attached to this release.")
           : "Burrete is up to date on " + channel + ".",
       }));
+      if (automatic) markAutomaticCheck(true);
       if (release) {
         await promptForUpdate(release, automatic);
       } else {
         clearDismissedUpdate();
       }
-      if (automatic) markAutomaticCheck(true);
     } catch (error) {
       setUpdate((previous) => ({
         ...previous,
