@@ -3,6 +3,8 @@ use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 use tauri::Manager;
 
 use super::update_progress;
@@ -11,6 +13,9 @@ const APP_ID: &str = "com.local.BurreteV10";
 const EXTENSION_ID: &str = "com.local.BurreteV10.Preview";
 const RELEASE_DOWNLOAD_PREFIX: &str =
     "https://github.com/SergeiNikolenko/Burrete/releases/download/";
+const DOWNLOAD_PROGRESS_START: f64 = 0.04;
+const DOWNLOAD_PROGRESS_END: f64 = 0.34;
+const DOWNLOAD_PROGRESS_POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -102,8 +107,18 @@ fn download_update(
     remove_path_if_exists(&temporary)?;
     remove_path_if_exists(&archive)?;
 
-    update_progress::show(app, "Downloading update...", None);
-    download_asset(package_version, &request.browser_download_url, &temporary)?;
+    update_progress::show(
+        app,
+        format_download_message(0, request.size, 0.0),
+        Some(DOWNLOAD_PROGRESS_START),
+    );
+    download_asset_with_progress(
+        app,
+        package_version,
+        &request.browser_download_url,
+        &temporary,
+        request.size,
+    )?;
     update_progress::show(app, "Checking downloaded update...", Some(0.34));
 
     let downloaded_size = fs::metadata(&temporary)
@@ -257,7 +272,51 @@ fn download_update(
 }
 
 fn download_asset(package_version: &str, url: &str, target: &Path) -> Result<(), String> {
-    let status = Command::new("/usr/bin/curl")
+    let status = curl_download_command(package_version, url, target)
+        .status()
+        .map_err(|err| format!("Could not start curl: {err}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("curl failed with status {status}."))
+    }
+}
+
+fn download_asset_with_progress(
+    app: &tauri::AppHandle,
+    package_version: &str,
+    url: &str,
+    target: &Path,
+    total_size: u64,
+) -> Result<(), String> {
+    let mut child = curl_download_command(package_version, url, target)
+        .spawn()
+        .map_err(|err| format!("Could not start curl: {err}"))?;
+    let started_at = Instant::now();
+
+    loop {
+        match child
+            .try_wait()
+            .map_err(|err| format!("Could not check curl status: {err}"))?
+        {
+            Some(status) => {
+                show_download_progress(app, target, total_size, started_at);
+                if status.success() {
+                    return Ok(());
+                }
+                return Err(format!("curl failed with status {status}."));
+            }
+            None => {
+                thread::sleep(DOWNLOAD_PROGRESS_POLL_INTERVAL);
+                show_download_progress(app, target, total_size, started_at);
+            }
+        }
+    }
+}
+
+fn curl_download_command(package_version: &str, url: &str, target: &Path) -> Command {
+    let mut command = Command::new("/usr/bin/curl");
+    command
         .args(["--fail", "--location", "--silent", "--show-error"])
         .args([
             "--connect-timeout",
@@ -272,19 +331,84 @@ fn download_asset(package_version: &str, url: &str, target: &Path) -> Result<(),
             "1",
             "--retry-all-errors",
         ])
-        .args([
-            "--header",
-            &format!("User-Agent: Burrete/{package_version}"),
-        ])
+        .arg("--header")
+        .arg(format!("User-Agent: Burrete/{package_version}"))
         .arg("--output")
         .arg(target)
-        .arg(url)
-        .status()
-        .map_err(|err| format!("Could not start curl: {err}"))?;
-    if status.success() {
-        Ok(())
+        .arg(url);
+    command
+}
+
+fn show_download_progress(
+    app: &tauri::AppHandle,
+    target: &Path,
+    total_size: u64,
+    started_at: Instant,
+) {
+    let downloaded = fs::metadata(target)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0)
+        .min(total_size);
+    let elapsed = started_at.elapsed();
+    let speed = if downloaded == 0 {
+        0.0
     } else {
-        Err(format!("curl failed with status {status}."))
+        downloaded as f64 / elapsed.as_secs_f64().max(0.001)
+    };
+
+    update_progress::show(
+        app,
+        format_download_message(downloaded, total_size, speed),
+        Some(download_progress_value(downloaded, total_size)),
+    );
+}
+
+fn download_progress_value(downloaded: u64, total_size: u64) -> f64 {
+    let fraction = if total_size == 0 {
+        0.0
+    } else {
+        (downloaded as f64 / total_size as f64).clamp(0.0, 1.0)
+    };
+    DOWNLOAD_PROGRESS_START + (DOWNLOAD_PROGRESS_END - DOWNLOAD_PROGRESS_START) * fraction
+}
+
+fn format_download_message(downloaded: u64, total_size: u64, bytes_per_second: f64) -> String {
+    format!(
+        "Downloading update... {}% at {}",
+        download_percent(downloaded, total_size),
+        format_download_speed(bytes_per_second)
+    )
+}
+
+fn download_percent(downloaded: u64, total_size: u64) -> u64 {
+    if total_size == 0 {
+        return 0;
+    }
+    (((downloaded.min(total_size) as f64 / total_size as f64) * 100.0).floor() as u64).min(100)
+}
+
+fn format_download_speed(bytes_per_second: f64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+
+    let speed = bytes_per_second.max(0.0);
+    if speed < KIB {
+        format!("{speed:.0} B/s")
+    } else if speed < MIB {
+        format_download_unit(speed / KIB, "KiB/s")
+    } else if speed < GIB {
+        format_download_unit(speed / MIB, "MiB/s")
+    } else {
+        format_download_unit(speed / GIB, "GiB/s")
+    }
+}
+
+fn format_download_unit(value: f64, unit: &str) -> String {
+    if value >= 10.0 {
+        format!("{value:.0} {unit}")
+    } else {
+        format!("{value:.1} {unit}")
     }
 }
 
@@ -1243,6 +1367,36 @@ mod tests {
     fn compare_versions_accepts_uppercase_v_prefix() {
         assert_eq!(compare_versions("V1.0.0", "1.0.0"), 0);
         assert_eq!(compare_versions("V1.0.1", "1.0.0"), 1);
+    }
+
+    #[test]
+    fn download_percent_reports_floor_clamped_percentage() {
+        assert_eq!(download_percent(0, 203_428_538), 0);
+        assert_eq!(download_percent(16_855_040, 203_428_538), 8);
+        assert_eq!(download_percent(203_428_538, 203_428_538), 100);
+        assert_eq!(download_percent(250_000_000, 203_428_538), 100);
+    }
+
+    #[test]
+    fn download_progress_value_maps_archive_fraction_to_update_stage() {
+        assert_eq!(download_progress_value(0, 100), DOWNLOAD_PROGRESS_START);
+        assert_eq!(download_progress_value(100, 100), DOWNLOAD_PROGRESS_END);
+        assert_eq!(
+            download_progress_value(50, 100),
+            DOWNLOAD_PROGRESS_START + (DOWNLOAD_PROGRESS_END - DOWNLOAD_PROGRESS_START) * 0.5
+        );
+    }
+
+    #[test]
+    fn format_download_message_includes_percent_and_speed() {
+        assert_eq!(
+            format_download_message(16_855_040, 203_428_538, 64_204.8),
+            "Downloading update... 8% at 63 KiB/s"
+        );
+        assert_eq!(
+            format_download_message(2_621_440, 203_428_538, 1_310_720.0),
+            "Downloading update... 1% at 1.2 MiB/s"
+        );
     }
 
     #[test]
