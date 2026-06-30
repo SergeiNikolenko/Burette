@@ -85,70 +85,101 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
     window.setTimeout(() => setPromptCopied(false), 1400);
   }, [setupPrompt]);
 
-  const actionLabel = codexActionLabel(status?.codexInstall.state);
+  const summary = integrationSummary(status, error);
   const content = (
     <div className="agent-integration-content">
-      <div className="agent-integration-header">
+      <header className="agent-integration-header">
         <div>
-          <h1>Burrete</h1>
-          <p>{statusLine(status, error)}</p>
+          <h1>Codex Agent</h1>
+          <p>Status for the bundled plugin used by Codex MCP tools.</p>
         </div>
         <div className="agent-integration-actions">
           <button type="button" className="settings-action-button" onClick={() => void refresh()} disabled={refreshing}>
             {refreshing ? "Checking..." : "Refresh"}
           </button>
           <button type="button" className="settings-action-button" onClick={() => void openBundle()} disabled={!status?.bundledPlugin.path}>
-            {actionLabel}
-          </button>
-          <button type="button" className="settings-action-button" onClick={() => void copyBundlePath()} disabled={!status?.bundledPlugin.path}>
-            {copied ? "Copied" : "Copy Path"}
+            Reveal Bundle
           </button>
         </div>
-      </div>
+      </header>
 
-      <section className="agent-integration-section" aria-label="Plugin status">
-        <h2>Status</h2>
-        <div className="settings-card">
-          <StatusRow label="Bundle" value={bundleSummary(status)} state={status?.bundledPlugin.state ?? "unknown"} />
-          <StatusRow label="Codex" value={codexSummary(status)} state={status?.codexInstall.state ?? "unknown"} />
-          <StatusRow label="App" value={appSummary(status)} state="ok" />
+      <section className="agent-summary-section" aria-label="Agent status">
+        <div className="agent-summary-card" data-state={badgeState(summary.state)}>
+          <div className="agent-summary-copy">
+            <div className="agent-summary-kicker">Agent integration</div>
+            <h2>{summary.title}</h2>
+            <p>{summary.detail}</p>
+          </div>
+          <span className="agent-status-badge" data-state={badgeState(summary.state)}>
+            {badgeLabel(summary.state)}
+          </span>
         </div>
       </section>
 
-      <section className="agent-integration-section" aria-label="Codex setup prompt">
-        <h2>Codex setup prompt</h2>
+      <section className="agent-integration-section" aria-label="Connection status">
+        <h2>Connection</h2>
         <div className="settings-card">
+          <StatusRow label="Codex plugin" value={codexSummary(status)} state={status?.codexInstall.state ?? "unknown"} />
+          <StatusRow label="MCP server" value={checkSummary(status, "mcp", "MCP server entry point is bundled.")} state={checkState(status, "mcp")} />
+          <StatusRow label="Browser shell" value={checkSummary(status, "browser-shell", "Browser shell assets are bundled.")} state={checkState(status, "browser-shell")} />
+          <StatusRow label="Skills and widgets" value={skillsAndWidgetsSummary(status)} state={combinedCheckState(status, ["skills", "widgets"])} />
+        </div>
+      </section>
+
+      <details className="agent-disclosure">
+        <summary>
+          <span className="agent-disclosure-copy">
+            <span className="agent-disclosure-title">Manual setup</span>
+            <span className="agent-disclosure-description">Copy a fallback prompt or inspect the bundled plugin path.</span>
+          </span>
+        </summary>
+        <div className="agent-disclosure-body">
           <div className="agent-setup-prompt">
             <pre>{setupPrompt}</pre>
             <div className="agent-setup-prompt-footer">
-              <span>Paste this into Codex if automatic install is unavailable.</span>
-              <button type="button" className="settings-action-button" onClick={() => void copySetupPrompt()}>
-                {promptCopied ? "Copied" : "Copy Prompt"}
-              </button>
+              <span>Use this only if automatic app-update sync is unavailable.</span>
+              <div className="agent-setup-prompt-actions">
+                <button type="button" className="settings-action-button" onClick={() => void copySetupPrompt()}>
+                  {promptCopied ? "Copied" : "Copy Prompt"}
+                </button>
+                <button type="button" className="settings-action-button" onClick={() => void copyBundlePath()} disabled={!status?.bundledPlugin.path}>
+                  {copied ? "Copied" : "Copy Bundle Path"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </section>
+      </details>
 
-      <section className="agent-integration-section" aria-label="Compatibility">
-        <h2>Compatibility</h2>
-        <div className="settings-card">
-          <StatusRow label="Burrete" value={status?.bundledPlugin.compatibility?.app ?? "Not declared"} state={status?.bundledPlugin.compatibility?.app ? "ok" : "missing"} />
-          <StatusRow label="CLI" value={status?.bundledPlugin.compatibility?.agentCli ?? "Not declared"} state={status?.bundledPlugin.compatibility?.agentCli ? "ok" : "missing"} />
-          <StatusRow label="Control API" value={status?.bundledPlugin.compatibility?.controlApi ?? "Not declared"} state={status?.bundledPlugin.compatibility?.controlApi ? "ok" : "missing"} />
+      <details className="agent-disclosure">
+        <summary>
+          <span className="agent-disclosure-copy">
+            <span className="agent-disclosure-title">Diagnostics</span>
+            <span className="agent-disclosure-description">Bundle compatibility and file-level readiness checks.</span>
+          </span>
+        </summary>
+        <div className="agent-disclosure-body">
+          <div className="agent-diagnostic-group">
+            <h3>Bundle</h3>
+            <StatusRow label="Bundle" value={bundleSummary(status)} state={status?.bundledPlugin.state ?? "unknown"} />
+            <StatusRow label="App" value={appSummary(status)} state="ok" />
+          </div>
+          <div className="agent-diagnostic-group">
+            <h3>Compatibility</h3>
+            <StatusRow label="Burrete" value={status?.bundledPlugin.compatibility?.app ?? "Not declared"} state={status?.bundledPlugin.compatibility?.app ? "ok" : "missing"} />
+            <StatusRow label="CLI" value={status?.bundledPlugin.compatibility?.agentCli ?? "Not declared"} state={status?.bundledPlugin.compatibility?.agentCli ? "ok" : "missing"} />
+            <StatusRow label="Control API" value={status?.bundledPlugin.compatibility?.controlApi ?? "Not declared"} state={status?.bundledPlugin.compatibility?.controlApi ? "ok" : "missing"} />
+          </div>
+          <div className="agent-diagnostic-group">
+            <h3>Readiness checks</h3>
+            {(status?.checks ?? []).map((check) => (
+              <StatusRow key={check.id} label={check.label} value={check.detail} state={check.state} />
+            ))}
+            {!status && !error ? <StatusRow label="Checks" value="Waiting for status." state="unknown" /> : null}
+            {error ? <StatusRow label="Error" value={error} state="missing" /> : null}
+          </div>
         </div>
-      </section>
-
-      <section className="agent-integration-section" aria-label="Readiness checks">
-        <h2>Checks</h2>
-        <div className="settings-card">
-          {(status?.checks ?? []).map((check) => (
-            <StatusRow key={check.id} label={check.label} value={check.detail} state={check.state} />
-          ))}
-          {!status && !error ? <StatusRow label="Checks" value="Waiting for status." state="unknown" /> : null}
-          {error ? <StatusRow label="Error" value={error} state="missing" /> : null}
-        </div>
-      </section>
+      </details>
     </div>
   );
 
@@ -205,13 +236,47 @@ function StatusRow({ label, value, state }: { label: string; value: string; stat
   );
 }
 
-function statusLine(status: AgentIntegrationStatus | null, error: string | null) {
-  if (error) return "Integration status could not be read.";
-  if (!status) return "Checking local integration.";
-  if (status.state === "update_available") return "A different Burrete plugin version is installed in Codex.";
-  if (status.state === "install_available") return "Burrete is bundled and ready to install in Codex.";
-  if (status.state === "broken") return "The bundled plugin is incomplete.";
-  return "Burrete is ready.";
+function integrationSummary(status: AgentIntegrationStatus | null, error: string | null) {
+  if (error) {
+    return {
+      title: "Status unavailable",
+      detail: "Burrete could not read the local Codex agent integration.",
+      state: "missing",
+    };
+  }
+  if (!status) {
+    return {
+      title: "Checking agent status",
+      detail: "Burrete is inspecting the bundled plugin and local Codex cache.",
+      state: "unknown",
+    };
+  }
+  if (status.state === "update_available") {
+    return {
+      title: "Codex plugin needs an update",
+      detail: "The app bundle contains a different plugin version than the one currently installed in Codex.",
+      state: status.state,
+    };
+  }
+  if (status.state === "install_available") {
+    return {
+      title: "Codex plugin is not installed",
+      detail: "Burrete includes the plugin bundle; app updates can sync it into the local Codex cache.",
+      state: status.state,
+    };
+  }
+  if (status.state === "broken") {
+    return {
+      title: "Bundled plugin is incomplete",
+      detail: "One or more required plugin files are missing from this Burrete bundle.",
+      state: status.state,
+    };
+  }
+  return {
+    title: "Codex agent is ready",
+    detail: "Codex can use the Burrete MCP server, skills, widgets, and Browser shell assets from this app bundle.",
+    state: status.state,
+  };
 }
 
 function bundleSummary(status: AgentIntegrationStatus | null) {
@@ -225,6 +290,40 @@ function codexSummary(status: AgentIntegrationStatus | null) {
   if (!status) return "Checking Codex cache.";
   if (status.codexInstall.version) return `${status.codexInstall.message} Installed v${status.codexInstall.version}.`;
   return status.codexInstall.message;
+}
+
+function checkSummary(status: AgentIntegrationStatus | null, id: string, readyText: string) {
+  if (!status) return "Waiting for status.";
+  const check = findCheck(status, id);
+  if (!check) return "Open the packaged app to inspect this check.";
+  return check.state === "ok" ? readyText : check.detail;
+}
+
+function checkState(status: AgentIntegrationStatus | null, id: string) {
+  return findCheck(status, id)?.state ?? "unknown";
+}
+
+function skillsAndWidgetsSummary(status: AgentIntegrationStatus | null) {
+  if (!status) return "Waiting for status.";
+  const checks = ["skills", "widgets"].map((id) => findCheck(status, id)).filter((check): check is AgentIntegrationCheck => !!check);
+  if (checks.length === 0) return "Open the packaged app to inspect skills and widget assets.";
+  const missing = checks.filter((check) => badgeState(check.state) === "missing").map((check) => check.label);
+  if (missing.length > 0) return `Missing ${missing.join(" and ").toLowerCase()}.`;
+  return "Skills and widget assets are bundled.";
+}
+
+function combinedCheckState(status: AgentIntegrationStatus | null, ids: string[]) {
+  if (!status) return "unknown";
+  const checks = ids.map((id) => findCheck(status, id)).filter((check): check is AgentIntegrationCheck => !!check);
+  if (checks.length === 0) return "unknown";
+  if (checks.some((check) => badgeState(check.state) === "missing")) return "missing";
+  if (checks.some((check) => badgeState(check.state) === "action")) return "action";
+  if (checks.every((check) => badgeState(check.state) === "ok")) return "ok";
+  return "unknown";
+}
+
+function findCheck(status: AgentIntegrationStatus | null, id: string) {
+  return status?.checks.find((check) => check.id === id) ?? null;
 }
 
 function codexSetupPrompt(status: AgentIntegrationStatus | null) {
@@ -246,12 +345,6 @@ function browserPreviewPluginPath() {
 function appSummary(status: AgentIntegrationStatus | null) {
   if (!status) return "Checking app version.";
   return `Burrete v${status.appVersion}`;
-}
-
-function codexActionLabel(state: string | undefined) {
-  if (state === "update_available") return "Open Update";
-  if (state === "current") return "Open Bundle";
-  return "Open Install";
 }
 
 function badgeState(state: string) {
