@@ -137,6 +137,7 @@ fn atoms_from_text(data: &[u8], extension: &str) -> Option<Vec<Atom>> {
         "cif" | "mmcif" | "mcif" => parse_cif_core_atoms(&lines),
         "inpcrd" | "rst7" | "restrt" => parse_amber_restart_atoms(&lines),
         "lammpstrj" | "dump" => parse_lammps_dump_atoms(&lines),
+        "data" | "lammps" | "lmp" => parse_lammps_data_atoms(&lines),
         "crd" => parse_charmm_coordinate_atoms(&lines),
         "rst" => {
             parse_charmm_coordinate_atoms(&lines).or_else(|| parse_amber_restart_atoms(&lines))
@@ -839,6 +840,160 @@ fn parse_charmm_coordinate_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
 
 fn parse_lammps_dump_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
     parse_lammps_dump_frames(lines).into_iter().next()
+}
+
+fn parse_lammps_data_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
+    let masses = parse_lammps_masses(lines);
+    let mut in_atoms = false;
+    let mut atoms = Vec::new();
+    for line in lines {
+        let clean_line = strip_inline_comment(line);
+        let parts = fields(&clean_line);
+        let Some(first) = parts.first() else {
+            continue;
+        };
+        if first.eq_ignore_ascii_case("atoms") {
+            in_atoms = true;
+            continue;
+        }
+        if in_atoms
+            && first
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic())
+        {
+            break;
+        }
+        if !in_atoms || parts.len() < 5 {
+            continue;
+        }
+        let Some((x, y, z)) = lammps_data_coordinates(&parts, &masses) else {
+            continue;
+        };
+        let symbol = lammps_data_atom_symbol(&parts, &masses);
+        atoms.push(Atom { symbol, x, y, z });
+    }
+    (!atoms.is_empty()).then_some(atoms)
+}
+
+fn parse_lammps_masses(lines: &[&str]) -> std::collections::HashMap<String, String> {
+    let mut in_masses = false;
+    let mut masses = std::collections::HashMap::new();
+    for line in lines {
+        let clean_line = strip_inline_comment(line);
+        let parts = fields(&clean_line);
+        let Some(first) = parts.first() else {
+            continue;
+        };
+        if first.eq_ignore_ascii_case("masses") {
+            in_masses = true;
+            continue;
+        }
+        if in_masses
+            && first
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic())
+        {
+            break;
+        }
+        if !in_masses || parts.len() < 2 {
+            continue;
+        }
+        if let Some(symbol) = parts
+            .get(2)
+            .and_then(|value| element_symbol_from_atom_name(value))
+            .or_else(|| {
+                parts
+                    .get(1)
+                    .and_then(|value| lammps_symbol_from_mass(value))
+            })
+        {
+            masses.insert(parts[0].to_string(), symbol);
+        }
+    }
+    masses
+}
+
+fn lammps_data_atom_symbol(
+    parts: &[&str],
+    masses: &std::collections::HashMap<String, String>,
+) -> String {
+    parts
+        .get(1)
+        .and_then(|value| masses.get(*value))
+        .or_else(|| parts.get(2).and_then(|value| masses.get(*value)))
+        .cloned()
+        .or_else(|| {
+            parts
+                .get(1)
+                .and_then(|value| element_symbol_from_atom_name(value))
+        })
+        .or_else(|| {
+            parts
+                .get(2)
+                .and_then(|value| element_symbol_from_atom_name(value))
+        })
+        .unwrap_or_else(|| "C".to_string())
+}
+
+fn lammps_data_coordinates(
+    parts: &[&str],
+    masses: &std::collections::HashMap<String, String>,
+) -> Option<(f64, f64, f64)> {
+    let mut starts = Vec::new();
+    if parts
+        .get(2)
+        .is_some_and(|value| masses.contains_key(*value))
+    {
+        starts.push(4);
+    }
+    if parts
+        .get(1)
+        .is_some_and(|value| masses.contains_key(*value))
+    {
+        starts.extend([3, 2]);
+    }
+    starts.extend([3, 4, 2]);
+    for start in starts {
+        if start + 2 >= parts.len() {
+            continue;
+        }
+        let x = parts[start].parse::<f64>().ok();
+        let y = parts[start + 1].parse::<f64>().ok();
+        let z = parts[start + 2].parse::<f64>().ok();
+        if let (Some(x), Some(y), Some(z)) = (x, y, z) {
+            return Some((x, y, z));
+        }
+    }
+    None
+}
+
+fn lammps_symbol_from_mass(value: &str) -> Option<String> {
+    let mass = value.parse::<f64>().ok()?;
+    const MASS_SYMBOLS: &[(f64, &str)] = &[
+        (1.008, "H"),
+        (12.011, "C"),
+        (14.007, "N"),
+        (15.999, "O"),
+        (18.998, "F"),
+        (22.990, "Na"),
+        (24.305, "Mg"),
+        (30.974, "P"),
+        (32.06, "S"),
+        (35.45, "Cl"),
+        (39.098, "K"),
+        (40.078, "Ca"),
+        (55.845, "Fe"),
+        (63.546, "Cu"),
+        (65.38, "Zn"),
+        (79.904, "Br"),
+        (126.904, "I"),
+    ];
+    MASS_SYMBOLS
+        .iter()
+        .find(|(reference, _)| (mass - reference).abs() <= 0.35)
+        .map(|(_, symbol)| (*symbol).to_string())
 }
 
 fn parse_lammps_dump_frames(lines: &[&str]) -> Vec<Vec<Atom>> {
@@ -2422,6 +2577,35 @@ ITEM: ATOMS id element x y z
         assert!(xyz.contains("O 1.200000 0.000000 0.000000\n"));
         assert!(xyz.contains("2\nConverted from dump.lammpstrj frame 2\n"));
         assert!(xyz.contains("O 1.700000 0.000000 0.000000\n"));
+    }
+
+    #[test]
+    fn converts_lammps_data_atoms_to_pdb_for_molstar() {
+        let data = br#"#Coord for fullerene
+3 atoms
+1 atom types
+
+0 10.00000 xlo xhi
+0 10.00000 ylo yhi
+0 10.00000 zlo zhi
+
+Masses
+
+1 12.0107
+
+Atoms
+
+1 1 0  8.393362 5.601346 4.688575
+2 1 0  8.393783 4.315589 5.234898
+3 1 0  1.506611 5.601348 4.688592
+"#;
+        let converted = converted_data_from_text(data, "data", "C60.data").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(converted.extension, "pdb");
+        assert!(pdb.starts_with("REMARK Converted from C60.data\nHETATM"));
+        assert!(pdb.contains("HETATM    1 C    MOL A   1       8.393   5.601   4.689"));
+        assert!(pdb.contains("HETATM    3 C    MOL A   1       1.507   5.601   4.689"));
     }
 
     #[test]
