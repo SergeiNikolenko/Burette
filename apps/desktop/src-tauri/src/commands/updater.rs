@@ -102,7 +102,7 @@ fn download_update(
     remove_path_if_exists(&temporary)?;
     remove_path_if_exists(&archive)?;
 
-    update_progress::show(app, "Downloading update...", Some(0.10));
+    update_progress::show(app, "Downloading update...", None);
     download_asset(package_version, &request.browser_download_url, &temporary)?;
     update_progress::show(app, "Checking downloaded update...", Some(0.34));
 
@@ -135,7 +135,7 @@ fn download_update(
         remove_path_if_exists(&temporary_digest)?;
         remove_path_if_exists(&digest)?;
 
-        update_progress::show(app, "Downloading update metadata...", Some(0.40));
+        update_progress::show(app, "Downloading update metadata...", None);
         download_asset(package_version, digest_url, &temporary_digest)?;
 
         update_progress::show(app, "Verifying update metadata...", Some(0.50));
@@ -259,6 +259,19 @@ fn download_update(
 fn download_asset(package_version: &str, url: &str, target: &Path) -> Result<(), String> {
     let status = Command::new("/usr/bin/curl")
         .args(["--fail", "--location", "--silent", "--show-error"])
+        .args([
+            "--connect-timeout",
+            "20",
+            "--speed-limit",
+            "1024",
+            "--speed-time",
+            "60",
+            "--retry",
+            "2",
+            "--retry-delay",
+            "1",
+            "--retry-all-errors",
+        ])
         .args([
             "--header",
             &format!("User-Agent: Burrete/{package_version}"),
