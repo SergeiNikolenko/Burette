@@ -5,6 +5,11 @@ import type { ViewerPreferences } from "../types";
 type SettingsState = {
   preferences: ViewerPreferences;
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
+  restoreSnapshot: (snapshot: SettingsStoreSnapshot) => void;
+};
+
+export type SettingsStoreSnapshot = {
+  preferences: ViewerPreferences;
 };
 
 const systemFont = "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"";
@@ -35,14 +40,24 @@ export const defaultPreferences: ViewerPreferences = {
   themeDarkContrast: 16,
 };
 
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+export function getSettingsStoreSnapshot(): SettingsStoreSnapshot {
+  const state = useSettingsStore.getState();
+  return cloneJson({ preferences: state.preferences });
+}
+
 type PersistedSettingsState = Pick<SettingsState, "preferences">;
 
 export const useSettingsStore = create<SettingsState>()(
   persist<SettingsState, [], [], PersistedSettingsState>(
-    (set) => ({
-      preferences: defaultPreferences,
-      setPreference: (key, value) => set((state) => ({ preferences: { ...state.preferences, [key]: value } })),
-    }),
+	    (set) => ({
+	      preferences: defaultPreferences,
+	      setPreference: (key, value) => set((state) => ({ preferences: { ...state.preferences, [key]: value } })),
+	      restoreSnapshot: (snapshot) => set({ preferences: cloneJson(snapshot.preferences) }),
+	    }),
     {
       name: "burrete.shell",
       partialize: (state) => ({

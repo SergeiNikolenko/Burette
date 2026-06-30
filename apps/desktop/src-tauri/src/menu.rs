@@ -4,6 +4,8 @@ use tauri::menu::{
 use tauri::{Emitter, Manager, Runtime};
 
 pub(crate) const MENU_OPEN_SETTINGS_EVENT: &str = "menu:open-settings";
+pub(crate) const MENU_UNDO_EVENT: &str = "menu:undo";
+pub(crate) const MENU_REDO_EVENT: &str = "menu:redo";
 pub(crate) const MENU_OPEN_FILES_EVENT: &str = "menu:open-files";
 pub(crate) const MENU_OPEN_RECENT_EVENT: &str = "menu:open-recent";
 pub(crate) const MENU_REVEAL_ACTIVE_EVENT: &str = "menu:reveal-active";
@@ -20,6 +22,12 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let pkg = app.package_info();
     let settings = MenuItemBuilder::with_id("settings.open", "Settings...")
         .accelerator("CmdOrCtrl+,")
+        .build(app)?;
+    let undo = MenuItemBuilder::with_id("edit.undo", "Undo")
+        .accelerator("CmdOrCtrl+Z")
+        .build(app)?;
+    let redo = MenuItemBuilder::with_id("edit.redo", "Redo")
+        .accelerator("CmdOrCtrl+Shift+Z")
         .build(app)?;
     let new_window = MenuItemBuilder::with_id("file.new-window", "New Window")
         .accelerator("CmdOrCtrl+Shift+N")
@@ -101,8 +109,8 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .build()?;
     let edit_menu = SubmenuBuilder::new(app, "Edit")
         .items(&[
-            &PredefinedMenuItem::undo(app, None)?,
-            &PredefinedMenuItem::redo(app, None)?,
+            &undo,
+            &redo,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::cut(app, None)?,
             &PredefinedMenuItem::copy(app, None)?,

@@ -64,6 +64,32 @@ type ShellState = {
   pruneSidebarPaths: (existingPaths: string[]) => void;
   setSidebarQuery: (query: string) => void;
   toggleProjectExpanded: (projectId: string) => void;
+  restoreSnapshot: (snapshot: ShellStoreSnapshot) => void;
+};
+
+export type ShellStoreSnapshot = {
+  sidebarOpen: boolean;
+  sidebarWidth: number;
+  rightDockOpen: boolean;
+  rightDockWidth: number;
+  rightDockTabs: DockTab[];
+  rightDockActiveTab: DockTabKind;
+  rightDockDocumentId: string | null;
+  rightDockTool: DockToolKind | null;
+  bottomDockOpen: boolean;
+  bottomDockHeight: number;
+  bottomDockTabs: DockTab[];
+  bottomDockActiveTab: DockTabKind;
+  bottomDockDocumentId: string | null;
+  bottomDockTool: DockToolKind | null;
+  dockDroppedStructures: DockDroppedStructure[];
+  projectsOpen: boolean;
+  projectRoots: string[];
+  pinnedProjectRoots: string[];
+  projectNameOverrides: Record<string, string>;
+  expandedProjectIds: string[];
+  hiddenProjectRoots: string[];
+  pinnedStructurePaths: string[];
 };
 
 type PersistedShellState = Pick<
@@ -129,6 +155,10 @@ function normalizeBottomDockHeight(height: number) {
   return Math.max(180, Math.min(720, Math.round(height)));
 }
 
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 function dockTabState(area: DockArea, state: ShellState) {
   return area === "right"
     ? { tabs: state.rightDockTabs, activeTab: state.rightDockActiveTab }
@@ -165,6 +195,34 @@ function dockDropItems(input: DockDropInput): DockDroppedStructure[] {
     payload: { paths: item.path ? [item.path] : [], records: [], items: [item] },
   }));
   return [...paths, ...records, ...items];
+}
+
+export function getShellStoreSnapshot(): ShellStoreSnapshot {
+  const state = useShellStore.getState();
+  return cloneJson({
+    sidebarOpen: state.sidebarOpen,
+    sidebarWidth: state.sidebarWidth,
+    rightDockOpen: state.rightDockOpen,
+    rightDockWidth: state.rightDockWidth,
+    rightDockTabs: state.rightDockTabs,
+    rightDockActiveTab: state.rightDockActiveTab,
+    rightDockDocumentId: state.rightDockDocumentId,
+    rightDockTool: state.rightDockTool,
+    bottomDockOpen: state.bottomDockOpen,
+    bottomDockHeight: state.bottomDockHeight,
+    bottomDockTabs: state.bottomDockTabs,
+    bottomDockActiveTab: state.bottomDockActiveTab,
+    bottomDockDocumentId: state.bottomDockDocumentId,
+    bottomDockTool: state.bottomDockTool,
+    dockDroppedStructures: state.dockDroppedStructures,
+    projectsOpen: state.projectsOpen,
+    projectRoots: state.projectRoots,
+    pinnedProjectRoots: state.pinnedProjectRoots,
+    projectNameOverrides: state.projectNameOverrides,
+    expandedProjectIds: state.expandedProjectIds,
+    hiddenProjectRoots: state.hiddenProjectRoots,
+    pinnedStructurePaths: state.pinnedStructurePaths,
+  });
 }
 
 export const useShellStore = create<ShellState>()(
@@ -387,6 +445,41 @@ export const useShellStore = create<ShellState>()(
             ? state.expandedProjectIds.filter((candidate) => candidate !== projectId)
             : [...state.expandedProjectIds, projectId],
         })),
+      restoreSnapshot: (snapshot) =>
+        set(() => {
+          const normalizedRightDockTabs = normalizeDockTabs("right", cloneJson(snapshot.rightDockTabs));
+          const rightDockTabs = snapshot.rightDockOpen
+            ? ensureDefaultDockTabs("right", normalizedRightDockTabs)
+            : normalizedRightDockTabs;
+          const bottomDockTabs = persistentDockTabs("bottom", cloneJson(snapshot.bottomDockTabs));
+          const projectRoots = persistentRoots(snapshot.projectRoots);
+          const pinnedProjectRoots = persistentRoots(snapshot.pinnedProjectRoots)
+            .filter((root) => projectRoots.includes(root));
+          return {
+            sidebarOpen: snapshot.sidebarOpen,
+            sidebarWidth: normalizeSidebarWidth(snapshot.sidebarWidth),
+            rightDockOpen: snapshot.rightDockOpen,
+            rightDockWidth: normalizeRightDockWidth(snapshot.rightDockWidth),
+            rightDockTabs,
+            rightDockActiveTab: normalizeDockActiveTab("right", rightDockTabs, snapshot.rightDockActiveTab),
+            rightDockDocumentId: snapshot.rightDockDocumentId,
+            rightDockTool: snapshot.rightDockTool,
+            bottomDockOpen: snapshot.bottomDockOpen,
+            bottomDockHeight: normalizeBottomDockHeight(snapshot.bottomDockHeight),
+            bottomDockTabs,
+            bottomDockActiveTab: normalizeDockActiveTab("bottom", bottomDockTabs, snapshot.bottomDockActiveTab),
+            bottomDockDocumentId: snapshot.bottomDockDocumentId,
+            bottomDockTool: snapshot.bottomDockTool,
+            dockDroppedStructures: cloneJson(snapshot.dockDroppedStructures),
+            projectsOpen: snapshot.projectsOpen,
+            projectRoots,
+            pinnedProjectRoots,
+            projectNameOverrides: persistentProjectNameOverrides(snapshot.projectNameOverrides, projectRoots),
+            expandedProjectIds: persistentExpandedProjectIds(snapshot.expandedProjectIds, projectRoots),
+            hiddenProjectRoots: persistentRoots(snapshot.hiddenProjectRoots).filter((root) => !projectRoots.includes(root)),
+            pinnedStructurePaths: persistentPinnedPaths(snapshot.pinnedStructurePaths),
+          };
+        }),
     }),
     {
       name: workspaceStorageKey("burrete.shell.ui", { windowScoped: false }),

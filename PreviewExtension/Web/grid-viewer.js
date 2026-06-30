@@ -308,8 +308,25 @@
   function installHostMessageListener() {
     window.addEventListener('message', event => {
       const data = event.data;
-      if (!data || data.source !== 'burrete-grid-host') return;
+      if (!data || (data.source !== 'burrete-grid-host' && data.source !== 'burrete-host')) return;
       const body = data.body || {};
+      if (body.type === 'workspaceHistoryCommand') {
+        const direction = body.direction === 'redo' ? 'redo' : 'undo';
+        let handled = false;
+        if (direction === 'undo' && state.undoStack.length) {
+          undoLastGridEdit(config());
+          handled = true;
+        }
+        event.source?.postMessage({
+          source: 'burrete-grid',
+          body: {
+            type: 'workspaceHistoryCommandResult',
+            requestId: body.requestId,
+            handled
+          }
+        }, '*');
+        return;
+      }
       if (body.type === 'gridRecordsAppended') {
         state.hiddenRows.clear();
         state.selected.clear();
