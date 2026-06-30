@@ -2204,6 +2204,8 @@ function atomsFromText(text: string, extension: string) {
     atoms = parseOrcaAtoms(lines);
   } else if (extension === "abi") {
     atoms = parseAbinitAtoms(lines);
+  } else if (extension === "fdf") {
+    atoms = parseFdfAtoms(lines);
   } else if (extension === "cif" || extension === "mmcif" || extension === "mcif") {
     atoms = parseCifCoreAtoms(lines);
   } else if (extension === "inpcrd" || extension === "rst7" || extension === "restrt") {
@@ -3007,6 +3009,63 @@ function parseAbinitAtoms(lines: string[]) {
   }
 
   return atoms.length === atomCount ? atoms : null;
+}
+
+function parseFdfAtoms(lines: string[]) {
+  const speciesById = new Map<number, string>();
+  for (const row of fdfBlockRows("ChemicalSpeciesLabel", lines)) {
+    const parts = fields(row);
+    const speciesId = Number.parseInt(parts[0] || "", 10);
+    const atomicNumber = Number.parseInt(parts[1] || "", 10);
+    const explicitSymbol = parts.length >= 3 ? normalizeElementSymbol(parts[2] || "") : "";
+    const symbol = isElementSymbol(explicitSymbol) ? explicitSymbol : symbolForAtomicNumber(atomicNumber);
+    if (Number.isFinite(speciesId) && Number.isFinite(atomicNumber) && isElementSymbol(symbol)) {
+      speciesById.set(speciesId, symbol);
+    }
+  }
+  if (speciesById.size === 0) return null;
+
+  const coordinateScale = fdfCoordinateScale(lines);
+  const atoms = fdfBlockRows("AtomicCoordinatesAndAtomicSpecies", lines).flatMap((row): Atom[] => {
+    const parts = fields(row);
+    const x = Number(parts[0]);
+    const y = Number(parts[1]);
+    const z = Number(parts[2]);
+    const speciesId = Number.parseInt(parts[3] || "", 10);
+    const symbol = speciesById.get(speciesId);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !symbol) return [];
+    return [{ symbol, x: x * coordinateScale, y: y * coordinateScale, z: z * coordinateScale }];
+  });
+  return atoms.length ? atoms : null;
+}
+
+function fdfBlockRows(blockName: string, lines: string[]) {
+  const rows: string[] = [];
+  const normalizedBlockName = blockName.toLowerCase();
+  let inside = false;
+  for (const line of lines) {
+    const trimmed = stripInlineComment(line).trim();
+    const parts = fields(trimmed);
+    const marker = parts[0]?.toLowerCase();
+    const name = parts[1]?.toLowerCase();
+    if (marker === "%block" && name === normalizedBlockName) {
+      inside = true;
+      continue;
+    }
+    if (marker === "%endblock" && name === normalizedBlockName) break;
+    if (inside && trimmed) rows.push(trimmed);
+  }
+  return rows;
+}
+
+function fdfCoordinateScale(lines: string[]) {
+  for (const line of lines) {
+    const parts = fields(stripInlineComment(line));
+    if (parts.length >= 2 && parts[0]?.toLowerCase() === "atomiccoordinatesformat") {
+      return parts[1]?.toLowerCase().includes("bohr") ? BOHR_TO_ANGSTROM : 1;
+    }
+  }
+  return 1;
 }
 
 function parseCubeAtoms(lines: string[]) {
