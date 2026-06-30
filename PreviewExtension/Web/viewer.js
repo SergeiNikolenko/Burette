@@ -11528,7 +11528,7 @@
         const record = splitSdfRecords(text)[0] || String(text || '');
         if (!record.trim()) return null;
         data = `${record.trimEnd()}\n$$$$\n`;
-      } else if (format === 'pdb' || format === 'pdbqt' || format === 'mmcif' || format === 'cifCore') {
+      } else if (format === 'pdb' || format === 'pdbqt' || format === 'mmcif' || format === 'cifCore' || format === 'xyz') {
         const frame = orientationFrameFromConfig({ ...config, format, binary: false });
         data = standalonePreviewSdfFromAtoms(frame?.atoms, config.label || 'Molecule');
         if (!data) return null;
@@ -12677,11 +12677,36 @@
 
   function molstarMoleculePreviewEntry(target) {
     if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
-    if (target.scope === 'ligand') {
-      const sdfEntry = molstarContextSdfEntryForExport(target);
-      if (sdfEntry) return sdfEntry;
+    const sdfEntry = molstarMoleculePreviewSdfEntry(target);
+    if (sdfEntry) return sdfEntry;
+    const entry = target.selectedEntry || target.ligand || null;
+    return molstarStandaloneMoleculePreviewEntryForTarget(target, entry) || entry;
+  }
+
+  function molstarMoleculePreviewSdfEntry(target) {
+    if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
+    if (target.atom && target.receptor) {
+      const ligandEntry = pdbLigandSdfEntryForResidue(target.receptor, target.atom);
+      if (ligandEntry) return ligandEntry;
     }
-    return target.selectedEntry || target.ligand || null;
+    if (target.atom && target.sourceEntry) {
+      const ligandEntry = pdbLigandSdfEntryForResidue(target.sourceEntry, target.atom);
+      if (ligandEntry) return ligandEntry;
+    }
+    if (target.scope === 'ligand') {
+      const ligandEntry = molstarContextSdfEntryForExport(target);
+      if (ligandEntry) return ligandEntry;
+    }
+    const entry = target.selectedEntry || target.ligand || null;
+    return normalizeFormat(entry?.format) === 'sdf' ? entry : null;
+  }
+
+  function molstarStandaloneMoleculePreviewEntryForTarget(target, entry = null) {
+    if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
+    if (entry) return null;
+    const preview = molstarStandaloneMoleculePreviewTarget(activeConfig);
+    const ligand = preview?.ligand || null;
+    return normalizeFormat(ligand?.format) === 'sdf' ? ligand : null;
   }
 
   function molstarMoleculePreviewTargetForAction(action) {
