@@ -20,6 +20,9 @@ use super::text_xyz::converted_data_from_text;
 use super::trace::{append_preview_trace, elapsed_ms, preview_error_code, PreviewTraceEvent};
 
 pub(crate) const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+const DEFAULT_DESKTOP_PREVIEW_LIMIT_MIB: u64 = 1024;
+const MIN_DESKTOP_PREVIEW_LIMIT_MIB: u64 = 1;
+const MAX_DESKTOP_PREVIEW_LIMIT_MIB: u64 = 4096;
 const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB: &str = "24";
 const SCHRODINGER_RUN: &str = "/opt/schrodinger/suites2026-1/run";
@@ -93,6 +96,8 @@ pub(crate) struct ViewerPreferences {
     pub(crate) canvas_background: String,
     pub(crate) renderer_mode: String,
     pub(crate) molstar_style: String,
+    #[serde(default = "default_desktop_preview_limit_mib")]
+    pub(crate) desktop_preview_limit_mib: u64,
     #[serde(default = "default_light_accent")]
     pub(crate) theme_light_accent: String,
     #[serde(default = "default_light_background")]
@@ -210,6 +215,15 @@ impl ViewerPreferences {
         self.canvas_background_for_runtime() == "transparent"
     }
 
+    pub(crate) fn desktop_preview_limit_mib(&self) -> u64 {
+        self.desktop_preview_limit_mib
+            .clamp(MIN_DESKTOP_PREVIEW_LIMIT_MIB, MAX_DESKTOP_PREVIEW_LIMIT_MIB)
+    }
+
+    pub(crate) fn desktop_preview_limit_bytes(&self) -> u64 {
+        self.desktop_preview_limit_mib() * 1024 * 1024
+    }
+
     pub(crate) fn theme_tokens(&self) -> Value {
         json!({
             "light": {
@@ -236,6 +250,10 @@ impl ViewerPreferences {
 
 fn default_system_font() -> String {
     "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"".to_string()
+}
+
+fn default_desktop_preview_limit_mib() -> u64 {
+    DEFAULT_DESKTOP_PREVIEW_LIMIT_MIB
 }
 
 fn default_light_accent() -> String {
@@ -293,6 +311,7 @@ mod viewer_preferences_tests {
             canvas_background: canvas_background.to_string(),
             renderer_mode: "auto".to_string(),
             molstar_style: "illustrative".to_string(),
+            desktop_preview_limit_mib: super::default_desktop_preview_limit_mib(),
             theme_light_accent: default_light_accent(),
             theme_light_background: default_light_background(),
             theme_light_foreground: default_light_foreground(),
@@ -337,6 +356,23 @@ mod viewer_preferences_tests {
     fn transparent_background_only_when_explicit() {
         assert!(preferences("auto", "transparent").resolved_transparent_background());
         assert!(!preferences("auto", "auto").resolved_transparent_background());
+    }
+
+    #[test]
+    fn clamps_desktop_preview_limit_for_runtime() {
+        let mut preferences = preferences("auto", "auto");
+        preferences.desktop_preview_limit_mib = 2048;
+        assert_eq!(preferences.desktop_preview_limit_mib(), 2048);
+        preferences.desktop_preview_limit_mib = 0;
+        assert_eq!(
+            preferences.desktop_preview_limit_mib(),
+            super::MIN_DESKTOP_PREVIEW_LIMIT_MIB
+        );
+        preferences.desktop_preview_limit_mib = 10_000;
+        assert_eq!(
+            preferences.desktop_preview_limit_mib(),
+            super::MAX_DESKTOP_PREVIEW_LIMIT_MIB
+        );
     }
 }
 
@@ -526,6 +562,14 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         return Err(format!(
             "{} is a topology file and does not contain standalone molecular coordinates",
             canonical.display()
+        ));
+    }
+    let desktop_limit = preferences.desktop_preview_limit_bytes();
+    if metadata.len() > desktop_limit {
+        return Err(format!(
+            "{} is larger than the {} MiB desktop preview limit",
+            canonical.display(),
+            preferences.desktop_preview_limit_mib()
         ));
     }
     let desmond_preview_error = match create_desmond_trajectory_preview(app, &canonical, &extension)
@@ -1169,6 +1213,7 @@ mod document_open_tests {
             canvas_background: "auto".to_string(),
             renderer_mode: "auto".to_string(),
             molstar_style: "illustrative".to_string(),
+            desktop_preview_limit_mib: super::default_desktop_preview_limit_mib(),
             theme_light_accent: default_light_accent(),
             theme_light_background: default_light_background(),
             theme_light_foreground: default_light_foreground(),
@@ -1330,6 +1375,22 @@ mod document_open_tests {
             .expect_err("standalone PSF topology should not create a Molstar document");
 
         assert!(error.contains("does not contain standalone molecular coordinates"));
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn applies_configured_desktop_preview_limit() {
+        let app = mock_app_with_grid_registry();
+        let mut preferences = viewer_preferences();
+        preferences.desktop_preview_limit_mib = 1;
+        let path = create_temp_file("pdb", &vec![b' '; 1024 * 1024 + 1]);
+
+        let error = open_document(app.handle(), path.clone(), &preferences, None)
+            .expect_err("desktop open should respect configured source limit");
+
+        assert!(error.contains("1 MiB desktop preview limit"));
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
         }
