@@ -240,8 +240,8 @@ const KETCHER_IMPORT_FORMATS: KetcherTextFormat[] = [
   "cdx",
   "inchi",
 ];
-const DEFAULT_KETCHER_EXPORT_FORMAT: KetcherTextFormat = "sdf-v3000";
-const DEFAULT_KETCHER_IMPORT_FORMAT: KetcherTextFormat = "sdf-v3000";
+const DEFAULT_KETCHER_EXPORT_FORMAT: KetcherTextFormat = "sdf-v2000";
+const DEFAULT_KETCHER_IMPORT_FORMAT: KetcherTextFormat = "sdf-v2000";
 const KETCHER_EXPORT_FILE_EXTENSIONS: Record<KetcherTextFormat, string> = {
   smiles: "smi",
   "extended-smiles": "smi",
@@ -1320,9 +1320,9 @@ function exportKetcherText(ketcher: KetcherEditorApi, format: KetcherTextFormat)
     case "ket":
       return ketcher.getKet();
     case "sdf-v2000":
-      return ketcher.getSdf("v2000");
+      return exportKetcherSdf(ketcher, "v2000");
     case "sdf-v3000":
-      return ketcher.getSdf("v3000");
+      return exportKetcherSdf(ketcher, "v3000");
     case "rdf-v2000":
       return ketcher.getRdf("v2000");
     case "rdf-v3000":
@@ -1344,6 +1344,10 @@ function exportKetcherText(ketcher: KetcherEditorApi, format: KetcherTextFormat)
     case "svg":
       return Promise.resolve(ketcher.getSvg());
   }
+}
+
+function exportKetcherSdf(ketcher: KetcherEditorApi, version: "v2000" | "v3000") {
+  return ketcher.getMolfile(version).then((molfile) => molfileToSdf(molfile));
 }
 
 function normalizeKetcherMolfileTitle(molfile: string) {

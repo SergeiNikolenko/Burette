@@ -11,6 +11,15 @@ const browserDevSampleFiles = [
   { title: "nad-2d.sdf", extension: "sdf", byteCount: 3813 },
 ] as const;
 
+const browserDevGeneratedProjectScanMs = 2500;
+const browserDevStructureExtensions = new Set([
+  "pdb", "ent", "pdbqt", "pqr", "xpdb",
+  "cif", "mmcif", "mcif", "bcif", "mmtf",
+  "sdf", "sd", "smi", "smiles", "csv", "tsv",
+  "mol", "mol2", "xyz", "gro", "mae", "maegz", "cms", "dtr",
+  "nc", "ncdf", "netcdf", "ncrst",
+]);
+
 type UseAppSidebarProjectsArgs = {
   activeDocumentId: string | null;
   browserDevExplicitFolders: string[];
@@ -50,12 +59,16 @@ export function useAppSidebarProjects({
     () => browserDevSampleProjectRoot(browserDevHasExplicitWorkspace),
     [browserDevHasExplicitWorkspace],
   );
+  const browserDevGeneratedRoot = useMemo(browserDevGeneratedProjectRoot, []);
   const sidebarProjectRoots = useMemo(() => {
-    if (browserDevExplicitFolders.length > 0) return browserDevExplicitFolders;
-    return browserDevSampleRoot && !projectRoots.includes(browserDevSampleRoot)
-      ? [...projectRoots, browserDevSampleRoot]
-      : projectRoots;
-  }, [browserDevExplicitFolders, browserDevSampleRoot, projectRoots]);
+    let roots = projectRoots;
+    if (browserDevExplicitFolders.length > 0) {
+      roots = browserDevExplicitFolders;
+    } else if (browserDevSampleRoot && !projectRoots.includes(browserDevSampleRoot)) {
+      roots = [...projectRoots, browserDevSampleRoot];
+    }
+    return appendSidebarProjectRoot(roots, browserDevGeneratedRoot);
+  }, [browserDevExplicitFolders, browserDevGeneratedRoot, browserDevSampleRoot, projectRoots]);
   const sidebarProjectStructures = useMemo(() => {
     const samples = browserDevSampleProjectStructures(browserDevHasExplicitWorkspace);
     return samples.length > 0 ? [...projectStructures, ...samples] : projectStructures;
@@ -75,7 +88,37 @@ export function useAppSidebarProjects({
   }), [activeDocumentId, documents, hiddenProjectRoots, pinnedProjectRoots, pinnedStructurePaths, projectNameOverrides, sidebarProjectRoots, sidebarProjectStructures, sidebarRecentStructures]);
 
   useEffect(() => {
-    if (!isTauriRuntime() || projectRoots.length === 0) {
+    if (!isTauriRuntime()) {
+      if (!browserDevGeneratedRoot) {
+        setProjectStructures([]);
+        return undefined;
+      }
+      let cancelled = false;
+      let reportedError = false;
+      const refresh = async () => {
+        try {
+          const response = await fetch(`/__burette/dev-files?root=${encodeURIComponent(browserDevGeneratedRoot)}`, { cache: "no-store" });
+          if (!response.ok) throw new Error(`Generated project scan failed with HTTP ${response.status}`);
+          const payload = await response.json() as { files?: string[] };
+          const files = Array.isArray(payload.files) ? payload.files : [];
+          if (!cancelled) setProjectStructures(files.map(browserDevProjectStructureForPath));
+        } catch (error) {
+          if (cancelled) return;
+          setProjectStructures([]);
+          if (!reportedError) {
+            reportedError = true;
+            pushErrorStatus(error, "Generated project scan failed");
+          }
+        }
+      };
+      void refresh();
+      const interval = window.setInterval(() => void refresh(), browserDevGeneratedProjectScanMs);
+      return () => {
+        cancelled = true;
+        window.clearInterval(interval);
+      };
+    }
+    if (projectRoots.length === 0) {
       setProjectStructures([]);
       return undefined;
     }
@@ -92,7 +135,7 @@ export function useAppSidebarProjects({
     return () => {
       cancelled = true;
     };
-  }, [projectRoots, pushErrorStatus]);
+  }, [browserDevGeneratedRoot, projectRoots, pushErrorStatus]);
 
   useEffect(() => {
     if (prunedPersistedPathsRef.current || !isTauriRuntime()) return;
@@ -136,6 +179,17 @@ function browserDevSampleProjectRoot(browserDevHasExplicitWorkspace: boolean) {
   return repoRoot ? `${repoRoot}/samples` : null;
 }
 
+function browserDevGeneratedProjectRoot() {
+  if (!import.meta.env.DEV || isTauriRuntime()) return null;
+  const root = String(import.meta.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT || "").trim().replace(/\/+$/u, "");
+  return root || null;
+}
+
+function appendSidebarProjectRoot(roots: string[], root: string | null) {
+  if (!root || roots.includes(root)) return roots;
+  return [...roots, root];
+}
+
 function browserDevSampleProjectStructures(browserDevHasExplicitWorkspace: boolean): SidebarProjectStructure[] {
   const sampleRoot = browserDevSampleProjectRoot(browserDevHasExplicitWorkspace);
   if (!sampleRoot) return [];
@@ -147,4 +201,24 @@ function browserDevSampleProjectStructures(browserDevHasExplicitWorkspace: boole
     byteCount: file.byteCount,
     openedAt: null,
   }));
+}
+
+function browserDevProjectStructureForPath(path: string): SidebarProjectStructure {
+  const title = path.replace(/\\/g, "/").split("/").filter(Boolean).pop() || path;
+  const extension = browserDevProjectExtension(path);
+  return {
+    path,
+    title,
+    extension,
+    renderer: browserDevStructureExtensions.has(extension) ? "molstar" : "not-renderable",
+    byteCount: 0,
+    openedAt: null,
+  };
+}
+
+function browserDevProjectExtension(path: string) {
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".mae.gz")) return "maegz";
+  const index = lower.lastIndexOf(".");
+  return index >= 0 ? lower.slice(index + 1) : "";
 }
