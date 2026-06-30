@@ -142,12 +142,18 @@ fn bundle_status(path: &Path, checks: &mut Vec<AgentIntegrationCheck>) -> Plugin
             "Preflight",
             "scripts/burette_agent_preflight.mjs",
         ),
-        ("cli", "Agent CLI", "../../scripts/burrete-agent.mjs"),
+        ("cli", "Agent CLI", "scripts/burrete-agent.mjs"),
         (
             "browser-preview",
             "Browser preview",
-            "../../scripts/agent-preview.mjs",
+            "scripts/agent-preview.mjs",
         ),
+        (
+            "browser-shell",
+            "Browser shell",
+            "browser-shell-dist/index.html",
+        ),
+        ("preview-web", "Preview web", "preview-web/index.html"),
     ] {
         let candidate = normalize_path(&path.join(relative_path));
         checks.push(path_check(
