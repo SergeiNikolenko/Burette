@@ -134,6 +134,7 @@ fn atoms_from_text(data: &[u8], extension: &str) -> Option<Vec<Atom>> {
         "in" => parse_quantum_espresso_atoms(&lines),
         "out" => parse_orca_atoms(&lines),
         "abi" => parse_abinit_atoms(&lines),
+        "fdf" => parse_fdf_atoms(&lines),
         "cif" | "mmcif" | "mcif" => parse_cif_core_atoms(&lines),
         "inpcrd" | "rst7" | "restrt" => parse_amber_restart_atoms(&lines),
         "lammpstrj" | "dump" | "pos" => parse_lammps_dump_atoms(&lines),
@@ -1327,6 +1328,94 @@ fn parse_abinit_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
         });
     }
     (atoms.len() == atom_count).then_some(atoms)
+}
+
+fn parse_fdf_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
+    let mut species_by_id = std::collections::HashMap::new();
+    for row in fdf_block_rows("ChemicalSpeciesLabel", lines) {
+        let parts = fields(&row);
+        let Some(species_id) = parts.first().and_then(|value| value.parse::<usize>().ok()) else {
+            continue;
+        };
+        let Some(atomic_number) = parts.get(1).and_then(|value| value.parse::<usize>().ok()) else {
+            continue;
+        };
+        let explicit_symbol = parts
+            .get(2)
+            .map(|value| normalize_element_symbol(value))
+            .filter(|symbol| is_element_symbol(symbol));
+        let symbol =
+            explicit_symbol.unwrap_or_else(|| symbol_for_atomic_number(atomic_number).to_string());
+        if !is_element_symbol(&symbol) {
+            continue;
+        }
+        species_by_id.insert(species_id, symbol);
+    }
+    if species_by_id.is_empty() {
+        return None;
+    }
+
+    let coordinate_scale = fdf_coordinate_scale(lines);
+    let atoms: Vec<Atom> = fdf_block_rows("AtomicCoordinatesAndAtomicSpecies", lines)
+        .into_iter()
+        .filter_map(|row| {
+            let parts = fields(&row);
+            let x = parts.first()?.parse::<f64>().ok()?;
+            let y = parts.get(1)?.parse::<f64>().ok()?;
+            let z = parts.get(2)?.parse::<f64>().ok()?;
+            let species_id = parts.get(3)?.parse::<usize>().ok()?;
+            let symbol = species_by_id.get(&species_id)?.clone();
+            Some(Atom {
+                symbol,
+                x: x * coordinate_scale,
+                y: y * coordinate_scale,
+                z: z * coordinate_scale,
+            })
+        })
+        .collect();
+    (!atoms.is_empty()).then_some(atoms)
+}
+
+fn fdf_block_rows(block_name: &str, lines: &[&str]) -> Vec<String> {
+    let normalized_block_name = block_name.to_ascii_lowercase();
+    let mut rows = Vec::new();
+    let mut inside = false;
+    for line in lines {
+        let trimmed = strip_inline_comment(line);
+        let parts = fields(&trimmed);
+        let marker = parts.first().map(|value| value.to_ascii_lowercase());
+        let name = parts.get(1).map(|value| value.to_ascii_lowercase());
+        if marker.as_deref() == Some("%block")
+            && name.as_deref() == Some(normalized_block_name.as_str())
+        {
+            inside = true;
+            continue;
+        }
+        if marker.as_deref() == Some("%endblock")
+            && name.as_deref() == Some(normalized_block_name.as_str())
+        {
+            break;
+        }
+        if inside && !trimmed.is_empty() {
+            rows.push(trimmed);
+        }
+    }
+    rows
+}
+
+fn fdf_coordinate_scale(lines: &[&str]) -> f64 {
+    for line in lines {
+        let clean_line = strip_inline_comment(line);
+        let parts = fields(&clean_line);
+        if parts.len() >= 2 && parts[0].eq_ignore_ascii_case("AtomicCoordinatesFormat") {
+            return if parts[1].to_ascii_lowercase().contains("bohr") {
+                BOHR_TO_ANGSTROM
+            } else {
+                1.0
+            };
+        }
+    }
+    1.0
 }
 
 fn parse_maestro_atoms(lines: &[&str], atom_limit: usize) -> Option<Vec<Atom>> {
@@ -2557,6 +2646,21 @@ xangst
         assert!(pdb.contains("HETATM    1 C    MOL A   1       8.884   8.904   7.568"));
         assert!(pdb.contains("HETATM    2 N    MOL A   1       9.330  10.774   5.875"));
         assert!(pdb.contains("HETATM    3 O    MOL A   1       9.703   7.925   8.144"));
+    }
+
+    #[test]
+    fn converts_fdf_atomic_species_blocks_to_pdb_for_molstar() {
+        let data = include_bytes!("../../../../../samples/quantum/inputs/caffeine.fdf");
+        let converted = converted_data_from_text(data, "fdf", "caffeine.fdf").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(converted.extension, "pdb");
+        assert!(pdb.starts_with("REMARK Converted from caffeine.fdf\nHETATM"));
+        assert!(pdb.contains("HETATM    1 C    MOL A   1       8.884   8.904   7.568"));
+        assert!(pdb.contains("HETATM    9 N    MOL A   1       9.230   7.014   9.117"));
+        assert!(pdb.contains("HETATM   13 O    MOL A   1       7.285   6.042   9.891"));
+        assert!(pdb.contains("HETATM   15 H    MOL A   1       8.687  11.468   6.436"));
+        assert!(pdb.ends_with("END\n"));
     }
 
     #[test]
