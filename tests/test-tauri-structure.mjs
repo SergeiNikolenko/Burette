@@ -1106,8 +1106,10 @@ assert.match(previewRuntimeViewer, /let rdkit_js = asset_url\(&assets\.join\("rd
 assert.match(previewRuntimeViewer, /let rdkit_wasm = asset_url\(&assets\.join\("rdkit\/RDKit_minimal\.wasm"\)\)/);
 assert.match(previewRuntimeViewer, /window\.BurreteRDKitJSURL = \{rdkit_js:\?\};/);
 assert.match(previewRuntimeViewer, /window\.BurreteRDKitWasmURL = \{rdkit_wasm:\?\};/);
+assert.match(previewRuntimeViewer, /EMBEDDED_PREVIEW_DATA_SCRIPT_MAX_BYTES: usize = 32 \* 1024 \* 1024/);
+assert.match(previewRuntimeViewer, /let include_data_script = should_embed_preview_data_script\(payload\.data\.len\(\)\);/);
 assert.match(previewRuntimeViewer, /include_data_script: bool/);
-assert.match(previewRuntimeViewer, /viewer_html\(file_path, &runtime, &assets, &renderer, preferences, true\)/);
+assert.match(previewRuntimeViewer, /viewer_html\(\s*file_path,\s*&runtime,\s*&assets,\s*&renderer,\s*preferences,\s*include_data_script,\s*\)/);
 assert.match(previewRuntimeViewer, /viewer_html\(&title_path, &runtime, &assets, "molstar", preferences, true\)/);
 assert.match(previewRuntimeViewer, /VIEWER_MOLSTAR_CSP/);
 assert.match(previewRuntimeViewer, /VIEWER_EXTERNAL_ARTIFACT_CSP/);
