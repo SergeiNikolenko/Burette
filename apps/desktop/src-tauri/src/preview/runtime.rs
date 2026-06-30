@@ -1606,6 +1606,36 @@ xangst
     }
 
     #[test]
+    fn opens_fdf_as_converted_pdb_in_molstar_on_auto() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = create_temp_file(
+            "fdf",
+            include_bytes!("../../../../../samples/quantum/inputs/caffeine.fdf"),
+        );
+
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.renderer, "molstar");
+        let runtime_dir = Path::new(&document.runtime_path)
+            .parent()
+            .expect("runtime html should have a parent");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
+        let preview_data = fs::read_to_string(runtime_dir.join("preview-data.bin"))
+            .expect("converted preview data should be written");
+        assert!(config.contains("\"sourceExtension\":\"fdf\""));
+        assert!(config.contains("\"molstarFormat\":\"pdb\""));
+        assert!(preview_data.starts_with("REMARK Converted from probe.fdf\nHETATM"));
+        assert!(preview_data.contains("HETATM   24 H    MOL A   1       5.000   7.383   8.415"));
+
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
     fn opens_non_coordinate_output_report_as_not_renderable_preview() {
         let app = mock_app_with_grid_registry();
         let preferences = viewer_preferences();
