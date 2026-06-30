@@ -142,14 +142,17 @@ export function RangeControl({
   min,
   max,
   step,
+  suffix,
   onChange,
 }: {
   value: number;
   min: number;
   max: number;
   step: number;
+  suffix?: string;
   onChange: (value: number) => void;
 }) {
+  const displayValue = Number.isInteger(step) ? Math.round(value).toString() : value.toFixed(2).replace(/\.?0+$/u, "");
   return (
     <div className="settings-range-control">
       <input
@@ -160,7 +163,7 @@ export function RangeControl({
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
       />
-      <span>{Number.isInteger(step) ? Math.round(value) : value.toFixed(2).replace(/\.?0+$/u, "")}</span>
+      <span>{suffix ? `${displayValue} ${suffix}` : displayValue}</span>
     </div>
   );
 }

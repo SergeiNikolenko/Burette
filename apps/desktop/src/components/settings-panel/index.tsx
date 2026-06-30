@@ -161,6 +161,13 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                   rows={[
                     preferenceRow<"rendererMode">("Mode", "Choose the renderer used for newly opened structures.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
                     preferenceRow<"molstarStyle">("Mol* style", "Default appearance preset for the Mol* renderer.", preferences.molstarStyle, ["default", "illustrative"], defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle)),
+                    {
+                      label: "Desktop preview limit",
+                      description: "Maximum source file size the desktop app opens in the structure viewer.",
+                      control: <RangeControl value={preferences.desktopPreviewLimitMiB} min={1} max={1024} step={1} suffix="MiB" onChange={(desktopPreviewLimitMiB) => actions.setPreference("desktopPreviewLimitMiB", desktopPreviewLimitMiB)} />,
+                      reset: () => actions.setPreference("desktopPreviewLimitMiB", defaultPreferences.desktopPreviewLimitMiB),
+                      isModified: preferences.desktopPreviewLimitMiB !== defaultPreferences.desktopPreviewLimitMiB,
+                    },
                     preferenceRow<"conformerEngine">("3D engine", "Choose the engine used to generate 3D conformers.", preferences.conformerEngine, conformerEngineOptions, defaultPreferences.conformerEngine, (conformerEngine) => actions.setPreference("conformerEngine", conformerEngine)),
                     {
                       label: "Conformer set candidates",
