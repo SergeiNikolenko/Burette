@@ -43,6 +43,8 @@ const MD_COORDINATE_EXTENSIONS: &[&str] = &[
     "ncrst",
     "lammpstrj",
     "dump",
+    "pos",
+    "cfg",
     "trj",
     "mdcrd",
     "crdbox",

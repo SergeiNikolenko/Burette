@@ -67,7 +67,7 @@ pub(crate) fn converted_data_from_text(
     if extension == "gro" {
         return gro_pdb_data_from_text(data, label);
     }
-    if matches!(extension, "lammpstrj" | "dump") {
+    if matches!(extension, "lammpstrj" | "dump" | "pos") {
         return lammps_dump_xyz_data_from_text(data, label).map(|data| ConvertedStructureData {
             data,
             extension: "xyz",
@@ -136,7 +136,8 @@ fn atoms_from_text(data: &[u8], extension: &str) -> Option<Vec<Atom>> {
         "abi" => parse_abinit_atoms(&lines),
         "cif" | "mmcif" | "mcif" => parse_cif_core_atoms(&lines),
         "inpcrd" | "rst7" | "restrt" => parse_amber_restart_atoms(&lines),
-        "lammpstrj" | "dump" => parse_lammps_dump_atoms(&lines),
+        "lammpstrj" | "dump" | "pos" => parse_lammps_dump_atoms(&lines),
+        "cfg" => parse_atomeye_cfg_atoms(&lines),
         "data" | "lammps" | "lmp" => parse_lammps_data_atoms(&lines),
         "crd" => parse_charmm_coordinate_atoms(&lines),
         "rst" => {
@@ -840,6 +841,102 @@ fn parse_charmm_coordinate_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
 
 fn parse_lammps_dump_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
     parse_lammps_dump_frames(lines).into_iter().next()
+}
+
+fn parse_atomeye_cfg_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
+    let atom_count = parse_atomeye_cfg_atom_count(lines)?;
+    let scale = parse_atomeye_cfg_scale(lines).unwrap_or(1.0);
+    let h0 = parse_atomeye_cfg_h0(lines)?;
+    let entry_count = parse_atomeye_cfg_entry_count(lines)?;
+    if atom_count == 0 || entry_count == 0 {
+        return None;
+    }
+    let mut index = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with("entry_count"))?
+        + 1;
+    let mut atoms = Vec::with_capacity(atom_count);
+    while atoms.len() < atom_count && index + entry_count <= lines.len() {
+        let entry = &lines[index..index + entry_count];
+        index += entry_count;
+        let symbol = entry
+            .iter()
+            .find_map(|line| element_symbol_from_atom_name(line))
+            .unwrap_or_else(|| "C".to_string());
+        let fractional = entry.iter().rev().find_map(|line| {
+            let values = numeric_tokens(line);
+            (values.len() >= 3).then_some((values[0], values[1], values[2]))
+        })?;
+        let x =
+            scale * (h0[0][0] * fractional.0 + h0[0][1] * fractional.1 + h0[0][2] * fractional.2);
+        let y =
+            scale * (h0[1][0] * fractional.0 + h0[1][1] * fractional.1 + h0[1][2] * fractional.2);
+        let z =
+            scale * (h0[2][0] * fractional.0 + h0[2][1] * fractional.1 + h0[2][2] * fractional.2);
+        atoms.push(Atom { symbol, x, y, z });
+    }
+    (atoms.len() == atom_count).then_some(atoms)
+}
+
+fn parse_atomeye_cfg_atom_count(lines: &[&str]) -> Option<usize> {
+    lines.iter().find_map(|line| {
+        line.trim()
+            .strip_prefix("Number of particles")
+            .and_then(|rest| rest.split('=').nth(1))
+            .and_then(|value| value.trim().parse::<usize>().ok())
+    })
+}
+
+fn parse_atomeye_cfg_scale(lines: &[&str]) -> Option<f64> {
+    lines.iter().find_map(|line| {
+        line.trim()
+            .strip_prefix("A =")
+            .and_then(|value| fields(value).first()?.parse::<f64>().ok())
+    })
+}
+
+fn parse_atomeye_cfg_entry_count(lines: &[&str]) -> Option<usize> {
+    lines.iter().find_map(|line| {
+        line.trim()
+            .strip_prefix("entry_count")
+            .and_then(|rest| rest.split('=').nth(1))
+            .and_then(|value| value.trim().parse::<usize>().ok())
+    })
+}
+
+fn parse_atomeye_cfg_h0(lines: &[&str]) -> Option<[[f64; 3]; 3]> {
+    let mut h0 = [[0.0; 3]; 3];
+    let mut seen = 0;
+    for line in lines {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix("H0(") else {
+            continue;
+        };
+        let Some((indices, value_rest)) = rest.split_once(')') else {
+            continue;
+        };
+        let value_text = value_rest.trim_start().strip_prefix('=')?;
+        let mut index_parts = indices.split(',');
+        let row = index_parts
+            .next()?
+            .trim()
+            .parse::<usize>()
+            .ok()?
+            .checked_sub(1)?;
+        let column = index_parts
+            .next()?
+            .trim()
+            .parse::<usize>()
+            .ok()?
+            .checked_sub(1)?;
+        if row >= 3 || column >= 3 {
+            continue;
+        }
+        let value = fields(value_text).first()?.parse::<f64>().ok()?;
+        h0[row][column] = value;
+        seen += 1;
+    }
+    (seen == 9).then_some(h0)
 }
 
 fn parse_lammps_data_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
@@ -2577,6 +2674,59 @@ ITEM: ATOMS id element x y z
         assert!(xyz.contains("O 1.200000 0.000000 0.000000\n"));
         assert!(xyz.contains("2\nConverted from dump.lammpstrj frame 2\n"));
         assert!(xyz.contains("O 1.700000 0.000000 0.000000\n"));
+    }
+
+    #[test]
+    fn converts_lammps_pos_dump_to_xyz_for_molstar() {
+        let data = br#"ITEM: TIMESTEP
+0
+ITEM: NUMBER OF ATOMS
+2
+ITEM: BOX BOUNDS pp pp pp
+0 10
+0 10
+0 10
+ITEM: ATOMS id type x y z
+1 1 8.39336 5.60135 4.68858
+2 1 8.39378 4.31559 5.23490
+"#;
+        let converted = converted_data_from_text(data, "pos", "c60.0.pos").unwrap();
+        let xyz = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(converted.extension, "xyz");
+        assert!(xyz.starts_with("2\nConverted from c60.0.pos frame 1\n"));
+        assert!(xyz.contains("C 8.393360 5.601350 4.688580\n"));
+    }
+
+    #[test]
+    fn converts_atomeye_cfg_fractional_atoms_to_pdb_for_molstar() {
+        let data = br#"Number of particles = 2
+A = 1 Angstrom (basic length-scale)
+H0(1,1) = 10 A
+H0(1,2) = 0 A
+H0(1,3) = 0 A
+H0(2,1) = 0 A
+H0(2,2) = 10 A
+H0(2,3) = 0 A
+H0(3,1) = 0 A
+H0(3,2) = 0 A
+H0(3,3) = 10 A
+.NO_VELOCITY.
+entry_count = 3
+12.010700
+C
+0.839336 0.560135 0.468858
+12.010700
+C
+0.839378 0.431559 0.52349
+"#;
+        let converted = converted_data_from_text(data, "cfg", "c60.0.cfg").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(converted.extension, "pdb");
+        assert!(pdb.starts_with("REMARK Converted from c60.0.cfg\nHETATM"));
+        assert!(pdb.contains("HETATM    1 C    MOL A   1       8.393   5.601   4.689"));
+        assert!(pdb.contains("HETATM    2 C    MOL A   1       8.394   4.316   5.235"));
     }
 
     #[test]

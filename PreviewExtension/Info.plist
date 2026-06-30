@@ -473,6 +473,8 @@
 					<string>namdbin</string>
 					<string>lammpstrj</string>
 					<string>dump</string>
+					<string>pos</string>
+					<string>cfg</string>
 					<string>trj</string>
 					<string>mdcrd</string>
 					<string>crdbox</string>
