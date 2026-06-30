@@ -581,6 +581,7 @@ assert.equal(packageConfig.scripts['check:formats'], 'bun scripts/check-preview-
 assert.equal(packageConfig.scripts['check:vendor-assets'], 'bun scripts/check-vendor-assets.mjs');
 for (const updateTest of [
   'bun tests/test-update-versioning.mjs',
+  'bun tests/test-update-auto-prompt-contract.mjs',
   'bun tests/test-bun-installer-behavior.mjs',
   'bun tests/test-dev-namespace.mjs',
   'bun tests/test-quicklook-preview-smoke-contract.mjs',
