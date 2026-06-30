@@ -204,14 +204,22 @@ export const useShellStore = create<ShellState>()(
                 rightDockTabs: ensureDefaultDockTabs("right", state.rightDockTabs),
               }),
             }
-          : { bottomDockOpen: !state.bottomDockOpen }
+          : {
+              bottomDockOpen: !state.bottomDockOpen,
+              ...(state.bottomDockOpen ? {} : {
+                bottomDockTabs: ensureDefaultDockTabs("bottom", state.bottomDockTabs),
+              }),
+            }
       )),
       setDockOpen: (area, open) => set((state) => area === "right"
         ? {
             rightDockOpen: open,
             ...(open ? { rightDockTabs: ensureDefaultDockTabs("right", state.rightDockTabs) } : {}),
           }
-        : { bottomDockOpen: open }),
+        : {
+            bottomDockOpen: open,
+            ...(open ? { bottomDockTabs: ensureDefaultDockTabs("bottom", state.bottomDockTabs) } : {}),
+          }),
       setDockSize: (area, size) => set(area === "right"
         ? { rightDockWidth: normalizeRightDockWidth(size) }
         : { bottomDockHeight: normalizeBottomDockHeight(size) }),
@@ -242,13 +250,25 @@ export const useShellStore = create<ShellState>()(
             : { bottomDockActiveTab: kind };
         }),
       setDockDocument: (area, documentId) =>
-        set(area === "right"
+        set((state) => area === "right"
           ? { rightDockOpen: true, rightDockDocumentId: documentId, rightDockTool: null, rightDockActiveTab: "files" }
-          : { bottomDockOpen: true, bottomDockDocumentId: documentId, bottomDockTool: null, bottomDockActiveTab: "files" }),
+          : {
+              bottomDockOpen: true,
+              bottomDockTabs: ensureDefaultDockTabs("bottom", state.bottomDockTabs),
+              bottomDockDocumentId: documentId,
+              bottomDockTool: null,
+              bottomDockActiveTab: "files",
+            }),
       setDockTool: (area, tool) =>
-        set(area === "right"
+        set((state) => area === "right"
           ? { rightDockOpen: true, rightDockDocumentId: null, rightDockTool: tool, rightDockActiveTab: "files" }
-          : { bottomDockOpen: true, bottomDockDocumentId: null, bottomDockTool: tool, bottomDockActiveTab: "files" }),
+          : {
+              bottomDockOpen: true,
+              bottomDockTabs: ensureDefaultDockTabs("bottom", state.bottomDockTabs),
+              bottomDockDocumentId: null,
+              bottomDockTool: tool,
+              bottomDockActiveTab: "files",
+            }),
       addDockDrop: (input) =>
         set((state) => {
           if (!dockTabCatalog(input.area).includes(input.tabKind)) return state;
@@ -394,6 +414,9 @@ export const useShellStore = create<ShellState>()(
         const rightDockOpen = stored?.rightDockOpen ?? current.rightDockOpen;
         const normalizedRightDockTabs = normalizeDockTabs("right", stored?.rightDockTabs ?? current.rightDockTabs);
         const rightDockTabs = rightDockOpen ? ensureDefaultDockTabs("right", normalizedRightDockTabs) : normalizedRightDockTabs;
+        const bottomDockOpen = stored?.bottomDockOpen ?? current.bottomDockOpen;
+        const normalizedBottomDockTabs = persistentDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs);
+        const bottomDockTabs = bottomDockOpen ? ensureDefaultDockTabs("bottom", normalizedBottomDockTabs) : normalizedBottomDockTabs;
         const projectRoots = persistentRoots(stored?.projectRoots ?? current.projectRoots);
         const pinnedProjectRoots = persistentRoots(stored?.pinnedProjectRoots ?? current.pinnedProjectRoots)
           .filter((root) => projectRoots.includes(root));
@@ -411,12 +434,12 @@ export const useShellStore = create<ShellState>()(
             rightDockTabs,
             stored?.rightDockActiveTab ?? current.rightDockActiveTab,
           ),
-          bottomDockOpen: stored?.bottomDockOpen ?? current.bottomDockOpen,
+          bottomDockOpen,
           bottomDockHeight: normalizeBottomDockHeight(stored?.bottomDockHeight ?? current.bottomDockHeight),
-          bottomDockTabs: persistentDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
+          bottomDockTabs,
           bottomDockActiveTab: normalizeDockActiveTab(
             "bottom",
-            persistentDockTabs("bottom", stored?.bottomDockTabs ?? current.bottomDockTabs),
+            bottomDockTabs,
             stored?.bottomDockActiveTab ?? current.bottomDockActiveTab,
           ),
           projectsOpen: stored?.projectsOpen ?? current.projectsOpen,
