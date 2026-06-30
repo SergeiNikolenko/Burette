@@ -4809,34 +4809,29 @@
 
   const DEFAULT_TRAJECTORY_LOOP_FPS = 20;
   const NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD = 25;
-  const NATIVE_TRAJECTORY_LOOP_MAX_FPS = 100;
 
   function trajectoryLoopFpsStorageKey(config, prepared) {
     return `${trajectoryControlStorageKey(config, prepared)}.fps.v1`;
   }
 
   function minimumTrajectoryLoopDelay(prepared) {
-    return prepared?.nativeTrajectoryControls ? Math.round(1000 / NATIVE_TRAJECTORY_LOOP_MAX_FPS) : 300;
+    return prepared?.nativeTrajectoryControls ? 0 : 300;
   }
 
   function minimumTrajectoryLoopTimerDelay(prepared) {
-    return prepared?.nativeTrajectoryControls ? 8 : 60;
-  }
-
-  function maximumTrajectoryLoopFps(prepared) {
-    return Math.round((1000 / minimumTrajectoryLoopDelay(prepared)) * 100) / 100;
+    return prepared?.nativeTrajectoryControls ? 0 : 60;
   }
 
   function trajectoryFpsToDelay(value, prepared) {
     const fps = Number(value);
-    const clamped = Number.isFinite(fps) ? Math.min(Math.max(fps, 0.1), maximumTrajectoryLoopFps(prepared)) : DEFAULT_TRAJECTORY_LOOP_FPS;
-    return Math.max(minimumTrajectoryLoopDelay(prepared), Math.round(1000 / clamped));
+    const clamped = Number.isFinite(fps) ? Math.max(fps, 0.1) : DEFAULT_TRAJECTORY_LOOP_FPS;
+    return Math.max(minimumTrajectoryLoopDelay(prepared), 1000 / clamped);
   }
 
   function trajectoryDelayToFps(delayMs, prepared) {
     const delay = Number(delayMs);
     if (!Number.isFinite(delay) || delay <= 0) return DEFAULT_TRAJECTORY_LOOP_FPS;
-    return Math.min(Math.max(1000 / delay, 0.1), maximumTrajectoryLoopFps(prepared));
+    return Math.max(1000 / delay, 0.1);
   }
 
   function formatTrajectoryFps(value) {
@@ -4881,7 +4876,7 @@
   function readTrajectoryLoopFps(config, prepared) {
     try {
       const stored = Number(localStorage.getItem(trajectoryLoopFpsStorageKey(config, prepared)));
-      if (Number.isFinite(stored) && stored > 0) return Math.min(Math.max(stored, 0.1), maximumTrajectoryLoopFps(prepared));
+      if (Number.isFinite(stored) && stored > 0) return Math.max(stored, 0.1);
     } catch (_) {}
     return DEFAULT_TRAJECTORY_LOOP_FPS;
   }
@@ -9634,7 +9629,6 @@
     speed.setAttribute('aria-label', `${controlLabel} loop frames per second`);
     speed.type = 'number';
     speed.min = '0.1';
-    speed.max = formatTrajectoryFps(maximumTrajectoryLoopFps(prepared));
     speed.step = '0.1';
     speed.inputMode = 'decimal';
     speed.value = formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
@@ -9709,26 +9703,24 @@
       const untilNextFrame = delay - (elapsed % delay);
       return Math.max(minimumTrajectoryLoopTimerDelay(prepared), Math.min(delay, untilNextFrame));
     };
-    const scheduleLoopStep = (delayMs = prepared.nativeTrajectoryControls ? loopDelayMs() : loopNextDelay()) => {
+    const scheduleLoopStep = (delayMs = loopNextDelay()) => {
       loopTimer = window.setTimeout(() => {
         loopTimer = null;
         if (!loopActive) return;
         if (loopBusy) {
-          scheduleLoopStep(prepared.nativeTrajectoryControls ? loopDelayMs() : undefined);
+          scheduleLoopStep();
           return;
         }
-        const nextIndex = prepared.nativeTrajectoryControls
-          ? (activePose + 1) % prepared.poseCount
-          : loopTargetIndex();
+        const nextIndex = loopTargetIndex();
         if (nextIndex === activePose) {
-          scheduleLoopStep(prepared.nativeTrajectoryControls ? loopDelayMs() : undefined);
+          scheduleLoopStep();
           return;
         }
         loopBusy = true;
         void setPose(nextIndex, { loopStep: true }).finally(() => {
           loopBusy = false;
           if (!loopActive) return;
-          scheduleLoopStep(prepared.nativeTrajectoryControls ? loopDelayMs() : undefined);
+          scheduleLoopStep();
         });
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
     };
