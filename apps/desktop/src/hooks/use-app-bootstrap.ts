@@ -27,7 +27,7 @@ export function useAppBootstrap(setUpdate: Dispatch<SetStateAction<UpdateState>>
           ...previous,
           isChecking: false,
           availableRelease: null,
-          statusText: "Updates are disabled for dev builds.",
+          statusText: info.isBrowserDev ? "Updates are disabled in browser sessions." : "Updates are disabled for dev builds.",
         }));
       }
     });
