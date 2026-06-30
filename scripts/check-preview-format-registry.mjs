@@ -85,6 +85,7 @@ const allowedSystemQuickLookContentTypes = new Set([
   'net.sourceforge.openbabel.xyz',
   'public.cif',
   'public.comma-separated-values-text',
+  'public.pdb',
   'public.tab-separated-values-text',
 ]);
 for (const contentType of registry.quickLook.contentTypes) {

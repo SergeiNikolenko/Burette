@@ -143,6 +143,7 @@
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>com.local.burrete10.pdb</string>
+				<string>public.pdb</string>
 				<string>com.local.burrete10.cif</string>
 				<string>public.cif</string>
 				<string>com.local.burrete10.mmcif</string>
