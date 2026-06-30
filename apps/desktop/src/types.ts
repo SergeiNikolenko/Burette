@@ -70,6 +70,7 @@ export type ViewerReloadOptions = {
   xyzrenderSelectionAction?: "vdw" | null;
   sdfPoseControlLabel?: string | null;
   trajectoryAutoPlayOnce?: boolean | null;
+  activeModel?: number | null;
   molstarStyle?: "default" | "illustrative" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface" | null;
 };
 

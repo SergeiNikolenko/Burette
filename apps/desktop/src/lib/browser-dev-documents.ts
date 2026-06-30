@@ -724,7 +724,12 @@ async function openBrowserDevDocumentFromBytes(
     Boolean(molstarBytes),
   );
   const defaultXyzrender = await defaultXyzrenderPlanForDocument(path, extension, text);
-  const xyzrenderInputBytes = extension === "cub" || extension === "cube" ? null : sourceXyzBytes;
+  const xyzrenderFrameSourceBytes = runtimeFormat.molstarFormat === "xyz" && !runtimeFormat.binary
+    ? selectedXyzrenderFrameSourceBytes(extension, runtimeFrameText, convertedMolstarData?.bytes ?? null, sourceXyzBytes)
+    : sourceXyzBytes;
+  const xyzrenderInputBytes = extension === "cub" || extension === "cube"
+    ? null
+    : selectedXyzFrameBytes(xyzrenderFrameSourceBytes, reloadOptions?.activeModel) ?? sourceXyzBytes;
   const virtualXyzrenderInputBytes = xyzrenderInputBytes ?? (browserDevVirtualTextDocuments.has(path) ? bytes : null);
   const xyzrenderInputExtension = xyzrenderInputBytes ? "xyz" : extension;
   const { renderer, externalRendererStatus, externalArtifact, xyzrenderPresetOptions, xyzrenderControls } =
@@ -845,6 +850,44 @@ async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDoc
     throw new Error(`${path} cannot be added to Mol* docking view because it needs xyzrender conversion`);
   }
   return { path, title, extension, format, bytes: originalBytes, byteCount: originalBytes.length };
+}
+
+function splitXyzFrameTexts(text: string) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const frames: string[] = [];
+  let index = 0;
+  while (index < lines.length && frames.length < 100000) {
+    while (index < lines.length && !lines[index].trim()) index += 1;
+    const atomCount = Number.parseInt(lines[index]?.trim().split(/\s+/u)[0] ?? "", 10);
+    if (!Number.isFinite(atomCount) || atomCount <= 0) break;
+    if (index + atomCount + 1 >= lines.length) break;
+    const frameLines = lines.slice(index, index + atomCount + 2);
+    const atomLines = frameLines.slice(2);
+    if (atomLines.length !== atomCount || atomLines.some((line) => !line.trim())) break;
+    frames.push(`${frameLines.join("\n")}\n`);
+    index += atomCount + 2;
+  }
+  return frames.length > 1 ? frames : [];
+}
+
+function selectedXyzrenderFrameSourceBytes(
+  extension: string,
+  runtimeFrameText: string,
+  convertedMolstarBytes: Uint8Array | null,
+  sourceXyzBytes: Uint8Array | null,
+) {
+  if (shouldTreatTextAsXyzFrames(extension)) return new TextEncoder().encode(runtimeFrameText);
+  return convertedMolstarBytes ?? sourceXyzBytes;
+}
+
+function selectedXyzFrameBytes(bytes: Uint8Array | null, activeModel: number | null | undefined) {
+  if (!bytes?.length || activeModel == null) return null;
+  const index = Number(activeModel);
+  if (!Number.isFinite(index) || index < 0) return null;
+  const frames = splitXyzFrameTexts(decodeUtf8(bytes));
+  if (frames.length <= 1) return null;
+  const frame = frames[Math.max(0, Math.min(frames.length - 1, Math.trunc(index)))];
+  return new TextEncoder().encode(frame);
 }
 
 function dockingConfigSource(source: BrowserDevDockingPayload) {
@@ -990,6 +1033,7 @@ function viewerHtml(
     sdfPosePager: renderer === "molstar" && format.molstarFormat === "sdf" && !format.binary,
     trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1,
     trajectoryFrameCount,
+    ...(reloadOptions?.activeModel != null ? { activeModel: reloadOptions.activeModel } : {}),
     rdkitWasmPath: "/__burette/rdkit-wasm",
     ...(reloadOptions?.sdfPoseControlLabel ? { sdfPoseControlLabel: reloadOptions.sdfPoseControlLabel } : {}),
     ...(stagedEntries?.some((entry) => entry?.representation === "structure-scene-entry") ? { structureSceneMode: "structurePoses" } : {}),
@@ -1067,6 +1111,7 @@ async function browserRendererPlan(
       controls,
       xyzrenderInputBytes,
       xyzrenderInputExtension,
+      reloadOptions?.activeModel ?? null,
     );
     return {
       renderer: "xyzrender-external",
@@ -1124,6 +1169,7 @@ async function requestBrowserDevXyzrender(
   controls: XyzrenderControls | null,
   inputBytes: Uint8Array | null,
   inputExtension = "xyz",
+  activeModel: number | null = null,
 ) {
   const url = new URL("/__burette/xyzrender", window.location.origin);
   const response = await fetch(url, {
@@ -1134,6 +1180,7 @@ async function requestBrowserDevXyzrender(
       preset,
       orientationRef: orientationRef || undefined,
       controls: controls || undefined,
+      activeModel: activeModel ?? undefined,
       inputDataBase64: inputBytes ? bytesToBase64(inputBytes) : undefined,
       inputExtension: inputBytes ? inputExtension : undefined,
     }),
