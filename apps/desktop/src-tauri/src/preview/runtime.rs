@@ -20,6 +20,9 @@ use super::text_xyz::converted_data_from_text;
 use super::trace::{append_preview_trace, elapsed_ms, preview_error_code, PreviewTraceEvent};
 
 pub(crate) const MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
+const DEFAULT_DESKTOP_PREVIEW_LIMIT_MIB: u64 = 1024;
+const MIN_DESKTOP_PREVIEW_LIMIT_MIB: u64 = 1;
+const MAX_DESKTOP_PREVIEW_LIMIT_MIB: u64 = 4096;
 const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB: &str = "24";
 const SCHRODINGER_RUN: &str = "/opt/schrodinger/suites2026-1/run";
@@ -53,6 +56,10 @@ const MD_TOPOLOGY_EXTENSIONS: &[&str] = &[
     "psf", "prmtop", "top", "tpr", "parm7", "parm", "itp", "data", "lammps", "lmp", "txyz", "xml",
     "inpcrd", "rst7", "crd", "rst", "state",
 ];
+const STANDALONE_MD_TOPOLOGY_EXTENSIONS: &[&str] = &[
+    "psf", "prmtop", "top", "tpr", "parm7", "parm", "itp", "data", "lammps", "lmp", "txyz",
+];
+const MD_VISUAL_COORDINATE_COMPANION_EXTENSIONS: &[&str] = &["pdb", "ent", "pdbqt", "pqr", "gro"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StructureAttachmentRole {
@@ -89,6 +96,8 @@ pub(crate) struct ViewerPreferences {
     pub(crate) canvas_background: String,
     pub(crate) renderer_mode: String,
     pub(crate) molstar_style: String,
+    #[serde(default = "default_desktop_preview_limit_mib")]
+    pub(crate) desktop_preview_limit_mib: u64,
     #[serde(default = "default_light_accent")]
     pub(crate) theme_light_accent: String,
     #[serde(default = "default_light_background")]
@@ -206,6 +215,15 @@ impl ViewerPreferences {
         self.canvas_background_for_runtime() == "transparent"
     }
 
+    pub(crate) fn desktop_preview_limit_mib(&self) -> u64 {
+        self.desktop_preview_limit_mib
+            .clamp(MIN_DESKTOP_PREVIEW_LIMIT_MIB, MAX_DESKTOP_PREVIEW_LIMIT_MIB)
+    }
+
+    pub(crate) fn desktop_preview_limit_bytes(&self) -> u64 {
+        self.desktop_preview_limit_mib() * 1024 * 1024
+    }
+
     pub(crate) fn theme_tokens(&self) -> Value {
         json!({
             "light": {
@@ -232,6 +250,10 @@ impl ViewerPreferences {
 
 fn default_system_font() -> String {
     "-apple-system-body, ui-sans-serif, -apple-system, system-ui, \"Segoe UI\", Helvetica, \"Apple Color Emoji\", Arial, sans-serif, \"Segoe UI Emoji\", \"Segoe UI Symbol\"".to_string()
+}
+
+fn default_desktop_preview_limit_mib() -> u64 {
+    DEFAULT_DESKTOP_PREVIEW_LIMIT_MIB
 }
 
 fn default_light_accent() -> String {
@@ -289,6 +311,7 @@ mod viewer_preferences_tests {
             canvas_background: canvas_background.to_string(),
             renderer_mode: "auto".to_string(),
             molstar_style: "illustrative".to_string(),
+            desktop_preview_limit_mib: super::default_desktop_preview_limit_mib(),
             theme_light_accent: default_light_accent(),
             theme_light_background: default_light_background(),
             theme_light_foreground: default_light_foreground(),
@@ -333,6 +356,23 @@ mod viewer_preferences_tests {
     fn transparent_background_only_when_explicit() {
         assert!(preferences("auto", "transparent").resolved_transparent_background());
         assert!(!preferences("auto", "auto").resolved_transparent_background());
+    }
+
+    #[test]
+    fn clamps_desktop_preview_limit_for_runtime() {
+        let mut preferences = preferences("auto", "auto");
+        preferences.desktop_preview_limit_mib = 2048;
+        assert_eq!(preferences.desktop_preview_limit_mib(), 2048);
+        preferences.desktop_preview_limit_mib = 0;
+        assert_eq!(
+            preferences.desktop_preview_limit_mib(),
+            super::MIN_DESKTOP_PREVIEW_LIMIT_MIB
+        );
+        preferences.desktop_preview_limit_mib = 10_000;
+        assert_eq!(
+            preferences.desktop_preview_limit_mib(),
+            super::MAX_DESKTOP_PREVIEW_LIMIT_MIB
+        );
     }
 }
 
@@ -516,6 +556,22 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         return Err(format!("{} is not a file", canonical.display()));
     }
     let extension = structure_path_extension(&canonical);
+    if is_standalone_md_topology_extension(&extension)
+        && resolve_md_file_bundle(&canonical, &extension).is_none()
+    {
+        return Err(format!(
+            "{} is a topology file and does not contain standalone molecular coordinates",
+            canonical.display()
+        ));
+    }
+    let desktop_limit = preferences.desktop_preview_limit_bytes();
+    if metadata.len() > desktop_limit {
+        return Err(format!(
+            "{} is larger than the {} MiB desktop preview limit",
+            canonical.display(),
+            preferences.desktop_preview_limit_mib()
+        ));
+    }
     let desmond_preview_error = match create_desmond_trajectory_preview(app, &canonical, &extension)
     {
         Ok(Some(desmond_preview)) => {
@@ -547,12 +603,6 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     };
     let uses_bounded_maestro_preview =
         is_maestro_preview_extension(&extension) && metadata.len() > MAX_STRUCTURE_FILE_SIZE;
-    if metadata.len() > MAX_STRUCTURE_FILE_SIZE && !uses_bounded_maestro_preview {
-        return Err(format!(
-            "{} is larger than the 75 MB preview limit",
-            canonical.display()
-        ));
-    }
     let data = if uses_bounded_maestro_preview {
         read_file_prefix(&canonical, MAESTRO_PREVIEW_READ_LIMIT)?
     } else {
@@ -782,10 +832,13 @@ fn resolve_structure_file_bundle(path: &Path, extension: &str) -> StructureFileB
 
 pub(crate) fn companion_paths_for_open_path(path: &Path, extension: &str) -> Vec<PathBuf> {
     let bundle = resolve_structure_file_bundle(path, extension);
-    if bundle.kind == StructureBundleKind::Single {
-        return Vec::new();
-    }
     let mut paths = Vec::new();
+    if let Some(companion) = visual_coordinate_companion_for_topology(path, extension) {
+        paths.push(companion);
+    }
+    if bundle.kind == StructureBundleKind::Single {
+        return paths;
+    }
     for candidate in std::iter::once(bundle.primary_path).chain(
         bundle
             .attachments
@@ -798,6 +851,21 @@ pub(crate) fn companion_paths_for_open_path(path: &Path, extension: &str) -> Vec
         }
     }
     paths
+}
+
+fn visual_coordinate_companion_for_topology(path: &Path, extension: &str) -> Option<PathBuf> {
+    if !is_standalone_md_topology_extension(extension) {
+        return None;
+    }
+    let base = path.with_extension("");
+    MD_VISUAL_COORDINATE_COMPANION_EXTENSIONS
+        .iter()
+        .map(|candidate| base.with_extension(candidate))
+        .find(|candidate| candidate.is_file())
+}
+
+fn is_standalone_md_topology_extension(extension: &str) -> bool {
+    STANDALONE_MD_TOPOLOGY_EXTENSIONS.contains(&extension)
 }
 
 fn resolve_desmond_file_bundle(path: &Path, extension: &str) -> Option<StructureFileBundle> {
@@ -1145,6 +1213,7 @@ mod document_open_tests {
             canvas_background: "auto".to_string(),
             renderer_mode: "auto".to_string(),
             molstar_style: "illustrative".to_string(),
+            desktop_preview_limit_mib: super::default_desktop_preview_limit_mib(),
             theme_light_accent: default_light_accent(),
             theme_light_background: default_light_background(),
             theme_light_foreground: default_light_foreground(),
@@ -1294,6 +1363,71 @@ mod document_open_tests {
             std::env::temp_dir().join(format!("burrete-runtime-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&directory).expect("temp test directory should be created");
         directory
+    }
+
+    #[test]
+    fn standalone_psf_topology_is_not_treated_as_renderable_coordinates() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = create_temp_file("psf", b"PSF EXT\n\n0 !NATOM\n");
+
+        let error = open_document(app.handle(), path.clone(), &preferences, None)
+            .expect_err("standalone PSF topology should not create a Molstar document");
+
+        assert!(error.contains("does not contain standalone molecular coordinates"));
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn applies_configured_desktop_preview_limit() {
+        let app = mock_app_with_grid_registry();
+        let mut preferences = viewer_preferences();
+        preferences.desktop_preview_limit_mib = 1;
+        let path = create_temp_file("pdb", &vec![b' '; 1024 * 1024 + 1]);
+
+        let error = open_document(app.handle(), path.clone(), &preferences, None)
+            .expect_err("desktop open should respect configured source limit");
+
+        assert!(error.contains("1 MiB desktop preview limit"));
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn psf_open_adds_same_stem_pdb_companion_as_renderable_document() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let directory = create_temp_directory();
+        let psf = directory.join("system.psf");
+        let pdb = directory.join("system.pdb");
+        fs::write(&psf, b"PSF EXT\n\n1 !NATOM\n").expect("PSF fixture should be written");
+        fs::write(
+            &pdb,
+            b"ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00 20.00           C\nEND\n",
+        )
+        .expect("PDB companion should be written");
+
+        let result = open_documents_for_window_label(
+            app.handle(),
+            crate::windows::MAIN_WINDOW_LABEL,
+            vec![psf.to_string_lossy().to_string()],
+            preferences,
+            None,
+            None,
+        )
+        .expect("PDB companion should open even when PSF is topology-only");
+
+        assert_eq!(result.documents.len(), 1);
+        assert_eq!(result.documents[0].title, "system.pdb");
+        assert!(result
+            .errors
+            .iter()
+            .any(|error| error.contains("does not contain standalone molecular coordinates")));
+        remove_runtime_artifacts(&result.documents[0].runtime_path);
+        let _ = fs::remove_dir_all(directory);
     }
 
     fn remove_runtime_artifacts(runtime_path: &str) {

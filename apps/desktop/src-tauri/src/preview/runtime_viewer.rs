@@ -18,6 +18,7 @@ use super::xyzrender::{
 const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT: usize = 1500;
 const KETCHER_EDIT_MAX_BYTES: usize = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS: usize = 300;
+const EMBEDDED_PREVIEW_DATA_SCRIPT_MAX_BYTES: usize = 32 * 1024 * 1024;
 const VIEWER_MOLSTAR_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;";
 const VIEWER_EXTERNAL_ARTIFACT_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
 const VIEWER_MINIMAL_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
@@ -281,9 +282,18 @@ pub(crate) fn create_runtime<R: Runtime>(
     }
 
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
+    let include_data_script = should_embed_preview_data_script(payload.data.len());
     write_bytes_atomic(
         &runtime.join("index.html"),
-        viewer_html(file_path, &runtime, &assets, &renderer, preferences, true).as_bytes(),
+        viewer_html(
+            file_path,
+            &runtime,
+            &assets,
+            &renderer,
+            preferences,
+            include_data_script,
+        )
+        .as_bytes(),
     )?;
     write_bytes_atomic(
         &runtime.join("viewer-bridge.js"),
@@ -294,14 +304,16 @@ pub(crate) fn create_runtime<R: Runtime>(
         format!("window.BurreteConfig = {config_text};\n").as_bytes(),
     )?;
     write_bytes_atomic(&runtime.join("preview-data.bin"), &payload.data)?;
-    write_bytes_atomic(
-        &runtime.join("preview-data.js"),
-        format!(
-            "window.BurreteDataBase64 = \"{}\";\nwindow.BurreteDataURL = null;\n",
-            base64::engine::general_purpose::STANDARD.encode(&payload.data)
-        )
-        .as_bytes(),
-    )?;
+    if include_data_script {
+        write_bytes_atomic(
+            &runtime.join("preview-data.js"),
+            format!(
+                "window.BurreteDataBase64 = \"{}\";\nwindow.BurreteDataURL = null;\n",
+                base64::engine::general_purpose::STANDARD.encode(&payload.data)
+            )
+            .as_bytes(),
+        )?;
+    }
     write_json_atomic(
         &runtime.join("manifest.json"),
         &runtime_manifest(
@@ -407,6 +419,10 @@ pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
 
 fn should_require_extracted_standalone_coordinates(extension: &str) -> bool {
     extension == "out"
+}
+
+fn should_embed_preview_data_script(byte_count: usize) -> bool {
+    byte_count <= EMBEDDED_PREVIEW_DATA_SCRIPT_MAX_BYTES
 }
 
 fn create_not_renderable_runtime(
@@ -710,6 +726,7 @@ mod tests {
             canvas_background: "opaque".to_string(),
             renderer_mode: "auto".to_string(),
             molstar_style: "default".to_string(),
+            desktop_preview_limit_mib: 1024,
             theme_light_accent: "#0066cc".to_string(),
             theme_light_background: "#ffffff".to_string(),
             theme_light_foreground: "#111111".to_string(),
@@ -787,6 +804,14 @@ mod tests {
         assert!(!assets.join("rdkit").exists());
 
         let _ = fs::remove_dir_all(assets);
+    }
+
+    #[test]
+    fn skips_embedded_preview_data_script_for_large_payloads() {
+        assert!(super::should_embed_preview_data_script(1024));
+        assert!(!super::should_embed_preview_data_script(
+            super::EMBEDDED_PREVIEW_DATA_SCRIPT_MAX_BYTES + 1
+        ));
     }
 
     #[test]

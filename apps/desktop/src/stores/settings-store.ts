@@ -15,6 +15,7 @@ export const defaultPreferences: ViewerPreferences = {
   openInDefaultDestination: "finder",
   rendererMode: "auto",
   molstarStyle: "illustrative",
+  desktopPreviewLimitMiB: 1024,
   conformerEngine: "rdkit",
   conformerCandidateCount: 128,
   conformerRmsdCutoff: 0.75,
@@ -49,14 +50,24 @@ export const useSettingsStore = create<SettingsState>()(
       }),
       merge: (persisted, current) => {
         const stored = persisted as Partial<PersistedSettingsState> | undefined;
+        const storedPreferences = stored?.preferences ?? {};
         return {
           ...current,
           preferences: {
             ...current.preferences,
-            ...stored?.preferences,
+            ...storedPreferences,
+            desktopPreviewLimitMiB: normalizeDesktopPreviewLimitMiB(
+              (storedPreferences as Partial<ViewerPreferences>).desktopPreviewLimitMiB,
+            ),
           },
         };
       },
     },
   ),
 );
+
+function normalizeDesktopPreviewLimitMiB(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.round(Math.min(Math.max(value, 1), 4096))
+    : defaultPreferences.desktopPreviewLimitMiB;
+}
