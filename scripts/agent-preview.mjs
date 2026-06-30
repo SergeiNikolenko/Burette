@@ -16,7 +16,7 @@ const agentControlApiVersion = 'burette-agent-control/v1';
 const renderPanelReadLimit = 512 * 1024;
 const mvsReadLimit = 25 * 1024 * 1024;
 const amberNcPreviewFrameLimit = 100;
-const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt', 'crd', 'rst', 'state', 'lammpstrj', 'dump']);
+const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt', 'crd', 'rst', 'state', 'lammpstrj', 'dump', 'pos', 'cfg']);
 const textArtifactExtensions = new Set(['par', 'prm', 'rtf', 'str', 'key', 'chk', 'checkpoint']);
 const amberNetcdfExtensions = new Set(['nc', 'ncdf', 'netcdf', 'ncrst']);
 const topologyPreviewExtensions = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb']);
@@ -84,6 +84,9 @@ function isAmberNetcdfFile(file) {
 
 function preparePreviewPayload(file, bytes) {
   const extension = extname(file).toLowerCase().replace(/^\./, '');
+  if (isPreferredTextArtifact(file)) {
+    return { bytes, format: 'text', binary: looksBinary(bytes), textPreview: true };
+  }
   if (coordinateArtifactExtensions.has(extension)) {
     const converted = genericPdbDataFromText(bytes.toString('utf8'), extension, basename(file));
     if (converted) return { bytes: Buffer.from(converted, 'utf8'), format: 'pdb', binary: false };
@@ -95,6 +98,10 @@ function preparePreviewPayload(file, bytes) {
   const converted = maestroPdbDataFromText(bytes.toString('utf8'));
   if (!converted) return { bytes, format: inferFormat(file), binary: isBinaryFormat(file) };
   return { bytes: Buffer.from(converted, 'utf8'), format: 'pdb', binary: false };
+}
+
+function isPreferredTextArtifact(file) {
+  return basename(file).toLowerCase() === 'log.lammps';
 }
 
 async function amberNcPreviewPayload(file) {
@@ -198,7 +205,8 @@ function genericPdbDataFromText(text, extension, label) {
 function atomsFromCoordinateText(text, extension) {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   if (extension === 'inpcrd' || extension === 'rst7' || extension === 'restrt') return parseAmberRestartAtoms(lines);
-  if (extension === 'lammpstrj' || extension === 'dump') return parseLammpsDumpAtoms(lines);
+  if (extension === 'lammpstrj' || extension === 'dump' || extension === 'pos') return parseLammpsDumpAtoms(lines);
+  if (extension === 'cfg') return parseAtomeyeCfgAtoms(lines);
   if (extension === 'crd') return parseCharmmCoordinateAtoms(lines);
   if (extension === 'rst') return parseCharmmCoordinateAtoms(lines) ?? parseAmberRestartAtoms(lines);
   if (extension === 'state' || extension === 'xml') return parseXmlPositionAtoms(text) ?? parseHoomdXmlAtoms(text);
@@ -282,6 +290,72 @@ function parseLammpsDumpAtoms(lines) {
     atoms.push({ symbol, x, y, z });
   }
   return atoms.length > 0 ? atoms : null;
+}
+
+function parseAtomeyeCfgAtoms(lines) {
+  const atomCount = parseAtomeyeCfgAtomCount(lines);
+  const scale = parseAtomeyeCfgScale(lines) ?? 1;
+  const h0 = parseAtomeyeCfgH0(lines);
+  const entryCount = parseAtomeyeCfgEntryCount(lines);
+  const entryStart = lines.findIndex((line) => line.trim().startsWith('entry_count')) + 1;
+  if (!atomCount || !h0 || !entryCount || entryStart <= 0) return null;
+  const atoms = [];
+  for (let index = entryStart; atoms.length < atomCount && index + entryCount <= lines.length; index += entryCount) {
+    const entry = lines.slice(index, index + entryCount);
+    const symbol = entry.map((line) => elementSymbolFromAtomName(line)).find(Boolean) ?? 'C';
+    const fractional = entry
+      .slice()
+      .reverse()
+      .map((line) => numericTokens(line))
+      .find((values) => values.length >= 3);
+    if (!fractional) return null;
+    atoms.push({
+      symbol,
+      x: scale * (h0[0][0] * fractional[0] + h0[0][1] * fractional[1] + h0[0][2] * fractional[2]),
+      y: scale * (h0[1][0] * fractional[0] + h0[1][1] * fractional[1] + h0[1][2] * fractional[2]),
+      z: scale * (h0[2][0] * fractional[0] + h0[2][1] * fractional[1] + h0[2][2] * fractional[2])
+    });
+  }
+  return atoms.length === atomCount ? atoms : null;
+}
+
+function parseAtomeyeCfgAtomCount(lines) {
+  for (const line of lines) {
+    const match = /^Number of particles\s*=\s*(\d+)/u.exec(line.trim());
+    if (match) return Number.parseInt(match[1], 10);
+  }
+  return null;
+}
+
+function parseAtomeyeCfgScale(lines) {
+  for (const line of lines) {
+    const match = /^A\s*=\s*([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)/u.exec(line.trim());
+    if (match) return Number(match[1]);
+  }
+  return null;
+}
+
+function parseAtomeyeCfgEntryCount(lines) {
+  for (const line of lines) {
+    const match = /^entry_count\s*=\s*(\d+)/u.exec(line.trim());
+    if (match) return Number.parseInt(match[1], 10);
+  }
+  return null;
+}
+
+function parseAtomeyeCfgH0(lines) {
+  const h0 = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  let seen = 0;
+  for (const line of lines) {
+    const match = /^H0\((\d),(\d)\)\s*=\s*([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)/u.exec(line.trim());
+    if (!match) continue;
+    const row = Number.parseInt(match[1], 10) - 1;
+    const column = Number.parseInt(match[2], 10) - 1;
+    if (row < 0 || row >= 3 || column < 0 || column >= 3) continue;
+    h0[row][column] = Number(match[3]);
+    seen += 1;
+  }
+  return seen === 9 ? h0 : null;
 }
 
 function coordinateColumnIndex(columns, names) {
