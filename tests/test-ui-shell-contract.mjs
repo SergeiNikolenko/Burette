@@ -4989,9 +4989,13 @@ assert.match(previewViewer, /normalizedAtoms\.length > MOLSTAR_STANDALONE_PREVIE
 assert.match(previewViewer, /function inferStandalonePreviewBonds\(atoms\)/);
 assert.match(previewViewer, /function standalonePreviewBondLimit\(a, b\)/);
 assert.match(previewViewer, /function showMolstarMoleculePreview\(target\)/);
-assert.match(previewViewer, /function molstarStandaloneMoleculePreviewEntryForTarget\(target\)/);
-assert.match(previewViewer, /sourceFormat !== 'xyz'/);
-assert.match(previewViewer, /return molstarStandaloneMoleculePreviewEntryForTarget\(target\) \|\| entry;/);
+assert.match(previewViewer, /function molstarMoleculePreviewSdfEntry\(target\)/);
+assert.match(previewViewer, /pdbLigandSdfEntryForResidue\(target\.receptor, target\.atom\)/);
+assert.match(previewViewer, /pdbLigandSdfEntryForResidue\(target\.sourceEntry, target\.atom\)/);
+assert.match(previewViewer, /function molstarStandaloneMoleculePreviewEntryForTarget\(target, entry = null\)/);
+assert.match(previewViewer, /if \(entry\) return null;/);
+assert.match(previewViewer, /return molstarStandaloneMoleculePreviewEntryForTarget\(target, entry\) \|\| entry;/);
+assert.doesNotMatch(previewViewer, /sourceFormat !== 'xyz'/);
 assert.match(previewViewer, /if \(normalizeFormat\(entry\?\.format\) !== 'sdf'\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
 assert.match(previewViewer, /const image = molstarPreviewSvgCache\.get\(key\) \|\| ''/);
 assert.match(previewViewer, /function molstarPreviewParseMolblock2D\(data\)/);

@@ -12677,19 +12677,33 @@
 
   function molstarMoleculePreviewEntry(target) {
     if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
-    if (target.scope === 'ligand') {
-      const sdfEntry = molstarContextSdfEntryForExport(target);
-      if (sdfEntry) return sdfEntry;
-    }
+    const sdfEntry = molstarMoleculePreviewSdfEntry(target);
+    if (sdfEntry) return sdfEntry;
     const entry = target.selectedEntry || target.ligand || null;
-    if (normalizeFormat(entry?.format) === 'sdf') return entry;
-    return molstarStandaloneMoleculePreviewEntryForTarget(target) || entry;
+    return molstarStandaloneMoleculePreviewEntryForTarget(target, entry) || entry;
   }
 
-  function molstarStandaloneMoleculePreviewEntryForTarget(target) {
+  function molstarMoleculePreviewSdfEntry(target) {
     if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
-    const sourceFormat = normalizeFormat(activeConfig?.sourceExtension || activeConfig?.molstarFormat || activeConfig?.format);
-    if (sourceFormat !== 'xyz') return null;
+    if (target.atom && target.receptor) {
+      const ligandEntry = pdbLigandSdfEntryForResidue(target.receptor, target.atom);
+      if (ligandEntry) return ligandEntry;
+    }
+    if (target.atom && target.sourceEntry) {
+      const ligandEntry = pdbLigandSdfEntryForResidue(target.sourceEntry, target.atom);
+      if (ligandEntry) return ligandEntry;
+    }
+    if (target.scope === 'ligand') {
+      const ligandEntry = molstarContextSdfEntryForExport(target);
+      if (ligandEntry) return ligandEntry;
+    }
+    const entry = target.selectedEntry || target.ligand || null;
+    return normalizeFormat(entry?.format) === 'sdf' ? entry : null;
+  }
+
+  function molstarStandaloneMoleculePreviewEntryForTarget(target, entry = null) {
+    if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
+    if (entry) return null;
     const preview = molstarStandaloneMoleculePreviewTarget(activeConfig);
     const ligand = preview?.ligand || null;
     return normalizeFormat(ligand?.format) === 'sdf' ? ligand : null;
