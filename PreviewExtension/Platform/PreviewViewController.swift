@@ -496,7 +496,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             )
         }
 
-        if shouldUseTextArtifactPreview(fileExtension: pathExtension, previewPlan: previewPlan) {
+        if shouldUseTextArtifactPreview(url: url, fileExtension: pathExtension, previewPlan: previewPlan) {
             return try buildTextArtifactPreviewResult(
                 for: url,
                 requestID: requestID,
@@ -3338,11 +3338,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return fileExtension.lowercased() == "graphml"
     }
 
-    private static func shouldUseTextArtifactPreview(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+    private static func shouldUseTextArtifactPreview(url: URL, fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+        if isPreferredTextArtifact(url: url) {
+            return true
+        }
         if let previewPlan {
             return previewPlan.strategy == "text"
         }
         return ["par", "prm", "rtf", "str", "key", "chk", "checkpoint", "fdef"].contains(fileExtension.lowercased())
+    }
+
+    private static func isPreferredTextArtifact(url: URL) -> Bool {
+        url.lastPathComponent.lowercased() == "log.lammps"
     }
 
     private static func requiresGridPreview(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {

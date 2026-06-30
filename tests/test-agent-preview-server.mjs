@@ -206,6 +206,7 @@ f_m_ct {
   const lammpsPath = join(coordinateTempDir, 'dump.lammpstrj');
   const posPath = join(coordinateTempDir, 'c60.0.pos');
   const cfgPath = join(coordinateTempDir, 'c60.0.cfg');
+  const lammpsLogPath = join(coordinateTempDir, 'log.lammps');
   await writeFile(amberPath, `Amber restart
 3
   0.0000000  0.0000000  0.0000000  1.5200000  0.0000000  0.0000000
@@ -278,6 +279,10 @@ C
 C
 0.839378 0.431559 0.52349
 `);
+  await writeFile(lammpsLogPath, `LAMMPS (22 Jul 2025 - Update 4)
+thermo_style custom step time temp pe ke etotal
+Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
+`);
   for (const coordinatePath of [amberPath, charmmPath, statePath, hoomdPath, lammpsPath, posPath, cfgPath]) {
     const coordinatePort = await freePort();
     const coordinateChild = spawn(process.execPath, ['scripts/agent-preview.mjs', coordinatePath, '--port', String(coordinatePort)], {
@@ -303,6 +308,22 @@ C
     } finally {
       coordinateChild.kill('SIGTERM');
     }
+  }
+  const lammpsLogPort = await freePort();
+  const lammpsLogChild = spawn(process.execPath, ['scripts/agent-preview.mjs', lammpsLogPath, '--port', String(lammpsLogPort)], {
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  try {
+    const lammpsLogReady = await waitForReady(lammpsLogChild);
+    const lammpsLogHtml = await get(lammpsLogReady.url);
+    const lammpsLogCookie = lammpsLogHtml.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='))?.split(';')[0];
+    assert.ok(lammpsLogCookie, 'authorized log.lammps HTML response should set the preview token cookie');
+    const lammpsLogConfig = await get(`http://127.0.0.1:${lammpsLogPort}/preview-config.js`, { Cookie: lammpsLogCookie });
+    assert.equal(lammpsLogConfig.statusCode, 200);
+    assert.match(lammpsLogConfig.body, /"format":"text"/);
+    assert.match(lammpsLogConfig.body, /"textPreview":true/);
+  } finally {
+    lammpsLogChild.kill('SIGTERM');
   }
   await rm(coordinateTempDir, { recursive: true, force: true });
 

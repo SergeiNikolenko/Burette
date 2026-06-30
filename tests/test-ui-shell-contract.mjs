@@ -4112,6 +4112,8 @@ assert.match(browserDevDocuments, /function parseLammpsDataAtoms\(lines: string\
 assert.match(browserDevDocuments, /function lammpsDataCoordinates\(parts: string\[\], masses: Map<string, string>\)/);
 assert.match(previewViewController, /case "data", "lammps", "lmp":[\s\S]*return parseLammpsData\(lines\)/);
 assert.match(previewViewController, /case "cfg":[\s\S]*return parseAtomeyeCFG\(lines\)/);
+assert.match(previewViewController, /shouldUseTextArtifactPreview\(url: url, fileExtension: pathExtension, previewPlan: previewPlan\)/);
+assert.match(previewViewController, /private static func isPreferredTextArtifact\(url: URL\) -> Bool \{[\s\S]*url\.lastPathComponent\.lowercased\(\) == "log\.lammps"/);
 assert.match(previewViewController, /private static func parseLammpsData\(_ lines: \[String\]\) -> \[Atom\]\?/);
 assert.match(previewViewController, /private static func parseAtomeyeCFG\(_ lines: \[String\]\) -> \[Atom\]\?/);
 assert.match(previewViewController, /private static func lammpsDataCoordinates\(_ parts: \[String\], masses: \[String: String\]\) -> Vec3\?/);

@@ -11,9 +11,9 @@ import {
   delimitedColumnChoiceLabel,
   isDelimitedColumnAmbiguity,
   isFepGraphmlPath,
+  isPreferredTextPath,
   NOT_RENDERABLE_RENDERER,
   pathExtension,
-  preferredTextExtensions,
   structureAndTextExtensions,
   structureExtensionFromPath,
   structureExtensions,
@@ -276,7 +276,7 @@ export function useAppFileOpen({
       if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
         spectrumPaths.push(path);
       } else if (
-        preferredTextExtensions.has(extension)
+        isPreferredTextPath(path, extension)
         || (extension.length > 0 && !structureExtensions.has(extension) && !structureAndTextExtensions.has(extension))
       ) {
         textPaths.push(path);
