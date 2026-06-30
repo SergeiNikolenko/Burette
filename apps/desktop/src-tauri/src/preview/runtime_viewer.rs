@@ -10,7 +10,7 @@ use super::runtime::{ViewerPreferences, ViewerReloadOptions};
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs, stable_id};
 use super::text_xyz::{converted_data_from_text, xyz_data_from_text};
 use super::trace::{runtime_manifest, write_bytes_atomic, write_json_atomic};
-use super::xyz::{xyz_first_frame, XyzPayload};
+use super::xyz::{xyz_frame, XyzPayload};
 use super::xyzrender::{
     create_xyzrender_artifact, default_xyzrender_document_defaults, xyzrender_preset_options,
 };
@@ -82,8 +82,14 @@ pub(crate) fn create_runtime<R: Runtime>(
         );
         return create_not_renderable_runtime(file_path, &runtime, &message);
     }
+    let active_model = reload_options.and_then(|options| options.active_model);
+    let xyz_frame_source = external_molstar_data
+        .as_ref()
+        .filter(|converted| converted.extension == "xyz")
+        .map(|converted| converted.data.as_slice())
+        .unwrap_or(data);
     let xyz_payload = if format.molstar_format == "xyz" && !format.is_binary {
-        xyz_first_frame(data)
+        xyz_frame(xyz_frame_source, active_model.unwrap_or(0))
     } else {
         None
     };
@@ -125,7 +131,10 @@ pub(crate) fn create_runtime<R: Runtime>(
     let xyzrender_input_data = if matches!(extension, "cub" | "cube") {
         None
     } else {
-        source_xyz_data.as_deref()
+        xyz_payload
+            .as_ref()
+            .map(|payload| payload.data.as_slice())
+            .or(source_xyz_data.as_deref())
     };
     if renderer == "xyzrender-external" {
         match create_xyzrender_artifact(
@@ -222,6 +231,9 @@ pub(crate) fn create_runtime<R: Runtime>(
         config["xyzrenderInputDataBase64"] =
             json!(base64::engine::general_purpose::STANDARD.encode(input_data));
         config["xyzrenderInputExtension"] = json!("xyz");
+    }
+    if let Some(index) = active_model {
+        config["activeModel"] = json!(index);
     }
 
     if let Some(ketcher_config) = ketcher_edit_config(

@@ -28,6 +28,12 @@ function bodySelectionAction(value: unknown): ViewerReloadOptions["xyzrenderSele
   return value === "vdw" ? value : null;
 }
 
+function bodyActiveModel(value: unknown) {
+  if (value == null || value === "") return null;
+  const index = Number(value);
+  return Number.isFinite(index) && index >= 0 ? Math.trunc(index) : null;
+}
+
 function formatViewerError(
   message: string | undefined,
   documentId: string | undefined,
@@ -81,6 +87,7 @@ export function useAppViewerRuntimeMessages({
         xyzrenderOrientationRef: bodyString(body.orientationRef) ?? xyzrenderOrientationRefRef.current,
         xyzrenderControls: pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
         xyzrenderSelectionAction: null,
+        activeModel: bodyActiveModel(body.activeModel) ?? pendingViewerReloadOptionsRef.current?.activeModel ?? null,
       };
       void reloadActive();
       return true;
@@ -93,6 +100,7 @@ export function useAppViewerRuntimeMessages({
         xyzrenderOrientationRef: bodyString(body.orientationRef) ?? xyzrenderOrientationRefRef.current,
         xyzrenderControls: bodyControls(body.controls),
         xyzrenderSelectionAction: bodySelectionAction(body.selectionAction),
+        activeModel: bodyActiveModel(body.activeModel) ?? pendingViewerReloadOptionsRef.current?.activeModel ?? null,
       };
       void reloadActive();
       return true;

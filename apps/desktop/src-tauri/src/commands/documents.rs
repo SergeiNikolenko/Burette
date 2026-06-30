@@ -2662,6 +2662,7 @@ mod tests {
                 xyzrender_orientation_ref: None,
                 xyzrender_preset: None,
                 xyzrender_controls: None,
+                active_model: None,
             }),
         )
         .expect("explicit grid Ketcher SDF should open");
