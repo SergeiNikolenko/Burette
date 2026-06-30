@@ -114,6 +114,14 @@ if (/native build error|JS message type=error|render timeout/u.test(blockText)) 
 
 const evidence = parseEvidence(lines);
 const readyEvidence = evidence.filter((record) => record.type === "ready" || record.mode || record.renderer);
+const textFallbackDetected = lineWith(lines, "detected.previewMode=text-fallback");
+if (textFallbackDetected) {
+  const textFallbackReady = hasEvidence(readyEvidence, (record) =>
+    record.mode === "text" && record.renderer === "text-fallback"
+  );
+  if (!textFallbackReady) fail("text fallback preview reached no ready evidence");
+  pass("text fallback ready");
+}
 const strategy = format.preview?.strategy ?? "direct";
 const renderer = format.preview?.renderer ?? format.viewer?.molstarFormat ?? "";
 const selectedXyzrender =
