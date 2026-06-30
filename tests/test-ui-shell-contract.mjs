@@ -1883,6 +1883,8 @@ assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-edito
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \.drawn-structures :is\(path, text, tspan\)\[style\*="fill: rgb\(51, 51, 51\)"\]/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[data-testid="canvas"\] \[data-testid="bond"\]\[stroke="#000000"\]/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[data-testid="canvas"\] \[data-testid="bond"\]\[fill="#000000"\]/);
+assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[data-testid="canvas"\] :is\(text, tspan\)\[fill="#000000"\]/);
+assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[data-testid="canvas"\] :is\(text, tspan\)\[style\*="fill: rgb\(0, 0, 0\)"\]/);
 assert.match(styles, /stroke: var\(--ketcher-dark-structure\) !important;/);
 assert.match(styles, /fill: var\(--ketcher-dark-structure\) !important;/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[class\*="EditorWrapper"\]/);
