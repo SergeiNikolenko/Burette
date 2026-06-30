@@ -1592,6 +1592,7 @@ function shouldUseConvertedMolstarData(format: FormatInfo, converted: ConvertedS
   if (!converted?.bytes) return false;
   if (isPharmacophorePreviewExtension(extension)) return true;
   if ((extension === "lammpstrj" || extension === "dump") && converted.molstarFormat === "xyz") return true;
+  if ((extension === "data" || extension === "lammps" || extension === "lmp") && converted.molstarFormat === "pdb") return true;
   if (format.externalOnly) return true;
   if (format.binary) return false;
   if (["gro", "mmcif", "cifCore"].includes(format.molstarFormat)) return true;
@@ -2208,6 +2209,8 @@ function atomsFromText(text: string, extension: string) {
     atoms = parseAmberRestartAtoms(lines);
   } else if (extension === "lammpstrj" || extension === "dump") {
     atoms = parseLammpsDumpAtoms(lines);
+  } else if (extension === "data" || extension === "lammps" || extension === "lmp") {
+    atoms = parseLammpsDataAtoms(lines);
   } else if (extension === "crd") {
     atoms = parseCharmmCoordinateAtoms(lines);
   } else if (extension === "rst") {
@@ -3162,6 +3165,94 @@ function parseCharmmCoordinateAtoms(lines: string[]) {
 
 function parseLammpsDumpAtoms(lines: string[]) {
   return parseLammpsDumpFrames(lines)[0] ?? null;
+}
+
+function parseLammpsDataAtoms(lines: string[]) {
+  const masses = parseLammpsMasses(lines);
+  let inAtoms = false;
+  const atoms: Atom[] = [];
+  for (const line of lines) {
+    const parts = fields(stripInlineComment(line));
+    const first = parts[0] ?? "";
+    if (!first) continue;
+    if (first.toLowerCase() === "atoms") {
+      inAtoms = true;
+      continue;
+    }
+    if (inAtoms && /^[A-Za-z]/u.test(first)) break;
+    if (!inAtoms || parts.length < 5) continue;
+    const coordinates = lammpsDataCoordinates(parts, masses);
+    if (!coordinates) continue;
+    const [x, y, z] = coordinates;
+    atoms.push({ symbol: lammpsDataAtomSymbol(parts, masses), x, y, z });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function parseLammpsMasses(lines: string[]) {
+  const masses = new Map<string, string>();
+  let inMasses = false;
+  for (const line of lines) {
+    const parts = fields(stripInlineComment(line));
+    const first = parts[0] ?? "";
+    if (!first) continue;
+    if (first.toLowerCase() === "masses") {
+      inMasses = true;
+      continue;
+    }
+    if (inMasses && /^[A-Za-z]/u.test(first)) break;
+    if (!inMasses || parts.length < 2) continue;
+    const symbol = elementSymbolFromAtomName(parts[2] ?? "") ?? lammpsSymbolFromMass(parts[1] ?? "");
+    if (symbol) masses.set(parts[0], symbol);
+  }
+  return masses;
+}
+
+function lammpsDataAtomSymbol(parts: string[], masses: Map<string, string>) {
+  return masses.get(parts[1] ?? "")
+    ?? masses.get(parts[2] ?? "")
+    ?? elementSymbolFromAtomName(parts[1] ?? "")
+    ?? elementSymbolFromAtomName(parts[2] ?? "")
+    ?? "C";
+}
+
+function lammpsDataCoordinates(parts: string[], masses: Map<string, string>): [number, number, number] | null {
+  const starts: number[] = [];
+  if (masses.has(parts[2] ?? "")) starts.push(4);
+  if (masses.has(parts[1] ?? "")) starts.push(3, 2);
+  starts.push(3, 4, 2);
+  for (const start of starts) {
+    const x = Number(parts[start]);
+    const y = Number(parts[start + 1]);
+    const z = Number(parts[start + 2]);
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) return [x, y, z];
+  }
+  return null;
+}
+
+function lammpsSymbolFromMass(value: string) {
+  const mass = Number(value);
+  if (!Number.isFinite(mass)) return null;
+  const match = [
+    [1.008, "H"],
+    [12.011, "C"],
+    [14.007, "N"],
+    [15.999, "O"],
+    [18.998, "F"],
+    [22.990, "Na"],
+    [24.305, "Mg"],
+    [30.974, "P"],
+    [32.06, "S"],
+    [35.45, "Cl"],
+    [39.098, "K"],
+    [40.078, "Ca"],
+    [55.845, "Fe"],
+    [63.546, "Cu"],
+    [65.38, "Zn"],
+    [79.904, "Br"],
+    [126.904, "I"],
+  ].find(([reference]) => Math.abs(mass - Number(reference)) <= 0.35);
+  return typeof match?.[1] === "string" ? match[1] : null;
 }
 
 function parseLammpsDumpFrames(lines: string[]) {
