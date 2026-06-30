@@ -63,7 +63,6 @@ const defaultFsAllow = defaultDevFileSources.map((path) => {
     return dirname(path);
   }
 });
-const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...extraFsAllow].map((path) => resolve(path));
 const execFileAsync = promisify(execFile);
 const BROWSER_DEV_APP_ICONS: Record<string, string> = {
   finder: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns",
@@ -81,6 +80,8 @@ const RDKIT_WASM_PATH = join(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKi
 const RDKIT_CONFORMER_SCRIPT_PATH = join(repoRoot, "scripts", "rdkit_conformer.py");
 const BROWSER_DEV_XTB_JOBS_ROOT = join(tmpdir(), "burrete-xtb-jobs");
 const BROWSER_DEV_CONFORMER_JOBS_ROOT = join(tmpdir(), "burrete-conformer-jobs");
+const browserDevGeneratedFileRoots = [BROWSER_DEV_XTB_JOBS_ROOT, BROWSER_DEV_CONFORMER_JOBS_ROOT];
+const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...browserDevGeneratedFileRoots, ...extraFsAllow].map((path) => resolve(path));
 const BROWSER_DEV_CCD_CACHE_ROOT = join(homedir(), ".cache", "burrete", "ccd-ligands");
 const BROWSER_DEV_CHEMISTRY_PREP_PROJECT = join(repoRoot, "tools", "chemistry-prep");
 const BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR = process.env.BURRETE_DESCRIPTOR_RUNTIME_DIR

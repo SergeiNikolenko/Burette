@@ -754,6 +754,8 @@ assert.match(browserDevConformerJobs, /server\.middlewares\.use\("\/__burette\/p
 assert.match(viteConfig, /registerBrowserDevXtbRoutes\(server,/);
 assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/xtb-status"/);
 assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/run-xtb-job"/);
+assert.match(viteConfig, /const browserDevGeneratedFileRoots = \[BROWSER_DEV_XTB_JOBS_ROOT, BROWSER_DEV_CONFORMER_JOBS_ROOT\];/);
+assert.match(viteConfig, /const devFsAllowRoots = \[repoRoot, \.\.\.defaultFsAllow, \.\.\.browserDevGeneratedFileRoots, \.\.\.extraFsAllow\]\.map\(\(path\) => resolve\(path\)\);/);
 assert.match(viteConfig, /registerBrowserDevRuntimeDoctorRoute\(server,/);
 assert.match(viteConfig, /xyzrenderStatus: browserDevXyzrenderStatus/);
 assert.match(viteConfig, /datamolConformerStatus: \(\) => browserDevConformerPythonStatus\("datamol"\)/);
