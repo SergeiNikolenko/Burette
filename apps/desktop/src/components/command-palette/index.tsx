@@ -1,12 +1,20 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  CommandDialog,
+  Command as CommandRoot,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
 } from "cmdk";
+import {
+  Content as DialogContent,
+  Description as DialogDescription,
+  Overlay as DialogOverlay,
+  Portal as DialogPortal,
+  Root as DialogRoot,
+  Title as DialogTitle,
+} from "@radix-ui/react-dialog";
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
@@ -323,39 +331,50 @@ export function CommandPalette({
   if (!portalContainer) return null;
 
   return (
-    <CommandDialog
+    <DialogRoot
       open={isOpen}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      label="Command Palette"
-      shouldFilter={false}
-      value={selectedValue}
-      onValueChange={setSelectedValue}
-      container={portalContainer}
     >
-      <CommandInput
-        value={query}
-        onValueChange={onQueryChange}
-        placeholder="Search commands and structures..."
-        aria-label="Search commands and open structures"
-      />
-      <CommandList ref={listRef}>
-        {visibleItems.length === 0 ? (
-          <CommandEmpty>No results found.</CommandEmpty>
-        ) : (
-          visibleGroups.map((group) => (
-            <CommandGroup key={group.heading} heading={group.heading}>
-              {group.items.map((item) => (
-                <CommandItem key={item.id} value={item.id} onSelect={() => runItem(item)}>
-                  <span>{item.label}</span>
-                  <small>{item.description}</small>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          ))
-        )}
-      </CommandList>
-    </CommandDialog>
+      <DialogPortal container={portalContainer}>
+        <DialogOverlay cmdk-overlay="" />
+        <DialogContent cmdk-dialog="">
+          <DialogTitle className="command-palette-sr-only">Command Palette</DialogTitle>
+          <DialogDescription className="command-palette-sr-only">
+            Search commands and structures.
+          </DialogDescription>
+          <CommandRoot
+            label="Command Palette"
+            shouldFilter={false}
+            value={selectedValue}
+            onValueChange={setSelectedValue}
+          >
+            <CommandInput
+              value={query}
+              onValueChange={onQueryChange}
+              placeholder="Search commands and structures..."
+              aria-label="Search commands and open structures"
+            />
+            <CommandList ref={listRef}>
+              {visibleItems.length === 0 ? (
+                <CommandEmpty>No results found.</CommandEmpty>
+              ) : (
+                visibleGroups.map((group) => (
+                  <CommandGroup key={group.heading} heading={group.heading}>
+                    {group.items.map((item) => (
+                      <CommandItem key={item.id} value={item.id} onSelect={() => runItem(item)}>
+                        <span>{item.label}</span>
+                        <small>{item.description}</small>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                ))
+              )}
+            </CommandList>
+          </CommandRoot>
+        </DialogContent>
+      </DialogPortal>
+    </DialogRoot>
   );
 }
