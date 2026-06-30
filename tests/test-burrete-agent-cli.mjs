@@ -182,6 +182,10 @@ try {
       assert.equal(wasmResponse.status, 200);
       assert.equal(wasmResponse.headers.get('content-type'), 'application/wasm');
       assert.equal(Buffer.from(await wasmResponse.arrayBuffer()).subarray(0, 4).toString('hex'), '0061736d');
+      const rdkitWasmRouteResponse = await fetch(new URL('/__burette/rdkit-wasm', prebuiltPayload.result.url));
+      assert.equal(rdkitWasmRouteResponse.status, 200);
+      assert.equal(rdkitWasmRouteResponse.headers.get('content-type'), 'application/wasm');
+      assert.equal(Buffer.from(await rdkitWasmRouteResponse.arrayBuffer()).subarray(0, 4).toString('hex'), '0061736d');
       const miniFsPath = resolve('samples/mini.pdb').split('/').map(encodeURIComponent).join('/');
       const miniFs = await get(`${prebuiltPayload.result.url.split('?')[0]}@fs/${miniFsPath}`);
       assert.equal(miniFs.statusCode, 200);
