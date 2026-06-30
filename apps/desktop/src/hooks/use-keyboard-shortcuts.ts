@@ -1,5 +1,9 @@
 import { useEffect } from "react";
 import type { ShellActions, ShellViewState } from "../components/types";
+import {
+  dispatchWorkspaceHistoryCommand,
+  isKetcherWorkspaceTarget,
+} from "../lib/workspace-history-dispatch";
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -14,6 +18,16 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
     const onKeyDown = (event: KeyboardEvent) => {
       const commandKey = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
+      if (commandKey && key === "z" && !event.altKey) {
+        if (
+          isEditableTarget(event.target) ||
+          isKetcherWorkspaceTarget(event.target) ||
+          state.activeTab?.location.kind === "ketcher"
+        ) return;
+        event.preventDefault();
+        void dispatchWorkspaceHistoryCommand(event.shiftKey ? "redo" : "undo", actions);
+        return;
+      }
       if (!commandKey && !event.altKey && key === "/" && !isEditableTarget(event.target)) {
         event.preventDefault();
         actions.openCommandPalette();

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { AppLayout } from "./components/app-layout";
 import type { StructureOverlayMode, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
@@ -97,6 +97,10 @@ import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { structureExtensionFromPath } from "./lib/file-routing";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "./lib/viewer-bridge";
+import {
+  configureWorkspaceHistoryExtras,
+  useWorkspaceHistoryStore,
+} from "./stores/workspace-history-store";
 
 const CommandPalette = lazy(() => import("./components/command-palette").then((module) => ({
   default: module.CommandPalette,
@@ -166,6 +170,8 @@ export default function App() {
     toggleSidebar,
     closeSidebar,
   } = useSidebar();
+  const beginWorkspaceHistoryGroup = useWorkspaceHistoryStore((state) => state.beginHistoryGroup);
+  const commitWorkspaceHistoryGroup = useWorkspaceHistoryStore((state) => state.commitHistoryGroup);
   const {
     rightDockOpen,
     rightDockWidth,
@@ -198,8 +204,10 @@ export default function App() {
     startRightDockResize,
     startSidebarResize,
   } = useAppResize({
+    beginWorkspaceHistoryGroup,
     bottomDockHeight,
     closeSidebar,
+    commitWorkspaceHistoryGroup,
     rightDockWidth,
     setDockOpen,
     setDockSize,
@@ -278,6 +286,33 @@ export default function App() {
     setUpdatePreferences,
     update,
   } = useAppUpdates({ pushErrorStatus, pushStatus });
+  useEffect(() => {
+    configureWorkspaceHistoryExtras({
+      capture: () => ({
+        conformerSettings,
+        updatePreferences: update.preferences,
+        xtbSettings,
+      }),
+      restore: (extras) => {
+        const values = extras as {
+          conformerSettings?: typeof conformerSettings;
+          updatePreferences?: typeof update.preferences;
+          xtbSettings?: typeof xtbSettings;
+        };
+        if (values.conformerSettings) setConformerSettings(values.conformerSettings);
+        if (values.updatePreferences) setUpdatePreferences(values.updatePreferences);
+        if (values.xtbSettings) setXtbSettings(values.xtbSettings);
+      },
+    });
+    return () => configureWorkspaceHistoryExtras({});
+  }, [
+    conformerSettings,
+    setConformerSettings,
+    setUpdatePreferences,
+    setXtbSettings,
+    update.preferences,
+    xtbSettings,
+  ]);
   const {
     clearCache,
     openLogs,
@@ -698,21 +733,6 @@ export default function App() {
     writeGridPerfMetric,
     xyzrenderOrientationRefRef,
   });
-  useMenuEvents({
-    chooseFiles,
-    openMostRecentStructure,
-    revealActiveDocument,
-    copyActiveDocumentPath,
-    showActiveDocumentMetadata,
-    exportActivePreviewAsPng,
-    exportActivePreviewAsSvg,
-    clearCache,
-    resetQuickLook,
-    openLogs,
-    openSettings,
-    checkForUpdates,
-  });
-
   useAppPreferenceEffects({
     activeTab,
     activeTabId,
@@ -852,6 +872,22 @@ export default function App() {
     toggleProjectExpanded,
     toggleProjectsOpen,
     toggleSidebar,
+  });
+
+  useMenuEvents({
+    actions,
+    chooseFiles: actions.chooseFiles,
+    openMostRecentStructure: actions.openMostRecentStructure,
+    revealActiveDocument: actions.revealActiveDocument,
+    copyActiveDocumentPath: actions.copyActiveDocumentPath,
+    showActiveDocumentMetadata: actions.showActiveDocumentMetadata,
+    exportActivePreviewAsPng: actions.exportActivePreviewAsPng,
+    exportActivePreviewAsSvg: actions.exportActivePreviewAsSvg,
+    clearCache: actions.clearCache,
+    resetQuickLook: actions.resetQuickLook,
+    openLogs: actions.openLogs,
+    openSettings: actions.openSettings,
+    checkForUpdates: actions.checkForUpdates,
   });
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
