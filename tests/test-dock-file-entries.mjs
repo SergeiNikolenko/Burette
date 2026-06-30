@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 
-const { defaultDockTabs, dockFileEntries, ensureDefaultDockTabs, persistentDockTabs } = await import("../apps/desktop/src/lib/dock.ts");
+const { defaultDockTabs, dockFileEntries, dockTabCatalog, ensureDefaultDockTabs, persistentDockTabs } = await import("../apps/desktop/src/lib/dock.ts");
 
 function document(id, path, title = path.split("/").at(-1) ?? id) {
   return {
@@ -100,6 +100,12 @@ assert.deepEqual(
   persistentDockTabs("bottom", [{ id: "dock-folding", kind: "folding" }, { id: "dock-files", kind: "files" }])
     .map((tab) => tab.kind),
   ["files"],
+);
+assert.ok(dockTabCatalog("bottom").includes("jobs"));
+assert.deepEqual(
+  persistentDockTabs("bottom", [{ id: "dock-jobs", kind: "jobs" }, { id: "dock-files", kind: "files" }])
+    .map((tab) => tab.kind),
+  ["jobs", "files"],
 );
 assert.deepEqual(
   persistentDockTabs("bottom", [{ id: "dock-folding", kind: "folding" }])

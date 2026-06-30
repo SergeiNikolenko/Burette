@@ -110,6 +110,7 @@ const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
 
 const BOTTOM_DOCK_TAB_CATALOG: DockTabKind[] = [
   "files",
+  "jobs",
   "folding",
   "spectrum",
   "logs",
