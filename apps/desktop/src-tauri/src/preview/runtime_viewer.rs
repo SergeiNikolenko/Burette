@@ -660,7 +660,16 @@ fn should_use_converted_molstar_data(
         && !format.is_binary
         && matches!(
             format.molstar_format.as_str(),
-            "gro" | "mmcif" | "cifCore" | "lammpstrj" | "dump" | "pos" | "cfg"
+            "gro"
+                | "mmcif"
+                | "cifCore"
+                | "lammpstrj"
+                | "dump"
+                | "pos"
+                | "cfg"
+                | "data"
+                | "lammps"
+                | "lmp"
         )
 }
 
