@@ -84,6 +84,9 @@ function isAmberNetcdfFile(file) {
 
 function preparePreviewPayload(file, bytes) {
   const extension = extname(file).toLowerCase().replace(/^\./, '');
+  if (isPreferredTextArtifact(file)) {
+    return { bytes, format: 'text', binary: looksBinary(bytes), textPreview: true };
+  }
   if (coordinateArtifactExtensions.has(extension)) {
     const converted = genericPdbDataFromText(bytes.toString('utf8'), extension, basename(file));
     if (converted) return { bytes: Buffer.from(converted, 'utf8'), format: 'pdb', binary: false };
@@ -95,6 +98,10 @@ function preparePreviewPayload(file, bytes) {
   const converted = maestroPdbDataFromText(bytes.toString('utf8'));
   if (!converted) return { bytes, format: inferFormat(file), binary: isBinaryFormat(file) };
   return { bytes: Buffer.from(converted, 'utf8'), format: 'pdb', binary: false };
+}
+
+function isPreferredTextArtifact(file) {
+  return basename(file).toLowerCase() === 'log.lammps';
 }
 
 async function amberNcPreviewPayload(file) {
