@@ -24,6 +24,12 @@ function bodyString(value: unknown) {
   return typeof value === "string" ? value : undefined;
 }
 
+function bodyActiveModel(value: unknown) {
+  if (value == null || value === "") return null;
+  const index = Number(value);
+  return Number.isFinite(index) && index >= 0 ? Math.trunc(index) : null;
+}
+
 export function useAppRendererMessage({
   activeDocument,
   documents,
@@ -44,11 +50,13 @@ export function useAppRendererMessage({
         : null) ?? activeDocument;
       const orientationRef = bodyString(body.orientationRef);
       const preset = bodyString(body.preset);
+      const activeModel = bodyActiveModel(body.activeModel);
       const reloadOptions = renderer === "xyzrender-external"
         ? {
             xyzrenderOrientationRef: orientationRef ?? xyzrenderOrientationRefRef.current,
             xyzrenderPreset: preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
             xyzrenderControls: body.controls ?? pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
+            activeModel,
           }
         : renderer === "molstar"
           ? {}
@@ -61,6 +69,7 @@ export function useAppRendererMessage({
             xyzrenderOrientationRef: orientationRef ?? xyzrenderOrientationRefRef.current,
             xyzrenderPreset: preset ?? pendingViewerReloadOptionsRef.current?.xyzrenderPreset ?? null,
             xyzrenderControls: body.controls ?? pendingViewerReloadOptionsRef.current?.xyzrenderControls ?? null,
+            activeModel,
           }
         : null;
       pendingViewerReloadDocumentIdRef.current = renderer === "xyzrender-external"
