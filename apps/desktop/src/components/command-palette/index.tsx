@@ -7,7 +7,6 @@ import {
   CommandItem,
   CommandList,
 } from "cmdk";
-import { Description as DialogDescription, Title as DialogTitle } from "@radix-ui/react-dialog";
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
@@ -335,10 +334,6 @@ export function CommandPalette({
       onValueChange={setSelectedValue}
       container={portalContainer}
     >
-      <DialogTitle className="command-palette-sr-only">Command Palette</DialogTitle>
-      <DialogDescription className="command-palette-sr-only">
-        Search commands and structures.
-      </DialogDescription>
       <CommandInput
         value={query}
         onValueChange={onQueryChange}
