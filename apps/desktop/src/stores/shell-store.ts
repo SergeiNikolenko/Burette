@@ -82,7 +82,6 @@ type PersistedShellState = Pick<
   | "projectRoots"
   | "pinnedProjectRoots"
   | "projectNameOverrides"
-  | "expandedProjectIds"
   | "hiddenProjectRoots"
   | "pinnedStructurePaths"
 >;
@@ -292,13 +291,9 @@ export const useShellStore = create<ShellState>()(
           const normalized = normalizeRoot(root);
           if (!normalized) return state;
           if (state.projectRoots.includes(normalized)) return state;
-          const projectId = `project:${normalized}`;
           return {
             projectRoots: [...state.projectRoots, normalized],
             hiddenProjectRoots: state.hiddenProjectRoots.filter((candidate) => candidate !== normalized),
-            expandedProjectIds: state.expandedProjectIds.includes(projectId)
-              ? state.expandedProjectIds
-              : [...state.expandedProjectIds, projectId],
           };
         }),
       togglePinnedProjectRoot: (root) =>
@@ -320,13 +315,9 @@ export const useShellStore = create<ShellState>()(
           if (!projectExists && !nextName) return state;
           const { [normalized]: _removed, ...rest } = state.projectNameOverrides;
           if (projectExists) return { projectNameOverrides: nextName ? { ...rest, [normalized]: nextName } : rest };
-          const projectId = `project:${normalized}`;
           return {
             projectRoots: [...state.projectRoots, normalized],
             hiddenProjectRoots: state.hiddenProjectRoots.filter((candidate) => candidate !== normalized),
-            expandedProjectIds: state.expandedProjectIds.includes(projectId)
-              ? state.expandedProjectIds
-              : [...state.expandedProjectIds, projectId],
             projectNameOverrides: { ...rest, [normalized]: nextName },
           };
         }),
@@ -405,7 +396,6 @@ export const useShellStore = create<ShellState>()(
         projectRoots: persistentRoots(state.projectRoots),
         pinnedProjectRoots: persistentRoots(state.pinnedProjectRoots),
         projectNameOverrides: persistentProjectNameOverrides(state.projectNameOverrides, persistentRoots(state.projectRoots)),
-        expandedProjectIds: persistentExpandedProjectIds(state.expandedProjectIds, persistentRoots(state.projectRoots)),
         hiddenProjectRoots: persistentRoots(state.hiddenProjectRoots),
         pinnedStructurePaths: persistentPinnedPaths(state.pinnedStructurePaths),
       }),
@@ -446,7 +436,6 @@ export const useShellStore = create<ShellState>()(
           projectRoots,
           pinnedProjectRoots,
           projectNameOverrides: persistentProjectNameOverrides(stored?.projectNameOverrides ?? current.projectNameOverrides, projectRoots),
-          expandedProjectIds: persistentExpandedProjectIds(stored?.expandedProjectIds ?? current.expandedProjectIds, projectRoots),
           hiddenProjectRoots,
           pinnedStructurePaths: persistentPinnedPaths(stored?.pinnedStructurePaths ?? current.pinnedStructurePaths),
         };

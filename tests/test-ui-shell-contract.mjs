@@ -3156,7 +3156,7 @@ assert.match(sidebarSurface, /isRemoteStructureUrl\(sidebarQuery\)/);
 assert.match(sidebarSurface, /actions\.openStructureUrlInMolstar\(sidebarQuery\)/);
 assert.match(sidebarSurface, /ProjectGroup/);
 assert.match(sidebarSurface, /ProjectItem/);
-assert.match(sidebarSurface, /const \[collapsedFolderPaths, setCollapsedFolderPaths\]/);
+assert.match(sidebarSurface, /const \[expandedFolderPaths, setExpandedFolderPaths\]/);
 assert.match(sidebarSurface, /const toggleFolderPath = \(path: string\) => \{/);
 assert.match(sidebarSurface, /className="project-folder-row"/);
 assert.match(sidebarSurface, /onClick=\{handleToggle\}/);
@@ -3181,6 +3181,7 @@ assert.match(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-v
 assert.doesNotMatch(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{[^}]*box-shadow:/);
 assert.match(sidebarSurface, /project-group-row/);
 assert.match(sidebarSurface, /state\.expandedProjectIds\.includes\(project\.id\)/);
+assert.match(sidebarSurface, /expandedFolderPaths\.has\(node\.path\)/);
 assert.match(sidebarSurface, /actions\.togglePinnedStructure\(item\.path\)/);
 assert.match(sidebarSurface, /actions\.togglePinnedProjectRoot\(project\.rootPath\)/);
 assert.match(sidebarSurface, /actions\.renameProjectRoot\(project\.rootPath, renameDraft\)/);

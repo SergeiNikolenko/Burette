@@ -34,6 +34,8 @@ for (const expected of [
   "project-folder-row",
   "project-folder-children",
   "aria-expanded=\"true\"",
+  "aria-expanded=\"false\"",
+  "data-expanded=\"false\"",
   "md",
   "sdf",
   "xyz",
