@@ -63,7 +63,6 @@ const defaultFsAllow = defaultDevFileSources.map((path) => {
     return dirname(path);
   }
 });
-const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...extraFsAllow].map((path) => resolve(path));
 const execFileAsync = promisify(execFile);
 const BROWSER_DEV_APP_ICONS: Record<string, string> = {
   finder: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns",
@@ -79,8 +78,13 @@ const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB = 24;
 const RDKIT_WASM_PATH = join(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal.wasm");
 const RDKIT_CONFORMER_SCRIPT_PATH = join(repoRoot, "scripts", "rdkit_conformer.py");
-const BROWSER_DEV_XTB_JOBS_ROOT = join(tmpdir(), "burrete-xtb-jobs");
-const BROWSER_DEV_CONFORMER_JOBS_ROOT = join(tmpdir(), "burrete-conformer-jobs");
+const BROWSER_DEV_GENERATED_FILES_ROOT = process.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT
+  ? resolve(process.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT)
+  : join(homedir(), "Desktop", "Burrete Generated Files");
+const BROWSER_DEV_XTB_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "xTB Jobs");
+const BROWSER_DEV_CONFORMER_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "Conformer Jobs");
+const browserDevGeneratedFileRoots = [BROWSER_DEV_GENERATED_FILES_ROOT];
+const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...browserDevGeneratedFileRoots, ...extraFsAllow].map((path) => resolve(path));
 const BROWSER_DEV_CCD_CACHE_ROOT = join(homedir(), ".cache", "burrete", "ccd-ligands");
 const BROWSER_DEV_CHEMISTRY_PREP_PROJECT = join(repoRoot, "tools", "chemistry-prep");
 const BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR = process.env.BURRETE_DESCRIPTOR_RUNTIME_DIR
@@ -3781,6 +3785,7 @@ export default defineConfig({
   define: {
     global: "globalThis",
     "import.meta.env.BURRETE_REPO_ROOT": JSON.stringify(repoRoot),
+    "import.meta.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT": JSON.stringify(BROWSER_DEV_GENERATED_FILES_ROOT),
     process: JSON.stringify({ env: {} }),
     "process.env": "{}",
   },

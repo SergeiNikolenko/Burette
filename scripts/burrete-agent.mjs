@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, open as openFile, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { delimiter, dirname, resolve } from 'node:path';
 
@@ -15,6 +15,9 @@ const agentShellServerScript = resolve(__dirname, 'agent-shell-server.mjs');
 const agentShellDistDir = process.env.BURRETE_AGENT_SHELL_DIST_DIR
   ? resolve(process.env.BURRETE_AGENT_SHELL_DIST_DIR)
   : defaultAgentShellDistDir();
+const browserDevGeneratedFilesRoot = process.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT
+  ? resolve(process.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT)
+  : resolve(homedir(), 'Desktop', 'Burrete Generated Files');
 const apiVersion = 'burette-agent-cli/v1';
 const supportedModes = new Set(['auto', 'browser-preview', 'browser-agent-shell', 'browser-dev-shell', 'desktop-app']);
 
@@ -277,6 +280,7 @@ async function openBrowserAgentShell(file, options) {
     ...process.env,
     BURRETE_DEV_DEFAULT_FILES: initialFile,
     BURRETE_DEV_FS_ALLOW: browserDevFsAllowRoots(initialFile).join(delimiter),
+    BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT: browserDevGeneratedFilesRoot,
     BURRETE_AGENT_SHELL_SESSION_DIR: sessionDir,
     VITE_BURRETE_AGENT_SHELL: '1',
     VITE_BURRETE_BUILD_IDENTIFIER: 'browser-agent-shell',
@@ -416,7 +420,8 @@ async function openPrebuiltBrowserAgentShell({ initialFile, sessionDir, host, po
 
 function browserDevFsAllowRoots(initialFile) {
   const explicitRoots = (process.env.BURRETE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
-  return explicitRoots.length > 0 ? explicitRoots : [dirname(initialFile)];
+  const roots = explicitRoots.length > 0 ? explicitRoots : [dirname(initialFile)];
+  return Array.from(new Set([...roots, browserDevGeneratedFilesRoot]));
 }
 
 async function allocatePort(host) {
