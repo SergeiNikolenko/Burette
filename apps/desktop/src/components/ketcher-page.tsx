@@ -534,18 +534,12 @@ export function KetcherPage({
     });
   }, [collectionTargets]);
 
-  const showExport = useCallback(async (format: KetcherTextFormat) => {
+  const showExport = useCallback((format: KetcherTextFormat) => {
     if (!ketcher) return;
     const label = KETCHER_FORMAT_LABELS[format];
     setStatus(`Exporting ${label}`);
-    try {
-      const text = await withKetcherTimeout(exportKetcherText(ketcher, format), `${label} export`);
-      setOutput(text || "");
-      setPanelMode({ purpose: "export", format });
-      setStatus(`Exported ${label}`);
-    } catch (error) {
-      setStatus(ketcherExportErrorMessage(error));
-    }
+    setOutput("");
+    setPanelMode({ purpose: "export", format });
   }, [ketcher]);
 
   useEffect(() => {
@@ -591,7 +585,7 @@ export function KetcherPage({
 
   const selectExportFormat = useCallback((format: KetcherTextFormat) => {
     actions.setDockTool("bottom", "ketcher");
-    void showExport(format);
+    showExport(format);
   }, [actions, showExport]);
 
   const selectImportFormat = useCallback((format: KetcherTextFormat) => {
