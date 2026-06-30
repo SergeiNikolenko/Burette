@@ -95,6 +95,7 @@ export const RIGHT_DOCK_DEFAULT_TABS: DockTabKind[] = [
 
 export const BOTTOM_DOCK_DEFAULT_TABS: DockTabKind[] = [
   "files",
+  "jobs",
 ];
 
 const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
@@ -106,6 +107,7 @@ const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
 
 const BOTTOM_DOCK_TAB_CATALOG: DockTabKind[] = [
   "files",
+  "jobs",
   "folding",
   "spectrum",
   "logs",
