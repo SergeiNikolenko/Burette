@@ -44,6 +44,44 @@ function isXyzrenderRefUnsupportedForPeriodic(error: unknown): boolean {
     .includes(XYZRENDER_REF_UNSUPPORTED_FOR_PERIODIC);
 }
 
+function activeModelIndex(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const index = Number(value);
+  return Number.isFinite(index) && index >= 0 ? Math.trunc(index) : null;
+}
+
+function splitXyzFrameTexts(data: Uint8Array): string[] {
+  const text = new TextDecoder().decode(data).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = text.split("\n");
+  const frames: string[] = [];
+  let index = 0;
+  while (index < lines.length && frames.length < 100000) {
+    while (index < lines.length && !lines[index].trim()) index += 1;
+    const atomCount = Number.parseInt(lines[index]?.trim().split(/\s+/u)[0] ?? "", 10);
+    if (!Number.isFinite(atomCount) || atomCount <= 0) break;
+    if (index + atomCount + 1 >= lines.length) break;
+    const frameLines = lines.slice(index, index + atomCount + 2);
+    const atomLines = frameLines.slice(2);
+    if (atomLines.length !== atomCount || atomLines.some((line) => !line.trim())) break;
+    frames.push(`${frameLines.join("\n")}\n`);
+    index += atomCount + 2;
+  }
+  return frames.length > 1 ? frames : [];
+}
+
+export function selectedXyzFrameInputData(
+  data: Uint8Array | null,
+  inputExtension: string,
+  activeModel: unknown,
+): Uint8Array | null {
+  const index = activeModelIndex(activeModel);
+  if (!data?.length || inputExtension !== "xyz" || index === null) return null;
+  const frames = splitXyzFrameTexts(data);
+  if (frames.length <= 1) return null;
+  const frame = frames[Math.max(0, Math.min(frames.length - 1, index))];
+  return new TextEncoder().encode(frame);
+}
+
 export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options: BrowserDevXyzrenderRouteOptions) {
   server.middlewares.use("/__burette/xyzrender", async (req, res) => {
     if ((req.method || "GET").toUpperCase() !== "POST") {
@@ -64,6 +102,7 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
         ? Buffer.from(body.inputDataBase64, "base64")
         : null;
       const inputExtension = options.normalizeInputExtension(typeof body.inputExtension === "string" ? body.inputExtension : null);
+      const activeModel = activeModelIndex(body.activeModel);
       const executable = options.resolveExecutable();
       if (!executable) {
         sendJson(res, 404, { error: "External xyzrender executable was not found." });
@@ -75,9 +114,14 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
       const orientationRefPath = join(tempDirectory, "orientation-ref.xyz");
       const startedAt = Date.now();
       try {
-        const effectiveInputPath = inputData?.length ? convertedInputPath : inputPath;
-        if (inputData?.length) {
-          await writeFile(convertedInputPath, inputData);
+        const pathInputData = !inputData?.length && activeModel !== null && inputExtension === "xyz"
+          ? await readFile(inputPath)
+          : null;
+        const selectedFrameInputData = selectedXyzFrameInputData(inputData ?? pathInputData, inputExtension, activeModel);
+        const effectiveInputData = selectedFrameInputData ?? inputData;
+        const effectiveInputPath = effectiveInputData?.length ? convertedInputPath : inputPath;
+        if (effectiveInputData?.length) {
+          await writeFile(convertedInputPath, effectiveInputData);
         }
         if (orientationRef) {
           await writeFile(orientationRefPath, orientationRef, "utf8");
@@ -118,6 +162,7 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
           configArgument: options.resolveConfigArgument(preset, controls),
           elapsedMs: Date.now() - startedAt,
           log: `${fallbackLog}${stdout}${stderr}`,
+          activeModel: activeModel ?? undefined,
           xyzrenderControls: controls,
           xyzrenderPresetOptions: options.presetOptions,
         });

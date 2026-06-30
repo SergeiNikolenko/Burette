@@ -1710,13 +1710,33 @@
     const value = normalizeRenderer(renderer);
     if (requestBrowserDevRendererSwitch(value)) return;
     const orientationRef = value === 'xyzrender-external' ? captureCurrentXyzrenderOrientationRef() : null;
+    const activeModel = value === 'xyzrender-external' ? activeTrajectoryFrameIndexForRendererSwitch() : null;
     const payload = { type: 'setRenderer', value };
     if (orientationRef) {
       payload.orientationRef = orientationRef.text;
       payload.orientationAtomCount = orientationRef.atomCount;
     }
+    if (activeModel !== null) {
+      payload.activeModel = activeModel;
+    }
     const sent = postHostMessage(payload);
     if (!sent) setStatus('Renderer switching is available only in the app or Quick Look viewer.', 'error');
+  }
+
+  function activeTrajectoryFrameIndexForRendererSwitch(config = activeConfig || window.BurreteConfig || {}, prepared = activeMolstarPrepared) {
+    const poseCount = Number(
+      prepared?.poseCount ||
+      prepared?.xyzFrameCount ||
+      prepared?.sdfPoseRecordCount ||
+      prepared?.pdbModelCount ||
+      config?.trajectoryFrameCount ||
+      0
+    );
+    if (!Number.isFinite(poseCount) || poseCount <= 1) return null;
+    const nativePosition = prepared?.nativeTrajectoryControls === true ? readNativeTrajectoryPosition(poseCount) : null;
+    const activeIndex = nativePosition?.index ?? readTrajectoryControlIndex(config, prepared, poseCount);
+    if (!Number.isFinite(activeIndex)) return null;
+    return Math.max(0, Math.min(poseCount - 1, Math.trunc(activeIndex)));
   }
 
   function requestBrowserDevRendererSwitch(renderer) {
@@ -2751,8 +2771,11 @@
     const controls = options.controls || (toolbar ? readXyzrenderControlsForm(toolbar) : normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
     const preset = normalizeXyzrenderPreset(options.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
     const orientationRef = captureCurrentXyzrenderOrientationRef(options);
+    const activeModel = options.activeModel ?? activeTrajectoryFrameIndexForRendererSwitch(config, activeMolstarPrepared);
     const inputDataBase64 = typeof config.xyzrenderInputDataBase64 === 'string' ? config.xyzrenderInputDataBase64.trim() : '';
-    const inputExtension = typeof config.xyzrenderInputExtension === 'string' ? config.xyzrenderInputExtension.trim() : '';
+    const inputExtension = typeof config.xyzrenderInputExtension === 'string' && config.xyzrenderInputExtension.trim()
+      ? config.xyzrenderInputExtension.trim()
+      : String(config.sourceExtension || config.molstarFormat || config.format || '').trim();
     const serial = ++xyzrenderInlineRequestSerial;
     setStatus(`[web] Updating xyzrender artifact…\n${config.label || 'structure'}`);
     fetch(endpoint, {
@@ -2763,8 +2786,9 @@
         preset,
         orientationRef: orientationRef?.text || undefined,
         controls,
+        activeModel: activeModel ?? undefined,
         inputDataBase64: inputDataBase64 || undefined,
-        inputExtension: inputDataBase64 && inputExtension ? inputExtension : undefined
+        inputExtension: inputExtension || undefined
       })
     })
       .then(response => response.json().catch(() => ({})).then(payload => ({ response, payload })))
@@ -2813,12 +2837,14 @@
     }
     const preset = normalizeXyzrenderPreset(payload.preset || requestedPreset);
     const controls = normalizeXyzrenderControls(payload.xyzrenderControls || requestedControls || DEFAULT_XYZRENDER_CONTROLS, activeConfig || {});
+    const activeModel = Number(payload.activeModel);
     const elapsed = Number(payload.elapsedMs) || 0;
     const badge = document.querySelector('.buret-xyz-badge span');
     if (badge) badge.textContent = `SVG · ${preset}${elapsed ? ` · ${elapsed} ms` : ''}`;
     activeConfig = {
       ...(activeConfig || window.BurreteConfig || {}),
       renderer: 'xyzrender-external',
+      ...(Number.isFinite(activeModel) && activeModel >= 0 ? { activeModel: Math.trunc(activeModel) } : {}),
       xyzrenderControls: controls,
       xyzrenderPreset: preset,
       xyzrenderPresetOptions: Array.isArray(payload.xyzrenderPresetOptions)
@@ -3047,6 +3073,7 @@
       'default'
     );
     const options = { preset, controls, useDefaultOrientation: true };
+    const activeModel = activeTrajectoryFrameIndexForRendererSwitch(config, activeMolstarPrepared);
     if (requestSelectedXyzrenderSheetItemsUpdate(options)) return;
     if (requestBrowserDevXyzrenderUpdate(options)) return;
     const sent = postHostMessage({
@@ -3054,6 +3081,7 @@
       value: 'xyzrender-external',
       preset,
       controls,
+      ...(activeModel !== null ? { activeModel } : {}),
       orientationRef: ''
     });
     if (!sent) {
@@ -3083,9 +3111,11 @@
 
   function xyzrenderOrientationPayload(options = {}) {
     const orientationRef = captureCurrentXyzrenderOrientationRef(options);
-    return orientationRef
-      ? { orientationRef: orientationRef.text, orientationAtomCount: orientationRef.atomCount }
-      : {};
+    const activeModel = activeTrajectoryFrameIndexForRendererSwitch();
+    return {
+      ...(orientationRef ? { orientationRef: orientationRef.text, orientationAtomCount: orientationRef.atomCount } : {}),
+      ...(activeModel !== null ? { activeModel } : {})
+    };
   }
 
   function trackMolstarOrientation(viewer, config) {
@@ -6012,7 +6042,7 @@
     return {
       path,
       inputDataBase64: inputDataBase64 || undefined,
-      inputExtension: inputDataBase64 && inputExtension ? inputExtension : undefined
+      inputExtension: inputExtension || undefined
     };
   }
 

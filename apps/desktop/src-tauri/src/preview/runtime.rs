@@ -136,6 +136,7 @@ pub(crate) struct ViewerReloadOptions {
     pub(crate) xyzrender_orientation_ref: Option<String>,
     pub(crate) xyzrender_preset: Option<String>,
     pub(crate) xyzrender_controls: Option<XyzrenderControls>,
+    pub(crate) active_model: Option<usize>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -1195,10 +1196,11 @@ mod document_open_tests {
         default_dark_foreground, default_dark_translucent, default_light_accent,
         default_light_background, default_light_contrast, default_light_foreground,
         default_light_translucent, default_system_font, open_document, resolve_desmond_file_bundle,
-        ViewerPreferences,
+        ViewerPreferences, ViewerReloadOptions,
     };
     use crate::commands::documents::open_documents_for_window_label;
     use crate::preview::grid_store::GridRuntimeRegistry;
+    use base64::Engine;
     use std::collections::BTreeMap;
     use std::fs;
     #[cfg(unix)]
@@ -1680,6 +1682,65 @@ xangst
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
         }
+    }
+
+    #[test]
+    fn opens_selected_multiframe_xyz_frame_in_xyzrender() {
+        with_fake_xyzrender(|| {
+            let app = mock_app_with_grid_registry();
+            let mut preferences = viewer_preferences();
+            preferences.renderer_mode = "xyzrender-external".to_string();
+            let path = create_temp_file(
+                "xyz",
+                b"2\nfirst frame\nH 0 0 0\nO 0 0 1\n2\nsecond frame\nH 1 0 0\nO 1 0 1\n",
+            );
+
+            let document = open_document(
+                app.handle(),
+                path.clone(),
+                &preferences,
+                Some(&ViewerReloadOptions {
+                    xyzrender_orientation_ref: None,
+                    xyzrender_preset: None,
+                    xyzrender_controls: None,
+                    active_model: Some(1),
+                }),
+            )
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+
+            assert_eq!(document.renderer, "xyzrender-external");
+            let runtime_dir = Path::new(&document.runtime_path)
+                .parent()
+                .expect("runtime html should have a parent");
+            let config_js = fs::read_to_string(runtime_dir.join("preview-config.js"))
+                .expect("preview config should be written");
+            let config_json = config_js
+                .trim()
+                .strip_prefix("window.BurreteConfig = ")
+                .and_then(|value| value.strip_suffix(';'))
+                .expect("preview config should be a JS assignment");
+            let config: serde_json::Value =
+                serde_json::from_str(config_json).expect("preview config should be JSON");
+            let input_base64 = config["xyzrenderInputDataBase64"]
+                .as_str()
+                .expect("xyzrender input should be embedded");
+            let input = String::from_utf8(
+                base64::engine::general_purpose::STANDARD
+                    .decode(input_base64)
+                    .expect("embedded input should decode"),
+            )
+            .expect("embedded input should be utf8");
+
+            assert_eq!(config["activeModel"], 1);
+            assert_eq!(config["trajectoryFrameCount"], 2);
+            assert!(input.contains("second frame"));
+            assert!(!input.contains("first frame"));
+
+            remove_runtime_artifacts(&document.runtime_path);
+            if let Some(parent) = path.parent() {
+                let _ = fs::remove_dir_all(parent);
+            }
+        });
     }
 
     #[test]
