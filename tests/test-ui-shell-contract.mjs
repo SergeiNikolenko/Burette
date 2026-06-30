@@ -2993,7 +2993,9 @@ assert.match(ketcherPage, /const \[liveSmilesImportDirty, setLiveSmilesImportDir
 assert.match(ketcherPage, /const liveSmilesImportSerialRef = useRef\(0\)/);
 assert.match(ketcherPage, /const locallySavedDraftRef = useRef\(""\)/);
 assert.match(ketcherPage, /if \(!draftKet\.trim\(\) && draftMolfile\.trimEnd\(\) === locallySavedDraftRef\.current\) return Promise\.resolve\(false\);/);
-assert.match(ketcherPage, /const showExport = useCallback\(async \(format: KetcherTextFormat\) =>/);
+assert.match(ketcherPage, /const showExport = useCallback\(\(format: KetcherTextFormat\) =>/);
+assert.match(ketcherPage, /setStatus\(`Exporting \$\{label\}`\);\s*setOutput\(""\);\s*setPanelMode\(\{ purpose: "export", format \}\);/);
+assert.doesNotMatch(ketcherPage, /const showExport = useCallback\(async/);
 assert.match(ketcherPage, /const refreshExport = \(\) => \{/);
 assert.match(ketcherPage, /const unsubscribe = ketcher\.subscribeChange\(scheduleRefresh\)/);
 assert.match(ketcherPage, /const startImport = useCallback\(\(format: KetcherTextFormat\) =>/);
