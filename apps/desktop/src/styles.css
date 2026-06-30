@@ -761,10 +761,11 @@ kbd span { margin-left: 2px; }
   border-radius: 8px;
   background: transparent;
   color: var(--text-muted);
-  padding: 5px 88px 5px 10px;
+  padding: 5px 76px 5px 10px;
   display: flex;
   align-items: center;
   gap: 6px;
+  overflow: hidden;
   text-align: left;
   cursor: default;
   line-height: 1.15;
@@ -818,6 +819,7 @@ kbd span { margin-left: 2px; }
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   opacity: 1;
@@ -848,6 +850,7 @@ kbd span { margin-left: 2px; }
   right: 58px;
   top: 50%;
   transform: translateY(-50%);
+  z-index: 1;
   width: 30px;
   height: 30px;
   border: 0;
@@ -892,10 +895,11 @@ kbd span { margin-left: 2px; }
   min-height: 28px;
   border-radius: 8px;
   color: var(--text-faint);
-  padding: 5px 34px 5px calc(6px + (var(--project-depth, 0) * 6px));
+  padding: 5px 40px 5px calc(6px + (var(--project-depth, 0) * 6px));
   display: flex;
   align-items: center;
   gap: 4px;
+  overflow: hidden;
   cursor: default;
   line-height: 1.15;
   transition: background 140ms ease-out, color 140ms ease-out;
