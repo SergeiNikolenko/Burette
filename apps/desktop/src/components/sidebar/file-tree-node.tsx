@@ -633,6 +633,14 @@ export function ProjectItem({
       },
       {
         kind: "item" as const,
+        id: "open-structure-as-text",
+        text: "Open as Text",
+        action: () => {
+          void actions.openTextPaths([item.path]);
+        },
+      },
+      {
+        kind: "item" as const,
         id: "copy-structure-path",
         text: "Copy Path",
         action: () => {

@@ -1300,6 +1300,9 @@ assert.match(editorTabs, /const canSaveAs = tabDocument && isMoleculeCollectionP
 assert.match(editorTabs, /const tabMolstarScenePaths = tabDocument\?\.renderer === "molstar"/);
 assert.match(editorTabs, /id: "save-as"/);
 assert.match(editorTabs, /text: "Save As\.\.\."/);
+assert.match(editorTabs, /id: "open-tab-document-as-text"/);
+assert.match(editorTabs, /text: "Open as Text"/);
+assert.match(editorTabs, /actions\.openTextPaths\(\[tabDocument\.path\]\)/);
 assert.match(editorTabs, /id: "open-tab-folder-molstar-scene"/);
 assert.match(editorTabs, /text: "Open all in Mol\* scene"/);
 assert.match(editorTabs, /disabled: tabMolstarScenePaths\.length < 2/);
@@ -3170,6 +3173,9 @@ assert.match(sidebarSurface, /disabled: !project\.rootPath,\s*action: \(\) => \{
 assert.doesNotMatch(sidebarSurface, /!project\.rootPath \|\| !project\.isExplicit/);
 assert.match(sidebarSurface, /Pin structure/);
 assert.match(sidebarSurface, /Unpin structure/);
+assert.match(sidebarSurface, /id: "open-structure-as-text"/);
+assert.match(sidebarSurface, /text: "Open as Text"/);
+assert.match(sidebarSurface, /actions\.openTextPaths\(\[item\.path\]\)/);
 assert.match(sidebarSurface, /id: "copy-structure-path"/);
 assert.match(sidebarSurface, /text: "Copy Path"/);
 assert.match(sidebarSurface, /actions\.copyPath\(item\.path, "structure"\)/);

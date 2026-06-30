@@ -530,6 +530,16 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                 ? [
                     {
                       kind: "item" as const,
+                      id: "open-tab-document-as-text",
+                      text: "Open as Text",
+                      disabled: tabDocument.virtual === true,
+                      action: () => {
+                        if (tabDocument.virtual) return;
+                        void actions.openTextPaths([tabDocument.path]);
+                      },
+                    },
+                    {
+                      kind: "item" as const,
                       id: "reveal-tab-document",
                       text: "Reveal in Finder",
                       action: () => {
