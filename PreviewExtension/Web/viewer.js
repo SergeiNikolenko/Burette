@@ -2187,6 +2187,13 @@
     return format === 'xyz';
   }
 
+  function structureOverlayToggleAvailable(prepared = activeMolstarPrepared) {
+    if (!structureOverlayAvailable(prepared)) return false;
+    const sourceFormat = normalizeFormat(activeConfig?.sourceExtension || activeConfig?.molstarFormat || activeConfig?.format);
+    if (prepared?.xyzFrameOverlayAvailable === true || sourceFormat === 'xyz' || sourceFormat === 'extxyz') return false;
+    return true;
+  }
+
   function structureOverlayNoun(prepared = activeMolstarPrepared) {
     const format = normalizeFormat(activeConfig?.molstarFormat || activeConfig?.format);
     if (prepared?.dockingSceneMode) return 'structures';
@@ -2197,7 +2204,7 @@
 
   function updateStructureOverlayToggleButton(button, prepared = activeMolstarPrepared) {
     if (!button) return;
-    const available = structureOverlayAvailable(prepared);
+    const available = structureOverlayToggleAvailable(prepared);
     button.classList.toggle('hidden', !available);
     button.disabled = !available;
     button.setAttribute('aria-hidden', available ? 'false' : 'true');
@@ -9555,6 +9562,7 @@
     document.body.classList.remove('buret-docking-pose-controls-active');
     if (!prepared) return;
     const overlayAvailable = structureOverlayAvailable(prepared);
+    const overlayToggleAvailable = structureOverlayToggleAvailable(prepared);
     if (prepared.poseCount <= 1 && !overlayAvailable) return;
     document.body.classList.add('buret-docking-pose-controls-active');
     const root = document.createElement('div');
@@ -9562,7 +9570,7 @@
     const controlLabel = String(prepared.controlLabel || 'Pose');
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
-    const all = overlayAvailable ? createStructureOverlayToggleButton(prepared) : null;
+    const all = overlayToggleAvailable ? createStructureOverlayToggleButton(prepared) : null;
     if (prepared.overlayOnly === true && all) {
       root.classList.add('buret-docking-poses-overlay-only');
       root.setAttribute('aria-label', `${controlLabel} overlay controls`);
