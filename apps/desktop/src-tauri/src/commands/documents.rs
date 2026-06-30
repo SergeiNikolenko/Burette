@@ -2410,6 +2410,7 @@ mod tests {
             canvas_background: "auto".to_string(),
             renderer_mode: "auto".to_string(),
             molstar_style: "illustrative".to_string(),
+            desktop_preview_limit_mib: 1024,
             theme_light_accent: "#AF52DE".to_string(),
             theme_light_background: "#FFFFFF".to_string(),
             theme_light_foreground: "#0D0D0D".to_string(),

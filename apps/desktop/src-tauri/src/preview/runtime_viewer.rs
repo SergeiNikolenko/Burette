@@ -726,6 +726,7 @@ mod tests {
             canvas_background: "opaque".to_string(),
             renderer_mode: "auto".to_string(),
             molstar_style: "default".to_string(),
+            desktop_preview_limit_mib: 1024,
             theme_light_accent: "#0066cc".to_string(),
             theme_light_background: "#ffffff".to_string(),
             theme_light_foreground: "#111111".to_string(),
