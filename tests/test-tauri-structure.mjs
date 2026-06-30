@@ -192,6 +192,7 @@ assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite b
 assert.equal(desktopPackageConfig.scripts['build:tauri'], 'bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build');
 assert.equal(mainWindowConfig.visible, true);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
+assert.equal(tauriConfig.bundle.resources['../../../plugins/burette-agent'], 'plugins/burette-agent');
 assert.match(tauriConfig.app.security.csp, /'unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /'wasm-unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /style-src[^;]*'unsafe-inline'/);
@@ -320,6 +321,8 @@ assert.match(agentIntegrationCommand, /PLUGIN_RELATIVE_PATH: &str = "plugins\/bu
 assert.match(agentIntegrationCommand, /BURRETE_AGENT_PLUGIN_DIR/);
 assert.match(agentIntegrationCommand, /schema: "burette_agent_integration\.v1"/);
 assert.match(agentIntegrationCommand, /find_codex_plugin_manifest/);
+assert.match(agentIntegrationCommand, /"scripts\/burrete-agent\.mjs"/);
+assert.match(agentIntegrationCommand, /"browser-shell-dist\/index\.html"/);
 assert.doesNotMatch(agentIntegrationCommand, /Command::new|spawn|remove_file|write\(/);
 assert.match(startupSource, /pub\(crate\) enum LaunchMode/);
 assert.match(startupSource, /BURRETE_LAUNCH_MODE/);
@@ -783,6 +786,10 @@ assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
 assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);
 assert.match(installLocalScript, /Contents\/Resources\/ViewerWeb/);
 assert.match(buildScript, /LOCAL_XYZRENDER_ENV="\$HOME\/\.local\/share\/uv\/tools\/xyzrender"/);
+assert.match(buildScript, /bun run build:agent-shell/);
+assert.match(updaterCommand, /sync_burrete_codex_plugin\(\)/);
+assert.match(updaterCommand, /Contents\/Resources\/plugins\/burette-agent/);
+assert.match(updaterCommand, /codex plugin synced/);
 assert.match(buildScript, /XYZRENDER_RUNTIME_PYTHON_PACKAGES=\("datamol==0\.12\.5"\)/);
 assert.match(buildScript, /require_xyzrender_runtime_for_release\(\)\s*\{/);
 assert.match(buildScript, /release builds require bundled xyzrender runtime source/);
