@@ -59,6 +59,7 @@ type ShellState = {
   addProjectRoot: (root: string) => void;
   togglePinnedProjectRoot: (root: string) => void;
   renameProjectRoot: (root: string, name: string) => void;
+  renameProjectFolder: (folderPath: string, name: string) => void;
   removeProjectRoot: (root: string) => void;
   togglePinnedStructure: (path: string) => void;
   pruneSidebarPaths: (existingPaths: string[]) => void;
@@ -129,11 +130,10 @@ function persistentPinnedPaths(paths: string[]) {
 }
 
 function persistentProjectNameOverrides(overrides: Record<string, string>, projectRoots: string[]) {
-  const allowed = new Set(projectRoots);
   return Object.fromEntries(
     Object.entries(overrides)
       .map(([root, name]) => [normalizeRoot(root), name.trim()] as const)
-      .filter(([root, name]) => allowed.has(root) && name.length > 0),
+      .filter(([root, name]) => name.length > 0 && projectRoots.some((projectRoot) => isPathAtOrUnder(root, projectRoot))),
   );
 }
 
@@ -379,11 +379,23 @@ export const useShellStore = create<ShellState>()(
             projectNameOverrides: { ...rest, [normalized]: nextName },
           };
         }),
+      renameProjectFolder: (folderPath, name) =>
+        set((state) => {
+          const normalized = normalizeRoot(folderPath);
+          if (!normalized || !state.projectRoots.some((root) => isPathAtOrUnder(normalized, root) && normalized !== root)) return state;
+          const nextName = name.trim();
+          const { [normalized]: _removed, ...rest } = state.projectNameOverrides;
+          return {
+            projectNameOverrides: nextName ? { ...rest, [normalized]: nextName } : rest,
+          };
+        }),
       removeProjectRoot: (root) =>
         set((state) => {
           const normalized = normalizeRoot(root);
           if (!normalized) return state;
-          const { [normalized]: _removed, ...projectNameOverrides } = state.projectNameOverrides;
+          const projectNameOverrides = Object.fromEntries(
+            Object.entries(state.projectNameOverrides).filter(([path]) => !isPathAtOrUnder(normalizeRoot(path), normalized)),
+          );
           const projectId = `project:${normalized}`;
           return {
             projectRoots: state.projectRoots.filter((candidate) => candidate !== normalized),

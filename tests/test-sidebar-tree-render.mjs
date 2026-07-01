@@ -25,6 +25,9 @@ const state = {
   sidebarQuery: "",
   expandedProjectIds: [project.id],
   documents: [],
+  projectNameOverrides: {
+    "/fixtures/BurettePreviewSamples/md": "Dynamics",
+  },
 };
 
 const actions = new Proxy({}, { get: () => () => {} });
@@ -36,7 +39,7 @@ for (const expected of [
   "aria-expanded=\"true\"",
   "aria-expanded=\"false\"",
   "data-expanded=\"false\"",
-  "md",
+  "Dynamics",
   "sdf",
   "xyz",
   "minimal.xtc",

@@ -372,7 +372,7 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions, startR
   ];
 }
 
-function projectFolderMenuItems(project: SidebarProject, folderPath: string, actions: ShellActions) {
+function projectFolderMenuItems(project: SidebarProject, folderPath: string, actions: ShellActions, startRename: () => void) {
   const scenePaths = molstarScenePathsForProjectFolder(project, folderPath);
   return [
     {
@@ -401,6 +401,14 @@ function projectFolderMenuItems(project: SidebarProject, folderPath: string, act
         if (!project.rootPath) return;
         void actions.copyPath(`${project.rootPath}/${folderPath}`, "folder");
       },
+    },
+    { kind: "separator" as const },
+    {
+      kind: "item" as const,
+      id: "rename-folder",
+      text: "Rename folder",
+      disabled: !project.rootPath,
+      action: startRename,
     },
   ];
 }
@@ -455,10 +463,70 @@ function ProjectTreeNodeView({
 
   const nodeItems = projectTreeNodeItems(node);
   const expanded = forceExpanded || expandedFolderPaths.has(node.path);
+  const folderPath = project.rootPath ? `${project.rootPath}/${node.path}` : null;
+  const displayName = folderPath ? state.projectNameOverrides?.[folderPath]?.trim() || node.name : node.name;
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(displayName);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const skipRenameCommitRef = useRef(false);
+
+  useEffect(() => {
+    if (!renaming) setRenameDraft(displayName);
+  }, [displayName, renaming]);
+
+  useEffect(() => {
+    if (!renaming) return;
+    renameInputRef.current?.focus();
+    renameInputRef.current?.select();
+  }, [renaming]);
+
   const handleToggle = () => {
+    if (renaming) return;
     if (!forceExpanded) toggleFolderPath(node.path);
   };
+  const handleRowClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.detail > 1) {
+      event.preventDefault();
+      return;
+    }
+    handleToggle();
+  };
+  const startRename = () => {
+    if (!folderPath) return;
+    skipRenameCommitRef.current = false;
+    setRenameDraft(displayName);
+    setRenaming(true);
+  };
+  const cancelRename = () => {
+    skipRenameCommitRef.current = true;
+    setRenameDraft(displayName);
+    setRenaming(false);
+  };
+  const commitRename = () => {
+    if (skipRenameCommitRef.current) {
+      skipRenameCommitRef.current = false;
+      return;
+    }
+    if (!folderPath) {
+      cancelRename();
+      return;
+    }
+    actions.renameProjectFolder(folderPath, renameDraft);
+    setRenaming(false);
+  };
+  const handleRowMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.detail < 2) return;
+    event.preventDefault();
+    event.stopPropagation();
+    startRename();
+  };
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "F2") {
+      event.preventDefault();
+      event.stopPropagation();
+      startRename();
+      return;
+    }
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       handleToggle();
@@ -467,9 +535,13 @@ function ProjectTreeNodeView({
   const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    void showNativeContextMenu(projectFolderMenuItems(project, node.path, actions), { x: event.clientX, y: event.clientY });
+    void showNativeContextMenu(projectFolderMenuItems(project, node.path, actions, startRename), { x: event.clientX, y: event.clientY });
   };
   const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
+    if (renaming) {
+      event.preventDefault();
+      return;
+    }
     if (writeSidebarProjectItemsDrag(event.dataTransfer, nodeItems)) {
       actions.setStructureDragActive(true);
     }
@@ -493,8 +565,14 @@ function ProjectTreeNodeView({
         tabIndex={0}
         className="project-folder-row"
         style={projectDepthStyle(depth)}
-        draggable={nodeItems.length > 0}
-        onClick={handleToggle}
+        draggable={!renaming && nodeItems.length > 0}
+        onMouseDown={handleRowMouseDown}
+        onClick={handleRowClick}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          startRename();
+        }}
         onContextMenu={handleContextMenu}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
@@ -506,7 +584,30 @@ function ProjectTreeNodeView({
         <span className="project-folder-icon" aria-hidden="true">
           <HugeiconsIcon icon={Folder02Icon} size={16} color="currentColor" strokeWidth={2} />
         </span>
-        <span className="project-folder-name">{node.name}</span>
+        {renaming ? (
+          <input
+            ref={renameInputRef}
+            className="project-folder-name-input"
+            value={renameDraft}
+            aria-label={`Rename ${displayName}`}
+            onChange={(event) => setRenameDraft(event.currentTarget.value)}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onKeyDown={(event: ReactKeyboardEvent<HTMLInputElement>) => {
+              event.stopPropagation();
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitRename();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                cancelRename();
+              }
+            }}
+            onBlur={commitRename}
+          />
+        ) : (
+          <span className="project-folder-name">{displayName}</span>
+        )}
         <button
           type="button"
           className="project-folder-toggle-button"

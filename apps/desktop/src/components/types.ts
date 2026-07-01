@@ -182,6 +182,7 @@ export type ShellActions = {
   openProjectFolder: (path: string | null) => void | Promise<void>;
   togglePinnedProjectRoot: (root: string) => void;
   renameProjectRoot: (root: string, name: string) => void;
+  renameProjectFolder: (folderPath: string, name: string) => void;
   removeProjectRoot: (root: string) => void;
   toggleSidebar: () => void;
   toggleDock: (area: DockArea) => void;
@@ -255,6 +256,7 @@ export type ShellViewState = {
   sidebarProjects: SidebarProject[];
   projectsOpen: boolean;
   expandedProjectIds: string[];
+  projectNameOverrides: Record<string, string>;
   pinnedStructurePaths: string[];
   workspacePath: string | null;
   page: AppPage;
