@@ -49,7 +49,9 @@
       "viewer-runtime.css",
       "viewer-shell.js",
       "burette-agent.js",
-      "viewer.js"
+      "viewer.js",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
     ],
     "desktop-grid": [
       "grid-viewer.js",
@@ -63,7 +65,9 @@
       "viewer-runtime.css",
       "viewer-shell.js",
       "burette-agent.js",
-      "viewer.js"
+      "viewer.js",
+      "rdkit/RDKit_minimal.js",
+      "rdkit/RDKit_minimal.wasm"
     ],
     "quicklook-grid": [
       "grid-viewer.js",
