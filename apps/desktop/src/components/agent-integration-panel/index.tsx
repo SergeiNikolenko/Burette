@@ -37,12 +37,11 @@ type AgentIntegrationStatus = {
 };
 
 const initialStatus: AgentIntegrationStatus | null = null;
+const widgetCheckIds = ["molecule-table-widget", "trajectory-review-widget", "molecular-report-widget"];
 
 export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean }) {
   const [status, setStatus] = useState<AgentIntegrationStatus | null>(initialStatus);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [promptCopied, setPromptCopied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -70,20 +69,6 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
     if (!status?.bundledPlugin.path) return;
     await openPath(status.bundledPlugin.path);
   }, [status?.bundledPlugin.path]);
-
-  const copyBundlePath = useCallback(async () => {
-    if (!status?.bundledPlugin.path) return;
-    await navigator.clipboard.writeText(status.bundledPlugin.path);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1400);
-  }, [status?.bundledPlugin.path]);
-
-  const setupPrompt = codexSetupPrompt(status);
-  const copySetupPrompt = useCallback(async () => {
-    await navigator.clipboard.writeText(setupPrompt);
-    setPromptCopied(true);
-    window.setTimeout(() => setPromptCopied(false), 1400);
-  }, [setupPrompt]);
 
   const summary = integrationSummary(status, error);
   const content = (
@@ -122,34 +107,9 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
           <StatusRow label="Codex plugin" value={codexSummary(status)} state={status?.codexInstall.state ?? "unknown"} />
           <StatusRow label="MCP server" value={checkSummary(status, "mcp", "MCP server entry point is bundled.")} state={checkState(status, "mcp")} />
           <StatusRow label="Browser shell" value={checkSummary(status, "browser-shell", "Browser shell assets are bundled.")} state={checkState(status, "browser-shell")} />
-          <StatusRow label="Skills and widgets" value={skillsAndWidgetsSummary(status)} state={combinedCheckState(status, ["skills", "widgets"])} />
+          <StatusRow label="Skills and widgets" value={skillsAndWidgetsSummary(status)} state={combinedCheckState(status, ["skills", ...widgetCheckIds])} />
         </div>
       </section>
-
-      <details className="agent-disclosure">
-        <summary>
-          <span className="agent-disclosure-copy">
-            <span className="agent-disclosure-title">Manual setup</span>
-            <span className="agent-disclosure-description">Copy a fallback prompt or inspect the bundled plugin path.</span>
-          </span>
-        </summary>
-        <div className="agent-disclosure-body">
-          <div className="agent-setup-prompt">
-            <pre>{setupPrompt}</pre>
-            <div className="agent-setup-prompt-footer">
-              <span>Use this only if automatic app-update sync is unavailable.</span>
-              <div className="agent-setup-prompt-actions">
-                <button type="button" className="settings-action-button" onClick={() => void copySetupPrompt()}>
-                  {promptCopied ? "Copied" : "Copy Prompt"}
-                </button>
-                <button type="button" className="settings-action-button" onClick={() => void copyBundlePath()} disabled={!status?.bundledPlugin.path}>
-                  {copied ? "Copied" : "Copy Bundle Path"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </details>
 
       <details className="agent-disclosure">
         <summary>
@@ -305,7 +265,7 @@ function checkState(status: AgentIntegrationStatus | null, id: string) {
 
 function skillsAndWidgetsSummary(status: AgentIntegrationStatus | null) {
   if (!status) return "Waiting for status.";
-  const checks = ["skills", "widgets"].map((id) => findCheck(status, id)).filter((check): check is AgentIntegrationCheck => !!check);
+  const checks = ["skills", ...widgetCheckIds].map((id) => findCheck(status, id)).filter((check): check is AgentIntegrationCheck => !!check);
   if (checks.length === 0) return "Open the packaged app to inspect skills and widget assets.";
   const missing = checks.filter((check) => badgeState(check.state) === "missing").map((check) => check.label);
   if (missing.length > 0) return `Missing ${missing.join(" and ").toLowerCase()}.`;
@@ -324,17 +284,6 @@ function combinedCheckState(status: AgentIntegrationStatus | null, ids: string[]
 
 function findCheck(status: AgentIntegrationStatus | null, id: string) {
   return status?.checks.find((check) => check.id === id) ?? null;
-}
-
-function codexSetupPrompt(status: AgentIntegrationStatus | null) {
-  const version = status?.bundledPlugin.version ?? "0.1.0";
-  const pluginPath = status?.bundledPlugin.path ?? "plugins/burette-agent";
-  return [
-    `Install or update the local Codex plugin @Burrete (id \`burrete\`) to version ${version}.`,
-    `Use the bundled plugin directory \`${pluginPath}\`.`,
-    "Install it with `bun run install:plugin`. On a fresh machine the marketplace name defaults to `burrete`, so the plugin id is `burrete@burrete`. If a local marketplace already exists, the installer keeps that marketplace name unless `BURRETE_PLUGIN_MARKETPLACE=burrete` is set.",
-    "After installation, verify @Burrete is available in Codex, its skills load, and its MCP server is registered.",
-  ].join("\n");
 }
 
 function browserPreviewPluginPath() {

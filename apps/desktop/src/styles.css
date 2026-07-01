@@ -6296,31 +6296,6 @@ img.radix-menu-item-icon {
 .agent-diagnostic-group + .agent-diagnostic-group { border-top: 1px solid var(--line-subtler); }
 .agent-diagnostic-group h3 { margin: 0; padding: 12px 14px 0; color: var(--text-muted); font-size: 12px; font-weight: 400; }
 .agent-diagnostic-group .agent-status-row + .agent-status-row { border-top: 1px solid var(--line-subtler); }
-.agent-setup-prompt {
-  display: grid;
-  gap: 0;
-}
-.agent-setup-prompt pre {
-  margin: 0;
-  padding: 14px 16px;
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-}
-.agent-setup-prompt-footer {
-  min-height: 56px;
-  border-top: 1px solid var(--line-subtler);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 16px;
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.35;
-}
-.agent-setup-prompt-actions { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .settings-control-copy { min-width: 0; flex: 1; }
 .settings-control-label { color: var(--text-primary); font-size: 13px; font-weight: 400; }
 .settings-control-description { margin-top: 2px; color: var(--text-muted); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
@@ -6632,8 +6607,6 @@ img.settings-open-destination-icon {
   .agent-status-row { display: grid; gap: 10px; }
   .agent-status-badge { justify-self: start; }
   .agent-disclosure { margin-left: 0; margin-right: 0; }
-  .agent-setup-prompt-footer { display: grid; gap: 10px; }
-  .agent-setup-prompt-actions { justify-content: flex-start; }
   .keyboard-shortcuts-search,
   .keyboard-shortcuts-card { margin-left: 0; margin-right: 0; }
   .keyboard-shortcuts-header { display: none; }
