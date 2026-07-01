@@ -4402,7 +4402,7 @@ private enum PreviewStructureTextConverter {
         case "lammpstrj", "dump", "pos":
             return parseLammpsDump(lines)
         case "cfg":
-            return parseAtomeyeCFG(lines)
+            return parseAtomeyeCFG(lines) ?? parseMLIPCFG(lines)
         case "data", "lammps", "lmp":
             return parseLammpsData(lines)
         case "crd":
@@ -5860,6 +5860,66 @@ private enum PreviewStructureTextConverter {
             ))
         }
         return atoms.count == atomCount ? atoms : nil
+    }
+
+    private static func parseMLIPCFG(_ lines: [String]) -> [Atom]? {
+        guard let begin = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "begin_cfg" }) else {
+            return nil
+        }
+        let end = lines[(begin + 1)..<lines.count].firstIndex(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "end_cfg" }) ?? lines.count
+        let block = Array(lines[(begin + 1)..<end])
+        guard let atomCount = mlipCFGSize(block),
+              let atomDataIndex = block.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("AtomData:") }) else {
+            return nil
+        }
+        let header = fields(block[atomDataIndex])
+        func column(_ name: String) -> Int? {
+            guard let index = header.firstIndex(where: { $0.lowercased() == name.lowercased() }), index > 0 else {
+                return nil
+            }
+            return index - 1
+        }
+        guard let xIndex = column("cartes_x"),
+              let yIndex = column("cartes_y"),
+              let zIndex = column("cartes_z") else {
+            return nil
+        }
+        let typeIndex = column("type")
+        var atoms: [Atom] = []
+        for line in block.dropFirst(atomDataIndex + 1) {
+            let parts = fields(line)
+            guard parts.count > max(xIndex, max(yIndex, zIndex)) else {
+                if !atoms.isEmpty { break }
+                continue
+            }
+            guard let x = Double(parts[xIndex]),
+                  let y = Double(parts[yIndex]),
+                  let z = Double(parts[zIndex]) else {
+                if !atoms.isEmpty { break }
+                continue
+            }
+            let symbol = typeIndex.flatMap { parts.indices.contains($0) ? mlipCFGSymbol(for: parts[$0]) : nil } ?? "C"
+            atoms.append(Atom(symbol: symbol, x: x, y: y, z: z))
+            if atoms.count == atomCount { break }
+        }
+        return atoms.count == atomCount ? atoms : nil
+    }
+
+    private static func mlipCFGSize(_ lines: [String]) -> Int? {
+        guard lines.count >= 2 else { return nil }
+        for index in 0..<(lines.count - 1) {
+            guard lines[index].trimmingCharacters(in: .whitespaces).lowercased() == "size" else { continue }
+            if let value = fields(lines[index + 1]).first.flatMap(Int.init), value > 0 {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private static func mlipCFGSymbol(for value: String) -> String {
+        let normalized = normalizeElementSymbol(value)
+        if isElementSymbol(normalized) { return normalized }
+        return value.trimmingCharacters(in: .whitespaces) == "1" ? "H" : "C"
     }
 
     private static func atomeyeCFGAtomCount(_ lines: [String]) -> Int? {
