@@ -18,6 +18,7 @@ import {
 import { formatBytes, rendererLabel } from "../format";
 import type { ShellActions, ShellViewState } from "../types";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
+import { parsePdbFetchCommand, parseSmilesCommand } from "../../lib/structure-fetch";
 import type { ViewerPreferences } from "../../types";
 
 type CommandPaletteProps = {
@@ -71,6 +72,7 @@ export function CommandPalette({
   }, [isOpen]);
 
   const items = useMemo<PaletteItem[]>(() => {
+    const queryItems = commandItemsForQuery(query, actions);
     const projectItems = state.sidebarProjects.flatMap((project) => project.items.map((item) => ({
       id: `${item.source}-${item.path}`,
       group: "Projects",
@@ -100,6 +102,7 @@ export function CommandPalette({
         description: "Choose molecular structure files",
         run: actions.chooseFiles,
       },
+      ...queryItems,
       {
         id: "open-clipboard",
         group: "Suggested",
@@ -278,7 +281,7 @@ export function CommandPalette({
       ...projectItems,
     ];
     return commands;
-  }, [actions, state.preferences.rendererMode, state.sidebarOpen, state.sidebarProjects]);
+  }, [actions, query, state.preferences.rendererMode, state.sidebarOpen, state.sidebarProjects]);
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -377,4 +380,42 @@ export function CommandPalette({
       </DialogPortal>
     </DialogRoot>
   );
+}
+
+function commandItemsForQuery(query: string, actions: ShellActions): PaletteItem[] {
+  const fetchCommand = parsePdbFetchCommand(query);
+  const smilesCommand = parseSmilesCommand(query);
+  const items: PaletteItem[] = [];
+  if (fetchCommand) {
+    items.push({
+      id: `fetch-pdb-${fetchCommand.pdbId}`,
+      group: "Commands",
+      label: `Fetch ${fetchCommand.pdbId} from RCSB PDB`,
+      description: `Command: ${fetchCommand.command} · Download and open in Molstar`,
+      run: () => actions.fetchPdbStructure(fetchCommand.pdbId),
+    });
+  }
+  if (smilesCommand) {
+    const title = smilesTitle(smilesCommand.smiles);
+    items.push({
+      id: `draw-smiles-${smilesCommand.smiles}`,
+      group: "Commands",
+      label: `Draw SMILES in Ketcher: ${shortCommandValue(smilesCommand.smiles)}`,
+      description: `Command: ${smilesCommand.command} · Import SMILES into the molecule sketcher`,
+      run: () => actions.openKetcherWithStructures([], [{
+        title,
+        text: `${smilesCommand.smiles}\n`,
+      }]),
+    });
+  }
+  return items;
+}
+
+function smilesTitle(smiles: string) {
+  return `${shortCommandValue(smiles).replace(/[^a-z0-9_.-]+/giu, "-") || "smiles"}.smi`;
+}
+
+function shortCommandValue(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 48 ? `${trimmed.slice(0, 45)}...` : trimmed;
 }
