@@ -1,7 +1,11 @@
 import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
+import { dispatchWorkspaceHistoryCommand } from "../lib/workspace-history-dispatch";
+import type { ShellActions } from "../components/types";
 
+const MENU_UNDO_EVENT = "menu:undo";
+const MENU_REDO_EVENT = "menu:redo";
 const MENU_OPEN_SETTINGS_EVENT = "menu:open-settings";
 const MENU_OPEN_FILES_EVENT = "menu:open-files";
 const MENU_OPEN_RECENT_EVENT = "menu:open-recent";
@@ -16,6 +20,7 @@ const MENU_OPEN_LOGS_EVENT = "menu:open-logs";
 const MENU_CHECK_UPDATES_EVENT = "menu:check-updates";
 
 export function useMenuEvents({
+  actions,
   chooseFiles,
   openMostRecentStructure,
   revealActiveDocument,
@@ -29,6 +34,7 @@ export function useMenuEvents({
   openSettings,
   checkForUpdates,
 }: {
+  actions: ShellActions;
   chooseFiles: () => void | Promise<void>;
   openMostRecentStructure: () => void | Promise<void>;
   revealActiveDocument: () => void | Promise<void>;
@@ -43,6 +49,7 @@ export function useMenuEvents({
   checkForUpdates: () => void | Promise<void>;
 }) {
   const handlersRef = useRef({
+    actions,
     chooseFiles,
     openMostRecentStructure,
     revealActiveDocument,
@@ -59,6 +66,7 @@ export function useMenuEvents({
 
   useEffect(() => {
     handlersRef.current = {
+      actions,
       chooseFiles,
       openMostRecentStructure,
       revealActiveDocument,
@@ -73,6 +81,7 @@ export function useMenuEvents({
       checkForUpdates,
     };
   }, [
+    actions,
     checkForUpdates,
     chooseFiles,
     clearCache,
@@ -91,6 +100,12 @@ export function useMenuEvents({
     if (!isTauriRuntime()) return undefined;
 
     const cleanups = [
+      trackTauriListener(listen(MENU_UNDO_EVENT, () => {
+        void dispatchWorkspaceHistoryCommand("undo", handlersRef.current.actions);
+      }), MENU_UNDO_EVENT),
+      trackTauriListener(listen(MENU_REDO_EVENT, () => {
+        void dispatchWorkspaceHistoryCommand("redo", handlersRef.current.actions);
+      }), MENU_REDO_EVENT),
       trackTauriListener(listen(MENU_OPEN_SETTINGS_EVENT, () => {
         handlersRef.current.openSettings();
       }), MENU_OPEN_SETTINGS_EVENT),

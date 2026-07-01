@@ -1,6 +1,11 @@
 import { useMemo } from "react";
 import type { ShellActions } from "../components/types";
 import type { DockDropInput } from "../lib/dock";
+import {
+  useWorkspaceHistoryStore,
+  workspaceHistoryNone,
+  type WorkspaceHistoryGroup,
+} from "../stores/workspace-history-store";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { ConformerJob, OpenDocumentsMode, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob } from "../types";
 
@@ -166,6 +171,8 @@ type NavigationShellActions = Pick<
   | "canNavigateForward"
   | "navigateBack"
   | "navigateForward"
+  | "undoWorkspaceAction"
+  | "redoWorkspaceAction"
   | "focusSidebarSearch"
   | "openCommandPalette"
   | "openNewWindow"
@@ -324,6 +331,175 @@ export type AppShellActionSlices = {
   settings: SettingsShellActions;
 };
 
+type WorkspaceHistoryActionSpec = {
+  label: string;
+  group: WorkspaceHistoryGroup;
+};
+
+const workspaceHistoryActionSpecs = {
+  chooseFiles: { label: "Open structures", group: "documents" },
+  openStructurePaths: { label: "Open structures", group: "documents" },
+  openTextPaths: { label: "Open text files", group: "documents" },
+  openPaths: { label: "Open files", group: "documents" },
+  openStructureRecords: { label: "Open structures", group: "documents" },
+  openRecentStructure: { label: "Open recent structure", group: "documents" },
+  openMostRecentStructure: { label: "Open recent structure", group: "documents" },
+  openClipboard: { label: "Open clipboard", group: "documents" },
+  selectDocument: { label: "Select document", group: "navigation" },
+  selectTab: { label: "Select tab", group: "navigation" },
+  openNewTab: { label: "Open new tab", group: "documents" },
+  openSettings: { label: "Open settings", group: "navigation" },
+  openSettingsSection: { label: "Open settings section", group: "navigation" },
+  backToApp: { label: "Back to app", group: "navigation" },
+  moveTab: { label: "Move tab", group: "navigation" },
+  openKetcher: { label: "Open Ketcher", group: "ketcher" },
+  openKetcherWithStructures: { label: "Import into Ketcher", group: "ketcher" },
+  openKetcherExportRaw: { label: "Open Ketcher export", group: "ketcher" },
+  openKetcherSketch: { label: "Open Ketcher sketch", group: "ketcher" },
+  clearKetcherImportRequest: { label: "Clear Ketcher import", group: "ketcher" },
+  openFepNetworkPreview: { label: "Open FEP network", group: "docking" },
+  openFepSetupWorkspace: { label: "Open FEP setup", group: "docking" },
+  openDescriptorSource: { label: "Open descriptor source", group: "grid" },
+  clearDescriptorSource: { label: "Clear descriptor source", group: "grid" },
+  setConformerSettings: { label: "Change conformer settings", group: "chemistry" },
+  setXtbSettings: { label: "Change xTB settings", group: "chemistry" },
+  chooseWorkspace: { label: "Choose workspace", group: "workspace" },
+  openProjectFolder: { label: "Open project folder", group: "workspace" },
+  togglePinnedProjectRoot: { label: "Pin project", group: "workspace" },
+  renameProjectRoot: { label: "Rename project", group: "workspace" },
+  removeProjectRoot: { label: "Remove project", group: "workspace" },
+  toggleProjectsOpen: { label: "Toggle projects", group: "workspace" },
+  setExpandedProjectIds: { label: "Expand projects", group: "workspace" },
+  toggleProjectExpanded: { label: "Expand project", group: "workspace" },
+  togglePinnedStructure: { label: "Pin structure", group: "workspace" },
+  clearRecentStructures: { label: "Clear recent structures", group: "workspace" },
+  toggleSidebar: { label: "Toggle sidebar", group: "layout" },
+  toggleDock: { label: "Toggle dock", group: "layout" },
+  toggleDockTab: { label: "Toggle dock tab", group: "layout" },
+  setDockOpen: { label: "Toggle dock", group: "layout" },
+  setDockSize: { label: "Resize dock", group: "layout" },
+  openDockTab: { label: "Open dock tab", group: "layout" },
+  closeDockTab: { label: "Close dock tab", group: "layout" },
+  setDockActiveTab: { label: "Select dock tab", group: "layout" },
+  setDockDocument: { label: "Select dock document", group: "layout" },
+  setDockTool: { label: "Select dock tool", group: "layout" },
+  addDockDrop: { label: "Add dock drop", group: "layout" },
+  openDockPayload: { label: "Open dock payload", group: "documents" },
+  openDockingDocument: { label: "Open docking document", group: "docking" },
+  openDockingStructureRecords: { label: "Open docking structures", group: "docking" },
+  mergeMoleculeCollections: { label: "Merge molecule collections", group: "documents" },
+  saveMoleculeCollectionAs: { label: "Save molecule collection", group: "documents" },
+  closeDocument: { label: "Close document", group: "documents" },
+  closeTab: { label: "Close tab", group: "documents" },
+  closeActiveDocument: { label: "Close active tab", group: "documents" },
+  clearAllDocuments: { label: "Close all tabs", group: "documents" },
+  generate3DConformer: { label: "Generate 3D conformer", group: "chemistry" },
+  reloadXyzrenderDocument: { label: "Reload xyzrender document", group: "documents" },
+  setPreference: { label: "Change preference", group: "settings" },
+  setUpdatePreferences: { label: "Change update preference", group: "settings" },
+} satisfies Partial<Record<keyof ShellActions, WorkspaceHistoryActionSpec>>;
+
+const workspaceHistoryNoneActions = new Set<keyof ShellActions>([
+  "focusSidebarSearch",
+  "openCommandPalette",
+  "openNewWindow",
+  "saveKetcherExportFile",
+  "applyKetcherToGridRow",
+  "saveKetcherDraft",
+  "applyGridDescriptorControls",
+  "applyGridDescriptorResults",
+  "calculateGridDescriptors",
+  "appendGridRecords",
+  "addXyzrenderSheetItems",
+  "checkConformerStatus",
+  "runConformerOperation",
+  "cancelConformerJob",
+  "clearConformerJobs",
+  "checkXtbStatus",
+  "installXtb",
+  "runXtbActiveOperation",
+  "runXtbJob",
+  "cancelXtbJob",
+  "runXtbKetcherSketch",
+  "runXtbGridScoring",
+  "runXtbPoseRefinement",
+  "runXtbFepPreflight",
+  "clearXtbJobs",
+  "openWorkspaceFolder",
+  "setSidebarQuery",
+  "setStructureDragActive",
+  "listChemicalEditorTargets",
+  "openPathInChemicalEditor",
+  "openPathWithDefaultApp",
+  "revealActiveDocument",
+  "revealDocument",
+  "revealPath",
+  "copyActiveDocumentPath",
+  "copyDocumentPath",
+  "copyPath",
+  "showActiveDocumentMetadata",
+  "showDocumentMetadata",
+  "showTextFileMetadata",
+  "runStructureViewerAction",
+  "selectTextStructure",
+  "exportActivePreviewAsPng",
+  "exportActivePreviewAsSvg",
+  "clearCache",
+  "resetQuickLook",
+  "runExternalRuntimeDoctor",
+  "openLogs",
+  "exportDiagnostics",
+  "checkForUpdates",
+  "installUpdate",
+  "openUpdateRelease",
+]);
+
+export function createWorkspaceHistoryShellActions(
+  actions: ShellActions,
+  options: {
+    canNavigateBack: boolean;
+    canNavigateForward: boolean;
+    canRedoWorkspace: boolean;
+    canUndoWorkspace: boolean;
+  },
+): ShellActions {
+  const wrapped = { ...actions };
+  const writable = wrapped as Record<keyof ShellActions, unknown>;
+  for (const [key, spec] of Object.entries(workspaceHistoryActionSpecs) as Array<[keyof ShellActions, WorkspaceHistoryActionSpec]>) {
+    const action = actions[key];
+    if (typeof action !== "function") continue;
+    writable[key] = ((...args: unknown[]) => (
+      useWorkspaceHistoryStore.getState().withWorkspaceHistory(spec.label, spec.group, () => (
+        (action as (...args: unknown[]) => unknown)(...args)
+      ))
+    ));
+  }
+  for (const key of workspaceHistoryNoneActions) {
+    const action = actions[key];
+    if (typeof action !== "function") continue;
+    writable[key] = ((...args: unknown[]) => (
+      workspaceHistoryNone(() => (action as (...args: unknown[]) => unknown)(...args))
+    ));
+  }
+  return {
+    ...wrapped,
+    canNavigateBack: options.canUndoWorkspace || options.canNavigateBack,
+    canNavigateForward: options.canRedoWorkspace || options.canNavigateForward,
+    navigateBack: () => {
+      if (!useWorkspaceHistoryStore.getState().undoWorkspaceAction()) {
+        actions.navigateBack();
+      }
+    },
+    navigateForward: () => {
+      if (!useWorkspaceHistoryStore.getState().redoWorkspaceAction()) {
+        actions.navigateForward();
+      }
+    },
+    undoWorkspaceAction: () => useWorkspaceHistoryStore.getState().undoWorkspaceAction(),
+    redoWorkspaceAction: () => useWorkspaceHistoryStore.getState().redoWorkspaceAction(),
+  };
+}
+
 export function createAppShellActions(actions: ShellActions): ShellActions {
   return flattenAppShellActionSlices(createAppShellActionSlices(actions));
 }
@@ -366,6 +542,8 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       canNavigateForward: actions.canNavigateForward,
       navigateBack: actions.navigateBack,
       navigateForward: actions.navigateForward,
+      undoWorkspaceAction: actions.undoWorkspaceAction,
+      redoWorkspaceAction: actions.redoWorkspaceAction,
       focusSidebarSearch: actions.focusSidebarSearch,
       openCommandPalette: actions.openCommandPalette,
       openNewWindow: actions.openNewWindow,
@@ -621,7 +799,10 @@ export function useAppShellActions({
   toggleProjectsOpen,
   toggleSidebar,
 }: UseAppShellActionsOptions) {
-  return useMemo<ShellActions>(() => createAppShellActions({
+  const canUndoWorkspace = useWorkspaceHistoryStore((state) => state.canUndo);
+  const canRedoWorkspace = useWorkspaceHistoryStore((state) => state.canRedo);
+
+  return useMemo<ShellActions>(() => createWorkspaceHistoryShellActions(createAppShellActions({
     chooseFiles,
     openStructurePaths: async (paths: string[], options?: { mode?: OpenDocumentsMode }) => {
       await openDocuments(paths, undefined, undefined, options);
@@ -641,6 +822,8 @@ export function useAppShellActions({
     canNavigateForward,
     navigateBack,
     navigateForward,
+    undoWorkspaceAction: () => useWorkspaceHistoryStore.getState().undoWorkspaceAction(),
+    redoWorkspaceAction: () => useWorkspaceHistoryStore.getState().redoWorkspaceAction(),
     focusSidebarSearch,
     openCommandPalette,
     openClipboard,
@@ -751,7 +934,12 @@ export function useAppShellActions({
     openUpdateRelease,
     setPreference,
     setUpdatePreferences,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
+  }), {
+    canNavigateBack,
+    canNavigateForward,
+    canRedoWorkspace,
+    canUndoWorkspace,
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
 }
 
 export function createJobHistoryShellActions({

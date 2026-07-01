@@ -68,6 +68,16 @@ type MoleculeState = {
   closeActiveDocument: () => void;
   closeAllDocuments: () => void;
   restoreSession: (tabs: SessionTab[], activeIndex: number | null) => void;
+  restoreSnapshot: (snapshot: MoleculeStoreSnapshot) => void;
+};
+
+export type MoleculeStoreSnapshot = {
+  documents: ViewerDocument[];
+  textDocuments: TextFileDocument[];
+  tabs: MoleculeTab[];
+  activeTabId: string | null;
+  activeDocumentId: string | null;
+  recentStructures: RecentStructure[];
 };
 
 type PersistedMoleculeState = Pick<
@@ -157,6 +167,10 @@ export function createPoseReviewTab(location: PoseReviewLocation, id = createTab
 
 function cloneTab(tab: MoleculeTab): MoleculeTab {
   return { ...tab, back: [...tab.back], forward: [...tab.forward] };
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 function sameLocation(left: Location, right: Location) {
@@ -285,6 +299,18 @@ export function getMoleculeSessionSnapshot(state: Pick<MoleculeState, "tabs" | "
   const tabs = state.tabs.map(serializeTab).filter((tab): tab is SessionTab => tab !== null);
   const activeIndex = state.activeTabId ? state.tabs.findIndex((tab) => tab.id === state.activeTabId) : null;
   return { tabs, activeIndex: activeIndex !== null && activeIndex >= 0 ? activeIndex : null };
+}
+
+export function getMoleculeStoreSnapshot(): MoleculeStoreSnapshot {
+  const state = useMoleculeStore.getState();
+  return cloneJson({
+    documents: state.documents,
+    textDocuments: state.textDocuments,
+    tabs: state.tabs,
+    activeTabId: state.activeTabId,
+    activeDocumentId: state.activeDocumentId,
+    recentStructures: state.recentStructures,
+  });
 }
 
 export const useMoleculeStore = create<MoleculeState>()(
@@ -709,6 +735,22 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = dedupeTabIds(ensureTabs(collapseDuplicateKetcherTabs(hydratedTabs, requested)));
           const activeTabId = activeTabIdOrFirst(tabs, requested);
           return { tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, state.documents) };
+        }),
+      restoreSnapshot: (snapshot) =>
+        set(() => {
+          const documents = cloneJson(snapshot.documents);
+          const textDocuments = cloneJson(snapshot.textDocuments);
+          const tabs = ensureTabs(cloneJson(snapshot.tabs));
+          syncTabSequence(tabs);
+          const activeTabId = activeTabIdOrFirst(tabs, snapshot.activeTabId);
+          return {
+            documents,
+            textDocuments,
+            tabs,
+            activeTabId,
+            activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents),
+            recentStructures: cloneJson(snapshot.recentStructures),
+          };
         }),
     }),
     {

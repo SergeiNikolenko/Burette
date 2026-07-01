@@ -1904,6 +1904,10 @@
     const data = event.data || {};
     const body = data.source === 'burrete-host' ? data.body : null;
     if (!body) return;
+    if (body.type === 'workspaceHistoryCommand') {
+      void handleWorkspaceHistoryCommand(body, event.source);
+      return;
+    }
     if (body.type === 'setXyzrenderControls') {
       const config = activeConfig || window.BurreteConfig || {};
       const documentId = String(config.documentId || '');
@@ -1939,6 +1943,33 @@
       setStatus(`3D structure update failed.\n\n${error?.message || String(error)}`, 'error');
     });
   });
+
+  async function handleWorkspaceHistoryCommand(body, source) {
+    const direction = body.direction === 'redo' ? 'redo' : 'undo';
+    let handled = false;
+    try {
+      if (direction === 'redo') {
+        handled = xyzrenderActionRedoStack.length
+          ? redoXyzrenderLastAction({ fromSystemHistory: true })
+          : false;
+      } else if (xyzrenderActionUndoStack.length) {
+        handled = undoXyzrenderLastAction({ fromSystemHistory: true });
+      } else if (molstarEditUndoStack.length) {
+        await undoMolstarLastEdit();
+        handled = true;
+      }
+    } catch (error) {
+      setStatus(`[web] ${direction === 'redo' ? 'Redo' : 'Undo'} failed.\n\n${error?.message || String(error)}`, 'error');
+    }
+    source?.postMessage({
+      source: 'burrete-viewer',
+      body: {
+        type: 'workspaceHistoryCommandResult',
+        requestId: body.requestId,
+        handled
+      }
+    }, '*');
+  }
 
   async function replaceMolstarStructureFromHost(body) {
     const documentId = String((activeConfig || window.BurreteConfig || {}).documentId || '');

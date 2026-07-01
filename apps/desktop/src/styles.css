@@ -4212,6 +4212,14 @@ img.radix-menu-item-icon {
 .app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] [data-testid="bond"][style*="fill: rgb(51, 51, 51)"] {
   fill: var(--ketcher-dark-structure) !important;
 }
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[fill="#000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[fill="#000000"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[fill="#333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[fill="#333333"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[style*="fill: rgb(0, 0, 0)"],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(text, tspan)[style*="fill: rgb(51, 51, 51)"] {
+  fill: var(--ketcher-dark-structure) !important;
+}
 .app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="ActionButton-module_button"]:not([class*="selected"]),
 .app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="TextButton-module_textButton"]:not([class*="isActive"]),
 .app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"],

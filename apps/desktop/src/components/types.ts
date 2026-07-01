@@ -121,6 +121,8 @@ export type ShellActions = {
   canNavigateForward: boolean;
   navigateBack: () => void;
   navigateForward: () => void;
+  undoWorkspaceAction: () => boolean;
+  redoWorkspaceAction: () => boolean;
   focusSidebarSearch: () => void;
   openCommandPalette: () => void;
   openClipboard: () => void | Promise<void>;
