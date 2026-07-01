@@ -16,7 +16,7 @@ const agentControlApiVersion = 'burette-agent-control/v1';
 const renderPanelReadLimit = 512 * 1024;
 const mvsReadLimit = 25 * 1024 * 1024;
 const amberNcPreviewFrameLimit = 100;
-const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt', 'crd', 'rst', 'state', 'lammpstrj', 'dump', 'pos', 'cfg']);
+const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt', 'crd', 'rst', 'state', 'lammpstrj', 'dump', 'pos', 'cfg', 'in', 'inp', 'log', 'out', 'data', 'lammps', 'lmp']);
 const textArtifactExtensions = new Set(['par', 'prm', 'rtf', 'str', 'key', 'chk', 'checkpoint']);
 const amberNetcdfExtensions = new Set(['nc', 'ncdf', 'netcdf', 'ncrst']);
 const topologyPreviewExtensions = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb']);
@@ -83,7 +83,7 @@ function isAmberNetcdfFile(file) {
 }
 
 function preparePreviewPayload(file, bytes) {
-  const extension = extname(file).toLowerCase().replace(/^\./, '');
+  const extension = previewExtension(file);
   if (isPreferredTextArtifact(file)) {
     return { bytes, format: 'text', binary: looksBinary(bytes), textPreview: true };
   }
@@ -98,6 +98,12 @@ function preparePreviewPayload(file, bytes) {
   const converted = maestroPdbDataFromText(bytes.toString('utf8'));
   if (!converted) return { bytes, format: inferFormat(file), binary: isBinaryFormat(file) };
   return { bytes: Buffer.from(converted, 'utf8'), format: 'pdb', binary: false };
+}
+
+function previewExtension(file) {
+  const explicit = extname(file).toLowerCase().replace(/^\./, '');
+  if (explicit) return explicit;
+  return /^in(?:_|$)/iu.test(basename(file)) ? 'in' : '';
 }
 
 function isPreferredTextArtifact(file) {
@@ -205,12 +211,47 @@ function genericPdbDataFromText(text, extension, label) {
 function atomsFromCoordinateText(text, extension) {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   if (extension === 'inpcrd' || extension === 'rst7' || extension === 'restrt') return parseAmberRestartAtoms(lines);
+  if (extension === 'in' || extension === 'inp') return parseQuantumEspressoAtoms(lines) ?? parseBestCoordinateBlock(lines);
+  if (extension === 'log' || extension === 'out') return parseBestCoordinateBlock(lines);
   if (extension === 'lammpstrj' || extension === 'dump' || extension === 'pos') return parseLammpsDumpAtoms(lines);
-  if (extension === 'cfg') return parseAtomeyeCfgAtoms(lines);
+  if (extension === 'cfg') return parseAtomeyeCfgAtoms(lines) ?? parseMlipCfgAtoms(lines);
+  if (extension === 'data' || extension === 'lammps' || extension === 'lmp') return parseLammpsDataAtoms(lines);
   if (extension === 'crd') return parseCharmmCoordinateAtoms(lines);
   if (extension === 'rst') return parseCharmmCoordinateAtoms(lines) ?? parseAmberRestartAtoms(lines);
   if (extension === 'state' || extension === 'xml') return parseXmlPositionAtoms(text) ?? parseHoomdXmlAtoms(text);
   return null;
+}
+
+function parseQuantumEspressoAtoms(lines) {
+  const start = lines.findIndex((line) => line.trim().toLowerCase().startsWith('atomic_positions')) + 1;
+  if (start <= 0) return null;
+  const atoms = [];
+  for (const line of lines.slice(start)) {
+    const parts = fields(line);
+    if (parts.length < 4) break;
+    const x = Number(parts[1]);
+    const y = Number(parts[2]);
+    const z = Number(parts[3]);
+    if (!isElementSymbol(parts[0]) || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) break;
+    atoms.push({ symbol: normalizeElementSymbol(parts[0]), x, y, z });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function parseBestCoordinateBlock(lines) {
+  let best = [];
+  let current = [];
+  const finishBlock = () => {
+    if (current.length > best.length) best = current;
+    current = [];
+  };
+  for (const line of lines) {
+    const atom = parseElementCoordinateLine(line);
+    if (atom) current.push(atom);
+    else finishBlock();
+  }
+  finishBlock();
+  return best.length >= 2 ? best : null;
 }
 
 function parseAmberRestartAtoms(lines) {
@@ -317,6 +358,148 @@ function parseAtomeyeCfgAtoms(lines) {
     });
   }
   return atoms.length === atomCount ? atoms : null;
+}
+
+function parseMlipCfgAtoms(lines) {
+  const begin = lines.findIndex((line) => line.trim().toLowerCase() === 'begin_cfg');
+  if (begin < 0) return null;
+  const relativeEnd = lines.slice(begin + 1).findIndex((line) => line.trim().toLowerCase() === 'end_cfg');
+  const end = relativeEnd >= 0 ? begin + 1 + relativeEnd : lines.length;
+  const block = lines.slice(begin + 1, end);
+  const atomCount = parseMlipCfgSize(block);
+  const atomDataIndex = block.findIndex((line) => line.trimStart().startsWith('AtomData:'));
+  if (!atomCount || atomDataIndex < 0) return null;
+  const header = fields(block[atomDataIndex]);
+  const column = (name) => {
+    const index = header.findIndex((value) => value.toLowerCase() === name.toLowerCase());
+    return index > 0 ? index - 1 : -1;
+  };
+  const typeIndex = column('type');
+  const xIndex = column('cartes_x');
+  const yIndex = column('cartes_y');
+  const zIndex = column('cartes_z');
+  if (xIndex < 0 || yIndex < 0 || zIndex < 0) return null;
+  const atoms = [];
+  for (const line of block.slice(atomDataIndex + 1)) {
+    const parts = fields(line);
+    if (parts.length <= Math.max(xIndex, yIndex, zIndex)) {
+      if (atoms.length) break;
+      continue;
+    }
+    const x = Number(parts[xIndex]);
+    const y = Number(parts[yIndex]);
+    const z = Number(parts[zIndex]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      if (atoms.length) break;
+      continue;
+    }
+    atoms.push({
+      symbol: typeIndex >= 0 ? mlipCfgSymbolForType(parts[typeIndex] ?? '') : 'C',
+      x,
+      y,
+      z
+    });
+    if (atoms.length === atomCount) break;
+  }
+  return atoms.length === atomCount ? atoms : null;
+}
+
+function parseLammpsDataAtoms(lines) {
+  const masses = parseLammpsMasses(lines);
+  let inAtoms = false;
+  const atoms = [];
+  for (const line of lines) {
+    const parts = fields(stripInlineComment(line));
+    const first = parts[0];
+    if (!first) continue;
+    if (first.toLowerCase() === 'atoms') {
+      inAtoms = true;
+      continue;
+    }
+    if (inAtoms && /^[A-Za-z]/u.test(first)) break;
+    if (!inAtoms || parts.length < 5) continue;
+    const coordinates = lammpsDataCoordinates(parts, masses);
+    if (!coordinates) continue;
+    atoms.push({
+      symbol: lammpsDataAtomSymbol(parts, masses),
+      x: coordinates[0],
+      y: coordinates[1],
+      z: coordinates[2]
+    });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function parseLammpsMasses(lines) {
+  let inMasses = false;
+  const masses = new Map();
+  for (const line of lines) {
+    const parts = fields(stripInlineComment(line));
+    const first = parts[0];
+    if (!first) continue;
+    if (first.toLowerCase() === 'masses') {
+      inMasses = true;
+      continue;
+    }
+    if (inMasses && /^[A-Za-z]/u.test(first)) break;
+    if (!inMasses || parts.length < 2) continue;
+    const symbol = elementSymbolFromAtomName(parts[2] ?? '') ?? lammpsSymbolFromMass(parts[1] ?? '');
+    if (symbol) masses.set(parts[0], symbol);
+  }
+  return masses;
+}
+
+function lammpsDataCoordinates(parts, masses) {
+  const starts = [];
+  if (masses.has(parts[2])) starts.push(4);
+  if (masses.has(parts[1])) starts.push(3, 2);
+  starts.push(3, 4, 2);
+  for (const start of starts) {
+    const x = Number(parts[start]);
+    const y = Number(parts[start + 1]);
+    const z = Number(parts[start + 2]);
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) return [x, y, z];
+  }
+  return null;
+}
+
+function lammpsDataAtomSymbol(parts, masses) {
+  return masses.get(parts[1])
+    ?? masses.get(parts[2])
+    ?? elementSymbolFromAtomName(parts[1] ?? '')
+    ?? elementSymbolFromAtomName(parts[2] ?? '')
+    ?? 'C';
+}
+
+function lammpsSymbolFromMass(value) {
+  const mass = Number(value);
+  if (!Number.isFinite(mass)) return null;
+  const candidates = [
+    [1.008, 'H'], [12.011, 'C'], [14.007, 'N'], [15.999, 'O'], [18.998, 'F'],
+    [22.99, 'Na'], [24.305, 'Mg'], [30.974, 'P'], [32.06, 'S'], [35.45, 'Cl']
+  ];
+  const match = candidates.find(([candidate]) => Math.abs(candidate - mass) < 0.15);
+  return match?.[1] ?? null;
+}
+
+function stripInlineComment(line) {
+  return line.split('#')[0] ?? '';
+}
+
+function parseMlipCfgSize(lines) {
+  for (let index = 0; index + 1 < lines.length; index += 1) {
+    if (lines[index].trim().toLowerCase() !== 'size') continue;
+    const value = Number.parseInt(fields(lines[index + 1])[0] ?? '', 10);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return null;
+}
+
+function mlipCfgSymbolForType(value) {
+  const normalized = normalizeElementSymbol(value);
+  if (isElementSymbol(normalized)) return normalized;
+  if (value.trim() === '1') return 'H';
+  return 'C';
 }
 
 function parseAtomeyeCfgAtomCount(lines) {
@@ -441,6 +624,19 @@ function elementSymbolFromAtomName(value) {
   if (isElementSymbol(two)) return two;
   const one = normalizeElementSymbol(clean.slice(0, 1));
   return isElementSymbol(one) ? one : null;
+}
+
+function parseElementCoordinateLine(line) {
+  const parts = fields(line);
+  if (parts.length < 4) return null;
+  const symbol = elementSymbolFromAtomName(parts[0]);
+  if (!symbol) return null;
+  const x = Number(parts[1]);
+  const y = Number(parts[2]);
+  const z = Number(parts[3]);
+  return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)
+    ? { symbol, x, y, z }
+    : null;
 }
 
 function maestroPdbDataFromText(text) {

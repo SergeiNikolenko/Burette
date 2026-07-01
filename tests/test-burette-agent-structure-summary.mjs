@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { summarizeStructureFile } from "../plugins/burette-agent/mcp/lib/structure-summary.mjs";
 
 const miniPdb = await summarizeStructureFile("samples/mini.pdb");
@@ -29,5 +32,68 @@ assert.match(oneHtbPdb.summaryLine, /4 ligand instances/);
 const miniCif = await summarizeStructureFile("samples/mini.cif");
 assert.equal(miniCif.format, "CIF");
 assert.ok(miniCif.counts.atomSiteRows > 0);
+
+const fixtureDir = await mkdtemp(path.join(tmpdir(), "burrete-summary-"));
+
+const mlipCfgPath = path.join(fixtureDir, "mlip.cfg");
+await writeFile(mlipCfgPath, `BEGIN_CFG
+ Size
+    3
+ AtomData:  id type       cartes_x      cartes_y      cartes_z           fx          fy          fz
+      1    1        0.0           0.0           0.0             0.0         0.0         0.0
+      2    6        1.0           0.0           0.0             0.0         0.0         0.0
+      3    6        0.0           1.0           0.0             0.0         0.0         0.0
+ Energy
+    -1.0
+END_CFG
+BEGIN_CFG
+END_CFG
+`);
+const mlipCfg = await summarizeStructureFile(mlipCfgPath);
+assert.equal(mlipCfg.format, "CFG");
+assert.equal(mlipCfg.kind, "MLIP configuration");
+assert.equal(mlipCfg.counts.atoms, 3);
+assert.equal(mlipCfg.counts.configurations, 2);
+assert.match(mlipCfg.summaryLine, /MLIP configuration/);
+
+const qeInputPath = path.join(fixtureDir, "in_md");
+await writeFile(qeInputPath, `&CONTROL
+ calculation = 'md'
+/
+ATOMIC_POSITIONS angstrom
+C 0.0 0.0 0.0
+H 0.0 0.0 1.1
+H 1.0 0.0 0.0
+`);
+const qeInput = await summarizeStructureFile(qeInputPath);
+assert.equal(qeInput.format, "QE");
+assert.equal(qeInput.kind, "Quantum ESPRESSO input");
+assert.equal(qeInput.counts.atoms, 3);
+assert.equal(qeInput.extension, "in");
+
+const lammpsDataPath = path.join(fixtureDir, "benz.data");
+await writeFile(lammpsDataPath, `LAMMPS data
+
+3 atoms
+2 atom types
+
+Masses
+
+1 12.011
+2 1.008
+
+Atoms # full
+
+1 1 1 0.0 0.0 0.0 0.0
+2 1 2 0.0 1.0 0.0 0.0
+3 1 2 0.0 0.0 1.0 0.0
+`);
+const lammpsData = await summarizeStructureFile(lammpsDataPath);
+assert.equal(lammpsData.format, "LAMMPS");
+assert.equal(lammpsData.kind, "LAMMPS data");
+assert.equal(lammpsData.counts.atoms, 3);
+assert.match(lammpsData.rows.find((row) => row.label === "Elements")?.value ?? "", /H 2/);
+
+await rm(fixtureDir, { recursive: true, force: true });
 
 console.log("burette-agent structure summary tests passed");

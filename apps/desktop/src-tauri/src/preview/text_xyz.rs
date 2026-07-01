@@ -131,14 +131,14 @@ fn atoms_from_text(data: &[u8], extension: &str) -> Option<Vec<Atom>> {
     match extension {
         "cub" | "cube" => parse_cube_atoms(&lines),
         "vasp" => parse_vasp_atoms(&lines),
-        "in" => parse_quantum_espresso_atoms(&lines),
+        "in" | "inp" => parse_quantum_espresso_atoms(&lines),
         "out" => parse_orca_atoms(&lines),
         "abi" => parse_abinit_atoms(&lines),
         "fdf" => parse_fdf_atoms(&lines),
         "cif" | "mmcif" | "mcif" => parse_cif_core_atoms(&lines),
         "inpcrd" | "rst7" | "restrt" => parse_amber_restart_atoms(&lines),
         "lammpstrj" | "dump" | "pos" => parse_lammps_dump_atoms(&lines),
-        "cfg" => parse_atomeye_cfg_atoms(&lines),
+        "cfg" => parse_atomeye_cfg_atoms(&lines).or_else(|| parse_mlip_cfg_atoms(&lines)),
         "data" | "lammps" | "lmp" => parse_lammps_data_atoms(&lines),
         "crd" => parse_charmm_coordinate_atoms(&lines),
         "rst" => {
@@ -877,6 +877,83 @@ fn parse_atomeye_cfg_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
         atoms.push(Atom { symbol, x, y, z });
     }
     (atoms.len() == atom_count).then_some(atoms)
+}
+
+fn parse_mlip_cfg_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
+    let begin = lines
+        .iter()
+        .position(|line| line.trim().eq_ignore_ascii_case("BEGIN_CFG"))?;
+    let end = lines[begin + 1..]
+        .iter()
+        .position(|line| line.trim().eq_ignore_ascii_case("END_CFG"))
+        .map(|offset| begin + 1 + offset)
+        .unwrap_or(lines.len());
+    let block = &lines[begin + 1..end];
+    let atom_count = parse_mlip_cfg_size(block)?;
+    let atom_data_index = block
+        .iter()
+        .position(|line| line.trim_start().starts_with("AtomData:"))?;
+    let header = fields(block[atom_data_index]);
+    let column = |name: &str| -> Option<usize> {
+        header
+            .iter()
+            .position(|value| value.eq_ignore_ascii_case(name))
+            .and_then(|index| index.checked_sub(1))
+    };
+    let type_index = column("type");
+    let x_index = column("cartes_x")?;
+    let y_index = column("cartes_y")?;
+    let z_index = column("cartes_z")?;
+    let mut atoms = Vec::with_capacity(atom_count);
+    for line in &block[atom_data_index + 1..] {
+        let parts = fields(line);
+        if parts.len() <= x_index.max(y_index).max(z_index) {
+            if !atoms.is_empty() {
+                break;
+            }
+            continue;
+        }
+        let x = parts[x_index].parse::<f64>().ok();
+        let y = parts[y_index].parse::<f64>().ok();
+        let z = parts[z_index].parse::<f64>().ok();
+        let (Some(x), Some(y), Some(z)) = (x, y, z) else {
+            if !atoms.is_empty() {
+                break;
+            }
+            continue;
+        };
+        let symbol = type_index
+            .and_then(|index| parts.get(index))
+            .map(|value| mlip_cfg_symbol_for_type(value))
+            .unwrap_or_else(|| "C".to_string());
+        atoms.push(Atom { symbol, x, y, z });
+        if atoms.len() == atom_count {
+            break;
+        }
+    }
+    (atoms.len() == atom_count).then_some(atoms)
+}
+
+fn parse_mlip_cfg_size(lines: &[&str]) -> Option<usize> {
+    lines.windows(2).find_map(|pair| {
+        pair[0]
+            .trim()
+            .eq_ignore_ascii_case("Size")
+            .then(|| fields(pair[1]).first()?.parse::<usize>().ok())
+            .flatten()
+    })
+}
+
+fn mlip_cfg_symbol_for_type(value: &str) -> String {
+    let normalized = normalize_element_symbol(value);
+    if is_element_symbol(&normalized) {
+        return normalized;
+    }
+    match value.trim() {
+        "0" => "C".to_string(),
+        "1" => "H".to_string(),
+        _ => "C".to_string(),
+    }
 }
 
 fn parse_atomeye_cfg_atom_count(lines: &[&str]) -> Option<usize> {
