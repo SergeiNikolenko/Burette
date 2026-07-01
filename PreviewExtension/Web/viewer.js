@@ -2185,6 +2185,11 @@
     }
     const format = normalizeFormat(config?.molstarFormat || config?.format);
     if (format !== 'sdf' && format !== 'xyz') return 'single';
+    const storageKey = poseModeStorageKey(config);
+    try {
+      const stored = window.localStorage?.getItem(storageKey);
+      if (stored === 'all' || stored === 'single') return stored;
+    } catch (_) {}
     return 'single';
   }
 
@@ -2240,8 +2245,6 @@
 
   function structureOverlayToggleAvailable(prepared = activeMolstarPrepared) {
     if (!structureOverlayAvailable(prepared)) return false;
-    const sourceFormat = normalizeFormat(activeConfig?.sourceExtension || activeConfig?.molstarFormat || activeConfig?.format);
-    if (prepared?.xyzFrameOverlayAvailable === true || sourceFormat === 'xyz' || sourceFormat === 'extxyz') return false;
     return true;
   }
 

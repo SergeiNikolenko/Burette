@@ -5178,8 +5178,8 @@ for (const runtimeSource of [previewViewer]) {
   assert.match(runtimeSource, /function xyzFrameOverlayRawSignature\(raw\)/);
   assert.match(runtimeSource, /function xyzFrameOverlayStateKey\(rawSignature, frames, prepared, style, contextStyle, contextOpacity, contextColor, backgroundIndexes\)/);
   assert.match(runtimeSource, /function structureOverlayToggleAvailable\(prepared = activeMolstarPrepared\)/);
-  assert.match(runtimeSource, /const sourceFormat = normalizeFormat\(activeConfig\?\.sourceExtension \|\| activeConfig\?\.molstarFormat \|\| activeConfig\?\.format\)/);
-  assert.match(runtimeSource, /if \(prepared\?\.xyzFrameOverlayAvailable === true \|\| sourceFormat === 'xyz' \|\| sourceFormat === 'extxyz'\) return false;/);
+  assert.match(runtimeSource, /function structureOverlayToggleAvailable\(prepared = activeMolstarPrepared\) \{\s*if \(!structureOverlayAvailable\(prepared\)\) return false;\s*return true;\s*\}/);
+  assert.doesNotMatch(runtimeSource, /sourceFormat === 'xyz' \|\| sourceFormat === 'extxyz'/);
   assert.match(runtimeSource, /const overlayToggleAvailable = structureOverlayToggleAvailable\(prepared\);[\s\S]*?const all = overlayToggleAvailable \? createStructureOverlayToggleButton\(prepared\) : null;/);
   assert.match(runtimeSource, /function xyzFrameRepresentationStyle\(style\)/);
   assert.match(runtimeSource, /if \(normalized === 'line' \|\| normalized === 'ball-and-stick' \|\| normalized === 'spacefill' \|\| normalized === 'molecular-surface'\) return normalized;\s*return 'line';/);
