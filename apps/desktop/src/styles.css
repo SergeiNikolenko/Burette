@@ -921,6 +921,23 @@ kbd span { margin-left: 2px; }
   font-size: 13px;
   font-weight: 400;
 }
+.project-folder-name-input {
+  min-width: 0;
+  flex: 1;
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  padding: 0 6px;
+  font: inherit;
+  line-height: 1.15;
+  outline: none;
+}
+.project-folder-name-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
 .project-folder-children-shell {
   display: grid;
   grid-template-rows: 0fr;

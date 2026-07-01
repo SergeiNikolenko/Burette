@@ -25,6 +25,7 @@ type WorkspaceShellViewState = Pick<
   | "sidebarProjects"
   | "projectsOpen"
   | "expandedProjectIds"
+  | "projectNameOverrides"
   | "pinnedStructurePaths"
   | "workspacePath"
   | "sidebarQuery"
@@ -137,6 +138,7 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
       sidebarProjects: state.sidebarProjects,
       projectsOpen: state.projectsOpen,
       expandedProjectIds: state.expandedProjectIds,
+      projectNameOverrides: state.projectNameOverrides,
       pinnedStructurePaths: state.pinnedStructurePaths,
       workspacePath: state.workspacePath,
       sidebarQuery: state.sidebarQuery,
