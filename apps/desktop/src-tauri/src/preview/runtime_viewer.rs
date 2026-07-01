@@ -19,7 +19,7 @@ const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT: usize = 1500;
 const KETCHER_EDIT_MAX_BYTES: usize = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS: usize = 300;
 const EMBEDDED_PREVIEW_DATA_SCRIPT_MAX_BYTES: usize = 32 * 1024 * 1024;
-const VIEWER_MOLSTAR_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;";
+const VIEWER_MOLSTAR_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;";
 const VIEWER_EXTERNAL_ARTIFACT_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
 const VIEWER_MINIMAL_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
 
@@ -800,6 +800,7 @@ mod tests {
             AssetProfile::for_viewer_renderer("xyzrender-external"),
             AssetProfile::ExternalXyzrender
         );
+        assert!(AssetProfile::Molstar.copies_rdkit());
         assert!(AssetProfile::Grid.copies_rdkit());
         assert!(!AssetProfile::Molstar.files().contains(&"grid-viewer.js"));
         assert!(!AssetProfile::Molstar.files().contains(&"xyz-fast.js"));
@@ -810,7 +811,7 @@ mod tests {
     }
 
     #[test]
-    fn molstar_profile_does_not_copy_grid_or_rdkit_assets() {
+    fn molstar_profile_copies_rdkit_for_ligand_previews_without_grid_assets() {
         let app = tauri::test::mock_app();
         let assets = std::env::temp_dir().join(format!("burrete-assets-{}", uuid::Uuid::new_v4()));
 
@@ -822,7 +823,8 @@ mod tests {
         assert!(assets.join("viewer.js").is_file());
         assert!(!assets.join("grid-viewer.js").exists());
         assert!(!assets.join("grid.css").exists());
-        assert!(!assets.join("rdkit").exists());
+        assert!(assets.join("rdkit").join("RDKit_minimal.js").is_file());
+        assert!(assets.join("rdkit").join("RDKit_minimal.wasm").is_file());
 
         let _ = fs::remove_dir_all(assets);
     }
@@ -881,7 +883,7 @@ mod tests {
     }
 
     #[test]
-    fn molstar_csp_keeps_eval_without_wasm_eval() {
+    fn molstar_csp_allows_eval_and_wasm_for_rdkit_ligand_previews() {
         let html = super::viewer_html(
             Path::new("example.pdb"),
             Path::new("/tmp/runtime"),
@@ -893,7 +895,7 @@ mod tests {
 
         assert!(html.contains("Content-Security-Policy"));
         assert!(html.contains("unsafe-eval"));
-        assert!(!html.contains("wasm-unsafe-eval"));
+        assert!(html.contains("wasm-unsafe-eval"));
     }
 }
 
@@ -935,7 +937,7 @@ impl AssetProfile {
     }
 
     fn copies_rdkit(self) -> bool {
-        self == Self::Grid
+        matches!(self, Self::Molstar | Self::Grid)
     }
 
     fn for_viewer_renderer(renderer: &str) -> Self {
