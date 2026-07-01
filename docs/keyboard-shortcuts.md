@@ -12,6 +12,8 @@ open.
 | Cmd+P or / | Open command palette |
 | Cmd+O | Open molecular structure files |
 | Cmd+Shift+O | Open most recent structure |
+| Cmd+Z | Undo the latest workspace or focused preview edit |
+| Cmd+Shift+Z | Redo the latest workspace or focused preview edit when available |
 | Cmd+B | Toggle sidebar |
 | Cmd+, | Open Settings |
 | Cmd+W | Close active structure tab |

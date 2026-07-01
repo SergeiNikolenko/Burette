@@ -56,6 +56,8 @@ pub fn run() {
                 "settings.open" => {
                     menu::emit_to_focused_window(app, menu::MENU_OPEN_SETTINGS_EVENT)
                 }
+                "edit.undo" => menu::emit_to_focused_window(app, menu::MENU_UNDO_EVENT),
+                "edit.redo" => menu::emit_to_focused_window(app, menu::MENU_REDO_EVENT),
                 "file.new-window" => {
                     let _ = windows::open_new_workspace_window(app);
                 }
