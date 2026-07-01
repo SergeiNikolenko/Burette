@@ -48,6 +48,18 @@ export async function summarizeStructureFile(file) {
   if (extension === "cif" || extension === "mmcif") {
     return summarizeCif(base, text);
   }
+  if (extension === "cfg") {
+    return summarizeMlipCfg(base, text);
+  }
+  if (extension === "in" || extension === "inp") {
+    return summarizeCoordinateAtoms(base, parseQuantumEspressoAtoms(text), "QE", "Quantum ESPRESSO input");
+  }
+  if (extension === "log" || extension === "out") {
+    return summarizeCoordinateAtoms(base, parseBestCoordinateBlock(text), extension.toUpperCase(), "Text coordinate output");
+  }
+  if (extension === "data" || extension === "lammps" || extension === "lmp") {
+    return summarizeCoordinateAtoms(base, parseLammpsDataAtoms(text), "LAMMPS", "LAMMPS data");
+  }
   return {
     ...base,
     format: extension ? extension.toUpperCase() : "FILE",
@@ -317,6 +329,48 @@ function summarizeCif(base, text) {
   };
 }
 
+function summarizeMlipCfg(base, text) {
+  const atoms = parseMlipCfgAtoms(text);
+  const configs = (text.match(/\bBEGIN_CFG\b/g) || []).length;
+  const summary = summarizeCoordinateAtoms(base, atoms, "CFG", "MLIP configuration");
+  return {
+    ...summary,
+    summaryLine: atoms.length > 0
+      ? `CFG MLIP configuration, ${formatInteger(configs || 1)} ${plural(configs || 1, "configuration")}, ${formatInteger(atoms.length)} atoms in first configuration`
+      : summary.summaryLine,
+    counts: { ...summary.counts, configurations: configs || 0 },
+    rows: [
+      { label: "Configurations", value: configs > 0 ? formatInteger(configs) : "Not detected" },
+      ...summary.rows,
+    ],
+    notes: [
+      "MLIP CFG summary reads the first BEGIN_CFG block for coordinates.",
+    ],
+  };
+}
+
+function summarizeCoordinateAtoms(base, atoms, format, kind) {
+  if (atoms.length === 0) return emptyParsedSummary(base, format, kind, "No supported coordinate block was detected.");
+  const elements = new Map();
+  for (const atom of atoms) {
+    increment(elements, atom.element || "X", 1);
+  }
+  return {
+    ...base,
+    format,
+    kind,
+    summaryLine: `${format} ${kind.toLowerCase()}, ${formatInteger(atoms.length)} atoms`,
+    counts: { atoms: atoms.length, elements: elements.size },
+    rows: [
+      { label: "Atoms", value: formatInteger(atoms.length) },
+      { label: "Elements", value: formatNameCounts(elements, 8) },
+      { label: "Lines", value: formatInteger(base.lineCount) },
+    ],
+    components: { elements: Object.fromEntries(elements) },
+    notes: ["Coordinate summary is element-level because this format has no residue or chain records."],
+  };
+}
+
 function emptyParsedSummary(base, format, kind, note) {
   return {
     ...base,
@@ -347,6 +401,174 @@ function parseMolCounts(block) {
     atoms: Number.parseInt(countsLine.slice(0, 3).trim(), 10) || 0,
     bonds: Number.parseInt(countsLine.slice(3, 6).trim(), 10) || 0,
   };
+}
+
+function parseQuantumEspressoAtoms(text) {
+  const lines = text.split(/\r?\n/);
+  const atoms = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^ATOMIC_POSITIONS\b/i.test(lines[index].trim())) continue;
+    for (let atomLineIndex = index + 1; atomLineIndex < lines.length; atomLineIndex += 1) {
+      const parsed = parseElementCoordinateLine(lines[atomLineIndex]);
+      if (!parsed) {
+        if (atoms.length > 0) return atoms;
+        break;
+      }
+      atoms.push(parsed);
+    }
+  }
+  return atoms;
+}
+
+function parseBestCoordinateBlock(text) {
+  const lines = text.split(/\r?\n/);
+  let best = [];
+  for (let start = 0; start < lines.length; start += 1) {
+    const block = [];
+    for (let index = start; index < lines.length; index += 1) {
+      const parsed = parseElementCoordinateLine(lines[index]);
+      if (!parsed) {
+        if (block.length >= 3) break;
+        if (block.length > 0) break;
+        continue;
+      }
+      block.push(parsed);
+    }
+    if (block.length > best.length) best = block;
+  }
+  return best;
+}
+
+function parseMlipCfgAtoms(text) {
+  const lines = text.split(/\r?\n/);
+  const begin = lines.findIndex((line) => line.trim() === "BEGIN_CFG");
+  if (begin < 0) return [];
+  const end = lines.findIndex((line, index) => index > begin && line.trim() === "END_CFG");
+  const block = lines.slice(begin, end > begin ? end : undefined);
+  const size = parseMlipCfgSize(block);
+  const atomDataIndex = block.findIndex((line) => line.trim().startsWith("AtomData:"));
+  if (atomDataIndex < 0) return [];
+  const header = block[atomDataIndex].trim().split(/\s+/).slice(1);
+  const typeIndex = header.indexOf("type");
+  const xIndex = header.indexOf("cartes_x");
+  const yIndex = header.indexOf("cartes_y");
+  const zIndex = header.indexOf("cartes_z");
+  if (xIndex < 0 || yIndex < 0 || zIndex < 0) return [];
+  const atoms = [];
+  for (let index = atomDataIndex + 1; index < block.length; index += 1) {
+    const values = block[index].trim().split(/\s+/);
+    if (values.length < header.length) break;
+    const x = Number.parseFloat(values[xIndex]);
+    const y = Number.parseFloat(values[yIndex]);
+    const z = Number.parseFloat(values[zIndex]);
+    if (![x, y, z].every(Number.isFinite)) break;
+    const type = typeIndex >= 0 ? values[typeIndex] : "";
+    atoms.push({ element: mlipCfgSymbolForType(type), x, y, z });
+    if (size > 0 && atoms.length >= size) break;
+  }
+  return atoms;
+}
+
+function parseMlipCfgSize(block) {
+  const sizeIndex = block.findIndex((line) => line.trim() === "Size");
+  if (sizeIndex < 0 || sizeIndex + 1 >= block.length) return 0;
+  const size = Number.parseInt(block[sizeIndex + 1].trim(), 10);
+  return Number.isFinite(size) ? size : 0;
+}
+
+function mlipCfgSymbolForType(type) {
+  const normalized = normalizeElement(type);
+  if (normalized) return normalized;
+  if (type === "1") return "H";
+  if (/^\d+$/.test(type)) return "C";
+  return "X";
+}
+
+function parseLammpsDataAtoms(text) {
+  const lines = text.split(/\r?\n/);
+  const masses = parseLammpsMasses(lines);
+  const atoms = [];
+  const atomsIndex = lines.findIndex((line) => /^Atoms\b/i.test(line.trim()));
+  if (atomsIndex < 0) return atoms;
+  for (let index = atomsIndex + 1; index < lines.length; index += 1) {
+    const line = stripInlineComment(lines[index]).trim();
+    if (!line) continue;
+    if (/^[A-Za-z]/.test(line)) break;
+    const values = line.split(/\s+/);
+    if (values.length < 5) continue;
+    const atom = lammpsDataAtom(values, masses);
+    if (!atom) continue;
+    atoms.push(atom);
+  }
+  return atoms;
+}
+
+function parseLammpsMasses(lines) {
+  const masses = new Map();
+  const massesIndex = lines.findIndex((line) => /^Masses\b/i.test(line.trim()));
+  if (massesIndex < 0) return masses;
+  for (let index = massesIndex + 1; index < lines.length; index += 1) {
+    const line = stripInlineComment(lines[index]).trim();
+    if (!line) continue;
+    if (/^[A-Za-z]/.test(line)) break;
+    const values = line.split(/\s+/);
+    const type = values[0];
+    const symbol = normalizeElement(values[2]) || lammpsSymbolFromMass(values[1]);
+    if (type && symbol) masses.set(type, symbol);
+  }
+  return masses;
+}
+
+function lammpsDataAtom(values, masses) {
+  const starts = [];
+  if (masses.has(values[2])) starts.push({ coordinateIndex: 4, typeIndex: 2 });
+  if (masses.has(values[1])) starts.push({ coordinateIndex: 3, typeIndex: 1 }, { coordinateIndex: 2, typeIndex: 1 });
+  starts.push(
+    { coordinateIndex: 3, typeIndex: 1 },
+    { coordinateIndex: 4, typeIndex: 2 },
+    { coordinateIndex: 2, typeIndex: 1 },
+  );
+  for (const start of starts) {
+    const x = Number.parseFloat(values[start.coordinateIndex]);
+    const y = Number.parseFloat(values[start.coordinateIndex + 1]);
+    const z = Number.parseFloat(values[start.coordinateIndex + 2]);
+    if ([x, y, z].every(Number.isFinite)) {
+      return { element: lammpsDataAtomSymbol(values, masses, start.typeIndex), x, y, z };
+    }
+  }
+  return null;
+}
+
+function lammpsDataAtomSymbol(values, masses, typeIndex) {
+  return masses.get(values[typeIndex])
+    || normalizeElement(values[typeIndex])
+    || "X";
+}
+
+function lammpsSymbolFromMass(value) {
+  const mass = Number(value);
+  if (!Number.isFinite(mass)) return "";
+  if (Math.abs(mass - 1.008) < 0.25) return "H";
+  if (Math.abs(mass - 12.011) < 0.5) return "C";
+  if (Math.abs(mass - 14.007) < 0.5) return "N";
+  if (Math.abs(mass - 15.999) < 0.5) return "O";
+  if (Math.abs(mass - 32.06) < 1) return "S";
+  return "";
+}
+
+function parseElementCoordinateLine(line) {
+  const values = stripInlineComment(line).trim().split(/\s+/);
+  if (values.length < 4) return null;
+  const element = normalizeElement(values[0]);
+  const x = Number.parseFloat(values[1]);
+  const y = Number.parseFloat(values[2]);
+  const z = Number.parseFloat(values[3]);
+  if (!element || ![x, y, z].every(Number.isFinite)) return null;
+  return { element, x, y, z };
+}
+
+function stripInlineComment(line) {
+  return String(line || "").replace(/[#;!].*$/, "");
 }
 
 function ligandLabel(residue) {
@@ -403,7 +625,10 @@ function plural(count, noun) {
 }
 
 function extensionForPath(file) {
-  return path.extname(file).replace(/^\./, "").toLowerCase();
+  const extension = path.extname(file).replace(/^\./, "").toLowerCase();
+  if (extension) return extension;
+  const basename = path.basename(file);
+  return /^in(?:_|$)/iu.test(basename) ? "in" : "";
 }
 
 function lineCount(text) {
