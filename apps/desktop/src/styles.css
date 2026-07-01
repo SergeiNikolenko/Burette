@@ -760,17 +760,18 @@ kbd span { margin-left: 2px; }
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--text-muted);
-  padding: 5px 88px 5px 10px;
+  color: var(--text-secondary);
+  padding: 5px 64px 5px 10px;
   display: flex;
   align-items: center;
   gap: 6px;
+  overflow: hidden;
   text-align: left;
   cursor: default;
   line-height: 1.15;
   transition: background 140ms ease-out, color 140ms ease-out, box-shadow 140ms ease-out, transform 140ms ease-out;
 }
-.project-group-row:hover { background: var(--surface-subtle); color: var(--text-secondary); }
+.project-group-row:hover { background: var(--surface-subtle); }
 .project-group-row:active { transform: scale(0.99); }
 .project-folder-icon {
   width: 20px;
@@ -818,6 +819,7 @@ kbd span { margin-left: 2px; }
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   opacity: 1;
@@ -845,9 +847,10 @@ kbd span { margin-left: 2px; }
 }
 .project-folder-toggle-button {
   position: absolute;
-  right: 58px;
+  right: 30px;
   top: 50%;
   transform: translateY(-50%);
+  z-index: 1;
   width: 30px;
   height: 30px;
   border: 0;
@@ -891,23 +894,20 @@ kbd span { margin-left: 2px; }
   width: 100%;
   min-height: 28px;
   border-radius: 8px;
-  color: var(--text-faint);
-  padding: 5px 34px 5px calc(6px + (var(--project-depth, 0) * 6px));
+  color: var(--text-secondary);
+  padding: 5px 40px 5px calc(6px + (var(--project-depth, 0) * 6px));
   display: flex;
   align-items: center;
   gap: 4px;
+  overflow: hidden;
   cursor: default;
   line-height: 1.15;
-  transition: background 140ms ease-out, color 140ms ease-out;
+  transition: background 140ms ease-out;
 }
 .project-folder-row:hover,
 .project-folder-row:focus-visible {
-  background: transparent;
+  background: var(--surface-subtle);
   outline: none;
-}
-.project-folder-row:hover .project-folder-name,
-.project-folder-row:focus-visible .project-folder-name {
-  color: var(--text-secondary);
 }
 .project-folder-row > .project-folder-toggle-button {
   right: 4px;
@@ -947,7 +947,7 @@ kbd span { margin-left: 2px; }
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   padding: 5px 38px 5px 10px;
   display: flex;
   align-items: center;
@@ -957,7 +957,7 @@ kbd span { margin-left: 2px; }
   line-height: 1.15;
   transition: background 140ms ease-out, color 140ms ease-out, box-shadow 140ms ease-out, transform 140ms ease-out;
 }
-.project:hover { background: var(--surface-subtle); color: var(--text-secondary); }
+.project:hover { background: var(--surface-subtle); }
 .project.active {
   background: var(--surface-subtle);
   color: var(--text-secondary);

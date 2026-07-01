@@ -41,7 +41,7 @@ export function ProjectGroup({
   actions: ShellActions;
 }) {
   const [showAllItems, setShowAllItems] = useState(false);
-  const [collapsedFolderPaths, setCollapsedFolderPaths] = useState<Set<string>>(() => new Set());
+  const [expandedFolderPaths, setExpandedFolderPaths] = useState<Set<string>>(() => new Set());
   const [showAllFolderPaths, setShowAllFolderPaths] = useState<Set<string>>(() => new Set());
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState(project.title);
@@ -118,11 +118,11 @@ export function ProjectGroup({
 
   const handleRecursiveToggle = () => {
     const folderPaths = collectProjectFolderPaths(projectTree);
-    setCollapsedFolderPaths((current) => {
+    setExpandedFolderPaths((current) => {
       const next = new Set(current);
       for (const folderPath of folderPaths) {
-        if (expanded) next.add(folderPath);
-        else next.delete(folderPath);
+        if (expanded) next.delete(folderPath);
+        else next.add(folderPath);
       }
       return next;
     });
@@ -162,20 +162,20 @@ export function ProjectGroup({
 
   const toggleFolderPath = (path: string) => {
     const descendantPaths = collectProjectFolderPathsFor(projectTree, path).slice(1);
-    setCollapsedFolderPaths((current) => {
+    setExpandedFolderPaths((current) => {
       const next = new Set(current);
       if (next.has(path)) {
         next.delete(path);
-        for (const descendantPath of descendantPaths) next.add(descendantPath);
       } else {
         next.add(path);
+        for (const descendantPath of descendantPaths) next.delete(descendantPath);
       }
       return next;
     });
   };
   const toggleFolderPathRecursive = (path: string) => {
     const folderPaths = collectProjectFolderPathsFor(projectTree, path);
-    setCollapsedFolderPaths((current) => {
+    setExpandedFolderPaths((current) => {
       const next = new Set(current);
       if (next.has(path)) {
         for (const folderPath of folderPaths) next.delete(folderPath);
@@ -293,7 +293,7 @@ export function ProjectGroup({
               state={state}
               actions={actions}
               depth={1}
-              collapsedFolderPaths={collapsedFolderPaths}
+              expandedFolderPaths={expandedFolderPaths}
               showAllFolderPaths={showAllFolderPaths}
               forceExpanded={hasSidebarQuery}
               toggleFolderPath={toggleFolderPath}
@@ -430,7 +430,7 @@ function ProjectTreeNodeView({
   state,
   actions,
   depth,
-  collapsedFolderPaths,
+  expandedFolderPaths,
   showAllFolderPaths,
   forceExpanded,
   toggleFolderPath,
@@ -442,7 +442,7 @@ function ProjectTreeNodeView({
   state: ShellViewState;
   actions: ShellActions;
   depth: number;
-  collapsedFolderPaths: Set<string>;
+  expandedFolderPaths: Set<string>;
   showAllFolderPaths: Set<string>;
   forceExpanded: boolean;
   toggleFolderPath: (path: string) => void;
@@ -454,7 +454,7 @@ function ProjectTreeNodeView({
   }
 
   const nodeItems = projectTreeNodeItems(node);
-  const expanded = forceExpanded || !collapsedFolderPaths.has(node.path);
+  const expanded = forceExpanded || expandedFolderPaths.has(node.path);
   const handleToggle = () => {
     if (!forceExpanded) toggleFolderPath(node.path);
   };
@@ -534,7 +534,7 @@ function ProjectTreeNodeView({
               state={state}
               actions={actions}
               depth={depth + 1}
-              collapsedFolderPaths={collapsedFolderPaths}
+              expandedFolderPaths={expandedFolderPaths}
               showAllFolderPaths={showAllFolderPaths}
               forceExpanded={forceExpanded}
               toggleFolderPath={toggleFolderPath}

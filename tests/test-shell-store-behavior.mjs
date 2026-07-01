@@ -80,10 +80,16 @@ assert.deepEqual(pruned.projectNameOverrides, { "/tmp/live-project": "Live Proje
 assert.deepEqual(pruned.expandedProjectIds, ["project:/tmp/live-project", "loose-files"]);
 assert.deepEqual(pruned.pinnedStructurePaths, ["/tmp/live-project/mini.pdb"]);
 
+useShellStore.getState().addProjectRoot("/tmp/added-project");
+
+const addedProject = useShellStore.getState();
+assert.deepEqual(addedProject.projectRoots, ["/tmp/live-project", "/tmp/added-project"]);
+assert.deepEqual(addedProject.expandedProjectIds, ["project:/tmp/live-project", "loose-files"]);
+
 useShellStore.getState().renameProjectRoot("/tmp/implicit-project", "Implicit Project");
 
 const renamedImplicit = useShellStore.getState();
-assert.deepEqual(renamedImplicit.projectRoots, ["/tmp/live-project", "/tmp/implicit-project"]);
+assert.deepEqual(renamedImplicit.projectRoots, ["/tmp/live-project", "/tmp/added-project", "/tmp/implicit-project"]);
 assert.deepEqual(renamedImplicit.projectNameOverrides, {
   "/tmp/live-project": "Live Project",
   "/tmp/implicit-project": "Implicit Project",
@@ -91,7 +97,6 @@ assert.deepEqual(renamedImplicit.projectNameOverrides, {
 assert.deepEqual(renamedImplicit.expandedProjectIds, [
   "project:/tmp/live-project",
   "loose-files",
-  "project:/tmp/implicit-project",
 ]);
 
 console.log("shell store behavior tests passed");
