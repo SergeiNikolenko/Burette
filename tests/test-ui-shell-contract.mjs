@@ -1883,6 +1883,8 @@ assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-edito
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \.drawn-structures :is\(path, text, tspan\)\[style\*="fill: rgb\(51, 51, 51\)"\]/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[data-testid="canvas"\] \[data-testid="bond"\]\[stroke="#000000"\]/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[data-testid="canvas"\] \[data-testid="bond"\]\[fill="#000000"\]/);
+assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[data-testid="canvas"\] :is\(text, tspan\)\[fill="#000000"\]/);
+assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[data-testid="canvas"\] :is\(text, tspan\)\[style\*="fill: rgb\(0, 0, 0\)"\]/);
 assert.match(styles, /stroke: var\(--ketcher-dark-structure\) !important;/);
 assert.match(styles, /fill: var\(--ketcher-dark-structure\) !important;/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.ketcher-editor-shell \[class\*="EditorWrapper"\]/);
@@ -1996,8 +1998,8 @@ assert.match(appResizeHook, /if \(nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD\) \{/)
 assert.match(appResizeHook, /setDockOpen\("right", false\)/);
 assert.match(appResizeHook, /if \(nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD\) \{/);
 assert.match(appResizeHook, /setDockOpen\("bottom", false\)/);
-assert.match(appResizeHook, /\[rightDockWidth, setDockOpen, setDockSize\]/);
-assert.match(appResizeHook, /\[bottomDockHeight, setDockOpen, setDockSize\]/);
+assert.match(appResizeHook, /\[beginWorkspaceHistoryGroup, commitWorkspaceHistoryGroup, rightDockWidth, setDockOpen, setDockSize\]/);
+assert.match(appResizeHook, /\[beginWorkspaceHistoryGroup, bottomDockHeight, commitWorkspaceHistoryGroup, setDockOpen, setDockSize\]/);
 assert.match(dockPanel, /data-open=\{open \? "true" : "false"\}/);
 assert.match(dockPanel, /data-active-tab=\{activeTab\.kind\}/);
 assert.match(dockPanel, /data-dragging=\{dragging \|\| undefined\}/);
@@ -3446,10 +3448,11 @@ for (const sliceName of [
   "maintenance",
   "settings",
 ]) {
-  assert.match(appShellActionsHook, new RegExp(`\\.\\.\\.slices\\.${sliceName}`));
+assert.match(appShellActionsHook, new RegExp(`\\.\\.\\.slices\\.${sliceName}`));
 }
 assert.match(appShellActionsHook, /export function useAppShellActions\(\{/);
-assert.match(appShellActionsHook, /useMemo<ShellActions>\(\(\) => createAppShellActions\(\{/);
+assert.match(appShellActionsHook, /export function createWorkspaceHistoryShellActions/);
+assert.match(appShellActionsHook, /useMemo<ShellActions>\(\(\) => createWorkspaceHistoryShellActions\(createAppShellActions\(\{/);
 assert.match(appShellActionsHook, /\.\.\.createJobHistoryShellActions\(\{ pushStatus, setConformerJobs, setXtbJobs \}\)/);
 assert.match(appShellActionsHook, /createJobHistoryShellActions/);
 assert.match(appShellActionsHook, /pushStatus\("Job history cleared"\)/);
@@ -3557,6 +3560,8 @@ assert.doesNotMatch(openDropHook, /let unlisten/);
 assert.doesNotMatch(openDropHook, /unlisten\?\.\(\)/);
 assert.match(menuEventsHook, /const handlersRef = useRef\(/);
 assert.match(menuEventsHook, /handlersRef\.current = \{/);
+assert.match(menuEventsHook, /trackTauriListener\(listen\(MENU_UNDO_EVENT, \(\) => \{\s*void dispatchWorkspaceHistoryCommand\("undo", handlersRef\.current\.actions\);\s*\}\), MENU_UNDO_EVENT\)/);
+assert.match(menuEventsHook, /trackTauriListener\(listen\(MENU_REDO_EVENT, \(\) => \{\s*void dispatchWorkspaceHistoryCommand\("redo", handlersRef\.current\.actions\);\s*\}\), MENU_REDO_EVENT\)/);
 assert.match(menuEventsHook, /trackTauriListener\(listen\(MENU_OPEN_SETTINGS_EVENT, \(\) => \{\s*handlersRef\.current\.openSettings\(\);\s*\}\), MENU_OPEN_SETTINGS_EVENT\)/);
 assert.match(menuEventsHook, /const cleanups = \[/);
 assert.match(menuEventsHook, /for \(const cleanup of cleanups\) cleanup\(\)/);
@@ -3604,7 +3609,7 @@ assert.match(appOpenActionsHook, /No recent structures to open/);
 assert.match(appOpenActionsHook, /const chooseFiles = useCallback/);
 assert.match(
   app,
-  /useMenuEvents\(\{\s*chooseFiles,\s*openMostRecentStructure,\s*revealActiveDocument,\s*copyActiveDocumentPath,\s*showActiveDocumentMetadata,\s*exportActivePreviewAsPng,\s*exportActivePreviewAsSvg,\s*clearCache,\s*resetQuickLook,\s*openLogs,\s*openSettings,\s*checkForUpdates,\s*\}\)/s,
+  /useMenuEvents\(\{\s*actions,\s*chooseFiles: actions\.chooseFiles,\s*openMostRecentStructure: actions\.openMostRecentStructure,\s*revealActiveDocument: actions\.revealActiveDocument,\s*copyActiveDocumentPath: actions\.copyActiveDocumentPath,\s*showActiveDocumentMetadata: actions\.showActiveDocumentMetadata,\s*exportActivePreviewAsPng: actions\.exportActivePreviewAsPng,\s*exportActivePreviewAsSvg: actions\.exportActivePreviewAsSvg,\s*clearCache: actions\.clearCache,\s*resetQuickLook: actions\.resetQuickLook,\s*openLogs: actions\.openLogs,\s*openSettings: actions\.openSettings,\s*checkForUpdates: actions\.checkForUpdates,\s*\}\)/s,
 );
 assert.match(app, /from "\.\/hooks\/use-app-host-runtime-operations"/);
 assert.match(app, /from "\.\/hooks\/use-app-preference-effects"/);
@@ -5429,6 +5434,13 @@ assert.match(shortcuts, /actions\.copyActiveDocumentPath\(\)/);
 assert.match(shortcuts, /actions\.showActiveDocumentMetadata\(\)/);
 assert.match(shortcuts, /actions\.exportActivePreviewAsPng\(\)/);
 assert.match(shortcuts, /actions\.exportActivePreviewAsSvg\(\)/);
+assert.match(shortcuts, /dispatchWorkspaceHistoryCommand\(event\.shiftKey \? "redo" : "undo", actions\)/);
+assert.match(keyboardShortcutsSection, /command: "Undo"[\s\S]*?keybindings: \["⌘Z"\]/);
+assert.match(keyboardShortcutsSection, /command: "Redo"[\s\S]*?keybindings: \["⇧⌘Z"\]/);
+assert.match(shortcutDocs, /\| Cmd\+Z \| Undo the latest workspace or focused preview edit \|/);
+assert.match(shortcutDocs, /\| Cmd\+Shift\+Z \| Redo the latest workspace or focused preview edit when available \|/);
+assert.match(menuEventsHook, /MENU_UNDO_EVENT/);
+assert.match(menuEventsHook, /MENU_REDO_EVENT/);
 assert.match(menuEventsHook, /MENU_OPEN_RECENT_EVENT/);
 assert.match(menuEventsHook, /MENU_REVEAL_ACTIVE_EVENT/);
 assert.match(menuEventsHook, /MENU_COPY_ACTIVE_PATH_EVENT/);

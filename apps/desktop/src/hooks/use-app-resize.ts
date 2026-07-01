@@ -1,14 +1,17 @@
 import { useCallback, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import type { DockArea } from "../lib/dock";
+import type { WorkspaceHistoryGroup } from "../stores/workspace-history-store";
 
 const SIDEBAR_DRAG_CLOSE_WIDTH = 180;
 const RIGHT_DOCK_CLOSE_THRESHOLD = 180;
 const BOTTOM_DOCK_CLOSE_THRESHOLD = 120;
 
 type UseAppResizeArgs = {
+  beginWorkspaceHistoryGroup?: (label: string, group: WorkspaceHistoryGroup) => void;
   bottomDockHeight: number;
   closeSidebar: () => void;
+  commitWorkspaceHistoryGroup?: () => void;
   rightDockWidth: number;
   setDockOpen: (area: DockArea, open: boolean) => void;
   setDockSize: (area: DockArea, size: number) => void;
@@ -17,8 +20,10 @@ type UseAppResizeArgs = {
 };
 
 export function useAppResize({
+  beginWorkspaceHistoryGroup,
   bottomDockHeight,
   closeSidebar,
+  commitWorkspaceHistoryGroup,
   rightDockWidth,
   setDockOpen,
   setDockSize,
@@ -33,6 +38,7 @@ export function useAppResize({
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return;
       event.preventDefault();
+      beginWorkspaceHistoryGroup?.("Resize sidebar", "layout");
       setSidebarDragging(true);
       const resizeTarget = event.currentTarget;
       const pointerId = event.pointerId;
@@ -63,6 +69,7 @@ export function useAppResize({
         window.removeEventListener("blur", stop);
         document.removeEventListener("visibilitychange", onVisibilityChange);
         resizeTarget.removeEventListener("lostpointercapture", stop);
+        commitWorkspaceHistoryGroup?.();
       };
       const onVisibilityChange = () => {
         if (document.hidden) stop();
@@ -95,13 +102,14 @@ export function useAppResize({
       document.addEventListener("visibilitychange", onVisibilityChange);
       resizeTarget.addEventListener("lostpointercapture", stop);
     },
-    [closeSidebar, setSidebarWidth, sidebarWidth],
+    [beginWorkspaceHistoryGroup, closeSidebar, commitWorkspaceHistoryGroup, setSidebarWidth, sidebarWidth],
   );
 
   const startRightDockResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return;
       event.preventDefault();
+      beginWorkspaceHistoryGroup?.("Resize right dock", "layout");
       setRightDockDragging(true);
       const resizeTarget = event.currentTarget;
       const pointerId = event.pointerId;
@@ -151,6 +159,7 @@ export function useAppResize({
         window.removeEventListener("blur", stop);
         document.removeEventListener("visibilitychange", onVisibilityChange);
         resizeTarget.removeEventListener("lostpointercapture", stop);
+        commitWorkspaceHistoryGroup?.();
       };
       const onVisibilityChange = () => {
         if (document.hidden) stop();
@@ -167,13 +176,14 @@ export function useAppResize({
       document.addEventListener("visibilitychange", onVisibilityChange);
       resizeTarget.addEventListener("lostpointercapture", stop);
     },
-    [rightDockWidth, setDockOpen, setDockSize],
+    [beginWorkspaceHistoryGroup, commitWorkspaceHistoryGroup, rightDockWidth, setDockOpen, setDockSize],
   );
 
   const startBottomDockResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return;
       event.preventDefault();
+      beginWorkspaceHistoryGroup?.("Resize bottom dock", "layout");
       setBottomDockDragging(true);
       const resizeTarget = event.currentTarget;
       const pointerId = event.pointerId;
@@ -223,6 +233,7 @@ export function useAppResize({
         window.removeEventListener("blur", stop);
         document.removeEventListener("visibilitychange", onVisibilityChange);
         resizeTarget.removeEventListener("lostpointercapture", stop);
+        commitWorkspaceHistoryGroup?.();
       };
       const onVisibilityChange = () => {
         if (document.hidden) stop();
@@ -239,7 +250,7 @@ export function useAppResize({
       document.addEventListener("visibilitychange", onVisibilityChange);
       resizeTarget.addEventListener("lostpointercapture", stop);
     },
-    [bottomDockHeight, setDockOpen, setDockSize],
+    [beginWorkspaceHistoryGroup, bottomDockHeight, commitWorkspaceHistoryGroup, setDockOpen, setDockSize],
   );
 
   return {
