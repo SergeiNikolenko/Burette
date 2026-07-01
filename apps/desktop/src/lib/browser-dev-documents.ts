@@ -1833,7 +1833,8 @@ function fileExtension(path: string) {
   const name = fileTitle(path);
   if (name.toLowerCase().endsWith(".mae.gz")) return "maegz";
   const index = name.lastIndexOf(".");
-  return index >= 0 ? name.slice(index + 1).toLowerCase() : "";
+  if (index >= 0) return name.slice(index + 1).toLowerCase();
+  return /^in(?:_|$)/iu.test(name) ? "in" : "";
 }
 
 function isMaestroPreviewExtension(extension: string) {
@@ -2245,7 +2246,7 @@ function atomsFromText(text: string, extension: string) {
     atoms = parseCubeAtoms(lines);
   } else if (extension === "vasp") {
     atoms = parseVaspAtoms(lines);
-  } else if (extension === "in") {
+  } else if (extension === "in" || extension === "inp") {
     atoms = parseQuantumEspressoAtoms(lines);
   } else if (extension === "out") {
     atoms = parseOrcaAtoms(lines);
@@ -2260,7 +2261,7 @@ function atomsFromText(text: string, extension: string) {
   } else if (extension === "lammpstrj" || extension === "dump" || extension === "pos") {
     atoms = parseLammpsDumpAtoms(lines);
   } else if (extension === "cfg") {
-    atoms = parseAtomeyeCfgAtoms(lines);
+    atoms = parseAtomeyeCfgAtoms(lines) ?? parseMlipCfgAtoms(lines);
   } else if (extension === "data" || extension === "lammps" || extension === "lmp") {
     atoms = parseLammpsDataAtoms(lines);
   } else if (extension === "crd") {
@@ -3301,6 +3302,66 @@ function parseAtomeyeCfgAtoms(lines: string[]) {
     });
   }
   return atoms.length === atomCount ? atoms : null;
+}
+
+function parseMlipCfgAtoms(lines: string[]) {
+  const begin = lines.findIndex((line) => line.trim().toLowerCase() === "begin_cfg");
+  if (begin < 0) return null;
+  const relativeEnd = lines.slice(begin + 1).findIndex((line) => line.trim().toLowerCase() === "end_cfg");
+  const end = relativeEnd >= 0 ? begin + 1 + relativeEnd : lines.length;
+  const block = lines.slice(begin + 1, end);
+  const atomCount = parseMlipCfgSize(block);
+  const atomDataIndex = block.findIndex((line) => line.trimStart().startsWith("AtomData:"));
+  if (!atomCount || atomDataIndex < 0) return null;
+  const header = fields(block[atomDataIndex]);
+  const column = (name: string) => {
+    const index = header.findIndex((value) => value.toLowerCase() === name.toLowerCase());
+    return index > 0 ? index - 1 : -1;
+  };
+  const typeIndex = column("type");
+  const xIndex = column("cartes_x");
+  const yIndex = column("cartes_y");
+  const zIndex = column("cartes_z");
+  if (xIndex < 0 || yIndex < 0 || zIndex < 0) return null;
+  const atoms: Atom[] = [];
+  for (const line of block.slice(atomDataIndex + 1)) {
+    const parts = fields(line);
+    if (parts.length <= Math.max(xIndex, yIndex, zIndex)) {
+      if (atoms.length) break;
+      continue;
+    }
+    const x = Number(parts[xIndex]);
+    const y = Number(parts[yIndex]);
+    const z = Number(parts[zIndex]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      if (atoms.length) break;
+      continue;
+    }
+    atoms.push({
+      symbol: typeIndex >= 0 ? mlipCfgSymbolForType(parts[typeIndex] ?? "") : "C",
+      x,
+      y,
+      z,
+    });
+    if (atoms.length === atomCount) break;
+  }
+  return atoms.length === atomCount ? atoms : null;
+}
+
+function parseMlipCfgSize(lines: string[]) {
+  for (let index = 0; index + 1 < lines.length; index += 1) {
+    if (lines[index].trim().toLowerCase() !== "size") continue;
+    const value = Number.parseInt(fields(lines[index + 1])[0] ?? "", 10);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return null;
+}
+
+function mlipCfgSymbolForType(value: string) {
+  const normalized = normalizeElementSymbol(value);
+  if (isElementSymbol(normalized)) return normalized;
+  if (value.trim() === "1") return "H";
+  return "C";
 }
 
 function parseAtomeyeCfgAtomCount(lines: string[]) {

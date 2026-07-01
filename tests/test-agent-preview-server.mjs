@@ -206,6 +206,9 @@ f_m_ct {
   const lammpsPath = join(coordinateTempDir, 'dump.lammpstrj');
   const posPath = join(coordinateTempDir, 'c60.0.pos');
   const cfgPath = join(coordinateTempDir, 'c60.0.cfg');
+  const mlipCfgPath = join(coordinateTempDir, 'mlip.cfg');
+  const qeInputPath = join(coordinateTempDir, 'in_md');
+  const lammpsDataPath = join(coordinateTempDir, 'benz.data');
   const lammpsLogPath = join(coordinateTempDir, 'log.lammps');
   await writeFile(amberPath, `Amber restart
 3
@@ -279,11 +282,53 @@ C
 C
 0.839378 0.431559 0.52349
 `);
+  await writeFile(mlipCfgPath, `BEGIN_CFG
+ Size
+    2
+ Supercell
+    8.000000    0.000000    0.000000
+    0.000000    8.000000    0.000000
+    0.000000    0.000000    8.000000
+ AtomData:  id type       cartes_x      cartes_y      cartes_z           fx          fy          fz
+    1    1       5.418134    4.868009    1.987250   -0.828945    0.379492    0.424787
+    2    0       4.784862    4.549671    2.873289   -1.023257   -0.334575   -0.435610
+ Energy
+    -1593.0524513859514
+END_CFG
+`);
+  await writeFile(qeInputPath, `&control
+    calculation = 'md'
+ /
+ATOMIC_POSITIONS angstrom
+  H   5.609150 4.376960 2.305480
+  C   4.769440 4.232290 2.954480
+K_POINTS {automatic}
+ 1 1 1 0 0 0
+`);
+  await writeFile(lammpsDataPath, `# Molecules
+
+      2     atoms
+      2     atom types
+
+    0.0000   8.0000 xlo xhi
+    0.0000   8.0000 ylo yhi
+    0.0000   8.0000 zlo zhi
+
+Masses
+
+         1          12.01
+         2          1.007
+
+Atoms
+
+    1    2       5.418134    4.868009    1.987250
+    2    1       4.784862    4.549671    2.873289
+`);
   await writeFile(lammpsLogPath, `LAMMPS (22 Jul 2025 - Update 4)
 thermo_style custom step time temp pe ke etotal
 Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
 `);
-  for (const coordinatePath of [amberPath, charmmPath, statePath, hoomdPath, lammpsPath, posPath, cfgPath]) {
+  for (const coordinatePath of [amberPath, charmmPath, statePath, hoomdPath, lammpsPath, posPath, cfgPath, mlipCfgPath, qeInputPath, lammpsDataPath]) {
     const coordinatePort = await freePort();
     const coordinateChild = spawn(process.execPath, ['scripts/agent-preview.mjs', coordinatePath, '--port', String(coordinatePort)], {
       stdio: ['ignore', 'pipe', 'pipe']
