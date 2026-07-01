@@ -4177,10 +4177,14 @@ assert.match(browserDevDocuments, /extension === "cfg" && converted\.molstarForm
 assert.match(browserDevDocuments, /function pdbDataFromText\(text: string, extension: string, label: string\)/);
 assert.match(browserDevDocuments, /function lammpsDumpXyzDataFromText\(text: string, label: string\)/);
 assert.match(browserDevDocuments, /function parseAtomeyeCfgAtoms\(lines: string\[\]\)/);
+assert.match(browserDevDocuments, /parseAtomeyeCfgAtoms\(lines\) \?\? parseMlipCfgAtoms\(lines\)/);
+assert.match(browserDevDocuments, /function parseMlipCfgAtoms\(lines: string\[\]\)/);
 assert.match(browserDevDocuments, /function parseLammpsDataAtoms\(lines: string\[\]\)/);
 assert.match(browserDevDocuments, /function lammpsDataCoordinates\(parts: string\[\], masses: Map<string, string>\)/);
 assert.match(previewViewController, /case "data", "lammps", "lmp":[\s\S]*return parseLammpsData\(lines\)/);
 assert.match(previewViewController, /case "cfg":[\s\S]*return parseAtomeyeCFG\(lines\)/);
+assert.match(previewViewController, /case "cfg":[\s\S]*return parseAtomeyeCFG\(lines\) \?\? parseMLIPCFG\(lines\)/);
+assert.match(previewViewController, /private static func parseMLIPCFG\(_ lines: \[String\]\) -> \[Atom\]\?/);
 assert.match(previewViewController, /shouldUseTextArtifactPreview\(url: url, fileExtension: pathExtension, previewPlan: previewPlan\)/);
 assert.match(previewViewController, /private static func isPreferredTextArtifact\(url: URL\) -> Bool \{[\s\S]*url\.lastPathComponent\.lowercased\(\) == "log\.lammps"/);
 assert.match(previewViewController, /private static func parseLammpsData\(_ lines: \[String\]\) -> \[Atom\]\?/);
@@ -4191,9 +4195,12 @@ assert.match(browserDevDocuments, /extension === "fdf"[\s\S]*parseFdfAtoms\(line
 assert.match(browserDevDocuments, /function parseAbinitAtoms\(lines: string\[\]\)/);
 assert.match(browserDevDocuments, /function parseFdfAtoms\(lines: string\[\]\)/);
 assert.match(browserDevDocuments, /function fdfBlockRows\(blockName: string, lines: string\[\]\)/);
+assert.match(browserDevDocuments, /return \/\^in\(\?:_\|\$\)\/iu\.test\(name\) \? "in" : "";/);
 assert.match(previewTextXyz, /"abi" => parse_abinit_atoms\(&lines\)/);
 assert.match(previewTextXyz, /"data" \| "lammps" \| "lmp" => parse_lammps_data_atoms\(&lines\)/);
 assert.match(previewTextXyz, /"cfg" => parse_atomeye_cfg_atoms\(&lines\)/);
+assert.match(previewTextXyz, /"cfg" => parse_atomeye_cfg_atoms\(&lines\)\.or_else\(\|\| parse_mlip_cfg_atoms\(&lines\)\)/);
+assert.match(previewTextXyz, /fn parse_mlip_cfg_atoms\(lines: &\[&str\]\) -> Option<Vec<Atom>>/);
 assert.match(previewTextXyz, /"lammpstrj" \| "dump" \| "pos" => parse_lammps_dump_atoms\(&lines\)/);
 assert.match(previewTextXyz, /"fdf" => parse_fdf_atoms\(&lines\)/);
 assert.match(previewTextXyz, /fn parse_lammps_data_atoms\(lines: &\[&str\]\) -> Option<Vec<Atom>>/);
