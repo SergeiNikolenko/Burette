@@ -6040,6 +6040,11 @@ img.radix-menu-item-icon {
   z-index: -1;
   background: color-mix(in srgb, var(--bg-base) 55%, transparent);
 }
+[cmdk-dialog] [cmdk-root] {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
 .command-palette-sr-only {
   position: absolute;
   width: 1px;
