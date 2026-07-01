@@ -104,6 +104,7 @@ type UseAppShellActionsOptions = {
   reloadXyzrenderDocument: ShellActions["reloadXyzrenderDocument"];
   removeProjectRoot: (root: string) => void;
   renameProjectRoot: (root: string, name: string) => void;
+  renameProjectFolder: (folderPath: string, name: string) => void;
   resetQuickLook: ShellActions["resetQuickLook"];
   revealActiveDocument: ShellActions["revealActiveDocument"];
   revealDocument: ShellActions["revealDocument"];
@@ -234,6 +235,7 @@ type WorkspaceShellActions = Pick<
   | "openProjectFolder"
   | "togglePinnedProjectRoot"
   | "renameProjectRoot"
+  | "renameProjectFolder"
   | "removeProjectRoot"
   | "toggleProjectsOpen"
   | "setExpandedProjectIds"
@@ -369,6 +371,7 @@ const workspaceHistoryActionSpecs = {
   openProjectFolder: { label: "Open project folder", group: "workspace" },
   togglePinnedProjectRoot: { label: "Pin project", group: "workspace" },
   renameProjectRoot: { label: "Rename project", group: "workspace" },
+  renameProjectFolder: { label: "Rename folder", group: "workspace" },
   removeProjectRoot: { label: "Remove project", group: "workspace" },
   toggleProjectsOpen: { label: "Toggle projects", group: "workspace" },
   setExpandedProjectIds: { label: "Expand projects", group: "workspace" },
@@ -598,6 +601,7 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       openProjectFolder: actions.openProjectFolder,
       togglePinnedProjectRoot: actions.togglePinnedProjectRoot,
       renameProjectRoot: actions.renameProjectRoot,
+      renameProjectFolder: actions.renameProjectFolder,
       removeProjectRoot: actions.removeProjectRoot,
       toggleProjectsOpen: actions.toggleProjectsOpen,
       setExpandedProjectIds: actions.setExpandedProjectIds,
@@ -758,6 +762,7 @@ export function useAppShellActions({
   reloadXyzrenderDocument,
   removeProjectRoot,
   renameProjectRoot,
+  renameProjectFolder,
   resetQuickLook,
   revealActiveDocument,
   revealDocument,
@@ -870,7 +875,7 @@ export function useAppShellActions({
     chooseWorkspace,
     openWorkspaceFolder,
     openProjectFolder,
-    ...createProjectShellActions({ pushStatus, removeProjectRoot, renameProjectRoot, togglePinnedProjectRoot }),
+    ...createProjectShellActions({ pushStatus, removeProjectRoot, renameProjectRoot, renameProjectFolder, togglePinnedProjectRoot }),
     toggleSidebar,
     toggleDock,
     toggleDockTab,
@@ -944,7 +949,7 @@ export function useAppShellActions({
     canNavigateForward,
     canRedoWorkspace,
     canUndoWorkspace,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
 }
 
 export function createJobHistoryShellActions({
@@ -972,13 +977,15 @@ export function createProjectShellActions({
   pushStatus,
   removeProjectRoot,
   renameProjectRoot,
+  renameProjectFolder,
   togglePinnedProjectRoot,
 }: {
   pushStatus: PushStatus;
   removeProjectRoot: (root: string) => void;
   renameProjectRoot: (root: string, name: string) => void;
+  renameProjectFolder: (folderPath: string, name: string) => void;
   togglePinnedProjectRoot: (root: string) => void;
-}): Pick<ShellActions, "togglePinnedProjectRoot" | "renameProjectRoot" | "removeProjectRoot"> {
+}): Pick<ShellActions, "togglePinnedProjectRoot" | "renameProjectRoot" | "renameProjectFolder" | "removeProjectRoot"> {
   return {
     togglePinnedProjectRoot: (root: string) => {
       togglePinnedProjectRoot(root);
@@ -987,6 +994,10 @@ export function createProjectShellActions({
     renameProjectRoot: (root: string, name: string) => {
       renameProjectRoot(root, name);
       pushStatus(name.trim() ? "Project renamed" : "Project name reset");
+    },
+    renameProjectFolder: (folderPath: string, name: string) => {
+      renameProjectFolder(folderPath, name);
+      pushStatus(name.trim() ? "Folder renamed" : "Folder name reset");
     },
     removeProjectRoot: (root: string) => {
       removeProjectRoot(root);

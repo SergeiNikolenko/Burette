@@ -55,7 +55,9 @@ useShellStore.setState({
   pinnedProjectRoots: ["/tmp/live-project", "/tmp/missing-project"],
   projectNameOverrides: {
     "/tmp/live-project": "Live Project",
+    "/tmp/live-project/results": "Result Folder",
     "/tmp/missing-project": "Missing Project",
+    "/tmp/missing-project/results": "Missing Result Folder",
   },
   expandedProjectIds: [
     "project:/tmp/live-project",
@@ -76,7 +78,10 @@ useShellStore.getState().pruneSidebarPaths([
 const pruned = useShellStore.getState();
 assert.deepEqual(pruned.projectRoots, ["/tmp/live-project"]);
 assert.deepEqual(pruned.pinnedProjectRoots, ["/tmp/live-project"]);
-assert.deepEqual(pruned.projectNameOverrides, { "/tmp/live-project": "Live Project" });
+assert.deepEqual(pruned.projectNameOverrides, {
+  "/tmp/live-project": "Live Project",
+  "/tmp/live-project/results": "Result Folder",
+});
 assert.deepEqual(pruned.expandedProjectIds, ["project:/tmp/live-project", "loose-files"]);
 assert.deepEqual(pruned.pinnedStructurePaths, ["/tmp/live-project/mini.pdb"]);
 
@@ -92,11 +97,30 @@ const renamedImplicit = useShellStore.getState();
 assert.deepEqual(renamedImplicit.projectRoots, ["/tmp/live-project", "/tmp/added-project", "/tmp/implicit-project"]);
 assert.deepEqual(renamedImplicit.projectNameOverrides, {
   "/tmp/live-project": "Live Project",
+  "/tmp/live-project/results": "Result Folder",
   "/tmp/implicit-project": "Implicit Project",
 });
 assert.deepEqual(renamedImplicit.expandedProjectIds, [
   "project:/tmp/live-project",
   "loose-files",
 ]);
+
+useShellStore.getState().renameProjectFolder("/tmp/live-project/results", "Docking Results");
+useShellStore.getState().renameProjectFolder("/tmp/outside/results", "Ignored");
+
+const renamedFolder = useShellStore.getState();
+assert.deepEqual(renamedFolder.projectRoots, ["/tmp/live-project", "/tmp/added-project", "/tmp/implicit-project"]);
+assert.deepEqual(renamedFolder.projectNameOverrides, {
+  "/tmp/live-project": "Live Project",
+  "/tmp/live-project/results": "Docking Results",
+  "/tmp/implicit-project": "Implicit Project",
+});
+
+useShellStore.getState().renameProjectFolder("/tmp/live-project/results", "");
+
+assert.deepEqual(useShellStore.getState().projectNameOverrides, {
+  "/tmp/live-project": "Live Project",
+  "/tmp/implicit-project": "Implicit Project",
+});
 
 console.log("shell store behavior tests passed");
