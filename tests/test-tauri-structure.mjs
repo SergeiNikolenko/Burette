@@ -321,6 +321,10 @@ assert.match(agentIntegrationCommand, /#\[tauri::command\]\s+pub\(crate\) fn age
 assert.match(agentIntegrationCommand, /PLUGIN_RELATIVE_PATH: &str = "plugins\/burette-agent"/);
 assert.match(agentIntegrationCommand, /BURRETE_AGENT_PLUGIN_DIR/);
 assert.match(agentIntegrationCommand, /schema: "burette_agent_integration\.v1"/);
+assert.match(agentIntegrationCommand, /mcp\/widget-assets\/molecule-table\/widget\.html/);
+assert.match(agentIntegrationCommand, /mcp\/widget-assets\/trajectory-review\/widget\.html/);
+assert.match(agentIntegrationCommand, /mcp\/widget-assets\/molecular-report\/widget\.html/);
+assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecular-workspace\/widget\.html/);
 assert.match(agentIntegrationCommand, /find_codex_plugin_manifest/);
 assert.match(agentIntegrationCommand, /"scripts\/burrete-agent\.mjs"/);
 assert.match(agentIntegrationCommand, /"browser-shell-dist\/index\.html"/);

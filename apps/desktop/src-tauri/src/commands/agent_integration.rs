@@ -133,9 +133,19 @@ fn bundle_status(path: &Path, checks: &mut Vec<AgentIntegrationCheck>) -> Plugin
         ("mcp-config", "MCP config", ".mcp.json"),
         ("skills", "Skills", "skills/index/SKILL.md"),
         (
-            "widgets",
-            "Widgets",
-            "mcp/widget-assets/molecular-workspace/widget.html",
+            "molecule-table-widget",
+            "Molecule table widget",
+            "mcp/widget-assets/molecule-table/widget.html",
+        ),
+        (
+            "trajectory-review-widget",
+            "Trajectory review widget",
+            "mcp/widget-assets/trajectory-review/widget.html",
+        ),
+        (
+            "molecular-report-widget",
+            "Molecular report widget",
+            "mcp/widget-assets/molecular-report/widget.html",
         ),
         (
             "preflight",
