@@ -36,6 +36,23 @@ type ConvertedStructureData = {
   stagedEntries?: Array<Record<string, unknown>>;
 };
 
+type BrowserDevTrajectoryPair = {
+  label: string;
+  byteCount: number;
+  sourcePath: string;
+  sourceExtension: string;
+  docking: {
+    activePose: number | null;
+    sceneMode: DockingSceneMode | null;
+    receptor: Record<string, unknown>;
+    ligands: Array<Record<string, unknown>>;
+  };
+  payloads: {
+    receptor: { dataBase64: string };
+    ligands: Array<{ dataBase64: string }>;
+  };
+};
+
 type PharmacophoreFeature = {
   name: string;
   x: number;
@@ -77,8 +94,6 @@ type MaestroPdbBlock = {
   atoms: MaestroAtom[];
 };
 
-type BoxVectors = [[number, number, number], [number, number, number], [number, number, number]];
-
 const MAX_STRUCTURE_FILE_SIZE = 75 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT = 64 * 1024 * 1024;
 const MAESTRO_PREVIEW_ATOM_LIMIT = 3000;
@@ -93,6 +108,11 @@ const VIEWER_ASSET_VERSION = "viewer-ui-v66";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 const AMBER_NETCDF_EXTENSIONS = new Set(["nc", "ncdf", "netcdf", "ncrst"]);
+const TRAJECTORY_PAIR_EXTENSIONS = new Set([
+  "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
+  "pdb", "ent", "pdbqt", "pqr", "xpdb", "mmcif", "cif", "mcif", "gro",
+  "top", "psf", "prmtop", "tpr",
+]);
 const browserDevVirtualTextDocuments = new Map<string, string>();
 
 type ResolvedPreviewVisuals = {
@@ -607,6 +627,10 @@ async function openBrowserDevDocument(
       documentId,
     );
   }
+  const trajectoryPair = await requestBrowserDevTrajectoryPair(path, extension);
+  if (trajectoryPair) {
+    return openBrowserDevTrajectoryPairDocument(path, trajectoryPair, preferences, documentId);
+  }
   const useBoundedMaestroPreview = isMaestroPreviewExtension(extension) && extension !== "maegz";
   const response = await fetch(browserDevReadUrl(path, extension), useBoundedMaestroPreview ? {
     headers: { Range: `bytes=0-${MAESTRO_PREVIEW_READ_LIMIT - 1}` },
@@ -622,6 +646,89 @@ async function openBrowserDevDocument(
 
   const sourceByteCount = browserDevSourceByteCount(response, bytes.length);
   return openBrowserDevDocumentFromBytes(path, extension, bytes, sourceByteCount, preferences, reloadOptions, documentId);
+}
+
+async function requestBrowserDevTrajectoryPair(path: string, extension: string) {
+  if (!TRAJECTORY_PAIR_EXTENSIONS.has(extension)) return null;
+  const response = await fetch(`/__burette/trajectory-pair?path=${encodeURIComponent(path)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const message = await browserDevJsonError(response).catch(() => response.statusText);
+    throw new Error(`${path}: trajectory pair preview failed: ${message || response.statusText}`);
+  }
+  return await response.json() as BrowserDevTrajectoryPair;
+}
+
+function openBrowserDevTrajectoryPairDocument(
+  path: string,
+  pair: BrowserDevTrajectoryPair,
+  preferences: ViewerPreferences,
+  documentId?: string,
+) {
+  const id = documentId ?? stableId(`trajectory:${pair.sourcePath}:${JSON.stringify(pair.docking)}`);
+  const visuals = resolvePreviewVisuals(preferences);
+  const receptor = pair.docking.receptor;
+  const config = {
+    format: receptor.format ?? "gro",
+    molstarFormat: receptor.format ?? "gro",
+    binary: receptor.binary === true,
+    renderer: "molstar",
+    requestedRenderer: "molstar",
+    allowMolstarFallback: false,
+    label: pair.label,
+    byteCount: pair.byteCount,
+    previewByteCount: 1,
+    sourcePath: pair.sourcePath,
+    sourceExtension: pair.sourceExtension,
+    quickLookBuild: "burrete-browser-dev-trajectory-pair",
+    debug: false,
+    theme: visuals.theme,
+    themeTokens: previewThemeTokens(preferences),
+    canvasBackground: visuals.canvasBackground,
+    documentId: id,
+    uiScale: 0.9,
+    overlayOpacity: 0.9,
+    transparentBackground: visuals.transparentBackground,
+    sdfGrid: false,
+    appViewer: true,
+    tauriViewer: false,
+    molstarStyle: preferences.molstarStyle,
+    waterRepresentation: "line",
+    xyzrenderViewer: false,
+    xyzrenderAvailable: false,
+    molstarAvailable: true,
+    canOpenInVesta: false,
+    showPanelControls: true,
+    defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
+    docking: pair.docking,
+  };
+  const html = viewerHtml(
+    pair.label,
+    {
+      molstarFormat: String(config.format),
+      binary: config.binary,
+      externalOnly: false,
+      canOpenInVesta: false,
+    },
+    "molstar",
+    new Uint8Array([10]),
+    pair.byteCount,
+    preferences,
+    false,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    `<script>window.BurreteDockingPayloads = ${JSON.stringify(pair.payloads)};</script>`,
+    config,
+    0,
+    null,
+    undefined,
+    undefined,
+    id,
+  );
+  return browserDocument(path, pair.sourceExtension, "molstar", html, pair.byteCount, id);
 }
 
 async function requestBrowserDevAmberNcPreview(path: string, extension: string) {
@@ -2373,11 +2480,9 @@ function groPdbDataFromText(text: string, label: string) {
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
   const atoms = parseGroPdbAtoms(lines);
   if (!atoms?.length) return null;
-  const box = parseGroBox(lines);
   const mainAtoms = atoms.filter((atom) => atom.residueName !== "HOH");
   const waterAtoms = atoms.filter((atom) => atom.residueName === "HOH");
   const pdb = [
-    ...(box ? [pdbCryst1Line(box)] : []),
     `REMARK Converted from ${label}`,
     ...mainAtoms.slice(0, 99999).map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
     "END",
@@ -2385,15 +2490,6 @@ function groPdbDataFromText(text: string, label: string) {
   ].join("\n");
   const bytes = new TextEncoder().encode(pdb);
   const stagedEntries: Array<Record<string, unknown>> = [];
-  if (box) {
-    stagedEntries.push({
-      label: "Box",
-      format: "pdb",
-      binary: false,
-      representation: "unitcell",
-      dataBase64: bytesToBase64(new TextEncoder().encode(unitCellPdbFromVectors(box, label))),
-    });
-  }
   if (waterAtoms.length) {
     const waterPdb = [
       `REMARK Water split from ${label}`,
@@ -2440,29 +2536,6 @@ function parseGroPdbAtoms(lines: string[]) {
     });
   }
   return atoms.length ? atoms : null;
-}
-
-function parseGroBox(lines: string[]): BoxVectors | null {
-  if (lines.length < 3) return null;
-  const atomCount = Number.parseInt(lines[1].trim(), 10);
-  const boxLine = lines[atomCount + 2]?.trim();
-  if (!Number.isFinite(atomCount) || !boxLine) return null;
-  const values = fields(boxLine).map((value) => Number.parseFloat(value));
-  if (values.length !== 3 && values.length !== 9) return null;
-  if (values.some((value) => !Number.isFinite(value))) return null;
-  const angstrom = values.map((value) => value * 10);
-  if (angstrom.length === 3) {
-    return [
-      [angstrom[0], 0, 0],
-      [0, angstrom[1], 0],
-      [0, 0, angstrom[2]],
-    ];
-  }
-  return [
-    [angstrom[0], angstrom[3], angstrom[4]],
-    [angstrom[5], angstrom[1], angstrom[6]],
-    [angstrom[7], angstrom[8], angstrom[2]],
-  ];
 }
 
 function parseGroFixedAtomLine(line: string) {
@@ -2811,31 +2884,6 @@ function formatPdbAtomName(atomName: string, symbol: string) {
 
 function formatPdbCoordinate(value: number) {
   return value.toFixed(3).padStart(8, " ");
-}
-
-function vectorLength(vector: [number, number, number]) {
-  return Math.hypot(...vector);
-}
-
-function vectorAngle(first: [number, number, number], second: [number, number, number]) {
-  const denominator = vectorLength(first) * vectorLength(second);
-  if (denominator <= 0) return 90;
-  const cosine = (first[0] * second[0] + first[1] * second[1] + first[2] * second[2]) / denominator;
-  return Math.acos(clamp(cosine, -1, 1)) * 180 / Math.PI;
-}
-
-function pdbCryst1Line(box: BoxVectors) {
-  const [a, b, c] = box;
-  return `CRYST1${vectorLength(a).toFixed(3).padStart(9, " ")}${vectorLength(b).toFixed(3).padStart(9, " ")}${vectorLength(c).toFixed(3).padStart(9, " ")}${vectorAngle(b, c).toFixed(2).padStart(7, " ")}${vectorAngle(a, c).toFixed(2).padStart(7, " ")}${vectorAngle(a, b).toFixed(2).padStart(7, " ")} P 1           1`;
-}
-
-function unitCellPdbFromVectors(box: BoxVectors, label: string) {
-  return [
-    pdbCryst1Line(box),
-    `REMARK Unit cell split from ${label}`,
-    "END",
-    "",
-  ].join("\n");
 }
 
 function clamp(value: number, min: number, max: number) {

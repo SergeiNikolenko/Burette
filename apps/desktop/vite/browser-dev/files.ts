@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import type { ViteDevServer } from "vite";
 
 import { sendJson, sendJsonError } from "./http";
@@ -49,6 +49,34 @@ export function registerBrowserDevFileDiscoveryRoute(server: ViteDevServer, opti
 }
 
 export function registerBrowserDevFileContentRoutes(server: ViteDevServer, options: BrowserDevFileRoutesOptions) {
+  server.middlewares.use("/__burette/trajectory-pair", async (req, res) => {
+    if ((req.method || "GET").toUpperCase() !== "GET") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    try {
+      const url = new URL(req.url || "", "http://127.0.0.1");
+      const path = url.searchParams.get("path");
+      if (!path) {
+        sendJson(res, 400, { error: "Missing path" });
+        return;
+      }
+      const filePath = resolve(path);
+      if (!options.isDevFileReadAllowed(filePath)) {
+        sendJson(res, 403, { error: "Forbidden" });
+        return;
+      }
+      const pair = await browserDevTrajectoryPairPayload(filePath, options);
+      if (!pair) {
+        sendJson(res, 404, { error: "No matching trajectory pair found." });
+        return;
+      }
+      sendJson(res, 200, pair);
+    } catch (error) {
+      sendJsonError(res, 500, error);
+    }
+  });
+
   server.middlewares.use("/__burette/read-file", async (req, res) => {
     if ((req.method || "GET").toUpperCase() !== "GET") {
       sendJson(res, 405, { error: "Method not allowed" });
@@ -180,4 +208,114 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
       sendJsonError(res, 500, error);
     }
   });
+}
+
+const TRAJECTORY_COORDINATE_FORMATS = new Set(["xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj"]);
+const TRAJECTORY_MODEL_FORMATS = new Set(["pdb", "ent", "pdbqt", "pqr", "xpdb", "mmcif", "cif", "mcif", "gro"]);
+const TRAJECTORY_TOPOLOGY_FORMATS = new Set(["top", "psf", "prmtop", "tpr"]);
+const TRAJECTORY_PAIR_FORMATS = new Set([
+  ...TRAJECTORY_COORDINATE_FORMATS,
+  ...TRAJECTORY_MODEL_FORMATS,
+  ...TRAJECTORY_TOPOLOGY_FORMATS,
+]);
+
+async function browserDevTrajectoryPairPayload(filePath: string, options: BrowserDevFileRoutesOptions) {
+  const extension = options.fileExtension(filePath);
+  if (!TRAJECTORY_PAIR_FORMATS.has(extension)) return null;
+  const files: string[] = [];
+  await options.collectDevFiles(dirname(filePath), files);
+  const candidates = Array.from(new Set([filePath, ...files]))
+    .filter((candidate) => options.isDevFileReadAllowed(candidate))
+    .filter((candidate) => TRAJECTORY_PAIR_FORMATS.has(options.fileExtension(candidate)));
+  const coordinatePath = TRAJECTORY_COORDINATE_FORMATS.has(extension)
+    ? filePath
+    : preferredTrajectoryCandidate(candidates, TRAJECTORY_COORDINATE_FORMATS, filePath, options);
+  if (!coordinatePath) return null;
+  const modelPath = preferredTrajectoryCandidate(
+    candidates.filter((candidate) => candidate !== coordinatePath),
+    TRAJECTORY_MODEL_FORMATS,
+    filePath,
+    options,
+  ) ?? preferredTrajectoryCandidate(
+    candidates.filter((candidate) => candidate !== coordinatePath),
+    TRAJECTORY_TOPOLOGY_FORMATS,
+    filePath,
+    options,
+  );
+  if (!modelPath) return null;
+  const [coordinateInfo, modelInfo] = await Promise.all([stat(coordinatePath), stat(modelPath)]);
+  if (!coordinateInfo.isFile() || !modelInfo.isFile()) return null;
+  if (coordinateInfo.size > options.devFileSizeLimit || modelInfo.size > options.devFileSizeLimit) return null;
+  const [coordinateBytes, modelBytes] = await Promise.all([readFile(coordinatePath), readFile(modelPath)]);
+  const coordinate = trajectorySource(coordinatePath, coordinateBytes, options);
+  const model = trajectorySource(modelPath, modelBytes, options);
+  return {
+    label: `${basename(coordinatePath)} + ${basename(modelPath)}`,
+    byteCount: coordinateInfo.size + modelInfo.size,
+    sourcePath: filePath,
+    sourceExtension: extension,
+    docking: {
+      activePose: null,
+      sceneMode: null,
+      receptor: model.source,
+      ligands: [coordinate.source],
+    },
+    payloads: {
+      receptor: { dataBase64: model.dataBase64 },
+      ligands: [{ dataBase64: coordinate.dataBase64 }],
+    },
+  };
+}
+
+function preferredTrajectoryCandidate(
+  candidates: string[],
+  formats: Set<string>,
+  sourcePath: string,
+  options: BrowserDevFileRoutesOptions,
+) {
+  const matches = candidates.filter((candidate) => formats.has(options.fileExtension(candidate)));
+  if (!matches.length) return null;
+  const sourceStem = trajectoryStem(sourcePath);
+  return matches
+    .map((candidate) => ({ candidate, score: trajectoryCandidateScore(candidate, sourceStem, options) }))
+    .sort((left, right) => right.score - left.score || left.candidate.localeCompare(right.candidate))[0]?.candidate ?? null;
+}
+
+function trajectoryCandidateScore(path: string, sourceStem: string, options: BrowserDevFileRoutesOptions) {
+  const extension = options.fileExtension(path);
+  const stem = trajectoryStem(path);
+  let score = stem === sourceStem ? 20 : sourceStem.startsWith(stem) || stem.startsWith(sourceStem) ? 12 : 0;
+  if (extension === "gro") score += 8;
+  if (extension === "pdb") score += 7;
+  if (extension === "tpr") score += 4;
+  if (extension === "xtc") score += 8;
+  return score;
+}
+
+function trajectoryStem(path: string) {
+  return basename(path).replace(/\.[^.]+$/u, "").replace(/_(centered|aligned|fit|reimaged|realmd|realmotion).*$/u, "");
+}
+
+function trajectorySource(path: string, bytes: Buffer, options: BrowserDevFileRoutesOptions) {
+  const extension = options.fileExtension(path);
+  return {
+    source: {
+      path,
+      format: trajectoryMolstarFormat(extension),
+      binary: trajectorySourceIsBinary(extension),
+      label: basename(path),
+    },
+    dataBase64: bytes.toString("base64"),
+  };
+}
+
+function trajectoryMolstarFormat(extension: string) {
+  if (extension === "cif" || extension === "mcif") return "mmcif";
+  if (extension === "ent" || extension === "pqr" || extension === "xpdb") return "pdb";
+  if (extension === "nc" || extension === "ncdf" || extension === "netcdf" || extension === "ncrst") return "nctraj";
+  return extension;
+}
+
+function trajectorySourceIsBinary(extension: string) {
+  return TRAJECTORY_COORDINATE_FORMATS.has(extension) || extension === "tpr";
 }

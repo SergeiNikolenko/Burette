@@ -45,8 +45,6 @@ struct MaestroPdbBlock {
     atoms: Vec<MaestroAtom>,
 }
 
-type BoxVectors = [[f64; 3]; 3];
-
 pub(crate) fn converted_data_from_text(
     data: &[u8],
     extension: &str,
@@ -1580,15 +1578,10 @@ fn gro_pdb_data_from_text(data: &[u8], label: &str) -> Option<ConvertedStructure
     if atoms.is_empty() {
         return None;
     }
-    let box_vectors = parse_gro_box(&lines);
     let (water_atoms, main_atoms): (Vec<_>, Vec<_>) = atoms
         .into_iter()
         .partition(|atom| atom.residue_name == "HOH");
     let mut pdb = String::new();
-    if let Some(box_vectors) = box_vectors {
-        pdb.push_str(&pdb_cryst1_line(&box_vectors));
-        pdb.push('\n');
-    }
     pdb.push_str(&format!("REMARK Converted from {label}\n"));
     for (index, atom) in main_atoms.iter().take(99_999).enumerate() {
         pdb.push_str(&maestro_pdb_atom_line(index + 1, atom));
@@ -1596,14 +1589,6 @@ fn gro_pdb_data_from_text(data: &[u8], label: &str) -> Option<ConvertedStructure
     }
     pdb.push_str("END\n");
     let mut staged_entries = Vec::new();
-    if let Some(box_vectors) = box_vectors {
-        staged_entries.push(ConvertedStagedEntry {
-            label: "Box".to_string(),
-            data: unit_cell_pdb_from_vectors(&box_vectors, label).into_bytes(),
-            extension: "pdb",
-            representation: "unitcell",
-        });
-    }
     if !water_atoms.is_empty() {
         let mut water_pdb = format!("REMARK Water split from {label}\n");
         for (index, atom) in water_atoms.iter().take(99_999).enumerate() {
@@ -1643,29 +1628,6 @@ fn parse_gro_pdb_atoms(lines: &[&str]) -> Option<Vec<MaestroAtom>> {
         atoms.push(atom);
     }
     (!atoms.is_empty()).then_some(atoms)
-}
-
-fn parse_gro_box(lines: &[&str]) -> Option<BoxVectors> {
-    if lines.len() < 3 {
-        return None;
-    }
-    let atom_count = lines[1].trim().parse::<usize>().ok()?;
-    let values: Vec<f64> = lines
-        .get(atom_count + 2)?
-        .split_whitespace()
-        .map(|value| value.parse::<f64>())
-        .collect::<Result<Vec<_>, _>>()
-        .ok()?
-        .into_iter()
-        .map(|value| value * 10.0)
-        .collect();
-    match values.as_slice() {
-        [x, y, z] => Some([[*x, 0.0, 0.0], [0.0, *y, 0.0], [0.0, 0.0, *z]]),
-        [v1x, v2y, v3z, v1y, v1z, v2x, v2z, v3x, v3y] => {
-            Some([[*v1x, *v1y, *v1z], [*v2x, *v2y, *v2z], [*v3x, *v3y, *v3z]])
-        }
-        _ => None,
-    }
 }
 
 fn parse_gro_fixed_atom_line(line: &str) -> Option<MaestroAtom> {
@@ -2246,45 +2208,6 @@ fn format_pdb_atom_name(atom_name: &str, symbol: &str) -> String {
         cleaned = symbol.to_string();
     }
     cleaned
-}
-
-fn vector_length(vector: &[f64; 3]) -> f64 {
-    vector.iter().map(|value| value * value).sum::<f64>().sqrt()
-}
-
-fn vector_angle(first: &[f64; 3], second: &[f64; 3]) -> f64 {
-    let denominator = vector_length(first) * vector_length(second);
-    if denominator <= 0.0 {
-        return 90.0;
-    }
-    let cosine = first
-        .iter()
-        .zip(second.iter())
-        .map(|(left, right)| left * right)
-        .sum::<f64>()
-        / denominator;
-    cosine.clamp(-1.0, 1.0).acos().to_degrees()
-}
-
-fn pdb_cryst1_line(box_vectors: &BoxVectors) -> String {
-    let [a, b, c] = box_vectors;
-    format!(
-        "CRYST1{a_len:>9.3}{b_len:>9.3}{c_len:>9.3}{alpha:>7.2}{beta:>7.2}{gamma:>7.2} P 1           1",
-        a_len = vector_length(a),
-        b_len = vector_length(b),
-        c_len = vector_length(c),
-        alpha = vector_angle(b, c),
-        beta = vector_angle(a, c),
-        gamma = vector_angle(a, b),
-    )
-}
-
-fn unit_cell_pdb_from_vectors(box_vectors: &BoxVectors, label: &str) -> String {
-    let mut pdb = pdb_cryst1_line(box_vectors);
-    pdb.push('\n');
-    pdb.push_str(&format!("REMARK Unit cell split from {label}\n"));
-    pdb.push_str("END\n");
-    pdb
 }
 
 fn truncate_ascii(value: &str, max_len: usize) -> String {
@@ -2986,7 +2909,7 @@ generated
     }
 
     #[test]
-    fn converts_gro_box_to_pdb_cryst1_and_unit_cell_entry() {
+    fn converts_gro_without_box_boundary_overlay() {
         let data = br#"GRO box fixture
 2
     1MOL      C    1   1.000   2.000   3.000
@@ -2997,17 +2920,12 @@ generated
         let converted = converted_data_from_text(data, "gro", "box.gro").unwrap();
         let pdb = String::from_utf8(converted.data).unwrap();
 
-        assert!(pdb.starts_with("CRYST1   10.247   20.616   31.000"));
+        assert!(pdb.starts_with("REMARK Converted from box.gro\n"));
+        assert!(!pdb.contains("CRYST1"));
         assert!(pdb.contains("REMARK Converted from box.gro\nHETATM    1 C    MOL A   1"));
         assert!(!pdb.contains("BOX Z9999"));
-        assert_eq!(converted.staged_entries.len(), 2);
-        assert_eq!(converted.staged_entries[0].representation, "unitcell");
-        let box_pdb = String::from_utf8(converted.staged_entries[0].data.clone()).unwrap();
-        assert!(box_pdb.starts_with("CRYST1   10.247   20.616   31.000"));
-        assert!(box_pdb.contains("REMARK Unit cell split from box.gro"));
-        assert!(!box_pdb.contains("BOX Z9999"));
-        assert!(!box_pdb.contains("CONECT"));
-        assert_eq!(converted.staged_entries[1].representation, "solvent-lines");
+        assert_eq!(converted.staged_entries.len(), 1);
+        assert_eq!(converted.staged_entries[0].representation, "solvent-lines");
     }
 
     #[test]
