@@ -1532,9 +1532,9 @@ assert.doesNotMatch(viewer, /appendXyzrenderMenuButton\(actions, 'Redo'/);
 assert.match(viewer, /function setXyzrenderLassoEnabled\(enabled\)/);
 assert.match(viewer, /function selectXyzrenderElementsInLasso\(item, points, additive\)/);
 assert.match(viewer, /const atomNodes = xyzrenderAtomNodes\(item\)/);
-assert.match(viewer, /const selectedAtomElements = new Set\(\)/);
-assert.match(viewer, /if \(selectedAtomElements\.has\(element\)\) continue/);
-assert.match(viewer, /return \{ count: selected, kind: selectedAtoms > 0 \? 'atom' : 'graphic' \}/);
+assert.doesNotMatch(viewer, /const selectedAtomElements = new Set\(\)/);
+assert.match(viewer, /if \(selectedAtoms > 0\) \{\s*updateXyzrenderSelectionRoots\(\);\s*return \{ count: selectedAtoms, kind: 'atom' \};\s*\}/);
+assert.match(viewer, /return \{ count: selected, kind: 'graphic' \}/);
 assert.match(viewer, /function showXyzrenderSelectionContextMenu\(item, bounds\)/);
 for (const runtimeSource of [viewer]) {
   const initStaticRendererToolbarBody = runtimeSource.match(/function initStaticRendererToolbar\(\) \{([\s\S]*?)\n  \}/)?.[1] || "";
@@ -1544,10 +1544,10 @@ for (const runtimeSource of [viewer]) {
   assert.match(initStaticRendererToolbarBody, /installMolstarToolbarActionDelegates\(\)/);
   assert.match(runtimeSource, /function xyzrenderAtomIndexFromElement\(element\)/);
   assert.match(runtimeSource, /const atomNodes = xyzrenderAtomNodes\(item\)/);
-  assert.match(runtimeSource, /const selectedAtomElements = new Set\(\)/);
-  assert.match(runtimeSource, /if \(selectedAtomElements\.has\(element\)\) continue/);
+  assert.doesNotMatch(runtimeSource, /const selectedAtomElements = new Set\(\)/);
+  assert.match(runtimeSource, /if \(selectedAtoms > 0\) \{\s*updateXyzrenderSelectionRoots\(\);\s*return \{ count: selectedAtoms, kind: 'atom' \};\s*\}/);
   assert.match(runtimeSource, /function xyzrenderAtomIntersectsLasso\(atom, points\)/);
-  assert.match(runtimeSource, /return \{ count: selected, kind: selectedAtoms > 0 \? 'atom' : 'graphic' \}/);
+  assert.match(runtimeSource, /return \{ count: selected, kind: 'graphic' \}/);
   assert.match(runtimeSource, /const xyzrenderSelectionFilterIds = new WeakMap\(\)/);
   assert.match(runtimeSource, /const xyzrenderSelectionHaloClones = new WeakMap\(\)/);
   assert.match(runtimeSource, /let xyzrenderSelectionFilterSerial = 0/);
@@ -1605,6 +1605,11 @@ assert.doesNotMatch(viewer, /function applyXyzrenderElementPresentation\(targetE
 assert.match(viewer, /bodyHtml: body \? body\.innerHTML : null/);
 assert.match(viewer, /restoreNullableAttribute\(snapshot\.item, 'data-buret-xyzrender-regions', snapshot\.regions\)/);
 assert.match(viewer, /function hideSelectedXyzrenderElements\(\)/);
+assert.match(viewer, /const elements = selectedXyzrenderElementsForHide\(\)/);
+assert.match(viewer, /function selectedXyzrenderElementsForHide\(\)/);
+assert.match(viewer, /const selectedAtoms = xyzrenderAtomSetFromSelector\(atomSelector\)/);
+assert.match(viewer, /if \(xyzrenderAtomSetsIntersect\(selectedAtoms, elementAtoms\)\) elements\.add\(element\)/);
+assert.match(viewer, /clearXyzrenderSelection\(\);\n    setStatus\(`\[web\] Hid \$\{elements\.length\} selected xyzrender graphic/);
 assert.match(viewer, /function showHiddenXyzrenderElements\(item\)/);
 assert.match(viewer, /function pushXyzrenderActionHistory\(item, label\)/);
 assert.match(viewer, /function undoXyzrenderLastAction\(options = \{\}\)/);
