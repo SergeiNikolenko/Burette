@@ -114,13 +114,11 @@ if (/native build error|JS message type=error|render timeout/u.test(blockText)) 
 
 const evidence = parseEvidence(lines);
 const readyEvidence = evidence.filter((record) => record.type === "ready" || record.mode || record.renderer);
-const textFallbackDetected = lineWith(lines, "detected.previewMode=text-fallback");
-if (textFallbackDetected) {
-  const textFallbackReady = hasEvidence(readyEvidence, (record) =>
-    record.mode === "text" && record.renderer === "text-fallback"
-  );
-  if (!textFallbackReady) fail("text fallback preview reached no ready evidence");
-  pass("text fallback ready");
+const textFallbackLine = lineWith(lines, "detected.previewMode=text-fallback");
+if (textFallbackLine) {
+  const originalError = lineWith(lines, "textFallback.originalError=");
+  const suffix = originalError ? `: ${originalError.slice(originalError.indexOf("textFallback.originalError="))}` : "";
+  fail(`rich Quick Look preview fell back to text${suffix}`);
 }
 const strategy = format.preview?.strategy ?? "direct";
 const renderer = format.preview?.renderer ?? format.viewer?.molstarFormat ?? "";
