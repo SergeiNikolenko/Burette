@@ -55,10 +55,12 @@ assert.match(xyzrenderNativeError.stderr, /contains an error or timeout/);
 const xyzrenderTextFallback = await runCase("xyzrender-text-fallback", xyzrenderFile, [
   `[CCCC0002] file.path=${xyzrenderFile}`,
   "[CCCC0002] [build] detected.previewMode=text-fallback",
+  "[CCCC0002] [build] textFallback.originalError=Molstar assets were unavailable",
   "[CCCC0002] preview.evidence type=ready mode=text renderer=text-fallback sourceExtension=com",
 ]);
-assert.equal(xyzrenderTextFallback.status, 0);
-assert.match(xyzrenderTextFallback.stdout, /text fallback ready/);
+assert.equal(xyzrenderTextFallback.status, 1);
+assert.match(xyzrenderTextFallback.stderr, /fell back to text/);
+assert.match(xyzrenderTextFallback.stderr, /Molstar assets were unavailable/);
 
 const gridSuccess = await runCase("grid-success", sdfFile, [
   `[DDDD0001] file.path=${sdfFile}`,
