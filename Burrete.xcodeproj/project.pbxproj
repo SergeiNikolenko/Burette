@@ -18,6 +18,11 @@
 		C20000000000000000000022 /* MobilePreviewScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000012 /* MobilePreviewScreen.swift */; };
 		C20000000000000000000023 /* MobilePreviewWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000013 /* MobilePreviewWebView.swift */; };
 		C20000000000000000000024 /* MobilePreviewRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000014 /* MobilePreviewRuntime.swift */; };
+		C20000000000000000000071 /* MobileAppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000061 /* MobileAppModel.swift */; };
+		C20000000000000000000072 /* MobileRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000062 /* MobileRootView.swift */; };
+		C20000000000000000000073 /* MobileSettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000063 /* MobileSettingsScreen.swift */; };
+		C20000000000000000000076 /* MobileViewModes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000066 /* MobileViewModes.swift */; };
+		C20000000000000000000077 /* MobileCommandPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000067 /* MobileCommandPalette.swift */; };
 		C20000000000000000000025 /* Web in Resources */ = {isa = PBXBuildFile; fileRef = 4ADF66CA120EDD24C9E3F203 /* Web */; };
 		C20000000000000000000026 /* mini.pdb in Resources */ = {isa = PBXBuildFile; fileRef = 4A566BCA24ADD5993DACE9DD /* mini.pdb */; };
 		C20000000000000000000027 /* samples in Resources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000015 /* samples */; };
@@ -37,6 +42,11 @@
 		C20000000000000000000012 /* MobilePreviewScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilePreviewScreen.swift; sourceTree = "<group>"; };
 		C20000000000000000000013 /* MobilePreviewWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilePreviewWebView.swift; sourceTree = "<group>"; };
 		C20000000000000000000014 /* MobilePreviewRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilePreviewRuntime.swift; sourceTree = "<group>"; };
+		C20000000000000000000061 /* MobileAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileAppModel.swift; sourceTree = "<group>"; };
+		C20000000000000000000062 /* MobileRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileRootView.swift; sourceTree = "<group>"; };
+		C20000000000000000000063 /* MobileSettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileSettingsScreen.swift; sourceTree = "<group>"; };
+		C20000000000000000000066 /* MobileViewModes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileViewModes.swift; sourceTree = "<group>"; };
+		C20000000000000000000067 /* MobileCommandPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileCommandPalette.swift; sourceTree = "<group>"; };
 		C20000000000000000000017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		C20000000000000000000015 /* samples */ = {isa = PBXFileReference; lastKnownFileType = folder; path = samples; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000018 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -126,6 +136,11 @@
 				C20000000000000000000012 /* MobilePreviewScreen.swift */,
 				C20000000000000000000013 /* MobilePreviewWebView.swift */,
 				C20000000000000000000014 /* MobilePreviewRuntime.swift */,
+				C20000000000000000000061 /* MobileAppModel.swift */,
+				C20000000000000000000062 /* MobileRootView.swift */,
+				C20000000000000000000063 /* MobileSettingsScreen.swift */,
+				C20000000000000000000066 /* MobileViewModes.swift */,
+				C20000000000000000000067 /* MobileCommandPalette.swift */,
 				C20000000000000000000017 /* Info.plist */,
 				C20000000000000000000018 /* Assets.xcassets */,
 			);
@@ -340,6 +355,11 @@
 				C20000000000000000000022 /* MobilePreviewScreen.swift in Sources */,
 				C20000000000000000000023 /* MobilePreviewWebView.swift in Sources */,
 				C20000000000000000000024 /* MobilePreviewRuntime.swift in Sources */,
+				C20000000000000000000071 /* MobileAppModel.swift in Sources */,
+				C20000000000000000000072 /* MobileRootView.swift in Sources */,
+				C20000000000000000000073 /* MobileSettingsScreen.swift in Sources */,
+				C20000000000000000000076 /* MobileViewModes.swift in Sources */,
+				C20000000000000000000077 /* MobileCommandPalette.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
