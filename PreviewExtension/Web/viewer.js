@@ -6292,6 +6292,26 @@
     return parts.join(',');
   }
 
+  function xyzrenderAtomSetFromSelector(selector) {
+    const atoms = new Set();
+    String(selector || '').split(',').forEach(part => {
+      const trimmed = part.trim();
+      if (!trimmed) return;
+      const [startValue, endValue] = trimmed.split('-').map(value => Number(value.trim()));
+      if (!Number.isInteger(startValue) || startValue <= 0) return;
+      const end = Number.isInteger(endValue) && endValue >= startValue ? endValue : startValue;
+      for (let atom = startValue; atom <= end; atom += 1) atoms.add(atom);
+    });
+    return atoms;
+  }
+
+  function xyzrenderAtomSetsIntersect(left, right) {
+    for (const atom of left || []) {
+      if (right?.has?.(atom)) return true;
+    }
+    return false;
+  }
+
   function requestSelectedXyzrenderSheetItemsUpdate(options = {}) {
     const selectedItems = selectedXyzrenderSheetItems().filter(item => item.querySelector('.buret-xyzrender-sheet-item-body'));
     const frontmostItem = selectedItems.length === 0 ? frontmostXyzrenderSheetItem() : null;
@@ -10489,25 +10509,26 @@
   function selectXyzrenderElementsInLasso(item, points, additive) {
     if (!additive) clearXyzrenderSelection();
     const atomNodes = xyzrenderAtomNodes(item);
-    const selectedAtomElements = new Set();
     let selectedAtoms = 0;
     if (atomNodes.length > 0) {
       for (const atom of atomNodes) {
         if (!xyzrenderAtomIntersectsLasso(atom, points)) continue;
         markXyzrenderElementSelected(atom.element);
-        selectedAtomElements.add(atom.element);
         selectedAtoms += 1;
       }
     }
-    let selected = selectedAtoms;
+    if (selectedAtoms > 0) {
+      updateXyzrenderSelectionRoots();
+      return { count: selectedAtoms, kind: 'atom' };
+    }
+    let selected = 0;
     for (const element of xyzrenderSelectableElements(item)) {
-      if (selectedAtomElements.has(element)) continue;
       if (!svgElementIntersectsLasso(element, points, item)) continue;
       markXyzrenderElementSelected(element);
       selected += 1;
     }
     updateXyzrenderSelectionRoots();
-    return { count: selected, kind: selectedAtoms > 0 ? 'atom' : 'graphic' };
+    return { count: selected, kind: 'graphic' };
   }
 
   function xyzrenderAtomIntersectsLasso(atom, points) {
@@ -11017,7 +11038,7 @@
   }
 
   function hideSelectedXyzrenderElements() {
-    const elements = Array.from(xyzrenderSelectedElements).filter(element => element.isConnected);
+    const elements = selectedXyzrenderElementsForHide();
     if (!elements.length) {
       clearXyzrenderSelection();
       return;
@@ -11026,8 +11047,27 @@
       ensureXyzrenderOriginalStyle(element);
       element.setAttribute('display', 'none');
     }
+    clearXyzrenderSelection();
     setStatus(`[web] Hid ${elements.length} selected xyzrender graphic${elements.length === 1 ? '' : 's'}.`);
     setTimeout(hideStatus, 900);
+  }
+
+  function selectedXyzrenderElementsForHide() {
+    const elements = new Set();
+    const groups = xyzrenderSelectionGroups();
+    for (const group of groups) {
+      const atomSelector = xyzrenderAtomSelectorForElements(group.item, group.elements);
+      const selectedAtoms = xyzrenderAtomSetFromSelector(atomSelector);
+      if (selectedAtoms.size === 0) {
+        group.elements.filter(element => element.isConnected).forEach(element => elements.add(element));
+        continue;
+      }
+      for (const element of xyzrenderSelectableElements(group.item)) {
+        const elementAtoms = xyzrenderAtomSetFromSelector(xyzrenderAtomSelectorForElements(group.item, [element]));
+        if (xyzrenderAtomSetsIntersect(selectedAtoms, elementAtoms)) elements.add(element);
+      }
+    }
+    return Array.from(elements).filter(element => element.isConnected);
   }
 
   function applyXyzrenderSelectionControls(controls) {
