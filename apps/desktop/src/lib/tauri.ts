@@ -2,7 +2,7 @@ export function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-type TauriUnlisten = () => void | Promise<void>;
+type TauriUnlisten = () => void | PromiseLike<void>;
 
 export function trackTauriListener(registration: Promise<TauriUnlisten>, label: string) {
   let disposed = false;
@@ -31,8 +31,8 @@ function disposeTauriListener(unlisten: TauriUnlisten | undefined, label: string
   if (!unlisten) return;
   try {
     const result = unlisten();
-    if (result && typeof result.catch === "function") {
-      void result.catch((error) => {
+    if (result && typeof result.then === "function") {
+      void Promise.resolve(result).catch((error) => {
         console.warn(`[Burrete] ${label} listener cleanup failed`, error);
       });
     }
