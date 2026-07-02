@@ -94,8 +94,6 @@ type MaestroPdbBlock = {
   atoms: MaestroAtom[];
 };
 
-type BoxVectors = [[number, number, number], [number, number, number], [number, number, number]];
-
 const MAX_STRUCTURE_FILE_SIZE = 75 * 1024 * 1024;
 const MAESTRO_PREVIEW_READ_LIMIT = 64 * 1024 * 1024;
 const MAESTRO_PREVIEW_ATOM_LIMIT = 3000;
@@ -2482,11 +2480,9 @@ function groPdbDataFromText(text: string, label: string) {
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
   const atoms = parseGroPdbAtoms(lines);
   if (!atoms?.length) return null;
-  const box = parseGroBox(lines);
   const mainAtoms = atoms.filter((atom) => atom.residueName !== "HOH");
   const waterAtoms = atoms.filter((atom) => atom.residueName === "HOH");
   const pdb = [
-    ...(box ? [pdbCryst1Line(box)] : []),
     `REMARK Converted from ${label}`,
     ...mainAtoms.slice(0, 99999).map((atom, index) => maestroPdbAtomLine(index + 1, atom)),
     "END",
@@ -2494,15 +2490,6 @@ function groPdbDataFromText(text: string, label: string) {
   ].join("\n");
   const bytes = new TextEncoder().encode(pdb);
   const stagedEntries: Array<Record<string, unknown>> = [];
-  if (box) {
-    stagedEntries.push({
-      label: "Box",
-      format: "pdb",
-      binary: false,
-      representation: "unitcell",
-      dataBase64: bytesToBase64(new TextEncoder().encode(unitCellPdbFromVectors(box, label))),
-    });
-  }
   if (waterAtoms.length) {
     const waterPdb = [
       `REMARK Water split from ${label}`,
@@ -2549,29 +2536,6 @@ function parseGroPdbAtoms(lines: string[]) {
     });
   }
   return atoms.length ? atoms : null;
-}
-
-function parseGroBox(lines: string[]): BoxVectors | null {
-  if (lines.length < 3) return null;
-  const atomCount = Number.parseInt(lines[1].trim(), 10);
-  const boxLine = lines[atomCount + 2]?.trim();
-  if (!Number.isFinite(atomCount) || !boxLine) return null;
-  const values = fields(boxLine).map((value) => Number.parseFloat(value));
-  if (values.length !== 3 && values.length !== 9) return null;
-  if (values.some((value) => !Number.isFinite(value))) return null;
-  const angstrom = values.map((value) => value * 10);
-  if (angstrom.length === 3) {
-    return [
-      [angstrom[0], 0, 0],
-      [0, angstrom[1], 0],
-      [0, 0, angstrom[2]],
-    ];
-  }
-  return [
-    [angstrom[0], angstrom[3], angstrom[4]],
-    [angstrom[5], angstrom[1], angstrom[6]],
-    [angstrom[7], angstrom[8], angstrom[2]],
-  ];
 }
 
 function parseGroFixedAtomLine(line: string) {
@@ -2920,31 +2884,6 @@ function formatPdbAtomName(atomName: string, symbol: string) {
 
 function formatPdbCoordinate(value: number) {
   return value.toFixed(3).padStart(8, " ");
-}
-
-function vectorLength(vector: [number, number, number]) {
-  return Math.hypot(...vector);
-}
-
-function vectorAngle(first: [number, number, number], second: [number, number, number]) {
-  const denominator = vectorLength(first) * vectorLength(second);
-  if (denominator <= 0) return 90;
-  const cosine = (first[0] * second[0] + first[1] * second[1] + first[2] * second[2]) / denominator;
-  return Math.acos(clamp(cosine, -1, 1)) * 180 / Math.PI;
-}
-
-function pdbCryst1Line(box: BoxVectors) {
-  const [a, b, c] = box;
-  return `CRYST1${vectorLength(a).toFixed(3).padStart(9, " ")}${vectorLength(b).toFixed(3).padStart(9, " ")}${vectorLength(c).toFixed(3).padStart(9, " ")}${vectorAngle(b, c).toFixed(2).padStart(7, " ")}${vectorAngle(a, c).toFixed(2).padStart(7, " ")}${vectorAngle(a, b).toFixed(2).padStart(7, " ")} P 1           1`;
-}
-
-function unitCellPdbFromVectors(box: BoxVectors, label: string) {
-  return [
-    pdbCryst1Line(box),
-    `REMARK Unit cell split from ${label}`,
-    "END",
-    "",
-  ].join("\n");
 }
 
 function clamp(value: number, min: number, max: number) {
