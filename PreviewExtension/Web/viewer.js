@@ -10371,6 +10371,7 @@
     const canSelect = typeof selects?.select === 'function';
     const canSelectStructure = typeof selection?.fromLoci === 'function';
     if (!canSelect && !canSelectStructure) return 0;
+    const lassoApplyGranularity = false;
     if (!additive) {
       selects?.deselectAll?.();
       selection?.clear?.();
@@ -10379,8 +10380,8 @@
     for (const pick of picks) {
       const loci = molstarContextNormalizeLoci(pick?.loci, 'element');
       if (!loci || molstarLociIsEmpty(loci)) continue;
-      if (canSelect) selects.select({ loci }, true);
-      if (canSelectStructure) selection.fromLoci('add', loci, true);
+      if (canSelect) selects.select({ loci }, lassoApplyGranularity);
+      if (canSelectStructure) selection.fromLoci('add', loci, lassoApplyGranularity);
       selected += 1;
     }
     if (selected > 0) scheduleMolstarSelectedMoleculePreview();
@@ -12460,7 +12461,7 @@
     const loci = target?.loci || molstarContextMenuPick?.loci;
     if (!loci || molstarLociIsEmpty(loci)) return false;
     const additive = options.additive === true;
-    const applyGranularity = options.applyGranularity ?? !target?.selectionBased;
+    const applyGranularity = options.applyGranularity ?? false;
     const selects = activeViewer?.plugin?.managers?.interactivity?.lociSelects;
     const selection = activeViewer?.plugin?.managers?.structure?.selection;
     let handled = false;
