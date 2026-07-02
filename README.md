@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/public/burrete-quick-look-preview.png" alt="Burrete Quick Look preview of 1HTB.pdb" width="90%" />
+  <img src="docs/public/burrete-quick-look-preview.png" alt="Burrete desktop preview of caffeine.fdf" width="90%" />
 </p>
 
 ## What Is Burrete?
