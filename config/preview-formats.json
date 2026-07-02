@@ -347,6 +347,19 @@
       "quickLook": { "sizeLimitMiB": 25 }
     },
     {
+      "id": "fep-edge-list",
+      "contentType": "com.local.burrete10.fep-edge-list",
+      "extensions": ["edge"],
+      "mimeTypes": ["text/plain"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "FEP edge-list network file",
+      "preview": {
+        "strategy": "custom",
+        "renderer": "fep-graphml"
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
+    },
+    {
       "id": "pharmacophore-model",
       "contentType": "com.local.burrete10.pharmacophore",
       "extensions": ["ph4"],
@@ -385,7 +398,7 @@
     {
       "id": "openmm-workflow-text-artifact",
       "contentType": "com.local.burrete10.openmm-workflow-text-artifact",
-      "extensions": ["par", "prm", "rtf", "str", "key", "chk", "checkpoint", "dms", "xvg", "edr", "fasta", "fdef"],
+      "extensions": ["par", "prm", "rtf", "str", "key", "chk", "checkpoint", "dms", "xvg", "edr", "fasta", "fdef", "msj"],
       "mimeTypes": ["text/plain"],
       "conformsTo": ["public.text", "public.data"],
       "description": "Molecular workflow text or metadata artifact",
@@ -414,11 +427,11 @@
   "documentTypes": {
     "name": "Molecular structure files",
     "extensions": [
-      "abi", "arc", "bcif", "cfg", "cif", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "edr", "ent", "fasta", "fdef", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
+      "abi", "arc", "bcif", "cfg", "cif", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "edge", "edr", "ent", "fasta", "fdef", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
       "in", "inp", "inpcrd", "itp", "lammpstrj", "lammps", "lmp", "log", "mae", "mae.gz", "maegz", "magma", "mcif", "mdcrd", "mgf", "mmcif", "mmtf", "mol",
       "json", "mol2", "ms", "msp", "mvsj", "mvsx", "mzml", "mzxml", "namdbin", "nc", "ncdf", "ncrst", "nctraj", "netcdf", "nw", "out", "par", "parm", "parm7", "pdb", "pdbqt", "pqr", "pos", "prm", "prmtop", "psf", "psi4", "qcin",
       "restrt", "rst", "rst7", "rtf", "sd", "sdf", "smi", "smiles", "state", "str", "top", "tpr", "tng", "trc", "trj", "trr", "trz", "tsv", "txyz", "vasp", "xtc", "xml", "xpdb", "xvg", "xyz", "xyzr", "ph4",
-      "key", "chk", "checkpoint", "crd"
+      "key", "chk", "checkpoint", "crd", "msj"
     ]
   },
   "quickLook": {
@@ -442,6 +455,7 @@
       "com.local.burrete10.schrodinger",
       "com.local.burrete10.xyzrender-input",
       "com.local.burrete10.graphml",
+      "com.local.burrete10.fep-edge-list",
       "com.local.burrete10.pharmacophore",
       "com.local.burrete10.spectrum",
       "com.local.burrete10.spectrum-json",
@@ -481,6 +495,7 @@
       "com.schrodinger.mae",
       "com.local.burrete10.schrodinger",
       "com.local.burrete10.graphml",
+      "com.local.burrete10.fep-edge-list",
       "com.local.burrete10.pharmacophore",
       "com.local.burrete10.spectrum",
       "com.local.burrete10.spectrum-json",

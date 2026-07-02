@@ -27,6 +27,7 @@ async function runCase(name, filePath, lines) {
 const xyzrenderFile = path.join(root, "samples", "quantum", "inputs", "caffeine.com");
 const sdfFile = path.join(root, "samples", "collections", "sdf", "multi.sdf");
 const csvTableFile = path.join(root, "samples", "collections", "tables", "no-molecule-column.csv");
+const edgeFile = path.join(root, "samples", "fep", "ligand_network.edge");
 
 const xyzrenderSuccess = await runCase("xyzrender-success", xyzrenderFile, [
   `[AAAA0001] file.path=${xyzrenderFile}`,
@@ -85,5 +86,13 @@ const tabularGridSuccess = await runCase("tabular-grid-success", csvTableFile, [
 ]);
 assert.equal(tabularGridSuccess.status, 0);
 assert.match(tabularGridSuccess.stdout, /grid rows=2 tableRows=2/);
+
+const edgeListSuccess = await runCase("edge-list-success", edgeFile, [
+  `[GGGG0001] file.path=${edgeFile}`,
+  "[GGGG0001] [build] detected.previewMode=fep-graphml nodes=5 edges=4 moleculesWithAtoms=0 atoms=0",
+  "[GGGG0001] preview.evidence type=ready mode=fep-graphml renderer=fep-graphml rowCount=5 edgeCount=4 moleculesWithAtoms=0 atomCount=0",
+]);
+assert.equal(edgeListSuccess.status, 0);
+assert.match(edgeListSuccess.stdout, /fep edges=4 moleculesWithAtoms=0 atoms=0/);
 
 console.log("quicklook semantic check tests passed");

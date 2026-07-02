@@ -96,6 +96,11 @@
       "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
     },
     {
+      "formatId": "fep-edge-list",
+      "path": "samples/fep/ligand_network.edge",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
       "formatId": "pharmacophore-model",
       "path": "samples/pharmacophore/basic.ph4",
       "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]

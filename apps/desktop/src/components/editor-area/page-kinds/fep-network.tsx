@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { join, resourceDir } from "@tauri-apps/api/path";
 import type { ViewerDocument } from "../../../types";
-import { parseFepGraphml, type FepNetworkData, type FepNetworkEdge, type FepNetworkNode } from "../../../lib/fep-graphml";
+import { parseFepNetworkText, type FepNetworkData, type FepNetworkEdge, type FepNetworkNode } from "../../../lib/fep-graphml";
 import { isTauriRuntime } from "../../../lib/tauri";
 import { showNativeContextMenu } from "../../native-context-menu";
 import type { ShellActions } from "../../types";
@@ -403,10 +403,11 @@ function FepNetworkPreview({ actions, location }: { actions: ShellActions; locat
                 </div>
               );
             })}
-            {visibleNodes.map((node) => (
+            {visibleNodes.map((node, index) => (
               <LigandCard
                 key={node.id}
                 node={node}
+                displayIndex={index + 1}
                 rdkit={rdkit}
                 rdkitError={rdkitError}
                 highlightMode={highlightMode}
@@ -592,6 +593,7 @@ function formatMetric(value: number, mode: EdgeMetricMode) {
 
 function LigandCard({
   node,
+  displayIndex,
   rdkit,
   rdkitError,
   highlightMode,
@@ -601,6 +603,7 @@ function LigandCard({
   style,
 }: {
   node: FepNetworkNode;
+  displayIndex: number;
   rdkit: RDKitModule | null;
   rdkitError: string | null;
   highlightMode: HighlightMode;
@@ -613,10 +616,13 @@ function LigandCard({
     () => drawRDKitMol(rdkit, node, highlightMode, highlightSet),
     [highlightMode, highlightSet, node, rdkit],
   );
+  const moleculeMarkup = node.molblock.trim()
+    ? svg || `<div class="fep-network-card-error">${rdkitError || "RDKit unavailable"}</div>`
+    : `<div class="fep-network-card-error">Network node</div>`;
   return (
     <article
       className="fep-network-card buret-card"
-      data-index={Number(node.id.replace("mol", ""))}
+      data-index={displayIndex - 1}
       data-renderer="rdkit"
       data-highlight={highlightMode}
       style={style}
@@ -627,12 +633,12 @@ function LigandCard({
       <div
         className="fep-network-card-picture buret-molecule-picture"
         dangerouslySetInnerHTML={{
-          __html: svg || `<div class="fep-network-card-error">${rdkitError || "RDKit unavailable"}</div>`,
+          __html: moleculeMarkup,
         }}
       />
       <footer>
         <span>{node.shortLabel}</span>
-        <strong>{Number(node.id.replace("mol", "")) + 1}</strong>
+        <strong>{displayIndex}</strong>
       </footer>
     </article>
   );
@@ -774,10 +780,10 @@ function clamp(value: number, min: number, max: number) {
 }
 
 async function loadFepNetworkData(graphmlText?: string) {
-  if (graphmlText) return parseFepGraphml(graphmlText);
+  if (graphmlText) return parseFepNetworkText(graphmlText);
   const response = await fetch(sampleGraphmlUrl, { cache: "no-store" });
   if (!response.ok) throw new Error(`Could not load sample GraphML: ${response.status} ${response.statusText}`);
-  return parseFepGraphml(await response.text());
+  return parseFepNetworkText(await response.text());
 }
 
 async function loadRDKit() {
