@@ -4142,6 +4142,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if message.hasPrefix("elapsed.") { return true }
         if message.hasPrefix("[build] detected.format=") { return true }
         if message.hasPrefix("[build] detected.previewMode=") { return true }
+        if message.hasPrefix("[build] textFallback.originalError=") { return true }
         if message.hasPrefix("[build] trajectory.frames=") { return true }
         if message.hasPrefix("[build] elapsed.") { return true }
         if message.hasPrefix("[build] runtimeDirectory=") { return true }
