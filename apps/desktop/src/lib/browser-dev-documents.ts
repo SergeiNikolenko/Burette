@@ -36,6 +36,23 @@ type ConvertedStructureData = {
   stagedEntries?: Array<Record<string, unknown>>;
 };
 
+type BrowserDevTrajectoryPair = {
+  label: string;
+  byteCount: number;
+  sourcePath: string;
+  sourceExtension: string;
+  docking: {
+    activePose: number | null;
+    sceneMode: DockingSceneMode | null;
+    receptor: Record<string, unknown>;
+    ligands: Array<Record<string, unknown>>;
+  };
+  payloads: {
+    receptor: { dataBase64: string };
+    ligands: Array<{ dataBase64: string }>;
+  };
+};
+
 type PharmacophoreFeature = {
   name: string;
   x: number;
@@ -93,6 +110,11 @@ const VIEWER_ASSET_VERSION = "viewer-ui-v66";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 const AMBER_NETCDF_EXTENSIONS = new Set(["nc", "ncdf", "netcdf", "ncrst"]);
+const TRAJECTORY_PAIR_EXTENSIONS = new Set([
+  "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
+  "pdb", "ent", "pdbqt", "pqr", "xpdb", "mmcif", "cif", "mcif", "gro",
+  "top", "psf", "prmtop", "tpr",
+]);
 const browserDevVirtualTextDocuments = new Map<string, string>();
 
 type ResolvedPreviewVisuals = {
@@ -607,6 +629,10 @@ async function openBrowserDevDocument(
       documentId,
     );
   }
+  const trajectoryPair = await requestBrowserDevTrajectoryPair(path, extension);
+  if (trajectoryPair) {
+    return openBrowserDevTrajectoryPairDocument(path, trajectoryPair, preferences, documentId);
+  }
   const useBoundedMaestroPreview = isMaestroPreviewExtension(extension) && extension !== "maegz";
   const response = await fetch(browserDevReadUrl(path, extension), useBoundedMaestroPreview ? {
     headers: { Range: `bytes=0-${MAESTRO_PREVIEW_READ_LIMIT - 1}` },
@@ -622,6 +648,89 @@ async function openBrowserDevDocument(
 
   const sourceByteCount = browserDevSourceByteCount(response, bytes.length);
   return openBrowserDevDocumentFromBytes(path, extension, bytes, sourceByteCount, preferences, reloadOptions, documentId);
+}
+
+async function requestBrowserDevTrajectoryPair(path: string, extension: string) {
+  if (!TRAJECTORY_PAIR_EXTENSIONS.has(extension)) return null;
+  const response = await fetch(`/__burette/trajectory-pair?path=${encodeURIComponent(path)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const message = await browserDevJsonError(response).catch(() => response.statusText);
+    throw new Error(`${path}: trajectory pair preview failed: ${message || response.statusText}`);
+  }
+  return await response.json() as BrowserDevTrajectoryPair;
+}
+
+function openBrowserDevTrajectoryPairDocument(
+  path: string,
+  pair: BrowserDevTrajectoryPair,
+  preferences: ViewerPreferences,
+  documentId?: string,
+) {
+  const id = documentId ?? stableId(`trajectory:${pair.sourcePath}:${JSON.stringify(pair.docking)}`);
+  const visuals = resolvePreviewVisuals(preferences);
+  const receptor = pair.docking.receptor;
+  const config = {
+    format: receptor.format ?? "gro",
+    molstarFormat: receptor.format ?? "gro",
+    binary: receptor.binary === true,
+    renderer: "molstar",
+    requestedRenderer: "molstar",
+    allowMolstarFallback: false,
+    label: pair.label,
+    byteCount: pair.byteCount,
+    previewByteCount: 1,
+    sourcePath: pair.sourcePath,
+    sourceExtension: pair.sourceExtension,
+    quickLookBuild: "burrete-browser-dev-trajectory-pair",
+    debug: false,
+    theme: visuals.theme,
+    themeTokens: previewThemeTokens(preferences),
+    canvasBackground: visuals.canvasBackground,
+    documentId: id,
+    uiScale: 0.9,
+    overlayOpacity: 0.9,
+    transparentBackground: visuals.transparentBackground,
+    sdfGrid: false,
+    appViewer: true,
+    tauriViewer: false,
+    molstarStyle: preferences.molstarStyle,
+    waterRepresentation: "line",
+    xyzrenderViewer: false,
+    xyzrenderAvailable: false,
+    molstarAvailable: true,
+    canOpenInVesta: false,
+    showPanelControls: true,
+    defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
+    docking: pair.docking,
+  };
+  const html = viewerHtml(
+    pair.label,
+    {
+      molstarFormat: String(config.format),
+      binary: config.binary,
+      externalOnly: false,
+      canOpenInVesta: false,
+    },
+    "molstar",
+    new Uint8Array([10]),
+    pair.byteCount,
+    preferences,
+    false,
+    false,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    `<script>window.BurreteDockingPayloads = ${JSON.stringify(pair.payloads)};</script>`,
+    config,
+    0,
+    null,
+    undefined,
+    undefined,
+    id,
+  );
+  return browserDocument(path, pair.sourceExtension, "molstar", html, pair.byteCount, id);
 }
 
 async function requestBrowserDevAmberNcPreview(path: string, extension: string) {

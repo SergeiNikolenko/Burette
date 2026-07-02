@@ -4535,6 +4535,8 @@ assert.match(previewRuntimeViewer, /preferences\.canvas_background_for_runtime\(
 assert.match(previewRuntimeViewer, /"molstarStyle": preferences\.resolved_molstar_style\(\)/);
 assert.match(previewRuntimeViewer, /"waterRepresentation": "line"/);
 assert.match(previewRuntimeViewer, /config\["stagedEntries"\]/);
+assert.match(previewViewController, /preview-docking-payloads\.js/);
+assert.match(previewViewController, /window\.BurreteDockingPayloads = \\\(dockingPayloadsJSON\)/);
 assert.match(previewRuntimeViewer, /"requiredForReady": true/);
 assert.match(previewViewController, /"requiredForReady": true/);
 assert.match(previewViewer, /const stagedEntries = Array\.isArray\(config\.stagedEntries\) \? config\.stagedEntries : \[\]/);
@@ -4819,8 +4821,11 @@ assert.match(previewViewer, /if \(value === 'xyzrender-external'\) return !xyzre
 assert.match(previewViewer, /function prepareDockingStructure\(config\)/);
 assert.match(previewViewer, /const trajectoryPair = dockingTrajectoryPair\(entries\);[\s\S]*if \(trajectoryPair\)[\s\S]*const sceneMode = dockingSceneMode\(config\);/);
 assert.match(previewViewer, /DOCKING_COORDINATE_TRAJECTORY_FORMATS[\s\S]*'nc'[\s\S]*'ncdf'[\s\S]*'netcdf'[\s\S]*'ncrst'/);
+assert.match(previewViewer, /DOCKING_TOPOLOGY_TRAJECTORY_FORMATS[\s\S]*'tpr'/);
 assert.match(previewViewer, /value === 'nc' \|\| value === 'ncdf' \|\| value === 'netcdf' \|\| value === 'ncrst'\) return 'nctraj'/);
 assert.match(previewViewer, /if \(config\.docking\) \{\s*return prepareDockingStructure\(config\);/);
+assert.match(browserDevDocuments, /\/__burette\/trajectory-pair\?path=/);
+assert.match(browserDevDocuments, /window\.BurreteDockingPayloads = \$\{JSON\.stringify\(pair\.payloads\)\}/);
 assert.match(browserDevDocuments, /return records\.length >= 1 \? \{ format: "sdf", records \} : null;/);
 assert.match(previewViewer, /records\.length >= 1 && config\.sdfPosePager === true/);
 assert.match(previewViewer, /const controlLabel = String\(config\.sdfPoseControlLabel \|\| 'Pose'\)\.trim\(\) \|\| 'Pose'/);
