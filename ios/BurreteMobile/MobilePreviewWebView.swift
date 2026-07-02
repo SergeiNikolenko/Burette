@@ -6,6 +6,7 @@ struct MobilePreviewWebView: UIViewRepresentable {
     let theme: MobilePreviewTheme
     let style: MobileMolecularStyle
     let waterRepresentation: MobileWaterRepresentation
+    let molstarQuality: MobileMolstarQuality
     let panelState: MobileMolstarPanelState
     let controlAction: MobileMolstarControlAction?
     let contextMenuCommand: MobileMolstarContextMenuCommand?
@@ -51,7 +52,7 @@ struct MobilePreviewWebView: UIViewRepresentable {
         webView.scrollView.alwaysBounceHorizontal = false
         webView.scrollView.alwaysBounceVertical = false
         webView.scrollView.pinchGestureRecognizer?.isEnabled = false
-        context.coordinator.loadPreview(in: webView, document: document, theme: theme, style: style, waterRepresentation: waterRepresentation)
+        context.coordinator.loadPreview(in: webView, document: document, theme: theme, style: style, waterRepresentation: waterRepresentation, molstarQuality: molstarQuality)
         return webView
     }
 
@@ -61,8 +62,9 @@ struct MobilePreviewWebView: UIViewRepresentable {
         if context.coordinator.loadedDocument != document ||
             context.coordinator.loadedTheme != theme ||
             context.coordinator.loadedStyle != style ||
-            context.coordinator.loadedWaterRepresentation != waterRepresentation {
-            context.coordinator.loadPreview(in: uiView, document: document, theme: theme, style: style, waterRepresentation: waterRepresentation)
+            context.coordinator.loadedWaterRepresentation != waterRepresentation ||
+            context.coordinator.loadedMolstarQuality != molstarQuality {
+            context.coordinator.loadPreview(in: uiView, document: document, theme: theme, style: style, waterRepresentation: waterRepresentation, molstarQuality: molstarQuality)
         }
         context.coordinator.applyPanelState(panelState, in: uiView)
         context.coordinator.runControlAction(controlAction, in: uiView)
@@ -79,6 +81,7 @@ struct MobilePreviewWebView: UIViewRepresentable {
         private(set) var loadedTheme: MobilePreviewTheme?
         private(set) var loadedStyle: MobileMolecularStyle?
         private(set) var loadedWaterRepresentation: MobileWaterRepresentation?
+        private(set) var loadedMolstarQuality: MobileMolstarQuality?
         private var desiredPanelState: MobileMolstarPanelState?
         private var appliedPanelState: MobileMolstarPanelState?
         private var appliedActionID: UUID?
@@ -103,12 +106,14 @@ struct MobilePreviewWebView: UIViewRepresentable {
             document: MobilePreviewDocument,
             theme: MobilePreviewTheme,
             style: MobileMolecularStyle,
-            waterRepresentation: MobileWaterRepresentation
+            waterRepresentation: MobileWaterRepresentation,
+            molstarQuality: MobileMolstarQuality
         ) {
             loadedDocument = document
             loadedTheme = theme
             loadedStyle = style
             loadedWaterRepresentation = waterRepresentation
+            loadedMolstarQuality = molstarQuality
             appliedPanelState = nil
             contextMenu.wrappedValue = nil
             inspectorTarget.wrappedValue = nil
@@ -118,7 +123,8 @@ struct MobilePreviewWebView: UIViewRepresentable {
                     document: document,
                     theme: theme,
                     style: style,
-                    waterRepresentation: waterRepresentation
+                    waterRepresentation: waterRepresentation,
+                    molstarQuality: molstarQuality
                 )
                 webView.loadFileURL(preview.indexURL, allowingReadAccessTo: preview.readAccessURL)
                 status.wrappedValue = "Loading \(document.displayName) (\(style.displayName))"
