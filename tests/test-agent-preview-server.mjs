@@ -372,6 +372,41 @@ Loop time of 1.30065 on 1 procs for 200 steps with 60 atoms
   }
   await rm(coordinateTempDir, { recursive: true, force: true });
 
+  const trajectoryTempDir = await mkdtemp(join(tmpdir(), 'burrete-trajectory-pair-preview-'));
+  const groPath = join(trajectoryTempDir, 'md_smoke_100ps.gro');
+  const xtcPath = join(trajectoryTempDir, 'md_smoke_100ps_centered.xtc');
+  await writeFile(groPath, `Protein in water
+2
+    1MET      N    1   0.000   0.000   0.000
+    1MET     CA    2   0.150   0.000   0.000
+   1.00000   1.00000   1.00000
+`);
+  await writeFile(xtcPath, Buffer.from([0x0f, 0x00, 0x00, 0x01, 0x58, 0x54, 0x43]));
+  const trajectoryPort = await freePort();
+  const trajectoryChild = spawn(process.execPath, ['scripts/agent-preview.mjs', xtcPath, '--port', String(trajectoryPort)], {
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  try {
+    const trajectoryReady = await waitForReady(trajectoryChild);
+    const trajectoryHtml = await get(trajectoryReady.url);
+    assert.equal(trajectoryHtml.statusCode, 200);
+    const trajectoryCookie = trajectoryHtml.headers['set-cookie']?.find(value => value.startsWith('BurreteAgentPreviewToken='));
+    assert.ok(trajectoryCookie, 'authorized trajectory HTML response should set the preview token cookie');
+    const trajectoryCookieHeader = trajectoryCookie.split(';')[0];
+    const trajectoryConfig = await get(`http://127.0.0.1:${trajectoryPort}/preview-config.js`, { Cookie: trajectoryCookieHeader });
+    assert.equal(trajectoryConfig.statusCode, 200);
+    assert.match(trajectoryConfig.body, /"docking":/);
+    assert.match(trajectoryConfig.body, /"format":"gro"/);
+    assert.match(trajectoryConfig.body, /"format":"xtc"/);
+    assert.match(trajectoryConfig.body, /window\.BurreteDockingPayloads = /);
+    const trajectoryData = await get(`http://127.0.0.1:${trajectoryPort}/preview-data.js`, { Cookie: trajectoryCookieHeader });
+    assert.equal(trajectoryData.statusCode, 200);
+    assert.equal(previewDataText(trajectoryData.body), '\n');
+  } finally {
+    trajectoryChild.kill('SIGTERM');
+    await rm(trajectoryTempDir, { recursive: true, force: true });
+  }
+
   const observeWithCookie = await get(`${base}/__agent/observe`, { Cookie: cookieHeader });
   assert.equal(observeWithCookie.statusCode, 200);
   const observed = JSON.parse(observeWithCookie.body);

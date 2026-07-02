@@ -281,6 +281,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let xyzrenderControls: [String: Any]?
         let trajectoryFrameCount: Int?
         let molstarAvailable: Bool
+        let dockingConfig: [String: Any]?
+        let dockingPayloadsJSON: String?
     }
 
     private struct StructurePreviewBuildState {
@@ -582,13 +584,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             rendererPolicy: structurePreview.rendererPolicy,
             previewPlan: previewPlan,
             molstarAvailable: structurePreview.molstarAvailable,
+            dockingConfig: structurePreview.dockingConfig,
             preferences: preferences
         )
         diag("structure.payload.bytes=\(structurePreview.structureData.count)")
         let renderTimeoutInputBytes = max(
             structurePreview.structureData.count,
             Int(min(structureSize, Int64(Int.max))),
-            structurePreview.auxiliaryFiles.reduce(0) { $0 + $1.data.count }
+            structurePreview.auxiliaryFiles.reduce(0) { $0 + $1.data.count },
+            structurePreview.dockingPayloadsJSON?.utf8.count ?? 0
         )
         let renderTimeoutSeconds = self.renderTimeoutSeconds(
             byteCount: renderTimeoutInputBytes,
@@ -597,7 +601,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         diag("render.timeout.input.bytes=\(renderTimeoutInputBytes)")
         diag("render.timeout.seconds=\(Int(renderTimeoutSeconds))")
 
-        let html = inlineHTML(title: url.lastPathComponent, preferences: preferences, renderer: structurePreview.renderer)
+        let html = inlineHTML(
+            title: url.lastPathComponent,
+            preferences: preferences,
+            renderer: structurePreview.renderer,
+            hasDockingPayloads: structurePreview.dockingPayloadsJSON != nil
+        )
         diag("inlineHTML.bytes=\(html.utf8.count)")
         let runtimeWriteStarted = Date()
         let runtimePreview = try createRuntimePreview(
@@ -606,6 +615,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             configJSON: configJSON,
             structureData: structurePreview.structureData,
             auxiliaryFiles: structurePreview.auxiliaryFiles,
+            dockingPayloadsJSON: structurePreview.dockingPayloadsJSON,
             gridRecordsScript: nil,
             requiredAssets: runtimeAssets(for: structurePreview.renderer),
             requiresRDKit: structurePreview.renderer == BurreteRendererMode.molstar,
@@ -942,6 +952,21 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             temporaryExternalDirectory: nil,
             xyzrenderControls: xyzrenderControlsOverride
         )
+        let nativeTrajectoryPair = structureStrategy == .trajectory
+            ? try nativeTrajectoryPairPreview(
+                for: url,
+                sourceData: structureData,
+                sourceFormat: initialFormat,
+                fileManager: fileManager,
+                diagnostics: &diagnostics
+            )
+            : nil
+        if let nativeTrajectoryPair {
+            state.format = nativeTrajectoryPair.format
+            state.renderer = BurreteRendererMode.molstar
+            state.structureData = Data("\n".utf8)
+            diag("trajectory.pair model=\(nativeTrajectoryPair.modelURL.lastPathComponent) coordinates=\(nativeTrajectoryPair.coordinateURL.lastPathComponent)")
+        }
         let preparedConversion = PreviewStructureTextConverter.convertedData(
             from: structureData,
             fileExtension: pathExtension,
@@ -1025,7 +1050,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             xyzrenderPreset: xyzrenderPreset,
             xyzrenderControls: state.xyzrenderControls,
             trajectoryFrameCount: state.renderer == BurreteRendererMode.molstar && resolvedTrajectoryFrameCount > 0 ? resolvedTrajectoryFrameCount : nil,
-            molstarAvailable: molstarAvailable
+            molstarAvailable: molstarAvailable,
+            dockingConfig: nativeTrajectoryPair?.dockingConfig,
+            dockingPayloadsJSON: nativeTrajectoryPair?.dockingPayloadsJSON
         )
     }
 
@@ -1088,6 +1115,138 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
+    private struct NativeTrajectoryPairPreview {
+        let format: StructureFormat
+        let modelURL: URL
+        let coordinateURL: URL
+        let dockingConfig: [String: Any]
+        let dockingPayloadsJSON: String
+    }
+
+    private static let trajectoryCoordinateExtensions: Set<String> = [
+        "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj"
+    ]
+    private static let trajectoryModelExtensions: Set<String> = [
+        "pdb", "ent", "pdbqt", "pqr", "xpdb", "mmcif", "cif", "mcif", "gro"
+    ]
+    private static let trajectoryTopologyExtensions: Set<String> = [
+        "top", "psf", "prmtop", "tpr"
+    ]
+
+    private static func nativeTrajectoryPairPreview(
+        for url: URL,
+        sourceData: Data,
+        sourceFormat: StructureFormat,
+        fileManager: FileManager,
+        diagnostics: inout [String]
+    ) throws -> NativeTrajectoryPairPreview? {
+        let sourceExtension = structurePathExtension(for: url)
+        let pairExtensions = trajectoryCoordinateExtensions
+            .union(trajectoryModelExtensions)
+            .union(trajectoryTopologyExtensions)
+        guard pairExtensions.contains(sourceExtension) else { return nil }
+        let folder = url.deletingLastPathComponent()
+        let urls = ((try? fileManager.contentsOfDirectory(
+            at: folder,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        )) ?? [])
+            .filter { pairExtensions.contains(structurePathExtension(for: $0)) }
+        let candidates = Array(Set([url.path] + urls.map(\.path))).map(URL.init(fileURLWithPath:))
+        let coordinateURL = trajectoryCoordinateExtensions.contains(sourceExtension)
+            ? url
+            : preferredTrajectoryCandidate(in: candidates, extensions: trajectoryCoordinateExtensions, sourceURL: url)
+        guard let coordinateURL else { return nil }
+        let modelCandidates = candidates.filter { $0.standardizedFileURL != coordinateURL.standardizedFileURL }
+        guard let modelURL = preferredTrajectoryCandidate(in: modelCandidates, extensions: trajectoryModelExtensions, sourceURL: url)
+            ?? preferredTrajectoryCandidate(in: modelCandidates, extensions: trajectoryTopologyExtensions, sourceURL: url) else {
+            return nil
+        }
+        let coordinateData = coordinateURL.standardizedFileURL == url.standardizedFileURL
+            ? sourceData
+            : try Data(contentsOf: coordinateURL)
+        let modelData = modelURL.standardizedFileURL == url.standardizedFileURL
+            ? sourceData
+            : try Data(contentsOf: modelURL)
+        let modelFormat = modelURL.standardizedFileURL == url.standardizedFileURL
+            ? sourceFormat
+            : StructureFormat(url: modelURL, data: modelData)
+        let modelSource = nativeTrajectorySource(url: modelURL, data: modelData, role: "model")
+        let coordinateSource = nativeTrajectorySource(url: coordinateURL, data: coordinateData, role: "coordinates")
+        let dockingConfig: [String: Any] = [
+            "activePose": NSNull(),
+            "sceneMode": NSNull(),
+            "receptor": modelSource.config,
+            "ligands": [coordinateSource.config]
+        ]
+        let payloads: [String: Any] = [
+            "receptor": ["dataBase64": modelSource.dataBase64],
+            "ligands": [["dataBase64": coordinateSource.dataBase64]]
+        ]
+        let payloadData = try JSONSerialization.data(withJSONObject: payloads, options: [.sortedKeys])
+        guard let payloadJSON = String(data: payloadData, encoding: .utf8) else {
+            throw PreviewError.couldNotCreatePreviewConfig
+        }
+        diagnostics.append("[build] trajectory.pair.bytes.model=\(modelData.count) coordinates=\(coordinateData.count)")
+        return NativeTrajectoryPairPreview(
+            format: modelFormat,
+            modelURL: modelURL,
+            coordinateURL: coordinateURL,
+            dockingConfig: dockingConfig,
+            dockingPayloadsJSON: payloadJSON
+        )
+    }
+
+    private static func preferredTrajectoryCandidate(in candidates: [URL], extensions: Set<String>, sourceURL: URL) -> URL? {
+        let sourceStem = trajectoryStem(sourceURL)
+        return candidates
+            .filter { extensions.contains(structurePathExtension(for: $0)) }
+            .map { ($0, trajectoryCandidateScore(url: $0, sourceStem: sourceStem)) }
+            .sorted { left, right in
+                if left.1 != right.1 { return left.1 > right.1 }
+                return left.0.path.localizedStandardCompare(right.0.path) == .orderedAscending
+            }
+            .first?.0
+    }
+
+    private static func trajectoryCandidateScore(url: URL, sourceStem: String) -> Int {
+        let ext = structurePathExtension(for: url)
+        let stem = trajectoryStem(url)
+        var score = stem == sourceStem ? 20 : (sourceStem.hasPrefix(stem) || stem.hasPrefix(sourceStem) ? 12 : 0)
+        if ext == "gro" { score += 8 }
+        if ext == "pdb" { score += 7 }
+        if ext == "tpr" { score += 4 }
+        if ext == "xtc" { score += 8 }
+        return score
+    }
+
+    private static func trajectoryStem(_ url: URL) -> String {
+        url.deletingPathExtension().lastPathComponent
+            .replacingOccurrences(
+                of: #"_(centered|aligned|fit|reimaged|realmd|realmotion).*$"#,
+                with: "",
+                options: .regularExpression
+            )
+    }
+
+    private static func nativeTrajectorySource(url: URL, data: Data, role: String) -> (config: [String: Any], dataBase64: String) {
+        let ext = structurePathExtension(for: url)
+        return ([
+            "path": url.path,
+            "format": trajectoryMolstarFormat(ext),
+            "binary": trajectoryCoordinateExtensions.contains(ext) || ext == "tpr",
+            "label": url.lastPathComponent,
+            "role": role
+        ], data.base64EncodedString())
+    }
+
+    private static func trajectoryMolstarFormat(_ ext: String) -> String {
+        if ["cif", "mcif"].contains(ext) { return "mmcif" }
+        if ["ent", "pqr", "xpdb"].contains(ext) { return "pdb" }
+        if ["nc", "ncdf", "netcdf", "ncrst"].contains(ext) { return "nctraj" }
+        return ext
+    }
+
     private static func renderTimeoutSeconds(byteCount: Int, renderer: String) -> TimeInterval {
         guard renderer == BurreteRendererMode.molstar else {
             return defaultRenderTimeoutSeconds
@@ -1109,6 +1268,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         configJSON: String,
         structureData: Data?,
         auxiliaryFiles: [RuntimeAuxiliaryFile],
+        dockingPayloadsJSON: String? = nil,
         gridRecordsScript: String?,
         requiredAssets: [String],
         requiresRDKit: Bool,
@@ -1145,6 +1305,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
         for auxiliaryFile in auxiliaryFiles {
             try auxiliaryFile.data.write(to: runtimeDirectory.appendingPathComponent(auxiliaryFile.path), options: [.atomic])
+        }
+        if let dockingPayloadsJSON {
+            try Data("window.BurreteDockingPayloads = \(dockingPayloadsJSON);\n".utf8)
+                .write(to: runtimeDirectory.appendingPathComponent("preview-docking-payloads.js"), options: [.atomic])
         }
         if let gridRecordsScript {
             try Data(gridRecordsScript.utf8)
@@ -1368,6 +1532,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         rendererPolicy: BurreteRendererPolicy,
         previewPlan: BurretePreviewPlan?,
         molstarAvailable: Bool,
+        dockingConfig: [String: Any]?,
         preferences: PreviewPreferences
     ) throws -> String {
         let resolvedTrajectoryFrameCount = trajectoryFrameCount ?? 0
@@ -1418,6 +1583,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             payload["xyzrenderPreset"] = xyzrenderPreset
             payload["xyzrenderPresetOptions"] = BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
             if let xyzrenderControls { payload["xyzrenderControls"] = xyzrenderControls }
+        }
+        if let dockingConfig {
+            payload["docking"] = dockingConfig
         }
         if let externalArtifact {
             var artifactPayload: [String: Any] = [
@@ -2138,13 +2306,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return String(last).isEmpty ? label : String(last)
     }
 
-    private static func inlineHTML(title: String, preferences: PreviewPreferences, renderer: String) -> String {
+    private static func inlineHTML(
+        title: String,
+        preferences: PreviewPreferences,
+        renderer: String,
+        hasDockingPayloads: Bool = false
+    ) -> String {
         let safeTitle = escapeHTML(title)
         let backgroundClass = preferences.resolvedTransparentBackground ? "burette-transparent-background" : "burette-opaque-background"
         let csp = runtimeCSP(for: renderer)
         let initialStatus: String
         let rendererAssets: String
         let rdkitWasmAsset: String
+        let dockingPayloadsAsset = hasDockingPayloads ? #"  <script src="preview-docking-payloads.js"></script>"# : ""
         if renderer == "xyzrender-external" {
             initialStatus = "[web] HTML body created. Waiting for xyzrender artifact…"
             rendererAssets = ""
@@ -2246,6 +2420,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           </script>
           \(rendererAssets)
           <script src="preview-config.js"></script>
+          \(dockingPayloadsAsset)
           \(rdkitWasmAsset)
           <script>
             window.__mqlStatus && window.__mqlStatus('[web] About to load viewer.js from bundled resource…');

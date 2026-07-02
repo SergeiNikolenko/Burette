@@ -16,10 +16,19 @@ const STRUCTURE_EXTENSIONS = new Set([
   'cif', 'mmcif', 'mcif', 'bcif', 'mmtf',
   'sdf', 'sd', 'smi', 'smiles', 'csv', 'tsv',
   'mol', 'mol2', 'xyz', 'gro', 'mae', 'maegz', 'cms', 'dtr',
-  'nc', 'ncdf', 'netcdf', 'ncrst',
+  'xtc', 'trr', 'dcd', 'nctraj', 'nc', 'ncdf', 'netcdf', 'ncrst', 'lammpstrj',
+  'top', 'psf', 'prmtop', 'tpr',
 ]);
 const AMBER_NC_EXTENSIONS = new Set(['nc', 'ncdf', 'netcdf', 'ncrst']);
 const TOPOLOGY_PREVIEW_EXTENSIONS = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb']);
+const TRAJECTORY_COORDINATE_EXTENSIONS = new Set(['xtc', 'trr', 'dcd', 'nctraj', 'nc', 'ncdf', 'netcdf', 'ncrst', 'lammpstrj']);
+const TRAJECTORY_MODEL_EXTENSIONS = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb', 'mmcif', 'cif', 'mcif', 'gro']);
+const TRAJECTORY_TOPOLOGY_EXTENSIONS = new Set(['top', 'psf', 'prmtop', 'tpr']);
+const TRAJECTORY_PAIR_EXTENSIONS = new Set([
+  ...TRAJECTORY_COORDINATE_EXTENSIONS,
+  ...TRAJECTORY_MODEL_EXTENSIONS,
+  ...TRAJECTORY_TOPOLOGY_EXTENSIONS,
+]);
 const TEXT_EXTENSIONS = new Set([
   ...STRUCTURE_EXTENSIONS,
   'md', 'markdown', 'mdx', 'txt', 'log', 'err',
@@ -185,6 +194,10 @@ async function handleRequest(req, res) {
   }
   if (url.pathname === '/__burette/trajectory-preview') {
     await handleTrajectoryPreview(res, method, url);
+    return;
+  }
+  if (url.pathname === '/__burette/trajectory-pair') {
+    await handleTrajectoryPair(res, method, url);
     return;
   }
   if (url.pathname === '/__burette/dev-files') {
@@ -378,6 +391,115 @@ async function handleTrajectoryPreview(res, method, url) {
   } catch (error) {
     sendJson(res, 400, { error: error?.message || String(error) });
   }
+}
+
+async function handleTrajectoryPair(res, method, url) {
+  if (method !== 'GET') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  const rawPath = url.searchParams.get('path');
+  if (!rawPath) {
+    sendJson(res, 400, { error: 'Missing path' });
+    return;
+  }
+  const filePath = resolve(rawPath);
+  if (!isAllowed(filePath) || !TRAJECTORY_PAIR_EXTENSIONS.has(fileExtension(filePath))) {
+    sendJson(res, 400, { error: 'Missing, forbidden, or unsupported path' });
+    return;
+  }
+  try {
+    const pair = await createTrajectoryPairPayload(filePath);
+    if (!pair) {
+      sendJson(res, 404, { error: 'No matching trajectory pair found.' });
+      return;
+    }
+    sendJson(res, 200, pair);
+  } catch (error) {
+    sendJson(res, 400, { error: error?.message || String(error) });
+  }
+}
+
+async function createTrajectoryPairPayload(filePath) {
+  const extension = fileExtension(filePath);
+  const files = [];
+  await collectDevFiles(dirname(filePath), files);
+  const candidates = Array.from(new Set([filePath, ...files]))
+    .filter((candidate) => isAllowed(candidate) && TRAJECTORY_PAIR_EXTENSIONS.has(fileExtension(candidate)));
+  const coordinatePath = TRAJECTORY_COORDINATE_EXTENSIONS.has(extension)
+    ? filePath
+    : preferredTrajectoryCandidate(candidates, TRAJECTORY_COORDINATE_EXTENSIONS, filePath);
+  if (!coordinatePath) return null;
+  const modelCandidates = candidates.filter((candidate) => candidate !== coordinatePath);
+  const modelPath = preferredTrajectoryCandidate(modelCandidates, TRAJECTORY_MODEL_EXTENSIONS, filePath)
+    || preferredTrajectoryCandidate(modelCandidates, TRAJECTORY_TOPOLOGY_EXTENSIONS, filePath);
+  if (!modelPath) return null;
+  const [coordinateInfo, modelInfo] = await Promise.all([stat(coordinatePath), stat(modelPath)]);
+  if (!coordinateInfo.isFile() || !modelInfo.isFile()) return null;
+  if (coordinateInfo.size > DEV_FILE_SIZE_LIMIT || modelInfo.size > DEV_FILE_SIZE_LIMIT) return null;
+  const [coordinateBytes, modelBytes] = await Promise.all([readFile(coordinatePath), readFile(modelPath)]);
+  const coordinate = trajectorySource(coordinatePath, coordinateBytes);
+  const model = trajectorySource(modelPath, modelBytes);
+  return {
+    label: `${basename(coordinatePath)} + ${basename(modelPath)}`,
+    byteCount: coordinateInfo.size + modelInfo.size,
+    sourcePath: filePath,
+    sourceExtension: extension,
+    docking: {
+      activePose: null,
+      sceneMode: null,
+      receptor: model.source,
+      ligands: [coordinate.source],
+    },
+    payloads: {
+      receptor: { dataBase64: model.dataBase64 },
+      ligands: [{ dataBase64: coordinate.dataBase64 }],
+    },
+  };
+}
+
+function preferredTrajectoryCandidate(candidates, formats, sourcePath) {
+  const matches = candidates.filter((candidate) => formats.has(fileExtension(candidate)));
+  if (!matches.length) return null;
+  const sourceStem = trajectoryStem(sourcePath);
+  return matches
+    .map((candidate) => ({ candidate, score: trajectoryCandidateScore(candidate, sourceStem) }))
+    .sort((left, right) => right.score - left.score || left.candidate.localeCompare(right.candidate))[0]?.candidate || null;
+}
+
+function trajectoryCandidateScore(path, sourceStem) {
+  const extension = fileExtension(path);
+  const stem = trajectoryStem(path);
+  let score = stem === sourceStem ? 20 : sourceStem.startsWith(stem) || stem.startsWith(sourceStem) ? 12 : 0;
+  if (extension === 'gro') score += 8;
+  if (extension === 'pdb') score += 7;
+  if (extension === 'tpr') score += 4;
+  if (extension === 'xtc') score += 8;
+  return score;
+}
+
+function trajectoryStem(path) {
+  return basename(path).replace(/\.[^.]+$/u, '').replace(/_(centered|aligned|fit|reimaged|realmd|realmotion).*$/u, '');
+}
+
+function trajectorySource(path, bytes) {
+  const extension = fileExtension(path);
+  return {
+    source: {
+      path,
+      format: trajectoryMolstarFormat(extension),
+      binary: TRAJECTORY_COORDINATE_EXTENSIONS.has(extension) || extension === 'tpr',
+      label: basename(path),
+    },
+    dataBase64: bytes.toString('base64'),
+  };
+}
+
+function trajectoryMolstarFormat(extension) {
+  if (extension === 'cif' || extension === 'mcif') return 'mmcif';
+  if (extension === 'ent' || extension === 'pqr' || extension === 'xpdb') return 'pdb';
+  if (extension === 'nc' || extension === 'ncdf' || extension === 'netcdf' || extension === 'ncrst') return 'nctraj';
+  return extension;
 }
 
 async function createAmberNcPreview(trajectoryPath) {
