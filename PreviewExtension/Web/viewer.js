@@ -11428,6 +11428,31 @@
     return null;
   }
 
+  function molstarContextResidueAtomLociForStructure(structure, atom) {
+    if (!structure || !atom?.model || atom.residueIndex == null) return null;
+    const elements = [];
+    for (const unit of Array.isArray(structure.units) ? structure.units : []) {
+      if (unit?.model !== atom.model || !unit.elements?.length) continue;
+      const indices = [];
+      for (let i = 0; i < unit.elements.length; i++) {
+        const atomIndex = molstarContextNumberOrUndefined(unit.elements[i]);
+        const current = molstarContextAtomFromModelIndex(unit.model, atomIndex);
+        if (current?.residueIndex === atom.residueIndex) indices.push(i);
+      }
+      if (indices.length) elements.push({ unit, indices });
+    }
+    return elements.length ? { kind: 'element-loci', structure, elements } : null;
+  }
+
+  function molstarContextSelectionLoci(target) {
+    const scope = target?.scope;
+    if ((scope === 'ligand' || scope === 'water' || scope === 'ion') && target?.atom) {
+      const structure = molstarStructureFromRef(target.structure) || target?.loci?.structure;
+      return molstarContextResidueAtomLociForStructure(structure, target.atom) || target?.loci || molstarContextMenuPick?.loci;
+    }
+    return target?.loci || molstarContextMenuPick?.loci;
+  }
+
   function molstarContextLociIndexMatchesAtom(unit, index, atom) {
     if (!unit?.model || !atom?.model || unit.model !== atom.model || atom.atomIndex == null) return false;
     const atomIndex = molstarContextNumberOrUndefined(unit.elements?.[index] ?? index);
@@ -12669,7 +12694,8 @@
     let previewAfterAction = null;
     try {
       if (action === 'select') {
-        if (!selectMolstarContextPick(target)) throw new Error('No Mol* residue or ligand is available to select.');
+        const selectionLoci = molstarContextSelectionLoci(target);
+        if (!selectMolstarContextPick({ ...target, loci: selectionLoci }, { applyGranularity: false })) throw new Error('No Mol* residue or ligand is available to select.');
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(`[web] Selected ${targetLabel}.`);
       } else if (action === 'remove') {
