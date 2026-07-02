@@ -152,7 +152,10 @@ if (renderer === "fep-graphml") {
     maxEvidenceNumber(readyEvidence, "moleculesWithAtoms"),
   );
   const atomCount = Math.max(numberFromLine(detected, "atoms"), maxEvidenceNumber(readyEvidence, "atomCount"));
-  if (edgeCount <= 0 || moleculesWithAtoms <= 0 || atomCount <= 0) {
+  if (edgeCount <= 0) {
+    fail("FEP network preview did not report graph edges");
+  }
+  if (format.id === "graphml" && (moleculesWithAtoms <= 0 || atomCount <= 0)) {
     fail("FEP GraphML preview did not report graph edges and molecule atoms");
   }
   pass(`fep edges=${edgeCount} moleculesWithAtoms=${moleculesWithAtoms} atoms=${atomCount}`);

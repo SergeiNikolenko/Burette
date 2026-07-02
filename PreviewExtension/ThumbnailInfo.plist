@@ -54,10 +54,11 @@
 				<string>com.local.burrete10.mvsj</string>
 				<string>com.local.burrete10.mvsx</string>
 				<string>com.local.burrete10.molecular-dynamics</string>
-				<string>com.schrodinger.mae</string>
-				<string>com.local.burrete10.schrodinger</string>
-				<string>com.local.burrete10.graphml</string>
-				<string>com.local.burrete10.pharmacophore</string>
+					<string>com.schrodinger.mae</string>
+					<string>com.local.burrete10.schrodinger</string>
+					<string>com.local.burrete10.graphml</string>
+					<string>com.local.burrete10.fep-edge-list</string>
+					<string>com.local.burrete10.pharmacophore</string>
 				<string>com.local.burrete10.spectrum</string>
 				<string>com.local.burrete10.spectrum-json</string>
 				<string>com.local.burrete10.openmm-coordinate-artifact</string>

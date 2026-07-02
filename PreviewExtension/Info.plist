@@ -54,10 +54,11 @@
 				<string>com.local.burrete10.mvsj</string>
 				<string>com.local.burrete10.mvsx</string>
 				<string>com.local.burrete10.molecular-dynamics</string>
-				<string>com.schrodinger.mae</string>
-				<string>com.local.burrete10.schrodinger</string>
-				<string>com.local.burrete10.graphml</string>
-				<string>com.local.burrete10.pharmacophore</string>
+					<string>com.schrodinger.mae</string>
+					<string>com.local.burrete10.schrodinger</string>
+					<string>com.local.burrete10.graphml</string>
+					<string>com.local.burrete10.fep-edge-list</string>
+					<string>com.local.burrete10.pharmacophore</string>
 				<string>com.local.burrete10.spectrum</string>
 				<string>com.local.burrete10.spectrum-json</string>
 				<string>com.local.burrete10.openmm-coordinate-artifact</string>
@@ -99,10 +100,10 @@
 					<string>chemical/x-pdbqt</string>
 				</array>
 			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
+			</dict>
+			<dict>
+				<key>UTTypeConformsTo</key>
+				<array>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
@@ -120,12 +121,34 @@
 				<array>
 					<string>chemical/x-cif</string>
 					<string>chemical/x-mmcif</string>
-				</array>
+					</array>
+				</dict>
 			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
+			<dict>
+				<key>UTTypeConformsTo</key>
+				<array>
+					<string>public.plain-text</string>
+					<string>public.data</string>
+				</array>
+				<key>UTTypeDescription</key>
+				<string>FEP edge-list network file</string>
+				<key>UTTypeIdentifier</key>
+				<string>com.local.burrete10.fep-edge-list</string>
+				<key>UTTypeTagSpecification</key>
+				<dict>
+					<key>public.filename-extension</key>
+					<array>
+						<string>edge</string>
+					</array>
+					<key>public.mime-type</key>
+					<array>
+						<string>text/plain</string>
+					</array>
+				</dict>
+			</dict>
+			<dict>
+				<key>UTTypeConformsTo</key>
+				<array>
 				<string>com.local.burrete10.cif</string>
 				<string>public.plain-text</string>
 				<string>public.data</string>
@@ -617,10 +640,11 @@
 					<string>checkpoint</string>
 					<string>dms</string>
 					<string>xvg</string>
-					<string>edr</string>
-					<string>fasta</string>
-					<string>fdef</string>
-				</array>
+						<string>edr</string>
+						<string>fasta</string>
+						<string>fdef</string>
+						<string>msj</string>
+					</array>
 				<key>public.mime-type</key>
 				<array>
 					<string>text/plain</string>

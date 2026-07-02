@@ -88,6 +88,65 @@ export function parseFepGraphml(text: string): FepNetworkData {
   return layoutFepNetwork({ nodes, edges });
 }
 
+export function parseFepNetworkText(text: string): FepNetworkData {
+  return text.trimStart().startsWith("<") ? parseFepGraphml(text) : parseFepEdgeList(text);
+}
+
+function parseFepEdgeList(text: string): FepNetworkData {
+  const nodeLabels = new Map<string, string>();
+  const nodeOrder: string[] = [];
+  const edges: FepNetworkEdge[] = [];
+
+  function ensureNode(id: string, label?: string) {
+    if (!nodeLabels.has(id)) {
+      nodeLabels.set(id, label || id);
+      nodeOrder.push(id);
+      return;
+    }
+    if (label && nodeLabels.get(id) === id) nodeLabels.set(id, label);
+  }
+
+  for (const line of text.split(/\r?\n/u)) {
+    const [edgeText, commentText = ""] = line.split("#", 2);
+    const match = edgeText.trim().match(/^([^\s:]+):([^\s:]+)\b/u);
+    if (!match) continue;
+    const [, source, target] = match;
+    const labels = commentText.split("->", 2).map((value) => value.trim()).filter(Boolean);
+    ensureNode(source, labels[0]);
+    ensureNode(target, labels[1]);
+    edges.push({
+      source,
+      target,
+      score: 0,
+      energy: null,
+      uncertainty: null,
+      mapping: [],
+      mappedAtoms: 0,
+    });
+  }
+
+  if (edges.length === 0) throw new Error("FEP edge list has no source:target edges");
+  const nodes = nodeOrder.map((id) => emptyFepNode(id, nodeLabels.get(id) || id));
+  return layoutFepNetwork({ nodes, edges });
+}
+
+function emptyFepNode(id: string, label: string): FepNetworkNode {
+  return {
+    id,
+    label,
+    shortLabel: shortLigandLabel(label),
+    atoms: 0,
+    heavyAtoms: 0,
+    bonds: 0,
+    dockingScore: null,
+    sourceAtomToMolAtom: {},
+    sourceAtomAtomicNumbers: {},
+    x: 50,
+    y: 50,
+    molblock: "",
+  };
+}
+
 function readGraphMlKeys(doc: XMLDocument) {
   const keys = new Map<string, GraphMlKey>();
   for (const key of Array.from(doc.getElementsByTagName("key"))) {

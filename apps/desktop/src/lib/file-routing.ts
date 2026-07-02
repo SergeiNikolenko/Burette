@@ -31,6 +31,7 @@ export const preferredTextExtensions = new Set([
   "toml",
   "html",
   "css",
+  "msj",
   "dms",
   "edr",
   "fasta",
@@ -57,6 +58,7 @@ export const structureAndTextExtensions = new Set([
   "data",
   "dcd",
   "dump",
+  "edge",
   "fdf",
   "fhiaims",
   "gms",
@@ -136,7 +138,7 @@ export function summarizeErrorText(message: string) {
 }
 
 export function isFepGraphmlPath(path: string) {
-  return /\.graphml$/iu.test(path);
+  return /\.(?:graphml|edge)$/iu.test(path);
 }
 
 export function pathExtension(path: string) {

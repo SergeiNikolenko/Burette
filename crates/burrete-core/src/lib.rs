@@ -1224,6 +1224,12 @@ mod tests {
         assert_eq!(graphml.renderer, "fep-graphml");
         assert!(graphml.primary.is_none());
 
+        let edge = preview_plan_for_extension("edge", "auto")
+            .expect("FEP edge-list plan should resolve");
+        assert_eq!(edge.strategy, PreviewStrategy::Custom);
+        assert_eq!(edge.renderer, "fep-graphml");
+        assert!(edge.primary.is_none());
+
         let ph4 = preview_plan_for_extension("ph4", "auto")
             .expect("pharmacophore plan should resolve");
         assert_eq!(ph4.strategy, PreviewStrategy::Convert);
@@ -1285,9 +1291,11 @@ mod tests {
             ("xtc", PreviewStrategy::Trajectory),
             ("cms", PreviewStrategy::Convert),
             ("graphml", PreviewStrategy::Custom),
+            ("edge", PreviewStrategy::Custom),
             ("ph4", PreviewStrategy::Convert),
             ("inpcrd", PreviewStrategy::Convert),
             ("fdef", PreviewStrategy::Text),
+            ("msj", PreviewStrategy::Text),
             ("checkpoint", PreviewStrategy::Text),
         ];
 
