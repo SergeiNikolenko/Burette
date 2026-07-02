@@ -5056,6 +5056,11 @@ assert.match(previewViewer, /if \(resolved\?\.scope === 'ligand' \|\| resolved\?
 assert.match(previewViewer, /if \(resolved\?\.selectionBased && resolved\.atom\) \{/);
 assert.match(previewViewer, /const scope = molstarContextScopeForAtom\(resolved\.atom\);/);
 assert.match(previewViewer, /label: resolved\.selectedEntry\?\.label \|\| molstarContextResidueLabel\(resolved\.atom\) \|\| resolved\.label/);
+assert.match(previewViewer, /function molstarSelectionMoleculePreviewTarget\(\)/);
+assert.match(previewViewer, /const loci = molstarContextSelectionLociForStructure\(structureRef\);/);
+assert.match(previewViewer, /const scope = molstarContextScopeForAtom\(atom\);/);
+assert.match(previewViewer, /if \(scope !== 'ligand' && scope !== 'ion'\) continue;/);
+assert.match(previewViewer, /if \(!target\) return molstarSelectionMoleculePreviewTarget\(\);/);
 assert.match(previewViewer, /MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300/);
 assert.match(previewViewer, /function molstarStandaloneMoleculePreviewTarget\(config\)/);
 assert.match(previewViewer, /format === 'pdb' \|\| format === 'pdbqt' \|\| format === 'mmcif' \|\| format === 'cifCore' \|\| format === 'xyz'/);
@@ -5069,8 +5074,9 @@ assert.match(previewViewer, /function molstarMoleculePreviewSdfEntry\(target\)/)
 assert.match(previewViewer, /pdbLigandSdfEntryForResidue\(target\.receptor, target\.atom\)/);
 assert.match(previewViewer, /pdbLigandSdfEntryForResidue\(target\.sourceEntry, target\.atom\)/);
 assert.match(previewViewer, /function molstarStandaloneMoleculePreviewEntryForTarget\(target, entry = null\)/);
-assert.match(previewViewer, /if \(entry\) return null;/);
-assert.match(previewViewer, /return molstarStandaloneMoleculePreviewEntryForTarget\(target, entry\) \|\| entry;/);
+assert.match(previewViewer, /if \(normalizeFormat\(entry\?\.format\) === 'sdf'\) return null;/);
+assert.match(previewViewer, /return molstarStandaloneMoleculePreviewEntryForTarget\(target, entry\);/);
+assert.doesNotMatch(previewViewer, /return molstarStandaloneMoleculePreviewEntryForTarget\(target, entry\) \|\| entry;/);
 assert.doesNotMatch(previewViewer, /sourceFormat !== 'xyz'/);
 assert.match(previewViewer, /if \(normalizeFormat\(entry\?\.format\) !== 'sdf'\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
 assert.match(previewViewer, /const image = molstarPreviewSvgCache\.get\(key\) \|\| ''/);
