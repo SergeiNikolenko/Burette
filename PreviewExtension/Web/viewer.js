@@ -12781,7 +12781,7 @@
     const sdfEntry = molstarMoleculePreviewSdfEntry(target);
     if (sdfEntry) return sdfEntry;
     const entry = target.selectedEntry || target.ligand || null;
-    return molstarStandaloneMoleculePreviewEntryForTarget(target, entry) || entry;
+    return molstarStandaloneMoleculePreviewEntryForTarget(target, entry);
   }
 
   function molstarMoleculePreviewSdfEntry(target) {
@@ -12804,7 +12804,7 @@
 
   function molstarStandaloneMoleculePreviewEntryForTarget(target, entry = null) {
     if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
-    if (entry) return null;
+    if (normalizeFormat(entry?.format) === 'sdf') return null;
     const preview = molstarStandaloneMoleculePreviewTarget(activeConfig);
     const ligand = preview?.ligand || null;
     return normalizeFormat(ligand?.format) === 'sdf' ? ligand : null;
@@ -13253,6 +13253,33 @@
       });
   }
 
+  function molstarSelectionMoleculePreviewTarget() {
+    const structures = molstarContextStructures();
+    if (!structures.length) return null;
+    const sourceEntry = molstarContextSourceEntryForActiveConfig();
+    for (const structureRef of structures) {
+      const structure = molstarStructureFromRef(structureRef) || structureRef;
+      const loci = molstarContextSelectionLociForStructure(structureRef);
+      const atom = molstarContextAtomFromLoci(loci);
+      const scope = molstarContextScopeForAtom(atom);
+      if (scope !== 'ligand' && scope !== 'ion') continue;
+      const selectedEntry = sourceEntry ? pdbEntryForResidue(sourceEntry, atom) : null;
+      return {
+        structures: [structureRef],
+        structure: structureRef,
+        loci,
+        atomLoci: molstarContextAtomLociForStructure(structure || loci?.structure, atom),
+        atom,
+        selectionBased: true,
+        label: selectedEntry?.label || molstarContextResidueLabel(atom),
+        scope,
+        sourceEntry,
+        selectedEntry
+      };
+    }
+    return null;
+  }
+
   function molstarSelectedMoleculePreviewTarget(target = null) {
     const resolved = target || molstarContextTarget();
     if (resolved?.scope === 'ligand' || resolved?.scope === 'ion') return resolved;
@@ -13266,6 +13293,7 @@
         };
       }
     }
+    if (!target) return molstarSelectionMoleculePreviewTarget();
     return null;
   }
 
