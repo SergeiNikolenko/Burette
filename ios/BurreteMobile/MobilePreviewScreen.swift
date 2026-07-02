@@ -4,17 +4,15 @@ import UniformTypeIdentifiers
 import WebKit
 
 struct MobilePreviewScreen: View {
+    @Bindable var model: MobileAppModel
     @Environment(\.colorScheme) private var deviceColorScheme
     @State private var status = "Preparing mini.pdb"
     @State private var lastError: String?
     @State private var isProjectDrawerOpen = false
     @State private var activeSheet: MobileSheet?
-    @State private var selectedTheme: MobileThemeSelection = .system
-    @State private var selectedStyle: MobileMolecularStyle = .illustrative
-    @State private var selectedWaterRepresentation: MobileWaterRepresentation = .line
     @State private var selectedProject: MobileProject = .imports
     @State private var currentDocument = MobilePreviewDocument(filename: "mini.pdb")
-    @State private var importedDocuments = MobileImportedDocumentStore.loadImportedDocuments()
+    @State private var viewMode: MobileViewMode = .structure3D
     @State private var panelState = MobileMolstarPanelState()
     @State private var controlAction: MobileMolstarControlAction?
     @State private var contextMenuCommand: MobileMolstarContextMenuCommand?
@@ -22,15 +20,17 @@ struct MobilePreviewScreen: View {
     @State private var inspectorTarget: MobileInspectorTarget?
     @State private var logEntries: [MobileLogEntry] = []
     @State private var isFileImporterPresented = false
+    @State private var commandSearchText = ""
 
     var body: some View {
         GeometryReader { _ in
             ZStack(alignment: .leading) {
                 MobilePreviewWebView(
                     document: currentDocument,
-                    theme: resolvedTheme,
-                    style: selectedStyle,
-                    waterRepresentation: selectedWaterRepresentation,
+                    theme: previewCanvasTheme,
+                    style: model.style,
+                    waterRepresentation: model.water,
+                    molstarQuality: model.molstarQuality,
                     panelState: panelState,
                     controlAction: controlAction,
                     contextMenuCommand: contextMenuCommand,
@@ -42,16 +42,34 @@ struct MobilePreviewScreen: View {
                 )
                     .ignoresSafeArea()
 
+                if viewMode == .text {
+                    MobileTextArtifactView(document: currentDocument)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                        .zIndex(5)
+                }
+
                 MobileViewerChrome(
                     currentDocument: currentDocument,
                     currentProject: selectedProject,
+                    viewModes: availableViewModes,
+                    viewMode: $viewMode,
                     openDrawer: { isProjectDrawerOpen = true },
-                    openTools: { activeSheet = .tools }
+                    openTools: { activeSheet = .tools },
+                    openCommands: { activeSheet = .commandPalette }
                 )
                 .zIndex(20)
 
+
                 MobileEdgeSwipeZone(isProjectDrawerOpen: $isProjectDrawerOpen)
                     .frame(width: 28)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .ignoresSafeArea()
+                    .zIndex(10)
+
+                MobileSettingsEdgeSwipeZone { activeSheet = .settings }
+                    .frame(width: 28)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                     .ignoresSafeArea()
                     .zIndex(10)
 
@@ -74,7 +92,7 @@ struct MobilePreviewScreen: View {
 
                 if isProjectDrawerOpen {
                     MobileProjectDrawer(
-                        importedDocuments: importedDocuments,
+                        importedDocuments: model.importedDocuments,
                         selectedProject: $selectedProject,
                         currentDocument: $currentDocument,
                         importFile: { isFileImporterPresented = true },
@@ -90,9 +108,13 @@ struct MobilePreviewScreen: View {
             .animation(.snappy(duration: 0.24), value: isProjectDrawerOpen)
             .animation(.snappy(duration: 0.24), value: activeSheet)
         }
-        .background(resolvedTheme.screenBackground)
-        .ignoresSafeArea()
-        .preferredColorScheme(selectedTheme.preferredColorScheme)
+        .background(resolvedTheme.screenBackground.ignoresSafeArea())
+        .onChange(of: currentDocument) { _, _ in
+            if !availableViewModes.contains(viewMode) {
+                viewMode = availableViewModes.first ?? .structure3D
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: viewMode)
         .sheet(item: $activeSheet) { sheet in
             sheetContent(for: sheet)
                 .presentationDetents(sheet.detents)
@@ -131,7 +153,21 @@ struct MobilePreviewScreen: View {
     }
 
     private var resolvedTheme: MobilePreviewTheme {
-        selectedTheme.resolve(deviceColorScheme: deviceColorScheme)
+        model.theme.resolve(deviceColorScheme: deviceColorScheme)
+    }
+
+    /// Canvas theme for the Mol* preview, honoring the Settings "Preview
+    /// background" override independently from the UI theme.
+    private var previewCanvasTheme: MobilePreviewTheme {
+        switch model.previewBackground {
+        case .matchTheme: resolvedTheme
+        case .dark: .dark
+        case .light: .light
+        }
+    }
+
+    private var availableViewModes: [MobileViewMode] {
+        MobileViewModeCatalog.modes(for: currentDocument)
     }
 
     @ViewBuilder
@@ -139,16 +175,26 @@ struct MobilePreviewScreen: View {
         switch sheet {
         case .tools:
             MobileControlsBottomMenu(
-                selectedTheme: $selectedTheme,
+                selectedTheme: $model.theme,
                 resolvedTheme: resolvedTheme,
-                selectedStyle: $selectedStyle,
-                selectedWaterRepresentation: $selectedWaterRepresentation,
+                selectedStyle: $model.style,
+                selectedWaterRepresentation: $model.water,
                 structureSummary: MobileStructureSummary.load(document: currentDocument),
                 inspectorTarget: inspectorTarget,
                 logEntries: logEntries,
                 runAction: { name in controlAction = MobileMolstarControlAction(name: name) },
                 close: { activeSheet = nil }
             )
+        case .commandPalette:
+            MobileCommandPalette(
+                commands: paletteCommands,
+                shareURL: currentDocument.bundleURL(),
+                searchText: $commandSearchText
+            ) {
+                activeSheet = nil
+            }
+        case .settings:
+            MobileSettingsScreen(model: model)
         case .context(let menu):
             MobileContextMenuSheet(menu: menu) { action, mode in
                 contextMenuCommand = MobileMolstarContextMenuCommand(action: action.name, mode: mode.rawValue)
@@ -156,6 +202,39 @@ struct MobilePreviewScreen: View {
                 activeSheet = nil
             }
         }
+    }
+
+    private var paletteCommands: [MobileCommand] {
+        var commands: [MobileCommand] = []
+        for style in MobileMolecularStyle.allCases {
+            commands.append(
+                MobileCommand(
+                    title: "Representation: \(style.displayName)",
+                    systemImage: style.systemImage,
+                    group: .representation
+                ) { model.style = style }
+            )
+        }
+        for mode in availableViewModes {
+            commands.append(
+                MobileCommand(
+                    title: "View: \(mode.title)",
+                    systemImage: mode.systemImage,
+                    group: .view
+                ) { viewMode = mode }
+            )
+        }
+        commands.append(
+            MobileCommand(title: "Reset camera", systemImage: "arrow.counterclockwise", group: .actions) {
+                controlAction = MobileMolstarControlAction(name: "reset-camera")
+            }
+        )
+        commands.append(
+            MobileCommand(title: "Open render settings…", systemImage: "slider.horizontal.3", group: .actions) {
+                DispatchQueue.main.async { activeSheet = .tools }
+            }
+        )
+        return commands
     }
 
     @ViewBuilder
@@ -177,9 +256,7 @@ struct MobilePreviewScreen: View {
 
     private func openImportedDocument(from url: URL) {
         do {
-            let document = try MobileImportedDocumentStore.importDocument(from: url)
-            importedDocuments.removeAll { $0 == document }
-            importedDocuments.insert(document, at: 0)
+            let document = try model.importDocument(from: url)
             selectedProject = .imports
             currentDocument = document
             isProjectDrawerOpen = false
@@ -194,10 +271,9 @@ struct MobilePreviewScreen: View {
 
     private func deleteImportedDocument(_ document: MobilePreviewDocument) {
         do {
-            try MobileImportedDocumentStore.deleteDocument(document)
-            importedDocuments.removeAll { $0 == document }
+            try model.deleteImportedDocument(document)
             if currentDocument == document {
-                currentDocument = importedDocuments.first ?? MobilePreviewDocument(filename: "mini.pdb")
+                currentDocument = model.importedDocuments.first ?? MobilePreviewDocument(filename: "mini.pdb")
                 selectedProject = .imports
             }
             status = "Removed \(document.displayName)"
@@ -211,12 +287,18 @@ struct MobilePreviewScreen: View {
 
 private enum MobileSheet: Identifiable, Equatable {
     case tools
+    case commandPalette
+    case settings
     case context(MobileContextMenu)
 
     var id: String {
         switch self {
         case .tools:
             "tools"
+        case .commandPalette:
+            "commandPalette"
+        case .settings:
+            "settings"
         case .context(let menu):
             "context-\(menu.id.uuidString)"
         }
@@ -226,6 +308,10 @@ private enum MobileSheet: Identifiable, Equatable {
         switch self {
         case .tools:
             [.height(420), .medium, .large]
+        case .commandPalette:
+            [.medium, .large]
+        case .settings:
+            [.large]
         case .context:
             [.height(460), .medium, .large]
         }
@@ -361,14 +447,21 @@ private enum MobileProject: String, Identifiable, Hashable {
 private struct MobileViewerChrome: View {
     let currentDocument: MobilePreviewDocument
     let currentProject: MobileProject
+    let viewModes: [MobileViewMode]
+    @Binding var viewMode: MobileViewMode
     let openDrawer: () -> Void
     let openTools: () -> Void
+    let openCommands: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 10) {
             chromeContent
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
+
+            if viewModes.count > 1 {
+                MobileViewModePicker(modes: viewModes, selection: $viewMode)
+            }
 
             Spacer()
         }
@@ -393,6 +486,8 @@ private struct MobileViewerChrome: View {
             ChromeButton(systemName: "sidebar.left", accessibilityLabel: "Open projects", action: openDrawer)
 
             MobileChromeTitle(currentDocument: currentDocument, currentProject: currentProject)
+
+            ChromeButton(systemName: "command", accessibilityLabel: "Command palette", action: openCommands)
 
             ChromeButton(systemName: "slider.horizontal.3", accessibilityLabel: "Open tools", action: openTools)
         }
@@ -455,6 +550,24 @@ private struct MobileEdgeSwipeZone: View {
                     .onEnded { value in
                         if value.translation.width > 42 {
                             isProjectDrawerOpen = true
+                        }
+                    }
+            )
+    }
+}
+
+/// Trailing-edge swipe zone: a right-to-left swipe opens Settings.
+private struct MobileSettingsEdgeSwipeZone: View {
+    let openSettings: () -> Void
+
+    var body: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 18)
+                    .onEnded { value in
+                        if value.translation.width < -42 {
+                            openSettings()
                         }
                     }
             )
