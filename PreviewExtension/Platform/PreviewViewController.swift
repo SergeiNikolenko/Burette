@@ -1843,6 +1843,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static func fepGraphMLPreview(from data: Data) throws -> FepGraphMLPreview {
+        let text = decodeText(data)
+        if !text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("<") {
+            return try fepEdgeListPreview(from: text)
+        }
         let document = try XMLDocument(data: data, options: [])
         let keys = try graphMLKeys(in: document)
         guard let moldictKey = graphMLKeyID(keys, target: "node", name: "moldict") else {
@@ -1894,6 +1898,65 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 return try graphMLJSONObject(text)
             } ?? [:]
             return FepGraphMLEdge(source: source, target: target, score: graphMLDouble(annotations["score"]))
+        }
+
+        return layoutFepGraphMLPreview(FepGraphMLPreview(nodes: nodes, edges: edges))
+    }
+
+    private static func fepEdgeListPreview(from text: String) throws -> FepGraphMLPreview {
+        var labelsByID: [String: String] = [:]
+        var orderedIDs: [String] = []
+        var edges: [FepGraphMLEdge] = []
+
+        func registerNode(_ id: String, label: String?) {
+            if labelsByID[id] == nil {
+                labelsByID[id] = label?.isEmpty == false ? label : id
+                orderedIDs.append(id)
+            } else if let label, !label.isEmpty, labelsByID[id] == id {
+                labelsByID[id] = label
+            }
+        }
+
+        for line in text.components(separatedBy: .newlines) {
+            let parts = line.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+            guard let edgeToken = parts.first?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !edgeToken.isEmpty,
+                  let separator = edgeToken.firstIndex(of: ":") else {
+                continue
+            }
+            let source = String(edgeToken[..<separator]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let targetRemainder = edgeToken[edgeToken.index(after: separator)...]
+            let target = String(targetRemainder.split(whereSeparator: { $0.isWhitespace }).first ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !source.isEmpty, !target.isEmpty else { continue }
+            let comment = parts.count > 1 ? String(parts[1]) : ""
+            let arrow = comment.range(of: "->")
+            let sourceLabel = arrow.map { String(comment[..<$0.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines) }
+            let targetLabel = arrow.map { String(comment[$0.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines) }
+            registerNode(source, label: sourceLabel)
+            registerNode(target, label: targetLabel)
+            edges.append(FepGraphMLEdge(source: source, target: target, score: nil))
+        }
+
+        guard !edges.isEmpty else {
+            throw PreviewError.unsupportedStructureFile("FEP edge list has no source:target edges")
+        }
+
+        let nodeCount = max(orderedIDs.count, 1)
+        let nodes = orderedIDs.enumerated().map { index, id in
+            let angle = nodeCount == 1 ? 0 : (Double(index) / Double(nodeCount)) * Double.pi * 2 - Double.pi / 2
+            let radius = nodeCount == 1 ? 0 : 34.0
+            return FepGraphMLNode(
+                id: id,
+                label: labelsByID[id] ?? id,
+                atoms: 0,
+                heavyAtoms: 0,
+                bonds: 0,
+                dockingScore: nil,
+                molblock: "",
+                x: 50 + cos(angle) * radius,
+                y: 50 + sin(angle) * radius
+            )
         }
 
         return layoutFepGraphMLPreview(FepGraphMLPreview(nodes: nodes, edges: edges))
@@ -2161,13 +2224,28 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 """
             }
             let score = node.dockingScore.map { String(format: "%.2f", $0) } ?? "n/a"
+            let moleculeBlock = node.atoms > 0
+                ? """
+                  <div class="node-molecule" data-node-id="\(escapeHTML(node.id))"><span>Rendering molecule</span></div>
+                """
+                : """
+                  <div class="node-summary"><span>Network node</span></div>
+                """
+            let moleculeFooter = node.atoms > 0
+                ? """
+                    <span>\(node.heavyAtoms)/\(node.atoms) atoms</span>
+                    <span>\(node.bonds) bonds - score \(escapeHTML(score))</span>
+                """
+                : """
+                    <span>edge-list node</span>
+                    <span>score \(escapeHTML(score))</span>
+                """
             return """
             <article class="node-card" style="left:\(node.x)%;top:\(node.y)%">
               <strong>\(escapeHTML(shortGraphMLLabel(node.label)))</strong>
-              <div class="node-molecule" data-node-id="\(escapeHTML(node.id))"><span>Rendering molecule</span></div>
+              \(moleculeBlock)
               <footer>
-                <span>\(node.heavyAtoms)/\(node.atoms) atoms</span>
-                <span>\(node.bonds) bonds - score \(escapeHTML(score))</span>
+                \(moleculeFooter)
               </footer>
             </article>
             """
@@ -2206,6 +2284,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             .node-molecule{height:76px;margin-top:5px;border-radius:6px;background:rgba(248,250,252,.86);display:grid;place-items:center;overflow:hidden}
             .node-molecule svg{position:static;width:100%;height:100%;display:block}
             .node-molecule span{margin:0;color:#94a3b8;font-size:10px}
+            .node-summary{height:76px;margin-top:5px;border-radius:6px;background:rgba(248,250,252,.86);display:grid;place-items:center;overflow:hidden}
+            .node-summary span{color:#64748b;font-size:11px}
             .node-dot{position:absolute;z-index:2;transform:translate(-50%,-50%);display:grid;justify-items:center;gap:3px;color:#172033}
             .node-dot i{display:block;width:12px;height:12px;border-radius:50%;box-sizing:border-box;border:2px solid #f8fafc;background:#af52de;box-shadow:0 0 0 1px rgba(175,82,222,.26),0 5px 12px rgba(15,23,42,.18)}
             .node-dot span{display:block;max-width:84px;padding:2px 5px;border-radius:6px;background:rgba(255,255,255,.86);font-size:10px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -3510,7 +3590,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         if let previewPlan {
             return previewPlan.strategy == "custom" && previewPlan.renderer == "fep-graphml"
         }
-        return fileExtension.lowercased() == "graphml"
+        return ["graphml", "edge"].contains(fileExtension.lowercased())
     }
 
     private static func shouldUseTextArtifactPreview(url: URL, fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {

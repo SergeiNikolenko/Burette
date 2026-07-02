@@ -1,0 +1,13 @@
+task {
+  task = generic
+}
+
+fep_mapper {
+  graph_file = "ligand_network.fmp"
+  transfer_asap = false
+}
+
+fep_launcher {
+  skip_legs = [vacuum]
+  transfer_asap = true
+}
