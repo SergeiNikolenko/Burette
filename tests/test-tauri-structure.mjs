@@ -788,6 +788,7 @@ assert.match(quickLookPreviewController, /score: " \+ String\(format: "%\.3f", \
 assert.match(quickLookPreviewController, /shouldUseTextArtifactPreview\(url: URL, fileExtension: String, previewPlan: BurretePreviewPlan\?\)/);
 assert.match(quickLookPreviewController, /private static func isPreferredTextArtifact\(url: URL\) -> Bool \{[\s\S]*url\.lastPathComponent\.lowercased\(\) == "log\.lammps"/);
 assert.match(quickLookPreviewController, /detected\.previewMode=text-artifact/);
+assert.match(quickLookPreviewController, /textFallback\.originalError=/);
 assert.doesNotMatch(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
 assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);
