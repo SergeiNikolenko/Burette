@@ -2863,6 +2863,40 @@ Atoms
     }
 
     #[test]
+    fn converts_lammps_write_data_charge_header_without_charge_column() {
+        let data =
+            br#"LAMMPS data file via write_data, version 22 Jul 2025, timestep = 1100, units = real
+
+4 atoms
+2 atom types
+
+0 8 xlo xhi
+0 8 ylo yhi
+0 8 zlo zhi
+
+Masses
+
+1 12.01
+2 1.007
+
+Atoms # charge
+
+1 2  6.193684336440899 5.2106946071299465 3.955151023204197
+2 1  5.216866494753594 4.7243488996052125 3.953587843496973
+3 1  5.196836789231362 3.310398668452587 4.001097697877303
+4 2  6.130830857558428 2.7226726888119903 4.001339694268381
+"#;
+        let converted = converted_data_from_text(data, "data", "benz_flat_centered.data").unwrap();
+        let pdb = String::from_utf8(converted.data).unwrap();
+
+        assert_eq!(converted.extension, "pdb");
+        assert!(pdb.starts_with("REMARK Converted from benz_flat_centered.data\nHETATM"));
+        assert!(pdb.contains("HETATM    1 H    MOL A   1       6.194   5.211   3.955"));
+        assert!(pdb.contains("HETATM    2 C    MOL A   1       5.217   4.724   3.954"));
+        assert!(pdb.contains("HETATM    4 H    MOL A   1       6.131   2.723   4.001"));
+    }
+
+    #[test]
     fn converts_core_cif_fractional_atoms_to_xyz() {
         let data = br#"
 data_demo

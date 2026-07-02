@@ -38,6 +38,20 @@ try {
   assert.equal(unhandled.length, 0);
   assert.ok(warnings.some((entry) => String(entry[0]).includes('test-listener listener cleanup failed')));
 
+  let thenableCleanupCalls = 0;
+  const thenableCleanup = trackTauriListener(Promise.resolve(() => ({
+    then(_resolve, reject) {
+      thenableCleanupCalls += 1;
+      reject(new Error('thenable cleanup failed'));
+    },
+  })), 'thenable-listener');
+  thenableCleanup();
+  await settle();
+
+  assert.equal(thenableCleanupCalls, 1);
+  assert.equal(unhandled.length, 0);
+  assert.ok(warnings.some((entry) => String(entry[0]).includes('thenable-listener listener cleanup failed')));
+
   trackTauriListener(Promise.reject(new Error('setup failed')), 'setup-listener');
   await settle();
 

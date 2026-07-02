@@ -106,6 +106,18 @@
     ].join("");
   }
 
+  function hasMountedApp() {
+    return mounted || Boolean(document.querySelector(".app-shell"));
+  }
+
+  function reportStartupFailure(message, details) {
+    if (hasMountedApp()) {
+      removeOverlay();
+      return;
+    }
+    setOverlay(message, details);
+  }
+
   function removeOverlay() {
     mounted = true;
     document.getElementById(overlayId)?.remove();
@@ -137,11 +149,11 @@
       ensureOverlay();
     }
     window.setTimeout(() => {
-      if (document.querySelector(".app-shell")) {
+      if (hasMountedApp()) {
         removeOverlay();
         return;
       }
-      setOverlay("The desktop UI did not mount within 3 seconds.");
+      reportStartupFailure("The desktop UI did not mount within 3 seconds.");
     }, mountTimeoutMs);
   });
   window.__BURRETE_BOOT_OVERLAY__ = {
@@ -153,9 +165,9 @@
       event.message,
       event.filename ? `${event.filename}:${event.lineno}:${event.colno}` : "",
     ].filter(Boolean).join("\n");
-    setOverlay(event.message || "A startup script failed.", details);
+    reportStartupFailure(event.message || "A startup script failed.", details);
   });
   window.addEventListener("unhandledrejection", (event) => {
-    setOverlay("A startup promise was rejected.", errorDetails(event.reason));
+    reportStartupFailure("A startup promise was rejected.", errorDetails(event.reason));
   });
 }());

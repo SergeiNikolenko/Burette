@@ -559,14 +559,6 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         return Err(format!("{} is not a file", canonical.display()));
     }
     let extension = structure_path_extension(&canonical);
-    if is_standalone_md_topology_extension(&extension)
-        && resolve_md_file_bundle(&canonical, &extension).is_none()
-    {
-        return Err(format!(
-            "{} is a topology file and does not contain standalone molecular coordinates",
-            canonical.display()
-        ));
-    }
     let desktop_limit = preferences.desktop_preview_limit_bytes();
     if metadata.len() > desktop_limit {
         return Err(format!(
@@ -617,6 +609,20 @@ fn open_document_with_grid_options_inner<R: Runtime>(
 
     let document_id = stable_id(&canonical);
     let title = file_title(&canonical);
+    let standalone_lammps_preview_data = if is_lammps_data_extension(&extension) {
+        converted_data_from_text(&data, &extension, &title)
+    } else {
+        None
+    };
+    if is_standalone_md_topology_extension(&extension)
+        && resolve_md_file_bundle(&canonical, &extension).is_none()
+        && standalone_lammps_preview_data.is_none()
+    {
+        return Err(format!(
+            "{} is a topology file and does not contain standalone molecular coordinates",
+            canonical.display()
+        ));
+    }
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     let preview_plan = preview_plan_for_extension(&extension, requested_renderer).ok();
     let should_prepare_maestro_preview = is_maestro_preview_extension(&extension)
@@ -688,6 +694,11 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 .as_ref()
                 .map(|preview| preview.extension)
         })
+        .or_else(|| {
+            standalone_lammps_preview_data
+                .as_ref()
+                .map(|preview| preview.extension)
+        })
         .unwrap_or(extension.as_str());
     let runtime_data = pharmacophore_preview_data
         .as_ref()
@@ -697,18 +708,25 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 .as_ref()
                 .map(|preview| preview.data.as_slice())
         })
+        .or_else(|| {
+            standalone_lammps_preview_data
+                .as_ref()
+                .map(|preview| preview.data.as_slice())
+        })
         .unwrap_or(&data);
     let format = format_for_extension(runtime_extension)?;
-    let requested_renderer_for_document =
-        if pharmacophore_preview_data.is_some() || maestro_preview_data.is_some() {
-            "molstar"
-        } else if matches!(extension.as_str(), "sd" | "sdf") && reload_options.is_none() {
-            default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
-        } else if let Some(preview_plan) = preview_plan.as_ref() {
-            preview_plan.renderer.as_str()
-        } else {
-            default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
-        };
+    let requested_renderer_for_document = if pharmacophore_preview_data.is_some()
+        || maestro_preview_data.is_some()
+        || standalone_lammps_preview_data.is_some()
+    {
+        "molstar"
+    } else if matches!(extension.as_str(), "sd" | "sdf") && reload_options.is_none() {
+        default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
+    } else if let Some(preview_plan) = preview_plan.as_ref() {
+        preview_plan.renderer.as_str()
+    } else {
+        default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
+    };
     let renderer = resolve_renderer(&format, requested_renderer_for_document);
     let runtime = create_runtime(
         app,
@@ -735,6 +753,10 @@ fn open_document_with_grid_options_inner<R: Runtime>(
 
 fn is_maestro_preview_extension(extension: &str) -> bool {
     matches!(extension, "cms" | "mae" | "maegz")
+}
+
+fn is_lammps_data_extension(extension: &str) -> bool {
+    matches!(extension, "data" | "lammps" | "lmp")
 }
 
 fn create_desmond_trajectory_preview<R: Runtime>(
@@ -1601,6 +1623,57 @@ xangst
         )
         .expect("converted preview data should be written");
         assert!(preview_data.starts_with("REMARK Converted from probe.abi\nHETATM"));
+        remove_runtime_artifacts(&document.runtime_path);
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+
+    #[test]
+    fn opens_standalone_lammps_data_as_molecule_on_auto() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let path = create_temp_file(
+            "data",
+            br#"LAMMPS data file via write_data
+
+12 atoms
+2 atom types
+
+0 8 xlo xhi
+0 8 ylo yhi
+0 8 zlo zhi
+
+Masses
+
+1 12.01
+2 1.007
+
+Atoms # charge
+
+1 2 6.193684336440899 5.210694607129946 4.7243488996052125 3.953587943496973
+2 1 5.216866494753594 4.7243488996052125 3.953587943496973
+3 1 5.196836789231362 3.310398668452587 4.001097697877303
+4 2 6.130830857558428 2.7226726888119903 4.001339694268381
+"#,
+        );
+
+        let document = open_document(app.handle(), path.clone(), &preferences, None)
+            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+        assert_eq!(document.extension, "data");
+        assert_eq!(document.renderer, "molstar");
+        let runtime_dir = Path::new(&document.runtime_path)
+            .parent()
+            .expect("runtime html should have a parent");
+        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+            .expect("preview config should be written");
+        let preview_data = fs::read_to_string(runtime_dir.join("preview-data.bin"))
+            .expect("converted preview data should be written");
+        assert!(config.contains("\"molstarFormat\":\"pdb\""));
+        assert!(preview_data.starts_with("REMARK Converted from probe.data\nHETATM"));
+        assert!(preview_data.contains("HETATM    1 H    MOL A   1       5.211   4.724   3.954"));
+        assert!(preview_data.contains("HETATM    2 C    MOL A   1       5.217   4.724   3.954"));
+
         remove_runtime_artifacts(&document.runtime_path);
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
