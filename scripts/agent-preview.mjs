@@ -20,6 +20,14 @@ const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt',
 const textArtifactExtensions = new Set(['par', 'prm', 'rtf', 'str', 'key', 'chk', 'checkpoint']);
 const amberNetcdfExtensions = new Set(['nc', 'ncdf', 'netcdf', 'ncrst']);
 const topologyPreviewExtensions = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb']);
+const trajectoryCoordinateExtensions = new Set(['xtc', 'trr', 'dcd', 'nctraj', 'nc', 'ncdf', 'netcdf', 'ncrst', 'lammpstrj']);
+const trajectoryModelExtensions = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb', 'mmcif', 'cif', 'mcif', 'gro']);
+const trajectoryTopologyExtensions = new Set(['top', 'psf', 'prmtop', 'tpr']);
+const trajectoryPairExtensions = new Set([
+  ...trajectoryCoordinateExtensions,
+  ...trajectoryModelExtensions,
+  ...trajectoryTopologyExtensions,
+]);
 
 function defaultPreviewWebRoot() {
   const sourcePreviewWeb = sourcePreviewWebRoot();
@@ -132,6 +140,94 @@ async function amberNcPreviewPayload(file) {
   } finally {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+async function nativeTrajectoryPairPayload(file, sourceBytes) {
+  const extension = extname(file).toLowerCase().replace(/^\./, '');
+  if (!trajectoryPairExtensions.has(extension)) return null;
+  const folder = dirname(file);
+  const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+  const candidates = Array.from(new Set([
+    file,
+    ...entries
+      .filter((entry) => entry.isFile() && trajectoryPairExtensions.has(extname(entry.name).toLowerCase().replace(/^\./, '')))
+      .map((entry) => resolve(folder, entry.name))
+  ]));
+  const coordinatePath = trajectoryCoordinateExtensions.has(extension)
+    ? file
+    : preferredTrajectoryCandidate(candidates, trajectoryCoordinateExtensions, file);
+  if (!coordinatePath) return null;
+  const modelCandidates = candidates.filter((candidate) => candidate !== coordinatePath);
+  const modelPath = preferredTrajectoryCandidate(modelCandidates, trajectoryModelExtensions, file)
+    || preferredTrajectoryCandidate(modelCandidates, trajectoryTopologyExtensions, file);
+  if (!modelPath) return null;
+  const coordinateBytes = coordinatePath === file ? sourceBytes : await readFile(coordinatePath);
+  const modelBytes = modelPath === file ? sourceBytes : await readFile(modelPath);
+  const coordinate = trajectorySource(coordinatePath, coordinateBytes);
+  const model = trajectorySource(modelPath, modelBytes);
+  return {
+    bytes: Buffer.from('\n', 'utf8'),
+    format: model.source.format,
+    binary: model.source.binary,
+    byteCount: modelBytes.length + coordinateBytes.length,
+    label: `${basename(coordinatePath)} + ${basename(modelPath)}`,
+    topologyPath: modelPath,
+    trajectoryPath: coordinatePath,
+    docking: {
+      activePose: null,
+      sceneMode: null,
+      receptor: model.source,
+      ligands: [coordinate.source],
+    },
+    dockingPayloads: {
+      receptor: { dataBase64: model.dataBase64 },
+      ligands: [{ dataBase64: coordinate.dataBase64 }],
+    },
+  };
+}
+
+function preferredTrajectoryCandidate(candidates, formats, sourcePath) {
+  const matches = candidates.filter((candidate) => formats.has(extname(candidate).toLowerCase().replace(/^\./, '')));
+  if (!matches.length) return null;
+  const sourceStem = trajectoryStem(sourcePath);
+  return matches
+    .map((candidate) => ({ candidate, score: trajectoryCandidateScore(candidate, sourceStem) }))
+    .sort((left, right) => right.score - left.score || left.candidate.localeCompare(right.candidate))[0]?.candidate ?? null;
+}
+
+function trajectoryCandidateScore(path, sourceStem) {
+  const extension = extname(path).toLowerCase().replace(/^\./, '');
+  const stem = trajectoryStem(path);
+  let score = stem === sourceStem ? 20 : sourceStem.startsWith(stem) || stem.startsWith(sourceStem) ? 12 : 0;
+  if (extension === 'gro') score += 8;
+  if (extension === 'pdb') score += 7;
+  if (extension === 'tpr') score += 4;
+  if (extension === 'xtc') score += 8;
+  return score;
+}
+
+function trajectoryStem(path) {
+  return basename(path).replace(/\.[^.]+$/u, '').replace(/_(centered|aligned|fit|reimaged|realmd|realmotion).*$/u, '');
+}
+
+function trajectorySource(path, bytes) {
+  const extension = extname(path).toLowerCase().replace(/^\./, '');
+  return {
+    source: {
+      path,
+      format: trajectoryMolstarFormat(extension),
+      binary: trajectoryCoordinateExtensions.has(extension) || extension === 'tpr',
+      label: basename(path),
+    },
+    dataBase64: bytes.toString('base64'),
+  };
+}
+
+function trajectoryMolstarFormat(extension) {
+  if (extension === 'cif' || extension === 'mcif') return 'mmcif';
+  if (extension === 'ent' || extension === 'pqr' || extension === 'xpdb') return 'pdb';
+  if (extension === 'nc' || extension === 'ncdf' || extension === 'netcdf' || extension === 'ncrst') return 'nctraj';
+  return extension;
 }
 
 async function findAmberNcTopology(trajectoryPath) {
@@ -1295,20 +1391,23 @@ async function main() {
   const structurePath = resolve(args.structure);
   const sourceBytes = await readFile(structurePath);
   const st = await stat(structurePath);
-  const preview = await amberNcPreviewPayload(structurePath) ?? preparePreviewPayload(structurePath, sourceBytes);
+  const preview = await amberNcPreviewPayload(structurePath)
+    ?? await nativeTrajectoryPairPayload(structurePath, sourceBytes)
+    ?? preparePreviewPayload(structurePath, sourceBytes);
   const extension = extname(structurePath).toLowerCase().replace(/^\./, '');
   const trajectoryFrameCount = Number(preview.trajectoryFrameCount || 0);
   const config = {
-    label: preview.topologyPath ? `${basename(structurePath)} + ${basename(preview.topologyPath)}` : basename(structurePath),
+    label: preview.label || (preview.topologyPath ? `${basename(structurePath)} + ${basename(preview.topologyPath)}` : basename(structurePath)),
     format: preview.format,
     binary: preview.binary,
-    byteCount: st.size,
+    byteCount: preview.byteCount || st.size,
     sourceExtension: extension,
     sourcePath: structurePath,
     topologyPath: preview.topologyPath || null,
     trajectoryPath: preview.trajectoryPath || null,
     trajectoryControls: trajectoryFrameCount > 1,
     trajectoryFrameCount,
+    ...(preview.docking ? { docking: preview.docking } : {}),
     textPreview: Boolean(preview.textPreview),
     showPanelControls: true,
     enablePreviewDocks: true,
@@ -1433,7 +1532,11 @@ async function main() {
       }
       if (url.pathname === '/preview-config.js') {
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
-        res.end(js('BurreteConfig', config) + js('BurreteAgentControl', controlConfig()));
+        res.end(
+          js('BurreteConfig', config)
+          + (preview.dockingPayloads ? js('BurreteDockingPayloads', preview.dockingPayloads) : '')
+          + js('BurreteAgentControl', controlConfig())
+        );
         return;
       }
       if (url.pathname === '/preview-data.js') {
