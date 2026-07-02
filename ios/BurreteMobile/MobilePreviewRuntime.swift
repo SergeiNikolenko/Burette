@@ -687,6 +687,7 @@ struct MobilePreviewRuntime {
         theme: MobilePreviewTheme = .dark,
         style: MobileMolecularStyle = .illustrative,
         waterRepresentation: MobileWaterRepresentation = .line,
+        molstarQuality: MobileMolstarQuality = .high,
         fileManager: FileManager = .default
     ) throws -> Preview {
         guard let webDirectory = Bundle.main.url(forResource: "Web", withExtension: nil) else {
@@ -706,7 +707,7 @@ struct MobilePreviewRuntime {
         try fileManager.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
         try Data(inlineHTML(title: document.displayName, theme: theme).utf8)
             .write(to: runtimeDirectory.appendingPathComponent("index.html"), options: [.atomic])
-        try Data("window.BurreteConfig = \(previewConfigJSON(document: document, byteCount: data.count, theme: theme, style: style, waterRepresentation: waterRepresentation));\n".utf8)
+        try Data("window.BurreteConfig = \(previewConfigJSON(document: document, byteCount: data.count, theme: theme, style: style, waterRepresentation: waterRepresentation, molstarQuality: molstarQuality));\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
         let dataScript = "window.BurreteDataBase64 = '\(data.base64EncodedString())';\n"
         try Data(dataScript.utf8)
@@ -743,7 +744,8 @@ struct MobilePreviewRuntime {
         byteCount: Int,
         theme: MobilePreviewTheme,
         style: MobileMolecularStyle,
-        waterRepresentation: MobileWaterRepresentation
+        waterRepresentation: MobileWaterRepresentation,
+        molstarQuality: MobileMolstarQuality
     ) -> String {
         let xyzFrameCount = document.xyzFrameCount()
         let trajectoryFrameCount = xyzFrameCount > 1 ? xyzFrameCount : 0
@@ -771,7 +773,7 @@ struct MobilePreviewRuntime {
             "molstarPickScale": 1,
             "molstarPixelScale": 1,
             "molstarPreferWebgl1": false,
-            "molstarResolutionMode": "native",
+            "molstarResolutionMode": molstarQuality.resolutionMode,
             "waterRepresentation": waterRepresentation.configValue,
             "uiScale": 0.9,
             "overlayOpacity": 0.86,

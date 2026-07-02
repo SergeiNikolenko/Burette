@@ -4,7 +4,7 @@ import SwiftUI
 struct BurreteMobileApp: App {
     var body: some Scene {
         WindowGroup {
-            MobilePreviewScreen()
+            MobileRootView()
         }
     }
 }
