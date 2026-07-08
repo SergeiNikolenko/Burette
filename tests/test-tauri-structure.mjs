@@ -257,6 +257,7 @@ for (const fixture of [
   'samples/mini.cif',
   'samples/mini.sdf',
   'samples/mini.xyz',
+  'samples/structures/small-molecules/benzene.xyz',
   'samples/quantum/inputs/caffeine.com',
 ]) {
   assert.match(nightlySmokeWorkflow, new RegExp(fixture.replaceAll('/', '\\/')));
@@ -663,6 +664,7 @@ assert.match(quickLookPreviewController, /private struct StructurePreviewBuildSt
 assert.match(quickLookPreviewController, /state\.applyConvertedStructure\(convertedStructure\)/);
 assert.match(quickLookPreviewController, /try renderExternalXyzrenderIfNeeded\(/);
 assert.match(quickLookPreviewController, /private static func renderExternalXyzrenderIfNeeded\(/);
+assert.match(quickLookPreviewController, /xyzrender\.fallback=\\\(state\.renderer\)/);
 assert.match(quickLookPreviewController, /private static func buildFepGraphMLPreviewResult\(/);
 assert.match(quickLookPreviewController, /return try buildFepGraphMLPreviewResult\(/);
 assert.match(quickLookPreviewController, /private static func buildMoleculeGridPreviewResult\(/);

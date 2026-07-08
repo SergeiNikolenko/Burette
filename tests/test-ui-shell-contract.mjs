@@ -4156,6 +4156,7 @@ assert.match(previewViewController, /preferBuiltInParserForDefaultExternalPrevie
 assert.match(previewViewController, /structureStrategy\.requiresExtractedStandaloneCoordinates\(fileExtension: pathExtension\),[\s\S]*state\.format\.isExternalXyzrenderOnly,[\s\S]*preparedConversion == nil/);
 assert.match(previewViewController, /try renderExternalXyzrenderIfNeeded\(/);
 assert.match(previewViewController, /private static func renderExternalXyzrenderIfNeeded\(/);
+assert.match(previewViewController, /xyzrender\.fallback=\\\(state\.renderer\)/);
 assert.match(previewViewController, /let molstarAvailable = rendererPolicy\.molstarAvailable \|\| preparedConversion != nil/);
 assert.match(previewViewController, /molstarAvailable: structurePreview\.molstarAvailable/);
 assert.match(previewViewController, /private static let maestroPreviewReadLimit = 64 \* 1024 \* 1024/);
