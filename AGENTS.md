@@ -4,6 +4,20 @@ Burrete is a macOS desktop app, Finder Quick Look extension, and source-built
 iPhone preview app for molecular structure files. Keep this file as a
 dispatcher; load the focused doc for the surface you are changing.
 
+## Project Contracts
+
+- Product name: `Burrete`
+- Package name: `burrete`
+- Tauri app identifier: `com.local.BurreteV10`
+- Package manager: `bun@1.3.8`
+- Stable agent CLIs: `scripts/burrete-agent.mjs` and
+  `scripts/agent-preview.mjs`
+- Packaged agent plugin root: `plugins/burette-agent`
+- Quick Look base bundle identifiers:
+  `com.local.BurreteV10.Preview` and `com.local.BurreteV10.Thumbnail`
+- Development installs must use `BURRETE_DEV_FLAVOR` so local app, extension,
+  container, and forced-content-type namespaces do not collide.
+
 ## Documentation Graph
 
 - User-facing overview: [README.md](README.md)
@@ -32,6 +46,18 @@ dispatcher; load the focused doc for the surface you are changing.
 - iOS mobile app: [ios/BurreteMobile/AGENTS.md](ios/BurreteMobile/AGENTS.md)
 - Agent plugin: [plugins/burette-agent/AGENTS.md](plugins/burette-agent/AGENTS.md)
 - Repository scripts: [scripts/README.md](scripts/README.md)
+
+## Runtime Boundaries
+
+| Boundary | Primary paths | First doc to read |
+| --- | --- | --- |
+| Desktop app shell | `apps/desktop/src`, `apps/desktop/src-tauri` | `docs/architecture.md` |
+| Browser-dev runtime | `apps/desktop/vite`, `apps/desktop/src/hooks` | `docs/tools/testing-surfaces.md` |
+| Finder Quick Look | `PreviewExtension`, `PreviewExtension/Web` | `PreviewExtension/AGENTS.md` |
+| iPhone source app | `ios/BurreteMobile` | `ios/BurreteMobile/AGENTS.md` |
+| Agent CLI and sessions | `scripts/burrete-agent.mjs`, `scripts/agent-preview.mjs` | `docs/agent-platform.md` |
+| Packaged MCP plugin | `plugins/burette-agent` | `plugins/burette-agent/AGENTS.md` |
+| Release and repository tooling | `scripts`, `.codex/skills` | `docs/tools/index.md` |
 
 ## Common Routing
 
