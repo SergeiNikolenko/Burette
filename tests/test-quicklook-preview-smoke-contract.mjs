@@ -26,7 +26,7 @@ assert.match(smoke, /adhoc_extension_note\(\)/);
 assert.match(smoke, /cleanup_quicklook_ui\(\)/);
 assert.match(smoke, /killall qlmanage/);
 assert.match(smoke, /killall QuickLookUIService/);
-assert.match(smoke, /requires_normal_quicklook\(\)/);
+assert.doesNotMatch(smoke, /requires_normal_quicklook\(\)/);
 assert.match(smoke, /is_system_table_type\(\)/);
 assert.match(smoke, /public\.comma-separated-values-text/);
 assert.match(smoke, /public\.tab-separated-values-text/);
@@ -56,6 +56,8 @@ assert.doesNotMatch(smoke, /pkill -f/);
 assert.doesNotMatch(smoke, /killall quicklookd/);
 assert.match(forcePreview, /native Finder Quick Look for public CSV\/TSV is owned by the system table generator/);
 assert.match(forcePreview, /Use browser-dev or the desktop app to verify Burrete grid rendering/);
+assert.match(forcePreview, /qlmanage -p -c "\$TYPE" "\$PREVIEW_FILE"/);
+assert.doesNotMatch(forcePreview, /Normal Quick Look resolves XYZ/);
 
 assert.match(
   packageJson.scripts["test:update"],
@@ -76,6 +78,7 @@ for (const fixture of [
   "samples/mini.cif",
   "samples/mini.sdf",
   "samples/mini.xyz",
+  "samples/structures/small-molecules/benzene.xyz",
   "samples/quantum/inputs/caffeine.com",
 ]) {
   assert.match(nightlySmoke, new RegExp(fixture.replaceAll("/", "\\/")));

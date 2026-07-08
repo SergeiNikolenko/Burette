@@ -194,6 +194,7 @@
       "samples/mini.cif",
       "samples/mini.sdf",
       "samples/mini.xyz",
+      "samples/structures/small-molecules/benzene.xyz",
       "samples/quantum/inputs/caffeine.com"
     ],
     "browserQuickLookCore": [
