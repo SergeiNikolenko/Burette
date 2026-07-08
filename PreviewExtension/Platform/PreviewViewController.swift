@@ -1104,13 +1104,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 throw error
             } else {
                 state.renderer = BurreteRendererPolicy.fallbackRenderer(for: BurreteRendererFormat(state.format))
+                state.externalArtifact = nil
+                state.externalArtifactSourceURL = nil
+                state.xyzrenderControls = nil
                 state.externalStatus = [
                     "status": "error",
                     "requested": BurreteRendererMode.xyzrenderExternal,
                     "message": error.localizedDescription
                 ]
                 diag("xyzrender.error=\(error.localizedDescription)")
-                throw error
+                diag("xyzrender.fallback=\(state.renderer)")
             }
         }
     }
