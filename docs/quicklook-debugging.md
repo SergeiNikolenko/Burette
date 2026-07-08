@@ -153,6 +153,17 @@ between desktop previews and Finder previews are documented in
 - Launch Services is still pointing at an older app bundle.
 - The selected file type is not registered to the expected forced content type.
 
+## Quick Look RCA
+
+| Symptom | Likely cause | Where to look first |
+| --- | --- | --- |
+| `quicklook-preview-smoke.sh` reports `NO_REQUEST` | Finder did not launch the extension, or Launch Services selected another generator. | Recent unified logs, `qlmanage -m plugins`, installed app path |
+| Smoke reports `Quick Look extension launch failure` | macOS rejected the ad-hoc signed extension before renderer code ran. | Smoke output, unified-log AMFI entries, installed `BurretePreview` signature |
+| Runtime directory is missing `manifest.json` | Preview runtime generation failed before web rendering. | Quick Look log, `preview-trace.jsonl`, `PreviewExtension/Platform/PreviewViewController.swift` |
+| Manifest exists but preview is blank | Generated web assets or renderer-specific assets are missing or stale. | `PreviewExtension/Web/`, `vendor-assets.lock.json`, runtime `manifest.json` |
+| Browser Quick Look succeeds but native Quick Look is blank | Browser-dev URL bypasses native extension registration, sandbox, and Launch Services. | `docs/tools/testing-surfaces.md`, extension container logs |
+| Only `.csv` or `.tsv` normal preview is missing | macOS may route public table UTIs to the system generator. | Forced preview scripts, browser-dev grid rendering |
+
 ## Required Checks After Migration Changes
 
 Run these after changes to `PreviewExtension/`, `Burrete.xcodeproj`,
