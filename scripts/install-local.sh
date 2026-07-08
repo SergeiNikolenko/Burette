@@ -6,6 +6,7 @@ APP_ID="com.local.BurreteV10"
 EXT_ID="com.local.BurreteV10.Preview"
 PDB_CONTENT_TYPE="com.local.burrete10.pdb"
 CIF_CONTENT_TYPE="com.local.burrete10.cif"
+XYZ_CONTENT_TYPE="com.local.burrete10.xyz"
 APP_BUNDLE_NAME="Burrete.app"
 IS_DEV_FLAVOR=0
 if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
@@ -15,6 +16,7 @@ if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
   EXT_ID="$BURRETE_PREVIEW_ID"
   PDB_CONTENT_TYPE="$BURRETE_PDB_CONTENT_TYPE"
   CIF_CONTENT_TYPE="${BURRETE_CONTENT_TYPE_PREFIX}cif"
+  XYZ_CONTENT_TYPE="${BURRETE_CONTENT_TYPE_PREFIX}xyz"
   APP_BUNDLE_NAME="$BURRETE_APP_BUNDLE_NAME"
   IS_DEV_FLAVOR=1
 fi
@@ -407,7 +409,7 @@ Check extension registration:
 Forced tests:
   qlmanage -p -c $PDB_CONTENT_TYPE "$ROOT/samples/mini.pdb"
   qlmanage -p -c $CIF_CONTENT_TYPE "$ROOT/samples/mini.cif"
-  qlmanage -p "$ROOT/samples/mini.xyz"
+  qlmanage -p -c $XYZ_CONTENT_TYPE "$ROOT/samples/mini.xyz"
 
 $NORMAL_TESTS
 
