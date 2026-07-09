@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use Burrete in your research, please cite it using the metadata from this file."
+title: "Burrete: local-first molecular file inspection for macOS, Quick Look, and agent workflows"
+type: software
+authors:
+  - family-names: "Nikolenko"
+    given-names: "Sergei A."
+    orcid: "https://orcid.org/0000-0003-1150-9390"
+version: "1.0.22"
+date-released: "2026-07-08"
+license: "MIT"
+repository-code: "https://github.com/SergeiNikolenko/Burrete"
+url: "https://github.com/SergeiNikolenko/Burrete"
+abstract: "Burrete is an open-source molecular file inspection workspace for macOS Finder Quick Look previews, a Tauri desktop workspace, molecular renderer routing, molecule collection triage, and typed agent workflows."
