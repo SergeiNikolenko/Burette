@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,7 +9,7 @@ const repoRoot = resolve(__dirname, '..');
 const pluginRoot = resolve(repoRoot, 'plugins/burette-agent');
 const shellDist = resolve(pluginRoot, 'browser-shell-dist');
 const previewWeb = resolve(pluginRoot, 'preview-web');
-const mcpBundle = resolve(pluginRoot, 'mcp/lib/server-bundle.mjs');
+const mcpLibDir = resolve(pluginRoot, 'mcp/lib');
 const runtimeScripts = [
   'amber_nc_preview_extract.py',
   'agent-preview.mjs',
@@ -26,19 +26,34 @@ for (const script of runtimeScripts) {
 }
 await cp(resolve(repoRoot, 'PreviewExtension/Web'), previewWeb, { recursive: true });
 
+for (const file of await readdir(mcpLibDir)) {
+  if (/^server-(?:bundle|chunk)-?.*\.mjs$/u.test(file)) {
+    await rm(resolve(mcpLibDir, file), { force: true });
+  }
+}
+
 await run('bun', [
   'build',
   resolve(pluginRoot, 'mcp/server.mjs'),
-  '--outfile',
-  mcpBundle,
+  '--outdir',
+  mcpLibDir,
+  '--entry-naming',
+  'server-bundle.mjs',
+  '--chunk-naming',
+  'server-chunk-[hash].mjs',
   '--target',
   'node',
   '--format',
   'esm',
   '--minify',
+  '--splitting',
 ]);
-const bundledMcp = await readFile(mcpBundle, 'utf8');
-await writeFile(mcpBundle, bundledMcp.replace(/[ \t]+$/gmu, ''));
+for (const file of await readdir(mcpLibDir)) {
+  if (!/^server-(?:bundle|chunk)-?.*\.mjs$/u.test(file)) continue;
+  const outputPath = resolve(mcpLibDir, file);
+  const output = await readFile(outputPath, 'utf8');
+  await writeFile(outputPath, output.replace(/[ \t]+$/gmu, ''));
+}
 
 await run('bun', ['run', 'build'], {
   cwd: resolve(repoRoot, 'apps/desktop'),
