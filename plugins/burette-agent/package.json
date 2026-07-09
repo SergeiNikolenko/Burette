@@ -1,11 +1,10 @@
 {
   "name": "burette-agent-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "files": [
     ".codex-plugin/",
-    ".app.json",
     ".mcp.json",
     "README.md",
     "assets/",
@@ -16,7 +15,7 @@
     "skills/"
   ],
   "scripts": {
-    "check": "node --check ./mcp/server.mjs && node --check ./mcp/lib/cli-bridge.mjs && node --check ./mcp/lib/plugin-root.mjs && node --check ./mcp/lib/session-registry.mjs && node --check ./mcp/lib/structure-components.mjs && node --check ./mcp/lib/structure-summary.mjs && node --check ./mcp/lib/tool-response.mjs && node --check ./mcp/lib/validation.mjs && node --check ./mcp/registrations/fetch/register.mjs && node --check ./mcp/registrations/molecular-workspace/register.mjs && node --check ./mcp/registrations/molecule-table/register.mjs && node --check ./mcp/registrations/trajectory-review/register.mjs && node --check ./mcp/registrations/molecular-report/register.mjs && node --check ./scripts/agent-preview.mjs && node --check ./scripts/agent-shell-server.mjs && node --check ./scripts/burrete-agent.mjs && node --check ./scripts/burette_agent_preflight.mjs && node --check ./scripts/install-local.mjs && node --check ./scripts/validate_molecular_artifact.mjs",
+    "check": "node --check ./mcp/server.mjs && node --check ./mcp/lib/server-bundle.mjs && node --check ./mcp/lib/cli-bridge.mjs && node --check ./mcp/lib/plugin-root.mjs && node --check ./mcp/lib/session-registry.mjs && node --check ./mcp/lib/structure-components.mjs && node --check ./mcp/lib/structure-summary.mjs && node --check ./mcp/lib/tool-response.mjs && node --check ./mcp/lib/validation.mjs && node --check ./mcp/registrations/fetch/register.mjs && node --check ./mcp/registrations/molecular-workspace/register.mjs && node --check ./mcp/registrations/molecule-table/register.mjs && node --check ./mcp/registrations/trajectory-review/register.mjs && node --check ./mcp/registrations/molecular-report/register.mjs && node --check ./scripts/agent-preview.mjs && node --check ./scripts/agent-shell-server.mjs && node --check ./scripts/burrete-agent.mjs && node --check ./scripts/burette_agent_preflight.mjs && node --check ./scripts/install-local.mjs && node --check ./scripts/validate_molecular_artifact.mjs",
     "preflight": "node ./scripts/burette_agent_preflight.mjs",
     "validate:artifact": "node ./scripts/validate_molecular_artifact.mjs"
   },

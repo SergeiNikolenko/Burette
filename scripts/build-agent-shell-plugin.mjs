@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { cp, mkdir, rm } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,6 +9,7 @@ const repoRoot = resolve(__dirname, '..');
 const pluginRoot = resolve(repoRoot, 'plugins/burette-agent');
 const shellDist = resolve(pluginRoot, 'browser-shell-dist');
 const previewWeb = resolve(pluginRoot, 'preview-web');
+const mcpBundle = resolve(pluginRoot, 'mcp/lib/server-bundle.mjs');
 const runtimeScripts = [
   'amber_nc_preview_extract.py',
   'agent-preview.mjs',
@@ -24,6 +25,20 @@ for (const script of runtimeScripts) {
   await cp(resolve(repoRoot, 'scripts', script), resolve(pluginRoot, 'scripts', script));
 }
 await cp(resolve(repoRoot, 'PreviewExtension/Web'), previewWeb, { recursive: true });
+
+await run('bun', [
+  'build',
+  resolve(pluginRoot, 'mcp/server.mjs'),
+  '--outfile',
+  mcpBundle,
+  '--target',
+  'node',
+  '--format',
+  'esm',
+  '--minify',
+]);
+const bundledMcp = await readFile(mcpBundle, 'utf8');
+await writeFile(mcpBundle, bundledMcp.replace(/[ \t]+$/gmu, ''));
 
 await run('bun', ['run', 'build'], {
   cwd: resolve(repoRoot, 'apps/desktop'),

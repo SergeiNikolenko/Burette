@@ -1,6 +1,6 @@
 ---
 name: user-context
-description: "Load Burrete's scoped capability registry and setup status before molecular workspace workflows."
+description: "Use when loading Burrete's scoped capability registry and setup status before a molecular workspace workflow."
 ---
 
 # Burrete User Context

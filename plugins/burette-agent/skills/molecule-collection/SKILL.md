@@ -1,6 +1,6 @@
 ---
 name: molecule-collection
-description: "Review SDF and molecule-property collections with bounded tables, filters, selected-molecule handoff, and Burrete display panels."
+description: "Use when reviewing SDF or molecule-property collections with bounded tables, filters, selected-molecule handoff, and Burrete panels."
 ---
 
 # Molecule Collection
