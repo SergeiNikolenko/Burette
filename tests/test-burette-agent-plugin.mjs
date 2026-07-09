@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile, unlink } from "node:fs/promises";
+import { readFile, readdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { editStructureFragmentFile, extractStructureComponentFile } from "../plugins/burette-agent/mcp/lib/structure-components.mjs";
@@ -433,9 +433,17 @@ assert.equal(selfContainedPlugin.ok, true);
 assert.equal(selfContainedPlugin.mode, "browser-preview");
 assert.match(selfContainedPlugin.url, /^http:\/\/127\.0\.0\.1:/);
 
+const bundledMcpTargets = (await readdir("plugins/burette-agent/mcp/lib"))
+  .filter(file => /^server-(?:bundle|chunk)-?.*\.mjs$/u.test(file))
+  .map(file => `plugins/burette-agent/mcp/lib/${file}`);
+assert.equal(bundledMcpTargets.length >= 2, true);
+for (const target of bundledMcpTargets) {
+  assert.equal((await stat(target)).size <= 512000, true, `${target} exceeds the repository blob limit`);
+}
+
 const syntaxTargets = [
   "plugins/burette-agent/mcp/server.mjs",
-  "plugins/burette-agent/mcp/lib/server-bundle.mjs",
+  ...bundledMcpTargets,
   "plugins/burette-agent/mcp/lib/cli-bridge.mjs",
   "plugins/burette-agent/mcp/lib/plugin-root.mjs",
   "plugins/burette-agent/mcp/lib/structure-components.mjs",
