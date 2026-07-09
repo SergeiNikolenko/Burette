@@ -322,11 +322,12 @@ assert.match(agentIntegrationCommand, /#\[tauri::command\]\s+pub\(crate\) fn age
 assert.match(agentIntegrationCommand, /PLUGIN_RELATIVE_PATH: &str = "plugins\/burette-agent"/);
 assert.match(agentIntegrationCommand, /BURRETE_AGENT_PLUGIN_DIR/);
 assert.match(agentIntegrationCommand, /schema: "burette_agent_integration\.v1"/);
-assert.match(agentIntegrationCommand, /mcp\/widget-assets\/molecule-table\/widget\.html/);
-assert.match(agentIntegrationCommand, /mcp\/widget-assets\/trajectory-review\/widget\.html/);
-assert.match(agentIntegrationCommand, /mcp\/widget-assets\/molecular-report\/widget\.html/);
+assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecule-table\/widget\.html/);
+assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/trajectory-review\/widget\.html/);
+assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecular-report\/widget\.html/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecular-workspace\/widget\.html/);
 assert.match(agentIntegrationCommand, /find_codex_plugin_manifest/);
+assert.match(agentIntegrationCommand, /mcp\/lib\/server-bundle\.mjs/);
 assert.match(agentIntegrationCommand, /"scripts\/burrete-agent\.mjs"/);
 assert.match(agentIntegrationCommand, /"browser-shell-dist\/index\.html"/);
 assert.doesNotMatch(agentIntegrationCommand, /Command::new|spawn|remove_file|write\(/);
@@ -803,6 +804,9 @@ assert.match(buildScript, /LOCAL_XYZRENDER_ENV="\$HOME\/\.local\/share\/uv\/tool
 assert.match(buildScript, /bun run build:agent-shell/);
 assert.match(updaterCommand, /sync_burrete_codex_plugin\(\)/);
 assert.match(updaterCommand, /Contents\/Resources\/plugins\/burette-agent/);
+assert.match(updaterCommand, /mcp" \/ "lib" \/ "server-bundle\.mjs/);
+assert.doesNotMatch(updaterCommand, /"0\.1\.0"/);
+assert.match(updaterCommand, /Education & Research/);
 assert.match(updaterCommand, /codex plugin synced/);
 assert.match(buildScript, /XYZRENDER_RUNTIME_PYTHON_PACKAGES=\("datamol==0\.12\.5"\)/);
 assert.match(buildScript, /require_xyzrender_runtime_for_release\(\)\s*\{/);

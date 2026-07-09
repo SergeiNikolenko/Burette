@@ -129,24 +129,9 @@ fn bundle_status(path: &Path, checks: &mut Vec<AgentIntegrationCheck>) -> Plugin
     ));
 
     for (id, label, relative_path) in [
-        ("mcp", "MCP server", "mcp/server.mjs"),
+        ("mcp", "MCP server", "mcp/lib/server-bundle.mjs"),
         ("mcp-config", "MCP config", ".mcp.json"),
         ("skills", "Skills", "skills/index/SKILL.md"),
-        (
-            "molecule-table-widget",
-            "Molecule table widget",
-            "mcp/widget-assets/molecule-table/widget.html",
-        ),
-        (
-            "trajectory-review-widget",
-            "Trajectory review widget",
-            "mcp/widget-assets/trajectory-review/widget.html",
-        ),
-        (
-            "molecular-report-widget",
-            "Molecular report widget",
-            "mcp/widget-assets/molecular-report/widget.html",
-        ),
         (
             "preflight",
             "Preflight",

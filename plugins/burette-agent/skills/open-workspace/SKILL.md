@@ -1,6 +1,6 @@
 ---
 name: open-workspace
-description: "Open molecular artifacts in Burrete Browser preview or desktop app sessions and establish an observable workspace."
+description: "Use when opening molecular artifacts in Burrete Browser preview or desktop app sessions and establishing an observable workspace."
 ---
 
 # Open Workspace
