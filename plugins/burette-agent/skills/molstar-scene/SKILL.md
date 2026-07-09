@@ -1,6 +1,6 @@
 ---
 name: molstar-scene
-description: "Operate the active Mol* scene through allowlisted Burrete agent actions and typed observe/action results."
+description: "Use when operating an active Mol* scene through allowlisted Burrete actions and typed observe/action results."
 ---
 
 # Molstar Scene
