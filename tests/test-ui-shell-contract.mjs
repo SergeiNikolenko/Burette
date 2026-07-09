@@ -3114,6 +3114,8 @@ assert.match(agentIntegrationPanel, /Reveal Bundle/);
 assert.match(agentIntegrationPanel, /Diagnostics/);
 assert.match(agentIntegrationPanel, /MCP server/);
 assert.match(agentIntegrationPanel, /Browser shell/);
+assert.match(agentIntegrationPanel, /Workflow skills are bundled/);
+assert.doesNotMatch(agentIntegrationPanel, /Skills and widgets|widget assets|skills, widgets/);
 assert.match(agentIntegrationPanel, /bundled with Burrete/);
 assert.doesNotMatch(agentIntegrationPanel, /Manual setup/);
 assert.doesNotMatch(agentIntegrationPanel, /Copy Bundle Path/);

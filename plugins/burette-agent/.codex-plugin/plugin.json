@@ -1,13 +1,14 @@
 {
   "name": "burrete",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Operate Burrete as an agent-accessible molecular workspace for structures, Mol* scenes, molecule collections, trajectories, and workflow result artifacts.",
   "author": {
-    "name": "Burrete"
+    "name": "Burrete contributors",
+    "url": "https://github.com/SergeiNikolenko/Burrete"
   },
-  "homepage": "https://github.com/local/burrete",
-  "repository": "https://github.com/local/burrete",
-  "license": "Proprietary",
+  "homepage": "https://github.com/SergeiNikolenko/Burrete",
+  "repository": "https://github.com/SergeiNikolenko/Burrete",
+  "license": "MIT",
   "keywords": [
     "burette",
     "molecular-visualization",
@@ -25,12 +26,16 @@
     "shortDescription": "Operate molecular workspaces",
     "longDescription": "Burrete lets an assistant open molecular structures in Browser preview or the real desktop app, observe scene state as structured JSON, run allowlisted Mol* actions, render adjacent notes/tables/charts/reports, and hand off externally prepared molecular workflow artifacts for review. It keeps molecular commands typed and auditable while using Browser and Computer surfaces for visual verification.",
     "developerName": "Burrete",
-    "category": "Science",
+    "category": "Education & Research",
     "capabilities": [
       "Interactive",
       "Read",
       "Write"
     ],
+    "websiteURL": "https://github.com/SergeiNikolenko/Burrete",
+    "supportURL": "https://github.com/SergeiNikolenko/Burrete/issues",
+    "privacyPolicyURL": "https://github.com/SergeiNikolenko/Burrete/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/SergeiNikolenko/Burrete/blob/main/TERMS.md",
     "defaultPrompt": [
       "Open this structure in Burrete and describe the active molecular scene",
       "Hide waters, focus the ligand, and render a right-side notes panel",
