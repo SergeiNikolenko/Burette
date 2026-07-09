@@ -1,6 +1,6 @@
 ---
 name: trajectory-review
-description: "Review molecular trajectories, frame metrics, representative structures, and trajectory result bundles in Burrete."
+description: "Use when reviewing molecular trajectories, frame metrics, representative structures, or trajectory result bundles in Burrete."
 ---
 
 # Trajectory Review

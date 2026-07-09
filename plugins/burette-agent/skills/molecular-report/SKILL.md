@@ -1,6 +1,6 @@
 ---
 name: molecular-report
-description: "Render molecular notes, property tables, charts, workflow reports, and provenance alongside the active Burrete workspace."
+description: "Use when molecular notes, property tables, charts, workflow reports, or provenance should be rendered beside an active Burrete workspace."
 ---
 
 # Molecular Report

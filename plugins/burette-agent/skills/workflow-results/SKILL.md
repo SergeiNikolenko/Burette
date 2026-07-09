@@ -1,6 +1,6 @@
 ---
 name: workflow-results
-description: "Accept and display externally produced protein prep, ligand prep, docking, MD, cleanup, and bulk property artifacts."
+description: "Use when accepting and displaying externally produced protein prep, ligand prep, docking, MD, cleanup, or bulk property artifacts."
 ---
 
 # Workflow Results

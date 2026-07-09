@@ -1,28 +1,31 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(pluginRoot, "..", "..");
-const marketplacePath = path.join(process.env.HOME, ".agents", "plugins", "marketplace.json");
-const pluginSymlinkPath = path.join(process.env.HOME, ".agents", "plugins", "burrete");
-const codexConfigPath = path.join(process.env.HOME, ".codex", "config.toml");
+const shouldBuild = process.argv.includes("--build");
+const home = process.env.HOME;
 
-const skipBuild = process.argv.includes("--skip-build");
-
-if (!process.env.HOME) {
+if (!home) {
   throw new Error("HOME is not set.");
 }
 
-const marketplaceName = await resolveMarketplaceName();
+const marketplaceName = "burrete";
+const marketplaceRoot = path.join(home, ".codex", "plugins", "burrete-marketplace");
+const marketplacePath = path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json");
+const personalPluginRoot = path.join(marketplaceRoot, "plugins", "burrete");
+const codexConfigPath = path.join(home, ".codex", "config.toml");
+const legacyMarketplacePath = path.join(home, ".agents", "plugins", "marketplace.json");
+const pluginVersion = await readPluginVersion();
 const pluginId = `burrete@${marketplaceName}`;
-const installRoot = path.join(process.env.HOME, ".codex", "plugins", "cache", marketplaceName, "burrete", "0.1.0");
+const installRoot = path.join(home, ".codex", "plugins", "cache", marketplaceName, "burrete", pluginVersion);
 
-if (!skipBuild && isSourceCheckout()) {
+if (shouldBuild && isSourceCheckout()) {
   await run("bun", ["run", "build:agent-shell"], { cwd: repoRoot });
 }
 
@@ -35,27 +38,40 @@ if (!existsSync(path.join(pluginRoot, "preview-web", "index.html"))) {
 if (!existsSync(path.join(pluginRoot, "scripts", "burrete-agent.mjs"))) {
   throw new Error("Missing bundled scripts/burrete-agent.mjs. Run bun run build:agent-shell before installing.");
 }
+if (!existsSync(path.join(pluginRoot, "mcp", "lib", "server-bundle.mjs"))) {
+  throw new Error("Missing bundled MCP server. Run bun run build:agent-shell before installing.");
+}
 
-await rm(path.join(process.env.HOME, ".codex", "plugins", "cache", marketplaceName, "burrete"), {
-  recursive: true,
-  force: true,
-});
-await mkdir(installRoot, { recursive: true });
-await run("rsync", ["-a", "--delete", "--exclude", "node_modules", `${pluginRoot}/`, `${installRoot}/`], { cwd: repoRoot });
-await writeFile(path.join(installRoot, ".burette-agent-install.json"), `${JSON.stringify({ repoRoot }, null, 2)}\n`);
-await run("bun", ["install", "--production"], { cwd: installRoot });
-
+await rm(personalPluginRoot, { recursive: true, force: true });
+await mkdir(personalPluginRoot, { recursive: true });
+await run("rsync", [
+  "-a",
+  "--delete",
+  "--exclude", "node_modules",
+  "--exclude", "mcp/lib/tool-response 2.mjs",
+  `${pluginRoot}/`,
+  `${personalPluginRoot}/`,
+], { cwd: repoRoot });
+await writeFile(path.join(personalPluginRoot, ".burette-agent-install.json"), `${JSON.stringify({ repoRoot }, null, 2)}\n`);
 await updateMarketplace();
-await updatePluginSymlink();
-await updateCodexConfig();
+const codexBinary = findWorkingCodexBinary();
+const installation = codexBinary ? installWithCodex(codexBinary) : await installWithoutCodexCli();
+const legacyCleanup = await cleanupLegacySources();
 
 console.log(JSON.stringify({
   ok: true,
   plugin: pluginId,
+  version: pluginVersion,
   marketplaceName,
-  installRoot,
+  marketplaceRoot,
+  sourceRoot: personalPluginRoot,
+  installRoot: installation.installedPath,
   marketplacePath,
   codexConfigPath,
+  installationMethod: installation.method,
+  migratedPluginIds: installation.migratedPluginIds,
+  legacyCleanup,
+  codexBinary,
   restartRequired: true,
   note: "Restart Codex so the plugin and MCP server are reloaded.",
 }, null, 2));
@@ -68,28 +84,78 @@ function isSourceCheckout() {
 
 async function updateMarketplace() {
   await mkdir(path.dirname(marketplacePath), { recursive: true });
-  let data = { name: marketplaceName, interface: { displayName: marketplaceDisplayName(marketplaceName) }, plugins: [] };
-  if (existsSync(marketplacePath)) {
-    data = JSON.parse(await readFile(marketplacePath, "utf8"));
-  }
-  data.name = marketplaceName;
-  data.interface = data.interface || { displayName: marketplaceDisplayName(marketplaceName) };
-  data.plugins = (data.plugins || []).filter((plugin) => plugin.name !== "burrete");
-  data.plugins.push({
-    name: "burrete",
-    source: { source: "local", path: "./.agents/plugins/burrete" },
-    policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
-    category: "Science",
-  });
+  const data = {
+    name: marketplaceName,
+    interface: { displayName: "Burrete" },
+    plugins: [{
+      name: "burrete",
+      source: { source: "local", path: "./plugins/burrete" },
+      policy: { installation: "AVAILABLE", authentication: "ON_INSTALL", products: ["CODEX"] },
+      category: "Education & Research",
+    }],
+  };
   await writeFile(marketplacePath, `${JSON.stringify(data, null, 2)}\n`);
 }
 
-async function updatePluginSymlink() {
-  await mkdir(path.dirname(pluginSymlinkPath), { recursive: true });
-  await unlink(pluginSymlinkPath).catch((error) => {
-    if (error?.code !== "ENOENT") throw error;
-  });
-  await symlink(installRoot, pluginSymlinkPath);
+function installWithCodex(command) {
+  runCodexJson(command, ["plugin", "marketplace", "add", marketplaceRoot, "--json"], "marketplace registration");
+  const payload = runCodexJson(command, ["plugin", "add", pluginId, "--json"], "plugin installation");
+  const installed = runCodexJson(command, ["plugin", "list", "--json"], "plugin inventory").installed || [];
+  const migratedPluginIds = installed
+    .filter((plugin) => plugin.name === "burrete" && plugin.pluginId !== pluginId)
+    .map((plugin) => plugin.pluginId);
+  for (const legacyPluginId of migratedPluginIds) {
+    runCodexJson(command, ["plugin", "remove", legacyPluginId, "--json"], `legacy plugin removal (${legacyPluginId})`);
+  }
+  return {
+    method: "codex-cli",
+    installedPath: payload.installedPath || installRoot,
+    migratedPluginIds,
+  };
+}
+
+function runCodexJson(command, args, label) {
+  const result = spawnSync(command, args, { cwd: repoRoot, encoding: "utf8" });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`Codex ${label} failed: ${(result.stderr || result.stdout || `exit ${result.status}`).trim()}`);
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    throw new Error(`Codex ${label} returned invalid JSON.`);
+  }
+}
+
+async function installWithoutCodexCli() {
+  await rm(path.dirname(installRoot), { recursive: true, force: true });
+  await mkdir(installRoot, { recursive: true });
+  await run("rsync", ["-a", "--delete", `${personalPluginRoot}/`, `${installRoot}/`], { cwd: repoRoot });
+  await updateCodexConfig();
+  return {
+    method: "cache-fallback",
+    installedPath: installRoot,
+    migratedPluginIds: [],
+  };
+}
+
+async function cleanupLegacySources() {
+  let marketplaceEntryRemoved = false;
+  if (existsSync(legacyMarketplacePath)) {
+    try {
+      const data = JSON.parse(await readFile(legacyMarketplacePath, "utf8"));
+      const plugins = Array.isArray(data.plugins) ? data.plugins : [];
+      const filteredPlugins = plugins.filter((plugin) => plugin.name !== "burrete");
+      if (filteredPlugins.length !== plugins.length) {
+        data.plugins = filteredPlugins;
+        await writeFile(legacyMarketplacePath, `${JSON.stringify(data, null, 2)}\n`);
+        marketplaceEntryRemoved = true;
+      }
+    } catch {
+      // Preserve an invalid or externally managed marketplace file.
+    }
+  }
+  return { marketplaceEntryRemoved };
 }
 
 async function updateCodexConfig() {
@@ -102,22 +168,28 @@ async function updateCodexConfig() {
   await writeFile(codexConfigPath, next);
 }
 
-async function resolveMarketplaceName() {
-  const explicit = process.env.BURRETE_PLUGIN_MARKETPLACE?.trim();
-  if (explicit) return explicit;
-  if (existsSync(marketplacePath)) {
-    try {
-      const data = JSON.parse(await readFile(marketplacePath, "utf8"));
-      if (typeof data.name === "string" && data.name.trim()) return data.name.trim();
-    } catch {
-      // Fall through to the portable default.
-    }
+async function readPluginVersion() {
+  const manifest = JSON.parse(await readFile(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
+  const version = typeof manifest.version === "string" ? manifest.version.trim() : "";
+  if (!version || !/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u.test(version)) {
+    throw new Error("The plugin manifest has an invalid version.");
   }
-  return "burrete";
+  return version;
 }
 
-function marketplaceDisplayName(name) {
-  return name === "burrete" ? "Burrete" : name;
+function findWorkingCodexBinary() {
+  const candidates = [
+    process.env.BURRETE_CODEX_BIN,
+    "/Applications/ChatGPT.app/Contents/Resources/codex",
+    "/Applications/Codex.app/Contents/Resources/codex",
+    "codex",
+  ].filter(Boolean);
+  for (const candidate of new Set(candidates)) {
+    if (path.isAbsolute(candidate) && !existsSync(candidate)) continue;
+    const result = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+    if (result.status === 0) return candidate;
+  }
+  return null;
 }
 
 function escapeRegExp(value) {

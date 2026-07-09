@@ -1,6 +1,6 @@
 # Burrete Plugin
 
-Burrete turns Burrete into an agent-operable molecular workspace. The
+Burrete's Codex plugin turns the app into an agent-operable molecular workspace. The
 plugin is intentionally layered:
 
 - skills decide the workflow and user-facing handoff;
@@ -105,48 +105,61 @@ those static assets plus the runtime `/__burette/agent-session/*`,
 without needing the source repository checkout. If the prebuilt bundle is
 missing in a source checkout, the CLI falls back to `vp dev`.
 
+## Codex Plugin Shape
+
+Burrete is packaged as a Codex-local plugin with bundled skills and a local
+stdio MCP server. This is the appropriate shape for a macOS application that
+must open user-selected local files and control local Browser or desktop
+sessions. It is not a hosted ChatGPT Apps SDK app and does not reference an
+entry in `.app.json`.
+
+The required manifest lives at `.codex-plugin/plugin.json`, the MCP server is
+declared in `.mcp.json`, and the repository marketplace is declared at
+`.agents/plugins/marketplace.json`. This follows the current
+[Codex plugin structure and marketplace guidance](https://developers.openai.com/codex/build-plugins).
+
 ## Local Codex Installation
 
-The current Codex CLI does not expose a direct
-`codex plugin install <plugin-dir>` command. For a clean local install from this
-repository, build the self-contained plugin runtime, install the bundle into the
-local plugin cache, install the MCP dependencies, and enable the plugin in the
-Codex config:
+For a clean local install from this repository, stage a self-contained plugin
+in a personal marketplace and ask the Codex CLI to register that marketplace
+and install the plugin:
 
 ```bash
 cd /path/to/Burette
 bun run install:plugin
 ```
 
-The installer runs `bun run build:agent-shell` when it is executed from a source
-checkout, copies the self-contained plugin bundle into
-`~/.codex/plugins/cache/<marketplace>/burrete/0.1.0`, installs production MCP
-dependencies, registers `burrete` in `~/.agents/plugins/marketplace.json`,
-updates the `~/.agents/plugins/burrete` symlink, and enables
-`burrete@<marketplace>` in `~/.codex/config.toml`.
+The repository contains a prebuilt MCP server with its runtime dependencies
+bundled, so standard Codex marketplace installation does not require
+`node_modules`. The installer stages that bundle and its marketplace descriptor
+under `~/.codex/plugins/burrete-marketplace`, then runs
+`codex plugin marketplace add` and `codex plugin add burrete@burrete`. Codex owns
+the installed cache copy and the enabled state in `~/.codex/config.toml`. After
+the new plugin is active, the installer removes earlier Burette plugin ids and
+marketplace entries while preserving unrelated plugins. If no working Codex CLI
+can be found, the installer uses the same cache and config layout as a
+compatibility fallback and reports that method explicitly.
 
-On a fresh machine, `<marketplace>` defaults to `burrete`, so the plugin id is
-`burrete@burrete`. If `~/.agents/plugins/marketplace.json` already exists, the
-installer keeps its existing marketplace name to avoid renaming unrelated local
-plugins. To force the Burrete marketplace name, run:
-
-```bash
-BURRETE_PLUGIN_MARKETPLACE=burrete bun run install:plugin
-```
-
-Use `--skip-build` only when installing an already prebuilt plugin directory:
+Use `--build` when developing the plugin and intentionally regenerating the MCP,
+Browser shell, and Browser preview bundles before installation:
 
 ```bash
-bun scripts/install-local.mjs --skip-build
+bun scripts/install-local.mjs --build
 ```
 
-The `.burette-agent-install.json` file is useful for source-checkout fallbacks
-and repository-local summaries, but the Browser shell and Browser preview paths
-must work from the plugin cache itself after `bun run build:agent-shell`.
+The `.burette-agent-install.json` file records the source checkout or app bundle
+used for the install. The MCP server, Browser shell, and Browser preview paths
+must work from the installed plugin copy without the source checkout.
 
-Restart Codex after changing the marketplace or plugin config. A running Codex
-process can keep the old MCP tool surface and cached plugin process alive until
-the next session.
+Verify the installation with `codex plugin list`, then restart Codex after
+changing the plugin. A running Codex process can keep the previous MCP process
+and tool surface alive until the next session.
+
+Public Plugins Directory submission is a separate deployment target. A public
+app-plus-skills submission requires a public HTTPS MCP endpoint, verified
+publisher identity, public support/privacy/terms URLs, review test cases, and
+accurate tool annotations. The local stdio plugin intentionally does not claim
+that hosted submission surface.
 
 ## MolViewSpec Scene Language
 
