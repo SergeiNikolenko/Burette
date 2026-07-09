@@ -1,6 +1,6 @@
 ---
 name: external-agent-contract
-description: "Use Burrete's short external-agent contract for opening, observing, controlling, and rendering into molecular workspaces without exposing transport details."
+description: "Use when an external agent must open, observe, control, or render into a Burrete molecular workspace without managing transport details."
 ---
 
 # External Agent Contract

@@ -1,6 +1,6 @@
 ---
 name: visual-qa
-description: "Verify Burrete Browser preview and desktop app visual state with Browser and Computer without replacing typed observe/action contracts."
+description: "Use when visually verifying Burrete Browser preview or desktop app state without replacing typed observe/action contracts."
 ---
 
 # Visual QA

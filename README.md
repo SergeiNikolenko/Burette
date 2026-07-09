@@ -176,6 +176,37 @@ for structure triage:
 These workflows live in the desktop app. Finder Quick Look remains optimized
 for quick file previews.
 
+## Codex Plugin and MCP
+
+Burrete includes a Codex plugin that turns the local application into an
+agent-operable molecular workspace. The plugin bundles focused workflow skills
+with a typed local MCP server, so Codex can:
+
+- open molecular structures, SDF collections, trajectories, and result bundles;
+- observe the active document, tabs, panels, viewer readiness, and scene state;
+- run allowlisted Mol* actions such as focusing ligands, hiding waters,
+  changing representations, and resetting the camera;
+- render bounded markdown, table, chart, and molecular-report panels beside
+  the workspace;
+- preserve local-file provenance without exposing an arbitrary shell or
+  unrestricted file-access tool.
+
+Install the self-contained plugin from this repository with:
+
+```bash
+bun run install:plugin
+```
+
+The installer stages a dedicated local marketplace and uses the current
+`codex plugin marketplace add` and `codex plugin add` flows when a working
+Codex CLI is available. Restart Codex after installation, then mention
+`@Burrete` or select it from Plugins.
+
+See the [plugin architecture and local installation guide](plugins/burette-agent/README.md)
+and the [agent platform contract](docs/agent-platform.md) for the MCP tool and
+session model. Burrete remains the canonical source repository for the desktop
+app, Quick Look extension, mobile source app, and Codex plugin.
+
 ## Settings and Maintenance
 
 Burrete settings cover:
@@ -199,6 +230,8 @@ external chemistry editors discovered by macOS.
 - [Installing and building from source](docs/installing-building.md)
 - [Configuration](docs/configuration.md)
 - [Security and permissions](docs/security-and-permissions.md)
+- [Privacy policy](PRIVACY.md)
+- [Terms of use](TERMS.md)
 - [Renderer support](docs/renderer-support.md)
 - [Quick Look debugging](docs/quicklook-debugging.md)
 - [iPhone preview app](ios/BurreteMobile/README.md)
