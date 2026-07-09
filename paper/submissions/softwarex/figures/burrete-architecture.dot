@@ -1,0 +1,62 @@
+digraph burrete_architecture {
+  graph [
+    rankdir=TB,
+    bgcolor="white",
+    pad="0.18",
+    nodesep="0.42",
+    ranksep="0.42",
+    fontname="Helvetica"
+  ];
+  node [
+    shape=box,
+    style="rounded,filled",
+    fontname="Helvetica",
+    fontsize=13,
+    color="#64748b",
+    fontcolor="#0f172a",
+    fillcolor="#f8fafc",
+    penwidth=1.2,
+    margin="0.16,0.10"
+  ];
+  edge [
+    color="#64748b",
+    penwidth=1.2,
+    arrowsize=0.75,
+    fontname="Helvetica",
+    fontsize=10,
+    fontcolor="#334155"
+  ];
+
+  files [label="Local molecular files\nand project folders", fillcolor="#ecfeff", color="#0891b2"];
+  registry [label="Document registration\nand format-routing registry", fillcolor="#f0fdfa", color="#0f766e"];
+
+  quicklook [label="Finder Quick Look\nSwift extension"];
+  desktop [label="Desktop workspace\nReact + Tauri"];
+  mobile [label="Source-built iPhone\npreview app"];
+
+  adapters [
+    label="Preview and editing adapters\nMol* / MolViewSpec | RDKit grid | Ketcher\nxyzrender / VESTA handoff | text and metadata",
+    fillcolor="#f5f3ff",
+    color="#7c3aed"
+  ];
+
+  agent [
+    label="Typed agent layer\nopen | observe | act | render-panel",
+    fillcolor="#fff7ed",
+    color="#ea580c"
+  ];
+
+  files -> registry;
+  registry -> quicklook;
+  registry -> desktop;
+  registry -> mobile;
+  quicklook -> adapters;
+  desktop -> adapters;
+  mobile -> adapters;
+  { rank=same; quicklook; desktop; mobile; agent; }
+  agent -> desktop [
+    label="typed actions / bounded state",
+    dir=both,
+    constraint=false
+  ];
+}

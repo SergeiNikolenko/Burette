@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 1.0.5" src="https://img.shields.io/badge/version-1.0.5-0f8f72.svg?style=flat-square" />
+  <img alt="Version 1.0.22" src="https://img.shields.io/badge/version-1.0.22-0f8f72.svg?style=flat-square" />
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" /></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-blue.svg?style=flat-square" />
   <img alt="iOS source app" src="https://img.shields.io/badge/iOS-source%20app-blue.svg?style=flat-square" />

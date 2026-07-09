@@ -1,0 +1,6 @@
+Highlights
+
+- Finder Quick Look previews molecular files before a full modeling tool opens.
+- A Tauri workspace routes structures, collections, and text to explicit viewers.
+- Typed agent contracts expose bounded open, observe, act, and panel workflows.
+- Burrete integrates Mol*, RDKit, Ketcher, xyzrender, and VESTA handoff.
