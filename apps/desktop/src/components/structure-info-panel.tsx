@@ -1803,7 +1803,7 @@ const XTB_PATTERN_ARTIFACTS: Record<string, Omit<XtbTextArtifactInfo, "runName">
     purpose: "Stores the post-optimization coordinates.",
     use: "Use as the post-relaxation geometry for energy/property interpretation or downstream calculations.",
     format: "structure file",
-    notes: ["This is the main output of Optimize and pose-refine workflows."],
+    notes: ["This is the main output of Optimize workflows."],
   },
   cube: {
     title: "Volumetric grid",

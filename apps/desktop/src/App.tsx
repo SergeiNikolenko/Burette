@@ -472,16 +472,13 @@ export default function App() {
   });
   const {
     runXtbActiveOperation,
-    runXtbFepPreflight,
     runXtbGridScoring,
     runXtbJob,
     runXtbKetcherSketch,
-    runXtbPoseRefinement,
   } = useAppXtbWorkflows({
     activeDocument,
     addDockDrop,
     cancelledXtbJobIdsRef,
-    dockDroppedStructures,
     openDockTab,
     openDocumentsInActiveTab,
     openPaths,
@@ -841,11 +838,9 @@ export default function App() {
     runExternalRuntimeDoctor,
     runStructureViewerAction,
     runXtbActiveOperation,
-    runXtbFepPreflight,
     runXtbGridScoring,
     runXtbJob,
     runXtbKetcherSketch,
-    runXtbPoseRefinement,
     saveKetcherDraft,
     saveKetcherExportFile,
     saveMoleculeCollectionAs,

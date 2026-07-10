@@ -1825,8 +1825,8 @@ async function browserDevXtbStatus() {
       installed: false,
       executablePath: null,
       version: null,
-      installer: resolveExecutable("pixi") ? "pixi" : resolveExecutable("uv") ? "uv" : null,
-      installHint: "Install xTB with pixi global install xtb. Browser dev can run that installer when pixi is available.",
+      installer: resolveExecutable("pixi") ? "pixi" : null,
+      installHint: "Install xTB with `pixi global install xtb` or from conda-forge. Browser dev can run the pixi installer when pixi is available.",
     };
   }
   let version: string | null = null;
@@ -1853,10 +1853,7 @@ async function installBrowserDevXtb() {
     await execFileAsync(pixi, ["global", "install", "xtb"], { timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
     return browserDevXtbStatus();
   }
-  const uv = resolveExecutable("uv");
-  if (!uv) throw new Error("Neither pixi nor uv is available to install xTB.");
-  await execFileAsync(uv, ["tool", "install", "xtb"], { timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
-  return browserDevXtbStatus();
+  throw new Error("Automatic xTB installation requires pixi. Install pixi and run `pixi global install xtb`, or install xTB from conda-forge and make it available on PATH.");
 }
 
 type BrowserDevConformerRunRequest = {
@@ -1943,9 +1940,11 @@ function cancelBrowserDevJob(kind: "xtb" | "conformer", jobId: unknown) {
   const child = runningBrowserDevJobs.get(jobKey);
   if (!child) return { ok: true, cancelled: false, message: "No running process was attached to this job." };
   child.kill("SIGTERM");
-  setTimeout(() => {
-    if (!child.killed) child.kill("SIGKILL");
-  }, 1500).unref();
+  const forceKill = setTimeout(() => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }, 1500);
+  child.once("close", () => clearTimeout(forceKill));
+  forceKill.unref();
   return { ok: true, cancelled: true };
 }
 
@@ -2638,6 +2637,14 @@ function execBrowserDevJobFile(
   jobKey: string | null,
 ) {
   return new Promise<{ stdout: string; stderr: string }>((resolveRun, rejectRun) => {
+    if (browserDevJobWasCancelled(jobKey)) {
+      rejectRun(Object.assign(new Error("Job cancelled before the process started."), {
+        code: 130,
+        stdout: "",
+        stderr: "",
+      }));
+      return;
+    }
     const child = execFile(executable, args, options, (error, stdout, stderr) => {
       if (jobKey && runningBrowserDevJobs.get(jobKey) === child) runningBrowserDevJobs.delete(jobKey);
       const normalized = { stdout: stdout || "", stderr: stderr || "" };
@@ -2801,7 +2808,6 @@ type BrowserDevXtbRunRequest = {
   inputText?: string | null;
   inputExtension?: string | null;
   sourcePath?: string | null;
-  secondaryPaths?: string[] | null;
   label?: string | null;
   method?: string | null;
   charge?: number | null;
@@ -2867,10 +2873,19 @@ function estimateBrowserDevAtomCount(text: string, extension: string) {
 }
 
 async function runBrowserDevXtbJob(request: BrowserDevXtbRunRequest) {
+  const jobKey = browserDevJobKey("xtb", request.jobId);
+  try {
+    return await runBrowserDevXtbJobImpl(request, jobKey);
+  } finally {
+    finishBrowserDevJob(jobKey);
+  }
+}
+
+async function runBrowserDevXtbJobImpl(request: BrowserDevXtbRunRequest, jobKey: string | null) {
   const executable = resolveExecutable("xtb");
   if (!executable) throw new Error("xTB executable was not found. Install it with pixi global install xtb or make xtb available on PATH.");
   const operation = request.operation || "properties";
-  const jobKey = browserDevJobKey("xtb", request.jobId);
+  assertBrowserDevXtbOperation(operation);
   await assertBrowserDevXtbDirectInput(request);
   const startedAt = Date.now();
   const workDir = await browserDevXtbWorkDir(request, operation, startedAt);
@@ -2909,9 +2924,10 @@ async function runBrowserDevXtbJob(request: BrowserDevXtbRunRequest) {
   const log = `${stdout}${stderr}`;
   await writeFile(logPath, log);
   const cancelled = browserDevJobWasCancelled(jobKey);
-  const artifacts = cancelled ? [] : await collectBrowserDevXtbArtifacts(workDir);
-  const summary = await readBrowserDevXtbSummary(workDir);
-  const primaryOpenPath = primaryBrowserDevXtbOpenPath(operation, artifacts);
+  const timedOut = !cancelled && browserDevCommandTimedOut(commandError);
+  const artifacts = cancelled || timedOut ? [] : await collectBrowserDevXtbArtifacts(workDir);
+  const summary = cancelled || timedOut ? null : await readBrowserDevXtbSummary(workDir);
+  const primaryOpenPath = cancelled || timedOut ? null : primaryBrowserDevXtbOpenPath(operation, artifacts);
   const ok = commandError === null && !cancelled;
   const result = {
     ok,
@@ -2919,16 +2935,19 @@ async function runBrowserDevXtbJob(request: BrowserDevXtbRunRequest) {
     command: [executable, ...args],
     workDir,
     elapsedMs: Date.now() - startedAt,
-    exitCode: cancelled ? 130 : exitCode,
+    exitCode: cancelled ? 130 : timedOut ? 124 : exitCode,
     logPath,
     reportPath,
     primaryOpenPath,
     artifacts,
     summary,
-    error: cancelled ? "xTB job cancelled." : ok ? null : `xTB failed. ${truncateText(log || String(commandError), 480)}`,
+    error: cancelled
+      ? "xTB job cancelled."
+      : timedOut
+        ? `xTB timed out after ${Math.round(timeout / 1000)} seconds. ${truncateText(log, 480)}`
+        : ok ? null : `xTB failed. ${truncateText(log || String(commandError), 480)}`,
   };
   await writeBrowserDevXtbReport(reportPath, result, log);
-  finishBrowserDevJob(jobKey);
   return result;
 }
 
@@ -3006,9 +3025,6 @@ function browserDevXtbOperationLabel(operation: string) {
   const labels: Record<string, string> = {
     optimize: "xTB Optimize",
     properties: "xTB Properties",
-    "grid-properties": "xTB Properties",
-    "fep-preflight": "xTB FEP Preflight",
-    "pose-refine": "xTB Pose Refine",
     cube: "xTB Cube",
     hessian: "xTB Hessian",
     "optimized-hessian": "xTB Optimized Hessian",
@@ -3019,9 +3035,19 @@ function browserDevXtbOperationLabel(operation: string) {
     vomega: "xTB Omega",
     md: "xTB MD",
     metadyn: "xTB Metadynamics",
-    dock: "xTB Docking",
   };
   return labels[operation] ?? `xTB ${operation}`;
+}
+
+function assertBrowserDevXtbOperation(operation: string) {
+  if (operation === "grid-properties") {
+    throw new Error("xTB Properties requires one molecule. Open a specific molecule in Mol* before running it.");
+  }
+}
+
+function browserDevCommandTimedOut(error: unknown) {
+  const value = error as { killed?: unknown; signal?: unknown } | null;
+  return value?.killed === true && value.signal === "SIGTERM";
 }
 
 async function prepareBrowserDevXtbInput(request: BrowserDevXtbRunRequest, workDir: string) {
@@ -3131,21 +3157,11 @@ async function appendBrowserDevXtbPrepLog(path: string, message: string) {
 }
 
 async function buildBrowserDevXtbArgs(request: BrowserDevXtbRunRequest, operation: string, inputPath: string, workDir: string) {
-  const secondaryPaths = Array.isArray(request.secondaryPaths) ? request.secondaryPaths.map((path) => resolve(path)) : [];
   const args: string[] = [];
-  if (operation === "dock") {
-    const secondary = secondaryPaths[0];
-    if (!secondary) throw new Error("xTB docking requires a second structure path.");
-    if (!isDevFileReadAllowed(secondary)) throw new Error(`Forbidden secondary path: ${secondary}`);
-    const secondaryInputPath = await prepareBrowserDevXtbInputWithHydrogens(secondary, workDir, "secondary-1-with-h");
-    args.push("dock", inputPath, secondaryInputPath);
-    appendBrowserDevXtbCommonArgs(args, request);
-    return args;
-  }
   args.push(inputPath);
   if (operation === "optimize") {
     args.push("--opt", xtbOptLevel(request.optLevel), "--json");
-  } else if (["properties", "grid-properties", "fep-preflight", "pose-refine"].includes(operation)) {
+  } else if (operation === "properties") {
     args.push("--scc", "--json", ...browserDevXtbPropertyArgs(request.properties));
   } else if (operation === "cube") {
     const inputFile = join(workDir, "xcontrol.inp");
@@ -3398,8 +3414,10 @@ function parseBrowserDevFukuiRows(text: string) {
 }
 
 function primaryBrowserDevXtbOpenPath(operation: string, artifacts: Awaited<ReturnType<typeof collectBrowserDevXtbArtifacts>>) {
-  const preferred = operation === "optimize" || operation === "pose-refine"
-    ? ["xtbopt.xyz", "xtbopt.pdb", "xtbopt.sdf", "xtbopt.mol"]
+  const preferred = operation === "optimize"
+    ? ["xtbopt.xyz", "xtbopt.pdb", "xtbopt.sdf", "xtbopt.mol", "xtbopt.log"]
+    : operation === "optimized-hessian"
+      ? ["xtbopt.xyz", "xtbopt.pdb", "xtbopt.sdf", "xtbopt.mol"]
     : operation === "cube"
       ? ["density.cub", "fod.cub", "density.cube"]
       : operation === "md" || operation === "metadyn"
@@ -3409,7 +3427,7 @@ function primaryBrowserDevXtbOpenPath(operation: string, artifacts: Awaited<Retu
     const artifact = artifacts.find((item) => item.title === name);
     if (artifact) return artifact.path;
   }
-  return artifacts.find((item) => ["structure", "cube", "trajectory"].includes(item.kind))?.path ?? null;
+  return null;
 }
 
 async function writeBrowserDevXtbReport(path: string, result: Awaited<ReturnType<typeof runBrowserDevXtbJob>>, log: string) {
@@ -3417,7 +3435,7 @@ async function writeBrowserDevXtbReport(path: string, result: Awaited<ReturnType
     "# xTB Job Report",
     "",
     `- Operation: \`${result.operation}\``,
-    `- Status: \`${result.ok ? "success" : "failed"}\``,
+    `- Status: \`${result.exitCode === 130 ? "cancelled" : result.ok ? "success" : result.primaryOpenPath ? "recovered" : "failed"}\``,
     `- Exit code: \`${result.exitCode ?? "none"}\``,
     `- Elapsed: \`${result.elapsedMs}\` ms`,
     `- Work directory: \`${result.workDir}\``,
