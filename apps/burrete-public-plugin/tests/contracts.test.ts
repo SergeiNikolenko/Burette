@@ -93,6 +93,7 @@ describe("viewer resource contract", () => {
     expect(html).toContain("__BURRETE_HOSTED_MCP_WIDGET__");
     expect(html).toContain("__BURRETE_HOSTED_MCP_BRIDGE_READY__");
     expect(html).toContain('<div id="root"></div>');
+    expect(html).toContain("body .app-shell { width: 100%; height: 100%; }");
     expect(html).not.toContain("<iframe");
     expect(html).not.toContain("Open full viewer");
     expect(html).not.toContain("OpenAI App");
