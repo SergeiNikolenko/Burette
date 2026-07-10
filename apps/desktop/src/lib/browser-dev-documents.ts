@@ -9,7 +9,7 @@ type FormatInfo = {
   canOpenInVesta: boolean;
 };
 
-type GridRecord = {
+export type GridRecord = {
   index: number;
   name: string;
   smiles?: string;
@@ -1431,6 +1431,10 @@ function gridPayload(path: string, extension: string, text: string) {
     return records.length > 0 ? { format: extension, records } : null;
   }
   return null;
+}
+
+export function parseBrowserDevDelimitedGridRecords(text: string, extension: "csv" | "tsv") {
+  return parseDelimited(text, extension === "csv" ? "," : "\t");
 }
 
 function parseSmiles(text: string): GridRecord[] {
