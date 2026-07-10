@@ -144,7 +144,6 @@ export function useAppConformerWorkflows({
       rmsdThresholdAngstrom: conformerSettings.rmsdThresholdAngstrom,
       samplingMode: conformerSettings.samplingMode,
       prismEnergySort: conformerSettings.prismEnergySort,
-      prismRotamerPruning: conformerSettings.prismRotamerPruning,
     };
     let preparedRun: ConformerPreparedRun;
     try {
@@ -208,6 +207,8 @@ export function useAppConformerWorkflows({
         return;
       }
       pushErrorStatus(error, `${title} failed`);
+    } finally {
+      cancelledConformerJobIdsRef.current.delete(jobId);
     }
   }, [cancelledConformerJobIdsRef, conformerSettings, openPaths, openTextDocuments, pushErrorStatus, pushStatus, setConformerJobs, setConformerStatus]);
 
@@ -218,6 +219,10 @@ export function useAppConformerWorkflows({
   ) => {
     if (!document) {
       pushStatus("Open a small molecule or conformer ensemble before running CREST/PRISM.", "error");
+      return;
+    }
+    if (operation === "crest-generate" && document.renderer === "grid2d" && !selection) {
+      pushStatus("Open a specific molecule from the collection in Mol* before running CREST.", "error");
       return;
     }
     let selectedInput: SelectedConformerInput | null = null;
