@@ -33,26 +33,7 @@ export function xtbStructureMenuItems(actions: XtbMenuActions, target: XtbMenuTa
   };
 
   if (target.renderer === "grid2d") {
-    return [
-      {
-        kind: "item",
-        id: `${target.idPrefix}-xtb-grid-properties`,
-        text: "xTB Grid Properties",
-        detail: target.title,
-        action: () => void actions.runXtbJob({
-          operation: "grid-properties",
-          inputPath: target.path,
-          label: target.title,
-        }, {
-          title: "xTB Grid Properties",
-          inputLabel: target.title,
-          openPrimary: false,
-        }),
-      },
-      { kind: "separator" },
-      jobsItem,
-      settingsItem,
-    ];
+    return [jobsItem, settingsItem];
   }
 
   return [
