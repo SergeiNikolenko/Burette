@@ -2225,7 +2225,6 @@ assert.match(appXtbWorkflowsHook, /requestXtbStatus\(\)\.then\(setXtbStatus\)\.c
 assert.match(appXtbWorkflowsHook, /openOptimizedPoseInCurrentView/);
 assert.match(appXtbWorkflowsHook, /xtbOperationLabel\(operation\)/);
 assert.match(appXtbWorkflowsHook, /molstarContextEntryExtension\(entry\.format\)/);
-assert.match(appXtbWorkflowsHook, /operation === "dock"/);
 assert.match(appViewerHostMessagesHook, /Structure action did not match the structure/);
 assert.match(appViewerHostMessagesHook, /bodyString\(body\.id\)\.startsWith\("text-selection-"\)/);
 assert.doesNotMatch(app, /pushStatus\("Text selection applied"/);

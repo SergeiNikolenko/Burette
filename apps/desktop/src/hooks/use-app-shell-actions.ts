@@ -113,11 +113,9 @@ type UseAppShellActionsOptions = {
   runExternalRuntimeDoctor: ShellActions["runExternalRuntimeDoctor"];
   runStructureViewerAction: ShellActions["runStructureViewerAction"];
   runXtbActiveOperation: ShellActions["runXtbActiveOperation"];
-  runXtbFepPreflight: ShellActions["runXtbFepPreflight"];
   runXtbGridScoring: ShellActions["runXtbGridScoring"];
   runXtbJob: ShellActions["runXtbJob"];
   runXtbKetcherSketch: ShellActions["runXtbKetcherSketch"];
-  runXtbPoseRefinement: ShellActions["runXtbPoseRefinement"];
   saveKetcherDraft: ShellActions["saveKetcherDraft"];
   saveKetcherExportFile: ShellActions["saveKetcherExportFile"];
   saveMoleculeCollectionAs: ShellActions["saveMoleculeCollectionAs"];
@@ -222,8 +220,6 @@ type ChemistryShellActions = Pick<
   | "cancelXtbJob"
   | "runXtbKetcherSketch"
   | "runXtbGridScoring"
-  | "runXtbPoseRefinement"
-  | "runXtbFepPreflight"
   | "clearXtbJobs"
   | "setXtbSettings"
 >;
@@ -427,8 +423,6 @@ const workspaceHistoryNoneActions = new Set<keyof ShellActions>([
   "cancelXtbJob",
   "runXtbKetcherSketch",
   "runXtbGridScoring",
-  "runXtbPoseRefinement",
-  "runXtbFepPreflight",
   "clearXtbJobs",
   "openWorkspaceFolder",
   "setSidebarQuery",
@@ -590,8 +584,6 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       cancelXtbJob: actions.cancelXtbJob,
       runXtbKetcherSketch: actions.runXtbKetcherSketch,
       runXtbGridScoring: actions.runXtbGridScoring,
-      runXtbPoseRefinement: actions.runXtbPoseRefinement,
-      runXtbFepPreflight: actions.runXtbFepPreflight,
       clearXtbJobs: actions.clearXtbJobs,
       setXtbSettings: actions.setXtbSettings,
     },
@@ -771,11 +763,9 @@ export function useAppShellActions({
   runExternalRuntimeDoctor,
   runStructureViewerAction,
   runXtbActiveOperation,
-  runXtbFepPreflight,
   runXtbGridScoring,
   runXtbJob,
   runXtbKetcherSketch,
-  runXtbPoseRefinement,
   saveKetcherDraft,
   saveKetcherExportFile,
   saveMoleculeCollectionAs,
@@ -866,8 +856,6 @@ export function useAppShellActions({
     cancelXtbJob,
     runXtbKetcherSketch,
     runXtbGridScoring,
-    runXtbPoseRefinement,
-    runXtbFepPreflight,
     setXtbSettings,
     saveKetcherDraft,
     clearKetcherImportRequest,
