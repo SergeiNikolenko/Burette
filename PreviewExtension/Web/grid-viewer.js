@@ -337,6 +337,10 @@
         void refreshRemote(config());
         return;
       }
+      if (body.type === 'gridAppendRecords') {
+        void appendGridRecordsFromHost(body, config());
+        return;
+      }
       if (body.type === 'gridDescriptorControls') {
         applyDescriptorGridControls(body, config());
         return;
@@ -2744,6 +2748,9 @@
       const row = state.rows.find(candidate => Number(candidate.index) === index);
       if (!row) return;
       rowEl.addEventListener('click', event => handleTableRowSelection(event, row, cfg, rowEl));
+      rowEl.addEventListener('keydown', event => {
+        if (event.key === ' ' || event.key === 'Enter') handleTableRowSelection(event, row, cfg, rowEl);
+      });
       rowEl.addEventListener('dblclick', event => handleTableRowOpen(event, row, cfg));
       rowEl.addEventListener('contextmenu', event => showMoleculeContextMenu(event, row));
       installTableMoleculeHover(rowEl, row, cfg);
@@ -2948,8 +2955,9 @@
     const selected = state.selected.has(index);
     const className = `buret-grid-table-row${selected ? ' selected' : ''}${state.smartsMatches.has(index) ? ' smarts-match' : ''}`;
     const rowSearchMatch = tableRowMatchesSearch(row, columns);
+    const selectionAttributes = capabilities(cfg).selection ? ' tabindex="0"' : '';
     return `
-      <tr class="${className}" data-index="${escapeHTML(String(index))}" aria-selected="${selected ? 'true' : 'false'}">
+      <tr class="${className}" data-index="${escapeHTML(String(index))}" aria-selected="${selected ? 'true' : 'false'}"${selectionAttributes}>
         ${columns.map(column => {
           if (column.spacer) return tableSpacerCellHTML('td', column);
           const searchMatch = tableColumnMatchesSearch(row, column) || (column.id === 'molecule' && rowSearchMatch);
@@ -3267,7 +3275,7 @@
 
   function isCardDragSource(target) {
     if (!(target instanceof Element)) return true;
-    return !target.closest('[data-buret-card-resize], [data-buret-molecule-picture], button, input, select, textarea, [contenteditable="true"]');
+    return !target.closest('[data-buret-card-resize], button, input, select, textarea, [contenteditable="true"]');
   }
 
   function installCardDrop(el, row, cfg) {
@@ -3289,7 +3297,8 @@
       event.stopPropagation();
       el.classList.remove('buret-card-drop-target');
       const payload = readStructureDropPayload(event.dataTransfer);
-      if (!payload || payload.records.length > 1 || payload.paths.length > 1 || (payload.records.length + payload.paths.length) !== 1) {
+      const sourceCount = payload ? payload.records.length + payload.paths.length + payload.files.length : 0;
+      if (!payload || sourceCount !== 1) {
         setStatus('[grid] Drop a single molecule record or file to replace a grid row.', 'error');
         return;
       }
@@ -3314,27 +3323,173 @@
     try {
       const raw = dataTransfer?.getData(STRUCTURE_DRAG_MIME);
       if (raw) {
-        const parsed = JSON.parse(raw);
-        const paths = Array.isArray(parsed?.paths)
-          ? parsed.paths.map(path => String(path || '').trim()).filter(Boolean)
-          : [];
-        const records = Array.isArray(parsed?.records)
-          ? parsed.records.map(normalizeStructureDropRecord).filter(Boolean)
-          : [];
-        return { paths, records };
+        try {
+          const parsed = JSON.parse(raw);
+          const paths = Array.isArray(parsed?.paths)
+            ? [...new Set(parsed.paths.map(path => String(path || '').trim()).filter(Boolean))]
+            : [];
+          const records = Array.isArray(parsed?.records)
+            ? parsed.records.map(normalizeStructureDropRecord).filter(Boolean)
+            : [];
+          return { paths, records, files: [] };
+        } catch (_) {}
       }
-      const paths = Array.from(dataTransfer?.files || [])
-        .map(file => String(file?.path || '').trim())
-        .filter(Boolean);
-      if (paths.length > 0) return { paths, records: [] };
+      const files = Array.from(dataTransfer?.files || []);
+      const paths = [...new Set(files.map(file => String(file?.path || '').trim()).filter(Boolean))];
+      const inlineFiles = files.filter(file => !String(file?.path || '').trim());
+      if (paths.length > 0 || inlineFiles.length > 0) return { paths, records: [], files: inlineFiles };
     } catch (_) {
       return null;
     }
     return null;
   }
 
+  async function appendGridRecordsFromHost(body, cfg) {
+    if (state.remoteMode) {
+      setStatus('[grid] Browser append is unavailable for the desktop paged grid.', 'error');
+      return;
+    }
+    const records = Array.isArray(body.records)
+      ? body.records.map(normalizeStructureDropRecord).filter(Boolean)
+      : [];
+    const suppliedRows = Array.isArray(body.rows)
+      ? body.rows.map(normalizeGridAppendRow).filter(Boolean)
+      : [];
+    const errors = [];
+    const paths = [...new Set(Array.isArray(body.paths) ? body.paths.map(path => String(path || '').trim()).filter(Boolean) : [])];
+    for (const path of paths) {
+      try {
+        const response = await hostRequest('readStructureText', { path });
+        const record = normalizeStructureDropRecord({
+          path,
+          inputExtension: structureRecordExtension(null, path),
+          text: response.text
+        });
+        if (record) records.push(record);
+        else errors.push(`${path}: file is empty`);
+      } catch (error) {
+        errors.push(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    const appendedRows = [];
+    let nextIndex = nextGridRowIndex();
+    for (const row of suppliedRows) {
+      appendedRows.push({ ...row, index: nextIndex });
+      nextIndex += 1;
+    }
+    for (const record of records) {
+      const result = gridRowsFromStructureRecord(record, cfg, nextIndex);
+      if (result.error) errors.push(result.error);
+      appendedRows.push(...result.rows);
+      nextIndex += result.rows.length;
+    }
+    if (!appendedRows.length) {
+      setStatus(errors[0] || '[grid] No supported molecule records were provided for append.', 'error');
+      return;
+    }
+    pushUndoSnapshot('append molecules');
+    state.all.push(...appendedRows);
+    window.BurreteGridRecords = state.all;
+    state.selected.clear();
+    state.selectionAnchorIndex = null;
+    state.svgCache.clear();
+    state.xyzrenderCardCache.clear();
+    invalidateTableColumnCatalog();
+    markGridDirty('appended molecules');
+    refresh(cfg);
+    const message = `[grid] Added ${appendedRows.length.toLocaleString()} molecule${appendedRows.length === 1 ? '' : 's'}.`;
+    setStatus(errors.length ? `${message} Skipped ${errors.length.toLocaleString()} unsupported source${errors.length === 1 ? '' : 's'}: ${errors[0]}` : message, errors.length ? 'error' : 'info');
+  }
+
+  function gridRowsFromStructureRecord(record, cfg, startIndex) {
+    const extension = structureRecordExtension(record, record?.path);
+    const targetFormat = String(cfg?.format || '').toLowerCase();
+    const sourceFormat = extension === 'sdf' || extension === 'sd'
+      ? 'sdf'
+      : extension === 'smi' || extension === 'smiles'
+      ? 'smiles'
+      : '';
+    if (!sourceFormat || sourceFormat !== targetFormat) {
+      return {
+        rows: [],
+        error: `${record?.path || 'Molecule record'}: cannot append ${sourceFormat || extension || 'unknown'} records to ${targetFormat || 'this'} grid`
+      };
+    }
+    const recordTexts = sourceFormat === 'sdf'
+      ? splitSdfDropRecords(record.text)
+      : String(record.text || '').split(/\r?\n/u).map(line => line.trim()).filter(line => line && !line.startsWith('#'));
+    const rows = [];
+    for (const text of recordTexts) {
+      const index = startIndex + rows.length;
+      const patch = recordToGridRowPatch({ ...record, text }, { index, name: `Molecule ${index + 1}`, props: {} });
+      if (!patch) continue;
+      rows.push({
+        index,
+        name: patch.name,
+        molblock: patch.molblock || '',
+        smiles: patch.smiles || '',
+        props: patch.props || {}
+      });
+    }
+    return {
+      rows,
+      error: rows.length ? '' : `${record?.path || 'Molecule record'}: no supported molecule records found`
+    };
+  }
+
+  function normalizeGridAppendRow(row) {
+    if (!row || typeof row !== 'object') return null;
+    const props = row.props && typeof row.props === 'object'
+      ? Object.fromEntries(Object.entries(row.props)
+        .filter(([key, value]) => String(key).trim() && String(value ?? '').trim())
+        .map(([key, value]) => [String(key), String(value)]))
+      : {};
+    const descriptors = row.descriptors && typeof row.descriptors === 'object' ? row.descriptors : null;
+    return {
+      name: String(row.name || '').trim() || 'Molecule',
+      molblock: String(row.molblock || '').trimEnd(),
+      smiles: String(row.smiles || '').trim(),
+      props,
+      ...(descriptors ? { descriptors } : {})
+    };
+  }
+
+  function splitSdfDropRecords(text) {
+    const records = [];
+    let lines = [];
+    const finish = () => {
+      const record = lines.join('\n').trim();
+      lines = [];
+      if (record) records.push(record);
+    };
+    for (const line of String(text || '').replace(/\r\n?/gu, '\n').split('\n')) {
+      if (/^\s*\$\$\$\$\s*$/u.test(line)) finish();
+      else lines.push(line);
+    }
+    finish();
+    return records;
+  }
+
   async function replaceGridRowFromDropPayload(row, payload, cfg) {
     let record = payload.records[0] || null;
+    if (!record && payload.files.length === 1) {
+      const file = payload.files[0];
+      if (Number(file?.size || 0) > 25 * 1024 * 1024) {
+        setStatus('[grid] Dropped file is larger than the 25 MB row-replacement limit.', 'error');
+        return;
+      }
+      try {
+        const text = typeof file?.text === 'function' ? await file.text() : '';
+        record = normalizeStructureDropRecord({
+          path: String(file?.name || 'dropped-structure'),
+          inputExtension: structureRecordExtension(null, file?.name),
+          text
+        });
+      } catch (error) {
+        setStatus(`[grid] Could not read dropped file: ${error instanceof Error ? error.message : String(error)}`, 'error');
+        return;
+      }
+    }
     if (!record && payload.paths.length === 1) {
       const path = payload.paths[0];
       try {
@@ -3348,6 +3503,11 @@
         setStatus(`[grid] Could not read dropped file: ${error instanceof Error ? error.message : String(error)}`, 'error');
         return;
       }
+    }
+    const recordExtension = structureRecordExtension(record, record?.path);
+    if ((recordExtension === 'sdf' || recordExtension === 'sd') && splitSdfDropRecords(record?.text).length !== 1) {
+      setStatus('[grid] Drop exactly one SDF molecule to replace a grid row.', 'error');
+      return;
     }
     const patch = recordToGridRowPatch(record, row);
     if (!patch) {
@@ -3557,7 +3717,8 @@
     if (!Number.isFinite(rowIndex) || !state.selected.has(rowIndex) || state.selected.size < 2) {
       return [gridDragRecord(row)].filter(Boolean);
     }
-    return state.rows
+    const pool = state.remoteMode ? state.rows : state.all;
+    return pool
       .filter(candidate => state.selected.has(Number(candidate.index)))
       .map(candidate => gridDragRecord(candidate))
       .filter(Boolean);
