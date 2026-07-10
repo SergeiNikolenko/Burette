@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
 #[cfg(unix)]
@@ -18,6 +18,17 @@ const XTB_RUN_METADATA_FILE: &str = ".burrete-xtb-run.json";
 
 type RunningXtbJobs = Mutex<HashMap<String, Arc<Mutex<Child>>>>;
 static RUNNING_XTB_JOBS: OnceLock<RunningXtbJobs> = OnceLock::new();
+static CANCELLED_XTB_JOBS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+struct XtbJobCleanup {
+    job_id: Option<String>,
+}
+
+impl Drop for XtbJobCleanup {
+    fn drop(&mut self) {
+        finish_xtb_job(self.job_id.as_deref());
+    }
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,7 +49,6 @@ pub(crate) struct XtbRunRequest {
     input_text: Option<String>,
     input_extension: Option<String>,
     source_path: Option<String>,
-    secondary_paths: Option<Vec<String>>,
     label: Option<String>,
     method: Option<String>,
     charge: Option<i32>,
@@ -112,21 +122,7 @@ pub(crate) fn install_xtb() -> Result<XtbStatus, String> {
         return Ok(xtb_status_from_environment());
     }
 
-    let uv = resolve_executable("uv")
-        .ok_or_else(|| "Neither pixi nor uv is available to install xTB.".to_string())?;
-    let output = Command::new(&uv)
-        .args(["tool", "install", "xtb"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|err| format!("Could not start uv: {err}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "uv tool install xtb failed. xTB is normally distributed through conda-forge, so install pixi and retry. {}",
-            command_output_text(&output.stdout, &output.stderr)
-        ));
-    }
-    Ok(xtb_status_from_environment())
+    Err("Automatic xTB installation requires pixi. Install pixi and run `pixi global install xtb`, or install xTB from conda-forge and make it available on PATH.".into())
 }
 
 #[tauri::command]
@@ -141,6 +137,14 @@ pub(crate) async fn run_xtb_job<R: Runtime>(
 
 #[tauri::command]
 pub(crate) fn cancel_xtb_job(job_id: String) -> Result<(), String> {
+    let job_id = job_id.trim().to_string();
+    if job_id.is_empty() {
+        return Ok(());
+    }
+    cancelled_xtb_jobs()
+        .lock()
+        .map_err(|_| "xTB job cancellation registry is unavailable.".to_string())?
+        .insert(job_id.clone());
     let child = {
         let registry = running_xtb_jobs();
         let jobs = registry
@@ -168,6 +172,15 @@ fn run_xtb_job_blocking<R: Runtime>(
     request: XtbRunRequest,
 ) -> Result<XtbRunResult, String> {
     let started = Instant::now();
+    let job_id = request
+        .job_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string);
+    let _job_cleanup = XtbJobCleanup {
+        job_id: job_id.clone(),
+    };
+    assert_supported_xtb_operation(&request.operation)?;
     let started_at_ms = unix_timestamp_ms();
     let executable = resolve_xtb_executable()?;
     let work_dir = xtb_work_dir(&app, &request)?;
@@ -179,11 +192,7 @@ fn run_xtb_job_blocking<R: Runtime>(
         &work_dir,
         "input-with-h",
     )?;
-    let secondary_paths = prepare_xtb_secondary_inputs(
-        request.secondary_paths.clone().unwrap_or_default(),
-        &work_dir,
-    )?;
-    let command_args = build_xtb_args(&request, &input_path, &secondary_paths, &work_dir)?;
+    let command_args = build_xtb_args(&request, &input_path, &work_dir)?;
     let timeout = Duration::from_secs(
         request
             .timeout_seconds
@@ -199,14 +208,35 @@ fn run_xtb_job_blocking<R: Runtime>(
         &log_path,
         timeout,
         threads,
-        request.job_id.as_deref(),
+        job_id.as_deref(),
     )?;
-    let artifacts = collect_xtb_artifacts(&work_dir)?;
-    let summary = read_xtb_summary(&work_dir);
-    let primary_open_path = primary_open_path_for(&request.operation, &artifacts);
-    let ok = status.success();
-    let error = if ok {
+    let cancelled = xtb_job_was_cancelled(job_id.as_deref());
+    let artifacts = if cancelled {
+        Vec::new()
+    } else {
+        collect_xtb_artifacts(&work_dir)?
+    };
+    let summary = if cancelled {
         None
+    } else {
+        read_xtb_summary(&work_dir)
+    };
+    let primary_open_path = if cancelled {
+        None
+    } else {
+        primary_open_path_for(&request.operation, &artifacts)
+    };
+    let ok = status.success() && !cancelled;
+    let error = if cancelled {
+        Some("xTB job cancelled.".into())
+    } else if ok {
+        None
+    } else if status.code() == Some(124) {
+        Some(format!(
+            "xTB timed out after {} seconds. {}",
+            timeout.as_secs(),
+            truncate_text(&log, 480)
+        ))
     } else {
         let recovery_note = if primary_open_path.is_some() {
             " A partial artifact was captured, but xTB did not produce a complete final result."
@@ -377,9 +407,7 @@ fn write_xtb_run_metadata(
 fn xtb_operation_label(operation: &str) -> &'static str {
     match operation {
         "optimize" => "xTB Optimize",
-        "properties" | "grid-properties" => "xTB Properties",
-        "fep-preflight" => "xTB FEP Preflight",
-        "pose-refine" => "xTB Pose Refine",
+        "properties" => "xTB Properties",
         "cube" => "xTB Cube",
         "hessian" => "xTB Hessian",
         "optimized-hessian" => "xTB Optimized Hessian",
@@ -388,9 +416,15 @@ fn xtb_operation_label(operation: &str) -> &'static str {
         "vomega" => "xTB Omega",
         "md" => "xTB MD",
         "metadyn" => "xTB Metadynamics",
-        "dock" => "xTB Docking",
         _ => "xTB Job",
     }
+}
+
+fn assert_supported_xtb_operation(operation: &str) -> Result<(), String> {
+    if operation == "grid-properties" {
+        return Err("xTB Properties requires one molecule. Open a specific molecule in Mol* before running it.".into());
+    }
+    Ok(())
 }
 
 fn xtb_status_from_environment() -> XtbStatus {
@@ -406,9 +440,8 @@ fn xtb_status_from_environment() -> XtbStatus {
             installed: false,
             executable_path: None,
             version: None,
-            installer: resolve_executable("pixi").map(|_| "pixi".to_string())
-                .or_else(|| resolve_executable("uv").map(|_| "uv".to_string())),
-            install_hint: "Install xTB with pixi global install xtb. Burrete can run that installer when pixi is available.".into(),
+            installer: resolve_executable("pixi").map(|_| "pixi".to_string()),
+            install_hint: "Install xTB with `pixi global install xtb` or from conda-forge. Burrete can run the pixi installer when pixi is available.".into(),
         },
     }
 }
@@ -518,30 +551,6 @@ fn prepare_xtb_input(request: &XtbRunRequest, work_dir: &Path) -> Result<PathBuf
         return Err(format!("{} is not a file.", canonical.display()));
     }
     Ok(canonical)
-}
-
-fn prepare_xtb_secondary_inputs(
-    paths: Vec<String>,
-    work_dir: &Path,
-) -> Result<Vec<String>, String> {
-    paths
-        .iter()
-        .enumerate()
-        .map(|(index, path)| {
-            let canonical = PathBuf::from(path)
-                .canonicalize()
-                .map_err(|err| format!("{path}: {err}"))?;
-            if !canonical.is_file() {
-                return Err(format!("{} is not a file.", canonical.display()));
-            }
-            prepare_xtb_input_with_hydrogens(
-                &canonical,
-                work_dir,
-                &format!("secondary-{}-with-h", index + 1),
-            )
-            .map(|path| path.to_string_lossy().to_string())
-        })
-        .collect()
 }
 
 fn prepare_xtb_input_with_hydrogens(
@@ -707,22 +716,10 @@ fn append_xtb_prep_log(path: &Path, message: &str) {
 fn build_xtb_args(
     request: &XtbRunRequest,
     input_path: &Path,
-    secondary_paths: &[String],
     work_dir: &Path,
 ) -> Result<Vec<String>, String> {
     let operation = request.operation.as_str();
     let mut args = Vec::new();
-    if operation == "dock" {
-        let secondary = secondary_paths
-            .first()
-            .ok_or_else(|| "xTB docking requires a second structure path.".to_string())?;
-        args.push("dock".into());
-        args.push(input_path.to_string_lossy().to_string());
-        args.push(secondary.clone());
-        append_common_xtb_args(&mut args, request);
-        return Ok(args);
-    }
-
     args.push(input_path.to_string_lossy().to_string());
     match operation {
         "optimize" => {
@@ -730,7 +727,7 @@ fn build_xtb_args(
             args.push(xtb_opt_level(request.opt_level.as_deref()));
             args.push("--json".into());
         }
-        "properties" | "grid-properties" | "fep-preflight" | "pose-refine" => {
+        "properties" => {
             args.push("--scc".into());
             args.push("--json".into());
             args.extend(xtb_property_args(request.properties.as_ref()));
@@ -905,6 +902,30 @@ fn running_xtb_jobs() -> &'static RunningXtbJobs {
     RUNNING_XTB_JOBS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn cancelled_xtb_jobs() -> &'static Mutex<HashSet<String>> {
+    CANCELLED_XTB_JOBS.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn xtb_job_was_cancelled(job_id: Option<&str>) -> bool {
+    let Some(job_id) = job_id.filter(|value| !value.trim().is_empty()) else {
+        return false;
+    };
+    cancelled_xtb_jobs()
+        .lock()
+        .map(|jobs| jobs.contains(job_id))
+        .unwrap_or(false)
+}
+
+fn finish_xtb_job(job_id: Option<&str>) {
+    unregister_xtb_job(job_id);
+    let Some(job_id) = job_id.filter(|value| !value.trim().is_empty()) else {
+        return;
+    };
+    if let Ok(mut jobs) = cancelled_xtb_jobs().lock() {
+        jobs.remove(job_id);
+    }
+}
+
 fn register_xtb_job(job_id: Option<&str>, child: Arc<Mutex<Child>>) -> Result<(), String> {
     let Some(job_id) = job_id.filter(|value| !value.trim().is_empty()) else {
         return Ok(());
@@ -935,6 +956,11 @@ fn run_xtb_command(
     threads: u32,
     job_id: Option<&str>,
 ) -> Result<(ExitStatus, String), String> {
+    if xtb_job_was_cancelled(job_id) {
+        let log = "xTB job cancelled before the process started.\n".to_string();
+        fs::write(log_path, &log).map_err(|err| format!("{}: {err}", log_path.display()))?;
+        return Ok((cancelled_exit_status(), log));
+    }
     let mut command = Command::new(executable);
     command.args(args).current_dir(work_dir);
     if threads > 0 {
@@ -960,6 +986,18 @@ fn run_xtb_command(
     let started = Instant::now();
 
     loop {
+        if xtb_job_was_cancelled(job_id) {
+            {
+                let mut child = child
+                    .lock()
+                    .map_err(|_| "xTB job process is unavailable.".to_string())?;
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            unregister_xtb_job(job_id);
+            let log = collect_xtb_log(stdout_reader, stderr_reader, log_path);
+            return Ok((cancelled_exit_status(), log));
+        }
         let status = {
             let mut child = child
                 .lock()
@@ -983,11 +1021,7 @@ fn run_xtb_command(
             }
             unregister_xtb_job(job_id);
             let log = collect_xtb_log(stdout_reader, stderr_reader, log_path);
-            return Err(format!(
-                "xTB timed out after {} seconds. {}",
-                timeout.as_secs(),
-                truncate_text(&log, 480)
-            ));
+            return Ok((timeout_exit_status(), log));
         }
         thread::sleep(Duration::from_millis(80));
     }
@@ -1109,9 +1143,15 @@ fn artifact_kind(title: &str, extension: &str) -> String {
 
 fn primary_open_path_for(operation: &str, artifacts: &[XtbArtifact]) -> Option<String> {
     let preferred = match operation {
-        "optimize" | "pose-refine" => {
-            ["xtbopt.xyz", "xtbopt.pdb", "xtbopt.sdf", "xtbopt.mol"].as_slice()
-        }
+        "optimize" => [
+            "xtbopt.xyz",
+            "xtbopt.pdb",
+            "xtbopt.sdf",
+            "xtbopt.mol",
+            "xtbopt.log",
+        ]
+        .as_slice(),
+        "optimized-hessian" => ["xtbopt.xyz", "xtbopt.pdb", "xtbopt.sdf", "xtbopt.mol"].as_slice(),
         "cube" => ["density.cub", "fod.cub", "density.cube"].as_slice(),
         "md" | "metadyn" => ["xtb.trj", "xtbopt.xyz"].as_slice(),
         _ => &[][..],
@@ -1121,10 +1161,7 @@ fn primary_open_path_for(operation: &str, artifacts: &[XtbArtifact]) -> Option<S
             return Some(artifact.path.clone());
         }
     }
-    artifacts
-        .iter()
-        .find(|artifact| matches!(artifact.kind.as_str(), "structure" | "cube" | "trajectory"))
-        .map(|artifact| artifact.path.clone())
+    None
 }
 
 fn xtb_exit_status_text(status: ExitStatus) -> String {
@@ -1139,7 +1176,9 @@ fn xtb_exit_status_text(status: ExitStatus) -> String {
 }
 
 fn xtb_result_status_label(result: &XtbRunResult) -> &'static str {
-    if result.ok {
+    if result.exit_code == Some(130) {
+        "cancelled"
+    } else if result.ok {
         "success"
     } else if result.primary_open_path.is_some() {
         "recovered"
@@ -1458,6 +1497,30 @@ fn safe_extension(value: &str) -> String {
     }
 }
 
+#[cfg(unix)]
+fn timeout_exit_status() -> ExitStatus {
+    ExitStatus::from_raw(124 << 8)
+}
+
+#[cfg(not(unix))]
+fn timeout_exit_status() -> ExitStatus {
+    Command::new("false")
+        .status()
+        .expect("false command should produce an exit status")
+}
+
+#[cfg(unix)]
+fn cancelled_exit_status() -> ExitStatus {
+    ExitStatus::from_raw(130 << 8)
+}
+
+#[cfg(not(unix))]
+fn cancelled_exit_status() -> ExitStatus {
+    Command::new("false")
+        .status()
+        .expect("false command should produce an exit status")
+}
+
 fn unix_timestamp_ms() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1468,6 +1531,20 @@ fn unix_timestamp_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn artifact(title: &str, kind: &str) -> XtbArtifact {
+        XtbArtifact {
+            path: format!("/tmp/{title}"),
+            title: title.into(),
+            extension: Path::new(title)
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+                .into(),
+            kind: kind.into(),
+            byte_count: 1,
+        }
+    }
 
     #[test]
     fn parses_xtb_log_metrics() {
@@ -1532,5 +1609,93 @@ molecular dipole:
             summary.get("dipole / a.u."),
             Some(&json!([-1.210, -0.292, 0.279]))
         );
+    }
+
+    #[test]
+    fn property_jobs_do_not_treat_topology_or_trajectory_as_primary_results() {
+        let artifacts = vec![
+            artifact("xtbtopo.mol", "structure"),
+            artifact("xtb.trj", "trajectory"),
+        ];
+
+        assert_eq!(primary_open_path_for("properties", &artifacts), None);
+        assert_eq!(primary_open_path_for("vipea", &artifacts), None);
+    }
+
+    #[test]
+    fn grid_properties_is_rejected_before_x_tb_prepares_an_input() {
+        assert!(assert_supported_xtb_operation("grid-properties").is_err());
+    }
+
+    #[test]
+    fn optimization_uses_only_named_optimization_outputs() {
+        let topology_only = vec![artifact("xtbtopo.mol", "structure")];
+        let optimized = vec![
+            artifact("xtbtopo.mol", "structure"),
+            artifact("xtbopt.xyz", "structure"),
+        ];
+
+        assert_eq!(primary_open_path_for("optimize", &topology_only), None);
+        assert_eq!(
+            primary_open_path_for("optimize", &optimized),
+            Some("/tmp/xtbopt.xyz".into())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pre_cancelled_xtb_job_does_not_start_a_process() {
+        let job_id = format!("xtb-cancel-test-{}", unix_timestamp_ms());
+        cancelled_xtb_jobs()
+            .lock()
+            .expect("cancellation registry")
+            .insert(job_id.clone());
+        let work_dir = std::env::temp_dir().join(&job_id);
+        fs::create_dir(&work_dir).expect("create test work dir");
+        let marker = work_dir.join("process-started");
+        let log_path = work_dir.join("xtb.log");
+        let args = vec!["-c".into(), format!("touch {}", marker.to_string_lossy())];
+
+        let (status, log) = run_xtb_command(
+            Path::new("/bin/sh"),
+            &args,
+            &work_dir,
+            &log_path,
+            Duration::from_secs(1),
+            0,
+            Some(&job_id),
+        )
+        .expect("cancelled result");
+
+        let process_started = marker.exists();
+        finish_xtb_job(Some(&job_id));
+        fs::remove_dir_all(&work_dir).expect("remove test work dir");
+        assert_eq!(status.code(), Some(130));
+        assert!(log.contains("cancelled before"));
+        assert!(!process_started);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn xtb_timeout_returns_a_structured_exit_status() {
+        let work_dir =
+            std::env::temp_dir().join(format!("xtb-timeout-test-{}", unix_timestamp_ms()));
+        fs::create_dir(&work_dir).expect("create test work dir");
+        let log_path = work_dir.join("xtb.log");
+        let args = vec!["-c".into(), "sleep 1".into()];
+
+        let (status, _) = run_xtb_command(
+            Path::new("/bin/sh"),
+            &args,
+            &work_dir,
+            &log_path,
+            Duration::from_millis(10),
+            0,
+            None,
+        )
+        .expect("timeout status");
+
+        fs::remove_dir_all(&work_dir).expect("remove test work dir");
+        assert_eq!(status.code(), Some(124));
     }
 }
