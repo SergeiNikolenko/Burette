@@ -9,6 +9,7 @@ the source of truth.
 
 | Layer | Path | Responsibility |
 | --- | --- | --- |
+| Hosted OpenAI app | `apps/burrete-public-plugin` | Public HTTPS MCP tools for one authorized attachment or public PDB entry, plus the sandboxed full Mol* widget. |
 | Repository CLI | `scripts/burrete-agent.mjs` | Source-of-truth execution contract for open, observe, act, and render-panel workflows. |
 | Browser preview server | `scripts/agent-preview.mjs` | Tokenized preview surface for typed browser agent sessions. |
 | Browser shell session | `apps/desktop/vite/browser-dev/agent-session.ts`, `apps/desktop/src/hooks/use-agent-session.ts` | Browser-dev shell observe/action files and event delivery. |
@@ -19,6 +20,26 @@ the source of truth.
 Repository-local maintenance skills under `.codex/skills` are not part of the
 packaged Burrete agent plugin. Use them for development-time PR review, release
 readiness, contract checks, and PR body drafting.
+
+## Hosted OpenAI App
+
+The hosted app is a separate runtime boundary from the local desktop bridge:
+
+- Production viewer: <https://burrete-plugin.vercel.app/>
+- Production MCP: <https://burrete-plugin.vercel.app/mcp>
+- `preview_molecular_file` accepts one OpenAI-authorized PDB, ENT, PDBQT, CIF,
+  mmCIF, SDF, SD, XYZ, or extended XYZ attachment.
+- `preview_pdb_structure` accepts one four-character public PDB ID.
+- The model receives bounded structured composition data. Raw structure text is
+  placed only in result `_meta` for the sandboxed Mol* viewer.
+- Downloads are capped at 3 MiB and 200,000 lines, redirects are revalidated,
+  and HTTPS connections are pinned to DNS addresses already checked as public.
+- Attachments are processed in memory and are not written to Burrete
+  application storage.
+
+The standalone viewer opens the same widget directly with 1CRN. The app bundle,
+submission metadata, review tests, and directory skill live together under
+`apps/burrete-public-plugin`; the main repository remains the source of truth.
 
 ## CLI And Skill Map
 
@@ -104,6 +125,15 @@ For plugin changes:
 ```bash
 bun tests/test-burette-agent-plugin.mjs
 bun run test:agent
+```
+
+For the hosted OpenAI app:
+
+```bash
+cd apps/burrete-public-plugin
+bun test tests
+bun run typecheck
+bun run build
 ```
 
 For app-side shell action/session changes:
