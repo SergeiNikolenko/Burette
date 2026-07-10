@@ -1,0 +1,60 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+import { xtbStructureMenuItems } from "../apps/desktop/src/components/xtb-context-menu.ts";
+
+const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const viteConfig = source("apps/desktop/vite.config.ts");
+const xtbCommand = source("apps/desktop/src-tauri/src/commands/xtb.rs");
+const chemistrySettings = source("apps/desktop/src/lib/chemistry-settings.ts");
+const chemistryTypes = source("apps/desktop/src/types.ts");
+const chemistryJobsHook = source("apps/desktop/src/hooks/use-app-chemistry-jobs.ts");
+const shellActionsHook = source("apps/desktop/src/hooks/use-app-shell-actions.ts");
+const componentTypes = source("apps/desktop/src/components/types.ts");
+const app = source("apps/desktop/src/App.tsx");
+const xtbWorkflow = source("apps/desktop/src/hooks/use-app-xtb-workflows.ts");
+
+const calls = [];
+const actions = new Proxy({}, {
+  get: (_target, key) => (...args) => calls.push([key, ...args]),
+});
+const gridMenu = xtbStructureMenuItems(actions, {
+  path: "/tmp/collection.sdf",
+  title: "collection.sdf",
+  renderer: "grid2d",
+  idPrefix: "collection",
+});
+
+assert.deepEqual(gridMenu.map((item) => item.text), ["Open xTB Jobs", "xTB Settings"]);
+assert.doesNotMatch(JSON.stringify(gridMenu), /Grid Properties|grid-properties/u);
+assert.match(xtbWorkflow, /Open a specific molecule from the collection in Mol\* before running xTB Properties/);
+
+assert.doesNotMatch(chemistryTypes, /grid-properties/u);
+assert.doesNotMatch(chemistryTypes, /\| "dock"/u);
+assert.doesNotMatch(chemistrySettings, /xTB Dock/u);
+assert.doesNotMatch(xtbWorkflow, /operation === "dock"/u);
+assert.doesNotMatch(xtbCommand, /args\.push\("dock"\.into\(\)\)/u);
+assert.doesNotMatch(viteConfig, /args\.push\("dock", inputPath/u);
+for (const text of [chemistryTypes, componentTypes, app, shellActionsHook, xtbWorkflow, xtbCommand, viteConfig]) {
+  assert.doesNotMatch(text, /runXtbPoseRefinement|runXtbFepPreflight|pose-refine|fep-preflight|secondaryPaths|secondary_paths/u);
+}
+
+assert.match(viteConfig, /runBrowserDevXtbJobImpl\(request, jobKey\)[\s\S]*finally \{\s*finishBrowserDevJob\(jobKey\);/);
+assert.match(xtbCommand, /xTB job cancelled before the process started/);
+assert.match(viteConfig, /function execBrowserDevJobFile[\s\S]*browserDevJobWasCancelled\(jobKey\)[\s\S]*code: 130/);
+assert.match(xtbCommand, /fn assert_supported_xtb_operation[\s\S]*grid-properties/);
+assert.match(viteConfig, /function assertBrowserDevXtbOperation[\s\S]*grid-properties/);
+assert.match(viteConfig, /child\.exitCode === null && child\.signalCode === null/);
+assert.match(viteConfig, /function browserDevCommandTimedOut[\s\S]*value\?\.killed === true/);
+assert.match(viteConfig, /exitCode: cancelled \? 130 : timedOut \? 124/);
+assert.match(chemistryJobsHook, /cancelledXtbJobIdsRef\.current\.delete\(jobId\)[\s\S]*status: "running"/);
+
+assert.match(xtbCommand, /Automatic xTB installation requires pixi/);
+assert.match(viteConfig, /Automatic xTB installation requires pixi/);
+assert.doesNotMatch(xtbCommand, /uv tool install xtb/);
+assert.doesNotMatch(viteConfig, /\["tool", "install", "xtb"\]/);
+
+assert.match(xtbCommand, /fn primary_open_path_for[\s\S]*\n\s*None\n\}/);
+assert.match(viteConfig, /function primaryBrowserDevXtbOpenPath[\s\S]*\n\s*return null;\n\}/);
+
+console.log("xTB workflow contract tests passed");

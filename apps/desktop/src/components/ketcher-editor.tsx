@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import type { Ketcher, Struct } from "ketcher-core";
 import { installKetcherBrowserRequire, installKetcherRaphaelBrowserModules } from "../lib/ketcher-browser-require";
 import "ketcher-react/dist/index.css";
@@ -36,6 +36,7 @@ export type KetcherEditorApi = {
 };
 
 type KetcherReactModule = typeof import("ketcher-react");
+type KetcherReactInstance = Parameters<NonNullable<ComponentProps<KetcherReactModule["Editor"]>["onInit"]>>[0];
 type EveModule = typeof import("eve-raphael");
 type RaphaelModule = typeof import("raphael");
 type KetcherCoreModule = typeof import("ketcher-core");
@@ -346,9 +347,11 @@ export function KetcherEditor({
     return new runtime.StandaloneStructServiceProvider();
   }, [runtime]);
 
-  const handleInit = useCallback((instance: Ketcher) => {
+  const handleInit = useCallback((instance: KetcherReactInstance) => {
     if (!runtime) return;
-    onReady(createKetcherEditorApi(instance, runtime.MolSerializer, runtime.getSvgFromDrawnStructures, runtime.ZoomTool));
+    // ketcher-react can resolve its own ketcher-core copy; both expose the same runtime API.
+    const compatibleInstance = instance as unknown as Ketcher;
+    onReady(createKetcherEditorApi(compatibleInstance, runtime.MolSerializer, runtime.getSvgFromDrawnStructures, runtime.ZoomTool));
     onStatus("Ready");
   }, [onReady, onStatus, runtime]);
 

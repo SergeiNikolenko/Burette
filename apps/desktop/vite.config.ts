@@ -1827,8 +1827,8 @@ async function browserDevXtbStatus() {
       installed: false,
       executablePath: null,
       version: null,
-      installer: resolveExecutable("pixi") ? "pixi" : resolveExecutable("uv") ? "uv" : null,
-      installHint: "Install xTB with pixi global install xtb. Browser dev can run that installer when pixi is available.",
+      installer: resolveExecutable("pixi") ? "pixi" : null,
+      installHint: "Install xTB with `pixi global install xtb` or from conda-forge. Browser dev can run the pixi installer when pixi is available.",
     };
   }
   let version: string | null = null;
@@ -1855,10 +1855,7 @@ async function installBrowserDevXtb() {
     await execFileAsync(pixi, ["global", "install", "xtb"], { timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
     return browserDevXtbStatus();
   }
-  const uv = resolveExecutable("uv");
-  if (!uv) throw new Error("Neither pixi nor uv is available to install xTB.");
-  await execFileAsync(uv, ["tool", "install", "xtb"], { timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
-  return browserDevXtbStatus();
+  throw new Error("Automatic xTB installation requires pixi. Install pixi and run `pixi global install xtb`, or install xTB from conda-forge and make it available on PATH.");
 }
 
 type BrowserDevConformerRunRequest = {
@@ -1880,7 +1877,6 @@ type BrowserDevConformerRunRequest = {
   rmsdThresholdAngstrom?: unknown;
   samplingMode?: unknown;
   prismEnergySort?: unknown;
-  prismRotamerPruning?: unknown;
 };
 
 async function browserDevConformerStatus() {
@@ -1945,9 +1941,11 @@ function cancelBrowserDevJob(kind: "xtb" | "conformer", jobId: unknown) {
   const child = runningBrowserDevJobs.get(jobKey);
   if (!child) return { ok: true, cancelled: false, message: "No running process was attached to this job." };
   child.kill("SIGTERM");
-  setTimeout(() => {
-    if (!child.killed) child.kill("SIGKILL");
-  }, 1500).unref();
+  const forceKill = setTimeout(() => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }, 1500);
+  child.once("close", () => clearTimeout(forceKill));
+  forceKill.unref();
   return { ok: true, cancelled: true };
 }
 
@@ -1974,8 +1972,16 @@ async function prepareBrowserDevConformerJob(request: BrowserDevConformerRunRequ
 }
 
 async function runBrowserDevConformerJob(request: BrowserDevConformerRunRequest) {
-  const operation = browserDevConformerOperation(request.operation);
   const jobKey = browserDevJobKey("conformer", request.jobId);
+  try {
+    return await runBrowserDevConformerJobImpl(request, jobKey);
+  } finally {
+    finishBrowserDevJob(jobKey);
+  }
+}
+
+async function runBrowserDevConformerJobImpl(request: BrowserDevConformerRunRequest, jobKey: string | null) {
+  const operation = browserDevConformerOperation(request.operation);
   const executable = operation === "crest-generate"
     ? resolveExecutable("crest")
     : resolveExecutable("prism_pruner") ?? resolveExecutable("prism-pruner");
@@ -2000,7 +2006,7 @@ async function runBrowserDevConformerJob(request: BrowserDevConformerRunRequest)
   const inputText = inputBytes.toString("utf8");
   assertBrowserDevDirectChemistryInput(inputText, copiedInput.inputExtension, operation === "crest-generate" ? "CREST" : "PRISM");
   let preparedInput = operation === "crest-generate"
-    ? await prepareBrowserDevCrestInput(copiedInput.inputPath, inputText, workDir)
+    ? await prepareBrowserDevCrestInput(copiedInput.inputPath, inputText, workDir, jobKey)
     : { path: copiedInput.inputPath, text: inputText, source: "input" };
   let runRequest = request;
   let args = operation === "crest-generate"
@@ -2109,12 +2115,12 @@ async function runBrowserDevConformerJob(request: BrowserDevConformerRunRequest)
     primaryOpenPath,
   };
   await writeBrowserDevConformerReport(reportPath, result, log);
-  finishBrowserDevJob(jobKey);
   return result;
 }
 
 function browserDevConformerOperation(value: unknown): "crest-generate" | "prism-prune" {
-  return value === "prism-prune" ? "prism-prune" : "crest-generate";
+  if (value === "crest-generate" || value === "prism-prune") return value;
+  throw new Error(`Unsupported conformer operation: ${String(value || "missing")}`);
 }
 
 function browserDevConformerOutputRoot(request: BrowserDevConformerRunRequest) {
@@ -2190,10 +2196,10 @@ function browserDevConformerInputExtension(request: BrowserDevConformerRunReques
   return ["xyz", "sdf", "sd", "mol", "mol2", "pdb", "pdbqt", "ent", "cif", "mcif", "mmcif"].includes(extension) ? extension : "xyz";
 }
 
-async function prepareBrowserDevCrestInput(inputPath: string, inputText: string, workDir: string) {
+async function prepareBrowserDevCrestInput(inputPath: string, inputText: string, workDir: string, jobKey: string | null) {
   const rawPdbLigandSelection = isRawPdbLigandSelection(inputText);
   if (!rawPdbLigandSelection && shouldUsePreparedSdfDirectly(inputPath, inputText)) {
-    const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(inputPath, workDir, "input:prepared_sdf");
+    const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(inputPath, workDir, "input:prepared_sdf", jobKey);
     if (datamolPrepared) return datamolPrepared;
     return { path: inputPath, text: inputText, source: "input:prepared_sdf" };
   }
@@ -2203,7 +2209,7 @@ async function prepareBrowserDevCrestInput(inputPath: string, inputText: string,
     if (ccdSdf) {
       const preparedPath = join(workDir, `prepared_${ligandCode.toLowerCase()}_ccd.sdf`);
       await writeFile(preparedPath, ccdSdf.text, "utf8");
-      const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(preparedPath, workDir, ccdSdf.source);
+      const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(preparedPath, workDir, ccdSdf.source, jobKey);
       if (datamolPrepared) return datamolPrepared;
       return { path: preparedPath, text: ccdSdf.text, source: ccdSdf.source };
     }
@@ -2215,11 +2221,11 @@ async function prepareBrowserDevCrestInput(inputPath: string, inputText: string,
     const prepLogPath = join(workDir, "ligand-prep.log");
     const prepArgs = [inputPath, "-O", preparedPath, "-h"];
     if (shouldGenerateBrowserDevCrestInput3d(inputText)) prepArgs.push("--gen3d");
-    const { status } = await runBrowserDevLoggedExecutable(obabel, prepArgs, workDir, prepLogPath, 120_000);
+    const { status } = await runBrowserDevLoggedExecutable(obabel, prepArgs, workDir, prepLogPath, 120_000, jobKey);
     if (status === 0 && existsSync(preparedPath)) {
       const preparedText = await readFile(preparedPath, "utf8");
       const source = prepArgs.includes("--gen3d") ? "obabel:gen3d_add_h" : "obabel:add_h";
-      const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(preparedPath, workDir, source);
+      const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(preparedPath, workDir, source, jobKey);
       if (datamolPrepared) return datamolPrepared;
       return { path: preparedPath, text: preparedText, source };
     }
@@ -2227,11 +2233,11 @@ async function prepareBrowserDevCrestInput(inputPath: string, inputText: string,
   const xTbPreparedPath = await prepareBrowserDevXtbInputWithHydrogens(inputPath, workDir, "input-with-h");
   if (xTbPreparedPath !== inputPath) {
     const preparedText = await readFile(xTbPreparedPath, "utf8");
-    const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(xTbPreparedPath, workDir, "obabel:add_h");
+    const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(xTbPreparedPath, workDir, "obabel:add_h", jobKey);
     if (datamolPrepared) return datamolPrepared;
     return { path: xTbPreparedPath, text: preparedText, source: "obabel:add_h" };
   }
-  const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(inputPath, workDir, "input");
+  const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(inputPath, workDir, "input", jobKey);
   if (datamolPrepared) return datamolPrepared;
   return { path: inputPath, text: inputText, source: "input" };
 }
@@ -2255,13 +2261,13 @@ function shouldGenerateBrowserDevCrestInput3d(inputText: string) {
   return false;
 }
 
-async function prepareBrowserDevCrestInputWithDatamol(inputPath: string, workDir: string, source: string) {
+async function prepareBrowserDevCrestInputWithDatamol(inputPath: string, workDir: string, source: string, jobKey: string | null) {
   if (!shouldPrepareBrowserDevCrestInputWithDatamol(inputPath)) return null;
   const preparedPath = join(workDir, "prepared_datamol.sdf");
   const prepLogPath = join(workDir, "datamol-prep.log");
   const commands = await browserDevDatamolPrepCommands(inputPath, preparedPath);
   for (const command of commands) {
-    const { status } = await runBrowserDevLoggedExecutable(command.executable, command.args, workDir, prepLogPath, 300_000);
+    const { status } = await runBrowserDevLoggedExecutable(command.executable, command.args, workDir, prepLogPath, 300_000, jobKey);
     if (status !== 0 || !existsSync(preparedPath)) continue;
     const preparedText = await readFile(preparedPath, "utf8");
     if (!isValidSdfText(preparedText)) continue;
@@ -2568,6 +2574,7 @@ function shouldRetryCrestWithoutSolventAfterPreopt(
   const solvent = typeof request.solvent === "string" ? request.solvent : "none";
   return status !== 0 &&
     status !== 124 &&
+    status !== 130 &&
     solvent !== "none" &&
     /Initial geometry optimization failed/iu.test(log);
 }
@@ -2576,7 +2583,7 @@ function shouldRetryCrestAfterInitialOptimizationFailure(
   status: number,
   log: string,
 ) {
-  if (status === 0 || status === 124) return false;
+  if (status === 0 || status === 124 || status === 130) return false;
   return /Initial geometry optimization failed/iu.test(log);
 }
 
@@ -2611,6 +2618,11 @@ function browserDevPrismArgs(request: BrowserDevConformerRunRequest, inputPath: 
 }
 
 async function runBrowserDevLoggedExecutable(executable: string, args: string[], cwd: string, logPath: string, timeout: number, jobKey: string | null = null) {
+  if (browserDevJobWasCancelled(jobKey)) {
+    const log = "Conformer job cancelled before the process started.\n";
+    await writeFile(logPath, log, "utf8");
+    return { status: 130, log };
+  }
   await writeFile(logPath, `$ ${[executable, ...args].join(" ")}\n\n`, "utf8");
   return new Promise<{ status: number; log: string }>((resolveRun) => {
     const child = execFile(executable, args, { cwd, timeout, maxBuffer: 64 * 1024 * 1024 }, () => {});
@@ -2627,7 +2639,10 @@ async function runBrowserDevLoggedExecutable(executable: string, args: string[],
     child.on("error", (error) => append(String(error)));
     child.on("close", (code, signal) => {
       stream.end(() => {
-        resolveRun({ status: typeof code === "number" ? code : (signal ? 124 : 1), log: chunks.join("") });
+        const status = browserDevJobWasCancelled(jobKey)
+          ? 130
+          : typeof code === "number" ? code : (signal ? 124 : 1);
+        resolveRun({ status, log: chunks.join("") });
       });
     });
   });
@@ -2640,6 +2655,14 @@ function execBrowserDevJobFile(
   jobKey: string | null,
 ) {
   return new Promise<{ stdout: string; stderr: string }>((resolveRun, rejectRun) => {
+    if (browserDevJobWasCancelled(jobKey)) {
+      rejectRun(Object.assign(new Error("Job cancelled before the process started."), {
+        code: 130,
+        stdout: "",
+        stderr: "",
+      }));
+      return;
+    }
     const child = execFile(executable, args, options, (error, stdout, stderr) => {
       if (jobKey && runningBrowserDevJobs.get(jobKey) === child) runningBrowserDevJobs.delete(jobKey);
       const normalized = { stdout: stdout || "", stderr: stderr || "" };
@@ -2781,6 +2804,7 @@ async function writeBrowserDevConformerReport(path: string, result: Awaited<Retu
     `- Elapsed: ${(result.elapsedMs / 1000).toFixed(1)} s`,
     `- Command: ${result.command.map((part) => part.includes(" ") ? JSON.stringify(part) : part).join(" ")}`,
     `- Recovery: ${result.recovery ?? "None"}`,
+    `- Primary output: ${result.primaryOpenPath ?? "None"}`,
     "",
     "## Artifacts",
     "",
@@ -2803,7 +2827,6 @@ type BrowserDevXtbRunRequest = {
   inputText?: string | null;
   inputExtension?: string | null;
   sourcePath?: string | null;
-  secondaryPaths?: string[] | null;
   label?: string | null;
   method?: string | null;
   charge?: number | null;
@@ -2869,10 +2892,19 @@ function estimateBrowserDevAtomCount(text: string, extension: string) {
 }
 
 async function runBrowserDevXtbJob(request: BrowserDevXtbRunRequest) {
+  const jobKey = browserDevJobKey("xtb", request.jobId);
+  try {
+    return await runBrowserDevXtbJobImpl(request, jobKey);
+  } finally {
+    finishBrowserDevJob(jobKey);
+  }
+}
+
+async function runBrowserDevXtbJobImpl(request: BrowserDevXtbRunRequest, jobKey: string | null) {
   const executable = resolveExecutable("xtb");
   if (!executable) throw new Error("xTB executable was not found. Install it with pixi global install xtb or make xtb available on PATH.");
   const operation = request.operation || "properties";
-  const jobKey = browserDevJobKey("xtb", request.jobId);
+  assertBrowserDevXtbOperation(operation);
   await assertBrowserDevXtbDirectInput(request);
   const startedAt = Date.now();
   const workDir = await browserDevXtbWorkDir(request, operation, startedAt);
@@ -2911,9 +2943,10 @@ async function runBrowserDevXtbJob(request: BrowserDevXtbRunRequest) {
   const log = `${stdout}${stderr}`;
   await writeFile(logPath, log);
   const cancelled = browserDevJobWasCancelled(jobKey);
-  const artifacts = cancelled ? [] : await collectBrowserDevXtbArtifacts(workDir);
-  const summary = await readBrowserDevXtbSummary(workDir);
-  const primaryOpenPath = primaryBrowserDevXtbOpenPath(operation, artifacts);
+  const timedOut = !cancelled && browserDevCommandTimedOut(commandError);
+  const artifacts = cancelled || timedOut ? [] : await collectBrowserDevXtbArtifacts(workDir);
+  const summary = cancelled || timedOut ? null : await readBrowserDevXtbSummary(workDir);
+  const primaryOpenPath = cancelled || timedOut ? null : primaryBrowserDevXtbOpenPath(operation, artifacts);
   const ok = commandError === null && !cancelled;
   const result = {
     ok,
@@ -2921,16 +2954,19 @@ async function runBrowserDevXtbJob(request: BrowserDevXtbRunRequest) {
     command: [executable, ...args],
     workDir,
     elapsedMs: Date.now() - startedAt,
-    exitCode: cancelled ? 130 : exitCode,
+    exitCode: cancelled ? 130 : timedOut ? 124 : exitCode,
     logPath,
     reportPath,
     primaryOpenPath,
     artifacts,
     summary,
-    error: cancelled ? "xTB job cancelled." : ok ? null : `xTB failed. ${truncateText(log || String(commandError), 480)}`,
+    error: cancelled
+      ? "xTB job cancelled."
+      : timedOut
+        ? `xTB timed out after ${Math.round(timeout / 1000)} seconds. ${truncateText(log, 480)}`
+        : ok ? null : `xTB failed. ${truncateText(log || String(commandError), 480)}`,
   };
   await writeBrowserDevXtbReport(reportPath, result, log);
-  finishBrowserDevJob(jobKey);
   return result;
 }
 
@@ -3008,9 +3044,6 @@ function browserDevXtbOperationLabel(operation: string) {
   const labels: Record<string, string> = {
     optimize: "xTB Optimize",
     properties: "xTB Properties",
-    "grid-properties": "xTB Properties",
-    "fep-preflight": "xTB FEP Preflight",
-    "pose-refine": "xTB Pose Refine",
     cube: "xTB Cube",
     hessian: "xTB Hessian",
     "optimized-hessian": "xTB Optimized Hessian",
@@ -3021,9 +3054,19 @@ function browserDevXtbOperationLabel(operation: string) {
     vomega: "xTB Omega",
     md: "xTB MD",
     metadyn: "xTB Metadynamics",
-    dock: "xTB Docking",
   };
   return labels[operation] ?? `xTB ${operation}`;
+}
+
+function assertBrowserDevXtbOperation(operation: string) {
+  if (operation === "grid-properties") {
+    throw new Error("xTB Properties requires one molecule. Open a specific molecule in Mol* before running it.");
+  }
+}
+
+function browserDevCommandTimedOut(error: unknown) {
+  const value = error as { killed?: unknown; signal?: unknown } | null;
+  return value?.killed === true && value.signal === "SIGTERM";
 }
 
 async function prepareBrowserDevXtbInput(request: BrowserDevXtbRunRequest, workDir: string) {
@@ -3133,21 +3176,11 @@ async function appendBrowserDevXtbPrepLog(path: string, message: string) {
 }
 
 async function buildBrowserDevXtbArgs(request: BrowserDevXtbRunRequest, operation: string, inputPath: string, workDir: string) {
-  const secondaryPaths = Array.isArray(request.secondaryPaths) ? request.secondaryPaths.map((path) => resolve(path)) : [];
   const args: string[] = [];
-  if (operation === "dock") {
-    const secondary = secondaryPaths[0];
-    if (!secondary) throw new Error("xTB docking requires a second structure path.");
-    if (!isDevFileReadAllowed(secondary)) throw new Error(`Forbidden secondary path: ${secondary}`);
-    const secondaryInputPath = await prepareBrowserDevXtbInputWithHydrogens(secondary, workDir, "secondary-1-with-h");
-    args.push("dock", inputPath, secondaryInputPath);
-    appendBrowserDevXtbCommonArgs(args, request);
-    return args;
-  }
   args.push(inputPath);
   if (operation === "optimize") {
     args.push("--opt", xtbOptLevel(request.optLevel), "--json");
-  } else if (["properties", "grid-properties", "fep-preflight", "pose-refine"].includes(operation)) {
+  } else if (operation === "properties") {
     args.push("--scc", "--json", ...browserDevXtbPropertyArgs(request.properties));
   } else if (operation === "cube") {
     const inputFile = join(workDir, "xcontrol.inp");
@@ -3400,8 +3433,10 @@ function parseBrowserDevFukuiRows(text: string) {
 }
 
 function primaryBrowserDevXtbOpenPath(operation: string, artifacts: Awaited<ReturnType<typeof collectBrowserDevXtbArtifacts>>) {
-  const preferred = operation === "optimize" || operation === "pose-refine"
-    ? ["xtbopt.xyz", "xtbopt.pdb", "xtbopt.sdf", "xtbopt.mol"]
+  const preferred = operation === "optimize"
+    ? ["xtbopt.xyz", "xtbopt.pdb", "xtbopt.sdf", "xtbopt.mol", "xtbopt.log"]
+    : operation === "optimized-hessian"
+      ? ["xtbopt.xyz", "xtbopt.pdb", "xtbopt.sdf", "xtbopt.mol"]
     : operation === "cube"
       ? ["density.cub", "fod.cub", "density.cube"]
       : operation === "md" || operation === "metadyn"
@@ -3411,7 +3446,7 @@ function primaryBrowserDevXtbOpenPath(operation: string, artifacts: Awaited<Retu
     const artifact = artifacts.find((item) => item.title === name);
     if (artifact) return artifact.path;
   }
-  return artifacts.find((item) => ["structure", "cube", "trajectory"].includes(item.kind))?.path ?? null;
+  return null;
 }
 
 async function writeBrowserDevXtbReport(path: string, result: Awaited<ReturnType<typeof runBrowserDevXtbJob>>, log: string) {
@@ -3419,7 +3454,7 @@ async function writeBrowserDevXtbReport(path: string, result: Awaited<ReturnType
     "# xTB Job Report",
     "",
     `- Operation: \`${result.operation}\``,
-    `- Status: \`${result.ok ? "success" : "failed"}\``,
+    `- Status: \`${result.exitCode === 130 ? "cancelled" : result.ok ? "success" : result.primaryOpenPath ? "recovered" : "failed"}\``,
     `- Exit code: \`${result.exitCode ?? "none"}\``,
     `- Elapsed: \`${result.elapsedMs}\` ms`,
     `- Work directory: \`${result.workDir}\``,
@@ -3826,12 +3861,7 @@ export default defineConfig({
             ? "assets/burrete-hosted-shell.css"
             : "assets/[name]-[hash][extname]"
           : undefined,
-        ...(hostedMcpBuild
-          ? {}
-          : {
-              manualChunks: desktopManualChunks,
-              onlyExplicitManualChunks: true,
-            }),
+        manualChunks: hostedMcpBuild ? undefined : desktopManualChunks,
       },
     },
   },
