@@ -7,7 +7,7 @@ import { resolveDropActionChoices } from "../lib/drop-actions";
 import type { DropSourceContext, DropTargetContext } from "../lib/drop-actions";
 import type { DropAction, DropActionChoice } from "../lib/drop-actions";
 import type { DockArea, DockDropInput, DockTabKind } from "../lib/dock";
-import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 
@@ -423,7 +423,8 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       if (!fileDrop && !structureDrop) return;
       event.preventDefault();
       hideDropOverlay();
-      const payload = structureDrop
+      const point = browserDropPoint(event);
+      const payload: StructureDragPayload = structureDrop
         ? readStructureDragPayload(event.dataTransfer)
         : {
             paths: Array.from(event.dataTransfer.files)
@@ -431,14 +432,25 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
               .filter((path): path is string => Boolean(path)),
             records: [],
           };
-      payload.point = browserDropPoint(event);
+      payload.point = point;
+      const target = event.target instanceof Element ? event.target : null;
       if (payload.paths.length > 0 || payload.records.length > 0) {
-        const target = event.target instanceof Element ? event.target : null;
         if (fileDrop) {
           void runFinderDropAction(payload, dropTargetForElement(target));
         } else {
           runDropAction(payload, dropTargetForElement(target), { kind: "unknown" });
         }
+      } else if (fileDrop && !isTauriRuntime() && event.dataTransfer.files.length > 0) {
+        const files = Array.from(event.dataTransfer.files);
+        void structureDragPayloadFromBrowserFiles(files).then((result) => {
+          const nextPayload: StructureDragPayload = { ...result.payload, point };
+          if (nextPayload.records.length > 0) {
+            runDropAction(nextPayload, dropTargetForElement(target), { kind: "finder" });
+          }
+          if (result.errors.length > 0) pushStatus(result.errors.join("; "), "error");
+        }).catch((error) => {
+          pushStatus("Browser file drop failed: " + (error instanceof Error ? error.message : String(error)), "error");
+        });
       } else if (!isTauriRuntime()) {
         pushStatus("Drop files into the installed app window to open them.");
       }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { showNativeContextMenu } from "../components/native-context-menu";
 import type { StatusKind } from "../components/types";
+import { parseBrowserDevDelimitedGridRecords, type GridRecord } from "../lib/browser-dev-documents";
 import {
   delimitedColumnChoiceLabel,
   isDelimitedColumnAmbiguity,
@@ -20,6 +21,12 @@ type GridAppendResult = {
   recordsAppended: number;
   totalRows: number;
   errors: string[];
+};
+
+type BrowserGridAppend = {
+  documentId: string;
+  payload: StructureDragPayload;
+  rows?: GridRecord[];
 };
 
 type UseAppGridWorkflowsOptions = {
@@ -44,6 +51,8 @@ export function useAppGridWorkflows({
   tabs,
 }: UseAppGridWorkflowsOptions) {
   const pendingXyzrenderSheetDropRef = useRef<{ documentId: string; payload: StructureDragPayload } | null>(null);
+  const pendingBrowserGridAppendRef = useRef<BrowserGridAppend[]>([]);
+  const readyBrowserGridFramesRef = useRef<Map<string, Window>>(new Map());
 
   const postXyzrenderSheetItems = useCallback((documentId: string, payload: StructureDragPayload) => {
     const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
@@ -111,6 +120,30 @@ export function useAppGridWorkflows({
     }, "*");
   }, []);
 
+  const postBrowserGridAppend = useCallback((targetDocumentId: string, payload: StructureDragPayload, rows?: GridRecord[]) => {
+    const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
+      (item) => item.dataset.documentId === targetDocumentId,
+    );
+    if (!iframe?.contentWindow || readyBrowserGridFramesRef.current.get(targetDocumentId) !== iframe.contentWindow) return false;
+    iframe.contentWindow.postMessage({
+      source: "burrete-grid-host",
+      body: {
+        type: "gridAppendRecords",
+        documentId: targetDocumentId,
+        paths: payload.paths,
+        records: payload.records,
+        ...(rows?.length ? { rows } : {}),
+      },
+    }, "*");
+    return true;
+  }, []);
+
+  const flushPendingBrowserGridAppend = useCallback((documentId: string) => {
+    pendingBrowserGridAppendRef.current = pendingBrowserGridAppendRef.current.filter((pending) => (
+      pending.documentId !== documentId || !postBrowserGridAppend(pending.documentId, pending.payload, pending.rows)
+    ));
+  }, [postBrowserGridAppend]);
+
   const appendDelimitedGridRecords = useCallback(
     async (targetDocument: ViewerDocument, path: string, smilesColumn: string) => {
       const result = await invoke<GridAppendResult>("grid_append_delimited_records", {
@@ -160,7 +193,37 @@ export function useAppGridWorkflows({
     if (payload.paths.length === 0 && payload.records.length === 0) return false;
     const targetDocument = documents.find((document) => document.id === targetDocumentId);
     if (!targetDocument || targetDocument.renderer !== "grid2d") return false;
-    if (!isTauriRuntime()) return false;
+    if (!isTauriRuntime()) {
+      const targetExtension = targetDocument.extension.toLowerCase();
+      if ((targetExtension === "csv" || targetExtension === "tsv") && payload.records.length === 0) {
+        return false;
+      }
+      const parsedDelimitedRecords = targetExtension === "csv" || targetExtension === "tsv"
+        ? payload.records.map((record) => ({
+          record,
+          rows: record.inputExtension.toLowerCase().replace(/^\./u, "") === targetExtension
+            ? parseBrowserDevDelimitedGridRecords(record.text, targetExtension)
+            : [],
+        }))
+        : [];
+      const rows = parsedDelimitedRecords.flatMap((parsed) => parsed.rows);
+      const browserPayload = rows.length
+        ? {
+          ...payload,
+          records: parsedDelimitedRecords.flatMap((parsed) => parsed.rows.length ? [] : [parsed.record]),
+        }
+        : payload;
+      if (!postBrowserGridAppend(targetDocument.id, browserPayload, rows)) {
+        pendingBrowserGridAppendRef.current.push({ documentId: targetDocument.id, payload: browserPayload, rows });
+        const tab = tabs.find((item) => item.location.kind === "file" && (
+          item.location.documentId === targetDocument.id || item.location.path === targetDocument.path
+        ));
+        if (tab) setActiveTab(tab.id);
+      }
+      const count = payload.paths.length + payload.records.length;
+      pushStatus(`Adding ${count} molecule source${count === 1 ? "" : "s"} to grid`);
+      return true;
+    }
     void (async () => {
       try {
         const result = await invoke<GridAppendResult>("grid_append_records", {
@@ -187,7 +250,7 @@ export function useAppGridWorkflows({
       }
     })();
     return true;
-  }, [documents, notifyGridRecordsAppended, pushErrorStatus, pushStatus, showDelimitedGridColumnAppendMenu]);
+  }, [documents, notifyGridRecordsAppended, postBrowserGridAppend, pushErrorStatus, pushStatus, setActiveTab, showDelimitedGridColumnAppendMenu, tabs]);
 
   useEffect(() => {
     const pending = pendingXyzrenderSheetDropRef.current;
@@ -196,6 +259,28 @@ export function useAppGridWorkflows({
       pendingXyzrenderSheetDropRef.current = null;
     }
   }, [activeDocument?.id, postXyzrenderSheetItems]);
+
+  useEffect(() => {
+    if (activeDocument) flushPendingBrowserGridAppend(activeDocument.id);
+  }, [activeDocument?.id, flushPendingBrowserGridAppend]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data && typeof event.data === "object" ? event.data as {
+        source?: unknown;
+        body?: { type?: unknown; documentId?: unknown };
+      } : null;
+      if (data?.source !== "burrete-grid" || data.body?.type !== "ready" || typeof data.body.documentId !== "string") return;
+      const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
+        (item) => item.dataset.documentId === data.body?.documentId,
+      );
+      if (!iframe?.contentWindow || iframe.contentWindow !== event.source) return;
+      readyBrowserGridFramesRef.current.set(data.body.documentId, iframe.contentWindow);
+      flushPendingBrowserGridAppend(data.body.documentId);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [flushPendingBrowserGridAppend]);
 
   useEffect(() => {
     if (!activeDocument || activeDocument.renderer !== "grid2d") return;
