@@ -9,7 +9,7 @@ const {
   parseSdfCollectionRecords,
   splitSdfCollectionRecords,
 } = await import("../apps/desktop/src/lib/collection-documents.ts");
-const { openBrowserDevTextDocument } = await import("../apps/desktop/src/lib/browser-dev-documents.ts");
+const { openBrowserDevTextDocument, parseBrowserDevDelimitedGridRecords } = await import("../apps/desktop/src/lib/browser-dev-documents.ts");
 const { defaultPreferences } = await import("../apps/desktop/src/stores/settings-store.ts");
 
 assert.equal(collectionExtension("/tmp/a.MAE.GZ"), "gz");
@@ -48,6 +48,15 @@ assert.equal(browserRecords.length, 2);
 assert.equal(browserRecords[0].molblock.endsWith("M  END"), true);
 assert.equal(browserRecords[0].molblock.includes("> <pIC50>"), false);
 assert.equal(browserRecords[0].props.pIC50, "5.1");
+
+const browserDelimitedRecords = parseBrowserDevDelimitedGridRecords(
+  "SMILES,name,score\nCCO,ethanol,1.2\nO,water,2.3\n",
+  "csv",
+);
+assert.equal(browserDelimitedRecords.length, 2);
+assert.equal(browserDelimitedRecords[0].name, "ethanol");
+assert.equal(browserDelimitedRecords[0].smiles, "CCO");
+assert.equal(browserDelimitedRecords[0].props.score, "1.2");
 
 const smiles = mergeCollectionSources([
   { path: "/tmp/a.smi", extension: "smi", text: "CCO ethanol\n\n" },
