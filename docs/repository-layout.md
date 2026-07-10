@@ -6,7 +6,7 @@ shared preview runtime they use.
 | Path | Purpose |
 | --- | --- |
 | `apps/desktop` | Main React and Tauri desktop workspace. The React shell, hooks, preview bridges, command palette, Ketcher surface, grids, and Tauri commands live here. |
-| `apps/burrete-public-plugin` | Hosted OpenAI app-plus-skills submission, public HTTPS MCP endpoint, bounded attachment/PDB preparation, and CSP-compatible Mol* widget. |
+| `apps/burrete-public-plugin` | Hosted public plugin submission, public HTTPS MCP endpoint, bounded attachment/PDB preparation, and CSP-compatible Burrete workspace. |
 | `PreviewExtension` | macOS Finder Quick Look preview and thumbnail extension. `PreviewExtension/Web` contains the bundled Mol*, RDKit grid, and viewer runtime assets shared with desktop and Quick Look. |
 | `ios/BurreteMobile` | Source-built iPhone preview app target. It reuses the bundled preview runtime for iOS document handoff and phone-first molecular inspection. |
 | `packages/burrete` | Bun CLI installer used by `bunx burrete install`, `bunx burrete doctor`, and release-channel checks. |
