@@ -3,7 +3,7 @@
 <p align="center">
   A molecular file workspace with macOS Finder Quick Look previews, Mol* 3D,
   external xyzrender SVG rendering, RDKit molecule grids, Ketcher sketching,
-  and a source-built iPhone preview app.
+  a source-built iPhone preview app, and a hosted OpenAI Mol* viewer.
 </p>
 
 <p align="center">
@@ -36,6 +36,8 @@ Use it in two ways:
   collections, and send files to external chemistry tools.
 - **iPhone preview app:** build the `BurreteMobile` Xcode target from source,
   then open molecular documents from Files or another iOS document provider.
+- **Hosted OpenAI viewer:** preview an authorized molecular attachment or a
+  public PDB entry in the full Mol* interface through ChatGPT or Codex.
 
 Burrete is intentionally a compact utility, not a full molecular modeling
 environment.
@@ -176,7 +178,25 @@ for structure triage:
 These workflows live in the desktop app. Finder Quick Look remains optimized
 for quick file previews.
 
-## Codex Plugin and MCP
+## OpenAI App, Codex Plugin, and MCP
+
+The hosted Burrete app exposes a public HTTPS MCP endpoint and the actual Mol*
+viewer used for molecular previews:
+
+- Viewer: <https://burrete-plugin.vercel.app/>
+- MCP endpoint: <https://burrete-plugin.vercel.app/mcp>
+- Source: [`apps/burrete-public-plugin`](apps/burrete-public-plugin)
+
+Its read-only `preview_molecular_file` tool accepts one authorized PDB, ENT,
+PDBQT, CIF, mmCIF, SDF, SD, XYZ, or extended XYZ attachment. The
+`preview_pdb_structure` tool retrieves one public RCSB entry by PDB ID. Both
+return bounded model-visible composition data and render the raw structure only
+inside the sandboxed Mol* widget. Files are limited to 3 MiB, processed in
+memory, and not written to Burrete application storage.
+
+The hosted app and the local plugin live in this repository; there is no
+separate plugin source repository. Public installation through OpenAI's Plugins
+Directory becomes available after directory review and publisher release.
 
 Burrete includes a Codex plugin that turns the local application into an
 agent-operable molecular workspace. The plugin bundles focused workflow skills
@@ -202,10 +222,11 @@ The installer stages a dedicated local marketplace and uses the current
 Codex CLI is available. Restart Codex after installation, then mention
 `@Burrete` or select it from Plugins.
 
-See the [plugin architecture and local installation guide](plugins/burette-agent/README.md)
-and the [agent platform contract](docs/agent-platform.md) for the MCP tool and
-session model. Burrete remains the canonical source repository for the desktop
-app, Quick Look extension, mobile source app, and Codex plugin.
+See the [hosted and local agent platform contract](docs/agent-platform.md), the
+[local plugin architecture and installation guide](plugins/burette-agent/README.md),
+and the [public plugin guide](https://burrete-landing.vercel.app/docs/plugin).
+Burrete remains the canonical source repository for every application and MCP
+surface.
 
 ## Settings and Maintenance
 
