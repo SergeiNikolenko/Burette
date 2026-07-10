@@ -540,7 +540,7 @@ function ConformerWorkflowCard({
     setSettingsPanel(null);
   }, [document.id]);
   const selectedConformerAction = conformerSelectionAction(selectedEntity, viewerLigandSelection);
-  const canRunCrest = canUseConformerWorkflow(document.extension) || Boolean(selectedConformerAction);
+  const canRunCrest = (document.renderer !== "grid2d" && canUseConformerWorkflow(document.extension)) || Boolean(selectedConformerAction);
   const canRunPrism = canInspectConformerEnsemble(document.extension);
   if (!canShowConformerWorkflow(document.extension, document.renderer) && !selectedConformerAction) return null;
   if (!canRunCrest && !canRunPrism) return null;
@@ -655,9 +655,6 @@ function ConformerInlineSettings({
           </InlineXtbSetting>
           <InlineXtbSetting label="Energy sort">
             <ToggleControl label="Sort by energy" checked={settings.prismEnergySort} onChange={(value) => updateSettings({ prismEnergySort: value })} />
-          </InlineXtbSetting>
-          <InlineXtbSetting label="Rotamer pruning">
-            <ToggleControl label="Prune rotamers" checked={settings.prismRotamerPruning} onChange={(value) => updateSettings({ prismRotamerPruning: value })} />
           </InlineXtbSetting>
         </div>
       ) : null}
