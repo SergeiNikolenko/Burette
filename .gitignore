@@ -2,6 +2,8 @@
 .thoughts/
 .tmp/
 .codegraph/
+.vercel/
+.env*
 build/
 build-dev/
 DerivedData/
@@ -12,6 +14,9 @@ xcuserdata/
 *.zip
 *.dmg
 dist/
+.next/
+*.tsbuildinfo
+apps/burrete-public-plugin/public/molstar/
 apps/desktop/dist/
 apps/desktop/src-tauri/target/
 /target/
