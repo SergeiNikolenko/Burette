@@ -3587,6 +3587,8 @@ assert.match(appOpenDropMergeCollectionsHook, /export function useAppOpenDropMer
 assert.match(appOpenDropMergeCollectionsHook, /activeDocument\?\.renderer !== "grid2d"/);
 assert.match(appOpenDropMergeCollectionsHook, /paths\.some\(isMoleculeCollectionPath\)/);
 assert.match(appOpenDropMergeCollectionsHook, /void mergeMoleculeCollections\(activeDocument\.path, paths\)/);
+assert.match(appDockingWorkflowsHook, /const unsupportedPaths = candidatePaths\.filter\(\(path\) => !isMoleculeCollectionPath\(path\)\)/);
+assert.match(appDockingWorkflowsHook, /Collection merge accepts only SDF, SMILES, CSV, or TSV inputs\./);
 assert.match(appOpenDropControllerHook, /useOpenDrop\(openPaths, pushStatus, \{/);
 assert.match(tauriSource, /export function trackTauriListener\(registration: Promise<TauriUnlisten>, label: string\)/);
 assert.match(tauriSource, /if \(disposed\) \{\s*disposeTauriListener\(next, label\);/s);
@@ -6165,6 +6167,7 @@ assert.match(gridCss, /\.buret-card\.buret-card-drop-target\s*\{/);
 assert.match(gridViewer, /function gridDragRecordsForRow\(row\)/);
 assert.match(gridViewer, /state\.selected\.has\(rowIndex\) \|\| state\.selected\.size < 2/);
 assert.match(gridViewer, /function gridDragRecord\(row\)/);
+assert.match(gridViewer, /function gridDragRecord\(row\)[\s\S]*const text = serializeSdfRows\(\[row\]\);/);
 assert.match(gridViewer, /function showMoleculeContextMenu\(event, row\)/);
 assert.match(gridViewer, /if \(!isMoleculeContextTarget\(event\.target\)\) \{/);
 assert.match(gridViewer, /event\.stopImmediatePropagation\?\.\(\);/);
