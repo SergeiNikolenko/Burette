@@ -677,6 +677,7 @@ export default function App() {
 
   const {
     dropActive,
+    dropPreview,
     handleBrowserDrag,
     handleBrowserDragLeave,
     handleBrowserDrop,
@@ -977,6 +978,7 @@ export default function App() {
         onResizeStart={startSidebarResize}
         onRightDockResizeStart={startRightDockResize}
         onBottomDockResizeStart={startBottomDockResize}
+        dropPreview={dropPreview}
         onDragEnter={handleBrowserDrag}
         onDragOver={handleBrowserDrag}
         onDragLeave={handleBrowserDragLeave}
