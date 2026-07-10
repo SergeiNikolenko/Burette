@@ -14,7 +14,6 @@ import type { StructureDragPayload } from "../lib/structure-drag";
 import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
 import type {
-  FepSetupRequest,
   ViewerDocument,
   ViewerPreferences,
   XtbJob,
@@ -49,7 +48,6 @@ type UseAppXtbWorkflowsOptions = {
   activeDocument: ViewerDocument | null;
   addDockDrop: (input: DockDropInput) => void;
   cancelledXtbJobIdsRef: MutableRefObject<Set<string>>;
-  dockDroppedStructures: Array<{ payload: StructureDragPayload }>;
   openDockTab: (area: DockArea, kind: DockTabKind) => void;
   openDocumentsInActiveTab: (documents: ViewerDocument[]) => void;
   openPaths: (paths: string[]) => void | Promise<unknown>;
@@ -121,7 +119,6 @@ export function useAppXtbWorkflows({
   activeDocument,
   addDockDrop,
   cancelledXtbJobIdsRef,
-  dockDroppedStructures,
   openDockTab,
   openDocumentsInActiveTab,
   openPaths,
@@ -310,6 +307,8 @@ export function useAppXtbWorkflows({
         return;
       }
       pushErrorStatus(error, `xTB ${request.operation} failed`);
+    } finally {
+      cancelledXtbJobIdsRef.current.delete(jobId);
     }
   }, [addDockDrop, cancelledXtbJobIdsRef, openDockTab, openPaths, openTextDocuments, openXtbOptimizedPoseInCurrentView, pushErrorStatus, pushStatus, setDockActiveTab, setDockOpen, setXtbJobs, setXtbStatus, xtbSettings]);
 
@@ -325,18 +324,10 @@ export function useAppXtbWorkflows({
       pushStatus("This generated structure cannot be used for xTB because its source text is unavailable.", "error");
       return;
     }
-    const secondaryPaths = operation === "dock"
-      ? dockDroppedStructures.flatMap((item) => item.payload.paths).filter((path) => path !== activeDocument.path).slice(0, 1)
-      : [];
-    if (operation === "dock" && secondaryPaths.length === 0) {
-      pushStatus("Drop a ligand or second structure into a dock before running xTB docking.", "error");
-      return;
-    }
     const openOptimizedPoseInCurrentView = operation === "optimize";
     await runXtbJob({
       operation,
       ...inputRequest,
-      secondaryPaths,
     }, {
       title: xtbOperationLabel(operation),
       inputLabel: inputRequest.label ?? activeDocument.title,
@@ -344,7 +335,7 @@ export function useAppXtbWorkflows({
       openOptimizedPoseInCurrentView,
       poseSourceDocument: openOptimizedPoseInCurrentView ? activeDocument : null,
     });
-  }, [activeDocument, dockDroppedStructures, pushStatus, requestMolstarXtbContextDocument, runXtbJob]);
+  }, [activeDocument, pushStatus, requestMolstarXtbContextDocument, runXtbJob]);
 
   const runXtbKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
     await runXtbJob({
@@ -363,52 +354,29 @@ export function useAppXtbWorkflows({
       pushStatus("Open a grid or structure before running xTB scoring.", "error");
       return;
     }
+    if (document.renderer === "grid2d") {
+      pushStatus("Open a specific molecule from the collection in Mol* before running xTB Properties.", "error");
+      return;
+    }
     const inputRequest = xtbInputRequestForDocument(document);
     if (!inputRequest) {
       pushStatus("This generated structure cannot be used for xTB because its source text is unavailable.", "error");
       return;
     }
     await runXtbJob({
-      operation: document.renderer === "grid2d" ? "grid-properties" : "properties",
+      operation: "properties",
       ...inputRequest,
     }, {
-      title: document.renderer === "grid2d" ? "xTB Grid Properties" : "xTB Properties",
+      title: "xTB Properties",
       inputLabel: document.title,
       openPrimary: false,
     });
   }, [activeDocument, pushStatus, runXtbJob]);
 
-  const runXtbPoseRefinement = useCallback(async (request: FepSetupRequest) => {
-    await runXtbJob({
-      operation: "pose-refine",
-      inputPath: request.gridPath,
-      secondaryPaths: [request.receptorPath, request.dockingPath],
-      label: `pose-${request.referencePose + 1}`,
-    }, {
-      title: `xTB Refine Pose ${request.referencePose + 1}`,
-      inputLabel: basename(request.gridPath),
-    });
-  }, [runXtbJob]);
-
-  const runXtbFepPreflight = useCallback(async (request: FepSetupRequest) => {
-    await runXtbJob({
-      operation: "fep-preflight",
-      inputPath: request.gridPath,
-      secondaryPaths: [request.receptorPath, request.dockingPath],
-      label: "fep-preflight",
-    }, {
-      title: "xTB FEP Preflight",
-      inputLabel: basename(request.gridPath),
-      openPrimary: false,
-    });
-  }, [runXtbJob]);
-
   return {
     runXtbActiveOperation,
-    runXtbFepPreflight,
     runXtbGridScoring,
     runXtbJob,
     runXtbKetcherSketch,
-    runXtbPoseRefinement,
   };
 }

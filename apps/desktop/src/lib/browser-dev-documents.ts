@@ -1,4 +1,4 @@
-import { collectionExtension, mergeCollectionSources } from "./collection-documents";
+import { collectionExtension, mergeCollectionSources, parseSdfCollectionRecords } from "./collection-documents";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
@@ -9,7 +9,7 @@ type FormatInfo = {
   canOpenInVesta: boolean;
 };
 
-type GridRecord = {
+export type GridRecord = {
   index: number;
   name: string;
   smiles?: string;
@@ -294,7 +294,7 @@ export async function openBrowserDevDockingDocument(
   const sdfGridPath = ligands.find((ligand) => (
     ligand.format.molstarFormat === "sdf"
       && !ligand.format.binary
-      && parseSdf(decodeUtf8(ligand.bytes)).length > 1
+      && parseSdfCollectionRecords(decodeUtf8(ligand.bytes)).length > 1
   ))?.path ?? null;
   const config = {
     format: receptor.format.molstarFormat,
@@ -771,7 +771,7 @@ async function openBrowserDevDocumentFromBytes(
 ): Promise<ViewerDocument> {
   const text = await decodeStructureText(bytes, extension);
   const grid = gridPayload(path, extension, text);
-  const sdfRecordCount = isSdfExtension(extension) ? parseSdf(text).length : 0;
+  const sdfRecordCount = isSdfExtension(extension) ? parseSdfCollectionRecords(text).length : 0;
   const requestedMode = normalizeRendererMode(preferences.rendererMode);
   const explicitSdfViewer = isSdfExtension(extension)
     && Boolean(reloadOptions)
@@ -1419,7 +1419,7 @@ async function gridHtml(
 
 function gridPayload(path: string, extension: string, text: string) {
   if (extension === "sdf" || extension === "sd") {
-    const records = parseSdf(text);
+    const records = parseSdfCollectionRecords(text);
     return records.length >= 1 ? { format: "sdf", records } : null;
   }
   if (extension === "smi" || extension === "smiles") {
@@ -1431,6 +1431,10 @@ function gridPayload(path: string, extension: string, text: string) {
     return records.length > 0 ? { format: extension, records } : null;
   }
   return null;
+}
+
+export function parseBrowserDevDelimitedGridRecords(text: string, extension: "csv" | "tsv") {
+  return parseDelimited(text, extension === "csv" ? "," : "\t");
 }
 
 function parseSmiles(text: string): GridRecord[] {
@@ -1448,38 +1452,6 @@ function parseSmiles(text: string): GridRecord[] {
     });
   }
   return records;
-}
-
-function parseSdf(text: string): GridRecord[] {
-  return text
-    .split(/\$\$\$\$/)
-    .map((record) => record.trim())
-    .filter(Boolean)
-    .map((record, index) => {
-      const lines = record.split(/\r?\n/);
-      return {
-        index,
-        name: lines[0]?.trim() || `Molecule ${index + 1}`,
-        molblock: `${record}\n$$$$\n`,
-        props: parseSdfProps(lines),
-      };
-    });
-}
-
-function parseSdfProps(lines: string[]) {
-  const props: Record<string, string> = {};
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = /^>\s*<([^>]+)>/.exec(lines[index] || "");
-    if (!match) continue;
-    const values: string[] = [];
-    index += 1;
-    while (index < lines.length && lines[index].trim() !== "") {
-      values.push(lines[index]);
-      index += 1;
-    }
-    props[match[1]] = values.join("\n");
-  }
-  return props;
 }
 
 function parseDelimited(text: string, delimiter: "," | "\t"): GridRecord[] {
@@ -1776,7 +1748,7 @@ function ketcherEditConfig(
     atomCount = molfileAtomCount(text);
   } else if (isSdfExtension(normalized)) {
     if (sdfRecordCount !== 1) return null;
-    const record = parseSdf(text)[0]?.molblock ?? text;
+    const record = parseSdfCollectionRecords(text)[0]?.molblock ?? text;
     atomCount = molfileAtomCount(record);
   } else {
     return null;
