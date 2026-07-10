@@ -102,6 +102,17 @@ export function useAppChemistryJobs({
       await cancelXtbRequest(jobId);
       pushStatus("xTB job cancelled");
     } catch (error) {
+      cancelledXtbJobIdsRef.current.delete(jobId);
+      setXtbJobs((previous) => previous.map((job) => {
+        if (job.id !== jobId || job.status !== "cancelled") return job;
+        if (!job.result) return { ...job, status: "running", completedAt: null, error: null };
+        return {
+          ...job,
+          status: job.result.exitCode === 130 ? "cancelled" : job.result.ok ? "success" : job.result.primaryOpenPath ? "recovered" : "failed",
+          completedAt: job.completedAt ?? Date.now(),
+          error: job.result.error ?? null,
+        };
+      }));
       pushErrorStatus(error, "Cancel xTB job failed");
     }
   }, [pushErrorStatus, pushStatus]);
