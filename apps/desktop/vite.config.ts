@@ -1875,7 +1875,6 @@ type BrowserDevConformerRunRequest = {
   rmsdThresholdAngstrom?: unknown;
   samplingMode?: unknown;
   prismEnergySort?: unknown;
-  prismRotamerPruning?: unknown;
 };
 
 async function browserDevConformerStatus() {
@@ -1971,8 +1970,16 @@ async function prepareBrowserDevConformerJob(request: BrowserDevConformerRunRequ
 }
 
 async function runBrowserDevConformerJob(request: BrowserDevConformerRunRequest) {
-  const operation = browserDevConformerOperation(request.operation);
   const jobKey = browserDevJobKey("conformer", request.jobId);
+  try {
+    return await runBrowserDevConformerJobImpl(request, jobKey);
+  } finally {
+    finishBrowserDevJob(jobKey);
+  }
+}
+
+async function runBrowserDevConformerJobImpl(request: BrowserDevConformerRunRequest, jobKey: string | null) {
+  const operation = browserDevConformerOperation(request.operation);
   const executable = operation === "crest-generate"
     ? resolveExecutable("crest")
     : resolveExecutable("prism_pruner") ?? resolveExecutable("prism-pruner");
@@ -1997,7 +2004,7 @@ async function runBrowserDevConformerJob(request: BrowserDevConformerRunRequest)
   const inputText = inputBytes.toString("utf8");
   assertBrowserDevDirectChemistryInput(inputText, copiedInput.inputExtension, operation === "crest-generate" ? "CREST" : "PRISM");
   let preparedInput = operation === "crest-generate"
-    ? await prepareBrowserDevCrestInput(copiedInput.inputPath, inputText, workDir)
+    ? await prepareBrowserDevCrestInput(copiedInput.inputPath, inputText, workDir, jobKey)
     : { path: copiedInput.inputPath, text: inputText, source: "input" };
   let runRequest = request;
   let args = operation === "crest-generate"
@@ -2106,12 +2113,12 @@ async function runBrowserDevConformerJob(request: BrowserDevConformerRunRequest)
     primaryOpenPath,
   };
   await writeBrowserDevConformerReport(reportPath, result, log);
-  finishBrowserDevJob(jobKey);
   return result;
 }
 
 function browserDevConformerOperation(value: unknown): "crest-generate" | "prism-prune" {
-  return value === "prism-prune" ? "prism-prune" : "crest-generate";
+  if (value === "crest-generate" || value === "prism-prune") return value;
+  throw new Error(`Unsupported conformer operation: ${String(value || "missing")}`);
 }
 
 function browserDevConformerOutputRoot(request: BrowserDevConformerRunRequest) {
@@ -2187,10 +2194,10 @@ function browserDevConformerInputExtension(request: BrowserDevConformerRunReques
   return ["xyz", "sdf", "sd", "mol", "mol2", "pdb", "pdbqt", "ent", "cif", "mcif", "mmcif"].includes(extension) ? extension : "xyz";
 }
 
-async function prepareBrowserDevCrestInput(inputPath: string, inputText: string, workDir: string) {
+async function prepareBrowserDevCrestInput(inputPath: string, inputText: string, workDir: string, jobKey: string | null) {
   const rawPdbLigandSelection = isRawPdbLigandSelection(inputText);
   if (!rawPdbLigandSelection && shouldUsePreparedSdfDirectly(inputPath, inputText)) {
-    const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(inputPath, workDir, "input:prepared_sdf");
+    const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(inputPath, workDir, "input:prepared_sdf", jobKey);
     if (datamolPrepared) return datamolPrepared;
     return { path: inputPath, text: inputText, source: "input:prepared_sdf" };
   }
@@ -2200,7 +2207,7 @@ async function prepareBrowserDevCrestInput(inputPath: string, inputText: string,
     if (ccdSdf) {
       const preparedPath = join(workDir, `prepared_${ligandCode.toLowerCase()}_ccd.sdf`);
       await writeFile(preparedPath, ccdSdf.text, "utf8");
-      const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(preparedPath, workDir, ccdSdf.source);
+      const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(preparedPath, workDir, ccdSdf.source, jobKey);
       if (datamolPrepared) return datamolPrepared;
       return { path: preparedPath, text: ccdSdf.text, source: ccdSdf.source };
     }
@@ -2212,11 +2219,11 @@ async function prepareBrowserDevCrestInput(inputPath: string, inputText: string,
     const prepLogPath = join(workDir, "ligand-prep.log");
     const prepArgs = [inputPath, "-O", preparedPath, "-h"];
     if (shouldGenerateBrowserDevCrestInput3d(inputText)) prepArgs.push("--gen3d");
-    const { status } = await runBrowserDevLoggedExecutable(obabel, prepArgs, workDir, prepLogPath, 120_000);
+    const { status } = await runBrowserDevLoggedExecutable(obabel, prepArgs, workDir, prepLogPath, 120_000, jobKey);
     if (status === 0 && existsSync(preparedPath)) {
       const preparedText = await readFile(preparedPath, "utf8");
       const source = prepArgs.includes("--gen3d") ? "obabel:gen3d_add_h" : "obabel:add_h";
-      const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(preparedPath, workDir, source);
+      const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(preparedPath, workDir, source, jobKey);
       if (datamolPrepared) return datamolPrepared;
       return { path: preparedPath, text: preparedText, source };
     }
@@ -2224,11 +2231,11 @@ async function prepareBrowserDevCrestInput(inputPath: string, inputText: string,
   const xTbPreparedPath = await prepareBrowserDevXtbInputWithHydrogens(inputPath, workDir, "input-with-h");
   if (xTbPreparedPath !== inputPath) {
     const preparedText = await readFile(xTbPreparedPath, "utf8");
-    const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(xTbPreparedPath, workDir, "obabel:add_h");
+    const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(xTbPreparedPath, workDir, "obabel:add_h", jobKey);
     if (datamolPrepared) return datamolPrepared;
     return { path: xTbPreparedPath, text: preparedText, source: "obabel:add_h" };
   }
-  const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(inputPath, workDir, "input");
+  const datamolPrepared = await prepareBrowserDevCrestInputWithDatamol(inputPath, workDir, "input", jobKey);
   if (datamolPrepared) return datamolPrepared;
   return { path: inputPath, text: inputText, source: "input" };
 }
@@ -2252,13 +2259,13 @@ function shouldGenerateBrowserDevCrestInput3d(inputText: string) {
   return false;
 }
 
-async function prepareBrowserDevCrestInputWithDatamol(inputPath: string, workDir: string, source: string) {
+async function prepareBrowserDevCrestInputWithDatamol(inputPath: string, workDir: string, source: string, jobKey: string | null) {
   if (!shouldPrepareBrowserDevCrestInputWithDatamol(inputPath)) return null;
   const preparedPath = join(workDir, "prepared_datamol.sdf");
   const prepLogPath = join(workDir, "datamol-prep.log");
   const commands = await browserDevDatamolPrepCommands(inputPath, preparedPath);
   for (const command of commands) {
-    const { status } = await runBrowserDevLoggedExecutable(command.executable, command.args, workDir, prepLogPath, 300_000);
+    const { status } = await runBrowserDevLoggedExecutable(command.executable, command.args, workDir, prepLogPath, 300_000, jobKey);
     if (status !== 0 || !existsSync(preparedPath)) continue;
     const preparedText = await readFile(preparedPath, "utf8");
     if (!isValidSdfText(preparedText)) continue;
@@ -2565,6 +2572,7 @@ function shouldRetryCrestWithoutSolventAfterPreopt(
   const solvent = typeof request.solvent === "string" ? request.solvent : "none";
   return status !== 0 &&
     status !== 124 &&
+    status !== 130 &&
     solvent !== "none" &&
     /Initial geometry optimization failed/iu.test(log);
 }
@@ -2573,7 +2581,7 @@ function shouldRetryCrestAfterInitialOptimizationFailure(
   status: number,
   log: string,
 ) {
-  if (status === 0 || status === 124) return false;
+  if (status === 0 || status === 124 || status === 130) return false;
   return /Initial geometry optimization failed/iu.test(log);
 }
 
@@ -2608,6 +2616,11 @@ function browserDevPrismArgs(request: BrowserDevConformerRunRequest, inputPath: 
 }
 
 async function runBrowserDevLoggedExecutable(executable: string, args: string[], cwd: string, logPath: string, timeout: number, jobKey: string | null = null) {
+  if (browserDevJobWasCancelled(jobKey)) {
+    const log = "Conformer job cancelled before the process started.\n";
+    await writeFile(logPath, log, "utf8");
+    return { status: 130, log };
+  }
   await writeFile(logPath, `$ ${[executable, ...args].join(" ")}\n\n`, "utf8");
   return new Promise<{ status: number; log: string }>((resolveRun) => {
     const child = execFile(executable, args, { cwd, timeout, maxBuffer: 64 * 1024 * 1024 }, () => {});
@@ -2624,7 +2637,10 @@ async function runBrowserDevLoggedExecutable(executable: string, args: string[],
     child.on("error", (error) => append(String(error)));
     child.on("close", (code, signal) => {
       stream.end(() => {
-        resolveRun({ status: typeof code === "number" ? code : (signal ? 124 : 1), log: chunks.join("") });
+        const status = browserDevJobWasCancelled(jobKey)
+          ? 130
+          : typeof code === "number" ? code : (signal ? 124 : 1);
+        resolveRun({ status, log: chunks.join("") });
       });
     });
   });
@@ -2786,6 +2802,7 @@ async function writeBrowserDevConformerReport(path: string, result: Awaited<Retu
     `- Elapsed: ${(result.elapsedMs / 1000).toFixed(1)} s`,
     `- Command: ${result.command.map((part) => part.includes(" ") ? JSON.stringify(part) : part).join(" ")}`,
     `- Recovery: ${result.recovery ?? "None"}`,
+    `- Primary output: ${result.primaryOpenPath ?? "None"}`,
     "",
     "## Artifacts",
     "",
