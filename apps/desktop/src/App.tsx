@@ -27,6 +27,7 @@ import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
 import { useAppGenerate3DConformer } from "./hooks/use-app-generate-3d-conformer";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
 import { useAppHostRuntimeOperations } from "./hooks/use-app-host-runtime-operations";
+import { useHostedMcpWidget } from "./hooks/use-hosted-mcp-widget";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
 import { useAppMaintenance } from "./hooks/use-app-maintenance";
@@ -95,6 +96,7 @@ import { expandBrowserDevStructureBundles } from "./lib/browser-dev-structure-bu
 import { writeClipboardText } from "./lib/clipboard";
 import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { structureExtensionFromPath } from "./lib/file-routing";
+import { isHostedMcpWidget } from "./lib/hosted-mcp-widget";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "./lib/viewer-bridge";
 import {
@@ -107,6 +109,7 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 })));
 
 export default function App() {
+  const hostedMcpWidget = isHostedMcpWidget();
   const preferences = useViewerPreferences();
   const setPreference = useSetViewerPreference();
   const tabs = useOpenTabs();
@@ -286,7 +289,11 @@ export default function App() {
     openUpdateRelease,
     setUpdatePreferences,
     update,
-  } = useAppUpdates({ pushErrorStatus, pushStatus });
+  } = useAppUpdates({
+    enabled: !hostedMcpWidget,
+    pushErrorStatus,
+    pushStatus,
+  });
   useEffect(() => {
     configureWorkspaceHistoryExtras({
       capture: () => ({
@@ -457,6 +464,12 @@ export default function App() {
     pushErrorStatus,
     pushStatus,
     recentStructures,
+  });
+  useHostedMcpWidget({
+    addDocuments,
+    closeAllDocuments,
+    preferences,
+    pushErrorStatus,
   });
   const { runConformerOperation } = useAppConformerWorkflows({
     activeDocument,
@@ -946,7 +959,12 @@ export default function App() {
     buildInfo,
   });
 
-  useKeyboardShortcuts(state, actions, toggleSidebar, !commandPaletteOpen);
+  useKeyboardShortcuts(
+    state,
+    actions,
+    toggleSidebar,
+    !commandPaletteOpen && !hostedMcpWidget,
+  );
 
   return (
     <>
@@ -965,7 +983,7 @@ export default function App() {
         onDrop={handleBrowserDrop}
         onPaste={handleBrowserPaste}
       />
-      {commandPaletteOpen ? (
+      {commandPaletteOpen && !hostedMcpWidget ? (
         <Suspense fallback={null}>
           <CommandPalette
             state={state}

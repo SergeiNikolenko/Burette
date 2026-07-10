@@ -30,6 +30,7 @@ type DockPanelProps = {
   state: ShellViewState;
   actions: ShellActions;
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+  readOnly?: boolean;
 };
 
 const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
@@ -47,9 +48,12 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   review: Search01Icon,
 };
 
-export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProps) {
+export function DockPanel({ area, state, actions, onResizeStart, readOnly = false }: DockPanelProps) {
   const [dropActive, setDropActive] = useState(false);
-  const rawTabs = area === "right" ? state.rightDockTabs : state.bottomDockTabs;
+  const configuredTabs = area === "right" ? state.rightDockTabs : state.bottomDockTabs;
+  const rawTabs = readOnly && area === "right"
+    ? [configuredTabs.find((tab) => tab.kind === "inspector") ?? createDockTab("inspector")]
+    : configuredTabs;
   const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
   const size = area === "right" ? state.rightDockWidth : state.bottomDockHeight;
   const dragging = area === "right" ? state.rightDockDragging : state.bottomDockDragging;
@@ -153,13 +157,13 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
       style={area === "right" ? { width: open ? size : 0 } : { height: open ? size : 0 }}
       aria-hidden={!open || undefined}
       inert={!open}
-      onDragEnter={handleDrag}
-      onDragOver={handleDrag}
-      onDragLeave={(event) => {
+      onDragEnter={readOnly ? undefined : handleDrag}
+      onDragOver={readOnly ? undefined : handleDrag}
+      onDragLeave={readOnly ? undefined : (event) => {
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
         clearDrop();
       }}
-      onDrop={handleDrop}
+      onDrop={readOnly ? undefined : handleDrop}
       aria-label={`${area} dock`}
     >
       <div
@@ -206,7 +210,7 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
                     <HugeiconsIcon icon={Icon} size={16} color="currentColor" strokeWidth={2} />
                     <span>{DOCK_TAB_LABELS[tab.kind]}</span>
                   </button>
-                  {active && !(tab.kind === "xyzrender" && !rawTabs.some((rawTab) => rawTab.kind === "xyzrender")) && (
+                  {!readOnly && active && !(tab.kind === "xyzrender" && !rawTabs.some((rawTab) => rawTab.kind === "xyzrender")) && (
                     <button
                       type="button"
                       className="dock-tab-close"
@@ -220,12 +224,16 @@ export function DockPanel({ area, state, actions, onResizeStart }: DockPanelProp
               );
             })}
           </div>
-          <button type="button" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
-            +
-          </button>
-          <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
-            <CloseIcon size={15} />
-          </button>
+          {!readOnly ? (
+            <>
+              <button type="button" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
+                +
+              </button>
+              <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
+                <CloseIcon size={15} />
+              </button>
+            </>
+          ) : null}
         </div>
         <DockPanelContent
           area={area}
