@@ -3568,11 +3568,11 @@
     const baseName = safeStructureFileStem(label, Number(row?.index));
     const molblock = String(row?.molblock || '').trimEnd();
     if (molblock.trim()) {
-      const text = molblock.includes('$$$$') ? molblock : `${molblock}\n$$$$`;
+      const text = serializeSdfRows([row]);
       return {
         path: `${baseName}.sdf`,
         inputExtension: 'sdf',
-        text: `${text.trimEnd()}\n`
+        text
       };
     }
     const smiles = String(row?.smiles || '').trim();
