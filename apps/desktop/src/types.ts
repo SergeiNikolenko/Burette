@@ -201,9 +201,6 @@ export type ConformerJob = {
 export type XtbOperation =
   | "optimize"
   | "properties"
-  | "grid-properties"
-  | "fep-preflight"
-  | "pose-refine"
   | "cube"
   | "hessian"
   | "optimized-hessian"
@@ -213,8 +210,7 @@ export type XtbOperation =
   | "vfukui"
   | "vomega"
   | "md"
-  | "metadyn"
-  | "dock";
+  | "metadyn";
 
 export type XtbStatus = {
   installed: boolean;
@@ -259,7 +255,6 @@ export type XtbRunRequest = {
   inputText?: string | null;
   inputExtension?: string | null;
   sourcePath?: string | null;
-  secondaryPaths?: string[] | null;
   label?: string | null;
   method?: "gfn0" | "gfn1" | "gfn2" | "gfnff" | null;
   charge?: number | null;
