@@ -62,9 +62,9 @@ function createServer(): McpServer {
     "burrete-molecular-viewer",
     VIEWER_RESOURCE_URI,
     {
-      title: "Burrete Molecular Viewer",
+      title: "Burrete",
       description:
-        "Interactive Mol* preview for a bounded molecular structure result.",
+        "Interactive Burrete workspace for a bounded molecular structure result.",
       mimeType: RESOURCE_MIME_TYPE,
     },
     async () => ({

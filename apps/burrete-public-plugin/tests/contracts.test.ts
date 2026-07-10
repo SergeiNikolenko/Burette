@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { z } from "zod/v4";
 import {
   publicStructureOutputSchema,
@@ -7,12 +9,17 @@ import {
   viewerToolMeta,
 } from "../lib/contracts";
 import {
-  createStandaloneViewerHtml,
   createViewerResourceMeta,
   createViewerWidgetHtml,
-  MOLSTAR_SCRIPT_PATH,
   VIEWER_RESOURCE_URI,
+  VIEWER_SHELL_SCRIPT_PATH,
+  VIEWER_SHELL_STYLES_PATH,
 } from "../lib/widget";
+import {
+  GET as getPluginRoot,
+  PLUGIN_DOCUMENTATION_URL,
+} from "../app/route";
+import nextConfig from "../next.config";
 
 describe("submission tool contract", () => {
   test("sets every required action hint explicitly", () => {
@@ -64,45 +71,66 @@ describe("submission tool contract", () => {
 });
 
 describe("viewer resource contract", () => {
-  test("uses a narrow CSP without iframe domains", () => {
+  test("allows only the hosted Burrete runtime and same-origin assets", () => {
     const meta = createViewerResourceMeta("https://burrete.example");
     expect(meta.ui.domain).toBe("https://burrete.example");
-    expect(meta.ui.csp.connectDomains).toEqual([]);
+    expect(meta.ui.csp.connectDomains).toEqual(["https://burrete.example"]);
     expect(meta.ui.csp.resourceDomains).toEqual(["https://burrete.example"]);
+    expect(meta.ui.csp.frameDomains).toEqual(["https://burrete.example"]);
     expect(meta.ui.prefersBorder).toBe(false);
     expect(meta["openai/widgetPrefersBorder"]).toBe(false);
-    expect("frameDomains" in meta.ui.csp).toBe(false);
+    expect(meta["openai/widgetCSP"].frame_domains).toEqual([
+      "https://burrete.example",
+    ]);
   });
 
-  test("pins Molstar and listens for the MCP Apps tool-result notification", () => {
+  test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(html).toContain(`https://burrete.example${MOLSTAR_SCRIPT_PATH}`);
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v2.html");
+    expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
+    expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
     expect(html).toContain("ui/notifications/tool-result");
-    expect(html).toContain("Open full viewer");
-    expect(html).toContain("layoutIsExpanded: true");
-    expect(html).toContain("layoutShowLeftPanel: true");
-    expect(html).toContain("layoutShowLog: false");
-    expect(html).toContain("collapseRightPanel: true");
-    expect(html).toContain('disabledExtensions: ["mp4-export"]');
+    expect(html).toContain("__BURRETE_HOSTED_MCP_WIDGET__");
+    expect(html).toContain("__BURRETE_HOSTED_MCP_BRIDGE_READY__");
+    expect(html).toContain('<div id="root"></div>');
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("Open full viewer");
+    expect(html).not.toContain("OpenAI App");
+    expect(html).not.toContain("molstar.Viewer");
     expect(html).not.toContain('class="metrics"');
     expect(html).not.toContain('class="header"');
-    expect(html).toContain("textContent");
-    expect(html).not.toContain("<iframe");
   });
 
-  test("boots the standalone URL directly into the full viewer", () => {
-    const html = createStandaloneViewerHtml({
-      structuredContent: { fileName: "example.pdb" },
-      _meta: {
-        structure: {
-          data: "ATOM <script>alert('no')</script>",
-          format: "pdb",
-          label: "example.pdb",
-        },
-      },
+  test("builds the stable hosted shell entry assets", () => {
+    const publicRoot = path.resolve(import.meta.dir, "../public");
+    const shellScript = path.join(publicRoot, VIEWER_SHELL_SCRIPT_PATH.slice(1));
+    expect(existsSync(shellScript)).toBe(true);
+    expect(existsSync(path.join(publicRoot, VIEWER_SHELL_STYLES_PATH.slice(1)))).toBe(true);
+    const source = readFileSync(shellScript, "utf8");
+    const staticImports = [...source.matchAll(/from"([^"]+)"/gu)]
+      .map((match) => match[1]);
+    expect(staticImports.some((specifier) => specifier.includes("ketcher"))).toBe(false);
+    expect(source).not.toContain("/private/tmp");
+    expect(source).not.toContain("/Users/");
+  });
+
+  test("hardens the directly served shell and enables cross-origin assets", async () => {
+    const headers = await nextConfig.headers?.();
+    const shellDocument = headers?.find((entry) => entry.source === "/viewer-shell/index.html");
+    const shellAssets = headers?.find((entry) => entry.source === "/viewer-shell/:path*");
+    expect(shellDocument?.headers).toContainEqual({
+      key: "Content-Security-Policy",
+      value: expect.stringContaining("frame-ancestors 'none'"),
     });
-    expect(html).toContain('displayMode: "fullscreen"');
-    expect(html).toContain("\\u003cscript>");
-    expect(html).not.toContain("<script>alert('no')</script>");
+    expect(shellAssets?.headers).toContainEqual({
+      key: "Access-Control-Allow-Origin",
+      value: "*",
+    });
+  });
+
+  test("redirects the service root to the public plugin documentation", () => {
+    const response = getPluginRoot();
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(PLUGIN_DOCUMENTATION_URL);
   });
 });

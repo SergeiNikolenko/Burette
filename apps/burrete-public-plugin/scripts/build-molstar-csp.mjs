@@ -10,7 +10,7 @@ const SOURCE_ROOT = path.join(
   path.dirname(require.resolve("molstar/package.json")),
   "build/viewer",
 );
-const OUTPUT_ROOT = path.join(APP_ROOT, "public/molstar");
+const OUTPUT_ROOT = path.join(APP_ROOT, "public/burrete-viewer");
 
 const EXPECTED_JAVASCRIPT_SHA256 =
   "aa6ffbbcf6f544755d3703144f8f30c5cf2183216a2162e5fd6349f03d2c57d9";

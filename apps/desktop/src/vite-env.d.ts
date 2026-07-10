@@ -6,7 +6,9 @@ interface ImportMetaEnv {
   readonly VITE_BURRETE_BUILD_FLAVOR?: string;
   readonly VITE_BURRETE_BUILD_IDENTIFIER?: string;
   readonly VITE_BURRETE_AGENT_SHELL?: string;
+  readonly VITE_BURRETE_WEB_ASSETS_BASE?: string;
   readonly BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT?: string;
+  readonly BURRETE_GRID_PERF_REPORT_PATH?: string;
   readonly BURRETE_REPO_ROOT?: string;
 }
 
@@ -15,9 +17,17 @@ interface ImportMeta {
 }
 
 interface Window {
+  __BURRETE_HOSTED_MCP_BRIDGE_READY__?: boolean;
+  __BURRETE_HOSTED_MCP_RESULTS__?: unknown[];
+  __BURRETE_HOSTED_MCP_WIDGET__?: boolean;
+  __BURRETE_WEB_ASSETS_BASE__?: string;
   __BURRETE_BOOT_OVERLAY__?: {
     report: (message: string, details?: string) => void;
     markMounted: () => void;
+  };
+  openai?: {
+    toolOutput?: unknown;
+    toolResponseMetadata?: unknown;
   };
 }
 

@@ -17,6 +17,8 @@ dist/
 .next/
 *.tsbuildinfo
 apps/burrete-public-plugin/public/molstar/
+apps/burrete-public-plugin/public/burrete-viewer/
+apps/burrete-public-plugin/public/viewer-shell/
 apps/desktop/dist/
 apps/desktop/src-tauri/target/
 /target/

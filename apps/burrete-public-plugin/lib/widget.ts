@@ -1,222 +1,13 @@
-export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v1.html";
-export const MOLSTAR_SCRIPT_PATH = "/molstar/molstar.js";
-export const MOLSTAR_STYLES_PATH = "/molstar/molstar.css";
+export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v2.html";
+export const VIEWER_SHELL_SCRIPT_PATH =
+  "/viewer-shell/assets/burrete-hosted-shell.js";
+export const VIEWER_SHELL_STYLES_PATH =
+  "/viewer-shell/assets/burrete-hosted-shell.css";
+export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
   return new URL(assetPath, `${origin.replace(/\/$/u, "")}/`).toString();
-}
-
-export function createViewerResourceMeta(appOrigin: string) {
-  return {
-    ui: {
-      prefersBorder: false,
-      domain: appOrigin,
-      csp: {
-        connectDomains: [] as string[],
-        resourceDomains: [appOrigin],
-      },
-    },
-    "openai/widgetDescription": "Full interactive Burrete molecular structure viewer.",
-    "openai/widgetPrefersBorder": false,
-    "openai/widgetCSP": {
-      connect_domains: [] as string[],
-      resource_domains: [appOrigin],
-    },
-    "openai/widgetDomain": appOrigin,
-  } as const;
-}
-
-export function createViewerWidgetHtml(assetOrigin = ""): string {
-  const molstarScript = assetUrl(assetOrigin, MOLSTAR_SCRIPT_PATH);
-  const molstarStyles = assetUrl(assetOrigin, MOLSTAR_STYLES_PATH);
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Burrete Molecular Viewer</title>
-    <link rel="stylesheet" href="${molstarStyles}" />
-    <style>
-      :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
-      * { box-sizing: border-box; }
-      html, body { width: 100%; height: 100%; min-height: 0; }
-      body { margin: 0; overflow: hidden; color: #f2f2f2; background: #000; }
-      .shell { position: relative; width: 100%; height: min(76vh, 720px); min-height: 420px; overflow: hidden; background: #000; }
-      .viewer-wrap, #viewer { position: absolute; inset: 0; }
-      .fullscreen { position: absolute; z-index: 1001; top: 12px; right: 12px; min-height: 34px; padding: 0 12px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 9px; color: rgba(255, 255, 255, .94); background: rgba(12, 13, 14, .9); box-shadow: 0 8px 24px rgba(0, 0, 0, .28); font: inherit; font-size: 12px; cursor: pointer; backdrop-filter: blur(12px); }
-      .fullscreen:hover { background: rgba(38, 40, 44, .96); }
-      .fullscreen[hidden] { display: none; }
-      .status { position: absolute; z-index: 1002; inset: 0; display: grid; place-items: center; padding: 28px; color: #aeb7c2; background: #000; font-size: 13px; text-align: center; }
-      .status.error { color: #ffb4ad; }
-      .status[hidden] { display: none; }
-      body[data-display-mode="fullscreen"] .shell { position: fixed; inset: 0; height: 100dvh; min-height: 0; }
-      body[data-display-mode="fullscreen"] .fullscreen { display: none; }
-      @media (max-width: 600px) {
-        .shell { height: min(72vh, 620px); min-height: 360px; }
-        .fullscreen { top: 8px; right: 8px; }
-      }
-    </style>
-  </head>
-  <body>
-    <main class="shell">
-      <section class="viewer-wrap" aria-label="Interactive three-dimensional molecular structure">
-        <div id="viewer"></div>
-        <div class="status" id="status">Waiting for the tool result…</div>
-      </section>
-      <button class="fullscreen" id="fullscreen" type="button" aria-pressed="false">Open full viewer</button>
-    </main>
-    <script src="${molstarScript}"></script>
-    <script>
-      (() => {
-        const status = document.getElementById("status");
-        const fullscreen = document.getElementById("fullscreen");
-        let viewer = null;
-        let renderedKey = "";
-
-        function applyDisplayMode(mode) {
-          const normalized = mode === "fullscreen" ? "fullscreen" : "inline";
-          document.body.dataset.displayMode = normalized;
-          fullscreen.textContent = normalized === "fullscreen"
-            ? "Exit full viewer"
-            : "Open full viewer";
-          fullscreen.setAttribute("aria-pressed", String(normalized === "fullscreen"));
-          requestAnimationFrame(() => {
-            window.dispatchEvent(new Event("resize"));
-          });
-        }
-
-        function syncBridgeControls() {
-          fullscreen.hidden = typeof window.openai?.requestDisplayMode !== "function";
-        }
-
-        function resolveMeta(value) {
-          if (!value || typeof value !== "object") return {};
-          return value._meta
-            || value.mcp_tool_result?._meta
-            || value.mcp_tool_result?.result?._meta
-            || value.call_tool_result?._meta
-            || value.call_tool_result?.result?._meta
-            || {};
-        }
-
-        function initialResult() {
-          const bridge = window.openai;
-          if (!bridge) return null;
-          return {
-            structuredContent: bridge.toolOutput || null,
-            _meta: resolveMeta(bridge.toolResponseMetadata),
-          };
-        }
-
-        function setStatus(message, isError = false) {
-          status.textContent = message;
-          status.classList.toggle("error", isError);
-          status.hidden = false;
-        }
-
-        async function ensureViewer() {
-          if (viewer) return viewer;
-          if (!window.molstar?.Viewer) {
-            throw new Error("Mol* did not load in this environment.");
-          }
-          const options = {
-            layoutIsExpanded: true,
-            layoutShowControls: true,
-            layoutShowRemoteState: false,
-            layoutShowSequence: true,
-            layoutShowLog: false,
-            layoutShowLeftPanel: true,
-            viewportShowReset: true,
-            viewportShowScreenshotControls: true,
-            viewportShowControls: true,
-            collapseLeftPanel: true,
-            collapseRightPanel: true,
-            viewportShowExpand: false,
-            viewportShowToggleFullscreen: false,
-            viewportShowSettings: true,
-            viewportShowSelectionMode: true,
-            viewportShowAnimation: true,
-            disabledExtensions: ["mp4-export"],
-            pdbProvider: "rcsb",
-            emdbProvider: "rcsb",
-            preferWebgl1: true,
-            disableAntialiasing: true,
-          };
-          viewer = typeof window.molstar.Viewer.create === "function"
-            ? await window.molstar.Viewer.create("viewer", options)
-            : new window.molstar.Viewer("viewer", options);
-          return viewer;
-        }
-
-        async function renderToolResult(result) {
-          const data = result?.structuredContent;
-          const meta = resolveMeta(result);
-          const structure = meta?.structure;
-          if (!data || !structure?.data || !structure?.format) return;
-
-          const key = [structure.label, structure.format, structure.data.length].join(":");
-          if (key === renderedKey) return;
-          renderedKey = key;
-          setStatus("Preparing the interactive 3D structure…");
-          try {
-            const activeViewer = await ensureViewer();
-            await activeViewer.loadStructureFromData(
-              structure.data,
-              structure.format,
-              { dataLabel: structure.label || data.fileName || "Structure" },
-            );
-            status.hidden = true;
-          } catch (error) {
-            setStatus(
-              "The structure summary is available, but the 3D viewer could not load this file.",
-              true,
-            );
-          }
-        }
-
-        fullscreen.addEventListener("click", async () => {
-          const targetMode = document.body.dataset.displayMode === "fullscreen"
-            ? "inline"
-            : "fullscreen";
-          const result = await window.openai?.requestDisplayMode?.({ mode: targetMode });
-          applyDisplayMode(result?.mode || window.openai?.displayMode || targetMode);
-        });
-        syncBridgeControls();
-        applyDisplayMode(window.openai?.displayMode);
-
-        window.addEventListener("message", (event) => {
-          if (event.source !== window.parent) return;
-          const message = event.data;
-          if (message?.jsonrpc !== "2.0") return;
-          if (message.method === "ui/notifications/tool-result") {
-            void renderToolResult(message.params);
-          }
-        }, { passive: true });
-
-        window.addEventListener("openai:set_globals", (event) => {
-          const globals = event.detail?.globals;
-          if (!globals) return;
-          syncBridgeControls();
-          if (globals.displayMode) applyDisplayMode(globals.displayMode);
-          if (globals.toolOutput) {
-            void renderToolResult({
-              structuredContent: globals.toolOutput,
-              _meta: resolveMeta(globals.toolResponseMetadata),
-            });
-          }
-        }, { passive: true });
-
-        void renderToolResult(initialResult());
-      })();
-    </script>
-  </body>
-</html>`;
-}
-
-interface StandaloneViewerResult {
-  structuredContent: Record<string, unknown>;
-  _meta: Record<string, unknown>;
 }
 
 function serializeForInlineScript(value: unknown): string {
@@ -226,25 +17,86 @@ function serializeForInlineScript(value: unknown): string {
     .replaceAll("\u2029", "\\u2029");
 }
 
-export function createStandaloneViewerHtml(
-  result: StandaloneViewerResult,
-  assetOrigin = "",
-): string {
-  const payload = serializeForInlineScript(result);
-  const molstarScript = assetUrl(assetOrigin, MOLSTAR_SCRIPT_PATH);
-  const bridge = `<script>
-      (() => {
-        const initialResult = ${payload};
-        window.openai = {
-          toolOutput: initialResult.structuredContent,
-          toolResponseMetadata: { _meta: initialResult._meta },
-          displayMode: "fullscreen",
-        };
-      })();
-    </script>`;
+export function createViewerResourceMeta(appOrigin: string) {
+  return {
+    ui: {
+      domain: appOrigin,
+      prefersBorder: false,
+      csp: {
+        connectDomains: [appOrigin],
+        resourceDomains: [appOrigin],
+        frameDomains: [appOrigin],
+      },
+    },
+    "openai/widgetDescription":
+      "Full Burrete molecular workspace with the native viewer toolbar and molecular inspector.",
+    "openai/widgetPrefersBorder": false,
+    "openai/widgetCSP": {
+      connect_domains: [appOrigin],
+      resource_domains: [appOrigin],
+      frame_domains: [appOrigin],
+    },
+    "openai/widgetDomain": appOrigin,
+  } as const;
+}
 
-  return createViewerWidgetHtml(assetOrigin).replace(
-    `    <script src="${molstarScript}"></script>`,
-    `    ${bridge}\n    <script src="${molstarScript}"></script>`,
-  );
+export function createViewerWidgetHtml(assetOrigin = ""): string {
+  const shellScript = assetUrl(assetOrigin, VIEWER_SHELL_SCRIPT_PATH);
+  const shellStyles = assetUrl(assetOrigin, VIEWER_SHELL_STYLES_PATH);
+  const viewerAssets = assetUrl(assetOrigin, VIEWER_RUNTIME_ASSETS_PATH);
+  const bootstrap = serializeForInlineScript({
+    viewerAssets,
+  });
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Burrete</title>
+    <link rel="stylesheet" crossorigin href="${shellStyles}" />
+    <style>
+      html, body, #root { width: 100%; min-height: 480px; height: min(80vh, 760px); }
+      body { margin: 0; overflow: hidden; background: #f7f7f7; }
+      @media (prefers-color-scheme: dark) { body { background: #111315; } }
+      @media (max-width: 600px) {
+        html, body, #root { min-height: 420px; height: min(76vh, 680px); }
+      }
+    </style>
+    <script>
+      (() => {
+        const config = ${bootstrap};
+        window.__BURRETE_HOSTED_MCP_WIDGET__ = true;
+        window.__BURRETE_WEB_ASSETS_BASE__ = config.viewerAssets;
+        window.__BURRETE_HOSTED_MCP_RESULTS__ = [];
+        window.addEventListener("message", (event) => {
+          if (event.source !== window.parent) return;
+          const message = event.data;
+          if (message?.jsonrpc !== "2.0") return;
+          if (
+            message.method === "ui/notifications/tool-result"
+            && !window.__BURRETE_HOSTED_MCP_BRIDGE_READY__
+          ) {
+            window.__BURRETE_HOSTED_MCP_RESULTS__.push(message.params);
+          }
+        }, { passive: true });
+        window.addEventListener("openai:set_globals", (event) => {
+          const globals = event.detail?.globals;
+          if (
+            !globals?.toolOutput
+            || window.__BURRETE_HOSTED_MCP_BRIDGE_READY__
+          ) return;
+          window.__BURRETE_HOSTED_MCP_RESULTS__.push({
+            structuredContent: globals.toolOutput,
+            _meta: globals.toolResponseMetadata,
+          });
+        }, { passive: true });
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" crossorigin src="${shellScript}"></script>
+  </body>
+</html>`;
 }
