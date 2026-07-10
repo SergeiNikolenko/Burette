@@ -1,8 +1,8 @@
-# Burrete Molecular Viewer — portal copy
+# Burrete — portal copy
 
 ## Listing
 
-- **Plugin name:** Burrete Molecular Viewer
+- **Plugin name:** Burrete
 - **Short description:** Preview molecular structures
 - **Category:** Education
 - **Website:** https://burrete-landing.vercel.app
@@ -14,28 +14,29 @@
 
 ### Long description
 
-Burrete Molecular Viewer opens attached PDB, mmCIF, SDF, and XYZ-family
+Burrete opens attached PDB, mmCIF, SDF, and XYZ-family
 structure files as interactive 3D molecular scenes in ChatGPT and Codex. It can
 also retrieve an explicitly requested public Protein Data Bank entry by PDB ID.
-Each result includes bounded composition counts plus a full Mol* viewer with
-sequence, selection, measurement, representation, and structure controls. The
-hosted plugin is read-only, requires no account, and does not control local
+Each result includes bounded composition counts and opens directly in the real
+Burrete workspace with document tabs, viewer controls, sequence, selection,
+measurements, representations, structure controls, and the molecular inspector.
+The hosted plugin is read-only, requires no account, and does not control local
 files or desktop sessions.
 
 ## Starter prompts
 
 1. Preview the attached SDF and summarize its molecules and elements.
-2. Open PDB 1CRN and show it in the full molecular viewer.
+2. Open PDB 1CRN in the Burrete molecular workspace.
 3. Visualize this mmCIF file and tell me how many chains and residues it has.
 4. Preview the attached XYZ geometry and identify the element counts.
 
 ## Release notes
 
-Initial public app-plus-skills submission. Burrete provides a no-auth,
+Initial public plugin-plus-skills submission. Burrete provides a no-auth,
 read-only hosted MCP server for supported molecular attachments and explicit
 RCSB PDB lookups. Results include bounded structure summaries and an
-interactive, CSP-compatible Mol* viewer. No reviewer account or credentials are
-required.
+interactive, CSP-compatible Burrete workspace. No reviewer account or
+credentials are required.
 
 ## Availability
 
@@ -49,8 +50,9 @@ supported.
 - **Challenge Base URL:** https://burrete-plugin.vercel.app
 - **Authentication:** No authentication.
 - **Reviewer credentials:** Not required.
-- **CSP connect domains:** None.
+- **CSP connect domains:** The stable production app origin only, for self-hosted runtime assets such as RDKit WASM.
 - **CSP resource domains:** The stable production app origin only.
+- **CSP frame domains:** The stable production app origin only.
 
 ## Portal prerequisites
 
@@ -63,8 +65,8 @@ supported.
   annotations, and the viewer resource.
 - Put the portal's exact domain token in `OPENAI_APPS_CHALLENGE`, deploy, and
   complete domain verification before submitting for review.
-- Test both tools in ChatGPT Developer Mode on web and mobile, including the
-  inline-to-fullscreen viewer transition.
+- Test both tools in ChatGPT Developer Mode on web and mobile, including viewer
+  controls, the molecular inspector, and resizing of the inline workspace.
 - Capture the required submission screenshots from the real ChatGPT widget
-  after the Developer Mode checks; do not substitute the standalone example
-  page for the final portal screenshots.
+  after the Developer Mode checks; do not substitute a direct shell URL or a
+  local preview for the final portal screenshots.

@@ -1,19 +1,20 @@
 # Burrete Public Plugin
 
-This package is the hosted MCP app for the public Burrete app-plus-skills
+This package is the hosted MCP service for the public Burrete plugin-plus-skills
 plugin. It is intentionally separate from the local stdio plugin under
 `plugins/burette-agent`:
 
-- the hosted app is designed for ChatGPT and Codex without local installation,
+- the hosted plugin is designed for ChatGPT and Codex without local installation,
   with directory installation available after OpenAI review and publication;
 - the local plugin can open local files and control the Burrete macOS app;
-- the hosted app is read-only and never controls a user's desktop or local
+- the hosted plugin is read-only and never controls a user's desktop or local
   Burrete sessions.
 
-The root URL opens the real full-screen Burrete Mol* viewer. The same viewer is
-returned as the MCP App resource for tool results, including sequence,
-selection, measurements, representations, structure controls, and a host-level
-`Open full viewer` action when it is rendered inline.
+Tool results open directly in the real Burrete browser workspace, including its
+viewer toolbar, document tabs, sequence, selection, measurements,
+representations, structure controls, and molecular inspector. The package does
+not expose a separate branded viewer page: the root URL redirects to the public
+plugin documentation.
 
 ## MCP contract
 
@@ -27,7 +28,7 @@ The production Streamable HTTP endpoint is
 
 Both tools are read-only, idempotent, non-destructive, and cannot write to the
 public internet. Each declares an exact output schema and renders
-`ui://burrete/molecular-viewer-v1.html` with MIME type
+`ui://burrete/molecular-viewer-v2.html` with MIME type
 `text/html;profile=mcp-app`.
 
 The model receives only bounded structure summaries. Original molecular text
@@ -45,8 +46,11 @@ from the model and conversation transcript.
   and Host header, preventing a second DNS resolution from changing the target.
 - Downloads time out after 15 seconds and are bounded while streaming.
 - PDB lookups use the fixed `files.rcsb.org` download origin.
-- The viewer has no iframe or network access. It loads only the app's pinned,
-  self-hosted Mol* assets.
+- The MCP resource mounts the compiled Burrete React shell directly instead of
+  wrapping a separate viewer page. Its CSP permits only the stable production
+  origin for runtime fetches, resources, and the shell's internal viewer frame.
+- The hosted shell loads only the plugin's pinned, self-hosted Burrete, Mol*,
+  and RDKit runtime assets.
 - The Mol* 5.7.0 build is transformed by
   `scripts/build-molstar-csp.mjs` to remove dynamic code generation that is not
   allowed by MCP Apps sandbox CSP. The build script verifies the pinned source
@@ -74,7 +78,7 @@ bun run dev
 
 The production server exposes:
 
-- `/` — full-screen viewer with the public `1CRN` example;
+- `/` — permanent redirect to the public plugin documentation;
 - `/mcp` — stateless Streamable HTTP MCP endpoint;
 - `/api/health` — no-store health response;
 - `/.well-known/openai-apps-challenge` — exact domain-verification token when
@@ -91,12 +95,17 @@ Do not change the production origin after publication. Preview deployments can
 use Vercel-provided deployment origins, while production should set
 `PUBLIC_APP_ORIGIN` explicitly.
 
+`bun run build` first copies the reviewed viewer runtime assets and builds the
+real desktop React shell in hosted MCP mode with stable component entry files.
+The generated `public/burrete-viewer` and `public/viewer-shell` directories are
+build output and are not committed.
+
 ## Submission materials
 
 - `chatgpt-app-submission.json` — listing suggestions and exactly five positive
   plus three negative review tests.
 - `submission/skills/preview-molecular-structures/SKILL.md` — public bundled
-  skill for the app-plus-skills submission.
+  skill for the plugin submission.
 - `submission/portal-copy.md` — starter prompts, release notes, and portal
   checklist.
 

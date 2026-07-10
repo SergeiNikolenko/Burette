@@ -36,8 +36,8 @@ Use it in two ways:
   collections, and send files to external chemistry tools.
 - **iPhone preview app:** build the `BurreteMobile` Xcode target from source,
   then open molecular documents from Files or another iOS document provider.
-- **Hosted OpenAI viewer:** preview an authorized molecular attachment or a
-  public PDB entry in the full Mol* interface through ChatGPT or Codex.
+- **Public molecular plugin:** preview an authorized molecular attachment or a
+  public PDB entry directly in the Burrete workspace through ChatGPT or Codex.
 
 Burrete is intentionally a compact utility, not a full molecular modeling
 environment.
@@ -178,12 +178,12 @@ for structure triage:
 These workflows live in the desktop app. Finder Quick Look remains optimized
 for quick file previews.
 
-## OpenAI App, Codex Plugin, and MCP
+## Public Plugin and MCP
 
-The hosted Burrete app exposes a public HTTPS MCP endpoint and the actual Mol*
-viewer used for molecular previews:
+The hosted Burrete plugin exposes a public HTTPS MCP endpoint and renders
+molecular results directly in the Burrete workspace:
 
-- Viewer: <https://burrete-plugin.vercel.app/>
+- Plugin documentation: <https://burrete-landing.vercel.app/docs/plugin>
 - MCP endpoint: <https://burrete-plugin.vercel.app/mcp>
 - Source: [`apps/burrete-public-plugin`](apps/burrete-public-plugin)
 
@@ -191,10 +191,10 @@ Its read-only `preview_molecular_file` tool accepts one authorized PDB, ENT,
 PDBQT, CIF, mmCIF, SDF, SD, XYZ, or extended XYZ attachment. The
 `preview_pdb_structure` tool retrieves one public RCSB entry by PDB ID. Both
 return bounded model-visible composition data and render the raw structure only
-inside the sandboxed Mol* widget. Files are limited to 3 MiB, processed in
-memory, and not written to Burrete application storage.
+inside the sandboxed Burrete workspace. Files are limited to 3 MiB, processed
+in memory, and not written to Burrete application storage.
 
-The hosted app and the local plugin live in this repository; there is no
+The hosted plugin and the local plugin live in this repository; there is no
 separate plugin source repository. Public installation through OpenAI's Plugins
 Directory becomes available after directory review and publisher release.
 

@@ -110,14 +110,14 @@ missing in a source checkout, the CLI falls back to `vp dev`.
 Burrete is packaged as a Codex-local plugin with bundled skills and a local
 stdio MCP server. This is the appropriate shape for a macOS application that
 must open user-selected local files and control local Browser or desktop
-sessions. This local bundle is not itself the hosted OpenAI app and does not
+sessions. This local bundle is not itself the hosted public plugin and does not
 reference an entry in `.app.json`.
 
-The same repository also owns the hosted app-plus-skills target at
+The same repository also owns the hosted plugin-plus-skills target at
 [`apps/burrete-public-plugin`](../../apps/burrete-public-plugin). It exposes
-<https://burrete-plugin.vercel.app/mcp> and renders a full sandboxed Mol* viewer
-for one authorized attachment or public PDB entry. The hosted target does not
-open arbitrary local files or control the desktop application.
+<https://burrete-plugin.vercel.app/mcp> and renders one authorized attachment or
+public PDB entry in the real sandboxed Burrete browser workspace. The hosted
+target does not open arbitrary local files or control the desktop application.
 
 The required manifest lives at `.codex-plugin/plugin.json`, the MCP server is
 declared in `.mcp.json`, and the repository marketplace is declared at
@@ -162,7 +162,7 @@ changing the plugin. A running Codex process can keep the previous MCP process
 and tool surface alive until the next session.
 
 Public Plugins Directory submission remains a separate deployment target from
-this local stdio bundle. The hosted app provides the public HTTPS endpoint,
+this local stdio bundle. The hosted plugin provides the public HTTPS endpoint,
 support/privacy/terms URLs, review test cases, and accurate tool annotations;
 verified publisher identity and OpenAI review remain portal-side release gates.
 
