@@ -186,12 +186,6 @@ export function xtbOperationLabel(operation: XtbOperation) {
       return "xTB Optimize";
     case "properties":
       return "xTB Properties";
-    case "grid-properties":
-      return "xTB Grid Properties";
-    case "fep-preflight":
-      return "xTB FEP Preflight";
-    case "pose-refine":
-      return "xTB Pose Refine";
     case "cube":
       return "xTB Density Cube";
     case "hessian":
@@ -212,7 +206,5 @@ export function xtbOperationLabel(operation: XtbOperation) {
       return "xTB MD";
     case "metadyn":
       return "xTB Metadynamics";
-    case "dock":
-      return "xTB Dock";
   }
 }
