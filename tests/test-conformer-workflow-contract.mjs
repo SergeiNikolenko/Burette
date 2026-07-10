@@ -1,0 +1,29 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const viteConfig = source("apps/desktop/vite.config.ts");
+const conformerCommand = source("apps/desktop/src-tauri/src/commands/conformer.rs");
+const chemistrySettings = source("apps/desktop/src/lib/chemistry-settings.ts");
+const chemistryTypes = source("apps/desktop/src/types.ts");
+const chemistryJobsHook = source("apps/desktop/src/hooks/use-app-chemistry-jobs.ts");
+const conformerWorkflow = source("apps/desktop/src/hooks/use-app-conformer-workflows.ts");
+const structureInfoPanel = source("apps/desktop/src/components/structure-info-panel.tsx");
+
+assert.match(structureInfoPanel, /document\.renderer !== "grid2d" && canUseConformerWorkflow/);
+assert.match(conformerWorkflow, /Open a specific molecule from the collection in Mol\* before running CREST/);
+
+for (const text of [chemistrySettings, chemistryTypes, structureInfoPanel, conformerWorkflow, conformerCommand, viteConfig]) {
+  assert.doesNotMatch(text, /prismRotamerPruning|prism_rotamer_pruning/u);
+}
+
+assert.match(conformerCommand, /Unsupported conformer operation: \{operation\}/);
+assert.match(viteConfig, /Unsupported conformer operation: \$\{String\(value \|\| "missing"\)\}/);
+assert.match(viteConfig, /runBrowserDevConformerJobImpl\(request, jobKey\)[\s\S]*finally \{\s*finishBrowserDevJob\(jobKey\);/);
+assert.match(conformerCommand, /Conformer job cancelled before the process started/);
+assert.match(viteConfig, /browserDevJobWasCancelled\(jobKey\)[\s\S]*status: 130/);
+assert.match(chemistryJobsHook, /cancelledConformerJobIdsRef\.current\.delete\(jobId\)[\s\S]*status: "running"/);
+assert.match(conformerCommand, /Primary output: \{\}/);
+assert.match(viteConfig, /Primary output: \$\{result\.primaryOpenPath \?\? "None"\}/);
+
+console.log("conformer workflow contract tests passed");

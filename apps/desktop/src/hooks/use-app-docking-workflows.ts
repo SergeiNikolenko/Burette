@@ -144,10 +144,20 @@ export function useAppDockingWorkflows({
   }, [documents]);
 
   const mergeMoleculeCollections = useCallback(async (targetPath: string | null, paths: string[]) => {
-    const sourcePaths = Array.from(new Set([
+    const candidatePaths = Array.from(new Set([
       ...collectionSourcePaths(targetPath),
       ...paths.flatMap((path) => collectionSourcePaths(path)),
-    ].filter(isMoleculeCollectionPath)));
+    ].map((path) => path.trim()).filter(Boolean)));
+    const unsupportedPaths = candidatePaths.filter((path) => !isMoleculeCollectionPath(path));
+    if (unsupportedPaths.length > 0) {
+      pushStatus(
+        "Collection merge accepts only SDF, SMILES, CSV, or TSV inputs.",
+        "error",
+        unsupportedPaths,
+      );
+      return;
+    }
+    const sourcePaths = candidatePaths;
     if (sourcePaths.length < 2) {
       pushStatus("Drop another SDF, SMILES, CSV, or TSV collection to merge it.", "error");
       return;

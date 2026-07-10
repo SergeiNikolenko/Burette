@@ -21,6 +21,16 @@ type RunningConformerJobs = Mutex<HashMap<String, Arc<Mutex<Child>>>>;
 static RUNNING_CONFORMER_JOBS: OnceLock<RunningConformerJobs> = OnceLock::new();
 static CANCELLED_CONFORMER_JOBS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
+struct ConformerJobCleanup {
+    job_id: Option<String>,
+}
+
+impl Drop for ConformerJobCleanup {
+    fn drop(&mut self) {
+        finish_conformer_job(self.job_id.as_deref());
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ConformerToolStatus {
@@ -58,7 +68,6 @@ pub(crate) struct ConformerRunRequest {
     rmsd_threshold_angstrom: Option<f64>,
     sampling_mode: Option<String>,
     prism_energy_sort: Option<bool>,
-    prism_rotamer_pruning: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -145,7 +154,7 @@ pub(crate) fn prepare_conformer_job<R: Runtime>(
     app: tauri::AppHandle<R>,
     request: ConformerRunRequest,
 ) -> Result<ConformerPreparedRun, String> {
-    let operation = conformer_operation(&request);
+    let operation = conformer_operation(&request)?;
     let output_root = conformer_output_root(&app, &request)?;
     let work_dir = create_numbered_conformer_run_dir(&output_root, &operation)?;
     let log_path = work_dir.join(format!("{operation}.log"));
@@ -213,7 +222,15 @@ fn run_conformer_job_blocking<R: Runtime>(
     request: ConformerRunRequest,
 ) -> Result<ConformerRunResult, String> {
     let started = Instant::now();
-    let operation = conformer_operation(&request);
+    let job_id = request
+        .job_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string);
+    let _job_cleanup = ConformerJobCleanup {
+        job_id: job_id.clone(),
+    };
+    let operation = conformer_operation(&request)?;
     let executable = conformer_executable(&operation)?;
     let output_root = conformer_output_root(&app, &request)?;
     let requested_work_dir = request
@@ -236,7 +253,12 @@ fn run_conformer_job_blocking<R: Runtime>(
     assert_direct_conformer_input(&input_text, &copied_input.input_extension, &operation)?;
 
     let mut prepared_input = if operation == "crest-generate" {
-        prepare_crest_input(&copied_input.input_path, &input_text, &work_dir)?
+        prepare_crest_input(
+            &copied_input.input_path,
+            &input_text,
+            &work_dir,
+            job_id.as_deref(),
+        )?
     } else {
         PreparedInput {
             path: copied_input.input_path.clone(),
@@ -255,10 +277,7 @@ fn run_conformer_job_blocking<R: Runtime>(
             })
             .clamp(5, 86_400),
     );
-    let job_id = request
-        .job_id
-        .as_deref()
-        .filter(|value| !value.trim().is_empty());
+    let job_id = job_id.as_deref();
     let mut run_request = request_clone_without_job(&request);
     let mut args = conformer_args(
         &operation,
@@ -461,7 +480,6 @@ fn run_conformer_job_blocking<R: Runtime>(
         primary_open_path,
     };
     write_conformer_report(&report_path, &result, &log)?;
-    finish_conformer_job(job_id);
     Ok(result)
 }
 
@@ -487,11 +505,10 @@ fn conformer_tool_status(
     }
 }
 
-fn conformer_operation(request: &ConformerRunRequest) -> String {
-    if request.operation == "prism-prune" {
-        "prism-prune".into()
-    } else {
-        "crest-generate".into()
+fn conformer_operation(request: &ConformerRunRequest) -> Result<String, String> {
+    match request.operation.as_str() {
+        "crest-generate" | "prism-prune" => Ok(request.operation.clone()),
+        operation => Err(format!("Unsupported conformer operation: {operation}")),
     }
 }
 
@@ -648,6 +665,7 @@ fn prepare_crest_input(
     input_path: &Path,
     input_text: &str,
     work_dir: &Path,
+    job_id: Option<&str>,
 ) -> Result<PreparedInput, String> {
     if should_use_prepared_sdf_directly(input_path, input_text) {
         return Ok(PreparedInput {
@@ -658,7 +676,7 @@ fn prepare_crest_input(
     }
     if should_prepare_crest_input_with_openbabel(input_path) {
         if let Some(prepared) =
-            prepare_crest_input_with_openbabel(input_path, input_text, work_dir)?
+            prepare_crest_input_with_openbabel(input_path, input_text, work_dir, job_id)?
         {
             return Ok(prepared);
         }
@@ -674,6 +692,7 @@ fn prepare_crest_input_with_openbabel(
     input_path: &Path,
     input_text: &str,
     work_dir: &Path,
+    job_id: Option<&str>,
 ) -> Result<Option<PreparedInput>, String> {
     let Some(obabel) = resolve_executable("obabel") else {
         return Ok(None);
@@ -695,7 +714,7 @@ fn prepare_crest_input_with_openbabel(
         work_dir,
         &prep_log_path,
         Duration::from_secs(120),
-        None,
+        job_id,
     )?;
     if status.success()
         && prepared_path
@@ -829,6 +848,14 @@ fn run_logged_executable(
     timeout: Duration,
     job_id: Option<&str>,
 ) -> Result<ExitStatus, String> {
+    if conformer_job_was_cancelled(job_id) {
+        fs::write(
+            log_path,
+            "Conformer job cancelled before the process started.\n",
+        )
+        .map_err(|err| format!("{}: {err}", log_path.display()))?;
+        return Ok(cancelled_exit_status());
+    }
     fs::write(
         log_path,
         format!("$ {}\n\n", command_line(executable, args)),
@@ -857,6 +884,18 @@ fn run_logged_executable(
     let stderr_reader = thread::spawn(move || read_capped_text(stderr));
     let started = Instant::now();
     loop {
+        if conformer_job_was_cancelled(job_id) {
+            {
+                let mut child = child
+                    .lock()
+                    .map_err(|_| "Conformer job process is unavailable.".to_string())?;
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            unregister_conformer_job(job_id);
+            append_captured_log(stdout_reader, stderr_reader, log_path);
+            return Ok(cancelled_exit_status());
+        }
         let status = {
             let mut child = child
                 .lock()
@@ -1198,7 +1237,7 @@ fn write_conformer_report(
             .join("\n")
     };
     let report = format!(
-        "# Conformer Job Report\n\n- Operation: {}\n- Input: {}\n- Work dir: {}\n- Exit code: {}\n- Error summary: {}\n- Preparation: {}\n- Prepared input: {}\n- Elapsed: {:.1} s\n- Command: {}\n- Recovery: {}\n\n## Artifacts\n\n{}\n\n## Log excerpt\n\n```text\n{}\n```\n",
+        "# Conformer Job Report\n\n- Operation: {}\n- Input: {}\n- Work dir: {}\n- Exit code: {}\n- Error summary: {}\n- Preparation: {}\n- Prepared input: {}\n- Elapsed: {:.1} s\n- Command: {}\n- Recovery: {}\n- Primary output: {}\n\n## Artifacts\n\n{}\n\n## Log excerpt\n\n```text\n{}\n```\n",
         result.operation,
         result.input_path,
         result.work_dir,
@@ -1209,6 +1248,7 @@ fn write_conformer_report(
         result.elapsed_ms as f64 / 1000.0,
         result.command.join(" "),
         result.recovery.as_deref().unwrap_or("None"),
+        result.primary_open_path.as_deref().unwrap_or("None"),
         artifact_lines,
         tail_text(log, 8000),
     );
@@ -1409,7 +1449,7 @@ fn should_retry_crest_without_solvent_after_preopt(
     log: &str,
 ) -> bool {
     !status.success()
-        && exit_code_for_status(status) != 124
+        && !matches!(exit_code_for_status(status), 124 | 130)
         && request.solvent.as_deref().unwrap_or("none") != "none"
         && log
             .to_ascii_lowercase()
@@ -1418,7 +1458,7 @@ fn should_retry_crest_without_solvent_after_preopt(
 
 fn should_retry_crest_after_initial_optimization_failure(status: &ExitStatus, log: &str) -> bool {
     !status.success()
-        && exit_code_for_status(status) != 124
+        && !matches!(exit_code_for_status(status), 124 | 130)
         && log
             .to_ascii_lowercase()
             .contains("initial geometry optimization failed")
@@ -1487,7 +1527,6 @@ fn request_clone_without_job(request: &ConformerRunRequest) -> ConformerRunReque
         rmsd_threshold_angstrom: request.rmsd_threshold_angstrom,
         sampling_mode: request.sampling_mode.clone(),
         prism_energy_sort: request.prism_energy_sort,
-        prism_rotamer_pruning: request.prism_rotamer_pruning,
     }
 }
 
@@ -1603,7 +1642,11 @@ fn tail_text(text: &str, limit: usize) -> &str {
     if text.len() <= limit {
         text
     } else {
-        &text[text.len() - limit..]
+        let mut start = text.len() - limit;
+        while !text.is_char_boundary(start) {
+            start += 1;
+        }
+        &text[start..]
     }
 }
 
@@ -1629,6 +1672,18 @@ fn timeout_exit_status() -> ExitStatus {
     ExitStatus::from_raw(124 << 8)
 }
 
+#[cfg(unix)]
+fn cancelled_exit_status() -> ExitStatus {
+    ExitStatus::from_raw(130 << 8)
+}
+
+#[cfg(not(unix))]
+fn cancelled_exit_status() -> ExitStatus {
+    Command::new("false")
+        .status()
+        .expect("false command should produce an exit status")
+}
+
 #[cfg(not(unix))]
 fn timeout_exit_status() -> ExitStatus {
     Command::new("false")
@@ -1641,4 +1696,105 @@ fn unix_timestamp_ms() -> u128 {
         .duration_since(UNIX_EPOCH)
         .map(|value| value.as_millis())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(operation: &str) -> ConformerRunRequest {
+        ConformerRunRequest {
+            operation: operation.into(),
+            job_id: None,
+            path: "input.xyz".into(),
+            title: "input.xyz".into(),
+            extension: "xyz".into(),
+            input_data_base64: None,
+            output_directory: None,
+            work_dir: None,
+            method: None,
+            solvent: None,
+            charge: None,
+            uhf: None,
+            threads: None,
+            timeout_seconds: None,
+            energy_window_kcal_mol: None,
+            rmsd_threshold_angstrom: None,
+            sampling_mode: None,
+            prism_energy_sort: None,
+        }
+    }
+
+    #[test]
+    fn conformer_operation_rejects_unknown_values() {
+        assert_eq!(
+            conformer_operation(&request("crest-generate")),
+            Ok("crest-generate".into())
+        );
+        assert_eq!(
+            conformer_operation(&request("prism-prune")),
+            Ok("prism-prune".into())
+        );
+        assert_eq!(
+            conformer_operation(&request("unknown")),
+            Err("Unsupported conformer operation: unknown".into())
+        );
+    }
+
+    #[test]
+    fn cancellation_never_triggers_crest_recovery() {
+        let status = cancelled_exit_status();
+        let log = "Initial geometry optimization failed";
+
+        assert!(!should_retry_crest_after_initial_optimization_failure(
+            &status, log
+        ));
+        assert!(!should_retry_crest_without_solvent_after_preopt(
+            &ConformerRunRequest {
+                solvent: Some("water".into()),
+                ..request("crest-generate")
+            },
+            &status,
+            log,
+        ));
+    }
+
+    #[test]
+    fn log_tail_keeps_utf8_boundaries() {
+        let text = format!("{}ошибка", "a".repeat(8_100));
+        let tail = tail_text(&text, 8_000);
+        assert!(tail.ends_with("ошибка"));
+        assert!(tail.len() <= 8_000);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pre_cancelled_conformer_job_does_not_start_a_process() {
+        let job_id = format!("conformer-cancel-test-{}", unix_timestamp_ms());
+        cancelled_conformer_jobs()
+            .lock()
+            .expect("cancellation registry")
+            .insert(job_id.clone());
+        let work_dir = std::env::temp_dir().join(&job_id);
+        fs::create_dir(&work_dir).expect("create test work dir");
+        let marker = work_dir.join("process-started");
+        let log_path = work_dir.join("conformer.log");
+        let args = vec!["-c".into(), format!("touch {}", marker.to_string_lossy())];
+
+        let status = run_logged_executable(
+            Path::new("/bin/sh"),
+            &args,
+            &work_dir,
+            &log_path,
+            Duration::from_secs(1),
+            Some(&job_id),
+        )
+        .expect("cancelled result");
+
+        let process_started = marker.exists();
+        finish_conformer_job(Some(&job_id));
+        fs::remove_dir_all(&work_dir).expect("remove test work dir");
+        assert_eq!(status.code(), Some(130));
+        assert!(!process_started);
+    }
 }
