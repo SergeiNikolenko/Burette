@@ -39,6 +39,8 @@ import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+const hostedMcpBuild = process.env.VITE_BURRETE_BUILD_IDENTIFIER === "hosted-mcp-widget";
+const browserRuntimeRepoRoot = hostedMcpBuild ? "" : repoRoot;
 const desktopDist = process.env.BURRETE_AGENT_SHELL_OUT_DIR
   ? resolve(process.env.BURRETE_AGENT_SHELL_OUT_DIR)
   : fileURLToPath(new URL("dist", import.meta.url));
@@ -3784,8 +3786,11 @@ export default defineConfig({
   },
   define: {
     global: "globalThis",
-    "import.meta.env.BURRETE_REPO_ROOT": JSON.stringify(repoRoot),
+    "import.meta.env.BURRETE_REPO_ROOT": JSON.stringify(browserRuntimeRepoRoot),
     "import.meta.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT": JSON.stringify(BROWSER_DEV_GENERATED_FILES_ROOT),
+    "import.meta.env.BURRETE_GRID_PERF_REPORT_PATH": JSON.stringify(
+      hostedMcpBuild ? "" : "/private/tmp/burrete-grid-real-app-perf.jsonl",
+    ),
     process: JSON.stringify({ env: {} }),
     "process.env": "{}",
   },
@@ -3807,13 +3812,26 @@ export default defineConfig({
   build: {
     outDir: desktopDist,
     emptyOutDir: true,
+    cssCodeSplit: !hostedMcpBuild,
     modulePreload: {
       resolveDependencies: resolveModulePreloadDependencies,
     },
     rollupOptions: {
       output: {
-        manualChunks: desktopManualChunks,
-        onlyExplicitManualChunks: true,
+        entryFileNames: hostedMcpBuild
+          ? "assets/burrete-hosted-shell.js"
+          : undefined,
+        assetFileNames: hostedMcpBuild
+          ? (assetInfo) => assetInfo.name?.endsWith(".css")
+            ? "assets/burrete-hosted-shell.css"
+            : "assets/[name]-[hash][extname]"
+          : undefined,
+        ...(hostedMcpBuild
+          ? {}
+          : {
+              manualChunks: desktopManualChunks,
+              onlyExplicitManualChunks: true,
+            }),
       },
     },
   },
