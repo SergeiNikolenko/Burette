@@ -69,6 +69,8 @@ describe("viewer resource contract", () => {
     expect(meta.ui.domain).toBe("https://burrete.example");
     expect(meta.ui.csp.connectDomains).toEqual([]);
     expect(meta.ui.csp.resourceDomains).toEqual(["https://burrete.example"]);
+    expect(meta.ui.prefersBorder).toBe(false);
+    expect(meta["openai/widgetPrefersBorder"]).toBe(false);
     expect("frameDomains" in meta.ui.csp).toBe(false);
   });
 
@@ -77,9 +79,13 @@ describe("viewer resource contract", () => {
     expect(html).toContain(`https://burrete.example${MOLSTAR_SCRIPT_PATH}`);
     expect(html).toContain("ui/notifications/tool-result");
     expect(html).toContain("Open full viewer");
+    expect(html).toContain("layoutIsExpanded: true");
     expect(html).toContain("layoutShowLeftPanel: true");
-    expect(html).toContain("collapseRightPanel: false");
+    expect(html).toContain("layoutShowLog: false");
+    expect(html).toContain("collapseRightPanel: true");
     expect(html).toContain('disabledExtensions: ["mp4-export"]');
+    expect(html).not.toContain('class="metrics"');
+    expect(html).not.toContain('class="header"');
     expect(html).toContain("textContent");
     expect(html).not.toContain("<iframe");
   });
