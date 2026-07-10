@@ -18,7 +18,6 @@ export const DEFAULT_CONFORMER_SETTINGS: ConformerSettings = {
   samplingMode: "auto",
   prismTimeoutSeconds: 300,
   prismEnergySort: true,
-  prismRotamerPruning: false,
 };
 
 const CONFORMER_SETTINGS_STORAGE_KEY = "burrete.conformer.settings";
@@ -55,7 +54,6 @@ export function normalizeConformerSettings(value: unknown): ConformerSettings {
     samplingMode: source.samplingMode && samplingModes.has(source.samplingMode) ? source.samplingMode : DEFAULT_CONFORMER_SETTINGS.samplingMode,
     prismTimeoutSeconds: clampInteger(source.prismTimeoutSeconds, 5, 86_400, DEFAULT_CONFORMER_SETTINGS.prismTimeoutSeconds),
     prismEnergySort: source.prismEnergySort !== false,
-    prismRotamerPruning: source.prismRotamerPruning === true,
   };
 }
 

@@ -121,7 +121,6 @@ export type ConformerSettings = {
   samplingMode: "auto" | "normal" | "quick" | "squick" | "mquick";
   prismTimeoutSeconds: number;
   prismEnergySort: boolean;
-  prismRotamerPruning: boolean;
 };
 
 export type ConformerRunRequest = {
@@ -143,7 +142,6 @@ export type ConformerRunRequest = {
   rmsdThresholdAngstrom?: number;
   samplingMode?: ConformerSettings["samplingMode"];
   prismEnergySort?: boolean;
-  prismRotamerPruning?: boolean;
 };
 
 export type ConformerPreparedRun = {
