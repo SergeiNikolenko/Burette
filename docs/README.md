@@ -53,8 +53,9 @@ contains only documents that describe the active project.
   requirements.
 - [Keyboard shortcuts](keyboard-shortcuts.md): app shortcuts and command palette
   actions.
-- [Agent platform](agent-platform.md): CLI, Browser shell, desktop session,
-  plugin, MCP, observe/action, and visual QA boundaries.
+- [Agent platform](agent-platform.md): hosted public plugin, public MCP, local CLI,
+  Browser shell, desktop session, plugin, observe/action, and visual QA
+  boundaries.
 - [Repo-local Codex maintenance skills](../.codex/README.md): development-time
   review, PR body, release readiness, contract, and testing skills. These are
   not packaged product workflow skills.
