@@ -2,7 +2,7 @@
   "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
   "schema_version": 1,
   "app_info": {
-    "display_name": "Burrete Molecular Viewer",
+    "display_name": "Burrete",
     "subtitle": "Preview molecular structures",
     "description": "Burrete opens supported molecular structure attachments and explicit public PDB entries as interactive 3D scenes, with bounded composition summaries for chains, residues, ligands, molecules, and elements.",
     "category": "EDUCATION"

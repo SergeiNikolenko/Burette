@@ -53,7 +53,7 @@ contains only documents that describe the active project.
   requirements.
 - [Keyboard shortcuts](keyboard-shortcuts.md): app shortcuts and command palette
   actions.
-- [Agent platform](agent-platform.md): hosted OpenAI app, public MCP, local CLI,
+- [Agent platform](agent-platform.md): hosted public plugin, public MCP, local CLI,
   Browser shell, desktop session, plugin, observe/action, and visual QA
   boundaries.
 - [Repo-local Codex maintenance skills](../.codex/README.md): development-time
