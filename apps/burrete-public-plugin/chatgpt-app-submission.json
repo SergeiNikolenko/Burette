@@ -1,0 +1,112 @@
+{
+  "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
+  "schema_version": 1,
+  "app_info": {
+    "display_name": "Burrete Molecular Viewer",
+    "subtitle": "Preview molecular structures",
+    "description": "Burrete opens supported molecular structure attachments and explicit public PDB entries as interactive 3D scenes, with bounded composition summaries for chains, residues, ligands, molecules, and elements.",
+    "category": "EDUCATION"
+  },
+  "tools": {
+    "preview_molecular_file": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Only retrieves one user-authorized attachment into memory and computes a bounded preview without saving or changing the file.",
+        "open_world_justification": "Does not publish content or change any public or third-party system.",
+        "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
+      }
+    },
+    "preview_pdb_structure": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Only retrieves the explicitly requested public RCSB PDB entry and computes a bounded preview.",
+        "open_world_justification": "Reads public structure data without writing to RCSB or any other external system.",
+        "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
+      }
+    }
+  },
+  "test_cases": [
+    {
+      "description": "Preview a small attached PDB macromolecule.",
+      "user_prompt": "Preview this PDB file in the full molecular viewer and summarize its chains, residues, and atoms.",
+      "file_attachment_urls": [
+        "https://raw.githubusercontent.com/SergeiNikolenko/Burrete/main/samples/mini.pdb"
+      ],
+      "tools_triggered": "preview_molecular_file",
+      "expected_output": "Returns bounded PDB composition counts and opens the attached structure in the interactive Burrete Mol* viewer.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Preview an attached mmCIF structure.",
+      "user_prompt": "Open this mmCIF structure and show its chain and element summary.",
+      "file_attachment_urls": [
+        "https://raw.githubusercontent.com/SergeiNikolenko/Burrete/main/samples/mini.cif"
+      ],
+      "tools_triggered": "preview_molecular_file",
+      "expected_output": "Returns bounded mmCIF counts and renders the structure with sequence and structure controls.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Preview an attached SDF collection.",
+      "user_prompt": "Preview this SDF and summarize the molecules and elements it contains.",
+      "file_attachment_urls": [
+        "https://raw.githubusercontent.com/SergeiNikolenko/Burrete/main/samples/mini.sdf"
+      ],
+      "tools_triggered": "preview_molecular_file",
+      "expected_output": "Returns bounded SDF molecule and element counts and renders the available coordinates interactively.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Preview an attached XYZ geometry.",
+      "user_prompt": "Visualize this XYZ geometry and report its atom and element counts.",
+      "file_attachment_urls": [
+        "https://raw.githubusercontent.com/SergeiNikolenko/Burrete/main/samples/mini.xyz"
+      ],
+      "tools_triggered": "preview_molecular_file",
+      "expected_output": "Returns bounded XYZ atom and element counts and opens the geometry in the interactive viewer.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Retrieve an explicit public PDB entry.",
+      "user_prompt": "Open PDB 1CRN in the full molecular viewer and summarize its composition.",
+      "file_attachment_urls": null,
+      "tools_triggered": "preview_pdb_structure",
+      "expected_output": "Retrieves 1CRN from RCSB, returns bounded composition counts, and renders the structure in the full interactive viewer.",
+      "expected_output_url": null
+    }
+  ],
+  "negative_test_cases": [
+    {
+      "description": "Do not invoke a read-only preview tool for destructive local file editing.",
+      "user_prompt": "Delete several atoms from my local PDB file and overwrite the original file.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The plugin should not be invoked because it cannot edit, delete, or overwrite local molecular files.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Do not use a molecular preview as medical diagnosis.",
+      "user_prompt": "Diagnose whether I have cancer from a protein structure.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The plugin should not be invoked because molecular visualization is not a medical diagnostic workflow.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Do not trigger for unrelated three-dimensional asset formats.",
+      "user_prompt": "Render this Blender OBJ model and edit its materials.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The plugin should not be invoked because general 3D assets and material editing are outside its molecular structure formats.",
+      "expected_output_url": null
+    }
+  ]
+}
