@@ -57,6 +57,7 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
     <link rel="stylesheet" crossorigin href="${shellStyles}" />
     <style>
       html, body, #root { width: 100%; min-height: 480px; height: min(80vh, 760px); }
+      body .app-shell { width: 100%; height: 100%; }
       body { margin: 0; overflow: hidden; background: #f7f7f7; }
       @media (prefers-color-scheme: dark) { body { background: #111315; } }
       @media (max-width: 600px) {
