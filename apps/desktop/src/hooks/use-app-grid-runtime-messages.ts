@@ -1,5 +1,7 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
+import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
 import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 
@@ -71,18 +73,12 @@ export function useAppGridRuntimeMessages({
 
     if (body?.type === "readStructureText") {
       if (!body.requestId || !body.documentId) return true;
-      if (!isTauriRuntime()) {
-        replyGrid(source, body.requestId, body.documentId, {
-          type: "gridError",
-          error: "Desktop file reading is unavailable outside the Tauri runtime.",
-        });
-        return true;
-      }
       void (async () => {
         try {
-          const text = await invoke<string>("read_structure_text", {
-            path: typeof body.path === "string" ? body.path : "",
-          });
+          const path = typeof body.path === "string" ? body.path : "";
+          const text = isTauriRuntime()
+            ? await invoke<string>("read_structure_text", { path })
+            : readBrowserDevVirtualTextDocument(path) ?? await readStructureText(path);
           replyGrid(source, body.requestId, body.documentId, {
             type: "structureText",
             text,
