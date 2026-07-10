@@ -2,10 +2,59 @@
 import assert from "node:assert/strict";
 
 const { resolveDropAction, resolveDropActionChoices } = await import("../apps/desktop/src/lib/drop-actions.ts");
+const { buildFileDropPreview } = await import("../apps/desktop/src/lib/drop-preview.ts");
 
 function payload(paths, records = []) {
   return { paths, records };
 }
+
+const previewBounds = { left: 240, top: 52, width: 720, height: 640 };
+assert.deepEqual(buildFileDropPreview({
+  payload: payload(["/tmp/ligand.sdf"]),
+  target: { kind: "ketcher" },
+  source: { kind: "finder" },
+  bounds: previewBounds,
+  point: { x: 480, y: 240 },
+}), {
+  actionLabel: "Add to Ketcher",
+  bounds: previewBounds,
+  choiceCount: 3,
+  itemLabel: "ligand.sdf",
+  point: { x: 480, y: 240 },
+  targetKind: "ketcher",
+  targetLabel: "Ketcher",
+});
+assert.deepEqual(buildFileDropPreview({
+  payload: payload(["/tmp/ligand.sdf"]),
+  target: { kind: "dock", area: "right", tabKind: "files" },
+  source: { kind: "finder" },
+  bounds: { left: 960, top: 52, width: 320, height: 640 },
+  point: { x: 1080, y: 260 },
+}), {
+  actionLabel: "Open in right dock",
+  bounds: { left: 960, top: 52, width: 320, height: 640 },
+  choiceCount: 0,
+  itemLabel: "ligand.sdf",
+  point: { x: 1080, y: 260 },
+  targetKind: "dock",
+  targetLabel: "Right dock",
+});
+
+assert.deepEqual(buildFileDropPreview({
+  payload: payload(["/tmp/receptor.pdb"]),
+  target: { kind: "ketcher" },
+  source: { kind: "finder" },
+  bounds: previewBounds,
+  point: { x: 480, y: 240 },
+}), {
+  actionLabel: "Open as document tabs",
+  bounds: previewBounds,
+  choiceCount: 1,
+  itemLabel: "receptor.pdb",
+  point: { x: 480, y: 240 },
+  targetKind: "workspace",
+  targetLabel: "Workspace",
+});
 
 const sdfOnWorkspace = resolveDropAction(payload(["/tmp/a.sdf"]), { kind: "workspace" });
 assert.deepEqual(sdfOnWorkspace, {
