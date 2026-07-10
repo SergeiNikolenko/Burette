@@ -6,7 +6,7 @@ import { basename } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
 import type { ViewerDocument } from "../types";
 
-const GRID_PERF_REPORT_PATH = "/private/tmp/burrete-grid-real-app-perf.jsonl";
+const GRID_PERF_REPORT_PATH = String(import.meta.env.BURRETE_GRID_PERF_REPORT_PATH || "");
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;

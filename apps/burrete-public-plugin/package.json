@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "assets:molstar": "node scripts/build-molstar-csp.mjs",
-    "dev": "bun run assets:molstar && next dev",
-    "build": "bun run assets:molstar && next build",
+    "assets:viewer": "node scripts/build-hosted-viewer.mjs && bun run assets:molstar",
+    "dev": "bun run assets:viewer && next dev",
+    "build": "bun run assets:viewer && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "bun run assets:molstar && bun test tests"
+    "test": "bun run assets:viewer && bun test tests"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "1.7.4",
