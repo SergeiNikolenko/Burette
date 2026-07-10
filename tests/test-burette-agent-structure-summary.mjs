@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { summarizeStructureFile } from "../plugins/burette-agent/mcp/lib/structure-summary.mjs";
+import {
+  summarizeStructureFile,
+  summarizeStructureText,
+} from "../plugins/burette-agent/mcp/lib/structure-summary.mjs";
 
 const miniPdb = await summarizeStructureFile("samples/mini.pdb");
 assert.equal(miniPdb.format, "PDB");
@@ -15,6 +18,15 @@ assert.equal(miniPdb.counts.polymerResidues, 2);
 assert.equal(miniPdb.counts.ligandInstances, 0);
 assert.equal(miniPdb.components.chains[0].id, "A");
 assert.match(miniPdb.summaryLine, /PDB macromolecule/);
+
+const miniPdbText = await readFile("samples/mini.pdb", "utf8");
+const inlineMiniPdb = summarizeStructureText({
+  text: miniPdbText,
+  fileName: "mini.pdb",
+});
+assert.equal(inlineMiniPdb.summaryLine, miniPdb.summaryLine);
+assert.equal(inlineMiniPdb.counts.atoms, miniPdb.counts.atoms);
+assert.equal("path" in inlineMiniPdb, false);
 
 const oneHtbPdb = await summarizeStructureFile("samples/structures/proteins/1htb.pdb");
 assert.equal(oneHtbPdb.format, "PDB");

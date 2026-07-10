@@ -45,7 +45,7 @@ assert.equal(manifest.interface.websiteURL, "https://github.com/SergeiNikolenko/
 assert.equal(manifest.interface.supportURL, "https://github.com/SergeiNikolenko/Burrete/issues");
 assert.equal(manifest.interface.privacyPolicyURL, "https://github.com/SergeiNikolenko/Burrete/blob/main/PRIVACY.md");
 assert.equal(manifest.interface.termsOfServiceURL, "https://github.com/SergeiNikolenko/Burrete/blob/main/TERMS.md");
-assert.match(await readFile("PRIVACY.md", "utf8"), /Burrete Codex plugin/);
+assert.match(await readFile("PRIVACY.md", "utf8"), /local Codex\s+plugin/);
 assert.match(await readFile("TERMS.md", "utf8"), /MIT License/);
 
 const compatibility = JSON.parse(await read("compatibility.json"));

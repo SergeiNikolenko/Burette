@@ -110,8 +110,14 @@ missing in a source checkout, the CLI falls back to `vp dev`.
 Burrete is packaged as a Codex-local plugin with bundled skills and a local
 stdio MCP server. This is the appropriate shape for a macOS application that
 must open user-selected local files and control local Browser or desktop
-sessions. It is not a hosted ChatGPT Apps SDK app and does not reference an
-entry in `.app.json`.
+sessions. This local bundle is not itself the hosted public plugin and does not
+reference an entry in `.app.json`.
+
+The same repository also owns the hosted plugin-plus-skills target at
+[`apps/burrete-public-plugin`](../../apps/burrete-public-plugin). It exposes
+<https://burrete-plugin.vercel.app/mcp> and renders one authorized attachment or
+public PDB entry in the real sandboxed Burrete browser workspace. The hosted
+target does not open arbitrary local files or control the desktop application.
 
 The required manifest lives at `.codex-plugin/plugin.json`, the MCP server is
 declared in `.mcp.json`, and the repository marketplace is declared at
@@ -155,11 +161,10 @@ Verify the installation with `codex plugin list`, then restart Codex after
 changing the plugin. A running Codex process can keep the previous MCP process
 and tool surface alive until the next session.
 
-Public Plugins Directory submission is a separate deployment target. A public
-app-plus-skills submission requires a public HTTPS MCP endpoint, verified
-publisher identity, public support/privacy/terms URLs, review test cases, and
-accurate tool annotations. The local stdio plugin intentionally does not claim
-that hosted submission surface.
+Public Plugins Directory submission remains a separate deployment target from
+this local stdio bundle. The hosted plugin provides the public HTTPS endpoint,
+support/privacy/terms URLs, review test cases, and accurate tool annotations;
+verified publisher identity and OpenAI review remain portal-side release gates.
 
 ## MolViewSpec Scene Language
 

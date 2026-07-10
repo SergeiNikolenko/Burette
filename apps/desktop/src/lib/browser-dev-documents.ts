@@ -106,7 +106,12 @@ const BROWSER_DEV_OPEN_CONCURRENCY = 4;
 const GRID_ASSET_VERSION = "grid-ui-v138";
 const VIEWER_ASSET_VERSION = "viewer-ui-v66";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
-const WEB_ASSETS_BASE = fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
+const WEB_ASSETS_BASE = String(
+  (typeof window !== "undefined" ? window.__BURRETE_WEB_ASSETS_BASE__ : "")
+  || import.meta.env.VITE_BURRETE_WEB_ASSETS_BASE
+  || "",
+)
+  || fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
 const AMBER_NETCDF_EXTENSIONS = new Set(["nc", "ncdf", "netcdf", "ncrst"]);
 const TRAJECTORY_PAIR_EXTENSIONS = new Set([
   "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
@@ -351,7 +356,7 @@ export async function openBrowserDevDockingDocument(
     undefined,
     undefined,
     undefined,
-    `<script>window.BurreteDockingPayloads = ${JSON.stringify(payloads)};</script>`,
+    `<script>window.BurreteDockingPayloads = ${serializeInlineJson(payloads)};</script>`,
     config,
   );
   return {
@@ -384,7 +389,9 @@ export async function openBrowserDevMolstarContextDocument(
     .map((entry, index) => browserDevContextPayload(entry, index));
   if (entries.length === 0) throw new Error("No Mol* context structure was provided");
   const label = contextDocument.label?.trim() || entries.map((entry) => entry.title).join(" + ");
-  const id = stableId(`molstar-context:${label}:${entries.map((entry) => `${entry.title}:${entry.bytes.length}`).join("|")}`);
+  const id = stableId(`molstar-context:${label}:${entries.map((entry) => (
+    `${entry.title}:${entry.bytes.length}:${stableId(decodeUtf8(entry.bytes))}`
+  )).join("|")}`);
   const contextFocus = browserDevMolstarContextFocus(contextDocument.context);
   if (entries.length === 1) {
     const entry = entries[0];
@@ -402,6 +409,8 @@ export async function openBrowserDevMolstarContextDocument(
       ...browserDevContextConfig(label, entry.format, entry.bytes.length, preferences, id),
       molstarContextFocus: contextFocus,
     };
+    const virtualPath = `burrete-context://${id}`;
+    browserDevVirtualTextDocuments.set(virtualPath, decodeUtf8(entry.bytes));
     const html = viewerHtml(
       label,
       entry.format,
@@ -420,7 +429,7 @@ export async function openBrowserDevMolstarContextDocument(
     );
     return {
       id,
-      path: `burrete-context://${id}`,
+      path: virtualPath,
       title: label,
       extension: entry.extension,
       renderer: "molstar",
@@ -490,7 +499,7 @@ export async function openBrowserDevMolstarContextDocument(
     undefined,
     undefined,
     undefined,
-    `<script>window.BurreteDockingPayloads = ${JSON.stringify(payloads)};</script>`,
+    `<script>window.BurreteDockingPayloads = ${serializeInlineJson(payloads)};</script>`,
     config,
   );
   return {
@@ -558,6 +567,10 @@ export async function readBrowserDevCollectionText(path: string) {
 
 export function readBrowserDevVirtualTextDocument(path: string) {
   return browserDevVirtualTextDocuments.get(path) ?? null;
+}
+
+export function deleteBrowserDevVirtualTextDocument(path: string) {
+  browserDevVirtualTextDocuments.delete(path);
 }
 
 export function writeBrowserDevVirtualTextDocument(path: string, text: string) {
@@ -720,7 +733,7 @@ function openBrowserDevTrajectoryPairDocument(
     undefined,
     undefined,
     undefined,
-    `<script>window.BurreteDockingPayloads = ${JSON.stringify(pair.payloads)};</script>`,
+    `<script>window.BurreteDockingPayloads = ${serializeInlineJson(pair.payloads)};</script>`,
     config,
     0,
     null,
@@ -1189,7 +1202,7 @@ function viewerHtml(
   <div id="status" class="hidden">Loading ${escapeHtml(label)}...</div>
   <script>${viewerBridgeJs()}</script>
   ${rendererAssets}
-  <script>window.BurreteConfig = ${JSON.stringify(config)};</script>
+  <script>window.BurreteConfig = ${serializeInlineJson(config)};</script>
   <script>window.BurreteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>
   ${extraWindowScript}
   <script src="burette-agent.js?v=${runtimeAssetVersion}"></script>
@@ -1408,8 +1421,8 @@ async function gridHtml(
 <body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
-  <script>window.BurreteConfig = ${JSON.stringify(config)};</script>
-  <script>window.BurreteGridRecords = ${JSON.stringify(records)};</script>
+  <script>window.BurreteConfig = ${serializeInlineJson(config)};</script>
+  <script>window.BurreteGridRecords = ${serializeInlineJson(records)};</script>
   <script src="rdkit/RDKit_minimal.js?v=${GRID_ASSET_VERSION}"></script>
   <script src="grid-ui.js?v=${GRID_ASSET_VERSION}"></script>
   <script src="grid-viewer.js?v=${GRID_ASSET_VERSION}"></script>
@@ -3752,4 +3765,11 @@ function escapeHtml(value: string) {
       default: return "&#39;";
     }
   });
+}
+
+function serializeInlineJson(value: unknown) {
+  return JSON.stringify(value)
+    .replaceAll("<", "\\u003c")
+    .replaceAll("\u2028", "\\u2028")
+    .replaceAll("\u2029", "\\u2029");
 }
