@@ -30,10 +30,6 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/",
-        headers: [{ key: "Content-Security-Policy", value: hostedShellCsp }],
-      },
-      {
         source: "/viewer-shell/index.html",
         headers: [{ key: "Content-Security-Policy", value: hostedShellCsp }],
       },
