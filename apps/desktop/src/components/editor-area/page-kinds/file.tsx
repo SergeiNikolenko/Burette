@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { ViewerDocument } from "../../../types";
 import { hasStructureDrag, readStructureDragPayload } from "../../../lib/structure-drag";
 import type { StructureDragPayload } from "../../../lib/structure-drag";
@@ -55,7 +55,6 @@ function StructureViewerSurface({
   document: ViewerDocument;
   actions: ShellActions;
 }) {
-  const [dockingDropActive, setDockingDropActive] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const sheetDropTarget = document.renderer === "xyzrender-external";
   const collectionDropTarget = document.renderer === "grid2d";
@@ -102,13 +101,7 @@ function StructureViewerSurface({
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
-    setDockingDropActive(true);
   }, [viewerDropActionChoices]);
-
-  const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-    setDockingDropActive(false);
-  }, []);
 
   const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
@@ -118,7 +111,6 @@ function StructureViewerSurface({
     if (choices.length === 0) return;
     event.preventDefault();
     event.stopPropagation();
-    setDockingDropActive(false);
     actions.setStructureDragActive(false);
     runShellDropActionChoices(actions, droppedPayload, choices, { x: event.clientX, y: event.clientY }, {
       addXyzrenderSheetItems: (targetDocumentId, payload) => (
@@ -146,18 +138,14 @@ function StructureViewerSurface({
   return (
     <div
       className="molecule-stage"
-      data-docking-drop-active={dockingDropActive || undefined}
+      data-drop-document-path={document.path}
+      data-drop-document-id={document.id}
+      data-drop-document-renderer={document.renderer}
       onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onContextMenu={handleContextMenu}
     >
       <ViewerFrame document={document} iframeRef={iframeRef} />
-      {dockingDropActive && (
-        <div className="docking-drop-overlay">
-          <div>{collectionDropTarget ? "Append to grid" : sheetDropTarget ? "Add to xyzrender sheet" : "Add to Mol* docking view"}</div>
-        </div>
-      )}
     </div>
   );
 }

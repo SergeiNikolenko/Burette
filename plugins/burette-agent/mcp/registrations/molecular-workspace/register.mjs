@@ -14,6 +14,14 @@ import { toolText } from "../../lib/tool-response.mjs";
 
 const actionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
 const externalActionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
+const OBSERVE_ARRAY_LIMIT = 50;
+const OBSERVE_BOUNDS_LIMIT = 100;
+const OBSERVE_KEY_LIMIT = 128;
+const OBSERVE_NODE_LIMIT = 2000;
+const OBSERVE_OBJECT_KEY_LIMIT = 100;
+const OBSERVE_OUTPUT_LIMIT = 256 * 1024;
+const OBSERVE_STRING_LIMIT = 4096;
+const OBSERVE_TOTAL_STRING_LIMIT = 64 * 1024;
 const PUBLIC_CONTRACT = {
   apiVersion: "burrete-external-agent/v1",
   tools: [
@@ -76,25 +84,26 @@ export function registerMolecularWorkspace(server) {
           ok: true,
           session: null,
           observe: null,
-          result: {
-            sessions: listWorkspaceSessions(),
-          },
+          result: workspaceSessionsResult(),
         });
       }
       const resolved = resolveWorkspaceSession(input);
       if (!resolved.ok) return publicContractFailure("burrete.get_context", resolved.error);
       const observed = await observeWorkspaceSession(resolved.session);
+      const readiness = workspaceReadiness(observed.payload?.result || null);
+      const ready = observed.ok && readiness.ready;
       const session = updateKnownSession(resolved.session, {
         observe: observed.payload?.result || null,
       });
       return publicContractResult("burrete.get_context", {
-        ok: observed.ok,
+        ok: ready,
         session,
         observe: observed.payload?.result || null,
-        result: {
-          sessions: listWorkspaceSessions(),
-        },
-        error: observed.ok ? null : observed.error,
+        result: workspaceSessionsResult(),
+        started: true,
+        ready,
+        completionState: ready ? "ready" : "not_ready",
+        error: ready ? null : observed.error || viewerNotReadyError(readiness),
         exitCode: observed.exitCode,
       });
     },
@@ -151,17 +160,23 @@ export function registerMolecularWorkspace(server) {
         structureSummary,
       });
       const observed = await observeWorkspaceSession(provisionalSession);
+      const readiness = workspaceReadiness(observed.payload?.result || null);
+      const ready = observed.ok && readiness.ready;
+      const awaitingBrowser = workspaceOpenAwaitingBrowser(observed, ready);
       const session = updateWorkspaceSession(provisionalSession.workspaceSessionId, {
         observe: observed.payload?.result || null,
       }) || provisionalSession;
       return publicContractResult("burrete.open_workspace", {
-        ok: result.ok,
+        ok: ready || awaitingBrowser,
         session,
         observe: observed.payload?.result || null,
         result: openResult,
         structureSummary,
-        error: observed.ok ? null : observed.error,
-        exitCode: result.exitCode,
+        started: true,
+        ready,
+        completionState: ready ? "ready" : awaitingBrowser ? "awaiting_browser" : "failed",
+        error: ready || awaitingBrowser ? null : observed.error,
+        exitCode: observed.exitCode ?? result.exitCode,
       });
     },
   );
@@ -194,15 +209,20 @@ export function registerMolecularWorkspace(server) {
       const resolved = resolveWorkspaceSession(input);
       if (!resolved.ok) return publicContractFailure("burrete.observe_workspace", resolved.error);
       const observed = await observeWorkspaceSession(resolved.session);
+      const readiness = workspaceReadiness(observed.payload?.result || null);
+      const ready = observed.ok && readiness.ready;
       const session = updateKnownSession(resolved.session, {
         observe: observed.payload?.result || null,
       });
       return publicContractResult("burrete.observe_workspace", {
-        ok: observed.ok,
+        ok: ready,
         session,
         observe: observed.payload?.result || null,
-        result: observed.payload?.result || null,
-        error: observed.ok ? null : observed.error,
+        result: null,
+        started: true,
+        ready,
+        completionState: ready ? "ready" : "not_ready",
+        error: ready ? null : observed.error || viewerNotReadyError(readiness),
         exitCode: observed.exitCode,
       });
     },
@@ -357,7 +377,19 @@ export function registerMolecularWorkspace(server) {
       args.push(input.file);
       const result = await runBurreteAgent(args, { timeoutMs: 45000 });
       const structureSummary = await safeStructureSummary(input.file);
-      return cliToolResult("open_burrete_workspace", result, { structureSummary });
+      if (!result.ok) return cliToolResult("open_burrete_workspace", result, { structureSummary });
+      const openResult = result.payload?.result || null;
+      const observed = await observeWorkspaceSession({
+        url: openResult?.url,
+        sessionDir: openResult?.sessionDir,
+      });
+      return observedWorkspaceToolResult("open_burrete_workspace", {
+        started: true,
+        result: openResult,
+        observed,
+        structureSummary,
+        allowAwaitingBrowser: true,
+      });
     },
   );
 
@@ -393,19 +425,19 @@ export function registerMolecularWorkspace(server) {
             ok: false,
             tool: "summarize_burrete_structure",
             summary: null,
-            observe: resolved.observe || null,
+            observe: boundedWorkspaceObserve(resolved.observe || null),
             error: resolved.error,
           },
         };
       }
-      const summary = await summarizeStructureFile(resolved.file);
+      const summary = boundedStructureSummary(await summarizeStructureFile(resolved.file));
       return {
         content: toolText(`summarize_burrete_structure completed: ${summary.summaryLine}`),
         structuredContent: {
           ok: true,
           tool: "summarize_burrete_structure",
           summary,
-          observe: resolved.observe || null,
+          observe: boundedWorkspaceObserve(resolved.observe || null),
           error: null,
         },
       };
@@ -439,16 +471,11 @@ export function registerMolecularWorkspace(server) {
       if (input.url) args.push("--url", input.url);
       if (input.sessionDir) args.push("--session-dir", input.sessionDir);
       const result = await runBurreteAgent(args);
-      const observe = result.payload?.result || null;
-      return {
-        content: toolText(result.ok ? "Observed Burrete workspace." : `Observe failed: ${result.error?.message || "unknown error"}`),
-        structuredContent: {
-          ok: result.ok,
-          tool: "observe_burrete_workspace",
-          observe,
-          error: result.ok ? null : result.error,
-        },
-      };
+      return observedWorkspaceToolResult("observe_burrete_workspace", {
+        started: true,
+        result: null,
+        observed: result,
+      });
     },
   );
 
@@ -577,7 +604,32 @@ export function registerMolecularWorkspace(server) {
             paths: [extracted.outputPath],
           },
         });
-        return cliToolResult("manage_burrete_structure_component", result, { extracted });
+        if (!result.ok) return cliToolResult("manage_burrete_structure_component", result, { extracted });
+        const readiness = await waitForWorkspaceDocumentReady({
+          url: input.url,
+          sessionDir: input.sessionDir,
+          path: extracted.outputPath,
+          waitMs: input.waitMs ?? 12000,
+        });
+        const error = readiness.ok ? null : boundedToolError(readiness.error);
+        return {
+          content: toolText(readiness.ok
+            ? `manage_burrete_structure_component completed: ${extracted.outputPath} is ready.`
+            : `manage_burrete_structure_component is not complete: ${error.message}`),
+          ...(readiness.ok ? {} : { isError: true }),
+          structuredContent: {
+            ok: readiness.ok,
+            tool: "manage_burrete_structure_component",
+            started: true,
+            ready: readiness.ok,
+            completionState: readiness.ok ? "ready" : "not_ready",
+            result: result.payload?.result || null,
+            extracted,
+            observe: boundedWorkspaceObserve(readiness.observe),
+            error,
+            exitCode: readiness.exitCode,
+          },
+        };
       }
 
       const action = structureComponentAction(input);
@@ -822,6 +874,7 @@ export function registerMolecularWorkspace(server) {
     async input => {
       const edited = await editStructureFragmentFile(input);
       let opened = null;
+      let readiness = null;
       if (input.openAsTab) {
         opened = await runWorkspaceAction({
           url: input.url,
@@ -832,16 +885,36 @@ export function registerMolecularWorkspace(server) {
             paths: [edited.outputPath],
           },
         });
+        if (opened.ok) {
+          readiness = await waitForWorkspaceDocumentReady({
+            url: input.url,
+            sessionDir: input.sessionDir,
+            path: edited.outputPath,
+            waitMs: input.waitMs ?? 12000,
+          });
+        }
       }
+      const ok = !opened || (opened.ok && readiness?.ok === true);
+      const error = ok ? null : boundedToolError(opened?.error || readiness?.error || {
+        code: "WORKSPACE_DOCUMENT_NOT_READY",
+        message: "The derived file was created, but its viewer readiness could not be confirmed.",
+      });
       return {
-        content: toolText(`edit_burrete_fragment completed: ${edited.outputPath}`),
+        content: toolText(ok
+          ? `edit_burrete_fragment completed: ${edited.outputPath}`
+          : `edit_burrete_fragment created ${edited.outputPath}, but the derived viewer is not ready: ${error.message}`),
+        ...(ok ? {} : { isError: true }),
         structuredContent: {
-          ok: true,
+          ok,
           tool: "edit_burrete_fragment",
+          started: Boolean(opened),
+          ready: opened ? readiness?.ok === true : null,
+          completionState: opened ? (readiness?.ok ? "ready" : "not_ready") : "created",
           edited,
           opened: opened?.payload?.result || null,
-          error: null,
-          exitCode: opened?.exitCode ?? null,
+          observe: boundedWorkspaceObserve(readiness?.observe || null),
+          error,
+          exitCode: readiness?.exitCode ?? opened?.exitCode ?? null,
         },
       };
     },
@@ -922,6 +995,17 @@ function missingWorkspaceLocatorResult(error) {
   };
 }
 
+function workspaceSessionsResult() {
+  const sessions = listWorkspaceSessions();
+  const budget = createObserveBudget();
+  const boundedSessions = boundObserveValue(sessions.slice(0, OBSERVE_ARRAY_LIMIT), "sessions", 0, budget);
+  return {
+    sessions: boundedSessions,
+    sessionCount: sessions.length,
+    sessionsTruncated: sessions.length > boundedSessions.length,
+  };
+}
+
 function publicContractResult(tool, {
   ok,
   session = null,
@@ -930,12 +1014,24 @@ function publicContractResult(tool, {
   structureSummary = null,
   action = null,
   applied = null,
+  started = null,
+  ready = null,
+  completionState = null,
   error = null,
   exitCode = null,
 }) {
-  const modelContext = buildModelContext({ session, observe, structureSummary: structureSummary || session?.structureSummary || null });
+  const boundedObserve = boundedWorkspaceObserve(observe);
+  const boundedError = boundedToolError(error);
+  const modelContext = buildModelContext({ session, observe: boundedObserve, structureSummary: structureSummary || session?.structureSummary || null });
   return {
-    content: toolText(ok ? `${tool} completed.` : `${tool} failed: ${error?.message || "unknown error"}`),
+    content: toolText(completionState === "awaiting_browser"
+      ? `${tool} started. Open the returned workspace URL, then call burrete.observe_workspace. Do not claim that the structure is visible until ready is true and the central canvas is visually verified.`
+      : ok
+        ? `${tool} completed.`
+      : completionState === "not_ready"
+        ? `${tool} is not complete: ${boundedError?.message || "the molecular viewer is not ready"}`
+        : `${tool} failed: ${boundedError?.message || "unknown error"}`),
+    ...(ok ? {} : { isError: true }),
     structuredContent: {
       ok,
       tool,
@@ -950,9 +1046,12 @@ function publicContractResult(tool, {
       result,
       action,
       applied: applied === null ? inferApplied(ok, result) : applied,
-      observe,
+      started,
+      ready,
+      completionState,
+      observe: boundedObserve,
       sessions: result?.sessions || undefined,
-      error: ok ? null : error,
+      error: ok ? null : boundedError,
       exitCode,
     },
   };
@@ -997,14 +1096,17 @@ function buildModelContext({ session, observe, structureSummary }) {
 
 function briefStructureSummary(summary) {
   if (!summary || summary.ok === false) return summary || null;
+  const bounded = boundedStructureSummary(summary);
+  const components = bounded.components || {};
   return {
-    format: summary.format || null,
-    summaryLine: summary.summaryLine || null,
-    counts: summary.counts || null,
-    chains: summary.chains || null,
-    ligands: summary.ligands || null,
-    waters: summary.waters || null,
-    ions: summary.ions || null,
+    format: bounded.format || null,
+    summaryLine: bounded.summaryLine || null,
+    counts: bounded.counts || null,
+    chains: components.chains || bounded.chains || null,
+    ligands: components.ligands || bounded.ligands || null,
+    waters: components.water || bounded.waters || null,
+    ions: components.ions || bounded.ions || null,
+    bounds: bounded.bounds || {},
   };
 }
 
@@ -1220,7 +1322,7 @@ async function runWorkspaceAction({ url, sessionDir, action, waitMs }) {
 
 async function safeStructureSummary(file) {
   try {
-    return await summarizeStructureFile(file);
+    return boundedStructureSummary(await summarizeStructureFile(file));
   } catch (error) {
     return {
       ok: false,
@@ -1233,15 +1335,291 @@ async function safeStructureSummary(file) {
 }
 
 function cliToolResult(tool, result, extra = {}) {
+  const error = boundedToolError(result.error);
   return {
-    content: toolText(result.ok ? `${tool} completed.` : `${tool} failed: ${result.error?.message || "unknown error"}`),
+    content: toolText(result.ok ? `${tool} completed.` : `${tool} failed: ${error?.message || "unknown error"}`),
+    ...(result.ok ? {} : { isError: true }),
     structuredContent: {
       ok: result.ok,
       tool,
       result: result.payload?.result || null,
       ...extra,
-      error: result.ok ? null : result.error,
+      error: result.ok ? null : error,
       exitCode: result.exitCode,
     },
+  };
+}
+
+function observedWorkspaceToolResult(tool, {
+  started,
+  result,
+  observed,
+  structureSummary = null,
+  allowAwaitingBrowser = false,
+}) {
+  const rawObserve = observed.payload?.result || null;
+  const readiness = workspaceReadiness(rawObserve);
+  const ready = observed.ok && readiness.ready;
+  const awaitingBrowser = allowAwaitingBrowser && workspaceOpenAwaitingBrowser(observed, ready);
+  const error = ready ? null : boundedToolError(observed.error || viewerNotReadyError(readiness));
+  return {
+    content: toolText(awaitingBrowser
+      ? `${tool} started. Open the returned workspace URL, then call observe_burrete_workspace. Do not claim that the structure is visible until ready is true and the central canvas is visually verified.`
+      : ready
+      ? `${tool} completed: the molecular viewer is ready.`
+      : `${tool} is not complete: ${error.message}`),
+    ...(ready || awaitingBrowser ? {} : { isError: true }),
+    structuredContent: {
+      ok: ready || awaitingBrowser,
+      tool,
+      started,
+      ready,
+      completionState: ready ? "ready" : awaitingBrowser ? "awaiting_browser" : "not_ready",
+      result,
+      observe: boundedWorkspaceObserve(rawObserve),
+      structureSummary,
+      error: awaitingBrowser ? null : error,
+      exitCode: observed.exitCode,
+    },
+  };
+}
+
+function workspaceOpenAwaitingBrowser(observed, ready) {
+  if (ready) return false;
+  if (observed.ok) return true;
+  return observed.error?.code === "OBSERVE_UNAVAILABLE";
+}
+
+async function waitForWorkspaceDocumentReady({ url, sessionDir, path, waitMs }) {
+  const deadline = Date.now() + Math.max(0, waitMs);
+  let observed = null;
+  let observe = null;
+  let readiness = workspaceReadiness(null);
+  do {
+    observed = await observeWorkspaceSession({ url, sessionDir });
+    observe = observed.payload?.result || null;
+    readiness = workspaceReadiness(observe);
+    if (observed.ok && observe?.activeDocument?.path === path && readiness.ready) {
+      return {
+        ok: true,
+        observe,
+        readiness,
+        error: null,
+        exitCode: observed.exitCode,
+      };
+    }
+    if (Date.now() >= deadline) break;
+    await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(1, deadline - Date.now()))));
+  } while (Date.now() <= deadline);
+  return {
+    ok: false,
+    observe,
+    readiness,
+    error: observed?.ok ? {
+      code: "WORKSPACE_DOCUMENT_NOT_READY",
+      message: `The file-open action completed, but the active Mol* document did not become ready at ${path}.`,
+      details: {
+        expectedPath: path,
+        activePath: observe?.activeDocument?.path || null,
+        readiness,
+      },
+    } : observed?.error || {
+      code: "OBSERVE_FAILED",
+      message: "The derived workspace could not be observed after opening the file.",
+    },
+    exitCode: observed?.exitCode ?? null,
+  };
+}
+
+function boundedWorkspaceObserve(observe) {
+  if (!observe || typeof observe !== "object" || Array.isArray(observe)) return observe || null;
+  const budget = createObserveBudget();
+  const source = { ...observe };
+  delete source.bounds;
+  const bounded = boundObserveValue(source, "", 0, budget);
+  const payload = {
+    ...bounded,
+    bounds: budget.bounds,
+  };
+  if (JSON.stringify(payload).length <= OBSERVE_OUTPUT_LIMIT) return payload;
+  return {
+    apiVersion: bounded.apiVersion || null,
+    mode: bounded.mode || null,
+    transport: bounded.transport || null,
+    reportedAt: bounded.reportedAt || null,
+    activeDocument: bounded.activeDocument || null,
+    viewerAgent: bounded.viewerAgent || null,
+    scene: bounded.scene ? { known: bounded.scene.known === true } : null,
+    errors: Array.isArray(bounded.errors) ? bounded.errors.slice(0, 10) : [],
+    bounds: {
+      payload: {
+        truncated: true,
+        reason: "max_output",
+        limit: OBSERVE_OUTPUT_LIMIT,
+      },
+    },
+  };
+}
+
+function boundedStructureSummary(summary) {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) return summary || null;
+  const budget = createObserveBudget();
+  const source = { ...summary };
+  delete source.bounds;
+  const bounded = boundObserveValue(source, "", 0, budget);
+  const payload = {
+    ...bounded,
+    bounds: budget.bounds,
+  };
+  if (JSON.stringify(payload).length <= OBSERVE_OUTPUT_LIMIT) return payload;
+  const components = bounded.components || {};
+  return {
+    ok: bounded.ok,
+    path: bounded.path || null,
+    title: bounded.title || null,
+    extension: bounded.extension || null,
+    byteCount: bounded.byteCount || null,
+    lineCount: bounded.lineCount || null,
+    format: bounded.format || null,
+    kind: bounded.kind || null,
+    summaryLine: bounded.summaryLine || null,
+    counts: bounded.counts || null,
+    components: {
+      polymers: components.polymers || null,
+      ligandTypes: Array.isArray(components.ligandTypes) ? components.ligandTypes.slice(0, 20) : [],
+      ligands: Array.isArray(components.ligands) ? components.ligands.slice(0, 20) : [],
+      chains: Array.isArray(components.chains) ? components.chains.slice(0, 20) : [],
+      water: components.water || null,
+      ions: Array.isArray(components.ions) ? components.ions.slice(0, 20) : [],
+    },
+    bounds: {
+      payload: {
+        truncated: true,
+        reason: "max_output",
+        limit: OBSERVE_OUTPUT_LIMIT,
+      },
+    },
+  };
+}
+
+function createObserveBudget() {
+  return {
+    bounds: {},
+    boundsRemaining: OBSERVE_BOUNDS_LIMIT,
+    nodesRemaining: OBSERVE_NODE_LIMIT,
+    stringCharactersRemaining: OBSERVE_TOTAL_STRING_LIMIT,
+  };
+}
+
+function boundObserveValue(value, path, depth, budget) {
+  if (budget.nodesRemaining <= 0) {
+    recordObserveBound(budget, path, { truncated: true, reason: "node_budget" });
+    return null;
+  }
+  budget.nodesRemaining -= 1;
+  if (typeof value === "string") {
+    const returnedCharacters = Math.min(value.length, OBSERVE_STRING_LIMIT, budget.stringCharactersRemaining);
+    budget.stringCharactersRemaining -= returnedCharacters;
+    if (returnedCharacters === value.length) return value;
+    recordObserveBound(budget, path, {
+      totalCharacters: value.length,
+      returnedCharacters,
+      truncated: true,
+    });
+    return value.slice(0, returnedCharacters);
+  }
+  if (Array.isArray(value)) {
+    if (depth >= 8) {
+      recordObserveBound(budget, path, { truncated: true, reason: "max_depth" });
+      return [];
+    }
+    const output = [];
+    const requested = Math.min(value.length, OBSERVE_ARRAY_LIMIT);
+    for (let index = 0; index < requested && budget.nodesRemaining > 0; index += 1) {
+      output.push(boundObserveValue(value[index], `${path}[${index}]`, depth + 1, budget));
+    }
+    if (output.length < value.length) {
+      recordObserveBound(budget, path, {
+        total: value.length,
+        returned: output.length,
+        truncated: true,
+      });
+    }
+    return output;
+  }
+  if (!value || typeof value !== "object") return value;
+  if (depth >= 8) {
+    recordObserveBound(budget, path, { truncated: true, reason: "max_depth" });
+    return null;
+  }
+  const entries = Object.entries(value);
+  const output = {};
+  const requestedEntries = entries.slice(0, OBSERVE_OBJECT_KEY_LIMIT);
+  let returnedKeys = 0;
+  for (const [rawKey, item] of requestedEntries) {
+    if (budget.nodesRemaining <= 0) break;
+    const key = rawKey.slice(0, OBSERVE_KEY_LIMIT);
+    output[key] = boundObserveValue(item, path ? `${path}.${key}` : key, depth + 1, budget);
+    returnedKeys += 1;
+  }
+  if (returnedKeys < entries.length) {
+    recordObserveBound(budget, path, {
+      totalKeys: entries.length,
+      returnedKeys,
+      truncated: true,
+    });
+  }
+  return output;
+}
+
+function recordObserveBound(budget, path, value) {
+  if (budget.boundsRemaining <= 0) return;
+  budget.boundsRemaining -= 1;
+  budget.bounds[String(path || "root").slice(0, 512)] = value;
+}
+
+function boundedToolError(error) {
+  if (!error) return null;
+  const source = typeof error === "string" ? { message: error } : error;
+  const budget = createObserveBudget();
+  const bounded = boundObserveValue(source, "error", 0, budget);
+  if (!bounded || typeof bounded !== "object" || Array.isArray(bounded)) {
+    return { message: String(bounded || "Unknown error") };
+  }
+  return Object.keys(budget.bounds).length > 0
+    ? { ...bounded, bounds: budget.bounds }
+    : bounded;
+}
+
+function workspaceReadiness(observe) {
+  const activeDocument = observe?.activeDocument || null;
+  const viewerAgent = observe?.viewerAgent || null;
+  const renderer = String(activeDocument?.renderer || activeDocument?.viewer || "").toLowerCase();
+  const requiresViewerAgent = renderer.includes("molstar");
+  const documentReady = activeDocument?.ready === true;
+  const agentAvailable = viewerAgent?.available === true;
+  const agentReady = viewerAgent && Object.hasOwn(viewerAgent, "ready")
+    ? viewerAgent.ready === true
+    : agentAvailable;
+  const viewerReady = viewerAgent && Object.hasOwn(viewerAgent, "viewerReady")
+    ? viewerAgent.viewerReady === true
+    : agentAvailable;
+  const runtimeReady = !requiresViewerAgent || (agentAvailable && agentReady && viewerReady);
+  return {
+    ready: documentReady && runtimeReady,
+    documentReady,
+    requiresViewerAgent,
+    agentAvailable,
+    agentReady,
+    viewerReady,
+    lastError: boundedToolError(viewerAgent?.lastError || null),
+  };
+}
+
+function viewerNotReadyError(readiness) {
+  return {
+    code: "VIEWER_NOT_READY",
+    message: "The Burrete workspace started, but the active molecular viewer is not ready. Do not claim that the structure is visible; open the workspace URL, observe it again, and visually verify the central canvas.",
+    details: readiness,
   };
 }

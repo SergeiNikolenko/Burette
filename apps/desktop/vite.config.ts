@@ -40,7 +40,8 @@ import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const hostedMcpBuild = process.env.VITE_BURRETE_BUILD_IDENTIFIER === "hosted-mcp-widget";
-const browserRuntimeRepoRoot = hostedMcpBuild ? "" : repoRoot;
+const prebuiltAgentShellBuild = Boolean(process.env.BURRETE_AGENT_SHELL_OUT_DIR);
+const browserRuntimeRepoRoot = hostedMcpBuild || prebuiltAgentShellBuild ? "" : repoRoot;
 const desktopDist = process.env.BURRETE_AGENT_SHELL_OUT_DIR
   ? resolve(process.env.BURRETE_AGENT_SHELL_OUT_DIR)
   : fileURLToPath(new URL("dist", import.meta.url));

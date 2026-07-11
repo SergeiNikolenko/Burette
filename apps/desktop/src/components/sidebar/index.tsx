@@ -16,6 +16,7 @@ export function Sidebar({
   return (
     <aside
       className="sidebar"
+      data-file-drop-zone="sidebar"
       data-mode={settingsMode ? "settings" : "workspace"}
       data-open={open ? "true" : "false"}
       aria-hidden={!open}

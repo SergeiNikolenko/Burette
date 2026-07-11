@@ -184,11 +184,11 @@ async function openAuto(file, options) {
 
 async function openBrowserPreview(file, options, fallback = null) {
   const initialFile = resolve(file);
-  const host = options.host || '127.0.0.1';
+  const host = requireLocalHost(options.host);
   const port = options.port ? Number(options.port) : await allocatePort(host);
   if (!Number.isInteger(port) || port <= 0) fail('INVALID_ARGS', '--port must be a positive integer.', 2);
   const token = randomUUID();
-  const url = `http://${host}:${port}/index.html?token=${encodeURIComponent(token)}`;
+  const url = `http://${hostForUrl(host)}:${port}/index.html?token=${encodeURIComponent(token)}`;
   const sessionDir = options.sessionDir ? resolve(options.sessionDir) : await mkdtemp(resolve(tmpdir(), 'burrete-agent-preview-'));
   await mkdir(sessionDir, { recursive: true });
   const logPath = resolve(sessionDir, 'server.log');
@@ -248,6 +248,7 @@ async function openBrowserAgentShell(file, options) {
   const initialFile = resolve(file);
   const sessionDir = options.sessionDir ? resolve(options.sessionDir) : await mkdtemp(resolve(tmpdir(), 'burrete-agent-shell-'));
   const token = randomUUID();
+  if (options.sessionDir) await assertBrowserSessionDirectoryAvailable(sessionDir);
   await mkdir(sessionDir, { recursive: true });
   await writeJsonFile(resolve(sessionDir, 'session.json'), {
     apiVersion,
@@ -260,11 +261,12 @@ async function openBrowserAgentShell(file, options) {
     apiVersion: 'burette-agent-control/v1',
     actions: [],
   });
-  const host = options.host || '127.0.0.1';
+  const host = requireLocalHost(options.host);
   const port = options.port ? Number(options.port) : await allocatePort(host);
   if (!Number.isInteger(port) || port <= 0) fail('INVALID_ARGS', '--port must be a positive integer.', 2);
-  const url = new URL(`http://${host}:${port}/`);
+  const url = new URL(`http://${hostForUrl(host)}:${port}/`);
   url.searchParams.set('devFiles', initialFile);
+  url.searchParams.set('agentLayout', 'focus');
   await writeJsonFile(resolve(sessionDir, 'session.json'), {
     apiVersion,
     mode: 'browser-dev-shell',
@@ -499,12 +501,13 @@ async function observe(options) {
     return;
   }
   if (!options.url) fail('INVALID_ARGS', 'observe requires --url with the tokenized browser-preview URL.', 2);
-  const shellSessionDir = await browserShellSessionDir(options.url);
+  const localUrl = requireLocalAgentUrl(options.url, 'INVALID_URL');
+  const shellSessionDir = await browserShellSessionDir(localUrl.toString());
   if (shellSessionDir) {
     await observeDesktopSession({ ...options, sessionDir: shellSessionDir });
     return;
   }
-  const response = await fetch(buildAgentUrl(options.url, '/__agent/observe'));
+  const response = await fetch(buildAgentUrl(localUrl, '/__agent/observe'));
   const body = await response.text();
   if (!response.ok) {
     fail('OBSERVE_FAILED', `Observe request failed with HTTP ${response.status}.`, 1, body);
@@ -527,7 +530,8 @@ async function act(options) {
     return;
   }
   if (!options.url) fail('INVALID_ARGS', 'act requires --url with the tokenized browser-preview URL.', 2);
-  const shellSessionDir = await browserShellSessionDir(options.url);
+  const localUrl = requireLocalAgentUrl(options.url, 'INVALID_URL');
+  const shellSessionDir = await browserShellSessionDir(localUrl.toString());
   if (shellSessionDir) {
     await actDesktopSession({ ...options, sessionDir: shellSessionDir });
     return;
@@ -540,7 +544,7 @@ async function act(options) {
   } catch (error) {
     fail('INVALID_ARGS', `Action is not valid JSON: ${error?.message || String(error)}.`, 2);
   }
-  const response = await fetch(buildAgentUrl(options.url, '/__agent/act'), {
+  const response = await fetch(buildAgentUrl(localUrl, '/__agent/act'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(action)
@@ -555,7 +559,7 @@ async function act(options) {
     console.log(JSON.stringify({ ok: true, apiVersion, result: parsed }, null, 2));
     return;
   }
-  const observed = await waitForAction(options.url, parsed.action.id, waitMs);
+  const observed = await waitForAction(localUrl, parsed.action.id, waitMs);
   console.log(JSON.stringify({ ok: true, apiVersion, result: observed }, null, 2));
 }
 
@@ -668,11 +672,61 @@ async function actDesktopSession(options) {
 async function assertSessionResponsive(sessionDir) {
   const session = await readJsonFile(resolve(sessionDir, 'session.json'), null);
   if (!session || session.mode !== 'browser-dev-shell' || typeof session.url !== 'string') return;
+  const sessionUrl = requireLocalAgentUrl(session.url, 'INVALID_SESSION_URL', { sessionDir });
   try {
-    await fetchWithTimeout(session.url, 1500);
+    await fetchWithTimeout(sessionUrl, 1500);
   } catch (error) {
     fail('BROWSER_AGENT_SHELL_UNAVAILABLE', `Browser agent shell is not reachable at ${session.url}. Reopen the workspace instead of waiting for an action timeout.`, 1, { sessionDir, cause: error?.message || String(error) });
   }
+}
+
+async function assertBrowserSessionDirectoryAvailable(sessionDir) {
+  const session = await readJsonFile(resolve(sessionDir, 'session.json'), null);
+  if (!session || session.mode !== 'browser-dev-shell' || typeof session.url !== 'string') return;
+  const sessionUrl = requireLocalAgentUrl(session.url, 'INVALID_SESSION_URL', { sessionDir });
+  let response;
+  try {
+    response = await fetchWithTimeout(new URL('/healthz', sessionUrl).toString(), 1500);
+  } catch (_) {
+    return;
+  }
+  if (!response.ok) return;
+  fail(
+    'SESSION_IN_USE',
+    `Browser agent session directory is already owned by a live workspace at ${session.url}. Use its URL/sessionDir or open a new workspace without reusing --session-dir.`,
+    1,
+    { sessionDir, url: session.url },
+  );
+}
+
+function requireLocalAgentUrl(value, code, details = null) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch (_) {
+    fail(code, `Burrete agent URL is invalid: ${String(value)}.`, 1, details);
+  }
+  const port = Number.parseInt(url.port, 10);
+  const loopbackHosts = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
+  if (url.protocol !== 'http:' || !loopbackHosts.has(url.hostname.toLowerCase()) || !Number.isInteger(port) || port <= 0 || port > 65535) {
+    fail(code, 'Burrete agent URLs must use http://127.0.0.1:<port>, http://localhost:<port>, or http://[::1]:<port>.', 1, {
+      ...details,
+      url: url.toString(),
+    });
+  }
+  return url;
+}
+
+function requireLocalHost(value) {
+  const host = String(value || '127.0.0.1').trim().toLowerCase();
+  if (['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host)) {
+    return host === '[::1]' ? '::1' : host;
+  }
+  fail('INVALID_HOST', '--host must be 127.0.0.1, localhost, or ::1 for a local Burrete agent workspace.', 2, { host });
+}
+
+function hostForUrl(host) {
+  return host.includes(':') ? `[${host}]` : host;
 }
 
 async function browserShellSessionDir(urlText) {
