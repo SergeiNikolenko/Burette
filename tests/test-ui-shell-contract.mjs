@@ -99,6 +99,7 @@ const [
   sidebar,
   sidebarFileBrowser,
   sidebarFileTreeNode,
+  sidebarStructureDragHook,
   sidebarWorkspaceSwitcher,
   settingsSidebar,
   nativeContextMenu,
@@ -295,6 +296,7 @@ const [
   source('apps/desktop/src/components/sidebar/index.tsx'),
   source('apps/desktop/src/components/sidebar/file-browser.tsx'),
   source('apps/desktop/src/components/sidebar/file-tree-node.tsx'),
+  source('apps/desktop/src/components/sidebar/use-sidebar-structure-drag.ts'),
   source('apps/desktop/src/components/sidebar/workspace-switcher.tsx'),
   source('apps/desktop/src/components/sidebar/settings-sidebar.tsx'),
   source('apps/desktop/src/components/native-context-menu.ts'),
@@ -400,6 +402,8 @@ const [
   source('samples/fep/ligand_network.graphml'),
   source('scripts/rdkit_conformer.py'),
 ]);
+
+const pluginManifest = JSON.parse(await source('plugins/burette-agent/.codex-plugin/plugin.json'));
 const viewerShell = previewShell;
 const viewer = previewViewer;
 const commandDocuments = await source('apps/desktop/src-tauri/src/commands/documents.rs');
@@ -1233,6 +1237,7 @@ assert.match(appLayout, /from "\.\/editor-area"/);
 assert.match(appLayout, /from "\.\/editor-area\/editor-tabs"/);
 assert.match(appLayout, /from "\.\/sidebar"/);
 assert.match(appLayout, /from "\.\/notification-popup"/);
+assert.match(appLayout, /from "\.\/file-drop-feedback"/);
 assert.doesNotMatch(appLayout, /SidebarLeftIcon/);
 assert.doesNotMatch(appLayout, /from "\.\/system-icon"/);
 assert.match(appLayout, /function DockToggleIcon\(\{ className \}: \{ className\?: string \}\)/);
@@ -1241,6 +1246,8 @@ assert.match(appLayout, /<rect x="2\.25" y="2\.25" width="13\.5" height="13\.5" 
 assert.match(appLayout, /<path d="M6\.75 4\.75V13\.25" stroke="currentColor" strokeWidth="1\.8" strokeLinecap="round" \/>/);
 assert.match(appLayout, /onDismissStatus: \(\) => void;/);
 assert.match(appLayout, /<NotificationPopup notice=\{state\.status\} onDismiss=\{onDismissStatus\} \/>/);
+assert.match(appLayout, /<FileDropFeedback preview=\{dropPreview\} \/>/);
+assert.doesNotMatch(appLayout, /drop-overlay/);
 assert.doesNotMatch(appLayout, /StatusSurface/);
 assert.match(notificationPopup, /export function NotificationPopup/);
 assert.match(notificationPopup, /className="notification-popup"/);
@@ -1392,8 +1399,8 @@ assert.match(fileKind, /const viewerDropActionChoices = useCallback/);
 assert.match(fileKind, /shellDropActionChoices\(payload, dropTarget\)\.filter/);
 assert.match(fileKind, /choice\.action\.kind !== "open-documents" && choice\.action\.kind !== "open-structure-records"/);
 assert.match(fileKind, /type: "addXyzrenderSheetItems"/);
-assert.match(fileKind, /Add to xyzrender sheet/);
-assert.match(fileKind, /Append to grid/);
+assert.match(dropActions, /Add to xyzrender sheet/);
+assert.match(dropActions, /Append to grid/);
 assert.match(openDropHook, /addXyzrenderSheetItems\?: AddXyzrenderSheetItems/);
 assert.match(openDropHook, /appendGridRecords\?: AppendGridRecords/);
 assert.match(openDropHook, /type AppendGridRecords = \(targetDocumentId: string, payload: StructureDragPayload\) => boolean/);
@@ -3102,6 +3109,7 @@ assert.doesNotMatch(agentIntegrationPanel, /navigator\.clipboard\.writeText\(sta
 assert.match(agentIntegrationPanel, /data-agent-integration-panel/);
 assert.match(agentIntegrationPanel, /embedded = false/);
 assert.match(agentIntegrationPanel, /browserPreviewStatus/);
+assert.equal(/version: "([^"]+)"/.exec(agentIntegrationPanel)?.[1], pluginManifest.version);
 assert.match(agentIntegrationPanel, /Codex Agent/);
 assert.match(agentIntegrationPanel, /Agent integration/);
 assert.match(agentIntegrationPanel, /Connection/);
@@ -3821,10 +3829,21 @@ assert.match(appLayout, /onPaste,/);
 assert.match(appLayout, /onPaste: \(event: React\.ClipboardEvent<HTMLElement>\) => void/);
 assert.match(appLayout, /onPaste=\{hostedMcpWidget \? undefined : onPaste\}/);
 assert.match(openDropHook, /export function useOpenDrop/);
-assert.match(openDropHook, /dropResetTimerRef/);
+assert.match(openDropHook, /const \[dropPreview, setDropPreview\] = useState<FileDropPreview \| null>\(null\)/);
+assert.match(openDropHook, /buildFileDropPreview\(\{/);
+assert.match(openDropHook, /function fileDropTargetElement/);
+assert.match(openDropHook, /nativeDragPayloadRef/);
 assert.match(openDropHook, /window\.addEventListener\("blur", resetDropState\)/);
 assert.match(openDropHook, /document\.addEventListener\("visibilitychange", resetWhenHidden\)/);
-assert.match(openDropHook, /window\.setTimeout\(\(\) => \{/);
+assert.doesNotMatch(openDropHook, /dropResetTimerRef|window\.setTimeout/);
+assert.match(appOpenDropControllerHook, /dropPreview,/);
+assert.match(app, /dropPreview=\{dropPreview\}/);
+assert.match(appLayout, /onDragEnterCapture=\{hostedMcpWidget \? undefined : onDragEnter\}/);
+assert.match(appLayout, /onDragOverCapture=\{hostedMcpWidget \? undefined : onDragOver\}/);
+assert.match(styles, /\.file-drop-target \{/);
+assert.match(styles, /\.file-drop-card \{/);
+assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+assert.doesNotMatch(styles, /\.drop-overlay/);
 assert.match(openDropHook, /from "\.\.\/lib\/drop-actions"/);
 assert.match(openDropHook, /resolveDropActionChoices/);
 assert.match(openDropHook, /import type \{ DropSourceContext, DropTargetContext \} from "\.\.\/lib\/drop-actions"/);
@@ -3849,14 +3868,16 @@ assert.match(openDropHook, /chooseDropAction\?: ChooseDropAction/);
 assert.match(openDropHook, /type ChooseDropAction = \(/);
 assert.match(openDropHook, /const activeViewerTarget = useCallback/);
 assert.match(openDropHook, /const dropTargetForElement = useCallback/);
-assert.match(openDropHook, /const sidebarTarget = element\?\.closest<HTMLElement>\("\[data-sidebar-structure-path\]"\)/);
-assert.match(openDropHook, /sidebarTarget\.dataset\.sidebarStructurePath/);
-assert.match(openDropHook, /sidebarTarget\.dataset\.sidebarStructureDocumentId/);
-assert.match(openDropHook, /sidebarTarget\.dataset\.sidebarStructureRenderer/);
-assert.match(openDropHook, /dockingRequest: document\?\.dockingRequest \?\? null/);
-assert.match(openDropHook, /element\?\.closest\("\.ketcher-page"\)/);
+assert.match(openDropHook, /import \{ describeDropTargetElement \} from "\.\.\/lib\/drop-target"/);
+assert.match(openDropHook, /const descriptor = describeDropTargetElement\(element\)/);
+assert.match(openDropHook, /descriptor\?\.kind === "document"/);
+assert.match(openDropHook, /descriptor\.documentPath/);
+assert.match(openDropHook, /descriptor\.documentId/);
+assert.match(openDropHook, /descriptor\.renderer/);
+assert.match(openDropHook, /dockingRequest: targetDocument\?\.dockingRequest \?\? null/);
 assert.match(openDropHook, /activeTabKind === "ketcher"/);
-assert.match(openDropHook, /const dropTargetForPosition = useCallback/);
+assert.match(openDropHook, /const element = elementFromTauriDropPosition\(event\.position\)/);
+assert.match(openDropHook, /const target = dropTargetForElement\(element\)/);
 assert.match(openDropHook, /const dropTargetForClipboard = useCallback/);
 assert.match(openDropHook, /return activeViewerTarget\(\) \?\? \{ kind: "workspace" \}/);
 assert.match(openDropHook, /const executeDropAction = useCallback/);
@@ -3886,7 +3907,7 @@ assert.match(openDropHook, /function elementFromTauriDropPosition/);
 assert.match(openDropHook, /scaled \? document\.elementFromPoint\(scaled\.x, scaled\.y\) : null/);
 assert.match(openDropHook, /document\.elementFromPoint\(position\.x, position\.y\)/);
 assert.match(openDropHook, /candidates\.find\(\(element\) => element\.closest\("\.dock-panel"\)\) \?\? candidates\[0\]/);
-assert.match(openDropHook, /const dockTarget = element\?\.closest<HTMLElement>\("\.dock-panel\[data-area\]\[data-active-tab\]"\)/);
+assert.match(openDropHook, /if \(descriptor\?\.kind === "dock"\) return descriptor/);
 assert.match(openDropHook, /void openDockPayload\?\.\(\{ area: target\.area, tabKind: target\.tabKind, payload \}\)/);
 assert.match(app, /from "\.\/hooks\/use-app-dock-actions"/);
 assert.match(app, /const \{ toggleDockTab \} = useAppDockActions\(\{/);
@@ -3901,16 +3922,20 @@ assert.match(appDockActionsHook, /if \(open && activeKind === kind\)/);
 assert.match(appDockActionsHook, /setDockOpen\(area, false\)/);
 assert.match(appDockActionsHook, /openDockTab\(area, kind\)/);
 assert.match(appDockPayloadHook, /export function useAppDockPayloadOpen/);
-assert.match(appDockPayloadHook, /function openedDockTabKind\(/);
-assert.match(appDockPayloadHook, /if \(openedStructures\.length > 0\) return "inspector"/);
-assert.match(appDockPayloadHook, /if \(openedTextDocuments\.length > 0\) return "text"/);
+assert.doesNotMatch(appDockPayloadHook, /openDockTab\(input\.area, "files"\)/);
+assert.doesNotMatch(appDockPayloadHook, /function openedDockTabKind\(/);
+assert.match(appDockPayloadHook, /if \(!dockTabLoadsDroppedDocument\(input\.tabKind\)\) \{/);
+assert.match(appDockPayloadHook, /Added input to \$\{DOCK_TAB_LABELS\[input\.tabKind\]\}/);
+assert.match(appDockPayloadHook, /resolveDockDropPaths\(cleanPaths, documents, textDocuments\)/);
+assert.match(appDockPayloadHook, /Opened existing document in/);
+assert.match(app, /const openDockPayload = useAppDockPayloadOpen\(\{[\s\S]*?documents,[\s\S]*?textDocuments,[\s\S]*?\}\);/);
 assert.match(appDockPayloadHook, /const ketcherItem = input\.payload\.items\?\.find\(\(item\) => item\.kind === "ketcher"\) \?\? null/);
 assert.match(appDockPayloadHook, /setDockTool\(input\.area, "ketcher"\)/);
 assert.match(appDockPayloadHook, /function browserDevDockDocumentIds\(area: DockArea, paths: string\[\]\)/);
-assert.match(appDockPayloadHook, /const rightDockTextPaths = cleanPaths\.filter\(\(path\) => \{/);
+assert.match(appDockPayloadHook, /const rightDockTextPaths = unopenedPaths\.filter\(\(path\) => \{/);
 assert.match(appDockPayloadHook, /invoke<OpenTextFilesResult>\("open_text_files"/);
 assert.match(appDockPayloadHook, /openBrowserDevDocuments\(structurePaths, preferences, undefined, browserDevDockDocumentIds\(input\.area, structurePaths\)\)/);
-assert.match(appDockPayloadHook, /addDockDrop\(\{ \.\.\.input, tabKind: openedDockTabKind\(input, openedStructures, openedTextDocuments\) \}\)/);
+assert.match(appDockPayloadHook, /addDockDrop\(input\)/);
 assert.match(appDockPayloadHook, /const textOpenPaths = \[\.\.\.textPaths, \.\.\.structureAndTextPaths\]/);
 assert.match(appDockPayloadHook, /const recordResult = cleanRecords\.length > 0/);
 assert.match(appDockPayloadHook, /setDockDocument\(input\.area, firstDockDocumentId\)/);
@@ -3922,10 +3947,10 @@ assert.match(appSpectrumDockLifecycleHook, /closeDockTab\("bottom", spectrumTab\
 assert.match(appSpectrumDockLifecycleHook, /if \(bottomDockActiveTab === "spectrum"\) setDockActiveTab\("bottom", "files"\)/);
 assert.match(appSpectrumDockLifecycleHook, /rightDockDocument\?\.renderer !== "spectrum"/);
 assert.match(appSpectrumDockLifecycleHook, /setDockDocument\("right", activeDocument\?\.id \?\? null\)/);
-assert.match(editorTabs, /import type \{ DockArea, DockTabKind \} from "\.\.\/\.\.\/lib\/dock";/);
-assert.match(editorTabs, /const dockDropTargetAtPoint = useCallback\(\(clientX: number, clientY: number\): \{ area: DockArea; tabKind: DockTabKind \} \| null => \{/);
+assert.match(editorTabs, /const dockDropTargetAtPoint = useCallback/);
 assert.match(editorTabs, /document\.elementFromPoint\(clientX, clientY\)/);
-assert.match(editorTabs, /element\?\.closest<HTMLElement>\("\.dock-panel\[data-area\]\[data-active-tab\]"\)/);
+assert.match(editorTabs, /describeDropTargetElement\(element\)/);
+assert.match(editorTabs, /descriptor\?\.kind === "dock"/);
 assert.match(editorTabs, /void actions\.openDockPayload\(\{ area: dockTarget\.area, tabKind: dockTarget\.tabKind, payload \}\)/);
 assert.match(dock, /export type DockFileEntry/);
 assert.match(dock, /export function dockFileEntries/);
@@ -3933,10 +3958,12 @@ assert.match(dockPanel, /dockFileEntries\(\{/);
 assert.match(dockPanel, /className="dock-file-tabs"/);
 assert.match(dockPanel, /actions\.setDockDocument\(area, entry\.documentId\)/);
 assert.match(dockPanel, /actions\.setDockTool\(area, "ketcher"\)/);
+assert.match(dockPanel, /actions\.openDockPayload\(\{ area, tabKind: activeTab\.kind, payload \}\)/);
 assert.match(openDropHook, /element\?\.closest\("\.molecule-stage, \.main-stage"\)/);
-assert.match(openDropHook, /void runFinderDropAction\(payload, dropTargetForPosition\(event\.position\)\)/);
+assert.match(openDropHook, /void runFinderDropAction\(payload, target\)/);
 assert.match(openDropHook, /const structureDrop = hasStructureDrag\(event\.dataTransfer\)/);
 assert.match(openDropHook, /readStructureDragPayload\(event\.dataTransfer\)/);
+assert.match(openDropHook, /const \{ payload, itemCount \} = structureDrop[\s\S]*?showDropFeedback\(payload, dropTargetForElement\(element\)/);
 assert.match(openDropHook, /void runFinderDropAction\(payload, dropTargetForElement\(target\)\)/);
 assert.match(openDropHook, /runDropAction\(payload, dropTargetForElement\(target\), \{ kind: "unknown" \}\)/);
 assert.match(openDropHook, /const handleBrowserPaste = useCallback/);
@@ -6384,26 +6411,33 @@ assert.match(editorTabs, /actions\.selectTab\(tabId\)/);
 assert.match(editorTabs, /scheduleDragActivation\(tab\.id\)/);
 assert.match(editorTabs, /if \(tabHasDockPayload\) actions\.setStructureDragActive\(true\)/);
 assert.doesNotMatch(editorTabDragStart, /actions\.selectTab\(tab\.id\)/);
+assert.equal((editorTabs.match(/data-file-drop-zone="tab-strip"/g) ?? []).length, 1);
+assert.match(editorTabs, /data-drop-document-path=\{tabDropTarget\?\.documentPath\}/);
+assert.match(editorTabs, /data-drop-document-id=\{tabDropTarget\?\.documentId \?\? undefined\}/);
+assert.match(editorTabs, /data-drop-document-renderer=\{tabDropTarget\?\.renderer \?\? undefined\}/);
+assert.match(sidebar, /data-file-drop-zone="sidebar"/);
 assert.match(sidebarFileBrowser, /readStructureDragPayload\(event\.dataTransfer\)/);
 assert.match(sidebarFileBrowser, /shellDropActionChoices\(payload, \{ kind: "ketcher" \}, \{ kind: "unknown" \}\)/);
 assert.match(sidebarFileBrowser, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);
+assert.match(sidebarFileBrowser, /useSidebarStructureDrag\(\{/);
+assert.match(sidebarFileBrowser, /onMouseDown=\{ketcherDrag\.onMouseDown\}/);
 assert.doesNotMatch(sidebarFileBrowser, /choices\.slice\(0, 1\)/);
 assert.doesNotMatch(sidebarFileBrowser, /structureDragRecordsToFragments\(payload\.records\)/);
 assert.doesNotMatch(sidebarFileBrowser, /actions\.openKetcherWithStructures\(payload\.paths, fragments\)/);
 assert.match(sidebarFileTreeNode, /from "\.\.\/\.\.\/lib\/structure-drag"/);
 assert.match(sidebarFileTreeNode, /from "\.\.\/drop-action-executor"/);
+assert.match(sidebarFileTreeNode, /from "\.\/use-sidebar-structure-drag"/);
 assert.doesNotMatch(sidebarFileTreeNode, /from "\.\.\/\.\.\/lib\/docking-documents"/);
 assert.match(sidebarFileTreeNode, /draggable/);
-assert.match(sidebarFileTreeNode, /function writeSidebarProjectItemsDrag\(/);
-assert.match(sidebarFileTreeNode, /writeStructureDragPayload\(dataTransfer, \{/);
+assert.match(sidebarFileTreeNode, /function sidebarProjectItemsDragPayload\(/);
 assert.match(sidebarFileTreeNode, /paths: draggableItems\.map\(\(item\) => item\.path\)/);
 assert.match(sidebarFileTreeNode, /items: draggableItems\.map\(\(item\) => \(\{/);
 assert.match(sidebarFileTreeNode, /kind: "file"/);
 assert.match(sidebarFileTreeNode, /title: item\.title/);
 assert.match(sidebarFileTreeNode, /detail: item\.relativePath/);
-assert.match(sidebarFileTreeNode, /writeSidebarProjectItemsDrag\(event\.dataTransfer, project\.items\)/);
-assert.match(sidebarFileTreeNode, /writeSidebarProjectItemsDrag\(event\.dataTransfer, nodeItems\)/);
-assert.match(sidebarFileTreeNode, /writeSidebarProjectItemsDrag\(event\.dataTransfer, \[item\]\)/);
+assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(project\.items\)/);
+assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(nodeItems\)/);
+assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(\[item\]\)/);
 assert.match(sidebarFileTreeNode, /className="project-group-row"[\s\S]*draggable=\{!renaming && project\.items\.length > 0\}/);
 assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*draggable=\{!renaming && nodeItems\.length > 0\}/);
 assert.match(sidebarFileTreeNode, /readStructureDragPayload\(event\.dataTransfer\)/);
@@ -6412,11 +6446,20 @@ assert.match(sidebarFileTreeNode, /runShellDropActionChoices\(actions, payload, 
 assert.match(sidebarFileTreeNode, /data-sidebar-structure-path=\{item\.path\}/);
 assert.match(sidebarFileTreeNode, /data-sidebar-structure-renderer=\{item\.renderer\}/);
 assert.match(sidebarFileTreeNode, /data-sidebar-structure-document-id=\{item\.documentId \?\? undefined\}/);
+assert.match(sidebarFileTreeNode, /data-drop-document-path=\{item\.path\}/);
+assert.match(sidebarFileTreeNode, /data-drop-document-renderer=\{item\.renderer\}/);
+assert.match(sidebarFileTreeNode, /data-drop-document-id=\{item\.documentId \?\? undefined\}/);
 assert.match(sidebarFileTreeNode, /function sidebarDropTarget\(item: SidebarProjectItem, state: ShellViewState\)/);
 assert.match(sidebarFileTreeNode, /dockingRequest: document\?\.dockingRequest \?\? null/);
-assert.match(sidebarFileTreeNode, /actions\.setStructureDragActive\(true\)/);
+assert.match(sidebarStructureDragHook, /setStructureDragActive\(true\)/);
 assert.doesNotMatch(sidebarFileTreeNode, /dockingRequestForDrop/);
 assert.doesNotMatch(sidebarFileTreeNode, /actions\.appendGridRecords\(item\.documentId, payload\)/);
+assert.match(sidebarStructureDragHook, /structureDragMovementExceedsThreshold/);
+assert.match(sidebarStructureDragHook, /nativeDragStarted/);
+assert.match(sidebarStructureDragHook, /window\.addEventListener\("mousemove", handleMouseMove\)/);
+assert.match(sidebarStructureDragHook, /window\.addEventListener\("mouseup", handleMouseUp/);
+assert.match(sidebarStructureDragHook, /describeDropTargetElement\(element\)/);
+assert.match(sidebarStructureDragHook, /actions\.openDockPayload\(\{ area: target\.area, tabKind: target\.tabKind, payload \}\)/);
 assert.match(fileKind, /from "\.\.\/\.\.\/\.\.\/lib\/structure-drag"/);
 assert.doesNotMatch(fileKind, /from "\.\.\/\.\.\/\.\.\/lib\/docking-documents"/);
 assert.match(fileKind, /from "\.\.\/\.\.\/drop-action-executor"/);
@@ -6430,7 +6473,11 @@ assert.match(fileKind, /addXyzrenderSheetItems: \(targetDocumentId, payload\) =>
 assert.match(fileKind, /targetDocumentId === document\.id && postXyzrenderSheetItems\(payload\)/);
 assert.doesNotMatch(fileKind, /dockingRequestForDrop/);
 assert.doesNotMatch(fileKind, /hasGridAppendInput/);
-assert.match(fileKind, /Add to Mol\* docking view/);
+assert.match(fileKind, /data-drop-document-path=\{document\.path\}/);
+assert.match(fileKind, /data-drop-document-id=\{document\.id\}/);
+assert.match(fileKind, /data-drop-document-renderer=\{document\.renderer\}/);
+assert.doesNotMatch(fileKind, /docking-drop-overlay/);
+assert.doesNotMatch(styles, /\.docking-drop-overlay/);
 assert.match(appDockingWorkflowsHook, /openBrowserDevDockingDocument/);
 assert.match(appDockingWorkflowsHook, /const openDockingDocument = useCallback/);
 assert.match(appStartupEffectsHook, /browserDevDockingFromLocation\(\)/);

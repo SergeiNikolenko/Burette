@@ -150,7 +150,7 @@ jobs:
           cp -R build/Burrete.app release/Burrete.app
           ditto -c -k --keepParent release/Burrete.app "Burrete-${{ steps.version.outputs.version }}.zip"
           shasum -a 256 "Burrete-${{ steps.version.outputs.version }}.zip" > "Burrete-${{ steps.version.outputs.version }}.zip.sha256"
-          hdiutil create -volname Burrete -srcfolder release/Burrete.app -ov -format UDZO "Burrete-${{ steps.version.outputs.version }}.dmg"
+          ./scripts/create-dmg.sh release/Burrete.app "Burrete-${{ steps.version.outputs.version }}.dmg"
           shasum -a 256 "Burrete-${{ steps.version.outputs.version }}.dmg" > "Burrete-${{ steps.version.outputs.version }}.dmg.sha256"
           if [[ -n "${BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" && -n "${BURRETE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" ]]; then
             bun scripts/sign-update-manifest.mjs "Burrete-${{ steps.version.outputs.version }}.zip" .

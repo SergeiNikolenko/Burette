@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 
-const { defaultDockTabs, dockFileEntries, dockTabCatalog, ensureDefaultDockTabs, persistentDockTabs } = await import("../apps/desktop/src/lib/dock.ts");
+const { defaultDockTabs, dockFileEntries, dockTabCatalog, dockTabLoadsDroppedDocument, ensureDefaultDockTabs, persistentDockTabs, resolveDockDropPaths } = await import("../apps/desktop/src/lib/dock.ts");
 
 function document(id, path, title = path.split("/").at(-1) ?? id) {
   return {
@@ -90,10 +90,25 @@ assert.deepEqual(activeTextWithDroppedStructureEntries.map((entry) => entry.key)
 ]);
 assert.ok(activeTextWithDroppedStructureEntries.some((entry) => entry.key === "text-document:text-1"));
 
+assert.deepEqual(resolveDockDropPaths(
+  ["/tmp/a.pdb", "/tmp/readme.md", "/tmp/new.sdf"],
+  [document("doc-a", "/tmp/a.pdb", "a.pdb")],
+  [textDocument("text-1", "/tmp/readme.md", "readme.md")],
+), {
+  existingDocumentId: "doc-a",
+  unopenedPaths: ["/tmp/new.sdf"],
+});
+
 assert.deepEqual(defaultDockTabs("right").map((tab) => tab.kind), ["inspector", "text", "files"]);
 assert.deepEqual(defaultDockTabs("bottom").map((tab) => tab.kind), ["files", "jobs"]);
 assert.deepEqual(dockTabCatalog("right"), ["xyzrender", "inspector", "text", "files"]);
 assert.deepEqual(dockTabCatalog("bottom"), ["files", "jobs", "folding", "spectrum", "logs"]);
+for (const kind of ["xyzrender", "inspector", "text", "files", "folding", "spectrum"]) {
+  assert.equal(dockTabLoadsDroppedDocument(kind), true, kind);
+}
+for (const kind of ["jobs", "logs", "diagnostics", "review", "compare", "structure-basket"]) {
+  assert.equal(dockTabLoadsDroppedDocument(kind), false, kind);
+}
 assert.deepEqual(
   ensureDefaultDockTabs("right", [{ id: "dock-inspector", kind: "inspector" }, { id: "dock-files", kind: "files" }])
     .map((tab) => tab.kind),

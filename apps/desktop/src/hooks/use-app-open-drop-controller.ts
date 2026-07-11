@@ -94,6 +94,7 @@ export function useAppOpenDropController({
   });
   const {
     dropActive,
+    dropPreview,
     handleBrowserDrag,
     handleBrowserDragLeave,
     handleBrowserDrop,
@@ -124,6 +125,7 @@ export function useAppOpenDropController({
 
   return {
     dropActive,
+    dropPreview,
     handleBrowserDrag,
     handleBrowserDragLeave,
     handleBrowserDrop,
