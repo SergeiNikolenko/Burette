@@ -24,22 +24,31 @@ const legacyMarketplacePath = path.join(home, ".agents", "plugins", "marketplace
 const pluginVersion = await readPluginVersion();
 const pluginId = `burrete@${marketplaceName}`;
 const installRoot = path.join(home, ".codex", "plugins", "cache", marketplaceName, "burrete", pluginVersion);
+const requiredBundleFiles = [
+  "browser-shell-dist/index.html",
+  "preview-web/index.html",
+  "preview-web/viewer.js",
+  "preview-web/viewer-shell.js",
+  "preview-web/viewer-runtime.css",
+  "preview-web/molstar.js",
+  "preview-web/molstar.css",
+  "preview-web/burette-agent.js",
+  "preview-web/grid-viewer.js",
+  "preview-web/grid-ui.js",
+  "preview-web/grid.css",
+  "preview-web/rdkit/RDKit_minimal.js",
+  "preview-web/rdkit/RDKit_minimal.wasm",
+  "scripts/burrete-agent.mjs",
+  "mcp/lib/server-bundle.mjs",
+];
 
-if (shouldBuild && isSourceCheckout()) {
+if (isSourceCheckout() && (shouldBuild || missingBundleFiles().length > 0)) {
   await run("bun", ["run", "build:agent-shell"], { cwd: repoRoot });
 }
 
-if (!existsSync(path.join(pluginRoot, "browser-shell-dist", "index.html"))) {
-  throw new Error("Missing browser-shell-dist/index.html. Run bun run build:agent-shell before installing, or install from a prebuilt plugin bundle.");
-}
-if (!existsSync(path.join(pluginRoot, "preview-web", "index.html"))) {
-  throw new Error("Missing preview-web/index.html. Run bun run build:agent-shell before installing, or install from a prebuilt plugin bundle.");
-}
-if (!existsSync(path.join(pluginRoot, "scripts", "burrete-agent.mjs"))) {
-  throw new Error("Missing bundled scripts/burrete-agent.mjs. Run bun run build:agent-shell before installing.");
-}
-if (!existsSync(path.join(pluginRoot, "mcp", "lib", "server-bundle.mjs"))) {
-  throw new Error("Missing bundled MCP server. Run bun run build:agent-shell before installing.");
+const missingFiles = missingBundleFiles();
+if (missingFiles.length > 0) {
+  throw new Error(`Incomplete Burrete plugin bundle. Missing: ${missingFiles.join(", ")}. Run bun run build:agent-shell before installing.`);
 }
 
 await rm(personalPluginRoot, { recursive: true, force: true });
@@ -80,6 +89,10 @@ function isSourceCheckout() {
   return existsSync(path.join(repoRoot, "package.json"))
     && existsSync(path.join(repoRoot, "scripts", "build-agent-shell-plugin.mjs"))
     && existsSync(path.join(repoRoot, "apps", "desktop", "vite.config.ts"));
+}
+
+function missingBundleFiles() {
+  return requiredBundleFiles.filter(relativePath => !existsSync(path.join(pluginRoot, relativePath)));
 }
 
 async function updateMarketplace() {

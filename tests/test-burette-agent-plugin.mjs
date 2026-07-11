@@ -114,7 +114,9 @@ assert.match(installScript, /"plugin", "list", "--json"/);
 assert.match(installScript, /"plugin", "remove", legacyPluginId, "--json"/);
 assert.match(installScript, /\.\/plugins\/burrete/);
 assert.match(installScript, /readPluginVersion/);
-assert.match(installScript, /mcp", "lib", "server-bundle\.mjs/);
+assert.match(installScript, /"mcp\/lib\/server-bundle\.mjs"/);
+assert.match(installScript, /"preview-web\/viewer\.js"/);
+assert.match(installScript, /missingBundleFiles/);
 assert.match(installScript, /process\.argv\.includes\("--build"\)/);
 assert.match(installScript, /mcp\/lib\/tool-response 2\.mjs/);
 assert.doesNotMatch(installScript, /\.agents\/plugins\/burrete/);
@@ -205,12 +207,34 @@ const packedFiles = new Set(packPayload[0].files.map(file => file.path));
 for (const asset of [
   "browser-shell-dist/index.html",
   "preview-web/index.html",
+  "preview-web/viewer.js",
+  "preview-web/grid-viewer.js",
+  "preview-web/grid-ui.js",
+  "preview-web/grid.css",
+  "preview-web/rdkit/RDKit_minimal.js",
+  "preview-web/rdkit/RDKit_minimal.wasm",
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
   "scripts/burrete-agent.mjs",
   "scripts/install-local.mjs",
 ]) {
   assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
+}
+
+const browserShellJavaScript = [
+  "browser-shell-dist/index.js",
+  ...(await readdir(path.join(pluginRoot, "browser-shell-dist", "assets")))
+    .filter(file => file.endsWith(".js"))
+    .map(file => `browser-shell-dist/assets/${file}`),
+];
+for (const asset of browserShellJavaScript) {
+  const source = await read(asset);
+  assert.equal(source.includes(path.resolve(".")), false, `${asset} contains the current build path`);
+  assert.doesNotMatch(
+    source,
+    /(?:(?:\/Users\/[^/]+|\/home\/[^/]+|\/root)(?:\/[^/"'`\s]+){0,12}\/(?:PreviewExtension\/Web|plugins\/burette-agent|apps\/desktop)|[A-Za-z]:[\\/]Users[\\/][^\\/]+(?:[\\/][^\\/"'`\s]+){0,12}[\\/](?:PreviewExtension[\\/]Web|plugins[\\/]burette-agent|apps[\\/]desktop))/u,
+    `${asset} contains a build-machine repository path`,
+  );
 }
 
 const indexSkill = await read("skills/index/SKILL.md");
@@ -236,6 +260,8 @@ assert.match(externalAgentSkill, /burrete\.open_workspace/);
 assert.match(externalAgentSkill, /burrete\.control_viewer/);
 assert.match(externalAgentSkill, /workspaceSessionId/);
 assert.match(externalAgentSkill, /url/);
+assert.match(externalAgentSkill, /completionState: "awaiting_browser"/);
+assert.match(externalAgentSkill, /ready: true/);
 
 const referenceAlignment = await read("REFERENCE_ALIGNMENT.md");
 assert.match(referenceAlignment, /Data Analytics/);
@@ -316,6 +342,8 @@ assert.equal(preflightPayload.schema, "burette_agent_preflight.v1");
 assert.equal(preflightPayload.repository.source, "source-checkout");
 assert.equal(preflightPayload.files.cli.status, "available");
 assert.equal(preflightPayload.files.browserPreviewServer.status, "available");
+assert.equal(preflightPayload.files.browserPreviewWeb.path, path.join(pluginRoot, "preview-web"));
+assert.equal(preflightPayload.files.browserPreviewWeb.status, "available");
 assert.equal(preflightPayload.context.transports[0].id, "auto");
 assert.equal(preflightPayload.context.transports[1].id, "browser-agent-shell");
 assert.equal(preflightPayload.context.transports[2].id, "browser-preview");
