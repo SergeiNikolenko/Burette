@@ -85,6 +85,7 @@ try {
   assert.match(cliSource, /VITE_BURRETE_AGENT_SHELL: '1'/);
   assert.match(cliSource, /VITE_BURETTE_DEV_INSTANCE: 'agent'/);
   assert.match(cliSource, /url\.searchParams\.set\('devFiles', initialFile\)/);
+  assert.match(cliSource, /url\.searchParams\.set\('agentLayout', 'focus'\)/);
   assert.match(cliSource, /sessionDir,/);
   assert.match(cliSource, /async function browserShellSessionDir\(urlText\)/);
   assert.match(cliSource, /async function assertSessionResponsive\(sessionDir\)/);
@@ -160,6 +161,25 @@ try {
     await mkdir(resolve(prebuiltDist, 'assets'), { recursive: true });
     await writeFile(resolve(prebuiltDist, 'index.html'), '<!doctype html><title>Burrete Agent Shell</title><main>ready</main>');
     try {
+      for (const [mode, host] of [
+        ['browser-agent-shell', '0.0.0.0'],
+        ['browser-preview', '192.0.2.1'],
+      ]) {
+        const invalidHost = runCliWithEnv(['open', '--mode', mode, '--host', host, 'samples/mini.pdb'], {
+          BURRETE_AGENT_SHELL_DIST_DIR: prebuiltDist,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+        });
+        if (invalidHost.status === 0) {
+          const unexpectedPayload = JSON.parse(invalidHost.stdout);
+          if (unexpectedPayload.result?.processId) {
+            try {
+              process.kill(unexpectedPayload.result.processId, 'SIGTERM');
+            } catch {}
+          }
+        }
+        assert.equal(invalidHost.status, 2, `${mode} accepted ${host}`);
+        assert.equal(JSON.parse(invalidHost.stderr).error.code, 'INVALID_HOST');
+      }
       const prebuiltShell = runCliWithEnv(['open', '--mode', 'browser-agent-shell', 'samples/mini.pdb'], {
         BURRETE_AGENT_SHELL_DIST_DIR: prebuiltDist,
         PATH: `${fakeBin}:${process.env.PATH}`,
@@ -169,6 +189,7 @@ try {
       assert.equal(prebuiltPayload.ok, true);
       assert.equal(prebuiltPayload.result.mode, 'browser-agent-shell');
       assert.equal(prebuiltPayload.result.runtime, 'prebuilt-static');
+      assert.equal(new URL(prebuiltPayload.result.url).searchParams.get('agentLayout'), 'focus');
       const fsUrl = new URL(`/@fs${resolve('samples/mini.pdb')}`, prebuiltPayload.result.url);
       const fsResponse = await fetch(fsUrl);
       assert.equal(fsResponse.status, 200);
@@ -177,6 +198,76 @@ try {
       const viewerRuntimeResponse = await fetch(viewerRuntimeUrl);
       assert.equal(viewerRuntimeResponse.status, 200);
       assert.match(await viewerRuntimeResponse.text(), /window\.BurreteViewerShell/);
+      const stableViewerRuntimeResponse = await fetch(new URL('/__burette/runtime/viewer.js', prebuiltPayload.result.url));
+      assert.equal(stableViewerRuntimeResponse.status, 200);
+      assert.match(stableViewerRuntimeResponse.headers.get('content-type') ?? '', /^text\/javascript\b/u);
+      assert.match(await stableViewerRuntimeResponse.text(), /BurreteAgent|BurreteDataBase64|molstar/u);
+      for (const [runtimePath, contentType] of [
+        ['grid-viewer.js', /^text\/javascript\b/u],
+        ['grid-ui.js', /^text\/javascript\b/u],
+        ['grid.css', /^text\/css\b/u],
+        ['rdkit/RDKit_minimal.js', /^text\/javascript\b/u],
+        ['rdkit/RDKit_minimal.wasm', /^application\/wasm\b/u],
+      ]) {
+        const response = await fetch(new URL(`/__burette/runtime/${runtimePath}`, prebuiltPayload.result.url));
+        assert.equal(response.status, 200, runtimePath);
+        assert.match(response.headers.get('content-type') ?? '', contentType, runtimePath);
+        assert.equal((await response.arrayBuffer()).byteLength > 0, true, runtimePath);
+      }
+      const reusedSession = runCliWithEnv([
+        'open',
+        '--mode', 'browser-agent-shell',
+        '--session-dir', prebuiltPayload.result.sessionDir,
+        'samples/mini.pdb',
+      ], {
+        BURRETE_AGENT_SHELL_DIST_DIR: prebuiltDist,
+        PATH: `${fakeBin}:${process.env.PATH}`,
+      });
+      if (reusedSession.status === 0) {
+        const unexpectedPayload = JSON.parse(reusedSession.stdout);
+        if (unexpectedPayload.result?.processId) {
+          try {
+            process.kill(unexpectedPayload.result.processId, 'SIGTERM');
+          } catch {}
+        }
+      }
+      assert.equal(reusedSession.status, 1);
+      const reusedSessionError = JSON.parse(reusedSession.stderr);
+      assert.equal(reusedSessionError.error.code, 'SESSION_IN_USE');
+      for (const invalidUrl of [
+        'file:///tmp/not-a-browser-session',
+        'https://localhost:443/',
+        'http://192.0.2.1:9/',
+      ]) {
+        const invalidSessionDir = await mkdtemp(resolve(tmpdir(), 'burrete-agent-invalid-session-'));
+        try {
+          await writeFile(resolve(invalidSessionDir, 'session.json'), JSON.stringify({
+            mode: 'browser-dev-shell',
+            url: invalidUrl,
+          }));
+          const invalidSession = runCliWithEnv([
+            'open',
+            '--mode', 'browser-agent-shell',
+            '--session-dir', invalidSessionDir,
+            'samples/mini.pdb',
+          ], {
+            BURRETE_AGENT_SHELL_DIST_DIR: prebuiltDist,
+            PATH: `${fakeBin}:${process.env.PATH}`,
+          });
+          if (invalidSession.status === 0) {
+            const unexpectedPayload = JSON.parse(invalidSession.stdout);
+            if (unexpectedPayload.result?.processId) {
+              try {
+                process.kill(unexpectedPayload.result.processId, 'SIGTERM');
+              } catch {}
+            }
+          }
+          assert.equal(invalidSession.status, 1, invalidUrl);
+          assert.equal(JSON.parse(invalidSession.stderr).error.code, 'INVALID_SESSION_URL', invalidUrl);
+        } finally {
+          await rm(invalidSessionDir, { recursive: true, force: true });
+        }
+      }
       const wasmUrl = new URL(`/@fs${resolve('PreviewExtension/Web/rdkit/RDKit_minimal.wasm')}`, prebuiltPayload.result.url);
       const wasmResponse = await fetch(wasmUrl);
       assert.equal(wasmResponse.status, 200);
