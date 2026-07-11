@@ -5,6 +5,15 @@ export const VIEWER_SHELL_STYLES_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.css";
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
 
+export type ViewerWidgetOptions = {
+  demoStructure?: {
+    format: string;
+    label: string;
+    url: string;
+  };
+  fullPage?: boolean;
+};
+
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
   return new URL(assetPath, `${origin.replace(/\/$/u, "")}/`).toString();
@@ -40,13 +49,28 @@ export function createViewerResourceMeta(appOrigin: string) {
   } as const;
 }
 
-export function createViewerWidgetHtml(assetOrigin = ""): string {
+export function createViewerWidgetHtml(
+  assetOrigin = "",
+  options: ViewerWidgetOptions = {},
+): string {
   const shellScript = assetUrl(assetOrigin, VIEWER_SHELL_SCRIPT_PATH);
   const shellStyles = assetUrl(assetOrigin, VIEWER_SHELL_STYLES_PATH);
   const viewerAssets = assetUrl(assetOrigin, VIEWER_RUNTIME_ASSETS_PATH);
   const bootstrap = serializeForInlineScript({
+    demoStructure: options.demoStructure ? {
+      ...options.demoStructure,
+      url: assetUrl(assetOrigin, options.demoStructure.url),
+    } : null,
     viewerAssets,
   });
+  const documentSizing = options.fullPage
+    ? "html, body, #root { width: 100%; min-height: 100%; height: 100%; }"
+    : "html, body, #root { width: 100%; min-height: 480px; height: min(80vh, 760px); }";
+  const compactSizing = options.fullPage
+    ? ""
+    : `@media (max-width: 600px) {
+        html, body, #root { min-height: 420px; height: min(76vh, 680px); }
+      }`;
 
   return `<!doctype html>
 <html lang="en">
@@ -56,13 +80,11 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
     <title>Burrete</title>
     <link rel="stylesheet" crossorigin href="${shellStyles}" />
     <style>
-      html, body, #root { width: 100%; min-height: 480px; height: min(80vh, 760px); }
+      ${documentSizing}
       body .app-shell { width: 100%; height: 100%; }
       body { margin: 0; overflow: hidden; background: #f7f7f7; }
       @media (prefers-color-scheme: dark) { body { background: #111315; } }
-      @media (max-width: 600px) {
-        html, body, #root { min-height: 420px; height: min(76vh, 680px); }
-      }
+      ${compactSizing}
     </style>
     <script>
       (() => {
@@ -70,6 +92,38 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
         window.__BURRETE_HOSTED_MCP_WIDGET__ = true;
         window.__BURRETE_WEB_ASSETS_BASE__ = config.viewerAssets;
         window.__BURRETE_HOSTED_MCP_RESULTS__ = [];
+        const deliverToolResult = (result) => {
+          if (window.__BURRETE_HOSTED_MCP_BRIDGE_READY__) {
+            window.postMessage({
+              source: "burrete-hosted-mcp-widget",
+              type: "tool-result",
+              result,
+            }, "*");
+            return;
+          }
+          window.__BURRETE_HOSTED_MCP_RESULTS__.push(result);
+        };
+        const loadDemoStructure = async () => {
+          const response = await fetch(config.demoStructure.url, {
+            credentials: "same-origin",
+          });
+          if (!response.ok) {
+            throw new Error(
+              "Demo structure request failed with HTTP " + response.status,
+            );
+          }
+          const data = await response.text();
+          deliverToolResult({
+            structuredContent: { fileName: config.demoStructure.label },
+            _meta: {
+              structure: {
+                data,
+                format: config.demoStructure.format,
+                label: config.demoStructure.label,
+              },
+            },
+          });
+        };
         window.addEventListener("message", (event) => {
           if (event.source !== window.parent) return;
           const message = event.data;
@@ -92,6 +146,11 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
             _meta: globals.toolResponseMetadata,
           });
         }, { passive: true });
+        if (config.demoStructure) {
+          void loadDemoStructure().catch((error) => {
+            console.error("Failed to load the Burrete demo structure", error);
+          });
+        }
       })();
     </script>
   </head>
