@@ -6,7 +6,9 @@ import { NotificationPopup } from "./notification-popup";
 import { OpenInEditorMenu } from "./open-in-editor-menu";
 import { Sidebar } from "./sidebar";
 import { ShortcutTooltip } from "./shortcut-tooltip";
+import { FileDropFeedback } from "./file-drop-feedback";
 import type { ShellActions, ShellViewState } from "./types";
+import type { FileDropPreview } from "../lib/drop-preview";
 import { isTauriRuntime } from "../lib/tauri";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
@@ -29,6 +31,7 @@ export function AppLayout({
   onResizeStart,
   onRightDockResizeStart,
   onBottomDockResizeStart,
+  dropPreview,
   onDragEnter,
   onDragOver,
   onDragLeave,
@@ -42,6 +45,7 @@ export function AppLayout({
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   onRightDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   onBottomDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+  dropPreview: FileDropPreview | null;
   onDragEnter: (event: React.DragEvent<HTMLElement>) => void;
   onDragOver: (event: React.DragEvent<HTMLElement>) => void;
   onDragLeave: (event: React.DragEvent<HTMLElement>) => void;
@@ -83,8 +87,8 @@ export function AppLayout({
       data-drop-active={state.dropActive || undefined}
       data-structure-drag-active={state.structureDragActive ? "true" : undefined}
       data-sidebar-open={sidebarVisible ? "true" : "false"}
-      onDragEnter={hostedMcpWidget ? undefined : onDragEnter}
-      onDragOver={hostedMcpWidget ? undefined : onDragOver}
+      onDragEnterCapture={hostedMcpWidget ? undefined : onDragEnter}
+      onDragOverCapture={hostedMcpWidget ? undefined : onDragOver}
       onDragLeave={hostedMcpWidget ? undefined : onDragLeave}
       onDrop={hostedMcpWidget ? undefined : onDrop}
       onPaste={hostedMcpWidget ? undefined : onPaste}
@@ -187,11 +191,7 @@ export function AppLayout({
           )}
         </section>
       </section>
-      {state.dropActive && (
-        <div className="drop-overlay">
-          <div>Drop structures to open</div>
-        </div>
-      )}
+      <FileDropFeedback preview={dropPreview} />
       {state.status && (
         <NotificationPopup notice={state.status} onDismiss={onDismissStatus} />
       )}

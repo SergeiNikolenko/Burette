@@ -123,4 +123,16 @@ assert.deepEqual(useShellStore.getState().projectNameOverrides, {
   "/tmp/implicit-project": "Implicit Project",
 });
 
+useShellStore.setState({ dockDroppedStructures: [] });
+useShellStore.getState().addDockDrop({
+  area: "bottom",
+  tabKind: "jobs",
+  payload: {
+    paths: ["/tmp/mini.pdb"],
+    records: [],
+    items: [{ kind: "file", title: "mini.pdb", path: "/tmp/mini.pdb" }],
+  },
+});
+assert.deepEqual(useShellStore.getState().dockDroppedStructures.map((item) => item.title), ["mini.pdb"]);
+
 console.log("shell store behavior tests passed");

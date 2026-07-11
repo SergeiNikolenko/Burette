@@ -2,10 +2,133 @@
 import assert from "node:assert/strict";
 
 const { resolveDropAction, resolveDropActionChoices } = await import("../apps/desktop/src/lib/drop-actions.ts");
+const { buildFileDropPreview } = await import("../apps/desktop/src/lib/drop-preview.ts");
+const { describeDropTargetElement } = await import("../apps/desktop/src/lib/drop-target.ts");
 
 function payload(paths, records = []) {
   return { paths, records };
 }
+
+function targetElement(matches) {
+  return {
+    closest(selector) {
+      return matches[selector] ?? null;
+    },
+  };
+}
+
+const documentTarget = {
+  dataset: {
+    dropDocumentPath: "/tmp/receptor.pdb",
+    dropDocumentId: "document:receptor",
+    dropDocumentRenderer: "molstar",
+  },
+};
+const sidebarTarget = { dataset: { fileDropZone: "sidebar" } };
+
+assert.deepEqual(describeDropTargetElement(targetElement({
+  "[data-drop-document-path]": documentTarget,
+  "[data-file-drop-zone]": sidebarTarget,
+})), {
+  kind: "document",
+  documentPath: "/tmp/receptor.pdb",
+  documentId: "document:receptor",
+  renderer: "molstar",
+});
+assert.deepEqual(describeDropTargetElement(targetElement({
+  ".dock-panel[data-area]": { dataset: { area: "bottom", activeTab: "jobs" } },
+})), { kind: "dock", area: "bottom", tabKind: "jobs" });
+assert.deepEqual(describeDropTargetElement(targetElement({
+  ".dock-panel[data-area]": { dataset: { area: "right", activeTab: "inspector" } },
+})), { kind: "dock", area: "right", tabKind: "inspector" });
+assert.deepEqual(describeDropTargetElement(targetElement({
+  "[data-file-drop-zone]": sidebarTarget,
+})), { kind: "sidebar" });
+assert.deepEqual(describeDropTargetElement(targetElement({
+  "[data-file-drop-zone]": { dataset: { fileDropZone: "tab-strip" } },
+})), { kind: "tab-strip" });
+assert.deepEqual(describeDropTargetElement(targetElement({
+  "[data-file-drop-zone]": { dataset: { fileDropZone: "ketcher" } },
+})), { kind: "ketcher" });
+assert.equal(describeDropTargetElement(targetElement({})), null);
+
+const previewBounds = { left: 240, top: 52, width: 720, height: 640 };
+assert.deepEqual(buildFileDropPreview({
+  payload: payload(["/tmp/ligand.sdf"]),
+  target: { kind: "ketcher" },
+  source: { kind: "finder" },
+  bounds: previewBounds,
+  point: { x: 480, y: 240 },
+}), {
+  actionLabel: "Add to Ketcher",
+  bounds: previewBounds,
+  choiceCount: 3,
+  itemLabel: "ligand.sdf",
+  point: { x: 480, y: 240 },
+  targetKind: "ketcher",
+  targetLabel: "Ketcher",
+});
+assert.deepEqual(buildFileDropPreview({
+  payload: payload(["/tmp/ligand.sdf"]),
+  target: { kind: "dock", area: "right", tabKind: "files" },
+  source: { kind: "finder" },
+  bounds: { left: 960, top: 52, width: 320, height: 640 },
+  point: { x: 1080, y: 260 },
+}), {
+  actionLabel: "Open in right dock",
+  bounds: { left: 960, top: 52, width: 320, height: 640 },
+  choiceCount: 0,
+  itemLabel: "ligand.sdf",
+  point: { x: 1080, y: 260 },
+  targetKind: "dock",
+  targetLabel: "Right dock",
+});
+
+for (const [target, targetKind, targetLabel, bounds] of [
+  [{ kind: "sidebar" }, "sidebar", "Sidebar", { left: 0, top: 52, width: 240, height: 640 }],
+  [{ kind: "tab-strip" }, "tab-strip", "Tab bar", { left: 240, top: 0, width: 720, height: 52 }],
+]) {
+  assert.deepEqual(resolveDropActionChoices(payload(["/tmp/ligand.sdf"]), target), [{
+    id: "open-documents",
+    label: "Open as document tabs",
+    confidence: "default",
+    action: {
+      kind: "open-documents",
+      paths: ["/tmp/ligand.sdf"],
+    },
+  }]);
+  assert.deepEqual(buildFileDropPreview({
+    payload: payload(["/tmp/ligand.sdf"]),
+    target,
+    source: { kind: "finder" },
+    bounds,
+    point: { x: bounds.left + (bounds.width / 2), y: bounds.top + (bounds.height / 2) },
+  }), {
+    actionLabel: "Open as document tabs",
+    bounds,
+    choiceCount: 1,
+    itemLabel: "ligand.sdf",
+    point: { x: bounds.left + (bounds.width / 2), y: bounds.top + (bounds.height / 2) },
+    targetKind,
+    targetLabel,
+  });
+}
+
+assert.deepEqual(buildFileDropPreview({
+  payload: payload(["/tmp/receptor.pdb"]),
+  target: { kind: "ketcher" },
+  source: { kind: "finder" },
+  bounds: previewBounds,
+  point: { x: 480, y: 240 },
+}), {
+  actionLabel: "Open as document tabs",
+  bounds: previewBounds,
+  choiceCount: 1,
+  itemLabel: "receptor.pdb",
+  point: { x: 480, y: 240 },
+  targetKind: "workspace",
+  targetLabel: "Workspace",
+});
 
 const sdfOnWorkspace = resolveDropAction(payload(["/tmp/a.sdf"]), { kind: "workspace" });
 assert.deepEqual(sdfOnWorkspace, {

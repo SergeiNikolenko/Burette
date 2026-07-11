@@ -8,6 +8,12 @@ export type DropTargetContext =
       kind: "workspace";
     }
   | {
+      kind: "sidebar";
+    }
+  | {
+      kind: "tab-strip";
+    }
+  | {
       kind: "ketcher";
     }
   | {
@@ -113,7 +119,9 @@ export function resolveDropActionChoices(
   source: DropSourceContext = UNKNOWN_DROP_SOURCE,
 ): DropActionChoice[] {
   if (payload.paths.length === 0 && payload.records.length === 0) return [];
-  if (target.kind === "workspace") return workspaceDropActionChoices(payload, source);
+  if (target.kind === "workspace" || target.kind === "sidebar" || target.kind === "tab-strip") {
+    return workspaceDropActionChoices(payload, source);
+  }
   if (target.kind === "ketcher") {
     const importPayload = ketcherImportPayload(payload);
     if (importPayload.paths.length === 0 && importPayload.records.length === 0) {
