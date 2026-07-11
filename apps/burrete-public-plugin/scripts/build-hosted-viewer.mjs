@@ -8,6 +8,11 @@ const REPO_ROOT = path.resolve(APP_ROOT, "../..");
 const SOURCE_VIEWER_ROOT = path.join(REPO_ROOT, "PreviewExtension/Web");
 const OUTPUT_VIEWER_ROOT = path.join(APP_ROOT, "public/burrete-viewer");
 const OUTPUT_SHELL_ROOT = path.join(APP_ROOT, "public/viewer-shell");
+const OUTPUT_DEMO_ROOT = path.join(APP_ROOT, "public/demo");
+const DEMO_STRUCTURE_PATH = path.join(
+  REPO_ROOT,
+  "samples/structures/proteins/1htb.pdb",
+);
 const VIEWER_FILES = [
   "burette-agent.js",
   "viewer-runtime.css",
@@ -18,8 +23,12 @@ const VIEWER_FILES = [
 await Promise.all([
   rm(OUTPUT_VIEWER_ROOT, { recursive: true, force: true }),
   rm(OUTPUT_SHELL_ROOT, { recursive: true, force: true }),
+  rm(OUTPUT_DEMO_ROOT, { recursive: true, force: true }),
 ]);
-await mkdir(OUTPUT_VIEWER_ROOT, { recursive: true });
+await Promise.all([
+  mkdir(OUTPUT_VIEWER_ROOT, { recursive: true }),
+  mkdir(OUTPUT_DEMO_ROOT, { recursive: true }),
+]);
 await Promise.all([
   ...VIEWER_FILES.map((file) => cp(
     path.join(SOURCE_VIEWER_ROOT, file),
@@ -30,6 +39,7 @@ await Promise.all([
     path.join(OUTPUT_VIEWER_ROOT, "rdkit"),
     { recursive: true },
   ),
+  cp(DEMO_STRUCTURE_PATH, path.join(OUTPUT_DEMO_ROOT, "1htb.pdb")),
 ]);
 
 await run("bun", ["run", "build"], {
