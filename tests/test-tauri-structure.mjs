@@ -67,6 +67,7 @@ const [
   releaseWorkflow,
   releaseVersionCheck,
   releaseScript,
+  createDmgScript,
   releaseSignatureScript,
   signUpdateManifestScript,
   vendorMolstarScript,
@@ -145,6 +146,7 @@ const [
   source('.github/workflows/release.yml'),
   source('scripts/check-release-version.mjs'),
   source('scripts/release.sh'),
+  source('scripts/create-dmg.sh'),
   source('scripts/check-release-signature.sh'),
   source('scripts/sign-update-manifest.mjs'),
   source('scripts/vendor-molstar.mjs'),
@@ -566,7 +568,7 @@ assert.match(releaseWorkflow, /uses: \.\/\.github\/actions\/setup-burrete-toolch
 assert.match(releaseWorkflow, /install-xyzrender: "true"/);
 assert.match(releaseWorkflow, /allow_adhoc=true/);
 assert.match(releaseWorkflow, /BURRETE_RELEASE_ALLOW_ADHOC/);
-assert.match(releaseWorkflow, /hdiutil create -volname Burrete/);
+assert.match(releaseWorkflow, /scripts\/create-dmg\.sh release\/Burrete\.app/);
 assert.match(releaseWorkflow, /zip\.manifest\.json/);
 assert.match(releaseWorkflow, /zip\.manifest\.json\.sig/);
 assert.match(releaseWorkflow, /prerelease=true/);
@@ -576,7 +578,12 @@ assert.match(releaseScript, /--dry-run/);
 assert.match(releaseScript, /BURRETE_BUILD_MODE=release/);
 assert.match(releaseScript, /notarytool submit/);
 assert.match(releaseScript, /stapler staple/);
-assert.match(releaseScript, /hdiutil create -volname Burrete/);
+assert.match(releaseScript, /scripts\/create-dmg\.sh" "\$APP" "\$DMG"/);
+assert.match(createDmgScript, /packaging\/dmg\/background\.png/);
+assert.match(createDmgScript, /ln -s \/Applications/);
+assert.match(createDmgScript, /set background picture of viewOptions/);
+assert.match(createDmgScript, /set position of item "Burrete\.app"/);
+assert.match(createDmgScript, /set position of item "Applications"/);
 assert.match(releaseSignatureScript, /BurreteThumbnail\.appex/);
 assert.match(releaseSignatureScript, /com\.local\.BurreteV10\.Thumbnail/);
 assert.match(releaseSignatureScript, /hardened runtime/);
