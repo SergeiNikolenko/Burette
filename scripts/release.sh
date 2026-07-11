@@ -89,6 +89,7 @@ bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/grid-viewer.js >/dev/null
 
 if [[ "$DRY_RUN" == "1" ]]; then
+  "$ROOT/scripts/create-dmg.sh" --dry-run
   echo "Release dry run passed."
   echo "No build, notarization, stapling, packaging, or publishing was performed."
   echo "Developer ID release requires:"
@@ -119,7 +120,7 @@ fi
 
 rm -f "$ZIP" "$ZIP.sha256" "$DMG" "$DMG.sha256"
 ditto -c -k --keepParent "$APP" "$ZIP"
-hdiutil create -volname Burrete -srcfolder "$APP" -ov -format UDZO "$DMG" >/dev/null
+"$ROOT/scripts/create-dmg.sh" "$APP" "$DMG"
 write_digest "$ZIP"
 write_digest "$DMG"
 if [[ -n "${BURRETE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then

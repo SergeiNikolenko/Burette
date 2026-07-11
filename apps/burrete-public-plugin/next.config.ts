@@ -14,7 +14,7 @@ const hostedShellCsp = [
   "frame-src 'self' data: blob:",
   "frame-ancestors 'none'",
   "object-src 'none'",
-  "base-uri 'none'",
+  "base-uri 'self'",
   "form-action 'none'",
 ].join("; ");
 
@@ -29,6 +29,10 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.resolve(appDirectory, "../.."),
   async headers() {
     return [
+      {
+        source: "/",
+        headers: [{ key: "Content-Security-Policy", value: hostedShellCsp }],
+      },
       {
         source: "/viewer-shell/index.html",
         headers: [{ key: "Content-Security-Policy", value: hostedShellCsp }],

@@ -27,6 +27,7 @@ import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
 import { useAppGenerate3DConformer } from "./hooks/use-app-generate-3d-conformer";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
 import { useAppHostRuntimeOperations } from "./hooks/use-app-host-runtime-operations";
+import { useAgentFocusLayout } from "./hooks/use-agent-focus-layout";
 import { useHostedMcpWidget } from "./hooks/use-hosted-mcp-widget";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
@@ -109,6 +110,7 @@ const CommandPalette = lazy(() => import("./components/command-palette").then((m
 })));
 
 export default function App() {
+  useAgentFocusLayout();
   const hostedMcpWidget = isHostedMcpWidget();
   const preferences = useViewerPreferences();
   const setPreference = useSetViewerPreference();
@@ -444,6 +446,7 @@ export default function App() {
     addBackgroundTextDocuments,
     addDockDrop,
     detectContentSpectrumPaths,
+    documents,
     openStructureRecordDocuments,
     preferences,
     pushErrorStatus,
@@ -451,6 +454,7 @@ export default function App() {
     rememberRecentStructures,
     setDockDocument,
     setDockTool,
+    textDocuments,
   });
 
   const {
@@ -677,6 +681,7 @@ export default function App() {
 
   const {
     dropActive,
+    dropPreview,
     handleBrowserDrag,
     handleBrowserDragLeave,
     handleBrowserDrop,
@@ -977,6 +982,7 @@ export default function App() {
         onResizeStart={startSidebarResize}
         onRightDockResizeStart={startRightDockResize}
         onBottomDockResizeStart={startBottomDockResize}
+        dropPreview={dropPreview}
         onDragEnter={handleBrowserDrag}
         onDragOver={handleBrowserDrag}
         onDragLeave={handleBrowserDragLeave}
