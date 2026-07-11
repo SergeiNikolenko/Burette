@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 const {
   collectionFamily,
@@ -38,7 +39,7 @@ assert.equal(parsedSdf[0].molblock.endsWith("M  END"), true);
 assert.equal(parsedSdf[0].molblock.includes("> <Name>"), false);
 assert.equal(parsedSdf[0].props.NOTE, "price $$$$ marker");
 
-const sampleMultiSdf = await Bun.file(new URL("../samples/collections/sdf/multi.sdf", import.meta.url)).text();
+const sampleMultiSdf = await readFile(new URL("../samples/collections/sdf/multi.sdf", import.meta.url), "utf8");
 const browserGridDocument = await openBrowserDevTextDocument("multi.sdf", "sdf", sampleMultiSdf, defaultPreferences);
 assert.equal(browserGridDocument.renderer, "grid2d");
 const browserRecordsMatch = /window\.BurreteGridRecords = (\[[^;]+\]);<\/script>/u.exec(browserGridDocument.runtimePath);

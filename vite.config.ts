@@ -32,6 +32,9 @@ export default defineConfig({
     emptyOutDir: true,
   },
   clearScreen: false,
+  check: {
+    fmt: false,
+  },
   fmt: {
     ignorePatterns: [
       ".github/**",
