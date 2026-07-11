@@ -5825,57 +5825,130 @@ img.radix-menu-item-icon {
     margin-right: 0;
   }
 }
-.app-shell[data-structure-drag-active="true"] .viewer-iframe,
-.molecule-stage[data-docking-drop-active="true"] .viewer-iframe {
+.app-shell[data-structure-drag-active="true"] .viewer-iframe {
   pointer-events: none;
 }
-.docking-drop-overlay {
-  position: absolute;
-  inset: 16px 16px 40px;
-  z-index: 8;
-  display: grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--accent) 68%, var(--line-strong));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-base) 54%, transparent);
+.file-drop-feedback {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
   color: var(--text);
   pointer-events: none;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 8%, transparent);
 }
-.docking-drop-overlay div {
-  min-width: 236px;
-  height: 38px;
+.file-drop-target {
+  position: fixed;
+  left: var(--file-drop-target-left);
+  top: var(--file-drop-target-top);
+  width: var(--file-drop-target-width);
+  height: var(--file-drop-target-height);
+  z-index: 1;
+  border: 2px solid color-mix(in srgb, var(--accent) 78%, var(--line-strong));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--bg-base) 70%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+  animation: file-drop-target-in 120ms ease-out both;
+}
+.file-drop-feedback[data-target-kind="dock"] .file-drop-target,
+.file-drop-feedback[data-target-kind="fep"] .file-drop-target,
+.file-drop-feedback[data-target-kind="ketcher"] .file-drop-target,
+.file-drop-feedback[data-target-kind="sidebar"] .file-drop-target {
+  border-radius: 12px;
+}
+.file-drop-feedback[data-target-kind="tab-strip"] .file-drop-target {
+  border-radius: 8px;
+}
+.file-drop-card {
+  position: fixed;
+  left: var(--file-drop-card-left);
+  top: var(--file-drop-card-top);
+  z-index: 2;
+  width: min(286px, calc(100vw - 24px));
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 76%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-base) 86%, transparent);
+  box-shadow:
+    0 16px 36px color-mix(in srgb, black 16%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+  backdrop-filter: blur(18px) saturate(1.1);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  animation: file-drop-card-in 140ms ease-out both;
+}
+.file-drop-card-icon {
+  width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 9px;
-  background: var(--surface-active);
-  font-size: 13px;
-  font-weight: 400;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-subtle));
+  color: color-mix(in srgb, var(--accent) 82%, var(--text));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
 }
-.drop-overlay {
-  position: absolute;
-  inset: calc(var(--chrome-height) + 16px) 16px 40px;
-  z-index: 10;
+.file-drop-card-copy {
+  min-width: 0;
   display: grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--accent) 62%, var(--line-strong));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-base) 58%, transparent);
-  color: var(--text);
-  pointer-events: none;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 8%, transparent);
+  gap: 3px;
 }
-.drop-overlay div {
-  min-width: 220px;
-  height: 38px;
+.file-drop-card-copy strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-drop-card-copy > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.2;
+}
+.file-drop-card-copy > span > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-drop-card-copy > span > span + span {
+  margin-left: 7px;
+  padding-left: 7px;
+  border-left: 1px solid var(--line-subtle);
+}
+.file-drop-choice-count {
+  height: 22px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 9px;
-  background: var(--surface-active);
-  font-size: 13px;
-  font-weight: 400;
+  padding: 0 7px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 11%, var(--surface-subtle));
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+@keyframes file-drop-target-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes file-drop-card-in {
+  from { opacity: 0; transform: translateY(3px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .file-drop-target,
+  .file-drop-card { animation: none; }
 }
 .notification-popup {
   position: absolute;
