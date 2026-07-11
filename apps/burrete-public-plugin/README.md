@@ -98,7 +98,9 @@ use Vercel-provided deployment origins, while production should set
 
 The local Burrete desktop app remains the primary workspace. The hosted service
 only supplies the public MCP endpoint, widget assets, and one isolated
-structure result at a time inside the user's chat.
+structure result at a time inside the user's chat. The separate packaged local
+plugin remains the preferred path for local files and installed-app control on
+the same Mac through the local MCP and CLI bridge.
 
 `bun run build` first copies the reviewed viewer runtime assets and builds the
 real desktop React shell in hosted MCP mode with stable component entry files.
