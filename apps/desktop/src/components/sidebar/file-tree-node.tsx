@@ -7,13 +7,14 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
-import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload } from "../../lib/structure-drag";
 import type { DockingSceneMode } from "../../types";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
 import { RadixDropdownMenu } from "../radix-menu";
 import type { ShellActions, ShellViewState } from "../types";
+import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
 
 const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
 
@@ -59,6 +60,12 @@ export function ProjectGroup({
     ? projectTree.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT)
     : projectTree;
   const hiddenItemCount = projectTree.length - COLLAPSED_PROJECT_ITEM_LIMIT;
+  const sidebarDrag = useSidebarStructureDrag({
+    actions,
+    disabled: renaming,
+    getPayload: () => sidebarProjectItemsDragPayload(project.items),
+    state,
+  });
 
   useEffect(() => {
     if (!renaming) setRenameDraft(project.title);
@@ -147,19 +154,6 @@ export function ProjectGroup({
     event.stopPropagation();
     void showNativeContextMenu(projectMenuItems(project, actions, startRename), { x: event.clientX, y: event.clientY });
   };
-  const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (renaming) {
-      event.preventDefault();
-      return;
-    }
-    if (writeSidebarProjectItemsDrag(event.dataTransfer, project.items)) {
-      actions.setStructureDragActive(true);
-    }
-  };
-  const handleDragEnd = () => {
-    actions.setStructureDragActive(false);
-  };
-
   const toggleFolderPath = (path: string) => {
     const descendantPaths = collectProjectFolderPathsFor(projectTree, path).slice(1);
     setExpandedFolderPaths((current) => {
@@ -204,7 +198,11 @@ export function ProjectGroup({
         tabIndex={0}
         className="project-group-row"
         draggable={!renaming && project.items.length > 0}
-        onMouseDown={handleRowMouseDown}
+        onMouseDown={(event) => {
+          handleRowMouseDown(event);
+          sidebarDrag.onMouseDown(event);
+        }}
+        onClickCapture={sidebarDrag.onClickCapture}
         onClick={handleRowClick}
         onDoubleClick={(event) => {
           event.preventDefault();
@@ -212,8 +210,8 @@ export function ProjectGroup({
           startRename();
         }}
         onContextMenu={handleContextMenu}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
+        onDragStart={sidebarDrag.onDragStart}
+        onDragEnd={sidebarDrag.onDragEnd}
         onKeyDown={handleKeyDown}
         aria-expanded={expanded}
         aria-label={`${project.title}, ${project.items.length} structure${project.items.length === 1 ? "" : "s"}`}
@@ -537,18 +535,12 @@ function ProjectTreeNodeView({
     event.stopPropagation();
     void showNativeContextMenu(projectFolderMenuItems(project, node.path, actions, startRename), { x: event.clientX, y: event.clientY });
   };
-  const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (renaming) {
-      event.preventDefault();
-      return;
-    }
-    if (writeSidebarProjectItemsDrag(event.dataTransfer, nodeItems)) {
-      actions.setStructureDragActive(true);
-    }
-  };
-  const handleDragEnd = () => {
-    actions.setStructureDragActive(false);
-  };
+  const sidebarDrag = useSidebarStructureDrag({
+    actions,
+    disabled: renaming,
+    getPayload: () => sidebarProjectItemsDragPayload(nodeItems),
+    state,
+  });
   const showAllChildren = showAllFolderPaths.has(node.path);
   const shouldLimitChildren = !forceExpanded
     && node.children.length > COLLAPSED_PROJECT_ITEM_LIMIT
@@ -566,7 +558,11 @@ function ProjectTreeNodeView({
         className="project-folder-row"
         style={projectDepthStyle(depth)}
         draggable={!renaming && nodeItems.length > 0}
-        onMouseDown={handleRowMouseDown}
+        onMouseDown={(event) => {
+          handleRowMouseDown(event);
+          sidebarDrag.onMouseDown(event);
+        }}
+        onClickCapture={sidebarDrag.onClickCapture}
         onClick={handleRowClick}
         onDoubleClick={(event) => {
           event.preventDefault();
@@ -574,8 +570,8 @@ function ProjectTreeNodeView({
           startRename();
         }}
         onContextMenu={handleContextMenu}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
+        onDragStart={sidebarDrag.onDragStart}
+        onDragEnd={sidebarDrag.onDragEnd}
         onKeyDown={handleKeyDown}
         aria-expanded={expanded}
         aria-label={node.path}
@@ -673,6 +669,11 @@ export function ProjectItem({
   nested?: boolean;
   depth?: number;
 }) {
+  const sidebarDrag = useSidebarStructureDrag({
+    actions,
+    getPayload: () => sidebarProjectItemsDragPayload([item]),
+    state,
+  });
   const openItem = () => {
     if (item.documentId) {
       actions.selectDocument(item.documentId);
@@ -695,15 +696,6 @@ export function ProjectItem({
     }
   };
 
-  const handleDragStart = (event: ReactDragEvent<HTMLDivElement>) => {
-    if (writeSidebarProjectItemsDrag(event.dataTransfer, [item])) {
-      actions.setStructureDragActive(true);
-    }
-  };
-
-  const handleDragEnd = () => {
-    actions.setStructureDragActive(false);
-  };
   const handleDragOver = (event: ReactDragEvent<HTMLDivElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
     const payload = readStructureDragPayload(event.dataTransfer);
@@ -791,9 +783,11 @@ export function ProjectItem({
       data-drop-document-path={item.path}
       data-drop-document-renderer={item.renderer}
       data-drop-document-id={item.documentId ?? undefined}
+      onMouseDown={sidebarDrag.onMouseDown}
+      onClickCapture={sidebarDrag.onClickCapture}
       onClick={openItem}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
+      onDragStart={sidebarDrag.onDragStart}
+      onDragEnd={sidebarDrag.onDragEnd}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onContextMenu={handleContextMenu}
@@ -887,15 +881,12 @@ function projectTreeNodeItems(node: ProjectTreeNode): SidebarProjectItem[] {
   return node.children.flatMap(projectTreeNodeItems);
 }
 
-function writeSidebarProjectItemsDrag(
-  dataTransfer: DataTransfer,
+function sidebarProjectItemsDragPayload(
   items: SidebarProjectItem[],
-) {
+): StructureDragPayload | null {
   const draggableItems = items.filter((item) => item.path.trim().length > 0);
-  if (draggableItems.length === 0) {
-    return false;
-  }
-  return writeStructureDragPayload(dataTransfer, {
+  if (draggableItems.length === 0) return null;
+  return {
     paths: draggableItems.map((item) => item.path),
     records: [],
     items: draggableItems.map((item) => ({
@@ -904,7 +895,7 @@ function writeSidebarProjectItemsDrag(
       detail: item.relativePath,
       path: item.path,
     })),
-  });
+  };
 }
 
 function projectDepthStyle(depth: number): CSSProperties {

@@ -143,7 +143,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
     const payload = readStructureDragPayload(event.dataTransfer);
     clearDrop();
     if (payload.paths.length === 0 && payload.records.length === 0 && (payload.items?.length ?? 0) === 0) return;
-    void actions.openDockPayload({ area, tabKind: "files", payload });
+    void actions.openDockPayload({ area, tabKind: activeTab.kind, payload });
   };
 
   return (

@@ -8,7 +8,7 @@ import { pageKind } from "./page-kinds";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import { CloseIcon } from "../close-icon";
 import type { DropTargetContext } from "../../lib/drop-actions";
-import type { DockArea, DockTabKind } from "../../lib/dock";
+import { describeDropTargetElement } from "../../lib/drop-target";
 
 const TAB_DRAG_MIME = "application/x-burrete-tab-id";
 const TAB_REORDER_ANIMATION_MS = 170;
@@ -272,12 +272,10 @@ export function EditorTabs({
     };
   }, [state.activeDocument, state.activeTabId]);
 
-  const dockDropTargetAtPoint = useCallback((clientX: number, clientY: number): { area: DockArea; tabKind: DockTabKind } | null => {
+  const dockDropTargetAtPoint = useCallback((clientX: number, clientY: number) => {
     const element = typeof document === "undefined" ? null : document.elementFromPoint(clientX, clientY);
-    const dockTarget = element?.closest<HTMLElement>(".dock-panel[data-area]");
-    const area = dockTarget?.dataset.area;
-    if (area !== "right" && area !== "bottom") return null;
-    return { area, tabKind: "files" };
+    const descriptor = describeDropTargetElement(element);
+    return descriptor?.kind === "dock" ? descriptor : null;
   }, []);
 
   const runTabDropAtPoint = useCallback((sourceTabId: string, clientX: number, clientY: number) => {

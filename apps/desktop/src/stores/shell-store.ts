@@ -166,6 +166,7 @@ function dockTabState(area: DockArea, state: ShellState) {
 
 function dockDropItems(input: DockDropInput): DockDroppedStructure[] {
   const now = Date.now();
+  const payloadPaths = new Set(input.payload.paths.map(normalizeRoot));
   const paths = input.payload.paths.map((path, index) => ({
     id: `${now}-${input.area}-${input.tabKind}-path-${index}-${path}`,
     area: input.area,
@@ -184,15 +185,17 @@ function dockDropItems(input: DockDropInput): DockDroppedStructure[] {
     addedAt: now + paths.length + index,
     payload: { paths: [], records: [record] },
   }));
-  const items = (input.payload.items ?? []).map((item, index) => ({
-    id: `${now}-${input.area}-${input.tabKind}-item-${index}-${item.kind}-${item.title}`,
-    area: input.area,
-    tabKind: input.tabKind,
-    title: item.title,
-    detail: item.detail ?? item.path ?? item.kind,
-    addedAt: now + paths.length + records.length + index,
-    payload: { paths: item.path ? [item.path] : [], records: [], items: [item] },
-  }));
+  const items = (input.payload.items ?? [])
+    .filter((item) => !item.path || !payloadPaths.has(normalizeRoot(item.path)))
+    .map((item, index) => ({
+      id: `${now}-${input.area}-${input.tabKind}-item-${index}-${item.kind}-${item.title}`,
+      area: input.area,
+      tabKind: input.tabKind,
+      title: item.title,
+      detail: item.detail ?? item.path ?? item.kind,
+      addedAt: now + paths.length + records.length + index,
+      payload: { paths: item.path ? [item.path] : [], records: [], items: [item] },
+    }));
   return [...paths, ...records, ...items];
 }
 
