@@ -3,12 +3,13 @@ import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
-import { hasStructureDrag, readStructureDragPayload, writeStructureDragItems } from "../../lib/structure-drag";
+import { hasStructureDrag, readStructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { RadixDropdownMenu } from "../radix-menu";
 import { ScrollFade } from "../scroll-fade";
 import type { ShellActions, ShellViewState } from "../types";
 import { ProjectGroup, ProjectItem } from "./file-tree-node";
+import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
 
 export function FileBrowser({
   state,
@@ -30,6 +31,19 @@ export function FileBrowser({
   const visibleProjectIds = visibleProjects.map((project) => project.id);
   const allVisibleProjectsExpanded = visibleProjectIds.length > 0
     && visibleProjectIds.every((projectId) => state.expandedProjectIds.includes(projectId));
+  const ketcherDrag = useSidebarStructureDrag({
+    actions,
+    getPayload: () => ({
+      paths: [],
+      records: [],
+      items: [{
+        kind: "ketcher",
+        title: "Ketcher",
+        detail: "Molecule sketch editor",
+      }],
+    }),
+    state,
+  });
 
   const toggleAllProjectFolders = () => {
     if (!projectsExpanded) actions.toggleProjectsOpen();
@@ -61,15 +75,6 @@ export function FileBrowser({
     setKetcherDropActive(false);
     actions.setStructureDragActive(false);
     runShellDropActionChoices(actions, payload, choices, { x: event.clientX, y: event.clientY });
-  };
-
-  const handleKetcherDragStart = (event: ReactDragEvent<HTMLButtonElement>) => {
-    writeStructureDragItems(event.dataTransfer, [{
-      kind: "ketcher",
-      title: "Ketcher",
-      detail: "Molecule sketch editor",
-    }]);
-    actions.setStructureDragActive(true);
   };
 
   return (
@@ -106,9 +111,11 @@ export function FileBrowser({
         type="button"
         className="sidebar-tool-row"
         draggable
+        onMouseDown={ketcherDrag.onMouseDown}
+        onClickCapture={ketcherDrag.onClickCapture}
         onClick={actions.openKetcher}
-        onDragStart={handleKetcherDragStart}
-        onDragEnd={() => actions.setStructureDragActive(false)}
+        onDragStart={ketcherDrag.onDragStart}
+        onDragEnd={ketcherDrag.onDragEnd}
         onDragOver={handleKetcherDragOver}
         onDragLeave={handleKetcherDragLeave}
         onDrop={handleKetcherDrop}

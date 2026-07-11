@@ -444,7 +444,7 @@ export default function App() {
     addBackgroundTextDocuments,
     addDockDrop,
     detectContentSpectrumPaths,
-    openDockTab,
+    documents,
     openStructureRecordDocuments,
     preferences,
     pushErrorStatus,
@@ -452,6 +452,7 @@ export default function App() {
     rememberRecentStructures,
     setDockDocument,
     setDockTool,
+    textDocuments,
   });
 
   const {
