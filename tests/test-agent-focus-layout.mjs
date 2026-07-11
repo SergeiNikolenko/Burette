@@ -28,4 +28,9 @@ assert.equal(useShellStore.getState().sidebarOpen, true);
 assert.equal(useShellStore.getState().rightDockOpen, true);
 assert.equal(useShellStore.getState().bottomDockOpen, true);
 
+assert.equal(applyAgentFocusLayout("", false, true), true);
+assert.equal(useShellStore.getState().sidebarOpen, false);
+assert.equal(useShellStore.getState().rightDockOpen, false);
+assert.equal(useShellStore.getState().bottomDockOpen, false);
+
 console.log("agent focus layout tests passed");
