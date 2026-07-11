@@ -18,7 +18,10 @@ or workflow result bundles in Burrete.
    - `browser-agent-shell` when the user asks for the normal Browser UI, right
      or bottom docks, sidebars, tabs, files/projects, or app-like browser
      behavior. This is the full agent-owned Browser application shell and should use a
-     URL shaped like `http://127.0.0.1:<port>/?devFiles=<encoded absolute path>`.
+     URL shaped like
+     `http://127.0.0.1:<port>/?devFiles=<encoded absolute path>&agentLayout=focus`.
+     The focus layout closes the outer left, right, and bottom panels initially
+     while keeping their toggle controls available.
      This mode prefers the prebuilt `apps/desktop/dist` bundle served by
      `scripts/agent-shell-server.mjs`; in a source checkout without that bundle,
      it falls back to `vp dev`.
@@ -51,7 +54,7 @@ bun scripts/burrete-agent.mjs open --mode browser-agent-shell <file>
 Use the returned URL shaped like:
 
 ```text
-http://127.0.0.1:<fresh-port>/?devFiles=<url-encoded absolute file path>
+http://127.0.0.1:<fresh-port>/?devFiles=<url-encoded absolute file path>&agentLayout=focus
 ```
 
 Open that URL only through the Codex in-app Browser plugin. Do not start a
@@ -133,8 +136,18 @@ ordinary Burrete UI chrome.
 bun scripts/burrete-agent.mjs open --mode desktop-app <file> --session-dir <dir>
 ```
 
-7. Run `observe` after the app reports readiness when the selected mode exposes
-   typed state.
+7. Run `observe` after the workspace URL is open. Completion requires all of
+   the following for a Mol* document:
+   - `observe.activeDocument.ready === true`;
+   - `observe.viewerAgent.available === true`;
+   - `observe.viewerAgent.ready === true` and
+     `observe.viewerAgent.viewerReady === true` when those fields are present;
+   - no `VIEWER_NOT_READY` or viewer-agent error.
+
+   An HTTP server starting, a tool process exiting zero, an Inspector summary,
+   or correct atom/residue counts does not prove that Mol* rendered the
+   structure. If `openAsTab` was requested, the file-open action must also
+   succeed; creating the derived file alone is only partial completion.
 8. Read the structure summary:
    - `open_burrete_workspace` returns `structureSummary` for the opened file.
    - If attaching to an existing workspace or if summary is missing, call
@@ -149,5 +162,6 @@ bun scripts/burrete-agent.mjs open --mode desktop-app <file> --session-dir <dir>
 
 Report the mode, session directory or tokenized URL, active document title,
 viewer readiness, concise structure facts from `structureSummary`, and any
-typed errors. Do not describe a successful molecular load until
-`observe.activeDocument.ready` or equivalent viewer readiness is true.
+typed errors. Do not describe a successful molecular load until the full
+readiness gate above passes. When the user wants to see the result, also require
+the nonblank central-canvas check from `visual-qa`; counts are not a substitute.

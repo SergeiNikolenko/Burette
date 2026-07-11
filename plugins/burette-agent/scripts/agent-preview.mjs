@@ -16,10 +16,18 @@ const agentControlApiVersion = 'burette-agent-control/v1';
 const renderPanelReadLimit = 512 * 1024;
 const mvsReadLimit = 25 * 1024 * 1024;
 const amberNcPreviewFrameLimit = 100;
-const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt', 'crd', 'rst', 'state', 'lammpstrj', 'dump']);
+const coordinateArtifactExtensions = new Set(['xml', 'inpcrd', 'rst7', 'restrt', 'crd', 'rst', 'state', 'lammpstrj', 'dump', 'pos', 'cfg', 'in', 'inp', 'log', 'out', 'data', 'lammps', 'lmp']);
 const textArtifactExtensions = new Set(['par', 'prm', 'rtf', 'str', 'key', 'chk', 'checkpoint']);
 const amberNetcdfExtensions = new Set(['nc', 'ncdf', 'netcdf', 'ncrst']);
 const topologyPreviewExtensions = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb']);
+const trajectoryCoordinateExtensions = new Set(['xtc', 'trr', 'dcd', 'nctraj', 'nc', 'ncdf', 'netcdf', 'ncrst', 'lammpstrj']);
+const trajectoryModelExtensions = new Set(['pdb', 'ent', 'pdbqt', 'pqr', 'xpdb', 'mmcif', 'cif', 'mcif', 'gro']);
+const trajectoryTopologyExtensions = new Set(['top', 'psf', 'prmtop', 'tpr']);
+const trajectoryPairExtensions = new Set([
+  ...trajectoryCoordinateExtensions,
+  ...trajectoryModelExtensions,
+  ...trajectoryTopologyExtensions,
+]);
 
 function defaultPreviewWebRoot() {
   const sourcePreviewWeb = sourcePreviewWebRoot();
@@ -83,7 +91,10 @@ function isAmberNetcdfFile(file) {
 }
 
 function preparePreviewPayload(file, bytes) {
-  const extension = extname(file).toLowerCase().replace(/^\./, '');
+  const extension = previewExtension(file);
+  if (isPreferredTextArtifact(file)) {
+    return { bytes, format: 'text', binary: looksBinary(bytes), textPreview: true };
+  }
   if (coordinateArtifactExtensions.has(extension)) {
     const converted = genericPdbDataFromText(bytes.toString('utf8'), extension, basename(file));
     if (converted) return { bytes: Buffer.from(converted, 'utf8'), format: 'pdb', binary: false };
@@ -95,6 +106,16 @@ function preparePreviewPayload(file, bytes) {
   const converted = maestroPdbDataFromText(bytes.toString('utf8'));
   if (!converted) return { bytes, format: inferFormat(file), binary: isBinaryFormat(file) };
   return { bytes: Buffer.from(converted, 'utf8'), format: 'pdb', binary: false };
+}
+
+function previewExtension(file) {
+  const explicit = extname(file).toLowerCase().replace(/^\./, '');
+  if (explicit) return explicit;
+  return /^in(?:_|$)/iu.test(basename(file)) ? 'in' : '';
+}
+
+function isPreferredTextArtifact(file) {
+  return basename(file).toLowerCase() === 'log.lammps';
 }
 
 async function amberNcPreviewPayload(file) {
@@ -119,6 +140,94 @@ async function amberNcPreviewPayload(file) {
   } finally {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+async function nativeTrajectoryPairPayload(file, sourceBytes) {
+  const extension = extname(file).toLowerCase().replace(/^\./, '');
+  if (!trajectoryPairExtensions.has(extension)) return null;
+  const folder = dirname(file);
+  const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+  const candidates = Array.from(new Set([
+    file,
+    ...entries
+      .filter((entry) => entry.isFile() && trajectoryPairExtensions.has(extname(entry.name).toLowerCase().replace(/^\./, '')))
+      .map((entry) => resolve(folder, entry.name))
+  ]));
+  const coordinatePath = trajectoryCoordinateExtensions.has(extension)
+    ? file
+    : preferredTrajectoryCandidate(candidates, trajectoryCoordinateExtensions, file);
+  if (!coordinatePath) return null;
+  const modelCandidates = candidates.filter((candidate) => candidate !== coordinatePath);
+  const modelPath = preferredTrajectoryCandidate(modelCandidates, trajectoryModelExtensions, file)
+    || preferredTrajectoryCandidate(modelCandidates, trajectoryTopologyExtensions, file);
+  if (!modelPath) return null;
+  const coordinateBytes = coordinatePath === file ? sourceBytes : await readFile(coordinatePath);
+  const modelBytes = modelPath === file ? sourceBytes : await readFile(modelPath);
+  const coordinate = trajectorySource(coordinatePath, coordinateBytes);
+  const model = trajectorySource(modelPath, modelBytes);
+  return {
+    bytes: Buffer.from('\n', 'utf8'),
+    format: model.source.format,
+    binary: model.source.binary,
+    byteCount: modelBytes.length + coordinateBytes.length,
+    label: `${basename(coordinatePath)} + ${basename(modelPath)}`,
+    topologyPath: modelPath,
+    trajectoryPath: coordinatePath,
+    docking: {
+      activePose: null,
+      sceneMode: null,
+      receptor: model.source,
+      ligands: [coordinate.source],
+    },
+    dockingPayloads: {
+      receptor: { dataBase64: model.dataBase64 },
+      ligands: [{ dataBase64: coordinate.dataBase64 }],
+    },
+  };
+}
+
+function preferredTrajectoryCandidate(candidates, formats, sourcePath) {
+  const matches = candidates.filter((candidate) => formats.has(extname(candidate).toLowerCase().replace(/^\./, '')));
+  if (!matches.length) return null;
+  const sourceStem = trajectoryStem(sourcePath);
+  return matches
+    .map((candidate) => ({ candidate, score: trajectoryCandidateScore(candidate, sourceStem) }))
+    .sort((left, right) => right.score - left.score || left.candidate.localeCompare(right.candidate))[0]?.candidate ?? null;
+}
+
+function trajectoryCandidateScore(path, sourceStem) {
+  const extension = extname(path).toLowerCase().replace(/^\./, '');
+  const stem = trajectoryStem(path);
+  let score = stem === sourceStem ? 20 : sourceStem.startsWith(stem) || stem.startsWith(sourceStem) ? 12 : 0;
+  if (extension === 'gro') score += 8;
+  if (extension === 'pdb') score += 7;
+  if (extension === 'tpr') score += 4;
+  if (extension === 'xtc') score += 8;
+  return score;
+}
+
+function trajectoryStem(path) {
+  return basename(path).replace(/\.[^.]+$/u, '').replace(/_(centered|aligned|fit|reimaged|realmd|realmotion).*$/u, '');
+}
+
+function trajectorySource(path, bytes) {
+  const extension = extname(path).toLowerCase().replace(/^\./, '');
+  return {
+    source: {
+      path,
+      format: trajectoryMolstarFormat(extension),
+      binary: trajectoryCoordinateExtensions.has(extension) || extension === 'tpr',
+      label: basename(path),
+    },
+    dataBase64: bytes.toString('base64'),
+  };
+}
+
+function trajectoryMolstarFormat(extension) {
+  if (extension === 'cif' || extension === 'mcif') return 'mmcif';
+  if (extension === 'ent' || extension === 'pqr' || extension === 'xpdb') return 'pdb';
+  if (extension === 'nc' || extension === 'ncdf' || extension === 'netcdf' || extension === 'ncrst') return 'nctraj';
+  return extension;
 }
 
 async function findAmberNcTopology(trajectoryPath) {
@@ -198,11 +307,47 @@ function genericPdbDataFromText(text, extension, label) {
 function atomsFromCoordinateText(text, extension) {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
   if (extension === 'inpcrd' || extension === 'rst7' || extension === 'restrt') return parseAmberRestartAtoms(lines);
-  if (extension === 'lammpstrj' || extension === 'dump') return parseLammpsDumpAtoms(lines);
+  if (extension === 'in' || extension === 'inp') return parseQuantumEspressoAtoms(lines) ?? parseBestCoordinateBlock(lines);
+  if (extension === 'log' || extension === 'out') return parseBestCoordinateBlock(lines);
+  if (extension === 'lammpstrj' || extension === 'dump' || extension === 'pos') return parseLammpsDumpAtoms(lines);
+  if (extension === 'cfg') return parseAtomeyeCfgAtoms(lines) ?? parseMlipCfgAtoms(lines);
+  if (extension === 'data' || extension === 'lammps' || extension === 'lmp') return parseLammpsDataAtoms(lines);
   if (extension === 'crd') return parseCharmmCoordinateAtoms(lines);
   if (extension === 'rst') return parseCharmmCoordinateAtoms(lines) ?? parseAmberRestartAtoms(lines);
   if (extension === 'state' || extension === 'xml') return parseXmlPositionAtoms(text) ?? parseHoomdXmlAtoms(text);
   return null;
+}
+
+function parseQuantumEspressoAtoms(lines) {
+  const start = lines.findIndex((line) => line.trim().toLowerCase().startsWith('atomic_positions')) + 1;
+  if (start <= 0) return null;
+  const atoms = [];
+  for (const line of lines.slice(start)) {
+    const parts = fields(line);
+    if (parts.length < 4) break;
+    const x = Number(parts[1]);
+    const y = Number(parts[2]);
+    const z = Number(parts[3]);
+    if (!isElementSymbol(parts[0]) || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) break;
+    atoms.push({ symbol: normalizeElementSymbol(parts[0]), x, y, z });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function parseBestCoordinateBlock(lines) {
+  let best = [];
+  let current = [];
+  const finishBlock = () => {
+    if (current.length > best.length) best = current;
+    current = [];
+  };
+  for (const line of lines) {
+    const atom = parseElementCoordinateLine(line);
+    if (atom) current.push(atom);
+    else finishBlock();
+  }
+  finishBlock();
+  return best.length >= 2 ? best : null;
 }
 
 function parseAmberRestartAtoms(lines) {
@@ -282,6 +427,214 @@ function parseLammpsDumpAtoms(lines) {
     atoms.push({ symbol, x, y, z });
   }
   return atoms.length > 0 ? atoms : null;
+}
+
+function parseAtomeyeCfgAtoms(lines) {
+  const atomCount = parseAtomeyeCfgAtomCount(lines);
+  const scale = parseAtomeyeCfgScale(lines) ?? 1;
+  const h0 = parseAtomeyeCfgH0(lines);
+  const entryCount = parseAtomeyeCfgEntryCount(lines);
+  const entryStart = lines.findIndex((line) => line.trim().startsWith('entry_count')) + 1;
+  if (!atomCount || !h0 || !entryCount || entryStart <= 0) return null;
+  const atoms = [];
+  for (let index = entryStart; atoms.length < atomCount && index + entryCount <= lines.length; index += entryCount) {
+    const entry = lines.slice(index, index + entryCount);
+    const symbol = entry.map((line) => elementSymbolFromAtomName(line)).find(Boolean) ?? 'C';
+    const fractional = entry
+      .slice()
+      .reverse()
+      .map((line) => numericTokens(line))
+      .find((values) => values.length >= 3);
+    if (!fractional) return null;
+    atoms.push({
+      symbol,
+      x: scale * (h0[0][0] * fractional[0] + h0[0][1] * fractional[1] + h0[0][2] * fractional[2]),
+      y: scale * (h0[1][0] * fractional[0] + h0[1][1] * fractional[1] + h0[1][2] * fractional[2]),
+      z: scale * (h0[2][0] * fractional[0] + h0[2][1] * fractional[1] + h0[2][2] * fractional[2])
+    });
+  }
+  return atoms.length === atomCount ? atoms : null;
+}
+
+function parseMlipCfgAtoms(lines) {
+  const begin = lines.findIndex((line) => line.trim().toLowerCase() === 'begin_cfg');
+  if (begin < 0) return null;
+  const relativeEnd = lines.slice(begin + 1).findIndex((line) => line.trim().toLowerCase() === 'end_cfg');
+  const end = relativeEnd >= 0 ? begin + 1 + relativeEnd : lines.length;
+  const block = lines.slice(begin + 1, end);
+  const atomCount = parseMlipCfgSize(block);
+  const atomDataIndex = block.findIndex((line) => line.trimStart().startsWith('AtomData:'));
+  if (!atomCount || atomDataIndex < 0) return null;
+  const header = fields(block[atomDataIndex]);
+  const column = (name) => {
+    const index = header.findIndex((value) => value.toLowerCase() === name.toLowerCase());
+    return index > 0 ? index - 1 : -1;
+  };
+  const typeIndex = column('type');
+  const xIndex = column('cartes_x');
+  const yIndex = column('cartes_y');
+  const zIndex = column('cartes_z');
+  if (xIndex < 0 || yIndex < 0 || zIndex < 0) return null;
+  const atoms = [];
+  for (const line of block.slice(atomDataIndex + 1)) {
+    const parts = fields(line);
+    if (parts.length <= Math.max(xIndex, yIndex, zIndex)) {
+      if (atoms.length) break;
+      continue;
+    }
+    const x = Number(parts[xIndex]);
+    const y = Number(parts[yIndex]);
+    const z = Number(parts[zIndex]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      if (atoms.length) break;
+      continue;
+    }
+    atoms.push({
+      symbol: typeIndex >= 0 ? mlipCfgSymbolForType(parts[typeIndex] ?? '') : 'C',
+      x,
+      y,
+      z
+    });
+    if (atoms.length === atomCount) break;
+  }
+  return atoms.length === atomCount ? atoms : null;
+}
+
+function parseLammpsDataAtoms(lines) {
+  const masses = parseLammpsMasses(lines);
+  let inAtoms = false;
+  const atoms = [];
+  for (const line of lines) {
+    const parts = fields(stripInlineComment(line));
+    const first = parts[0];
+    if (!first) continue;
+    if (first.toLowerCase() === 'atoms') {
+      inAtoms = true;
+      continue;
+    }
+    if (inAtoms && /^[A-Za-z]/u.test(first)) break;
+    if (!inAtoms || parts.length < 5) continue;
+    const coordinates = lammpsDataCoordinates(parts, masses);
+    if (!coordinates) continue;
+    atoms.push({
+      symbol: lammpsDataAtomSymbol(parts, masses),
+      x: coordinates[0],
+      y: coordinates[1],
+      z: coordinates[2]
+    });
+  }
+  return atoms.length ? atoms : null;
+}
+
+function parseLammpsMasses(lines) {
+  let inMasses = false;
+  const masses = new Map();
+  for (const line of lines) {
+    const parts = fields(stripInlineComment(line));
+    const first = parts[0];
+    if (!first) continue;
+    if (first.toLowerCase() === 'masses') {
+      inMasses = true;
+      continue;
+    }
+    if (inMasses && /^[A-Za-z]/u.test(first)) break;
+    if (!inMasses || parts.length < 2) continue;
+    const symbol = elementSymbolFromAtomName(parts[2] ?? '') ?? lammpsSymbolFromMass(parts[1] ?? '');
+    if (symbol) masses.set(parts[0], symbol);
+  }
+  return masses;
+}
+
+function lammpsDataCoordinates(parts, masses) {
+  const starts = [];
+  if (masses.has(parts[2])) starts.push(4);
+  if (masses.has(parts[1])) starts.push(3, 2);
+  starts.push(3, 4, 2);
+  for (const start of starts) {
+    const x = Number(parts[start]);
+    const y = Number(parts[start + 1]);
+    const z = Number(parts[start + 2]);
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) return [x, y, z];
+  }
+  return null;
+}
+
+function lammpsDataAtomSymbol(parts, masses) {
+  return masses.get(parts[1])
+    ?? masses.get(parts[2])
+    ?? elementSymbolFromAtomName(parts[1] ?? '')
+    ?? elementSymbolFromAtomName(parts[2] ?? '')
+    ?? 'C';
+}
+
+function lammpsSymbolFromMass(value) {
+  const mass = Number(value);
+  if (!Number.isFinite(mass)) return null;
+  const candidates = [
+    [1.008, 'H'], [12.011, 'C'], [14.007, 'N'], [15.999, 'O'], [18.998, 'F'],
+    [22.99, 'Na'], [24.305, 'Mg'], [30.974, 'P'], [32.06, 'S'], [35.45, 'Cl']
+  ];
+  const match = candidates.find(([candidate]) => Math.abs(candidate - mass) < 0.15);
+  return match?.[1] ?? null;
+}
+
+function stripInlineComment(line) {
+  return line.split('#')[0] ?? '';
+}
+
+function parseMlipCfgSize(lines) {
+  for (let index = 0; index + 1 < lines.length; index += 1) {
+    if (lines[index].trim().toLowerCase() !== 'size') continue;
+    const value = Number.parseInt(fields(lines[index + 1])[0] ?? '', 10);
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+  return null;
+}
+
+function mlipCfgSymbolForType(value) {
+  const normalized = normalizeElementSymbol(value);
+  if (isElementSymbol(normalized)) return normalized;
+  if (value.trim() === '1') return 'H';
+  return 'C';
+}
+
+function parseAtomeyeCfgAtomCount(lines) {
+  for (const line of lines) {
+    const match = /^Number of particles\s*=\s*(\d+)/u.exec(line.trim());
+    if (match) return Number.parseInt(match[1], 10);
+  }
+  return null;
+}
+
+function parseAtomeyeCfgScale(lines) {
+  for (const line of lines) {
+    const match = /^A\s*=\s*([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)/u.exec(line.trim());
+    if (match) return Number(match[1]);
+  }
+  return null;
+}
+
+function parseAtomeyeCfgEntryCount(lines) {
+  for (const line of lines) {
+    const match = /^entry_count\s*=\s*(\d+)/u.exec(line.trim());
+    if (match) return Number.parseInt(match[1], 10);
+  }
+  return null;
+}
+
+function parseAtomeyeCfgH0(lines) {
+  const h0 = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  let seen = 0;
+  for (const line of lines) {
+    const match = /^H0\((\d),(\d)\)\s*=\s*([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)/u.exec(line.trim());
+    if (!match) continue;
+    const row = Number.parseInt(match[1], 10) - 1;
+    const column = Number.parseInt(match[2], 10) - 1;
+    if (row < 0 || row >= 3 || column < 0 || column >= 3) continue;
+    h0[row][column] = Number(match[3]);
+    seen += 1;
+  }
+  return seen === 9 ? h0 : null;
 }
 
 function coordinateColumnIndex(columns, names) {
@@ -367,6 +720,19 @@ function elementSymbolFromAtomName(value) {
   if (isElementSymbol(two)) return two;
   const one = normalizeElementSymbol(clean.slice(0, 1));
   return isElementSymbol(one) ? one : null;
+}
+
+function parseElementCoordinateLine(line) {
+  const parts = fields(line);
+  if (parts.length < 4) return null;
+  const symbol = elementSymbolFromAtomName(parts[0]);
+  if (!symbol) return null;
+  const x = Number(parts[1]);
+  const y = Number(parts[2]);
+  const z = Number(parts[3]);
+  return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)
+    ? { symbol, x, y, z }
+    : null;
 }
 
 function maestroPdbDataFromText(text) {
@@ -1025,20 +1391,23 @@ async function main() {
   const structurePath = resolve(args.structure);
   const sourceBytes = await readFile(structurePath);
   const st = await stat(structurePath);
-  const preview = await amberNcPreviewPayload(structurePath) ?? preparePreviewPayload(structurePath, sourceBytes);
+  const preview = await amberNcPreviewPayload(structurePath)
+    ?? await nativeTrajectoryPairPayload(structurePath, sourceBytes)
+    ?? preparePreviewPayload(structurePath, sourceBytes);
   const extension = extname(structurePath).toLowerCase().replace(/^\./, '');
   const trajectoryFrameCount = Number(preview.trajectoryFrameCount || 0);
   const config = {
-    label: preview.topologyPath ? `${basename(structurePath)} + ${basename(preview.topologyPath)}` : basename(structurePath),
+    label: preview.label || (preview.topologyPath ? `${basename(structurePath)} + ${basename(preview.topologyPath)}` : basename(structurePath)),
     format: preview.format,
     binary: preview.binary,
-    byteCount: st.size,
+    byteCount: preview.byteCount || st.size,
     sourceExtension: extension,
     sourcePath: structurePath,
     topologyPath: preview.topologyPath || null,
     trajectoryPath: preview.trajectoryPath || null,
     trajectoryControls: trajectoryFrameCount > 1,
     trajectoryFrameCount,
+    ...(preview.docking ? { docking: preview.docking } : {}),
     textPreview: Boolean(preview.textPreview),
     showPanelControls: true,
     enablePreviewDocks: true,
@@ -1163,7 +1532,11 @@ async function main() {
       }
       if (url.pathname === '/preview-config.js') {
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
-        res.end(js('BurreteConfig', config) + js('BurreteAgentControl', controlConfig()));
+        res.end(
+          js('BurreteConfig', config)
+          + (preview.dockingPayloads ? js('BurreteDockingPayloads', preview.dockingPayloads) : '')
+          + js('BurreteAgentControl', controlConfig())
+        );
         return;
       }
       if (url.pathname === '/preview-data.js') {

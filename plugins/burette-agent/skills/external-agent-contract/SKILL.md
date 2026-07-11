@@ -35,9 +35,14 @@ that was opened before this contract existed.
 2. Call `burrete.open_workspace` with the exact local file path. Use default
    `mode: "auto"` unless the user explicitly asks for the real desktop app or
    a specific Browser surface.
-3. Keep the returned `workspaceSessionId`.
-4. For follow-up questions about current scene state, call
-   `burrete.observe_workspace` and answer from `modelContext`.
+3. Keep the returned `workspaceSessionId`. A successful open can return
+   `ok: true`, `ready: false`, and `completionState: "awaiting_browser"`; this
+   means the transport started correctly, not that the structure is visible.
+   Open the returned URL before continuing.
+4. After the Browser URL is open, call `burrete.observe_workspace`. Continue
+   only when it returns `ready: true`; treat `completionState: "not_ready"` or
+   `VIEWER_NOT_READY` as a failed visualization and never claim the structure
+   is visible from file names or molecular counts alone.
 5. For scene changes, call `burrete.control_viewer` with the same
    `workspaceSessionId` and a serializable Burrete action such as
    `reset_camera`, `focus_ligand`, `select_residues`, `apply_scene`, or
@@ -51,6 +56,7 @@ that was opened before this contract existed.
   observe/action output is available.
 - Do not claim an action changed the viewer when the tool returns
   `applied: false` or `ok: false`.
+- Do not treat `completionState: "awaiting_browser"` as completed rendering.
 - Use advanced tools only when the short contract is missing a capability, such
   as docking-specific setup, fragment extraction, trajectory review, or bounded
   molecular report validation.

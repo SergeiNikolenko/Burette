@@ -6,12 +6,22 @@ const {
   hasStructureDrag,
   readStructureDrag,
   readStructureDragPayload,
+  structureDragMovementExceedsThreshold,
   structureDragPayloadFromText,
   structureDragPayloadFromBrowserFiles,
   structureDragRecordsToFragments,
   writeStructureDrag,
   writeStructureDragRecords,
 } = await import("../apps/desktop/src/lib/structure-drag.ts");
+
+assert.equal(structureDragMovementExceedsThreshold(
+  { x: 20, y: 30 },
+  { x: 25, y: 35 },
+), false);
+assert.equal(structureDragMovementExceedsThreshold(
+  { x: 20, y: 30 },
+  { x: 29, y: 30 },
+), true);
 
 class FakeDataTransfer {
   constructor({ files = [] } = {}) {
