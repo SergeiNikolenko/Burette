@@ -78,9 +78,8 @@ bun run dev
 
 The production server exposes:
 
-- `/` — empty full-page Burrete shell for direct runtime diagnostics; molecular
-  structures arrive only through MCP tool results and are not shared between
-  visitors;
+- `/` — permanent redirect to the public plugin documentation; the hosted
+  service is not a standalone web workspace;
 - `/mcp` — stateless Streamable HTTP MCP endpoint;
 - `/api/health` — no-store health response;
 - `/.well-known/openai-apps-challenge` — exact domain-verification token when
@@ -96,6 +95,10 @@ The production server exposes:
 Do not change the production origin after publication. Preview deployments can
 use Vercel-provided deployment origins, while production should set
 `PUBLIC_APP_ORIGIN` explicitly.
+
+The local Burrete desktop app remains the primary workspace. The hosted service
+only supplies the public MCP endpoint, widget assets, and one isolated
+structure result at a time inside the user's chat.
 
 `bun run build` first copies the reviewed viewer runtime assets and builds the
 real desktop React shell in hosted MCP mode with stable component entry files.
