@@ -95,7 +95,9 @@ async function installMockAgentCli(pluginRoot) {
     path.join(pluginRoot, "scripts", "burrete-agent.mjs"),
     [
       "#!/usr/bin/env node",
+      "import { existsSync, readFileSync, writeFileSync } from 'node:fs';",
       `const activeFile = ${JSON.stringify(sampleMini)};`,
+      "const activePathState = new URL('./mock-active-path.txt', import.meta.url);",
       "const apiVersion = 'burette-agent-cli/v1';",
       "const [command, ...args] = process.argv.slice(2);",
       "function parseArgs(values) {",
@@ -127,27 +129,56 @@ async function installMockAgentCli(pluginRoot) {
       "}",
       "const parsed = parseArgs(args);",
       "if (command === 'open') {",
+      "  const simulatedNotReady = String(parsed.options.sessionDir || '').includes('not-ready');",
+      "  const simulatedObserveUnavailable = String(parsed.options.sessionDir || '').includes('observe-unavailable');",
       "  ok({",
       "    mode: parsed.options.mode || 'browser-preview',",
-      "    url: 'http://127.0.0.1:49000/index.html?token=mock-token',",
+      "    url: simulatedNotReady ? 'http://127.0.0.1:49000/index.html?not-ready=1' : simulatedObserveUnavailable ? 'http://127.0.0.1:49000/index.html?observe-unavailable=1' : 'http://127.0.0.1:49000/index.html?token=mock-token',",
       "    sessionDir: parsed.options.sessionDir || '/tmp/burrete-mock-session',",
       "    launched: !parsed.options.noLaunch,",
       "    initialPaths: parsed.rest,",
       "    argv: args,",
       "  });",
       "} else if (command === 'observe') {",
+      "  const locator = String(parsed.options.url || parsed.options.sessionDir || '');",
+      "  if (locator.includes('observe-unavailable')) {",
+      "    console.error(JSON.stringify({ ok: false, error: { code: 'OBSERVE_UNAVAILABLE', message: 'Workspace has not reported observe state yet.' } }));",
+      "    process.exit(1);",
+      "  }",
+      "  const observedFile = existsSync(activePathState) ? readFileSync(activePathState, 'utf8') : activeFile;",
+      "  const ready = !locator.includes('not-ready') && !observedFile.includes('mock-observe-not-ready');",
+      "  const itemCount = locator.includes('large-observe') ? 75 : 1;",
+      "  let stress = null;",
+      "  if (locator.includes('deep-observe')) {",
+      "    stress = {};",
+      "    let cursor = stress;",
+      "    for (let depth = 0; depth < 3; depth += 1) {",
+      "      cursor.items = Array.from({ length: 100 }, (_, index) => ({ index, message: 'x'.repeat(10000) }));",
+      "      cursor.next = {};",
+      "      cursor = cursor.next;",
+      "    }",
+      "  }",
       "  ok({",
       "    mode: 'browser-agent-shell',",
       "    activeTabId: 'tab-structure',",
-      "    tabs: [{ id: 'tab-structure', title: 'mini.pdb', path: activeFile }],",
-      "    activeDocument: { title: 'mini.pdb', path: activeFile, ready: true },",
-      "    viewer: { ready: true, representationCount: 2 },",
-      "    actions: { recent: [] },",
+      "    tabs: Array.from({ length: itemCount }, (_, index) => ({ id: `tab-${index}`, title: `structure-${index}.pdb`, path: index === 0 ? observedFile : `/tmp/structure-${index}.pdb` })),",
+      "    documents: Array.from({ length: itemCount }, (_, index) => ({ id: `document-${index}`, title: `structure-${index}.pdb`, path: index === 0 ? observedFile : `/tmp/structure-${index}.pdb` })),",
+      "    activeDocument: { title: observedFile.split('/').at(-1), path: observedFile, renderer: 'molstar', ready },",
+      "    viewerAgent: { available: ready, ready, viewerReady: ready },",
+      "    viewer: { ready, representationCount: ready ? 2 : 0 },",
+      "    scene: { known: ready, ligands: Array.from({ length: itemCount }, (_, index) => ({ id: `L${index}` })) },",
+      "    actions: { recent: Array.from({ length: itemCount }, (_, index) => ({ id: `action-${index}`, status: 'completed' })) },",
+      "    stress,",
       "    argv: args,",
       "  });",
       "} else if (command === 'act') {",
       "  const actionText = parsed.rest[0] || '{}';",
       "  const action = JSON.parse(actionText);",
+      "  if (action.type === 'open_files' && action.paths?.some(path => path.includes('mock-open-failure'))) {",
+      "    console.error(JSON.stringify({ ok: false, error: { code: 'ACT_FAILED', message: 'synthetic open failure' } }));",
+      "    process.exit(1);",
+      "}",
+      "  if (action.type === 'open_files' && action.paths?.[0]) writeFileSync(activePathState, action.paths[0]);",
       "  ok({ ok: true, action: { id: 'act-mock', type: action.type, status: 'queued', payload: action }, argv: args });",
       "} else {",
       "  console.error(JSON.stringify({ ok: false, error: { code: 'UNKNOWN_COMMAND', message: `Unknown command: ${command}` } }));",
@@ -227,7 +258,7 @@ async function testValidationHandlers(tempRoot) {
 async function testFetchAndWorkspaceHandlers(tempRoot) {
   const pluginRoot = await copyPlugin(tempRoot, "workspace-plugin");
   const server = await registerAll(pluginRoot);
-  let processId = null;
+  const processIds = [];
   try {
     const blockedFetch = await server.tools.get("fetch").handler({ url: "http://127.0.0.1:9" });
     assert.equal(blockedFetch.structuredContent.ok, false);
@@ -238,21 +269,59 @@ async function testFetchAndWorkspaceHandlers(tempRoot) {
     assert.equal(summary.structuredContent.summary.format, "PDB");
     assert.equal(summary.structuredContent.summary.counts.atoms, 9);
 
+    const ligandHeavyFile = path.join(tempRoot, "ligand-heavy.pdb");
+    const ligandLines = Array.from({ length: 75 }, (_, index) => {
+      const serial = String(index + 1).padStart(5, " ");
+      const residue = String(index + 1).padStart(4, " ");
+      return `HETATM${serial}  C1  LIG A${residue}       0.000   0.000   0.000  1.00 10.00           C`;
+    });
+    await writeFile(ligandHeavyFile, `${ligandLines.join("\n")}\nEND\n`);
+    const ligandHeavySummary = await server.tools.get("summarize_burrete_structure").handler({ file: ligandHeavyFile });
+    assert.equal(ligandHeavySummary.structuredContent.ok, true);
+    assert.equal(ligandHeavySummary.structuredContent.summary.components.ligands.length, 50);
+    assert.deepEqual(ligandHeavySummary.structuredContent.summary.bounds["components.ligands"], {
+      total: 75,
+      returned: 50,
+      truncated: true,
+    });
+    assert.equal(JSON.stringify(ligandHeavySummary.structuredContent.summary).length <= 256 * 1024, true);
+
     const opened = await server.tools.get("open_burrete_workspace").handler({
       file: sampleMini,
       mode: "browser-preview",
       noLaunch: true,
     });
-    processId = opened.structuredContent.result.processId;
+    processIds.push(opened.structuredContent.result.processId);
     assert.equal(opened.structuredContent.ok, true);
+    assert.equal(opened.isError, undefined);
+    assert.equal(opened.structuredContent.started, true);
+    assert.equal(opened.structuredContent.ready, false);
+    assert.equal(opened.structuredContent.completionState, "awaiting_browser");
+    assert.equal(opened.structuredContent.error, null);
     assert.equal(opened.structuredContent.result.mode, "browser-preview");
     assert.match(opened.structuredContent.result.url, /^http:\/\/127\.0\.0\.1:/);
     assert.equal(opened.structuredContent.structureSummary.counts.atoms, 9);
 
+    const unopenedAgentShell = await server.tools.get("open_burrete_workspace").handler({
+      file: sampleMini,
+      mode: "browser-agent-shell",
+      noLaunch: true,
+    });
+    processIds.push(unopenedAgentShell.structuredContent.result.processId);
+    assert.equal(unopenedAgentShell.structuredContent.ok, true);
+    assert.equal(unopenedAgentShell.isError, undefined);
+    assert.equal(unopenedAgentShell.structuredContent.started, true);
+    assert.equal(unopenedAgentShell.structuredContent.ready, false);
+    assert.equal(unopenedAgentShell.structuredContent.completionState, "awaiting_browser");
+    assert.equal(unopenedAgentShell.structuredContent.error, null);
+
     const observed = await server.tools.get("observe_burrete_workspace").handler({
       url: opened.structuredContent.result.url,
     });
-    assert.equal(observed.structuredContent.ok, true);
+    assert.equal(observed.structuredContent.ok, false);
+    assert.equal(observed.isError, true);
+    assert.equal(observed.structuredContent.ready, false);
+    assert.equal(observed.structuredContent.completionState, "not_ready");
     assert.equal(observed.structuredContent.observe.activeDocument.path, sampleMini);
 
     const tabs = await server.tools.get("manage_burrete_tabs").handler({
@@ -269,7 +338,7 @@ async function testFetchAndWorkspaceHandlers(tempRoot) {
     assert.equal(action.structuredContent.ok, true);
     assert.equal(action.structuredContent.result.action.type, "reset_camera");
   } finally {
-    if (processId) {
+    for (const processId of processIds) {
       try {
         process.kill(processId, "SIGTERM");
       } catch {
@@ -295,6 +364,53 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(opened.structuredContent.result.mode, "browser-preview");
   assert.deepEqual(opened.structuredContent.result.initialPaths, [sampleMini]);
   assert.equal(opened.structuredContent.result.launched, false);
+
+  const notReady = await server.tools.get("open_burrete_workspace").handler({
+    file: sampleMini,
+    mode: "browser-agent-shell",
+    sessionDir: "/tmp/burrete-not-ready",
+    noLaunch: true,
+  });
+  assert.equal(notReady.structuredContent.ok, true);
+  assert.equal(notReady.isError, undefined);
+  assert.equal(notReady.structuredContent.started, true);
+  assert.equal(notReady.structuredContent.ready, false);
+  assert.equal(notReady.structuredContent.completionState, "awaiting_browser");
+  assert.equal(notReady.structuredContent.error, null);
+
+  const publicNotReady = await server.tools.get("burrete.open_workspace").handler({
+    file: sampleMini,
+    mode: "browser-agent-shell",
+    sessionDir: "/tmp/burrete-not-ready-public",
+    noLaunch: true,
+  });
+  assert.equal(publicNotReady.structuredContent.ok, true);
+  assert.equal(publicNotReady.isError, undefined);
+  assert.equal(publicNotReady.structuredContent.started, true);
+  assert.equal(publicNotReady.structuredContent.ready, false);
+  assert.equal(publicNotReady.structuredContent.completionState, "awaiting_browser");
+  assert.equal(publicNotReady.structuredContent.error, null);
+
+  const publicAwaitingObserve = await server.tools.get("burrete.open_workspace").handler({
+    file: sampleMini,
+    mode: "browser-agent-shell",
+    sessionDir: "/tmp/burrete-observe-unavailable-public",
+    noLaunch: true,
+  });
+  assert.equal(publicAwaitingObserve.structuredContent.ok, true);
+  assert.equal(publicAwaitingObserve.isError, undefined);
+  assert.equal(publicAwaitingObserve.structuredContent.ready, false);
+  assert.equal(publicAwaitingObserve.structuredContent.completionState, "awaiting_browser");
+  assert.equal(publicAwaitingObserve.structuredContent.error, null);
+
+  const publicStillNotReady = await server.tools.get("burrete.observe_workspace").handler({
+    workspaceSessionId: publicNotReady.structuredContent.workspaceSessionId,
+  });
+  assert.equal(publicStillNotReady.structuredContent.ok, false);
+  assert.equal(publicStillNotReady.isError, true);
+  assert.equal(publicStillNotReady.structuredContent.ready, false);
+  assert.equal(publicStillNotReady.structuredContent.completionState, "not_ready");
+  assert.equal(publicStillNotReady.structuredContent.error.code, "VIEWER_NOT_READY");
 
   const publicContext = await server.tools.get("burrete.get_context").handler({});
   coveredTools.add("burrete.get_context");
@@ -348,6 +464,36 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(observed.structuredContent.ok, true);
   assert.equal(observed.structuredContent.observe.activeDocument.path, sampleMini);
   assert.equal(observed._meta, undefined);
+
+  const largeObserved = await server.tools.get("observe_burrete_workspace").handler({
+    url: "http://127.0.0.1:49000/index.html?large-observe=1",
+  });
+  assert.equal(largeObserved.structuredContent.ok, true);
+  assert.equal(largeObserved.structuredContent.result, null);
+  assert.equal(largeObserved.structuredContent.observe.documents.length, 50);
+  assert.equal(largeObserved.structuredContent.observe.tabs.length, 50);
+  assert.equal(largeObserved.structuredContent.observe.scene.ligands.length, 50);
+  assert.equal(largeObserved.structuredContent.observe.actions.recent.length, 50);
+  assert.deepEqual(largeObserved.structuredContent.observe.bounds.documents, {
+    total: 75,
+    returned: 50,
+    truncated: true,
+  });
+
+  const publicLargeObserved = await server.tools.get("burrete.observe_workspace").handler({
+    url: "http://127.0.0.1:49000/index.html?large-observe=1",
+  });
+  assert.equal(publicLargeObserved.structuredContent.ok, true);
+  assert.equal(publicLargeObserved.structuredContent.result, null);
+  assert.equal(publicLargeObserved.structuredContent.observe.documents.length, 50);
+  assert.equal(publicLargeObserved.structuredContent.modelContext.tabs.length, 50);
+
+  const stressObserved = await server.tools.get("observe_burrete_workspace").handler({
+    url: "http://127.0.0.1:49000/index.html?large-observe=1&deep-observe=1",
+  });
+  const stressObserveJson = JSON.stringify(stressObserved.structuredContent.observe);
+  assert.equal(stressObserveJson.length <= 256 * 1024, true, stressObserveJson.length);
+  assert.equal(Object.keys(stressObserved.structuredContent.observe.bounds).length <= 100, true);
 
   const summarizedFromWorkspace = await server.tools.get("summarize_burrete_structure").handler({
     url: opened.structuredContent.result.url,
@@ -420,6 +566,23 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
     openedLigandTab.structuredContent.extracted.outputPath,
   ]);
   await rm(openedLigandTab.structuredContent.extracted.outputPath, { force: true });
+
+  const notReadyLigandTab = await server.tools.get("manage_burrete_structure_component").handler({
+    operation: "open_as_tab",
+    file: sample1htb,
+    url: opened.structuredContent.result.url,
+    component: "ligand",
+    chain: "A",
+    compId: "NAD",
+    seq: 377,
+    title: "mock-observe-not-ready-component",
+    waitMs: 25,
+  });
+  assert.equal(notReadyLigandTab.structuredContent.ok, false);
+  assert.equal(notReadyLigandTab.isError, true);
+  assert.equal(notReadyLigandTab.structuredContent.ready, false);
+  assert.equal(notReadyLigandTab.structuredContent.error.code, "WORKSPACE_DOCUMENT_NOT_READY");
+  await rm(notReadyLigandTab.structuredContent.extracted.outputPath, { force: true });
 
   const dockingView = await server.tools.get("open_burrete_docking_view").handler({
     receptorPath: sampleMini,
@@ -508,6 +671,37 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
     editedFragment.structuredContent.edited.outputPath,
   ]);
   await rm(editedFragment.structuredContent.edited.outputPath, { force: true });
+
+  const failedOpenFragment = await server.tools.get("edit_burrete_fragment").handler({
+    operation: "remove_to_new_file",
+    file: sample1htb,
+    component: "water",
+    title: "mock-open-failure",
+    openAsTab: true,
+    url: opened.structuredContent.result.url,
+  });
+  assert.equal(failedOpenFragment.structuredContent.ok, false);
+  assert.equal(failedOpenFragment.isError, true);
+  assert.equal(failedOpenFragment.structuredContent.edited.removedAtomCount, 142);
+  assert.equal(failedOpenFragment.structuredContent.error.code, "ACT_FAILED");
+  await rm(failedOpenFragment.structuredContent.edited.outputPath, { force: true });
+
+  const notReadyFragment = await server.tools.get("edit_burrete_fragment").handler({
+    operation: "remove_to_new_file",
+    file: sample1htb,
+    component: "water",
+    title: "mock-observe-not-ready",
+    openAsTab: true,
+    url: opened.structuredContent.result.url,
+    waitMs: 25,
+  });
+  assert.equal(notReadyFragment.structuredContent.ok, false);
+  assert.equal(notReadyFragment.isError, true);
+  assert.equal(notReadyFragment.structuredContent.ready, false);
+  assert.equal(notReadyFragment.structuredContent.completionState, "not_ready");
+  assert.equal(notReadyFragment.structuredContent.observe.activeDocument.path, notReadyFragment.structuredContent.edited.outputPath);
+  assert.equal(notReadyFragment.structuredContent.error.code, "WORKSPACE_DOCUMENT_NOT_READY");
+  await rm(notReadyFragment.structuredContent.edited.outputPath, { force: true });
 
   assert.deepEqual([...coveredTools].sort(), [
     "act_molstar_scene",
