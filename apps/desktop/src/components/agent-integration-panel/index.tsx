@@ -156,7 +156,7 @@ const browserPreviewStatus: AgentIntegrationStatus = {
   bundledPlugin: {
     state: "ready",
     name: "burrete",
-    version: "0.1.1",
+    version: "0.1.2",
     path: browserPreviewPluginPath(),
     displayName: "Burrete",
     compatibility: {

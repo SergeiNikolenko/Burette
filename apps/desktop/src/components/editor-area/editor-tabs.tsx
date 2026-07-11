@@ -8,7 +8,7 @@ import { pageKind } from "./page-kinds";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import { CloseIcon } from "../close-icon";
 import type { DropTargetContext } from "../../lib/drop-actions";
-import type { DockArea, DockTabKind } from "../../lib/dock";
+import { describeDropTargetElement } from "../../lib/drop-target";
 
 const TAB_DRAG_MIME = "application/x-burrete-tab-id";
 const TAB_REORDER_ANIMATION_MS = 170;
@@ -272,13 +272,10 @@ export function EditorTabs({
     };
   }, [state.activeDocument, state.activeTabId]);
 
-  const dockDropTargetAtPoint = useCallback((clientX: number, clientY: number): { area: DockArea; tabKind: DockTabKind } | null => {
+  const dockDropTargetAtPoint = useCallback((clientX: number, clientY: number) => {
     const element = typeof document === "undefined" ? null : document.elementFromPoint(clientX, clientY);
-    const dockTarget = element?.closest<HTMLElement>(".dock-panel[data-area][data-active-tab]");
-    const area = dockTarget?.dataset.area;
-    const tabKind = dockTarget?.dataset.activeTab;
-    if ((area !== "right" && area !== "bottom") || !tabKind) return null;
-    return { area, tabKind: tabKind as DockTabKind };
+    const descriptor = describeDropTargetElement(element);
+    return descriptor?.kind === "dock" ? descriptor : null;
   }, []);
 
   const runTabDropAtPoint = useCallback((sourceTabId: string, clientX: number, clientY: number) => {
@@ -679,6 +676,9 @@ export function EditorTabs({
               data-active={active || undefined}
               data-selected={selected || undefined}
               data-dragging={isDragging || undefined}
+              data-drop-document-path={tabDropTarget?.documentPath}
+              data-drop-document-id={tabDropTarget?.documentId ?? undefined}
+              data-drop-document-renderer={tabDropTarget?.renderer ?? undefined}
               onDragOver={readOnly ? undefined : (event) => {
                 updateNativeTabDrag(event);
                 scheduleDragActivation(tab.id);
@@ -798,6 +798,7 @@ export function EditorTabs({
       </button> : null}
       <div
         className="tab-strip-spacer"
+        data-file-drop-zone="tab-strip"
         data-tauri-drag-region
         onDragOver={readOnly ? undefined : handleEmptyTabStripDragOver}
         onDrop={readOnly ? undefined : handleEmptyTabStripDrop}
