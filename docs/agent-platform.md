@@ -39,10 +39,12 @@ The hosted plugin is a separate runtime boundary from the local desktop bridge:
 
 The MCP widget mounts the production build of the real Burrete browser shell
 directly and passes the tool result into its existing inline-document path. The
-root deployment URL redirects to the public plugin documentation; it is not a
-second standalone product. The bundle, submission metadata, review tests, and
-directory skill live together under `apps/burrete-public-plugin`; the main
-repository remains the source of truth.
+root deployment URL serves the same shell without a preloaded molecule for
+direct diagnostics; structures arrive only from the current MCP tool result and
+are not shared between visitors. It is not a second standalone product. The
+bundle, submission metadata, review tests, and directory skill live together
+under `apps/burrete-public-plugin`; the main repository remains the source of
+truth.
 
 ## CLI And Skill Map
 

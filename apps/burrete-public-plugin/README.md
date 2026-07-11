@@ -78,7 +78,9 @@ bun run dev
 
 The production server exposes:
 
-- `/` — permanent redirect to the public plugin documentation;
+- `/` — empty full-page Burrete shell for direct runtime diagnostics; molecular
+  structures arrive only through MCP tool results and are not shared between
+  visitors;
 - `/mcp` — stateless Streamable HTTP MCP endpoint;
 - `/api/health` — no-store health response;
 - `/.well-known/openai-apps-challenge` — exact domain-verification token when
