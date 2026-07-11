@@ -1,8 +1,22 @@
+import { getAppOrigin } from "@/lib/origin";
+import { createViewerWidgetHtml } from "@/lib/widget";
+
 export const runtime = "nodejs";
 
-export const PLUGIN_DOCUMENTATION_URL =
-  "https://burrete-landing.vercel.app/docs/plugin";
+export const DEMO_STRUCTURE_URL = "/demo/1htb.pdb";
 
 export function GET(): Response {
-  return Response.redirect(PLUGIN_DOCUMENTATION_URL, 308);
+  return new Response(createViewerWidgetHtml(getAppOrigin(), {
+    demoStructure: {
+      format: "pdb",
+      label: "1HTB.pdb",
+      url: DEMO_STRUCTURE_URL,
+    },
+    fullPage: true,
+  }), {
+    headers: {
+      "Cache-Control": "public, max-age=0, must-revalidate",
+      "Content-Type": "text/html; charset=utf-8",
+    },
+  });
 }
