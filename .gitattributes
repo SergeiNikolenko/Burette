@@ -1,2 +1,2 @@
 # Generated Browser bundles may contain significant trailing spaces inside embedded source text.
-plugins/burette-agent/browser-shell-dist/** whitespace=-blank-at-eol,-blank-at-eof
+plugins/burette-agent/browser-shell-dist/** whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
