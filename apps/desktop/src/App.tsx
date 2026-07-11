@@ -444,6 +444,7 @@ export default function App() {
     addBackgroundTextDocuments,
     addDockDrop,
     detectContentSpectrumPaths,
+    openDockTab,
     openStructureRecordDocuments,
     preferences,
     pushErrorStatus,

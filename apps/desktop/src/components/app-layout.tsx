@@ -87,8 +87,8 @@ export function AppLayout({
       data-drop-active={state.dropActive || undefined}
       data-structure-drag-active={state.structureDragActive ? "true" : undefined}
       data-sidebar-open={sidebarVisible ? "true" : "false"}
-      onDragEnter={hostedMcpWidget ? undefined : onDragEnter}
-      onDragOver={hostedMcpWidget ? undefined : onDragOver}
+      onDragEnterCapture={hostedMcpWidget ? undefined : onDragEnter}
+      onDragOverCapture={hostedMcpWidget ? undefined : onDragOver}
       onDragLeave={hostedMcpWidget ? undefined : onDragLeave}
       onDrop={hostedMcpWidget ? undefined : onDrop}
       onPaste={hostedMcpWidget ? undefined : onPaste}

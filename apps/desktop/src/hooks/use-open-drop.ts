@@ -6,9 +6,10 @@ import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsMode, Viewer
 import { resolveDropActionChoices } from "../lib/drop-actions";
 import type { DropSourceContext, DropTargetContext } from "../lib/drop-actions";
 import type { DropAction, DropActionChoice } from "../lib/drop-actions";
-import type { DockDropInput, DockTabKind } from "../lib/dock";
+import type { DockDropInput } from "../lib/dock";
 import { buildFileDropPreview } from "../lib/drop-preview";
 import type { DropPreviewTarget, FileDropPreview } from "../lib/drop-preview";
+import { describeDropTargetElement } from "../lib/drop-target";
 import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
@@ -98,11 +99,19 @@ function fileDropTargetElement(element: Element | null, target: OpenDropTargetCo
     return element?.closest(".pose-review-workspace, .fep-setup-workspace")
       ?? document.querySelector(".pose-review-workspace, .fep-setup-workspace");
   }
-  const sidebarTarget = element?.closest("[data-sidebar-structure-path]");
-  if (sidebarTarget) return sidebarTarget;
+  if (target.kind === "sidebar") {
+    return element?.closest('[data-file-drop-zone="sidebar"]')
+      ?? document.querySelector('[data-file-drop-zone="sidebar"]');
+  }
+  if (target.kind === "tab-strip") {
+    return element?.closest('[data-file-drop-zone="tab-strip"]')
+      ?? document.querySelector('[data-file-drop-zone="tab-strip"]');
+  }
   if (target.kind === "ketcher") {
     return element?.closest(".ketcher-page") ?? document.querySelector(".ketcher-page");
   }
+  const documentTarget = element?.closest("[data-drop-document-path]");
+  if (documentTarget) return documentTarget;
   return element?.closest(".molecule-stage, .main-stage")
     ?? document.querySelector(".main-stage")
     ?? document.querySelector(".app-shell");
@@ -203,33 +212,25 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   }, [activeDockingRequest, activeDocumentId, activeDocumentPath, activeDocumentRenderer]);
 
   const dropTargetForElement = useCallback((element: Element | null): OpenDropTargetContext => {
-    const dockTarget = element?.closest<HTMLElement>(".dock-panel[data-area][data-active-tab]");
-    if (dockTarget) {
-      const area = dockTarget.dataset.area;
-      const tabKind = dockTarget.dataset.activeTab;
-      if ((area === "right" || area === "bottom") && tabKind) {
-        return { kind: "dock", area, tabKind: tabKind as DockTabKind };
-      }
-    }
     if (fepSetupRequest && element?.closest(".pose-review-workspace, .fep-setup-workspace")) {
       return { kind: "fep-setup", request: fepSetupRequest };
     }
-    const sidebarTarget = element?.closest<HTMLElement>("[data-sidebar-structure-path]");
-    if (sidebarTarget) {
-      const documentPath = sidebarTarget.dataset.sidebarStructurePath ?? "";
-      const documentId = sidebarTarget.dataset.sidebarStructureDocumentId ?? null;
-      const document = documents.find((candidate) => (
-        (documentId !== null && candidate.id === documentId) || candidate.path === documentPath
+    const descriptor = describeDropTargetElement(element);
+    if (descriptor?.kind === "dock") return descriptor;
+    if (descriptor?.kind === "document") {
+      const targetDocument = documents.find((candidate) => (
+        (descriptor.documentId !== null && candidate.id === descriptor.documentId)
+        || candidate.path === descriptor.documentPath
       ));
       return {
         kind: "active-viewer",
-        documentId: document?.id ?? documentId,
-        documentPath: document?.path ?? documentPath,
-        renderer: sidebarTarget.dataset.sidebarStructureRenderer ?? document?.renderer ?? null,
-        dockingRequest: document?.dockingRequest ?? null,
+        documentId: targetDocument?.id ?? descriptor.documentId,
+        documentPath: targetDocument?.path ?? descriptor.documentPath,
+        renderer: descriptor.renderer ?? targetDocument?.renderer ?? null,
+        dockingRequest: targetDocument?.dockingRequest ?? null,
       };
     }
-    if (element?.closest(".ketcher-page")) return { kind: "ketcher" };
+    if (descriptor) return descriptor;
     if (element?.closest(".molecule-stage, .main-stage")) {
       if (activeTabKind === "ketcher") return { kind: "ketcher" };
       return activeViewerTarget() ?? { kind: "workspace" };
@@ -477,11 +478,14 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     if (!fileDrop && !structureDrop) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
-    if (!structureDrop) {
-      const { payload, itemCount } = browserFileDropPreviewPayload(event.dataTransfer);
-      const element = event.target instanceof Element ? event.target : null;
-      showDropFeedback(payload, dropTargetForElement(element), element, browserDropPoint(event), itemCount);
-    }
+    const { payload, itemCount } = structureDrop
+      ? {
+          payload: readStructureDragPayload(event.dataTransfer),
+          itemCount: 0,
+        }
+      : browserFileDropPreviewPayload(event.dataTransfer);
+    const element = event.target instanceof Element ? event.target : null;
+    showDropFeedback(payload, dropTargetForElement(element), element, browserDropPoint(event), itemCount);
   }, [dropTargetForElement, showDropFeedback]);
 
   const handleBrowserDragLeave = useCallback((event: React.DragEvent<HTMLElement>) => {

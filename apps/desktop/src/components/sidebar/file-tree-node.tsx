@@ -788,6 +788,9 @@ export function ProjectItem({
       data-sidebar-structure-path={item.path}
       data-sidebar-structure-renderer={item.renderer}
       data-sidebar-structure-document-id={item.documentId ?? undefined}
+      data-drop-document-path={item.path}
+      data-drop-document-renderer={item.renderer}
+      data-drop-document-id={item.documentId ?? undefined}
       onClick={openItem}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}

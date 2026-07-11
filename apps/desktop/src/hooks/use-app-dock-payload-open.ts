@@ -36,6 +36,7 @@ type UseAppDockPayloadOpenOptions = {
   addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
   addDockDrop: (input: DockDropInput) => void;
   detectContentSpectrumPaths: (paths: string[]) => Promise<Set<string>>;
+  openDockTab: (area: DockArea, kind: DockTabKind) => void;
   openStructureRecordDocuments: OpenStructureRecordDocuments;
   pushErrorStatus: PushErrorStatus;
   pushStatus: PushStatus;
@@ -65,6 +66,7 @@ export function useAppDockPayloadOpen({
   addBackgroundTextDocuments,
   addDockDrop,
   detectContentSpectrumPaths,
+  openDockTab,
   openStructureRecordDocuments,
   pushErrorStatus,
   pushStatus,
@@ -90,6 +92,7 @@ export function useAppDockPayloadOpen({
       return;
     }
 
+    openDockTab(input.area, "files");
     pushStatus(`Opening in ${input.area === "right" ? "right dock" : "bottom dock"}...`);
     try {
       let dockOpenPaths = cleanPaths;
@@ -216,6 +219,7 @@ export function useAppDockPayloadOpen({
     addBackgroundTextDocuments,
     addDockDrop,
     detectContentSpectrumPaths,
+    openDockTab,
     openStructureRecordDocuments,
     preferences,
     pushErrorStatus,
