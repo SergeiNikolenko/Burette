@@ -36,8 +36,11 @@ assert.deepEqual(describeDropTargetElement(targetElement({
   renderer: "molstar",
 });
 assert.deepEqual(describeDropTargetElement(targetElement({
-  ".dock-panel[data-area]": { dataset: { area: "right", activeTab: "jobs" } },
-})), { kind: "dock", area: "right", tabKind: "files" });
+  ".dock-panel[data-area]": { dataset: { area: "bottom", activeTab: "jobs" } },
+})), { kind: "dock", area: "bottom", tabKind: "jobs" });
+assert.deepEqual(describeDropTargetElement(targetElement({
+  ".dock-panel[data-area]": { dataset: { area: "right", activeTab: "inspector" } },
+})), { kind: "dock", area: "right", tabKind: "inspector" });
 assert.deepEqual(describeDropTargetElement(targetElement({
   "[data-file-drop-zone]": sidebarTarget,
 })), { kind: "sidebar" });
