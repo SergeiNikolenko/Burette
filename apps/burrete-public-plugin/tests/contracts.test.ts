@@ -113,6 +113,7 @@ describe("viewer resource contract", () => {
     expect(staticImports.some((specifier) => specifier.includes("ketcher"))).toBe(false);
     expect(source).not.toContain("/private/tmp");
     expect(source).not.toContain("/Users/");
+    expect(existsSync(path.join(publicRoot, "demo/1htb.pdb"))).toBe(false);
   });
 
   test("hardens the directly served shell and enables cross-origin assets", async () => {

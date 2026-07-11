@@ -40,7 +40,11 @@ The hosted plugin is a separate runtime boundary from the local desktop bridge:
 The MCP widget mounts the production build of the real Burrete browser shell
 directly and passes the tool result into its existing inline-document path. The
 root deployment URL redirects to the public plugin documentation; it is not a
-second standalone product. The bundle, submission metadata, review tests, and
+second standalone product or a persistent web workspace. The local desktop app
+remains the primary Burrete workspace, while each hosted widget receives only
+the current MCP tool result inside the user's chat. The packaged local plugin
+continues to use the local MCP and CLI bridge for local files and installed-app
+control on the same Mac. The bundle, submission metadata, review tests, and
 directory skill live together under `apps/burrete-public-plugin`; the main
 repository remains the source of truth.
 
