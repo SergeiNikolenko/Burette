@@ -15,10 +15,7 @@ import {
   VIEWER_SHELL_SCRIPT_PATH,
   VIEWER_SHELL_STYLES_PATH,
 } from "../lib/widget";
-import {
-  DEMO_STRUCTURE_URL,
-  GET as getPluginRoot,
-} from "../app/route";
+import { GET as getPluginRoot } from "../app/route";
 import nextConfig from "../next.config";
 
 describe("submission tool contract", () => {
@@ -113,7 +110,7 @@ describe("viewer resource contract", () => {
     expect(staticImports.some((specifier) => specifier.includes("ketcher"))).toBe(false);
     expect(source).not.toContain("/private/tmp");
     expect(source).not.toContain("/Users/");
-    expect(existsSync(path.join(publicRoot, DEMO_STRUCTURE_URL.slice(1)))).toBe(true);
+    expect(existsSync(path.join(publicRoot, "demo/1htb.pdb"))).toBe(false);
   });
 
   test("hardens the directly served shell and enables cross-origin assets", async () => {
@@ -135,18 +132,19 @@ describe("viewer resource contract", () => {
     });
   });
 
-  test("serves the full Burrete viewer with a bundled demo at the service root", async () => {
+  test("serves an empty full-page Burrete shell at the service root", async () => {
     const response = getPluginRoot();
     const html = await response.text();
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(html).toContain(VIEWER_SHELL_SCRIPT_PATH);
     expect(html).toContain(VIEWER_SHELL_STYLES_PATH);
-    expect(html).toContain(DEMO_STRUCTURE_URL);
-    expect(html).toContain("1HTB.pdb");
     expect(html).toContain("height: 100%");
     expect(html).not.toContain("<iframe");
     expect(html).not.toContain("Open full visualizer");
     expect(html).not.toContain("OpenAI App");
+    expect(html).not.toContain("demoStructure");
+    expect(html).not.toContain("1HTB.pdb");
+    expect(html).not.toContain("/demo/");
   });
 });

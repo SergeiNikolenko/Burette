@@ -6,11 +6,6 @@ export const VIEWER_SHELL_STYLES_PATH =
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
 
 export type ViewerWidgetOptions = {
-  demoStructure?: {
-    format: string;
-    label: string;
-    url: string;
-  };
   fullPage?: boolean;
 };
 
@@ -57,10 +52,6 @@ export function createViewerWidgetHtml(
   const shellStyles = assetUrl(assetOrigin, VIEWER_SHELL_STYLES_PATH);
   const viewerAssets = assetUrl(assetOrigin, VIEWER_RUNTIME_ASSETS_PATH);
   const bootstrap = serializeForInlineScript({
-    demoStructure: options.demoStructure ? {
-      ...options.demoStructure,
-      url: assetUrl(assetOrigin, options.demoStructure.url),
-    } : null,
     viewerAssets,
   });
   const documentSizing = options.fullPage
@@ -92,38 +83,6 @@ export function createViewerWidgetHtml(
         window.__BURRETE_HOSTED_MCP_WIDGET__ = true;
         window.__BURRETE_WEB_ASSETS_BASE__ = config.viewerAssets;
         window.__BURRETE_HOSTED_MCP_RESULTS__ = [];
-        const deliverToolResult = (result) => {
-          if (window.__BURRETE_HOSTED_MCP_BRIDGE_READY__) {
-            window.postMessage({
-              source: "burrete-hosted-mcp-widget",
-              type: "tool-result",
-              result,
-            }, "*");
-            return;
-          }
-          window.__BURRETE_HOSTED_MCP_RESULTS__.push(result);
-        };
-        const loadDemoStructure = async () => {
-          const response = await fetch(config.demoStructure.url, {
-            credentials: "same-origin",
-          });
-          if (!response.ok) {
-            throw new Error(
-              "Demo structure request failed with HTTP " + response.status,
-            );
-          }
-          const data = await response.text();
-          deliverToolResult({
-            structuredContent: { fileName: config.demoStructure.label },
-            _meta: {
-              structure: {
-                data,
-                format: config.demoStructure.format,
-                label: config.demoStructure.label,
-              },
-            },
-          });
-        };
         window.addEventListener("message", (event) => {
           if (event.source !== window.parent) return;
           const message = event.data;
@@ -146,11 +105,6 @@ export function createViewerWidgetHtml(
             _meta: globals.toolResponseMetadata,
           });
         }, { passive: true });
-        if (config.demoStructure) {
-          void loadDemoStructure().catch((error) => {
-            console.error("Failed to load the Burrete demo structure", error);
-          });
-        }
       })();
     </script>
   </head>
