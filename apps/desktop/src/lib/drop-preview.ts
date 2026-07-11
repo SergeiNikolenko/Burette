@@ -24,7 +24,7 @@ export type FileDropPreview = {
   choiceCount: number;
   itemLabel: string;
   point: StructureDragPoint;
-  targetKind: "dock" | "fep" | "ketcher" | "viewer" | "workspace";
+  targetKind: "dock" | "fep" | "ketcher" | "sidebar" | "tab-strip" | "viewer" | "workspace";
   targetLabel: string;
 };
 
@@ -46,7 +46,10 @@ export function buildFileDropPreview({
   const choices = target.kind === "dock"
     ? []
     : resolveDropActionChoices(payload, target, source);
-  const previewTarget = target.kind !== "dock" && dropActionUsesWorkspace(choices[0]?.action.kind)
+  const previewTarget = target.kind !== "dock"
+    && target.kind !== "sidebar"
+    && target.kind !== "tab-strip"
+    && dropActionUsesWorkspace(choices[0]?.action.kind)
     ? { kind: "workspace" } as const
     : target;
   return {
@@ -83,6 +86,8 @@ function previewTargetLabel(target: DropPreviewTarget) {
   }
   if (target.kind === "fep-setup") return "FEP setup";
   if (target.kind === "ketcher") return "Ketcher";
+  if (target.kind === "sidebar") return "Sidebar";
+  if (target.kind === "tab-strip") return "Tab bar";
   return "Workspace";
 }
 
