@@ -67,9 +67,8 @@ const agentShellDistPath = process.env.BURRETE_AGENT_SHELL_DIST_DIR
     : path.join(repoRoot, "apps", "desktop", "dist");
 const repoPreviewWebPath = path.join(repoRoot, "PreviewExtension", "Web");
 const pluginPreviewWebPath = path.join(pluginRoot, "preview-web");
-const previewWebPath = await exists(path.join(repoPreviewWebPath, "index.html"))
-  ? repoPreviewWebPath
-  : pluginPreviewWebPath;
+const usesBundledCli = cliPath === pluginCliPath;
+const previewWebPath = usesBundledCli ? pluginPreviewWebPath : repoPreviewWebPath;
 const desktopApp = process.env.BURRETE_AGENT_APP || null;
 const hasVp = commandExists("vp");
 
@@ -83,8 +82,8 @@ const [pluginManifest, repoPackage, hasCli, hasPreview, hasPreviewWeb, hasAgentS
   exists(path.join(agentShellDistPath, "index.html")),
   desktopApp ? exists(desktopApp) : Promise.resolve(false),
 ]);
-const hasPrebuiltAgentShell = hasAgentShellServer && hasAgentShellDist;
-const hasFullBrowserAgentShell = hasCli && (hasPrebuiltAgentShell || hasVp);
+const hasPrebuiltAgentShell = hasAgentShellServer && hasAgentShellDist && hasPreviewWeb;
+const hasFullBrowserAgentShell = hasCli && (hasPrebuiltAgentShell || (!usesBundledCli && hasVp));
 
 function commandExists(command) {
   const result = spawnSync(command, ["--version"], {

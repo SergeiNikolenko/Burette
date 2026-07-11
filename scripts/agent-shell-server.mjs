@@ -50,14 +50,20 @@ const STATIC_MIME_TYPES = new Map([
   ['.woff', 'font/woff'],
   ['.woff2', 'font/woff2'],
 ]);
-const RUNTIME_ASSET_NAMES = new Set([
+const RUNTIME_ASSET_PATHS = new Set([
   'viewer-runtime.css',
   'viewer-shell.js',
   'molstar.css',
   'molstar.js',
   'burette-agent.js',
   'viewer.js',
+  'grid-viewer.js',
+  'grid-ui.js',
+  'grid.css',
+  'rdkit/RDKit_minimal.js',
+  'rdkit/RDKit_minimal.wasm',
 ]);
+const RUNTIME_ASSET_NAMES = new Set([...RUNTIME_ASSET_PATHS].filter((path) => !path.includes('/')));
 const APP_ICONS = {
   finder: '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns',
   maestro: '/Applications/SchrodingerSuites2026-1/Maestro.app/Contents/Resources/Maestro.icns',
@@ -206,6 +212,10 @@ async function handleRequest(req, res) {
   }
   if (url.pathname === '/__burette/rdkit-wasm') {
     await handleRdkitWasm(res, method);
+    return;
+  }
+  if (url.pathname.startsWith('/__burette/runtime/')) {
+    await handleRuntimeAsset(res, method, url);
     return;
   }
   await handleStatic(res, method, url);
@@ -626,6 +636,26 @@ async function handleRdkitWasm(res, method) {
   }
   for (const root of runtimeAssetRoots) {
     const candidate = resolve(root, 'rdkit', 'RDKit_minimal.wasm');
+    if (isWithin(candidate, root) && existsSync(candidate)) {
+      await sendStaticFile(res, method, candidate, false);
+      return;
+    }
+  }
+  sendJson(res, 404, { error: 'Not found' });
+}
+
+async function handleRuntimeAsset(res, method, url) {
+  if (method !== 'GET' && method !== 'HEAD') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  const assetPath = decodeURIComponent(url.pathname.slice('/__burette/runtime/'.length)).replace(/^\/+/, '');
+  if (!RUNTIME_ASSET_PATHS.has(assetPath) || assetPath.includes('\\')) {
+    sendJson(res, 404, { error: 'Not found' });
+    return;
+  }
+  for (const root of runtimeAssetRoots) {
+    const candidate = resolve(root, assetPath);
     if (isWithin(candidate, root) && existsSync(candidate)) {
       await sendStaticFile(res, method, candidate, false);
       return;
