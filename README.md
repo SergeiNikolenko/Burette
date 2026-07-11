@@ -3,11 +3,11 @@
 <p align="center">
   A molecular file workspace with macOS Finder Quick Look previews, Mol* 3D,
   external xyzrender SVG rendering, RDKit molecule grids, Ketcher sketching,
-  and a source-built iPhone preview app.
+  a source-built iPhone preview app, and a hosted OpenAI Mol* viewer.
 </p>
 
 <p align="center">
-  <img alt="Version 1.0.5" src="https://img.shields.io/badge/version-1.0.5-0f8f72.svg?style=flat-square" />
+  <img alt="Latest release" src="https://img.shields.io/github/v/release/SergeiNikolenko/Burrete?style=flat-square&color=0f8f72" />
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" /></a>
   <img alt="macOS 12+" src="https://img.shields.io/badge/macOS-12%2B-blue.svg?style=flat-square" />
   <img alt="iOS source app" src="https://img.shields.io/badge/iOS-source%20app-blue.svg?style=flat-square" />
@@ -36,6 +36,8 @@ Use it in two ways:
   collections, and send files to external chemistry tools.
 - **iPhone preview app:** build the `BurreteMobile` Xcode target from source,
   then open molecular documents from Files or another iOS document provider.
+- **Public molecular plugin:** preview an authorized molecular attachment or a
+  public PDB entry directly in the Burrete workspace through ChatGPT or Codex.
 
 Burrete is intentionally a compact utility, not a full molecular modeling
 environment.
@@ -176,6 +178,56 @@ for structure triage:
 These workflows live in the desktop app. Finder Quick Look remains optimized
 for quick file previews.
 
+## Public Plugin and MCP
+
+The hosted Burrete plugin exposes a public HTTPS MCP endpoint and renders
+molecular results directly in the Burrete workspace:
+
+- Plugin documentation: <https://burrete-landing.vercel.app/docs/plugin>
+- MCP endpoint: <https://burrete-plugin.vercel.app/mcp>
+- Source: [`apps/burrete-public-plugin`](apps/burrete-public-plugin)
+
+Its read-only `preview_molecular_file` tool accepts one authorized PDB, ENT,
+PDBQT, CIF, mmCIF, SDF, SD, XYZ, or extended XYZ attachment. The
+`preview_pdb_structure` tool retrieves one public RCSB entry by PDB ID. Both
+return bounded model-visible composition data and render the raw structure only
+inside the sandboxed Burrete workspace. Files are limited to 3 MiB, processed
+in memory, and not written to Burrete application storage.
+
+The hosted plugin and the local plugin live in this repository; there is no
+separate plugin source repository. Public installation through OpenAI's Plugins
+Directory becomes available after directory review and publisher release.
+
+Burrete includes a Codex plugin that turns the local application into an
+agent-operable molecular workspace. The plugin bundles focused workflow skills
+with a typed local MCP server, so Codex can:
+
+- open molecular structures, SDF collections, trajectories, and result bundles;
+- observe the active document, tabs, panels, viewer readiness, and scene state;
+- run allowlisted Mol* actions such as focusing ligands, hiding waters,
+  changing representations, and resetting the camera;
+- render bounded markdown, table, chart, and molecular-report panels beside
+  the workspace;
+- preserve local-file provenance without exposing an arbitrary shell or
+  unrestricted file-access tool.
+
+Install the self-contained plugin from this repository with:
+
+```bash
+bun run install:plugin
+```
+
+The installer stages a dedicated local marketplace and uses the current
+`codex plugin marketplace add` and `codex plugin add` flows when a working
+Codex CLI is available. Restart Codex after installation, then mention
+`@Burrete` or select it from Plugins.
+
+See the [hosted and local agent platform contract](docs/agent-platform.md), the
+[local plugin architecture and installation guide](plugins/burette-agent/README.md),
+and the [public plugin guide](https://burrete-landing.vercel.app/docs/plugin).
+Burrete remains the canonical source repository for every application and MCP
+surface.
+
 ## Settings and Maintenance
 
 Burrete settings cover:
@@ -199,6 +251,8 @@ external chemistry editors discovered by macOS.
 - [Installing and building from source](docs/installing-building.md)
 - [Configuration](docs/configuration.md)
 - [Security and permissions](docs/security-and-permissions.md)
+- [Privacy policy](PRIVACY.md)
+- [Terms of use](TERMS.md)
 - [Renderer support](docs/renderer-support.md)
 - [Quick Look debugging](docs/quicklook-debugging.md)
 - [iPhone preview app](ios/BurreteMobile/README.md)

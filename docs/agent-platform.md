@@ -9,6 +9,7 @@ the source of truth.
 
 | Layer | Path | Responsibility |
 | --- | --- | --- |
+| Hosted public plugin | `apps/burrete-public-plugin` | Public HTTPS MCP tools for one authorized attachment or public PDB entry, plus the sandboxed Burrete workspace. |
 | Repository CLI | `scripts/burrete-agent.mjs` | Source-of-truth execution contract for open, observe, act, and render-panel workflows. |
 | Browser preview server | `scripts/agent-preview.mjs` | Tokenized preview surface for typed browser agent sessions. |
 | Browser shell session | `apps/desktop/vite/browser-dev/agent-session.ts`, `apps/desktop/src/hooks/use-agent-session.ts` | Browser-dev shell observe/action files and event delivery. |
@@ -19,6 +20,29 @@ the source of truth.
 Repository-local maintenance skills under `.codex/skills` are not part of the
 packaged Burrete agent plugin. Use them for development-time PR review, release
 readiness, contract checks, and PR body drafting.
+
+## Hosted Public Plugin
+
+The hosted plugin is a separate runtime boundary from the local desktop bridge:
+
+- Plugin documentation: <https://burrete-landing.vercel.app/docs/plugin>
+- Production MCP: <https://burrete-plugin.vercel.app/mcp>
+- `preview_molecular_file` accepts one OpenAI-authorized PDB, ENT, PDBQT, CIF,
+  mmCIF, SDF, SD, XYZ, or extended XYZ attachment.
+- `preview_pdb_structure` accepts one four-character public PDB ID.
+- The model receives bounded structured composition data. Raw structure text is
+  placed only in result `_meta` for the sandboxed Burrete workspace.
+- Downloads are capped at 3 MiB and 200,000 lines, redirects are revalidated,
+  and HTTPS connections are pinned to DNS addresses already checked as public.
+- Attachments are processed in memory and are not written to Burrete
+  application storage.
+
+The MCP widget mounts the production build of the real Burrete browser shell
+directly and passes the tool result into its existing inline-document path. The
+root deployment URL redirects to the public plugin documentation; it is not a
+second standalone product. The bundle, submission metadata, review tests, and
+directory skill live together under `apps/burrete-public-plugin`; the main
+repository remains the source of truth.
 
 ## CLI And Skill Map
 
@@ -69,6 +93,17 @@ state channel.
 - Screenshot interpretation must not replace typed `observe`, validation
   output, or CLI/MCP errors.
 
+## Agent RCA
+
+| Symptom | Likely cause | Where to look first |
+| --- | --- | --- |
+| Skill opens the wrong surface | Router chose `browser-preview`, `browser-dev-shell`, or `desktop-app` incorrectly. | `plugins/burette-agent/skills/index/SKILL.md`, CLI `open` arguments |
+| MCP tool succeeds but the panel is empty | Widget snapshot is unbounded, malformed, or missing the expected artifact shape. | MCP registration output, `plugins/burette-agent/mcp/widget-assets/*`, `render-panel` payload |
+| `observe` returns no active document | Wrong session directory, closed Browser tab, or desktop session not attached. | CLI `sessionDir`, shell logs, `apps/desktop/src/hooks/use-agent-session.ts` |
+| `act` times out | Action was sent to the shell when the active Mol* viewer was not ready, or the action contract changed. | Last `observe` result, `apps/desktop/src/hooks/use-agent-session.ts`, viewer bridge tests |
+| Plugin preflight fails | Packaged plugin paths, CLI availability, or local runtime capabilities are out of sync. | `plugins/burette-agent/scripts/burette_agent_preflight.mjs`, `plugins/burette-agent/AGENTS.md` |
+| Browser screenshot disagrees with typed state | Visual QA inspected the wrong tab or stale runtime while `observe` targeted another session. | Browser URL, CLI JSON metadata, `observe` output |
+
 ## Plugin Contract
 
 - Run `node plugins/burette-agent/scripts/burette_agent_preflight.mjs` before
@@ -93,6 +128,15 @@ For plugin changes:
 ```bash
 bun tests/test-burette-agent-plugin.mjs
 bun run test:agent
+```
+
+For the hosted public plugin:
+
+```bash
+cd apps/burrete-public-plugin
+bun run test
+bun run typecheck
+bun run build
 ```
 
 For app-side shell action/session changes:

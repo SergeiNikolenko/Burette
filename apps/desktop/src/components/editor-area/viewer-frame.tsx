@@ -2,10 +2,12 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Ref } from "react";
 import type { ViewerDocument } from "../../types";
 import { isTauriRuntime } from "../../lib/tauri";
+import { isHostedMcpWidget } from "../../lib/hosted-mcp-widget";
 
 export function viewerFrameSandbox() {
-  return isTauriRuntime()
-    ? "allow-scripts allow-downloads"
+  if (isTauriRuntime()) return "allow-scripts allow-downloads";
+  return isHostedMcpWidget()
+    ? "allow-scripts"
     : "allow-scripts allow-downloads allow-same-origin";
 }
 

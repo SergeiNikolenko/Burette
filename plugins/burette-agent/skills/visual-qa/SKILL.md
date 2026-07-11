@@ -1,6 +1,6 @@
 ---
 name: visual-qa
-description: "Verify Burrete Browser preview and desktop app visual state with Browser and Computer without replacing typed observe/action contracts."
+description: "Use when visually verifying Burrete Browser preview or desktop app state without replacing typed observe/action contracts."
 ---
 
 # Visual QA
@@ -59,3 +59,13 @@ Visual QA should cite what was checked:
 - visible controls or panels;
 - screenshot/canvas/accessibility evidence;
 - any gap between typed observe state and visible UI.
+
+For a requested molecular visualization, inspect the central viewer canvas,
+not only the shell chrome or Info/Inspector counts. A black, empty, or otherwise
+non-rendered central canvas fails QA even if the file name and molecular counts
+are correct elsewhere in the app.
+
+If the central canvas is blank after typed readiness passes, run exactly one
+`reset_camera` action, observe again, and take another screenshot. If it is
+still blank, report the visualization as failed with the typed state and visual
+evidence; do not claim success and do not loop on camera resets.

@@ -6,11 +6,22 @@ const {
   hasStructureDrag,
   readStructureDrag,
   readStructureDragPayload,
+  structureDragMovementExceedsThreshold,
   structureDragPayloadFromText,
+  structureDragPayloadFromBrowserFiles,
   structureDragRecordsToFragments,
   writeStructureDrag,
   writeStructureDragRecords,
 } = await import("../apps/desktop/src/lib/structure-drag.ts");
+
+assert.equal(structureDragMovementExceedsThreshold(
+  { x: 20, y: 30 },
+  { x: 25, y: 35 },
+), false);
+assert.equal(structureDragMovementExceedsThreshold(
+  { x: 20, y: 30 },
+  { x: 29, y: 30 },
+), true);
 
 class FakeDataTransfer {
   constructor({ files = [] } = {}) {
@@ -73,10 +84,23 @@ assert.equal(hasStructureDrag(files), true);
 assert.deepEqual(readStructureDragPayload(files).paths, ["/tmp/ligand.sdf", "/tmp/receptor.pdb"]);
 
 const pathText = new FakeDataTransfer();
-pathText.setData("text/plain", "/tmp/a.sdf\nrelative.xyz\nnotes.txt\n../b.cif\n");
+pathText.setData("text/plain", "/tmp/a.sdf\n/tmp/My Ligand.sdf\nrelative.xyz\nnotes.txt\n../b.cif\n");
 assert.equal(hasStructureDrag(pathText), true);
-assert.deepEqual(readStructureDragPayload(pathText).paths, ["/tmp/a.sdf", "relative.xyz", "../b.cif"]);
-assert.deepEqual(structureDragPayloadFromText("/tmp/a.sdf\nrelative.xyz\nnotes.txt\n../b.cif\n").paths, ["/tmp/a.sdf", "relative.xyz", "../b.cif"]);
+assert.deepEqual(readStructureDragPayload(pathText).paths, ["/tmp/a.sdf", "/tmp/My Ligand.sdf", "relative.xyz", "../b.cif"]);
+assert.deepEqual(structureDragPayloadFromText("/tmp/a.sdf\n/tmp/My Ligand.sdf\nrelative.xyz\nnotes.txt\n../b.cif\n").paths, [
+  "/tmp/a.sdf",
+  "/tmp/My Ligand.sdf",
+  "relative.xyz",
+  "../b.cif",
+]);
+
+const fileUrlText = new FakeDataTransfer();
+fileUrlText.setData("text/plain", "file:///tmp/My%20Ligand.sdf\nfile://localhost/tmp/second.sdf\nfile://server/share/remote.sdf\n");
+assert.deepEqual(readStructureDragPayload(fileUrlText).paths, ["/tmp/My Ligand.sdf", "/tmp/second.sdf"]);
+
+const malformedExplicit = new FakeDataTransfer({ files: [file("/tmp/fallback.sdf")] });
+malformedExplicit.setData(STRUCTURE_DRAG_MIME, "{not-json");
+assert.deepEqual(readStructureDragPayload(malformedExplicit), { paths: ["/tmp/fallback.sdf"], records: [] });
 
 const inlineMol = new FakeDataTransfer();
 inlineMol.setData("text/plain", "Example\n  Burrete\n\nM  END\n$$$$\n");
@@ -140,5 +164,20 @@ const unsupportedText = new FakeDataTransfer();
 unsupportedText.setData("text/plain", "This is a plain note, not a molecule.");
 assert.equal(hasStructureDrag(unsupportedText), false);
 assert.deepEqual(readStructureDragPayload(unsupportedText), { paths: [], records: [] });
+
+const browserFiles = await structureDragPayloadFromBrowserFiles([
+  { name: "multi.sdf", size: 24, text: async () => "First\nM  END\n$$$$\nSecond\nM  END\n$$$$\n" },
+  { name: "notes.txt", size: 5, text: async () => "notes" },
+  { name: "empty.pdb", size: 0, text: async () => "" },
+]);
+assert.deepEqual(browserFiles.payload, {
+  paths: [],
+  records: [{
+    path: "multi.sdf",
+    inputExtension: "sdf",
+    text: "First\nM  END\n$$$$\nSecond\nM  END\n$$$$\n",
+  }],
+});
+assert.equal(browserFiles.errors.length, 2);
 
 console.log("structure drag tests passed");
