@@ -1,6 +1,6 @@
 {
   "name": "burrete",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Operate Burrete as an agent-accessible molecular workspace for structures, Mol* scenes, molecule collections, trajectories, and workflow result artifacts.",
   "author": {
     "name": "Burrete contributors",

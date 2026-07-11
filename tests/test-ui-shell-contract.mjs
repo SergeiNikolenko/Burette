@@ -402,6 +402,8 @@ const [
   source('samples/fep/ligand_network.graphml'),
   source('scripts/rdkit_conformer.py'),
 ]);
+
+const pluginManifest = JSON.parse(await source('plugins/burette-agent/.codex-plugin/plugin.json'));
 const viewerShell = previewShell;
 const viewer = previewViewer;
 const commandDocuments = await source('apps/desktop/src-tauri/src/commands/documents.rs');
@@ -3107,6 +3109,7 @@ assert.doesNotMatch(agentIntegrationPanel, /navigator\.clipboard\.writeText\(sta
 assert.match(agentIntegrationPanel, /data-agent-integration-panel/);
 assert.match(agentIntegrationPanel, /embedded = false/);
 assert.match(agentIntegrationPanel, /browserPreviewStatus/);
+assert.equal(/version: "([^"]+)"/.exec(agentIntegrationPanel)?.[1], pluginManifest.version);
 assert.match(agentIntegrationPanel, /Codex Agent/);
 assert.match(agentIntegrationPanel, /Agent integration/);
 assert.match(agentIntegrationPanel, /Connection/);
