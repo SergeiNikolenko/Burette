@@ -15,7 +15,10 @@ import {
   VIEWER_SHELL_SCRIPT_PATH,
   VIEWER_SHELL_STYLES_PATH,
 } from "../lib/widget";
-import { GET as getPluginRoot } from "../app/route";
+import {
+  GET as getPluginRoot,
+  PLUGIN_DOCUMENTATION_URL,
+} from "../app/route";
 import nextConfig from "../next.config";
 
 describe("submission tool contract", () => {
@@ -116,15 +119,10 @@ describe("viewer resource contract", () => {
   test("hardens the directly served shell and enables cross-origin assets", async () => {
     const headers = await nextConfig.headers?.();
     const shellDocument = headers?.find((entry) => entry.source === "/viewer-shell/index.html");
-    const rootDocument = headers?.find((entry) => entry.source === "/");
     const shellAssets = headers?.find((entry) => entry.source === "/viewer-shell/:path*");
     expect(shellDocument?.headers).toContainEqual({
       key: "Content-Security-Policy",
       value: expect.stringContaining("frame-ancestors 'none'"),
-    });
-    expect(rootDocument?.headers).toContainEqual({
-      key: "Content-Security-Policy",
-      value: expect.stringContaining("base-uri 'self'"),
     });
     expect(shellAssets?.headers).toContainEqual({
       key: "Access-Control-Allow-Origin",
@@ -132,19 +130,9 @@ describe("viewer resource contract", () => {
     });
   });
 
-  test("serves an empty full-page Burrete shell at the service root", async () => {
+  test("redirects the service root to the public plugin documentation", () => {
     const response = getPluginRoot();
-    const html = await response.text();
-    expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
-    expect(html).toContain(VIEWER_SHELL_SCRIPT_PATH);
-    expect(html).toContain(VIEWER_SHELL_STYLES_PATH);
-    expect(html).toContain("height: 100%");
-    expect(html).not.toContain("<iframe");
-    expect(html).not.toContain("Open full visualizer");
-    expect(html).not.toContain("OpenAI App");
-    expect(html).not.toContain("demoStructure");
-    expect(html).not.toContain("1HTB.pdb");
-    expect(html).not.toContain("/demo/");
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(PLUGIN_DOCUMENTATION_URL);
   });
 });

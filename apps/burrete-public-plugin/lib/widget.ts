@@ -5,10 +5,6 @@ export const VIEWER_SHELL_STYLES_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.css";
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
 
-export type ViewerWidgetOptions = {
-  fullPage?: boolean;
-};
-
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
   return new URL(assetPath, `${origin.replace(/\/$/u, "")}/`).toString();
@@ -44,24 +40,13 @@ export function createViewerResourceMeta(appOrigin: string) {
   } as const;
 }
 
-export function createViewerWidgetHtml(
-  assetOrigin = "",
-  options: ViewerWidgetOptions = {},
-): string {
+export function createViewerWidgetHtml(assetOrigin = ""): string {
   const shellScript = assetUrl(assetOrigin, VIEWER_SHELL_SCRIPT_PATH);
   const shellStyles = assetUrl(assetOrigin, VIEWER_SHELL_STYLES_PATH);
   const viewerAssets = assetUrl(assetOrigin, VIEWER_RUNTIME_ASSETS_PATH);
   const bootstrap = serializeForInlineScript({
     viewerAssets,
   });
-  const documentSizing = options.fullPage
-    ? "html, body, #root { width: 100%; min-height: 100%; height: 100%; }"
-    : "html, body, #root { width: 100%; min-height: 480px; height: min(80vh, 760px); }";
-  const compactSizing = options.fullPage
-    ? ""
-    : `@media (max-width: 600px) {
-        html, body, #root { min-height: 420px; height: min(76vh, 680px); }
-      }`;
 
   return `<!doctype html>
 <html lang="en">
@@ -71,11 +56,13 @@ export function createViewerWidgetHtml(
     <title>Burrete</title>
     <link rel="stylesheet" crossorigin href="${shellStyles}" />
     <style>
-      ${documentSizing}
+      html, body, #root { width: 100%; min-height: 480px; height: min(80vh, 760px); }
       body .app-shell { width: 100%; height: 100%; }
       body { margin: 0; overflow: hidden; background: #f7f7f7; }
       @media (prefers-color-scheme: dark) { body { background: #111315; } }
-      ${compactSizing}
+      @media (max-width: 600px) {
+        html, body, #root { min-height: 420px; height: min(76vh, 680px); }
+      }
     </style>
     <script>
       (() => {
