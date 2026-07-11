@@ -1,4 +1,4 @@
-import type { DockArea } from "./dock";
+import { dockTabCatalog, type DockArea, type DockTabKind } from "./dock";
 
 export type DropTargetDescriptor =
   | {
@@ -10,7 +10,7 @@ export type DropTargetDescriptor =
   | {
       kind: "dock";
       area: DockArea;
-      tabKind: "files";
+      tabKind: DockTabKind;
     }
   | {
       kind: "sidebar" | "tab-strip" | "ketcher";
@@ -20,7 +20,9 @@ export function describeDropTargetElement(element: Element | null): DropTargetDe
   const dockTarget = element?.closest<HTMLElement>(".dock-panel[data-area]");
   const area = dockTarget?.dataset.area;
   if (area === "right" || area === "bottom") {
-    return { kind: "dock", area, tabKind: "files" };
+    const activeTab = dockTarget?.dataset.activeTab as DockTabKind | undefined;
+    const tabKind = activeTab && dockTabCatalog(area).includes(activeTab) ? activeTab : "files";
+    return { kind: "dock", area, tabKind };
   }
 
   const documentTarget = element?.closest<HTMLElement>("[data-drop-document-path]");

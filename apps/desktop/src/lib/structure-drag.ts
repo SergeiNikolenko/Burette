@@ -25,6 +25,16 @@ export type StructureDragPayload = {
   point?: StructureDragPoint | null;
 };
 
+const STRUCTURE_MOUSE_DRAG_THRESHOLD_PX = 8;
+
+export function structureDragMovementExceedsThreshold(
+  start: StructureDragPoint,
+  point: StructureDragPoint,
+  threshold = STRUCTURE_MOUSE_DRAG_THRESHOLD_PX,
+) {
+  return Math.hypot(point.x - start.x, point.y - start.y) >= threshold;
+}
+
 const BROWSER_DROP_MAX_TEXT_BYTES = 25 * 1024 * 1024;
 const BROWSER_DROP_TEXT_EXTENSIONS = new Set([
   "arc", "cfg", "cif", "cms", "com", "cub", "cube", "csv", "data", "dump", "ent",
