@@ -53,6 +53,14 @@ export function browserDevHasExplicitWorkspace() {
   return params.has("devFiles") || params.has("devFolder");
 }
 
+export function browserDevAgentFocusLayout(
+  search = typeof window === "undefined" ? "" : window.location.search,
+  isAgentShell = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1",
+) {
+  if (!isAgentShell) return false;
+  return new URLSearchParams(search).get("agentLayout") === "focus";
+}
+
 export function browserDevDockingFromLocation(): DockingDocumentRequest | null {
   const params = new URLSearchParams(window.location.search);
   if (!params.has("devDocking")) return null;

@@ -67,6 +67,7 @@ const [
   releaseWorkflow,
   releaseVersionCheck,
   releaseScript,
+  createDmgScript,
   releaseSignatureScript,
   signUpdateManifestScript,
   vendorMolstarScript,
@@ -145,6 +146,7 @@ const [
   source('.github/workflows/release.yml'),
   source('scripts/check-release-version.mjs'),
   source('scripts/release.sh'),
+  source('scripts/create-dmg.sh'),
   source('scripts/check-release-signature.sh'),
   source('scripts/sign-update-manifest.mjs'),
   source('scripts/vendor-molstar.mjs'),
@@ -257,6 +259,7 @@ for (const fixture of [
   'samples/mini.cif',
   'samples/mini.sdf',
   'samples/mini.xyz',
+  'samples/structures/small-molecules/benzene.xyz',
   'samples/quantum/inputs/caffeine.com',
 ]) {
   assert.match(nightlySmokeWorkflow, new RegExp(fixture.replaceAll('/', '\\/')));
@@ -321,11 +324,12 @@ assert.match(agentIntegrationCommand, /#\[tauri::command\]\s+pub\(crate\) fn age
 assert.match(agentIntegrationCommand, /PLUGIN_RELATIVE_PATH: &str = "plugins\/burette-agent"/);
 assert.match(agentIntegrationCommand, /BURRETE_AGENT_PLUGIN_DIR/);
 assert.match(agentIntegrationCommand, /schema: "burette_agent_integration\.v1"/);
-assert.match(agentIntegrationCommand, /mcp\/widget-assets\/molecule-table\/widget\.html/);
-assert.match(agentIntegrationCommand, /mcp\/widget-assets\/trajectory-review\/widget\.html/);
-assert.match(agentIntegrationCommand, /mcp\/widget-assets\/molecular-report\/widget\.html/);
+assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecule-table\/widget\.html/);
+assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/trajectory-review\/widget\.html/);
+assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecular-report\/widget\.html/);
 assert.doesNotMatch(agentIntegrationCommand, /mcp\/widget-assets\/molecular-workspace\/widget\.html/);
 assert.match(agentIntegrationCommand, /find_codex_plugin_manifest/);
+assert.match(agentIntegrationCommand, /mcp\/lib\/server-bundle\.mjs/);
 assert.match(agentIntegrationCommand, /"scripts\/burrete-agent\.mjs"/);
 assert.match(agentIntegrationCommand, /"browser-shell-dist\/index\.html"/);
 assert.doesNotMatch(agentIntegrationCommand, /Command::new|spawn|remove_file|write\(/);
@@ -564,7 +568,7 @@ assert.match(releaseWorkflow, /uses: \.\/\.github\/actions\/setup-burrete-toolch
 assert.match(releaseWorkflow, /install-xyzrender: "true"/);
 assert.match(releaseWorkflow, /allow_adhoc=true/);
 assert.match(releaseWorkflow, /BURRETE_RELEASE_ALLOW_ADHOC/);
-assert.match(releaseWorkflow, /hdiutil create -volname Burrete/);
+assert.match(releaseWorkflow, /scripts\/create-dmg\.sh release\/Burrete\.app/);
 assert.match(releaseWorkflow, /zip\.manifest\.json/);
 assert.match(releaseWorkflow, /zip\.manifest\.json\.sig/);
 assert.match(releaseWorkflow, /prerelease=true/);
@@ -574,7 +578,12 @@ assert.match(releaseScript, /--dry-run/);
 assert.match(releaseScript, /BURRETE_BUILD_MODE=release/);
 assert.match(releaseScript, /notarytool submit/);
 assert.match(releaseScript, /stapler staple/);
-assert.match(releaseScript, /hdiutil create -volname Burrete/);
+assert.match(releaseScript, /scripts\/create-dmg\.sh" "\$APP" "\$DMG"/);
+assert.match(createDmgScript, /packaging\/dmg\/background\.png/);
+assert.match(createDmgScript, /ln -s \/Applications/);
+assert.match(createDmgScript, /set background picture of viewOptions/);
+assert.match(createDmgScript, /set position of item "Burrete\.app"/);
+assert.match(createDmgScript, /set position of item "Applications"/);
 assert.match(releaseSignatureScript, /BurreteThumbnail\.appex/);
 assert.match(releaseSignatureScript, /com\.local\.BurreteV10\.Thumbnail/);
 assert.match(releaseSignatureScript, /hardened runtime/);
@@ -663,6 +672,7 @@ assert.match(quickLookPreviewController, /private struct StructurePreviewBuildSt
 assert.match(quickLookPreviewController, /state\.applyConvertedStructure\(convertedStructure\)/);
 assert.match(quickLookPreviewController, /try renderExternalXyzrenderIfNeeded\(/);
 assert.match(quickLookPreviewController, /private static func renderExternalXyzrenderIfNeeded\(/);
+assert.match(quickLookPreviewController, /xyzrender\.fallback=\\\(state\.renderer\)/);
 assert.match(quickLookPreviewController, /private static func buildFepGraphMLPreviewResult\(/);
 assert.match(quickLookPreviewController, /return try buildFepGraphMLPreviewResult\(/);
 assert.match(quickLookPreviewController, /private static func buildMoleculeGridPreviewResult\(/);
@@ -801,6 +811,9 @@ assert.match(buildScript, /LOCAL_XYZRENDER_ENV="\$HOME\/\.local\/share\/uv\/tool
 assert.match(buildScript, /bun run build:agent-shell/);
 assert.match(updaterCommand, /sync_burrete_codex_plugin\(\)/);
 assert.match(updaterCommand, /Contents\/Resources\/plugins\/burette-agent/);
+assert.match(updaterCommand, /mcp" \/ "lib" \/ "server-bundle\.mjs/);
+assert.doesNotMatch(updaterCommand, /"0\.1\.0"/);
+assert.match(updaterCommand, /Education & Research/);
 assert.match(updaterCommand, /codex plugin synced/);
 assert.match(buildScript, /XYZRENDER_RUNTIME_PYTHON_PACKAGES=\("datamol==0\.12\.5"\)/);
 assert.match(buildScript, /require_xyzrender_runtime_for_release\(\)\s*\{/);

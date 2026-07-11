@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile, unlink } from "node:fs/promises";
+import { readFile, readdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { editStructureFragmentFile, extractStructureComponentFile } from "../plugins/burette-agent/mcp/lib/structure-components.mjs";
@@ -37,6 +37,16 @@ assert.equal(manifest.interface.composerIcon, "./assets/composer-icon.png");
 assert.equal(manifest.interface.logo, "./assets/app-icon.png");
 assert.deepEqual(manifest.interface.capabilities, ["Interactive", "Read", "Write"]);
 assert.match(manifest.interface.longDescription, /observe scene state as structured JSON/);
+assert.equal(manifest.homepage, "https://github.com/SergeiNikolenko/Burrete");
+assert.equal(manifest.repository, "https://github.com/SergeiNikolenko/Burrete");
+assert.equal(manifest.license, "MIT");
+assert.equal(manifest.interface.category, "Education & Research");
+assert.equal(manifest.interface.websiteURL, "https://github.com/SergeiNikolenko/Burrete");
+assert.equal(manifest.interface.supportURL, "https://github.com/SergeiNikolenko/Burrete/issues");
+assert.equal(manifest.interface.privacyPolicyURL, "https://github.com/SergeiNikolenko/Burrete/blob/main/PRIVACY.md");
+assert.equal(manifest.interface.termsOfServiceURL, "https://github.com/SergeiNikolenko/Burrete/blob/main/TERMS.md");
+assert.match(await readFile("PRIVACY.md", "utf8"), /local Codex\s+plugin/);
+assert.match(await readFile("TERMS.md", "utf8"), /MIT License/);
 
 const compatibility = JSON.parse(await read("compatibility.json"));
 assert.equal(compatibility.schema, "burette_agent_compatibility.v1");
@@ -49,10 +59,20 @@ assert.equal(compatibility.bundle.relativePath, "plugins/burette-agent");
 
 const mcpConfig = JSON.parse(await read(".mcp.json"));
 assert.equal(mcpConfig.mcpServers.burette_agent_mcp.command, "node");
-assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.args, ["./mcp/server.mjs", "--stdio"]);
+assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.args, ["./mcp/lib/server-bundle.mjs", "--stdio"]);
+assert.deepEqual(mcpConfig.mcpServers.burette_agent_mcp.icons, [
+  { src: "./assets/composer-icon.png", mimeType: "image/png", sizes: ["32x32"] },
+  { src: "./assets/app-icon.png", mimeType: "image/png", sizes: ["512x512"] },
+]);
+for (const icon of mcpConfig.mcpServers.burette_agent_mcp.icons) {
+  assert.equal((await readFile(path.join(pluginRoot, icon.src))).byteLength > 0, true);
+}
 
 const packageJson = JSON.parse(await read("package.json"));
+assert.equal(packageJson.version, manifest.version);
+assert.equal(packageJson.files.includes(".app.json"), false);
 assert.match(packageJson.scripts.check, /mcp\/server\.mjs/);
+assert.match(packageJson.scripts.check, /mcp\/lib\/server-bundle\.mjs/);
 assert.match(packageJson.scripts.check, /scripts\/burette_agent_preflight\.mjs/);
 assert.match(packageJson.scripts.check, /mcp\/registrations\/fetch\/register\.mjs/);
 assert.match(packageJson.scripts.check, /mcp\/registrations\/molecular-workspace\/register\.mjs/);
@@ -61,6 +81,47 @@ assert.match(packageJson.scripts.check, /mcp\/lib\/session-registry\.mjs/);
 const rootPackageJson = JSON.parse(await readFile("package.json", "utf8"));
 assert.equal(rootPackageJson.scripts["install:plugin"], "bun plugins/burette-agent/scripts/install-local.mjs");
 assert.equal(rootPackageJson.scripts["build:agent-shell"], "bun scripts/build-agent-shell-plugin.mjs");
+
+const repoMarketplace = JSON.parse(await readFile(".agents/plugins/marketplace.json", "utf8"));
+assert.equal(repoMarketplace.name, "burrete");
+assert.equal(repoMarketplace.plugins[0].name, "burrete");
+assert.equal(repoMarketplace.plugins[0].source.path, "./plugins/burette-agent");
+assert.deepEqual(repoMarketplace.plugins[0].policy.products, ["CODEX"]);
+assert.equal(repoMarketplace.plugins[0].category, "Education & Research");
+
+const skillInvocationPolicies = [
+  ["index", true],
+  ["external-agent-contract", false],
+  ["molecular-report", false],
+  ["molecule-collection", false],
+  ["molstar-scene", false],
+  ["open-workspace", false],
+  ["trajectory-review", false],
+  ["user-context", false],
+  ["visual-qa", false],
+  ["workflow-results", false],
+];
+for (const [skill, allowImplicitInvocation] of skillInvocationPolicies) {
+  const policy = await read(`skills/${skill}/agents/openai.yaml`);
+  assert.match(policy, new RegExp(`allow_implicit_invocation: ${allowImplicitInvocation}`));
+}
+
+const installScript = await read("scripts/install-local.mjs");
+assert.match(installScript, /\.codex", "plugins", "burrete-marketplace"/);
+assert.match(installScript, /"plugin", "marketplace", "add", marketplaceRoot, "--json"/);
+assert.match(installScript, /"plugin", "add", pluginId, "--json"/);
+assert.match(installScript, /"plugin", "list", "--json"/);
+assert.match(installScript, /"plugin", "remove", legacyPluginId, "--json"/);
+assert.match(installScript, /\.\/plugins\/burrete/);
+assert.match(installScript, /readPluginVersion/);
+assert.match(installScript, /"mcp\/lib\/server-bundle\.mjs"/);
+assert.match(installScript, /"preview-web\/viewer\.js"/);
+assert.match(installScript, /missingBundleFiles/);
+assert.match(installScript, /process\.argv\.includes\("--build"\)/);
+assert.match(installScript, /mcp\/lib\/tool-response 2\.mjs/);
+assert.doesNotMatch(installScript, /\.agents\/plugins\/burrete/);
+assert.doesNotMatch(installScript, /BURRETE_PLUGIN_MARKETPLACE/);
+assert.doesNotMatch(installScript, /"bun", \["install", "--production"\]/);
 
 const server = await read("mcp/server.mjs");
 assert.match(server, /new McpServer/);
@@ -146,12 +207,34 @@ const packedFiles = new Set(packPayload[0].files.map(file => file.path));
 for (const asset of [
   "browser-shell-dist/index.html",
   "preview-web/index.html",
+  "preview-web/viewer.js",
+  "preview-web/grid-viewer.js",
+  "preview-web/grid-ui.js",
+  "preview-web/grid.css",
+  "preview-web/rdkit/RDKit_minimal.js",
+  "preview-web/rdkit/RDKit_minimal.wasm",
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
   "scripts/burrete-agent.mjs",
   "scripts/install-local.mjs",
 ]) {
   assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
+}
+
+const browserShellJavaScript = [
+  "browser-shell-dist/index.js",
+  ...(await readdir(path.join(pluginRoot, "browser-shell-dist", "assets")))
+    .filter(file => file.endsWith(".js"))
+    .map(file => `browser-shell-dist/assets/${file}`),
+];
+for (const asset of browserShellJavaScript) {
+  const source = await read(asset);
+  assert.equal(source.includes(path.resolve(".")), false, `${asset} contains the current build path`);
+  assert.doesNotMatch(
+    source,
+    /(?:(?:\/Users\/[^/]+|\/home\/[^/]+|\/root)(?:\/[^/"'`\s]+){0,12}\/(?:PreviewExtension\/Web|plugins\/burette-agent|apps\/desktop)|[A-Za-z]:[\\/]Users[\\/][^\\/]+(?:[\\/][^\\/"'`\s]+){0,12}[\\/](?:PreviewExtension[\\/]Web|plugins[\\/]burette-agent|apps[\\/]desktop))/u,
+    `${asset} contains a build-machine repository path`,
+  );
 }
 
 const indexSkill = await read("skills/index/SKILL.md");
@@ -177,6 +260,8 @@ assert.match(externalAgentSkill, /burrete\.open_workspace/);
 assert.match(externalAgentSkill, /burrete\.control_viewer/);
 assert.match(externalAgentSkill, /workspaceSessionId/);
 assert.match(externalAgentSkill, /url/);
+assert.match(externalAgentSkill, /completionState: "awaiting_browser"/);
+assert.match(externalAgentSkill, /ready: true/);
 
 const referenceAlignment = await read("REFERENCE_ALIGNMENT.md");
 assert.match(referenceAlignment, /Data Analytics/);
@@ -257,6 +342,8 @@ assert.equal(preflightPayload.schema, "burette_agent_preflight.v1");
 assert.equal(preflightPayload.repository.source, "source-checkout");
 assert.equal(preflightPayload.files.cli.status, "available");
 assert.equal(preflightPayload.files.browserPreviewServer.status, "available");
+assert.equal(preflightPayload.files.browserPreviewWeb.path, path.join(pluginRoot, "preview-web"));
+assert.equal(preflightPayload.files.browserPreviewWeb.status, "available");
 assert.equal(preflightPayload.context.transports[0].id, "auto");
 assert.equal(preflightPayload.context.transports[1].id, "browser-agent-shell");
 assert.equal(preflightPayload.context.transports[2].id, "browser-preview");
@@ -282,9 +369,9 @@ assert.match(molstarSceneSkill, /"type": "label_selection"/);
 
 const readme = await read("README.md");
 assert.match(readme, /bun run install:plugin/);
-assert.match(readme, /BURRETE_PLUGIN_MARKETPLACE=burrete bun run install:plugin/);
+assert.match(readme, /codex plugin marketplace add/);
 assert.match(readme, /burrete@burrete/);
-assert.match(readme, /--skip-build/);
+assert.match(readme, /--build/);
 assert.match(readme, /MolViewSpec Scene Language/);
 assert.match(readme, /"type":"apply_scene"/);
 assert.match(readme, /"selector":"protein"/);
@@ -352,7 +439,7 @@ const selfContainedPluginCheck = runNode([
     import { tmpdir } from "node:os";
     import path from "node:path";
     const tempRoot = await mkdtemp(path.join(tmpdir(), "burrete-plugin-cache-test-"));
-    const pluginRoot = path.join(tempRoot, "cache", "burrete", "burrete", "0.1.0");
+    const pluginRoot = path.join(tempRoot, "cache", "burrete", "burrete", ${JSON.stringify(manifest.version)});
     await cp("plugins/burette-agent", pluginRoot, { recursive: true });
     const bridge = await import(path.join(pluginRoot, "mcp", "lib", "cli-bridge.mjs"));
     const result = await bridge.runBurreteAgent(["open", "--mode", "browser-preview", path.resolve("samples/mini.pdb")]);
@@ -374,8 +461,17 @@ assert.equal(selfContainedPlugin.ok, true);
 assert.equal(selfContainedPlugin.mode, "browser-preview");
 assert.match(selfContainedPlugin.url, /^http:\/\/127\.0\.0\.1:/);
 
+const bundledMcpTargets = (await readdir("plugins/burette-agent/mcp/lib"))
+  .filter(file => /^server-(?:bundle|chunk)-?.*\.mjs$/u.test(file))
+  .map(file => `plugins/burette-agent/mcp/lib/${file}`);
+assert.equal(bundledMcpTargets.length >= 2, true);
+for (const target of bundledMcpTargets) {
+  assert.equal((await stat(target)).size <= 512000, true, `${target} exceeds the repository blob limit`);
+}
+
 const syntaxTargets = [
   "plugins/burette-agent/mcp/server.mjs",
+  ...bundledMcpTargets,
   "plugins/burette-agent/mcp/lib/cli-bridge.mjs",
   "plugins/burette-agent/mcp/lib/plugin-root.mjs",
   "plugins/burette-agent/mcp/lib/structure-components.mjs",

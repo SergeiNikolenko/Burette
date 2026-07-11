@@ -25,6 +25,24 @@ export type StructureDragPayload = {
   point?: StructureDragPoint | null;
 };
 
+const STRUCTURE_MOUSE_DRAG_THRESHOLD_PX = 8;
+
+export function structureDragMovementExceedsThreshold(
+  start: StructureDragPoint,
+  point: StructureDragPoint,
+  threshold = STRUCTURE_MOUSE_DRAG_THRESHOLD_PX,
+) {
+  return Math.hypot(point.x - start.x, point.y - start.y) >= threshold;
+}
+
+const BROWSER_DROP_MAX_TEXT_BYTES = 25 * 1024 * 1024;
+const BROWSER_DROP_TEXT_EXTENSIONS = new Set([
+  "arc", "cfg", "cif", "cms", "com", "cub", "cube", "csv", "data", "dump", "ent",
+  "fasta", "fdf", "gro", "in", "inp", "lammpstrj", "lammps", "lmp", "log", "mae",
+  "mcif", "mmcif", "mol", "mol2", "nw", "out", "pdb", "pdbqt", "ph4", "pqr", "psi4",
+  "qcin", "sd", "sdf", "smi", "smiles", "tsv", "vasp", "xyz",
+]);
+
 export function emptyStructureDragPayload(): StructureDragPayload {
   return { paths: [], records: [] };
 }
@@ -65,23 +83,27 @@ export function writeStructureDragItems(dataTransfer: DataTransfer, items: Struc
 export function readStructureDragPayload(dataTransfer: DataTransfer): StructureDragPayload {
   const payload = emptyStructureDragPayload();
   const explicit = dataTransfer.getData(STRUCTURE_DRAG_MIME);
+  let readFallbackPayload = !explicit;
   if (explicit) {
     try {
       const parsed = JSON.parse(explicit) as Partial<StructureDragPayload> | string[];
       if (Array.isArray(parsed)) {
         payload.paths.push(...parsed);
-      } else {
+      } else if (parsed && typeof parsed === "object") {
         if (Array.isArray(parsed.paths)) payload.paths.push(...parsed.paths);
         if (Array.isArray(parsed.records)) payload.records.push(...parsed.records);
         if (Array.isArray(parsed.items)) {
           payload.items ??= [];
           payload.items.push(...parsed.items);
         }
+      } else {
+        readFallbackPayload = true;
       }
     } catch {
-      return payload;
+      readFallbackPayload = true;
     }
-  } else {
+  }
+  if (readFallbackPayload) {
     payload.paths.push(
       ...Array.from(dataTransfer.files)
         .map((file) => (file as File & { path?: string }).path)
@@ -98,7 +120,7 @@ export function readStructureDragPayload(dataTransfer: DataTransfer): StructureD
   }
   payload.paths = Array.from(new Set(
     payload.paths
-      .map((path) => (typeof path === "string" ? path.trim() : ""))
+      .map((path) => (typeof path === "string" ? normalizeStructureDragPath(path) : ""))
       .filter(Boolean),
   ));
   payload.records = payload.records.map(normalizeStructureDragRecord).filter((record): record is StructureDragRecord => record !== null);
@@ -129,6 +151,34 @@ export function structureDragRecordsToFragments(records: StructureDragRecord[]) 
       text: structureDragRecordFragmentText(record),
     }))
     .filter((fragment) => fragment.text.trim().length > 0);
+}
+
+export async function structureDragPayloadFromBrowserFiles(files: File[]) {
+  const records: StructureDragRecord[] = [];
+  const errors: string[] = [];
+  for (const file of files) {
+    const name = String(file.name || "").trim();
+    const extension = structureFileExtension(name);
+    if (!name || !BROWSER_DROP_TEXT_EXTENSIONS.has(extension)) {
+      errors.push(`${name || "Dropped item"}: unsupported browser text structure format`);
+      continue;
+    }
+    if (Number(file.size || 0) > BROWSER_DROP_MAX_TEXT_BYTES) {
+      errors.push(`${name}: larger than the 25 MB browser drop limit`);
+      continue;
+    }
+    try {
+      const text = await file.text();
+      if (!text.trim() || text.includes("\0")) {
+        errors.push(`${name}: empty or non-text file`);
+        continue;
+      }
+      records.push({ path: name, inputExtension: extension, text });
+    } catch (error) {
+      errors.push(`${name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return { payload: { paths: [], records } satisfies StructureDragPayload, errors };
 }
 
 function structureDragRecordFragmentText(record: StructureDragRecord) {
@@ -237,11 +287,33 @@ function structureDragPathsFromPlainText(text: string) {
   return text
     .split(/\r?\n/u)
     .map((line) => line.trim())
-    .filter(looksLikeStructurePathLine);
+    .filter(looksLikeStructurePathLine)
+    .map(normalizeStructureDragPath)
+    .filter(Boolean);
 }
 
 function looksLikeStructurePathLine(line: string) {
-  if (!line || /\s/u.test(line)) return false;
+  if (!line) return false;
   if (/^(?:file:\/\/|\/|~\/|\.{1,2}\/|[A-Za-z]:[\\/])/u.test(line)) return true;
-  return /\.(?:abi|bcif|cif|cms|com|cub|cube|csv|ent|fdf|in|inp|log|mae|maegz|mmcif|mol|mol2|nw|out|pdb|psi4|qcin|sd|sdf|smi|smiles|tsv|vasp|xyz)$/iu.test(line);
+  return /\.(?:abi|arc|bcif|cif|cms|com|cub|cube|csv|ent|fdf|gro|in|inp|log|mae|maegz|mcif|mmcif|mol|mol2|nw|out|pdb|pdbqt|ph4|pqr|psi4|qcin|sd|sdf|smi|smiles|tsv|vasp|xyz)$/iu.test(line);
+}
+
+function normalizeStructureDragPath(path: string) {
+  const trimmed = path.trim();
+  if (!/^file:\/\//iu.test(trimmed)) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "file:" || (url.hostname && url.hostname !== "localhost")) return "";
+    const decoded = decodeURIComponent(url.pathname);
+    return /^\/[A-Za-z]:[\\/]/u.test(decoded) ? decoded.slice(1) : decoded;
+  } catch {
+    return "";
+  }
+}
+
+function structureFileExtension(path: string) {
+  const name = path.replace(/\\/gu, "/").split("/").pop()?.toLowerCase() ?? "";
+  if (name.endsWith(".mae.gz")) return "mae";
+  const index = name.lastIndexOf(".");
+  return index >= 0 ? name.slice(index + 1) : "";
 }

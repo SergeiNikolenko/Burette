@@ -66,7 +66,10 @@ For Browser work, distinguish two local surfaces:
 - `browser-agent-shell`: the full Burrete Browser shell, started by
   `scripts/burrete-agent.mjs open --mode browser-agent-shell ...` on a fresh
   local port and opened as
-  `http://127.0.0.1:<fresh-port>/?devFiles=<encoded absolute path>`. Use it
+  `http://127.0.0.1:<fresh-port>/?devFiles=<encoded absolute path>&agentLayout=focus`.
+  The focus layout starts with the outer Projects, Info, and bottom panels
+  closed so the molecular canvas has the available space; their normal toggle
+  controls remain available. Use it
   when the user wants the normal app UI: sidebar, files/projects, tabs, right
   dock, bottom dock, command palette, or behavior matching the browser shell.
   Do not reuse another browser-dev port unless the user explicitly asks to
@@ -86,8 +89,16 @@ external browser unless the user explicitly asks for an external browser.
 A Burrete workflow is complete only when:
 
 - the requested workspace or artifact is opened or a typed blocker is reported;
-- `observe` or validation output confirms the machine-readable state;
+- `observe.activeDocument.ready` is true and the Mol* `viewerAgent` reports
+  available/ready when the active renderer is Mol*;
 - Browser or Computer visual QA is run when the user asked to see the UI or the
   change affects visible layout;
+- the central molecular canvas is visibly nonblank when a rendered structure
+  was requested; structure counts from Info or `structureSummary` are not
+  visual evidence;
 - any unsupported capability is labeled `unsupported`, `partial`, or
   `external_workflow` with the reason.
+
+Treat `completionState: "not_ready"`, `VIEWER_NOT_READY`, a false readiness
+flag, or a blank central canvas as a failed completion gate. Never summarize
+such a result as a successful load.

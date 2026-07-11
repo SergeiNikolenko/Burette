@@ -5,14 +5,12 @@ export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:${PA
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 PREVIEW_ID="com.local.BurreteV10.Preview"
-XYZ_CONTENT_TYPE="com.local.burrete10.xyz"
 DEV_FLAVOR_SLUG=""
 APP_BUNDLE_NAME="Burrete.app"
 if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
   command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
   eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
   PREVIEW_ID="$BURRETE_PREVIEW_ID"
-  XYZ_CONTENT_TYPE="$BURRETE_XYZ_CONTENT_TYPE"
   DEV_FLAVOR_SLUG="$BURRETE_DEV_FLAVOR_SLUG"
   APP_BUNDLE_NAME="$BURRETE_APP_BUNDLE_NAME"
 fi
@@ -212,11 +210,6 @@ cleanup_quicklook_ui() {
   killall QuickLookUIService >/dev/null 2>&1 || true
 }
 
-requires_normal_quicklook() {
-  local type="$1"
-  [[ "$type" == "$XYZ_CONTENT_TYPE" ]]
-}
-
 is_system_table_type() {
   local type="$1"
   [[ "$type" == "public.comma-separated-values-text" ||
@@ -274,11 +267,7 @@ run_preview() {
   local type="$1"
   local preview_file="$2"
 
-  if requires_normal_quicklook "$type"; then
-    qlmanage -p "$preview_file"
-  else
-    qlmanage -p -c "$type" "$preview_file"
-  fi
+  qlmanage -p -c "$type" "$preview_file"
 }
 
 total=0

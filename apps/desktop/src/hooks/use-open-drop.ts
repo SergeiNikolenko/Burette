@@ -6,8 +6,11 @@ import type { DockingDocumentRequest, FepSetupRequest, OpenDocumentsMode, Viewer
 import { resolveDropActionChoices } from "../lib/drop-actions";
 import type { DropSourceContext, DropTargetContext } from "../lib/drop-actions";
 import type { DropAction, DropActionChoice } from "../lib/drop-actions";
-import type { DockArea, DockDropInput, DockTabKind } from "../lib/dock";
-import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
+import type { DockDropInput } from "../lib/dock";
+import { buildFileDropPreview } from "../lib/drop-preview";
+import type { DropPreviewTarget, FileDropPreview } from "../lib/drop-preview";
+import { describeDropTargetElement } from "../lib/drop-target";
+import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 
@@ -34,12 +37,7 @@ type MergeMoleculeCollections = (paths: string[]) => boolean;
 type AddProjectRoots = (paths: string[]) => void;
 type ReportStatus = (status: string, kind?: "info" | "error") => void;
 type DropPoint = { x: number; y: number };
-type DockDropTargetContext = {
-  kind: "dock";
-  area: DockArea;
-  tabKind: DockTabKind;
-};
-type OpenDropTargetContext = DropTargetContext | DockDropTargetContext;
+type OpenDropTargetContext = DropPreviewTarget;
 type ChooseDropAction = (
   choices: DropActionChoice[],
   at: DropPoint | null | undefined,
@@ -94,26 +92,92 @@ function elementFromTauriDropPosition(position: { x: number; y: number } | null 
   return candidates.find((element) => element.closest(".dock-panel")) ?? candidates[0] ?? null;
 }
 
+function fileDropTargetElement(element: Element | null, target: OpenDropTargetContext) {
+  if (typeof document === "undefined") return null;
+  if (target.kind === "dock") return element?.closest(".dock-panel") ?? null;
+  if (target.kind === "fep-setup") {
+    return element?.closest(".pose-review-workspace, .fep-setup-workspace")
+      ?? document.querySelector(".pose-review-workspace, .fep-setup-workspace");
+  }
+  if (target.kind === "sidebar") {
+    return element?.closest('[data-file-drop-zone="sidebar"]')
+      ?? document.querySelector('[data-file-drop-zone="sidebar"]');
+  }
+  if (target.kind === "tab-strip") {
+    return element?.closest('[data-file-drop-zone="tab-strip"]')
+      ?? document.querySelector('[data-file-drop-zone="tab-strip"]');
+  }
+  if (target.kind === "ketcher") {
+    return element?.closest(".ketcher-page") ?? document.querySelector(".ketcher-page");
+  }
+  const documentTarget = element?.closest("[data-drop-document-path]");
+  if (documentTarget) return documentTarget;
+  return element?.closest(".molecule-stage, .main-stage")
+    ?? document.querySelector(".main-stage")
+    ?? document.querySelector(".app-shell");
+}
+
+function fileDropBounds(element: Element | null) {
+  const rect = element?.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+  return {
+    left: Math.round(rect.left),
+    top: Math.round(rect.top),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+  };
+}
+
+function browserFileDropPreviewPayload(dataTransfer: DataTransfer) {
+  const files = Array.from(dataTransfer.files);
+  const paths = files
+    .map((file) => (file as File & { path?: string }).path || file.name)
+    .filter(Boolean);
+  const itemCount = Math.max(
+    files.length,
+    Array.from(dataTransfer.items).filter((item) => item.kind === "file").length,
+  );
+  return {
+    payload: { paths, records: [] } satisfies StructureDragPayload,
+    itemCount,
+  };
+}
+
 export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStatus, options: OpenDropOptions = {}) {
   const [dropActive, setDropActive] = useState(false);
-  const dropResetTimerRef = useRef<number | undefined>(undefined);
-  const clearDropResetTimer = useCallback(() => {
-    if (dropResetTimerRef.current === undefined) return;
-    window.clearTimeout(dropResetTimerRef.current);
-    dropResetTimerRef.current = undefined;
-  }, []);
-  const hideDropOverlay = useCallback(() => {
-    clearDropResetTimer();
+  const [dropPreview, setDropPreview] = useState<FileDropPreview | null>(null);
+  const nativeDragPayloadRef = useRef<StructureDragPayload | null>(null);
+  const hideDropFeedback = useCallback(() => {
+    nativeDragPayloadRef.current = null;
     setDropActive(false);
-  }, [clearDropResetTimer]);
-  const showDropOverlay = useCallback(() => {
+    setDropPreview(null);
+  }, []);
+  const showDropFeedback = useCallback((
+    payload: StructureDragPayload,
+    target: OpenDropTargetContext,
+    element: Element | null,
+    point: DropPoint,
+    fallbackItemCount = 0,
+  ) => {
+    const bounds = fileDropBounds(fileDropTargetElement(element, target));
+    if (!bounds) return;
+    let preview = buildFileDropPreview({
+      payload,
+      target,
+      source: { kind: "finder" },
+      bounds,
+      point,
+      fallbackItemCount,
+    });
+    if (preview.targetKind === "workspace") {
+      const workspaceBounds = fileDropBounds(
+        document.querySelector(".main-stage") ?? document.querySelector(".app-shell"),
+      );
+      if (workspaceBounds) preview = { ...preview, bounds: workspaceBounds };
+    }
     setDropActive(true);
-    clearDropResetTimer();
-    dropResetTimerRef.current = window.setTimeout(() => {
-      dropResetTimerRef.current = undefined;
-      setDropActive(false);
-    }, 1200);
-  }, [clearDropResetTimer]);
+    setDropPreview(preview);
+  }, []);
   const {
     activeTabKind = null,
     activeDocumentId = null,
@@ -148,33 +212,25 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   }, [activeDockingRequest, activeDocumentId, activeDocumentPath, activeDocumentRenderer]);
 
   const dropTargetForElement = useCallback((element: Element | null): OpenDropTargetContext => {
-    const dockTarget = element?.closest<HTMLElement>(".dock-panel[data-area][data-active-tab]");
-    if (dockTarget) {
-      const area = dockTarget.dataset.area;
-      const tabKind = dockTarget.dataset.activeTab;
-      if ((area === "right" || area === "bottom") && tabKind) {
-        return { kind: "dock", area, tabKind: tabKind as DockTabKind };
-      }
-    }
     if (fepSetupRequest && element?.closest(".pose-review-workspace, .fep-setup-workspace")) {
       return { kind: "fep-setup", request: fepSetupRequest };
     }
-    const sidebarTarget = element?.closest<HTMLElement>("[data-sidebar-structure-path]");
-    if (sidebarTarget) {
-      const documentPath = sidebarTarget.dataset.sidebarStructurePath ?? "";
-      const documentId = sidebarTarget.dataset.sidebarStructureDocumentId ?? null;
-      const document = documents.find((candidate) => (
-        (documentId !== null && candidate.id === documentId) || candidate.path === documentPath
+    const descriptor = describeDropTargetElement(element);
+    if (descriptor?.kind === "dock") return descriptor;
+    if (descriptor?.kind === "document") {
+      const targetDocument = documents.find((candidate) => (
+        (descriptor.documentId !== null && candidate.id === descriptor.documentId)
+        || candidate.path === descriptor.documentPath
       ));
       return {
         kind: "active-viewer",
-        documentId: document?.id ?? documentId,
-        documentPath: document?.path ?? documentPath,
-        renderer: sidebarTarget.dataset.sidebarStructureRenderer ?? document?.renderer ?? null,
-        dockingRequest: document?.dockingRequest ?? null,
+        documentId: targetDocument?.id ?? descriptor.documentId,
+        documentPath: targetDocument?.path ?? descriptor.documentPath,
+        renderer: descriptor.renderer ?? targetDocument?.renderer ?? null,
+        dockingRequest: targetDocument?.dockingRequest ?? null,
       };
     }
-    if (element?.closest(".ketcher-page")) return { kind: "ketcher" };
+    if (descriptor) return descriptor;
     if (element?.closest(".molecule-stage, .main-stage")) {
       if (activeTabKind === "ketcher") return { kind: "ketcher" };
       return activeViewerTarget() ?? { kind: "workspace" };
@@ -182,12 +238,6 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     if (activeTabKind === "ketcher") return { kind: "ketcher" };
     return { kind: "workspace" };
   }, [activeTabKind, activeViewerTarget, documents, fepSetupRequest]);
-
-  const dropTargetForPosition = useCallback((position: { x: number; y: number } | null = null): OpenDropTargetContext => {
-    if (typeof document === "undefined") return activeTabKind === "ketcher" ? { kind: "ketcher" } : { kind: "workspace" };
-    const element = position ? elementFromTauriDropPosition(position) : document.activeElement;
-    return dropTargetForElement(element);
-  }, [activeTabKind, dropTargetForElement]);
 
   const dropTargetForClipboard = useCallback((): DropTargetContext => {
     if (activeTabKind === "ketcher") return { kind: "ketcher" };
@@ -352,17 +402,38 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
 
   const handleFileDrop = useCallback(
     (event: DragDropEvent) => {
-      if (event.type === "enter" || event.type === "over") {
-        showDropOverlay();
+      if (event.type === "enter") {
+        nativeDragPayloadRef.current = { paths: event.paths, records: [] };
+        const point = tauriDropPoint(event.position) ?? { x: 0, y: 0 };
+        const element = elementFromTauriDropPosition(event.position);
+        showDropFeedback(
+          nativeDragPayloadRef.current,
+          dropTargetForElement(element),
+          element,
+          point,
+          event.paths.length,
+        );
         return;
       }
-      hideDropOverlay();
-      if (event.type === "drop") {
-        const payload: StructureDragPayload = { paths: event.paths, records: [], point: tauriDropPoint(event.position) };
-        void runFinderDropAction(payload, dropTargetForPosition(event.position));
+      if (event.type === "over") {
+        const point = tauriDropPoint(event.position) ?? { x: 0, y: 0 };
+        const element = elementFromTauriDropPosition(event.position);
+        const payload = nativeDragPayloadRef.current ?? { paths: [], records: [] };
+        showDropFeedback(payload, dropTargetForElement(element), element, point, payload.paths.length);
+        return;
       }
+      if (event.type === "drop") {
+        const point = tauriDropPoint(event.position);
+        const element = elementFromTauriDropPosition(event.position);
+        const target = dropTargetForElement(element);
+        const payload: StructureDragPayload = { paths: event.paths, records: [], point };
+        hideDropFeedback();
+        void runFinderDropAction(payload, target);
+        return;
+      }
+      hideDropFeedback();
     },
-    [dropTargetForPosition, hideDropOverlay, runFinderDropAction, showDropOverlay],
+    [dropTargetForElement, hideDropFeedback, runFinderDropAction, showDropFeedback],
   );
 
   useEffect(() => {
@@ -386,21 +457,20 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   }, [handleFileDrop, pushStatus]);
 
   useEffect(() => {
-    const resetDropState = () => hideDropOverlay();
+    const resetDropState = () => hideDropFeedback();
     const resetWhenHidden = () => {
-      if (document.visibilityState === "hidden") hideDropOverlay();
+      if (document.visibilityState === "hidden") hideDropFeedback();
     };
 
     window.addEventListener("blur", resetDropState);
     window.addEventListener("dragend", resetDropState);
     document.addEventListener("visibilitychange", resetWhenHidden);
     return () => {
-      clearDropResetTimer();
       window.removeEventListener("blur", resetDropState);
       window.removeEventListener("dragend", resetDropState);
       document.removeEventListener("visibilitychange", resetWhenHidden);
     };
-  }, [clearDropResetTimer, hideDropOverlay]);
+  }, [hideDropFeedback]);
 
   const handleBrowserDrag = useCallback((event: React.DragEvent<HTMLElement>) => {
     const fileDrop = Array.from(event.dataTransfer.types).includes("Files");
@@ -408,13 +478,20 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     if (!fileDrop && !structureDrop) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
-    if (!structureDrop) showDropOverlay();
-  }, [showDropOverlay]);
+    const { payload, itemCount } = structureDrop
+      ? {
+          payload: readStructureDragPayload(event.dataTransfer),
+          itemCount: 0,
+        }
+      : browserFileDropPreviewPayload(event.dataTransfer);
+    const element = event.target instanceof Element ? event.target : null;
+    showDropFeedback(payload, dropTargetForElement(element), element, browserDropPoint(event), itemCount);
+  }, [dropTargetForElement, showDropFeedback]);
 
   const handleBrowserDragLeave = useCallback((event: React.DragEvent<HTMLElement>) => {
     if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-    hideDropOverlay();
-  }, [hideDropOverlay]);
+    hideDropFeedback();
+  }, [hideDropFeedback]);
 
   const handleBrowserDrop = useCallback(
     (event: React.DragEvent<HTMLElement>) => {
@@ -422,8 +499,9 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       const fileDrop = Array.from(event.dataTransfer.types).includes("Files");
       if (!fileDrop && !structureDrop) return;
       event.preventDefault();
-      hideDropOverlay();
-      const payload = structureDrop
+      hideDropFeedback();
+      const point = browserDropPoint(event);
+      const payload: StructureDragPayload = structureDrop
         ? readStructureDragPayload(event.dataTransfer)
         : {
             paths: Array.from(event.dataTransfer.files)
@@ -431,19 +509,30 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
               .filter((path): path is string => Boolean(path)),
             records: [],
           };
-      payload.point = browserDropPoint(event);
+      payload.point = point;
+      const target = event.target instanceof Element ? event.target : null;
       if (payload.paths.length > 0 || payload.records.length > 0) {
-        const target = event.target instanceof Element ? event.target : null;
         if (fileDrop) {
           void runFinderDropAction(payload, dropTargetForElement(target));
         } else {
           runDropAction(payload, dropTargetForElement(target), { kind: "unknown" });
         }
+      } else if (fileDrop && !isTauriRuntime() && event.dataTransfer.files.length > 0) {
+        const files = Array.from(event.dataTransfer.files);
+        void structureDragPayloadFromBrowserFiles(files).then((result) => {
+          const nextPayload: StructureDragPayload = { ...result.payload, point };
+          if (nextPayload.records.length > 0) {
+            runDropAction(nextPayload, dropTargetForElement(target), { kind: "finder" });
+          }
+          if (result.errors.length > 0) pushStatus(result.errors.join("; "), "error");
+        }).catch((error) => {
+          pushStatus("Browser file drop failed: " + (error instanceof Error ? error.message : String(error)), "error");
+        });
       } else if (!isTauriRuntime()) {
         pushStatus("Drop files into the installed app window to open them.");
       }
     },
-    [dropTargetForElement, hideDropOverlay, pushStatus, runDropAction, runFinderDropAction],
+    [dropTargetForElement, hideDropFeedback, pushStatus, runDropAction, runFinderDropAction],
   );
 
   const handleBrowserPaste = useCallback((event: React.ClipboardEvent<HTMLElement>) => {
@@ -472,6 +561,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
 
   return {
     dropActive,
+    dropPreview,
     handleBrowserDrag,
     handleBrowserDragLeave,
     handleBrowserDrop,

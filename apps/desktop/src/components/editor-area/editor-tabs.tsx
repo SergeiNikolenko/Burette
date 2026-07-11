@@ -8,7 +8,7 @@ import { pageKind } from "./page-kinds";
 import { isMoleculeCollectionPath } from "../../lib/collection-documents";
 import { CloseIcon } from "../close-icon";
 import type { DropTargetContext } from "../../lib/drop-actions";
-import type { DockArea, DockTabKind } from "../../lib/dock";
+import { describeDropTargetElement } from "../../lib/drop-target";
 
 const TAB_DRAG_MIME = "application/x-burrete-tab-id";
 const TAB_REORDER_ANIMATION_MS = 170;
@@ -51,7 +51,15 @@ function uniquePaths(paths: string[]) {
   return [...new Set(paths)];
 }
 
-export function EditorTabs({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
+export function EditorTabs({
+  state,
+  actions,
+  readOnly = false,
+}: {
+  state: ShellViewState;
+  actions: ShellActions;
+  readOnly?: boolean;
+}) {
   const visibleTabs = state.tabs.filter((tab) => tab.location.kind !== "settings");
   const activeTabIndex = visibleTabs.findIndex((tab) => tab.id === state.activeTabId);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -264,13 +272,10 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
     };
   }, [state.activeDocument, state.activeTabId]);
 
-  const dockDropTargetAtPoint = useCallback((clientX: number, clientY: number): { area: DockArea; tabKind: DockTabKind } | null => {
+  const dockDropTargetAtPoint = useCallback((clientX: number, clientY: number) => {
     const element = typeof document === "undefined" ? null : document.elementFromPoint(clientX, clientY);
-    const dockTarget = element?.closest<HTMLElement>(".dock-panel[data-area][data-active-tab]");
-    const area = dockTarget?.dataset.area;
-    const tabKind = dockTarget?.dataset.activeTab;
-    if ((area !== "right" && area !== "bottom") || !tabKind) return null;
-    return { area, tabKind: tabKind as DockTabKind };
+    const descriptor = describeDropTargetElement(element);
+    return descriptor?.kind === "dock" ? descriptor : null;
   }, []);
 
   const runTabDropAtPoint = useCallback((sourceTabId: string, clientX: number, clientY: number) => {
@@ -441,7 +446,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
 
   return (
     <div className="tab-strip">
-      <div className="tab-history-controls">
+      {!readOnly ? <div className="tab-history-controls">
         <button
           type="button"
           className="tab-history-button"
@@ -464,14 +469,14 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
         >
           →
         </button>
-      </div>
+      </div> : null}
       <ScrollFade
         axis="horizontal"
         className="tab-scroll-region"
         role="tablist"
         aria-label="Open structures"
-        onDragOver={handleEmptyTabStripDragOver}
-        onDrop={handleEmptyTabStripDrop}
+        onDragOver={readOnly ? undefined : handleEmptyTabStripDragOver}
+        onDrop={readOnly ? undefined : handleEmptyTabStripDrop}
         onKeyDown={handleTabListKeyDown}
       >
         {visibleTabs.map((tab, index) => {
@@ -671,11 +676,14 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
               data-active={active || undefined}
               data-selected={selected || undefined}
               data-dragging={isDragging || undefined}
-              onDragOver={(event) => {
+              data-drop-document-path={tabDropTarget?.documentPath}
+              data-drop-document-id={tabDropTarget?.documentId ?? undefined}
+              data-drop-document-renderer={tabDropTarget?.renderer ?? undefined}
+              onDragOver={readOnly ? undefined : (event) => {
                 updateNativeTabDrag(event);
                 scheduleDragActivation(tab.id);
               }}
-              onDrop={(event) => {
+              onDrop={readOnly ? undefined : (event) => {
                 if (!draggingTabIdRef.current) return;
                 event.preventDefault();
                 event.stopPropagation();
@@ -685,12 +693,12 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
               <button
                 type="button"
                 role="tab"
-                draggable
+                draggable={!readOnly}
                 tabIndex={active ? 0 : -1}
                 aria-selected={active}
                 className={active ? "tab active" : "tab"}
                 aria-grabbed={isDragging || undefined}
-                onMouseDown={(event) => {
+                onMouseDown={readOnly ? undefined : (event) => {
                   if (event.button === 2) {
                     showTabMenu(event);
                     return;
@@ -698,8 +706,8 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                   startMouseTabReorder(tab.id, true, event);
                 }}
                 onClick={(event) => handleTabClick(tab.id, event)}
-                onContextMenu={showTabMenu}
-                onDragStart={(event) => {
+                onContextMenu={readOnly ? undefined : showTabMenu}
+                onDragStart={readOnly ? undefined : (event) => {
                   draggingTabIdRef.current = tab.id;
                   setDraggingTabId(tab.id);
                   event.dataTransfer.effectAllowed = "copyMove";
@@ -712,11 +720,11 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                   writeStructureDragPayload(event.dataTransfer, payload);
                   actions.setStructureDragActive(true);
                 }}
-                onDragEnd={(event) => {
+                onDragEnd={readOnly ? undefined : (event) => {
                   runTabDropAtPoint(tab.id, event.clientX, event.clientY);
                   stopTabDrag();
                 }}
-                onDragOver={(event) => {
+                onDragOver={readOnly ? undefined : (event) => {
                   if (!hasStructureDrag(event.dataTransfer)) return;
                   const payload = readStructureDragPayload(event.dataTransfer);
                   if (!tabDropTarget || shellDropActionChoices(payload, tabDropTarget, { kind: "tab" }).length === 0) return;
@@ -724,7 +732,7 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                   event.stopPropagation();
                   event.dataTransfer.dropEffect = "copy";
                 }}
-                onDrop={(event) => {
+                onDrop={readOnly ? undefined : (event) => {
                   if (!tabDocument || !hasStructureDrag(event.dataTransfer)) return;
                   const payload = readStructureDragPayload(event.dataTransfer);
                   if (payload.paths.length === 0 && payload.records.length === 0) return;
@@ -766,11 +774,11 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                     if (next) selectAndFocusTab(next.id);
                   }
                 }}
-                title={tabPath ?? title}
+                title={readOnly ? title : tabPath ?? title}
               >
                 <span>{title}</span>
               </button>
-              <button
+              {!readOnly ? <button
                 type="button"
                 className="tab-close"
                 aria-label={"Close " + title}
@@ -780,19 +788,20 @@ export function EditorTabs({ state, actions }: { state: ShellViewState; actions:
                 }}
               >
                 <CloseIcon size={13} />
-              </button>
+              </button> : null}
             </div>
           );
         })}
       </ScrollFade>
-      <button type="button" className="new-tab" onClick={actions.openNewTab} title="New tab" aria-label="New tab">
+      {!readOnly ? <button type="button" className="new-tab" onClick={actions.openNewTab} title="New tab" aria-label="New tab">
         +
-      </button>
+      </button> : null}
       <div
         className="tab-strip-spacer"
+        data-file-drop-zone="tab-strip"
         data-tauri-drag-region
-        onDragOver={handleEmptyTabStripDragOver}
-        onDrop={handleEmptyTabStripDrop}
+        onDragOver={readOnly ? undefined : handleEmptyTabStripDragOver}
+        onDrop={readOnly ? undefined : handleEmptyTabStripDrop}
       />
     </div>
   );

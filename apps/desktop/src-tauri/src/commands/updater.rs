@@ -967,6 +967,16 @@ sync_burrete_codex_plugin() {{
     echo "codex plugin sync skipped: HOME is not set"
     return 0
   fi
+  local plugin_installer="$plugin_src/scripts/install-local.mjs"
+  local javascript_bin
+  javascript_bin="$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v node || PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v bun || true)"
+  if [ -f "$plugin_installer" ] && [ -n "$javascript_bin" ]; then
+    if BURRETE_APP_BUNDLE="$DEST_APP" PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" "$javascript_bin" "$plugin_installer"; then
+      echo "codex plugin synced with bundled installer"
+      return 0
+    fi
+    echo "warning: bundled Codex plugin installer failed; using cache fallback"
+  fi
   local python_bin
   python_bin="$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v python3 || true)"
   if [ -z "$python_bin" ]; then
@@ -978,7 +988,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -987,7 +996,14 @@ dest_app = os.environ["BURRETE_DEST_APP"]
 home = Path(os.environ["HOME"])
 marketplace_path = home / ".agents" / "plugins" / "marketplace.json"
 plugin_symlink = home / ".agents" / "plugins" / "burrete"
+plugin_source_root = home / ".codex" / "plugins" / "burrete"
+plugin_cache_root = home / ".codex" / "plugins" / "cache"
 codex_config = home / ".codex" / "config.toml"
+
+manifest = json.loads((plugin_src / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+plugin_version = str(manifest.get("version") or "").strip()
+if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+-]*", plugin_version):
+    raise RuntimeError("bundled Codex plugin manifest has an invalid version")
 
 def marketplace_name():
     if marketplace_path.exists():
@@ -1001,33 +1017,26 @@ def marketplace_name():
     return "burrete"
 
 marketplace = marketplace_name()
-install_root = home / ".codex" / "plugins" / "cache" / marketplace / "burrete" / "0.1.0"
-temporary = install_root.with_name(f"{{install_root.name}}.updating")
-backup = install_root.with_name(f"{{install_root.name}}.previous")
+install_root = plugin_cache_root / marketplace / "burrete" / plugin_version
+source_temporary = plugin_source_root.with_name(f"{{plugin_source_root.name}}.updating")
+source_backup = plugin_source_root.with_name(f"{{plugin_source_root.name}}.previous")
 
-shutil.rmtree(temporary, ignore_errors=True)
-shutil.rmtree(backup, ignore_errors=True)
-temporary.parent.mkdir(parents=True, exist_ok=True)
-shutil.copytree(plugin_src, temporary, ignore=shutil.ignore_patterns("node_modules"))
+shutil.rmtree(source_temporary, ignore_errors=True)
+shutil.rmtree(source_backup, ignore_errors=True)
+source_temporary.parent.mkdir(parents=True, exist_ok=True)
+shutil.copytree(plugin_src, source_temporary, ignore=shutil.ignore_patterns("node_modules"))
 
-installed_node_modules = install_root / "node_modules"
-if installed_node_modules.is_dir():
-    shutil.copytree(installed_node_modules, temporary / "node_modules", symlinks=True)
-
-bun = shutil.which("bun")
-if bun:
-    subprocess.run([bun, "install", "--production"], cwd=temporary, check=True)
-
-if not (temporary / "node_modules").is_dir():
-    shutil.rmtree(temporary, ignore_errors=True)
-    print("codex plugin sync skipped: node_modules is unavailable and bun was not found")
+if not (source_temporary / "mcp" / "lib" / "server-bundle.mjs").is_file():
+    shutil.rmtree(source_temporary, ignore_errors=True)
+    print("codex plugin sync skipped: bundled MCP server is unavailable")
     raise SystemExit(0)
 
-(temporary / ".burette-agent-install.json").write_text(
+(source_temporary / ".burette-agent-install.json").write_text(
     json.dumps(
         {{
             "appBundle": dest_app,
             "installedAt": datetime.now(timezone.utc).isoformat(),
+            "version": plugin_version,
         }},
         indent=2,
     )
@@ -1035,21 +1044,21 @@ if not (temporary / "node_modules").is_dir():
     encoding="utf-8",
 )
 
-if install_root.exists():
-    install_root.rename(backup)
+if plugin_source_root.exists():
+    plugin_source_root.rename(source_backup)
 try:
-    temporary.rename(install_root)
+    source_temporary.rename(plugin_source_root)
 except Exception:
-    if backup.exists():
-        backup.rename(install_root)
+    if source_backup.exists():
+        source_backup.rename(plugin_source_root)
     raise
-shutil.rmtree(backup, ignore_errors=True)
+shutil.rmtree(source_backup, ignore_errors=True)
 
 plugin_symlink.parent.mkdir(parents=True, exist_ok=True)
 if plugin_symlink.is_symlink() or plugin_symlink.is_file():
     plugin_symlink.unlink()
 if not plugin_symlink.exists():
-    plugin_symlink.symlink_to(install_root)
+    plugin_symlink.symlink_to(plugin_source_root)
 
 marketplace_path.parent.mkdir(parents=True, exist_ok=True)
 marketplace_data = {{"name": marketplace, "interface": {{"displayName": "Burrete" if marketplace == "burrete" else marketplace}}, "plugins": []}}
@@ -1064,13 +1073,29 @@ plugins = [plugin for plugin in marketplace_data.get("plugins", []) if plugin.ge
 plugins.append(
     {{
         "name": "burrete",
-        "source": {{"source": "local", "path": "./.agents/plugins/burrete"}},
-        "policy": {{"installation": "AVAILABLE", "authentication": "ON_INSTALL"}},
-        "category": "Science",
+        "source": {{"source": "local", "path": "./.codex/plugins/burrete"}},
+        "policy": {{"installation": "AVAILABLE", "authentication": "ON_INSTALL", "products": ["CODEX"]}},
+        "category": "Education & Research",
     }}
 )
 marketplace_data["plugins"] = plugins
 marketplace_path.write_text(json.dumps(marketplace_data, indent=2) + "\n", encoding="utf-8")
+
+temporary = install_root.with_name(f"{{install_root.name}}.updating")
+backup = install_root.with_name(f"{{install_root.name}}.previous")
+shutil.rmtree(temporary, ignore_errors=True)
+shutil.rmtree(backup, ignore_errors=True)
+temporary.parent.mkdir(parents=True, exist_ok=True)
+shutil.copytree(plugin_source_root, temporary, symlinks=True)
+if install_root.exists():
+    install_root.rename(backup)
+try:
+    temporary.rename(install_root)
+except Exception:
+    if backup.exists():
+        backup.rename(install_root)
+    raise
+shutil.rmtree(backup, ignore_errors=True)
 
 codex_config.parent.mkdir(parents=True, exist_ok=True)
 existing = codex_config.read_text(encoding="utf-8") if codex_config.exists() else ""
@@ -1081,7 +1106,7 @@ if f'[plugins."burrete@{{marketplace}}"]' not in cleaned:
     cleaned = f"{{cleaned}}\n\n{{plugin_block}}" if cleaned else plugin_block
 codex_config.write_text(cleaned.rstrip() + "\n", encoding="utf-8")
 
-print(f"codex plugin synced: {{install_root}}")
+print(f"codex plugin synced with cache fallback: {{install_root}}")
 PY
 }}
 sync_burrete_codex_plugin

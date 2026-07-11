@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
-const MAX_SUMMARY_BYTES = 16 * 1024 * 1024;
+export const MAX_SUMMARY_BYTES = 16 * 1024 * 1024;
 
 const WATER_NAMES = new Set(["HOH", "WAT", "H2O", "DOD", "TIP", "TIP3", "TIP3P", "TIP4", "TIP4P", "TP3", "TP4", "SPC", "SPCE", "SOL"]);
 const ION_NAMES = new Set([
@@ -27,49 +27,67 @@ export async function summarizeStructureFile(file) {
   }
 
   const text = await readFile(absolutePath, "utf8");
-  const extension = extensionForPath(absolutePath);
-  const base = {
-    path: absolutePath,
-    title: path.basename(absolutePath),
-    extension,
+  return summarizeStructureText({
+    text,
+    fileName: absolutePath,
     byteCount: fileStat.size,
-    lineCount: lineCount(text),
+    sourcePath: absolutePath,
+  });
+}
+
+export function summarizeStructureText({ text, fileName, byteCount, sourcePath }) {
+  const normalizedText = String(text ?? "");
+  const normalizedFileName = String(fileName || "structure");
+  const resolvedByteCount = Number.isFinite(byteCount)
+    ? Number(byteCount)
+    : Buffer.byteLength(normalizedText, "utf8");
+  if (resolvedByteCount > MAX_SUMMARY_BYTES) {
+    throw new Error(`Structure text is too large for summary: ${resolvedByteCount} bytes`);
+  }
+
+  const extension = extensionForPath(normalizedFileName);
+  const base = {
+    ...(sourcePath ? { path: String(sourcePath) } : {}),
+    title: path.basename(normalizedFileName),
+    extension,
+    byteCount: resolvedByteCount,
+    lineCount: lineCount(normalizedText),
   };
 
   if (extension === "pdb" || extension === "ent" || extension === "pdbqt") {
-    return summarizePdbLike(base, text, extension);
+    return summarizePdbLike(base, normalizedText, extension);
   }
   if (extension === "xyz" || extension === "extxyz") {
-    return summarizeXyz(base, text, extension);
+    return summarizeXyz(base, normalizedText, extension);
   }
   if (extension === "sdf") {
-    return summarizeSdf(base, text);
+    return summarizeSdf(base, normalizedText);
   }
   if (extension === "cif" || extension === "mmcif") {
-    return summarizeCif(base, text);
+    return summarizeCif(base, normalizedText);
   }
   if (extension === "cfg") {
-    return summarizeMlipCfg(base, text);
+    return summarizeMlipCfg(base, normalizedText);
   }
   if (extension === "in" || extension === "inp") {
-    return summarizeCoordinateAtoms(base, parseQuantumEspressoAtoms(text), "QE", "Quantum ESPRESSO input");
+    return summarizeCoordinateAtoms(base, parseQuantumEspressoAtoms(normalizedText), "QE", "Quantum ESPRESSO input");
   }
   if (extension === "log" || extension === "out") {
-    return summarizeCoordinateAtoms(base, parseBestCoordinateBlock(text), extension.toUpperCase(), "Text coordinate output");
+    return summarizeCoordinateAtoms(base, parseBestCoordinateBlock(normalizedText), extension.toUpperCase(), "Text coordinate output");
   }
   if (extension === "data" || extension === "lammps" || extension === "lmp") {
-    return summarizeCoordinateAtoms(base, parseLammpsDataAtoms(text), "LAMMPS", "LAMMPS data");
+    return summarizeCoordinateAtoms(base, parseLammpsDataAtoms(normalizedText), "LAMMPS", "LAMMPS data");
   }
   return {
     ...base,
     format: extension ? extension.toUpperCase() : "FILE",
     kind: "Molecular file",
-    summaryLine: `${extension ? extension.toUpperCase() : "File"} molecular file, ${formatInteger(fileStat.size)} bytes`,
+    summaryLine: `${extension ? extension.toUpperCase() : "File"} molecular file, ${formatInteger(resolvedByteCount)} bytes`,
     counts: {},
     rows: [
       { label: "Format", value: extension ? extension.toUpperCase() : "FILE" },
-      { label: "Size", value: `${formatInteger(fileStat.size)} bytes` },
-      { label: "Lines", value: formatInteger(lineCount(text)) },
+      { label: "Size", value: `${formatInteger(resolvedByteCount)} bytes` },
+      { label: "Lines", value: formatInteger(lineCount(normalizedText)) },
     ],
     components: {},
     notes: ["No structure parser is available for this extension."],

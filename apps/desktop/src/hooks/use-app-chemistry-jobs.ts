@@ -102,6 +102,17 @@ export function useAppChemistryJobs({
       await cancelXtbRequest(jobId);
       pushStatus("xTB job cancelled");
     } catch (error) {
+      cancelledXtbJobIdsRef.current.delete(jobId);
+      setXtbJobs((previous) => previous.map((job) => {
+        if (job.id !== jobId || job.status !== "cancelled") return job;
+        if (!job.result) return { ...job, status: "running", completedAt: null, error: null };
+        return {
+          ...job,
+          status: job.result.exitCode === 130 ? "cancelled" : job.result.ok ? "success" : job.result.primaryOpenPath ? "recovered" : "failed",
+          completedAt: job.completedAt ?? Date.now(),
+          error: job.result.error ?? null,
+        };
+      }));
       pushErrorStatus(error, "Cancel xTB job failed");
     }
   }, [pushErrorStatus, pushStatus]);
@@ -118,6 +129,17 @@ export function useAppChemistryJobs({
       await cancelConformerRequest(jobId);
       pushStatus("Conformer job cancelled");
     } catch (error) {
+      cancelledConformerJobIdsRef.current.delete(jobId);
+      setConformerJobs((previous) => previous.map((job) => {
+        if (job.id !== jobId || job.status !== "cancelled") return job;
+        if (!job.result) return { ...job, status: "running", completedAt: undefined, error: null };
+        return {
+          ...job,
+          status: job.result.exitCode === 130 ? "cancelled" : job.result.ok ? (job.result.exitCode === 0 ? "success" : "recovered") : "failed",
+          completedAt: job.completedAt ?? Date.now(),
+          error: job.result.errorSummary ?? (job.result.ok ? null : `Exited with code ${job.result.exitCode}`),
+        };
+      }));
       pushErrorStatus(error, "Cancel conformer job failed");
     }
   }, [pushErrorStatus, pushStatus]);

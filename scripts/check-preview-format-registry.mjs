@@ -200,8 +200,8 @@ assert.doesNotMatch(browserDevDocuments, /\["pdb", "ent", "pdbqt", "pqr"\]/);
 const forcePreview = readFileSync('scripts/force-preview.sh', 'utf8');
 assert.match(forcePreview, /preview-content-type\.mjs/);
 assert.doesNotMatch(forcePreview, /pdb\|PDB\|ent\|ENT/);
-assert.match(forcePreview, /com\.local\.burrete10\.xyz/);
-assert.match(forcePreview, /Normal Quick Look resolves XYZ/);
+assert.match(forcePreview, /qlmanage -p -c "\$TYPE" "\$PREVIEW_FILE"/);
+assert.doesNotMatch(forcePreview, /Normal Quick Look resolves XYZ/);
 
 const previewContentType = readFileSync('scripts/preview-content-type.mjs', 'utf8');
 assert.match(previewContentType, /config['"], ['"]preview-formats\.json/);

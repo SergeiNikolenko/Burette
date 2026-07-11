@@ -2,27 +2,27 @@
   "mcpServers": {
     "burette_agent_mcp": {
       "title": "Burrete Agent MCP",
-      "description": "Typed tools and review widgets for Burrete molecular workspaces.",
+      "description": "Typed tools and bounded review surfaces for Burrete molecular workspaces.",
       "icons": [
         {
-          "src": "./assets/composerIcon.svg",
-          "mimeType": "image/svg+xml",
+          "src": "./assets/composer-icon.png",
+          "mimeType": "image/png",
           "sizes": [
-            "24x24"
+            "32x32"
           ]
         },
         {
-          "src": "./assets/logo.svg",
-          "mimeType": "image/svg+xml",
+          "src": "./assets/app-icon.png",
+          "mimeType": "image/png",
           "sizes": [
-            "256x256"
+            "512x512"
           ]
         }
       ],
       "cwd": ".",
       "command": "node",
       "args": [
-        "./mcp/server.mjs",
+        "./mcp/lib/server-bundle.mjs",
         "--stdio"
       ]
     }
