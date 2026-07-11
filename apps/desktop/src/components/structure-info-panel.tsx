@@ -12,6 +12,7 @@ import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerW
 import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
+import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings } from "../types";
 
 type StructureInfoPanelProps = {
@@ -65,6 +66,7 @@ const SDF_CONTEXT_COLOR_DEFAULT: SdfContextColor = "colored";
 const INFO_TRAJECTORY_CONTROL_LIMIT = 200;
 
 export function StructureInfoPanel({ document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
+  const hostedMcpWidget = isHostedMcpWidget();
   const composition = useStructureComposition(document);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
   const [sdfContextStyle, setSdfContextStyle] = useState<SdfContextStyle>(SDF_CONTEXT_STYLE_DEFAULT);
@@ -164,15 +166,17 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
         <div className="structure-brief-title-row">
           <h3 title={document.title}>{document.title}</h3>
           <span>{brief.format}</span>
-          <button
-            type="button"
-            className="structure-inspector-more-button"
-            aria-label="File actions"
-            title="File actions"
-            onClick={showFileActionsMenu}
-          >
-            ...
-          </button>
+          {!hostedMcpWidget && !document.virtual ? (
+            <button
+              type="button"
+              className="structure-inspector-more-button"
+              aria-label="File actions"
+              title="File actions"
+              onClick={showFileActionsMenu}
+            >
+              ...
+            </button>
+          ) : null}
         </div>
         <p>{inspectorSummaryLine(brief.kind, compositionSummary, compositionPending, compositionError)}</p>
       </section>
@@ -210,18 +214,19 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
 
       <FoldingResultsPanel state={foldingResult} actions={actions} />
 
-      <ConformerWorkflowCard
-        document={document}
-        selectedEntity={selectedEntity}
-        viewerLigandSelection={viewerLigandSelection}
-        status={conformerStatus}
-        settings={conformerSettings}
-        open={conformerOpen}
-        setOpen={setConformerOpen}
-        actions={actions}
-      />
+      {!hostedMcpWidget ? <>
+        <ConformerWorkflowCard
+          document={document}
+          selectedEntity={selectedEntity}
+          viewerLigandSelection={viewerLigandSelection}
+          status={conformerStatus}
+          settings={conformerSettings}
+          open={conformerOpen}
+          setOpen={setConformerOpen}
+          actions={actions}
+        />
 
-      <section className="structure-brief-card structure-inspector-xtb-card" data-collapsed={!xtbOpen || undefined}>
+        <section className="structure-brief-card structure-inspector-xtb-card" data-collapsed={!xtbOpen || undefined}>
         <div className="structure-inspector-section-header">
           <button
             type="button"
@@ -283,13 +288,14 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
             ) : null}
           </>
         ) : null}
-      </section>
+        </section>
 
-      {latestXtbJob?.result ? (
-        <XtbResultsPanel document={document} job={latestXtbJob} actions={actions} />
-      ) : null}
+        {latestXtbJob?.result ? (
+          <XtbResultsPanel document={document} job={latestXtbJob} actions={actions} />
+        ) : null}
 
-      {structureXtbArtifact ? <XtbArtifactInfoCard artifact={structureXtbArtifact} byteCount={document.byteCount} /> : null}
+        {structureXtbArtifact ? <XtbArtifactInfoCard artifact={structureXtbArtifact} byteCount={document.byteCount} /> : null}
+      </> : null}
 
       {poseControls ? (
         <StructurePoseControlsCard
@@ -369,6 +375,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
         compositionPending={compositionPending}
         compositionError={compositionError}
         document={document}
+        hostedMcpWidget={hostedMcpWidget}
         actions={actions}
       />
 
@@ -540,7 +547,7 @@ function ConformerWorkflowCard({
     setSettingsPanel(null);
   }, [document.id]);
   const selectedConformerAction = conformerSelectionAction(selectedEntity, viewerLigandSelection);
-  const canRunCrest = canUseConformerWorkflow(document.extension) || Boolean(selectedConformerAction);
+  const canRunCrest = (document.renderer !== "grid2d" && canUseConformerWorkflow(document.extension)) || Boolean(selectedConformerAction);
   const canRunPrism = canInspectConformerEnsemble(document.extension);
   if (!canShowConformerWorkflow(document.extension, document.renderer) && !selectedConformerAction) return null;
   if (!canRunCrest && !canRunPrism) return null;
@@ -655,9 +662,6 @@ function ConformerInlineSettings({
           </InlineXtbSetting>
           <InlineXtbSetting label="Energy sort">
             <ToggleControl label="Sort by energy" checked={settings.prismEnergySort} onChange={(value) => updateSettings({ prismEnergySort: value })} />
-          </InlineXtbSetting>
-          <InlineXtbSetting label="Rotamer pruning">
-            <ToggleControl label="Prune rotamers" checked={settings.prismRotamerPruning} onChange={(value) => updateSettings({ prismRotamerPruning: value })} />
           </InlineXtbSetting>
         </div>
       ) : null}
@@ -1803,7 +1807,7 @@ const XTB_PATTERN_ARTIFACTS: Record<string, Omit<XtbTextArtifactInfo, "runName">
     purpose: "Stores the post-optimization coordinates.",
     use: "Use as the post-relaxation geometry for energy/property interpretation or downstream calculations.",
     format: "structure file",
-    notes: ["This is the main output of Optimize and pose-refine workflows."],
+    notes: ["This is the main output of Optimize workflows."],
   },
   cube: {
     title: "Volumetric grid",
@@ -2573,6 +2577,7 @@ function StructureDetailsSection({
   compositionPending,
   compositionError,
   document,
+  hostedMcpWidget,
   actions,
 }: {
   brief: ReturnType<typeof structureBriefForDocument>;
@@ -2580,6 +2585,7 @@ function StructureDetailsSection({
   compositionPending: boolean;
   compositionError: string | null;
   document: ViewerDocument;
+  hostedMcpWidget: boolean;
   actions: ShellActions;
 }) {
   return (
@@ -2607,12 +2613,14 @@ function StructureDetailsSection({
           ))}
         </div>
 
-        <StructureSectionHeader title="Source affordances" detail="Source text stays available in the Text dock tab." />
-        <div className="structure-brief-rows">
-          {brief.usefulRows.map((row) => (
-            <StructureBriefRow key={row.label} label={row.label} value={row.value} />
-          ))}
-        </div>
+        {!hostedMcpWidget ? <>
+          <StructureSectionHeader title="Source affordances" detail="Source text stays available in the Text dock tab." />
+          <div className="structure-brief-rows">
+            {brief.usefulRows.map((row) => (
+              <StructureBriefRow key={row.label} label={row.label} value={row.value} />
+            ))}
+          </div>
+        </> : null}
 
         <StructureSectionHeader title="Notes" />
         <div className="structure-brief-notes">
@@ -2621,7 +2629,7 @@ function StructureDetailsSection({
           ))}
         </div>
 
-        <div className="structure-brief-actions">
+        {!hostedMcpWidget ? <div className="structure-brief-actions">
           <button type="button" className="dock-action" onClick={() => void actions.showDocumentMetadata(document)}>
             Show metadata
           </button>
@@ -2631,7 +2639,7 @@ function StructureDetailsSection({
           <button type="button" className="dock-action" onClick={() => void actions.copyDocumentPath(document)}>
             Copy path
           </button>
-        </div>
+        </div> : null}
       </div>
     </details>
   );

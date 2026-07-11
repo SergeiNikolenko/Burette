@@ -2,7 +2,7 @@
   "schema": "burette_agent_compatibility.v1",
   "plugin": {
     "name": "burrete",
-    "version": "0.1.0"
+    "version": "0.1.2"
   },
   "requires": {
     "burreteApp": ">=0.10.44",
@@ -12,6 +12,6 @@
   "bundle": {
     "relativePath": "plugins/burette-agent",
     "preflight": "plugins/burette-agent/scripts/burette_agent_preflight.mjs",
-    "mcpServer": "plugins/burette-agent/mcp/server.mjs"
+    "mcpServer": "plugins/burette-agent/mcp/lib/server-bundle.mjs"
   }
 }

@@ -113,6 +113,15 @@ const BOTTOM_DOCK_TAB_CATALOG: DockTabKind[] = [
   "logs",
 ];
 
+const DOCUMENT_DROP_DOCK_TABS = new Set<DockTabKind>([
+  "xyzrender",
+  "files",
+  "spectrum",
+  "text",
+  "inspector",
+  "folding",
+]);
+
 export function createDockTab(kind: DockTabKind): DockTab {
   return { id: `dock-${kind}`, kind };
 }
@@ -132,6 +141,25 @@ export function ensureDefaultDockTabs(area: DockArea, tabs: DockTab[]) {
 
 export function dockTabCatalog(area: DockArea) {
   return area === "right" ? RIGHT_DOCK_TAB_CATALOG : BOTTOM_DOCK_TAB_CATALOG;
+}
+
+export function dockTabLoadsDroppedDocument(kind: DockTabKind) {
+  return DOCUMENT_DROP_DOCK_TABS.has(kind);
+}
+
+export function resolveDockDropPaths(
+  paths: string[],
+  documents: ViewerDocument[],
+  textDocuments: TextFileDocument[],
+) {
+  const documentIdsByPath = new Map(documents.map((document) => [document.path, document.id]));
+  for (const document of textDocuments) {
+    if (!documentIdsByPath.has(document.path)) documentIdsByPath.set(document.path, document.id);
+  }
+  return {
+    existingDocumentId: paths.map((path) => documentIdsByPath.get(path)).find(Boolean) ?? null,
+    unopenedPaths: paths.filter((path) => !documentIdsByPath.has(path)),
+  };
 }
 
 export function firstDockTabKind(area: DockArea) {

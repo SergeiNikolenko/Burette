@@ -6,9 +6,12 @@ import { NotificationPopup } from "./notification-popup";
 import { OpenInEditorMenu } from "./open-in-editor-menu";
 import { Sidebar } from "./sidebar";
 import { ShortcutTooltip } from "./shortcut-tooltip";
+import { FileDropFeedback } from "./file-drop-feedback";
 import type { ShellActions, ShellViewState } from "./types";
+import type { FileDropPreview } from "../lib/drop-preview";
 import { isTauriRuntime } from "../lib/tauri";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
+import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
@@ -28,6 +31,7 @@ export function AppLayout({
   onResizeStart,
   onRightDockResizeStart,
   onBottomDockResizeStart,
+  dropPreview,
   onDragEnter,
   onDragOver,
   onDragLeave,
@@ -41,6 +45,7 @@ export function AppLayout({
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   onRightDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   onBottomDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+  dropPreview: FileDropPreview | null;
   onDragEnter: (event: React.DragEvent<HTMLElement>) => void;
   onDragOver: (event: React.DragEvent<HTMLElement>) => void;
   onDragLeave: (event: React.DragEvent<HTMLElement>) => void;
@@ -48,16 +53,17 @@ export function AppLayout({
   onPaste: (event: React.ClipboardEvent<HTMLElement>) => void;
 }) {
   const viewportWidth = typeof window === "undefined" ? 1200 : window.innerWidth;
+  const hostedMcpWidget = isHostedMcpWidget();
   const maxSidebarWidth = Math.max(280, Math.min(420, Math.floor(viewportWidth * 0.35)));
   const settingsMode = state.page === "settings";
-  const sidebarVisible = settingsMode || state.sidebarOpen;
+  const sidebarVisible = settingsMode || (!hostedMcpWidget && state.sidebarOpen);
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
   const rightDockWidth = clampRightDockWidth(state.rightDockWidth, viewportWidth, sidebarLayoutWidth);
   const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
-  const tabChromeLeft = state.sidebarOpen ? sidebarLayoutWidth + 12 : 132;
+  const tabChromeLeft = hostedMcpWidget ? 12 : state.sidebarOpen ? sidebarLayoutWidth + 12 : 132;
   const rightDockOpen = !settingsMode && state.rightDockOpen;
-  const bottomDockOpen = !settingsMode && state.bottomDockOpen;
+  const bottomDockOpen = !settingsMode && !hostedMcpWidget && state.bottomDockOpen;
   const dockDragging = state.sidebarDragging || state.rightDockDragging || state.bottomDockDragging;
   const chromeTransition = dockDragging ? "none" : undefined;
   const systemThemeMode = useSystemThemeMode();
@@ -76,44 +82,49 @@ export function AppLayout({
       data-effective-theme={effectiveTheme}
       data-active-page-kind={activePageKind ?? undefined}
       data-runtime={isTauriRuntime() ? "tauri" : "browser"}
+      data-hosted-mcp-widget={hostedMcpWidget ? "true" : undefined}
       data-settings-mode={settingsMode ? "true" : undefined}
       data-drop-active={state.dropActive || undefined}
       data-structure-drag-active={state.structureDragActive ? "true" : undefined}
       data-sidebar-open={sidebarVisible ? "true" : "false"}
-      onDragEnter={onDragEnter}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-      onPaste={onPaste}
+      onDragEnterCapture={hostedMcpWidget ? undefined : onDragEnter}
+      onDragOverCapture={hostedMcpWidget ? undefined : onDragOver}
+      onDragLeave={hostedMcpWidget ? undefined : onDragLeave}
+      onDrop={hostedMcpWidget ? undefined : onDrop}
+      onPaste={hostedMcpWidget ? undefined : onPaste}
       style={shellStyle}
     >
       <div className="drag-region" data-tauri-drag-region />
       {!settingsMode && (
         <>
-          <div className="chrome-leading-controls" data-tauri-drag-region>
-            <button
-              type="button"
-              className="chrome-button sidebar-toggle-root"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={onToggleSidebar}
-              aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-            >
-              <DockToggleIcon />
-            </button>
-          </div>
+          {!hostedMcpWidget ? (
+            <div className="chrome-leading-controls" data-tauri-drag-region>
+              <button
+                type="button"
+                className="chrome-button sidebar-toggle-root"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={onToggleSidebar}
+                aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+              >
+                <DockToggleIcon />
+              </button>
+            </div>
+          ) : null}
           <div className="chrome-trailing-controls" data-tauri-drag-region>
-            <OpenInEditorMenu state={layoutState} actions={actions} />
-            <button
-              type="button"
-              className="chrome-button dock-toggle-button"
-              data-active={state.bottomDockOpen || undefined}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => actions.toggleDock("bottom")}
-              aria-label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
-            >
-              <DockToggleIcon className="dock-toggle-icon-bottom" />
-              <ShortcutTooltip label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"} shortcut="⌘J" />
-            </button>
+            {!hostedMcpWidget ? <OpenInEditorMenu state={layoutState} actions={actions} /> : null}
+            {!hostedMcpWidget ? (
+              <button
+                type="button"
+                className="chrome-button dock-toggle-button"
+                data-active={state.bottomDockOpen || undefined}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => actions.toggleDock("bottom")}
+                aria-label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
+              >
+                <DockToggleIcon className="dock-toggle-icon-bottom" />
+                <ShortcutTooltip label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"} shortcut="⌘J" />
+              </button>
+            ) : null}
             <button
               type="button"
               className="chrome-button dock-toggle-button"
@@ -130,17 +141,19 @@ export function AppLayout({
             className="topbar"
             style={{ left: tabChromeLeft, transition: chromeTransition }}
           >
-            <EditorTabs state={layoutState} actions={actions} />
+            <EditorTabs state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
           </header>
         </>
       )}
       <section className="workspace">
-        <div className="sidebar-shell" style={{ transition: chromeTransition }}>
-          <div className="sidebar-shell-inner" style={{ width: sidebarWidth }}>
-            <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
+        {(!hostedMcpWidget || settingsMode) ? (
+          <div className="sidebar-shell" style={{ transition: chromeTransition }}>
+            <div className="sidebar-shell-inner" style={{ width: sidebarWidth }}>
+              <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
+            </div>
           </div>
-        </div>
-        {state.sidebarOpen && !settingsMode && (
+        ) : null}
+        {state.sidebarOpen && !settingsMode && !hostedMcpWidget && (
           <div
             className="splitter"
             onPointerDown={onResizeStart}
@@ -158,7 +171,7 @@ export function AppLayout({
             <section className="main-stage">
               <ViewerArea state={layoutState} actions={actions} />
             </section>
-            {!settingsMode && (
+            {!settingsMode && !hostedMcpWidget && (
               <DockPanel
                 area="bottom"
                 state={layoutState}
@@ -173,15 +186,12 @@ export function AppLayout({
               state={layoutState}
               actions={actions}
               onResizeStart={onRightDockResizeStart}
+              readOnly={hostedMcpWidget}
             />
           )}
         </section>
       </section>
-      {state.dropActive && (
-        <div className="drop-overlay">
-          <div>Drop structures to open</div>
-        </div>
-      )}
+      <FileDropFeedback preview={dropPreview} />
       {state.status && (
         <NotificationPopup notice={state.status} onDismiss={onDismissStatus} />
       )}

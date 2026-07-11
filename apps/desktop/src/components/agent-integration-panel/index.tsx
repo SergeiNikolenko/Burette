@@ -37,7 +37,6 @@ type AgentIntegrationStatus = {
 };
 
 const initialStatus: AgentIntegrationStatus | null = null;
-const widgetCheckIds = ["molecule-table-widget", "trajectory-review-widget", "molecular-report-widget"];
 
 export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean }) {
   const [status, setStatus] = useState<AgentIntegrationStatus | null>(initialStatus);
@@ -107,7 +106,7 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
           <StatusRow label="Codex plugin" value={codexSummary(status)} state={status?.codexInstall.state ?? "unknown"} />
           <StatusRow label="MCP server" value={checkSummary(status, "mcp", "MCP server entry point is bundled.")} state={checkState(status, "mcp")} />
           <StatusRow label="Browser shell" value={checkSummary(status, "browser-shell", "Browser shell assets are bundled.")} state={checkState(status, "browser-shell")} />
-          <StatusRow label="Skills and widgets" value={skillsAndWidgetsSummary(status)} state={combinedCheckState(status, ["skills", ...widgetCheckIds])} />
+          <StatusRow label="Skills" value={checkSummary(status, "skills", "Workflow skills are bundled.")} state={checkState(status, "skills")} />
         </div>
       </section>
 
@@ -157,7 +156,7 @@ const browserPreviewStatus: AgentIntegrationStatus = {
   bundledPlugin: {
     state: "ready",
     name: "burrete",
-    version: "0.1.0",
+    version: "0.1.2",
     path: browserPreviewPluginPath(),
     displayName: "Burrete",
     compatibility: {
@@ -234,7 +233,7 @@ function integrationSummary(status: AgentIntegrationStatus | null, error: string
   }
   return {
     title: "Codex agent is ready",
-    detail: "Codex can use the Burrete MCP server, skills, widgets, and Browser shell assets from this app bundle.",
+    detail: "Codex can use the Burrete MCP server, skills, and Browser shell assets from this app bundle.",
     state: status.state,
   };
 }
@@ -261,25 +260,6 @@ function checkSummary(status: AgentIntegrationStatus | null, id: string, readyTe
 
 function checkState(status: AgentIntegrationStatus | null, id: string) {
   return findCheck(status, id)?.state ?? "unknown";
-}
-
-function skillsAndWidgetsSummary(status: AgentIntegrationStatus | null) {
-  if (!status) return "Waiting for status.";
-  const checks = ["skills", ...widgetCheckIds].map((id) => findCheck(status, id)).filter((check): check is AgentIntegrationCheck => !!check);
-  if (checks.length === 0) return "Open the packaged app to inspect skills and widget assets.";
-  const missing = checks.filter((check) => badgeState(check.state) === "missing").map((check) => check.label);
-  if (missing.length > 0) return `Missing ${missing.join(" and ").toLowerCase()}.`;
-  return "Skills and widget assets are bundled.";
-}
-
-function combinedCheckState(status: AgentIntegrationStatus | null, ids: string[]) {
-  if (!status) return "unknown";
-  const checks = ids.map((id) => findCheck(status, id)).filter((check): check is AgentIntegrationCheck => !!check);
-  if (checks.length === 0) return "unknown";
-  if (checks.some((check) => badgeState(check.state) === "missing")) return "missing";
-  if (checks.some((check) => badgeState(check.state) === "action")) return "action";
-  if (checks.every((check) => badgeState(check.state) === "ok")) return "ok";
-  return "unknown";
 }
 
 function findCheck(status: AgentIntegrationStatus | null, id: string) {

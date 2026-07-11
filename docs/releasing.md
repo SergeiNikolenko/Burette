@@ -180,7 +180,9 @@ Every release app bundle must satisfy:
 - Update metadata points to the Burrete release endpoint.
 
 The zip artifact is the in-app updater artifact. The dmg artifact is for manual
-distribution and is not currently consumed by the updater.
+distribution and is not currently consumed by the updater. The DMG uses the
+branded Finder layout from `packaging/dmg/background.png`, with the app and the
+Applications alias positioned by `scripts/create-dmg.sh`.
 
 Before publishing performance-sensitive changes, regenerate the size and perf
 smoke reports described in [Performance architecture](performance.md). The

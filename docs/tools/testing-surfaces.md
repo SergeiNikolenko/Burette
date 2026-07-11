@@ -19,6 +19,20 @@ app, and native Finder Quick Look are different runtimes.
 - Browser success does not prove packaged desktop app or Finder Quick Look
   success. Native checks still need the packaged app and Quick Look scripts.
 
+## Surface RCA
+
+When behavior differs between surfaces, identify the runtime first instead of
+debugging the renderer generically.
+
+| Symptom | Likely cause | Where to look first |
+| --- | --- | --- |
+| Browser-dev works but packaged desktop fails | Tauri bundle resources, asset protocol scope, or generated frontend bundle differs from dev server state. | `apps/desktop/src-tauri/tauri.conf.json`, `apps/desktop/dist`, `scripts/build.sh` |
+| Browser Quick Look works but Finder Quick Look fails | Native extension registration, Launch Services, app install location, or Quick Look cache is stale. | `docs/quicklook-debugging.md`, `PreviewExtension/AGENTS.md`, `scripts/quicklook-preview-smoke.sh` |
+| Native forced preview works but normal Spacebar preview does not | Launch Services routed the public file type to another generator. | `config/preview-formats.json`, `PreviewExtension/Info.plist`, `scripts/force-preview.sh` |
+| Agent session opens but observe returns stale or empty state | Wrong session directory, old dev server, or missing browser shell agent endpoint. | CLI JSON `sessionDir`, `logPath`, `processId`; `apps/desktop/vite/browser-dev/agent-session.ts` |
+| Tokenized preview works but full browser shell actions fail | Preview transport and shell session contracts are different surfaces. | `scripts/agent-preview.mjs`, `scripts/burrete-agent.mjs`, `apps/desktop/src/hooks/use-agent-session.ts` |
+| External file fails only in browser-dev | Dev server file allowlist excludes the file path. | `BURRETE_DEV_FS_ALLOW`, Vite server logs, CLI `logPath` |
+
 ## Dev Server: Full Browser Shell
 
 For agent-owned Browser shell testing, prefer the CLI. It allocates a fresh

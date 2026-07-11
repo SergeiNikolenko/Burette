@@ -53,7 +53,8 @@ Reference pattern:
 
 Burrete implementation:
 
-- `mcp/server.mjs` registers all stable tools/resources.
+- `mcp/server.mjs` registers all stable tools/resources, and
+  `mcp/lib/server-bundle.mjs` is the self-contained runtime entrypoint.
 - `mcp/registrations/*/register.mjs` define tool schemas.
 - Tool responses pass `structuredContent` to the model and do not expose MCP
   inline widgets.

@@ -1447,7 +1447,7 @@ pub(crate) fn append_to_molecule_collection<R: Runtime>(
 
     let existing = fs::read_to_string(&target_path)
         .map_err(|err| format!("{}: {err}", target_path.display()))?;
-    let merged = merge_collection_text(target_family, &[existing.as_str(), request.text.as_str()]);
+    let merged = merge_collection_text(target_family, &[existing.as_str(), request.text.as_str()])?;
     if merged.trim().is_empty() {
         return Err("Merged collection is empty".to_string());
     }
@@ -1494,7 +1494,7 @@ pub(crate) fn create_molecule_collection<R: Runtime>(
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
     }
-    let merged = merge_collection_text(output_family, &[request.text.as_str()]);
+    let merged = merge_collection_text(output_family, &[request.text.as_str()])?;
     write_text_atomically(&output_path, &merged)?;
     open_document_for_window(&app, window.label(), output_path, &preferences, None)
 }
@@ -2035,7 +2035,7 @@ fn merge_collection_files(paths: &[String]) -> Result<(String, String), String> 
         );
     }
     let texts: Vec<&str> = sources.iter().map(|(_, text)| text.as_str()).collect();
-    let text = merge_collection_text(family, &texts);
+    let text = merge_collection_text(family, &texts)?;
     if text.trim().is_empty() {
         return Err("Merged collection is empty".to_string());
     }
@@ -2071,41 +2071,140 @@ fn collection_family(extension: &str) -> Option<CollectionFamily> {
     }
 }
 
-fn merge_collection_text(family: CollectionFamily, texts: &[&str]) -> String {
+fn merge_collection_text(family: CollectionFamily, texts: &[&str]) -> Result<String, String> {
     match family {
         CollectionFamily::Sdf => {
-            let records: Vec<String> = texts
-                .iter()
-                .flat_map(|text| {
-                    text.split("$$$$")
-                        .map(str::trim)
-                        .filter(|record| !record.is_empty())
-                })
-                .map(|record| format!("{record}\n$$$$"))
-                .collect();
-            format!("{}\n", records.join("\n"))
+            let mut records = Vec::new();
+            for (index, text) in texts.iter().enumerate() {
+                let source_records = split_sdf_collection_records(text);
+                if source_records.is_empty() {
+                    return Err(format!(
+                        "SDF collection source {} does not contain any records",
+                        index + 1
+                    ));
+                }
+                records.extend(source_records);
+            }
+            Ok(format!(
+                "{}\n",
+                records
+                    .iter()
+                    .map(|record| format!("{record}\n$$$$"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ))
         }
         CollectionFamily::Smiles => {
-            let lines: Vec<&str> = texts
-                .iter()
-                .flat_map(|text| text.lines().map(str::trim).filter(|line| !line.is_empty()))
-                .collect();
-            format!("{}\n", lines.join("\n"))
-        }
-        CollectionFamily::Csv | CollectionFamily::Tsv => {
             let mut lines = Vec::new();
             for (index, text) in texts.iter().enumerate() {
-                let mut file_lines = text.lines().filter(|line| !line.trim().is_empty());
-                if index == 0 {
-                    lines.extend(file_lines);
-                } else {
-                    let _ = file_lines.next();
-                    lines.extend(file_lines);
+                let source_lines = text
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .collect::<Vec<_>>();
+                if !source_lines.iter().any(|line| !line.starts_with('#')) {
+                    return Err(format!(
+                        "SMILES collection source {} does not contain any molecule records",
+                        index + 1
+                    ));
                 }
+                lines.extend(source_lines);
             }
-            format!("{}\n", lines.join("\n"))
+            Ok(format!("{}\n", lines.join("\n")))
+        }
+        CollectionFamily::Csv => merge_delimited_collection_text(texts, ',', "CSV"),
+        CollectionFamily::Tsv => merge_delimited_collection_text(texts, '\t', "TSV"),
+    }
+}
+
+fn split_sdf_collection_records(text: &str) -> Vec<String> {
+    let mut records = Vec::new();
+    let mut lines = Vec::new();
+    let finish = |lines: &mut Vec<&str>, records: &mut Vec<String>| {
+        let record = lines.join("\n").trim().to_string();
+        lines.clear();
+        if !record.is_empty() {
+            records.push(record);
+        }
+    };
+    for line in text.lines() {
+        if line.trim() == "$$$$" {
+            finish(&mut lines, &mut records);
+        } else {
+            lines.push(line);
         }
     }
+    finish(&mut lines, &mut records);
+    records
+}
+
+fn merge_delimited_collection_text(
+    texts: &[&str],
+    separator: char,
+    label: &str,
+) -> Result<String, String> {
+    let mut expected_header: Option<Vec<String>> = None;
+    let mut output_lines = Vec::new();
+    for (index, text) in texts.iter().enumerate() {
+        let file_lines = text.lines().collect::<Vec<_>>();
+        let Some(header_index) = file_lines.iter().position(|line| !line.trim().is_empty()) else {
+            return Err(format!("{label} collection source {} is empty", index + 1));
+        };
+        let header_line = file_lines[header_index].trim_start_matches('\u{feff}');
+        let header = parse_delimited_collection_header(header_line, separator);
+        if header.is_empty() || header.iter().all(String::is_empty) {
+            return Err(format!(
+                "{label} collection source {} has an empty header",
+                index + 1
+            ));
+        }
+        if expected_header
+            .as_ref()
+            .is_some_and(|expected| expected != &header)
+        {
+            return Err(format!(
+                "{label} collection headers must use the same columns in the same order"
+            ));
+        }
+        expected_header.get_or_insert(header);
+        let mut data_lines = file_lines[(header_index + 1)..].to_vec();
+        while data_lines.last().is_some_and(|line| line.trim().is_empty()) {
+            data_lines.pop();
+        }
+        if !data_lines.iter().any(|line| !line.trim().is_empty()) {
+            return Err(format!(
+                "{label} collection source {} does not contain any data rows",
+                index + 1
+            ));
+        }
+        if index == 0 {
+            output_lines.push(header_line);
+        }
+        output_lines.extend(data_lines);
+    }
+    Ok(format!("{}\n", output_lines.join("\n")))
+}
+
+fn parse_delimited_collection_header(line: &str, separator: char) -> Vec<String> {
+    let mut cells = Vec::new();
+    let mut current = String::new();
+    let mut quoted = false;
+    let mut chars = line.chars().peekable();
+    while let Some(character) = chars.next() {
+        if character == '"' && chars.peek() == Some(&'"') {
+            current.push('"');
+            chars.next();
+        } else if character == '"' {
+            quoted = !quoted;
+        } else if character == separator && !quoted {
+            cells.push(current.trim().to_lowercase());
+            current.clear();
+        } else {
+            current.push(character);
+        }
+    }
+    cells.push(current.trim().to_lowercase());
+    cells
 }
 
 fn write_text_atomically(path: &Path, text: &str) -> Result<(), String> {
@@ -2705,13 +2804,40 @@ mod tests {
                 "smiles,name\nc1ccccc1,benzene\n",
                 "\nsmiles,name\nCCN,ethylamine\n",
             ],
-        );
+        )
+        .expect("matching CSV headers should merge");
 
         assert_eq!(
             merged,
             "smiles,name\nCCO,ethanol\nc1ccccc1,benzene\nCCN,ethylamine\n"
         );
         assert_eq!(merged.matches("smiles,name").count(), 1);
+    }
+
+    #[test]
+    fn rejects_collection_merge_with_mismatched_delimited_headers() {
+        let error = super::merge_collection_text(
+            super::CollectionFamily::Csv,
+            &["smiles,name\nCCO,ethanol\n", "name,smiles\nwater,O\n"],
+        )
+        .expect_err("reordered CSV columns should fail closed");
+
+        assert!(error.contains("same columns in the same order"));
+    }
+
+    #[test]
+    fn sdf_collection_merge_uses_record_delimiter_lines() {
+        let merged = super::merge_collection_text(
+            super::CollectionFamily::Sdf,
+            &[
+                "First\nM  END\n> <NOTE>\nprice $$$$ marker\n\n$$$$\n",
+                "Second\nM  END\n$$$$\n",
+            ],
+        )
+        .expect("inline dollar text is not an SDF record separator");
+
+        assert_eq!(merged.matches("\n$$$$").count(), 2);
+        assert!(merged.contains("price $$$$ marker"));
     }
 
     #[test]

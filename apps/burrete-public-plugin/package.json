@@ -1,0 +1,31 @@
+{
+  "name": "@burrete/public-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "assets:molstar": "node scripts/build-molstar-csp.mjs",
+    "assets:viewer": "node scripts/build-hosted-viewer.mjs && bun run assets:molstar",
+    "dev": "bun run assets:viewer && next dev",
+    "build": "bun run assets:viewer && next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "bun run assets:viewer && bun test tests"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.4",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "molstar": "5.7.0",
+    "next": "16.2.10",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.8",
+    "@types/node": "22.19.17",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "typescript": "~6.0.3"
+  }
+}
