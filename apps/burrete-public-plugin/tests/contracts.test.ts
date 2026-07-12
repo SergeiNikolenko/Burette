@@ -170,6 +170,7 @@ describe("viewer resource contract", () => {
   test("hardens the directly served shell and enables cross-origin assets", async () => {
     const headers = await nextConfig.headers?.();
     const shellDocument = headers?.find((entry) => entry.source === "/viewer-shell/index.html");
+    const webDemoDocument = headers?.find((entry) => entry.source === "/web-demo/index.html");
     const shellAssets = headers?.find((entry) => entry.source === "/viewer-shell/:path*");
     expect(shellDocument?.headers).toContainEqual({
       key: "Content-Security-Policy",
@@ -178,6 +179,14 @@ describe("viewer resource contract", () => {
     expect(shellAssets?.headers).toContainEqual({
       key: "Access-Control-Allow-Origin",
       value: "*",
+    });
+    expect(webDemoDocument?.headers).toContainEqual({
+      key: "Content-Security-Policy",
+      value: expect.stringContaining("'unsafe-eval'"),
+    });
+    expect(webDemoDocument?.headers).toContainEqual({
+      key: "Content-Security-Policy",
+      value: expect.stringContaining("frame-ancestors 'self' https://burrete-landing.vercel.app"),
     });
   });
 
