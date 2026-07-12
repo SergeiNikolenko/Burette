@@ -8,6 +8,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { z } from "zod/v4";
 import {
   fileReferenceSchema,
+  molecularSceneInputSchema,
   exposeNoauthSecuritySchemes,
   NOAUTH_SECURITY_SCHEMES,
   NOAUTH_TOOL_SECURITY,
@@ -110,7 +111,57 @@ function createServer(): McpServer {
             },
           ],
           structuredContent: prepared.summary,
-          _meta: { structure: prepared.viewer },
+          _meta: {
+            structure: prepared.viewer,
+            scene: {
+              source: { kind: "attachment", fileName: prepared.summary.fileName },
+              actions: [],
+            },
+          },
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  registerAppTool(
+    server,
+    "render_molecular_scene",
+    {
+      title: "Render a molecular scene",
+      description:
+        "Use this when the user asks to select or focus part of a structure, clear the selection, reset the camera, or hide/show polymers, ligands, ions, or water. Re-render the PDB entry or authorized attachment with up to eight allowlisted viewer actions.",
+      inputSchema: molecularSceneInputSchema,
+      outputSchema: publicStructureOutputSchema,
+      annotations: TOOL_ANNOTATIONS,
+      ...NOAUTH_TOOL_SECURITY,
+      _meta: {
+        ...viewerToolMeta("Preparing molecular scene…", "Molecular scene ready"),
+        "openai/fileParams": ["structureFile"],
+      },
+    },
+    async (input) => {
+      try {
+        const prepared = input.source === "pdb"
+          ? await preparePdbStructure(input.pdbId)
+          : await prepareAttachedStructure(input.structureFile);
+        const sourceDescriptor = input.source === "pdb"
+          ? { kind: "pdb", pdbId: input.pdbId.toUpperCase() }
+          : {
+              kind: "attachment",
+              fileName: input.structureFile.file_name ?? prepared.summary.fileName,
+            };
+        return {
+          content: [{
+            type: "text" as const,
+            text: `${prepared.summary.summaryLine} ${input.actions.length} viewer action${input.actions.length === 1 ? " was" : "s were"} requested; the widget will report which actions were applied.`,
+          }],
+          structuredContent: prepared.summary,
+          _meta: {
+            structure: prepared.viewer,
+            scene: { source: sourceDescriptor, actions: input.actions },
+          },
         };
       } catch (error) {
         return toolError(error);
@@ -148,7 +199,13 @@ function createServer(): McpServer {
             },
           ],
           structuredContent: prepared.summary,
-          _meta: { structure: prepared.viewer },
+          _meta: {
+            structure: prepared.viewer,
+            scene: {
+              source: { kind: "pdb", pdbId: pdbId.toUpperCase() },
+              actions: [],
+            },
+          },
         };
       } catch (error) {
         return toolError(error);
