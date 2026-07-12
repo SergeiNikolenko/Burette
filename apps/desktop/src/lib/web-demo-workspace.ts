@@ -1,5 +1,22 @@
 import type { SidebarProjectStructure } from "./sidebar-projects";
 import { writeBrowserDevVirtualTextDocument } from "./browser-dev-documents";
+import extxyzCell from "../../../../samples/extxyz-cell.xyz?raw";
+import ketcher2dBenzene from "../../../../samples/ketcher-2d-benzene.sdf?raw";
+import ketcher3dCore from "../../../../samples/ketcher-3d-core.sdf?raw";
+import miniCif from "../../../../samples/mini.cif?raw";
+import miniPdb from "../../../../samples/mini.pdb?raw";
+import miniSdf from "../../../../samples/mini.sdf?raw";
+import miniXyz from "../../../../samples/mini.xyz?raw";
+import pairedPdb from "../../../../samples/md/paired/paired.pdb?raw";
+import nad2d from "../../../../samples/nad-2d.sdf?raw";
+import caffeineCif from "../../../../samples/structures/crystals/caffeine.cif?raw";
+import mof5 from "../../../../samples/structures/crystals/mof-5.xyz?raw";
+import nv63Cell from "../../../../samples/structures/crystals/nv63-cell.xyz?raw";
+import oneHtb from "../../../../samples/structures/proteins/1htb.pdb?raw";
+import benzene from "../../../../samples/structures/small-molecules/benzene.xyz?raw";
+import caffeineSdf from "../../../../samples/structures/small-molecules/caffeine.sdf?raw";
+import multiMolecule from "../../../../samples/structures/small-molecules/multi-molecule.sdf?raw";
+import trajectory from "../../../../samples/trajectory.xyz?raw";
 
 const WEB_DEMO_ROOT = "/BurreteDemo";
 const WEB_DEMO_ENABLED = import.meta.env.VITE_BURRETE_WEB_DEMO === "1";
@@ -7,29 +24,25 @@ const MAX_FILE_BYTES = 3 * 1024 * 1024;
 const listeners = new Set<() => void>();
 const files = new Map<string, SidebarProjectStructure>();
 
-const miniPdb = `HEADER    BURRETE WEB DEMO
-TITLE     MINI GLY-ALA PEPTIDE
-ATOM      1  N   GLY A   1      -1.204   0.176   0.000  1.00 20.00           N
-ATOM      2  CA  GLY A   1       0.000   0.000   0.000  1.00 20.00           C
-ATOM      3  C   GLY A   1       0.722   1.271   0.000  1.00 20.00           C
-ATOM      4  O   GLY A   1       0.163   2.360   0.000  1.00 20.00           O
-ATOM      5  N   ALA A   2       2.052   1.189   0.000  1.00 20.00           N
-ATOM      6  CA  ALA A   2       2.896   2.377   0.000  1.00 20.00           C
-ATOM      7  CB  ALA A   2       3.711   2.273   1.276  1.00 20.00           C
-ATOM      8  C   ALA A   2       3.793   2.477  -1.230  1.00 20.00           C
-ATOM      9  O   ALA A   2       4.675   3.336  -1.236  1.00 20.00           O
-TER
-END
-`;
-
-const methaneXyz = `5
-Methane
-C 0 0 0
-H 0.629 0.629 0.629
-H -0.629 -0.629 0.629
-H -0.629 0.629 -0.629
-H 0.629 -0.629 -0.629
-`;
+const DEMO_STRUCTURES = [
+  ["proteins/1HTB.pdb", oneHtb],
+  ["proteins/paired.pdb", pairedPdb],
+  ["crystals/caffeine.cif", caffeineCif],
+  ["crystals/MOF-5.xyz", mof5],
+  ["crystals/NV63-cell.xyz", nv63Cell],
+  ["small-molecules/benzene.xyz", benzene],
+  ["small-molecules/caffeine.sdf", caffeineSdf],
+  ["small-molecules/multi-molecule.sdf", multiMolecule],
+  ["small-molecules/NAD.sdf", nad2d],
+  ["trajectories/trajectory.xyz", trajectory],
+  ["trajectories/extxyz-cell.xyz", extxyzCell],
+  ["ketcher/benzene-2d.sdf", ketcher2dBenzene],
+  ["ketcher/core-3d.sdf", ketcher3dCore],
+  ["formats/mini.pdb", miniPdb],
+  ["formats/mini.cif", miniCif],
+  ["formats/mini.sdf", miniSdf],
+  ["formats/mini.xyz", miniXyz],
+] as const;
 
 export function isWebDemoWorkspace() {
   return WEB_DEMO_ENABLED;
@@ -37,10 +50,11 @@ export function isWebDemoWorkspace() {
 
 export function initializeWebDemoWorkspace() {
   if (!WEB_DEMO_ENABLED || files.size > 0) return [];
-  registerText(`${WEB_DEMO_ROOT}/structures/mini-protein.pdb`, miniPdb);
-  registerText(`${WEB_DEMO_ROOT}/structures/ligands/methane.xyz`, methaneXyz);
+  for (const [relativePath, text] of DEMO_STRUCTURES) {
+    registerText(`${WEB_DEMO_ROOT}/${relativePath}`, text);
+  }
   registerText(`${WEB_DEMO_ROOT}/notes/README.md`, "# Burrete browser workspace\n\nOpen a structure or choose a local project folder.\n");
-  return [`${WEB_DEMO_ROOT}/structures/mini-protein.pdb`];
+  return [`${WEB_DEMO_ROOT}/proteins/1HTB.pdb`];
 }
 
 export function webDemoProjectRoot() {
