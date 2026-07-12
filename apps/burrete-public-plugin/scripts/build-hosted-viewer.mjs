@@ -12,6 +12,8 @@ const OUTPUT_WEB_DEMO_ROOT = path.join(APP_ROOT, "public/web-demo");
 const LEGACY_DEMO_ROOT = path.join(APP_ROOT, "public/demo");
 const MOBILE_VIEWER_SOURCE = path.join(APP_ROOT, "assets/burrete-hosted-mobile.js");
 const MOBILE_VIEWER_OUTPUT = path.join(APP_ROOT, "public/burrete-hosted-mobile.js");
+const HOSTED_APP_SOURCE = path.join(APP_ROOT, "assets/burrete-hosted-app.ts");
+const HOSTED_APP_OUTPUT = path.join(APP_ROOT, "public/burrete-hosted-app.js");
 const VIEWER_FILES = [
   "burette-agent.js",
   "viewer-runtime.css",
@@ -42,6 +44,18 @@ await Promise.all([
   ),
   cp(MOBILE_VIEWER_SOURCE, MOBILE_VIEWER_OUTPUT),
 ]);
+
+await run("bun", [
+  "build",
+  HOSTED_APP_SOURCE,
+  "--outfile",
+  HOSTED_APP_OUTPUT,
+  "--target",
+  "browser",
+  "--format",
+  "iife",
+  "--minify",
+], { cwd: REPO_ROOT, env: process.env });
 
 await run("bun", ["run", "build"], {
   cwd: path.join(REPO_ROOT, "apps/desktop"),

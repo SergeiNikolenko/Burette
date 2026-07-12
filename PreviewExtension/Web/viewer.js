@@ -115,6 +115,9 @@
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
   let molstarLassoOverlay = null;
+  const molstarLassoSelectionAtoms = new Map();
+  const molstarLassoSelectionAtomKeys = new Set();
+  const molstarLassoSelectionResidueKeys = new Set();
   let xyzrenderLassoEnabled = false;
   let xyzrenderLassoStroke = null;
   let xyzrenderLassoOverlay = null;
@@ -588,7 +591,13 @@
       return setSdfPoseIndexFromAction(action);
     }
     if (type === 'focus_selection') {
-      return window.BurreteAgent.run({ command: 'focusSelection', args: action.args || {} });
+      return window.BurreteAgent.run({
+        command: 'focusSelection',
+        args: {
+          ...(action.args || {}),
+          selector: action.selector || action.args?.selector || 'last'
+        }
+      });
     }
     if (type === 'label_selection') {
       return window.BurreteAgent.run({
@@ -757,6 +766,72 @@
       }, '*');
     })();
   });
+
+  window.BurreteViewerActions = { run: executeBurreteAgentAction };
+
+  let hostedMcpActionsApplied = false;
+  function hostedMcpSelectionFromResults(actions, results) {
+    let selection = null;
+    for (let index = 0; index < actions.length; index++) {
+      const action = actions[index];
+      const result = results[index];
+      if (action?.type === 'clear_selection' && result?.ok !== false) selection = null;
+      if (action?.type !== 'select_residues' || result?.ok === false) continue;
+      const details = result?.result || {};
+      const residues = Array.isArray(details.residuesPreview)
+        ? details.residuesPreview.slice(0, 96).map(residue => ({
+          chain: String(residue.auth_asym_id || residue.label_asym_id || ''),
+          sequence: residue.auth_seq_id ?? residue.label_seq_id ?? null,
+          compId: String(residue.auth_comp_id || residue.label_comp_id || '')
+        }))
+        : [];
+      selection = {
+        source: 'agent',
+        label: String(action.label || `Agent selection: ${Number(details.counts?.atoms) || 0} atoms across ${residues.length} residues`),
+        atoms: Math.max(0, Number(details.counts?.atoms) || 0),
+        residues,
+        atomIdentities: []
+      };
+    }
+    return selection;
+  }
+
+  async function applyHostedMcpActions() {
+    if (hostedMcpActionsApplied) return;
+    const requestedActions = Array.isArray(window.BurreteConfig?.hostedMcpActions)
+      ? window.BurreteConfig.hostedMcpActions.slice(0, 8)
+      : [];
+    if (!requestedActions.length) return;
+    hostedMcpActionsApplied = true;
+    try {
+      await window.BurreteHostedAppBridge?.ready;
+      const actions = window.BurreteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
+      if (actions.length !== requestedActions.length) {
+        throw new Error('Hosted scene contained an action outside the public Burrete allowlist.');
+      }
+      await window.BurreteAgent?.ready;
+      const results = [];
+      for (const action of actions) results.push(await executeBurreteAgentAction(action));
+      window.__mqlPost?.('sceneActionsApplied', '', {
+        report: {
+          revision: Date.now(),
+          documentId: String(window.BurreteConfig?.documentId || 'active-structure'),
+          selection: hostedMcpSelectionFromResults(actions, results),
+          results
+        }
+      });
+    } catch (error) {
+      window.__mqlPost?.('sceneActionsApplied', '', {
+        report: {
+          revision: Date.now(),
+          results: [agentActionFailure('hosted_scene', 'ACTION_ERROR', error?.message || String(error))]
+        }
+      });
+    }
+  }
+
+  window.addEventListener('burette-agent-ready', () => { void applyHostedMcpActions(); }, { once: true });
+  void applyHostedMcpActions();
 
   function agentActionFailure(command, code, message) {
     return {
@@ -8613,6 +8688,12 @@
     if (!cleared) {
       return sceneActionFailure('clear_selection', 'NOT_IMPLEMENTED', 'Mol* selection managers are unavailable.');
     }
+    molstarLassoSelectionAtoms.clear();
+    molstarLassoSelectionAtomKeys.clear();
+    molstarLassoSelectionResidueKeys.clear();
+    window.__mqlPost?.('selectionChanged', '', {
+      selection: { source: 'viewer', cleared: true, atoms: 0, residues: [], atomIdentities: [] }
+    });
     return { ok: true, command: 'clear_selection', result: { cleared: true } };
   }
 
@@ -10626,6 +10707,9 @@
     if (!additive) {
       selects?.deselectAll?.();
       selection?.clear?.();
+      molstarLassoSelectionAtoms.clear();
+      molstarLassoSelectionAtomKeys.clear();
+      molstarLassoSelectionResidueKeys.clear();
     }
     let selected = 0;
     for (const pick of picks) {
@@ -10643,9 +10727,6 @@
   }
 
   function notifyMolstarLassoSelection(picks, selected) {
-    const atoms = [];
-    const atomKeys = new Set();
-    const residues = new Map();
     for (const pick of picks) {
       const atom = molstarContextAtomFromLoci(pick?.loci);
       if (!atom) continue;
@@ -10654,10 +10735,16 @@
       const compId = String(atom.auth_comp_id || atom.label_comp_id || '').trim();
       const atomName = String(atom.auth_atom_id || atom.label_atom_id || '').trim();
       const atomKey = `${chain}:${sequence ?? ''}:${compId}:${atomName}:${atom.atomIndex ?? ''}`;
-      if (!atomKeys.has(atomKey)) {
-        atomKeys.add(atomKey);
-        atoms.push({ chain, sequence, compId, atomName });
+      molstarLassoSelectionAtomKeys.add(atomKey);
+      molstarLassoSelectionResidueKeys.add(`${chain}:${sequence ?? ''}:${compId}`);
+      if (!molstarLassoSelectionAtoms.has(atomKey) && molstarLassoSelectionAtoms.size < 96) {
+        molstarLassoSelectionAtoms.set(atomKey, { chain, sequence, compId, atomName });
       }
+    }
+    const atoms = Array.from(molstarLassoSelectionAtoms.values());
+    const residues = new Map();
+    for (const atom of atoms) {
+      const { chain, sequence, compId } = atom;
       const residueKey = `${chain}:${sequence ?? ''}:${compId}`;
       if (!residues.has(residueKey) && residues.size < 96) {
         residues.set(residueKey, { chain, sequence, compId });
@@ -10666,10 +10753,12 @@
     window.__mqlPost?.('selectionChanged', '', {
       selection: {
         source: 'lasso',
-        label: `Lasso selection: ${atoms.length} visible atom${atoms.length === 1 ? '' : 's'} across ${residues.size} residue${residues.size === 1 ? '' : 's'}`,
-        atoms: atoms.length,
+        label: `Lasso selection: ${molstarLassoSelectionAtomKeys.size} visible atom${molstarLassoSelectionAtomKeys.size === 1 ? '' : 's'} across ${molstarLassoSelectionResidueKeys.size} residue${molstarLassoSelectionResidueKeys.size === 1 ? '' : 's'}`,
+        atoms: molstarLassoSelectionAtomKeys.size,
+        residueCount: molstarLassoSelectionResidueKeys.size,
         visibleTargets: selected,
-        residues: Array.from(residues.values())
+        residues: Array.from(residues.values()),
+        atomIdentities: atoms
       }
     });
   }

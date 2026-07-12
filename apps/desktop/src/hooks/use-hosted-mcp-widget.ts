@@ -54,16 +54,23 @@ export function useHostedMcpWidget({
         opened?.label === structure.label
         && opened.format === structure.format
         && opened.data === structure.data
+        && JSON.stringify(opened.source) === JSON.stringify(structure.source)
+        && JSON.stringify(opened.actions) === JSON.stringify(structure.actions)
       ) return;
 
       openedStructureRef.current = structure;
+      window.BurreteHostedAppBridge?.setSource(structure.source);
+      void window.BurreteHostedAppBridge?.updateSelection(null, "active-structure");
       openSequenceRef.current += 1;
       const sequence = openSequenceRef.current;
       forgetOpenedDocument();
       closeAllDocuments();
       void openBrowserDevMolstarContextDocument({
         label: structure.label,
-        context: { hostedMcpWidget: true },
+        context: {
+          hostedMcpWidget: true,
+          hostedMcpActions: structure.actions,
+        },
         entries: [{
           role: "structure",
           label: structure.label,

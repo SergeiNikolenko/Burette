@@ -95,6 +95,11 @@ export function useAppViewerStateMessages({
       return true;
     }
 
+    if (sourceName === "burrete-viewer" && body?.type === "sceneActionsApplied") {
+      void window.BurreteHostedAppBridge?.updateScene(body.report);
+      return true;
+    }
+
     if (sourceName === "burrete-viewer" && body?.type === "structureOverlayModeChanged") {
       const documentId = bodyString(body.documentId);
       if (!documentId) return true;
