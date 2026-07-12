@@ -9842,6 +9842,13 @@
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
       refreshNativeTrajectoryStandalonePreview();
+      postHostMessage({
+        type: 'trajectoryFrameChanged',
+        documentId: activeConfig?.documentId || '',
+        frameIndex: activePose,
+        frameCount: prepared.poseCount,
+        playing: loopActive
+      });
     };
     const setAnimationOptionsOpen = (open) => {
       root.classList.toggle('buret-docking-poses-animation-open', Boolean(open));
@@ -9863,6 +9870,13 @@
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
       if (active) setAnimationOptionsOpen(true);
+      postHostMessage({
+        type: 'trajectoryFrameChanged',
+        documentId: activeConfig?.documentId || '',
+        frameIndex: activePose,
+        frameCount: prepared.poseCount,
+        playing: loopActive
+      });
     };
     updateControls();
     updateSpeedMode();

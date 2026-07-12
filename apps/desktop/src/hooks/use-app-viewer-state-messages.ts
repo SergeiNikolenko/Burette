@@ -67,6 +67,11 @@ export function useAppViewerStateMessages({
       return true;
     }
 
+    if (sourceName === "burrete-viewer" && body?.type === "trajectoryFrameChanged") {
+      window.dispatchEvent(new CustomEvent("burrete:trajectory-frame-changed", { detail: body }));
+      return true;
+    }
+
     if (sourceName === "burrete-viewer" && body?.type === "selectionChanged") {
       const documentId = bodyString(body.documentId);
       if (!documentId) return true;

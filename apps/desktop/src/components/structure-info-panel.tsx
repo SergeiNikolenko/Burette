@@ -46,6 +46,11 @@ type TrajectorySmoothingResult = {
   filteredSignal: number[];
   interpolation: string;
 };
+type TrajectoryPlaybackState = {
+  frameIndex: number;
+  frameCount: number;
+  playing: boolean;
+};
 
 const SDF_CONTEXT_STYLE_OPTIONS = [
   { value: "line", label: "Line" },
@@ -93,6 +98,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const [trajectorySmoothingBuilt, setTrajectorySmoothingBuilt] = useState(false);
   const [trajectorySmoothingView, setTrajectorySmoothingView] = useState<"original" | "smoothed">("original");
   const [trajectorySmoothingResult, setTrajectorySmoothingResult] = useState<TrajectorySmoothingResult | null>(null);
+  const [trajectoryPlayback, setTrajectoryPlayback] = useState<TrajectoryPlaybackState | null>(null);
   const foldingResult = useFoldingResult(document);
 
   useEffect(() => {
@@ -100,6 +106,22 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
     setTrajectorySmoothingBuilt(false);
     setTrajectorySmoothingView("original");
     setTrajectorySmoothingResult(null);
+    setTrajectoryPlayback(null);
+  }, [document?.id]);
+
+  useEffect(() => {
+    const handle = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      if (String(detail?.documentId || "") !== document?.id) return;
+      const frameCount = Math.max(1, Math.trunc(Number(detail.frameCount) || 1));
+      setTrajectoryPlayback({
+        frameIndex: Math.max(0, Math.min(frameCount - 1, Math.trunc(Number(detail.frameIndex) || 0))),
+        frameCount,
+        playing: detail.playing === true,
+      });
+    };
+    window.addEventListener("burrete:trajectory-frame-changed", handle);
+    return () => window.removeEventListener("burrete:trajectory-frame-changed", handle);
   }, [document?.id]);
 
   useEffect(() => {
@@ -152,6 +174,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const compositionError = isVirtualMolstarScene(document) ? null : rawCompositionError;
   const selectedEntity = selectedStructureRow(document, compositionSummary, activeActionKey);
   const poseControls = structurePoseControlsFor(document, compositionSummary);
+  const trajectoryDocument = isTrajectorySmoothingDocument(document, poseControls);
   const contextStyleCard = structureContextStyleCardFor(document, compositionSummary, structureOverlayMode);
   const latestXtbJob = latestXtbJobForDocument(document, xtbJobs);
   const structureXtbArtifact = xtbArtifactInfoForPath(document.path, document.extension);
@@ -254,7 +277,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
 
       <FoldingResultsPanel state={foldingResult} actions={actions} />
 
-      {!hostedMcpWidget ? <>
+      {!hostedMcpWidget && !trajectoryDocument ? <>
         <ConformerWorkflowCard
           document={document}
           selectedEntity={selectedEntity}
@@ -339,7 +362,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
 
       {poseControls ? (
         <>
-          {isTrajectorySmoothingDocument(document, poseControls) ? (
+          {trajectoryDocument ? (
             <TrajectorySmoothingCard
               document={document}
               controls={poseControls}
@@ -360,15 +383,18 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
               view={trajectorySmoothingView}
               setView={setTrajectorySmoothingView}
               result={trajectorySmoothingResult}
+              playback={trajectoryPlayback}
             />
           ) : null}
-          <StructurePoseControlsCard
-            document={document}
-            controls={poseControls}
-            actions={actions}
-            activeActionKey={activeActionKey}
-            setActiveActionKey={setActiveActionKey}
-          />
+          {!trajectoryDocument ? (
+            <StructurePoseControlsCard
+              document={document}
+              controls={poseControls}
+              actions={actions}
+              activeActionKey={activeActionKey}
+              setActiveActionKey={setActiveActionKey}
+            />
+          ) : null}
         </>
       ) : null}
 
@@ -510,8 +536,8 @@ function structurePoseControlsFor(document: ViewerDocument, summary: StructureCo
   return null;
 }
 
-function isTrajectorySmoothingDocument(document: ViewerDocument, controls: StructurePoseControls) {
-  return controls.actions.length > 1 && (document.extension === "pdb" || document.extension === "ent" || document.extension === "xyz");
+function isTrajectorySmoothingDocument(document: ViewerDocument, controls: StructurePoseControls | null) {
+  return Boolean(controls && controls.actions.length > 1 && (document.extension === "pdb" || document.extension === "ent" || document.extension === "xyz"));
 }
 
 function TrajectorySmoothingCard({
@@ -534,6 +560,7 @@ function TrajectorySmoothingCard({
   view,
   setView,
   result,
+  playback,
 }: {
   document: ViewerDocument;
   controls: StructurePoseControls;
@@ -554,6 +581,7 @@ function TrajectorySmoothingCard({
   view: "original" | "smoothed";
   setView: (value: "original" | "smoothed") => void;
   result: TrajectorySmoothingResult | null;
+  playback: TrajectoryPlaybackState | null;
 }) {
   const frameCount = controls.actions.length;
   const apply = () => {
@@ -637,7 +665,7 @@ function TrajectorySmoothingCard({
               ))}
             </div>
           ) : null}
-          {result ? <TrajectorySmoothingChart result={result} /> : null}
+          {result ? <TrajectorySmoothingChart result={result} playback={playback} /> : null}
           <button type="button" className="dock-action trajectory-smoothing-build" onClick={apply}>
             {built ? "Rebuild smoothed motion" : "Build smoothed motion"}
           </button>
@@ -647,7 +675,7 @@ function TrajectorySmoothingCard({
   );
 }
 
-function TrajectorySmoothingChart({ result }: { result: TrajectorySmoothingResult }) {
+function TrajectorySmoothingChart({ result, playback }: { result: TrajectorySmoothingResult; playback: TrajectoryPlaybackState | null }) {
   const width = 300;
   const height = 112;
   const padding = 10;
@@ -660,15 +688,22 @@ function TrajectorySmoothingChart({ result }: { result: TrajectorySmoothingResul
     const y = height - padding - (value - min) * (height - padding * 2) / span;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
+  const activeIndex = playback
+    ? Math.max(0, Math.min(result.filteredSignal.length - 1, playback.frameIndex))
+    : 0;
+  const activeX = padding + activeIndex * (width - padding * 2) / Math.max(1, result.filteredSignal.length - 1);
   return (
     <div className="trajectory-smoothing-chart">
       <div className="trajectory-smoothing-chart-header">
         <strong>RMSD signal</strong>
-        <span>{result.keyframeCount} key frames</span>
+        <span className="trajectory-smoothing-playback" data-playing={playback?.playing || undefined}>
+          {playback?.playing ? "Playing · " : ""}Frame {(playback?.frameIndex ?? 0) + 1} / {playback?.frameCount ?? result.frameCount}
+        </span>
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Raw and filtered RMSD across trajectory frames">
         <polyline className="trajectory-smoothing-chart-raw" points={points(result.rawSignal)} />
         <polyline className="trajectory-smoothing-chart-filtered" points={points(result.filteredSignal)} />
+        <line className="trajectory-smoothing-chart-playhead" x1={activeX} x2={activeX} y1={padding} y2={height - padding} />
         {result.keyframes.map((frame) => {
           const index = Math.max(0, Math.min(result.filteredSignal.length - 1, frame));
           const x = padding + index * (width - padding * 2) / Math.max(1, result.filteredSignal.length - 1);
@@ -676,7 +711,7 @@ function TrajectorySmoothingChart({ result }: { result: TrajectorySmoothingResul
           return <circle key={frame} cx={x} cy={y} r="2.6" />;
         })}
       </svg>
-      <div className="trajectory-smoothing-chart-legend"><span>Raw</span><span>Filtered</span></div>
+      <div className="trajectory-smoothing-chart-legend"><span>Raw</span><span>Filtered</span><span>{result.keyframeCount} key frames</span></div>
     </div>
   );
 }

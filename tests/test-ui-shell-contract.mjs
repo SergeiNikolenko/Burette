@@ -2307,6 +2307,12 @@ assert.match(structureInfoPanel, /function normalizeSdfContextColor\(value: stri
 assert.match(structureInfoPanel, /function readSdfContextColorPreference\(document: ViewerDocument\): SdfContextColor/);
 assert.match(structureInfoPanel, /function writeSdfContextColorPreference\(document: ViewerDocument, value: SdfContextColor\)/);
 assert.match(structureInfoPanel, /function StructurePoseControlsCard/);
+assert.match(structureInfoPanel, /!hostedMcpWidget && !trajectoryDocument/);
+assert.match(structureInfoPanel, /!trajectoryDocument \? \(\s*<StructurePoseControlsCard/);
+assert.match(structureInfoPanel, /trajectory-smoothing-chart-playhead/);
+assert.match(structureInfoPanel, /Playing · /);
+assert.match(viewer, /type: 'trajectoryFrameChanged'/);
+assert.match(appViewerStateMessagesHook, /burrete:trajectory-frame-changed/);
 assert.match(structureInfoPanel, /StructureSectionHeader title=\{controls\.title\} detail=\{controls\.detail\}/);
 assert.match(structureInfoPanel, /actions: Array<StructureViewerAction & \{ type: "set_structure_pose" \}>/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);

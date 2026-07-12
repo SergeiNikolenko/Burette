@@ -3360,10 +3360,15 @@ img.radix-menu-item-icon {
 .trajectory-smoothing-chart polyline { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
 .trajectory-smoothing-chart-raw { stroke: var(--text-secondary); stroke-width: 1; opacity: 0.52; }
 .trajectory-smoothing-chart-filtered { stroke: var(--accent); stroke-width: 2; }
+.trajectory-smoothing-chart-playhead { stroke: var(--text-primary); stroke-width: 1.5; opacity: 0.8; vector-effect: non-scaling-stroke; }
 .trajectory-smoothing-chart circle { fill: var(--accent); stroke: var(--surface-primary); stroke-width: 1.25; vector-effect: non-scaling-stroke; }
 .trajectory-smoothing-chart-legend { justify-content: flex-start; gap: 16px; padding: 0 9px 8px; }
 .trajectory-smoothing-chart-legend span::before { content: ""; display: inline-block; width: 13px; height: 2px; margin: 0 5px 3px 0; background: var(--text-secondary); opacity: 0.52; }
-.trajectory-smoothing-chart-legend span:last-child::before { height: 3px; background: var(--accent); opacity: 1; }
+.trajectory-smoothing-chart-legend span:nth-child(2)::before { height: 3px; background: var(--accent); opacity: 1; }
+.trajectory-smoothing-chart-legend span:last-child { margin-left: auto; }
+.trajectory-smoothing-chart-legend span:last-child::before { display: none; }
+.trajectory-smoothing-playback[data-playing] { color: var(--accent); font-weight: 600; }
+.trajectory-smoothing-playback[data-playing]::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 5px 1px 0; border-radius: 50%; background: currentColor; }
 .trajectory-smoothing-card button:focus-visible,
 .trajectory-smoothing-card input:focus-visible,
 .trajectory-smoothing-card select:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 1px; }
