@@ -675,6 +675,7 @@ assert.match(previewRuntimeViewer, /let rdkit_js = asset_url\(&assets\.join\("rd
 assert.match(previewRuntimeViewer, /let rdkit_wasm = asset_url\(&assets\.join\("rdkit\/RDKit_minimal\.wasm"\)\)/);
 assert.match(previewRuntimeViewer, /window\.BurreteRDKitJSURL = \{rdkit_js:\?\};/);
 assert.match(previewRuntimeViewer, /window\.BurreteRDKitWasmURL = \{rdkit_wasm:\?\};/);
+assert.match(previewRuntimeViewer, /VIEWER_MOLSTAR_CSP[^\n]*script-src[^\n]*'wasm-unsafe-eval'/);
 assert.match(buildScript, /built desktop app Resources\/Web was overwritten by the preview shell/);
 assert.match(buildScript, /Contents\/Resources\/ViewerWeb\/viewer-shell\.js/);
 assert.match(desmondPreviewExtract, /from schrodinger\.application\.desmond\.packages import topo, traj/);
