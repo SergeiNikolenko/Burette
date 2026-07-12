@@ -87,10 +87,10 @@ describe("viewer resource contract", () => {
 
   test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v10.html");
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v11.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-hosted-mobile-v1");
+    expect(html).toContain("?v=viewer-hosted-mobile-v2");
     expect(html).toContain(`https://burrete.example${VIEWER_MOBILE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
     expect(html).toContain("ui/notifications/tool-result");
@@ -114,7 +114,11 @@ describe("viewer resource contract", () => {
     expect(source).toContain('root.id = "app"');
     expect(source).toContain('quickLookBuild: "burrete-hosted-mobile-direct"');
     expect(source).toContain('molstarPowerPreference: "default"');
-    expect(source).toContain('molstarResolutionMode: "scaled"');
+    expect(source).toContain('molstarPreferWebgl1: false');
+    expect(source).toContain('molstarDisableAntialiasing: false');
+    expect(source).toContain('molstarPixelScale: 1');
+    expect(source).toContain('molstarPickScale: 1');
+    expect(source).toContain('molstarResolutionMode: "native"');
     expect(source).toContain('method: "ui/update-model-context"');
     expect(source).not.toContain("<iframe");
     expect(source).not.toContain("srcdoc");
