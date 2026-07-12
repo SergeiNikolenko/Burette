@@ -19,17 +19,24 @@ the root URL redirects to the public plugin documentation.
 ## MCP contract
 
 The production Streamable HTTP endpoint is
-<https://burrete-plugin.vercel.app/mcp>. It exposes two no-auth tools:
+<https://burrete-plugin.vercel.app/mcp>. It exposes three no-auth tools:
 
 | Tool | Behavior |
 | --- | --- |
 | `preview_molecular_file` | Reads one ChatGPT-authorized PDB, ENT, PDBQT, CIF, mmCIF, SDF, SD, XYZ, or extXYZ attachment. |
 | `preview_pdb_structure` | Retrieves one public RCSB structure from an explicit four-character PDB ID. |
+| `render_molecular_scene` | Re-renders one PDB entry or authorized attachment with bounded select, focus, clear, reset, and component visibility actions. |
 
-Both tools are read-only, idempotent, non-destructive, and cannot write to the
+All tools are read-only, idempotent, non-destructive, and cannot write to the
 public internet. Each declares an exact output schema and renders
-`ui://burrete/molecular-viewer-v15.html` with MIME type
+`ui://burrete/molecular-viewer-v16.html` with MIME type
 `text/html;profile=mcp-app`.
+
+The widget uses the MCP Apps handshake before publishing bounded selection or
+scene state through `ui/update-model-context`. Lasso selection includes up to
+96 atom identities and residues, and clearing the selection explicitly clears
+the model-visible state. Viewer actions run client-side in the isolated widget;
+the server does not persist a shared molecular workspace.
 
 The model receives only bounded structure summaries. Original molecular text
 is placed in tool-result `_meta`, which is delivered to the viewer but hidden

@@ -31,6 +31,18 @@
         "open_world_justification": "Reads public structure data without writing to RCSB or any other external system.",
         "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
       }
+    },
+    "render_molecular_scene": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Only re-renders one explicitly supplied structure with bounded client-side viewer actions and does not save a workspace.",
+        "open_world_justification": "Viewer actions affect only the isolated result widget and do not write to RCSB or another external system.",
+        "destructive_justification": "Cannot modify the source file, persist a molecular edit, or perform an irreversible external action."
+      }
     }
   },
   "test_cases": [
@@ -65,13 +77,11 @@
       "expected_output_url": null
     },
     {
-      "description": "Preview an attached XYZ geometry.",
-      "user_prompt": "Visualize this XYZ geometry and report its atom and element counts.",
-      "file_attachment_urls": [
-        "https://raw.githubusercontent.com/SergeiNikolenko/Burrete/main/samples/mini.xyz"
-      ],
-      "tools_triggered": "preview_molecular_file",
-      "expected_output": "Returns bounded XYZ atom and element counts and opens the geometry in the interactive viewer.",
+      "description": "Select and focus a residue range in a public PDB scene.",
+      "user_prompt": "Open PDB 1CRN, select residues 10 through 20 in chain A, focus that selection, and hide water.",
+      "file_attachment_urls": null,
+      "tools_triggered": "render_molecular_scene",
+      "expected_output": "Re-renders 1CRN, selects and focuses the requested chain A residue range, hides water, and reports the bounded client-side action results.",
       "expected_output_url": null
     },
     {

@@ -26,6 +26,7 @@ const submission = JSON.parse(
 const publicToolNames = [
   "preview_molecular_file",
   "preview_pdb_structure",
+  "render_molecular_scene",
 ] as const;
 
 describe("plugin submission bundle", () => {
@@ -53,12 +54,15 @@ describe("plugin submission bundle", () => {
         testCase.tools_triggered,
       );
     }
+    for (const toolName of publicToolNames) {
+      expect(submission.test_cases.map((testCase) => testCase.tools_triggered)).toContain(toolName);
+    }
     for (const testCase of submission.negative_test_cases) {
       expect(testCase.tools_triggered).toBeNull();
     }
   });
 
-  test("ships a narrowly scoped skill that names both public tools", () => {
+  test("ships a narrowly scoped skill that names every public tool", () => {
     const skill = readFileSync(
       resolve(
         packageRoot,
