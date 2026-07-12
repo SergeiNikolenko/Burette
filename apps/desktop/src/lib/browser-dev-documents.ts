@@ -620,6 +620,20 @@ async function openBrowserDevDocument(
   documentId?: string,
 ): Promise<ViewerDocument> {
   const extension = fileExtension(path);
+  const virtualText = browserDevVirtualTextDocuments.get(path);
+  if (virtualText !== undefined) {
+    const bytes = new TextEncoder().encode(virtualText);
+    if (bytes.length === 0) throw new Error(`${path} is empty`);
+    return openBrowserDevDocumentFromBytes(
+      path,
+      extension,
+      bytes,
+      bytes.length,
+      preferences,
+      reloadOptions,
+      documentId,
+    );
+  }
   const amberNcPreview = await requestBrowserDevAmberNcPreview(path, extension);
   if (amberNcPreview) {
     return openBrowserDevDocumentFromBytes(
@@ -954,6 +968,11 @@ function isCoordinateTrajectoryPayload(payload: BrowserDevDockingPayload) {
 
 async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDockingPayload> {
   const extension = fileExtension(path);
+  const virtualText = browserDevVirtualTextDocuments.get(path);
+  if (virtualText !== undefined) {
+    const bytes = new TextEncoder().encode(virtualText);
+    return browserDevDockingPayloadFromBytes(path, extension, bytes, bytes.length);
+  }
   const response = await fetch(browserDevReadUrl(path, extension));
   if (!response.ok) throw new Error(`${path}: ${response.status} ${response.statusText}`);
   const originalBytes = new Uint8Array(await response.arrayBuffer());
@@ -961,6 +980,15 @@ async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDoc
   if (originalBytes.length > MAX_STRUCTURE_FILE_SIZE) {
     throw new Error(`${path} is larger than the 75 MB preview limit`);
   }
+  return browserDevDockingPayloadFromBytes(path, extension, originalBytes, originalBytes.length);
+}
+
+async function browserDevDockingPayloadFromBytes(
+  path: string,
+  extension: string,
+  originalBytes: Uint8Array,
+  byteCount: number,
+): Promise<BrowserDevDockingPayload> {
   const title = fileTitle(path);
   const text = await decodeStructureText(originalBytes, extension);
   const sourceXyzFrameCount = countXyzFrames(text);
@@ -975,13 +1003,13 @@ async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDoc
       extension,
       format: { ...format, molstarFormat: converted.molstarFormat, binary: false, externalOnly: false },
       bytes: converted.bytes,
-      byteCount: originalBytes.length,
+      byteCount,
     };
   }
   if (format.externalOnly) {
     throw new Error(`${path} cannot be added to Mol* docking view because it needs xyzrender conversion`);
   }
-  return { path, title, extension, format, bytes: originalBytes, byteCount: originalBytes.length };
+  return { path, title, extension, format, bytes: originalBytes, byteCount };
 }
 
 function splitXyzFrameTexts(text: string) {
