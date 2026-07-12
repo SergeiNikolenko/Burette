@@ -20,6 +20,15 @@ interface Window {
   __BURRETE_HOSTED_MCP_BRIDGE_READY__?: boolean;
   __BURRETE_HOSTED_MCP_RESULTS__?: unknown[];
   __BURRETE_HOSTED_MCP_WIDGET__?: boolean;
+  BurreteHostedAppBridge?: {
+    ready: Promise<boolean>;
+    setSource: (source: unknown) => void;
+    updateSelection: (selection: unknown, documentId: string) => Promise<boolean>;
+    updateScene: (report: unknown) => Promise<boolean>;
+    sanitizeViewerActions: (actions: unknown) => Record<string, unknown>[];
+  };
+  __BURRETE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;
+  __BURRETE_HOSTED_APP_READY__?: (ready: boolean) => void;
   __BURRETE_WEB_ASSETS_BASE__?: string;
   __BURRETE_BOOT_OVERLAY__?: {
     report: (message: string, details?: string) => void;

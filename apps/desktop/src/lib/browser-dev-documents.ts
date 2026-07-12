@@ -414,6 +414,9 @@ export async function openBrowserDevMolstarContextDocument(
     const config = {
       ...browserDevContextConfig(label, entry.format, entry.bytes.length, contextPreferences, id),
       hostedMcpWidgetBootstrap: hostedMcpWidget,
+      hostedMcpActions: hostedMcpWidget && Array.isArray(contextDocument.context?.hostedMcpActions)
+        ? contextDocument.context.hostedMcpActions.slice(0, 8)
+        : [],
       molstarContextFocus: contextFocus,
     };
     const virtualPath = `burrete-context://${id}`;

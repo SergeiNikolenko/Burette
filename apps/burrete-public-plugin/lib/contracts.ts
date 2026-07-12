@@ -100,6 +100,61 @@ export const fileReferenceSchema = z.object({
   file_name: z.string().min(1).max(255).optional(),
 });
 
+export const viewerSelectorSchema = z.object({
+  kind: z.enum(["all", "polymer", "protein", "nucleic", "ligand", "ion", "water"]).optional(),
+  auth_asym_id: z.string().trim().min(1).max(32).optional(),
+  label_asym_id: z.string().trim().min(1).max(32).optional(),
+  auth_comp_id: z.string().trim().min(1).max(16).optional(),
+  label_comp_id: z.string().trim().min(1).max(16).optional(),
+  auth_seq_id: z.number().int().optional(),
+  label_seq_id: z.number().int().optional(),
+  beg_auth_seq_id: z.number().int().optional(),
+  end_auth_seq_id: z.number().int().optional(),
+  beg_label_seq_id: z.number().int().optional(),
+  end_label_seq_id: z.number().int().optional(),
+}).strict();
+
+const selectActionSchema = z.object({
+  type: z.literal("select_residues"),
+  selector: viewerSelectorSchema,
+  mode: z.literal("replace").optional(),
+  granularity: z.enum(["atom", "residue", "chain"]).optional(),
+  label: z.string().trim().max(128).optional(),
+}).strict();
+
+const focusActionSchema = z.object({
+  type: z.literal("focus_selection"),
+  selector: viewerSelectorSchema.optional(),
+}).strict();
+
+const visibilityActionSchema = z.object({
+  type: z.enum(["hide_components", "show_components"]),
+  kind: z.enum(["polymer", "ligand", "ion", "water"]),
+}).strict();
+
+export const viewerActionSchema = z.discriminatedUnion("type", [
+  selectActionSchema,
+  focusActionSchema,
+  visibilityActionSchema,
+  z.object({ type: z.literal("clear_selection") }).strict(),
+  z.object({ type: z.literal("reset_camera") }).strict(),
+]);
+
+const sceneActionsSchema = z.array(viewerActionSchema).min(1).max(8);
+
+export const molecularSceneInputSchema = z.discriminatedUnion("source", [
+  z.object({
+    source: z.literal("pdb"),
+    pdbId: z.string().trim().regex(/^[0-9][A-Za-z0-9]{3}$/u),
+    actions: sceneActionsSchema,
+  }).strict(),
+  z.object({
+    source: z.literal("attachment"),
+    structureFile: fileReferenceSchema,
+    actions: sceneActionsSchema,
+  }).strict(),
+]);
+
 export function viewerToolMeta(invoking: string, invoked: string) {
   return {
     securitySchemes: NOAUTH_SECURITY_SCHEMES,
