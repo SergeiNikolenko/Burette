@@ -2318,6 +2318,7 @@ assert.match(structureInfoPanel, /trajectory-smoothing-chart-playhead/);
 assert.match(structureInfoPanel, /Playing · /);
 assert.match(structureInfoPanel, /TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO/);
 assert.match(structureInfoPanel, /await runMdsmooth\(/);
+assert.match(structureInfoPanel, /function trajectoryPlaybackControlsFor/);
 assert.match(structureInfoPanel, /role="slider"/);
 assert.match(structureInfoPanel, /onPointerMove=/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);

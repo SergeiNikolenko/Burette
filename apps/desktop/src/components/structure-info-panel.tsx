@@ -189,7 +189,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const rawCompositionError = composition.documentId === document.id ? composition.error : null;
   const compositionError = isVirtualMolstarScene(document) ? null : rawCompositionError;
   const selectedEntity = selectedStructureRow(document, compositionSummary, activeActionKey);
-  const poseControls = structurePoseControlsFor(document, compositionSummary);
+  const poseControls = structurePoseControlsFor(document, compositionSummary) ?? trajectoryPlaybackControlsFor(document, trajectoryPlayback);
   const trajectoryDocument = isTrajectorySmoothingDocument(document, poseControls);
   const contextStyleCard = structureContextStyleCardFor(document, compositionSummary, structureOverlayMode);
   const latestXtbJob = latestXtbJobForDocument(document, xtbJobs);
@@ -562,6 +562,21 @@ function isTrajectorySmoothingDocument(document: ViewerDocument, controls: Struc
   return Boolean(controls && controls.actions.length > 1 && (
     TRAJECTORY_SMOOTHING_EXTENSIONS.has(document.extension) || document.dockingRequest?.ligandPaths.length
   ));
+}
+
+function trajectoryPlaybackControlsFor(document: ViewerDocument, playback: TrajectoryPlaybackState | null): StructurePoseControls | null {
+  if (!document.dockingRequest || !playback || playback.frameCount <= 1 || playback.frameCount > INFO_TRAJECTORY_CONTROL_LIMIT) return null;
+  return {
+    kind: "frames",
+    title: "Frames",
+    detail: `${playback.frameCount} frames`,
+    controlLabel: "Frame",
+    actions: Array.from({ length: playback.frameCount }, (_, index) => ({
+      type: "set_structure_pose",
+      label: `Show frame ${index + 1}`,
+      index,
+    })),
+  };
 }
 
 function TrajectorySmoothingCard({
