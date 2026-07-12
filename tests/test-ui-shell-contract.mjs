@@ -5275,8 +5275,10 @@ assert.match(previewViewController, /private func presentJavaScriptExportSavePan
 assert.match(previewViewController, /let panel = NSSavePanel\(\)/);
 assert.match(previewViewController, /try data\.write\(to: url, options: \[\.atomic\]\)/);
 assert.match(browserDevDocuments, /export async function openBrowserDevMolstarContextDocument/);
+assert.match(browserDevDocuments, /const hostedMcpWidget = contextDocument\.context\?\.hostedMcpWidget === true;/);
+assert.match(browserDevDocuments, /\? \{ \.\.\.preferences, canvasBackground: "black" as const \}/);
 assert.match(browserDevDocuments, /entry\.role === "ligand" && entry\.extension === "sdf" && entry\.format\.molstarFormat === "sdf"/);
-assert.match(browserDevDocuments, /openBrowserDevTextDocument\([\s\S]*?\{ \.\.\.preferences, rendererMode: "molstar" \},[\s\S]*?\{\},[\s\S]*?\)/);
+assert.match(browserDevDocuments, /openBrowserDevTextDocument\([\s\S]*?\{ \.\.\.contextPreferences, rendererMode: "molstar" \},[\s\S]*?\{\},[\s\S]*?\)/);
 assert.match(browserDevDocuments, /return \{ \.\.\.document, title: label \};/);
 assert.match(browserDevDocuments, /molstarContextFocus: contextFocus/);
 assert.match(previewViewer, /async function applyMolstarContextFocus\(config\)/);
