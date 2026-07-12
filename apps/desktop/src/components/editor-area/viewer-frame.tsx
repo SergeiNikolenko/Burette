@@ -7,7 +7,7 @@ import { isHostedMcpWidget } from "../../lib/hosted-mcp-widget";
 export function viewerFrameSandbox() {
   if (isTauriRuntime()) return "allow-scripts allow-downloads";
   return isHostedMcpWidget()
-    ? "allow-scripts"
+    ? undefined
     : "allow-scripts allow-downloads allow-same-origin";
 }
 
@@ -26,7 +26,7 @@ export function ViewerFrame({
     ref: iframeRef,
     title: document.title,
     className,
-    sandbox,
+    ...(sandbox ? { sandbox } : {}),
     referrerPolicy: "no-referrer" as const,
     "data-document-id": document.id,
     "data-renderer": document.renderer,

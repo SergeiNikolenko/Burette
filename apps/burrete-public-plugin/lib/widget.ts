@@ -1,9 +1,10 @@
-export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v2.html";
+export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v6.html";
 export const VIEWER_SHELL_SCRIPT_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.js";
 export const VIEWER_SHELL_STYLES_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.css";
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-absolute-assets-v1";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
@@ -41,8 +42,8 @@ export function createViewerResourceMeta(appOrigin: string) {
 }
 
 export function createViewerWidgetHtml(assetOrigin = ""): string {
-  const shellScript = assetUrl(assetOrigin, VIEWER_SHELL_SCRIPT_PATH);
-  const shellStyles = assetUrl(assetOrigin, VIEWER_SHELL_STYLES_PATH);
+  const shellScript = `${assetUrl(assetOrigin, VIEWER_SHELL_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
+  const shellStyles = `${assetUrl(assetOrigin, VIEWER_SHELL_STYLES_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const viewerAssets = assetUrl(assetOrigin, VIEWER_RUNTIME_ASSETS_PATH);
   const bootstrap = serializeForInlineScript({
     viewerAssets,
