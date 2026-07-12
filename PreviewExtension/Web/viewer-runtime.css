@@ -2066,11 +2066,11 @@ body.burette-mobile-host .buret-docking-poses button {
 }
 @media (max-width: 360px) {
   .buret-docking-poses {
-    width: calc(100vw - 24px);
+    width: calc(100vw - 78px);
   }
   .buret-docking-pose-main {
     display: grid;
-    grid-template-columns: 28px auto minmax(62px, 1fr) auto;
+    grid-template-columns: 28px auto minmax(62px, 1fr) auto auto;
     width: 100%;
   }
   .buret-docking-pose-main > span {
@@ -2078,10 +2078,6 @@ body.burette-mobile-host .buret-docking-poses button {
   }
   .buret-docking-pose-main > button:not(.buret-docking-pose-animation-button) {
     padding-inline: 7px;
-  }
-  .buret-trajectory-smooth-button {
-    grid-column: 1 / 3;
-    justify-self: start;
   }
   .buret-docking-pose-animation {
     width: 100%;
