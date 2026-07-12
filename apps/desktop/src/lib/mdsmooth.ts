@@ -49,6 +49,30 @@ export type MdsmoothResult = {
   interpolation: string;
 };
 
+export type MdsmoothCapabilities = {
+  ok: true;
+  signals: MdsmoothSignal[];
+  modes: MdsmoothMode[];
+  formats: string[];
+  deepTicaInstalled: boolean;
+};
+
+async function runMdsmoothOperation<T>(request: Record<string, unknown>): Promise<T> {
+  if (isTauriRuntime()) return invoke<T>("run_mdsmooth", { request });
+  const response = await fetch("/__burette/mdsmooth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  const payload = await response.json() as T & { error?: string; ok?: boolean };
+  if (!response.ok || payload.ok !== true) throw new Error(payload.error || "MDSmooth operation failed");
+  return payload;
+}
+
+export function getMdsmoothCapabilities(): Promise<MdsmoothCapabilities> {
+  return runMdsmoothOperation<MdsmoothCapabilities>({ operation: "capabilities" });
+}
+
 export async function runMdsmooth(request: MdsmoothRequest): Promise<MdsmoothResult> {
   if (isTauriRuntime()) return invoke<MdsmoothResult>("run_mdsmooth", { request });
   let response: Response;
@@ -69,15 +93,5 @@ export async function runMdsmooth(request: MdsmoothRequest): Promise<MdsmoothRes
 }
 
 export async function installDeepTica(): Promise<void> {
-  const request = { operation: "installDeepTica" };
-  if (isTauriRuntime()) {
-    await invoke("run_mdsmooth", { request });
-    return;
-  }
-  const response = await fetch("/__burette/mdsmooth", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!response.ok) throw new Error(await response.text());
+  await runMdsmoothOperation({ operation: "installDeepTica" });
 }

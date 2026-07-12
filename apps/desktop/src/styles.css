@@ -3411,6 +3411,7 @@ img.radix-menu-item-icon {
 .trajectory-smoothing-field-label { color: var(--text-secondary); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 .trajectory-smoothing-pending { padding: 8px 9px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line-subtler)); border-radius: 8px; background: color-mix(in srgb, var(--accent) 8%, transparent); color: var(--text-secondary); font-size: 11px; line-height: 1.4; }
 .trajectory-smoothing-error { padding: 8px 9px; border: 1px solid color-mix(in srgb, var(--danger, #c43b45) 35%, var(--line-subtler)); border-radius: 8px; background: color-mix(in srgb, var(--danger, #c43b45) 8%, transparent); color: var(--text-primary); font-size: 11px; line-height: 1.4; }
+.trajectory-smoothing-runtime-ready { padding: 7px 9px; border: 1px solid color-mix(in srgb, #2da66f 34%, var(--line-subtler)); border-radius: 8px; background: color-mix(in srgb, #2da66f 9%, transparent); color: var(--text-primary); font-size: 11px; font-weight: 600; }
 .trajectory-smoothing-build { width: 100%; }
 .trajectory-smoothing-chart {
   overflow: hidden;

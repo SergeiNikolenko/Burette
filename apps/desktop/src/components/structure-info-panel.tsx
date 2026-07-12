@@ -14,7 +14,7 @@ import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
-import { installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
+import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
 import { isTauriRuntime } from "../lib/tauri";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings } from "../types";
 
@@ -642,6 +642,7 @@ function TrajectorySmoothingCard({
   const frameCount = controls.actions.length;
   const [running, setRunning] = useState(false);
   const [installingDeepTica, setInstallingDeepTica] = useState(false);
+  const [deepTicaInstalled, setDeepTicaInstalled] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rmsdFilter, setRmsdFilter] = useState<"frames" | "cutoff" | "power">("frames");
   const [cutoffFrequency, setCutoffFrequency] = useState(0.1);
@@ -724,6 +725,14 @@ function TrajectorySmoothingCard({
     setTargetFrames(nextTargetFrames);
   };
   const resultDirty = Boolean(result && result.settingsSignature !== settingsSignature);
+  useEffect(() => {
+    if (signal !== "deeptica") return;
+    let cancelled = false;
+    void getMdsmoothCapabilities()
+      .then((capabilities) => { if (!cancelled) setDeepTicaInstalled(capabilities.deepTicaInstalled); })
+      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)); });
+    return () => { cancelled = true; };
+  }, [signal]);
   useEffect(() => {
     if (!built || !resultDirty || running || failedAutoUpdate.current === settingsSignature) return;
     const timer = window.setTimeout(() => void build(), 450);
@@ -866,10 +875,15 @@ function TrajectorySmoothingCard({
               </label>
               <div className="trajectory-smoothing-note">{mode === "kinetic" ? "MSM uses aligned coordinates only to choose representative states. It does not modify the source trajectory or any scientific measurements." : "The selected signal identifies meaningful source frames. Filtering changes only the displayed motion between them; it does not rewrite the trajectory or alter scientific measurements."}</div>
               {mode === "extrema" && signal === "deeptica" ? (
-                <button type="button" className="dock-action" disabled={installingDeepTica} onClick={async () => {
+                deepTicaInstalled ? <div className="trajectory-smoothing-runtime-ready">DeepTICA runtime ready</div> : deepTicaInstalled === null ? <div className="trajectory-smoothing-note">Checking DeepTICA runtime…</div> : <button type="button" className="dock-action" disabled={installingDeepTica} onClick={async () => {
                   setInstallingDeepTica(true);
                   setError(null);
-                  try { await installDeepTica(); }
+                  try {
+                    await installDeepTica();
+                    setDeepTicaInstalled(true);
+                    failedAutoUpdate.current = null;
+                    if (built) void build();
+                  }
                   catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
                   finally { setInstallingDeepTica(false); }
                 }}>
