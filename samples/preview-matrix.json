@@ -122,6 +122,10 @@
     }
   ],
   "extensionCoverageGaps": {
+    "mol": {
+      "extensions": ["mdl"],
+      "reason": "The external MDL compatibility sample is kept under tests/fixtures and covered by its dedicated Quick Look regression test."
+    },
     "bcif": {
       "extensions": ["bcif"],
       "reason": "Need a compact BinaryCIF fixture."

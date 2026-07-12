@@ -2940,7 +2940,6 @@ function maestroAtomSymbol(
 
 function parseCifCoreAtoms(lines: string[]) {
   const cell = parseCifCell(lines);
-  if (!cell) return null;
   for (let index = 0; index < lines.length; index += 1) {
     if (lines[index].trim().toLowerCase() !== "loop_") continue;
     const headers: string[] = [];
@@ -2968,7 +2967,7 @@ function parseCifCoreAtoms(lines: string[]) {
       const fy = parseCifNumber(parts[fractYIndex]);
       const fz = parseCifNumber(parts[fractZIndex]);
       if (!symbol || fx == null || fy == null || fz == null) continue;
-      const [x, y, z] = fractionalToCartesian(fx, fy, fz, cell);
+      const [x, y, z] = cell ? fractionalToCartesian(fx, fy, fz, cell) : [fx, fy, fz];
       atoms.push({ symbol, x, y, z });
     }
     if (atoms.length) return atoms;
