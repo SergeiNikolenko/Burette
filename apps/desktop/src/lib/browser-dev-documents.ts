@@ -384,6 +384,10 @@ export async function openBrowserDevMolstarContextDocument(
   contextDocument: BrowserDevMolstarContextDocument,
   preferences: ViewerPreferences,
 ): Promise<ViewerDocument> {
+  const hostedMcpWidget = contextDocument.context?.hostedMcpWidget === true;
+  const contextPreferences = hostedMcpWidget
+    ? { ...preferences, canvasBackground: "black" as const }
+    : preferences;
   const entries = (contextDocument.entries ?? [])
     .filter((entry): entry is Required<Pick<BrowserDevMolstarContextEntry, "data">> & BrowserDevMolstarContextEntry => (
       typeof entry?.data === "string" && entry.data.length > 0
@@ -402,14 +406,14 @@ export async function openBrowserDevMolstarContextDocument(
         `${label}.sdf`,
         "sdf",
         decodeUtf8(entry.bytes),
-        { ...preferences, rendererMode: "molstar" },
+        { ...contextPreferences, rendererMode: "molstar" },
         {},
       );
       return { ...document, title: label };
     }
     const config = {
-      ...browserDevContextConfig(label, entry.format, entry.bytes.length, preferences, id),
-      hostedMcpWidgetBootstrap: contextDocument.context?.hostedMcpWidget === true,
+      ...browserDevContextConfig(label, entry.format, entry.bytes.length, contextPreferences, id),
+      hostedMcpWidgetBootstrap: hostedMcpWidget,
       molstarContextFocus: contextFocus,
     };
     const virtualPath = `burrete-context://${id}`;
@@ -420,7 +424,7 @@ export async function openBrowserDevMolstarContextDocument(
       "molstar",
       entry.bytes,
       entry.bytes.length,
-      preferences,
+      contextPreferences,
       false,
       false,
       undefined,
@@ -444,9 +448,13 @@ export async function openBrowserDevMolstarContextDocument(
 
   const receptor = entries.find((entry) => entry.role === "receptor") ?? entries[0];
   const ligands = entries.filter((entry) => entry !== receptor);
-  if (ligands.length === 0) return openBrowserDevMolstarContextDocument({ label, entries: [contextDocument.entries?.[0] ?? {}] }, preferences);
+  if (ligands.length === 0) return openBrowserDevMolstarContextDocument({
+    label,
+    entries: [contextDocument.entries?.[0] ?? {}],
+    context: contextDocument.context,
+  }, contextPreferences);
   const byteCount = receptor.bytes.length + ligands.reduce((total, ligand) => total + ligand.bytes.length, 0);
-  const visuals = resolvePreviewVisuals(preferences);
+  const visuals = resolvePreviewVisuals(contextPreferences);
   const config = {
     format: receptor.format.molstarFormat,
     molstarFormat: receptor.format.molstarFormat,
@@ -460,7 +468,7 @@ export async function openBrowserDevMolstarContextDocument(
     quickLookBuild: "burrete-browser-dev-context-docking",
     debug: false,
     theme: visuals.theme,
-    themeTokens: previewThemeTokens(preferences),
+    themeTokens: previewThemeTokens(contextPreferences),
     canvasBackground: visuals.canvasBackground,
     documentId: id,
     uiScale: 0.9,
@@ -470,7 +478,7 @@ export async function openBrowserDevMolstarContextDocument(
     sdfPosePager: false,
     appViewer: true,
     tauriViewer: false,
-    molstarStyle: preferences.molstarStyle,
+    molstarStyle: contextPreferences.molstarStyle,
     waterRepresentation: "line",
     xyzrenderViewer: false,
     xyzrenderAvailable: false,
@@ -495,7 +503,7 @@ export async function openBrowserDevMolstarContextDocument(
     "molstar",
     new Uint8Array([10]),
     byteCount,
-    preferences,
+    contextPreferences,
     false,
     false,
     undefined,

@@ -81,6 +81,19 @@ assert.equal(
 deleteBrowserDevVirtualTextDocument(contextDocument.path);
 assert.equal(readBrowserDevVirtualTextDocument(contextDocument.path), null);
 
+const hostedContextDocument = await openBrowserDevMolstarContextDocument({
+  label: "hosted-inline.pdb",
+  context: { hostedMcpWidget: true },
+  entries: [{
+    role: "structure",
+    label: "hosted-inline.pdb",
+    format: "pdb",
+    data: "ATOM      1  C   MOL A   1       0.000   0.000   0.000  1.00  0.00           C\nEND\n",
+  }],
+}, defaultPreferences);
+assert.match(hostedContextDocument.runtimePath, /"canvasBackground":"black"/);
+deleteBrowserDevVirtualTextDocument(hostedContextDocument.path);
+
 const replacementDocument = await openBrowserDevMolstarContextDocument({
   label: "inline.pdb",
   entries: [{
