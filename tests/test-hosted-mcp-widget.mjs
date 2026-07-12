@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 
 import {
   HOSTED_MCP_WIDGET_MESSAGE_SOURCE,
-  createHostedMcpSelectionContext,
   isHostedMcpWidgetLocation,
   isHostedMcpToolResultMessage,
   parseHostedMcpStructureMessage,
   parseHostedMcpStructureResult,
   selectHostedMcpInitialStructure,
 } from "../apps/desktop/src/lib/hosted-mcp-widget.ts";
+import { createSelectionContext } from "../apps/burrete-public-plugin/lib/hosted-context.ts";
 import {
   deleteBrowserDevVirtualTextDocument,
   openBrowserDevMolstarContextDocument,
@@ -161,10 +161,13 @@ const initialStructure = selectHostedMcpInitialStructure([
 assert.equal(initialStructure?.label, "latest.pdb");
 assert.equal(initialStructure?.data, "LATEST");
 
-const selectionContext = createHostedMcpSelectionContext({
+const selectionContext = createSelectionContext({
   source: "lasso",
   label: "Lasso selection: 4 visible atoms across 2 residues",
   atoms: 4,
+  atomIdentities: [
+    { chain: "A", sequence: 12, compId: "CYS", atomName: "CA" },
+  ],
   residues: [
     { chain: "A", sequence: 12, compId: "CYS" },
     { chain: "A", sequence: 13, compId: "ARG" },
@@ -176,6 +179,9 @@ assert.deepEqual(selectionContext?.structuredContent.burrete.activeSelection.res
   { chain: "A", sequence: 13, compId: "ARG" },
 ]);
 assert.match(selectionContext?.content[0].text ?? "", /active molecular selection/);
-assert.equal(createHostedMcpSelectionContext({ source: "click" }, "document-1"), null);
+assert.deepEqual(selectionContext?.structuredContent.burrete.activeSelection.atomIdentities, [
+  { chain: "A", sequence: 12, compId: "CYS", atomName: "CA" },
+]);
+assert.equal(createSelectionContext(null, "document-1").structuredContent.burrete.activeSelection, null);
 
 console.log("Hosted MCP widget contract tests passed");
