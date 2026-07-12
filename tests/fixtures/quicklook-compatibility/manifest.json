@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "path": "tests/fixtures/quicklook-compatibility/caffeine.mdl",
+      "formatId": "mol",
+      "observedContentType": "net.sourceforge.openbabel.mdl"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/emendXRay.cif",
+      "formatId": "cif",
+      "observedContentType": "com.local.burrete10.cif"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/ketoconazole.mol",
+      "formatId": "mol",
+      "observedContentType": "com.schrodinger.mol"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/junk2.sdf",
+      "formatId": "sdf",
+      "observedContentType": "com.schrodinger.sdf"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/ketoconazole.sdf",
+      "formatId": "sdf",
+      "observedContentType": "com.schrodinger.sdf"
+    }
+  ]
+}
