@@ -31,6 +31,7 @@
   const SDF_CONTEXT_COLOR_STORAGE_KEY = 'buret.sdf.contextColor';
   const XYZ_FRAME_MODE_STORAGE_KEY = 'buret.xyz.frameMode';
   const XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT = 80;
+  const MAX_STRUCTURE_OVERLAY_FRAME_COUNT = 50;
   const XYZ_FRAME_BACKGROUND_MIN_ALPHA = 0.0001;
   const DEFAULT_MOLSTAR_STYLE = 'illustrative';
   const MOLSTAR_STYLE_OPTIONS = [
@@ -562,6 +563,9 @@
     if (type === 'apply_trajectory_smoothing') {
       return applyTrajectorySmoothingFromAction(action);
     }
+    if (type === 'apply_external_trajectory_smoothing') {
+      return applyExternalTrajectorySmoothingFromAction(action);
+    }
     if (type === 'set_trajectory_smoothing_view') {
       return setTrajectorySmoothingViewFromAction(action);
     }
@@ -957,6 +961,7 @@
   let activeConfig = null;
   let activeMolstarPrepared = null;
   let trajectorySmoothingState = null;
+  let pendingTrajectoryPlaybackRestore = null;
   let activeSdfPoseMode = 'single';
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
@@ -2252,6 +2257,16 @@
 
   function structureOverlayToggleAvailable(prepared = activeMolstarPrepared) {
     if (!structureOverlayAvailable(prepared)) return false;
+    const format = normalizeFormat(activeConfig?.molstarFormat || activeConfig?.format);
+    const trajectoryOverlay = prepared?.kind === 'trajectory'
+      || prepared?.nativeTrajectoryControls === true
+      || prepared?.xyzFrameOverlayAvailable === true
+      || prepared?.pdbModelOverlayAvailable === true
+      || format === 'xyz';
+    if (trajectoryOverlay) {
+      const poseCount = Number(prepared?.poseCount || prepared?.xyzFrameCount || prepared?.pdbModelCount || activeConfig?.trajectoryFrameCount || 0);
+      return Number.isFinite(poseCount) && poseCount > 1 && poseCount <= MAX_STRUCTURE_OVERLAY_FRAME_COUNT;
+    }
     return true;
   }
 
@@ -9469,14 +9484,53 @@
     }
   }
 
-  async function replaceTrajectorySmoothingPrepared(prepared) {
+  function currentTrajectoryPlaybackSnapshot() {
+    const root = document.querySelector('.buret-docking-poses');
+    if (!root) return null;
+    const slider = root.querySelector('.buret-docking-pose-slider');
+    const speed = root.querySelector('.buret-docking-pose-speed');
+    const stop = root.querySelector('button[aria-label^="Stop "]');
+    return {
+      frameIndex: Math.max(0, Math.trunc(Number(slider?.value) || 1) - 1),
+      fps: String(speed?.value || ''),
+      playing: Boolean(stop)
+    };
+  }
+
+  async function restoreTrajectoryPlaybackSnapshot(snapshot) {
+    if (!snapshot) return;
+    if (activeStructurePoseSetter) await activeStructurePoseSetter(snapshot.frameIndex);
+    const root = document.querySelector('.buret-docking-poses');
+    const speed = root?.querySelector('.buret-docking-pose-speed');
+    if (speed && snapshot.fps) {
+      speed.value = snapshot.fps;
+      speed.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (snapshot.playing && !root?.querySelector('button[aria-label^="Stop "]')) {
+      root?.querySelector('button[aria-label^="Play "]')?.click();
+    }
+  }
+
+  async function replaceTrajectorySmoothingPrepared(prepared, playbackOverride = null) {
     if (!activeViewer?.plugin || !prepared) throw new Error('The Mol* trajectory viewer is not ready.');
     if (typeof activeViewer.plugin.clear !== 'function') throw new Error('Mol* cannot replace this trajectory in place.');
-    await activeViewer.plugin.clear();
-    await loadPreparedStructure(activeViewer, prepared);
-    applyLayoutState(activeViewer);
-    scheduleLayoutStateReapply(activeViewer);
-    try { activeViewer.handleResize(); } catch (_) {}
+    const currentPlayback = currentTrajectoryPlaybackSnapshot();
+    const playbackSnapshot = playbackOverride ? {
+      frameIndex: Math.max(0, Math.trunc(Number(playbackOverride.frameIndex) || 0)),
+      fps: currentPlayback?.fps || '',
+      playing: playbackOverride.playing === true
+    } : currentPlayback;
+    pendingTrajectoryPlaybackRestore = playbackSnapshot;
+    try {
+      await activeViewer.plugin.clear();
+      await loadPreparedStructure(activeViewer, prepared);
+      await restoreTrajectoryPlaybackSnapshot(playbackSnapshot);
+      applyLayoutState(activeViewer);
+      scheduleLayoutStateReapply(activeViewer);
+      try { activeViewer.handleResize(); } catch (_) {}
+    } finally {
+      pendingTrajectoryPlaybackRestore = null;
+    }
   }
 
   async function applyTrajectorySmoothingFromAction(action = {}) {
@@ -9507,6 +9561,7 @@
       };
       trajectorySmoothingState = { originalPrepared, smoothedPrepared, result, view: 'smoothed' };
       await replaceTrajectorySmoothingPrepared(smoothedPrepared);
+      updateTrajectorySmoothingButtons();
       postHostMessage({
         type: 'trajectorySmoothingChanged',
         documentId: activeConfig?.documentId || '',
@@ -9528,6 +9583,45 @@
     }
   }
 
+  async function applyExternalTrajectorySmoothingFromAction(action = {}) {
+    const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
+    if (!originalPrepared || !action.sourceUrl) {
+      return agentActionFailure('apply_external_trajectory_smoothing', 'NOT_AVAILABLE', 'The smoothed trajectory is unavailable.');
+    }
+    try {
+      const response = await fetch(String(action.sourceUrl), { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Could not read smoothed trajectory: ${response.status}`);
+      const data = await response.text();
+      const frameCount = Math.max(2, Math.trunc(Number(action.frameCount) || 2));
+      const smoothedPrepared = {
+        ...originalPrepared,
+        data,
+        format: 'xyz',
+        label: `${originalPrepared.label || 'Trajectory'} - smoothed view`,
+        poseCount: frameCount,
+        pdbModelCount: 0,
+        xyzFrameCount: frameCount,
+        nativeTrajectoryControls: true,
+        controlLabel: 'Frame'
+      };
+      trajectorySmoothingState = {
+        originalPrepared,
+        smoothedPrepared,
+        result: { frameCount, interpolation: action.interpolation || 'linear' },
+        view: 'smoothed'
+      };
+      await replaceTrajectorySmoothingPrepared(smoothedPrepared, {
+        frameIndex: action.frameIndex,
+        playing: action.playing
+      });
+      updateTrajectorySmoothingButtons();
+      postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view: 'smoothed' });
+      return { ok: true, command: 'apply_external_trajectory_smoothing', result: { frameCount } };
+    } catch (error) {
+      return agentActionFailure('apply_external_trajectory_smoothing', 'ACTION_ERROR', error?.message || String(error));
+    }
+  }
+
   async function setTrajectorySmoothingViewFromAction(action = {}) {
     if (!trajectorySmoothingState) {
       return agentActionFailure('set_trajectory_smoothing_view', 'NO_SMOOTHED_TRAJECTORY', 'Build a smoothed trajectory first.');
@@ -9537,11 +9631,22 @@
       const prepared = view === 'original' ? trajectorySmoothingState.originalPrepared : trajectorySmoothingState.smoothedPrepared;
       await replaceTrajectorySmoothingPrepared(prepared);
       trajectorySmoothingState.view = view;
+      updateTrajectorySmoothingButtons();
       postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view });
       return { ok: true, command: 'set_trajectory_smoothing_view', result: { view } };
     } catch (error) {
       return agentActionFailure('set_trajectory_smoothing_view', 'ACTION_ERROR', error?.message || String(error));
     }
+  }
+
+  function updateTrajectorySmoothingButtons() {
+    const active = trajectorySmoothingState?.view === 'smoothed';
+    document.querySelectorAll('.buret-trajectory-smooth-button').forEach(button => {
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      button.setAttribute('aria-label', active ? 'Turn Smooth motion off' : 'Turn Smooth motion on');
+      button.setAttribute('title', active ? 'Show the original trajectory' : 'Build or restore the smoothed view');
+    });
   }
 
   async function setMolstarStyleFromAction(action = {}) {
@@ -9760,10 +9865,14 @@
       return;
     }
     if (prepared.poseCount <= 1) return;
-    let activePose = readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount);
+    const playbackRestore = pendingTrajectoryPlaybackRestore;
+    pendingTrajectoryPlaybackRestore = null;
+    let activePose = playbackRestore
+      ? Math.max(0, Math.min(prepared.poseCount - 1, playbackRestore.frameIndex))
+      : readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount);
     const initialPose = activePose;
     let loopTimer = null;
-    let loopActive = false;
+    let loopActive = Boolean(playbackRestore?.playing);
     let loopBusy = false;
     let loopStartedAt = 0;
     let loopStartPose = activePose;
@@ -9804,8 +9913,11 @@
     smooth.type = 'button';
     smooth.className = 'buret-trajectory-smooth-button';
     smooth.textContent = 'Smooth';
-    smooth.setAttribute('aria-label', 'Open Smooth motion settings');
-    smooth.title = 'Smooth motion - builds an optional derived trajectory';
+    const smoothingActive = trajectorySmoothingState?.view === 'smoothed';
+    smooth.classList.toggle('active', smoothingActive);
+    smooth.setAttribute('aria-pressed', smoothingActive ? 'true' : 'false');
+    smooth.setAttribute('aria-label', smoothingActive ? 'Turn Smooth motion off' : 'Turn Smooth motion on');
+    smooth.title = smoothingActive ? 'Show the original trajectory' : 'Build or restore the smoothed view';
     const speed = document.createElement('input');
     speed.className = 'buret-docking-pose-speed';
     speed.setAttribute('aria-label', `${controlLabel} loop frames per second`);
@@ -9813,7 +9925,7 @@
     speed.min = '0.1';
     speed.step = '0.1';
     speed.inputMode = 'decimal';
-    speed.value = formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
+    speed.value = playbackRestore?.fps || formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
     speed.title = 'Frames per second (FPS)';
     const updateSpeedMode = () => {
       const fps = Number(speed.value);
@@ -9842,6 +9954,13 @@
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
       refreshNativeTrajectoryStandalonePreview();
+      postHostMessage({
+        type: 'trajectoryFrameChanged',
+        documentId: activeConfig?.documentId || '',
+        frameIndex: activePose,
+        frameCount: prepared.poseCount,
+        playing: loopActive
+      });
     };
     const setAnimationOptionsOpen = (open) => {
       root.classList.toggle('buret-docking-poses-animation-open', Boolean(open));
@@ -9863,6 +9982,13 @@
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
       if (active) setAnimationOptionsOpen(true);
+      postHostMessage({
+        type: 'trajectoryFrameChanged',
+        documentId: activeConfig?.documentId || '',
+        frameIndex: activePose,
+        frameCount: prepared.poseCount,
+        playing: loopActive
+      });
     };
     updateControls();
     updateSpeedMode();
@@ -10066,9 +10192,7 @@
         type: 'openTrajectorySmoothing',
         documentId: activeConfig?.documentId || ''
       });
-      setStatus(posted
-        ? '[web] Smooth motion settings opened in Molecular Inspector.'
-        : '[web] Smooth motion settings are available in the Info panel.');
+      setStatus(posted ? '[web] Smooth motion toggled.' : '[web] Smooth motion is available in the Info panel.');
       setTimeout(hideStatus, 1200);
     });
     speed.addEventListener('change', () => {
@@ -10131,9 +10255,17 @@
         })
       : null;
     if (prepared.nativeTrajectoryControls && initialPose > 0) {
-      void setPose(initialPose);
+      void setPose(initialPose).finally(() => {
+        if (!playbackRestore?.playing || activeStructurePoseSetter !== setPose) return;
+        setLoopActive(true);
+        scheduleLoopStep();
+      });
     } else {
       notifyDockingPoseChanged(activePose, prepared);
+      if (playbackRestore?.playing) {
+        setLoopActive(true);
+        scheduleLoopStep();
+      }
     }
     dockingPoseControlsDisposer = () => {
       stopPoseRepeat();
@@ -10142,7 +10274,13 @@
         sliderInputTimer = null;
       }
       pendingSliderIndex = null;
-      setLoopActive(false);
+      if (pendingTrajectoryPlaybackRestore?.playing) {
+        if (loopTimer) clearTimeout(loopTimer);
+        loopTimer = null;
+        loopActive = false;
+      } else {
+        setLoopActive(false);
+      }
       syncDisposer?.();
       isolationDisposer?.();
       hoverDisposer?.();

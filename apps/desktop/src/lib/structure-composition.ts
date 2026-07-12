@@ -62,6 +62,7 @@ export type StructureViewerAction =
   | {
       type: "apply_trajectory_smoothing";
       label: string;
+      notify?: boolean;
       preset: "light" | "balanced" | "strong";
       targetFrames: number;
       referenceFrame: number;
@@ -72,6 +73,16 @@ export type StructureViewerAction =
       label: string;
       notify?: boolean;
       view: "original" | "smoothed";
+    }
+  | {
+      type: "apply_external_trajectory_smoothing";
+      label: string;
+      notify?: boolean;
+      sourceUrl: string;
+      frameCount: number;
+      interpolation: string;
+      frameIndex?: number;
+      playing?: boolean;
     }
   | {
       type: "set_molstar_style";

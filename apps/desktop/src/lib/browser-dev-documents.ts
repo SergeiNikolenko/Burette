@@ -41,6 +41,8 @@ type BrowserDevTrajectoryPair = {
   byteCount: number;
   sourcePath: string;
   sourceExtension: string;
+  topologyPath: string;
+  trajectoryPath: string;
   docking: {
     activePose: number | null;
     sceneMode: DockingSceneMode | null;
@@ -742,7 +744,16 @@ function openBrowserDevTrajectoryPairDocument(
     undefined,
     id,
   );
-  return browserDocument(path, pair.sourceExtension, "molstar", html, pair.byteCount, id);
+  return {
+    ...browserDocument(path, pair.sourceExtension, "molstar", html, pair.byteCount, id),
+    dockingRequest: {
+      receptorPath: pair.topologyPath,
+      ligandPaths: [pair.trajectoryPath],
+      activePose: null,
+      sceneMode: null,
+      poseMode: "single" as const,
+    },
+  };
 }
 
 async function requestBrowserDevAmberNcPreview(path: string, extension: string) {
