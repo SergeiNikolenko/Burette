@@ -1000,9 +1000,6 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
     0 8px 22px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-body.burette-hosted-mcp-viewer #buret-toolbar .buret-grip {
-  display: none;
-}
 .buret-button {
   position: relative;
   min-width: 30px; height: 30px; border: 0; border-radius: 8px; padding: 0 7px;

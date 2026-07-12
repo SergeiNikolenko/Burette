@@ -86,10 +86,10 @@ describe("viewer resource contract", () => {
 
   test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v8.html");
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v9.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-hosted-toolbar-v1");
+    expect(html).toContain("?v=viewer-hosted-toolbar-v2");
     expect(html).toContain("ui/notifications/tool-result");
     expect(html).toContain("__BURRETE_HOSTED_MCP_WIDGET__");
     expect(html).toContain("__BURRETE_HOSTED_MCP_BRIDGE_READY__");
