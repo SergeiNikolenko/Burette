@@ -1,0 +1,7 @@
+**/node_modules/
+target/
+apps/desktop/dist/
+apps/burrete-public-plugin/.next/
+apps/burrete-public-plugin/public/burrete-viewer/
+apps/burrete-public-plugin/public/viewer-shell/
+apps/burrete-public-plugin/public/web-demo/
