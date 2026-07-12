@@ -107,6 +107,12 @@ def test_worker_script_path_points_into_bundle():
     assert lc.worker_script().endswith("_deeptica_worker.py")
 
 
+def test_worker_environment_forces_cpu_on_macos():
+    env = lc.worker_environment(platform="darwin", environ={"EXISTING": "1"})
+    assert env["MDSMOOTH_DEEPTICA_ACCELERATOR"] == "cpu"
+    assert env["EXISTING"] == "1"
+
+
 # --- real DeepTICA worker (needs torch + mlcolvar; skipped otherwise) ---------
 
 def test_real_deeptica_worker_recovers_slow_mode():

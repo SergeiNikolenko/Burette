@@ -63,6 +63,15 @@ def worker_script():
     return os.path.join(os.path.dirname(__file__), "_deeptica_worker.py")
 
 
+def worker_environment(platform=None, environ=None):
+    """Return a worker environment that avoids unsupported MPS eigensolvers."""
+    platform = platform or sys.platform
+    env = dict(os.environ if environ is None else environ)
+    if platform == "darwin":
+        env["MDSMOOTH_DEEPTICA_ACCELERATOR"] = "cpu"
+    return env
+
+
 def venv_ready(venv_dir=None):
     """True if the venv exists and can import torch + mlcolvar."""
     venv_dir = venv_dir or default_venv_dir()
@@ -248,6 +257,7 @@ def run_deeptica(features, lag, n_seeds=DEFAULT_N_SEEDS, out_dim=DEFAULT_OUT_DIM
             proc = subprocess.run(
                 [python_exe, worker, inp, out],
                 capture_output=True, text=True, timeout=timeout,
+                env=worker_environment(),
             )
         except FileNotFoundError as e:
             raise RuntimeError(

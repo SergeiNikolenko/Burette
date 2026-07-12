@@ -77,7 +77,7 @@ def _train_one(features, lag, out_dim, seed):
         max_epochs=1000, callbacks=[early],
         enable_checkpointing=False, logger=False,
         enable_progress_bar=False, enable_model_summary=False,
-        accelerator="auto",
+        accelerator=os.environ.get("MDSMOOTH_DEEPTICA_ACCELERATOR", "auto"),
     )
     trainer.fit(model, datamodule)
 
