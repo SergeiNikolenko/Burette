@@ -100,8 +100,14 @@ def signal_series(signal: str, selected_frames: np.ndarray, reference_index: int
         return core_filter.principal_component_series(selected_frames, reference_index=reference_index)[:, 0], {}
     if signal == "ic1":
         values = core_filter.tica_series(selected_frames, lag=lag, reference_index=reference_index)[:, 0]
-        robustness = core_filter.tica_lag_robustness(selected_frames, lag=lag, reference_index=reference_index)
-        return values, {"lagRobustness": float(robustness)}
+        tested_lags, correlations, robustness = core_filter.tica_lag_robustness(
+            selected_frames, lag=lag, reference_index=reference_index
+        )
+        return values, {
+            "lagRobustness": float(robustness),
+            "testedLags": [int(value) for value in tested_lags],
+            "lagCorrelations": [float(value) for value in correlations],
+        }
     if signal == "dpca":
         return dpca_signal(universe, selection), {}
     if signal == "deeptica":

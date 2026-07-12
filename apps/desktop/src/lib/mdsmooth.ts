@@ -45,17 +45,22 @@ export type MdsmoothResult = {
     power: number[];
     cumulativePower: number[];
   };
-  diagnostics: Record<string, number | string | boolean>;
+  diagnostics: Record<string, number | string | boolean | number[]>;
   interpolation: string;
 };
 
 export async function runMdsmooth(request: MdsmoothRequest): Promise<MdsmoothResult> {
   if (isTauriRuntime()) return invoke<MdsmoothResult>("run_mdsmooth", { request });
-  const response = await fetch("/__burette/mdsmooth", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
+  let response: Response;
+  try {
+    response = await fetch("/__burette/mdsmooth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    });
+  } catch (_) {
+    throw new Error("The MDSmooth runtime is unavailable. Restart the local preview and try again.");
+  }
   const payload = await response.json() as MdsmoothResult | { error?: string };
   if (!response.ok || (!("ok" in payload) || payload.ok !== true)) {
     throw new Error("error" in payload ? payload.error || "MDSmooth analysis failed" : "MDSmooth analysis failed");
