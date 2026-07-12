@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { VIEWER_RESOURCE_URI } from "../lib/widget";
 
 const packageRoot = resolve(import.meta.dir, "..");
 const submission = JSON.parse(
@@ -70,5 +71,10 @@ describe("plugin submission bundle", () => {
       expect(skill).toContain(`\`${toolName}\``);
     }
     expect(skill).toContain("Do not claim local macOS app control");
+  });
+
+  test("keeps submission documentation aligned with the current widget URI", () => {
+    const readme = readFileSync(resolve(packageRoot, "README.md"), "utf8");
+    expect(readme).toContain(VIEWER_RESOURCE_URI);
   });
 });
