@@ -571,6 +571,7 @@ assert.match(previewRuntimeCss, /#buret-toolbar\[data-active-renderer="xyzrender
 assert.match(previewRuntimeCss, /#buret-toolbar\[data-active-renderer="xyzrender-external"\] \[data-buret-toggle="log"\] \{\s*display: none;/);
 assert.match(previewRuntimeCss, /\.buret-slider-row/);
 assert.match(previewRuntimeCss, /\.buret-slider\[data-auto\]/);
+assert.match(previewRuntimeCss, /body\.burette-hosted-mcp-viewer #buret-toolbar \.buret-grip \{\s*display: none;/);
 assert.match(previewShell, /data-buret-xyzrender-field/);
 assert.match(previewShell, /min="0\.01" max="2" step="0\.01" value="0\.3" data-buret-xctrl-slider="fieldIso"/);
 assert.match(previewShell, /data-buret-xctrl-slider="fieldIso"/);
@@ -592,6 +593,7 @@ assert.match(browserDevDocuments, /if \(normalized === "xyzrender-external"\) re
 assert.match(browserDevDocuments, /requestedRenderer: normalizeRendererMode\(preferences\.rendererMode\)/);
 assert.match(browserDevDocuments, /sourcePath: path/);
 assert.match(browserDevDocuments, /xyzrenderEndpoint: "\/__burette\/xyzrender"/);
+assert.match(browserDevDocuments, /hostedMcpBootstrap \? " burette-hosted-mcp-viewer" : ""/);
 assert.match(browserDevDocuments, /vdwAtoms: null/);
 assert.match(browserDevDocuments, /hullMode: null/);
 assert.match(browserDevDocuments, /hullAtoms: null/);
@@ -601,6 +603,7 @@ assert.match(browserDevDocuments, /const trajectoryFrameCount = Math\.max\(xyzFr
 assert.match(browserDevDocuments, /const shouldOpenTrajectoryInMolstar = trajectoryFrameCount > 1 && requestedMode === "auto";/);
 assert.match(browserDevDocuments, /function countXyzFrames\(text: string\)/);
 assert.match(browserDevDocuments, /function countPdbModels\(text: string\)/);
+assert.match(viewer, /window\.BurreteConfig\?\.hostedMcpWidgetBootstrap === true\) \{\s*setToolbarCollapsed\(toolbar, false, viewer, false\);\s*return;/);
 assert.match(browserDevDocuments, /requestBrowserDevDesmondPreview/);
 assert.match(browserDevDocuments, /\/__burette\/desmond-preview\?path=/);
 assert.match(browserDevDocuments, /`\$\{path\}\.desmond-preview\.pdb`/);
