@@ -1213,4 +1213,4 @@ assert.match(viewerJS, /M  V30 BEGIN CTAB/);
 assert.doesNotMatch(viewerJS, /BurreteXyzFastURL|xyz-fast\.js/);
 assert.match(previewRuntimeViewer, /window\.__mqlPost = \(type, message, payload\) => postToParent\(\{ type, message: message \|\| '', \.\.\.\(payload \|\| \{\}\) \}\);/);
 assert.match(viewerJS, /function isQuickLookHost\(\)/);
-assert.match(viewerJS, /powerPreference: isQuickLookHost\(\) \? 'default' : 'high-performance'/);
+assert.match(viewerJS, /powerPreference: String\(activeConfig\?\.molstarPowerPreference \|\| ''\) === 'default' \|\| isQuickLookHost\(\)/);

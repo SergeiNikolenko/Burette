@@ -9,6 +9,8 @@ const SOURCE_VIEWER_ROOT = path.join(REPO_ROOT, "PreviewExtension/Web");
 const OUTPUT_VIEWER_ROOT = path.join(APP_ROOT, "public/burrete-viewer");
 const OUTPUT_SHELL_ROOT = path.join(APP_ROOT, "public/viewer-shell");
 const LEGACY_DEMO_ROOT = path.join(APP_ROOT, "public/demo");
+const MOBILE_VIEWER_SOURCE = path.join(APP_ROOT, "assets/burrete-hosted-mobile.js");
+const MOBILE_VIEWER_OUTPUT = path.join(APP_ROOT, "public/burrete-hosted-mobile.js");
 const VIEWER_FILES = [
   "burette-agent.js",
   "viewer-runtime.css",
@@ -36,6 +38,7 @@ await Promise.all([
     path.join(OUTPUT_VIEWER_ROOT, "rdkit"),
     { recursive: true },
   ),
+  cp(MOBILE_VIEWER_SOURCE, MOBILE_VIEWER_OUTPUT),
 ]);
 
 await run("bun", ["run", "build"], {
