@@ -28,7 +28,7 @@ The production Streamable HTTP endpoint is
 
 Both tools are read-only, idempotent, non-destructive, and cannot write to the
 public internet. Each declares an exact output schema and renders
-`ui://burrete/molecular-viewer-v2.html` with MIME type
+`ui://burrete/molecular-viewer-v9.html` with MIME type
 `text/html;profile=mcp-app`.
 
 The model receives only bounded structure summaries. Original molecular text
@@ -115,6 +115,8 @@ build output and are not committed.
   skill for the plugin submission.
 - `submission/portal-copy.md` — starter prompts, release notes, and portal
   checklist.
+- `submission/screenshots/chatgpt-pdb-viewer-mobile.jpg` — production v9
+  ChatGPT mobile-width review screenshot captured with CSP enforcement enabled.
 
 The existing logo at `plugins/burette-agent/assets/app-icon.png` is the
 production-ready 512 × 512 listing asset.
