@@ -60,11 +60,13 @@ export function isWebDemoWorkspace() {
 }
 
 export function initializeWebDemoWorkspace() {
-  if (!WEB_DEMO_ENABLED || files.size > 0) return [];
-  for (const [relativePath, text] of DEMO_STRUCTURES) {
-    registerText(`${WEB_DEMO_ROOT}/${relativePath}`, text);
+  if (!WEB_DEMO_ENABLED) return [];
+  if (files.size === 0) {
+    for (const [relativePath, text] of DEMO_STRUCTURES) {
+      registerText(`${WEB_DEMO_ROOT}/${relativePath}`, text);
+    }
+    registerText(`${WEB_DEMO_ROOT}/notes/README.md`, "# Burrete browser workspace\n\nOpen a structure or choose a local project folder.\n");
   }
-  registerText(`${WEB_DEMO_ROOT}/notes/README.md`, "# Burrete browser workspace\n\nOpen a structure or choose a local project folder.\n");
   return [`${WEB_DEMO_ROOT}/proteins/1HTB.pdb`];
 }
 
