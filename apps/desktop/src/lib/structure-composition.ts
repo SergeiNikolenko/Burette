@@ -60,6 +60,20 @@ export type StructureViewerAction =
       index: number;
     }
   | {
+      type: "apply_trajectory_smoothing";
+      label: string;
+      preset: "light" | "balanced" | "strong";
+      targetFrames: number;
+      referenceFrame: number;
+      align: boolean;
+    }
+  | {
+      type: "set_trajectory_smoothing_view";
+      label: string;
+      notify?: boolean;
+      view: "original" | "smoothed";
+    }
+  | {
       type: "set_molstar_style";
       label: string;
       notify?: boolean;

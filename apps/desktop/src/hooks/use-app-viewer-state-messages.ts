@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ViewerDocument } from "../types";
+import type { DockTabKind } from "../lib/dock";
 
 type ViewerStateMessageBody = Record<string, unknown> | null | undefined;
 type SetViewerLigandSelections = (
@@ -19,6 +20,7 @@ type UseAppViewerStateMessagesOptions = {
   addDocuments: (documents: ViewerDocument[]) => void;
   documents: ViewerDocument[];
   openCommandPalette: () => void;
+  openDockTab: (area: "right", kind: DockTabKind) => void;
   setViewerLigandSelections: SetViewerLigandSelections;
   setStructureOverlayModes: SetStructureOverlayModes;
   toggleSidebar: () => void;
@@ -38,6 +40,7 @@ export function useAppViewerStateMessages({
   addDocuments,
   documents,
   openCommandPalette,
+  openDockTab,
   setViewerLigandSelections,
   setStructureOverlayModes,
   toggleSidebar,
@@ -50,6 +53,16 @@ export function useAppViewerStateMessages({
 
     if ((sourceName === "burrete-viewer" || sourceName === "burrete-grid") && body?.type === "toggleSidebar") {
       toggleSidebar();
+      return true;
+    }
+
+    if (sourceName === "burrete-viewer" && body?.type === "openTrajectorySmoothing") {
+      openDockTab("right", "inspector");
+      return true;
+    }
+
+    if (sourceName === "burrete-viewer" && body?.type === "trajectorySmoothingChanged") {
+      window.dispatchEvent(new CustomEvent("burrete:trajectory-smoothing-changed", { detail: body }));
       return true;
     }
 
@@ -103,7 +116,7 @@ export function useAppViewerStateMessages({
     }
 
     return false;
-  }, [activeDocument, addDocuments, documents, openCommandPalette, setStructureOverlayModes, setViewerLigandSelections, toggleSidebar]);
+  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, setStructureOverlayModes, setViewerLigandSelections, toggleSidebar]);
 
   return { handleViewerStateMessage };
 }
