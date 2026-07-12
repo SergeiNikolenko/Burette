@@ -407,6 +407,7 @@ export async function openBrowserDevMolstarContextDocument(
     }
     const config = {
       ...browserDevContextConfig(label, entry.format, entry.bytes.length, preferences, id),
+      hostedMcpWidgetBootstrap: contextDocument.context?.hostedMcpWidget === true,
       molstarContextFocus: contextFocus,
     };
     const virtualPath = `burrete-context://${id}`;
@@ -1181,33 +1182,42 @@ function viewerHtml(
       : {}),
     ...(externalRendererStatus ? { externalRendererStatus } : {}),
   };
+  const hostedMcpBootstrap = config.hostedMcpWidgetBootstrap === true;
+  const viewerAsset = (name: string) => hostedMcpBootstrap
+    ? `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/${name}`
+    : name;
   const rendererAssets =
     renderer === "xyzrender-external"
-      ? `<link rel="stylesheet" href="molstar.css" />`
-      : `<link rel="stylesheet" href="molstar.css" /><script src="molstar.js"></script>`;
+      ? `<link rel="stylesheet" href="${viewerAsset("molstar.css")}" />`
+      : `<link rel="stylesheet" href="${viewerAsset("molstar.css")}" /><script src="${viewerAsset("molstar.js")}"></script>`;
   const runtimeAssetVersion = `${VIEWER_ASSET_VERSION}-${Date.now()}`;
   const embeddedBytes = renderer === "xyzrender-external" ? new Uint8Array([10]) : bytes;
+  const runtimeBootstrap = hostedMcpBootstrap
+    ? `<script id="burrete-runtime-config" type="application/json">${serializeInlineJson(config)}</script>
+  <script id="burrete-runtime-data" type="application/json">${serializeInlineJson(bytesToBase64(embeddedBytes))}</script>
+  <script src="${viewerAsset("viewer-bootstrap.js")}?v=${runtimeAssetVersion}"></script>`
+    : `<script>${viewerBridgeJs()}</script>
+  <script>window.BurreteConfig = ${serializeInlineJson(config)};</script>
+  <script>window.BurreteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>`;
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <base href="${WEB_ASSETS_BASE}" />
+  ${hostedMcpBootstrap ? "" : `<base href="${WEB_ASSETS_BASE}" />`}
   <title>Burrete - ${escapeHtml(label)}</title>
-  <link rel="stylesheet" href="viewer-runtime.css?v=${runtimeAssetVersion}" />
+  <link rel="stylesheet" href="${viewerAsset("viewer-runtime.css")}?v=${runtimeAssetVersion}" />
 </head>
 <body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
   <div id="app"></div>
-  <script src="viewer-shell.js?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("viewer-shell.js")}?v=${runtimeAssetVersion}"></script>
   <div id="status" class="hidden">Loading ${escapeHtml(label)}...</div>
-  <script>${viewerBridgeJs()}</script>
+  ${runtimeBootstrap}
   ${rendererAssets}
-  <script>window.BurreteConfig = ${serializeInlineJson(config)};</script>
-  <script>window.BurreteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>
   ${extraWindowScript}
-  <script src="burette-agent.js?v=${runtimeAssetVersion}"></script>
-  <script src="trajectory-smoothing.js?v=${runtimeAssetVersion}"></script>
-  <script src="viewer.js?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("burette-agent.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("trajectory-smoothing.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("viewer.js")}?v=${runtimeAssetVersion}"></script>
 </body>
 </html>`;
 }
