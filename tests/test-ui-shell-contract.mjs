@@ -1552,6 +1552,8 @@ for (const runtimeSource of [viewer]) {
   assert.match(runtimeSource, /const lassoApplyGranularity = false;/);
   assert.match(runtimeSource, /selects\.select\(\{ loci \}, lassoApplyGranularity\)/);
   assert.match(runtimeSource, /selection\.fromLoci\('add', loci, lassoApplyGranularity\)/);
+  assert.match(runtimeSource, /function notifyMolstarLassoSelection\(picks, selected\)/);
+  assert.match(runtimeSource, /window\.__mqlPost\?\.\('selectionChanged'/);
   assert.match(runtimeSource, /function xyzrenderAtomIndexFromElement\(element\)/);
   assert.match(runtimeSource, /const atomNodes = xyzrenderAtomNodes\(item\)/);
   assert.doesNotMatch(runtimeSource, /const selectedAtomElements = new Set\(\)/);
