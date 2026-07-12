@@ -11745,9 +11745,18 @@
   function molstarContextSourceEntryForActiveConfig() {
     if (!activeConfig || activeConfig.docking) return null;
     const format = normalizeFormat(activeConfig.molstarFormat || activeConfig.format);
-    if (format !== 'pdb' && format !== 'pdbqt') return null;
+    if (format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf') return null;
     try {
       const data = rawStructureData({ ...activeConfig, format, binary: false });
+      if (format === 'sdf') {
+        const records = splitSdfRecords(data);
+        const activePose = Math.max(0, Math.min(records.length - 1, Number(activeMolstarPrepared?.activePose) || 0));
+        return {
+          data: records[activePose] || data,
+          format: 'sdf',
+          label: activeConfig.label || 'structure'
+        };
+      }
       return {
         data: activePdbModelText(data, activeConfig),
         format: 'pdb',
@@ -12446,6 +12455,9 @@
   }
 
   function molstarContextSdfEntryForExport(target) {
+    if (target?.scope === 'ligand' && normalizeFormat(target.sourceEntry?.format) === 'sdf') {
+      return target.sourceEntry;
+    }
     if (target?.scope === 'ligand' && target.receptor && target.ligand) {
       const ligandEntry = pdbLigandSdfEntryForResidue(target.receptor, target.atom);
       if (ligandEntry) return ligandEntry;
