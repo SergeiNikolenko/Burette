@@ -55,7 +55,9 @@
       "../public/xyzrender-gallery": "xyzrender-gallery",
       "../../../PreviewExtension/Web": "ViewerWeb",
       "../../../plugins/burette-agent": "plugins/burette-agent",
-      "../../../scripts/desmond_preview_extract.py": "desmond_preview_extract.py"
+      "../../../scripts/desmond_preview_extract.py": "desmond_preview_extract.py",
+      "../../../scripts/mdsmooth_runner.py": "mdsmooth_runner.py",
+      "../../../scripts/mdsmooth_core": "mdsmooth_core"
     },
     "macOS": {
       "minimumSystemVersion": "12.0",

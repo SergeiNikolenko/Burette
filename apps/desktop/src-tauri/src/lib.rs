@@ -145,6 +145,7 @@ pub fn run() {
             commands::grid::grid_delimited_columns,
             commands::grid::grid_append_delimited_records,
             commands::grid::grid_close_runtime,
+            commands::mdsmooth::run_mdsmooth,
             commands::documents::sync_viewer_preferences,
             commands::preview_cache::clear_preview_cache,
             commands::runtime_doctor::external_runtime_doctor,
