@@ -3,6 +3,7 @@
 
   const MAX_STRUCTURE_BYTES = 3 * 1024 * 1024;
   const MAX_SELECTION_RESIDUES = 96;
+  const ASSET_LOAD_TIMEOUT_MS = 30_000;
   const SUPPORTED_FORMATS = new Set(["pdb", "mmcif", "sdf", "xyz"]);
   const assetsBase = String(window.__BURRETE_WEB_ASSETS_BASE__ || "/burrete-viewer/").replace(/\/$/u, "");
   let started = false;
@@ -53,21 +54,37 @@
     }
     return btoa(binary);
   };
+  const waitForAsset = (element, name) => new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(
+      () => reject(new Error(`Timed out loading ${name}`)),
+      ASSET_LOAD_TIMEOUT_MS,
+    );
+    element.addEventListener("load", () => {
+      window.clearTimeout(timeout);
+      resolve();
+    }, { once: true });
+    element.addEventListener("error", () => {
+      window.clearTimeout(timeout);
+      reject(new Error(`Failed to load ${name}`));
+    }, { once: true });
+  });
   const addStylesheet = (name) => {
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.crossOrigin = "anonymous";
     link.href = `${assetsBase}/${name}`;
+    const loaded = waitForAsset(link, name);
     document.head.appendChild(link);
+    return loaded;
   };
-  const loadScript = (name) => new Promise((resolve, reject) => {
+  const loadScript = (name) => {
     const script = document.createElement("script");
     script.crossOrigin = "anonymous";
     script.src = `${assetsBase}/${name}`;
-    script.addEventListener("load", resolve, { once: true });
-    script.addEventListener("error", () => reject(new Error(`Failed to load ${name}`)), { once: true });
+    const loaded = waitForAsset(script, name);
     document.body.appendChild(script);
-  });
+    return loaded;
+  };
   const jsonElement = (id, value) => {
     const element = document.createElement("script");
     element.id = id;
@@ -124,12 +141,14 @@
     const root = document.getElementById("root");
     if (!root) throw new Error("Hosted viewer root is unavailable");
     root.id = "app";
-    root.insertAdjacentHTML("afterend", '<div id="status" class="hidden">Loading structure...</div>');
-    document.body.className = "burette-opaque-background";
+    root.insertAdjacentHTML("afterend", '<div id="status" class="loading">Loading structure...</div>');
+    document.body.className = "burette-opaque-background burette-mobile-host";
     document.documentElement.classList.add("buret-hosted-mobile-direct");
 
-    addStylesheet("viewer-runtime.css");
-    addStylesheet("molstar.css");
+    await Promise.all([
+      addStylesheet("viewer-runtime.css"),
+      addStylesheet("molstar.css"),
+    ]);
     const documentId = `hosted-${Date.now()}`;
     jsonElement("burrete-runtime-config", {
       format: structure.format,
@@ -152,18 +171,22 @@
       appViewer: true,
       tauriViewer: false,
       molstarStyle: "illustrative",
-      molstarPreferWebgl1: false,
-      molstarDisableAntialiasing: false,
-      molstarPixelScale: 1,
-      molstarPickScale: 1,
-      molstarResolutionMode: "native",
+      molstarPreferWebgl1: true,
+      molstarDisableAntialiasing: true,
+      molstarPixelScale: 0.75,
+      molstarPickScale: 0.75,
+      molstarResolutionMode: "scaled",
       molstarPowerPreference: "default",
       waterRepresentation: "line",
       xyzrenderViewer: false,
       xyzrenderAvailable: false,
       molstarAvailable: true,
-      showPanelControls: true,
-      defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" },
+      showPanelControls: false,
+      layoutShowControls: false,
+      layoutShowSequence: false,
+      layoutShowLog: false,
+      layoutShowLeftPanel: false,
+      defaultLayoutState: { left: "hidden", right: "hidden", sequence: "hidden", log: "hidden" },
     });
     jsonElement("burrete-runtime-data", base64Utf8(structure.data));
 
@@ -186,6 +209,7 @@
       const status = document.getElementById("status");
       if (status) {
         status.className = "error";
+        status.style.setProperty("display", "block", "important");
         status.textContent = `[web] Burrete mobile renderer failed to start.\n\n${error?.message || String(error)}`;
       }
     });

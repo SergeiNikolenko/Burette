@@ -519,6 +519,10 @@ button:focus-visible > .shortcut-tooltip {
   border-radius: 0;
   box-shadow: none;
 }
+.app-shell[data-hosted-mcp-widget="true"] .workbench {
+  border-radius: 0;
+  box-shadow: none;
+}
 .workbench-main {
   min-width: 0;
   min-height: 0;
