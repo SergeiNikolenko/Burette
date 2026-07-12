@@ -3365,7 +3365,9 @@ img.radix-menu-item-icon {
   color: var(--text-secondary);
 }
 .trajectory-smoothing-chart-header strong { color: var(--text-primary); font-size: 11px; }
-.trajectory-smoothing-chart svg { display: block; width: 100%; height: 112px; }
+.trajectory-smoothing-chart svg { display: block; width: 100%; height: 112px; cursor: crosshair; touch-action: none; }
+.trajectory-smoothing-chart svg:active { cursor: ew-resize; }
+.trajectory-smoothing-chart svg:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent); outline-offset: -2px; }
 .trajectory-smoothing-chart polyline { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
 .trajectory-smoothing-chart-raw { stroke: var(--text-secondary); stroke-width: 1; opacity: 0.52; }
 .trajectory-smoothing-chart-filtered { stroke: var(--accent); stroke-width: 2; }

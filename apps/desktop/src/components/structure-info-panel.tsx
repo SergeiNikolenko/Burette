@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
 import { RangeControl, SelectControl, ToggleControl } from "./settings-panel/setting-control";
@@ -603,6 +603,14 @@ function TrajectorySmoothingCard({
       view: nextView,
     });
   };
+  const setFrame = (index: number) => {
+    actions.runStructureViewerAction(document, {
+      type: "set_structure_pose",
+      label: `Show frame ${index + 1}`,
+      notify: false,
+      index,
+    });
+  };
   return (
     <section className="structure-brief-card trajectory-smoothing-card" data-collapsed={!open || undefined}>
       <div className="structure-inspector-section-header">
@@ -665,7 +673,7 @@ function TrajectorySmoothingCard({
               ))}
             </div>
           ) : null}
-          {result ? <TrajectorySmoothingChart result={result} playback={playback} /> : null}
+          {result ? <TrajectorySmoothingChart result={result} playback={playback} setFrame={setFrame} /> : null}
           <button type="button" className="dock-action trajectory-smoothing-build" onClick={apply}>
             {built ? "Rebuild smoothed motion" : "Build smoothed motion"}
           </button>
@@ -675,7 +683,16 @@ function TrajectorySmoothingCard({
   );
 }
 
-function TrajectorySmoothingChart({ result, playback }: { result: TrajectorySmoothingResult; playback: TrajectoryPlaybackState | null }) {
+function TrajectorySmoothingChart({
+  result,
+  playback,
+  setFrame,
+}: {
+  result: TrajectorySmoothingResult;
+  playback: TrajectoryPlaybackState | null;
+  setFrame: (index: number) => void;
+}) {
+  const lastRequestedFrame = useRef<number | null>(null);
   const width = 300;
   const height = 112;
   const padding = 10;
@@ -692,6 +709,21 @@ function TrajectorySmoothingChart({ result, playback }: { result: TrajectorySmoo
     ? Math.max(0, Math.min(result.filteredSignal.length - 1, playback.frameIndex))
     : 0;
   const activeX = padding + activeIndex * (width - padding * 2) / Math.max(1, result.filteredSignal.length - 1);
+  const frameFromPointer = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const viewBoxX = (event.clientX - rect.left) * width / Math.max(1, rect.width);
+    const ratio = Math.max(0, Math.min(1, (viewBoxX - padding) / (width - padding * 2)));
+    return Math.round(ratio * Math.max(0, result.frameCount - 1));
+  };
+  const requestFrame = (index: number) => {
+    const next = Math.max(0, Math.min(result.frameCount - 1, index));
+    if (lastRequestedFrame.current === next) return;
+    lastRequestedFrame.current = next;
+    setFrame(next);
+  };
+  const scrub = (event: ReactPointerEvent<SVGSVGElement>) => {
+    requestFrame(frameFromPointer(event));
+  };
   return (
     <div className="trajectory-smoothing-chart">
       <div className="trajectory-smoothing-chart-header">
@@ -700,7 +732,32 @@ function TrajectorySmoothingChart({ result, playback }: { result: TrajectorySmoo
           {playback?.playing ? "Playing · " : ""}Frame {(playback?.frameIndex ?? 0) + 1} / {playback?.frameCount ?? result.frameCount}
         </span>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Raw and filtered RMSD across trajectory frames">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="slider"
+        tabIndex={0}
+        aria-label="Trajectory frame on raw and filtered RMSD signal"
+        aria-valuemin={1}
+        aria-valuemax={result.frameCount}
+        aria-valuenow={activeIndex + 1}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          scrub(event);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) scrub(event);
+        }}
+        onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
+        onPointerCancel={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") requestFrame(activeIndex - 1);
+          else if (event.key === "ArrowRight") requestFrame(activeIndex + 1);
+          else if (event.key === "Home") requestFrame(0);
+          else if (event.key === "End") requestFrame(result.frameCount - 1);
+          else return;
+          event.preventDefault();
+        }}
+      >
         <polyline className="trajectory-smoothing-chart-raw" points={points(result.rawSignal)} />
         <polyline className="trajectory-smoothing-chart-filtered" points={points(result.filteredSignal)} />
         <line className="trajectory-smoothing-chart-playhead" x1={activeX} x2={activeX} y1={padding} y2={height - padding} />
