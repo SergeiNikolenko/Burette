@@ -37,7 +37,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static let maxViewerPageZoom: CGFloat = 0.9
     private static let previewSourceMonitorQueue = DispatchQueue(label: "com.local.BurreteV10.preview-source-monitor")
     private static let gridRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
-    private static let molstarRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
+    private static let molstarRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
     private static let externalArtifactRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
     private static let minimalRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
     private static let maestroPreviewReadLimit = 64 * 1024 * 1024
