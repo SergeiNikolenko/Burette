@@ -645,7 +645,7 @@ function TrajectorySmoothingCard({
   const [powerRetained, setPowerRetained] = useState(0.95);
   const [filterOrder, setFilterOrder] = useState(5);
   const [includeEnds, setIncludeEnds] = useState(true);
-  const build = async () => {
+  const build = async (targetOverride?: number) => {
     setRunning(true);
     setError(null);
     try {
@@ -655,7 +655,7 @@ function TrajectorySmoothingCard({
         topologyPath: pair.topologyPath,
         signal,
         mode,
-        targetFrames: Math.max(2, Math.min(frameCount, targetFrames)),
+        targetFrames: Math.max(2, Math.min(frameCount, targetOverride ?? targetFrames)),
         cutoffFrequency: signal === "rmsd" && rmsdFilter === "cutoff" ? cutoffFrequency : undefined,
         powerCutoff: signal === "rmsd" && rmsdFilter === "power" ? powerRetained : undefined,
         order: filterOrder,
@@ -700,6 +700,7 @@ function TrajectorySmoothingCard({
     const nextTargetFrames = Math.max(2, Math.round(frameCount * TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO[nextPreset]));
     setPreset(nextPreset);
     setTargetFrames(nextTargetFrames);
+    if (built) void build(nextTargetFrames);
   };
   const changeView = (nextView: "original" | "smoothed") => {
     setView(nextView);
@@ -717,6 +718,17 @@ function TrajectorySmoothingCard({
       index,
     });
   };
+  useEffect(() => {
+    const toggle = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      if (String(detail?.documentId || "") !== document.id) return;
+      setOpen(true);
+      if (!built) void build();
+      else changeView(view === "smoothed" ? "original" : "smoothed");
+    };
+    window.addEventListener("burrete:trajectory-smoothing-toggle-requested", toggle);
+    return () => window.removeEventListener("burrete:trajectory-smoothing-toggle-requested", toggle);
+  });
   return (
     <section className="structure-brief-card trajectory-smoothing-card" data-collapsed={!open || undefined}>
       <div className="structure-inspector-section-header">
@@ -732,7 +744,17 @@ function TrajectorySmoothingCard({
       </div>
       {open ? (
         <>
-          <p className="trajectory-smoothing-intro">Creates a temporary, smoother view inside this trajectory. Your source file and original coordinates stay unchanged.</p>
+          <p className="trajectory-smoothing-intro">Smooth changes only playback between selected source frames. The original trajectory and analysis data remain unchanged.</p>
+          {built ? (
+            <div className="trajectory-smoothing-view" role="group" aria-label="Trajectory version">
+              {(["original", "smoothed"] as const).map((value) => (
+                <button key={value} type="button" data-selected={view === value || undefined} aria-pressed={view === value} onClick={() => changeView(value)}>
+                  {value[0].toUpperCase() + value.slice(1)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="trajectory-smoothing-field-label">Smoothing strength</div>
           <div className="trajectory-smoothing-presets" role="group" aria-label="Smoothing strength">
             {(["light", "balanced", "strong"] as const).map((value) => (
               <button
@@ -813,21 +835,11 @@ function TrajectorySmoothingCard({
               ) : null}
             </div>
           ) : null}
-          {built ? (
-            <div className="trajectory-smoothing-view" role="group" aria-label="Trajectory version">
-              {(["original", "smoothed"] as const).map((value) => (
-                <button key={value} type="button" data-selected={view === value || undefined} aria-pressed={view === value} onClick={() => changeView(value)}>
-                  {value[0].toUpperCase() + value.slice(1)}
-                </button>
-              ))}
-            </div>
-          ) : null}
           {result ? <TrajectorySmoothingChart result={result} playback={playback} preset={preset} setFrame={setFrame} /> : null}
           {result?.spectrum ? <TrajectorySpectrum spectrum={result.spectrum} cutoffFrequency={result.cutoffFrequency ?? null} /> : null}
-          {built && view === "smoothed" ? <button type="button" className="dock-action" onClick={() => changeView("original")}>Turn smoothing off</button> : null}
           {error ? <div className="trajectory-smoothing-note" role="alert">{error}</div> : null}
           <button type="button" className="dock-action trajectory-smoothing-build" disabled={running} onClick={() => void build()}>
-            {running ? "Analyzing trajectory…" : built ? "Rebuild smoothed motion" : "Build smoothed motion"}
+            {running ? "Analyzing trajectory…" : built ? "Update smoothing" : "Apply smoothing"}
           </button>
         </>
       ) : null}

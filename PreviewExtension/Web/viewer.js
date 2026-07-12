@@ -9521,6 +9521,7 @@
       };
       trajectorySmoothingState = { originalPrepared, smoothedPrepared, result, view: 'smoothed' };
       await replaceTrajectorySmoothingPrepared(smoothedPrepared);
+      updateTrajectorySmoothingButtons();
       postHostMessage({
         type: 'trajectorySmoothingChanged',
         documentId: activeConfig?.documentId || '',
@@ -9570,6 +9571,7 @@
         view: 'smoothed'
       };
       await replaceTrajectorySmoothingPrepared(smoothedPrepared);
+      updateTrajectorySmoothingButtons();
       postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view: 'smoothed' });
       return { ok: true, command: 'apply_external_trajectory_smoothing', result: { frameCount } };
     } catch (error) {
@@ -9586,11 +9588,22 @@
       const prepared = view === 'original' ? trajectorySmoothingState.originalPrepared : trajectorySmoothingState.smoothedPrepared;
       await replaceTrajectorySmoothingPrepared(prepared);
       trajectorySmoothingState.view = view;
+      updateTrajectorySmoothingButtons();
       postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view });
       return { ok: true, command: 'set_trajectory_smoothing_view', result: { view } };
     } catch (error) {
       return agentActionFailure('set_trajectory_smoothing_view', 'ACTION_ERROR', error?.message || String(error));
     }
+  }
+
+  function updateTrajectorySmoothingButtons() {
+    const active = trajectorySmoothingState?.view === 'smoothed';
+    document.querySelectorAll('.buret-trajectory-smooth-button').forEach(button => {
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      button.setAttribute('aria-label', active ? 'Turn Smooth motion off' : 'Turn Smooth motion on');
+      button.setAttribute('title', active ? 'Show the original trajectory' : 'Build or restore the smoothed view');
+    });
   }
 
   async function setMolstarStyleFromAction(action = {}) {
@@ -9853,8 +9866,11 @@
     smooth.type = 'button';
     smooth.className = 'buret-trajectory-smooth-button';
     smooth.textContent = 'Smooth';
-    smooth.setAttribute('aria-label', 'Open Smooth motion settings');
-    smooth.title = 'Smooth motion - builds an optional derived trajectory';
+    const smoothingActive = trajectorySmoothingState?.view === 'smoothed';
+    smooth.classList.toggle('active', smoothingActive);
+    smooth.setAttribute('aria-pressed', smoothingActive ? 'true' : 'false');
+    smooth.setAttribute('aria-label', smoothingActive ? 'Turn Smooth motion off' : 'Turn Smooth motion on');
+    smooth.title = smoothingActive ? 'Show the original trajectory' : 'Build or restore the smoothed view';
     const speed = document.createElement('input');
     speed.className = 'buret-docking-pose-speed';
     speed.setAttribute('aria-label', `${controlLabel} loop frames per second`);
@@ -10129,9 +10145,7 @@
         type: 'openTrajectorySmoothing',
         documentId: activeConfig?.documentId || ''
       });
-      setStatus(posted
-        ? '[web] Smooth motion settings opened in Molecular Inspector.'
-        : '[web] Smooth motion settings are available in the Info panel.');
+      setStatus(posted ? '[web] Smooth motion toggled.' : '[web] Smooth motion is available in the Info panel.');
       setTimeout(hideStatus, 1200);
     });
     speed.addEventListener('change', () => {

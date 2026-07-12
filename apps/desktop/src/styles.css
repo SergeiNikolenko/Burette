@@ -3348,6 +3348,7 @@ img.radix-menu-item-icon {
   font: inherit;
 }
 .trajectory-smoothing-check { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 11px; }
+.trajectory-smoothing-field-label { color: var(--text-secondary); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 .trajectory-smoothing-build { width: 100%; }
 .trajectory-smoothing-chart {
   overflow: hidden;

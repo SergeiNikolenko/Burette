@@ -59,6 +59,9 @@ export function useAppViewerStateMessages({
 
     if (sourceName === "burrete-viewer" && body?.type === "openTrajectorySmoothing") {
       openDockTab("right", "inspector");
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("burrete:trajectory-smoothing-toggle-requested", { detail: body }));
+      }, 0);
       return true;
     }
 
