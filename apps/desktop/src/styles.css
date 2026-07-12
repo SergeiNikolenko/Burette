@@ -175,6 +175,23 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   -webkit-backdrop-filter: none;
 }
 
+.app-shell[data-hero-embed="true"] :is(
+  .drag-region,
+  .chrome-leading-controls,
+  .chrome-trailing-controls,
+  .topbar,
+  .sidebar-shell,
+  .splitter,
+  .dock-panel
+) {
+  pointer-events: none;
+  user-select: none;
+}
+
+.app-shell[data-hero-embed="true"] .sidebar-settings-button {
+  display: none;
+}
+
 .drag-region {
   position: absolute;
   inset: 0 0 auto 0;
