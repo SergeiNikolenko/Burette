@@ -3785,7 +3785,7 @@
 
   function restoreToolbarCollapsed(toolbar, viewer) {
     if (window.BurreteConfig?.hostedMcpWidgetBootstrap === true) {
-      setToolbarCollapsed(toolbar, false, viewer, false);
+      setToolbarCollapsed(toolbar, true, viewer, false);
       return;
     }
     let collapsed = false;

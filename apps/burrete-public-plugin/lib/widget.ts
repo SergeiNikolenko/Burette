@@ -1,10 +1,10 @@
-export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v8.html";
+export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v9.html";
 export const VIEWER_SHELL_SCRIPT_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.js";
 export const VIEWER_SHELL_STYLES_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.css";
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-hosted-toolbar-v1";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-hosted-toolbar-v2";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
