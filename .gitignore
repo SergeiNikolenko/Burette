@@ -22,3 +22,5 @@ apps/burrete-public-plugin/public/viewer-shell/
 apps/desktop/dist/
 apps/desktop/src-tauri/target/
 /target/
+__pycache__/
+*.py[cod]

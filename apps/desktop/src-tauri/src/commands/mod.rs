@@ -5,6 +5,7 @@ pub(crate) mod descriptors;
 pub(crate) mod documents;
 pub(crate) mod folding_results;
 pub(crate) mod grid;
+pub(crate) mod mdsmooth;
 pub(crate) mod numpy_artifact;
 pub(crate) mod preview_cache;
 pub(crate) mod quicklook;

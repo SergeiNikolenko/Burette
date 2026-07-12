@@ -2064,6 +2064,31 @@ body.burette-mobile-host .buret-docking-poses button {
   accent-color: var(--buret-molstar-accent);
   cursor: pointer;
 }
+@media (max-width: 360px) {
+  .buret-docking-poses {
+    top: 64px;
+    width: calc(100vw - 24px);
+  }
+  .buret-docking-pose-main {
+    display: grid;
+    grid-template-columns: 28px auto minmax(62px, 1fr) auto auto;
+    width: 100%;
+  }
+  .buret-docking-pose-main > span {
+    min-width: 0;
+  }
+  .buret-docking-pose-main > button:not(.buret-docking-pose-animation-button) {
+    padding-inline: 7px;
+  }
+  .buret-docking-pose-animation {
+    width: 100%;
+  }
+  .buret-docking-pose-slider {
+    min-width: 0;
+    width: auto;
+    flex: 1 1 auto;
+  }
+}
 .buret-agent-panel {
   position: fixed;
   top: 64px;

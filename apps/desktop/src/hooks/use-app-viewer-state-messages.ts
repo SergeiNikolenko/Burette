@@ -59,11 +59,19 @@ export function useAppViewerStateMessages({
 
     if (sourceName === "burrete-viewer" && body?.type === "openTrajectorySmoothing") {
       openDockTab("right", "inspector");
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("burrete:trajectory-smoothing-toggle-requested", { detail: body }));
+      }, 0);
       return true;
     }
 
     if (sourceName === "burrete-viewer" && body?.type === "trajectorySmoothingChanged") {
       window.dispatchEvent(new CustomEvent("burrete:trajectory-smoothing-changed", { detail: body }));
+      return true;
+    }
+
+    if (sourceName === "burrete-viewer" && body?.type === "trajectoryFrameChanged") {
+      window.dispatchEvent(new CustomEvent("burrete:trajectory-frame-changed", { detail: body }));
       return true;
     }
 
