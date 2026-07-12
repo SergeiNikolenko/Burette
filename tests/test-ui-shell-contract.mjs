@@ -5120,6 +5120,7 @@ assert.match(previewViewer, /const image = molstarPreviewSvgCache\.get\(key\) \|
 assert.match(previewViewer, /function molstarPreviewParseMolblock2D\(data\)/);
 assert.match(previewViewer, /function molstarMoleculePreviewFallbackSVG\(entry\)/);
 assert.match(previewViewer, /data-buret-rdkit-svg="fallback"/);
+assert.match(previewViewer, /const molblock = splitSdfRecords\(String\(entry\.data \|\| ''\)\)\[0\] \|\| String\(entry\.data \|\| ''\);\s*mol = rdkit\.get_mol\(molblock\);/);
 assert.doesNotMatch(previewViewer, /if \(!image\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
 assert.match(previewViewer, /\$\{image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\}/);
 assert.match(previewViewer, /function molstarPreviewLoadRDKitScript\(\)/);

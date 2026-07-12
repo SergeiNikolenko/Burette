@@ -13337,7 +13337,8 @@
       const rdkit = await molstarPreviewInitRDKit();
       let mol = null;
       try {
-        mol = rdkit.get_mol(String(entry.data || ''));
+        const molblock = splitSdfRecords(String(entry.data || ''))[0] || String(entry.data || '');
+        mol = rdkit.get_mol(molblock);
         if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
         try { mol.set_new_coords?.(); } catch (_) {}
         const svg = molstarPreviewCleanRDKitSVG(mol.get_svg(MOLSTAR_PREVIEW_RDKIT_SVG_SIZE, MOLSTAR_PREVIEW_RDKIT_SVG_SIZE));
