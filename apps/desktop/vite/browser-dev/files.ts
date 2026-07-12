@@ -254,6 +254,8 @@ async function browserDevTrajectoryPairPayload(filePath: string, options: Browse
     byteCount: coordinateInfo.size + modelInfo.size,
     sourcePath: filePath,
     sourceExtension: extension,
+    topologyPath: modelPath,
+    trajectoryPath: coordinatePath,
     docking: {
       activePose: null,
       sceneMode: null,

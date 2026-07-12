@@ -1,4 +1,5 @@
-import { useEffect, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
 import { RangeControl, SelectControl, ToggleControl } from "./settings-panel/setting-control";
@@ -13,6 +14,8 @@ import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
+import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
+import { isTauriRuntime } from "../lib/tauri";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings } from "../types";
 
 type StructureInfoPanelProps = {
@@ -45,6 +48,19 @@ type TrajectorySmoothingResult = {
   rawSignal: number[];
   filteredSignal: number[];
   interpolation: string;
+  outputPath?: string;
+  signal?: MdsmoothSignal;
+  cutoffFrequency?: number | null;
+  spectrum?: MdsmoothResult["spectrum"];
+  diagnostics?: MdsmoothResult["diagnostics"];
+  mode?: MdsmoothMode;
+  preset?: "light" | "balanced" | "strong";
+  settingsSignature?: string;
+};
+type TrajectoryPlaybackState = {
+  frameIndex: number;
+  frameCount: number;
+  playing: boolean;
 };
 
 const SDF_CONTEXT_STYLE_OPTIONS = [
@@ -72,6 +88,14 @@ const SDF_CONTEXT_OPACITY_MAX = 1;
 const SDF_CONTEXT_STYLE_DEFAULT: SdfContextStyle = "match";
 const SDF_CONTEXT_COLOR_DEFAULT: SdfContextColor = "colored";
 const INFO_TRAJECTORY_CONTROL_LIMIT = 200;
+const TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO = {
+  light: 0.55,
+  balanced: 0.32,
+  strong: 0.18,
+} as const;
+const TRAJECTORY_SMOOTHING_EXTENSIONS = new Set([
+  "xyz", "pdb", "ent", "gro", "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
+]);
 
 export function StructureInfoPanel({ document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
   const hostedMcpWidget = isHostedMcpWidget();
@@ -93,6 +117,9 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const [trajectorySmoothingBuilt, setTrajectorySmoothingBuilt] = useState(false);
   const [trajectorySmoothingView, setTrajectorySmoothingView] = useState<"original" | "smoothed">("original");
   const [trajectorySmoothingResult, setTrajectorySmoothingResult] = useState<TrajectorySmoothingResult | null>(null);
+  const [trajectorySmoothingSignal, setTrajectorySmoothingSignal] = useState<MdsmoothSignal>("rmsd");
+  const [trajectorySmoothingMode, setTrajectorySmoothingMode] = useState<MdsmoothMode>("extrema");
+  const [trajectoryPlayback, setTrajectoryPlayback] = useState<TrajectoryPlaybackState | null>(null);
   const foldingResult = useFoldingResult(document);
 
   useEffect(() => {
@@ -100,6 +127,22 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
     setTrajectorySmoothingBuilt(false);
     setTrajectorySmoothingView("original");
     setTrajectorySmoothingResult(null);
+    setTrajectoryPlayback(null);
+  }, [document?.id]);
+
+  useEffect(() => {
+    const handle = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      if (String(detail?.documentId || "") !== document?.id) return;
+      const frameCount = Math.max(1, Math.trunc(Number(detail.frameCount) || 1));
+      setTrajectoryPlayback({
+        frameIndex: Math.max(0, Math.min(frameCount - 1, Math.trunc(Number(detail.frameIndex) || 0))),
+        frameCount,
+        playing: detail.playing === true,
+      });
+    };
+    window.addEventListener("burrete:trajectory-frame-changed", handle);
+    return () => window.removeEventListener("burrete:trajectory-frame-changed", handle);
   }, [document?.id]);
 
   useEffect(() => {
@@ -151,7 +194,8 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const rawCompositionError = composition.documentId === document.id ? composition.error : null;
   const compositionError = isVirtualMolstarScene(document) ? null : rawCompositionError;
   const selectedEntity = selectedStructureRow(document, compositionSummary, activeActionKey);
-  const poseControls = structurePoseControlsFor(document, compositionSummary);
+  const poseControls = structurePoseControlsFor(document, compositionSummary) ?? trajectoryPlaybackControlsFor(document, trajectoryPlayback);
+  const trajectoryDocument = isTrajectorySmoothingDocument(document, poseControls);
   const contextStyleCard = structureContextStyleCardFor(document, compositionSummary, structureOverlayMode);
   const latestXtbJob = latestXtbJobForDocument(document, xtbJobs);
   const structureXtbArtifact = xtbArtifactInfoForPath(document.path, document.extension);
@@ -254,7 +298,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
 
       <FoldingResultsPanel state={foldingResult} actions={actions} />
 
-      {!hostedMcpWidget ? <>
+      {!hostedMcpWidget && !trajectoryDocument ? <>
         <ConformerWorkflowCard
           document={document}
           selectedEntity={selectedEntity}
@@ -339,7 +383,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
 
       {poseControls ? (
         <>
-          {isTrajectorySmoothingDocument(document, poseControls) ? (
+          {trajectoryDocument ? (
             <TrajectorySmoothingCard
               document={document}
               controls={poseControls}
@@ -360,15 +404,24 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
               view={trajectorySmoothingView}
               setView={setTrajectorySmoothingView}
               result={trajectorySmoothingResult}
+              setResult={setTrajectorySmoothingResult}
+              setBuilt={setTrajectorySmoothingBuilt}
+              signal={trajectorySmoothingSignal}
+              setSignal={setTrajectorySmoothingSignal}
+              mode={trajectorySmoothingMode}
+              setMode={setTrajectorySmoothingMode}
+              playback={trajectoryPlayback}
             />
           ) : null}
-          <StructurePoseControlsCard
-            document={document}
-            controls={poseControls}
-            actions={actions}
-            activeActionKey={activeActionKey}
-            setActiveActionKey={setActiveActionKey}
-          />
+          {!trajectoryDocument ? (
+            <StructurePoseControlsCard
+              document={document}
+              controls={poseControls}
+              actions={actions}
+              activeActionKey={activeActionKey}
+              setActiveActionKey={setActiveActionKey}
+            />
+          ) : null}
         </>
       ) : null}
 
@@ -510,8 +563,25 @@ function structurePoseControlsFor(document: ViewerDocument, summary: StructureCo
   return null;
 }
 
-function isTrajectorySmoothingDocument(document: ViewerDocument, controls: StructurePoseControls) {
-  return controls.actions.length > 1 && (document.extension === "pdb" || document.extension === "ent" || document.extension === "xyz");
+function isTrajectorySmoothingDocument(document: ViewerDocument, controls: StructurePoseControls | null) {
+  return Boolean(controls && controls.actions.length > 1 && (
+    TRAJECTORY_SMOOTHING_EXTENSIONS.has(document.extension) || document.dockingRequest?.ligandPaths.length
+  ));
+}
+
+function trajectoryPlaybackControlsFor(document: ViewerDocument, playback: TrajectoryPlaybackState | null): StructurePoseControls | null {
+  if (!document.dockingRequest || !playback || playback.frameCount <= 1 || playback.frameCount > INFO_TRAJECTORY_CONTROL_LIMIT) return null;
+  return {
+    kind: "frames",
+    title: "Frames",
+    detail: `${playback.frameCount} frames`,
+    controlLabel: "Frame",
+    actions: Array.from({ length: playback.frameCount }, (_, index) => ({
+      type: "set_structure_pose",
+      label: `Show frame ${index + 1}`,
+      index,
+    })),
+  };
 }
 
 function TrajectorySmoothingCard({
@@ -534,6 +604,13 @@ function TrajectorySmoothingCard({
   view,
   setView,
   result,
+  setResult,
+  setBuilt,
+  signal,
+  setSignal,
+  mode,
+  setMode,
+  playback,
 }: {
   document: ViewerDocument;
   controls: StructurePoseControls;
@@ -554,18 +631,124 @@ function TrajectorySmoothingCard({
   view: "original" | "smoothed";
   setView: (value: "original" | "smoothed") => void;
   result: TrajectorySmoothingResult | null;
+  setResult: (value: TrajectorySmoothingResult | null) => void;
+  setBuilt: (value: boolean) => void;
+  signal: MdsmoothSignal;
+  setSignal: (value: MdsmoothSignal) => void;
+  mode: MdsmoothMode;
+  setMode: (value: MdsmoothMode) => void;
+  playback: TrajectoryPlaybackState | null;
 }) {
   const frameCount = controls.actions.length;
-  const apply = () => {
-    actions.runStructureViewerAction(document, {
-      type: "apply_trajectory_smoothing",
-      label: "Build smoothed motion",
-      preset,
-      targetFrames: Math.max(2, Math.min(frameCount, targetFrames)),
-      referenceFrame: Math.max(1, Math.min(frameCount, referenceFrame)),
-      align,
-    });
+  const [running, setRunning] = useState(false);
+  const [installingDeepTica, setInstallingDeepTica] = useState(false);
+  const [deepTicaInstalled, setDeepTicaInstalled] = useState<boolean | null>(null);
+  const [showUpdated, setShowUpdated] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [rmsdFilter, setRmsdFilter] = useState<"frames" | "cutoff" | "power">("frames");
+  const [cutoffFrequency, setCutoffFrequency] = useState(0.1);
+  const [powerRetained, setPowerRetained] = useState(0.95);
+  const [filterOrder, setFilterOrder] = useState(5);
+  const [includeEnds, setIncludeEnds] = useState(true);
+  const [kineticStates, setKineticStates] = useState(5);
+  const [lagFrames, setLagFrames] = useState(Math.max(1, Math.min(50, Math.round(frameCount / 20))));
+  const failedAutoUpdate = useRef<string | null>(null);
+  const requestSerial = useRef(0);
+  const updatedTimer = useRef<number | null>(null);
+  const settingsSignature = JSON.stringify([signal, mode, preset, targetFrames, referenceFrame, align, rmsdFilter, cutoffFrequency, powerRetained, filterOrder, includeEnds, kineticStates, lagFrames]);
+  const latestSettingsSignature = useRef(settingsSignature);
+  latestSettingsSignature.current = settingsSignature;
+  const build = async () => {
+    const requestedSignature = settingsSignature;
+    const updatingExisting = built;
+    const serial = requestSerial.current + 1;
+    requestSerial.current = serial;
+    setRunning(true);
+    setError(null);
+    try {
+      const pair = trajectoryPathsFor(document);
+      const response = await runMdsmooth({
+        trajectoryPath: pair.trajectoryPath,
+        topologyPath: pair.topologyPath,
+        signal,
+        mode,
+        targetFrames: Math.max(2, Math.min(frameCount, targetFrames)),
+        cutoffFrequency: signal === "rmsd" && rmsdFilter === "cutoff" ? cutoffFrequency : undefined,
+        powerCutoff: signal === "rmsd" && rmsdFilter === "power" ? powerRetained : undefined,
+        order: filterOrder,
+        includeEnds,
+        referenceFrame: Math.max(1, Math.min(frameCount, referenceFrame)),
+        align,
+        lag: lagFrames,
+        states: kineticStates,
+        microstates: Math.min(100, frameCount),
+        ticaDimensions: 3,
+      });
+      if (serial !== requestSerial.current || requestedSignature !== latestSettingsSignature.current) return;
+      failedAutoUpdate.current = null;
+      if (updatedTimer.current) window.clearTimeout(updatedTimer.current);
+      if (updatingExisting) {
+        setShowUpdated(true);
+        updatedTimer.current = window.setTimeout(() => setShowUpdated(false), 1400);
+      }
+      setResult({
+        frameCount: response.frameCount,
+        keyframeCount: response.keyframes.length,
+        keyframes: response.keyframes,
+        rawSignal: response.rawSignal,
+        filteredSignal: response.filteredSignal,
+        interpolation: response.interpolation,
+        outputPath: response.outputPath,
+        signal: response.signal,
+        cutoffFrequency: response.cutoffFrequency,
+        spectrum: response.spectrum,
+        diagnostics: response.diagnostics,
+        mode,
+        preset,
+        settingsSignature: requestedSignature,
+      });
+      setBuilt(true);
+      setView("smoothed");
+      actions.runStructureViewerAction(document, {
+        type: "apply_external_trajectory_smoothing",
+        label: "Show smoothed motion",
+        notify: false,
+        sourceUrl: trajectoryOutputUrl(response.outputPath),
+        frameCount: response.frameCount,
+        interpolation: response.interpolation,
+        frameIndex: playback?.frameIndex ?? 0,
+        playing: Boolean(playback?.playing),
+      });
+    } catch (reason) {
+      if (serial !== requestSerial.current || requestedSignature !== latestSettingsSignature.current) return;
+      failedAutoUpdate.current = requestedSignature;
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      if (serial === requestSerial.current) setRunning(false);
+    }
   };
+  const selectPreset = (nextPreset: "light" | "balanced" | "strong") => {
+    const nextTargetFrames = Math.max(2, Math.round(frameCount * TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO[nextPreset]));
+    setPreset(nextPreset);
+    setTargetFrames(nextTargetFrames);
+  };
+  const resultDirty = Boolean(result && result.settingsSignature !== settingsSignature);
+  useEffect(() => {
+    if (signal !== "deeptica") return;
+    let cancelled = false;
+    void getMdsmoothCapabilities()
+      .then((capabilities) => { if (!cancelled) setDeepTicaInstalled(capabilities.deepTicaInstalled); })
+      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)); });
+    return () => { cancelled = true; };
+  }, [signal]);
+  useEffect(() => {
+    if (!built || !resultDirty || running || failedAutoUpdate.current === settingsSignature) return;
+    const timer = window.setTimeout(() => void build(), 450);
+    return () => window.clearTimeout(timer);
+  }, [built, resultDirty, running, settingsSignature]);
+  useEffect(() => () => {
+    if (updatedTimer.current) window.clearTimeout(updatedTimer.current);
+  }, []);
   const changeView = (nextView: "original" | "smoothed") => {
     setView(nextView);
     actions.runStructureViewerAction(document, {
@@ -575,79 +758,164 @@ function TrajectorySmoothingCard({
       view: nextView,
     });
   };
+  const setFrame = (index: number) => {
+    actions.runStructureViewerAction(document, {
+      type: "set_structure_pose",
+      label: `Show frame ${index + 1}`,
+      index,
+    });
+  };
+  useEffect(() => {
+    const toggle = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      if (String(detail?.documentId || "") !== document.id) return;
+      setOpen(true);
+      if (!built) void build();
+      else changeView(view === "smoothed" ? "original" : "smoothed");
+    };
+    window.addEventListener("burrete:trajectory-smoothing-toggle-requested", toggle);
+    return () => window.removeEventListener("burrete:trajectory-smoothing-toggle-requested", toggle);
+  });
   return (
     <section className="structure-brief-card trajectory-smoothing-card" data-collapsed={!open || undefined}>
-      <div className="structure-inspector-section-header">
-        <button
-          type="button"
-          className="structure-inspector-section-title-button"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
-          Smooth motion
-        </button>
-        <span>Optional derived trajectory</span>
+      <div className="trajectory-smoothing-header">
+        <strong>Smooth motion</strong>
+        <div className="trajectory-smoothing-power" role="group" aria-label="Smooth motion">
+          <button type="button" data-selected={view === "original" || !built || undefined} aria-pressed={view === "original" || !built} onClick={() => { if (built) changeView("original"); }}>Off</button>
+          <button type="button" data-selected={built && view === "smoothed" || undefined} aria-pressed={built && view === "smoothed"} onClick={() => { if (built) changeView("smoothed"); else void build(); }}>On</button>
+        </div>
       </div>
       {open ? (
         <>
-          <p className="trajectory-smoothing-intro">Reduces thermal jitter while keeping the original file unchanged.</p>
+          <p className="trajectory-smoothing-intro">Smooths playback without changing the original trajectory or analysis data.</p>
           <div className="trajectory-smoothing-presets" role="group" aria-label="Smoothing strength">
             {(["light", "balanced", "strong"] as const).map((value) => (
               <button
                 key={value}
                 type="button"
+                data-smoothing-tooltip={value === "light" ? "Keeps more source frames and removes only the fastest jitter." : value === "strong" ? "Keeps fewer source frames for the calmest, most simplified playback." : "Balances retained molecular detail with smoother playback."}
                 data-selected={preset === value || undefined}
                 aria-pressed={preset === value}
-                onClick={() => setPreset(value)}
+                disabled={mode === "kinetic"}
+                onClick={() => selectPreset(value)}
               >
                 {value[0].toUpperCase() + value.slice(1)}
               </button>
             ))}
           </div>
+          <div className="trajectory-smoothing-strength-copy">
+            {mode === "kinetic" ? `${kineticStates} MSM/PCCA+ macrostates` : <><strong>{preset[0].toUpperCase() + preset.slice(1)}</strong> · {targetFrames} of {frameCount} source frames</>}
+          </div>
           <button type="button" className="trajectory-smoothing-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
-            Scientific settings <span>{advanced ? "Hide" : "Show"}</span>
+            <span>Scientific settings</span><span aria-hidden="true">{advanced ? "⌃" : "⌄"}</span>
           </button>
           {advanced ? (
-            <div className="trajectory-smoothing-settings">
-              <label>
-                <span>Signal</span>
-                <select aria-label="Trajectory smoothing signal" disabled value="rmsd"><option value="rmsd">RMSD to reference</option></select>
+            <div className="trajectory-smoothing-settings trajectory-smoothing-science">
+              <div className="trajectory-smoothing-group-label">Method</div>
+              <label data-smoothing-tooltip="Smooth one measured motion over time, or build a short tour through distinct long-lived shapes.">
+                <span>Analysis method</span>
+                <select aria-label="Trajectory key-frame model" value={mode} onChange={(event) => setMode(event.target.value as MdsmoothMode)}>
+                  <option value="extrema">Smooth one motion · recommended</option>
+                  <option value="kinetic">Tour long-lived shapes · MSM</option>
+                </select>
               </label>
-              <label>
-                <span>Target key frames</span>
+              {mode === "extrema" ? (
+                <>
+                  <label data-smoothing-tooltip={trajectorySignalDescription(signal)}>
+                    <span>Signal</span>
+                    <select aria-label="Trajectory smoothing signal" value={signal} onChange={(event) => { setSignal(event.target.value as MdsmoothSignal); setError(null); }}>
+                      <option value="rmsd">RMSD · safe default</option>
+                      <option value="pc1">PCA · largest motion</option>
+                      <option value="ic1">tICA · slowest motion</option>
+                      <option value="dpca">Backbone angles · loop motion</option>
+                      <option value="deeptica">DeepTICA · nonlinear slow motion</option>
+                    </select>
+                  </label>
+                  <div className="trajectory-smoothing-method-note">{trajectorySignalDescription(signal)}</div>
+                </>
+              ) : (
+                <>
+                  <div className="trajectory-smoothing-method-note">Use this to tour distinct long-lived shapes, not to smooth the original timeline. It needs a longer trajectory with repeated transitions between shapes.</div>
+                  <div className="trajectory-smoothing-group-label">Kinetic model</div>
+                  <label data-smoothing-tooltip="How many distinct long-lived shapes to show. Start with 5; reduce it if the trajectory does not revisit enough states."><span>States to show</span><input type="number" min={2} max={12} value={kineticStates} onChange={(event) => setKineticStates(Number(event.target.value) || 5)} /></label>
+                  <label data-smoothing-tooltip="How far apart frames must be before a transition is counted. Start near 10 frames; a longer lag ignores brief back-and-forth jitter."><span>Lag, frames</span><input type="number" min={1} max={Math.max(1, Math.floor(frameCount / 3))} value={lagFrames} onChange={(event) => setLagFrames(Number(event.target.value) || 1)} /></label>
+                </>
+              )}
+              <div className="trajectory-smoothing-group-label">Sampling</div>
+              {mode === "extrema" ? <label data-smoothing-tooltip="Start with 50. More source frames preserve detail; fewer frames make a shorter, calmer movie.">
+                <span>Target frames</span>
                 <input type="number" min={2} max={frameCount} value={targetFrames} onChange={(event) => setTargetFrames(Number(event.target.value) || 2)} />
-              </label>
-              <label>
+              </label> : null}
+              {signal === "rmsd" && mode === "extrema" ? (
+                <>
+                  <label data-smoothing-tooltip="Choose the easy frame-count control, or set the low-pass filter directly if you know the signal spectrum.">
+                    <span>RMSD filter</span>
+                    <select aria-label="RMSD filter control" value={rmsdFilter} onChange={(event) => setRmsdFilter(event.target.value as "frames" | "cutoff" | "power")}>
+                      <option value="frames">Number of frames · recommended</option>
+                      <option value="cutoff">Frequency cutoff · expert</option>
+                      <option value="power">Signal power · expert</option>
+                    </select>
+                  </label>
+                  {rmsdFilter === "cutoff" ? <label data-smoothing-tooltip="Normalized low-pass cutoff. Lower values remove more rapid motion."><span>Cutoff frequency</span><input type="number" min={0.0001} max={0.5} step={0.001} value={cutoffFrequency} onChange={(event) => setCutoffFrequency(Number(event.target.value) || 0.1)} /></label> : null}
+                  {rmsdFilter === "power" ? <label data-smoothing-tooltip="Fraction of signal power preserved by the low-pass filter."><span>Power retained</span><input type="number" min={0.5} max={0.999} step={0.01} value={powerRetained} onChange={(event) => setPowerRetained(Number(event.target.value) || 0.95)} /></label> : null}
+                  <label data-smoothing-tooltip="How sharply the filter separates slow motion from fast jitter. Leave this at 5 unless you are tuning the spectrum manually."><span>Filter order</span><input type="number" min={1} max={12} value={filterOrder} onChange={(event) => setFilterOrder(Number(event.target.value) || 5)} /></label>
+                  <label className="trajectory-smoothing-check" data-smoothing-tooltip="Keeps the trajectory endpoints even when they are not signal turning points."><input type="checkbox" checked={includeEnds} onChange={(event) => setIncludeEnds(event.target.checked)} /><span>Always include first and last frames</span></label>
+                </>
+              ) : null}
+              <label data-smoothing-tooltip="The frame RMSD compares against. Frame 1 is the safe default; choose another only when it is a better known reference conformation.">
                 <span>Reference frame</span>
                 <input type="number" min={1} max={frameCount} value={referenceFrame} onChange={(event) => setReferenceFrame(Number(event.target.value) || 1)} />
               </label>
-              <label className="trajectory-smoothing-check">
+              <label className="trajectory-smoothing-check" data-smoothing-tooltip="Removes whole-structure tumbling before measuring motion, so the signal follows internal conformational change instead of camera-like movement.">
                 <input type="checkbox" checked={align} onChange={(event) => setAlign(event.target.checked)} />
-                <span>Remove whole-structure translation</span>
+                <span>Align structures before analysis</span>
               </label>
-              <div className="trajectory-smoothing-note">Linear interpolation is illustrative; selected source frames remain the scientific reference.</div>
+              {mode === "extrema" && signal === "deeptica" ? (
+                <div className="trajectory-smoothing-runtime-row">
+                  <span>DeepTICA runtime</span>
+                  {deepTicaInstalled ? <strong>Ready ✓</strong> : deepTicaInstalled === null ? <small>Checking…</small> : <><small>Not installed</small><button type="button" disabled={installingDeepTica} onClick={async () => {
+                  setInstallingDeepTica(true);
+                  setError(null);
+                  try {
+                    await installDeepTica();
+                    setDeepTicaInstalled(true);
+                    failedAutoUpdate.current = null;
+                    if (built) void build();
+                  }
+                  catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+                  finally { setInstallingDeepTica(false); }
+                }}>
+                  {installingDeepTica ? "Installing…" : "Install"}
+                </button></>}
+                </div>
+              ) : null}
             </div>
           ) : null}
-          {built ? (
-            <div className="trajectory-smoothing-view" role="group" aria-label="Trajectory version">
-              {(["original", "smoothed"] as const).map((value) => (
-                <button key={value} type="button" data-selected={view === value || undefined} aria-pressed={view === value} onClick={() => changeView(value)}>
-                  {value[0].toUpperCase() + value.slice(1)}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {result ? <TrajectorySmoothingChart result={result} /> : null}
-          <button type="button" className="dock-action trajectory-smoothing-build" onClick={apply}>
-            {built ? "Rebuild smoothed motion" : "Build smoothed motion"}
-          </button>
+          {resultDirty || (running && built) ? <div className="trajectory-smoothing-update-status">Updating…</div> : showUpdated ? <div className="trajectory-smoothing-update-status" data-complete>Updated</div> : null}
+          {result ? <TrajectorySmoothingChart result={result} playback={playback} preset={result.preset ?? preset} setFrame={setFrame} /> : null}
+          {result?.spectrum ? <TrajectorySpectrum spectrum={result.spectrum} cutoffFrequency={result.cutoffFrequency ?? null} /> : null}
+          {error ? <div className="trajectory-smoothing-error" role="alert">{error}</div> : null}
+          {!built || error ? <button type="button" className="dock-action trajectory-smoothing-build" disabled={running} onClick={() => void build()}>
+            {running ? "Enabling smoothing…" : error ? "Try again" : "Enable smoothing"}
+          </button> : null}
         </>
       ) : null}
     </section>
   );
 }
 
-function TrajectorySmoothingChart({ result }: { result: TrajectorySmoothingResult }) {
+function TrajectorySmoothingChart({
+  result,
+  playback,
+  preset,
+  setFrame,
+}: {
+  result: TrajectorySmoothingResult;
+  playback: TrajectoryPlaybackState | null;
+  preset: "light" | "balanced" | "strong";
+  setFrame: (index: number) => void;
+}) {
+  const lastRequestedFrame = useRef<number | null>(null);
   const width = 300;
   const height = 112;
   const padding = 10;
@@ -660,15 +928,62 @@ function TrajectorySmoothingChart({ result }: { result: TrajectorySmoothingResul
     const y = height - padding - (value - min) * (height - padding * 2) / span;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
+  const activeIndex = playback
+    ? Math.max(0, Math.min(result.filteredSignal.length - 1, playback.frameIndex))
+    : 0;
+  const activeX = padding + activeIndex * (width - padding * 2) / Math.max(1, result.filteredSignal.length - 1);
+  const frameFromPointer = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const viewBoxX = (event.clientX - rect.left) * width / Math.max(1, rect.width);
+    const ratio = Math.max(0, Math.min(1, (viewBoxX - padding) / (width - padding * 2)));
+    return Math.round(ratio * Math.max(0, result.frameCount - 1));
+  };
+  const requestFrame = (index: number) => {
+    const next = Math.max(0, Math.min(result.frameCount - 1, index));
+    if (lastRequestedFrame.current === next) return;
+    lastRequestedFrame.current = next;
+    setFrame(next);
+  };
+  const scrub = (event: ReactPointerEvent<SVGSVGElement>) => {
+    requestFrame(frameFromPointer(event));
+  };
   return (
     <div className="trajectory-smoothing-chart">
       <div className="trajectory-smoothing-chart-header">
-        <strong>RMSD signal</strong>
-        <span>{result.keyframeCount} key frames</span>
+        <strong>{result.mode === "kinetic" ? "MSM / PCCA+ states" : `${trajectorySignalLabel(result.signal)} · ${preset[0].toUpperCase() + preset.slice(1)}`}</strong>
+        <span className="trajectory-smoothing-playback" data-playing={playback?.playing || undefined}>
+          {playback?.playing ? "Playing · " : ""}Frame {(playback?.frameIndex ?? 0) + 1} / {playback?.frameCount ?? result.frameCount}
+        </span>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Raw and filtered RMSD across trajectory frames">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="slider"
+        tabIndex={0}
+        aria-label="Trajectory frame on raw and filtered RMSD signal"
+        aria-valuemin={1}
+        aria-valuemax={result.frameCount}
+        aria-valuenow={activeIndex + 1}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          scrub(event);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) scrub(event);
+        }}
+        onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
+        onPointerCancel={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") requestFrame(activeIndex - 1);
+          else if (event.key === "ArrowRight") requestFrame(activeIndex + 1);
+          else if (event.key === "Home") requestFrame(0);
+          else if (event.key === "End") requestFrame(result.frameCount - 1);
+          else return;
+          event.preventDefault();
+        }}
+      >
         <polyline className="trajectory-smoothing-chart-raw" points={points(result.rawSignal)} />
         <polyline className="trajectory-smoothing-chart-filtered" points={points(result.filteredSignal)} />
+        <line className="trajectory-smoothing-chart-playhead" x1={activeX} x2={activeX} y1={padding} y2={height - padding} />
         {result.keyframes.map((frame) => {
           const index = Math.max(0, Math.min(result.filteredSignal.length - 1, frame));
           const x = padding + index * (width - padding * 2) / Math.max(1, result.filteredSignal.length - 1);
@@ -676,7 +991,60 @@ function TrajectorySmoothingChart({ result }: { result: TrajectorySmoothingResul
           return <circle key={frame} cx={x} cy={y} r="2.6" />;
         })}
       </svg>
-      <div className="trajectory-smoothing-chart-legend"><span>Raw</span><span>Filtered</span></div>
+      <div className="trajectory-smoothing-chart-legend"><span>Raw</span><span>{result.mode === "kinetic" ? "State coordinate" : `${preset[0].toUpperCase() + preset.slice(1)} filtered`}</span><span>{result.keyframeCount} key frames</span></div>
+    </div>
+  );
+}
+
+function trajectoryPathsFor(document: ViewerDocument) {
+  const topologyPath = document.dockingRequest?.receptorPath;
+  const trajectoryPath = document.dockingRequest?.ligandPaths[0];
+  return trajectoryPath
+    ? { trajectoryPath, topologyPath: topologyPath || null }
+    : { trajectoryPath: document.path, topologyPath: null };
+}
+
+function trajectorySignalLabel(signal?: MdsmoothSignal) {
+  if (signal === "pc1") return "PCA · PC1";
+  if (signal === "ic1") return "tICA · IC1";
+  if (signal === "dpca") return "Dihedral PCA";
+  if (signal === "deeptica") return "DeepTICA";
+  return "RMSD signal";
+}
+
+function trajectorySignalDescription(signal: MdsmoothSignal) {
+  if (signal === "pc1") return "Use PCA when one large, obvious motion dominates, such as a hinge or domain opening. Large thermal breathing can also dominate it.";
+  if (signal === "ic1") return "Use tICA when the important motion is slow but not the largest. It needs enough sampled transitions and a sensible lag time.";
+  if (signal === "dpca") return "Use backbone angles for flexible loops or backbone rearrangements. It follows internal protein angles and does not work for ligand-only motion.";
+  if (signal === "deeptica") return "Use DeepTICA only when PCA or tICA miss a suspected nonlinear slow motion. Training is slower; trust it only when independent seeds agree.";
+  return "Start here. RMSD tracks how far the structure moves from a reference frame, needs almost no tuning, and is the safest choice for quick smoothing.";
+}
+
+function trajectoryOutputUrl(path: string) {
+  return isTauriRuntime() ? convertFileSrc(path) : `/__burette/read-file?path=${encodeURIComponent(path)}`;
+}
+
+function TrajectorySpectrum({ spectrum, cutoffFrequency }: { spectrum: MdsmoothResult["spectrum"]; cutoffFrequency: number | null }) {
+  const width = 300;
+  const height = 80;
+  const padding = 10;
+  const frequencies = spectrum.frequencies.slice(1);
+  const power = spectrum.power.slice(1);
+  const maxPower = Math.max(1e-12, ...power.filter(Number.isFinite));
+  const maxFrequency = Math.max(1e-12, ...frequencies.filter(Number.isFinite));
+  const points = power.map((value, index) => {
+    const x = padding + frequencies[index] / maxFrequency * (width - padding * 2);
+    const y = height - padding - value / maxPower * (height - padding * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const cutoffX = cutoffFrequency == null ? null : padding + cutoffFrequency / maxFrequency * (width - padding * 2);
+  return (
+    <div className="trajectory-smoothing-chart trajectory-smoothing-spectrum">
+      <div className="trajectory-smoothing-chart-header"><strong>Power spectrum</strong><span>{cutoffFrequency == null ? "MSM states" : `cutoff ${cutoffFrequency.toFixed(4)}`}</span></div>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Trajectory signal power spectrum">
+        <polyline className="trajectory-smoothing-chart-filtered" points={points} />
+        {cutoffX == null ? null : <line className="trajectory-smoothing-chart-playhead" x1={cutoffX} x2={cutoffX} y1={padding} y2={height - padding} />}
+      </svg>
     </div>
   );
 }

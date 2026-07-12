@@ -33,6 +33,7 @@ import {
   registerBrowserDevFoldingResultRoute,
 } from "./vite/browser-dev/folding-results";
 import { registerBrowserDevMsbuddyRoutes } from "./vite/browser-dev/msbuddy";
+import { registerBrowserDevMdsmoothRoute } from "./vite/browser-dev/mdsmooth";
 import { registerBrowserDevRuntimeDoctorRoute } from "./vite/browser-dev/runtime-doctor";
 import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
 import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
@@ -81,6 +82,7 @@ const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DESMOND_PREVIEW_TARGET_MB = 24;
 const RDKIT_WASM_PATH = join(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal.wasm");
 const RDKIT_CONFORMER_SCRIPT_PATH = join(repoRoot, "scripts", "rdkit_conformer.py");
+const MDSMOOTH_RUNNER_PATH = join(repoRoot, "scripts", "mdsmooth_runner.py");
 const BROWSER_DEV_GENERATED_FILES_ROOT = process.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT
   ? resolve(process.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT)
   : join(homedir(), "Desktop", "Burrete Generated Files");
@@ -3531,6 +3533,7 @@ export function browserDevXyzrenderPlugin() {
         annotateSpectrum: annotateBrowserDevSpectrumWithMsbuddy,
         status: browserDevMsbuddyStatus,
       });
+      registerBrowserDevMdsmoothRoute(server, MDSMOOTH_RUNNER_PATH);
 
       registerBrowserDevDescriptorRoutes(server, {
         calculate: calculateBrowserDevDescriptors,
