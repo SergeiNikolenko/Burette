@@ -62,6 +62,7 @@ export type StructureViewerAction =
   | {
       type: "apply_trajectory_smoothing";
       label: string;
+      notify?: boolean;
       preset: "light" | "balanced" | "strong";
       targetFrames: number;
       referenceFrame: number;
