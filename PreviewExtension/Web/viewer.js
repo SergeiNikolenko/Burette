@@ -13940,7 +13940,9 @@
       ...(pickScale !== undefined ? { pickScale } : {}),
       ...(resolutionMode !== undefined ? { resolutionMode } : {}),
       viewportBackgroundColor: transparentBackground ? undefined : canvasBackgroundCSS(),
-      powerPreference: isQuickLookHost() ? 'default' : 'high-performance'
+      powerPreference: String(activeConfig?.molstarPowerPreference || '') === 'default' || isQuickLookHost()
+        ? 'default'
+        : 'high-performance'
     };
   }
 

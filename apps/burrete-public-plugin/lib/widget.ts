@@ -1,10 +1,11 @@
-export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v9.html";
+export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v10.html";
 export const VIEWER_SHELL_SCRIPT_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.js";
 export const VIEWER_SHELL_STYLES_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.css";
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-hosted-toolbar-v2";
+export const VIEWER_MOBILE_SCRIPT_PATH = "/burrete-hosted-mobile.js";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-hosted-mobile-v1";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
@@ -45,6 +46,7 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
   const shellScript = `${assetUrl(assetOrigin, VIEWER_SHELL_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const shellStyles = `${assetUrl(assetOrigin, VIEWER_SHELL_STYLES_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const viewerAssets = assetUrl(assetOrigin, VIEWER_RUNTIME_ASSETS_PATH);
+  const mobileScript = `${assetUrl(assetOrigin, VIEWER_MOBILE_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const bootstrap = serializeForInlineScript({
     viewerAssets,
   });
@@ -98,7 +100,16 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" crossorigin src="${shellScript}"></script>
+    <script>
+      (() => {
+        const mobile = window.matchMedia("(max-width: 600px)").matches;
+        const script = document.createElement("script");
+        script.src = mobile ? ${serializeForInlineScript(mobileScript)} : ${serializeForInlineScript(shellScript)};
+        if (!mobile) script.type = "module";
+        script.crossOrigin = "anonymous";
+        document.body.appendChild(script);
+      })();
+    </script>
   </body>
 </html>`;
 }
