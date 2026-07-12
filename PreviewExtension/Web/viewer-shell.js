@@ -143,6 +143,29 @@
       <aside class="buret-preview-dock buret-preview-dock-right" data-buret-preview-dock="right" aria-label="Right dock" aria-hidden="true"></aside>
       <section class="buret-preview-dock buret-preview-dock-bottom" data-buret-preview-dock="bottom" aria-label="Bottom dock" aria-hidden="true"></section>
     `);
+    if (window.__BURRETE_HOSTED_MCP_WIDGET__ === true) {
+      const toolbar = document.getElementById('buret-toolbar');
+      const grip = toolbar?.querySelector('[data-drag-handle]');
+      if (toolbar && grip) {
+        toolbar.classList.add('collapsed');
+        document.body?.classList.add('buret-toolbar-collapsed');
+        grip.setAttribute('aria-expanded', 'false');
+        grip.setAttribute('aria-label', 'Expand controls');
+        grip.setAttribute('title', 'Expand controls');
+        const fallbackGripClick = event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const collapsed = !toolbar.classList.contains('collapsed');
+          toolbar.classList.toggle('collapsed', collapsed);
+          document.body?.classList.toggle('buret-toolbar-collapsed', collapsed);
+          grip.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+          grip.setAttribute('aria-label', collapsed ? 'Expand controls' : 'Collapse controls');
+          grip.setAttribute('title', collapsed ? 'Expand controls' : 'Collapse controls');
+        };
+        window.__BURRETE_HOSTED_GRIP_FALLBACK__ = fallbackGripClick;
+        grip.addEventListener('click', fallbackGripClick);
+      }
+    }
   }
 
   window.BurreteViewerShell = { mountToolbar };

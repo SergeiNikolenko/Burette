@@ -505,6 +505,9 @@ assert.doesNotMatch(viewer, /message: 'open-burrete'/);
 assert.doesNotMatch(previewViewController, /open-burrete/);
 assert.doesNotMatch(previewViewController, /BurreteLauncher/);
 assert.doesNotMatch(viewerShell, /data-buret-action="open-burrete"/);
+assert.match(viewerShell, /window\.__BURRETE_HOSTED_MCP_WIDGET__ === true/);
+assert.match(viewerShell, /window\.__BURRETE_HOSTED_GRIP_FALLBACK__ = fallbackGripClick/);
+assert.match(viewer, /grip\.removeEventListener\('click', window\.__BURRETE_HOSTED_GRIP_FALLBACK__\)/);
 assert.doesNotMatch(viewerShell, /data-buret-action="xyzrender-apply"/);
 assert.match(viewerShell, /data-buret-action="xyzrender-reset"/);
 assert.match(viewerShell, /data-buret-action="xyzrender-reset-orientation"/);
@@ -1259,6 +1262,7 @@ assert.match(notificationPopup, /aria-live=\{notice\.kind === "error" \? "assert
 assert.match(notificationPopup, /compactNotificationMessage/);
 assert.match(appLayout, /const sidebarVisible = settingsMode \|\| \(!hostedMcpWidget && state\.sidebarOpen\)/);
 assert.match(appLayout, /const chromeVisible = !settingsMode && !hostedMcpWidget/);
+assert.match(appLayout, /\{!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region \/>\}/);
 assert.match(appLayout, /const sidebarLayoutWidth = sidebarVisible \? sidebarWidth : 0/);
 assert.match(appLayout, /const rightDockWidth = clampRightDockWidth\(state\.rightDockWidth, viewportWidth, sidebarLayoutWidth\)/);
 assert.doesNotMatch(appLayout, /Math\.max\(360, clampedSidebarWidth\)/);
@@ -1983,6 +1987,7 @@ assert.match(styles, /\.sidebar::after \{[^}]*background: var\(--sidebar-divider
 assert.doesNotMatch(styles, /\.splitter::after \{ background: var\(--sidebar-divider-right\); \}/);
 assert.match(styles, /\.workbench \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 20px 0 0 20px;[^}]*box-shadow: -12px 0 28px var\(--workspace-edge-shadow\);/s);
 assert.match(styles, /\.app-shell\[data-settings-mode="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
+assert.match(styles, /\.app-shell\[data-hosted-mcp-widget="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
 assert.doesNotMatch(styles, /\.main-stage \{[^}]*border-radius: 20px 0 0 20px;/s);
 assert.match(styles, /\.app-shell\[data-theme="auto"\] \{[^}]*color-scheme: light dark/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\]/);
