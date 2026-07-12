@@ -1558,6 +1558,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "stagedEntries": stagedEntries,
             "quickLookBuild": "v10-product",
             "quickLookViewer": true,
+            "autoFocusStructure": true,
             "debug": showDebugOverlay,
             "theme": preferences.runtimeViewerTheme,
             "themeTokens": preferences.themeTokens,
@@ -4525,6 +4526,15 @@ private enum PreviewStructureTextConverter {
         let z: Double
     }
 
+    private struct CIFCell {
+        let a: Double
+        let b: Double
+        let c: Double
+        let alpha: Double
+        let beta: Double
+        let gamma: Double
+    }
+
     fileprivate struct ConvertedStructure {
         let data: Data
         let format: StructureFormat
@@ -4644,6 +4654,8 @@ private enum PreviewStructureTextConverter {
         switch fileExtension.lowercased() {
         case "abi":
             return parseABINIT(lines)
+        case "cif", "mmcif", "mcif":
+            return parseCIFCore(lines)
         case "cub", "cube":
             return parseCube(lines)
         case "fdf":
@@ -5832,6 +5844,99 @@ private enum PreviewStructureTextConverter {
         return atoms.isEmpty ? nil : atoms
     }
 
+    private static func parseCIFCore(_ lines: [String]) -> [Atom]? {
+        let cell = parseCIFCell(lines)
+        var index = 0
+        while index < lines.count {
+            guard lines[index].trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "loop_" else {
+                index += 1
+                continue
+            }
+            index += 1
+            var headers: [String] = []
+            while index < lines.count {
+                let header = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                guard header.hasPrefix("_") else { break }
+                headers.append(header.lowercased())
+                index += 1
+            }
+            guard let fractXIndex = headers.firstIndex(of: "_atom_site_fract_x"),
+                  let fractYIndex = headers.firstIndex(of: "_atom_site_fract_y"),
+                  let fractZIndex = headers.firstIndex(of: "_atom_site_fract_z") else {
+                continue
+            }
+            let typeIndex = headers.firstIndex(of: "_atom_site_type_symbol")
+            let labelIndex = headers.firstIndex(of: "_atom_site_label")
+            var atoms: [Atom] = []
+            while index < lines.count {
+                let line = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                let lowercased = line.lowercased()
+                if line.isEmpty || line.hasPrefix("#") || line.hasPrefix("_") || lowercased == "loop_" || lowercased.hasPrefix("data_") {
+                    break
+                }
+                index += 1
+                let parts = maestroTokens(line)
+                guard parts.count >= headers.count else { continue }
+                let rawSymbol = typeIndex.flatMap { parts.indices.contains($0) ? parts[$0] : nil }
+                    ?? labelIndex.flatMap { parts.indices.contains($0) ? parts[$0] : nil }
+                    ?? ""
+                guard let symbol = elementSymbol(fromAtomName: rawSymbol),
+                      let fx = parseCIFNumber(parts[fractXIndex]),
+                      let fy = parseCIFNumber(parts[fractYIndex]),
+                      let fz = parseCIFNumber(parts[fractZIndex]) else {
+                    continue
+                }
+                let position = cell.map { fractionalToCartesian(fx, fy, fz, cell: $0) } ?? (fx, fy, fz)
+                atoms.append(Atom(symbol: symbol, x: position.0, y: position.1, z: position.2))
+            }
+            if !atoms.isEmpty { return atoms }
+        }
+        return nil
+    }
+
+    private static func parseCIFCell(_ lines: [String]) -> CIFCell? {
+        var values: [String: Double] = [:]
+        for line in lines {
+            let parts = maestroTokens(line.trimmingCharacters(in: .whitespacesAndNewlines))
+            guard parts.count >= 2 else { continue }
+            let key = parts[0].lowercased()
+            guard key.hasPrefix("_cell_"), let value = parseCIFNumber(parts[1]) else { continue }
+            values[key] = value
+        }
+        guard let a = values["_cell_length_a"],
+              let b = values["_cell_length_b"],
+              let c = values["_cell_length_c"],
+              let alpha = values["_cell_angle_alpha"],
+              let beta = values["_cell_angle_beta"],
+              let gamma = values["_cell_angle_gamma"] else {
+            return nil
+        }
+        return CIFCell(a: a, b: b, c: c, alpha: alpha, beta: beta, gamma: gamma)
+    }
+
+    private static func parseCIFNumber(_ value: String) -> Double? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != ".", trimmed != "?" else { return nil }
+        let base = trimmed.split(separator: "(", maxSplits: 1).first.map(String.init) ?? trimmed
+        return Double(base)
+    }
+
+    private static func fractionalToCartesian(_ fx: Double, _ fy: Double, _ fz: Double, cell: CIFCell) -> Vec3 {
+        let alpha = cell.alpha * .pi / 180
+        let beta = cell.beta * .pi / 180
+        let gamma = cell.gamma * .pi / 180
+        let cosAlpha = cos(alpha)
+        let cosBeta = cos(beta)
+        let cosGamma = cos(gamma)
+        let sinGamma = sin(gamma) == 0 ? 1 : sin(gamma)
+        let a: Vec3 = (cell.a, 0, 0)
+        let b: Vec3 = (cell.b * cosGamma, cell.b * sinGamma, 0)
+        let cx = cell.c * cosBeta
+        let cy = cell.c * (cosAlpha - cosBeta * cosGamma) / sinGamma
+        let cz = sqrt(max(0, cell.c * cell.c - cx * cx - cy * cy))
+        return combine(fx, a, fy, b, fz, (cx, cy, cz))
+    }
+
     private static func blockRows(named blockName: String, in lines: [String]) -> [String] {
         var rows: [String] = []
         var inside = false
@@ -6604,7 +6709,7 @@ private struct StructureFormat {
             self = Self(molstarFormat: "mmcif", isBinary: true)
         case "sdf", "sd":
             self = Self(molstarFormat: "sdf", isBinary: false)
-        case "mol":
+        case "mol", "mdl":
             self = Self(molstarFormat: "mol", isBinary: false)
         case "mol2":
             self = Self(molstarFormat: "mol2", isBinary: false)
