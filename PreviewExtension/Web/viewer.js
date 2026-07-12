@@ -559,6 +559,12 @@
     if (type === 'set_structure_pose') {
       return setStructurePoseFromAction(action);
     }
+    if (type === 'apply_trajectory_smoothing') {
+      return applyTrajectorySmoothingFromAction(action);
+    }
+    if (type === 'set_trajectory_smoothing_view') {
+      return setTrajectorySmoothingViewFromAction(action);
+    }
     if (type === 'set_molstar_style') {
       return setMolstarStyleFromAction(action);
     }
@@ -950,6 +956,7 @@
   let activeViewer = null;
   let activeConfig = null;
   let activeMolstarPrepared = null;
+  let trajectorySmoothingState = null;
   let activeSdfPoseMode = 'single';
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
@@ -9452,6 +9459,81 @@
     }
   }
 
+  async function replaceTrajectorySmoothingPrepared(prepared) {
+    if (!activeViewer?.plugin || !prepared) throw new Error('The Mol* trajectory viewer is not ready.');
+    if (typeof activeViewer.plugin.clear !== 'function') throw new Error('Mol* cannot replace this trajectory in place.');
+    await activeViewer.plugin.clear();
+    await loadPreparedStructure(activeViewer, prepared);
+    applyLayoutState(activeViewer);
+    scheduleLayoutStateReapply(activeViewer);
+    try { activeViewer.handleResize(); } catch (_) {}
+  }
+
+  async function applyTrajectorySmoothingFromAction(action = {}) {
+    const engine = window.BurreteTrajectorySmoothing;
+    const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
+    if (!engine?.smooth || !originalPrepared) {
+      return agentActionFailure('apply_trajectory_smoothing', 'NOT_AVAILABLE', 'Trajectory smoothing is unavailable in this viewer runtime.');
+    }
+    try {
+      const result = engine.smooth({
+        data: originalPrepared.data,
+        format: originalPrepared.format,
+        preset: action.preset,
+        targetFrames: action.targetFrames,
+        referenceFrame: action.referenceFrame,
+        align: action.align !== false
+      });
+      const smoothedPrepared = {
+        ...originalPrepared,
+        data: result.data,
+        format: result.format,
+        label: `${originalPrepared.label || 'Trajectory'} - smoothed motion`,
+        poseCount: result.frameCount,
+        pdbModelCount: result.format === 'pdb' ? result.frameCount : originalPrepared.pdbModelCount,
+        xyzFrameCount: result.format === 'xyz' ? result.frameCount : originalPrepared.xyzFrameCount,
+        nativeTrajectoryControls: true,
+        controlLabel: 'Frame'
+      };
+      trajectorySmoothingState = { originalPrepared, smoothedPrepared, result, view: 'smoothed' };
+      await replaceTrajectorySmoothingPrepared(smoothedPrepared);
+      postHostMessage({
+        type: 'trajectorySmoothingChanged',
+        documentId: activeConfig?.documentId || '',
+        view: 'smoothed',
+        keyframeCount: result.keyframes.length,
+        frameCount: result.frameCount,
+        interpolation: result.interpolation,
+        keyframes: result.keyframes,
+        rawSignal: result.rawSignal,
+        filteredSignal: result.filteredSignal
+      });
+      return {
+        ok: true,
+        command: 'apply_trajectory_smoothing',
+        result: { keyframeCount: result.keyframes.length, frameCount: result.frameCount, interpolation: result.interpolation }
+      };
+    } catch (error) {
+      return agentActionFailure('apply_trajectory_smoothing', 'UNSUPPORTED_TRAJECTORY', error?.message || String(error));
+    }
+  }
+
+  async function setTrajectorySmoothingViewFromAction(action = {}) {
+    if (!trajectorySmoothingState) {
+      return agentActionFailure('set_trajectory_smoothing_view', 'NO_SMOOTHED_TRAJECTORY', 'Build a smoothed trajectory first.');
+    }
+    const view = action.view === 'original' ? 'original' : 'smoothed';
+    try {
+      const prepared = view === 'original' ? trajectorySmoothingState.originalPrepared : trajectorySmoothingState.smoothedPrepared;
+      await replaceTrajectorySmoothingPrepared(prepared);
+      trajectorySmoothingState.view = view;
+      postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view });
+      return { ok: true, command: 'set_trajectory_smoothing_view', result: { view } };
+    } catch (error) {
+      return agentActionFailure('set_trajectory_smoothing_view', 'ACTION_ERROR', error?.message || String(error));
+    }
+  }
+
   async function setMolstarStyleFromAction(action = {}) {
     const style = normalizeMolstarStyle(action.style);
     try {
@@ -9708,6 +9790,12 @@
     loop.type = 'button';
     loop.textContent = 'Loop';
     loop.setAttribute('aria-label', `Play ${controlLabelLower} loop`);
+    const smooth = document.createElement('button');
+    smooth.type = 'button';
+    smooth.className = 'buret-trajectory-smooth-button';
+    smooth.textContent = 'Smooth';
+    smooth.setAttribute('aria-label', 'Open Smooth motion settings');
+    smooth.title = 'Smooth motion - builds an optional derived trajectory';
     const speed = document.createElement('input');
     speed.className = 'buret-docking-pose-speed';
     speed.setAttribute('aria-label', `${controlLabel} loop frames per second`);
@@ -9963,6 +10051,16 @@
       setLoopActive(true);
       scheduleLoopStep();
     });
+    smooth.addEventListener('click', () => {
+      const posted = postHostMessage({
+        type: 'openTrajectorySmoothing',
+        documentId: activeConfig?.documentId || ''
+      });
+      setStatus(posted
+        ? '[web] Smooth motion settings opened in Molecular Inspector.'
+        : '[web] Smooth motion settings are available in the Info panel.');
+      setTimeout(hideStatus, 1200);
+    });
     speed.addEventListener('change', () => {
       const delay = loopDelayMs();
       const fps = trajectoryDelayToFps(delay, prepared);
@@ -10006,6 +10104,7 @@
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
     mainRow.append(animation, previous, label, next);
+    if (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls) mainRow.append(smooth);
     if (all) mainRow.append(all);
     animationRow.append(speed, loop, slider);
     root.append(mainRow, animationRow);
@@ -13854,6 +13953,7 @@
     }
     activeViewer = null;
     activeMolstarPrepared = null;
+    trajectorySmoothingState = null;
     updateSdfPoseButton(null);
     activeMolstarCacheBuster = null;
     window.BurreteViewer = null;

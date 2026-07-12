@@ -1986,6 +1986,7 @@ body.burette-mobile-host .buret-docking-poses button {
   align-items: center;
   gap: 6px;
 }
+.buret-trajectory-smooth-button { min-width: 58px; font-weight: 600; }
 .buret-docking-pose-animation {
   max-height: 0;
   margin-top: 0;

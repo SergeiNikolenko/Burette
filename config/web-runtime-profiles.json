@@ -8,6 +8,7 @@
       "viewer-runtime.css",
       "viewer-shell.js",
       "burette-agent.js",
+      "trajectory-smoothing.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -24,6 +25,7 @@
       "viewer-runtime.css",
       "viewer-shell.js",
       "burette-agent.js",
+      "trajectory-smoothing.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -38,6 +40,7 @@
       "viewer-runtime.css",
       "viewer-shell.js",
       "burette-agent.js",
+      "trajectory-smoothing.js",
       "viewer.js"
     ]
   },

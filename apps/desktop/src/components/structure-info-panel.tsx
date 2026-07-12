@@ -38,6 +38,14 @@ type InspectorStructureTextSource = {
   extension: string;
   virtual: boolean;
 };
+type TrajectorySmoothingResult = {
+  frameCount: number;
+  keyframeCount: number;
+  keyframes: number[];
+  rawSignal: number[];
+  filteredSignal: number[];
+  interpolation: string;
+};
 
 const SDF_CONTEXT_STYLE_OPTIONS = [
   { value: "line", label: "Line" },
@@ -76,10 +84,42 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const [xtbSettingsOpen, setXtbSettingsOpen] = useState(false);
   const [xtbSettingsScope, setXtbSettingsScope] = useState<XtbSettingsScope>("general");
   const [conformerOpen, setConformerOpen] = useState(true);
+  const [trajectorySmoothingOpen, setTrajectorySmoothingOpen] = useState(true);
+  const [trajectorySmoothingAdvanced, setTrajectorySmoothingAdvanced] = useState(false);
+  const [trajectorySmoothingPreset, setTrajectorySmoothingPreset] = useState<"light" | "balanced" | "strong">("balanced");
+  const [trajectorySmoothingTargetFrames, setTrajectorySmoothingTargetFrames] = useState(50);
+  const [trajectorySmoothingReferenceFrame, setTrajectorySmoothingReferenceFrame] = useState(1);
+  const [trajectorySmoothingAlign, setTrajectorySmoothingAlign] = useState(true);
+  const [trajectorySmoothingBuilt, setTrajectorySmoothingBuilt] = useState(false);
+  const [trajectorySmoothingView, setTrajectorySmoothingView] = useState<"original" | "smoothed">("original");
+  const [trajectorySmoothingResult, setTrajectorySmoothingResult] = useState<TrajectorySmoothingResult | null>(null);
   const foldingResult = useFoldingResult(document);
 
   useEffect(() => {
     setActiveActionKey(null);
+    setTrajectorySmoothingBuilt(false);
+    setTrajectorySmoothingView("original");
+    setTrajectorySmoothingResult(null);
+  }, [document?.id]);
+
+  useEffect(() => {
+    const handle = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      if (String(detail?.documentId || "") !== document?.id) return;
+      if (detail.view === "original" || detail.view === "smoothed") setTrajectorySmoothingView(detail.view);
+      if (!Array.isArray(detail.rawSignal) || !Array.isArray(detail.filteredSignal)) return;
+      setTrajectorySmoothingBuilt(true);
+      setTrajectorySmoothingResult({
+        frameCount: Number(detail.frameCount) || detail.rawSignal.length,
+        keyframeCount: Number(detail.keyframeCount) || 0,
+        keyframes: Array.isArray(detail.keyframes) ? detail.keyframes.map(Number) : [],
+        rawSignal: detail.rawSignal.map(Number),
+        filteredSignal: detail.filteredSignal.map(Number),
+        interpolation: String(detail.interpolation || "linear"),
+      });
+    };
+    window.addEventListener("burrete:trajectory-smoothing-changed", handle);
+    return () => window.removeEventListener("burrete:trajectory-smoothing-changed", handle);
   }, [document?.id]);
 
   useEffect(() => {
@@ -298,13 +338,38 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
       </> : null}
 
       {poseControls ? (
-        <StructurePoseControlsCard
-          document={document}
-          controls={poseControls}
-          actions={actions}
-          activeActionKey={activeActionKey}
-          setActiveActionKey={setActiveActionKey}
-        />
+        <>
+          {isTrajectorySmoothingDocument(document, poseControls) ? (
+            <TrajectorySmoothingCard
+              document={document}
+              controls={poseControls}
+              actions={actions}
+              open={trajectorySmoothingOpen}
+              setOpen={setTrajectorySmoothingOpen}
+              advanced={trajectorySmoothingAdvanced}
+              setAdvanced={setTrajectorySmoothingAdvanced}
+              preset={trajectorySmoothingPreset}
+              setPreset={setTrajectorySmoothingPreset}
+              targetFrames={trajectorySmoothingTargetFrames}
+              setTargetFrames={setTrajectorySmoothingTargetFrames}
+              referenceFrame={trajectorySmoothingReferenceFrame}
+              setReferenceFrame={setTrajectorySmoothingReferenceFrame}
+              align={trajectorySmoothingAlign}
+              setAlign={setTrajectorySmoothingAlign}
+              built={trajectorySmoothingBuilt}
+              view={trajectorySmoothingView}
+              setView={setTrajectorySmoothingView}
+              result={trajectorySmoothingResult}
+            />
+          ) : null}
+          <StructurePoseControlsCard
+            document={document}
+            controls={poseControls}
+            actions={actions}
+            activeActionKey={activeActionKey}
+            setActiveActionKey={setActiveActionKey}
+          />
+        </>
       ) : null}
 
       {selectedEntity ? (
@@ -443,6 +508,177 @@ function structurePoseControlsFor(document: ViewerDocument, summary: StructureCo
     };
   }
   return null;
+}
+
+function isTrajectorySmoothingDocument(document: ViewerDocument, controls: StructurePoseControls) {
+  return controls.actions.length > 1 && (document.extension === "pdb" || document.extension === "ent" || document.extension === "xyz");
+}
+
+function TrajectorySmoothingCard({
+  document,
+  controls,
+  actions,
+  open,
+  setOpen,
+  advanced,
+  setAdvanced,
+  preset,
+  setPreset,
+  targetFrames,
+  setTargetFrames,
+  referenceFrame,
+  setReferenceFrame,
+  align,
+  setAlign,
+  built,
+  view,
+  setView,
+  result,
+}: {
+  document: ViewerDocument;
+  controls: StructurePoseControls;
+  actions: ShellActions;
+  open: boolean;
+  setOpen: (value: boolean) => void;
+  advanced: boolean;
+  setAdvanced: (value: boolean) => void;
+  preset: "light" | "balanced" | "strong";
+  setPreset: (value: "light" | "balanced" | "strong") => void;
+  targetFrames: number;
+  setTargetFrames: (value: number) => void;
+  referenceFrame: number;
+  setReferenceFrame: (value: number) => void;
+  align: boolean;
+  setAlign: (value: boolean) => void;
+  built: boolean;
+  view: "original" | "smoothed";
+  setView: (value: "original" | "smoothed") => void;
+  result: TrajectorySmoothingResult | null;
+}) {
+  const frameCount = controls.actions.length;
+  const apply = () => {
+    actions.runStructureViewerAction(document, {
+      type: "apply_trajectory_smoothing",
+      label: "Build smoothed motion",
+      preset,
+      targetFrames: Math.max(2, Math.min(frameCount, targetFrames)),
+      referenceFrame: Math.max(1, Math.min(frameCount, referenceFrame)),
+      align,
+    });
+  };
+  const changeView = (nextView: "original" | "smoothed") => {
+    setView(nextView);
+    actions.runStructureViewerAction(document, {
+      type: "set_trajectory_smoothing_view",
+      label: `Show ${nextView} trajectory`,
+      notify: false,
+      view: nextView,
+    });
+  };
+  return (
+    <section className="structure-brief-card trajectory-smoothing-card" data-collapsed={!open || undefined}>
+      <div className="structure-inspector-section-header">
+        <button
+          type="button"
+          className="structure-inspector-section-title-button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          Smooth motion
+        </button>
+        <span>Optional derived trajectory</span>
+      </div>
+      {open ? (
+        <>
+          <p className="trajectory-smoothing-intro">Reduces thermal jitter while keeping the original file unchanged.</p>
+          <div className="trajectory-smoothing-presets" role="group" aria-label="Smoothing strength">
+            {(["light", "balanced", "strong"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                data-selected={preset === value || undefined}
+                aria-pressed={preset === value}
+                onClick={() => setPreset(value)}
+              >
+                {value[0].toUpperCase() + value.slice(1)}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="trajectory-smoothing-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
+            Scientific settings <span>{advanced ? "Hide" : "Show"}</span>
+          </button>
+          {advanced ? (
+            <div className="trajectory-smoothing-settings">
+              <label>
+                <span>Signal</span>
+                <select aria-label="Trajectory smoothing signal" disabled value="rmsd"><option value="rmsd">RMSD to reference</option></select>
+              </label>
+              <label>
+                <span>Target key frames</span>
+                <input type="number" min={2} max={frameCount} value={targetFrames} onChange={(event) => setTargetFrames(Number(event.target.value) || 2)} />
+              </label>
+              <label>
+                <span>Reference frame</span>
+                <input type="number" min={1} max={frameCount} value={referenceFrame} onChange={(event) => setReferenceFrame(Number(event.target.value) || 1)} />
+              </label>
+              <label className="trajectory-smoothing-check">
+                <input type="checkbox" checked={align} onChange={(event) => setAlign(event.target.checked)} />
+                <span>Remove whole-structure translation</span>
+              </label>
+              <div className="trajectory-smoothing-note">Linear interpolation is illustrative; selected source frames remain the scientific reference.</div>
+            </div>
+          ) : null}
+          {built ? (
+            <div className="trajectory-smoothing-view" role="group" aria-label="Trajectory version">
+              {(["original", "smoothed"] as const).map((value) => (
+                <button key={value} type="button" data-selected={view === value || undefined} aria-pressed={view === value} onClick={() => changeView(value)}>
+                  {value[0].toUpperCase() + value.slice(1)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {result ? <TrajectorySmoothingChart result={result} /> : null}
+          <button type="button" className="dock-action trajectory-smoothing-build" onClick={apply}>
+            {built ? "Rebuild smoothed motion" : "Build smoothed motion"}
+          </button>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function TrajectorySmoothingChart({ result }: { result: TrajectorySmoothingResult }) {
+  const width = 300;
+  const height = 112;
+  const padding = 10;
+  const values = [...result.rawSignal, ...result.filteredSignal].filter(Number.isFinite);
+  const min = values.length ? Math.min(...values) : 0;
+  const max = values.length ? Math.max(...values) : 1;
+  const span = Math.max(1e-9, max - min);
+  const points = (series: number[]) => series.map((value, index) => {
+    const x = padding + index * (width - padding * 2) / Math.max(1, series.length - 1);
+    const y = height - padding - (value - min) * (height - padding * 2) / span;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  return (
+    <div className="trajectory-smoothing-chart">
+      <div className="trajectory-smoothing-chart-header">
+        <strong>RMSD signal</strong>
+        <span>{result.keyframeCount} key frames</span>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Raw and filtered RMSD across trajectory frames">
+        <polyline className="trajectory-smoothing-chart-raw" points={points(result.rawSignal)} />
+        <polyline className="trajectory-smoothing-chart-filtered" points={points(result.filteredSignal)} />
+        {result.keyframes.map((frame) => {
+          const index = Math.max(0, Math.min(result.filteredSignal.length - 1, frame));
+          const x = padding + index * (width - padding * 2) / Math.max(1, result.filteredSignal.length - 1);
+          const y = height - padding - (result.filteredSignal[index] - min) * (height - padding * 2) / span;
+          return <circle key={frame} cx={x} cy={y} r="2.6" />;
+        })}
+      </svg>
+      <div className="trajectory-smoothing-chart-legend"><span>Raw</span><span>Filtered</span></div>
+    </div>
+  );
 }
 
 type StructureContextStyleCardCopy = {

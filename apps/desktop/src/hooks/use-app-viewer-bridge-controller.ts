@@ -21,6 +21,7 @@ import { writeClipboardText } from "../lib/clipboard";
 import { postMessageToViewerSource, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ConformerGenerationMode, MolstarStylePreference } from "../lib/conformer-generation";
+import type { DockTabKind } from "../lib/dock";
 import type { PendingMolstarReplaceResolver } from "./use-app-generate-3d-conformer";
 import type { DockingSceneMode, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
@@ -94,6 +95,7 @@ type UseAppViewerBridgeControllerOptions = {
   openKetcherWithFragment: OpenKetcherWithFragment;
   openKetcherWithStructures: OpenKetcherWithStructures;
   openCommandPalette: () => void;
+  openDockTab: (area: "right", kind: DockTabKind) => void;
   openPoseReviewWorkspace: OpenPoseReviewWorkspace;
   pendingMolstarReplaceRef: RefValue<Map<string, PendingMolstarReplaceResolver>>;
   pendingViewerReloadDocumentIdRef: RefValue<string | null>;
@@ -129,6 +131,7 @@ export function useAppViewerBridgeController({
   openKetcherWithFragment,
   openKetcherWithStructures,
   openCommandPalette,
+  openDockTab,
   openPoseReviewWorkspace,
   pendingMolstarReplaceRef,
   pendingViewerReloadDocumentIdRef,
@@ -242,6 +245,7 @@ export function useAppViewerBridgeController({
     addDocuments,
     documents,
     openCommandPalette,
+    openDockTab,
     setViewerLigandSelections,
     setStructureOverlayModes,
     toggleSidebar,
