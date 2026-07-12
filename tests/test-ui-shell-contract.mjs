@@ -2340,6 +2340,9 @@ assert.ok(
 );
 assert.match(styles, /\.structure-inspector-style-options \{/);
 assert.match(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
+assert.match(styles, /right: max\(146px, var\(--right-dock-width, 0px\)\)/);
+assert.match(styles, /@container \(max-width: 320px\)/);
+assert.match(previewRuntimeCss, /@media \(max-width: 360px\)[\s\S]*?\.buret-trajectory-smooth-button/);
 assert.match(styles, /\.structure-inspector-opacity-control \{/);
 assert.match(structureInfoPanel, /structure-inspector-selection-pill/);
 assert.match(structureInfoPanel, /inspectorSummaryLine\(brief\.kind, compositionSummary, compositionPending, compositionError\)/);
