@@ -4482,7 +4482,7 @@ assert.match(previewViewer, /function captureMolstarTransitionFrame\(\)/);
 assert.match(previewViewer, /canvas\.toDataURL\('image\/png'\)/);
 assert.match(previewViewer, /function requestGenerated3DCameraView\(viewer\)/);
 assert.match(previewViewer, /requestMolstarStructureFocus\(viewer, \{/);
-assert.match(previewViewer, /function molstarAutoFocusEnabled\(config\) \{\s*return config\?\.autoFocusStructure === true;\s*\}/);
+assert.match(previewViewer, /function molstarAutoFocusEnabled\(config\) \{\s*return !isQuickLookHost\(\) && config\?\.autoFocusStructure === true;\s*\}/);
 assert.match(previewViewer, /function requestMolstarStructureFocus\(viewer, options = \{\}\)/);
 assert.match(previewViewer, /camera\.getFocus\(target, Math\.max\(0\.1, safeRadius \* radiusScale\), \[0, 1, 0\], \[0\.85, -0\.38, 0\.92\]\)/);
 assert.match(previewViewer, /snapshot\.mode = 'perspective'/);

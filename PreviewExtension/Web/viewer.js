@@ -2117,7 +2117,7 @@
   }
 
   function molstarAutoFocusEnabled(config) {
-    return config?.autoFocusStructure === true;
+    return !isQuickLookHost() && config?.autoFocusStructure === true;
   }
 
   function hasMolstarContextFocus(config) {
