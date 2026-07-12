@@ -2313,6 +2313,7 @@ assert.match(structureInfoPanel, /trajectory-smoothing-chart-playhead/);
 assert.match(structureInfoPanel, /Playing · /);
 assert.match(structureInfoPanel, /TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO/);
 assert.match(structureInfoPanel, /if \(built\) apply\(nextPreset, nextTargetFrames\)/);
+assert.match(structureInfoPanel, /type: "apply_trajectory_smoothing",[\s\S]*?notify: false/);
 assert.match(structureInfoPanel, /role="slider"/);
 assert.match(structureInfoPanel, /onPointerMove=/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);

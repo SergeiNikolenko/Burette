@@ -2080,8 +2080,8 @@ body.burette-mobile-host .buret-docking-poses button {
     padding-inline: 7px;
   }
   .buret-trajectory-smooth-button {
-    grid-column: 1 / -1;
-    width: 100%;
+    grid-column: 1 / 3;
+    justify-self: start;
   }
   .buret-docking-pose-animation {
     width: 100%;

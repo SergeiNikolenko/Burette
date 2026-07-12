@@ -593,6 +593,7 @@ function TrajectorySmoothingCard({
     actions.runStructureViewerAction(document, {
       type: "apply_trajectory_smoothing",
       label: "Build smoothed motion",
+      notify: false,
       preset: nextPreset,
       targetFrames: Math.max(2, Math.min(frameCount, nextTargetFrames)),
       referenceFrame: Math.max(1, Math.min(frameCount, referenceFrame)),
