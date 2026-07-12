@@ -812,11 +812,11 @@ function TrajectorySmoothingCard({
           {advanced ? (
             <div className="trajectory-smoothing-settings trajectory-smoothing-science">
               <div className="trajectory-smoothing-group-label">Method</div>
-              <label data-smoothing-tooltip="Choose turning points of a filtered coordinate, or representative long-lived states from an MSM/PCCA+ model.">
+              <label data-smoothing-tooltip="Smooth one measured motion over time, or build a short tour through distinct long-lived shapes.">
                 <span>Analysis method</span>
                 <select aria-label="Trajectory key-frame model" value={mode} onChange={(event) => setMode(event.target.value as MdsmoothMode)}>
-                  <option value="extrema">Signal turning points</option>
-                  <option value="kinetic">MSM / PCCA+ states</option>
+                  <option value="extrema">Smooth one motion · recommended</option>
+                  <option value="kinetic">Tour long-lived shapes · MSM</option>
                 </select>
               </label>
               {mode === "extrema" ? (
@@ -824,49 +824,49 @@ function TrajectorySmoothingCard({
                   <label data-smoothing-tooltip={trajectorySignalDescription(signal)}>
                     <span>Signal</span>
                     <select aria-label="Trajectory smoothing signal" value={signal} onChange={(event) => { setSignal(event.target.value as MdsmoothSignal); setError(null); }}>
-                      <option value="rmsd">RMSD to reference</option>
-                      <option value="pc1">Cartesian PCA · PC1</option>
-                      <option value="ic1">Time-lagged ICA · IC1</option>
-                      <option value="dpca">Dihedral PCA</option>
-                      <option value="deeptica">DeepTICA</option>
+                      <option value="rmsd">RMSD · safe default</option>
+                      <option value="pc1">PCA · largest motion</option>
+                      <option value="ic1">tICA · slowest motion</option>
+                      <option value="dpca">Backbone angles · loop motion</option>
+                      <option value="deeptica">DeepTICA · nonlinear slow motion</option>
                     </select>
                   </label>
                   <div className="trajectory-smoothing-method-note">{trajectorySignalDescription(signal)}</div>
                 </>
               ) : (
                 <>
-                  <div className="trajectory-smoothing-method-note">Builds a kinetic model in tICA space and keeps one representative frame from each long-lived state.</div>
+                  <div className="trajectory-smoothing-method-note">Use this to tour distinct long-lived shapes, not to smooth the original timeline. It needs a longer trajectory with repeated transitions between shapes.</div>
                   <div className="trajectory-smoothing-group-label">Kinetic model</div>
-                  <label data-smoothing-tooltip="Number of long-lived kinetic states represented in the smoothed playback."><span>Macrostates</span><input type="number" min={2} max={12} value={kineticStates} onChange={(event) => setKineticStates(Number(event.target.value) || 5)} /></label>
-                  <label data-smoothing-tooltip="Time separation used to estimate transitions. It should be long enough to suppress rapid recrossings."><span>Lag, frames</span><input type="number" min={1} max={Math.max(1, Math.floor(frameCount / 3))} value={lagFrames} onChange={(event) => setLagFrames(Number(event.target.value) || 1)} /></label>
+                  <label data-smoothing-tooltip="How many distinct long-lived shapes to show. Start with 5; reduce it if the trajectory does not revisit enough states."><span>States to show</span><input type="number" min={2} max={12} value={kineticStates} onChange={(event) => setKineticStates(Number(event.target.value) || 5)} /></label>
+                  <label data-smoothing-tooltip="How far apart frames must be before a transition is counted. Start near 10 frames; a longer lag ignores brief back-and-forth jitter."><span>Lag, frames</span><input type="number" min={1} max={Math.max(1, Math.floor(frameCount / 3))} value={lagFrames} onChange={(event) => setLagFrames(Number(event.target.value) || 1)} /></label>
                 </>
               )}
               <div className="trajectory-smoothing-group-label">Sampling</div>
-              {mode === "extrema" ? <label data-smoothing-tooltip="Approximate number of original frames used as anchors for interpolated playback.">
+              {mode === "extrema" ? <label data-smoothing-tooltip="Start with 50. More source frames preserve detail; fewer frames make a shorter, calmer movie.">
                 <span>Target frames</span>
                 <input type="number" min={2} max={frameCount} value={targetFrames} onChange={(event) => setTargetFrames(Number(event.target.value) || 2)} />
               </label> : null}
               {signal === "rmsd" && mode === "extrema" ? (
                 <>
-                  <label data-smoothing-tooltip="Controls how the RMSD signal is filtered before its turning points become playback anchors.">
+                  <label data-smoothing-tooltip="Choose the easy frame-count control, or set the low-pass filter directly if you know the signal spectrum.">
                     <span>RMSD filter</span>
                     <select aria-label="RMSD filter control" value={rmsdFilter} onChange={(event) => setRmsdFilter(event.target.value as "frames" | "cutoff" | "power")}>
-                      <option value="frames">Target key frames</option>
-                      <option value="cutoff">Cutoff frequency</option>
-                      <option value="power">Power retained</option>
+                      <option value="frames">Number of frames · recommended</option>
+                      <option value="cutoff">Frequency cutoff · expert</option>
+                      <option value="power">Signal power · expert</option>
                     </select>
                   </label>
                   {rmsdFilter === "cutoff" ? <label data-smoothing-tooltip="Normalized low-pass cutoff. Lower values remove more rapid motion."><span>Cutoff frequency</span><input type="number" min={0.0001} max={0.5} step={0.001} value={cutoffFrequency} onChange={(event) => setCutoffFrequency(Number(event.target.value) || 0.1)} /></label> : null}
                   {rmsdFilter === "power" ? <label data-smoothing-tooltip="Fraction of signal power preserved by the low-pass filter."><span>Power retained</span><input type="number" min={0.5} max={0.999} step={0.01} value={powerRetained} onChange={(event) => setPowerRetained(Number(event.target.value) || 0.95)} /></label> : null}
-                  <label data-smoothing-tooltip="Butterworth filter order. Higher values make the transition around the cutoff sharper."><span>Filter order</span><input type="number" min={1} max={12} value={filterOrder} onChange={(event) => setFilterOrder(Number(event.target.value) || 5)} /></label>
+                  <label data-smoothing-tooltip="How sharply the filter separates slow motion from fast jitter. Leave this at 5 unless you are tuning the spectrum manually."><span>Filter order</span><input type="number" min={1} max={12} value={filterOrder} onChange={(event) => setFilterOrder(Number(event.target.value) || 5)} /></label>
                   <label className="trajectory-smoothing-check" data-smoothing-tooltip="Keeps the trajectory endpoints even when they are not signal turning points."><input type="checkbox" checked={includeEnds} onChange={(event) => setIncludeEnds(event.target.checked)} /><span>Always include first and last frames</span></label>
                 </>
               ) : null}
-              <label data-smoothing-tooltip="Frame used as the structural reference for RMSD and coordinate alignment.">
+              <label data-smoothing-tooltip="The frame RMSD compares against. Frame 1 is the safe default; choose another only when it is a better known reference conformation.">
                 <span>Reference frame</span>
                 <input type="number" min={1} max={frameCount} value={referenceFrame} onChange={(event) => setReferenceFrame(Number(event.target.value) || 1)} />
               </label>
-              <label className="trajectory-smoothing-check" data-smoothing-tooltip="Aligns frames before analysis so rigid translation and rotation do not dominate the signal.">
+              <label className="trajectory-smoothing-check" data-smoothing-tooltip="Removes whole-structure tumbling before measuring motion, so the signal follows internal conformational change instead of camera-like movement.">
                 <input type="checkbox" checked={align} onChange={(event) => setAlign(event.target.checked)} />
                 <span>Align structures before analysis</span>
               </label>
@@ -1013,11 +1013,11 @@ function trajectorySignalLabel(signal?: MdsmoothSignal) {
 }
 
 function trajectorySignalDescription(signal: MdsmoothSignal) {
-  if (signal === "pc1") return "PC1 follows the largest Cartesian collective motion after structural alignment.";
-  if (signal === "ic1") return "tICA IC1 emphasizes the slowest time-correlated structural change at the selected lag.";
-  if (signal === "dpca") return "Dihedral PCA follows concerted backbone torsion changes and requires a protein selection.";
-  if (signal === "deeptica") return "DeepTICA learns a nonlinear slow coordinate. It is optional, slower, and checks agreement across several training seeds.";
-  return "RMSD measures displacement from the reference frame after alignment. It is the simplest and most predictable signal.";
+  if (signal === "pc1") return "Use PCA when one large, obvious motion dominates, such as a hinge or domain opening. Large thermal breathing can also dominate it.";
+  if (signal === "ic1") return "Use tICA when the important motion is slow but not the largest. It needs enough sampled transitions and a sensible lag time.";
+  if (signal === "dpca") return "Use backbone angles for flexible loops or backbone rearrangements. It follows internal protein angles and does not work for ligand-only motion.";
+  if (signal === "deeptica") return "Use DeepTICA only when PCA or tICA miss a suspected nonlinear slow motion. Training is slower; trust it only when independent seeds agree.";
+  return "Start here. RMSD tracks how far the structure moves from a reference frame, needs almost no tuning, and is the safest choice for quick smoothing.";
 }
 
 function trajectoryOutputUrl(path: string) {
