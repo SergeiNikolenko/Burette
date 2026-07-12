@@ -81,6 +81,8 @@ export type StructureViewerAction =
       sourceUrl: string;
       frameCount: number;
       interpolation: string;
+      frameIndex?: number;
+      playing?: boolean;
     }
   | {
       type: "set_molstar_style";

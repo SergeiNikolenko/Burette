@@ -707,6 +707,8 @@ function TrajectorySmoothingCard({
         sourceUrl: trajectoryOutputUrl(response.outputPath),
         frameCount: response.frameCount,
         interpolation: response.interpolation,
+        frameIndex: playback?.frameIndex ?? 0,
+        playing: Boolean(playback?.playing),
       });
     } catch (reason) {
       if (serial !== requestSerial.current || requestedSignature !== latestSettingsSignature.current) return;

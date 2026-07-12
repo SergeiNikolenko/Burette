@@ -961,6 +961,7 @@
   let activeConfig = null;
   let activeMolstarPrepared = null;
   let trajectorySmoothingState = null;
+  let pendingTrajectoryPlaybackRestore = null;
   let activeSdfPoseMode = 'single';
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
@@ -9483,14 +9484,53 @@
     }
   }
 
-  async function replaceTrajectorySmoothingPrepared(prepared) {
+  function currentTrajectoryPlaybackSnapshot() {
+    const root = document.querySelector('.buret-docking-poses');
+    if (!root) return null;
+    const slider = root.querySelector('.buret-docking-pose-slider');
+    const speed = root.querySelector('.buret-docking-pose-speed');
+    const stop = root.querySelector('button[aria-label^="Stop "]');
+    return {
+      frameIndex: Math.max(0, Math.trunc(Number(slider?.value) || 1) - 1),
+      fps: String(speed?.value || ''),
+      playing: Boolean(stop)
+    };
+  }
+
+  async function restoreTrajectoryPlaybackSnapshot(snapshot) {
+    if (!snapshot) return;
+    if (activeStructurePoseSetter) await activeStructurePoseSetter(snapshot.frameIndex);
+    const root = document.querySelector('.buret-docking-poses');
+    const speed = root?.querySelector('.buret-docking-pose-speed');
+    if (speed && snapshot.fps) {
+      speed.value = snapshot.fps;
+      speed.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (snapshot.playing && !root?.querySelector('button[aria-label^="Stop "]')) {
+      root?.querySelector('button[aria-label^="Play "]')?.click();
+    }
+  }
+
+  async function replaceTrajectorySmoothingPrepared(prepared, playbackOverride = null) {
     if (!activeViewer?.plugin || !prepared) throw new Error('The Mol* trajectory viewer is not ready.');
     if (typeof activeViewer.plugin.clear !== 'function') throw new Error('Mol* cannot replace this trajectory in place.');
-    await activeViewer.plugin.clear();
-    await loadPreparedStructure(activeViewer, prepared);
-    applyLayoutState(activeViewer);
-    scheduleLayoutStateReapply(activeViewer);
-    try { activeViewer.handleResize(); } catch (_) {}
+    const currentPlayback = currentTrajectoryPlaybackSnapshot();
+    const playbackSnapshot = playbackOverride ? {
+      frameIndex: Math.max(0, Math.trunc(Number(playbackOverride.frameIndex) || 0)),
+      fps: currentPlayback?.fps || '',
+      playing: playbackOverride.playing === true
+    } : currentPlayback;
+    pendingTrajectoryPlaybackRestore = playbackSnapshot;
+    try {
+      await activeViewer.plugin.clear();
+      await loadPreparedStructure(activeViewer, prepared);
+      await restoreTrajectoryPlaybackSnapshot(playbackSnapshot);
+      applyLayoutState(activeViewer);
+      scheduleLayoutStateReapply(activeViewer);
+      try { activeViewer.handleResize(); } catch (_) {}
+    } finally {
+      pendingTrajectoryPlaybackRestore = null;
+    }
   }
 
   async function applyTrajectorySmoothingFromAction(action = {}) {
@@ -9570,7 +9610,10 @@
         result: { frameCount, interpolation: action.interpolation || 'linear' },
         view: 'smoothed'
       };
-      await replaceTrajectorySmoothingPrepared(smoothedPrepared);
+      await replaceTrajectorySmoothingPrepared(smoothedPrepared, {
+        frameIndex: action.frameIndex,
+        playing: action.playing
+      });
       updateTrajectorySmoothingButtons();
       postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view: 'smoothed' });
       return { ok: true, command: 'apply_external_trajectory_smoothing', result: { frameCount } };
@@ -9822,10 +9865,14 @@
       return;
     }
     if (prepared.poseCount <= 1) return;
-    let activePose = readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount);
+    const playbackRestore = pendingTrajectoryPlaybackRestore;
+    pendingTrajectoryPlaybackRestore = null;
+    let activePose = playbackRestore
+      ? Math.max(0, Math.min(prepared.poseCount - 1, playbackRestore.frameIndex))
+      : readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount);
     const initialPose = activePose;
     let loopTimer = null;
-    let loopActive = false;
+    let loopActive = Boolean(playbackRestore?.playing);
     let loopBusy = false;
     let loopStartedAt = 0;
     let loopStartPose = activePose;
@@ -9878,7 +9925,7 @@
     speed.min = '0.1';
     speed.step = '0.1';
     speed.inputMode = 'decimal';
-    speed.value = formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
+    speed.value = playbackRestore?.fps || formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
     speed.title = 'Frames per second (FPS)';
     const updateSpeedMode = () => {
       const fps = Number(speed.value);
@@ -10208,9 +10255,17 @@
         })
       : null;
     if (prepared.nativeTrajectoryControls && initialPose > 0) {
-      void setPose(initialPose);
+      void setPose(initialPose).finally(() => {
+        if (!playbackRestore?.playing || activeStructurePoseSetter !== setPose) return;
+        setLoopActive(true);
+        scheduleLoopStep();
+      });
     } else {
       notifyDockingPoseChanged(activePose, prepared);
+      if (playbackRestore?.playing) {
+        setLoopActive(true);
+        scheduleLoopStep();
+      }
     }
     dockingPoseControlsDisposer = () => {
       stopPoseRepeat();
@@ -10219,7 +10274,13 @@
         sliderInputTimer = null;
       }
       pendingSliderIndex = null;
-      setLoopActive(false);
+      if (pendingTrajectoryPlaybackRestore?.playing) {
+        if (loopTimer) clearTimeout(loopTimer);
+        loopTimer = null;
+        loopActive = false;
+      } else {
+        setLoopActive(false);
+      }
       syncDisposer?.();
       isolationDisposer?.();
       hoverDisposer?.();
