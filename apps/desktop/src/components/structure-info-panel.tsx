@@ -77,6 +77,11 @@ const SDF_CONTEXT_OPACITY_MAX = 1;
 const SDF_CONTEXT_STYLE_DEFAULT: SdfContextStyle = "match";
 const SDF_CONTEXT_COLOR_DEFAULT: SdfContextColor = "colored";
 const INFO_TRAJECTORY_CONTROL_LIMIT = 200;
+const TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO = {
+  light: 0.55,
+  balanced: 0.32,
+  strong: 0.18,
+} as const;
 
 export function StructureInfoPanel({ document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
   const hostedMcpWidget = isHostedMcpWidget();
@@ -584,15 +589,21 @@ function TrajectorySmoothingCard({
   playback: TrajectoryPlaybackState | null;
 }) {
   const frameCount = controls.actions.length;
-  const apply = () => {
+  const apply = (nextPreset = preset, nextTargetFrames = targetFrames) => {
     actions.runStructureViewerAction(document, {
       type: "apply_trajectory_smoothing",
       label: "Build smoothed motion",
-      preset,
-      targetFrames: Math.max(2, Math.min(frameCount, targetFrames)),
+      preset: nextPreset,
+      targetFrames: Math.max(2, Math.min(frameCount, nextTargetFrames)),
       referenceFrame: Math.max(1, Math.min(frameCount, referenceFrame)),
       align,
     });
+  };
+  const selectPreset = (nextPreset: "light" | "balanced" | "strong") => {
+    const nextTargetFrames = Math.max(2, Math.round(frameCount * TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO[nextPreset]));
+    setPreset(nextPreset);
+    setTargetFrames(nextTargetFrames);
+    if (built) apply(nextPreset, nextTargetFrames);
   };
   const changeView = (nextView: "original" | "smoothed") => {
     setView(nextView);
@@ -634,7 +645,7 @@ function TrajectorySmoothingCard({
                 type="button"
                 data-selected={preset === value || undefined}
                 aria-pressed={preset === value}
-                onClick={() => setPreset(value)}
+                onClick={() => selectPreset(value)}
               >
                 {value[0].toUpperCase() + value.slice(1)}
               </button>
@@ -673,8 +684,8 @@ function TrajectorySmoothingCard({
               ))}
             </div>
           ) : null}
-          {result ? <TrajectorySmoothingChart result={result} playback={playback} setFrame={setFrame} /> : null}
-          <button type="button" className="dock-action trajectory-smoothing-build" onClick={apply}>
+          {result ? <TrajectorySmoothingChart result={result} playback={playback} preset={preset} setFrame={setFrame} /> : null}
+          <button type="button" className="dock-action trajectory-smoothing-build" onClick={() => apply()}>
             {built ? "Rebuild smoothed motion" : "Build smoothed motion"}
           </button>
         </>
@@ -686,10 +697,12 @@ function TrajectorySmoothingCard({
 function TrajectorySmoothingChart({
   result,
   playback,
+  preset,
   setFrame,
 }: {
   result: TrajectorySmoothingResult;
   playback: TrajectoryPlaybackState | null;
+  preset: "light" | "balanced" | "strong";
   setFrame: (index: number) => void;
 }) {
   const lastRequestedFrame = useRef<number | null>(null);
@@ -727,7 +740,7 @@ function TrajectorySmoothingChart({
   return (
     <div className="trajectory-smoothing-chart">
       <div className="trajectory-smoothing-chart-header">
-        <strong>RMSD signal</strong>
+        <strong>RMSD signal · {preset[0].toUpperCase() + preset.slice(1)}</strong>
         <span className="trajectory-smoothing-playback" data-playing={playback?.playing || undefined}>
           {playback?.playing ? "Playing · " : ""}Frame {(playback?.frameIndex ?? 0) + 1} / {playback?.frameCount ?? result.frameCount}
         </span>
@@ -768,7 +781,7 @@ function TrajectorySmoothingChart({
           return <circle key={frame} cx={x} cy={y} r="2.6" />;
         })}
       </svg>
-      <div className="trajectory-smoothing-chart-legend"><span>Raw</span><span>Filtered</span><span>{result.keyframeCount} key frames</span></div>
+      <div className="trajectory-smoothing-chart-legend"><span>Raw</span><span>{preset[0].toUpperCase() + preset.slice(1)} filtered</span><span>{result.keyframeCount} key frames</span></div>
     </div>
   );
 }
