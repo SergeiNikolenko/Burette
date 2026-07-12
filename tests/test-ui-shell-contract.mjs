@@ -2325,7 +2325,9 @@ assert.match(previewViewer, /function applyExternalTrajectorySmoothingFromAction
 assert.match(previewViewer, /Turn Smooth motion off/);
 assert.match(appViewerStateMessagesHook, /burrete:trajectory-smoothing-toggle-requested/);
 assert.match(structureInfoPanel, /Strength presets do not apply to MSM\/PCCA\+/);
-assert.match(structureInfoPanel, /Settings changed\. The graph and displayed motion still show/);
+assert.match(structureInfoPanel, /window\.setTimeout\(\(\) => void build\(\), 450\)/);
+assert.match(structureInfoPanel, /data-smoothing-tooltip=/);
+assert.match(structureInfoPanel, /Settings changed\. Updating automatically/);
 assert.match(structureInfoPanel, /trajectory-smoothing-explanation/);
 assert.match(structureInfoPanel, /Macrostates/);
 assert.match(structureInfoPanel, /function trajectoryPlaybackControlsFor/);

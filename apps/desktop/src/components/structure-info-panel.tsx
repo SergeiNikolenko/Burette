@@ -55,6 +55,7 @@ type TrajectorySmoothingResult = {
   diagnostics?: MdsmoothResult["diagnostics"];
   mode?: MdsmoothMode;
   preset?: "light" | "balanced" | "strong";
+  settingsSignature?: string;
 };
 type TrajectoryPlaybackState = {
   frameIndex: number;
@@ -649,7 +650,15 @@ function TrajectorySmoothingCard({
   const [includeEnds, setIncludeEnds] = useState(true);
   const [kineticStates, setKineticStates] = useState(5);
   const [lagFrames, setLagFrames] = useState(Math.max(1, Math.min(50, Math.round(frameCount / 20))));
-  const build = async (targetOverride?: number, presetOverride = preset) => {
+  const failedAutoUpdate = useRef<string | null>(null);
+  const requestSerial = useRef(0);
+  const settingsSignature = JSON.stringify([signal, mode, preset, targetFrames, referenceFrame, align, rmsdFilter, cutoffFrequency, powerRetained, filterOrder, includeEnds, kineticStates, lagFrames]);
+  const latestSettingsSignature = useRef(settingsSignature);
+  latestSettingsSignature.current = settingsSignature;
+  const build = async () => {
+    const requestedSignature = settingsSignature;
+    const serial = requestSerial.current + 1;
+    requestSerial.current = serial;
     setRunning(true);
     setError(null);
     try {
@@ -659,7 +668,7 @@ function TrajectorySmoothingCard({
         topologyPath: pair.topologyPath,
         signal,
         mode,
-        targetFrames: Math.max(2, Math.min(frameCount, targetOverride ?? targetFrames)),
+        targetFrames: Math.max(2, Math.min(frameCount, targetFrames)),
         cutoffFrequency: signal === "rmsd" && rmsdFilter === "cutoff" ? cutoffFrequency : undefined,
         powerCutoff: signal === "rmsd" && rmsdFilter === "power" ? powerRetained : undefined,
         order: filterOrder,
@@ -671,6 +680,8 @@ function TrajectorySmoothingCard({
         microstates: Math.min(100, frameCount),
         ticaDimensions: 3,
       });
+      if (serial !== requestSerial.current || requestedSignature !== latestSettingsSignature.current) return;
+      failedAutoUpdate.current = null;
       setResult({
         frameCount: response.frameCount,
         keyframeCount: response.keyframes.length,
@@ -684,7 +695,8 @@ function TrajectorySmoothingCard({
         spectrum: response.spectrum,
         diagnostics: response.diagnostics,
         mode,
-        preset: presetOverride,
+        preset,
+        settingsSignature: requestedSignature,
       });
       setBuilt(true);
       setView("smoothed");
@@ -697,18 +709,24 @@ function TrajectorySmoothingCard({
         interpolation: response.interpolation,
       });
     } catch (reason) {
+      if (serial !== requestSerial.current || requestedSignature !== latestSettingsSignature.current) return;
+      failedAutoUpdate.current = requestedSignature;
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      setRunning(false);
+      if (serial === requestSerial.current) setRunning(false);
     }
   };
   const selectPreset = (nextPreset: "light" | "balanced" | "strong") => {
     const nextTargetFrames = Math.max(2, Math.round(frameCount * TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO[nextPreset]));
     setPreset(nextPreset);
     setTargetFrames(nextTargetFrames);
-    if (built) void build(nextTargetFrames, nextPreset);
   };
-  const resultDirty = Boolean(result && (result.signal !== signal || result.mode !== mode || result.preset !== preset));
+  const resultDirty = Boolean(result && result.settingsSignature !== settingsSignature);
+  useEffect(() => {
+    if (!built || !resultDirty || running || failedAutoUpdate.current === settingsSignature) return;
+    const timer = window.setTimeout(() => void build(), 450);
+    return () => window.clearTimeout(timer);
+  }, [built, resultDirty, running, settingsSignature]);
   const changeView = (nextView: "original" | "smoothed") => {
     setView(nextView);
     actions.runStructureViewerAction(document, {
@@ -767,6 +785,7 @@ function TrajectorySmoothingCard({
               <button
                 key={value}
                 type="button"
+                data-smoothing-tooltip={value === "light" ? "Keeps more source frames and removes only the fastest jitter." : value === "strong" ? "Keeps fewer source frames for the calmest, most simplified playback." : "Balances retained molecular detail with smoother playback."}
                 data-selected={preset === value || undefined}
                 aria-pressed={preset === value}
                 disabled={mode === "kinetic"}
@@ -784,7 +803,7 @@ function TrajectorySmoothingCard({
           </button>
           {advanced ? (
             <div className="trajectory-smoothing-settings trajectory-smoothing-science">
-              <label>
+              <label data-smoothing-tooltip="Choose turning points of a filtered coordinate, or representative long-lived states from an MSM/PCCA+ model.">
                 <span>Analysis method</span>
                 <select aria-label="Trajectory key-frame model" value={mode} onChange={(event) => setMode(event.target.value as MdsmoothMode)}>
                   <option value="extrema">Signal turning points</option>
@@ -795,7 +814,7 @@ function TrajectorySmoothingCard({
               {mode === "extrema" ? (
                 <>
                   <div className="trajectory-smoothing-subsection">Signal</div>
-                  <label>
+                  <label data-smoothing-tooltip={trajectorySignalDescription(signal)}>
                     <span>Coordinate</span>
                     <select aria-label="Trajectory smoothing signal" value={signal} onChange={(event) => { setSignal(event.target.value as MdsmoothSignal); setError(null); }}>
                       <option value="rmsd">RMSD to reference</option>
@@ -806,7 +825,7 @@ function TrajectorySmoothingCard({
                     </select>
                   </label>
                   <div className="trajectory-smoothing-explanation"><strong>{trajectorySignalLabel(signal)}</strong><span>{trajectorySignalDescription(signal)}</span></div>
-                  <label>
+                  <label data-smoothing-tooltip="Approximate number of original frames used as anchors for interpolated playback.">
                     <span>Target key frames</span>
                     <input type="number" min={2} max={frameCount} value={targetFrames} onChange={(event) => setTargetFrames(Number(event.target.value) || 2)} />
                   </label>
@@ -814,13 +833,13 @@ function TrajectorySmoothingCard({
               ) : (
                 <>
                   <div className="trajectory-smoothing-subsection">Kinetic model</div>
-                  <label><span>Macrostates</span><input type="number" min={2} max={12} value={kineticStates} onChange={(event) => setKineticStates(Number(event.target.value) || 5)} /></label>
-                  <label><span>Lag, frames</span><input type="number" min={1} max={Math.max(1, Math.floor(frameCount / 3))} value={lagFrames} onChange={(event) => setLagFrames(Number(event.target.value) || 1)} /></label>
+                  <label data-smoothing-tooltip="Number of long-lived kinetic states represented in the smoothed playback."><span>Macrostates</span><input type="number" min={2} max={12} value={kineticStates} onChange={(event) => setKineticStates(Number(event.target.value) || 5)} /></label>
+                  <label data-smoothing-tooltip="Time separation used to estimate transitions. It should be long enough to suppress rapid recrossings."><span>Lag, frames</span><input type="number" min={1} max={Math.max(1, Math.floor(frameCount / 3))} value={lagFrames} onChange={(event) => setLagFrames(Number(event.target.value) || 1)} /></label>
                 </>
               )}
               {signal === "rmsd" && mode === "extrema" ? (
                 <>
-                  <label>
+                  <label data-smoothing-tooltip="Controls how the RMSD signal is filtered before its turning points become playback anchors.">
                     <span>RMSD filter</span>
                     <select aria-label="RMSD filter control" value={rmsdFilter} onChange={(event) => setRmsdFilter(event.target.value as "frames" | "cutoff" | "power")}>
                       <option value="frames">Target key frames</option>
@@ -829,17 +848,17 @@ function TrajectorySmoothingCard({
                     </select>
                   </label>
                   <div className="trajectory-smoothing-note">{rmsdFilter === "frames" ? "Choose approximately how many source frames should anchor the smoothed motion." : rmsdFilter === "cutoff" ? "Remove oscillations above this normalized frequency. Lower values produce stronger smoothing." : "Keep this fraction of the signal power and discard the weakest high-frequency motion."}</div>
-                  {rmsdFilter === "cutoff" ? <label><span>Cutoff frequency</span><input type="number" min={0.0001} max={0.5} step={0.001} value={cutoffFrequency} onChange={(event) => setCutoffFrequency(Number(event.target.value) || 0.1)} /></label> : null}
-                  {rmsdFilter === "power" ? <label><span>Power retained</span><input type="number" min={0.5} max={0.999} step={0.01} value={powerRetained} onChange={(event) => setPowerRetained(Number(event.target.value) || 0.95)} /></label> : null}
-                  <label><span>Filter order</span><input type="number" min={1} max={12} value={filterOrder} onChange={(event) => setFilterOrder(Number(event.target.value) || 5)} /></label>
-                  <label className="trajectory-smoothing-check"><input type="checkbox" checked={includeEnds} onChange={(event) => setIncludeEnds(event.target.checked)} /><span>Always include first and last frames</span></label>
+                  {rmsdFilter === "cutoff" ? <label data-smoothing-tooltip="Normalized low-pass cutoff. Lower values remove more rapid motion."><span>Cutoff frequency</span><input type="number" min={0.0001} max={0.5} step={0.001} value={cutoffFrequency} onChange={(event) => setCutoffFrequency(Number(event.target.value) || 0.1)} /></label> : null}
+                  {rmsdFilter === "power" ? <label data-smoothing-tooltip="Fraction of signal power preserved by the low-pass filter."><span>Power retained</span><input type="number" min={0.5} max={0.999} step={0.01} value={powerRetained} onChange={(event) => setPowerRetained(Number(event.target.value) || 0.95)} /></label> : null}
+                  <label data-smoothing-tooltip="Butterworth filter order. Higher values make the transition around the cutoff sharper."><span>Filter order</span><input type="number" min={1} max={12} value={filterOrder} onChange={(event) => setFilterOrder(Number(event.target.value) || 5)} /></label>
+                  <label className="trajectory-smoothing-check" data-smoothing-tooltip="Keeps the trajectory endpoints even when they are not signal turning points."><input type="checkbox" checked={includeEnds} onChange={(event) => setIncludeEnds(event.target.checked)} /><span>Always include first and last frames</span></label>
                 </>
               ) : null}
-              <label>
+              <label data-smoothing-tooltip="Frame used as the structural reference for RMSD and coordinate alignment.">
                 <span>Reference frame</span>
                 <input type="number" min={1} max={frameCount} value={referenceFrame} onChange={(event) => setReferenceFrame(Number(event.target.value) || 1)} />
               </label>
-              <label className="trajectory-smoothing-check">
+              <label className="trajectory-smoothing-check" data-smoothing-tooltip="Aligns frames before analysis so rigid translation and rotation do not dominate the signal.">
                 <input type="checkbox" checked={align} onChange={(event) => setAlign(event.target.checked)} />
                 <span>Remove whole-structure translation</span>
               </label>
@@ -857,13 +876,13 @@ function TrajectorySmoothingCard({
               ) : null}
             </div>
           ) : null}
-          {resultDirty ? <div className="trajectory-smoothing-pending">Settings changed. The graph and displayed motion still show {trajectorySignalLabel(result?.signal)} until you apply the update.</div> : null}
+          {resultDirty ? <div className="trajectory-smoothing-pending">{running ? "Updating graphs and motion…" : "Settings changed. Updating automatically…"}</div> : null}
           {result ? <TrajectorySmoothingChart result={result} playback={playback} preset={result.preset ?? preset} setFrame={setFrame} /> : null}
           {result?.spectrum ? <TrajectorySpectrum spectrum={result.spectrum} cutoffFrequency={result.cutoffFrequency ?? null} /> : null}
           {error ? <div className="trajectory-smoothing-error" role="alert">{error}</div> : null}
-          <button type="button" className="dock-action trajectory-smoothing-build" disabled={running} onClick={() => void build()}>
-            {running ? "Analyzing trajectory…" : !built ? "Apply smoothing" : resultDirty ? "Apply analysis changes" : "Recalculate smoothing"}
-          </button>
+          {!built || error ? <button type="button" className="dock-action trajectory-smoothing-build" disabled={running} onClick={() => void build()}>
+            {running ? "Analyzing trajectory…" : error ? "Try again" : "Apply smoothing"}
+          </button> : null}
         </>
       ) : null}
     </section>
