@@ -4615,6 +4615,8 @@ assert.match(previewViewer, /function bindMolstarStyleControls\(toolbar\)/);
 assert.match(previewViewer, /function requestMolstarStyle\(style\)/);
 assert.match(previewViewer, /async function reloadMolstarStyle\(viewer, style, serial\)/);
 assert.match(previewViewer, /async function applyMolstarUniformRepresentation\(viewer, representation\)/);
+assert.match(previewViewer, /prepared\.format === 'mol' && typeof viewer\.loadStructureFromData === 'function'/);
+assert.match(previewViewer, /Open Babel writes Cartesian coordinates under fractional tags/);
 assert.match(previewViewer, /async function applyMolstarPolymerLigandRepresentation\(viewer, polymerRepresentation, ligandRepresentation\)/);
 assert.match(previewViewer, /type: 'molecular-surface'/);
 assert.match(previewViewer, /type: 'spacefill'/);

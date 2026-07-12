@@ -409,11 +409,10 @@ popd >/dev/null
 
 rm -rf "$LOCAL_APP"
 mkdir -p "$(dirname "$LOCAL_APP")"
-if [[ "$TAURI_BUILT_APP" = /* ]]; then
-  BUILT_APP_SOURCE="$TAURI_BUILT_APP"
-else
-  BUILT_APP_SOURCE="$SAFE_ROOT/$TAURI_BUILT_APP"
-fi
+case "$TAURI_BUILT_APP" in
+  /*) BUILT_APP_SOURCE="$TAURI_BUILT_APP" ;;
+  *) BUILT_APP_SOURCE="$SAFE_ROOT/$TAURI_BUILT_APP" ;;
+esac
 ditto --norsrc --noextattr "$BUILT_APP_SOURCE" "$LOCAL_APP"
 
 actual_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
@@ -449,7 +448,7 @@ fi
 VERIFY_APP="$SAFE_ROOT/verify/Burrete.app"
 rm -rf "$SAFE_ROOT/verify"
 mkdir -p "$SAFE_ROOT/verify"
-ditto --norsrc --noextattr "$SAFE_ROOT/$TAURI_BUILT_APP" "$VERIFY_APP"
+ditto --norsrc --noextattr "$BUILT_APP_SOURCE" "$VERIFY_APP"
 clean_detritus "$VERIFY_APP"
 assert_bundled_xyzrender_runtime "$VERIFY_APP" "before codesign verification"
 codesign --verify --deep --strict "$VERIFY_APP"

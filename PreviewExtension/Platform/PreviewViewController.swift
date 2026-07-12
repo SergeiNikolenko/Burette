@@ -1558,6 +1558,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "stagedEntries": stagedEntries,
             "quickLookBuild": "v10-product",
             "quickLookViewer": true,
+            "autoFocusStructure": true,
             "debug": showDebugOverlay,
             "theme": preferences.runtimeViewerTheme,
             "themeTokens": preferences.themeTokens,
@@ -6708,7 +6709,7 @@ private struct StructureFormat {
             self = Self(molstarFormat: "mmcif", isBinary: true)
         case "sdf", "sd":
             self = Self(molstarFormat: "sdf", isBinary: false)
-        case "mol":
+        case "mol", "mdl":
             self = Self(molstarFormat: "mol", isBinary: false)
         case "mol2":
             self = Self(molstarFormat: "mol2", isBinary: false)
