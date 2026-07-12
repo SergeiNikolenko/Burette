@@ -156,7 +156,10 @@ def analyze(request: dict):
     universe = load_universe(topology, trajectory)
     all_frames, selected_frames, selected = read_frames(universe, selection)
     reference_index = max(0, min(len(all_frames) - 1, int(request.get("referenceFrame") or 1) - 1))
-    aligned_all, aligned_selected = align_frames(all_frames, selected_frames, reference_index)
+    if request.get("align") is False:
+        aligned_all, aligned_selected = all_frames, selected_frames
+    else:
+        aligned_all, aligned_selected = align_frames(all_frames, selected_frames, reference_index)
 
     if mode == "kinetic":
         dimensions = max(1, int(request.get("ticaDimensions") or 3))
@@ -235,11 +238,21 @@ def capabilities():
     }
 
 
+def install_deeptica(request):
+    python_path = core_learned.create_venv(index_url=request.get("indexUrl"))
+    return {"ok": True, "deepTicaInstalled": True, "pythonPath": python_path}
+
+
 def main():
     try:
         request = json.load(sys.stdin)
         operation = str(request.get("operation") or "analyze")
-        result = capabilities() if operation == "capabilities" else analyze(request)
+        if operation == "capabilities":
+            result = capabilities()
+        elif operation == "installDeepTica":
+            result = install_deeptica(request)
+        else:
+            result = analyze(request)
     except Exception as exc:
         result = {"ok": False, "error": str(exc), "errorType": type(exc).__name__}
     json.dump(result, sys.stdout, separators=(",", ":"))

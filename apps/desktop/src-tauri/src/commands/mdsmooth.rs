@@ -62,7 +62,10 @@ pub(crate) fn run_mdsmooth<R: Runtime>(
 }
 
 fn validate_request_paths(request: &Value) -> Result<(), String> {
-    if request.get("operation").and_then(Value::as_str) == Some("capabilities") {
+    if matches!(
+        request.get("operation").and_then(Value::as_str),
+        Some("capabilities" | "installDeepTica")
+    ) {
         return Ok(());
     }
     let trajectory = request
