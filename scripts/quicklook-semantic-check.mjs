@@ -199,6 +199,20 @@ if (strategy === "trajectory") {
   pass(`trajectory frames=${frameCount}`);
 }
 
+const detectedStructure = lineWith(lines, "[build] detected.format=");
+if (
+  detectedStructure &&
+  !selectedXyzrender &&
+  strategy !== "grid" &&
+  strategy !== "text" &&
+  renderer !== "spectrum" &&
+  renderer !== "fep-graphml"
+) {
+  const structureCount = maxEvidenceNumber(readyEvidence, "molstarStructureCount");
+  if (structureCount <= 0) fail("Mol* preview did not expose a rendered structure");
+  pass(`molstar structures=${structureCount}`);
+}
+
 if (strategy === "text") {
   if (!lineWith(lines, "detected.previewMode=text-artifact")) fail("text artifact preview did not use the text renderer");
   if (!readyEvidence.length) fail("text artifact preview reached no ready evidence");

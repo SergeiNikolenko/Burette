@@ -15,6 +15,10 @@ function extensionForPath(filePath) {
 
 const registry = await json("config/preview-formats.json");
 const manifest = await json("tests/fixtures/quicklook-compatibility/manifest.json");
+const previewController = await readFile(
+  path.join(root, "PreviewExtension", "Platform", "PreviewViewController.swift"),
+  "utf8",
+);
 
 assert.equal(manifest.schemaVersion, 1);
 
@@ -36,5 +40,8 @@ for (const fixture of manifest.cases) {
     `${fixture.observedContentType} must be routed to the Quick Look extension`,
   );
 }
+
+assert.match(previewController, /case "mol", "mdl":/);
+assert.match(previewController, /"autoFocusStructure": true/);
 
 console.log("Quick Look compatibility fixture tests passed");
