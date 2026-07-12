@@ -21,7 +21,7 @@ Use Burrete for read-only molecular structure inspection.
 1. Call the selected tool once with the user's attachment or PDB ID.
 2. Report the bounded composition summary returned by the tool. Do not infer
    counts that are absent from the result.
-3. Let the interactive Burrete workspace carry the detailed 3D inspection.
+3. Let the interactive Burrete preview carry the detailed 3D inspection.
    The user can rotate, zoom, select residues, inspect the sequence, change
    representations, and use measurements directly in the result.
 4. State format limitations or parser notes when the result includes them.
