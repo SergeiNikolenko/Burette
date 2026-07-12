@@ -2374,7 +2374,7 @@ assert.match(styles, /\.structure-inspector-details:not\(\[open\]\) > \.structur
 assert.match(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
 assert.match(styles, /right: max\(146px, var\(--right-dock-width, 0px\)\)/);
 assert.match(styles, /@container \(max-width: 320px\)/);
-assert.match(previewRuntimeCss, /@media \(max-width: 360px\)[\s\S]*?width: calc\(100vw - 78px\)/);
+assert.match(previewRuntimeCss, /@media \(max-width: 360px\)[\s\S]*?top: 64px;[\s\S]*?width: calc\(100vw - 24px\)/);
 assert.match(previewRuntimeCss, /grid-template-columns: 28px auto minmax\(62px, 1fr\) auto auto/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-trajectory-smooth-button \{\s*grid-column:/);
 assert.match(styles, /\.structure-inspector-opacity-control \{/);

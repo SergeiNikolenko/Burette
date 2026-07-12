@@ -2066,7 +2066,8 @@ body.burette-mobile-host .buret-docking-poses button {
 }
 @media (max-width: 360px) {
   .buret-docking-poses {
-    width: calc(100vw - 78px);
+    top: 64px;
+    width: calc(100vw - 24px);
   }
   .buret-docking-pose-main {
     display: grid;
