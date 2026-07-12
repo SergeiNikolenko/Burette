@@ -1208,7 +1208,7 @@ function viewerHtml(
   <title>Burrete - ${escapeHtml(label)}</title>
   <link rel="stylesheet" href="${viewerAsset("viewer-runtime.css")}?v=${runtimeAssetVersion}" />
 </head>
-<body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
+<body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}${hostedMcpBootstrap ? " burette-hosted-mcp-viewer" : ""}">
   <div id="app"></div>
   <script src="${viewerAsset("viewer-shell.js")}?v=${runtimeAssetVersion}"></script>
   <div id="status" class="hidden">Loading ${escapeHtml(label)}...</div>
