@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   HOSTED_MCP_WIDGET_MESSAGE_SOURCE,
+  createHostedMcpSelectionContext,
   isHostedMcpWidgetLocation,
   isHostedMcpToolResultMessage,
   parseHostedMcpStructureMessage,
@@ -146,5 +147,22 @@ const initialStructure = selectHostedMcpInitialStructure([
 });
 assert.equal(initialStructure?.label, "latest.pdb");
 assert.equal(initialStructure?.data, "LATEST");
+
+const selectionContext = createHostedMcpSelectionContext({
+  source: "lasso",
+  label: "Lasso selection: 4 visible atoms across 2 residues",
+  atoms: 4,
+  residues: [
+    { chain: "A", sequence: 12, compId: "CYS" },
+    { chain: "A", sequence: 13, compId: "ARG" },
+  ],
+}, "document-1");
+assert.equal(selectionContext?.structuredContent.burrete.activeSelection.atoms, 4);
+assert.deepEqual(selectionContext?.structuredContent.burrete.activeSelection.residues, [
+  { chain: "A", sequence: 12, compId: "CYS" },
+  { chain: "A", sequence: 13, compId: "ARG" },
+]);
+assert.match(selectionContext?.content[0].text ?? "", /active molecular selection/);
+assert.equal(createHostedMcpSelectionContext({ source: "click" }, "document-1"), null);
 
 console.log("Hosted MCP widget contract tests passed");

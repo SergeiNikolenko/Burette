@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ViewerDocument } from "../types";
 import type { DockTabKind } from "../lib/dock";
+import { updateHostedMcpSelectionContext } from "../lib/hosted-mcp-widget";
 
 type ViewerStateMessageBody = Record<string, unknown> | null | undefined;
 type SetViewerLigandSelections = (
@@ -72,6 +73,7 @@ export function useAppViewerStateMessages({
       const selection = body.selection && typeof body.selection === "object"
         ? body.selection as Record<string, unknown>
         : null;
+      updateHostedMcpSelectionContext(selection, documentId);
       setViewerLigandSelections((previous) => ({
         ...previous,
         [documentId]: selection?.selector ? {

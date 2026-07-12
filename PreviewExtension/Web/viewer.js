@@ -10489,8 +10489,43 @@
       if (canSelectStructure) selection.fromLoci('add', loci, lassoApplyGranularity);
       selected += 1;
     }
-    if (selected > 0) scheduleMolstarSelectedMoleculePreview();
+    if (selected > 0) {
+      scheduleMolstarSelectedMoleculePreview();
+      notifyMolstarLassoSelection(picks, selected);
+    }
     return selected;
+  }
+
+  function notifyMolstarLassoSelection(picks, selected) {
+    const atoms = [];
+    const atomKeys = new Set();
+    const residues = new Map();
+    for (const pick of picks) {
+      const atom = molstarContextAtomFromLoci(pick?.loci);
+      if (!atom) continue;
+      const chain = String(atom.auth_asym_id || atom.label_asym_id || '').trim();
+      const sequence = atom.auth_seq_id ?? atom.label_seq_id ?? null;
+      const compId = String(atom.auth_comp_id || atom.label_comp_id || '').trim();
+      const atomName = String(atom.auth_atom_id || atom.label_atom_id || '').trim();
+      const atomKey = `${chain}:${sequence ?? ''}:${compId}:${atomName}:${atom.atomIndex ?? ''}`;
+      if (!atomKeys.has(atomKey)) {
+        atomKeys.add(atomKey);
+        atoms.push({ chain, sequence, compId, atomName });
+      }
+      const residueKey = `${chain}:${sequence ?? ''}:${compId}`;
+      if (!residues.has(residueKey) && residues.size < 96) {
+        residues.set(residueKey, { chain, sequence, compId });
+      }
+    }
+    window.__mqlPost?.('selectionChanged', '', {
+      selection: {
+        source: 'lasso',
+        label: `Lasso selection: ${atoms.length} visible atom${atoms.length === 1 ? '' : 's'} across ${residues.size} residue${residues.size === 1 ? '' : 's'}`,
+        atoms: atoms.length,
+        visibleTargets: selected,
+        residues: Array.from(residues.values())
+      }
+    });
   }
 
   function onXyzrenderLassoPointerDown(event) {
