@@ -2117,7 +2117,7 @@
   }
 
   function molstarAutoFocusEnabled(config) {
-    return config?.autoFocusStructure === true;
+    return !isQuickLookHost() && config?.autoFocusStructure === true;
   }
 
   function hasMolstarContextFocus(config) {
@@ -11745,9 +11745,18 @@
   function molstarContextSourceEntryForActiveConfig() {
     if (!activeConfig || activeConfig.docking) return null;
     const format = normalizeFormat(activeConfig.molstarFormat || activeConfig.format);
-    if (format !== 'pdb' && format !== 'pdbqt') return null;
+    if (format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf') return null;
     try {
       const data = rawStructureData({ ...activeConfig, format, binary: false });
+      if (format === 'sdf') {
+        const records = splitSdfRecords(data);
+        const activePose = Math.max(0, Math.min(records.length - 1, Number(activeMolstarPrepared?.activePose) || 0));
+        return {
+          data: records[activePose] || data,
+          format: 'sdf',
+          label: activeConfig.label || 'structure'
+        };
+      }
       return {
         data: activePdbModelText(data, activeConfig),
         format: 'pdb',
@@ -12446,6 +12455,9 @@
   }
 
   function molstarContextSdfEntryForExport(target) {
+    if (target?.scope === 'ligand' && normalizeFormat(target.sourceEntry?.format) === 'sdf') {
+      return target.sourceEntry;
+    }
     if (target?.scope === 'ligand' && target.receptor && target.ligand) {
       const ligandEntry = pdbLigandSdfEntryForResidue(target.receptor, target.atom);
       if (ligandEntry) return ligandEntry;
@@ -13337,7 +13349,8 @@
       const rdkit = await molstarPreviewInitRDKit();
       let mol = null;
       try {
-        mol = rdkit.get_mol(String(entry.data || ''));
+        const molblock = splitSdfRecords(String(entry.data || ''))[0] || String(entry.data || '');
+        mol = rdkit.get_mol(molblock);
         if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
         try { mol.set_new_coords?.(); } catch (_) {}
         const svg = molstarPreviewCleanRDKitSVG(mol.get_svg(MOLSTAR_PREVIEW_RDKIT_SVG_SIZE, MOLSTAR_PREVIEW_RDKIT_SVG_SIZE));

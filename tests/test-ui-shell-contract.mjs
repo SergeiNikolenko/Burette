@@ -675,6 +675,7 @@ assert.match(previewRuntimeViewer, /let rdkit_js = asset_url\(&assets\.join\("rd
 assert.match(previewRuntimeViewer, /let rdkit_wasm = asset_url\(&assets\.join\("rdkit\/RDKit_minimal\.wasm"\)\)/);
 assert.match(previewRuntimeViewer, /window\.BurreteRDKitJSURL = \{rdkit_js:\?\};/);
 assert.match(previewRuntimeViewer, /window\.BurreteRDKitWasmURL = \{rdkit_wasm:\?\};/);
+assert.match(previewRuntimeViewer, /VIEWER_MOLSTAR_CSP[^\n]*script-src[^\n]*'wasm-unsafe-eval'/);
 assert.match(buildScript, /built desktop app Resources\/Web was overwritten by the preview shell/);
 assert.match(buildScript, /Contents\/Resources\/ViewerWeb\/viewer-shell\.js/);
 assert.match(desmondPreviewExtract, /from schrodinger\.application\.desmond\.packages import topo, traj/);
@@ -4481,7 +4482,7 @@ assert.match(previewViewer, /function captureMolstarTransitionFrame\(\)/);
 assert.match(previewViewer, /canvas\.toDataURL\('image\/png'\)/);
 assert.match(previewViewer, /function requestGenerated3DCameraView\(viewer\)/);
 assert.match(previewViewer, /requestMolstarStructureFocus\(viewer, \{/);
-assert.match(previewViewer, /function molstarAutoFocusEnabled\(config\) \{\s*return config\?\.autoFocusStructure === true;\s*\}/);
+assert.match(previewViewer, /function molstarAutoFocusEnabled\(config\) \{\s*return !isQuickLookHost\(\) && config\?\.autoFocusStructure === true;\s*\}/);
 assert.match(previewViewer, /function requestMolstarStructureFocus\(viewer, options = \{\}\)/);
 assert.match(previewViewer, /camera\.getFocus\(target, Math\.max\(0\.1, safeRadius \* radiusScale\), \[0, 1, 0\], \[0\.85, -0\.38, 0\.92\]\)/);
 assert.match(previewViewer, /snapshot\.mode = 'perspective'/);
@@ -5119,6 +5120,10 @@ assert.match(previewViewer, /const image = molstarPreviewSvgCache\.get\(key\) \|
 assert.match(previewViewer, /function molstarPreviewParseMolblock2D\(data\)/);
 assert.match(previewViewer, /function molstarMoleculePreviewFallbackSVG\(entry\)/);
 assert.match(previewViewer, /data-buret-rdkit-svg="fallback"/);
+assert.match(previewViewer, /const molblock = splitSdfRecords\(String\(entry\.data \|\| ''\)\)\[0\] \|\| String\(entry\.data \|\| ''\);\s*mol = rdkit\.get_mol\(molblock\);/);
+assert.match(previewViewer, /normalizeFormat\(target\.sourceEntry\?\.format\) === 'sdf'[\s\S]*?return target\.sourceEntry;/);
+assert.match(previewViewer, /format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf'/);
+assert.match(previewViewer, /const activePose = Math\.max\(0, Math\.min\(records\.length - 1, Number\(activeMolstarPrepared\?\.activePose\) \|\| 0\)\)/);
 assert.doesNotMatch(previewViewer, /if \(!image\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
 assert.match(previewViewer, /\$\{image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\}/);
 assert.match(previewViewer, /function molstarPreviewLoadRDKitScript\(\)/);

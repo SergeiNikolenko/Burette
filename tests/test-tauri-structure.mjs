@@ -1099,6 +1099,7 @@ assert.match(quickLookPreviewController, /rdkitWasmAsset = """\s*<script src="pr
 assert.match(quickLookPreviewController, /<script src="preview-rdkit-wasm\.js"><\/script>/);
 assert.match(quickLookPreviewController, /burette-quicklook-host/);
 assert.match(quickLookPreviewController, /window\.BurreteRDKitWasmBase64 = \\"\\\(wasmData\.base64EncodedString\(\)\)\\";\\n/);
+assert.match(quickLookPreviewController, /molstarRuntimeCSP[^\n]*script-src[^\n]*'wasm-unsafe-eval'/);
 assert.match(quickLookPreviewController, /payload\["rdkitWasmPath"\] = "\.\.\/assets\/rdkit\/RDKit_minimal\.wasm"/);
 assert.doesNotMatch(quickLookPreviewController, /<script src="preview-data\.js"><\/script>/);
 assert.doesNotMatch(quickLookPreviewController, /window\.BurreteDataBase64 = null;\\nwindow\.BurreteDataURL = null;\\n/);
