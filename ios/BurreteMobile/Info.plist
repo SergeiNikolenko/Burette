@@ -81,6 +81,7 @@
 				<string>mmcif</string>
 				<string>mmtf</string>
 					<string>mol</string>
+					<string>mdl</string>
 					<string>json</string>
 					<string>mol2</string>
 					<string>msj</string>
@@ -164,6 +165,7 @@
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
 				<string>com.schrodinger.mol</string>
+				<string>net.sourceforge.openbabel.mdl</string>
 				<string>com.schrodinger.pdb</string>
 				<string>com.schrodinger.sdf</string>
 				<string>com.local.burrete10.xyz</string>
@@ -478,6 +480,7 @@
 				<key>public.filename-extension</key>
 				<array>
 					<string>mol</string>
+					<string>mdl</string>
 				</array>
 				<key>public.mime-type</key>
 				<array>

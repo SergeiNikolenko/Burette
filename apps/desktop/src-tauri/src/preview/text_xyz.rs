@@ -2302,7 +2302,7 @@ fn maestro_atom_symbol(
 }
 
 fn parse_cif_core_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
-    let cell = parse_cif_cell(lines)?;
+    let cell = parse_cif_cell(lines);
     let mut index = 0;
     while index < lines.len() {
         if lines[index].trim().to_lowercase() != "loop_" {
@@ -2358,7 +2358,9 @@ fn parse_cif_core_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
             let fx = parse_cif_number(parts.get(fract_x_index)?)?;
             let fy = parse_cif_number(parts.get(fract_y_index)?)?;
             let fz = parse_cif_number(parts.get(fract_z_index)?)?;
-            let position = fractional_to_cartesian(fx, fy, fz, cell);
+            let position = cell
+                .map(|cell| fractional_to_cartesian(fx, fy, fz, cell))
+                .unwrap_or((fx, fy, fz));
             atoms.push(Atom {
                 symbol,
                 x: position.0,
@@ -2919,6 +2921,18 @@ O1 O 0.4 0.5 0.6
         assert!(xyz.starts_with("2\nConverted from demo.cif\n"));
         assert!(xyz.contains("C 1.000000 4.000000 9.000000"));
         assert!(xyz.contains("O 4.000000 10.000000 18.000000"));
+    }
+
+    #[test]
+    fn converts_openbabel_cif_without_cell_as_cartesian_xyz() {
+        let data =
+            include_bytes!("../../../../../tests/fixtures/quicklook-compatibility/emendXRay.cif");
+        let xyz =
+            String::from_utf8(xyz_data_from_text(data, "cif", "emendXRay.cif").unwrap()).unwrap();
+
+        assert!(xyz.starts_with("58\nConverted from emendXRay.cif\n"));
+        assert!(xyz.contains("F -4.975300 5.639000 -0.203500"));
+        assert!(xyz.contains("H -2.122800 2.151900 8.010600"));
     }
 
     #[test]
