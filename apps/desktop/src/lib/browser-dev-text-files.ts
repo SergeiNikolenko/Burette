@@ -1,4 +1,5 @@
 import type { OpenTextFilesResult, TextFileDocument } from "../types";
+import { readBrowserDevVirtualTextDocument } from "./browser-dev-documents";
 
 export async function openBrowserDevTextFiles(paths: string[]): Promise<OpenTextFilesResult> {
   const documents: TextFileDocument[] = [];
@@ -17,6 +18,21 @@ export async function openBrowserDevTextFiles(paths: string[]): Promise<OpenText
 }
 
 async function readBrowserDevTextFile(path: string): Promise<TextFileDocument> {
+  const virtualText = readBrowserDevVirtualTextDocument(path);
+  if (virtualText !== null) {
+    const title = path.split("/").filter(Boolean).pop() || path;
+    return {
+      id: `web-demo-text-${path}`,
+      path,
+      title,
+      extension: title.includes(".") ? title.split(".").pop()?.toLowerCase() || "txt" : "txt",
+      language: "text",
+      content: virtualText,
+      byteCount: new TextEncoder().encode(virtualText).length,
+      truncated: false,
+      modifiedAt: null,
+    };
+  }
   const response = await fetch(`/__burette/read-text-file?path=${encodeURIComponent(path)}`, {
     cache: "no-store",
   });

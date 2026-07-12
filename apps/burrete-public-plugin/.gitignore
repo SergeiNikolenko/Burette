@@ -1,2 +1,5 @@
 .vercel
 .env*
+public/burrete-viewer/
+public/viewer-shell/
+public/web-demo/
