@@ -86,9 +86,10 @@ describe("viewer resource contract", () => {
 
   test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v2.html");
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v6.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
+    expect(html).toContain("?v=viewer-absolute-assets-v1");
     expect(html).toContain("ui/notifications/tool-result");
     expect(html).toContain("__BURRETE_HOSTED_MCP_WIDGET__");
     expect(html).toContain("__BURRETE_HOSTED_MCP_BRIDGE_READY__");
@@ -114,6 +115,26 @@ describe("viewer resource contract", () => {
     expect(source).not.toContain("/private/tmp");
     expect(source).not.toContain("/Users/");
     expect(existsSync(path.join(publicRoot, "demo/1htb.pdb"))).toBe(false);
+  });
+
+  test("does not resandbox Mol* inside the isolated hosted widget", () => {
+    const viewerFrameSource = readFileSync(path.resolve(
+      import.meta.dir,
+      "../../desktop/src/components/editor-area/viewer-frame.tsx",
+    ), "utf8");
+    expect(viewerFrameSource).toContain("? undefined");
+    expect(viewerFrameSource).toContain("...(sandbox ? { sandbox } : {})");
+  });
+
+  test("bootstraps hosted viewer data without executable inline scripts", () => {
+    const browserDocumentsSource = readFileSync(path.resolve(
+      import.meta.dir,
+      "../../desktop/src/lib/browser-dev-documents.ts",
+    ), "utf8");
+    expect(browserDocumentsSource).toContain('id="burrete-runtime-config" type="application/json"');
+    expect(browserDocumentsSource).toContain('id="burrete-runtime-data" type="application/json"');
+    expect(browserDocumentsSource).toContain('viewerAsset("viewer-bootstrap.js")');
+    expect(browserDocumentsSource).toContain('WEB_ASSETS_BASE.replace(/\\/$/u, "")');
   });
 
   test("hardens the directly served shell and enables cross-origin assets", async () => {
