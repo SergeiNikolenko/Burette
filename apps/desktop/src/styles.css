@@ -2031,6 +2031,7 @@ img.radix-menu-item-icon {
 }
 .structure-brief {
   gap: 6px;
+  grid-auto-rows: max-content;
 }
 .structure-inspector-header {
   background: var(--surface-card);
@@ -3057,6 +3058,9 @@ img.radix-menu-item-icon {
   padding: 9px;
   display: grid;
   gap: 8px;
+}
+.structure-inspector-details:not([open]) > .structure-inspector-details-body {
+  display: none;
 }
 .structure-brief-rows {
   min-width: 0;

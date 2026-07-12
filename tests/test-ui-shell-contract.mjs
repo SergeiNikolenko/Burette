@@ -2369,6 +2369,8 @@ assert.ok(
   "SDF all-background controls should appear above Components"
 );
 assert.match(styles, /\.structure-inspector-style-options \{/);
+assert.match(styles, /\.structure-brief \{[\s\S]*?grid-auto-rows: max-content/);
+assert.match(styles, /\.structure-inspector-details:not\(\[open\]\) > \.structure-inspector-details-body/);
 assert.match(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
 assert.match(styles, /right: max\(146px, var\(--right-dock-width, 0px\)\)/);
 assert.match(styles, /@container \(max-width: 320px\)/);
