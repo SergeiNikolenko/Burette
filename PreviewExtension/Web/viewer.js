@@ -3883,6 +3883,10 @@
     let drag = null;
     let ignoreNextGripClick = false;
     const grip = toolbar.querySelector('[data-drag-handle]');
+    if (grip && window.__BURRETE_HOSTED_GRIP_FALLBACK__) {
+      grip.removeEventListener('click', window.__BURRETE_HOSTED_GRIP_FALLBACK__);
+      delete window.__BURRETE_HOSTED_GRIP_FALLBACK__;
+    }
     grip?.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();

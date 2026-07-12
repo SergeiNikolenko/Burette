@@ -96,7 +96,7 @@ export function AppLayout({
       onPaste={hostedMcpWidget ? undefined : onPaste}
       style={shellStyle}
     >
-      <div className="drag-region" data-tauri-drag-region />
+      {!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region />}
       {chromeVisible && (
         <>
           {!hostedMcpWidget ? (
