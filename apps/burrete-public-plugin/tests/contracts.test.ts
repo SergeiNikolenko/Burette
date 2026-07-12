@@ -87,10 +87,10 @@ describe("viewer resource contract", () => {
 
   test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v12.html");
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v13.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-hosted-mobile-v3");
+    expect(html).toContain("?v=viewer-hosted-mobile-v4");
     expect(html).toContain(`https://burrete.example${VIEWER_MOBILE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
     expect(html).toContain("navigator.userAgent");
@@ -121,9 +121,16 @@ describe("viewer resource contract", () => {
     expect(source).toContain('molstarPixelScale: 1');
     expect(source).toContain('molstarPickScale: 1');
     expect(source).toContain('molstarResolutionMode: "native"');
+    expect(source).toContain('canvasBackground: "black"');
     expect(source).toContain('method: "ui/update-model-context"');
     expect(source).not.toContain("<iframe");
     expect(source).not.toContain("srcdoc");
+  });
+
+  test("uses a true black MCP widget background in dark mode", () => {
+    const html = createViewerWidgetHtml("https://burrete.example");
+    expect(html).toContain("background: #000000;");
+    expect(html).not.toContain("background: #111315;");
   });
 
   test("builds the stable hosted shell entry assets", () => {

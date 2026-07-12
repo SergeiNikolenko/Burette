@@ -144,7 +144,7 @@
       quickLookBuild: "burrete-hosted-mobile-direct",
       debug: false,
       theme: "auto",
-      canvasBackground: "auto",
+      canvasBackground: "black",
       documentId,
       uiScale: 0.9,
       overlayOpacity: 0.9,
