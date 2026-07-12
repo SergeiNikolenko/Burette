@@ -1,6 +1,7 @@
 import { dockingRequestForDrop } from "./docking-documents";
 import { isTauriRuntime } from "./tauri";
 import type { DockingDocumentRequest } from "../types";
+import { initializeWebDemoWorkspace, isWebDemoWorkspace } from "./web-demo-workspace";
 
 export async function browserDevFilesFromLocation() {
   const params = new URLSearchParams(window.location.search);
@@ -19,6 +20,7 @@ export async function browserDevFilesFromLocation() {
     }));
     return Array.from(new Set(fileGroups.flat()));
   }
+  if (isWebDemoWorkspace()) return initializeWebDemoWorkspace();
   return [];
 }
 

@@ -8,6 +8,7 @@ const REPO_ROOT = path.resolve(APP_ROOT, "../..");
 const SOURCE_VIEWER_ROOT = path.join(REPO_ROOT, "PreviewExtension/Web");
 const OUTPUT_VIEWER_ROOT = path.join(APP_ROOT, "public/burrete-viewer");
 const OUTPUT_SHELL_ROOT = path.join(APP_ROOT, "public/viewer-shell");
+const OUTPUT_WEB_DEMO_ROOT = path.join(APP_ROOT, "public/web-demo");
 const LEGACY_DEMO_ROOT = path.join(APP_ROOT, "public/demo");
 const MOBILE_VIEWER_SOURCE = path.join(APP_ROOT, "assets/burrete-hosted-mobile.js");
 const MOBILE_VIEWER_OUTPUT = path.join(APP_ROOT, "public/burrete-hosted-mobile.js");
@@ -23,6 +24,7 @@ const VIEWER_FILES = [
 await Promise.all([
   rm(OUTPUT_VIEWER_ROOT, { recursive: true, force: true }),
   rm(OUTPUT_SHELL_ROOT, { recursive: true, force: true }),
+  rm(OUTPUT_WEB_DEMO_ROOT, { recursive: true, force: true }),
   rm(LEGACY_DEMO_ROOT, { recursive: true, force: true }),
 ]);
 await Promise.all([
@@ -51,7 +53,18 @@ await run("bun", ["run", "build"], {
   },
 });
 
-console.log("Generated the hosted Burrete browser shell and viewer assets.");
+await run("bun", ["run", "build"], {
+  cwd: path.join(REPO_ROOT, "apps/desktop"),
+  env: {
+    ...process.env,
+    BURRETE_AGENT_SHELL_OUT_DIR: OUTPUT_WEB_DEMO_ROOT,
+    VITE_BURRETE_BUILD_IDENTIFIER: "web-demo",
+    VITE_BURRETE_WEB_DEMO: "1",
+    VITE_BURRETE_WEB_ASSETS_BASE: "/burrete-viewer/",
+  },
+});
+
+console.log("Generated the hosted Burrete browser shell, web demo, and viewer assets.");
 
 function run(command, args, options) {
   return new Promise((resolveRun, rejectRun) => {

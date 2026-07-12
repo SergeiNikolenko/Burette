@@ -34,6 +34,10 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Content-Security-Policy", value: hostedShellCsp }],
       },
       {
+        source: "/web-demo/index.html",
+        headers: [{ key: "Content-Security-Policy", value: hostedShellCsp }],
+      },
+      {
         source: "/viewer-shell/:path*",
         headers: crossOriginAssetHeaders,
       },

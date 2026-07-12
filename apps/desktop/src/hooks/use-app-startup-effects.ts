@@ -10,6 +10,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { ViewerDocument } from "../types";
+import { isWebDemoWorkspace, webDemoProjectRoot } from "../lib/web-demo-workspace";
 
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 type OpenPaths = (paths: string[]) => unknown | Promise<unknown>;
@@ -74,7 +75,9 @@ export function useAppStartupEffects({
       if (!needsInitialOpen && !needsRuntimeRefresh) return;
       openedBrowserDevFilesRef.current = normalizedFiles;
       syncingBrowserDevFilesRef.current = true;
-      const browserDevProjectRoots = browserDevExplicitFolders.length > 0
+      const browserDevProjectRoots = isWebDemoWorkspace() && webDemoProjectRoot()
+        ? [webDemoProjectRoot() as string]
+        : browserDevExplicitFolders.length > 0
         ? browserDevExplicitFolders
         : uniqueParentDirectories(paths);
       const workspace = commonParentDirectory(browserDevProjectRoots);

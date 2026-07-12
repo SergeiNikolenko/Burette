@@ -4,6 +4,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { buildSidebarProjects, type SidebarProjectStructure } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
 import type { RecentStructure, ViewerDocument } from "../types";
+import {
+  isWebDemoWorkspace,
+  subscribeWebDemoWorkspace,
+  webDemoProjectRoot,
+  webDemoProjectStructures,
+} from "../lib/web-demo-workspace";
 
 const browserDevSampleFiles = [
   { title: "ketcher-2d-benzene.sdf", extension: "sdf", byteCount: 579 },
@@ -53,7 +59,13 @@ export function useAppSidebarProjects({
 }: UseAppSidebarProjectsArgs) {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [projectStructures, setProjectStructures] = useState<SidebarProjectStructure[]>([]);
+  const [webDemoRevision, setWebDemoRevision] = useState(0);
   const prunedPersistedPathsRef = useRef(false);
+
+  useEffect(() => {
+    if (!isWebDemoWorkspace()) return undefined;
+    return subscribeWebDemoWorkspace(() => setWebDemoRevision((revision) => revision + 1));
+  }, []);
 
   const browserDevSampleRoot = useMemo(
     () => browserDevSampleProjectRoot(browserDevHasExplicitWorkspace),
@@ -72,7 +84,7 @@ export function useAppSidebarProjects({
   const sidebarProjectStructures = useMemo(() => {
     const samples = browserDevSampleProjectStructures(browserDevHasExplicitWorkspace);
     return samples.length > 0 ? [...projectStructures, ...samples] : projectStructures;
-  }, [browserDevHasExplicitWorkspace, projectStructures]);
+  }, [browserDevHasExplicitWorkspace, projectStructures, webDemoRevision]);
   const sidebarRecentStructures = browserDevExplicitFolders.length > 0 ? [] : recentStructures;
 
   const sidebarProjects = useMemo(() => buildSidebarProjects({
@@ -174,6 +186,7 @@ export function useAppSidebarProjects({
 }
 
 function browserDevSampleProjectRoot(browserDevHasExplicitWorkspace: boolean) {
+  if (isWebDemoWorkspace()) return webDemoProjectRoot();
   if (!import.meta.env.DEV || isTauriRuntime() || browserDevHasExplicitWorkspace) return null;
   const repoRoot = String(import.meta.env.BURRETE_REPO_ROOT || "").trim().replace(/\/+$/u, "");
   return repoRoot ? `${repoRoot}/samples` : null;
@@ -191,6 +204,7 @@ function appendSidebarProjectRoot(roots: string[], root: string | null) {
 }
 
 function browserDevSampleProjectStructures(browserDevHasExplicitWorkspace: boolean): SidebarProjectStructure[] {
+  if (isWebDemoWorkspace()) return webDemoProjectStructures();
   const sampleRoot = browserDevSampleProjectRoot(browserDevHasExplicitWorkspace);
   if (!sampleRoot) return [];
   return browserDevSampleFiles.map((file) => ({
