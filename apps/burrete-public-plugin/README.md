@@ -28,7 +28,7 @@ The production Streamable HTTP endpoint is
 
 Both tools are read-only, idempotent, non-destructive, and cannot write to the
 public internet. Each declares an exact output schema and renders
-`ui://burrete/molecular-viewer-v11.html` with MIME type
+`ui://burrete/molecular-viewer-v12.html` with MIME type
 `text/html;profile=mcp-app`.
 
 The model receives only bounded structure summaries. Original molecular text
