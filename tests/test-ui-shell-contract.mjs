@@ -612,6 +612,7 @@ assert.doesNotMatch(viteConfig, /onlyExplicitManualChunks/);
 assert.doesNotMatch(viteConfig, /require: "globalThis\.__burreteRequire"/);
 assert.match(viteConfig, /desktopManualChunks/);
 assert.match(viteConfig, /manualChunks: hostedMcpBuild \? undefined : desktopManualChunks/);
+assert.match(viteConfig, /"\.\/lib\/ketcher-browser-require": resolve\(\s*desktopRoot,\s*"src\/lib\/hosted-browser-require\.ts"/s);
 assert.match(viteBuildPlugins, /function desktopManualChunks\(id: string\)/);
 assert.match(viteBuildPlugins, /const packagePath = normalized\.split\("\/node_modules\/"\)\.at\(-1\) \?\? "";/);
 assert.match(viteBuildPlugins, /packagePath === "molstar" \|\| packagePath\.startsWith\("molstar\/"\)/);

@@ -3818,6 +3818,14 @@ export default defineConfig({
   base: "./",
   plugins: [react(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin()],
   resolve: {
+    alias: hostedMcpBuild
+      ? {
+          "./lib/ketcher-browser-require": resolve(
+            desktopRoot,
+            "src/lib/hosted-browser-require.ts",
+          ),
+        }
+      : undefined,
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },
   define: {

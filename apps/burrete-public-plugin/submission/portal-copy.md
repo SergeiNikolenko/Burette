@@ -11,6 +11,9 @@
 - **Terms:** https://burrete-landing.vercel.app/terms
 - **Logo:** `plugins/burette-agent/assets/app-icon.png` in the main Burrete
   repository (512 × 512 PNG)
+- **ChatGPT mobile screenshot:** `submission/screenshots/chatgpt-pdb-viewer-mobile.jpg`
+  captured from the production v9 widget in the real ChatGPT conversation
+  with developer-mode CSP enforcement enabled.
 
 ### Long description
 
@@ -20,6 +23,8 @@ also retrieve an explicitly requested public Protein Data Bank entry by PDB ID.
 Each result includes bounded composition counts and opens directly in the real
 Burrete workspace with document tabs, viewer controls, sequence, selection,
 measurements, representations, structure controls, and the molecular inspector.
+The hosted viewer starts with its floating control toolbar collapsed to keep the
+molecule unobstructed; the visible grip button expands the complete toolbar.
 The hosted plugin is read-only, requires no account, and does not control local
 files or desktop sessions.
 
