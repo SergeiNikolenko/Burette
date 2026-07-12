@@ -923,6 +923,7 @@ impl AssetProfile {
                 "viewer-runtime.css",
                 "viewer-shell.js",
                 "burette-agent.js",
+                "trajectory-smoothing.js",
                 "viewer.js",
             ],
             Self::Grid => &["grid-ui.js", "grid-viewer.js", "grid.css"],
@@ -931,6 +932,7 @@ impl AssetProfile {
                 "viewer-runtime.css",
                 "viewer-shell.js",
                 "burette-agent.js",
+                "trajectory-smoothing.js",
                 "viewer.js",
             ],
         }
@@ -1071,6 +1073,7 @@ fn viewer_html(
     };
     let csp = viewer_csp(renderer);
     let agent_js = asset_url(&assets.join("burette-agent.js"));
+    let trajectory_smoothing_js = asset_url(&assets.join("trajectory-smoothing.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
     let molstar_js = asset_url(&assets.join("molstar.js"));
@@ -1114,6 +1117,7 @@ fn viewer_html(
   <script src="{config_js}"></script>
   {data_script}
   <script src="{agent_js}"></script>
+  <script src="{trajectory_smoothing_js}"></script>
   <script src="{viewer_js}"></script>
 </body>
 </html>"#

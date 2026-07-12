@@ -3267,6 +3267,106 @@ img.radix-menu-item-icon {
 .structure-inspector-pose-controls {
   gap: 7px;
 }
+
+.trajectory-smoothing-card { display: grid; gap: 10px; }
+.trajectory-smoothing-intro,
+.trajectory-smoothing-note { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.trajectory-smoothing-presets,
+.trajectory-smoothing-view {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 9px;
+  background: var(--surface-subtle);
+}
+.trajectory-smoothing-view { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.trajectory-smoothing-presets button,
+.trajectory-smoothing-view button {
+  min-width: 0;
+  min-height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+}
+.trajectory-smoothing-presets button:hover,
+.trajectory-smoothing-view button:hover { background: var(--surface-hover); color: var(--text-primary); }
+.trajectory-smoothing-presets button[data-selected],
+.trajectory-smoothing-view button[data-selected] {
+  background: var(--surface-selected);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 34%, var(--line-subtler));
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.trajectory-smoothing-advanced-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+.trajectory-smoothing-advanced-toggle span { color: var(--text-secondary); font-size: 11px; font-weight: 500; }
+.trajectory-smoothing-settings { display: grid; gap: 8px; }
+.trajectory-smoothing-settings > label:not(.trajectory-smoothing-check) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.trajectory-smoothing-settings select,
+.trajectory-smoothing-settings input[type="number"] {
+  min-width: 0;
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  padding: 0 8px;
+  font: inherit;
+}
+.trajectory-smoothing-check { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 11px; }
+.trajectory-smoothing-build { width: 100%; }
+.trajectory-smoothing-chart {
+  overflow: hidden;
+  border: 1px solid var(--line-subtler);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface-subtle) 82%, transparent);
+}
+.trajectory-smoothing-chart-header,
+.trajectory-smoothing-chart-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px 0;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+.trajectory-smoothing-chart-header strong { color: var(--text-primary); font-size: 11px; }
+.trajectory-smoothing-chart svg { display: block; width: 100%; height: 112px; }
+.trajectory-smoothing-chart polyline { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.trajectory-smoothing-chart-raw { stroke: var(--text-secondary); stroke-width: 1; opacity: 0.52; }
+.trajectory-smoothing-chart-filtered { stroke: var(--accent); stroke-width: 2; }
+.trajectory-smoothing-chart circle { fill: var(--accent); stroke: var(--surface-primary); stroke-width: 1.25; vector-effect: non-scaling-stroke; }
+.trajectory-smoothing-chart-legend { justify-content: flex-start; gap: 16px; padding: 0 9px 8px; }
+.trajectory-smoothing-chart-legend span::before { content: ""; display: inline-block; width: 13px; height: 2px; margin: 0 5px 3px 0; background: var(--text-secondary); opacity: 0.52; }
+.trajectory-smoothing-chart-legend span:last-child::before { height: 3px; background: var(--accent); opacity: 1; }
+.trajectory-smoothing-card button:focus-visible,
+.trajectory-smoothing-card input:focus-visible,
+.trajectory-smoothing-card select:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 1px; }
 .structure-inspector-pose-options {
   min-width: 0;
   display: grid;

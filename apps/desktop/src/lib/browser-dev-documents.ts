@@ -1206,6 +1206,7 @@ function viewerHtml(
   <script>window.BurreteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>
   ${extraWindowScript}
   <script src="burette-agent.js?v=${runtimeAssetVersion}"></script>
+  <script src="trajectory-smoothing.js?v=${runtimeAssetVersion}"></script>
   <script src="viewer.js?v=${runtimeAssetVersion}"></script>
 </body>
 </html>`;
