@@ -1,11 +1,11 @@
-export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v12.html";
+export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v13.html";
 export const VIEWER_SHELL_SCRIPT_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.js";
 export const VIEWER_SHELL_STYLES_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.css";
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burrete-hosted-mobile.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-hosted-mobile-v3";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-hosted-mobile-v4";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
@@ -62,7 +62,7 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
       html, body, #root { width: 100%; min-height: 480px; height: min(80vh, 760px); }
       body .app-shell { width: 100%; height: 100%; }
       body { margin: 0; overflow: hidden; background: #f7f7f7; }
-      @media (prefers-color-scheme: dark) { body { background: #111315; } }
+      @media (prefers-color-scheme: dark) { body { background: #000000; } }
       @media (max-width: 600px) {
         html, body, #root { min-height: 420px; height: min(76vh, 680px); }
       }
