@@ -3,9 +3,7 @@ export const HOSTED_MCP_WIDGET_MESSAGE_SOURCE = "burrete-hosted-mcp-widget";
 
 const MAX_HOSTED_STRUCTURE_BYTES = 3 * 1024 * 1024;
 const MAX_HOSTED_LABEL_LENGTH = 255;
-const MAX_HOSTED_SELECTION_RESIDUES = 96;
 const HOSTED_STRUCTURE_FORMATS = new Set(["pdb", "mmcif", "sdf", "xyz"]);
-let hostedSelectionRequestId = 0;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -13,12 +11,8 @@ export type HostedMcpStructure = {
   data: string;
   format: string;
   label: string;
-};
-
-type HostedMcpSelectionResidue = {
-  chain: string;
-  compId: string;
-  sequence: number | string | null;
+  source: UnknownRecord | null;
+  actions: UnknownRecord[];
 };
 
 function record(value: unknown): UnknownRecord | null {
@@ -52,60 +46,9 @@ function boundedLabel(value: unknown, fallback: string) {
   return (label || fallback).slice(0, MAX_HOSTED_LABEL_LENGTH);
 }
 
-function selectionResidue(value: unknown): HostedMcpSelectionResidue | null {
-  const residue = record(value);
-  if (!residue) return null;
-  const sequence = typeof residue.sequence === "number" || typeof residue.sequence === "string"
-    ? residue.sequence
-    : null;
-  return {
-    chain: boundedLabel(residue.chain, ""),
-    compId: boundedLabel(residue.compId, ""),
-    sequence,
-  };
-}
-
-export function createHostedMcpSelectionContext(value: unknown, documentId: string) {
-  const selection = record(value);
-  if (!selection || selection.source !== "lasso") return null;
-  const residues = Array.isArray(selection.residues)
-    ? selection.residues
-      .slice(0, MAX_HOSTED_SELECTION_RESIDUES)
-      .map(selectionResidue)
-      .filter((residue): residue is HostedMcpSelectionResidue => residue !== null)
-    : [];
-  const atoms = Math.max(0, Math.trunc(Number(selection.atoms) || 0));
-  const label = boundedLabel(
-    selection.label,
-    `Lasso selection with ${atoms} visible atoms across ${residues.length} residues`,
-  );
-  const activeSelection = {
-    source: "lasso",
-    documentId: boundedLabel(documentId, "active-structure"),
-    label,
-    atoms,
-    residues,
-  };
-  return {
-    content: [{
-      type: "text" as const,
-      text: `Current Burrete selection: ${label}. Treat this as the user's active molecular selection for their next request.`,
-    }],
-    structuredContent: { burrete: { activeSelection } },
-  };
-}
-
 export function updateHostedMcpSelectionContext(value: unknown, documentId: string) {
-  if (!isHostedMcpWidget() || !window.parent) return false;
-  const params = createHostedMcpSelectionContext(value, documentId);
-  if (!params) return false;
-  hostedSelectionRequestId += 1;
-  window.parent.postMessage({
-    jsonrpc: "2.0",
-    id: `burrete-selection-context-${hostedSelectionRequestId}`,
-    method: "ui/update-model-context",
-    params,
-  }, "*");
+  if (!isHostedMcpWidget() || !window.BurreteHostedAppBridge) return false;
+  void window.BurreteHostedAppBridge.updateSelection(value, documentId);
   return true;
 }
 
@@ -125,6 +68,7 @@ export function parseHostedMcpStructureResult(value: unknown): HostedMcpStructur
   if (!result) return null;
   const metadata = metadataFromResult(result);
   const structure = record(metadata?.structure);
+  const scene = record(metadata?.scene);
   const data = typeof structure?.data === "string" ? structure.data : "";
   const byteCount = new TextEncoder().encode(data).length;
   const format = normalizedFormat(structure?.format);
@@ -139,6 +83,10 @@ export function parseHostedMcpStructureResult(value: unknown): HostedMcpStructur
     data,
     format,
     label,
+    source: record(scene?.source),
+    actions: Array.isArray(scene?.actions)
+      ? scene.actions.slice(0, 8).map(record).filter((action): action is UnknownRecord => action !== null)
+      : [],
   };
 }
 

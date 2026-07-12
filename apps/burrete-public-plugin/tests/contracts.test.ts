@@ -4,6 +4,7 @@ import path from "node:path";
 import { z } from "zod/v4";
 import {
   publicStructureOutputSchema,
+  molecularSceneInputSchema,
   PUBLIC_OUTPUT_LIMITS,
   TOOL_ANNOTATIONS,
   viewerToolMeta,
@@ -13,6 +14,7 @@ import {
   createViewerWidgetHtml,
   VIEWER_RESOURCE_URI,
   VIEWER_MOBILE_SCRIPT_PATH,
+  VIEWER_APP_BRIDGE_SCRIPT_PATH,
   VIEWER_SHELL_SCRIPT_PATH,
   VIEWER_SHELL_STYLES_PATH,
 } from "../lib/widget";
@@ -21,6 +23,11 @@ import {
   PLUGIN_DOCUMENTATION_URL,
 } from "../app/route";
 import nextConfig from "../next.config";
+import {
+  createSceneContext,
+  createSelectionContext,
+  sanitizeViewerActions,
+} from "../lib/hosted-context";
 
 describe("submission tool contract", () => {
   test("sets every required action hint explicitly", () => {
@@ -69,6 +76,29 @@ describe("submission tool contract", () => {
     expect(meta["openai/outputTemplate"]).toBe(VIEWER_RESOURCE_URI);
     expect(meta["openai/widgetAccessible"]).toBe(false);
   });
+
+  test("bounds molecular scene actions and selector fields", () => {
+    const schema = molecularSceneInputSchema;
+    expect(schema.parse({
+      source: "pdb",
+      pdbId: "1CRN",
+      actions: [{
+        type: "select_residues",
+        selector: { auth_asym_id: "A", beg_auth_seq_id: 10, end_auth_seq_id: 20 },
+        mode: "replace",
+      }],
+    }).actions).toHaveLength(1);
+    expect(() => schema.parse({
+      source: "pdb",
+      pdbId: "1CRN",
+      actions: Array.from({ length: 9 }, () => ({ type: "reset_camera" })),
+    })).toThrow();
+    expect(() => schema.parse({
+      source: "pdb",
+      pdbId: "1CRN",
+      actions: [{ type: "select_residues", selector: { arbitrary: "javascript" } }],
+    })).toThrow();
+  });
 });
 
 describe("viewer resource contract", () => {
@@ -87,11 +117,12 @@ describe("viewer resource contract", () => {
 
   test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v15.html");
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v16.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-hosted-mobile-v6");
+    expect(html).toContain("?v=viewer-hosted-state-v1");
     expect(html).toContain(`https://burrete.example${VIEWER_MOBILE_SCRIPT_PATH}`);
+    expect(html).toContain(`https://burrete.example${VIEWER_APP_BRIDGE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
     expect(html).toContain("navigator.userAgent");
     expect(html).toContain("iPhone|iPad|iPod");
@@ -128,9 +159,55 @@ describe("viewer resource contract", () => {
     expect(source).toContain('layoutShowLeftPanel: false');
     expect(source).toContain('await Promise.all([\n      addStylesheet("viewer-runtime.css"),\n      addStylesheet("molstar.css"),\n    ])');
     expect(source).toContain('canvasBackground: "black"');
-    expect(source).toContain('method: "ui/update-model-context"');
+    expect(source).toContain("BurreteHostedAppBridge");
     expect(source).not.toContain("<iframe");
     expect(source).not.toContain("srcdoc");
+  });
+
+  test("initializes the Apps bridge before publishing bounded viewer state", () => {
+    const source = readFileSync(path.resolve(
+      import.meta.dir,
+      "../assets/burrete-hosted-app.ts",
+    ), "utf8");
+    expect(source).toContain("new App(");
+    expect(source).toContain("app.connect()");
+    expect(source).toContain("getHostCapabilities()?.updateModelContext");
+    expect(source).toContain("await app.updateModelContext(params)");
+
+    const selection = createSelectionContext({
+      source: "lasso",
+      atoms: 1,
+      residues: [{ chain: "A", sequence: 12, compId: "CYS" }],
+      atomIdentities: [{ chain: "A", sequence: 12, compId: "CYS", atomName: "CA" }],
+    }, "document-1", { kind: "pdb", pdbId: "1CRN" });
+    expect(selection.structuredContent.burrete.activeSelection?.atomIdentities).toEqual([
+      { chain: "A", sequence: 12, compId: "CYS", atomName: "CA" },
+    ]);
+    expect(selection.structuredContent.burrete.source).toEqual({ kind: "pdb", pdbId: "1CRN" });
+    expect(createSelectionContext(null, "document-1", {
+      kind: "attachment",
+      fileName: "example.pdb",
+      nested: { unbounded: "x".repeat(10_000) },
+    }).structuredContent.burrete.source).toEqual({
+      kind: "attachment",
+      fileName: "example.pdb",
+    });
+    expect(createSelectionContext(null, "document-1").structuredContent.burrete.activeSelection).toBeNull();
+
+    expect(sanitizeViewerActions([
+      { type: "hide_components", kind: "water" },
+      { type: "raw_burrete_agent", command: "loadMVS" },
+      { type: "select_residues", selector: { auth_asym_id: "A" }, mode: "add" },
+    ])).toEqual([{ type: "hide_components", kind: "water" }]);
+
+    const scene = createSceneContext({
+      revision: 2,
+      selection: null,
+      results: [{ ok: true, command: "hide_components" }],
+    }, { kind: "pdb", pdbId: "1CRN" });
+    expect(scene.structuredContent.burrete.scene.results).toEqual([
+      { ok: true, command: "hide_components", error: null },
+    ]);
   });
 
   test("uses a true black MCP widget background in dark mode", () => {

@@ -2,12 +2,10 @@
   "use strict";
 
   const MAX_STRUCTURE_BYTES = 3 * 1024 * 1024;
-  const MAX_SELECTION_RESIDUES = 96;
   const ASSET_LOAD_TIMEOUT_MS = 30_000;
   const SUPPORTED_FORMATS = new Set(["pdb", "mmcif", "sdf", "xyz"]);
   const assetsBase = String(window.__BURRETE_WEB_ASSETS_BASE__ || "/burrete-viewer/").replace(/\/$/u, "");
   let started = false;
-  let selectionRequestId = 0;
 
   const record = (value) => value && typeof value === "object" ? value : null;
   const bounded = (value, fallback = "") => {
@@ -34,7 +32,9 @@
   };
   const structureFromResult = (value) => {
     const result = record(value);
-    const structure = record(resultMetadata(result)?.structure);
+    const metadata = resultMetadata(result);
+    const structure = record(metadata?.structure);
+    const scene = record(metadata?.scene);
     const data = typeof structure?.data === "string" ? structure.data : "";
     const format = normalizedFormat(structure?.format);
     const byteCount = new TextEncoder().encode(data).length;
@@ -44,6 +44,10 @@
       format,
       byteCount,
       label: bounded(structure?.label, bounded(record(result?.structuredContent)?.fileName, "Molecular structure")),
+      source: record(scene?.source),
+      actions: Array.isArray(scene?.actions)
+        ? scene.actions.slice(0, 8).map(record).filter(Boolean)
+        : [],
     };
   };
   const base64Utf8 = (text) => {
@@ -93,46 +97,15 @@
     document.head.appendChild(element);
   };
 
-  function updateSelectionContext(body) {
-    const selection = record(body?.selection);
-    if (body?.type !== "selectionChanged" || selection?.source !== "lasso") return;
-    const residues = Array.isArray(selection.residues)
-      ? selection.residues.slice(0, MAX_SELECTION_RESIDUES).map((value) => {
-        const residue = record(value) || {};
-        return {
-          chain: bounded(residue.chain),
-          compId: bounded(residue.compId),
-          sequence: typeof residue.sequence === "number" || typeof residue.sequence === "string"
-            ? residue.sequence
-            : null,
-        };
-      })
-      : [];
-    const atoms = Math.max(0, Math.trunc(Number(selection.atoms) || 0));
-    const label = bounded(selection.label, `Lasso selection with ${atoms} visible atoms across ${residues.length} residues`);
-    selectionRequestId += 1;
-    window.parent.postMessage({
-      jsonrpc: "2.0",
-      id: `burrete-selection-context-${selectionRequestId}`,
-      method: "ui/update-model-context",
-      params: {
-        content: [{
-          type: "text",
-          text: `Current Burrete selection: ${label}. Treat this as the user's active molecular selection for their next request.`,
-        }],
-        structuredContent: {
-          burrete: {
-            activeSelection: {
-              source: "lasso",
-              documentId: bounded(body.documentId, "active-structure"),
-              label,
-              atoms,
-              residues,
-            },
-          },
-        },
-      },
-    }, "*");
+  function updateHostedContext(body) {
+    const bridge = window.BurreteHostedAppBridge;
+    if (!bridge) return;
+    if (body?.type === "selectionChanged") {
+      void bridge.updateSelection(record(body.selection), bounded(body.documentId, "active-structure"));
+    }
+    if (body?.type === "sceneActionsApplied") {
+      void bridge.updateScene(record(body.report));
+    }
   }
 
   async function start(structure) {
@@ -186,14 +159,17 @@
       layoutShowSequence: false,
       layoutShowLog: false,
       layoutShowLeftPanel: false,
+      hostedMcpActions: structure.actions,
       defaultLayoutState: { left: "hidden", right: "hidden", sequence: "hidden", log: "hidden" },
     });
     jsonElement("burrete-runtime-data", base64Utf8(structure.data));
 
     await loadScript("viewer-shell.js");
     await loadScript("viewer-bootstrap.js");
+    window.BurreteHostedAppBridge?.setSource(structure.source);
+    void window.BurreteHostedAppBridge?.updateSelection(null, documentId);
     window.__mqlPost = (type, message, payload = {}) => {
-      updateSelectionContext({ type, message, ...payload, documentId });
+      updateHostedContext({ type, message, ...payload, documentId });
     };
     await loadScript("molstar.js");
     await loadScript("burette-agent.js");
