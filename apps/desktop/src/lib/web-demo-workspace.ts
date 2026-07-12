@@ -59,6 +59,12 @@ export function isWebDemoWorkspace() {
   return WEB_DEMO_ENABLED;
 }
 
+export function isWebDemoHeroEmbed() {
+  return WEB_DEMO_ENABLED
+    && typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("embed") === "hero";
+}
+
 export function initializeWebDemoWorkspace() {
   if (!WEB_DEMO_ENABLED) return [];
   if (files.size === 0) {

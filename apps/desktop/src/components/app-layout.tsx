@@ -12,6 +12,7 @@ import type { FileDropPreview } from "../lib/drop-preview";
 import { isTauriRuntime } from "../lib/tauri";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
+import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
 
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
@@ -54,6 +55,7 @@ export function AppLayout({
 }) {
   const viewportWidth = typeof window === "undefined" ? 1200 : window.innerWidth;
   const hostedMcpWidget = isHostedMcpWidget();
+  const heroEmbed = isWebDemoHeroEmbed();
   const maxSidebarWidth = Math.max(280, Math.min(420, Math.floor(viewportWidth * 0.35)));
   const settingsMode = state.page === "settings";
   const chromeVisible = !settingsMode && !hostedMcpWidget;
@@ -85,15 +87,21 @@ export function AppLayout({
       data-active-page-kind={activePageKind ?? undefined}
       data-runtime={isTauriRuntime() ? "tauri" : "browser"}
       data-hosted-mcp-widget={hostedMcpWidget ? "true" : undefined}
+      data-hero-embed={heroEmbed ? "true" : undefined}
       data-settings-mode={settingsMode ? "true" : undefined}
       data-drop-active={state.dropActive || undefined}
       data-structure-drag-active={state.structureDragActive ? "true" : undefined}
       data-sidebar-open={sidebarVisible ? "true" : "false"}
-      onDragEnterCapture={hostedMcpWidget ? undefined : onDragEnter}
-      onDragOverCapture={hostedMcpWidget ? undefined : onDragOver}
-      onDragLeave={hostedMcpWidget ? undefined : onDragLeave}
-      onDrop={hostedMcpWidget ? undefined : onDrop}
-      onPaste={hostedMcpWidget ? undefined : onPaste}
+      onDragEnterCapture={hostedMcpWidget || heroEmbed ? undefined : onDragEnter}
+      onDragOverCapture={hostedMcpWidget || heroEmbed ? undefined : onDragOver}
+      onDragLeave={hostedMcpWidget || heroEmbed ? undefined : onDragLeave}
+      onDrop={hostedMcpWidget || heroEmbed ? undefined : onDrop}
+      onPaste={hostedMcpWidget || heroEmbed ? undefined : onPaste}
+      onClickCapture={heroEmbed ? (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      } : undefined}
+      onContextMenu={heroEmbed ? (event) => event.preventDefault() : undefined}
       style={shellStyle}
     >
       {!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region />}
