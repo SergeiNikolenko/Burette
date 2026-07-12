@@ -362,7 +362,9 @@ if [[ -n "$DEVELOPMENT_TEAM" ]]; then
 fi
 xcodebuild -project Burrete.xcodeproj -scheme BurretePreview -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
 xcodebuild -project Burrete.xcodeproj -scheme BurreteThumbnail -configuration "$XCODE_CONFIGURATION" -derivedDataPath build COMPILER_INDEX_STORE_ENABLE=NO "${XCODE_SIGN_ARGS[@]}" build
+TAURI_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
 TAURI_BUILT_APP_CANDIDATES=(
+  "$TAURI_TARGET_DIR/release/bundle/macos/Burrete.app"
   "apps/desktop/src-tauri/target/release/bundle/macos/Burrete.app"
   "target/release/bundle/macos/Burrete.app"
 )
@@ -375,7 +377,7 @@ for candidate in "${TAURI_BUILT_APP_CANDIDATES[@]}"; do
 done
 QUICKLOOK_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurretePreview.appex"
 THUMBNAIL_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurreteThumbnail.appex"
-CORE_BRIDGE="target/release/burrete-core-bridge"
+CORE_BRIDGE="$TAURI_TARGET_DIR/release/burrete-core-bridge"
 [[ -n "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing. Checked: ${TAURI_BUILT_APP_CANDIDATES[*]}" >&2; exit 1; }
 [[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
 [[ -d "$THUMBNAIL_APPEX" ]] || { echo "error: Quick Look thumbnail extension missing: $THUMBNAIL_APPEX" >&2; exit 1; }
@@ -407,7 +409,12 @@ popd >/dev/null
 
 rm -rf "$LOCAL_APP"
 mkdir -p "$(dirname "$LOCAL_APP")"
-ditto --norsrc --noextattr "$SAFE_ROOT/$TAURI_BUILT_APP" "$LOCAL_APP"
+if [[ "$TAURI_BUILT_APP" = /* ]]; then
+  BUILT_APP_SOURCE="$TAURI_BUILT_APP"
+else
+  BUILT_APP_SOURCE="$SAFE_ROOT/$TAURI_BUILT_APP"
+fi
+ditto --norsrc --noextattr "$BUILT_APP_SOURCE" "$LOCAL_APP"
 
 actual_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$actual_id" == "$APP_ID" ]] || { echo "error: built app id mismatch: got '${actual_id:-unknown}', expected '$APP_ID'" >&2; exit 1; }
