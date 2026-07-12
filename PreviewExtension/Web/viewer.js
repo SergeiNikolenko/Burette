@@ -8791,6 +8791,12 @@
       return;
     }
     activeDockingPrepared = null;
+    if (prepared.format === 'mol' && typeof viewer.loadStructureFromData === 'function') {
+      await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
+      await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
+      installDockingPoseControls(viewer, null);
+      return;
+    }
     if (prepared.kind === 'sdf-collection') {
       await applySdfCollectionVisibility(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount));
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
@@ -14235,8 +14241,14 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
         const fx = parseFloatLoose(get('_atom_site_fract_x'));
         const fy = parseFloatLoose(get('_atom_site_fract_y'));
         const fz = parseFloatLoose(get('_atom_site_fract_z'));
-        if (!haveCell || !Number.isFinite(fx) || !Number.isFinite(fy) || !Number.isFinite(fz)) continue;
-        [x, y, z] = fracToCart(fx, fy, fz, a, b, c, alpha, beta, gamma);
+        if (!Number.isFinite(fx) || !Number.isFinite(fy) || !Number.isFinite(fz)) continue;
+        if (haveCell) {
+          [x, y, z] = fracToCart(fx, fy, fz, a, b, c, alpha, beta, gamma);
+        } else {
+          // Open Babel writes Cartesian coordinates under fractional tags when
+          // exporting a molecule without a crystallographic unit cell.
+          [x, y, z] = [fx, fy, fz];
+        }
       }
       atoms.push({ label, element, x, y, z });
     }

@@ -79,6 +79,22 @@ const gridNoImages = await runCase("grid-no-images", sdfFile, [
 assert.equal(gridNoImages.status, 1);
 assert.match(gridNoImages.stderr, /did not produce RDKit molecule images/);
 
+const structureFakeReady = await runCase("structure-fake-ready", xyzrenderFile, [
+  `[GGGG0001] file.path=${xyzrenderFile}`,
+  "[GGGG0001] [build] detected.format=mol binary=false renderer=molstar",
+  "[GGGG0001] preview.evidence type=ready mode=structure renderer=molstar format=mol molstarStructureCount=0",
+]);
+assert.equal(structureFakeReady.status, 1);
+assert.match(structureFakeReady.stderr, /did not expose a rendered structure/);
+
+const structureSuccess = await runCase("structure-success", xyzrenderFile, [
+  `[HHHH0001] file.path=${xyzrenderFile}`,
+  "[HHHH0001] [build] detected.format=mol binary=false renderer=molstar",
+  "[HHHH0001] preview.evidence type=ready mode=structure renderer=molstar format=mol molstarStructureCount=1",
+]);
+assert.equal(structureSuccess.status, 0);
+assert.match(structureSuccess.stdout, /molstar structures=1/);
+
 const tabularGridSuccess = await runCase("tabular-grid-success", csvTableFile, [
   `[FFFF0001] file.path=${csvTableFile}`,
   "[FFFF0001] [build] detected.previewMode=grid2d format=csv records=2/2",

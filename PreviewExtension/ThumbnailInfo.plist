@@ -42,6 +42,7 @@
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
 				<string>com.schrodinger.mol</string>
+				<string>net.sourceforge.openbabel.mdl</string>
 				<string>com.schrodinger.pdb</string>
 				<string>com.schrodinger.sdf</string>
 				<string>com.local.burrete10.xyz</string>

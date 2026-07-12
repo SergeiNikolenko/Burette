@@ -82,6 +82,7 @@ const allowedSystemQuickLookContentTypes = new Set([
   'com.schrodinger.pdb',
   'com.schrodinger.sdf',
   'gg.flew.unfold.gromacs-structure',
+  'net.sourceforge.openbabel.mdl',
   'net.sourceforge.openbabel.xyz',
   'public.cif',
   'public.comma-separated-values-text',
