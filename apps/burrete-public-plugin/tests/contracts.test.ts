@@ -87,10 +87,10 @@ describe("viewer resource contract", () => {
 
   test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v14.html");
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v15.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-hosted-mobile-v5");
+    expect(html).toContain("?v=viewer-hosted-mobile-v6");
     expect(html).toContain(`https://burrete.example${VIEWER_MOBILE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
     expect(html).toContain("navigator.userAgent");
@@ -115,12 +115,18 @@ describe("viewer resource contract", () => {
     ), "utf8");
     expect(source).toContain('root.id = "app"');
     expect(source).toContain('quickLookBuild: "burrete-hosted-mobile-direct"');
+    expect(source).toContain('document.body.className = "burette-opaque-background burette-mobile-host"');
     expect(source).toContain('molstarPowerPreference: "default"');
-    expect(source).toContain('molstarPreferWebgl1: false');
-    expect(source).toContain('molstarDisableAntialiasing: false');
-    expect(source).toContain('molstarPixelScale: 1');
-    expect(source).toContain('molstarPickScale: 1');
-    expect(source).toContain('molstarResolutionMode: "native"');
+    expect(source).toContain('molstarPreferWebgl1: true');
+    expect(source).toContain('molstarDisableAntialiasing: true');
+    expect(source).toContain('molstarPixelScale: 0.75');
+    expect(source).toContain('molstarPickScale: 0.75');
+    expect(source).toContain('molstarResolutionMode: "scaled"');
+    expect(source).toContain('layoutShowControls: false');
+    expect(source).toContain('layoutShowSequence: false');
+    expect(source).toContain('layoutShowLog: false');
+    expect(source).toContain('layoutShowLeftPanel: false');
+    expect(source).toContain('await Promise.all([\n      addStylesheet("viewer-runtime.css"),\n      addStylesheet("molstar.css"),\n    ])');
     expect(source).toContain('canvasBackground: "black"');
     expect(source).toContain('method: "ui/update-model-context"');
     expect(source).not.toContain("<iframe");
@@ -130,6 +136,7 @@ describe("viewer resource contract", () => {
   test("uses a true black MCP widget background in dark mode", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
     expect(html).toContain("background: #000000;");
+    expect(html).toContain("html, body, #root, #app { min-height: 0; height: 100%; }");
     expect(html).not.toContain("background: #111315;");
   });
 

@@ -839,7 +839,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   outline: none;
   background: var(--buret-menu-input-background);
 }
-body.burette-mobile-host #status {
+body.burette-mobile-host #status.hidden {
   display: none !important;
 }
 body.burette-mobile-host .buret-molecule-context-menu {
