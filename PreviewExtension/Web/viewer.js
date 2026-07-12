@@ -31,6 +31,7 @@
   const SDF_CONTEXT_COLOR_STORAGE_KEY = 'buret.sdf.contextColor';
   const XYZ_FRAME_MODE_STORAGE_KEY = 'buret.xyz.frameMode';
   const XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT = 80;
+  const MAX_STRUCTURE_OVERLAY_FRAME_COUNT = 50;
   const XYZ_FRAME_BACKGROUND_MIN_ALPHA = 0.0001;
   const DEFAULT_MOLSTAR_STYLE = 'illustrative';
   const MOLSTAR_STYLE_OPTIONS = [
@@ -2252,6 +2253,16 @@
 
   function structureOverlayToggleAvailable(prepared = activeMolstarPrepared) {
     if (!structureOverlayAvailable(prepared)) return false;
+    const format = normalizeFormat(activeConfig?.molstarFormat || activeConfig?.format);
+    const trajectoryOverlay = prepared?.kind === 'trajectory'
+      || prepared?.nativeTrajectoryControls === true
+      || prepared?.xyzFrameOverlayAvailable === true
+      || prepared?.pdbModelOverlayAvailable === true
+      || format === 'xyz';
+    if (trajectoryOverlay) {
+      const poseCount = Number(prepared?.poseCount || prepared?.xyzFrameCount || prepared?.pdbModelCount || activeConfig?.trajectoryFrameCount || 0);
+      return Number.isFinite(poseCount) && poseCount > 1 && poseCount <= MAX_STRUCTURE_OVERLAY_FRAME_COUNT;
+    }
     return true;
   }
 

@@ -623,6 +623,11 @@ function TrajectorySmoothingCard({
   const [running, setRunning] = useState(false);
   const [installingDeepTica, setInstallingDeepTica] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rmsdFilter, setRmsdFilter] = useState<"frames" | "cutoff" | "power">("frames");
+  const [cutoffFrequency, setCutoffFrequency] = useState(0.1);
+  const [powerRetained, setPowerRetained] = useState(0.95);
+  const [filterOrder, setFilterOrder] = useState(5);
+  const [includeEnds, setIncludeEnds] = useState(true);
   const build = async () => {
     setRunning(true);
     setError(null);
@@ -634,6 +639,10 @@ function TrajectorySmoothingCard({
         signal,
         mode,
         targetFrames: Math.max(2, Math.min(frameCount, targetFrames)),
+        cutoffFrequency: signal === "rmsd" && rmsdFilter === "cutoff" ? cutoffFrequency : undefined,
+        powerCutoff: signal === "rmsd" && rmsdFilter === "power" ? powerRetained : undefined,
+        order: filterOrder,
+        includeEnds,
         referenceFrame: Math.max(1, Math.min(frameCount, referenceFrame)),
         align,
         lag: Math.max(1, Math.min(50, Math.round(frameCount / 20))),
@@ -737,6 +746,22 @@ function TrajectorySmoothingCard({
                 <span>Target key frames</span>
                 <input type="number" min={2} max={frameCount} value={targetFrames} onChange={(event) => setTargetFrames(Number(event.target.value) || 2)} />
               </label>
+              {signal === "rmsd" && mode === "extrema" ? (
+                <>
+                  <label>
+                    <span>RMSD filter</span>
+                    <select aria-label="RMSD filter control" value={rmsdFilter} onChange={(event) => setRmsdFilter(event.target.value as "frames" | "cutoff" | "power")}>
+                      <option value="frames">Target key frames</option>
+                      <option value="cutoff">Cutoff frequency</option>
+                      <option value="power">Power retained</option>
+                    </select>
+                  </label>
+                  {rmsdFilter === "cutoff" ? <label><span>Cutoff frequency</span><input type="number" min={0.0001} max={0.5} step={0.001} value={cutoffFrequency} onChange={(event) => setCutoffFrequency(Number(event.target.value) || 0.1)} /></label> : null}
+                  {rmsdFilter === "power" ? <label><span>Power retained</span><input type="number" min={0.5} max={0.999} step={0.01} value={powerRetained} onChange={(event) => setPowerRetained(Number(event.target.value) || 0.95)} /></label> : null}
+                  <label><span>Filter order</span><input type="number" min={1} max={12} value={filterOrder} onChange={(event) => setFilterOrder(Number(event.target.value) || 5)} /></label>
+                  <label className="trajectory-smoothing-check"><input type="checkbox" checked={includeEnds} onChange={(event) => setIncludeEnds(event.target.checked)} /><span>Always include first and last frames</span></label>
+                </>
+              ) : null}
               <label>
                 <span>Reference frame</span>
                 <input type="number" min={1} max={frameCount} value={referenceFrame} onChange={(event) => setReferenceFrame(Number(event.target.value) || 1)} />

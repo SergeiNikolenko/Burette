@@ -2266,6 +2266,11 @@ assert.match(structureInfoPanel, /styleOptions: isXyzStructureDocument\(document
 assert.doesNotMatch(structureInfoPanel, /option\.value !== "match" && option\.value !== "cartoon" && option\.value !== "spacefill"/);
 assert.match(structureInfoPanel, /const SDF_CONTEXT_OPACITY_MAX = 1/);
 assert.match(structureInfoPanel, /const INFO_TRAJECTORY_CONTROL_LIMIT = 200/);
+assert.match(previewViewer, /const MAX_STRUCTURE_OVERLAY_FRAME_COUNT = 50/);
+assert.match(previewViewer, /poseCount <= MAX_STRUCTURE_OVERLAY_FRAME_COUNT/);
+assert.match(structureInfoPanel, /RMSD filter/);
+assert.match(structureInfoPanel, /Cutoff frequency/);
+assert.match(structureInfoPanel, /Power retained/);
 assert.match(componentsTypes, /export type StructureOverlayMode = "single" \| "all";/);
 assert.match(componentsTypes, /structureOverlayMode: StructureOverlayMode;/);
 assert.match(dockPanel, /structureOverlayMode=\{state\.structureOverlayMode\}/);
@@ -2312,8 +2317,7 @@ assert.match(structureInfoPanel, /!trajectoryDocument \? \(\s*<StructurePoseCont
 assert.match(structureInfoPanel, /trajectory-smoothing-chart-playhead/);
 assert.match(structureInfoPanel, /Playing · /);
 assert.match(structureInfoPanel, /TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO/);
-assert.match(structureInfoPanel, /if \(built\) apply\(nextPreset, nextTargetFrames\)/);
-assert.match(structureInfoPanel, /type: "apply_trajectory_smoothing",[\s\S]*?notify: false/);
+assert.match(structureInfoPanel, /await runMdsmooth\(/);
 assert.match(structureInfoPanel, /role="slider"/);
 assert.match(structureInfoPanel, /onPointerMove=/);
 assert.match(structureInfoPanel, /type: "set_structure_pose"/);
@@ -5274,7 +5278,7 @@ for (const runtimeSource of [previewViewer]) {
   assert.match(runtimeSource, /function xyzFrameOverlayRawSignature\(raw\)/);
   assert.match(runtimeSource, /function xyzFrameOverlayStateKey\(rawSignature, frames, prepared, style, contextStyle, contextOpacity, contextColor, backgroundIndexes\)/);
   assert.match(runtimeSource, /function structureOverlayToggleAvailable\(prepared = activeMolstarPrepared\)/);
-  assert.match(runtimeSource, /function structureOverlayToggleAvailable\(prepared = activeMolstarPrepared\) \{\s*if \(!structureOverlayAvailable\(prepared\)\) return false;\s*return true;\s*\}/);
+  assert.match(runtimeSource, /poseCount <= MAX_STRUCTURE_OVERLAY_FRAME_COUNT/);
   assert.doesNotMatch(runtimeSource, /sourceFormat === 'xyz' \|\| sourceFormat === 'extxyz'/);
   assert.match(runtimeSource, /const overlayToggleAvailable = structureOverlayToggleAvailable\(prepared\);[\s\S]*?const all = overlayToggleAvailable \? createStructureOverlayToggleButton\(prepared\) : null;/);
   assert.match(runtimeSource, /function xyzFrameRepresentationStyle\(style\)/);
