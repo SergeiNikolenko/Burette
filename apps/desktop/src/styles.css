@@ -3366,7 +3366,22 @@ img.radix-menu-item-icon {
   font-weight: 600;
   text-align: left;
 }
-.trajectory-smoothing-advanced-toggle span { color: var(--text-secondary); font-size: 11px; font-weight: 500; }
+.trajectory-smoothing-advanced-toggle span {
+  padding: 4px 8px;
+  border: 1px solid var(--line-subtler);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  transition: background 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out;
+}
+.trajectory-smoothing-advanced-toggle:hover span,
+.trajectory-smoothing-advanced-toggle:focus-visible span {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--line-subtler));
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
 .trajectory-smoothing-settings { display: grid; gap: 8px; }
 .trajectory-smoothing-science { padding: 10px; border: 1px solid var(--line-subtler); border-radius: 10px; background: color-mix(in srgb, var(--surface-subtle) 72%, transparent); }
 .trajectory-smoothing-subsection { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--line-subtler); color: var(--text-primary); font-size: 11px; font-weight: 650; }

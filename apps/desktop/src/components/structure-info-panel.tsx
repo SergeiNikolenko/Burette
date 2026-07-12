@@ -801,7 +801,7 @@ function TrajectorySmoothingCard({
             {mode === "kinetic" ? "Strength presets do not apply to MSM/PCCA+. Open Scientific settings and choose the number of kinetic macrostates instead." : <>{preset === "light" ? "Keeps more original detail and removes only the fastest jitter." : preset === "strong" ? "Uses fewer source frames for the calmest, most simplified playback." : "Balances visible molecular detail with smoother playback."}<span> About {targetFrames} of {frameCount} frames anchor the motion.</span></>}
           </div>
           <button type="button" className="trajectory-smoothing-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(!advanced)}>
-            Scientific settings <span>{advanced ? "Hide" : "Show"}</span>
+            Scientific settings <span>{advanced ? "Hide settings" : "Show settings"}</span>
           </button>
           {advanced ? (
             <div className="trajectory-smoothing-settings trajectory-smoothing-science">

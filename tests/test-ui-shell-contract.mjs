@@ -2336,6 +2336,8 @@ assert.match(structureInfoPanel, /window\.setTimeout\(\(\) => void build\(\), 45
 assert.match(structureInfoPanel, /data-smoothing-tooltip=/);
 assert.match(structureInfoPanel, /Settings changed\. Updating automatically/);
 assert.match(structureInfoPanel, /trajectory-smoothing-explanation/);
+assert.match(structureInfoPanel, /Hide settings/);
+assert.match(styles, /\.trajectory-smoothing-advanced-toggle:hover span/);
 assert.match(structureInfoPanel, /Macrostates/);
 assert.match(structureInfoPanel, /function trajectoryPlaybackControlsFor/);
 assert.match(structureInfoPanel, /role="slider"/);
