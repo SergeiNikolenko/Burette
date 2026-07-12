@@ -2333,6 +2333,8 @@ assert.match(previewViewer, /Turn Smooth motion off/);
 assert.match(appViewerStateMessagesHook, /burrete:trajectory-smoothing-toggle-requested/);
 assert.match(structureInfoPanel, /window\.setTimeout\(\(\) => void build\(\), 450\)/);
 assert.match(structureInfoPanel, /data-smoothing-tooltip=/);
+assert.match(styles, /\.trajectory-smoothing-card \[data-smoothing-tooltip\]:hover::after/);
+assert.doesNotMatch(styles, /\.trajectory-smoothing-card \[data-smoothing-tooltip\]:focus-within::after/);
 assert.match(structureInfoPanel, /Smooths playback without changing the original trajectory or analysis data/);
 assert.match(structureInfoPanel, /Enable smoothing/);
 assert.match(structureInfoPanel, /Align structures before analysis/);
