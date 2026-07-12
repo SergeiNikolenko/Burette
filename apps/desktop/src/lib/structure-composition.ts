@@ -75,6 +75,14 @@ export type StructureViewerAction =
       view: "original" | "smoothed";
     }
   | {
+      type: "apply_external_trajectory_smoothing";
+      label: string;
+      notify?: boolean;
+      sourceUrl: string;
+      frameCount: number;
+      interpolation: string;
+    }
+  | {
       type: "set_molstar_style";
       label: string;
       notify?: boolean;

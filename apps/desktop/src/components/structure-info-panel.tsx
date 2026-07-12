@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
 import { RangeControl, SelectControl, ToggleControl } from "./settings-panel/setting-control";
@@ -14,6 +15,7 @@ import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents"
 import { readStructureText } from "../lib/structure-text";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
+import { isTauriRuntime } from "../lib/tauri";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings } from "../types";
 
 type StructureInfoPanelProps = {
@@ -679,6 +681,15 @@ function TrajectorySmoothingCard({
         diagnostics: response.diagnostics,
       });
       setBuilt(true);
+      setView("smoothed");
+      actions.runStructureViewerAction(document, {
+        type: "apply_external_trajectory_smoothing",
+        label: "Show smoothed motion",
+        notify: false,
+        sourceUrl: trajectoryOutputUrl(response.outputPath),
+        frameCount: response.frameCount,
+        interpolation: response.interpolation,
+      });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -717,11 +728,11 @@ function TrajectorySmoothingCard({
         >
           Smooth motion
         </button>
-        <span>Optional derived trajectory</span>
+        <span>Reversible view</span>
       </div>
       {open ? (
         <>
-          <p className="trajectory-smoothing-intro">Reduces thermal jitter while keeping the original file unchanged.</p>
+          <p className="trajectory-smoothing-intro">Creates a temporary, smoother view inside this trajectory. Your source file and original coordinates stay unchanged.</p>
           <div className="trajectory-smoothing-presets" role="group" aria-label="Smoothing strength">
             {(["light", "balanced", "strong"] as const).map((value) => (
               <button
@@ -750,6 +761,7 @@ function TrajectorySmoothingCard({
                   <option value="deeptica">DeepTICA</option>
                 </select>
               </label>
+              <div className="trajectory-smoothing-note">{trajectorySignalDescription(signal)}</div>
               <label>
                 <span>Key-frame model</span>
                 <select aria-label="Trajectory key-frame model" value={mode} onChange={(event) => setMode(event.target.value as MdsmoothMode)}>
@@ -757,6 +769,7 @@ function TrajectorySmoothingCard({
                   <option value="kinetic">MSM / PCCA+ states</option>
                 </select>
               </label>
+              <div className="trajectory-smoothing-note">{mode === "kinetic" ? "MSM/PCCA+ groups frames into long-lived kinetic states and keeps a representative frame from each state." : "Filtered extrema keeps turning points in the chosen signal, preserving the visible direction changes of the motion."}</div>
               <label>
                 <span>Target key frames</span>
                 <input type="number" min={2} max={frameCount} value={targetFrames} onChange={(event) => setTargetFrames(Number(event.target.value) || 2)} />
@@ -771,6 +784,7 @@ function TrajectorySmoothingCard({
                       <option value="power">Power retained</option>
                     </select>
                   </label>
+                  <div className="trajectory-smoothing-note">{rmsdFilter === "frames" ? "Choose approximately how many source frames should anchor the smoothed motion." : rmsdFilter === "cutoff" ? "Remove oscillations above this normalized frequency. Lower values produce stronger smoothing." : "Keep this fraction of the signal power and discard the weakest high-frequency motion."}</div>
                   {rmsdFilter === "cutoff" ? <label><span>Cutoff frequency</span><input type="number" min={0.0001} max={0.5} step={0.001} value={cutoffFrequency} onChange={(event) => setCutoffFrequency(Number(event.target.value) || 0.1)} /></label> : null}
                   {rmsdFilter === "power" ? <label><span>Power retained</span><input type="number" min={0.5} max={0.999} step={0.01} value={powerRetained} onChange={(event) => setPowerRetained(Number(event.target.value) || 0.95)} /></label> : null}
                   <label><span>Filter order</span><input type="number" min={1} max={12} value={filterOrder} onChange={(event) => setFilterOrder(Number(event.target.value) || 5)} /></label>
@@ -785,7 +799,7 @@ function TrajectorySmoothingCard({
                 <input type="checkbox" checked={align} onChange={(event) => setAlign(event.target.checked)} />
                 <span>Remove whole-structure translation</span>
               </label>
-              <div className="trajectory-smoothing-note">Signals and key frames use the MDSmooth numerical core. The derived XYZ is generated without ChimeraX.</div>
+              <div className="trajectory-smoothing-note">The selected signal identifies meaningful source frames. Filtering changes only the displayed motion between them; it does not rewrite the trajectory or alter scientific measurements.</div>
               {signal === "deeptica" ? (
                 <button type="button" className="dock-action" disabled={installingDeepTica} onClick={async () => {
                   setInstallingDeepTica(true);
@@ -799,7 +813,7 @@ function TrajectorySmoothingCard({
               ) : null}
             </div>
           ) : null}
-          {built && !result?.outputPath ? (
+          {built ? (
             <div className="trajectory-smoothing-view" role="group" aria-label="Trajectory version">
               {(["original", "smoothed"] as const).map((value) => (
                 <button key={value} type="button" data-selected={view === value || undefined} aria-pressed={view === value} onClick={() => changeView(value)}>
@@ -810,7 +824,7 @@ function TrajectorySmoothingCard({
           ) : null}
           {result ? <TrajectorySmoothingChart result={result} playback={playback} preset={preset} setFrame={setFrame} /> : null}
           {result?.spectrum ? <TrajectorySpectrum spectrum={result.spectrum} cutoffFrequency={result.cutoffFrequency ?? null} /> : null}
-          {result?.outputPath ? <button type="button" className="dock-action" onClick={() => void actions.openStructurePaths([result.outputPath!])}>Open smoothed trajectory</button> : null}
+          {built && view === "smoothed" ? <button type="button" className="dock-action" onClick={() => changeView("original")}>Turn smoothing off</button> : null}
           {error ? <div className="trajectory-smoothing-note" role="alert">{error}</div> : null}
           <button type="button" className="dock-action trajectory-smoothing-build" disabled={running} onClick={() => void build()}>
             {running ? "Analyzing trajectory…" : built ? "Rebuild smoothed motion" : "Build smoothed motion"}
@@ -927,6 +941,18 @@ function trajectorySignalLabel(signal?: MdsmoothSignal) {
   if (signal === "dpca") return "Dihedral PCA";
   if (signal === "deeptica") return "DeepTICA";
   return "RMSD signal";
+}
+
+function trajectorySignalDescription(signal: MdsmoothSignal) {
+  if (signal === "pc1") return "PC1 follows the largest Cartesian collective motion after structural alignment.";
+  if (signal === "ic1") return "tICA IC1 emphasizes the slowest time-correlated structural change at the selected lag.";
+  if (signal === "dpca") return "Dihedral PCA follows concerted backbone torsion changes and requires a protein selection.";
+  if (signal === "deeptica") return "DeepTICA learns a nonlinear slow coordinate. It is optional, slower, and checks agreement across several training seeds.";
+  return "RMSD measures displacement from the reference frame after alignment. It is the simplest and most predictable signal.";
+}
+
+function trajectoryOutputUrl(path: string) {
+  return isTauriRuntime() ? convertFileSrc(path) : `/__burette/read-file?path=${encodeURIComponent(path)}`;
 }
 
 function TrajectorySpectrum({ spectrum, cutoffFrequency }: { spectrum: MdsmoothResult["spectrum"]; cutoffFrequency: number | null }) {

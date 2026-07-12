@@ -563,6 +563,9 @@
     if (type === 'apply_trajectory_smoothing') {
       return applyTrajectorySmoothingFromAction(action);
     }
+    if (type === 'apply_external_trajectory_smoothing') {
+      return applyExternalTrajectorySmoothingFromAction(action);
+    }
     if (type === 'set_trajectory_smoothing_view') {
       return setTrajectorySmoothingViewFromAction(action);
     }
@@ -9536,6 +9539,41 @@
       };
     } catch (error) {
       return agentActionFailure('apply_trajectory_smoothing', 'UNSUPPORTED_TRAJECTORY', error?.message || String(error));
+    }
+  }
+
+  async function applyExternalTrajectorySmoothingFromAction(action = {}) {
+    const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
+    if (!originalPrepared || !action.sourceUrl) {
+      return agentActionFailure('apply_external_trajectory_smoothing', 'NOT_AVAILABLE', 'The smoothed trajectory is unavailable.');
+    }
+    try {
+      const response = await fetch(String(action.sourceUrl), { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Could not read smoothed trajectory: ${response.status}`);
+      const data = await response.text();
+      const frameCount = Math.max(2, Math.trunc(Number(action.frameCount) || 2));
+      const smoothedPrepared = {
+        ...originalPrepared,
+        data,
+        format: 'xyz',
+        label: `${originalPrepared.label || 'Trajectory'} - smoothed view`,
+        poseCount: frameCount,
+        pdbModelCount: 0,
+        xyzFrameCount: frameCount,
+        nativeTrajectoryControls: true,
+        controlLabel: 'Frame'
+      };
+      trajectorySmoothingState = {
+        originalPrepared,
+        smoothedPrepared,
+        result: { frameCount, interpolation: action.interpolation || 'linear' },
+        view: 'smoothed'
+      };
+      await replaceTrajectorySmoothingPrepared(smoothedPrepared);
+      postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view: 'smoothed' });
+      return { ok: true, command: 'apply_external_trajectory_smoothing', result: { frameCount } };
+    } catch (error) {
+      return agentActionFailure('apply_external_trajectory_smoothing', 'ACTION_ERROR', error?.message || String(error));
     }
   }
 
