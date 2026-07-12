@@ -12,6 +12,7 @@ import {
   createViewerResourceMeta,
   createViewerWidgetHtml,
   VIEWER_RESOURCE_URI,
+  VIEWER_MOBILE_SCRIPT_PATH,
   VIEWER_SHELL_SCRIPT_PATH,
   VIEWER_SHELL_STYLES_PATH,
 } from "../lib/widget";
@@ -86,10 +87,12 @@ describe("viewer resource contract", () => {
 
   test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v9.html");
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v10.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-hosted-toolbar-v2");
+    expect(html).toContain("?v=viewer-hosted-mobile-v1");
+    expect(html).toContain(`https://burrete.example${VIEWER_MOBILE_SCRIPT_PATH}`);
+    expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
     expect(html).toContain("ui/notifications/tool-result");
     expect(html).toContain("__BURRETE_HOSTED_MCP_WIDGET__");
     expect(html).toContain("__BURRETE_HOSTED_MCP_BRIDGE_READY__");
@@ -101,6 +104,20 @@ describe("viewer resource contract", () => {
     expect(html).not.toContain("molstar.Viewer");
     expect(html).not.toContain('class="metrics"');
     expect(html).not.toContain('class="header"');
+  });
+
+  test("uses a direct mobile viewer without a second iframe", () => {
+    const source = readFileSync(path.resolve(
+      import.meta.dir,
+      "../assets/burrete-hosted-mobile.js",
+    ), "utf8");
+    expect(source).toContain('root.id = "app"');
+    expect(source).toContain('quickLookBuild: "burrete-hosted-mobile-direct"');
+    expect(source).toContain('molstarPowerPreference: "default"');
+    expect(source).toContain('molstarResolutionMode: "scaled"');
+    expect(source).toContain('method: "ui/update-model-context"');
+    expect(source).not.toContain("<iframe");
+    expect(source).not.toContain("srcdoc");
   });
 
   test("builds the stable hosted shell entry assets", () => {
