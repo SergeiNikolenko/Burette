@@ -24,6 +24,15 @@ const MAX_FILE_BYTES = 3 * 1024 * 1024;
 const listeners = new Set<() => void>();
 const files = new Map<string, SidebarProjectStructure>();
 
+const methaneXyz = `5
+Methane
+C 0 0 0
+H 0.629 0.629 0.629
+H -0.629 -0.629 0.629
+H -0.629 0.629 -0.629
+H 0.629 -0.629 -0.629
+`;
+
 const DEMO_STRUCTURES = [
   ["proteins/1HTB.pdb", oneHtb],
   ["proteins/paired.pdb", pairedPdb],
@@ -42,6 +51,8 @@ const DEMO_STRUCTURES = [
   ["formats/mini.cif", miniCif],
   ["formats/mini.sdf", miniSdf],
   ["formats/mini.xyz", miniXyz],
+  ["structures/mini-protein.pdb", miniPdb],
+  ["structures/ligands/methane.xyz", methaneXyz],
 ] as const;
 
 export function isWebDemoWorkspace() {
