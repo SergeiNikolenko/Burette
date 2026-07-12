@@ -1,6 +1,6 @@
 {
   "name": "burrete",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "CLI installer for the Burrete macOS app and Quick Look extension.",
   "license": "MIT",
   "type": "module",
