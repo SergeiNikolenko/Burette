@@ -18,6 +18,21 @@ const hostedShellCsp = [
   "form-action 'none'",
 ].join("; ");
 
+const webDemoCsp = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "worker-src 'self' blob:",
+  "frame-src 'self' data: blob:",
+  "frame-ancestors 'self' https://burrete-landing.vercel.app http://127.0.0.1:* http://localhost:*",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'none'",
+].join("; ");
+
 const crossOriginAssetHeaders = [
   { key: "Access-Control-Allow-Origin", value: "*" },
   { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
@@ -35,7 +50,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/web-demo/index.html",
-        headers: [{ key: "Content-Security-Policy", value: hostedShellCsp }],
+        headers: [{ key: "Content-Security-Policy", value: webDemoCsp }],
       },
       {
         source: "/viewer-shell/:path*",

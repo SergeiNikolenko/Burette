@@ -18,8 +18,10 @@ export function applyAgentFocusLayout(
 ) {
   if (isWebDemoWorkspace()) {
     const state = useShellStore.getState();
+    const heroEmbed = typeof window !== "undefined"
+      && new URLSearchParams(window.location.search).get("embed") === "hero";
     if (!state.sidebarOpen) state.toggleSidebar();
-    state.setDockOpen("right", true);
+    state.setDockOpen("right", !heroEmbed);
     state.setDockOpen("bottom", false);
     return true;
   }
