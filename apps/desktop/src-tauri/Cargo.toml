@@ -1,6 +1,6 @@
 [package]
 name = "burrete"
-version = "1.0.23"
+version = "1.0.24"
 description = "Tauri/Rust shell for local molecular previews"
 authors = ["Burrete"]
 edition = "2021"
