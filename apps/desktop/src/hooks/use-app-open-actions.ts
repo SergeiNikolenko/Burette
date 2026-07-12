@@ -6,6 +6,7 @@ import type { StructureDragRecord } from "../lib/structure-drag";
 import { normalizePdbId, rcsbPdbDownloadUrl } from "../lib/structure-fetch";
 import { isTauriRuntime } from "../lib/tauri";
 import type { RecentStructure } from "../types";
+import { isWebDemoWorkspace, pickWebDemoFiles } from "../lib/web-demo-workspace";
 
 const filters = [
   {
@@ -60,7 +61,9 @@ export function useAppOpenActions({
     try {
       const selection = isTauriRuntime()
         ? await invoke<string[]>("pick_open_targets")
-        : await open({ multiple: true, filters });
+        : isWebDemoWorkspace()
+          ? (await pickWebDemoFiles())?.paths ?? []
+          : await open({ multiple: true, filters });
       const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
       await openPaths(paths);
     } catch (error) {

@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { parentDirectory } from "../lib/sidebar-projects";
 import type { RecentStructure } from "../types";
+import { isWebDemoWorkspace, pickWebDemoFiles } from "../lib/web-demo-workspace";
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
@@ -30,6 +31,14 @@ export function useAppWorkspaceActions({
 }: UseAppWorkspaceActionsOptions) {
   const chooseWorkspace = useCallback(async () => {
     try {
+      if (isWebDemoWorkspace()) {
+        const selection = await pickWebDemoFiles({ directory: true });
+        if (!selection) return;
+        setWorkspacePath(selection.root);
+        addProjectRoot(selection.root);
+        pushStatus("Project folder added");
+        return;
+      }
       const selection = await open({ directory: true, multiple: false });
       if (!selection || Array.isArray(selection)) return;
       setWorkspacePath(selection);

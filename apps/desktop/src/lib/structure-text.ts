@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "./tauri";
+import { readBrowserDevVirtualTextDocument } from "./browser-dev-documents";
 
 type TextFileReadResult = {
   id?: string;
@@ -26,6 +27,10 @@ type StructureTextDocumentSeed = {
 };
 
 export async function readStructureText(path: string, options: StructureTextReadOptions = {}) {
+  const virtualText = readBrowserDevVirtualTextDocument(path);
+  if (virtualText !== null) {
+    return options.maxBytes === undefined ? virtualText : virtualText.slice(0, options.maxBytes);
+  }
   if (options.maxBytes !== undefined || isCompressedMaestroPath(path)) {
     const document = await readStructureTextDocument(path, undefined, options);
     return document.content;
@@ -50,6 +55,22 @@ export async function readStructureTextDocument(
 }
 
 async function readTextFileDocument(path: string, maxBytes?: number) {
+  const virtualText = readBrowserDevVirtualTextDocument(path);
+  if (virtualText !== null) {
+    const content = maxBytes === undefined ? virtualText : virtualText.slice(0, maxBytes);
+    const title = path.split("/").filter(Boolean).pop() || path;
+    const extension = title.includes(".") ? title.split(".").pop()?.toLowerCase() || "" : "";
+    return {
+      path,
+      title,
+      extension,
+      language: extension || "text",
+      byteCount: new TextEncoder().encode(virtualText).length,
+      content,
+      truncated: content.length < virtualText.length,
+      modifiedAt: null,
+    };
+  }
   const query = maxBytes !== undefined ? `&maxBytes=${encodeURIComponent(String(maxBytes))}` : "";
   if (isCompressedMaestroPath(path)) {
     if (isTauriRuntime()) {
