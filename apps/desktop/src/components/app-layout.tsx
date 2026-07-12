@@ -56,13 +56,14 @@ export function AppLayout({
   const hostedMcpWidget = isHostedMcpWidget();
   const maxSidebarWidth = Math.max(280, Math.min(420, Math.floor(viewportWidth * 0.35)));
   const settingsMode = state.page === "settings";
+  const chromeVisible = !settingsMode && !hostedMcpWidget;
   const sidebarVisible = settingsMode || (!hostedMcpWidget && state.sidebarOpen);
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
   const rightDockWidth = clampRightDockWidth(state.rightDockWidth, viewportWidth, sidebarLayoutWidth);
   const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
   const tabChromeLeft = hostedMcpWidget ? 12 : state.sidebarOpen ? sidebarLayoutWidth + 12 : 132;
-  const rightDockOpen = !settingsMode && state.rightDockOpen;
+  const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
   const bottomDockOpen = !settingsMode && !hostedMcpWidget && state.bottomDockOpen;
   const dockDragging = state.sidebarDragging || state.rightDockDragging || state.bottomDockDragging;
   const chromeTransition = dockDragging ? "none" : undefined;
@@ -72,6 +73,7 @@ export function AppLayout({
     "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
     "--right-dock-width": `${rightDockOpen ? rightDockWidth : 0}px`,
     "--bottom-dock-height": `${bottomDockOpen ? state.bottomDockHeight : 0}px`,
+    "--chrome-height": hostedMcpWidget ? "0px" : undefined,
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
   const activePageKind = state.activeTab?.location.kind ?? null;
@@ -95,7 +97,7 @@ export function AppLayout({
       style={shellStyle}
     >
       <div className="drag-region" data-tauri-drag-region />
-      {!settingsMode && (
+      {chromeVisible && (
         <>
           {!hostedMcpWidget ? (
             <div className="chrome-leading-controls" data-tauri-drag-region>
@@ -180,7 +182,7 @@ export function AppLayout({
               />
             )}
           </section>
-          {!settingsMode && (
+          {!settingsMode && !hostedMcpWidget && (
             <DockPanel
               area="right"
               state={layoutState}

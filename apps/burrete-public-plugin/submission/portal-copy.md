@@ -20,9 +20,10 @@
 Burrete opens attached PDB, mmCIF, SDF, and XYZ-family
 structure files as interactive 3D molecular scenes in ChatGPT and Codex. It can
 also retrieve an explicitly requested public Protein Data Bank entry by PDB ID.
-Each result includes bounded composition counts and opens directly in the real
-Burrete workspace with document tabs, viewer controls, sequence, selection,
-measurements, representations, structure controls, and the molecular inspector.
+Each result includes bounded composition counts and opens directly as a focused
+Burrete molecular preview without desktop document tabs, sidebars, or docks.
+The preview preserves viewer controls, sequence, selection, measurements, and
+representations.
 The hosted viewer starts with its floating control toolbar collapsed to keep the
 molecule unobstructed; the visible grip button expands the complete toolbar.
 The hosted plugin is read-only, requires no account, and does not control local
@@ -31,7 +32,7 @@ files or desktop sessions.
 ## Starter prompts
 
 1. Preview the attached SDF and summarize its molecules and elements.
-2. Open PDB 1CRN in the Burrete molecular workspace.
+2. Open PDB 1CRN in the Burrete molecular preview.
 3. Visualize this mmCIF file and tell me how many chains and residues it has.
 4. Preview the attached XYZ geometry and identify the element counts.
 
@@ -40,7 +41,7 @@ files or desktop sessions.
 Initial public plugin-plus-skills submission. Burrete provides a no-auth,
 read-only hosted MCP server for supported molecular attachments and explicit
 RCSB PDB lookups. Results include bounded structure summaries and an
-interactive, CSP-compatible Burrete workspace. No reviewer account or
+interactive, CSP-compatible Burrete preview. No reviewer account or
 credentials are required.
 
 ## Availability
@@ -71,7 +72,7 @@ supported.
 - Put the portal's exact domain token in `OPENAI_APPS_CHALLENGE`, deploy, and
   complete domain verification before submitting for review.
 - Test both tools in ChatGPT Developer Mode on web and mobile, including viewer
-  controls, the molecular inspector, and resizing of the inline workspace.
+  controls, structure interaction, and resizing of the inline preview.
 - Capture the required submission screenshots from the real ChatGPT widget
   after the Developer Mode checks; do not substitute a direct shell URL or a
   local preview for the final portal screenshots.
