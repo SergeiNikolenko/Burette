@@ -63,6 +63,7 @@ export function useHostedMcpWidget({
       closeAllDocuments();
       void openBrowserDevMolstarContextDocument({
         label: structure.label,
+        context: { hostedMcpWidget: true },
         entries: [{
           role: "structure",
           label: structure.label,

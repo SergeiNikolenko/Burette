@@ -12,7 +12,9 @@ const LEGACY_DEMO_ROOT = path.join(APP_ROOT, "public/demo");
 const VIEWER_FILES = [
   "burette-agent.js",
   "viewer-runtime.css",
+  "viewer-bootstrap.js",
   "viewer-shell.js",
+  "trajectory-smoothing.js",
   "viewer.js",
 ];
 
