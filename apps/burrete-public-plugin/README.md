@@ -10,11 +10,11 @@ plugin. It is intentionally separate from the local stdio plugin under
 - the hosted plugin is read-only and never controls a user's desktop or local
   Burrete sessions.
 
-Tool results open directly in the real Burrete browser workspace, including its
-viewer toolbar, document tabs, sequence, selection, measurements,
-representations, structure controls, and molecular inspector. The package does
-not expose a separate branded viewer page: the root URL redirects to the public
-plugin documentation.
+Tool results open directly in a focused Burrete molecular preview. The hosted
+widget omits desktop document tabs, sidebars, and docks while preserving the
+native interactive viewer controls, sequence, selection, measurements, and
+representations. The package does not expose a separate branded viewer page:
+the root URL redirects to the public plugin documentation.
 
 ## MCP contract
 
@@ -28,7 +28,7 @@ The production Streamable HTTP endpoint is
 
 Both tools are read-only, idempotent, non-destructive, and cannot write to the
 public internet. Each declares an exact output schema and renders
-`ui://burrete/molecular-viewer-v13.html` with MIME type
+`ui://burrete/molecular-viewer-v14.html` with MIME type
 `text/html;profile=mcp-app`.
 
 The model receives only bounded structure summaries. Original molecular text
