@@ -2,6 +2,7 @@
 # Keep this list short and limited to intentional large checked-in assets.
 PreviewExtension/Web/molstar.js
 PreviewExtension/Web/viewer.js
+PreviewExtension/Web/openchemlib/openchemlib.js
 PreviewExtension/Web/rdkit/RDKit_minimal.wasm
 plugins/burette-agent/preview-web/viewer.js
 plugins/burette-agent/browser-shell-dist/assets/FileSaver.min-BLnmXVPl.js
