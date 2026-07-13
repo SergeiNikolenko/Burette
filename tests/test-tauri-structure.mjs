@@ -682,6 +682,7 @@ assert.match(quickLookPreviewController, /private static func buildFepGraphMLPre
 assert.match(quickLookPreviewController, /return try buildFepGraphMLPreviewResult\(/);
 assert.match(quickLookPreviewController, /private static func buildMoleculeGridPreviewResult\(/);
 assert.match(quickLookPreviewController, /let gridPreviewResult = try buildMoleculeGridPreviewResult\(/);
+assert.match(quickLookPreviewController, /"openchemlib\/openchemlib\.js"/);
 assert.match(quickLookPreviewController, /private struct StructurePreviewPayload/);
 assert.match(quickLookPreviewController, /private static func buildStructurePreviewPayload\(/);
 assert.match(quickLookPreviewController, /let structurePreview = try buildStructurePreviewPayload\(/);
@@ -726,7 +727,8 @@ assert.equal(vendorAssetsLock.source.bunLock, 'bun.lock');
 assert.equal(vendorAssetsLock.source.profiles, 'config/web-runtime-profiles.json');
 assert.equal(vendorAssetsLock.packages.molstar.version, packageConfig.dependencies.molstar);
 assert.equal(vendorAssetsLock.packages['@rdkit/rdkit'].version, packageConfig.dependencies['@rdkit/rdkit']);
-assert.equal(vendorAssetsLock.assets.length, 4);
+assert.equal(vendorAssetsLock.packages.openchemlib.version, packageConfig.dependencies.openchemlib);
+assert.equal(vendorAssetsLock.assets.length, 5);
 for (const asset of vendorAssetsLock.assets) {
   assert.match(asset.sha256, /^sha256-/);
   assert.ok(asset.bytes > 0);
@@ -736,9 +738,11 @@ assert.equal(webRuntimeProfiles.sourceRoot, 'PreviewExtension/Web');
 assert.deepEqual(vendorAssetsLock.profiles, webRuntimeProfiles.profiles);
 assert.deepEqual(vendorAssetsLock.bundleTargets, webRuntimeProfiles.bundleTargets);
 assert.ok(webRuntimeProfiles.profiles['desktop-molstar'].includes('molstar.js'));
+assert.ok(webRuntimeProfiles.profiles['desktop-grid'].includes('openchemlib/openchemlib.js'));
 assert.ok(webRuntimeProfiles.profiles['desktop-grid'].includes('rdkit/RDKit_minimal.wasm'));
 assert.ok(webRuntimeProfiles.profiles['quicklook-molstar'].includes('viewer.js'));
 assert.ok(webRuntimeProfiles.profiles['quicklook-grid'].includes('grid-viewer.js'));
+assert.ok(webRuntimeProfiles.profiles['quicklook-grid'].includes('openchemlib/openchemlib.js'));
 assert.ok(webRuntimeProfiles.profiles['external-artifact'].includes('viewer-shell.js'));
 assert.deepEqual(webRuntimeProfiles.bundleTargets.tauri.profiles, [
   'desktop-molstar',
@@ -1176,6 +1180,8 @@ assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
 assert.match(previewRuntimeGrid, /<meta http-equiv="Content-Security-Policy" content="\{GRID_RUNTIME_CSP\}"/);
 assert.match(previewRuntimeGrid, /runtime\.join\("preview-rdkit-wasm\.js"\)/);
 assert.match(previewRuntimeGrid, /<script src="\{rdkit_wasm_js\}"><\/script>/);
+assert.match(previewRuntimeGrid, /assets\.join\("openchemlib"\)\.join\("openchemlib\.js"\)/);
+assert.match(previewRuntimeGrid, /<script src="\{openchemlib_js\}"><\/script>/);
 assert.match(previewRuntimeViewer, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(viewerRuntimeCSS, /--buret-toolbar-safe-top: 12px/);
 assert.match(viewerRuntimeCSS, /--buret-viewport-controls-top: calc\(var\(--buret-toolbar-safe-top\) \+ 42px\)/);

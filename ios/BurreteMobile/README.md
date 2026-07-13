@@ -27,9 +27,12 @@ The Xcode scheme is `BurreteMobile`, and the target is wired in
 ## Supported Document Flow
 
 The app registers molecular document extensions in `Info.plist`, including
-PDB, CIF, SDF, MOL, MOL2, XYZ, XYZR, trajectory/topology files, OpenMM
-artifacts, and related chemistry text formats. iOS exposes Burrete in document
-handoff surfaces when the file type matches these registrations.
+PDB, CIF, SDF, MOL, MOL2, XYZ, XYZR, DataWarrior (`.dwar`),
+trajectory/topology files, OpenMM artifacts, and related chemistry text
+formats. iOS exposes Burrete in document handoff surfaces when the file type
+matches these registrations. DataWarrior files currently use the generic file
+summary on iOS; molecular-grid decoding is provided by the desktop, browser,
+and Quick Look runtimes.
 
 The runtime currently uses:
 

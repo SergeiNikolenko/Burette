@@ -36,6 +36,7 @@
 				<string>com.local.burrete10.sdf</string>
 				<string>com.local.burrete10.smiles</string>
 				<string>com.local.burrete10.csv</string>
+				<string>com.local.burrete10.datawarrior</string>
 				<string>com.local.burrete10.tsv</string>
 				<string>public.comma-separated-values-text</string>
 				<string>public.tab-separated-values-text</string>
@@ -106,6 +107,29 @@
 			<dict>
 				<key>UTTypeConformsTo</key>
 				<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>DataWarrior molecular structure table</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.datawarrior</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>dwar</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-datawarrior</string>
+					<string>application/x-datawarrior</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
