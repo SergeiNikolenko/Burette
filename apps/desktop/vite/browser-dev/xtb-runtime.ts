@@ -95,6 +95,11 @@ function automaticCandidates(): Array<[string, BrowserDevXtbSource]> {
 }
 
 async function installManaged(): Promise<BrowserDevXtbResolution> {
+  const managed = join(runtimeRoot, "current", ".pixi", "envs", "default", "bin", "xtb");
+  if (isValidXtbExecutable(managed)) {
+    await selectBrowserDevXtb(null);
+    return resolveBrowserDevXtb();
+  }
   const pixi = resolvePixi();
   if (!pixi) {
     throw new Error("Managed xTB installation requires Pixi. Install Pixi, or choose an existing xTB executable in Settings.");
