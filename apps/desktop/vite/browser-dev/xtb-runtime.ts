@@ -1,8 +1,8 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { execFile } from "node:child_process";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { execFile, spawnSync } from "node:child_process";
+import { mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { delimiter, isAbsolute, join } from "node:path";
+import { basename, delimiter, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -24,25 +24,27 @@ const execFileAsync = promisify(execFile);
 let managedInstall: Promise<BrowserDevXtbResolution> | null = null;
 
 export function resolveBrowserDevXtb(): BrowserDevXtbResolution {
-  const environmentSelection = process.env.BURRETE_XTB_EXECUTABLE?.trim();
-  const persistedSelection = readSelection();
-  const selected = environmentSelection || persistedSelection;
+  const selected = selectedBrowserDevXtbPath();
   if (selected) {
-    validateExecutable(selected);
+    validateXtbExecutable(selected);
     return { executablePath: selected, selectedExecutablePath: selected, source: "selected" };
   }
 
   for (const [path, source] of automaticCandidates()) {
-    if (isExecutableFile(path)) {
-      return { executablePath: path, selectedExecutablePath: null, source };
+    if (isValidXtbExecutable(path)) {
+      return { executablePath: realpathSync(path), selectedExecutablePath: null, source };
     }
   }
   throw new Error("xTB was not found. Choose an existing xTB executable in Settings or install a Burrete-managed copy.");
 }
 
+export function selectedBrowserDevXtbPath() {
+  return process.env.BURRETE_XTB_EXECUTABLE?.trim() || readSelection();
+}
+
 export async function selectBrowserDevXtb(executablePath: unknown): Promise<void> {
   const selected = typeof executablePath === "string" && executablePath.trim() ? executablePath.trim() : null;
-  if (selected) validateExecutable(selected);
+  if (selected) validateXtbExecutable(selected);
   await mkdir(runtimeRoot, { recursive: true });
   const temporary = `${configPath}.tmp`;
   await writeFile(temporary, `${JSON.stringify({ selectedExecutablePath: selected }, null, 2)}\n`, "utf8");
@@ -108,7 +110,7 @@ async function installManaged(): Promise<BrowserDevXtbResolution> {
       timeout: 5 * 60_000,
       maxBuffer: 2 * 1024 * 1024,
     });
-    validateExecutable(join(staging, ".pixi", "envs", "default", "bin", "xtb"));
+    validateXtbExecutable(join(staging, ".pixi", "envs", "default", "bin", "xtb"));
     await promoteStagedRuntime(staging);
     await selectBrowserDevXtb(null);
     return resolveBrowserDevXtb();
@@ -120,16 +122,23 @@ async function installManaged(): Promise<BrowserDevXtbResolution> {
 
 async function promoteStagedRuntime(staging: string) {
   const current = join(runtimeRoot, "current");
-  const previous = join(runtimeRoot, "previous");
-  await rm(previous, { recursive: true, force: true });
-  if (existsSync(current)) await rename(current, previous);
+  const next = join(runtimeRoot, "current.next");
+  await rm(next, { force: true });
+  await symlink(basename(staging), next, "dir");
+  let legacy: string | null = null;
+  if (existsSync(current)) {
+    const metadata = lstatSync(current);
+    if (metadata.isDirectory() && !metadata.isSymbolicLink()) {
+      legacy = join(runtimeRoot, `legacy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+      await rename(current, legacy);
+    }
+  }
   try {
-    await rename(staging, current);
+    await rename(next, current);
   } catch (error) {
-    if (existsSync(previous)) await rename(previous, current);
+    if (legacy) await rename(legacy, current).catch(() => undefined);
     throw error;
   }
-  await rm(previous, { recursive: true, force: true });
 }
 
 function resolvePixi() {
@@ -146,6 +155,30 @@ function resolvePixi() {
 function validateExecutable(path: string) {
   if (!isAbsolute(path)) throw new Error("The xTB executable path must be absolute.");
   if (!isExecutableFile(path)) throw new Error(`${path} is not an executable file.`);
+}
+
+function validateXtbExecutable(path: string) {
+  validateExecutable(path);
+  const probe = spawnSync(path, ["--version"], {
+    encoding: "utf8",
+    timeout: 5_000,
+    maxBuffer: 128 * 1024,
+  });
+  const output = `${probe.stdout ?? ""}\n${probe.stderr ?? ""}`;
+  if (probe.status !== 0 || !/\bxtb version\b/iu.test(output)) {
+    const detail = probe.error?.message
+      || `exit ${probe.status ?? "unknown"}${probe.signal ? `, signal ${probe.signal}` : ""}: ${output.trim().slice(0, 500) || "no output"}`;
+    throw new Error(`${path} did not report a valid xTB version (${detail}).`);
+  }
+}
+
+function isValidXtbExecutable(path: string) {
+  try {
+    validateXtbExecutable(path);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 function isExecutableFile(path: string) {

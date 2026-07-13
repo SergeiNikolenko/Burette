@@ -160,6 +160,7 @@ pub fn run() {
             commands::shell::write_base64_file,
             commands::shell::write_text_file,
             commands::quicklook::reset_quick_look,
+            commands::pubchem::open_pubchem_search,
             commands::updater::install_update,
             commands::xtb::xtb_status,
             commands::xtb::select_xtb_executable,

@@ -4363,6 +4363,8 @@
       void copyMoleculeStructure(row);
     } else if (action === 'export') {
       exportMolecule(row);
+    } else if (action === 'pubchem-identity' || action === 'pubchem-similarity') {
+      void openGridPubChemSearch(row, action === 'pubchem-identity' ? 'identity' : 'similarity');
     } else {
       setStatus(`[grid] Molecule action is unavailable for ${label}.`);
     }
@@ -4402,6 +4404,10 @@
       ['copy', 'Copy structure'],
       ['export', 'Export molecule...']
     ];
+    if (cfg.appViewer === true && cfg.pubChemSearch === true && (String(row?.smiles || '').trim() || String(row?.molblock || '').trim())) {
+      actions.push(['pubchem-identity', 'Search PubChem — Identical']);
+      actions.push(['pubchem-similarity', 'Search PubChem — Similar (90%)']);
+    }
     menu.append(title, subtitle);
     actions.forEach(([action, label]) => {
       const button = document.createElement('button');
@@ -4718,6 +4724,45 @@
       try { mol?.delete?.(); } catch {}
     }
     return '';
+  }
+
+  async function openGridPubChemSearch(row, searchType) {
+    try {
+      if (searchType !== 'identity' && searchType !== 'similarity') throw new Error('Unsupported PubChem search type.');
+      const smiles = await canonicalPubChemSmiles(row);
+      if (!validPubChemSmiles(smiles)) throw new Error('The molecule does not have a complete PubChem-searchable SMILES.');
+      post('openPubChemSearch', `[grid] Opening PubChem ${searchType === 'identity' ? 'identity' : '90% similarity'} search.`, {
+        searchType,
+        smiles
+      });
+    } catch (error) {
+      setStatus(`[grid] PubChem search failed.\n\n${error?.message || String(error)}`, 'error');
+    }
+  }
+
+  async function canonicalPubChemSmiles(row) {
+    const molblock = String(row?.molblock || '').trim();
+    const sourceSmiles = String(row?.smiles || '').trim();
+    if (!molblock && !sourceSmiles) return '';
+    const rdkit = state.rdkit || await initRDKit();
+    let molecule = null;
+    try {
+      molecule = rdkit.get_mol(molblock || sourceSmiles);
+      if (!molecule || (typeof molecule.is_valid === 'function' && !molecule.is_valid())) return '';
+      return typeof molecule.get_smiles === 'function' ? String(molecule.get_smiles() || '').trim() : '';
+    } catch (_) {
+      return '';
+    } finally {
+      try { molecule?.delete?.(); } catch {}
+    }
+  }
+
+  function validPubChemSmiles(smiles) {
+    const value = String(smiles || '').trim();
+    return value.length > 0
+      && value.length <= 4096
+      && !value.includes('*')
+      && !/[\u0000-\u001F\u007F]/u.test(value);
   }
 
   function scheduleRdkitCard(card, row) {
