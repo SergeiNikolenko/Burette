@@ -16,3 +16,4 @@ pub(crate) mod text_files;
 pub(crate) mod update_progress;
 pub(crate) mod updater;
 pub(crate) mod xtb;
+pub(crate) mod xtb_runtime;

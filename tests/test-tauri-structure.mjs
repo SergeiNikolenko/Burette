@@ -472,7 +472,7 @@ assert.match(runtimeDoctorCommand, /descriptors::descriptor_runtime_status\(\)/)
 assert.match(runtimeDoctorCommand, /documents::conformer_python_runtime_status\("datamol"\)/);
 assert.match(runtimeDoctorCommand, /documents::conformer_python_runtime_status\("rdkit"\)/);
 assert.match(runtimeDoctorCommand, /conformer::conformer_status\(\)/);
-assert.match(runtimeDoctorCommand, /xtb::xtb_status\(\)/);
+assert.match(runtimeDoctorCommand, /xtb::xtb_status\(app\)/);
 assert.match(runtimeDoctorCommand, /xyzrender::xyzrender_runtime_status\(\)/);
 assert.doesNotMatch(runtimeDoctorCommand, /descriptor_runtime_install|install_xtb|run_xtb_job|run_conformer_job|create_xyzrender_artifact/);
 assert.match(previewXyzrender, /pub\(crate\) fn xyzrender_runtime_status/);

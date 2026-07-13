@@ -216,6 +216,8 @@ export type XtbStatus = {
   version?: string | null;
   installer?: string | null;
   installHint: string;
+  source?: "selected" | "managed" | "conda" | "pixi" | "homebrew" | "path" | null;
+  selectedExecutablePath?: string | null;
 };
 
 export type XtbSettings = {
