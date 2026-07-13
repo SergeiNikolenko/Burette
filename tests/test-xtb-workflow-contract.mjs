@@ -6,6 +6,8 @@ import { xtbStructureMenuItems } from "../apps/desktop/src/components/xtb-contex
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const viteConfig = source("apps/desktop/vite.config.ts");
 const xtbCommand = source("apps/desktop/src-tauri/src/commands/xtb.rs");
+const xtbRuntime = source("apps/desktop/src-tauri/src/commands/xtb_runtime.rs");
+const browserDevXtbRuntime = source("apps/desktop/vite/browser-dev/xtb-runtime.ts");
 const chemistrySettings = source("apps/desktop/src/lib/chemistry-settings.ts");
 const chemistryTypes = source("apps/desktop/src/types.ts");
 const chemistryJobsHook = source("apps/desktop/src/hooks/use-app-chemistry-jobs.ts");
@@ -49,8 +51,11 @@ assert.match(viteConfig, /function browserDevCommandTimedOut[\s\S]*value\?\.kill
 assert.match(viteConfig, /exitCode: cancelled \? 130 : timedOut \? 124/);
 assert.match(chemistryJobsHook, /cancelledXtbJobIdsRef\.current\.delete\(jobId\)[\s\S]*status: "running"/);
 
-assert.match(xtbCommand, /Automatic xTB installation requires pixi/);
-assert.match(viteConfig, /Automatic xTB installation requires pixi/);
+assert.match(xtbRuntime, /Managed xTB installation requires Pixi/);
+assert.match(xtbRuntime, /"install", "--locked", "--manifest-path"/);
+assert.match(browserDevXtbRuntime, /"install", "--locked", "--manifest-path"/);
+assert.doesNotMatch(xtbRuntime, /global["']?,\s*["']install/);
+assert.doesNotMatch(browserDevXtbRuntime, /global["']?,\s*["']install/);
 assert.doesNotMatch(xtbCommand, /uv tool install xtb/);
 assert.doesNotMatch(viteConfig, /\["tool", "install", "xtb"\]/);
 

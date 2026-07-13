@@ -199,14 +199,28 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                       ),
                       actionRow(
                         "Executable",
-                        state.xtbStatus?.executablePath ?? "No xTB executable found.",
-                        "Install",
-                        () => void actions.installXtb(),
-                        state.xtbStatus?.installed === true,
+                        state.xtbStatus?.executablePath
+                          ? `${state.xtbStatus.executablePath}${state.xtbStatus.source ? ` · ${state.xtbStatus.source}` : ""}`
+                          : "No xTB executable found.",
+                        "Use Existing…",
+                        () => void actions.chooseXtbExecutable(),
                       ),
                       actionRow(
-                        "Installer",
-                        state.xtbStatus?.installer ? `Detected ${state.xtbStatus.installer}` : "Burrete tries pixi first, then uv if pixi is unavailable.",
+                        "Selection",
+                        state.xtbStatus?.selectedExecutablePath ? "An explicit executable is selected." : "Burrete is discovering xTB automatically.",
+                        "Use Automatically",
+                        () => void actions.clearXtbExecutableSelection(),
+                        !state.xtbStatus?.selectedExecutablePath,
+                      ),
+                      actionRow(
+                        "Managed Runtime",
+                        "Install xTB in an isolated Burrete environment.",
+                        "Install Managed",
+                        () => void actions.installXtb(),
+                      ),
+                      actionRow(
+                        "Runs",
+                        state.xtbStatus?.installer ? `Runtime source: ${state.xtbStatus.source ?? state.xtbStatus.installer}` : "Open recent and active xTB jobs.",
                         "Jobs",
                         () => {
                           actions.openDockTab("bottom", "jobs");

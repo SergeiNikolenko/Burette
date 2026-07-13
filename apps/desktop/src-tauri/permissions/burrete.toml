@@ -59,6 +59,7 @@ commands.allow = [
   "reset_quick_look",
   "install_update",
   "xtb_status",
+  "select_xtb_executable",
   "install_xtb",
   "run_xtb_job",
   "cancel_xtb_job"
