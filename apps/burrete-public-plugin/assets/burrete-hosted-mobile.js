@@ -3,9 +3,12 @@
 
   const MAX_STRUCTURE_BYTES = 3 * 1024 * 1024;
   const ASSET_LOAD_TIMEOUT_MS = 30_000;
+  const BOOTSTRAP_TIMEOUT_MS = 15_000;
   const SUPPORTED_FORMATS = new Set(["pdb", "mmcif", "sdf", "xyz"]);
   const assetsBase = String(window.__BURRETE_WEB_ASSETS_BASE__ || "/burrete-viewer/").replace(/\/$/u, "");
   let started = false;
+  let latestToolOutput;
+  let latestToolResponseMetadata;
 
   const record = (value) => value && typeof value === "object" ? value : null;
   const bounded = (value, fallback = "") => {
@@ -108,13 +111,39 @@
     }
   }
 
+  function showBootstrapError(message) {
+    let status = document.getElementById("status");
+    if (!status) {
+      const root = document.getElementById("root") || document.getElementById("app");
+      root?.insertAdjacentHTML("afterend", '<div id="status"></div>');
+      status = document.getElementById("status");
+    }
+    if (!status) return;
+    status.className = "error";
+    status.style.setProperty("display", "block", "important");
+    status.textContent = `[web] Burrete mobile renderer failed to start.\n\n${message}`;
+  }
+
+  const bootstrapTimeout = window.setTimeout(() => {
+    if (!started) {
+      showBootstrapError("Timed out waiting for molecular structure metadata from ChatGPT.");
+    }
+  }, BOOTSTRAP_TIMEOUT_MS);
+
   async function start(structure) {
     if (started) return;
-    started = true;
     const root = document.getElementById("root");
     if (!root) throw new Error("Hosted viewer root is unavailable");
+    started = true;
+    window.clearTimeout(bootstrapTimeout);
     root.id = "app";
-    root.insertAdjacentHTML("afterend", '<div id="status" class="loading">Loading structure...</div>');
+    let status = document.getElementById("status");
+    if (!status) {
+      root.insertAdjacentHTML("afterend", '<div id="status" class="loading">Loading structure...</div>');
+    } else {
+      status.className = "loading";
+      status.textContent = "Loading structure...";
+    }
     document.body.className = "burette-opaque-background burette-mobile-host";
     document.documentElement.classList.add("buret-hosted-mobile-direct");
 
@@ -182,12 +211,21 @@
     const structure = structureFromResult(value);
     if (!structure) return;
     start(structure).catch((error) => {
-      const status = document.getElementById("status");
-      if (status) {
-        status.className = "error";
-        status.style.setProperty("display", "block", "important");
-        status.textContent = `[web] Burrete mobile renderer failed to start.\n\n${error?.message || String(error)}`;
-      }
+      showBootstrapError(error?.message || String(error));
+    });
+  }
+
+  function acceptOpenAIGlobals(globals) {
+    const next = record(globals);
+    if (!next) return;
+    if (next.toolOutput !== undefined) latestToolOutput = next.toolOutput;
+    if (next.toolResponseMetadata !== undefined) {
+      latestToolResponseMetadata = next.toolResponseMetadata;
+    }
+    if (latestToolOutput === undefined && latestToolResponseMetadata === undefined) return;
+    acceptResult({
+      structuredContent: latestToolOutput,
+      _meta: latestToolResponseMetadata,
     });
   }
 
@@ -199,19 +237,31 @@
     }
   }, { passive: true });
   window.addEventListener("openai:set_globals", (event) => {
-    const globals = event.detail?.globals;
-    if (globals?.toolOutput === undefined) return;
-    acceptResult({ structuredContent: globals.toolOutput, _meta: globals.toolResponseMetadata });
+    acceptOpenAIGlobals(event.detail?.globals);
   }, { passive: true });
 
   const queued = Array.isArray(window.__BURRETE_HOSTED_MCP_RESULTS__)
     ? window.__BURRETE_HOSTED_MCP_RESULTS__
     : [];
-  if (queued.length > 0) acceptResult(queued[queued.length - 1]);
-  if (!started && window.openai?.toolOutput !== undefined) {
-    acceptResult({
-      structuredContent: window.openai.toolOutput,
-      _meta: window.openai.toolResponseMetadata,
-    });
+  for (const result of queued) {
+    const queuedResult = record(result);
+    if (queuedResult && (
+      Object.hasOwn(queuedResult, "structuredContent")
+      || Object.hasOwn(queuedResult, "_meta")
+    )) {
+      const globals = {};
+      if (Object.hasOwn(queuedResult, "structuredContent")) {
+        globals.toolOutput = queuedResult.structuredContent;
+      }
+      if (Object.hasOwn(queuedResult, "_meta")) {
+        globals.toolResponseMetadata = queuedResult._meta;
+      }
+      acceptOpenAIGlobals(globals);
+    } else {
+      acceptResult(result);
+    }
+    if (started) break;
   }
+  acceptOpenAIGlobals(window.__BURRETE_HOSTED_OPENAI_GLOBALS__);
+  if (!started) acceptOpenAIGlobals(window.openai);
 })();
