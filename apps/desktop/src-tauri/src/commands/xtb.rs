@@ -194,7 +194,7 @@ fn run_xtb_job_blocking<R: Runtime>(
         request
             .timeout_seconds
             .unwrap_or(DEFAULT_XTB_TIMEOUT_SECONDS)
-            .max(1),
+            .clamp(1, 86_400),
     );
     let threads = request.threads.unwrap_or(0);
 

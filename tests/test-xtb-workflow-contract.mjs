@@ -67,6 +67,8 @@ assert.match(xtbRuntime, /validate_xtb\(&path\)/);
 assert.match(xtbRuntime, /fs::canonicalize\(&path\)/);
 assert.match(xtbRuntime, /symlink\(target, &next\)/);
 assert.match(xtbCommand, /started\.elapsed\(\) < Duration::from_secs\(5\)/);
+assert.match(xtbCommand, /\.clamp\(1, 86_400\)/);
+assert.match(viteConfig, /Math\.min\(86_400, Math\.max\(1, Number\(request\.timeoutSeconds\)/);
 assert.match(conformerCommand, /xtb_runtime::resolve\(&app\)/);
 assert.doesNotMatch(conformerCommand, /resolve_executable\("xtb"\)/);
 assert.match(viteConfig, /xtb = resolveBrowserDevXtb\(\)\.executablePath/);
