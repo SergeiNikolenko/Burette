@@ -13209,10 +13209,7 @@
     for (const entry of [target.ligand, target.selectedEntry, target.sourceEntry]) {
       if (normalizeFormat(entry?.format) === 'sdf' && String(entry?.data || '').trim()) return entry;
     }
-    const standalone = molstarStandaloneMoleculePreviewTarget(activeConfig)?.ligand || null;
-    return normalizeFormat(standalone?.format) === 'sdf' && String(standalone?.data || '').trim()
-      ? standalone
-      : null;
+    return null;
   }
 
   async function openMolstarPubChemSearch(target, searchType) {
