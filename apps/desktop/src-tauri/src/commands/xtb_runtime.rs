@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use tauri::{Manager, Runtime};
 
 const CONFIG_FILE: &str = "config.json";
@@ -15,6 +15,7 @@ static MANAGED_INSTALL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 const XTB_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const MANAGED_INSTALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const COMMAND_CAPTURE_BYTES: usize = 2 * 1024 * 1024;
+const INACTIVE_RUNTIME_RETENTION: Duration = Duration::from_secs(48 * 60 * 60);
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -34,7 +35,7 @@ pub(crate) struct XtbRuntimeResolution {
     pub(crate) selected_executable_path: Option<PathBuf>,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct XtbRuntimeConfig {
     selected_executable_path: Option<PathBuf>,
@@ -55,6 +56,10 @@ pub(crate) fn select<R: Runtime>(
     app: &tauri::AppHandle<R>,
     executable_path: Option<String>,
 ) -> Result<(), String> {
+    let _guard = MANAGED_INSTALL_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "The xTB runtime lock is unavailable.".to_string())?;
     let root = runtime_root(app)?;
     let selected = executable_path
         .map(|value| PathBuf::from(value.trim()))
@@ -79,9 +84,11 @@ pub(crate) fn install_managed<R: Runtime>(
         .lock()
         .map_err(|_| "The xTB installer lock is unavailable.".to_string())?;
     let root = runtime_root(app)?;
+    cleanup_inactive_managed_runtimes(&root);
+    let config_before = read_config(&root)?;
     let managed = root.join("current/.pixi/envs/default/bin/xtb");
     if validate_xtb(&managed).is_ok() {
-        write_config(&root, &XtbRuntimeConfig::default())?;
+        clear_selection_if_unchanged(&root, &config_before)?;
         return resolve_from_root(&root);
     }
     let pixi = resolve_pixi().ok_or_else(|| {
@@ -98,8 +105,46 @@ pub(crate) fn install_managed<R: Runtime>(
         fs::remove_dir_all(&staging).ok();
     }
     install_result?;
-    write_config(&root, &XtbRuntimeConfig::default())?;
+    clear_selection_if_unchanged(&root, &config_before)?;
     resolve_from_root(&root)
+}
+
+fn clear_selection_if_unchanged(
+    root: &Path,
+    config_before: &XtbRuntimeConfig,
+) -> Result<(), String> {
+    if read_config(root)? == *config_before {
+        write_config(root, &XtbRuntimeConfig::default())?;
+    }
+    Ok(())
+}
+
+fn cleanup_inactive_managed_runtimes(root: &Path) {
+    let active = fs::canonicalize(root.join("current")).ok();
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    let now = SystemTime::now();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("staging-") && !name.starts_with("legacy-") {
+            continue;
+        }
+        let path = entry.path();
+        if active.as_ref() == fs::canonicalize(&path).ok().as_ref() {
+            continue;
+        }
+        let old_enough = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .is_some_and(|age| age >= INACTIVE_RUNTIME_RETENTION);
+        if old_enough {
+            fs::remove_dir_all(path).ok();
+        }
+    }
 }
 
 fn runtime_root<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
@@ -446,6 +491,30 @@ mod tests {
 
         let error = resolve_from_root(&root).expect_err("invalid selection must fail");
         assert!(error.contains("selected xTB executable is unavailable"));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn managed_install_does_not_overwrite_a_newer_selection() {
+        let root = fixture_root();
+        let original = XtbRuntimeConfig::default();
+        let newer = root.join("newer/xtb");
+        write_config(
+            &root,
+            &XtbRuntimeConfig {
+                selected_executable_path: Some(newer.clone()),
+            },
+        )
+        .expect("write newer selection");
+
+        clear_selection_if_unchanged(&root, &original).expect("compare selection");
+
+        assert_eq!(
+            read_config(&root)
+                .expect("read selection")
+                .selected_executable_path,
+            Some(newer)
+        );
         fs::remove_dir_all(root).ok();
     }
 
