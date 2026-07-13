@@ -60,6 +60,7 @@ assert.doesNotMatch(browserDevXtbRuntime, /global["']?,\s*["']install/);
 assert.doesNotMatch(xtbCommand, /uv tool install xtb/);
 assert.doesNotMatch(viteConfig, /\["tool", "install", "xtb"\]/);
 assert.match(xtbRuntime, /MANAGED_INSTALL_TIMEOUT/);
+assert.match(xtbRuntime, /if validate_xtb\(&managed\)\.is_ok\(\)[\s\S]*return resolve_from_root\(&root\)/);
 assert.match(xtbRuntime, /validate_xtb\(&path\)/);
 assert.match(xtbRuntime, /fs::canonicalize\(&path\)/);
 assert.match(xtbRuntime, /symlink\(target, &next\)/);
@@ -69,6 +70,7 @@ assert.doesNotMatch(conformerCommand, /resolve_executable\("xtb"\)/);
 assert.match(viteConfig, /xtb = resolveBrowserDevXtb\(\)\.executablePath/);
 assert.match(browserDevXtbRuntime, /realpathSync\(path\)/);
 assert.match(browserDevXtbRuntime, /spawnSync\(path, \["--version"\]/);
+assert.match(browserDevXtbRuntime, /if \(isValidXtbExecutable\(managed\)\)[\s\S]*return resolveBrowserDevXtb\(\)/);
 
 assert.match(xtbCommand, /fn primary_open_path_for[\s\S]*\n\s*None\n\}/);
 assert.match(viteConfig, /function primaryBrowserDevXtbOpenPath[\s\S]*\n\s*return null;\n\}/);

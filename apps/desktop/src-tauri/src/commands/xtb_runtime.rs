@@ -79,6 +79,11 @@ pub(crate) fn install_managed<R: Runtime>(
         .lock()
         .map_err(|_| "The xTB installer lock is unavailable.".to_string())?;
     let root = runtime_root(app)?;
+    let managed = root.join("current/.pixi/envs/default/bin/xtb");
+    if validate_xtb(&managed).is_ok() {
+        write_config(&root, &XtbRuntimeConfig::default())?;
+        return resolve_from_root(&root);
+    }
     let pixi = resolve_pixi().ok_or_else(|| {
         "Managed xTB installation requires Pixi. Install Pixi, or choose an existing xTB executable in Settings.".to_string()
     })?;
