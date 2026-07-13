@@ -1,3 +1,4 @@
+use crate::commands::xtb_runtime::{self, XtbRuntimeSource};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -38,6 +39,8 @@ pub(crate) struct XtbStatus {
     version: Option<String>,
     installer: Option<String>,
     install_hint: String,
+    source: Option<XtbRuntimeSource>,
+    selected_executable_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,33 +99,27 @@ pub(crate) struct XtbRunResult {
 }
 
 #[tauri::command]
-pub(crate) fn xtb_status() -> XtbStatus {
-    xtb_status_from_environment()
+pub(crate) fn xtb_status<R: Runtime>(app: tauri::AppHandle<R>) -> XtbStatus {
+    xtb_status_from_environment(&app)
 }
 
 #[tauri::command]
-pub(crate) fn install_xtb() -> Result<XtbStatus, String> {
-    if xtb_status_from_environment().installed {
-        return Ok(xtb_status_from_environment());
-    }
-    let pixi = resolve_executable("pixi");
-    if let Some(pixi) = pixi {
-        let output = Command::new(&pixi)
-            .args(["global", "install", "xtb"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .map_err(|err| format!("Could not start pixi: {err}"))?;
-        if !output.status.success() {
-            return Err(format!(
-                "pixi global install xtb failed. {}",
-                command_output_text(&output.stdout, &output.stderr)
-            ));
-        }
-        return Ok(xtb_status_from_environment());
-    }
+pub(crate) fn select_xtb_executable<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    executable_path: Option<String>,
+) -> Result<XtbStatus, String> {
+    xtb_runtime::select(&app, executable_path)?;
+    Ok(xtb_status_from_environment(&app))
+}
 
-    Err("Automatic xTB installation requires pixi. Install pixi and run `pixi global install xtb`, or install xTB from conda-forge and make it available on PATH.".into())
+#[tauri::command]
+pub(crate) async fn install_xtb<R: Runtime>(app: tauri::AppHandle<R>) -> Result<XtbStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        xtb_runtime::install_managed(&app)?;
+        Ok(xtb_status_from_environment(&app))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -182,7 +179,7 @@ fn run_xtb_job_blocking<R: Runtime>(
     };
     assert_supported_xtb_operation(&request.operation)?;
     let started_at_ms = unix_timestamp_ms();
-    let executable = resolve_xtb_executable()?;
+    let executable = xtb_runtime::resolve(&app)?.executable_path;
     let work_dir = xtb_work_dir(&app, &request)?;
     write_xtb_run_metadata(&work_dir, &request, started_at_ms)?;
     let log_path = work_dir.join("xtb.log");
@@ -427,28 +424,30 @@ fn assert_supported_xtb_operation(operation: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn xtb_status_from_environment() -> XtbStatus {
-    match resolve_xtb_executable() {
-        Ok(path) => XtbStatus {
+fn xtb_status_from_environment<R: Runtime>(app: &tauri::AppHandle<R>) -> XtbStatus {
+    match xtb_runtime::resolve(app) {
+        Ok(resolution) => XtbStatus {
             installed: true,
-            version: xtb_version(&path),
-            installer: installer_for_executable(&path),
-            executable_path: Some(path.to_string_lossy().to_string()),
-            install_hint: "xTB is available. Burrete will use this executable for local xTB jobs.".into(),
+            version: xtb_version(&resolution.executable_path),
+            installer: installer_for_executable(&resolution.executable_path),
+            executable_path: Some(resolution.executable_path.to_string_lossy().to_string()),
+            install_hint: "xTB is available. Burrete will use this executable for local xTB jobs."
+                .into(),
+            source: Some(resolution.source),
+            selected_executable_path: resolution
+                .selected_executable_path
+                .map(|path| path.to_string_lossy().to_string()),
         },
-        Err(_) => XtbStatus {
+        Err(error) => XtbStatus {
             installed: false,
             executable_path: None,
             version: None,
             installer: resolve_executable("pixi").map(|_| "pixi".to_string()),
-            install_hint: "Install xTB with `pixi global install xtb` or from conda-forge. Burrete can run the pixi installer when pixi is available.".into(),
+            install_hint: error,
+            source: None,
+            selected_executable_path: None,
         },
     }
-}
-
-fn resolve_xtb_executable() -> Result<PathBuf, String> {
-    resolve_executable("xtb")
-        .ok_or_else(|| "xTB executable was not found. Install it with pixi global install xtb or make xtb available on PATH.".into())
 }
 
 fn resolve_executable(name: &str) -> Option<PathBuf> {

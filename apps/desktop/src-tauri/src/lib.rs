@@ -162,6 +162,7 @@ pub fn run() {
             commands::quicklook::reset_quick_look,
             commands::updater::install_update,
             commands::xtb::xtb_status,
+            commands::xtb::select_xtb_executable,
             commands::xtb::install_xtb,
             commands::xtb::run_xtb_job,
             commands::xtb::cancel_xtb_job,
