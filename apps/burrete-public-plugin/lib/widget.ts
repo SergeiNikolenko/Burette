@@ -1,4 +1,4 @@
-export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v16.html";
+export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v17.html";
 export const VIEWER_SHELL_SCRIPT_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.js";
 export const VIEWER_SHELL_STYLES_PATH =
@@ -6,7 +6,7 @@ export const VIEWER_SHELL_STYLES_PATH =
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burrete-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burrete-hosted-app.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-hosted-state-v1";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-mobile-bootstrap-v2";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
@@ -75,6 +75,7 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
         window.__BURRETE_HOSTED_MCP_WIDGET__ = true;
         window.__BURRETE_WEB_ASSETS_BASE__ = config.viewerAssets;
         window.__BURRETE_HOSTED_MCP_RESULTS__ = [];
+        window.__BURRETE_HOSTED_OPENAI_GLOBALS__ = {};
         const appQueue = [];
         const appReady = new Promise((resolve) => { window.__BURRETE_HOSTED_APP_READY__ = resolve; });
         window.__BURRETE_HOSTED_APP_QUEUE__ = appQueue;
@@ -104,13 +105,16 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
         }, { passive: true });
         window.addEventListener("openai:set_globals", (event) => {
           const globals = event.detail?.globals;
-          if (
-            !globals?.toolOutput
-            || window.__BURRETE_HOSTED_MCP_BRIDGE_READY__
-          ) return;
+          if (!globals || window.__BURRETE_HOSTED_MCP_BRIDGE_READY__) return;
+          if (Object.hasOwn(globals, "toolOutput")) {
+            window.__BURRETE_HOSTED_OPENAI_GLOBALS__.toolOutput = globals.toolOutput;
+          }
+          if (Object.hasOwn(globals, "toolResponseMetadata")) {
+            window.__BURRETE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata = globals.toolResponseMetadata;
+          }
           window.__BURRETE_HOSTED_MCP_RESULTS__.push({
-            structuredContent: globals.toolOutput,
-            _meta: globals.toolResponseMetadata,
+            structuredContent: window.__BURRETE_HOSTED_OPENAI_GLOBALS__.toolOutput,
+            _meta: window.__BURRETE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
           });
         }, { passive: true });
       })();
@@ -127,6 +131,16 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
         script.src = mobile ? ${serializeForInlineScript(mobileScript)} : ${serializeForInlineScript(shellScript)};
         if (!mobile) script.type = "module";
         script.crossOrigin = "anonymous";
+        const timeout = window.setTimeout(() => {
+          const root = document.getElementById("root");
+          if (root) root.textContent = "Burrete viewer failed to load.";
+        }, 15000);
+        script.addEventListener("load", () => window.clearTimeout(timeout), { once: true });
+        script.addEventListener("error", () => {
+          window.clearTimeout(timeout);
+          const root = document.getElementById("root");
+          if (root) root.textContent = "Burrete viewer failed to load.";
+        }, { once: true });
         document.body.appendChild(script);
       })();
     </script>

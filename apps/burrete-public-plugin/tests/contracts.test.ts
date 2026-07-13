@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import vm from "node:vm";
 import { z } from "zod/v4";
 import {
   publicStructureOutputSchema,
@@ -117,10 +118,10 @@ describe("viewer resource contract", () => {
 
   test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v16.html");
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v17.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-hosted-state-v1");
+    expect(html).toContain("?v=viewer-mobile-bootstrap-v2");
     expect(html).toContain(`https://burrete.example${VIEWER_MOBILE_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_APP_BRIDGE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
@@ -129,6 +130,8 @@ describe("viewer resource contract", () => {
     expect(html).toContain("ui/notifications/tool-result");
     expect(html).toContain("__BURRETE_HOSTED_MCP_WIDGET__");
     expect(html).toContain("__BURRETE_HOSTED_MCP_BRIDGE_READY__");
+    expect(html).toContain("__BURRETE_HOSTED_OPENAI_GLOBALS__");
+    expect(html).toContain("Burrete viewer failed to load.");
     expect(html).toContain('<div id="root"></div>');
     expect(html).toContain("body .app-shell { width: 100%; height: 100%; }");
     expect(html).not.toContain("<iframe");
@@ -162,6 +165,76 @@ describe("viewer resource contract", () => {
     expect(source).toContain("BurreteHostedAppBridge");
     expect(source).not.toContain("<iframe");
     expect(source).not.toContain("srcdoc");
+  });
+
+  test("starts the mobile viewer when tool output and metadata arrive separately", () => {
+    const source = readFileSync(path.resolve(
+      import.meta.dir,
+      "../assets/burrete-hosted-mobile.js",
+    ), "utf8");
+    const listeners = new Map<string, Array<(event: unknown) => void>>();
+    const root = {
+      id: "root",
+      insertedHtml: "",
+      insertAdjacentHTML(_position: string, html: string) {
+        this.insertedHtml = html;
+      },
+    };
+    const createElement = () => {
+      const elementListeners = new Map<string, Array<() => void>>();
+      return {
+        addEventListener(type: string, listener: () => void) {
+          const handlers = elementListeners.get(type) || [];
+          handlers.push(listener);
+          elementListeners.set(type, handlers);
+        },
+        style: { setProperty() {} },
+        textContent: "",
+      };
+    };
+    const parent = {};
+    const window = {
+      parent,
+      setTimeout: () => 1,
+      clearTimeout() {},
+      addEventListener(type: string, listener: (event: unknown) => void) {
+        const handlers = listeners.get(type) || [];
+        handlers.push(listener);
+        listeners.set(type, handlers);
+      },
+      dispatchOpenAI(globals: Record<string, unknown>) {
+        for (const listener of listeners.get("openai:set_globals") || []) {
+          listener({ detail: { globals } });
+        }
+      },
+    };
+    const document = {
+      body: { className: "", appendChild() {} },
+      head: { appendChild() {} },
+      documentElement: { classList: { add() {} } },
+      getElementById(id: string) {
+        return id === root.id ? root : null;
+      },
+      createElement,
+    };
+
+    vm.runInNewContext(source, {
+      TextEncoder,
+      btoa,
+      document,
+      navigator: { userAgent: "iPhone" },
+      window,
+    });
+
+    window.dispatchOpenAI({ toolOutput: { fileName: "1CRN.pdb" } });
+    expect(root.id).toBe("root");
+    window.dispatchOpenAI({
+      toolResponseMetadata: {
+        structure: { data: "ATOM\nEND\n", format: "pdb", label: "1CRN.pdb" },
+      },
+    });
+    expect(root.id).toBe("app");
+    expect(root.insertedHtml).toContain("Loading structure");
   });
 
   test("initializes the Apps bridge before publishing bounded viewer state", () => {
