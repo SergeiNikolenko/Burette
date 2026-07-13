@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { execFile, spawnSync } from "node:child_process";
-import { mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, delimiter, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ const pixiManifest = readFileSync(fileURLToPath(new URL("../../../../config/xtb/
 const pixiLock = readFileSync(fileURLToPath(new URL("../../../../config/xtb/pixi.lock", import.meta.url)), "utf8");
 const execFileAsync = promisify(execFile);
 let managedInstall: Promise<BrowserDevXtbResolution> | null = null;
+let selectionRevision = 0;
 
 export function resolveBrowserDevXtb(): BrowserDevXtbResolution {
   const selected = selectedBrowserDevXtbPath();
@@ -43,11 +44,16 @@ export function selectedBrowserDevXtbPath() {
 }
 
 export async function selectBrowserDevXtb(executablePath: unknown): Promise<void> {
+  const revision = ++selectionRevision;
   const selected = typeof executablePath === "string" && executablePath.trim() ? executablePath.trim() : null;
   if (selected) validateXtbExecutable(selected);
   await mkdir(runtimeRoot, { recursive: true });
-  const temporary = `${configPath}.tmp`;
+  const temporary = `${configPath}.${revision}.${Math.random().toString(36).slice(2, 8)}.tmp`;
   await writeFile(temporary, `${JSON.stringify({ selectedExecutablePath: selected }, null, 2)}\n`, "utf8");
+  if (revision !== selectionRevision) {
+    await rm(temporary, { force: true });
+    return;
+  }
   await rename(temporary, configPath);
 }
 
@@ -95,9 +101,11 @@ function automaticCandidates(): Array<[string, BrowserDevXtbSource]> {
 }
 
 async function installManaged(): Promise<BrowserDevXtbResolution> {
+  await cleanupInactiveManagedRuntimes();
+  const selectionBefore = selectionRevision;
   const managed = join(runtimeRoot, "current", ".pixi", "envs", "default", "bin", "xtb");
   if (isValidXtbExecutable(managed)) {
-    await selectBrowserDevXtb(null);
+    if (selectionRevision === selectionBefore) await selectBrowserDevXtb(null);
     return resolveBrowserDevXtb();
   }
   const pixi = resolvePixi();
@@ -117,11 +125,28 @@ async function installManaged(): Promise<BrowserDevXtbResolution> {
     });
     validateXtbExecutable(join(staging, ".pixi", "envs", "default", "bin", "xtb"));
     await promoteStagedRuntime(staging);
-    await selectBrowserDevXtb(null);
+    if (selectionRevision === selectionBefore) await selectBrowserDevXtb(null);
     return resolveBrowserDevXtb();
   } catch (error) {
     await rm(staging, { recursive: true, force: true });
     throw error;
+  }
+}
+
+async function cleanupInactiveManagedRuntimes() {
+  if (!existsSync(runtimeRoot)) return;
+  let active: string | null = null;
+  try {
+    active = realpathSync(join(runtimeRoot, "current"));
+  } catch (_) {
+    active = null;
+  }
+  const cutoff = Date.now() - 48 * 60 * 60_000;
+  for (const entry of await readdir(runtimeRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || (!entry.name.startsWith("staging-") && !entry.name.startsWith("legacy-"))) continue;
+    const path = join(runtimeRoot, entry.name);
+    if (path === active || statSync(path).mtimeMs > cutoff) continue;
+    await rm(path, { recursive: true, force: true });
   }
 }
 
