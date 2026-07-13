@@ -12,7 +12,7 @@ const quickLookConfig = source("PreviewExtension/Web/viewer-shell.js");
 assert.match(viewer, /activeConfig\?\.appViewer === true[\s\S]*activeConfig\?\.pubChemSearch === true/);
 assert.match(grid, /cfg\.appViewer === true && cfg\.pubChemSearch === true/);
 assert.match(viewer, /function molstarExactPubChemSdfEntry[\s\S]*\[target\.ligand, target\.selectedEntry, target\.sourceEntry\]/);
-assert.doesNotMatch(viewer.match(/function molstarExactPubChemSdfEntry[\s\S]*?\n  \}/u)?.[0] ?? "", /pdbLigandSdfEntryForResidue/);
+assert.doesNotMatch(viewer.match(/function molstarExactPubChemSdfEntry[\s\S]*?\n  \}/u)?.[0] ?? "", /pdbLigandSdfEntryForResidue|molstarStandaloneMoleculePreviewTarget/);
 assert.match(viewer, /function molstarPubChemSearchAvailable[\s\S]*!molstarStructureDirty[\s\S]*molstarExactPubChemSdfEntry/);
 assert.match(viewer, /openPubChemSearch/);
 assert.match(grid, /openPubChemSearch/);
