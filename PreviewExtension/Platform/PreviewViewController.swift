@@ -885,7 +885,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let gridAssetValidationStarted = Date()
         try validateVendoredMoleculeGridAssets(in: webDirectory, fileManager: fileManager, diagnostics: &diagnostics)
         diag("elapsed.gridAssetValidationMs=\(elapsedMs(since: gridAssetValidationStarted))")
-        let html = gridInlineHTML(title: url.lastPathComponent, preferences: preferences)
+        let html = gridInlineHTML(title: url.lastPathComponent, format: gridPreview.format, preferences: preferences)
         diag("gridInlineHTML.bytes=\(html.utf8.count)")
         let runtimeWriteStarted = Date()
         let runtimePreview = try createRuntimePreview(
@@ -895,7 +895,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             structureData: nil,
             auxiliaryFiles: [],
             gridRecordsScript: gridPreview.recordsScript,
-            requiredAssets: ["grid-ui.js", "grid-viewer.js", "grid.css"],
+            requiredAssets: ["grid-ui.js", "grid-viewer.js", "grid.css"] + (gridPreview.format == "dwar" ? ["openchemlib/openchemlib.js"] : []),
             requiresRDKit: true,
             externalArtifactSourceURL: nil,
             fileManager: fileManager,
@@ -1616,7 +1616,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return json
     }
 
-    private static func gridInlineHTML(title: String, preferences: PreviewPreferences) -> String {
+    private static func gridInlineHTML(title: String, format: String, preferences: PreviewPreferences) -> String {
         let safeTitle = escapeHTML(title)
         let backgroundClass = preferences.resolvedTransparentBackground ? "burette-transparent-background" : "burette-opaque-background"
         return """
@@ -1650,6 +1650,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <script src="preview-config.js"></script>
           <script src="preview-grid-records.js"></script>
           <script src="preview-rdkit-wasm.js"></script>
+          \(format == "dwar" ? #"<script src="../assets/openchemlib/openchemlib.js"></script>"# : "")
           <script src="../assets/rdkit/RDKit_minimal.js"></script>
           <script src="../assets/grid-ui.js"></script>
           <script src="../assets/grid-viewer.js"></script>
@@ -3562,7 +3563,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return 40 * mib
         case "bcif":
             return 50 * mib
-        case "abi", "com", "csv", "fdf", "fhiaims", "gms", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "dump", "top", "psf", "prmtop", "graphml":
+        case "abi", "com", "csv", "dwar", "fdf", "fhiaims", "gms", "sdf", "sd", "mol", "mol2", "xyz", "gro", "smi", "smiles", "tsv", "cub", "cube", "in", "inp", "log", "nw", "out", "psi4", "qcin", "vasp", "lammpstrj", "dump", "top", "psf", "prmtop", "graphml":
             return 25 * mib
         case "mae", "maegz", "cms":
             return 64 * mib

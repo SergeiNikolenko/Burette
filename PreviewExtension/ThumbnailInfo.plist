@@ -36,6 +36,7 @@
 				<string>com.local.burrete10.sdf</string>
 				<string>com.local.burrete10.smiles</string>
 				<string>com.local.burrete10.csv</string>
+				<string>com.local.burrete10.datawarrior</string>
 				<string>com.local.burrete10.tsv</string>
 				<string>public.comma-separated-values-text</string>
 				<string>public.tab-separated-values-text</string>

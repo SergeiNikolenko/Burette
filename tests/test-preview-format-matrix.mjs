@@ -125,7 +125,7 @@ for (const strategy of ["direct", "grid", "external", "trajectory", "convert", "
   assert.ok(representedStrategies.has(strategy), `Matrix must include a representative for ${strategy}`);
 }
 
-for (const formatId of ["smiles", "csv", "tsv"]) {
+for (const formatId of ["smiles", "csv", "tsv", "datawarrior"]) {
   const representative = representativeByFormat.get(formatId);
   assert.ok(representative, `${formatId} needs an explicit grid representative`);
   assert.equal(formatsById.get(formatId)?.preview?.renderer, "grid2d");

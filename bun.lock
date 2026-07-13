@@ -28,6 +28,7 @@
         "dompurify": "^3.4.10",
         "lucide-react": "^1.20.0",
         "molstar": "5.7.0",
+        "openchemlib": "9.24.0",
         "plotly.js-basic-dist-min": "^3.6.0",
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
@@ -1487,6 +1488,8 @@
     "on-headers": ["on-headers@1.1.0", "", {}, "sha512-737ZY3yNnXy37FHkQxPzt4UZ2UWPWiCZWLvFZ4fu5cueciegX0zGPnrlY6bwRg4FdQOe9YU8MkmJwGhoMybl8A=="],
 
     "once": ["once@1.4.0", "", { "dependencies": { "wrappy": "1" } }, "sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w=="],
+
+    "openchemlib": ["openchemlib@9.24.0", "", {}, "sha512-aIZc4wxcIq4d1RK32WAkGjjyFUKPcf2zdlklvzkmmo2HuHTojFUubeSxp0CQ6MZDGLiK18iQJwxA4/O9Db2bvA=="],
 
     "own-keys": ["own-keys@1.0.1", "", { "dependencies": { "get-intrinsic": "^1.2.6", "object-keys": "^1.1.1", "safe-push-apply": "^1.0.0" } }, "sha512-qFOyK5PjiWZd+QQIh+1jhdb9LpxTF0qs7Pm8o5QHYZ0M3vKqSqzsZaEB6oWlxZ+q2sJBMI/Ktgd2N5ZwQoRHfg=="],
 

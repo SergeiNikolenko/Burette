@@ -127,7 +127,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     write_bytes_atomic(
         &runtime.join("index.html"),
-        grid_html(file_path, &runtime, &assets, preferences).as_bytes(),
+        grid_html(file_path, extension, &runtime, &assets, preferences).as_bytes(),
     )?;
     write_bytes_atomic(
         &runtime.join("preview-config.js"),
@@ -149,6 +149,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
 
 fn grid_html(
     file_path: &Path,
+    extension: &str,
     runtime: &Path,
     assets: &Path,
     preferences: &ViewerPreferences,
@@ -168,6 +169,12 @@ fn grid_html(
     let config_js = asset_url(&runtime.join("preview-config.js"));
     let rdkit_wasm_js = asset_url(&runtime.join("preview-rdkit-wasm.js"));
     let rdkit_js = versioned_asset_url(&assets.join("rdkit").join("RDKit_minimal.js"));
+    let openchemlib_js = versioned_asset_url(&assets.join("openchemlib").join("openchemlib.js"));
+    let openchemlib_script = if extension == "dwar" {
+        format!(r#"<script src="{openchemlib_js}"></script>"#)
+    } else {
+        String::new()
+    };
     let grid_ui_js = versioned_asset_url(&assets.join("grid-ui.js"));
     let grid_js = versioned_asset_url(&assets.join("grid-viewer.js"));
     format!(
@@ -195,6 +202,7 @@ fn grid_html(
   <div id="status">Loading molecule grid...</div>
   <script src="{config_js}"></script>
   <script src="{rdkit_wasm_js}"></script>
+  {openchemlib_script}
   <script src="{rdkit_js}"></script>
   <script src="{grid_ui_js}"></script>
   <script src="{grid_js}"></script>
@@ -208,11 +216,14 @@ fn versioned_asset_url(path: &Path) -> String {
 }
 
 fn grid_can_preview(extension: &str) -> bool {
-    matches!(extension, "csv" | "sd" | "sdf" | "smi" | "smiles" | "tsv")
+    matches!(
+        extension,
+        "csv" | "dwar" | "sd" | "sdf" | "smi" | "smiles" | "tsv"
+    )
 }
 
 pub(crate) fn grid_requires_preview(extension: &str) -> bool {
-    matches!(extension, "csv" | "smi" | "smiles" | "tsv")
+    matches!(extension, "csv" | "dwar" | "smi" | "smiles" | "tsv")
 }
 
 #[cfg(test)]

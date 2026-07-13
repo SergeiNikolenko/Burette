@@ -52,6 +52,8 @@ struct MoleculeGridFileSupport: Equatable {
             return smiles
         case "csv":
             return csv
+        case "dwar":
+            return true
         case "tsv":
             return tsv
         default:
@@ -60,11 +62,11 @@ struct MoleculeGridFileSupport: Equatable {
     }
 
     static func canPreview(fileExtension ext: String) -> Bool {
-        ["csv", "sd", "sdf", "smi", "smiles", "tsv"].contains(ext.lowercased())
+        ["csv", "dwar", "sd", "sdf", "smi", "smiles", "tsv"].contains(ext.lowercased())
     }
 
     static func requiresGridPreview(fileExtension ext: String) -> Bool {
-        ["csv", "smi", "smiles", "tsv"].contains(ext.lowercased())
+        ["csv", "dwar", "smi", "smiles", "tsv"].contains(ext.lowercased())
     }
 
     private static func boolValue(_ value: Any?, defaultValue: Bool) -> Bool {
@@ -98,6 +100,9 @@ enum MoleculeGridPreviewBuilder {
         case "csv":
             collection = try parseDelimitedTableWithFallback(text, separator: ",", format: "csv", maxRecords: recordLimit)
             guard collection.recordsTotal > 0 else { return nil }
+        case "dwar":
+            collection = parseDataWarrior(text, maxRecords: recordLimit)
+            guard collection.recordsTotal > 0 else { return nil }
         case "smi", "smiles":
             collection = parseSmiles(text, maxRecords: recordLimit)
             guard collection.recordsTotal > 0 else { return nil }
@@ -120,11 +125,13 @@ enum MoleculeGridPreviewBuilder {
             ]
             if let smiles = record.smiles { payload["smiles"] = smiles }
             if let molblock = record.molblock { payload["molblock"] = molblock }
+            if let idcode = record.idcode { payload["idcode"] = idcode }
+            if let idcoordinates = record.idcoordinates { payload["idcoordinates"] = idcoordinates }
             return payload
         }
 
         let hasMoleculeRecords = includedRecords.contains { record in
-            !(record.smiles ?? "").isEmpty || !(record.molblock ?? "").isEmpty
+            !(record.smiles ?? "").isEmpty || !(record.molblock ?? "").isEmpty || !(record.idcode ?? "").isEmpty
         }
         var config: [String: Any] = [
             "mode": "grid2d",
@@ -190,6 +197,8 @@ enum MoleculeGridPreviewBuilder {
                 name: clipped(name, limit: 160),
                 smiles: clipped(smiles, limit: 2048),
                 molblock: nil,
+                idcode: nil,
+                idcoordinates: nil,
                 props: [:]
             ))
         }
@@ -217,6 +226,8 @@ enum MoleculeGridPreviewBuilder {
                 name: clipped(firstNonEmpty([props["Name"], props["NAME"], props["ID"], title, fallbackName]) ?? fallbackName, limit: 160),
                 smiles: firstNonEmpty([props["SMILES"], props["Smiles"], props["smiles"]]).map { clipped($0, limit: 2048) },
                 molblock: clipped(extractMolblock(lines), limit: 250_000),
+                idcode: nil,
+                idcoordinates: nil,
                 props: props
             ))
         }
@@ -231,6 +242,152 @@ enum MoleculeGridPreviewBuilder {
         }
         finishRecord()
         return MoleculeGridCollection(format: "sdf", records: records, recordsTotal: recordsTotal)
+    }
+
+    private struct DataWarriorColumn {
+        var parent: String?
+        var specialType: String?
+    }
+
+    private static func parseDataWarrior(_ text: String, maxRecords: Int) -> MoleculeGridCollection {
+        let lines = normalizedLines(text)
+        let columns = dataWarriorColumnProperties(lines)
+        guard let tableStart = dataWarriorTableStart(lines) else {
+            return MoleculeGridCollection(format: "dwar", records: [], recordsTotal: 0)
+        }
+        let headers = parseDelimitedLine(lines[tableStart], separator: "\t").map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let structureColumns: [(index: Int, isIDCode: Bool)] = headers.enumerated().compactMap { index, header in
+            let specialType = columns[header]?.specialType?.lowercased() ?? ""
+            if specialType == "idcode" { return (index, true) }
+            if isSmilesColumn(header.lowercased().replacingOccurrences(of: " ", with: "_")) { return (index, false) }
+            return nil
+        }
+        guard !structureColumns.isEmpty else {
+            return MoleculeGridCollection(format: "dwar", records: [], recordsTotal: 0)
+        }
+        let specialIndexes = Set(headers.enumerated().compactMap { index, header in
+            columns[header]?.specialType == nil ? nil : index
+        })
+        var coordinateIndexes: [String: Int] = [:]
+        for (index, header) in headers.enumerated() {
+            guard let column = columns[header],
+                  let parent = column.parent,
+                  column.specialType?.lowercased().hasPrefix("idcoordinates") == true else { continue }
+            coordinateIndexes[parent] = index
+        }
+        let nameIndex = headers.enumerated().first { index, header in
+            guard !specialIndexes.contains(index) else { return false }
+            return ["compound_id", "id", "name", "title", "compound"].contains(
+                header.lowercased().replacingOccurrences(of: " ", with: "_")
+            )
+        }?.offset
+        var records: [MoleculeGridRecord] = []
+        var recordsTotal = 0
+        let multipleStructureColumns = structureColumns.count > 1
+        for (rowIndex, line) in lines.dropFirst(tableStart + 1).enumerated() {
+            if dataWarriorSectionTag(line) { break }
+            guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            let cells = parseDelimitedLine(line, separator: "\t")
+            for structure in structureColumns {
+                guard structure.index < cells.count else { continue }
+                let value = cells[structure.index].trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !value.isEmpty else { continue }
+                defer { recordsTotal += 1 }
+                guard records.count < maxRecords else { continue }
+                let columnName = headers[structure.index].isEmpty ? "Column \(structure.index + 1)" : headers[structure.index]
+                let rawName = nameIndex.flatMap { $0 < cells.count ? cells[$0].trimmingCharacters(in: .whitespacesAndNewlines) : nil } ?? ""
+                let baseName = rawName.isEmpty ? "Molecule \(rowIndex + 1)" : rawName
+                let name = multipleStructureColumns ? "\(baseName) \(columnName)" : baseName
+                var props: [String: String] = [
+                    "DataWarrior row": "\(rowIndex + 1)",
+                    "Structure column": columnName,
+                ]
+                for (index, header) in headers.enumerated() {
+                    if index == structure.index || index == nameIndex || specialIndexes.contains(index) || index >= cells.count { continue }
+                    let cell = cells[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !cell.isEmpty, props.count < 64 {
+                        props[clipped(header.isEmpty ? "Column \(index + 1)" : header, limit: 80)] = clipped(cell, limit: 500)
+                    }
+                }
+                let coordinates = coordinateIndexes[columnName]
+                    .flatMap { $0 < cells.count ? cells[$0].trimmingCharacters(in: .whitespacesAndNewlines) : nil }
+                    .flatMap { $0.isEmpty ? nil : clipped($0, limit: 16_384) }
+                records.append(MoleculeGridRecord(
+                    index: recordsTotal,
+                    name: clipped(name, limit: 160),
+                    smiles: structure.isIDCode ? nil : clipped(value, limit: 2048),
+                    molblock: nil,
+                    idcode: structure.isIDCode ? clipped(value, limit: 4096) : nil,
+                    idcoordinates: coordinates,
+                    props: props
+                ))
+            }
+        }
+        return MoleculeGridCollection(format: "dwar", records: records, recordsTotal: recordsTotal)
+    }
+
+    private static func dataWarriorColumnProperties(_ lines: [String]) -> [String: DataWarriorColumn] {
+        var columns: [String: DataWarriorColumn] = [:]
+        var currentName: String?
+        var inProperties = false
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed == "<column properties>" {
+                inProperties = true
+                continue
+            }
+            if trimmed == "</column properties>" { break }
+            guard inProperties else { continue }
+            if let name = dataWarriorTagValue(trimmed, tag: "columnName") {
+                currentName = name
+                columns[name] = DataWarriorColumn()
+                continue
+            }
+            guard let property = dataWarriorTagValue(trimmed, tag: "columnProperty"),
+                  let currentName else { continue }
+            let parts = property.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 2 else { continue }
+            if parts[0] == "specialType" { columns[currentName]?.specialType = parts[1] }
+            if parts[0] == "parent" { columns[currentName]?.parent = parts[1] }
+        }
+        return columns
+    }
+
+    private static func dataWarriorTableStart(_ lines: [String]) -> Int? {
+        var section: String?
+        for (index, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("</"), trimmed.hasSuffix(">") {
+                section = nil
+                continue
+            }
+            if trimmed.hasPrefix("<"), trimmed.hasSuffix(">"), !trimmed.contains("="), !trimmed.hasPrefix("</") {
+                section = trimmed
+                continue
+            }
+            if section == nil, !trimmed.isEmpty, !trimmed.hasPrefix("<") { return index }
+        }
+        return nil
+    }
+
+    private static func dataWarriorTagValue(_ line: String, tag: String) -> String? {
+        let prefix = "<\(tag)=\""
+        guard line.hasPrefix(prefix), line.hasSuffix("\">") else { return nil }
+        return String(line.dropFirst(prefix.count).dropLast(2))
+            .replacingOccurrences(of: "&#x09;", with: "\t")
+            .replacingOccurrences(of: "&#9;", with: "\t")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&apos;", with: "'")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&amp;", with: "&")
+    }
+
+    private static func dataWarriorSectionTag(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasPrefix("<") && trimmed.hasSuffix(">")
     }
 
     private static func parseDelimitedTable(
@@ -294,6 +451,8 @@ enum MoleculeGridPreviewBuilder {
                     name: clipped(name, limit: 160),
                     smiles: clipped(smiles, limit: 2048),
                     molblock: nil,
+                    idcode: nil,
+                    idcoordinates: nil,
                     props: props
                 ))
             }
@@ -352,6 +511,8 @@ enum MoleculeGridPreviewBuilder {
                 name: clipped(name, limit: 160),
                 smiles: clipped(smiles, limit: 2048),
                 molblock: nil,
+                idcode: nil,
+                idcoordinates: nil,
                 props: props
             ))
         }
@@ -397,6 +558,8 @@ enum MoleculeGridPreviewBuilder {
                 name: clipped(name, limit: 160),
                 smiles: nil,
                 molblock: nil,
+                idcode: nil,
+                idcoordinates: nil,
                 props: props
             ))
         }
@@ -620,6 +783,8 @@ private struct MoleculeGridRecord {
     let name: String
     let smiles: String?
     let molblock: String?
+    let idcode: String?
+    let idcoordinates: String?
     let props: [String: String]
 }
 
