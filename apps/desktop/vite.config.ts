@@ -1273,12 +1273,6 @@ async function annotateBrowserDevSpectrumWithMsbuddy(body: Record<string, unknow
       candidates: candidates.length > 0 ? candidates : fallbackCandidates,
     };
   } catch (error) {
-    let selectedExecutablePath: string | null = null;
-    try {
-      selectedExecutablePath = selectedBrowserDevXtbPath();
-    } catch (_) {
-      selectedExecutablePath = null;
-    }
     return {
       ok: true,
       runtime: "fallback",
@@ -1835,6 +1829,12 @@ async function browserDevXtbStatus() {
   try {
     resolution = resolveBrowserDevXtb();
   } catch (error) {
+    let selectedExecutablePath: string | null = null;
+    try {
+      selectedExecutablePath = selectedBrowserDevXtbPath();
+    } catch (_) {
+      selectedExecutablePath = null;
+    }
     return {
       installed: false,
       executablePath: null,
