@@ -309,6 +309,7 @@ for (const commandPath of [
   'commands::shell::write_base64_file',
   'commands::shell::write_text_file',
   'commands::quicklook::reset_quick_look',
+  'commands::pubchem::open_pubchem_search',
   'commands::updater::install_update',
 ]) {
   assert.match(lib, new RegExp(commandPath.replaceAll('::', '::')));

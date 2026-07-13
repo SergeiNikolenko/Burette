@@ -36,7 +36,7 @@ import { registerBrowserDevMsbuddyRoutes } from "./vite/browser-dev/msbuddy";
 import { registerBrowserDevMdsmoothRoute } from "./vite/browser-dev/mdsmooth";
 import { registerBrowserDevRuntimeDoctorRoute } from "./vite/browser-dev/runtime-doctor";
 import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
-import { installBrowserDevManagedXtb, resolveBrowserDevXtb, selectBrowserDevXtb } from "./vite/browser-dev/xtb-runtime";
+import { installBrowserDevManagedXtb, resolveBrowserDevXtb, selectBrowserDevXtb, selectedBrowserDevXtbPath } from "./vite/browser-dev/xtb-runtime";
 import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
@@ -1273,6 +1273,12 @@ async function annotateBrowserDevSpectrumWithMsbuddy(body: Record<string, unknow
       candidates: candidates.length > 0 ? candidates : fallbackCandidates,
     };
   } catch (error) {
+    let selectedExecutablePath: string | null = null;
+    try {
+      selectedExecutablePath = selectedBrowserDevXtbPath();
+    } catch (_) {
+      selectedExecutablePath = null;
+    }
     return {
       ok: true,
       runtime: "fallback",
@@ -1836,7 +1842,7 @@ async function browserDevXtbStatus() {
       installer: resolveExecutable("pixi") ? "pixi" : null,
       installHint: error instanceof Error ? error.message : String(error),
       source: null,
-      selectedExecutablePath: null,
+      selectedExecutablePath,
     };
   }
   const executable = resolution.executablePath;
@@ -2031,7 +2037,12 @@ async function runBrowserDevConformerJobImpl(request: BrowserDevConformerRunRequ
     exitCode = result.status;
     log = result.log;
     if (operation === "crest-generate" && shouldRetryCrestWithXtbPreopt(request, exitCode, log)) {
-      const xtb = resolveExecutable("xtb");
+      let xtb: string | null = null;
+      try {
+        xtb = resolveBrowserDevXtb().executablePath;
+      } catch (_) {
+        xtb = null;
+      }
       if (xtb) {
         const recovery = "xTB pre-optimization after CREST initial geometry optimization failure";
         const xtbLogPath = join(workDir, `${operation}-xtb-preopt.log`);

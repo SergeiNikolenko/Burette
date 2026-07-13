@@ -57,6 +57,7 @@ commands.allow = [
   "write_base64_file",
   "write_text_file",
   "reset_quick_look",
+  "open_pubchem_search",
   "install_update",
   "xtb_status",
   "select_xtb_executable",
