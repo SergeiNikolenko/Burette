@@ -2938,7 +2938,7 @@ async function runBrowserDevXtbJobImpl(request: BrowserDevXtbRunRequest, jobKey:
     "input-with-h",
   );
   const args = await buildBrowserDevXtbArgs(request, operation, inputPath, workDir);
-  const timeout = Math.max(1, Number(request.timeoutSeconds) || 180) * 1000;
+  const timeout = Math.min(86_400, Math.max(1, Number(request.timeoutSeconds) || 180)) * 1000;
   const commandEnv = { ...process.env };
   if (Number(request.threads) > 0) commandEnv.OMP_NUM_THREADS = String(request.threads);
   let stdout = "";
