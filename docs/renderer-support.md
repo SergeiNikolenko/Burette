@@ -30,7 +30,10 @@ external-renderer-only groups:
 - ABI, COM, FDF, IN, INP, NW, OUT, PSI4, QCIN
 - VASP
 
-SDF, SMILES, CSV, and TSV collection previews use the grid runtime.
+SDF, SMILES, CSV, TSV, and DataWarrior (`.dwar`) collection previews use the
+grid runtime. DataWarrior IDCode and coordinate columns are decoded locally with
+the bundled OpenChemLib runtime; ordinary table properties remain available for
+search, sorting, and inspection.
 
 OpenMM, Amber, and CHARMM coordinate artifacts render as structures when they
 contain standalone coordinates. This includes INPCRD, RST7, CRD, RST, STATE,

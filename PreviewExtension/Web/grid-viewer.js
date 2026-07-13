@@ -765,7 +765,7 @@
       throw new Error('BurreteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
     }
     window.BurreteGridUI.mountGridControls(host, {
-      format: ['csv', 'sdf', 'smiles', 'tsv'].includes(cfg.format) ? cfg.format : 'smiles',
+      format: ['csv', 'dwar', 'sdf', 'smiles', 'tsv'].includes(cfg.format) ? cfg.format : 'smiles',
       label: cfg.label || 'Molecule collection',
       exportEnabled: caps.export,
       selectionEnabled: caps.selection,
@@ -1856,7 +1856,7 @@
         limit: loadBatchSize(cfg)
       }));
       if (token !== state.token) return;
-      state.rows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
+      state.rows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
       invalidateTableColumnCatalog();
       applyGridPageState(result);
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
@@ -1893,7 +1893,7 @@
           offset,
           limit
         }));
-        const pageRows = Array.isArray(result.rows) ? result.rows : [];
+        const pageRows = await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg);
         applyGridPageState(result);
         total = Number(result.totalRows || 0);
         for (const row of pageRows) {
@@ -2008,7 +2008,7 @@
         limit: loadBatchSize(cfg)
       }));
       if (token !== state.token) return;
-      const nextRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
+      const nextRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
       applyGridPageState(result);
       state.rows.push(...nextRows);
       if (nextRows.length) invalidateTableColumnCatalog();
@@ -2529,7 +2529,7 @@
           limit: Math.max(loadBatchSize(cfg), 240)
         }));
         if (token !== state.token) return;
-        const nextRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
+        const nextRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
         state.totalRows = Number(result.totalRows || state.totalRows);
         if (!nextRows.length) break;
         state.rows.push(...nextRows);
@@ -5549,7 +5549,7 @@
         offset,
         limit
       }));
-      const pageRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
+      const pageRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
       applyGridPageState(result);
       total = Number(result.totalRows || 0);
       rows.push(...pageRows);
@@ -5611,11 +5611,41 @@
     return escapeHTML(value).replace(/`/g, '&#96;');
   }
 
+  async function hydrateDataWarriorRows(rows, cfg) {
+    if (!Array.isArray(rows) || !rows.some(row => String(row?.idcode || '').trim())) return rows;
+    const openChemLib = window.BurreteOpenChemLib;
+    if (!openChemLib?.Molecule?.fromIDCode) throw new Error('OpenChemLib IDCode decoder is unavailable.');
+    return rows.map(row => {
+      const idcode = String(row?.idcode || '').trim();
+      if (!idcode || row.molblock) return row;
+      try {
+        const coordinates = String(row?.idcoordinates || '').trim();
+        const molecule = coordinates
+          ? openChemLib.Molecule.fromIDCode(idcode, coordinates)
+          : openChemLib.Molecule.fromIDCode(idcode, true);
+        return {
+          ...row,
+          molblock: molecule.toMolfile(),
+          smiles: molecule.toIsomericSmiles(),
+        };
+      } catch (error) {
+        return {
+          ...row,
+          props: {
+            ...(row.props || {}),
+            'DataWarrior decode error': error?.message || String(error),
+          },
+        };
+      }
+    });
+  }
+
   async function main() {
     try {
       const cfg = config();
       resetDocumentRuntimeState();
       state.remoteMode = isRemoteMode(cfg);
+      if (!state.remoteMode) state.all = await hydrateDataWarriorRows(state.all, cfg);
       state.totalRows = state.remoteMode ? 0 : state.all.length;
       applyTheme(cfg);
       installThemeListener(cfg);
