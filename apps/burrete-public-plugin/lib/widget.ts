@@ -1,4 +1,4 @@
-export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v17.html";
+export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v16.html";
 export const VIEWER_SHELL_SCRIPT_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.js";
 export const VIEWER_SHELL_STYLES_PATH =
