@@ -1,14 +1,20 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Mutex, OnceLock};
+use std::thread;
+use std::time::{Duration, Instant};
 use tauri::{Manager, Runtime};
 
 const CONFIG_FILE: &str = "config.json";
 const PIXI_MANIFEST: &str = include_str!("../../../../../config/xtb/pixi.toml");
 const PIXI_LOCK: &str = include_str!("../../../../../config/xtb/pixi.lock");
 static MANAGED_INSTALL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+const XTB_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+const MANAGED_INSTALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const COMMAND_CAPTURE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -41,16 +47,20 @@ pub(crate) fn resolve<R: Runtime>(
     resolve_from_root(&root)
 }
 
+pub(crate) fn selected<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Option<PathBuf>, String> {
+    Ok(read_config(&runtime_root(app)?)?.selected_executable_path)
+}
+
 pub(crate) fn select<R: Runtime>(
     app: &tauri::AppHandle<R>,
     executable_path: Option<String>,
-) -> Result<XtbRuntimeResolution, String> {
+) -> Result<(), String> {
     let root = runtime_root(app)?;
     let selected = executable_path
         .map(|value| PathBuf::from(value.trim()))
         .filter(|path| !path.as_os_str().is_empty());
     if let Some(path) = selected.as_deref() {
-        validate_selected(path)?;
+        validate_xtb(path)?;
     }
     write_config(
         &root,
@@ -58,7 +68,7 @@ pub(crate) fn select<R: Runtime>(
             selected_executable_path: selected,
         },
     )?;
-    resolve_from_root(&root)
+    Ok(())
 }
 
 pub(crate) fn install_managed<R: Runtime>(
@@ -97,7 +107,7 @@ fn runtime_root<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String
 fn resolve_from_root(root: &Path) -> Result<XtbRuntimeResolution, String> {
     let config = read_config(root)?;
     if let Some(selected) = config.selected_executable_path {
-        validate_selected(&selected).map_err(|error| {
+        validate_xtb(&selected).map_err(|error| {
             format!(
                 "The selected xTB executable is unavailable: {error} Choose another executable in Settings or use automatic discovery."
             )
@@ -110,9 +120,9 @@ fn resolve_from_root(root: &Path) -> Result<XtbRuntimeResolution, String> {
     }
 
     for (path, source) in automatic_candidates(root) {
-        if is_executable_file(&path) {
+        if validate_xtb(&path).is_ok() {
             return Ok(XtbRuntimeResolution {
-                executable_path: path,
+                executable_path: fs::canonicalize(&path).unwrap_or(path),
                 source,
                 selected_executable_path: None,
             });
@@ -184,49 +194,141 @@ fn install_into_staging(pixi: &Path, staging: &Path) -> Result<(), String> {
         .map_err(|error| format!("Could not write {}: {error}", manifest.display()))?;
     fs::write(staging.join("pixi.lock"), PIXI_LOCK)
         .map_err(|error| format!("Could not write the xTB Pixi lockfile: {error}"))?;
-    let output = Command::new(pixi)
+    let mut command = Command::new(pixi);
+    command
         .args(["install", "--locked", "--manifest-path"])
-        .arg(&manifest)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|error| format!("Could not start Pixi: {error}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        .arg(&manifest);
+    let (status, stdout, stderr) = run_bounded_command(
+        command,
+        MANAGED_INSTALL_TIMEOUT,
+        COMMAND_CAPTURE_BYTES,
+        "Pixi",
+    )?;
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&stderr);
+        let stdout = String::from_utf8_lossy(&stdout);
         return Err(format!(
             "Managed xTB installation failed: {}",
             truncate_output(&format!("{stderr}\n{stdout}"), 1200)
         ));
     }
     let executable = staging.join(".pixi/envs/default/bin/xtb");
-    if !is_executable_file(&executable) {
-        return Err(format!(
-            "Pixi completed, but the managed xTB executable was not created at {}.",
-            executable.display()
-        ));
-    }
+    validate_xtb(&executable).map_err(|error| {
+        format!("Pixi completed, but the managed xTB runtime failed validation: {error}")
+    })?;
     Ok(())
 }
 
 fn promote_staged_runtime(root: &Path, staging: &Path) -> Result<(), String> {
     let current = root.join("current");
-    let backup = root.join("previous");
-    fs::remove_dir_all(&backup).ok();
-    if current.exists() {
-        fs::rename(&current, &backup)
-            .map_err(|error| format!("Could not stage the previous xTB runtime: {error}"))?;
+    let next = root.join("current.next");
+    let target = staging
+        .file_name()
+        .ok_or_else(|| "The staged xTB runtime has no directory name.".to_string())?;
+    fs::remove_file(&next).ok();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, &next)
+        .map_err(|error| format!("Could not prepare the managed xTB runtime pointer: {error}"))?;
+    #[cfg(not(unix))]
+    return Err("Managed xTB runtime promotion is supported on Unix platforms.".into());
+
+    let mut legacy = None;
+    if current.is_dir() && !current.is_symlink() {
+        let legacy_path = root.join(format!("legacy-{}", uuid::Uuid::new_v4()));
+        fs::rename(&current, &legacy_path)
+            .map_err(|error| format!("Could not preserve the previous xTB runtime: {error}"))?;
+        legacy = Some(legacy_path);
     }
-    if let Err(error) = fs::rename(staging, &current) {
-        if backup.exists() {
-            fs::rename(&backup, &current).ok();
+    if let Err(error) = fs::rename(&next, &current) {
+        if let Some(legacy) = legacy {
+            fs::rename(legacy, &current).ok();
         }
         return Err(format!(
             "Could not activate the managed xTB runtime: {error}"
         ));
     }
-    fs::remove_dir_all(backup).ok();
     Ok(())
+}
+
+fn validate_xtb(path: &Path) -> Result<String, String> {
+    validate_selected(path)?;
+    let mut command = Command::new(path);
+    command.arg("--version");
+    let (status, stdout, stderr) =
+        run_bounded_command(command, XTB_PROBE_TIMEOUT, 128 * 1024, "xTB")?;
+    let text = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&stdout),
+        String::from_utf8_lossy(&stderr)
+    );
+    let version = text
+        .lines()
+        .map(str::trim)
+        .find(|line| line.to_ascii_lowercase().contains("xtb version"))
+        .filter(|_| status.success())
+        .ok_or_else(|| format!("{} did not report a valid xTB version.", path.display()))?;
+    Ok(version.to_string())
+}
+
+fn run_bounded_command(
+    mut command: Command,
+    timeout: Duration,
+    capture_limit: usize,
+    label: &str,
+) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), String> {
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("Could not start {label}: {error}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| format!("Could not capture {label} stdout."))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| format!("Could not capture {label} stderr."))?;
+    let stdout_reader = thread::spawn(move || read_bounded(stdout, capture_limit));
+    let stderr_reader = thread::spawn(move || read_bounded(stderr, capture_limit));
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(25)),
+            Ok(None) => {
+                child.kill().ok();
+                child.wait().ok();
+                return Err(format!(
+                    "{label} timed out after {} seconds.",
+                    timeout.as_secs()
+                ));
+            }
+            Err(error) => return Err(format!("Could not inspect {label}: {error}")),
+        }
+    };
+    let stdout = stdout_reader
+        .join()
+        .map_err(|_| format!("Could not collect {label} stdout."))??;
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| format!("Could not collect {label} stderr."))??;
+    Ok((status, stdout, stderr))
+}
+
+fn read_bounded(mut reader: impl Read, limit: usize) -> Result<Vec<u8>, String> {
+    let mut captured = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let count = reader
+            .read(&mut buffer)
+            .map_err(|error| error.to_string())?;
+        if count == 0 {
+            return Ok(captured);
+        }
+        let remaining = limit.saturating_sub(captured.len());
+        captured.extend_from_slice(&buffer[..count.min(remaining)]);
+    }
 }
 
 fn truncate_output(text: &str, maximum: usize) -> String {
@@ -299,7 +401,7 @@ mod tests {
 
     fn make_executable(path: &Path) {
         fs::create_dir_all(path.parent().expect("parent")).expect("create parent");
-        fs::write(path, "#!/bin/sh\n").expect("write executable");
+        fs::write(path, "#!/bin/sh\necho 'xTB version 6.7.1'\n").expect("write executable");
         let mut permissions = fs::metadata(path).expect("metadata").permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(path, permissions).expect("set permissions");
@@ -349,7 +451,10 @@ mod tests {
         make_executable(&managed);
 
         let resolution = resolve_from_root(&root).expect("resolve managed");
-        assert_eq!(resolution.executable_path, managed);
+        assert_eq!(
+            resolution.executable_path,
+            fs::canonicalize(managed).expect("canonical managed executable")
+        );
         assert_eq!(resolution.source, XtbRuntimeSource::Managed);
         fs::remove_dir_all(root).ok();
     }
@@ -369,7 +474,14 @@ mod tests {
             fs::read_to_string(current).expect("read current"),
             "new runtime"
         );
-        assert!(!root.join("previous").exists());
+        assert!(fs::symlink_metadata(root.join("current"))
+            .expect("current metadata")
+            .file_type()
+            .is_symlink());
+        assert!(fs::read_dir(&root)
+            .expect("runtime root")
+            .flatten()
+            .any(|entry| entry.file_name().to_string_lossy().starts_with("legacy-")));
         fs::remove_dir_all(root).ok();
     }
 }

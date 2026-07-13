@@ -445,7 +445,10 @@ fn xtb_status_from_environment<R: Runtime>(app: &tauri::AppHandle<R>) -> XtbStat
             installer: resolve_executable("pixi").map(|_| "pixi".to_string()),
             install_hint: error,
             source: None,
-            selected_executable_path: None,
+            selected_executable_path: xtb_runtime::selected(app)
+                .ok()
+                .flatten()
+                .map(|path| path.to_string_lossy().to_string()),
         },
     }
 }
@@ -501,13 +504,44 @@ fn is_executable(path: &Path) -> bool {
 }
 
 fn xtb_version(executable: &Path) -> Option<String> {
-    let output = Command::new(executable)
+    let started = Instant::now();
+    let mut child = Command::new(executable)
         .arg("--version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
+        .spawn()
         .ok()?;
-    let text = command_output_text(&output.stdout, &output.stderr);
+    let status = loop {
+        match child.try_wait().ok()? {
+            Some(status) => break status,
+            None if started.elapsed() < Duration::from_secs(5) => {
+                thread::sleep(Duration::from_millis(20));
+            }
+            None => {
+                child.kill().ok();
+                child.wait().ok();
+                return None;
+            }
+        }
+    };
+    if !status.success() {
+        return None;
+    }
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    child
+        .stdout
+        .take()?
+        .take(128 * 1024)
+        .read_to_end(&mut stdout)
+        .ok()?;
+    child
+        .stderr
+        .take()?
+        .take(128 * 1024)
+        .read_to_end(&mut stderr)
+        .ok()?;
+    let text = command_output_text(&stdout, &stderr);
     let lines = text
         .lines()
         .map(str::trim)

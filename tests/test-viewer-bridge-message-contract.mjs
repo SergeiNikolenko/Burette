@@ -22,6 +22,7 @@ function makeHandlers(overrides = {}) {
     handleGridRuntimeMessage: handler("grid-runtime"),
     handleKetcherViewerMessage: handler("ketcher"),
     handleMolstarContextMessage: handler("molstar-context"),
+    handlePubChemSearchMessage: handler("pubchem"),
     handleRendererMessage: handler("renderer"),
     handleSdfViewerMessage: async (...args) => {
       calls.push(["sdf", ...args]);
@@ -68,6 +69,23 @@ assert.equal(parseViewerBridgeMessage({ data: { source: "unknown", body }, sourc
 assert.equal(viewerBridgeBodyDocumentId(body), "doc-1");
 assert.equal(viewerBridgeBodyDocumentId({ documentId: 1 }), undefined);
 assert.equal(viewerBridgeBodyDocumentId(null), undefined);
+
+{
+  const pubChemBody = { type: "openPubChemSearch", searchType: "identity", smiles: "C#N", documentId: "doc-1" };
+  const pubChemMessage = parseViewerBridgeMessage({
+    data: { source: "burrete-viewer", body: pubChemBody },
+    source: eventSource,
+  });
+  assert.ok(pubChemMessage);
+  const { calls, handlers } = makeHandlers({
+    handlePubChemSearchMessage: (receivedBody) => {
+      calls.push(["pubchem", receivedBody]);
+      return true;
+    },
+  });
+  assert.equal(await dispatchViewerBridgeMessage(pubChemMessage, handlers), true);
+  assert.equal(calls.some(([name]) => name === "pubchem"), true);
+}
 
 {
   const { calls, handlers } = makeHandlers({
