@@ -161,6 +161,22 @@
       "quickLook": { "sizeLimitMiB": 25 }
     },
     {
+      "id": "datawarrior",
+      "contentType": "com.local.burrete10.datawarrior",
+      "extensions": ["dwar"],
+      "mimeTypes": ["chemical/x-datawarrior", "application/x-datawarrior"],
+      "conformsTo": ["public.plain-text", "public.data"],
+      "description": "DataWarrior molecular structure table",
+      "grid": { "enabled": true, "requiresPreview": true, "format": "dwar", "rendererSwitch": false },
+      "preview": {
+        "strategy": "grid",
+        "renderer": "grid2d",
+        "primary": { "role": "grid-records", "format": "dwar", "binary": false },
+        "capabilities": { "hasGridSearch": true }
+      },
+      "quickLook": { "sizeLimitMiB": 25 }
+    },
+    {
       "id": "mol",
       "contentType": "com.local.burrete10.mol",
       "contentTypeAliases": ["com.schrodinger.mol", "net.sourceforge.openbabel.mdl"],
@@ -428,7 +444,7 @@
   "documentTypes": {
     "name": "Molecular structure files",
     "extensions": [
-      "abi", "arc", "bcif", "cfg", "cif", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "edge", "edr", "ent", "fasta", "fdef", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
+      "abi", "arc", "bcif", "cfg", "cif", "cms", "com", "config", "coor", "crdbox", "csv", "cub", "cube", "data", "dcd", "dms", "dump", "dwar", "edge", "edr", "ent", "fasta", "fdef", "fdf", "fhiaims", "gms", "graphml", "gro", "gsd", "h5md", "history",
       "in", "inp", "inpcrd", "itp", "lammpstrj", "lammps", "lmp", "log", "mae", "mae.gz", "maegz", "magma", "mcif", "mdcrd", "mdl", "mgf", "mmcif", "mmtf", "mol",
       "json", "mol2", "ms", "msp", "mvsj", "mvsx", "mzml", "mzxml", "namdbin", "nc", "ncdf", "ncrst", "nctraj", "netcdf", "nw", "out", "par", "parm", "parm7", "pdb", "pdbqt", "pqr", "pos", "prm", "prmtop", "psf", "psi4", "qcin",
       "restrt", "rst", "rst7", "rtf", "sd", "sdf", "smi", "smiles", "state", "str", "top", "tpr", "tng", "trc", "trj", "trr", "trz", "tsv", "txyz", "vasp", "xtc", "xml", "xpdb", "xvg", "xyz", "xyzr", "ph4",
@@ -445,6 +461,7 @@
       "com.local.burrete10.sdf",
       "com.local.burrete10.csv",
       "com.local.burrete10.tsv",
+      "com.local.burrete10.datawarrior",
       "com.local.burrete10.mol",
       "com.local.burrete10.mol2",
       "com.local.burrete10.xyz",
@@ -475,6 +492,7 @@
       "com.local.burrete10.smiles",
       "com.local.burrete10.csv",
       "com.local.burrete10.tsv",
+      "com.local.burrete10.datawarrior",
       "public.comma-separated-values-text",
       "public.tab-separated-values-text",
       "com.local.burrete10.mol",

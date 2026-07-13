@@ -41,11 +41,12 @@
 				<string>cub</string>
 				<string>cube</string>
 				<string>data</string>
-					<string>dcd</string>
-					<string>dms</string>
-					<string>dump</string>
-					<string>edge</string>
-					<string>edr</string>
+				<string>dcd</string>
+				<string>dms</string>
+				<string>dump</string>
+				<string>dwar</string>
+				<string>edge</string>
+				<string>edr</string>
 				<string>ent</string>
 				<string>fasta</string>
 				<string>fdef</string>
@@ -155,6 +156,7 @@
 				<string>com.local.burrete10.sdf</string>
 				<string>com.local.burrete10.smiles</string>
 				<string>com.local.burrete10.csv</string>
+				<string>com.local.burrete10.datawarrior</string>
 				<string>com.local.burrete10.tsv</string>
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
@@ -217,6 +219,29 @@
 			<dict>
 				<key>UTTypeConformsTo</key>
 				<array>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>DataWarrior molecular structure table</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burrete10.datawarrior</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>dwar</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-datawarrior</string>
+					<string>application/x-datawarrior</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
