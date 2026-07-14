@@ -16,6 +16,17 @@ export async function requestXtbStatus(): Promise<XtbStatus> {
   return browserDevXtbJson<XtbStatus>("/__burette/xtb-status");
 }
 
+export async function selectXtbExecutableRequest(executablePath: string | null): Promise<XtbStatus> {
+  if (isTauriRuntime()) {
+    return invoke<XtbStatus>("select_xtb_executable", { executablePath });
+  }
+  return browserDevXtbJson<XtbStatus>("/__burette/select-xtb-executable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ executablePath }),
+  });
+}
+
 export async function requestConformerStatus(): Promise<ConformerStatus> {
   if (isTauriRuntime()) return invoke<ConformerStatus>("conformer_status");
   return browserDevConformerJson<ConformerStatus>("/__burette/conformer-status");

@@ -3,6 +3,7 @@ use crate::preview::xyzrender;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
+use tauri::Runtime;
 
 const DOCTOR_SCHEMA: &str = "burrete.external-runtime-doctor.v1";
 
@@ -29,7 +30,9 @@ struct ExternalRuntimeDoctorCheck {
 }
 
 #[tauri::command]
-pub(crate) fn external_runtime_doctor() -> ExternalRuntimeDoctorReport {
+pub(crate) fn external_runtime_doctor<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> ExternalRuntimeDoctorReport {
     let descriptor_status = serde_json::to_value(descriptors::descriptor_runtime_status())
         .unwrap_or_else(|error| json!({ "message": error.to_string() }));
     let conformer_status = serde_json::to_value(conformer::conformer_status())
@@ -40,7 +43,7 @@ pub(crate) fn external_runtime_doctor() -> ExternalRuntimeDoctorReport {
     let rdkit_conformer_python_status =
         serde_json::to_value(documents::conformer_python_runtime_status("rdkit"))
             .unwrap_or_else(|error| json!({ "message": error.to_string() }));
-    let xtb_status = serde_json::to_value(xtb::xtb_status())
+    let xtb_status = serde_json::to_value(xtb::xtb_status(app))
         .unwrap_or_else(|error| json!({ "message": error.to_string() }));
     let xyzrender_status = serde_json::to_value(xyzrender::xyzrender_runtime_status())
         .unwrap_or_else(|error| json!({ "message": error.to_string() }));

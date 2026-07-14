@@ -36,6 +36,7 @@ import { registerBrowserDevMsbuddyRoutes } from "./vite/browser-dev/msbuddy";
 import { registerBrowserDevMdsmoothRoute } from "./vite/browser-dev/mdsmooth";
 import { registerBrowserDevRuntimeDoctorRoute } from "./vite/browser-dev/runtime-doctor";
 import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
+import { installBrowserDevManagedXtb, resolveBrowserDevXtb, selectBrowserDevXtb, selectedBrowserDevXtbPath } from "./vite/browser-dev/xtb-runtime";
 import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
@@ -1824,16 +1825,27 @@ function runPythonWithStdin(python: PythonCommand, script: string, input: string
 }
 
 async function browserDevXtbStatus() {
-  const executable = resolveExecutable("xtb");
-  if (!executable) {
+  let resolution;
+  try {
+    resolution = resolveBrowserDevXtb();
+  } catch (error) {
+    let selectedExecutablePath: string | null = null;
+    try {
+      selectedExecutablePath = selectedBrowserDevXtbPath();
+    } catch (_) {
+      selectedExecutablePath = null;
+    }
     return {
       installed: false,
       executablePath: null,
       version: null,
       installer: resolveExecutable("pixi") ? "pixi" : null,
-      installHint: "Install xTB with `pixi global install xtb` or from conda-forge. Browser dev can run the pixi installer when pixi is available.",
+      installHint: error instanceof Error ? error.message : String(error),
+      source: null,
+      selectedExecutablePath,
     };
   }
+  const executable = resolution.executablePath;
   let version: string | null = null;
   try {
     const { stdout, stderr } = await execFileAsync(executable, ["--version"], { timeout: 10_000, maxBuffer: 128 * 1024 });
@@ -1846,19 +1858,21 @@ async function browserDevXtbStatus() {
     installed: true,
     executablePath: executable,
     version,
-    installer: executable.includes("/.pixi/") ? "pixi" : executable.includes("/.local/bin/") ? "uv-or-local" : "path",
+    installer: resolution.source,
     installHint: "xTB is available. Browser dev will use this executable for local xTB jobs.",
+    source: resolution.source,
+    selectedExecutablePath: resolution.selectedExecutablePath,
   };
 }
 
+async function selectBrowserDevXtbExecutable(executablePath: unknown) {
+  await selectBrowserDevXtb(executablePath);
+  return browserDevXtbStatus();
+}
+
 async function installBrowserDevXtb() {
-  if ((await browserDevXtbStatus()).installed) return browserDevXtbStatus();
-  const pixi = resolveExecutable("pixi");
-  if (pixi) {
-    await execFileAsync(pixi, ["global", "install", "xtb"], { timeout: 120_000, maxBuffer: 2 * 1024 * 1024 });
-    return browserDevXtbStatus();
-  }
-  throw new Error("Automatic xTB installation requires pixi. Install pixi and run `pixi global install xtb`, or install xTB from conda-forge and make it available on PATH.");
+  await installBrowserDevManagedXtb();
+  return browserDevXtbStatus();
 }
 
 type BrowserDevConformerRunRequest = {
@@ -2023,7 +2037,12 @@ async function runBrowserDevConformerJobImpl(request: BrowserDevConformerRunRequ
     exitCode = result.status;
     log = result.log;
     if (operation === "crest-generate" && shouldRetryCrestWithXtbPreopt(request, exitCode, log)) {
-      const xtb = resolveExecutable("xtb");
+      let xtb: string | null = null;
+      try {
+        xtb = resolveBrowserDevXtb().executablePath;
+      } catch (_) {
+        xtb = null;
+      }
       if (xtb) {
         const recovery = "xTB pre-optimization after CREST initial geometry optimization failure";
         const xtbLogPath = join(workDir, `${operation}-xtb-preopt.log`);
@@ -2904,8 +2923,7 @@ async function runBrowserDevXtbJob(request: BrowserDevXtbRunRequest) {
 }
 
 async function runBrowserDevXtbJobImpl(request: BrowserDevXtbRunRequest, jobKey: string | null) {
-  const executable = resolveExecutable("xtb");
-  if (!executable) throw new Error("xTB executable was not found. Install it with pixi global install xtb or make xtb available on PATH.");
+  const executable = resolveBrowserDevXtb().executablePath;
   const operation = request.operation || "properties";
   assertBrowserDevXtbOperation(operation);
   await assertBrowserDevXtbDirectInput(request);
@@ -2920,7 +2938,7 @@ async function runBrowserDevXtbJobImpl(request: BrowserDevXtbRunRequest, jobKey:
     "input-with-h",
   );
   const args = await buildBrowserDevXtbArgs(request, operation, inputPath, workDir);
-  const timeout = Math.max(1, Number(request.timeoutSeconds) || 180) * 1000;
+  const timeout = Math.min(86_400, Math.max(1, Number(request.timeoutSeconds) || 180)) * 1000;
   const commandEnv = { ...process.env };
   if (Number(request.threads) > 0) commandEnv.OMP_NUM_THREADS = String(request.threads);
   let stdout = "";
@@ -3553,6 +3571,7 @@ export function browserDevXyzrenderPlugin() {
         cancel: cancelBrowserDevJob,
         install: installBrowserDevXtb,
         run: runBrowserDevXtbJob,
+        select: selectBrowserDevXtbExecutable,
         status: browserDevXtbStatus,
       });
       registerBrowserDevRuntimeDoctorRoute(server, {
