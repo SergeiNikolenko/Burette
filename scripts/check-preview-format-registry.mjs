@@ -77,6 +77,7 @@ const allowedSystemQuickLookContentTypes = new Set([
   'com.adobe.fdf',
   'com.apple.videoapps.cube',
   'com.gaussian.cube',
+  'com.mdli.sketchfile',
   'com.schrodinger.mae',
   'com.schrodinger.mol',
   'com.schrodinger.pdb',
@@ -100,6 +101,12 @@ const appInfo = plist('apps/desktop/src-tauri/AppMetadata.plist');
 const appDocumentTypes = appInfo.CFBundleDocumentTypes ?? [];
 const appExtensions = appDocumentTypes.flatMap((type) => type.CFBundleTypeExtensions ?? []);
 const appContentTypes = appDocumentTypes.flatMap((type) => type.LSItemContentTypes ?? []);
+const quickLookOnlyContentTypes = new Set(
+  registry.formats.flatMap((format) => format.quickLookContentTypeAliases ?? []),
+);
+const documentQuickLookContentTypes = registry.quickLook.contentTypes.filter(
+  (contentType) => !quickLookOnlyContentTypes.has(contentType),
+);
 const appOnlyContentTypes = registry.formats
   .filter((format) => format.contentType && !registry.quickLook.contentTypes.includes(format.contentType))
   .map((format) => format.contentType);
@@ -110,9 +117,20 @@ assertSameSet(
 );
 assertSameSet(
   appContentTypes,
-  [...registry.quickLook.contentTypes, ...appOnlyContentTypes],
+  [...documentQuickLookContentTypes, ...appOnlyContentTypes],
   'AppMetadata LSItemContentTypes must match preview format registry',
 );
+for (const contentType of quickLookOnlyContentTypes) {
+  assert.ok(
+    registry.quickLook.contentTypes.includes(contentType),
+    `Quick Look-only content type must be routed to the extension: ${contentType}`,
+  );
+  assert.equal(
+    appContentTypes.includes(contentType),
+    false,
+    `Quick Look-only content type must not be registered as an app document type: ${contentType}`,
+  );
+}
 const gridTableDocumentType = appDocumentTypes.find((type) => type.CFBundleTypeName === 'Molecular grid tables');
 assert.ok(gridTableDocumentType, 'AppMetadata must declare a dedicated grid-table document type');
 assert.equal(gridTableDocumentType.LSHandlerRank, 'Owner');
@@ -175,6 +193,12 @@ assertSameSet(
   previewInfo.NSExtension?.NSExtensionAttributes?.QLSupportedContentTypes ?? [],
   registry.quickLook.contentTypes,
   'Quick Look supported content types must match preview format registry',
+);
+const thumbnailInfo = plist('PreviewExtension/ThumbnailInfo.plist');
+assertSameSet(
+  thumbnailInfo.NSExtension?.NSExtensionAttributes?.QLSupportedContentTypes ?? [],
+  registry.quickLook.contentTypes,
+  'Quick Look thumbnail supported content types must match preview format registry',
 );
 assertExportedTypeDeclarations(
   previewInfo.UTExportedTypeDeclarations ?? [],
