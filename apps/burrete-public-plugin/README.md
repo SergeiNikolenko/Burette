@@ -72,6 +72,16 @@ The hosted widget also sends one anonymized Vercel Web Analytics pageview for
 the fixed path `/mcp/widget` when it loads. Automatic URL tracking is disabled,
 and the event does not contain PDB IDs, filenames, molecular content, viewer
 selection, or chat/session identifiers.
+The public `/web-demo/index.html` surface additionally sends privacy-safe custom
+events and Speed Insights. Events cover sessions, screen and structure views,
+stable UI controls, command categories, search-length buckets, settings changes,
+drop and paste inputs, engagement milestones, and categorized client/resource
+errors. Event properties are intentionally limited to two dimensions so they
+work on the standard Vercel Pro analytics tier. Raw queries, filenames, local
+paths, PDB IDs, SMILES, molecular content, error messages, and stack traces are
+never event properties. Vercel Web Analytics and Speed Insights must both be
+enabled for the production project in the Vercel dashboard; custom events
+require a Pro or Enterprise plan.
 The public [privacy policy](https://burrete-landing.vercel.app/privacy)
 describes that hosting boundary, recipients, retention, user controls, and RCSB
 lookup behavior.

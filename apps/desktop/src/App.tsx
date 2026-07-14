@@ -100,6 +100,7 @@ import { structureExtensionFromPath } from "./lib/file-routing";
 import { isHostedMcpWidget } from "./lib/hosted-mcp-widget";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "./lib/viewer-bridge";
+import { trackWebDemoScreenView, trackWebDemoStructureView } from "./lib/web-demo-analytics";
 import {
   configureWorkspaceHistoryExtras,
   useWorkspaceHistoryStore,
@@ -120,6 +121,13 @@ export default function App() {
   const activeTabId = useActiveTabId();
   const activeTab = useActiveTab();
   const activeDocument = useActiveDocument();
+  useEffect(() => {
+    trackWebDemoScreenView(activeTab?.location.kind, activeDocument?.renderer);
+  }, [activeDocument?.renderer, activeTab?.id, activeTab?.location.kind]);
+  useEffect(() => {
+    if (!activeDocument) return;
+    trackWebDemoStructureView(activeDocument.extension, activeDocument.renderer);
+  }, [activeDocument?.id, activeDocument?.extension, activeDocument?.renderer]);
   const addBackgroundDocuments = useAddBackgroundDocuments();
   const addBackgroundTextDocuments = useAddBackgroundTextDocuments();
   const addDocuments = useAddTabs();

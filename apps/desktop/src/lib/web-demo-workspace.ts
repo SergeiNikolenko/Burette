@@ -17,6 +17,7 @@ import benzene from "../../../../samples/structures/small-molecules/benzene.xyz?
 import caffeineSdf from "../../../../samples/structures/small-molecules/caffeine.sdf?raw";
 import multiMolecule from "../../../../samples/structures/small-molecules/multi-molecule.sdf?raw";
 import trajectory from "../../../../samples/trajectory.xyz?raw";
+import { trackWebDemoLocalFiles } from "./web-demo-analytics";
 
 const WEB_DEMO_ROOT = "/BurreteDemo";
 const WEB_DEMO_ENABLED = import.meta.env.VITE_BURRETE_WEB_DEMO === "1";
@@ -95,6 +96,7 @@ export async function pickWebDemoFiles(options: { directory?: boolean } = {}) {
   if (!WEB_DEMO_ENABLED) return null;
   const selected = await selectFiles(options.directory === true);
   if (selected.length === 0) return null;
+  trackWebDemoLocalFiles(selected, options.directory === true);
   const rootName = options.directory
     ? cleanSegment(selected[0]?.webkitRelativePath.split("/")[0] || "LocalProject")
     : "OpenedFiles";
