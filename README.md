@@ -244,6 +244,20 @@ Burrete settings cover:
 Optional integrations include a local `xyzrender` executable, VESTA, and
 external chemistry editors discovered by macOS.
 
+## Unsupported file or format?
+
+If Burrete cannot open or preview a molecular file, please [open an unsupported-file issue](https://github.com/SergeiNikolenko/Burrete/issues/new?template=7-unsupported-file-format.yml). Before submitting:
+
+1. Search existing issues for the extension or format name.
+2. Include the exact file extension, where the failure occurs, your Burrete and macOS versions, and the installation method.
+3. On macOS, include the output of:
+
+   ```bash
+   mdls -name kMDItemContentType -name kMDItemContentTypeTree "/path/to/file"
+   ```
+
+4. Attach the smallest non-confidential sample that reproduces the problem. If the file is proprietary, do not upload it publicly; describe the format and offer to share a sanitized sample privately.
+
 ## Docs
 
 - [Documentation map](docs/README.md)
