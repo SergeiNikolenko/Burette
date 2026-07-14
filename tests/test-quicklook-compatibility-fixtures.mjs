@@ -30,7 +30,11 @@ for (const fixture of manifest.cases) {
   assert.ok(format, `${fixture.path} must have a registered preview format`);
   assert.equal(format.id, fixture.formatId, `${fixture.path} must resolve to ${fixture.formatId}`);
 
-  const acceptedContentTypes = new Set([format.contentType, ...(format.contentTypeAliases ?? [])]);
+  const acceptedContentTypes = new Set([
+    format.contentType,
+    ...(format.contentTypeAliases ?? []),
+    ...(format.quickLookContentTypeAliases ?? []),
+  ]);
   assert.ok(
     acceptedContentTypes.has(fixture.observedContentType),
     `${fixture.path} must accept observed content type ${fixture.observedContentType}`,

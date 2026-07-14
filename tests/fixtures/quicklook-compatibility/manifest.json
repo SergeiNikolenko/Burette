@@ -25,6 +25,11 @@
       "path": "tests/fixtures/quicklook-compatibility/ketoconazole.sdf",
       "formatId": "sdf",
       "observedContentType": "com.schrodinger.sdf"
+    },
+    {
+      "path": "tests/fixtures/quicklook-compatibility/ketoconazole.sdf",
+      "formatId": "sdf",
+      "observedContentType": "com.mdli.sketchfile"
     }
   ]
 }
