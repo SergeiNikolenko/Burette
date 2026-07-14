@@ -55,7 +55,11 @@ const representativeByFormat = new Map(matrix.representatives.map((item) => [ite
 const sampleExtensions = new Set(samples.map(fileExtension));
 const formatExtensions = new Set(registry.formats.flatMap((format) => format.extensions ?? []));
 const formatContentTypes = new Set(
-  registry.formats.flatMap((format) => [format.contentType, ...(format.contentTypeAliases ?? [])].filter(Boolean)),
+  registry.formats.flatMap((format) => [
+    format.contentType,
+    ...(format.contentTypeAliases ?? []),
+    ...(format.quickLookContentTypeAliases ?? []),
+  ].filter(Boolean)),
 );
 
 assert.equal(matrix.schemaVersion, 1);
