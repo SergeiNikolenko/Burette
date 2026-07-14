@@ -1,4 +1,5 @@
 import { App, type McpUiUpdateModelContextRequest } from "@modelcontextprotocol/ext-apps";
+import { inject, pageview } from "@vercel/analytics";
 import {
   createSceneContext,
   createSelectionContext,
@@ -16,7 +17,19 @@ declare global {
     };
     __BURRETE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;
     __BURRETE_HOSTED_APP_READY__?: (ready: boolean) => void;
+    __BURRETE_HOSTED_ANALYTICS_ORIGIN__?: string;
   }
+}
+
+const analyticsOrigin = window.__BURRETE_HOSTED_ANALYTICS_ORIGIN__;
+if (analyticsOrigin?.startsWith("https://")) {
+  inject({
+    mode: "production",
+    disableAutoTrack: true,
+    scriptSrc: `${analyticsOrigin}/_vercel/insights/script.js`,
+    endpoint: `${analyticsOrigin}/_vercel/insights`,
+  });
+  pageview({ route: "/mcp/widget", path: "/mcp/widget" });
 }
 
 const app = new App(
