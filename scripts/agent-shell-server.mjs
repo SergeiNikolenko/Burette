@@ -14,7 +14,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const STRUCTURE_EXTENSIONS = new Set([
   'pdb', 'ent', 'pdbqt', 'pqr', 'xpdb',
   'cif', 'mmcif', 'mcif', 'bcif', 'mmtf',
-  'sdf', 'sd', 'smi', 'smiles', 'csv', 'tsv',
+  'sdf', 'sd', 'smi', 'smiles', 'csv', 'tsv', 'dwar',
   'mol', 'mol2', 'xyz', 'gro', 'mae', 'maegz', 'cms', 'dtr',
   'xtc', 'trr', 'dcd', 'nctraj', 'nc', 'ncdf', 'netcdf', 'ncrst', 'lammpstrj',
   'top', 'psf', 'prmtop', 'tpr',
