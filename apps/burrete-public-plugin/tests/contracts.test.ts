@@ -121,7 +121,7 @@ describe("viewer resource contract", () => {
     expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v16.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-mobile-bootstrap-v2");
+    expect(html).toContain("?v=viewer-analytics-v1");
     expect(html).toContain(`https://burrete.example${VIEWER_MOBILE_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_APP_BRIDGE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
@@ -252,6 +252,7 @@ describe("viewer resource contract", () => {
     expect(source).toContain("await app.updateModelContext(params)");
     expect(source).toContain('from "@vercel/analytics"');
     expect(source).toContain("disableAutoTrack: true");
+    expect(source).toContain('viewEndpoint: `${analyticsOrigin}/api/analytics/view`');
     expect(source).toContain('route: "/mcp/widget", path: "/mcp/widget"');
     expect(source).not.toContain("pdbId");
     expect(source).not.toContain("fileName");

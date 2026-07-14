@@ -27,7 +27,7 @@ if (analyticsOrigin?.startsWith("https://")) {
     mode: "production",
     disableAutoTrack: true,
     scriptSrc: `${analyticsOrigin}/_vercel/insights/script.js`,
-    endpoint: `${analyticsOrigin}/_vercel/insights`,
+    viewEndpoint: `${analyticsOrigin}/api/analytics/view`,
   });
   pageview({ route: "/mcp/widget", path: "/mcp/widget" });
 }
