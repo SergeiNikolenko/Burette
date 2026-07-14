@@ -51,6 +51,7 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
   const appBridgeScript = `${assetUrl(assetOrigin, VIEWER_APP_BRIDGE_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const bootstrap = serializeForInlineScript({
     viewerAssets,
+    analyticsOrigin: assetOrigin.replace(/\/$/u, ""),
   });
 
   return `<!doctype html>
@@ -74,6 +75,7 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
         const config = ${bootstrap};
         window.__BURRETE_HOSTED_MCP_WIDGET__ = true;
         window.__BURRETE_WEB_ASSETS_BASE__ = config.viewerAssets;
+        window.__BURRETE_HOSTED_ANALYTICS_ORIGIN__ = config.analyticsOrigin;
         window.__BURRETE_HOSTED_MCP_RESULTS__ = [];
         window.__BURRETE_HOSTED_OPENAI_GLOBALS__ = {};
         const appQueue = [];

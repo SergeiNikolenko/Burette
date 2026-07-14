@@ -40,6 +40,11 @@ process network and request metadata such as IP address, request time, route,
 client type, approximate region, performance, and security events under its
 policies. RCSB processes public PDB lookup requests.
 
+When the hosted molecular viewer loads, it sends one anonymized Vercel Web
+Analytics pageview for the fixed path `/mcp/widget`. Automatic URL tracking is
+disabled. Burrete does not include a PDB ID, filename, molecular content,
+viewer selection, or chat/session identifier in that analytics event.
+
 Burrete does not intentionally configure application logs to record raw
 molecular content or temporary signed download URLs. Technical logs and
 security metadata are retained according to the applicable OpenAI and Vercel

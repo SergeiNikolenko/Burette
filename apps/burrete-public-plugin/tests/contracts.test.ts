@@ -129,6 +129,10 @@ describe("viewer resource contract", () => {
     expect(html).toContain("iPhone|iPad|iPod");
     expect(html).toContain("ui/notifications/tool-result");
     expect(html).toContain("__BURRETE_HOSTED_MCP_WIDGET__");
+    expect(html).toContain(
+      '"analyticsOrigin":"https://burrete.example"',
+    );
+    expect(html).toContain("__BURRETE_HOSTED_ANALYTICS_ORIGIN__");
     expect(html).toContain("__BURRETE_HOSTED_MCP_BRIDGE_READY__");
     expect(html).toContain("__BURRETE_HOSTED_OPENAI_GLOBALS__");
     expect(html).toContain("Burrete viewer failed to load.");
@@ -246,6 +250,11 @@ describe("viewer resource contract", () => {
     expect(source).toContain("app.connect()");
     expect(source).toContain("getHostCapabilities()?.updateModelContext");
     expect(source).toContain("await app.updateModelContext(params)");
+    expect(source).toContain('from "@vercel/analytics"');
+    expect(source).toContain("disableAutoTrack: true");
+    expect(source).toContain('route: "/mcp/widget", path: "/mcp/widget"');
+    expect(source).not.toContain("pdbId");
+    expect(source).not.toContain("fileName");
 
     const selection = createSelectionContext({
       source: "lasso",
