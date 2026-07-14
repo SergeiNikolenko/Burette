@@ -1,4 +1,5 @@
 **/node_modules/
+.codegraph/
 target/
 apps/desktop/dist/
 apps/burrete-public-plugin/.next/
