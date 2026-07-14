@@ -6,7 +6,7 @@ export const VIEWER_SHELL_STYLES_PATH =
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burrete-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burrete-hosted-app.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-mobile-bootstrap-v2";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-analytics-v1";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
