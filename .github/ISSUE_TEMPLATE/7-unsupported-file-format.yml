@@ -1,0 +1,68 @@
+name: Unsupported File or Format
+description: Request support for a molecular file that Burrete cannot open or preview.
+title: "[File format]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping Burrete support more molecular files. Search existing issues first and never upload proprietary or sensitive molecule data publicly.
+  - type: input
+    id: format
+    attributes:
+      label: File format and extension
+      description: Include the format name and exact extension, for example MDL SDF (.sdf).
+      placeholder: MDL SDF (.sdf)
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where does it fail?
+      options:
+        - Finder Quick Look preview or thumbnail
+        - Burrete desktop app
+        - iPhone app
+        - More than one surface
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happens?
+      description: Describe what you tried, the visible result or error, and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: content-type
+    attributes:
+      label: macOS content type
+      description: Run the command below for the affected file and paste its complete output. You may redact the private part of the path.
+      value: |
+        mdls -name kMDItemContentType -name kMDItemContentTypeTree "/path/to/file"
+      render: shell
+  - type: textarea
+    id: sample
+    attributes:
+      label: Reproduction file
+      description: Attach the smallest non-confidential sample, or explain how a maintainer can obtain a sanitized sample privately. Do not upload proprietary files.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Burrete version, macOS version, installation method, and Apple Silicon or Intel.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for this format or extension.
+          required: true
+        - label: I confirmed that any publicly attached file is safe to share.
+          required: true
