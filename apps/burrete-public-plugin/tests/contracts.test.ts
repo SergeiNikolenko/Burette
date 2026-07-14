@@ -165,6 +165,9 @@ describe("viewer resource contract", () => {
     expect(source).toContain('layoutShowLog: false');
     expect(source).toContain('layoutShowLeftPanel: false');
     expect(source).toContain('await Promise.all([\n      addStylesheet("viewer-runtime.css"),\n      addStylesheet("molstar.css"),\n    ])');
+    expect(source).toContain('link.rel = "preload"');
+    expect(source).toContain('link.as = "script"');
+    expect(source).toContain('for (const name of runtimeScripts) preloadScript(name)');
     expect(source).toContain('canvasBackground: "black"');
     expect(source).toContain("BurreteHostedAppBridge");
     expect(source).not.toContain("<iframe");
