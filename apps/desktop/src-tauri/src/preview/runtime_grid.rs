@@ -102,6 +102,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         "quickLookBuild": "burrete-tauri-grid2d",
         "debug": false,
         "appViewer": true,
+        "pubChemSearch": true,
         "tauriViewer": true,
         "gridDataMode": "bridge",
         "theme": preferences.theme_for_runtime(),

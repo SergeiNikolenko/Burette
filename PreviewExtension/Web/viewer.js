@@ -13046,6 +13046,10 @@
     actions.push(['save-format:mmcif', 'Save as mmCIF']);
     if (molstarModifiedPdbExportAvailable()) actions.push(['save-format:pdb', 'Save as PDB']);
     if (molstarContextSdfExportAvailable(target)) actions.push(['save-format:sdf', 'Save ligand as SDF']);
+    if (molstarPubChemSearchAvailable(target)) {
+      actions.push(['pubchem:identity', 'Search PubChem — Identical']);
+      actions.push(['pubchem:similarity', 'Search PubChem — Similar (90%)']);
+    }
     actions.push(['focus', 'Focus in current view']);
     return actions;
   }
@@ -13134,6 +13138,10 @@
         const saved = saveMolstarModifiedStructureAs(format, target);
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
         if (normalizeFormat(format) !== 'sdf') setMolstarStructureDirty(false);
+      } else if (action.startsWith('pubchem:')) {
+        const searchType = action.slice('pubchem:'.length);
+        await openMolstarPubChemSearch(target, searchType);
+        setStatus(`[web] Opening PubChem ${searchType === 'identity' ? 'identity' : '90% similarity'} search for ${targetLabel}.`);
       } else if (action === 'focus') {
         const handled = focusMolstarContextPick(target) || await resetMolstarCameraForContext();
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
@@ -13187,6 +13195,46 @@
     }
     const entry = target.selectedEntry || target.ligand || null;
     return normalizeFormat(entry?.format) === 'sdf' ? entry : null;
+  }
+
+  function molstarPubChemSearchAvailable(target) {
+    return activeConfig?.appViewer === true
+      && activeConfig?.pubChemSearch === true
+      && !molstarStructureDirty
+      && !!molstarExactPubChemSdfEntry(target);
+  }
+
+  function molstarExactPubChemSdfEntry(target) {
+    if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
+    for (const entry of [target.ligand, target.selectedEntry, target.sourceEntry]) {
+      if (normalizeFormat(entry?.format) === 'sdf' && String(entry?.data || '').trim()) return entry;
+    }
+    return null;
+  }
+
+  async function openMolstarPubChemSearch(target, searchType) {
+    if (searchType !== 'identity' && searchType !== 'similarity') throw new Error('Unsupported PubChem search type.');
+    if (!molstarPubChemSearchAvailable(target)) throw new Error('PubChem search requires an unmodified molecule with an exact SDF structure.');
+    const entry = molstarExactPubChemSdfEntry(target);
+    const rdkit = await molstarPreviewInitRDKit();
+    let molecule = null;
+    try {
+      molecule = rdkit.get_mol(String(entry?.data || ''));
+      if (!molecule || (typeof molecule.is_valid === 'function' && !molecule.is_valid())) throw new Error('RDKit could not read the molecule.');
+      const smiles = typeof molecule.get_smiles === 'function' ? String(molecule.get_smiles() || '').trim() : '';
+      if (!validPubChemSmiles(smiles)) throw new Error('The molecule does not have a complete PubChem-searchable SMILES.');
+      if (!postHostMessage({ type: 'openPubChemSearch', searchType, smiles })) throw new Error('PubChem search is unavailable in this host.');
+    } finally {
+      try { molecule?.delete?.(); } catch (_) {}
+    }
+  }
+
+  function validPubChemSmiles(smiles) {
+    const value = String(smiles || '').trim();
+    return value.length > 0
+      && value.length <= 4096
+      && !value.includes('*')
+      && !/[\u0000-\u001F\u007F]/u.test(value);
   }
 
   function molstarStandaloneMoleculePreviewEntryForTarget(target, entry = null) {

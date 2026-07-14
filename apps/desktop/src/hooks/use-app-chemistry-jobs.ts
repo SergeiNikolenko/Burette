@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 
 import type { StatusKind } from "../components/types";
 import {
@@ -7,7 +8,9 @@ import {
   installXtbRequest,
   requestConformerStatus,
   requestXtbStatus,
+  selectXtbExecutableRequest,
 } from "../lib/chemistry-job-requests";
+import { isTauriRuntime } from "../lib/tauri";
 import {
   conformerStatusLine,
   normalizeConformerSettings,
@@ -90,6 +93,35 @@ export function useAppChemistryJobs({
     }
   }, [pushErrorStatus, pushStatus]);
 
+  const chooseXtbExecutable = useCallback(async () => {
+    try {
+      if (!isTauriRuntime()) {
+        throw new Error("Use the BURRETE_XTB_EXECUTABLE environment variable in browser development.");
+      }
+      const selected = await open({
+        title: "Choose xTB Executable",
+        multiple: false,
+        directory: false,
+      });
+      if (!selected) return;
+      const status = await selectXtbExecutableRequest(selected);
+      setXtbStatus(status);
+      pushStatus(`Using xTB: ${status.executablePath ?? selected}`, "success");
+    } catch (error) {
+      pushErrorStatus(error, "Select xTB executable failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
+  const clearXtbExecutableSelection = useCallback(async () => {
+    try {
+      const status = await selectXtbExecutableRequest(null);
+      setXtbStatus(status);
+      pushStatus(status.installed ? `Using automatically detected xTB: ${status.executablePath}` : status.installHint, status.installed ? "success" : "info");
+    } catch (error) {
+      pushErrorStatus(error, "Automatic xTB discovery failed");
+    }
+  }, [pushErrorStatus, pushStatus]);
+
   const cancelXtbJob = useCallback(async (jobId: string) => {
     cancelledXtbJobIdsRef.current.add(jobId);
     setXtbJobs((previous) => previous.map((job) => job.id === jobId && job.status === "running" ? {
@@ -168,6 +200,8 @@ export function useAppChemistryJobs({
     cancelledXtbJobIdsRef,
     checkConformerStatus,
     checkXtbStatus,
+    chooseXtbExecutable,
+    clearXtbExecutableSelection,
     conformerJobs,
     conformerSettings,
     conformerStatus,
