@@ -46,6 +46,11 @@
       "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
     },
     {
+      "formatId": "datawarrior",
+      "path": "samples/collections/datawarrior/mini.dwar",
+      "surfaces": ["browser-dev-shell", "browser-quicklook", "packaged-desktop", "native-quicklook"]
+    },
+    {
       "formatId": "mol",
       "path": "samples/structures/small-molecules/benzene.mol",
       "surfaces": ["browser-dev-shell", "browser-quicklook", "agent-preview", "packaged-desktop", "native-quicklook"]

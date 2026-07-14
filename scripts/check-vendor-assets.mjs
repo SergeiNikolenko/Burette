@@ -20,6 +20,7 @@ const requestedProfiles = process.argv
 const packageSpecs = [
   { name: 'molstar' },
   { name: '@rdkit/rdkit' },
+  { name: 'openchemlib' },
 ];
 
 const assetSpecs = [
@@ -27,6 +28,7 @@ const assetSpecs = [
   { path: 'PreviewExtension/Web/molstar.css', package: 'molstar' },
   { path: 'PreviewExtension/Web/rdkit/RDKit_minimal.js', package: '@rdkit/rdkit' },
   { path: 'PreviewExtension/Web/rdkit/RDKit_minimal.wasm', package: '@rdkit/rdkit' },
+  { path: 'PreviewExtension/Web/openchemlib/openchemlib.js', package: 'openchemlib' },
 ];
 
 function readJson(filePath) {

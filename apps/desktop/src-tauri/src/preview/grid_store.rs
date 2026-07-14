@@ -1,6 +1,6 @@
 use rusqlite::{params, params_from_iter, types::Value as SqlValue, Connection};
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -82,6 +82,8 @@ pub(crate) struct GridPageRow {
     pub(crate) name: String,
     pub(crate) smiles: Option<String>,
     pub(crate) molblock: Option<String>,
+    pub(crate) idcode: Option<String>,
+    pub(crate) idcoordinates: Option<String>,
     pub(crate) props: BTreeMap<String, String>,
     pub(crate) descriptors: BTreeMap<String, GridDescriptorCell>,
 }
@@ -134,6 +136,8 @@ struct GridInputRecord {
     name: String,
     smiles: Option<String>,
     molblock: Option<String>,
+    idcode: Option<String>,
+    idcoordinates: Option<String>,
     props: BTreeMap<String, String>,
 }
 
@@ -463,6 +467,7 @@ fn molecule_count(connection: &Connection) -> Result<usize, String> {
 fn grid_format(extension: &str) -> Option<&'static str> {
     match extension {
         "csv" => Some("csv"),
+        "dwar" => Some("dwar"),
         "tsv" => Some("tsv"),
         "smi" | "smiles" => Some("smiles"),
         "sdf" | "sd" => Some("sdf"),
@@ -507,7 +512,7 @@ fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult,
     };
 
     let sql = format!(
-        "select id, source_index, name, smiles, molblock, props_json \
+        "select id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json \
          from molecules \
          {join_sql} \
          order by {order_sql} \
@@ -587,7 +592,7 @@ fn fetch_filtered_page_with_fts(
         )
         .map_err(|err| err.to_string())? as usize;
     let sql = format!(
-        "select id, source_index, name, smiles, molblock, props_json \
+        "select id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json \
          from molecules \
          {join_sql} \
          where id in (select rowid from molecules_fts where molecules_fts match ?) \
@@ -638,7 +643,7 @@ fn fetch_filtered_page_with_like(
         )
         .map_err(|err| err.to_string())? as usize;
     let sql = format!(
-        "select id, source_index, name, smiles, molblock, props_json \
+        "select id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json \
          from molecules \
          {join_sql} \
          where search_text like ? escape '\\' \
@@ -676,13 +681,15 @@ fn collect_page_rows(mut rows: rusqlite::Rows<'_>) -> Result<Vec<GridPageRow>, S
     let mut page_rows = Vec::new();
     while let Some(row) = rows.next().map_err(|err| err.to_string())? {
         let row_id = row.get::<_, i64>(0).map_err(|err| err.to_string())?;
-        let props_json: String = row.get(5).map_err(|err| err.to_string())?;
+        let props_json: String = row.get(7).map_err(|err| err.to_string())?;
         page_rows.push(GridPageRow {
             row_id,
             index: row.get::<_, i64>(1).map_err(|err| err.to_string())? as usize,
             name: row.get(2).map_err(|err| err.to_string())?,
             smiles: row.get(3).map_err(|err| err.to_string())?,
             molblock: row.get(4).map_err(|err| err.to_string())?,
+            idcode: row.get(5).map_err(|err| err.to_string())?,
+            idcoordinates: row.get(6).map_err(|err| err.to_string())?,
             props: serde_json::from_str(&props_json).map_err(|err| err.to_string())?,
             descriptors: BTreeMap::new(),
         });
@@ -813,7 +820,7 @@ fn fetch_descriptor_filtered_page(
         })
         .map_err(|err| err.to_string())? as usize;
     let page_sql = format!(
-        "select id, source_index, name, smiles, molblock, props_json
+        "select id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json
          from molecules
          {join_sql}
          {where_sql}
@@ -1092,6 +1099,8 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                  name text not null,
                  smiles text,
                  molblock text,
+                 idcode text,
+                 idcoordinates text,
                  props_json text not null,
                  props_text text not null,
                  search_text text not null
@@ -1352,6 +1361,8 @@ fn finish_sdf_record(lines: &[String], has_content: bool, index: usize) -> Optio
         name,
         smiles,
         molblock: Some(clipped(&extract_molblock(lines), 250_000)),
+        idcode: None,
+        idcoordinates: None,
         props,
     })
 }
@@ -1383,6 +1394,12 @@ fn parse_grid_batch_with_options(
             max_records,
             options,
         ),
+        "dwar" => Ok(parse_datawarrior_batch(
+            text,
+            start_line,
+            start_index,
+            max_records,
+        )),
         "smi" | "smiles" => Ok(parse_smiles_batch(
             text,
             start_line,
@@ -1392,6 +1409,266 @@ fn parse_grid_batch_with_options(
         "sdf" | "sd" => Ok(parse_sdf_batch(text, start_line, start_index, max_records)),
         _ => Err(format!("unsupported grid extension: {extension}")),
     }
+}
+
+#[derive(Default)]
+struct DataWarriorColumn {
+    parent: Option<String>,
+    special_type: Option<String>,
+}
+
+fn parse_datawarrior_batch(
+    text: &str,
+    start_record: usize,
+    start_index: usize,
+    max_records: usize,
+) -> ParsedGridBatch {
+    let lines = normalized_lines(text);
+    let columns = datawarrior_column_properties(&lines);
+    let Some(table_start) = datawarrior_table_start(&lines) else {
+        return ParsedGridBatch {
+            records: Vec::new(),
+            next_line: 0,
+            next_index: start_index,
+            complete: true,
+        };
+    };
+    let headers: Vec<_> = parse_delimited_line(&lines[table_start], '\t')
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .collect();
+    let structure_columns: Vec<_> = headers
+        .iter()
+        .enumerate()
+        .filter_map(|(index, header)| {
+            let special_type = columns
+                .get(header)
+                .and_then(|column| column.special_type.as_deref())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if special_type == "idcode" {
+                Some((index, true))
+            } else if is_smiles_column(&normalize_column_name(header)) {
+                Some((index, false))
+            } else {
+                None
+            }
+        })
+        .collect();
+    if structure_columns.is_empty() {
+        return ParsedGridBatch {
+            records: Vec::new(),
+            next_line: 0,
+            next_index: start_index,
+            complete: true,
+        };
+    }
+    let special_indexes: HashSet<_> = headers
+        .iter()
+        .enumerate()
+        .filter_map(|(index, header)| columns.get(header)?.special_type.as_ref().map(|_| index))
+        .collect();
+    let coordinate_indexes: HashMap<_, _> = headers
+        .iter()
+        .enumerate()
+        .filter_map(|(index, header)| {
+            let column = columns.get(header)?;
+            let special_type = column.special_type.as_deref()?.to_ascii_lowercase();
+            special_type
+                .starts_with("idcoordinates")
+                .then(|| column.parent.clone().map(|parent| (parent, index)))?
+        })
+        .collect();
+    let name_index = headers.iter().enumerate().position(|(index, header)| {
+        !special_indexes.contains(&index)
+            && matches!(
+                normalize_column_name(header).as_str(),
+                "compound_id" | "id" | "name" | "title" | "compound"
+            )
+    });
+    let multiple_structure_columns = structure_columns.len() > 1;
+    let mut records = Vec::new();
+    let mut candidate_index = 0usize;
+    let mut complete = true;
+
+    for (row_offset, line) in lines.iter().skip(table_start + 1).enumerate() {
+        if looks_like_datawarrior_section_tag(line) {
+            break;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        let cells = parse_delimited_line(line, '\t');
+        for (structure_index, is_idcode) in &structure_columns {
+            let value = cells
+                .get(*structure_index)
+                .map(|cell| cell.trim())
+                .unwrap_or("");
+            if value.is_empty() {
+                continue;
+            }
+            if candidate_index < start_record {
+                candidate_index += 1;
+                continue;
+            }
+            if records.len() >= max_records {
+                complete = false;
+                break;
+            }
+            let column_name = headers
+                .get(*structure_index)
+                .map(|header| header.trim())
+                .filter(|header| !header.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("Column {}", structure_index + 1));
+            let raw_name = name_index
+                .and_then(|index| cells.get(index))
+                .map(|cell| cell.trim())
+                .unwrap_or("");
+            let base_name = if raw_name.is_empty() {
+                format!("Molecule {}", row_offset + 1)
+            } else {
+                clipped(raw_name, 160)
+            };
+            let name = if multiple_structure_columns {
+                clipped(&format!("{base_name} {column_name}"), 160)
+            } else {
+                base_name
+            };
+            let mut props = BTreeMap::from([
+                ("DataWarrior row".to_string(), (row_offset + 1).to_string()),
+                ("Structure column".to_string(), column_name.clone()),
+            ]);
+            for (index, header) in headers.iter().enumerate() {
+                if index == *structure_index
+                    || Some(index) == name_index
+                    || special_indexes.contains(&index)
+                {
+                    continue;
+                }
+                if let Some(cell) = cells
+                    .get(index)
+                    .map(|cell| cell.trim())
+                    .filter(|cell| !cell.is_empty())
+                {
+                    if props.len() < 64 {
+                        props.insert(clipped(header, 80), clipped(cell, 500));
+                    }
+                }
+            }
+            let coordinates = coordinate_indexes
+                .get(&column_name)
+                .and_then(|index| cells.get(*index))
+                .map(|cell| cell.trim())
+                .filter(|cell| !cell.is_empty())
+                .map(|cell| clipped(cell, 16_384));
+            records.push(GridInputRecord {
+                index: start_index + records.len(),
+                name,
+                smiles: (!is_idcode).then(|| clipped(value, 2048)),
+                molblock: None,
+                idcode: is_idcode.then(|| clipped(value, 4096)),
+                idcoordinates: coordinates,
+                props,
+            });
+            candidate_index += 1;
+        }
+        if !complete {
+            break;
+        }
+    }
+    ParsedGridBatch {
+        next_line: start_record + records.len(),
+        next_index: start_index + records.len(),
+        records,
+        complete,
+    }
+}
+
+fn datawarrior_column_properties(lines: &[String]) -> HashMap<String, DataWarriorColumn> {
+    let mut columns = HashMap::new();
+    let mut current_name: Option<String> = None;
+    let mut in_properties = false;
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed == "<column properties>" {
+            in_properties = true;
+            continue;
+        }
+        if trimmed == "</column properties>" {
+            break;
+        }
+        if !in_properties {
+            continue;
+        }
+        if let Some(name) = datawarrior_tag_value(trimmed, "columnName") {
+            current_name = Some(name.clone());
+            columns.insert(name, DataWarriorColumn::default());
+            continue;
+        }
+        let Some(property) = datawarrior_tag_value(trimmed, "columnProperty") else {
+            continue;
+        };
+        let Some(name) = current_name.as_ref() else {
+            continue;
+        };
+        let mut parts = property.splitn(2, ['\t']);
+        let key = parts.next().unwrap_or("").trim();
+        let value = parts.next().unwrap_or("").trim();
+        let Some(column) = columns.get_mut(name) else {
+            continue;
+        };
+        match key {
+            "specialType" if !value.is_empty() => column.special_type = Some(value.to_string()),
+            "parent" if !value.is_empty() => column.parent = Some(value.to_string()),
+            _ => {}
+        }
+    }
+    columns
+}
+
+fn datawarrior_table_start(lines: &[String]) -> Option<usize> {
+    let mut section: Option<String> = None;
+    for (index, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("</") && trimmed.ends_with('>') {
+            section = None;
+            continue;
+        }
+        if trimmed.starts_with('<')
+            && trimmed.ends_with('>')
+            && !trimmed.contains('=')
+            && !trimmed.starts_with("</")
+        {
+            section = Some(trimmed.to_string());
+            continue;
+        }
+        if section.is_none() && !trimmed.is_empty() && !trimmed.starts_with('<') {
+            return Some(index);
+        }
+    }
+    None
+}
+
+fn datawarrior_tag_value(line: &str, tag: &str) -> Option<String> {
+    let prefix = format!("<{tag}=\"");
+    line.strip_prefix(&prefix)
+        .and_then(|value| value.strip_suffix("\">"))
+        .map(|value| {
+            value
+                .replace("&#x09;", "\t")
+                .replace("&#9;", "\t")
+                .replace("&quot;", "\"")
+                .replace("&apos;", "'")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+        })
+}
+
+fn looks_like_datawarrior_section_tag(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with('<') && trimmed.ends_with('>')
 }
 
 fn parse_smiles_batch(
@@ -1426,6 +1703,8 @@ fn parse_smiles_batch(
             name,
             smiles: Some(clipped(smiles, 2048)),
             molblock: None,
+            idcode: None,
+            idcoordinates: None,
             props: BTreeMap::new(),
         });
         next_index += 1;
@@ -1632,6 +1911,8 @@ fn parse_delimited_table_batch(
                 name,
                 smiles: Some(clipped(smiles, 2048)),
                 molblock: None,
+                idcode: None,
+                idcoordinates: None,
                 props,
             });
             next_index += 1;
@@ -1696,6 +1977,8 @@ fn parse_delimited_rows_as_smiles_batch(
             name,
             smiles: Some(clipped(smiles, 2048)),
             molblock: None,
+            idcode: None,
+            idcoordinates: None,
             props,
         });
         next_index += 1;
@@ -1725,8 +2008,8 @@ fn insert_records(connection: &Connection, records: &[GridInputRecord]) -> Resul
         .map_err(|err| err.to_string())?;
     let mut insert = tx
         .prepare(
-            "insert into molecules (source_index, name, smiles, molblock, props_json, props_text, search_text)
-             values (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "insert into molecules (source_index, name, smiles, molblock, idcode, idcoordinates, props_json, props_text, search_text)
+             values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )
         .map_err(|err| err.to_string())?;
     for record in records {
@@ -1749,6 +2032,8 @@ fn insert_record(
             record.name,
             record.smiles,
             record.molblock,
+            record.idcode,
+            record.idcoordinates,
             props_json,
             props_text,
             search_text,
@@ -2200,6 +2485,38 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         panic!("grid index did not become ready");
+    }
+
+    #[test]
+    fn builds_datawarrior_store_with_idcode_coordinates() {
+        let runtime_dir = temp_runtime_dir();
+        let data = include_str!("../../../../../samples/collections/datawarrior/mini.dwar");
+        let (database_path, summary) = build_store(&runtime_dir, "dwar", data.as_bytes());
+        assert_eq!(summary.format, "dwar");
+        assert_eq!(summary.records_total, 2);
+
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch DataWarrior page");
+        assert_eq!(page.rows[0].name, "Ethanol");
+        assert_eq!(page.rows[0].idcode.as_deref(), Some("eMHAIh@"));
+        assert_eq!(page.rows[0].idcoordinates.as_deref(), Some("!B_vq?Dp"));
+        assert_eq!(
+            page.rows[0].props.get("Activity").map(String::as_str),
+            Some("1.25")
+        );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
     }
 
     #[test]

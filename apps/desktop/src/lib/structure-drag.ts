@@ -295,7 +295,7 @@ function structureDragPathsFromPlainText(text: string) {
 function looksLikeStructurePathLine(line: string) {
   if (!line) return false;
   if (/^(?:file:\/\/|\/|~\/|\.{1,2}\/|[A-Za-z]:[\\/])/u.test(line)) return true;
-  return /\.(?:abi|arc|bcif|cif|cms|com|cub|cube|csv|ent|fdf|gro|in|inp|log|mae|maegz|mcif|mmcif|mol|mol2|nw|out|pdb|pdbqt|ph4|pqr|psi4|qcin|sd|sdf|smi|smiles|tsv|vasp|xyz)$/iu.test(line);
+  return /\.(?:abi|arc|bcif|cif|cms|com|cub|cube|csv|dwar|ent|fdf|gro|in|inp|log|mae|maegz|mcif|mmcif|mol|mol2|nw|out|pdb|pdbqt|ph4|pqr|psi4|qcin|sd|sdf|smi|smiles|tsv|vasp|xyz)$/iu.test(line);
 }
 
 function normalizeStructureDragPath(path: string) {
