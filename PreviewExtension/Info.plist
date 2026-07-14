@@ -46,6 +46,7 @@
 				<string>net.sourceforge.openbabel.mdl</string>
 				<string>com.schrodinger.pdb</string>
 				<string>com.schrodinger.sdf</string>
+				<string>com.mdli.sketchfile</string>
 				<string>com.local.burrete10.xyz</string>
 				<string>com.local.burrete10.xyzrender-input</string>
 				<string>net.sourceforge.openbabel.xyz</string>
