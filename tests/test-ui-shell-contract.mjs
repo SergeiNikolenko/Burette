@@ -4063,7 +4063,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v138"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v140"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v66"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
 assert.match(viteConfig, /registerBrowserDevAgentSessionRoute\(server\)/);
@@ -5888,6 +5888,7 @@ assert.match(browserDevDocuments, /async function gridHtml\(\s*path: string,\s*d
 assert.match(browserDevDocuments, /documentId,\s*sourcePath: path,/);
 assert.match(browserDevDocuments, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(browserDevDocuments, /window\.BurreteGridRecords =/);
+assert.match(browserDevDocuments, /openchemlib\/openchemlib\.js\?v=\$\{GRID_ASSET_VERSION\}/);
 assert.match(browserDevDocuments, /rdkitWasmPath: "\/__burette\/rdkit-wasm"/);
 assert.doesNotMatch(browserDevDocuments, /BurreteRDKitWasmBase64/);
 assert.match(gridViewer, /cfg\.appViewer === true && cfg\.gridDataMode === 'bridge'/);

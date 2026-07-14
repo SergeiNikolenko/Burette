@@ -1,4 +1,5 @@
 import { collectionExtension, mergeCollectionSources, parseSdfCollectionRecords } from "./collection-documents";
+import { parseDataWarrior } from "./datawarrior";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
@@ -14,6 +15,8 @@ export type GridRecord = {
   name: string;
   smiles?: string;
   molblock?: string;
+  idcode?: string;
+  idcoordinates?: string;
   props: Record<string, string>;
   descriptors?: Record<string, {
     label: string;
@@ -105,7 +108,7 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v138";
+const GRID_ASSET_VERSION = "grid-ui-v140";
 const VIEWER_ASSET_VERSION = "viewer-ui-v66";
 const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = String(
@@ -1399,7 +1402,7 @@ async function gridHtml(
 ) {
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
-  const hasMoleculeRecords = records.some((record) => Boolean(record.smiles?.trim() || record.molblock?.trim()));
+  const hasMoleculeRecords = records.some((record) => Boolean(record.smiles?.trim() || record.molblock?.trim() || record.idcode?.trim()));
   const config = {
     mode: "grid2d",
     format,
@@ -1490,6 +1493,7 @@ async function gridHtml(
   <div id="status">Loading molecule grid...</div>
   <script>window.BurreteConfig = ${serializeInlineJson(config)};</script>
   <script>window.BurreteGridRecords = ${serializeInlineJson(records)};</script>
+  ${format === "dwar" ? `<script src="openchemlib/openchemlib.js?v=${GRID_ASSET_VERSION}"></script>` : ""}
   <script src="rdkit/RDKit_minimal.js?v=${GRID_ASSET_VERSION}"></script>
   <script src="grid-ui.js?v=${GRID_ASSET_VERSION}"></script>
   <script src="grid-viewer.js?v=${GRID_ASSET_VERSION}"></script>
@@ -1509,6 +1513,10 @@ function gridPayload(path: string, extension: string, text: string) {
   if (extension === "csv" || extension === "tsv") {
     const records = parseDelimited(text, extension === "csv" ? "," : "\t");
     return records.length > 0 ? { format: extension, records } : null;
+  }
+  if (extension === "dwar") {
+    const records = parseDataWarrior(text);
+    return records.length > 0 ? { format: "dwar", records } : null;
   }
   return null;
 }

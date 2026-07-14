@@ -14,6 +14,11 @@
       "packageName": "@rdkit/rdkit",
       "version": "2025.3.4-1.0.0",
       "integrity": "sha512-MJzNoeW2SWt2KCdIibfY213uLWyHZjFfS2ntJ/HuYNHdu6dEiim7jb6ZMU9wnt9Oovkc85BHMuupxkufIMvftQ=="
+    },
+    "openchemlib": {
+      "packageName": "openchemlib",
+      "version": "9.24.0",
+      "integrity": "sha512-aIZc4wxcIq4d1RK32WAkGjjyFUKPcf2zdlklvzkmmo2HuHTojFUubeSxp0CQ6MZDGLiK18iQJwxA4/O9Db2bvA=="
     }
   },
   "assets": [
@@ -40,6 +45,12 @@
       "package": "@rdkit/rdkit",
       "bytes": 6914823,
       "sha256": "sha256-4JZ9RP7VnkSi0Hv8CPOoaCHFShTJW7fm45L+hnMzuMg="
+    },
+    {
+      "path": "PreviewExtension/Web/openchemlib/openchemlib.js",
+      "package": "openchemlib",
+      "bytes": 1108967,
+      "sha256": "sha256-dwLe35kI4N4fYjGsy6y6ViS9HkbkiNu1KFoUyw0yUMc="
     }
   ],
   "profiles": {
@@ -56,6 +67,7 @@
     ],
     "desktop-grid": [
       "grid-viewer.js",
+      "openchemlib/openchemlib.js",
       "grid.css",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -73,6 +85,7 @@
     ],
     "quicklook-grid": [
       "grid-viewer.js",
+      "openchemlib/openchemlib.js",
       "grid.css",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
