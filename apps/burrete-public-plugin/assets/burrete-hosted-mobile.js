@@ -92,6 +92,14 @@
     document.body.appendChild(script);
     return loaded;
   };
+  const preloadScript = (name) => {
+    const link = document.createElement("link");
+    link.rel = "preload";
+    link.as = "script";
+    link.crossOrigin = "anonymous";
+    link.href = `${assetsBase}/${name}`;
+    document.head.appendChild(link);
+  };
   const jsonElement = (id, value) => {
     const element = document.createElement("script");
     element.id = id;
@@ -147,6 +155,16 @@
     document.body.className = "burette-opaque-background burette-mobile-host";
     document.documentElement.classList.add("buret-hosted-mobile-direct");
 
+    const runtimeScripts = [
+      "viewer-shell.js",
+      "viewer-bootstrap.js",
+      "molstar.js",
+      "burette-agent.js",
+      "trajectory-smoothing.js",
+      "viewer.js",
+    ];
+    for (const name of runtimeScripts) preloadScript(name);
+
     await Promise.all([
       addStylesheet("viewer-runtime.css"),
       addStylesheet("molstar.css"),
@@ -193,17 +211,14 @@
     });
     jsonElement("burrete-runtime-data", base64Utf8(structure.data));
 
-    await loadScript("viewer-shell.js");
-    await loadScript("viewer-bootstrap.js");
+    await loadScript(runtimeScripts[0]);
+    await loadScript(runtimeScripts[1]);
     window.BurreteHostedAppBridge?.setSource(structure.source);
     void window.BurreteHostedAppBridge?.updateSelection(null, documentId);
     window.__mqlPost = (type, message, payload = {}) => {
       updateHostedContext({ type, message, ...payload, documentId });
     };
-    await loadScript("molstar.js");
-    await loadScript("burette-agent.js");
-    await loadScript("trajectory-smoothing.js");
-    await loadScript("viewer.js");
+    for (const name of runtimeScripts.slice(2)) await loadScript(name);
   }
 
   function acceptResult(value) {
