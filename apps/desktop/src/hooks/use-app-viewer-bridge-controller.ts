@@ -6,6 +6,7 @@ import { useAppGridFileActions } from "./use-app-grid-file-actions";
 import { useAppGridRuntimeMessages } from "./use-app-grid-runtime-messages";
 import { useAppKetcherViewerMessages } from "./use-app-ketcher-viewer-messages";
 import { useAppMolstarContextMessages } from "./use-app-molstar-context-messages";
+import { useAppPubChemMessages } from "./use-app-pubchem-messages";
 import { useAppRendererMessage } from "./use-app-renderer-message";
 import { useAppSdfViewerMessages } from "./use-app-sdf-viewer-messages";
 import { useAppViewerBridgeMessages } from "./use-app-viewer-bridge-messages";
@@ -210,6 +211,7 @@ export function useAppViewerBridgeController({
     pushStatus,
     rememberRecentStructures,
   });
+  const { handlePubChemSearchMessage } = useAppPubChemMessages({ pushStatus });
   const { handleViewerFileMessage } = useAppViewerFileActions({
     pushErrorStatus,
     pushStatus,
@@ -280,6 +282,7 @@ export function useAppViewerBridgeController({
     handleGridRuntimeMessage,
     handleKetcherViewerMessage,
     handleMolstarContextMessage,
+    handlePubChemSearchMessage,
     handleRendererMessage,
     handleSdfViewerMessage,
     handleViewerConformerMessage,

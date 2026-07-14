@@ -1,3 +1,4 @@
+use crate::commands::xtb_runtime;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -295,7 +296,7 @@ fn run_conformer_job_blocking<R: Runtime>(
     if operation == "crest-generate"
         && should_retry_crest_with_xtb_preopt(&run_request, &status, &log)
     {
-        if let Some(xtb) = resolve_executable("xtb") {
+        if let Ok(xtb) = xtb_runtime::resolve(&app).map(|runtime| runtime.executable_path) {
             let recovery = "xTB pre-optimization after CREST initial geometry optimization failure";
             let xtb_log_path = work_dir.join("crest-generate-xtb-preopt.log");
             let preopt_charge = effective_conformer_charge(

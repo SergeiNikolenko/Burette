@@ -6,6 +6,9 @@ import { xtbStructureMenuItems } from "../apps/desktop/src/components/xtb-contex
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const viteConfig = source("apps/desktop/vite.config.ts");
 const xtbCommand = source("apps/desktop/src-tauri/src/commands/xtb.rs");
+const xtbRuntime = source("apps/desktop/src-tauri/src/commands/xtb_runtime.rs");
+const conformerCommand = source("apps/desktop/src-tauri/src/commands/conformer.rs");
+const browserDevXtbRuntime = source("apps/desktop/vite/browser-dev/xtb-runtime.ts");
 const chemistrySettings = source("apps/desktop/src/lib/chemistry-settings.ts");
 const chemistryTypes = source("apps/desktop/src/types.ts");
 const chemistryJobsHook = source("apps/desktop/src/hooks/use-app-chemistry-jobs.ts");
@@ -49,10 +52,32 @@ assert.match(viteConfig, /function browserDevCommandTimedOut[\s\S]*value\?\.kill
 assert.match(viteConfig, /exitCode: cancelled \? 130 : timedOut \? 124/);
 assert.match(chemistryJobsHook, /cancelledXtbJobIdsRef\.current\.delete\(jobId\)[\s\S]*status: "running"/);
 
-assert.match(xtbCommand, /Automatic xTB installation requires pixi/);
-assert.match(viteConfig, /Automatic xTB installation requires pixi/);
+assert.match(xtbRuntime, /Managed xTB installation requires Pixi/);
+assert.match(xtbRuntime, /"install", "--locked", "--manifest-path"/);
+assert.match(browserDevXtbRuntime, /"install", "--locked", "--manifest-path"/);
+assert.doesNotMatch(xtbRuntime, /global["']?,\s*["']install/);
+assert.doesNotMatch(browserDevXtbRuntime, /global["']?,\s*["']install/);
 assert.doesNotMatch(xtbCommand, /uv tool install xtb/);
 assert.doesNotMatch(viteConfig, /\["tool", "install", "xtb"\]/);
+assert.match(xtbRuntime, /MANAGED_INSTALL_TIMEOUT/);
+assert.match(xtbRuntime, /if validate_xtb\(&managed\)\.is_ok\(\)[\s\S]*return resolve_from_root\(&root\)/);
+assert.match(xtbRuntime, /clear_selection_if_unchanged/);
+assert.match(xtbRuntime, /cleanup_inactive_managed_runtimes/);
+assert.match(xtbRuntime, /validate_xtb\(&path\)/);
+assert.match(xtbRuntime, /fs::canonicalize\(&path\)/);
+assert.match(xtbRuntime, /symlink\(target, &next\)/);
+assert.match(xtbCommand, /started\.elapsed\(\) < Duration::from_secs\(5\)/);
+assert.match(xtbCommand, /\.clamp\(1, 86_400\)/);
+assert.match(viteConfig, /Math\.min\(86_400, Math\.max\(1, Number\(request\.timeoutSeconds\)/);
+assert.match(conformerCommand, /xtb_runtime::resolve\(&app\)/);
+assert.doesNotMatch(conformerCommand, /resolve_executable\("xtb"\)/);
+assert.match(viteConfig, /xtb = resolveBrowserDevXtb\(\)\.executablePath/);
+assert.match(browserDevXtbRuntime, /realpathSync\(path\)/);
+assert.match(browserDevXtbRuntime, /spawnSync\(path, \["--version"\]/);
+assert.match(browserDevXtbRuntime, /if \(isValidXtbExecutable\(managed\)\)[\s\S]*return resolveBrowserDevXtb\(\)/);
+assert.match(browserDevXtbRuntime, /selectionBefore/);
+assert.match(browserDevXtbRuntime, /selectionRevision/);
+assert.match(browserDevXtbRuntime, /cleanupInactiveManagedRuntimes/);
 
 assert.match(xtbCommand, /fn primary_open_path_for[\s\S]*\n\s*None\n\}/);
 assert.match(viteConfig, /function primaryBrowserDevXtbOpenPath[\s\S]*\n\s*return null;\n\}/);

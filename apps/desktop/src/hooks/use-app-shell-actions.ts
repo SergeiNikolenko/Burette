@@ -30,6 +30,8 @@ type UseAppShellActionsOptions = {
   checkConformerStatus: ShellActions["checkConformerStatus"];
   checkForUpdates: (showStatus?: boolean) => Promise<void> | void;
   checkXtbStatus: ShellActions["checkXtbStatus"];
+  chooseXtbExecutable: ShellActions["chooseXtbExecutable"];
+  clearXtbExecutableSelection: ShellActions["clearXtbExecutableSelection"];
   chooseFiles: ShellActions["chooseFiles"];
   chooseWorkspace: ShellActions["chooseWorkspace"];
   clearCache: ShellActions["clearCache"];
@@ -214,6 +216,8 @@ type ChemistryShellActions = Pick<
   | "clearConformerJobs"
   | "setConformerSettings"
   | "checkXtbStatus"
+  | "chooseXtbExecutable"
+  | "clearXtbExecutableSelection"
   | "installXtb"
   | "runXtbActiveOperation"
   | "runXtbJob"
@@ -417,6 +421,8 @@ const workspaceHistoryNoneActions = new Set<keyof ShellActions>([
   "cancelConformerJob",
   "clearConformerJobs",
   "checkXtbStatus",
+  "chooseXtbExecutable",
+  "clearXtbExecutableSelection",
   "installXtb",
   "runXtbActiveOperation",
   "runXtbJob",
@@ -578,6 +584,8 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       clearConformerJobs: actions.clearConformerJobs,
       setConformerSettings: actions.setConformerSettings,
       checkXtbStatus: actions.checkXtbStatus,
+      chooseXtbExecutable: actions.chooseXtbExecutable,
+      clearXtbExecutableSelection: actions.clearXtbExecutableSelection,
       installXtb: actions.installXtb,
       runXtbActiveOperation: actions.runXtbActiveOperation,
       runXtbJob: actions.runXtbJob,
@@ -685,6 +693,8 @@ export function useAppShellActions({
   checkConformerStatus,
   checkForUpdates,
   checkXtbStatus,
+  chooseXtbExecutable,
+  clearXtbExecutableSelection,
   chooseFiles,
   chooseWorkspace,
   clearCache,
@@ -850,6 +860,8 @@ export function useAppShellActions({
     ...createJobHistoryShellActions({ pushStatus, setConformerJobs, setXtbJobs }),
     setConformerSettings,
     checkXtbStatus,
+    chooseXtbExecutable,
+    clearXtbExecutableSelection,
     installXtb,
     runXtbActiveOperation,
     runXtbJob,

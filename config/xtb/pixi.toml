@@ -1,0 +1,7 @@
+[workspace]
+channels = ["conda-forge"]
+name = "burrete-xtb"
+platforms = ["osx-arm64", "osx-64"]
+
+[dependencies]
+xtb = "6.7.*"
