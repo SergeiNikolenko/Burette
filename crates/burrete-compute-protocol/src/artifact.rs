@@ -364,3 +364,7 @@ fn validate_clean_text(label: &str, value: &str, max: usize) -> Result<(), Proto
 fn validation_error<T>(message: &str) -> Result<T, ProtocolError> {
     Err(ProtocolError::Validation(message.into()))
 }
+
+#[cfg(test)]
+#[path = "artifact/tests.rs"]
+mod tests;
