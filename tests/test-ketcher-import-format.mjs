@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { detectKetcherImportFormat } from "../apps/desktop/src/lib/ketcher-import-format.ts";
+import { detectKetcherImportFormat, normalizeKetcherSmilesImport } from "../apps/desktop/src/lib/ketcher-import-format.ts";
 
 const molV2000 = [
   "example",
@@ -22,5 +22,8 @@ assert.equal(detectKetcherImportFormat("InChI=1S/CH4/h1H4"), "inchi");
 assert.equal(detectKetcherImportFormat("InChI=1S/CH4/h1H4\nAuxInfo=1/0/N:1/rA:1C/rB:/rC:;"), "inchi-aux");
 assert.equal(detectKetcherImportFormat('{"root":{"nodes":[]}}'), "ket");
 assert.equal(detectKetcherImportFormat("<cml><molecule /></cml>"), "cml");
+assert.equal(normalizeKetcherSmilesImport("CCO ethanol\nCC propane"), "CCO.CC");
+assert.equal(normalizeKetcherSmilesImport("CCO CC"), "CCO.CC");
+assert.equal(normalizeKetcherSmilesImport("CCO ethanol"), "CCO ethanol");
 
 console.log("Ketcher import format tests passed");
