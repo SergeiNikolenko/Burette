@@ -31,7 +31,6 @@ impl PackedFileDescriptor {
         validate_label("packed file media type", &self.media_type, MAX_LABEL_BYTES)
     }
 
-    #[allow(dead_code)] // Used by the higher-level pack reference modules.
     pub(crate) fn validate_manifest(&self, label: &str) -> Result<(), ProtocolError> {
         self.validate()?;
         if self.byte_length == 0 || self.media_type != "application/json" {
@@ -201,7 +200,6 @@ impl PackedLayout {
         self.arrays.iter().find(|array| array.name == name)
     }
 
-    #[allow(dead_code)] // Used by the higher-level pack manifest modules.
     pub(crate) fn reject_file_path(&self, path: &str, label: &str) -> Result<(), ProtocolError> {
         if self.files.iter().any(|file| file.relative_path == path) {
             return Err(ProtocolError::Validation(format!(
