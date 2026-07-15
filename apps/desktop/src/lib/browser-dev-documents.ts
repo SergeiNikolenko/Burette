@@ -389,9 +389,6 @@ export async function openBrowserDevMolstarContextDocument(
   preferences: ViewerPreferences,
 ): Promise<ViewerDocument> {
   const hostedMcpWidget = contextDocument.context?.hostedMcpWidget === true;
-  const contextPreferences = hostedMcpWidget
-    ? { ...preferences, canvasBackground: "black" as const }
-    : preferences;
   const entries = (contextDocument.entries ?? [])
     .filter((entry): entry is Required<Pick<BrowserDevMolstarContextEntry, "data">> & BrowserDevMolstarContextEntry => (
       typeof entry?.data === "string" && entry.data.length > 0
@@ -410,13 +407,13 @@ export async function openBrowserDevMolstarContextDocument(
         `${label}.sdf`,
         "sdf",
         decodeUtf8(entry.bytes),
-        { ...contextPreferences, rendererMode: "molstar" },
+        { ...preferences, rendererMode: "molstar" },
         {},
       );
       return { ...document, title: label };
     }
     const config = {
-      ...browserDevContextConfig(label, entry.format, entry.bytes.length, contextPreferences, id),
+      ...browserDevContextConfig(label, entry.format, entry.bytes.length, preferences, id),
       hostedMcpWidgetBootstrap: hostedMcpWidget,
       hostedMcpActions: hostedMcpWidget && Array.isArray(contextDocument.context?.hostedMcpActions)
         ? contextDocument.context.hostedMcpActions.slice(0, 8)
@@ -431,7 +428,7 @@ export async function openBrowserDevMolstarContextDocument(
       "molstar",
       entry.bytes,
       entry.bytes.length,
-      contextPreferences,
+      preferences,
       false,
       false,
       undefined,
@@ -459,9 +456,9 @@ export async function openBrowserDevMolstarContextDocument(
     label,
     entries: [contextDocument.entries?.[0] ?? {}],
     context: contextDocument.context,
-  }, contextPreferences);
+  }, preferences);
   const byteCount = receptor.bytes.length + ligands.reduce((total, ligand) => total + ligand.bytes.length, 0);
-  const visuals = resolvePreviewVisuals(contextPreferences);
+  const visuals = resolvePreviewVisuals(preferences);
   const config = {
     format: receptor.format.molstarFormat,
     molstarFormat: receptor.format.molstarFormat,
@@ -475,7 +472,7 @@ export async function openBrowserDevMolstarContextDocument(
     quickLookBuild: "burrete-browser-dev-context-docking",
     debug: false,
     theme: visuals.theme,
-    themeTokens: previewThemeTokens(contextPreferences),
+    themeTokens: previewThemeTokens(preferences),
     canvasBackground: visuals.canvasBackground,
     documentId: id,
     uiScale: 0.9,
@@ -486,7 +483,7 @@ export async function openBrowserDevMolstarContextDocument(
     appViewer: true,
     pubChemSearch: true,
     tauriViewer: false,
-    molstarStyle: contextPreferences.molstarStyle,
+    molstarStyle: preferences.molstarStyle,
     waterRepresentation: "line",
     xyzrenderViewer: false,
     xyzrenderAvailable: false,
@@ -511,7 +508,7 @@ export async function openBrowserDevMolstarContextDocument(
     "molstar",
     new Uint8Array([10]),
     byteCount,
-    contextPreferences,
+    preferences,
     false,
     false,
     undefined,
