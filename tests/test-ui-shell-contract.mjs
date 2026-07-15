@@ -2068,6 +2068,7 @@ assert.match(dockPanel, /const xyzrenderDockDocument = area === "right" && activ
 assert.match(dockPanel, /const runtimeTabs = xyzrenderDockDocument && !tabs\.some\(\(tab\) => tab\.kind === "xyzrender"\)/);
 assert.match(dockPanel, /actions\.openDockTab\("right", "xyzrender"\)/);
 assert.match(dockPanel, /const xyzrenderDocument = area === "right" && dockStructureDocument\?\.renderer === "xyzrender-external"/);
+assert.match(dockPanel, /if \(kind === "xyzrender"\) return Boolean\(xyzrenderDockDocument\)/);
 assert.match(dockPanel, /function XyzrenderDockPanel\(\{ document, actions \}: \{ document: ViewerDocument; actions: ShellActions \}\)/);
 assert.match(dockPanel, /const controlsRef = useRef<XyzrenderControls>\(xyzrenderDockControls\(document\)\)/);
 assert.match(dockPanel, /const presetRef = useRef\(document\.xyzrenderPreset \|\| "default"\)/);

@@ -110,12 +110,13 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
       catalog.filter((kind) => {
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
+        if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
         return true;
       }).map((kind) => ({
         kind: "item" as const,
         id: `dock-${area}-${kind}`,
         text: DOCK_TAB_LABELS[kind],
-        disabled: tabs.some((tab) => tab.kind === kind) || (kind === "xyzrender" && !xyzrenderDockDocument),
+        disabled: tabs.some((tab) => tab.kind === kind),
         action: () => actions.openDockTab(area, kind),
       })),
       { x: rect.left, y: rect.bottom + 6 },
