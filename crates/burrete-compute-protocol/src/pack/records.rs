@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use super::common::{validate_json_safe, validate_sha256, MAX_PACK_RECORDS};
 use crate::{validation::canonical_json_bytes, ProtocolError};
 
+pub const MOLECULAR_RECORDS_FILE_NAME: &str = "molecular-records.v1.jsonl";
 pub const MOLECULAR_RECORDS_FILE_PATH: &str = "pack/molecular-records.v1.jsonl";
 pub const MOLECULAR_RECORDS_MEDIA_TYPE: &str = "application/vnd.burrete.molecular-records-v1+jsonl";
 pub const ORDERED_RECORD_MOLECULE_IDENTITY_DOMAIN: &[u8] = b"burrete.snapshot-record-identity.v1\0";
