@@ -8,7 +8,10 @@ use super::{
     },
     layout::{PackedDType, PackedFileDescriptor, PackedLayout},
 };
-use crate::ProtocolError;
+use crate::{
+    validation::{canonical_json_bytes, sha256_hex},
+    ProtocolError,
+};
 
 pub const SOURCE_RECORD_IDS_ARRAY_NAME: &str = "sourceRecordIds";
 pub const SOURCE_RECORD_IDS_SEMANTIC: &str = "source_record_id";
@@ -67,6 +70,40 @@ impl MolecularSnapshotManifest {
         self.validate_identity_arrays()
     }
 
+    /// Computes the content address for the immutable source identity and
+    /// packed-file layout. Per-job IDs and timestamps are intentionally not
+    /// part of this cache identity.
+    pub fn computed_snapshot_sha256(&self) -> Result<String, ProtocolError> {
+        self.frozen_source.validate()?;
+        self.layout.validate()?;
+        let identity = MolecularSnapshotContentIdentity {
+            schema_version: self.schema_version,
+            frozen_source: &self.frozen_source,
+            layout: &self.layout,
+        };
+        canonical_json_bytes(&identity).map(|bytes| sha256_hex(&bytes))
+    }
+
+    pub fn bind_computed_snapshot_sha256(&mut self) -> Result<(), ProtocolError> {
+        self.snapshot_sha256 = self.computed_snapshot_sha256()?;
+        Ok(())
+    }
+
+    pub fn validate_snapshot_sha256(&self) -> Result<(), ProtocolError> {
+        self.validate()?;
+        if self.snapshot_sha256 != self.computed_snapshot_sha256()? {
+            return Err(ProtocolError::Validation(
+                "molecular snapshot hash differs from its immutable content identity".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn canonical_json_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
+        self.validate()?;
+        canonical_json_bytes(self)
+    }
+
     fn validate_identity_arrays(&self) -> Result<(), ProtocolError> {
         let source_ids = self
             .layout
@@ -98,6 +135,14 @@ impl MolecularSnapshotManifest {
         }
         Ok(())
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MolecularSnapshotContentIdentity<'a> {
+    schema_version: MolecularSnapshotVersion,
+    frozen_source: &'a FrozenSourceIdentity,
+    layout: &'a PackedLayout,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

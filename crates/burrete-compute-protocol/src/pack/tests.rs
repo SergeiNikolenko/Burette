@@ -175,6 +175,36 @@ fn round_trips_and_binds_all_pack_contracts() {
 }
 
 #[test]
+fn molecular_snapshot_content_hash_excludes_job_identity() {
+    let mut manifest = molecular_manifest();
+    manifest
+        .bind_computed_snapshot_sha256()
+        .expect("bind snapshot content hash");
+    manifest
+        .validate_snapshot_sha256()
+        .expect("validate snapshot content hash");
+    let content_hash = manifest.snapshot_sha256.clone();
+
+    manifest.snapshot_id = Uuid::from_u128(99);
+    manifest.created_at_ms += 1;
+    assert_eq!(
+        manifest
+            .computed_snapshot_sha256()
+            .expect("recompute snapshot content hash"),
+        content_hash
+    );
+
+    manifest.layout.files[0].sha256 = hash('9');
+    assert_ne!(
+        manifest
+            .computed_snapshot_sha256()
+            .expect("hash changed packed layout"),
+        content_hash
+    );
+    assert!(manifest.validate_snapshot_sha256().is_err());
+}
+
+#[test]
 fn rejects_missing_or_misshaped_molecular_identity_arrays() {
     let mut manifest = molecular_manifest();
     manifest.layout.arrays.remove(1);
