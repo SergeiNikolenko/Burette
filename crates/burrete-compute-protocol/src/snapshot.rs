@@ -7,7 +7,8 @@ use crate::{
     validation::{validate_bounded_text, validate_json_safe_u64, validate_lower_sha256},
     Backend, BackendPolicy, ClusterV1SubmitRequest, ComputeErrorCode, ComputeFailure,
     EngineIdentity, ExecutionPlan, FallbackDecision, GridScope, JobState, MolecularSnapshotRef,
-    OwnerSurface, Precision, ProtocolError, ResultPackRef, StageKind, WorkflowTemplateId,
+    OwnerSurface, Precision, ProtocolError, ResultPackRef, RuntimeIdentity, StageKind,
+    WorkflowTemplateId,
 };
 
 const MAX_STAGES: usize = 32;
@@ -71,7 +72,7 @@ pub struct JobSnapshot {
     pub artifact_ids: Vec<Uuid>,
     pub result_pack: Option<ResultPackRef>,
     pub outcome: Option<JobOutcomeSummary>,
-    pub pinned_runtime_version: Option<String>,
+    pub pinned_runtime: RuntimeIdentity,
     pub error: Option<ComputeFailure>,
     pub created_at_ms: u64,
     pub updated_at_ms: u64,
@@ -105,12 +106,19 @@ impl JobSnapshot {
         }
         validate_lower_sha256("normalized request", &self.normalized_request_sha256)?;
         validate_lower_sha256("accepted plan", &self.accepted_plan_sha256)?;
-        if let Some(runtime) = &self.pinned_runtime_version {
-            validate_bounded_text("pinned runtime version", runtime, MAX_RUNTIME_VERSION_BYTES)?;
+        if self.normalized_request_sha256 != self.request.canonical_sha256()? {
+            return validation_error(
+                "normalized request hash differs from canonical request bytes",
+            );
         }
+        if self.accepted_plan_sha256 != self.plan.canonical_sha256()? {
+            return validation_error("accepted plan hash differs from canonical plan bytes");
+        }
+        self.pinned_runtime.validate()?;
         self.frozen_source.validate()?;
         let record_count = self.frozen_source.frozen_source.record_count;
-        self.plan.validate_for_record_count(record_count)?;
+        self.plan
+            .validate_against_request(&self.request, record_count)?;
         if let GridScope::Selected(selected) = &self.request.source.scope {
             if selected.source_indexes.len() as u64 != record_count {
                 return validation_error("selected request count differs from the frozen source");
@@ -182,9 +190,7 @@ impl JobSnapshot {
                 validation_error("started or terminal stages require attempt evidence")
             };
         }
-        let runtime = self.pinned_runtime_version.as_deref().ok_or_else(|| {
-            ProtocolError::Validation("attempts require a pinned runtime version".into())
-        })?;
+        let runtime = self.pinned_runtime.version.as_str();
         validate_bounded_text("pinned runtime version", runtime, MAX_RUNTIME_VERSION_BYTES)?;
         let mut attempt_ids = BTreeSet::new();
         let mut by_stage: BTreeMap<&str, Vec<&AttemptSnapshot>> = BTreeMap::new();
@@ -200,6 +206,9 @@ impl JobSnapshot {
         }
         for stage in &self.stages {
             let attempts = by_stage.remove(stage.stage_id.as_str()).unwrap_or_default();
+            if attempts.len() > 1 && !stage.idempotent {
+                return validation_error("only idempotent stages may have multiple attempts");
+            }
             for (index, attempt) in attempts.iter().enumerate() {
                 if attempt.attempt_number as usize != index + 1
                     || (index == 0 && attempt.retry_reason.is_some())
@@ -303,16 +312,30 @@ impl JobSnapshot {
         let active_matches = match self.state {
             JobState::Queued => self.stages.iter().all(|s| s.state == StageState::Queued),
             JobState::Preparing => pivot.is_some_and(|stage| {
-                matches!(stage.state, StageState::Queued | StageState::Running)
-                    && stage.kind == StageKind::Materialize
+                (matches!(stage.state, StageState::Queued | StageState::Running)
+                    && matches!(
+                        stage.kind,
+                        StageKind::Materialize | StageKind::ChemistrySemantics
+                    ))
                     || self.is_retry_preparing_stage(stage)
             }),
-            JobState::WaitingGpu => pivot.is_some_and(|s| {
-                s.state == StageState::Queued && s.kind == StageKind::NumericCompute
+            JobState::WaitingGpu => pivot.is_some_and(|stage| {
+                stage.state == StageState::Queued
+                    && stage.kind == StageKind::NumericCompute
+                    && stage.effective_backend.is_gpu()
             }),
             JobState::Running => pivot.is_some_and(|stage| {
-                stage.state == StageState::Running
-                    && !matches!(stage.kind, StageKind::Validation | StageKind::ArtifactIo)
+                matches!(stage.state, StageState::Queued | StageState::Running)
+                    && match stage.kind {
+                        StageKind::NumericCompute => {
+                            stage.state == StageState::Running || !stage.effective_backend.is_gpu()
+                        }
+                        StageKind::WorkflowSemantics => true,
+                        StageKind::Materialize
+                        | StageKind::ChemistrySemantics
+                        | StageKind::Validation
+                        | StageKind::ArtifactIo => false,
+                    }
             }),
             JobState::Validating => pivot.is_some_and(|s| {
                 matches!(s.state, StageState::Queued | StageState::Running)
@@ -328,12 +351,9 @@ impl JobSnapshot {
                     StageState::Queued | StageState::Running | StageState::Interrupted
                 )
             }),
-            JobState::Cancelled => pivot.is_some_and(|s| {
-                matches!(
-                    s.state,
-                    StageState::Queued | StageState::Cancelled | StageState::Interrupted
-                )
-            }),
+            JobState::Cancelled => {
+                pivot.is_some_and(|s| matches!(s.state, StageState::Queued | StageState::Cancelled))
+            }
             JobState::Failed => pivot
                 .is_some_and(|s| matches!(s.state, StageState::Failed | StageState::Interrupted)),
             JobState::Interrupted => pivot.is_some_and(|s| s.state == StageState::Interrupted),
@@ -358,8 +378,10 @@ impl JobSnapshot {
                     return validation_error("failed job cannot use the Cancelled error code");
                 }
                 let failed_stage = pivot.expect("failed state has a pivot");
-                if error.stage_id.as_deref() != Some(failed_stage.stage_id.as_str()) {
-                    return validation_error("failed job error must identify its failed stage");
+                if failed_stage.error.as_ref() != Some(error) {
+                    return validation_error(
+                        "failed job error must equal its terminal stage and attempt error",
+                    );
                 }
                 self.require_no_result()?;
             }
@@ -367,6 +389,13 @@ impl JobSnapshot {
                 if self.error.as_ref().map(|error| error.code) != Some(ComputeErrorCode::Cancelled)
                 {
                     return validation_error("cancelled job requires a Cancelled error");
+                }
+                if let Some(cancelled_stage) = pivot.filter(|stage| stage.state.is_terminal()) {
+                    if cancelled_stage.error != self.error {
+                        return validation_error(
+                            "cancelled job error must equal its terminal stage and attempt error",
+                        );
+                    }
                 }
                 self.require_no_result()?;
             }
@@ -378,6 +407,11 @@ impl JobSnapshot {
                         && error.stage_id.as_deref() == Some(interrupted.stage_id.as_str())
                 }) {
                     return validation_error("interrupted job requires a retryable error");
+                }
+                if interrupted.error != self.error {
+                    return validation_error(
+                        "interrupted job error must equal its stage and attempt error",
+                    );
                 }
                 self.require_no_result()?;
             }
