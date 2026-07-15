@@ -74,8 +74,10 @@ For `cluster.v1`:
   or proves exact boundary parity against a double-precision reference;
 - neighbor sets match for zero fingerprints, duplicates, ties, threshold
   boundaries, sparse data, and adversarial dense graphs;
-- CSR uses `uint64` offsets and edge counts, an explicit edge budget, and tiled
-  cancellable dispatches instead of one unbounded `O(N^2)` command;
+- CSR uses `uint64` offsets and edge counts; `maxEdges` is the explicit maximum
+  number of qualifying undirected record pairs (one `{i, j}` pair counts once,
+  while symmetric CSR stores two entries), and tiled cancellable dispatches
+  replace one unbounded `O(N^2)` command;
 - Butina cluster membership, ordering, and chosen representatives match the
   frozen CPU reference;
 - selected, filtered, and all-row scopes use the frozen Grid revision;

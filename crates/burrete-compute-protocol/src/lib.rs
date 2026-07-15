@@ -51,6 +51,7 @@ pub use workflow::{
     FilteredGridScope, FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
     GridSourceReference, GridTextQuery, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
     SchedulingPolicy, SelectedGridScope, SimilarityCutoff, SimilaritySettings, WorkflowTemplateId,
+    MAX_COMPUTE_MEMORY_BYTES, MAX_UNDIRECTED_SIMILARITY_EDGES, MIN_COMPUTE_MEMORY_BYTES,
 };
 
 pub const COMPUTE_JOB_SCHEMA_V1: &str = "burrete.compute-job.v1";

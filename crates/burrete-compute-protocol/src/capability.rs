@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     validation::{validate_bounded_text, validate_json_safe_u64, validate_lower_sha256},
-    Backend, Precision, ProtocolError, WorkflowTemplateId, MAX_CONTROL_FRAME_BYTES,
+    Backend, Precision, ProtocolError, WorkflowTemplateId, MAX_COMPUTE_MEMORY_BYTES,
+    MAX_CONTROL_FRAME_BYTES, MAX_UNDIRECTED_SIMILARITY_EDGES, MIN_COMPUTE_MEMORY_BYTES,
     PROTOCOL_VERSION,
 };
 
@@ -12,9 +13,6 @@ const MAX_CAPABILITIES: usize = 256;
 const MAX_REASONS: usize = 64;
 const MAX_ID_BYTES: usize = 160;
 const MAX_MESSAGE_BYTES: usize = 2_048;
-const MAX_EDGE_BUDGET: u64 = 500_000_000;
-const MIN_MEMORY_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_MEMORY_BYTES: u64 = 32 * 1024 * 1024 * 1024;
 const MAX_DISPATCH_MS: u32 = 2_000;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -360,6 +358,8 @@ pub enum CapabilityMaturity {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CapabilityLimits {
     pub max_control_frame_bytes: u64,
+    /// Maximum qualifying unordered record pairs. Symmetric CSR storage uses
+    /// two directed entries per advertised edge.
     pub max_edges: u64,
     pub max_memory_bytes: u64,
     pub max_dispatch_ms: u32,
@@ -384,8 +384,9 @@ impl CapabilityLimits {
                 ));
             }
         } else if self.max_edges == 0
-            || self.max_edges > MAX_EDGE_BUDGET
-            || !(MIN_MEMORY_BYTES..=MAX_MEMORY_BYTES).contains(&self.max_memory_bytes)
+            || self.max_edges > MAX_UNDIRECTED_SIMILARITY_EDGES
+            || !(MIN_COMPUTE_MEMORY_BYTES..=MAX_COMPUTE_MEMORY_BYTES)
+                .contains(&self.max_memory_bytes)
             || self.max_dispatch_ms == 0
             || self.max_dispatch_ms > MAX_DISPATCH_MS
         {

@@ -254,10 +254,19 @@ cross multiplication. Empty-fingerprint behavior is explicit.
 
 Metal processes bounded two-dimensional tiles and never allocates the full
 pair matrix. The host checks cancellation between bounded command buffers,
-accumulates counts in `u64`, enforces the edge budget, sorts deterministic
-pairs, and builds symmetric CSR with `u64` offsets. Overflow is a typed
+accumulates counts in `u64`, interprets `maxEdges` as the maximum number of
+qualifying undirected `{i, j}` pairs, sorts deterministic pairs, and builds
+symmetric CSR with `u64` offsets and two entries per edge. Overflow is a typed
 failure, never truncation. A GPU epoch drains only after command-buffer
 completion and error checks.
+
+The CPU reference counts matching pairs in a first allocation-free tiled pass,
+then admits a conservative logical working set before reserving pair, CSR,
+degree, cursor, alive, and cluster-output buffers. Imported Metal CSR is
+re-admitted before CPU Butina using the same request `maxMemoryBytes`. The
+account is deliberately conservative across known buffers plus fixed headroom;
+it is not presented as an exact allocator-byte or process-RSS prediction, and
+allocation failures remain typed.
 
 CPU Butina consumes the frozen neighbor graph with versioned deterministic
 tie-breaking, cluster order, and representative policy. The representative is

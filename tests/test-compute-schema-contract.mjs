@@ -542,6 +542,12 @@ expectValid("workflow-templates/cluster.v1.schema.json", filteredRequest, "canon
 expectValid("workflow-templates/cluster.v1.schema.json", plan, "canonical execution plan", "#/$defs/executionPlan");
 expectSemanticValid(clusterSemanticErrors(request), "canonical cluster request");
 expectSemanticValid(clusterSemanticErrors(filteredRequest), "canonical filtered cluster request");
+const edgeBudgetBoundary = structuredClone(request);
+edgeBudgetBoundary.limits.maxEdges = 500000000;
+expectValid("workflow-templates/cluster.v1.schema.json", edgeBudgetBoundary, "maximum undirected similarity edge budget");
+const edgeBudgetOverflow = structuredClone(edgeBudgetBoundary);
+edgeBudgetOverflow.limits.maxEdges += 1;
+expectInvalid("workflow-templates/cluster.v1.schema.json", edgeBudgetOverflow, "undirected similarity edge budget overflow");
 assert.equal(jcsSha256(request), "e9ac23cb9b124ece406aee5619cf49112de538f4fdf6d2f2217387df1ab202af");
 assert.equal(jcsSha256(filteredRequest), "abc35f1fd431bf053362f15ed63e7125e8f573f2762f92e40454afaf02341c9b");
 assert.equal(jcsSha256(plan), "746fb1f42a9be112bf9d4efc02d50370e64acc8db6790ea70d5d42e178238f58");
