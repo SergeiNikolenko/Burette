@@ -1,9 +1,20 @@
+mod artifact;
+mod capability;
 mod error;
 mod job;
 mod wire;
 mod workflow;
 
-pub use error::ProtocolError;
+pub use artifact::{
+    ArtifactFile, ArtifactManifest, ArtifactManifestSchemaVersion, ResultPackVersion,
+    StageProvenance,
+};
+pub use capability::{
+    CapabilityEntry, CapabilityLimits, CapabilityMaturity, CapabilityReason, CapabilityReasonCode,
+    CapabilityReportSchemaVersion, ComputeAvailability, ComputeCapabilityReport, GpuDeviceIdentity,
+    PlatformIdentity, ProtocolRange, RuntimeIdentity,
+};
+pub use error::{ComputeErrorCode, ComputeFailure, ProtocolError};
 pub use job::{Backend, ExecutionPlan, JobState, OwnerSurface, PlannedStage, Precision, StageKind};
 pub use wire::{decode_frame, encode_frame, read_frame, write_frame, MAX_CONTROL_FRAME_BYTES};
 pub use workflow::{
@@ -15,4 +26,6 @@ pub use workflow::{
 };
 
 pub const COMPUTE_JOB_SCHEMA_V1: &str = "burrete.compute-job.v1";
+pub const ARTIFACT_MANIFEST_SCHEMA_V1: &str = "burrete.compute-artifact-manifest.v1";
+pub const CAPABILITY_REPORT_SCHEMA_V1: &str = "burrete.compute-capability-report.v1";
 pub const PROTOCOL_VERSION: u32 = 1;

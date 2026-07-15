@@ -1,5 +1,34 @@
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ComputeErrorCode {
+    InvalidChemistry,
+    UnsupportedChemistry,
+    CapabilityMismatch,
+    GpuAdmissionDenied,
+    GpuExecutionFailed,
+    NumericalFailure,
+    ValidationMismatch,
+    WorkerCrashed,
+    ArtifactCorrupt,
+    RuntimeIntegrityError,
+    SourceRevisionMismatch,
+    Cancelled,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ComputeFailure {
+    pub code: ComputeErrorCode,
+    pub message: String,
+    pub stage_id: Option<String>,
+    pub molecule_stable_id: Option<String>,
+    pub retryable: bool,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProtocolError {
     Validation(String),
