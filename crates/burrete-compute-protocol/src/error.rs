@@ -2,8 +2,14 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+use crate::validation::{validate_bounded_text, validate_optional_bounded_text};
+
+const MAX_ERROR_MESSAGE_BYTES: usize = 2_048;
+const MAX_STAGE_ID_BYTES: usize = 96;
+const MAX_MOLECULE_ID_BYTES: usize = 256;
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "PascalCase")]
 pub enum ComputeErrorCode {
     InvalidChemistry,
     UnsupportedChemistry,
@@ -58,6 +64,32 @@ impl fmt::Display for ProtocolError {
 }
 
 impl std::error::Error for ProtocolError {}
+
+impl ComputeFailure {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        validate_bounded_text(
+            "compute failure message",
+            &self.message,
+            MAX_ERROR_MESSAGE_BYTES,
+        )?;
+        validate_optional_bounded_text(
+            "compute failure stage ID",
+            self.stage_id.as_deref(),
+            MAX_STAGE_ID_BYTES,
+        )?;
+        validate_optional_bounded_text(
+            "compute failure molecule ID",
+            self.molecule_stable_id.as_deref(),
+            MAX_MOLECULE_ID_BYTES,
+        )?;
+        if self.code == ComputeErrorCode::Cancelled && self.retryable {
+            return Err(ProtocolError::Validation(
+                "cancelled compute failures cannot be retryable".into(),
+            ));
+        }
+        Ok(())
+    }
+}
 
 impl From<std::io::Error> for ProtocolError {
     fn from(error: std::io::Error) -> Self {
