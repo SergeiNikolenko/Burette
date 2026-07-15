@@ -9,10 +9,11 @@ use burrete_compute_protocol::{
     FrozenSourceIdentity, GridScope, GridTextQuery, MolecularSnapshotManifest,
     MolecularSnapshotRecordV1, MolecularSnapshotRecordVersion, MolecularSnapshotRef,
     MolecularSnapshotVersion, OrderedRecordMoleculeIdentityHasher, PackedArrayDescriptor,
-    PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout, MAX_CONTROL_FRAME_BYTES,
-    MAX_JSON_SAFE_INTEGER, MAX_PACK_BYTES, MAX_PACK_RECORDS, MOLECULAR_RECORDS_FILE_NAME,
-    MOLECULAR_RECORDS_FILE_PATH, MOLECULAR_RECORDS_MEDIA_TYPE, MOLECULE_CONTENT_HASHES_ARRAY_NAME,
-    MOLECULE_CONTENT_HASHES_SEMANTIC, SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
+    PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout, MAX_JSON_SAFE_INTEGER,
+    MAX_MOLECULAR_SNAPSHOT_MANIFEST_BYTES, MAX_PACK_BYTES, MAX_PACK_RECORDS,
+    MOLECULAR_RECORDS_FILE_NAME, MOLECULAR_RECORDS_FILE_PATH, MOLECULAR_RECORDS_MEDIA_TYPE,
+    MOLECULE_CONTENT_HASHES_ARRAY_NAME, MOLECULE_CONTENT_HASHES_SEMANTIC,
+    SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
 };
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection, Row, Statement};
 use sha2::{Digest, Sha256};
@@ -324,7 +325,7 @@ fn reserve_publication_capacity(
     pack_bytes: u64,
 ) -> Result<SnapshotByteReservation<'_>, String> {
     let publication_bytes = pack_bytes
-        .checked_add(MAX_CONTROL_FRAME_BYTES as u64)
+        .checked_add(MAX_MOLECULAR_SNAPSHOT_MANIFEST_BYTES as u64)
         .and_then(|bytes| bytes.checked_add(SNAPSHOT_FILESYSTEM_OVERHEAD_BYTES))
         .ok_or_else(|| "Frozen Grid disk reservation overflowed".to_string())?;
     publication_root.reserve_bytes(publication_bytes, SNAPSHOT_DISK_HEADROOM_BYTES)

@@ -15,8 +15,8 @@ pub use layout::{
 };
 pub use molecular::{
     FrozenSourceIdentity, MolecularSnapshotManifest, MolecularSnapshotRef,
-    MOLECULE_CONTENT_HASHES_ARRAY_NAME, MOLECULE_CONTENT_HASHES_SEMANTIC,
-    SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
+    MAX_MOLECULAR_SNAPSHOT_MANIFEST_BYTES, MOLECULE_CONTENT_HASHES_ARRAY_NAME,
+    MOLECULE_CONTENT_HASHES_SEMANTIC, SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
 };
 pub use records::{
     MolecularSnapshotRecordV1, MolecularSnapshotRecordVersion, OrderedRecordMoleculeIdentityHasher,
