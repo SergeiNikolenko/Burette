@@ -4240,6 +4240,11 @@ img.radix-menu-item-icon {
 .ketcher-editor-root {
   position: relative;
 }
+.ketcher-editor-root [data-burrete-agent-highlighted="true"] {
+  filter: drop-shadow(0 0 3px rgba(20, 122, 255, 0.95));
+  stroke: #147aff !important;
+  stroke-width: 2px !important;
+}
 .ketcher-editor-shell [class*="App-module_app"] {
   grid-template-columns: minmax(var(--ketcher-side-rail-width), max-content) 1fr minmax(var(--ketcher-side-rail-width), max-content);
 }

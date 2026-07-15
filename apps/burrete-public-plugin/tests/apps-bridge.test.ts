@@ -23,6 +23,12 @@ describe("MCP Apps bridge", () => {
         });
       } else if (message.method === "ui/update-model-context") {
         void hostTransport.send({ jsonrpc: "2.0", id: message.id, result: {} });
+      } else if (message.method === "tools/call") {
+        void hostTransport.send({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: { content: [{ type: "text", text: "ok" }] },
+        });
       }
     };
     await hostTransport.start();
@@ -37,7 +43,11 @@ describe("MCP Apps bridge", () => {
     await app.updateModelContext({
       structuredContent: { burrete: { activeSelection: null } },
     });
-    expect(methods).toEqual(["ui/initialize", "ui/update-model-context"]);
+    await app.callServerTool({
+      name: "control_ketcher",
+      arguments: { action: { command: "get_structure" } },
+    });
+    expect(methods).toEqual(["ui/initialize", "ui/update-model-context", "tools/call"]);
     await app.close();
     await hostTransport.close();
   });

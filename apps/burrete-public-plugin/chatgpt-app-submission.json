@@ -43,6 +43,30 @@
         "open_world_justification": "Viewer actions affect only the isolated result widget and do not write to RCSB or another external system.",
         "destructive_justification": "Cannot modify the source file, persist a molecular edit, or perform an irreversible external action."
       }
+    },
+    "open_ketcher": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Opens only an ephemeral in-memory editor surface and does not change the source file or write a workspace.",
+        "open_world_justification": "The editor is isolated to the current MCP widget and cannot publish content or contact third-party systems.",
+        "destructive_justification": "The tool cannot delete, overwrite, or persist a file; persistence requires a separate user-confirmed action."
+      }
+    },
+    "control_ketcher": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Edits only the ephemeral Ketcher surface in the current widget; it never mutates the source attachment or local files.",
+        "open_world_justification": "Revision-checked actions stay inside the isolated Burrete relay and do not publish content or call third-party systems.",
+        "destructive_justification": "Clear and replace affect only the transient widget state; saving stops at an explicit user-confirmation boundary."
+      }
     }
   },
   "test_cases": [
@@ -90,6 +114,22 @@
       "file_attachment_urls": null,
       "tools_triggered": "preview_pdb_structure",
       "expected_output": "Retrieves 1CRN from RCSB, returns bounded composition counts, and renders the structure in the full interactive viewer.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Open an ephemeral Ketcher editor with a small inline structure.",
+      "user_prompt": "Open a Ketcher editor and seed it with ethanol using the SMILES CCO.",
+      "file_attachment_urls": null,
+      "tools_triggered": "open_ketcher",
+      "expected_output": "Creates an isolated revisioned Ketcher surface and renders the focused chemical editor without writing a file.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Apply a revision-checked chemical edit in Ketcher.",
+      "user_prompt": "In the open Ketcher editor, replace the structure with CCO and return its SMILES.",
+      "file_attachment_urls": null,
+      "tools_triggered": "control_ketcher",
+      "expected_output": "Applies the edit to the current surface, returns a bounded snapshot and export, and leaves persistence to the user.",
       "expected_output_url": null
     }
   ],
