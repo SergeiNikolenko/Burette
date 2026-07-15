@@ -265,6 +265,17 @@ assert_no_external_python_dependencies() {
     exit 1
   }
 }
+prepare_bundled_python_for_signing() {
+  local python_root="$1"
+  rm -rf "$python_root/IDLE 3.app" "$python_root/Python Launcher 3.app"
+  find "$python_root" -type l \
+    -path '*/Python.framework/Versions/*/lib/python*/site-packages' \
+    -delete
+  find "$python_root" -type f \
+    -path '*/Python.framework/Versions/*/Resources/Python.app/Contents/Info.plist' \
+    -delete
+  find "$python_root" -type d -name _CodeSignature -prune -exec rm -rf {} +
+}
 bundle_xyzrender_runtime() {
   local app="$1"
   local runtime="$app/Contents/Resources/xyzrender-runtime"
@@ -283,6 +294,7 @@ bundle_xyzrender_runtime() {
   clean_detritus "$python_root"
   relocate_bundled_python_runtime "$python_root"
   assert_no_external_python_dependencies "$python_root"
+  prepare_bundled_python_for_signing "$python_root"
   cat >"$runtime/bin/xyzrender" <<'EOF'
 #!/bin/sh
 set -eu
@@ -324,6 +336,14 @@ assert_bundled_xyzrender_runtime() {
     exit 1
   }
   assert_no_external_python_dependencies "$python_root"
+  local python_framework
+  python_framework="$(find "$python_root" -type d -name Python.framework -print -quit)"
+  if [[ -n "$python_framework" ]]; then
+    codesign --verify --deep --strict "$python_framework" >/dev/null || {
+      echo "error: bundled Python framework signature is invalid $stage" >&2
+      exit 1
+    }
+  fi
   PYTHONNOUSERSITE=1 "$python_root/bin/python3" -c 'import sys; print(sys.version)' >/dev/null || {
     echo "error: bundled xyzrender Python runtime does not launch $stage" >&2
     exit 1
@@ -341,6 +361,12 @@ sign_xyzrender_binaries() {
       -name '*.dylib' -o \
       -name '*.so' \
     \))
+  local python_framework
+  python_framework="$(find "$@" -type d -name Python.framework -print -quit)"
+  if [[ -n "$python_framework" ]]; then
+    codesign --remove-signature "$python_framework" >/dev/null 2>&1 || true
+    codesign "${CODESIGN_ARGS[@]}" "$python_framework" >/dev/null
+  fi
 }
 sign_bundled_xyzrender_runtime() {
   local app="$1"
