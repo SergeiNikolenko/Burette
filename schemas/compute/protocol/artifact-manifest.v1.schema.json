@@ -161,6 +161,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "kind": {
                 "const": "numericCompute"
@@ -172,6 +173,7 @@
             "required": ["kind", "effectiveBackend"]
           },
           "then": {
+            "type": "object",
             "required": ["device", "kernelId", "gpuTimeMs"],
             "properties": {
               "device": {
@@ -187,6 +189,7 @@
             }
           },
           "else": {
+            "type": "object",
             "properties": {
               "gpuTimeMs": {
                 "type": "null"
@@ -202,6 +205,7 @@
           "$ref": "common.v1.schema.json#/$defs/fallbackDecision"
         },
         {
+          "type": "object",
           "properties": {
             "reason": {
               "$ref": "common.v1.schema.json#/$defs/cleanStatusText"
@@ -228,37 +232,37 @@
         {
           "allOf": [
             { "$ref": "#/$defs/stageProvenance" },
-            { "properties": { "stageId": { "const": "freezeScope" }, "kind": { "const": "materialize" } } }
+            { "type": "object", "properties": { "stageId": { "const": "freezeScope" }, "kind": { "const": "materialize" } } }
           ]
         },
         {
           "allOf": [
             { "$ref": "#/$defs/stageProvenance" },
-            { "properties": { "stageId": { "const": "fingerprints" }, "kind": { "const": "chemistrySemantics" } } }
+            { "type": "object", "properties": { "stageId": { "const": "fingerprints" }, "kind": { "const": "chemistrySemantics" } } }
           ]
         },
         {
           "allOf": [
             { "$ref": "#/$defs/stageProvenance" },
-            { "properties": { "stageId": { "const": "tanimotoNeighbors" }, "kind": { "const": "numericCompute" } } }
+            { "type": "object", "properties": { "stageId": { "const": "tanimotoNeighbors" }, "kind": { "const": "numericCompute" } } }
           ]
         },
         {
           "allOf": [
             { "$ref": "#/$defs/stageProvenance" },
-            { "properties": { "stageId": { "const": "butinaClusters" }, "kind": { "const": "workflowSemantics" } } }
+            { "type": "object", "properties": { "stageId": { "const": "butinaClusters" }, "kind": { "const": "workflowSemantics" } } }
           ]
         },
         {
           "allOf": [
             { "$ref": "#/$defs/stageProvenance" },
-            { "properties": { "stageId": { "const": "validateResults" }, "kind": { "const": "validation" } } }
+            { "type": "object", "properties": { "stageId": { "const": "validateResults" }, "kind": { "const": "validation" } } }
           ]
         },
         {
           "allOf": [
             { "$ref": "#/$defs/stageProvenance" },
-            { "properties": { "stageId": { "const": "publishResults" }, "kind": { "const": "artifactIo" } } }
+            { "type": "object", "properties": { "stageId": { "const": "publishResults" }, "kind": { "const": "artifactIo" } } }
           ]
         }
       ],

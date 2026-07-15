@@ -78,6 +78,7 @@
   "allOf": [
     {
       "if": {
+        "type": "object",
         "properties": {
           "availability": {
             "const": "available"
@@ -86,6 +87,7 @@
         "required": ["availability"]
       },
       "then": {
+        "type": "object",
         "required": ["runtime", "device"],
         "properties": {
           "runtime": {
@@ -103,6 +105,7 @@
                   "$ref": "#/$defs/capabilityEntry"
                 },
                 {
+                  "type": "object",
                   "properties": {
                     "available": {
                       "const": true
@@ -124,6 +127,7 @@
     },
     {
       "if": {
+        "type": "object",
         "properties": {
           "availability": {
             "const": "degraded"
@@ -132,6 +136,7 @@
         "required": ["availability"]
       },
       "then": {
+        "type": "object",
         "required": ["runtime"],
         "properties": {
           "runtime": {
@@ -142,7 +147,9 @@
             "minItems": 2,
             "allOf": [
               {
+                "type": "array",
                 "contains": {
+                  "type": "object",
                   "properties": {
                     "available": {
                       "const": true
@@ -152,7 +159,9 @@
                 }
               },
               {
+                "type": "array",
                 "contains": {
+                  "type": "object",
                   "properties": {
                     "available": {
                       "const": false
@@ -175,6 +184,7 @@
     },
     {
       "if": {
+        "type": "object",
         "properties": {
           "availability": {
             "const": "unavailable"
@@ -183,6 +193,7 @@
         "required": ["availability"]
       },
       "then": {
+        "type": "object",
         "properties": {
           "capabilities": {
             "type": "array",
@@ -192,6 +203,7 @@
                   "$ref": "#/$defs/capabilityEntry"
                 },
                 {
+                  "type": "object",
                   "properties": {
                     "available": {
                       "const": false
@@ -212,64 +224,78 @@
       }
     },
     {
+      "type": "object",
       "$comment": "A reason code may be described at most once.",
       "properties": {
         "reasons": {
-          "contains": { "properties": { "code": { "const": "UnsupportedArchitecture" } }, "required": ["code"] },
+          "type": "array",
+          "contains": { "type": "object", "properties": { "code": { "const": "UnsupportedArchitecture" } }, "required": ["code"] },
           "minContains": 0,
           "maxContains": 1
         }
       }
     },
     {
+      "type": "object",
       "properties": {
         "reasons": {
-          "contains": { "properties": { "code": { "const": "UnsupportedOperatingSystem" } }, "required": ["code"] },
+          "type": "array",
+          "contains": { "type": "object", "properties": { "code": { "const": "UnsupportedOperatingSystem" } }, "required": ["code"] },
           "minContains": 0,
           "maxContains": 1
         }
       }
     },
     {
+      "type": "object",
       "properties": {
         "reasons": {
-          "contains": { "properties": { "code": { "const": "MetalUnavailable" } }, "required": ["code"] },
+          "type": "array",
+          "contains": { "type": "object", "properties": { "code": { "const": "MetalUnavailable" } }, "required": ["code"] },
           "minContains": 0,
           "maxContains": 1
         }
       }
     },
     {
+      "type": "object",
       "properties": {
         "reasons": {
-          "contains": { "properties": { "code": { "const": "RuntimeMissing" } }, "required": ["code"] },
+          "type": "array",
+          "contains": { "type": "object", "properties": { "code": { "const": "RuntimeMissing" } }, "required": ["code"] },
           "minContains": 0,
           "maxContains": 1
         }
       }
     },
     {
+      "type": "object",
       "properties": {
         "reasons": {
-          "contains": { "properties": { "code": { "const": "RuntimeIntegrityError" } }, "required": ["code"] },
+          "type": "array",
+          "contains": { "type": "object", "properties": { "code": { "const": "RuntimeIntegrityError" } }, "required": ["code"] },
           "minContains": 0,
           "maxContains": 1
         }
       }
     },
     {
+      "type": "object",
       "properties": {
         "reasons": {
-          "contains": { "properties": { "code": { "const": "ProtocolMismatch" } }, "required": ["code"] },
+          "type": "array",
+          "contains": { "type": "object", "properties": { "code": { "const": "ProtocolMismatch" } }, "required": ["code"] },
           "minContains": 0,
           "maxContains": 1
         }
       }
     },
     {
+      "type": "object",
       "properties": {
         "reasons": {
-          "contains": { "properties": { "code": { "const": "KernelUnavailable" } }, "required": ["code"] },
+          "type": "array",
+          "contains": { "type": "object", "properties": { "code": { "const": "KernelUnavailable" } }, "required": ["code"] },
           "minContains": 0,
           "maxContains": 1
         }
@@ -278,112 +304,140 @@
     {
       "$comment": "Every unavailable capability reasonCode must have a matching reasons entry.",
       "if": {
+        "type": "object",
         "properties": {
           "capabilities": {
-            "contains": { "properties": { "reasonCode": { "const": "UnsupportedArchitecture" } }, "required": ["reasonCode"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "reasonCode": { "const": "UnsupportedArchitecture" } }, "required": ["reasonCode"] }
           }
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "reasons": {
-            "contains": { "properties": { "code": { "const": "UnsupportedArchitecture" } }, "required": ["code"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "code": { "const": "UnsupportedArchitecture" } }, "required": ["code"] }
           }
         }
       }
     },
     {
       "if": {
+        "type": "object",
         "properties": {
           "capabilities": {
-            "contains": { "properties": { "reasonCode": { "const": "UnsupportedOperatingSystem" } }, "required": ["reasonCode"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "reasonCode": { "const": "UnsupportedOperatingSystem" } }, "required": ["reasonCode"] }
           }
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "reasons": {
-            "contains": { "properties": { "code": { "const": "UnsupportedOperatingSystem" } }, "required": ["code"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "code": { "const": "UnsupportedOperatingSystem" } }, "required": ["code"] }
           }
         }
       }
     },
     {
       "if": {
+        "type": "object",
         "properties": {
           "capabilities": {
-            "contains": { "properties": { "reasonCode": { "const": "MetalUnavailable" } }, "required": ["reasonCode"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "reasonCode": { "const": "MetalUnavailable" } }, "required": ["reasonCode"] }
           }
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "reasons": {
-            "contains": { "properties": { "code": { "const": "MetalUnavailable" } }, "required": ["code"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "code": { "const": "MetalUnavailable" } }, "required": ["code"] }
           }
         }
       }
     },
     {
       "if": {
+        "type": "object",
         "properties": {
           "capabilities": {
-            "contains": { "properties": { "reasonCode": { "const": "RuntimeMissing" } }, "required": ["reasonCode"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "reasonCode": { "const": "RuntimeMissing" } }, "required": ["reasonCode"] }
           }
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "reasons": {
-            "contains": { "properties": { "code": { "const": "RuntimeMissing" } }, "required": ["code"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "code": { "const": "RuntimeMissing" } }, "required": ["code"] }
           }
         }
       }
     },
     {
       "if": {
+        "type": "object",
         "properties": {
           "capabilities": {
-            "contains": { "properties": { "reasonCode": { "const": "RuntimeIntegrityError" } }, "required": ["reasonCode"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "reasonCode": { "const": "RuntimeIntegrityError" } }, "required": ["reasonCode"] }
           }
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "reasons": {
-            "contains": { "properties": { "code": { "const": "RuntimeIntegrityError" } }, "required": ["code"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "code": { "const": "RuntimeIntegrityError" } }, "required": ["code"] }
           }
         }
       }
     },
     {
       "if": {
+        "type": "object",
         "properties": {
           "capabilities": {
-            "contains": { "properties": { "reasonCode": { "const": "ProtocolMismatch" } }, "required": ["reasonCode"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "reasonCode": { "const": "ProtocolMismatch" } }, "required": ["reasonCode"] }
           }
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "reasons": {
-            "contains": { "properties": { "code": { "const": "ProtocolMismatch" } }, "required": ["code"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "code": { "const": "ProtocolMismatch" } }, "required": ["code"] }
           }
         }
       }
     },
     {
       "if": {
+        "type": "object",
         "properties": {
           "capabilities": {
-            "contains": { "properties": { "reasonCode": { "const": "KernelUnavailable" } }, "required": ["reasonCode"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "reasonCode": { "const": "KernelUnavailable" } }, "required": ["reasonCode"] }
           }
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "reasons": {
-            "contains": { "properties": { "code": { "const": "KernelUnavailable" } }, "required": ["code"] }
+            "type": "array",
+            "contains": { "type": "object", "properties": { "code": { "const": "KernelUnavailable" } }, "required": ["code"] }
           }
         }
       }
@@ -516,6 +570,7 @@
       "allOf": [
         {
           "if": {
+            "type": "object",
             "properties": {
               "available": {
                 "const": true
@@ -524,6 +579,7 @@
             "required": ["available"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "maturity": {
                 "not": {
@@ -536,6 +592,7 @@
             }
           },
           "else": {
+            "type": "object",
             "required": ["reasonCode"],
             "properties": {
               "reasonCode": {
