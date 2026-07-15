@@ -117,6 +117,9 @@ const WEB_ASSETS_BASE = String(
   || "",
 )
   || fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
+const RDKIT_WASM_PATH = WEB_ASSETS_BASE.startsWith("/@fs/")
+  ? "/__burette/rdkit-wasm"
+  : `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/rdkit/RDKit_minimal.wasm`;
 const AMBER_NETCDF_EXTENSIONS = new Set(["nc", "ncdf", "netcdf", "ncrst"]);
 const TRAJECTORY_PAIR_EXTENSIONS = new Set([
   "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
@@ -1209,7 +1212,7 @@ function viewerHtml(
     trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1,
     trajectoryFrameCount,
     ...(reloadOptions?.activeModel != null ? { activeModel: reloadOptions.activeModel } : {}),
-    rdkitWasmPath: "/__burette/rdkit-wasm",
+    rdkitWasmPath: RDKIT_WASM_PATH,
     ...(reloadOptions?.sdfPoseControlLabel ? { sdfPoseControlLabel: reloadOptions.sdfPoseControlLabel } : {}),
     ...(stagedEntries?.some((entry) => entry?.representation === "structure-scene-entry") ? { structureSceneMode: "structurePoses" } : {}),
     appViewer: true,
@@ -1424,7 +1427,7 @@ async function gridHtml(
     recordsIncluded: records.length,
     recordsTruncated: false,
     pageSize: 720,
-    rdkitWasmPath: "/__burette/rdkit-wasm",
+    rdkitWasmPath: RDKIT_WASM_PATH,
     xyzrenderPreset: "default",
     xyzrenderPresetOptions: [
       { value: "default", label: "Default" },
