@@ -20,6 +20,9 @@ pub trait WireMessage: sealed::Sealed {
     fn validate_wire(&self) -> Result<(), ProtocolError>;
 }
 
+#[path = "control.rs"]
+pub mod control;
+
 pub fn encode_frame<T: Serialize + WireMessage>(value: &T) -> Result<Vec<u8>, ProtocolError> {
     value.validate_wire()?;
     encode_frame_raw(value)
@@ -174,9 +177,14 @@ impl Write for CappedPayloadWriter {
 mod tests {
     use std::io::Cursor;
 
-    use super::*;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
+    use uuid::Uuid;
+
+    use super::control::ControlRequest;
+    use super::*;
+
+    const REQUEST_ID: Uuid = Uuid::from_u128(1);
 
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     struct Message {
@@ -264,6 +272,71 @@ mod tests {
         };
         let error = encode_frame(&message).expect_err("reject oversized outbound frame");
         assert!(matches!(error, ProtocolError::FrameTooLarge { .. }));
+    }
+
+    #[test]
+    fn rejects_unknown_client_fields_and_commands() {
+        let nonce = "a".repeat(16);
+        let unknown_field = test_frame(&json!({
+            "protocolVersion": 1,
+            "requestId": REQUEST_ID,
+            "command": { "kind": "handshake", "clientNonce": nonce },
+            "path": "/tmp/compute"
+        }));
+        assert!(matches!(
+            decode_frame::<ControlRequest>(&unknown_field),
+            Err(ProtocolError::Json(_))
+        ));
+
+        let unknown_command = test_frame(&json!({
+            "protocolVersion": 1,
+            "requestId": REQUEST_ID,
+            "command": { "kind": "deleteFiles", "sessionToken": valid_session_token() }
+        }));
+        assert!(matches!(
+            decode_frame::<ControlRequest>(&unknown_command),
+            Err(ProtocolError::Json(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_and_malformed_session_tokens() {
+        let missing = test_frame(&json!({
+            "protocolVersion": 1,
+            "requestId": REQUEST_ID,
+            "command": { "kind": "capabilities" }
+        }));
+        assert!(matches!(
+            decode_frame::<ControlRequest>(&missing),
+            Err(ProtocolError::Json(_))
+        ));
+
+        let malformed = test_frame(&json!({
+            "protocolVersion": 1,
+            "requestId": REQUEST_ID,
+            "command": { "kind": "capabilities", "sessionToken": "../../tmp" }
+        }));
+        assert!(matches!(
+            decode_frame::<ControlRequest>(&malformed),
+            Err(ProtocolError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_wrong_protocol_version_semantically() {
+        let frame = test_frame(&json!({
+            "protocolVersion": 2,
+            "requestId": REQUEST_ID,
+            "command": { "kind": "handshake", "clientNonce": "aaaaaaaaaaaaaaaa" }
+        }));
+        assert!(matches!(
+            decode_frame::<ControlRequest>(&frame),
+            Err(ProtocolError::Validation(_))
+        ));
+    }
+
+    fn valid_session_token() -> String {
+        format!("session.v1.{}", "a".repeat(32))
     }
 
     fn test_frame(value: &serde_json::Value) -> Vec<u8> {
