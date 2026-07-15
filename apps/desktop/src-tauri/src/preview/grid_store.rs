@@ -1287,7 +1287,7 @@ fn parse_datawarrior_batch(
             };
             let mut props = BTreeMap::from([
                 ("DataWarrior row".to_string(), (row_offset + 1).to_string()),
-                ("Structure column".to_string(), column_name.clone()),
+                ("Structure column".to_string(), clipped(&column_name, 500)),
             ]);
             for (index, header) in headers.iter().enumerate() {
                 if index == *structure_index
@@ -2251,6 +2251,36 @@ mod tests {
             page.rows[0].props.get("Activity").map(String::as_str),
             Some("1.25")
         );
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn bounds_datawarrior_structure_column_properties() {
+        let runtime_dir = temp_runtime_dir();
+        let structure_column = format!("Structure_{}", "s".repeat(600));
+        let data = format!(
+            "<datawarrior-fileinfo>\n<version=\"3.3\">\n<rowcount=\"1\">\n</datawarrior-fileinfo>\n<column properties>\n<columnName=\"{structure_column}\">\n<columnProperty=\"specialType\tidcode\">\n</column properties>\n{structure_column}\tName\neMHAIh@\tEthanol\n"
+        );
+
+        let (database_path, summary) = build_store(&runtime_dir, "dwar", data.as_bytes());
+        assert_eq!(summary.records_total, 1);
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch bounded DataWarrior record");
+        assert_eq!(page.rows.len(), 1);
+        assert_eq!(page.rows[0].props["Structure column"].chars().count(), 500);
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
