@@ -2,6 +2,7 @@
 #![allow(clippy::items_after_test_module, clippy::too_many_arguments)]
 
 mod commands;
+mod compute;
 mod menu;
 mod preview;
 mod startup;
@@ -32,6 +33,18 @@ pub fn run() {
         .manage(DescriptorGridJobRegistry::default())
         .manage(startup::PendingOpenDocuments::default())
         .setup(|app| {
+            let compute_coordinator = app
+                .path()
+                .app_data_dir()
+                .map(|app_data| {
+                    compute::coordinator::ComputeCoordinator::initialize(app_data.join("compute"))
+                })
+                .unwrap_or_else(|error| {
+                    compute::coordinator::ComputeCoordinator::unavailable(format!(
+                        "compute app-data directory is unavailable: {error}"
+                    ))
+                });
+            app.manage(compute_coordinator);
             let argv: Vec<String> = std::env::args().collect();
             let launch_mode = startup::LaunchMode::current(&argv);
             let startup_paths = startup::file_args_from_argv(argv, std::env::current_dir().ok());
@@ -102,6 +115,13 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            compute::commands::compute_capabilities,
+            compute::commands::compute_submit_job,
+            compute::commands::compute_get_job,
+            compute::commands::compute_list_jobs,
+            compute::commands::compute_cancel_job,
+            compute::commands::compute_get_artifact_manifest,
+            compute::commands::compute_purge_job,
             commands::agent_integration::agent_integration_status,
             commands::chemical_editors::finder_icon_path,
             commands::chemical_editors::list_chemical_editor_targets,

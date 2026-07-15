@@ -57,7 +57,9 @@ const [
   buretteAgentJS,
   tauriConfigSource,
   tauriPermissionSource,
+  computePermissionSource,
   defaultCapabilitySource,
+  computeCapabilitySource,
   buildScript,
   quickLookXyzrenderLauncherScript,
   buildDevScript,
@@ -136,7 +138,9 @@ const [
   source('PreviewExtension/Web/burette-agent.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
   source('apps/desktop/src-tauri/permissions/burrete.toml'),
+  source('apps/desktop/src-tauri/permissions/compute.toml'),
   source('apps/desktop/src-tauri/capabilities/default.json'),
+  source('apps/desktop/src-tauri/capabilities/compute.json'),
   source('scripts/build.sh'),
   source('scripts/bundle-quicklook-xyzrender-launcher.sh'),
   source('scripts/build-dev.sh'),
@@ -185,10 +189,15 @@ const desktopPackageConfig = JSON.parse(desktopPackageSource);
 const vendorAssetsLock = JSON.parse(vendorAssetsLockSource);
 const webRuntimeProfiles = JSON.parse(webRuntimeProfilesSource);
 const defaultCapability = JSON.parse(defaultCapabilitySource);
+const computeCapability = JSON.parse(computeCapabilitySource);
 const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label === 'main');
 const tauriHandlerSource = lib.match(/tauri::generate_handler!\[([\s\S]*?)\]/)?.[1] ?? '';
-const registeredTauriCommands = [...tauriHandlerSource.matchAll(/commands::(?:\w+::)+(\w+)/g)].map((match) => match[1]);
-const allowedTauriCommands = [...tauriPermissionSource.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
+const registeredTauriCommands = [
+  ...tauriHandlerSource.matchAll(/(?:commands::(?:\w+::)+|compute::commands::)(\w+)/g),
+].map((match) => match[1]);
+const allowedViewerCommands = [...tauriPermissionSource.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
+const allowedComputeCommands = [...computePermissionSource.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
+const allowedTauriCommands = [...allowedViewerCommands, ...allowedComputeCommands];
 
 assert.ok(tauriHandlerSource, 'the registered Tauri command handler must be discoverable');
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
@@ -213,6 +222,22 @@ assert.deepEqual(defaultCapability.windows, ['main', 'workspace-*']);
 assert.equal(defaultCapability.webviews, undefined);
 assert.equal(defaultCapability.remote, undefined);
 assert.ok(defaultCapability.permissions.includes('allow-viewer-commands'));
+assert.equal(defaultCapability.permissions.includes('allow-compute-commands'), false);
+assert.equal(computeCapability.local, true);
+assert.deepEqual(computeCapability.windows, ['main', 'workspace-*']);
+assert.equal(computeCapability.webviews, undefined);
+assert.equal(computeCapability.remote, undefined);
+assert.deepEqual(computeCapability.permissions, ['allow-compute-commands']);
+assert.deepEqual(
+  allowedComputeCommands.toSorted(),
+  registeredTauriCommands.filter((command) => command.startsWith('compute_')).toSorted(),
+  'the dedicated compute ACL must contain every compute command and nothing else',
+);
+assert.deepEqual(
+  allowedViewerCommands.filter((command) => command.startsWith('compute_')),
+  [],
+  'viewer commands must not inherit compute control',
+);
 assert.deepEqual(
   registeredTauriCommands.filter((command) => !allowedTauriCommands.includes(command)),
   [],
