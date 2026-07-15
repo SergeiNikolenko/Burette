@@ -117,9 +117,6 @@ const WEB_ASSETS_BASE = String(
   || "",
 )
   || fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
-const RDKIT_WASM_PATH = WEB_ASSETS_BASE.startsWith("/@fs/")
-  ? "/__burette/rdkit-wasm"
-  : `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/rdkit/RDKit_minimal.wasm`;
 const AMBER_NETCDF_EXTENSIONS = new Set(["nc", "ncdf", "netcdf", "ncrst"]);
 const TRAJECTORY_PAIR_EXTENSIONS = new Set([
   "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
@@ -1212,7 +1209,7 @@ function viewerHtml(
     trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1,
     trajectoryFrameCount,
     ...(reloadOptions?.activeModel != null ? { activeModel: reloadOptions.activeModel } : {}),
-    rdkitWasmPath: RDKIT_WASM_PATH,
+    rdkitWasmPath: "/__burette/rdkit-wasm",
     ...(reloadOptions?.sdfPoseControlLabel ? { sdfPoseControlLabel: reloadOptions.sdfPoseControlLabel } : {}),
     ...(stagedEntries?.some((entry) => entry?.representation === "structure-scene-entry") ? { structureSceneMode: "structurePoses" } : {}),
     appViewer: true,
@@ -1255,7 +1252,10 @@ function viewerHtml(
   <script id="burrete-runtime-data" type="application/json">${serializeInlineJson(bytesToBase64(embeddedBytes))}</script>
   <script src="${viewerAsset("viewer-bootstrap.js")}?v=${runtimeAssetVersion}"></script>`
     : `<script>${viewerBridgeJs()}</script>
-  <script>window.BurreteConfig = ${serializeInlineJson(config)};</script>
+  <script>
+    window.BurreteConfig = ${serializeInlineJson(config)};
+    if (!document.baseURI.includes('/@fs/')) window.BurreteConfig.rdkitWasmPath = new URL('rdkit/RDKit_minimal.wasm', document.baseURI).href;
+  </script>
   <script>window.BurreteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>`;
   return `<!doctype html>
 <html lang="en">
@@ -1427,7 +1427,7 @@ async function gridHtml(
     recordsIncluded: records.length,
     recordsTruncated: false,
     pageSize: 720,
-    rdkitWasmPath: RDKIT_WASM_PATH,
+    rdkitWasmPath: "/__burette/rdkit-wasm",
     xyzrenderPreset: "default",
     xyzrenderPresetOptions: [
       { value: "default", label: "Default" },
@@ -1491,7 +1491,10 @@ async function gridHtml(
 <body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
-  <script>window.BurreteConfig = ${serializeInlineJson(config)};</script>
+  <script>
+    window.BurreteConfig = ${serializeInlineJson(config)};
+    if (!document.baseURI.includes('/@fs/')) window.BurreteConfig.rdkitWasmPath = new URL('rdkit/RDKit_minimal.wasm', document.baseURI).href;
+  </script>
   <script>window.BurreteGridRecords = ${serializeInlineJson(records)};</script>
   ${format === "dwar" ? `<script src="openchemlib/openchemlib.js?v=${GRID_ASSET_VERSION}"></script>` : ""}
   <script src="rdkit/RDKit_minimal.js?v=${GRID_ASSET_VERSION}"></script>
