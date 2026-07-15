@@ -597,7 +597,7 @@ assert.match(browserDevDocuments, /if \(normalized === "xyzrender-external"\) re
 assert.match(browserDevDocuments, /requestedRenderer: normalizeRendererMode\(preferences\.rendererMode\)/);
 assert.match(browserDevDocuments, /sourcePath: path/);
 assert.match(browserDevDocuments, /xyzrenderEndpoint: "\/__burette\/xyzrender"/);
-assert.match(browserDevDocuments, /WEB_ASSETS_BASE\.startsWith\("\/@fs\/"\)[\s\S]*"\/__burette\/rdkit-wasm"[\s\S]*\/rdkit\/RDKit_minimal\.wasm/);
+assert.equal(browserDevDocuments.match(/if \(!document\.baseURI\.includes\('\/@fs\/'\)\) window\.BurreteConfig\.rdkitWasmPath = new URL\('rdkit\/RDKit_minimal\.wasm', document\.baseURI\)\.href;/g)?.length, 2);
 assert.match(browserDevDocuments, /vdwAtoms: null/);
 assert.match(browserDevDocuments, /hullMode: null/);
 assert.match(browserDevDocuments, /hullAtoms: null/);
@@ -5900,7 +5900,7 @@ assert.match(browserDevDocuments, /documentId,\s*sourcePath: path,/);
 assert.match(browserDevDocuments, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(browserDevDocuments, /window\.BurreteGridRecords =/);
 assert.match(browserDevDocuments, /openchemlib\/openchemlib\.js\?v=\$\{GRID_ASSET_VERSION\}/);
-assert.equal(browserDevDocuments.match(/rdkitWasmPath: RDKIT_WASM_PATH/g)?.length, 2);
+assert.equal(browserDevDocuments.match(/rdkitWasmPath: "\/__burette\/rdkit-wasm"/g)?.length, 2);
 assert.doesNotMatch(browserDevDocuments, /BurreteRDKitWasmBase64/);
 assert.match(gridViewer, /cfg\.appViewer === true && cfg\.gridDataMode === 'bridge'/);
 assert.match(gridViewer, /\(cfg\.appViewer === true \|\| cfg\.quickLookViewer === true\) && !!caps\.rendererSwitch/);
