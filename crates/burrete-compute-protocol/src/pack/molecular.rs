@@ -18,6 +18,10 @@ pub const SOURCE_RECORD_IDS_ARRAY_NAME: &str = "sourceRecordIds";
 pub const SOURCE_RECORD_IDS_SEMANTIC: &str = "source_record_id";
 pub const MOLECULE_CONTENT_HASHES_ARRAY_NAME: &str = "moleculeContentHashes";
 pub const MOLECULE_CONTENT_HASHES_SEMANTIC: &str = "molecule_content_sha256";
+/// Hard bound for the canonical JSON manifest carried beside a molecular pack.
+/// This is independent of control-frame limits because the manifest travels by
+/// descriptor-relative file access rather than inline protocol messages.
+pub const MAX_MOLECULAR_SNAPSHOT_MANIFEST_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
