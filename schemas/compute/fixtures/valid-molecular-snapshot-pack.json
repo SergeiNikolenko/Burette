@@ -15,6 +15,12 @@
         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "byteLength": 80,
         "mediaType": "application/octet-stream"
+      },
+      {
+        "relativePath": "pack/molecular-records.v1.jsonl",
+        "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "byteLength": 256,
+        "mediaType": "application/vnd.burrete.molecular-records-v1+jsonl"
       }
     ],
     "arrays": [

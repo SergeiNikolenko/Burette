@@ -7,6 +7,7 @@ use super::{
         MolecularSnapshotVersion, MAX_PACK_RECORDS,
     },
     layout::{PackedDType, PackedFileDescriptor, PackedLayout},
+    records::{MOLECULAR_RECORDS_FILE_PATH, MOLECULAR_RECORDS_MEDIA_TYPE},
 };
 use crate::{
     validation::{canonical_json_bytes, sha256_hex},
@@ -67,7 +68,8 @@ impl MolecularSnapshotManifest {
         self.frozen_source.validate()?;
         validate_json_safe("molecular snapshot creation time", self.created_at_ms)?;
         self.layout.validate()?;
-        self.validate_identity_arrays()
+        self.validate_identity_arrays()?;
+        self.validate_records_file()
     }
 
     /// Computes the content address for the immutable source identity and
@@ -132,6 +134,25 @@ impl MolecularSnapshotManifest {
                 "moleculeContentHashes must be a unitless u8[recordCount,32] molecule_content_sha256 array"
                     .into(),
             ));
+        }
+        Ok(())
+    }
+
+    fn validate_records_file(&self) -> Result<(), ProtocolError> {
+        let records = self
+            .layout
+            .files
+            .iter()
+            .find(|file| file.relative_path == MOLECULAR_RECORDS_FILE_PATH)
+            .ok_or_else(|| {
+                ProtocolError::Validation(format!(
+                    "molecular snapshot requires {MOLECULAR_RECORDS_FILE_PATH}"
+                ))
+            })?;
+        if records.byte_length == 0 || records.media_type != MOLECULAR_RECORDS_MEDIA_TYPE {
+            return Err(ProtocolError::Validation(format!(
+                "{MOLECULAR_RECORDS_FILE_PATH} must be a non-empty {MOLECULAR_RECORDS_MEDIA_TYPE} file"
+            )));
         }
         Ok(())
     }
