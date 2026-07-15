@@ -1,4 +1,4 @@
-export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v17.html";
+export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v21.html";
 export const VIEWER_SHELL_SCRIPT_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.js";
 export const VIEWER_SHELL_STYLES_PATH =
@@ -6,7 +6,7 @@ export const VIEWER_SHELL_STYLES_PATH =
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burrete-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burrete-hosted-app.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-mobile-bootstrap-v2";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-v21";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
@@ -28,7 +28,6 @@ export function createViewerResourceMeta(appOrigin: string) {
       csp: {
         connectDomains: [appOrigin],
         resourceDomains: [appOrigin],
-        frameDomains: [appOrigin],
       },
     },
     "openai/widgetDescription":
@@ -37,7 +36,6 @@ export function createViewerResourceMeta(appOrigin: string) {
     "openai/widgetCSP": {
       connect_domains: [appOrigin],
       resource_domains: [appOrigin],
-      frame_domains: [appOrigin],
     },
     "openai/widgetDomain": appOrigin,
   } as const;
@@ -51,6 +49,7 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
   const appBridgeScript = `${assetUrl(assetOrigin, VIEWER_APP_BRIDGE_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const bootstrap = serializeForInlineScript({
     viewerAssets,
+    analyticsOrigin: assetOrigin.replace(/\/$/u, ""),
   });
 
   return `<!doctype html>
@@ -74,6 +73,7 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
         const config = ${bootstrap};
         window.__BURRETE_HOSTED_MCP_WIDGET__ = true;
         window.__BURRETE_WEB_ASSETS_BASE__ = config.viewerAssets;
+        window.__BURRETE_HOSTED_ANALYTICS_ORIGIN__ = config.analyticsOrigin;
         window.__BURRETE_HOSTED_MCP_RESULTS__ = [];
         window.__BURRETE_HOSTED_OPENAI_GLOBALS__ = {};
         const appQueue = [];
