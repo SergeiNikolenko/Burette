@@ -1,0 +1,7 @@
+[package]
+name = "burrete-compute-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burrete-compute-protocol = { path = "../burrete-compute-protocol" }
