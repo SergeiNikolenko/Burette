@@ -1,5 +1,6 @@
 use base64::Engine;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -19,6 +20,7 @@ const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT: usize = 1500;
 const KETCHER_EDIT_MAX_BYTES: usize = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS: usize = 300;
 const EMBEDDED_PREVIEW_DATA_SCRIPT_MAX_BYTES: usize = 32 * 1024 * 1024;
+const RDKIT_WASM_MAX_BYTES: usize = 16 * 1024 * 1024;
 const VIEWER_MOLSTAR_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'self' blob:;";
 const VIEWER_EXTERNAL_ARTIFACT_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
 const VIEWER_MINIMAL_CSP: &str = "default-src 'self' file: asset: data: blob:; connect-src 'self' file: asset:; script-src 'self' 'unsafe-inline' file: asset:; style-src 'self' 'unsafe-inline' file: asset:; img-src 'self' file: asset: data: blob:; worker-src 'none';";
@@ -828,6 +830,22 @@ mod tests {
         assert!(!assets.join("grid.css").exists());
         assert!(assets.join("rdkit").join("RDKit_minimal.js").is_file());
         assert!(assets.join("rdkit").join("RDKit_minimal.wasm").is_file());
+        let wasm_data = fs::read_to_string(assets.join("rdkit-wasm-data.js"))
+            .expect("RDKit wasm data script should exist");
+        assert!(wasm_data.starts_with("// sha256:"));
+        assert!(wasm_data.contains("\nwindow.BurreteRDKitWasmBase64 = \""));
+
+        fs::write(
+            assets.join("rdkit-wasm-data.js"),
+            "// sha256:stale\npartial",
+        )
+        .expect("write stale RDKit wasm data script");
+        copy_web_assets(app.handle(), &assets, AssetProfile::Molstar)
+            .expect("stale RDKit wasm data should be replaced");
+        let repaired_wasm_data = fs::read_to_string(assets.join("rdkit-wasm-data.js"))
+            .expect("repaired RDKit wasm data script should exist");
+        assert!(repaired_wasm_data.starts_with("// sha256:"));
+        assert!(!repaired_wasm_data.contains("partial"));
 
         let _ = fs::remove_dir_all(assets);
     }
@@ -899,6 +917,8 @@ mod tests {
         assert!(html.contains("Content-Security-Policy"));
         assert!(html.contains("unsafe-eval"));
         assert!(html.contains("wasm-unsafe-eval"));
+        assert!(html.contains("window.BurreteRDKitWasmDataURL"));
+        assert!(html.contains("rdkit-wasm-data.js"));
     }
 }
 
@@ -968,9 +988,40 @@ pub(crate) fn copy_web_assets<R: Runtime>(
         let rdkit_source = source.join("rdkit");
         if rdkit_source.exists() {
             copy_dir_if_needed(&rdkit_source, &assets.join("rdkit"))?;
+            write_rdkit_wasm_data_if_needed(
+                &rdkit_source.join("RDKit_minimal.wasm"),
+                &assets.join("rdkit-wasm-data.js"),
+            )?;
         }
     }
     Ok(())
+}
+
+fn write_rdkit_wasm_data_if_needed(source: &Path, destination: &Path) -> Result<(), String> {
+    let bytes = fs::read(source).map_err(|error| format!("read RDKit wasm: {error}"))?;
+    if bytes.len() > RDKIT_WASM_MAX_BYTES {
+        return Err(format!(
+            "RDKit wasm exceeds the {} MiB asset limit",
+            RDKIT_WASM_MAX_BYTES / (1024 * 1024)
+        ));
+    }
+    let fingerprint = format!(
+        "// sha256:{}",
+        base64::engine::general_purpose::STANDARD.encode(Sha256::digest(&bytes))
+    );
+    let destination_is_current = fs::read_to_string(destination)
+        .ok()
+        .and_then(|contents| contents.lines().next().map(str::to_string))
+        .is_some_and(|line| line == fingerprint);
+    if destination_is_current {
+        return Ok(());
+    }
+    let base64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+    write_bytes_atomic(
+        destination,
+        format!("{fingerprint}\nwindow.BurreteRDKitWasmBase64 = \"{base64}\";\n").as_bytes(),
+    )
+    .map_err(|error| format!("write RDKit wasm data: {error}"))
 }
 
 fn bundled_web_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
@@ -1082,6 +1133,7 @@ fn viewer_html(
     let molstar_js = asset_url(&assets.join("molstar.js"));
     let rdkit_js = asset_url(&assets.join("rdkit/RDKit_minimal.js"));
     let rdkit_wasm = asset_url(&assets.join("rdkit/RDKit_minimal.wasm"));
+    let rdkit_wasm_data = asset_url(&assets.join("rdkit-wasm-data.js"));
     let (renderer_styles, renderer_scripts) = match renderer {
         "xyzrender-external" => (
             format!(r#"<link rel="stylesheet" href="{molstar_css}" />"#),
@@ -1110,6 +1162,7 @@ fn viewer_html(
     window.BurreteMolstarURL = {molstar_js:?};
     window.BurreteRDKitJSURL = {rdkit_js:?};
     window.BurreteRDKitWasmURL = {rdkit_wasm:?};
+    window.BurreteRDKitWasmDataURL = {rdkit_wasm_data:?};
   </script>
 </head>
 <body class="{background_class}">

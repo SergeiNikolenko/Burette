@@ -42,6 +42,9 @@
 				<string>public.tab-separated-values-text</string>
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
+				<string>com.revvity.external.mdl3000</string>
+				<string>com.mdli.molfile</string>
+				<string>com.revvity.external.cif</string>
 				<string>com.schrodinger.mol</string>
 				<string>net.sourceforge.openbabel.mdl</string>
 				<string>com.schrodinger.pdb</string>
