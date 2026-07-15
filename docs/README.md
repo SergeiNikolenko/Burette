@@ -25,7 +25,9 @@ contains only documents that describe the active project.
   payloads, grid search, and no-regression guardrails.
 - [GPU compute platform design](superpowers/specs/2026-07-15-gpu-compute-platform-design.md):
   approved target architecture for Apple Silicon compute jobs, molecular data,
-  scheduling, runtime distribution, and product integration.
+  scheduling, runtime distribution, and product integration. Its companion
+  [validation and delivery contract](superpowers/specs/2026-07-15-gpu-compute-validation-and-delivery.md)
+  defines scientific gates, failure testing, and staged completion criteria.
 - [Stability program](stability.md): preview trace, runtime manifest, nightly
   smoke, and staged stability guardrails.
 - [Installing and building](installing-building.md): source build, local

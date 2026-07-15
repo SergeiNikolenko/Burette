@@ -670,3 +670,36 @@ and partial per-molecule failure. `cancel_requested` is distinct from confirmed
   permission.
 - The worker emits one bounded typed `ComputeCapabilityReport`; desktop and
   browser-dev transport it rather than reimplementing capability logic.
+
+## Validation And Delivery
+
+Scientific acceptance gates, performance workloads, failure injection, release
+proof, staged delivery, and the first vertical-slice completion contract are
+defined in [GPU Compute Validation And Delivery](2026-07-15-gpu-compute-validation-and-delivery.md).
+
+The architecture is intentionally delivered as five reviewed subprojects:
+compute foundation and Tanimoto, conformers, shape/electrostatics/surfaces, GPU
+QM, and unified product/Agent workflows. No later engine bypasses the foundation
+or its packaged-runtime proof.
+
+## Independent Review Record
+
+The written design was challenged by three independent review lanes before its
+initial commit:
+
+- Functional review separated library Tanimoto clustering from symmetry-aware
+  conformer pruning, required frozen DB-backed Grid scopes, namespaced analysis
+  runs, representative subset export, and contextual rather than dashboard UX.
+- Module review introduced engine islands and explicit materialization, fixed
+  workflow templates instead of a user-defined DAG, immutable snapshots,
+  separate Snapshot/EnginePack/ResultPack contracts, GPU epoch drain semantics,
+  Packaging Spike 0, artifact lifecycle, and typed permissions/capabilities.
+- Scientific review replaced whole-job GPU claims with stage traces, tightened
+  clustering overflow and threshold semantics, made conformer randomness
+  chunk-independent, separated fixed-pose CHEESE from heuristic overlay,
+  labelled JFA surfaces approximate, and restricted initial QM scope to an
+  independently validated closed-shell sp-only allowlist.
+
+All stop-ship findings from these reviews are reflected in this design or its
+validation companion. Later vertical slices require a fresh functional, module,
+and scientific review against their concrete implementation plans.
