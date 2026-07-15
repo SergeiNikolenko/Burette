@@ -14623,7 +14623,10 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
   function showError(error) {
     const message = error && (error.stack || error.message) ? (error.stack || error.message) : String(error);
-    setStatus(`[web] Burrete web renderer failed to load this file.\n\n${message}\n\nCheck: ./scripts/tail-log.sh`, 'error');
+    const diagnostics = window.__BURRETE_HOSTED_MCP_WIDGET__ === true
+      ? ''
+      : '\n\nCheck: ./scripts/tail-log.sh';
+    setStatus(`[web] Burrete web renderer failed to load this file.\n\n${message}${diagnostics}`, 'error');
     // eslint-disable-next-line no-console
     console.error(error);
   }
