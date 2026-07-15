@@ -472,7 +472,7 @@ assert.match(sidebarHook, /export function useSidebar\(/);
 assert.match(sidebarHook, /from "\.\.\/stores\/shell-store"/);
 assert.match(sidebarHook, /sidebarWidth/);
 assert.match(shellStore, /sidebarWidth: 240/);
-assert.match(shellStore, /rightDockOpen: true/);
+assert.match(shellStore, /rightDockOpen: false/);
 assert.match(shellStore, /bottomDockOpen: false/);
 assert.match(viewerFrame, /"data-renderer": document\.renderer/);
 assert.match(appViewerReloadActionsHook, /activeViewerIframeForDocument\(document\.id\)/);
