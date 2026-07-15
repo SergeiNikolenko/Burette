@@ -81,6 +81,17 @@ fn rejects_noncanonical_files_hashes_and_unsafe_numbers() {
     assert!(unsafe_time.validate().is_err());
 }
 
+#[test]
+fn artifact_creation_is_bound_to_the_publish_boundary() {
+    let job = successful_job(BackendPolicy::ReferenceCpu);
+    let mut manifest = manifest_for(&job);
+    manifest.created_at_ms = job.created_at_ms;
+    assert!(manifest.validate_against_job(&job).is_err());
+
+    manifest.created_at_ms = job.finished_at_ms.expect("job finish");
+    assert!(manifest.validate_against_job(&job).is_err());
+}
+
 fn manifest_for(job: &JobSnapshot) -> ArtifactManifest {
     let result_pack = job.result_pack.clone().expect("successful result pack");
     ArtifactManifest {
@@ -118,7 +129,11 @@ fn manifest_for(job: &JobSnapshot) -> ArtifactManifest {
             })
             .collect(),
         result_pack,
-        created_at_ms: job.finished_at_ms.expect("successful finish time"),
+        created_at_ms: job
+            .stages
+            .last()
+            .and_then(|stage| stage.finished_at_ms)
+            .expect("successful publish finish time"),
     }
 }
 

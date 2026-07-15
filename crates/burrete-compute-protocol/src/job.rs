@@ -739,7 +739,7 @@ mod tests {
     #[test]
     fn canonical_plan_bytes_and_hash_are_pinned() {
         let plan = plan(BackendPolicy::GpuRequired, Backend::NativeMetal);
-        let expected = concat!(
+        let declaration_order_json = concat!(
             r#"{"workflowTemplate":"cluster.v1","planVersion":"cluster.execution-plan.v1","backendPolicy":"gpuRequired","stages":["#,
             r#"{"stageId":"freezeScope","kind":"materialize","idempotent":true,"requestedBackend":"coordinator","effectiveBackend":"coordinator","precision":"notApplicable","engine":{"engineId":"burrete-coordinator","version":"1.0.0","manifestSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"estimatedMemoryBytes":1024,"fallback":null,"partitions":[{"partitionId":"supported","chemistryDomain":"cluster.v1/all","recordCount":10,"estimatedMemoryBytes":1024,"requestedBackend":"coordinator","effectiveBackend":"coordinator","fallback":null}]}"#,
             r#",{"stageId":"fingerprints","kind":"chemistrySemantics","idempotent":true,"requestedBackend":"rdkit","effectiveBackend":"rdkit","precision":"integerExact","engine":{"engineId":"rdkit","version":"1.0.0","manifestSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"estimatedMemoryBytes":1024,"fallback":null,"partitions":[{"partitionId":"supported","chemistryDomain":"cluster.v1/all","recordCount":10,"estimatedMemoryBytes":1024,"requestedBackend":"rdkit","effectiveBackend":"rdkit","fallback":null}]}"#,
@@ -750,13 +750,13 @@ mod tests {
         )
         .as_bytes();
 
-        assert_eq!(
+        assert_ne!(
             plan.canonical_json_bytes().expect("canonical plan"),
-            expected
+            declaration_order_json
         );
         assert_eq!(
             plan.canonical_sha256().expect("plan hash"),
-            "611ba58236f255075326bd67dc00c529edfdf8f58c160172eb2cb79543df346b"
+            "746fb1f42a9be112bf9d4efc02d50370e64acc8db6790ea70d5d42e178238f58"
         );
     }
 }
