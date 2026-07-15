@@ -1,0 +1,13 @@
+{
+  "name": "@burrete/ketcher-agent-contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "default": "./index.mjs"
+    }
+  }
+}
