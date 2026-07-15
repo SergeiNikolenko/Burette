@@ -6,6 +6,7 @@ import { CURRENT_VERSION, defaultUpdatePreferences } from "../../update";
 import { settingsSectionLabel, type SettingsSectionId } from "../../lib/settings-sections";
 import { defaultPreferences } from "../../stores/settings-store";
 import { isTauriRuntime } from "../../lib/tauri";
+import { useFinderIconUrl } from "../../hooks/use-finder-icon-url";
 import { AgentIntegrationPanel } from "../agent-integration-panel";
 import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
 import { RadixDropdownMenu } from "../radix-menu";
@@ -33,8 +34,6 @@ type OpenDestinationOption = {
   iconText: string;
   iconUrl?: string;
 };
-
-const FINDER_ICON_PATH = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns";
 
 function preferenceRow<K extends Extract<keyof ViewerPreferences, string>>(
   label: string,
@@ -432,7 +431,8 @@ function OpenDestinationControl({
   targets: ChemicalEditorTarget[];
   onChange: (value: OpenInDefaultDestination) => void;
 }) {
-  const options = openDestinationOptions(value, targets);
+  const finderIconUrl = useFinderIconUrl();
+  const options = openDestinationOptions(value, targets, finderIconUrl);
   const selected = options.find((option) => option.value === value) ?? options[0];
   const items: MenuItemSpec[] = options.map((option) => ({
     kind: "item",
@@ -467,9 +467,13 @@ function OpenDestinationControl({
   );
 }
 
-function openDestinationOptions(value: OpenInDefaultDestination, targets: ChemicalEditorTarget[]): OpenDestinationOption[] {
+function openDestinationOptions(
+  value: OpenInDefaultDestination,
+  targets: ChemicalEditorTarget[],
+  finderIconUrl: string | null,
+): OpenDestinationOption[] {
   const options: OpenDestinationOption[] = [
-    { value: "finder", label: "Finder", iconText: "FI", iconUrl: finderIconUrl() ?? undefined },
+    { value: "finder", label: "Finder", iconText: "FI", iconUrl: finderIconUrl ?? undefined },
     { value: "default-app", label: "Default app", iconText: "DA" },
     ...targets.map((target) => ({
       value: `editor:${target.id}` as OpenInDefaultDestination,
@@ -488,12 +492,6 @@ function editorIconUrl(target: ChemicalEditorTarget) {
   if (target.iconUrl) return target.iconUrl;
   if (target.iconPath && isTauriRuntime()) return convertFileSrc(target.iconPath);
   if (!isTauriRuntime() && import.meta.env.DEV) return browserDevIconUrl(target);
-  return null;
-}
-
-function finderIconUrl() {
-  if (isTauriRuntime()) return convertFileSrc(FINDER_ICON_PATH);
-  if (!isTauriRuntime() && import.meta.env.DEV) return "/__burette/app-icon/finder.png";
   return null;
 }
 
