@@ -1,0 +1,47 @@
+#!/usr/bin/env bun
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+
+const buildScript = source("scripts/build.sh");
+const conformerCommand = source("apps/desktop/src-tauri/src/commands/documents.rs");
+const xtbRuntime = source("apps/desktop/src-tauri/src/commands/xtb_runtime.rs");
+const viewer = source("PreviewExtension/Web/viewer.js");
+const runtimeViewer = source("apps/desktop/src-tauri/src/preview/runtime_viewer.rs");
+const updater = source("apps/desktop/src-tauri/src/commands/updater.rs");
+const registry = JSON.parse(source("config/preview-formats.json"));
+
+assert.match(buildScript, /relocate_bundled_python_runtime/);
+assert.match(buildScript, /install_name_tool/);
+assert.match(buildScript, /assert_no_external_python_dependencies/);
+assert.match(buildScript, /otool -L/);
+assert.match(buildScript, /External Homebrew dependency/);
+
+assert.match(conformerCommand, /candidate_errors/);
+assert.match(conformerCommand, /format_conformer_candidate_errors/);
+
+assert.match(xtbRuntime, /conda_environment_candidates/);
+assert.match(xtbRuntime, /registered_conda_environment_candidates/);
+assert.match(xtbRuntime, /environments\.txt/);
+assert.match(xtbRuntime, /\.conda["']?\)\.join\(["']envs/);
+assert.match(xtbRuntime, /rejected_candidates/);
+assert.match(xtbRuntime, /Found xTB candidates but could not validate them/);
+
+assert.match(runtimeViewer, /BurreteRDKitWasmDataURL/);
+assert.match(runtimeViewer, /Sha256::digest/);
+assert.match(runtimeViewer, /write_bytes_atomic/);
+assert.match(viewer, /BurreteRDKitWasmDataURL/);
+assert.match(viewer, /molstarPreviewLoadRDKitWasmData/);
+
+assert.match(updater, /killall Finder/);
+
+const mol = registry.formats.find((format) => format.id === "mol");
+const cif = registry.formats.find((format) => format.id === "cif");
+assert.deepEqual(mol.quickLookContentTypeAliases, [
+  "com.revvity.external.mdl3000",
+  "com.mdli.molfile",
+]);
+assert.deepEqual(cif.quickLookContentTypeAliases, ["com.revvity.external.cif"]);
+
+console.log("Release runtime portability tests passed");

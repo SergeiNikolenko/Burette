@@ -377,6 +377,7 @@ assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "
 qlmanage -r >/dev/null 2>&1 || true
 qlmanage -r cache >/dev/null 2>&1 || true
 killall quicklookd 2>/dev/null || true
+killall Finder 2>/dev/null || true
 rm -rf "$HOME/Library/Caches/$APP_ID/viewer/assets" 2>/dev/null || true
 assert_bundled_xyzrender_runner "$DEST_XYZRENDER_ENV" "$DEST_XYZRENDER_PYTHON" "after quicklook reset"
 
