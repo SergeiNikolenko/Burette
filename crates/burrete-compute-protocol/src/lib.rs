@@ -39,7 +39,8 @@ pub use snapshot::{
 };
 pub use wire::control::{
     ControlCommand, ControlErrorCode, ControlRequest, ControlResponse, ControlResult,
-    JobCapabilityToken, SessionToken,
+    JobCapabilityToken, SessionToken, WorkerCommand, WorkerControlRequest, WorkerControlResponse,
+    WorkerResult,
 };
 pub use wire::{
     decode_frame, encode_frame, read_frame, write_frame, WireMessage, MAX_CONTROL_FRAME_BYTES,

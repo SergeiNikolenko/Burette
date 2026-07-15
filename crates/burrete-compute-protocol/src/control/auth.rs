@@ -83,6 +83,22 @@ pub(super) fn validate_envelope(
     validate_uuid("request ID", request_id)
 }
 
+/// Validates only the wire shape of a job-scoped authority tuple.
+///
+/// The worker handler must additionally authenticate the session and verify,
+/// in constant time, that the opaque capability was issued for this exact job,
+/// session, authenticated worker, expiry, and generation. This protocol crate
+/// intentionally has no key material or coordinator-owned token lookup.
+pub(super) fn validate_job_authority_shape(
+    session_token: &SessionToken,
+    job_id: Uuid,
+    capability: &JobCapabilityToken,
+) -> Result<(), ProtocolError> {
+    session_token.validate()?;
+    validate_uuid("job ID", job_id)?;
+    capability.validate()
+}
+
 pub(super) fn validate_uuid(label: &str, value: Uuid) -> Result<(), ProtocolError> {
     if value.is_nil() {
         Err(ProtocolError::Validation(format!(

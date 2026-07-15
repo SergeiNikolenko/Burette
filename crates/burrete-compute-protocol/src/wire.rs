@@ -181,10 +181,13 @@ mod tests {
     use serde_json::json;
     use uuid::Uuid;
 
-    use super::control::ControlRequest;
+    use super::control::{
+        ControlRequest, JobCapabilityToken, SessionToken, WorkerCommand, WorkerControlRequest,
+    };
     use super::*;
 
     const REQUEST_ID: Uuid = Uuid::from_u128(1);
+    const JOB_ID: Uuid = Uuid::from_u128(2);
 
     #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
     struct Message {
@@ -323,6 +326,46 @@ mod tests {
     }
 
     #[test]
+    fn rejects_wrong_token_kind_for_job_commands() {
+        let request = WorkerControlRequest::new(
+            REQUEST_ID,
+            WorkerCommand::JobStatus {
+                session_token: SessionToken::new(valid_session_token())
+                    .expect("valid session token"),
+                job_id: JOB_ID,
+                capability: JobCapabilityToken::new(valid_job_capability())
+                    .expect("valid job capability"),
+            },
+        );
+        let mut value = serde_json::to_value(request).expect("serialize request");
+        value["command"]["capability"] = json!(valid_session_token());
+        let frame = test_frame(&value);
+        assert!(matches!(
+            decode_frame::<WorkerControlRequest>(&frame),
+            Err(ProtocolError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn worker_job_commands_reject_path_injection() {
+        let frame = test_frame(&json!({
+            "protocolVersion": 1,
+            "requestId": REQUEST_ID,
+            "command": {
+                "kind": "interrupt",
+                "sessionToken": valid_session_token(),
+                "jobId": JOB_ID,
+                "capability": valid_job_capability(),
+                "path": "/tmp/result"
+            }
+        }));
+        assert!(matches!(
+            decode_frame::<WorkerControlRequest>(&frame),
+            Err(ProtocolError::Json(_))
+        ));
+    }
+
+    #[test]
     fn rejects_wrong_protocol_version_semantically() {
         let frame = test_frame(&json!({
             "protocolVersion": 2,
@@ -337,6 +380,10 @@ mod tests {
 
     fn valid_session_token() -> String {
         format!("session.v1.{}", "a".repeat(32))
+    }
+
+    fn valid_job_capability() -> String {
+        format!("job-capability.v1.{}", "b".repeat(32))
     }
 
     fn test_frame(value: &serde_json::Value) -> Vec<u8> {

@@ -1,0 +1,202 @@
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use super::auth::{
+    validate_envelope, validate_job_authority_shape, validate_nonce, validate_revision,
+    validate_text, validate_uuid, JobCapabilityToken, SessionToken, MAX_ERROR_MESSAGE_BYTES,
+};
+use super::client::ControlErrorCode;
+use crate::wire::{sealed::Sealed, WireMessage};
+use crate::{ComputeCapabilityReport, JobState, ProtocolError, PROTOCOL_VERSION};
+
+/// Strict coordinator-to-worker control envelope. Job-scoped commands always
+/// carry both the immutable job ID and its bearer capability; no command has a
+/// filesystem path field. The worker must reject replayed request IDs and must
+/// authenticate the session/capability/job tuple before dispatch.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkerControlRequest {
+    protocol_version: u32,
+    pub request_id: Uuid,
+    pub command: WorkerCommand,
+}
+
+impl WorkerControlRequest {
+    pub fn new(request_id: Uuid, command: WorkerCommand) -> Self {
+        Self {
+            protocol_version: PROTOCOL_VERSION,
+            request_id,
+            command,
+        }
+    }
+
+    pub fn protocol_version(&self) -> u32 {
+        self.protocol_version
+    }
+}
+
+impl Sealed for WorkerControlRequest {}
+
+impl WireMessage for WorkerControlRequest {
+    fn validate_wire(&self) -> Result<(), ProtocolError> {
+        validate_envelope(self.protocol_version, self.request_id)?;
+        self.command.validate()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum WorkerCommand {
+    Handshake {
+        session_token: SessionToken,
+        coordinator_nonce: String,
+    },
+    Capabilities {
+        session_token: SessionToken,
+    },
+    JobStatus {
+        session_token: SessionToken,
+        job_id: Uuid,
+        capability: JobCapabilityToken,
+    },
+    Ping {
+        session_token: SessionToken,
+        nonce: String,
+    },
+    Interrupt {
+        session_token: SessionToken,
+        job_id: Uuid,
+        capability: JobCapabilityToken,
+    },
+}
+
+impl WorkerCommand {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        match self {
+            Self::Handshake {
+                session_token,
+                coordinator_nonce,
+            } => {
+                session_token.validate()?;
+                validate_nonce("coordinator nonce", coordinator_nonce)
+            }
+            Self::Capabilities { session_token } => session_token.validate(),
+            Self::JobStatus {
+                session_token,
+                job_id,
+                capability,
+            }
+            | Self::Interrupt {
+                session_token,
+                job_id,
+                capability,
+            } => validate_job_authority_shape(session_token, *job_id, capability),
+            Self::Ping {
+                session_token,
+                nonce,
+            } => {
+                session_token.validate()?;
+                validate_nonce("ping nonce", nonce)
+            }
+        }
+    }
+}
+
+/// Strict worker-to-coordinator control envelope.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkerControlResponse {
+    protocol_version: u32,
+    pub request_id: Uuid,
+    pub result: WorkerResult,
+}
+
+impl WorkerControlResponse {
+    pub fn new(request_id: Uuid, result: WorkerResult) -> Self {
+        Self {
+            protocol_version: PROTOCOL_VERSION,
+            request_id,
+            result,
+        }
+    }
+
+    pub fn protocol_version(&self) -> u32 {
+        self.protocol_version
+    }
+}
+
+impl Sealed for WorkerControlResponse {}
+
+impl WireMessage for WorkerControlResponse {
+    fn validate_wire(&self) -> Result<(), ProtocolError> {
+        validate_envelope(self.protocol_version, self.request_id)?;
+        self.result.validate()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum WorkerResult {
+    HandshakeAccepted {
+        worker_id: Uuid,
+        coordinator_nonce: String,
+        worker_nonce: String,
+    },
+    Capabilities {
+        report: Box<ComputeCapabilityReport>,
+    },
+    JobStatus {
+        job_id: Uuid,
+        revision: u64,
+        state: JobState,
+    },
+    Pong {
+        nonce: String,
+    },
+    InterruptAccepted {
+        job_id: Uuid,
+        revision: u64,
+    },
+    Error {
+        code: ControlErrorCode,
+        message: String,
+    },
+}
+
+impl WorkerResult {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        match self {
+            Self::HandshakeAccepted {
+                worker_id,
+                coordinator_nonce,
+                worker_nonce,
+            } => {
+                validate_uuid("worker ID", *worker_id)?;
+                validate_nonce("echoed coordinator nonce", coordinator_nonce)?;
+                validate_nonce("worker nonce", worker_nonce)
+            }
+            Self::Capabilities { report } => report.validate(),
+            Self::JobStatus {
+                job_id, revision, ..
+            }
+            | Self::InterruptAccepted { job_id, revision } => {
+                validate_uuid("job ID", *job_id)?;
+                validate_revision("job revision", *revision)
+            }
+            Self::Pong { nonce } => validate_nonce("pong nonce", nonce),
+            Self::Error { message, .. } => {
+                validate_text("worker error message", message, MAX_ERROR_MESSAGE_BYTES)
+            }
+        }
+    }
+}
