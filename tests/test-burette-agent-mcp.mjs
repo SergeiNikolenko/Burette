@@ -195,9 +195,11 @@ async function testMcpRegistrations(tempRoot) {
   assert.deepEqual([...server.resources.keys()].sort(), []);
   assert.deepEqual([...server.tools.keys()].sort(), [
     "act_molstar_scene",
+    "burrete.control_ketcher",
     "burrete.control_viewer",
     "burrete.get_context",
     "burrete.observe_workspace",
+    "burrete.open_ketcher",
     "burrete.open_workspace",
     "burrete.render_panel",
     "edit_burrete_fragment",
@@ -429,6 +431,29 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(publicOpened.structuredContent.viewerSessionId, publicOpened.structuredContent.workspaceSessionId);
   assert.equal(publicOpened.structuredContent.modelContext.activeDocument.path, sampleMini);
   assert.equal(publicOpened.structuredContent.modelContext.structureSummary.counts.atoms, 9);
+
+  const publicKetcherOpened = await server.tools.get("burrete.open_ketcher").handler({
+    workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+  });
+  coveredTools.add("burrete.open_ketcher");
+  assert.equal(publicKetcherOpened.structuredContent.ok, true);
+  assert.equal(publicKetcherOpened.structuredContent.applied, true);
+  assert.equal(publicKetcherOpened.structuredContent.action.type, "open_ketcher");
+
+  const publicKetcherAction = await server.tools.get("burrete.control_ketcher").handler({
+    workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+    action: {
+      apiVersion: "burrete-ketcher-agent/v1",
+      type: "control_ketcher",
+      command: "clear_structure",
+      surfaceId: "desktop-ketcher:mock",
+      expectedRevision: 0,
+    },
+  });
+  coveredTools.add("burrete.control_ketcher");
+  assert.equal(publicKetcherAction.structuredContent.ok, true);
+  assert.equal(publicKetcherAction.structuredContent.applied, true);
+  assert.equal(publicKetcherAction.structuredContent.action.command, "clear_structure");
 
   const publicObserved = await server.tools.get("burrete.observe_workspace").handler({
     workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
@@ -705,9 +730,11 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
 
   assert.deepEqual([...coveredTools].sort(), [
     "act_molstar_scene",
+    "burrete.control_ketcher",
     "burrete.control_viewer",
     "burrete.get_context",
     "burrete.observe_workspace",
+    "burrete.open_ketcher",
     "burrete.open_workspace",
     "burrete.render_panel",
     "edit_burrete_fragment",

@@ -21,10 +21,12 @@ import { detectKetcherImportFormat, normalizeKetcherSmilesImport } from "../lib/
 import { readStructureText } from "../lib/structure-text";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
+import { hostedKetcherSeedFromWindow, isHostedKetcherWidget, type HostedKetcherSeed } from "../lib/hosted-mcp-widget";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action-executor";
 import type { KetcherLocation } from "./editor-area/page-kinds";
 import type { KetcherEditorApi } from "./ketcher-editor";
+import { registerKetcherAgentController, unregisterKetcherAgentController } from "../lib/ketcher-agent";
 import { RadixDropdownMenu, showRadixContextMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { KetcherImportRequest, KetcherSketchTarget, KetcherSource3D, ShellActions, ShellViewState } from "./types";
@@ -358,12 +360,14 @@ function installKetcherTooltips(root: HTMLElement) {
 }
 
 export function KetcherPage({
+  tabId,
   location,
   state,
   actions,
   isActive,
   acceptImportRequests = true,
 }: {
+  tabId: string;
   location: KetcherLocation;
   state: ShellViewState;
   actions: ShellActions;
@@ -371,9 +375,11 @@ export function KetcherPage({
   acceptImportRequests?: boolean;
 }) {
   const [ketcher, setKetcher] = useState<KetcherEditorApi | null>(null);
+  const ketcherAgentControllerRef = useRef<ReturnType<typeof registerKetcherAgentController> | null>(null);
   const [status, setStatus] = useState("Loading editor");
   const [output, setOutput] = useState("");
   const [panelMode, setPanelMode] = useState<KetcherPanelMode | null>(null);
+  const hostedSeedKeyRef = useRef<string | null>(null);
   const [editorReloadKey, setEditorReloadKey] = useState(0);
   const [dropActive, setDropActive] = useState(false);
   const [editorHasActivated, setEditorHasActivated] = useState(false);
@@ -480,16 +486,55 @@ export function KetcherPage({
       });
   }, [liveImportDirty, location.draftKet, location.draftMolfile, location.importRequest, panelMode, state.ketcherDraftMolfile]);
 
+  const applyHostedSeed = useCallback(async (instance: KetcherEditorApi, seed: HostedKetcherSeed | null) => {
+    if (!seed) return;
+    const key = `${seed.surfaceId ?? ""}:${seed.format}:${seed.content}`;
+    if (hostedSeedKeyRef.current === key) return;
+    if (seed.format === "mol") await instance.setMolfile(seed.content);
+    else await instance.setMolecule(seed.content, { needZoom: true });
+    hostedSeedKeyRef.current = key;
+    setOutput("");
+    setPanelMode(null);
+    setHasSketch(Boolean(seed.content.trim()));
+    setStatus("Ready");
+  }, []);
+
   const handleReady = useCallback((instance: KetcherEditorApi) => {
     instance.switchToMoleculesMode();
     setKetcher(instance);
-    void restoreDraft(instance).finally(() => applyDefaultKetcherZoom(instance));
-  }, [applyDefaultKetcherZoom, restoreDraft]);
+    void restoreDraft(instance).then(async () => {
+      if (isHostedKetcherWidget()) {
+        try {
+          await applyHostedSeed(instance, hostedKetcherSeedFromWindow());
+        } catch (error) {
+          setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
+        }
+      }
+      ketcherAgentControllerRef.current = registerKetcherAgentController(tabId, instance);
+    }).finally(() => applyDefaultKetcherZoom(instance));
+  }, [applyDefaultKetcherZoom, applyHostedSeed, restoreDraft, tabId]);
+
+  useEffect(() => () => {
+    unregisterKetcherAgentController(tabId, ketcherAgentControllerRef.current ?? undefined);
+    ketcherAgentControllerRef.current = null;
+  }, [tabId]);
 
   useEffect(() => {
     if (!ketcher) return;
     return ketcher.subscribeZoom((zoom) => setKetcherZoom(normalizeKetcherZoom(zoom)));
   }, [ketcher]);
+
+  useEffect(() => {
+    if (!ketcher || !isHostedKetcherWidget()) return undefined;
+    const handleSeed = () => {
+      void applyHostedSeed(ketcher, hostedKetcherSeedFromWindow()).catch((error) => {
+        setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
+      });
+    };
+    window.addEventListener("burrete-ketcher-seed", handleSeed);
+    handleSeed();
+    return () => window.removeEventListener("burrete-ketcher-seed", handleSeed);
+  }, [applyHostedSeed, ketcher]);
 
   useEffect(() => {
     if (!shouldMountEditor || !editorShellRef.current) return undefined;

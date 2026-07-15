@@ -1,11 +1,11 @@
 ---
 name: preview-molecular-structures
-description: Preview and inspect supported molecular attachments or an explicit public PDB ID in Burrete's interactive 3D viewer. Use when the user asks to view, select, focus, hide, or show molecular structure components.
+description: Preview supported molecular attachments or an explicit public PDB ID in Burrete's interactive viewer, or use the bounded hosted Ketcher editor for transient chemical sketches.
 ---
 
 # Preview molecular structures
 
-Use Burrete for read-only molecular structure inspection.
+Use Burrete for bounded molecular inspection and transient chemical sketching.
 
 ## Choose the tool
 
@@ -17,6 +17,14 @@ Use Burrete for read-only molecular structure inspection.
   chain, residue range, or component; clear a selection; reset the camera; or
   hide/show polymers, ligands, ions, or water. Pass the same PDB ID or authorized
   attachment again because the public server does not retain widget sessions.
+- Use `open_ketcher` when the user asks to draw or edit a small chemical
+  structure in the hosted widget. Seed only bounded inline KET, MOL, RXN, or
+  SMILES content when it is supplied.
+- Use `control_ketcher` for a follow-up Ketcher action. First use the current
+  `surfaceId` and `structureRevision` from the editor snapshot; send a
+  revision-checked `set_structure`, `clear_structure`, `highlight_atoms`, or
+  `get_structure` action. `request_persist` only reaches a user-confirmation
+  boundary and never writes silently.
 - If several supported attachments are present and the target is unclear, ask
   which single structure to open.
 
@@ -36,7 +44,7 @@ Use Burrete for read-only molecular structure inspection.
 ## Boundaries
 
 - Do not claim that this public plugin edits, overwrites, or deletes molecular
-  files.
+  source files. Ketcher edits exist only in the ephemeral hosted widget relay.
 - Do not claim local macOS app control, docking, simulation, structure
   prediction, or remote job execution. Those are outside this hosted plugin.
 - Do not treat a molecular preview as medical diagnosis, clinical advice, or

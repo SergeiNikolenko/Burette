@@ -145,10 +145,13 @@ const workspaceRegistration = await read("mcp/registrations/molecular-workspace/
 assert.match(workspaceRegistration, /registerAppTool/);
 assert.match(workspaceRegistration, /burrete\.get_context/);
 assert.match(workspaceRegistration, /burrete\.open_workspace/);
+assert.match(workspaceRegistration, /burrete\.open_ketcher/);
 assert.match(workspaceRegistration, /workspaceSessionId/);
 assert.match(workspaceRegistration, /viewerSessionId/);
 assert.match(workspaceRegistration, /burrete\.observe_workspace/);
 assert.match(workspaceRegistration, /burrete\.control_viewer/);
+assert.match(workspaceRegistration, /burrete\.control_ketcher/);
+assert.match(workspaceRegistration, /ketcherActionSchema/);
 assert.match(workspaceRegistration, /burrete\.render_panel/);
 assert.match(workspaceRegistration, /PUBLIC_CONTRACT/);
 assert.match(workspaceRegistration, /open_burrete_workspace/);

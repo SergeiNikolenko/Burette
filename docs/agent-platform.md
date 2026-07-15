@@ -13,7 +13,7 @@ the source of truth.
 | Repository CLI | `scripts/burrete-agent.mjs` | Source-of-truth execution contract for open, observe, act, and render-panel workflows. |
 | Browser preview server | `scripts/agent-preview.mjs` | Tokenized preview surface for typed browser agent sessions. |
 | Browser shell session | `apps/desktop/vite/browser-dev/agent-session.ts`, `apps/desktop/src/hooks/use-agent-session.ts` | Browser-dev shell observe/action files and event delivery. |
-| Desktop app session | `apps/desktop/src/hooks/use-agent-session.ts`, Tauri agent session commands | Desktop file-session observe/action bridge. |
+| Desktop app session | `apps/desktop/src/hooks/use-agent-session.ts`, `apps/desktop/src/lib/ketcher-agent.ts`, Tauri agent session commands | Desktop file-session observe/action bridge for Mol* and the Ketcher chemical editor. |
 | Plugin skills | `plugins/burette-agent/skills/*/SKILL.md` | Workflow routing, preflight, task-specific instructions, and completion gates. |
 | MCP registrations | `plugins/burette-agent/mcp/registrations/*` | Stable tools wrapping the CLI and bounded artifact validation. |
 
@@ -30,6 +30,8 @@ The hosted plugin is a separate runtime boundary from the local desktop bridge:
 - `preview_molecular_file` accepts one OpenAI-authorized PDB, ENT, PDBQT, CIF,
   mmCIF, SDF, SD, XYZ, or extended XYZ attachment.
 - `preview_pdb_structure` accepts one four-character public PDB ID.
+- `open_ketcher` and `control_ketcher` expose an isolated revision-checked
+  chemical editor surface with bounded inline structures and exports.
 - The model receives bounded structured composition data. Raw structure text is
   placed only in result `_meta` for the sandboxed Burrete workspace.
 - Downloads are capped at 3 MiB and 200,000 lines, redirects are revalidated,
@@ -58,6 +60,7 @@ result back to the user.
 | Workspace opener | `bun scripts/burrete-agent.mjs open` | Opens browser preview, browser-dev shell, or desktop app sessions. |
 | Workspace observer | `bun scripts/burrete-agent.mjs observe` | Reads typed state from a session directory. |
 | Workspace action | `bun scripts/burrete-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
+| Ketcher surface | `burrete.open_ketcher` / `burrete.control_ketcher` | Opens and controls the active chemical editor with bounded, revision-checked actions. |
 | Panel renderer | `bun scripts/burrete-agent.mjs render-panel` | Opens bounded markdown/table/chart output in a docked panel. |
 | Tokenized preview | `bun scripts/agent-preview.mjs` | Starts typed browser preview sessions for direct observe/act checks. |
 | Router skill | `plugins/burette-agent/skills/index/SKILL.md` | Routes molecular workspace requests to the right focused skill. |
@@ -71,8 +74,10 @@ result back to the user.
 | Visual QA | `plugins/burette-agent/skills/visual-qa/SKILL.md` | Uses Browser or Computer verification after typed state checks. |
 
 Do not add a new MCP tool or skill until the repository CLI contract is clear.
-When a workflow can be expressed as an existing `open`, `observe`, `act`, or
-`render-panel` operation, reuse that path.
+The Ketcher facade is intentionally separate from Mol* scene actions because a
+chemical-editor mutation has different revision, payload, export, and
+user-persistence rules. Reuse the workspace session and action-file transport;
+do not invent a second local session protocol.
 
 ## Surfaces
 
@@ -97,6 +102,47 @@ state channel.
 - Screenshot interpretation must not replace typed `observe`, validation
   output, or CLI/MCP errors.
 
+## Ketcher Agent Contract
+
+The Ketcher surface uses API version `burrete-ketcher-agent/v1`. The desktop
+controller is registered per tab and reports it through `observe.json` as:
+
+```json
+{
+  "activeSurface": {
+    "kind": "ketcher",
+    "tabId": "tab-1",
+    "surfaceId": "desktop-ketcher:tab-1",
+    "phase": "ready",
+    "ready": true
+  },
+  "chemicalEditor": {
+    "surfaceId": "desktop-ketcher:tab-1",
+    "structureRevision": 3,
+    "interactionRevision": 4,
+    "persistedRevision": 2,
+    "dirty": true
+  }
+}
+```
+
+`burrete.control_ketcher` accepts `set_structure`, `clear_structure`,
+`highlight_atoms`, `get_structure`, and `request_persist`. Every action carries
+an idempotent `actionId`, the target `surfaceId`, and `expectedRevision`.
+Structural edits advance `structureRevision`; highlight/selection changes only
+advance `interactionRevision`. A revision mismatch, stale tab, oversized
+structure, unsupported format, or unresolved `contentRef` is a typed failure.
+Inline content is bounded to 64 KiB, atom-index lists to 256 entries, and
+inline exports to 64 KiB. Persistence stops at `awaiting_user` until a user
+confirms the file write.
+
+The hosted public plugin mirrors the same action schema through
+`open_ketcher`/`control_ketcher` and the resource
+`ui://burrete/ketcher-editor-v1.html`. Its relay is process-local and ephemeral:
+it is suitable for the current MCP widget turn, not a durable shared workspace;
+reference-backed content fails closed until an authenticated artifact relay is
+added.
+
 ## Agent RCA
 
 | Symptom | Likely cause | Where to look first |
@@ -105,6 +151,8 @@ state channel.
 | MCP tool succeeds but the panel is empty | Widget snapshot is unbounded, malformed, or missing the expected artifact shape. | MCP registration output, `plugins/burette-agent/mcp/widget-assets/*`, `render-panel` payload |
 | `observe` returns no active document | Wrong session directory, closed Browser tab, or desktop session not attached. | CLI `sessionDir`, shell logs, `apps/desktop/src/hooks/use-agent-session.ts` |
 | `act` times out | Action was sent to the shell when the active Mol* viewer was not ready, or the action contract changed. | Last `observe` result, `apps/desktop/src/hooks/use-agent-session.ts`, viewer bridge tests |
+| `control_ketcher` returns `REVISION_CONFLICT` | Another edit, selection change, or tab switch advanced the editor state. | Refresh `burrete.observe_workspace` and use the returned `surfaceId`/`structureRevision`. |
+| `control_ketcher` returns `STALE_TARGET` | The requested surface is no longer the active Ketcher tab or was unmounted. | Reopen Ketcher with `burrete.open_ketcher`; do not reuse the old surface id. |
 | Plugin preflight fails | Packaged plugin paths, CLI availability, or local runtime capabilities are out of sync. | `plugins/burette-agent/scripts/burette_agent_preflight.mjs`, `plugins/burette-agent/AGENTS.md` |
 | Browser screenshot disagrees with typed state | Visual QA inspected the wrong tab or stale runtime while `observe` targeted another session. | Browser URL, CLI JSON metadata, `observe` output |
 
