@@ -37,3 +37,20 @@ export function detectKetcherImportFormat(text: string): KetcherDetectedImportFo
   if (/\$\(|\[[^\]]*(?:!|;|&|,|#\d)[^\]]*\]|[~?]/u.test(value)) return "smarts";
   return "smiles";
 }
+
+export function normalizeKetcherSmilesImport(text: string) {
+  const value = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  const lines = value.split("\n").map((line) => line.trim()).filter(Boolean);
+  const candidates = lines.length > 1
+    ? lines.map((line) => line.split(/\s+/u)[0] ?? "")
+    : value.split(/\s+/u);
+  if (candidates.length < 2 || !candidates.every(looksLikeSmilesToken)) return value;
+  return candidates.join(".");
+}
+
+function looksLikeSmilesToken(value: string) {
+  if (!value || /\s/u.test(value)) return false;
+  const withoutAtoms = value.replace(/Br|Cl|\[[^\]]+\]|[BCNOFPSIbcnops*]/gu, "");
+  return withoutAtoms.length < value.length
+    && Array.from(withoutAtoms).every((character) => "0123456789@+-()\\/%=#$:.".includes(character));
+}

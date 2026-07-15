@@ -3130,6 +3130,7 @@ assert.match(ketcherPage, /panelMode\.format === "auto" \? detectedImportFormat 
 assert.match(ketcherPage, /liveImportSerialRef\.current = serial;/);
 assert.match(ketcherPage, /IS_KETCHER_WEB_DEMO && importText && ketcherImportUsesStructService\(format\)/);
 assert.match(ketcherPage, /await withKetcherTimeout\(loadInteractiveKetcherImport\(ketcher, importText, format\), `\$\{label\} import`\)/);
+assert.match(ketcherPage, /const handleDrop = useCallback[\s\S]*?const payload = readStructureDragPayload\(event\.dataTransfer\);\s*const choices = shellDropActionChoices[\s\S]*?if \(choices\.length === 0\) return;\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);/);
 assert.match(ketcherPage, /ketcherImportUsesStructService\(format\)\s*\?\s*instance\.setMolecule\(text, \{ needZoom: true \}\)\s*:\s*instance\.setMolfile\(firstMolBlock\(text\)\)/);
 assert.match(ketcherPage, /if \(ketcherStructServiceReady\) return Promise\.resolve\(\)/);
 assert.match(ketcherPage, /if \(!IS_KETCHER_WEB_DEMO\) fallbackId = window\.setTimeout\(finish, 750\)/);
