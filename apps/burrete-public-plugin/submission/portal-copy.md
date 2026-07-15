@@ -11,9 +11,12 @@
 - **Terms:** https://burrete-landing.vercel.app/terms
 - **Logo:** `plugins/burette-agent/assets/app-icon.png` in the main Burrete
   repository (512 × 512 PNG)
-- **ChatGPT mobile screenshot:** `submission/screenshots/chatgpt-pdb-viewer-mobile.jpg`
-  captured from the production v9 widget in the real ChatGPT conversation
-  with developer-mode CSP enforcement enabled.
+- **ChatGPT web screenshot:** `submission/screenshots/chatgpt-pdb-viewer-web.jpg`
+  captured from the production v21 widget in a real ChatGPT conversation after
+  refreshing the developer connector.
+- **Live ChatGPT proof:** https://chatgpt.com/c/6a57781a-b1b0-83ea-bb65-4c5b13bcc3a8
+- **Mobile verification:** the same production v21 plugin was confirmed working
+  on a physical iPhone on July 15, 2026.
 
 ### Long description
 
@@ -66,13 +69,16 @@ supported.
   website and policies.
 - Submit from the same OpenAI organization and a global-data-residency project.
 - The submitter needs Apps Management write permission.
-- After entering the MCP URL, scan tools and verify both tool descriptors,
+- After entering the MCP URL, scan tools and verify all three tool descriptors,
   top-level and `_meta` no-auth security schemes, exact output schemas,
   annotations, and the viewer resource.
 - Put the portal's exact domain token in `OPENAI_APPS_CHALLENGE`, deploy, and
   complete domain verification before submitting for review.
-- Test both tools in ChatGPT Developer Mode on web and mobile, including viewer
+- Test all three tools in ChatGPT Developer Mode on web and mobile, including viewer
   controls, structure interaction, and resizing of the inline preview.
 - Capture the required submission screenshots from the real ChatGPT widget
   after the Developer Mode checks; do not substitute a direct shell URL or a
   local preview for the final portal screenshots.
+- Keep `ui://burrete/molecular-viewer-v21.html` stable through review. Asset
+  releases should change only the JS/CSS cache versions; if the resource URI
+  must change, refresh the connector before the next live smoke test.

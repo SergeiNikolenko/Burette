@@ -1,3 +1,5 @@
+// This URI is a persisted ChatGPT connector contract. Keep it stable across
+// asset-only deployments; changing it requires refreshing every connector.
 export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v21.html";
 export const VIEWER_SHELL_SCRIPT_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.js";
