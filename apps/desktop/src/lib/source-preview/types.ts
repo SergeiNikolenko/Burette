@@ -32,4 +32,3 @@ export type SourcePreviewPromotionResult =
   | { status: "stale" };
 
 export type SourcePreviewStageFailure = "rejected" | "timed-out" | "superseded";
-

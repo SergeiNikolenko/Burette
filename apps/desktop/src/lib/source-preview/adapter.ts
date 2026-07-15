@@ -167,4 +167,3 @@ export class SourcePreviewAdapter {
     if (this.disposed) throw new Error("Source preview adapter is disposed");
   }
 }
-
