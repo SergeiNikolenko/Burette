@@ -5,16 +5,16 @@ import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { ChemicalEditorTarget, ShellActions, ShellViewState } from "./types";
 import type { MenuItemSpec } from "./menu-types";
 import { isTauriRuntime } from "../lib/tauri";
+import { useFinderIconUrl } from "../hooks/use-finder-icon-url";
 
 type ActiveFile = {
   path: string;
   label: string;
 };
 
-const FINDER_ICON_PATH = "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns";
-
 export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
   const activeFile = useMemo(() => activeFileFromState(state), [state]);
+  const finderIconUrl = useFinderIconUrl();
   const [targets, setTargets] = useState<ChemicalEditorTarget[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadedPath, setLoadedPath] = useState<string | null>(null);
@@ -82,19 +82,19 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
         id: "chemical-editor-finder",
         text: "Reveal in Finder",
         iconText: "FI",
-        iconUrl: finderIconUrl() ?? undefined,
+        iconUrl: finderIconUrl ?? undefined,
         action: () => {
           void actions.revealPath(activeFile.path, activeFile.label);
         },
       },
     ];
-  }, [actions, activeFile, loadedPath, loading, targets]);
+  }, [actions, activeFile, finderIconUrl, loadedPath, loading, targets]);
 
   if (!activeFile) return null;
 
   const visibleTargets = targets.length > 0 ? targets : browserDevPreviewTargets(activeFile.path);
   const preferredTarget = preferredTargetForDestination(state.preferences.openInDefaultDestination, visibleTargets);
-  const preferredIconUrl = openDestinationIconUrl(state.preferences.openInDefaultDestination, preferredTarget);
+  const preferredIconUrl = openDestinationIconUrl(state.preferences.openInDefaultDestination, preferredTarget, finderIconUrl);
   const label = openDestinationLabel(state.preferences.openInDefaultDestination, preferredTarget);
 
   return (
@@ -142,9 +142,9 @@ function openDestinationLabel(destination: string, target: ChemicalEditorTarget 
   return "Reveal in Finder";
 }
 
-function openDestinationIconUrl(destination: string, target: ChemicalEditorTarget | null) {
+function openDestinationIconUrl(destination: string, target: ChemicalEditorTarget | null, finderIconUrl: string | null) {
   if (target) return editorIconUrl(target);
-  if (destination === "finder" || destination === "auto") return finderIconUrl();
+  if (destination === "finder" || destination === "auto") return finderIconUrl;
   return null;
 }
 
@@ -177,12 +177,6 @@ function editorIconUrl(target: ChemicalEditorTarget) {
   if (target.iconUrl) return target.iconUrl;
   if (target.iconPath && isTauriRuntime()) return convertFileSrc(target.iconPath);
   if (!isTauriRuntime() && import.meta.env.DEV) return browserDevIconUrl(target);
-  return null;
-}
-
-function finderIconUrl() {
-  if (isTauriRuntime()) return convertFileSrc(FINDER_ICON_PATH);
-  if (!isTauriRuntime() && import.meta.env.DEV) return "/__burette/app-icon/finder.png";
   return null;
 }
 

@@ -3,6 +3,7 @@ identifier = "allow-viewer-commands"
 description = "Allows the Burrete desktop shell to open structures and manage local viewer runtime state."
 commands.allow = [
   "agent_integration_status",
+  "finder_icon_path",
   "list_chemical_editor_targets",
   "open_in_chemical_editor",
   "descriptor_runtime_status",
