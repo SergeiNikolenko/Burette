@@ -27,9 +27,9 @@ pub use pack::{
     EnginePackManifest, EnginePackRef, EnginePackVersion, FrozenSourceIdentity,
     MolecularSnapshotManifest, MolecularSnapshotRef, MolecularSnapshotVersion,
     PackedArrayDescriptor, PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout,
-    MAX_JSON_SAFE_INTEGER, MAX_PACK_ARRAYS, MAX_PACK_BYTES, MAX_PACK_FILES, MAX_PACK_RECORDS,
-    MOLECULE_CONTENT_HASHES_ARRAY_NAME, MOLECULE_CONTENT_HASHES_SEMANTIC,
-    SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
+    ResultPackManifest, ResultPackRef, MAX_JSON_SAFE_INTEGER, MAX_PACK_ARRAYS, MAX_PACK_BYTES,
+    MAX_PACK_FILES, MAX_PACK_RECORDS, MOLECULE_CONTENT_HASHES_ARRAY_NAME,
+    MOLECULE_CONTENT_HASHES_SEMANTIC, SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
 };
 pub use snapshot::{
     AttemptSnapshot, AttemptState, ComputeJobSnapshotSchemaVersion, JobProgress, JobSnapshot,

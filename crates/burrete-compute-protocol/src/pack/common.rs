@@ -15,7 +15,6 @@ pub const MAX_PACK_RECORDS: u64 = 10_000_000;
 pub const MAX_PACK_FILES: usize = 256;
 pub const MAX_PACK_ARRAYS: usize = 512;
 
-#[allow(dead_code)] // Used by the higher-level result manifest module.
 pub(crate) const MAX_ENGINE_PACK_REFS: usize = 32;
 pub(crate) const MAX_ARRAY_RANK: usize = 8;
 pub(crate) const MAX_ALIGNMENT_BYTES: u32 = 4_096;

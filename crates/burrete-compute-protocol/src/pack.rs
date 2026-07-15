@@ -2,6 +2,7 @@ mod common;
 mod engine;
 mod layout;
 mod molecular;
+mod result;
 
 pub use common::{
     EnginePackVersion, MolecularSnapshotVersion, MAX_JSON_SAFE_INTEGER, MAX_PACK_ARRAYS,
@@ -16,3 +17,7 @@ pub use molecular::{
     MOLECULE_CONTENT_HASHES_ARRAY_NAME, MOLECULE_CONTENT_HASHES_SEMANTIC,
     SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
 };
+pub use result::{ResultPackManifest, ResultPackRef};
+
+#[cfg(test)]
+mod tests;
