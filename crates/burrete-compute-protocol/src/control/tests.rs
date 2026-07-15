@@ -1,6 +1,9 @@
 use uuid::Uuid;
 
-use super::{ControlCommand, ControlResponse, ControlResult, JobCapabilityToken, SessionToken};
+use super::{
+    ControlCommand, ControlResponse, ControlResult, JobCapabilityToken, SessionToken,
+    WorkerControlResponse, WorkerResult,
+};
 use crate::{decode_frame, encode_frame, ProtocolError};
 
 const SESSION_TOKEN_PREFIX: &str = "session.v1.";
@@ -50,4 +53,21 @@ fn handshake_response_echoes_and_validates_the_client_nonce() {
         decode_frame::<ControlResponse>(&malformed),
         Err(ProtocolError::Validation(_))
     ));
+}
+
+#[test]
+fn worker_handshake_response_echoes_the_coordinator_nonce() {
+    let response = WorkerControlResponse::new(
+        Uuid::from_u128(2),
+        WorkerResult::HandshakeAccepted {
+            worker_id: Uuid::from_u128(3),
+            coordinator_nonce: "coordinator-0001".into(),
+            worker_nonce: "worker-nonce-0001".into(),
+        },
+    );
+    let frame = encode_frame(&response).expect("encode worker response");
+    assert_eq!(
+        decode_frame::<WorkerControlResponse>(&frame).expect("decode worker response"),
+        response
+    );
 }
