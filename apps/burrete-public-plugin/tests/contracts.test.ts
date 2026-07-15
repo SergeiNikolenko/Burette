@@ -73,7 +73,7 @@ describe("submission tool contract", () => {
   test("links render tools to the versioned viewer resource", () => {
     const meta = viewerToolMeta("Loading…", "Loaded");
     expect(meta.ui.resourceUri).toBe(VIEWER_RESOURCE_URI);
-    expect(meta.ui.visibility).toEqual(["model"]);
+    expect(meta.ui).toEqual({ resourceUri: VIEWER_RESOURCE_URI });
     expect(meta["openai/outputTemplate"]).toBe(VIEWER_RESOURCE_URI);
     expect(meta["openai/widgetAccessible"]).toBe(false);
   });
@@ -108,20 +108,18 @@ describe("viewer resource contract", () => {
     expect(meta.ui.domain).toBe("https://burrete.example");
     expect(meta.ui.csp.connectDomains).toEqual(["https://burrete.example"]);
     expect(meta.ui.csp.resourceDomains).toEqual(["https://burrete.example"]);
-    expect(meta.ui.csp.frameDomains).toEqual(["https://burrete.example"]);
+    expect(meta.ui.csp).not.toHaveProperty("frameDomains");
     expect(meta.ui.prefersBorder).toBe(false);
     expect(meta["openai/widgetPrefersBorder"]).toBe(false);
-    expect(meta["openai/widgetCSP"].frame_domains).toEqual([
-      "https://burrete.example",
-    ]);
+    expect(meta["openai/widgetCSP"]).not.toHaveProperty("frame_domains");
   });
 
   test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v16.html");
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v18.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-analytics-v1");
+    expect(html).toContain("?v=viewer-v18");
     expect(html).toContain(`https://burrete.example${VIEWER_MOBILE_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_APP_BRIDGE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
