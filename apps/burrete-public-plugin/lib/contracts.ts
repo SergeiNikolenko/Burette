@@ -142,18 +142,41 @@ export const viewerActionSchema = z.discriminatedUnion("type", [
 
 const sceneActionsSchema = z.array(viewerActionSchema).min(1).max(8);
 
-export const molecularSceneInputSchema = z.discriminatedUnion("source", [
-  z.object({
-    source: z.literal("pdb"),
-    pdbId: z.string().trim().regex(/^[0-9][A-Za-z0-9]{3}$/u),
-    actions: sceneActionsSchema,
-  }).strict(),
-  z.object({
-    source: z.literal("attachment"),
-    structureFile: fileReferenceSchema,
-    actions: sceneActionsSchema,
-  }).strict(),
-]);
+export const molecularSceneInputSchema = z.object({
+  source: z.enum(["pdb", "attachment"]),
+  pdbId: z.string().trim().regex(/^[0-9][A-Za-z0-9]{3}$/u).optional(),
+  structureFile: fileReferenceSchema.optional(),
+  actions: sceneActionsSchema,
+}).strict().superRefine((input, context) => {
+  if (input.source === "pdb" && !input.pdbId) {
+    context.addIssue({
+      code: "custom",
+      path: ["pdbId"],
+      message: "pdbId is required when source is pdb.",
+    });
+  }
+  if (input.source === "attachment" && !input.structureFile) {
+    context.addIssue({
+      code: "custom",
+      path: ["structureFile"],
+      message: "structureFile is required when source is attachment.",
+    });
+  }
+  if (input.source === "pdb" && input.structureFile) {
+    context.addIssue({
+      code: "custom",
+      path: ["structureFile"],
+      message: "structureFile is only valid when source is attachment.",
+    });
+  }
+  if (input.source === "attachment" && input.pdbId) {
+    context.addIssue({
+      code: "custom",
+      path: ["pdbId"],
+      message: "pdbId is only valid when source is pdb.",
+    });
+  }
+});
 
 export function viewerToolMeta(invoking: string, invoked: string) {
   return {
