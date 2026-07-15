@@ -17,7 +17,7 @@ import { createPortal } from "react-dom";
 
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily as collectionFamilyForExtension, type CollectionFamily } from "../lib/collection-documents";
-import { detectKetcherImportFormat } from "../lib/ketcher-import-format";
+import { detectKetcherImportFormat, normalizeKetcherSmilesImport } from "../lib/ketcher-import-format";
 import { readStructureText } from "../lib/structure-text";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
@@ -1015,13 +1015,13 @@ export function KetcherPage({
 
   const handleDrop = useCallback((event: DragEvent<HTMLElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
+    const payload = readStructureDragPayload(event.dataTransfer);
+    const choices = shellDropActionChoices(payload, { kind: "ketcher" }, { kind: "ketcher" });
+    if (choices.length === 0) return;
     event.preventDefault();
     event.stopPropagation();
     actions.setStructureDragActive(false);
     setDropActive(false);
-    const payload = readStructureDragPayload(event.dataTransfer);
-    const choices = shellDropActionChoices(payload, { kind: "ketcher" }, { kind: "ketcher" });
-    if (choices.length === 0) return;
     runShellDropActionChoices(actions, payload, choices.slice(0, 1), { x: event.clientX, y: event.clientY }, {
       importKetcherStructures: (actionPayload) => {
         if (!ketcher) return false;
@@ -1498,7 +1498,7 @@ function peekQueuedKetcherImportRequest() {
 
 function ketcherImportCandidates(text: string) {
   return Array.from(new Set([
-    normalizeKetcherImportText(text),
+    normalizeKetcherImportText(text, detectKetcherImportFormat(text)),
     text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd(),
   ].map((candidate) => candidate.trimEnd()).filter(Boolean)));
 }
@@ -1595,6 +1595,7 @@ function waitForMs(ms: number) {
 
 function normalizeKetcherImportText(text: string, format?: KetcherTextFormat) {
   const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
+  if (format === "smiles") return normalizeKetcherSmilesImport(normalized);
   if (
     looksLikeMolBlock(normalized) ||
     looksLikeSdfRecord(normalized) ||
