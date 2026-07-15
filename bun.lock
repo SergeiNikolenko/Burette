@@ -81,7 +81,7 @@
     },
     "packages/burrete": {
       "name": "burrete",
-      "version": "1.0.26",
+      "version": "1.0.27",
       "bin": "bin/burrete.mjs",
     },
     "packages/ketcher-agent-contract": {
