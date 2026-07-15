@@ -70,7 +70,7 @@ impl ClusterV1SubmitRequest {
         Ok(self)
     }
 
-    /// Serializes the normalized request with the field order fixed by this v1 type.
+    /// Serializes the normalized request using RFC 8785 JSON Canonicalization Scheme.
     pub fn canonical_json_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
         canonical_json_bytes(&self.clone().normalized()?)
     }

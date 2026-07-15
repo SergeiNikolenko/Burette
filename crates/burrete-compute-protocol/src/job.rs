@@ -465,7 +465,7 @@ impl ExecutionPlan {
         Ok(())
     }
 
-    /// Serializes a validated fixed execution plan with its v1 field order.
+    /// Serializes a validated execution plan using RFC 8785 JSON Canonicalization Scheme.
     pub fn canonical_json_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
         self.validate()?;
         serialize_canonical_json(self)
