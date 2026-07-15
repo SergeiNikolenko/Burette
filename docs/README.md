@@ -28,6 +28,9 @@ contains only documents that describe the active project.
   scheduling, runtime distribution, and product integration. Its companion
   [validation and delivery contract](superpowers/specs/2026-07-15-gpu-compute-validation-and-delivery.md)
   defines scientific gates, failure testing, and staged completion criteria.
+  The active
+  [foundation and `cluster.v1` implementation plan](superpowers/plans/2026-07-15-gpu-compute-foundation-cluster-v1.md)
+  gives the file-by-file delivery sequence for the first packaged Metal slice.
 - [Stability program](stability.md): preview trace, runtime manifest, nightly
   smoke, and staged stability guardrails.
 - [Installing and building](installing-building.md): source build, local
