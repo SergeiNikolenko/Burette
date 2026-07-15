@@ -44,10 +44,14 @@ pub(crate) fn freeze_grid_scope(
     scope: &GridScope,
     publication_root: &SnapshotPublicationRoot,
     snapshot_id: Uuid,
+    attempt_id: Uuid,
     created_at_ms: u64,
 ) -> Result<FrozenGridSnapshot, String> {
     if snapshot_id.is_nil() {
         return Err("Frozen Grid snapshot ID cannot be nil".into());
+    }
+    if attempt_id.is_nil() {
+        return Err("Frozen Grid snapshot attempt ID cannot be nil".into());
     }
     let normalized_scope = scope
         .clone()
@@ -95,7 +99,7 @@ pub(crate) fn freeze_grid_scope(
     let expected_pack_bytes = measure_scope_pack(&mut statement, &scope_sql.params, record_count)?;
     let _reservation = reserve_publication_capacity(publication_root, expected_pack_bytes)?;
 
-    let staging = SnapshotStaging::create(publication_root, snapshot_id)?;
+    let staging = SnapshotStaging::create(publication_root, snapshot_id, attempt_id)?;
     let mut source_ids = HashedFile::new(staging.create_pack_file("source-record-ids.bin")?);
     let mut molecule_hashes =
         HashedFile::new(staging.create_pack_file("molecule-content-hashes.bin")?);

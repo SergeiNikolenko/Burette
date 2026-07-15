@@ -24,7 +24,9 @@ use super::{
     grid_store::{
         build_grid_store, replace_descriptor_values_in_database, GridDescriptorValueInput,
     },
-    snapshot_fs::{PublishedSnapshotRoot, SnapshotPublicationRoot, SnapshotStaging},
+    snapshot_fs::{
+        PublishedSnapshotRoot, SnapshotPublicationRoot, SnapshotRootEntry, SnapshotStaging,
+    },
 };
 
 fn temporary_root(label: &str) -> std::path::PathBuf {
@@ -164,6 +166,7 @@ fn freezes_selected_filtered_and_all_scopes_independently_of_grid_lifetime() {
             &scope,
             &publication_root,
             snapshot_id,
+            Uuid::new_v4(),
             100 + ordinal as u64,
         )
         .expect("freeze Grid scope");
@@ -293,6 +296,7 @@ fn freezes_shared_descriptor_and_analysis_predicates() {
         }),
         &publication_root(&output_root),
         Uuid::new_v4(),
+        Uuid::new_v4(),
         101,
     )
     .expect("freeze descriptor and analysis filtered scope");
@@ -319,6 +323,7 @@ fn rejects_missing_selected_rows_and_frontend_only_edits_without_publication() {
         &missing,
         &publication_root,
         missing_snapshot_id,
+        Uuid::new_v4(),
         100,
     )
     .is_err());
@@ -335,6 +340,7 @@ fn rejects_missing_selected_rows_and_frontend_only_edits_without_publication() {
         &GridScope::All(AllGridScope {}),
         &publication_root,
         edited_snapshot_id,
+        Uuid::new_v4(),
         101,
     )
     .is_err());
@@ -360,7 +366,7 @@ fn rejects_symlink_components_and_a_swapped_publication_root() {
     let moved_root = container.join("moved-snapshots");
     fs::rename(&real_root, &moved_root).expect("move publication root");
     symlink(&moved_root, &real_root).expect("replace publication root with symlink");
-    assert!(SnapshotStaging::create(&capability, Uuid::new_v4()).is_err());
+    assert!(SnapshotStaging::create(&capability, Uuid::new_v4(), Uuid::new_v4()).is_err());
 
     let _ = fs::remove_file(real_root);
     let _ = fs::remove_dir_all(container);
@@ -373,7 +379,8 @@ fn published_capability_survives_locator_root_replacement() {
     let root_path = container.join("snapshots");
     let root = publication_root(&root_path);
     let snapshot_id = Uuid::new_v4();
-    let staging = SnapshotStaging::create(&root, snapshot_id).expect("create snapshot staging");
+    let staging = SnapshotStaging::create(&root, snapshot_id, Uuid::new_v4())
+        .expect("create snapshot staging");
     let mut manifest = staging
         .create_manifest_file()
         .expect("create capability test manifest");
@@ -417,7 +424,7 @@ fn rejects_broken_and_existing_destinations_without_modifying_them() {
     let broken_id = Uuid::new_v4();
     let broken_path = capability.destination_path(broken_id);
     symlink("missing-snapshot-target", &broken_path).expect("create broken destination symlink");
-    assert!(SnapshotStaging::create(&capability, broken_id).is_err());
+    assert!(SnapshotStaging::create(&capability, broken_id, Uuid::new_v4()).is_err());
     assert!(fs::symlink_metadata(&broken_path)
         .expect("inspect broken destination")
         .file_type()
@@ -426,7 +433,7 @@ fn rejects_broken_and_existing_destinations_without_modifying_them() {
     let empty_id = Uuid::new_v4();
     let empty_path = capability.destination_path(empty_id);
     fs::create_dir(&empty_path).expect("create existing empty destination");
-    assert!(SnapshotStaging::create(&capability, empty_id).is_err());
+    assert!(SnapshotStaging::create(&capability, empty_id, Uuid::new_v4()).is_err());
     assert_eq!(
         fs::read_dir(&empty_path)
             .expect("read existing empty destination")
@@ -439,7 +446,7 @@ fn rejects_broken_and_existing_destinations_without_modifying_them() {
     fs::create_dir(&nonempty_path).expect("create existing nonempty destination");
     fs::write(nonempty_path.join("sentinel"), b"preserve")
         .expect("write existing destination sentinel");
-    assert!(SnapshotStaging::create(&capability, nonempty_id).is_err());
+    assert!(SnapshotStaging::create(&capability, nonempty_id, Uuid::new_v4()).is_err());
     assert_eq!(
         fs::read(nonempty_path.join("sentinel")).expect("read preserved sentinel"),
         b"preserve"
@@ -463,7 +470,7 @@ fn concurrent_publishers_never_replace_the_winner() {
                 scope.spawn(move || {
                     let capability = SnapshotPublicationRoot::open(&root_path)
                         .expect("open concurrent publication capability");
-                    let staging = SnapshotStaging::create(&capability, snapshot_id)
+                    let staging = SnapshotStaging::create(&capability, snapshot_id, Uuid::new_v4())
                         .expect("create concurrent staging root");
                     staging
                         .sync_directories()
@@ -525,6 +532,7 @@ fn verifies_canonical_snapshot_on_the_retained_file_descriptors() {
         &GridScope::All(AllGridScope {}),
         &publication_root,
         Uuid::new_v4(),
+        Uuid::new_v4(),
         700,
     )
     .expect("freeze verified snapshot");
@@ -556,6 +564,95 @@ fn verifies_canonical_snapshot_on_the_retained_file_descriptors() {
 }
 
 #[test]
+fn reverify_rejects_an_identical_file_entry_swap_after_hashing() {
+    let runtime_root = temporary_root("snapshot-file-swap-runtime");
+    let output_root = temporary_root("snapshot-file-swap-output");
+    let database_path = build_fixture(&runtime_root);
+    let publication_root = publication_root(&output_root);
+    let frozen = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &publication_root,
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        706,
+    )
+    .expect("freeze file swap fixture");
+    let file_path = frozen.root.path().join("pack/source-record-ids.bin");
+    let replacement_path = output_root
+        .parent()
+        .expect("snapshot output parent")
+        .join(format!("burrete-snapshot-file-swap-{}", Uuid::new_v4()));
+    let mut verified = frozen
+        .root
+        .verify(&frozen.reference)
+        .expect("hash snapshot before file entry swap");
+    fs::write(
+        &replacement_path,
+        fs::read(&file_path).expect("read verified file bytes"),
+    )
+    .expect("write identical replacement file");
+    fs::set_permissions(&replacement_path, fs::Permissions::from_mode(0o600))
+        .expect("make identical replacement file private");
+    fs::rename(&replacement_path, &file_path).expect("replace verified file directory entry");
+
+    let error = verified
+        .reverify()
+        .expect_err("identical bytes at a different inode must fail structural recheck");
+    assert!(error.contains("directory entry changed"));
+
+    let _ = fs::remove_file(replacement_path);
+    let _ = fs::remove_dir_all(runtime_root);
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
+fn reverify_rejects_an_identical_content_directory_swap_after_hashing() {
+    let runtime_root = temporary_root("snapshot-directory-swap-runtime");
+    let output_root = temporary_root("snapshot-directory-swap-output");
+    let database_path = build_fixture(&runtime_root);
+    let publication_root = publication_root(&output_root);
+    let frozen = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &publication_root,
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        707,
+    )
+    .expect("freeze directory swap fixture");
+    let pack_path = frozen.root.path().join("pack");
+    let moved_pack_path = output_root
+        .parent()
+        .expect("snapshot output parent")
+        .join(format!("burrete-snapshot-pack-swap-{}", Uuid::new_v4()));
+    let mut verified = frozen
+        .root
+        .verify(&frozen.reference)
+        .expect("hash snapshot before content directory swap");
+    fs::rename(&pack_path, &moved_pack_path).expect("move verified pack directory");
+    fs::create_dir(&pack_path).expect("create replacement pack directory");
+    fs::set_permissions(&pack_path, fs::Permissions::from_mode(0o700))
+        .expect("make replacement pack directory private");
+    for entry in fs::read_dir(&moved_pack_path).expect("enumerate verified pack files") {
+        let entry = entry.expect("read verified pack entry");
+        let replacement = pack_path.join(entry.file_name());
+        fs::copy(entry.path(), &replacement).expect("copy identical pack file");
+        fs::set_permissions(replacement, fs::Permissions::from_mode(0o600))
+            .expect("make copied pack file private");
+    }
+
+    let error = verified
+        .reverify()
+        .expect_err("identical content at a different directory inode must fail recheck");
+    assert!(error.contains("directory entry changed"));
+
+    let _ = fs::remove_dir_all(moved_pack_path);
+    let _ = fs::remove_dir_all(runtime_root);
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
 fn verification_rejects_pack_corruption_and_unexpected_entries() {
     let runtime_root = temporary_root("grid-snapshot-corrupt-runtime");
     let output_root = temporary_root("grid-snapshot-corrupt-output");
@@ -565,6 +662,7 @@ fn verification_rejects_pack_corruption_and_unexpected_entries() {
         &database_path,
         &GridScope::All(AllGridScope {}),
         &publication_root,
+        Uuid::new_v4(),
         Uuid::new_v4(),
         701,
     )
@@ -587,6 +685,7 @@ fn verification_rejects_pack_corruption_and_unexpected_entries() {
         &GridScope::All(AllGridScope {}),
         &publication_root,
         Uuid::new_v4(),
+        Uuid::new_v4(),
         702,
     )
     .expect("freeze whitelist fixture");
@@ -605,6 +704,7 @@ fn verification_rejects_pack_corruption_and_unexpected_entries() {
         &database_path,
         &GridScope::All(AllGridScope {}),
         &publication_root,
+        Uuid::new_v4(),
         Uuid::new_v4(),
         704,
     )
@@ -625,6 +725,7 @@ fn verification_rejects_pack_corruption_and_unexpected_entries() {
         &database_path,
         &GridScope::All(AllGridScope {}),
         &publication_root,
+        Uuid::new_v4(),
         Uuid::new_v4(),
         705,
     )
@@ -653,6 +754,7 @@ fn verification_rejects_hardlinked_snapshot_files() {
         &GridScope::All(AllGridScope {}),
         &publication_root,
         Uuid::new_v4(),
+        Uuid::new_v4(),
         703,
     )
     .expect("freeze hardlink fixture");
@@ -673,6 +775,381 @@ fn verification_rejects_hardlinked_snapshot_files() {
     assert!(error.contains("must not have hard links"));
 
     let _ = fs::remove_file(link_path);
+    let _ = fs::remove_dir_all(runtime_root);
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
+fn inventory_is_canonical_bounded_and_fail_closed() {
+    let output_root = temporary_root("snapshot-inventory");
+    let root = publication_root(&output_root);
+    let published_id = Uuid::new_v4();
+    let staging_id = Uuid::new_v4();
+    let attempt_id = Uuid::new_v4();
+    let published_path = output_root.join(format!("snapshot-{published_id}"));
+    let staging_path = output_root.join(format!(".snapshot-{staging_id}.staging-{attempt_id}"));
+    for path in [&published_path, &staging_path] {
+        fs::create_dir(path).expect("create canonical inventory entry");
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+            .expect("make inventory entry private");
+    }
+    assert_eq!(
+        root.inventory().expect("inventory canonical snapshot root"),
+        vec![
+            SnapshotRootEntry::Published {
+                snapshot_id: published_id,
+            },
+            SnapshotRootEntry::Staging {
+                snapshot_id: staging_id,
+                attempt_id,
+            },
+        ]
+    );
+
+    let unknown = output_root.join("unexpected");
+    fs::write(&unknown, b"unknown").expect("write unknown root entry");
+    assert!(root.inventory().is_err());
+    fs::remove_file(unknown).expect("remove unknown root entry");
+
+    let noncanonical = output_root.join(format!(
+        "snapshot-{}",
+        Uuid::new_v4().to_string().to_uppercase()
+    ));
+    fs::create_dir(&noncanonical).expect("create noncanonical snapshot entry");
+    fs::set_permissions(&noncanonical, fs::Permissions::from_mode(0o700))
+        .expect("make noncanonical entry private");
+    assert!(root.inventory().is_err());
+    fs::remove_dir(noncanonical).expect("remove noncanonical snapshot entry");
+
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
+fn staging_leaf_is_deterministic_for_the_intent_pair() {
+    let output_root = temporary_root("snapshot-staging-intent");
+    let root = publication_root(&output_root);
+    let snapshot_id = Uuid::new_v4();
+    let attempt_id = Uuid::new_v4();
+
+    let staging = SnapshotStaging::create(&root, snapshot_id, attempt_id)
+        .expect("create deterministic staging tree");
+    assert_eq!(
+        root.inventory().expect("inventory deterministic staging"),
+        vec![SnapshotRootEntry::Staging {
+            snapshot_id,
+            attempt_id,
+        }]
+    );
+    assert!(SnapshotStaging::create(&root, snapshot_id, attempt_id).is_err());
+    drop(staging);
+    assert!(root
+        .inventory()
+        .expect("inventory staging after drop cleanup")
+        .is_empty());
+
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
+fn cleanup_staging_is_strict_prevalidated_and_idempotent() {
+    let output_root = temporary_root("snapshot-staging-cleanup");
+    let root = publication_root(&output_root);
+
+    let snapshot_id = Uuid::new_v4();
+    let attempt_id = Uuid::new_v4();
+    let staging_path = output_root.join(format!(".snapshot-{snapshot_id}.staging-{attempt_id}"));
+    let pack_path = staging_path.join("pack");
+    fs::create_dir(&staging_path).expect("create partial staging root");
+    fs::set_permissions(&staging_path, fs::Permissions::from_mode(0o700))
+        .expect("make partial staging root private");
+    fs::create_dir(&pack_path).expect("create partial pack directory");
+    fs::set_permissions(&pack_path, fs::Permissions::from_mode(0o700))
+        .expect("make partial pack directory private");
+    let partial_file = pack_path.join("source-record-ids.bin");
+    fs::write(&partial_file, b"partial").expect("write partial staging file");
+    fs::set_permissions(&partial_file, fs::Permissions::from_mode(0o644))
+        .expect("make partial staging file initially unsafe");
+    assert!(root.cleanup_staging(snapshot_id, attempt_id).is_err());
+    assert!(partial_file.exists());
+    fs::set_permissions(&partial_file, fs::Permissions::from_mode(0o600))
+        .expect("make partial staging file private");
+    root.cleanup_staging(snapshot_id, attempt_id)
+        .expect("clean exact partial staging tree");
+    assert!(!staging_path.exists());
+    root.cleanup_staging(snapshot_id, attempt_id)
+        .expect("repeat missing staging cleanup");
+
+    let rejected_snapshot = Uuid::new_v4();
+    let rejected_attempt = Uuid::new_v4();
+    let rejected_path = output_root.join(format!(
+        ".snapshot-{rejected_snapshot}.staging-{rejected_attempt}"
+    ));
+    let rejected_pack = rejected_path.join("pack");
+    fs::create_dir(&rejected_path).expect("create rejected staging root");
+    fs::set_permissions(&rejected_path, fs::Permissions::from_mode(0o700))
+        .expect("make rejected staging root private");
+    fs::create_dir(&rejected_pack).expect("create rejected pack directory");
+    fs::set_permissions(&rejected_pack, fs::Permissions::from_mode(0o700))
+        .expect("make rejected pack directory private");
+    for (name, bytes) in [
+        ("source-record-ids.bin", b"allowed".as_slice()),
+        ("unexpected.bin", b"reject".as_slice()),
+    ] {
+        let path = rejected_pack.join(name);
+        fs::write(&path, bytes).expect("write rejected staging content");
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+            .expect("make rejected staging content private");
+    }
+    assert!(root
+        .cleanup_staging(rejected_snapshot, rejected_attempt)
+        .is_err());
+    assert!(rejected_pack.join("source-record-ids.bin").exists());
+    assert!(rejected_pack.join("unexpected.bin").exists());
+
+    let linked_snapshot = Uuid::new_v4();
+    let linked_attempt = Uuid::new_v4();
+    let linked_path = output_root.join(format!(
+        ".snapshot-{linked_snapshot}.staging-{linked_attempt}"
+    ));
+    let linked_pack = linked_path.join("pack");
+    fs::create_dir(&linked_path).expect("create hardlink staging root");
+    fs::set_permissions(&linked_path, fs::Permissions::from_mode(0o700))
+        .expect("make hardlink staging root private");
+    fs::create_dir(&linked_pack).expect("create hardlink pack directory");
+    fs::set_permissions(&linked_pack, fs::Permissions::from_mode(0o700))
+        .expect("make hardlink pack directory private");
+    let linked_file = linked_pack.join("source-record-ids.bin");
+    fs::write(&linked_file, b"linked").expect("write hardlinked staging file");
+    fs::set_permissions(&linked_file, fs::Permissions::from_mode(0o600))
+        .expect("make hardlinked staging file private");
+    let external_link = output_root
+        .parent()
+        .expect("snapshot root parent")
+        .join(format!("burrete-staging-hardlink-{}", Uuid::new_v4()));
+    fs::hard_link(&linked_file, &external_link).expect("hardlink staging file externally");
+    assert!(root
+        .cleanup_staging(linked_snapshot, linked_attempt)
+        .is_err());
+    assert!(linked_file.exists());
+
+    let symlink_snapshot = Uuid::new_v4();
+    let symlink_attempt = Uuid::new_v4();
+    let symlink_path = output_root.join(format!(
+        ".snapshot-{symlink_snapshot}.staging-{symlink_attempt}"
+    ));
+    let symlink_pack = symlink_path.join("pack");
+    fs::create_dir(&symlink_path).expect("create symlink staging root");
+    fs::set_permissions(&symlink_path, fs::Permissions::from_mode(0o700))
+        .expect("make symlink staging root private");
+    fs::create_dir(&symlink_pack).expect("create symlink pack directory");
+    fs::set_permissions(&symlink_pack, fs::Permissions::from_mode(0o700))
+        .expect("make symlink pack directory private");
+    let external_target = output_root
+        .parent()
+        .expect("snapshot root parent")
+        .join(format!("burrete-staging-symlink-{}", Uuid::new_v4()));
+    fs::write(&external_target, b"external").expect("write external symlink target");
+    fs::set_permissions(&external_target, fs::Permissions::from_mode(0o600))
+        .expect("make external symlink target private");
+    let staged_symlink = symlink_pack.join("source-record-ids.bin");
+    symlink(&external_target, &staged_symlink).expect("create staged symlink");
+    assert!(root
+        .cleanup_staging(symlink_snapshot, symlink_attempt)
+        .is_err());
+    assert!(fs::symlink_metadata(&staged_symlink)
+        .expect("inspect rejected staged symlink")
+        .file_type()
+        .is_symlink());
+
+    let _ = fs::remove_file(external_link);
+    let _ = fs::remove_file(external_target);
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
+fn opens_verifies_and_removes_published_snapshots_descriptor_relative() {
+    let runtime_root = temporary_root("snapshot-observed-runtime");
+    let output_root = temporary_root("snapshot-observed-output");
+    let database_path = build_fixture(&runtime_root);
+    let root = publication_root(&output_root);
+    let snapshot_id = Uuid::new_v4();
+    let frozen = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &root,
+        snapshot_id,
+        Uuid::new_v4(),
+        800,
+    )
+    .expect("freeze observed snapshot");
+    let expected = frozen.reference.clone();
+    let expected_manifest = frozen.manifest.clone();
+    drop(frozen.root);
+
+    let observed = root
+        .open_published(snapshot_id)
+        .expect("open published snapshot descriptor-relative")
+        .verify_observed()
+        .expect("self-verify observed snapshot");
+    assert_eq!(observed.reference(), &expected);
+    assert_eq!(observed.manifest(), &expected_manifest);
+    root.remove_verified(observed, Uuid::new_v4())
+        .expect("remove same verified final capability");
+    assert!(!root.destination_path(snapshot_id).exists());
+    assert!(root.inventory().expect("inventory emptied root").is_empty());
+
+    let _ = fs::remove_dir_all(runtime_root);
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
+fn cleanup_resumes_from_a_partially_removed_quarantined_snapshot() {
+    let runtime_root = temporary_root("snapshot-cleanup-resume-runtime");
+    let output_root = temporary_root("snapshot-cleanup-resume-output");
+    let database_path = build_fixture(&runtime_root);
+    let root = publication_root(&output_root);
+    let snapshot_id = Uuid::new_v4();
+    let cleanup_attempt_id = Uuid::new_v4();
+    let frozen = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &root,
+        snapshot_id,
+        Uuid::new_v4(),
+        802,
+    )
+    .expect("freeze cleanup resume snapshot");
+    drop(frozen.root);
+    let verified = root
+        .open_published(snapshot_id)
+        .expect("open cleanup resume snapshot")
+        .verify_observed()
+        .expect("verify cleanup resume snapshot");
+    drop(verified);
+
+    let final_path = root.destination_path(snapshot_id);
+    let cleanup_path = output_root.join(format!(
+        ".snapshot-{snapshot_id}.staging-{cleanup_attempt_id}"
+    ));
+    fs::rename(&final_path, &cleanup_path).expect("simulate durable cleanup quarantine rename");
+    assert_eq!(
+        root.inventory().expect("inventory quarantined snapshot"),
+        vec![SnapshotRootEntry::Staging {
+            snapshot_id,
+            attempt_id: cleanup_attempt_id,
+        }]
+    );
+
+    fs::remove_file(cleanup_path.join("pack/source-record-ids.bin"))
+        .expect("simulate interrupted pack cleanup");
+    fs::remove_file(cleanup_path.join("snapshot/manifest.json"))
+        .expect("simulate interrupted manifest cleanup");
+    fs::remove_dir(cleanup_path.join("snapshot"))
+        .expect("simulate interrupted snapshot directory cleanup");
+    root.cleanup_staging(snapshot_id, cleanup_attempt_id)
+        .expect("resume strict cleanup from the partial allowed tree");
+    assert!(root
+        .inventory()
+        .expect("inventory after resumed cleanup")
+        .is_empty());
+
+    let _ = fs::remove_dir_all(runtime_root);
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
+fn remove_verified_never_replaces_a_cleanup_staging_collision() {
+    let runtime_root = temporary_root("snapshot-cleanup-collision-runtime");
+    let output_root = temporary_root("snapshot-cleanup-collision-output");
+    let database_path = build_fixture(&runtime_root);
+    let root = publication_root(&output_root);
+    let snapshot_id = Uuid::new_v4();
+    let cleanup_attempt_id = Uuid::new_v4();
+    let frozen = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &root,
+        snapshot_id,
+        Uuid::new_v4(),
+        803,
+    )
+    .expect("freeze cleanup collision snapshot");
+    drop(frozen.root);
+
+    let verified = root
+        .open_published(snapshot_id)
+        .expect("open snapshot before nil cleanup attempt")
+        .verify_observed()
+        .expect("verify snapshot before nil cleanup attempt");
+    assert!(root.remove_verified(verified, Uuid::nil()).is_err());
+    assert!(root.destination_path(snapshot_id).exists());
+
+    let cleanup_path = output_root.join(format!(
+        ".snapshot-{snapshot_id}.staging-{cleanup_attempt_id}"
+    ));
+    fs::create_dir(&cleanup_path).expect("create colliding cleanup staging directory");
+    fs::set_permissions(&cleanup_path, fs::Permissions::from_mode(0o700))
+        .expect("make colliding cleanup staging directory private");
+    let verified = root
+        .open_published(snapshot_id)
+        .expect("reopen snapshot before cleanup collision")
+        .verify_observed()
+        .expect("reverify snapshot before cleanup collision");
+    assert!(root.remove_verified(verified, cleanup_attempt_id).is_err());
+    assert!(root.destination_path(snapshot_id).exists());
+    assert!(cleanup_path.exists());
+    root.open_published(snapshot_id)
+        .expect("published snapshot survives cleanup collision")
+        .verify_observed()
+        .expect("published snapshot remains valid after cleanup collision");
+
+    root.cleanup_staging(snapshot_id, cleanup_attempt_id)
+        .expect("remove colliding empty cleanup staging directory");
+    let verified = root
+        .open_published(snapshot_id)
+        .expect("reopen snapshot after resolving cleanup collision")
+        .verify_observed()
+        .expect("reverify snapshot after resolving cleanup collision");
+    root.remove_verified(verified, Uuid::new_v4())
+        .expect("remove snapshot after resolving cleanup collision");
+
+    let _ = fs::remove_dir_all(runtime_root);
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
+fn remove_verified_rejects_a_replaced_final_leaf() {
+    let runtime_root = temporary_root("snapshot-remove-swap-runtime");
+    let output_root = temporary_root("snapshot-remove-swap-output");
+    let database_path = build_fixture(&runtime_root);
+    let root = publication_root(&output_root);
+    let snapshot_id = Uuid::new_v4();
+    let frozen = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &root,
+        snapshot_id,
+        Uuid::new_v4(),
+        801,
+    )
+    .expect("freeze removable snapshot");
+    drop(frozen.root);
+    let verified = root
+        .open_published(snapshot_id)
+        .expect("open removable snapshot")
+        .verify_observed()
+        .expect("verify removable snapshot");
+
+    let final_path = root.destination_path(snapshot_id);
+    let moved_path = output_root.join(format!("moved-snapshot-{snapshot_id}"));
+    fs::rename(&final_path, &moved_path).expect("move verified final leaf");
+    fs::create_dir(&final_path).expect("create replacement final leaf");
+    fs::set_permissions(&final_path, fs::Permissions::from_mode(0o700))
+        .expect("make replacement final leaf private");
+    assert!(root.remove_verified(verified, Uuid::new_v4()).is_err());
+    assert!(final_path.exists());
+    assert!(moved_path.exists());
+
     let _ = fs::remove_dir_all(runtime_root);
     let _ = fs::remove_dir_all(output_root);
 }
