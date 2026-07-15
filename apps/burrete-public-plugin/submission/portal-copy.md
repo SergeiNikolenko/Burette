@@ -76,8 +76,8 @@ supported.
 - Submit from the same OpenAI organization and a global-data-residency project.
 - The submitter needs Apps Management write permission.
 - After entering the MCP URL, scan tools and verify all five tool descriptors,
-  top-level and `_meta` no-auth security schemes, exact output schemas,
-  annotations, and the viewer resource.
+  top-level and `_meta` no-auth security schemes, bounded output/action
+  contracts, annotations, and the viewer resources.
 - Put the portal's exact domain token in `OPENAI_APPS_CHALLENGE`, deploy, and
   complete domain verification before submitting for review.
 - Test all five tools in ChatGPT Developer Mode on web and mobile, including

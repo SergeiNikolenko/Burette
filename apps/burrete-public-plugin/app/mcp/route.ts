@@ -145,6 +145,13 @@ function createServer(): McpServer {
       inputSchema: {
         structure: ketcherStructureSchema.optional(),
       },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      ...NOAUTH_TOOL_SECURITY,
       _meta: ketcherToolMeta("Opening Ketcher editor…", "Ketcher editor ready"),
     },
     async ({ structure }) => {
@@ -192,6 +199,13 @@ function createServer(): McpServer {
       inputSchema: {
         action: ketcherActionInputSchema,
       },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      ...NOAUTH_TOOL_SECURITY,
       _meta: ketcherToolMeta("Applying Ketcher action…", "Ketcher action complete"),
     },
     async ({ action: rawAction }) => {
