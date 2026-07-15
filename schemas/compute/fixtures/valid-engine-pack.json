@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "cluster.engine-pack.v1",
+  "enginePackId": "018f48f2-2e20-7e53-976b-cf93e0897720",
+  "enginePackSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "workflowTemplate": "cluster.v1",
+  "molecularSnapshot": {
+    "schemaVersion": "burrete.molecular-snapshot.v1",
+    "snapshotId": "018f48f2-2e20-7e53-976b-cf93e0897701",
+    "snapshotSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "frozenSource": {
+      "documentFingerprintSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "sourceRevision": 1,
+      "recordCount": 2,
+      "orderedRecordMoleculeIdentitySha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "manifest": {
+      "relativePath": "snapshot/manifest.json",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "byteLength": 128,
+      "mediaType": "application/json"
+    }
+  },
+  "engineId": "rdkitMorganBit",
+  "engineVersion": "2025.03.4",
+  "normalizedSettingsSha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "layout": {
+    "files": [
+      {
+        "relativePath": "pack/data.bin",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "byteLength": 64,
+        "mediaType": "application/octet-stream"
+      }
+    ],
+    "arrays": [
+      {
+        "name": "fingerprints",
+        "semantic": "morgan_fingerprint_bits",
+        "unit": null,
+        "fileRelativePath": "pack/data.bin",
+        "dtype": "u64",
+        "shape": [
+          2,
+          4
+        ],
+        "byteOrder": "littleEndian",
+        "alignment": 8,
+        "byteOffset": 0,
+        "byteLength": 64
+      }
+    ]
+  },
+  "createdAtMs": 9
+}

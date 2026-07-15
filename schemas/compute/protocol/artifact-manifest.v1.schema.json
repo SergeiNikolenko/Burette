@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burrete.app/schemas/compute/protocol/artifact-manifest.v1.schema.json",
+  "title": "Burrete ArtifactManifest v1",
+  "$comment": "The Rust validator is authoritative for canonical file ordering, aggregate bytes, and exact result-pack descriptor and job bindings.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "artifactId",
+    "jobId",
+    "workflowTemplate",
+    "molecularSnapshot",
+    "normalizedRequestSha256",
+    "acceptedPlanSha256",
+    "runtime",
+    "resultPack",
+    "files",
+    "stages",
+    "createdAtMs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "burrete.compute-artifact-manifest.v1"
+    },
+    "artifactId": {
+      "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+    },
+    "jobId": {
+      "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+    },
+    "workflowTemplate": {
+      "const": "cluster.v1"
+    },
+    "molecularSnapshot": {
+      "$ref": "molecular-snapshot.v1.schema.json#/$defs/molecularSnapshotRef"
+    },
+    "normalizedRequestSha256": {
+      "$ref": "common.v1.schema.json#/$defs/sha256"
+    },
+    "acceptedPlanSha256": {
+      "$ref": "common.v1.schema.json#/$defs/sha256"
+    },
+    "runtime": {
+      "$ref": "common.v1.schema.json#/$defs/runtimeIdentity"
+    },
+    "resultPack": {
+      "$ref": "result-pack.v1.schema.json#/$defs/resultPackRef"
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/artifactFile"
+      }
+    },
+    "stages": {
+      "$ref": "#/$defs/clusterStageProvenance"
+    },
+    "createdAtMs": {
+      "$ref": "common.v1.schema.json#/$defs/positiveJsonSafeUInt"
+    }
+  },
+  "$defs": {
+    "artifactFile": {
+      "type": "object",
+      "required": ["role", "relativePath", "sha256", "byteCount", "mediaType"],
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "$ref": "common.v1.schema.json#/$defs/cleanLabel256"
+        },
+        "relativePath": {
+          "$ref": "common.v1.schema.json#/$defs/canonicalRelativePath"
+        },
+        "sha256": {
+          "$ref": "common.v1.schema.json#/$defs/sha256"
+        },
+        "byteCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1099511627776
+        },
+        "mediaType": {
+          "$ref": "common.v1.schema.json#/$defs/cleanLabel256"
+        }
+      }
+    },
+    "stageProvenance": {
+      "type": "object",
+      "required": [
+        "stageId",
+        "kind",
+        "engine",
+        "requestedBackend",
+        "effectiveBackend",
+        "precision",
+        "hostTimeMs",
+        "transferredBytes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stageId": {
+          "$ref": "common.v1.schema.json#/$defs/cleanLabel256"
+        },
+        "kind": {
+          "$ref": "common.v1.schema.json#/$defs/stageKind"
+        },
+        "engine": {
+          "$ref": "common.v1.schema.json#/$defs/engineIdentity"
+        },
+        "requestedBackend": {
+          "$ref": "common.v1.schema.json#/$defs/backend"
+        },
+        "effectiveBackend": {
+          "$ref": "common.v1.schema.json#/$defs/backend"
+        },
+        "precision": {
+          "$ref": "common.v1.schema.json#/$defs/precision"
+        },
+        "device": {
+          "oneOf": [
+            {
+              "$ref": "common.v1.schema.json#/$defs/cleanLabel256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kernelId": {
+          "oneOf": [
+            {
+              "$ref": "common.v1.schema.json#/$defs/cleanLabel256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gpuTimeMs": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "hostTimeMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "transferredBytes": {
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+        },
+        "fallback": {
+          "$ref": "#/$defs/nullableArtifactFallbackDecision"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "common.v1.schema.json#/$defs/backendEngineBinding"
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "numericCompute"
+              },
+              "effectiveBackend": {
+                "enum": ["nativeMetal", "mlx"]
+              }
+            },
+            "required": ["kind", "effectiveBackend"]
+          },
+          "then": {
+            "required": ["device", "kernelId", "gpuTimeMs"],
+            "properties": {
+              "device": {
+                "$ref": "common.v1.schema.json#/$defs/cleanLabel256"
+              },
+              "kernelId": {
+                "$ref": "common.v1.schema.json#/$defs/cleanLabel256"
+              },
+              "gpuTimeMs": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "gpuTimeMs": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "artifactFallbackDecision": {
+      "allOf": [
+        {
+          "$ref": "common.v1.schema.json#/$defs/fallbackDecision"
+        },
+        {
+          "properties": {
+            "reason": {
+              "$ref": "common.v1.schema.json#/$defs/cleanStatusText"
+            }
+          }
+        }
+      ]
+    },
+    "nullableArtifactFallbackDecision": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/artifactFallbackDecision"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "clusterStageProvenance": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageProvenance" },
+            { "properties": { "stageId": { "const": "freezeScope" }, "kind": { "const": "materialize" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageProvenance" },
+            { "properties": { "stageId": { "const": "fingerprints" }, "kind": { "const": "chemistrySemantics" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageProvenance" },
+            { "properties": { "stageId": { "const": "tanimotoNeighbors" }, "kind": { "const": "numericCompute" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageProvenance" },
+            { "properties": { "stageId": { "const": "butinaClusters" }, "kind": { "const": "workflowSemantics" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageProvenance" },
+            { "properties": { "stageId": { "const": "validateResults" }, "kind": { "const": "validation" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageProvenance" },
+            { "properties": { "stageId": { "const": "publishResults" }, "kind": { "const": "artifactIo" } } }
+          ]
+        }
+      ],
+      "items": false
+    }
+  }
+}

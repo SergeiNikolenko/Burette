@@ -1,0 +1,699 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burrete.app/schemas/compute/workflow-templates/cluster.v1.schema.json",
+  "title": "Burrete cluster.v1 submit request",
+  "description": "The fixed RDKit 2025.03.4 Morgan, exact Tanimoto, and deterministic Butina workflow. Internal stages are coordinator-owned.",
+  "type": "object",
+  "required": ["schemaVersion", "workflowTemplate", "source", "parameters", "executionPolicy", "limits"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "burrete.compute-job.v1"
+    },
+    "workflowTemplate": {
+      "const": "cluster.v1"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "parameters": {
+      "$ref": "#/$defs/parameters"
+    },
+    "executionPolicy": {
+      "$ref": "#/$defs/executionPolicy"
+    },
+    "limits": {
+      "$ref": "#/$defs/resourceLimits"
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "required": ["documentId", "scope"],
+      "additionalProperties": false,
+      "properties": {
+        "documentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        }
+      }
+    },
+    "scope": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/selectedScope"
+        },
+        {
+          "$ref": "#/$defs/filteredScope"
+        },
+        {
+          "$ref": "#/$defs/allScope"
+        }
+      ]
+    },
+    "selectedScope": {
+      "type": "object",
+      "required": ["kind", "sourceIndexes"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "selected"
+        },
+        "sourceIndexes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 65536,
+          "uniqueItems": true,
+          "$comment": "Rust additionally requires source indexes to be strictly increasing.",
+          "items": {
+            "$ref": "../protocol/common.v1.schema.json#/$defs/jsonSafeUInt"
+          }
+        }
+      }
+    },
+    "filteredScope": {
+      "type": "object",
+      "required": ["kind", "query"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "filtered"
+        },
+        "query": {
+          "$ref": "#/$defs/textQuery"
+        },
+        "columnFilters": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/columnFilter"
+          }
+        },
+        "descriptorFilters": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/descriptorFilter"
+          }
+        },
+        "analysisFilters": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/analysisFilter"
+          }
+        }
+      },
+      "$comment": "Rust enforces a combined 64-filter limit and uniqueness by column ID, descriptor ID, and analysis (runId, valueId)."
+    },
+    "allScope": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "all"
+        }
+      }
+    },
+    "textQuery": {
+      "type": "object",
+      "required": ["kind", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "text"
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 4096
+        }
+      }
+    },
+    "filterId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "nullableNumber": {
+      "type": ["number", "null"]
+    },
+    "columnFilter": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["id", "filterType", "text"],
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/filterId"
+            },
+            "filterType": {
+              "const": "text"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            },
+            "min": {
+              "type": "null"
+            },
+            "max": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["id", "filterType"],
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "required": ["min"],
+              "properties": {
+                "min": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "required": ["max"],
+              "properties": {
+                "max": {
+                  "type": "number"
+                }
+              }
+            }
+          ],
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/filterId"
+            },
+            "filterType": {
+              "const": "number"
+            },
+            "text": {
+              "type": "null"
+            },
+            "min": {
+              "$ref": "#/$defs/nullableNumber"
+            },
+            "max": {
+              "$ref": "#/$defs/nullableNumber"
+            }
+          }
+        }
+      ]
+    },
+    "descriptorFilter": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": ["min"],
+          "properties": {
+            "min": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "required": ["max"],
+          "properties": {
+            "max": {
+              "type": "number"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/filterId"
+        },
+        "min": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "max": {
+          "$ref": "#/$defs/nullableNumber"
+        }
+      }
+    },
+    "analysisFilter": {
+      "type": "object",
+      "required": ["runId", "valueId"],
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": ["min"],
+          "properties": {
+            "min": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "required": ["max"],
+          "properties": {
+            "max": {
+              "type": "number"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "runId": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/nonNilUuid"
+        },
+        "valueId": {
+          "$ref": "#/$defs/filterId"
+        },
+        "min": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "max": {
+          "$ref": "#/$defs/nullableNumber"
+        }
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "required": ["fingerprint", "similarity", "representativePolicy"],
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "similarity": {
+          "$ref": "#/$defs/similarity"
+        },
+        "representativePolicy": {
+          "const": "butinaMaxNeighbors.v1"
+        }
+      }
+    },
+    "fingerprint": {
+      "type": "object",
+      "required": [
+        "algorithm",
+        "rdkitVersion",
+        "radius",
+        "bitCount",
+        "useChirality",
+        "useFeatures",
+        "sanitize",
+        "inputOrder"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "rdkitMorganBit.v1"
+        },
+        "rdkitVersion": {
+          "const": "2025.03.4"
+        },
+        "radius": {
+          "const": 2
+        },
+        "bitCount": {
+          "const": 2048
+        },
+        "useChirality": {
+          "const": true
+        },
+        "useFeatures": {
+          "const": false
+        },
+        "sanitize": {
+          "const": true
+        },
+        "inputOrder": {
+          "const": "sourceRecord"
+        }
+      }
+    },
+    "similarity": {
+      "type": "object",
+      "required": ["cutoff"],
+      "additionalProperties": false,
+      "properties": {
+        "cutoff": {
+          "$ref": "#/$defs/rationalCutoff"
+        }
+      }
+    },
+    "rationalCutoff": {
+      "type": "object",
+      "required": ["numerator", "denominator"],
+      "additionalProperties": false,
+      "$comment": "Rust additionally requires numerator <= denominator.",
+      "properties": {
+        "numerator": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/u32"
+        },
+        "denominator": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      }
+    },
+    "executionPolicy": {
+      "type": "object",
+      "required": ["backendPolicy", "schedulingPolicy"],
+      "additionalProperties": false,
+      "properties": {
+        "backendPolicy": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/backendPolicy"
+        },
+        "schedulingPolicy": {
+          "enum": ["interactive", "balanced", "throughput"]
+        }
+      }
+    },
+    "resourceLimits": {
+      "type": "object",
+      "required": ["maxEdges", "maxMemoryBytes", "maxDispatchMs"],
+      "additionalProperties": false,
+      "properties": {
+        "maxEdges": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500000000
+        },
+        "maxMemoryBytes": {
+          "type": "integer",
+          "minimum": 16777216,
+          "maximum": 34359738368
+        },
+        "maxDispatchMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2000
+        }
+      }
+    },
+    "executionPartition": {
+      "type": "object",
+      "required": [
+        "partitionId",
+        "chemistryDomain",
+        "recordCount",
+        "estimatedMemoryBytes",
+        "requestedBackend",
+        "effectiveBackend"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "partitionId": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/label96"
+        },
+        "chemistryDomain": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/label160"
+        },
+        "recordCount": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/positiveJsonSafeUInt"
+        },
+        "estimatedMemoryBytes": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/jsonSafeUInt"
+        },
+        "requestedBackend": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/backend"
+        },
+        "effectiveBackend": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/backend"
+        },
+        "fallback": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/nullableFallbackDecision"
+        }
+      }
+    },
+    "plannedStage": {
+      "type": "object",
+      "required": [
+        "stageId",
+        "kind",
+        "idempotent",
+        "requestedBackend",
+        "effectiveBackend",
+        "precision",
+        "engine",
+        "estimatedMemoryBytes",
+        "partitions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stageId": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/label96"
+        },
+        "kind": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/stageKind"
+        },
+        "idempotent": {
+          "type": "boolean"
+        },
+        "requestedBackend": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/backend"
+        },
+        "effectiveBackend": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/backend"
+        },
+        "precision": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/precision"
+        },
+        "engine": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/engineIdentity"
+        },
+        "estimatedMemoryBytes": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/jsonSafeUInt"
+        },
+        "fallback": {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/nullableFallbackDecision"
+        },
+        "partitions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/executionPartition"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "../protocol/common.v1.schema.json#/$defs/backendEngineBinding"
+        }
+      ]
+    },
+    "freezeStage": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/plannedStage"
+        },
+        {
+          "properties": {
+            "stageId": { "const": "freezeScope" },
+            "kind": { "const": "materialize" },
+            "requestedBackend": { "const": "coordinator" },
+            "precision": { "const": "notApplicable" }
+          }
+        }
+      ]
+    },
+    "fingerprintsStage": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/plannedStage"
+        },
+        {
+          "properties": {
+            "stageId": { "const": "fingerprints" },
+            "kind": { "const": "chemistrySemantics" },
+            "requestedBackend": { "const": "rdkit" },
+            "precision": { "const": "integerExact" }
+          }
+        }
+      ]
+    },
+    "similarityGpuRequiredStage": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/plannedStage"
+        },
+        {
+          "properties": {
+            "stageId": { "const": "tanimotoNeighbors" },
+            "kind": { "const": "numericCompute" },
+            "requestedBackend": { "const": "nativeMetal" },
+            "effectiveBackend": { "const": "nativeMetal" },
+            "precision": { "const": "integerExact" }
+          }
+        }
+      ]
+    },
+    "similarityGpuPreferredStage": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/plannedStage"
+        },
+        {
+          "properties": {
+            "stageId": { "const": "tanimotoNeighbors" },
+            "kind": { "const": "numericCompute" },
+            "requestedBackend": { "const": "nativeMetal" },
+            "effectiveBackend": { "enum": ["nativeMetal", "referenceCpu"] },
+            "precision": { "const": "integerExact" }
+          }
+        }
+      ]
+    },
+    "similarityCpuStage": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/plannedStage"
+        },
+        {
+          "properties": {
+            "stageId": { "const": "tanimotoNeighbors" },
+            "kind": { "const": "numericCompute" },
+            "requestedBackend": { "const": "referenceCpu" },
+            "effectiveBackend": { "const": "referenceCpu" },
+            "precision": { "const": "integerExact" }
+          }
+        }
+      ]
+    },
+    "butinaStage": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/plannedStage"
+        },
+        {
+          "properties": {
+            "stageId": { "const": "butinaClusters" },
+            "kind": { "const": "workflowSemantics" },
+            "requestedBackend": { "const": "referenceCpu" },
+            "precision": { "const": "integerExact" }
+          }
+        }
+      ]
+    },
+    "validationStage": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/plannedStage"
+        },
+        {
+          "properties": {
+            "stageId": { "const": "validateResults" },
+            "kind": { "const": "validation" },
+            "requestedBackend": { "const": "referenceCpu" },
+            "precision": { "const": "integerExact" }
+          }
+        }
+      ]
+    },
+    "publishStage": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/plannedStage"
+        },
+        {
+          "properties": {
+            "stageId": { "const": "publishResults" },
+            "kind": { "const": "artifactIo" },
+            "requestedBackend": { "const": "coordinator" },
+            "precision": { "const": "notApplicable" }
+          }
+        }
+      ]
+    },
+    "gpuRequiredStages": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        { "$ref": "#/$defs/freezeStage" },
+        { "$ref": "#/$defs/fingerprintsStage" },
+        { "$ref": "#/$defs/similarityGpuRequiredStage" },
+        { "$ref": "#/$defs/butinaStage" },
+        { "$ref": "#/$defs/validationStage" },
+        { "$ref": "#/$defs/publishStage" }
+      ],
+      "items": false
+    },
+    "gpuPreferredStages": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        { "$ref": "#/$defs/freezeStage" },
+        { "$ref": "#/$defs/fingerprintsStage" },
+        { "$ref": "#/$defs/similarityGpuPreferredStage" },
+        { "$ref": "#/$defs/butinaStage" },
+        { "$ref": "#/$defs/validationStage" },
+        { "$ref": "#/$defs/publishStage" }
+      ],
+      "items": false
+    },
+    "referenceCpuStages": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        { "$ref": "#/$defs/freezeStage" },
+        { "$ref": "#/$defs/fingerprintsStage" },
+        { "$ref": "#/$defs/similarityCpuStage" },
+        { "$ref": "#/$defs/butinaStage" },
+        { "$ref": "#/$defs/validationStage" },
+        { "$ref": "#/$defs/publishStage" }
+      ],
+      "items": false
+    },
+    "executionPlan": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["workflowTemplate", "planVersion", "backendPolicy", "stages"],
+          "additionalProperties": false,
+          "properties": {
+            "workflowTemplate": { "const": "cluster.v1" },
+            "planVersion": { "const": "cluster.execution-plan.v1" },
+            "backendPolicy": { "const": "gpuRequired" },
+            "stages": { "$ref": "#/$defs/gpuRequiredStages" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["workflowTemplate", "planVersion", "backendPolicy", "stages"],
+          "additionalProperties": false,
+          "properties": {
+            "workflowTemplate": { "const": "cluster.v1" },
+            "planVersion": { "const": "cluster.execution-plan.v1" },
+            "backendPolicy": { "const": "gpuPreferred" },
+            "stages": { "$ref": "#/$defs/gpuPreferredStages" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["workflowTemplate", "planVersion", "backendPolicy", "stages"],
+          "additionalProperties": false,
+          "properties": {
+            "workflowTemplate": { "const": "cluster.v1" },
+            "planVersion": { "const": "cluster.execution-plan.v1" },
+            "backendPolicy": { "const": "referenceCpu" },
+            "stages": { "$ref": "#/$defs/referenceCpuStages" }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,626 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burrete.app/schemas/compute/protocol/compute-capability-report.v1.schema.json",
+  "title": "Burrete ComputeCapabilityReport v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "reportRevision",
+    "protocol",
+    "availability",
+    "platform",
+    "capabilities",
+    "limits",
+    "reasons",
+    "generatedAtMs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "burrete.compute-capability-report.v1"
+    },
+    "reportRevision": {
+      "$ref": "common.v1.schema.json#/$defs/positiveJsonSafeUInt"
+    },
+    "protocol": {
+      "$ref": "#/$defs/protocolRange"
+    },
+    "availability": {
+      "enum": ["available", "degraded", "unavailable"]
+    },
+    "platform": {
+      "$ref": "#/$defs/platformIdentity"
+    },
+    "runtime": {
+      "oneOf": [
+        {
+          "$ref": "common.v1.schema.json#/$defs/runtimeIdentity"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "device": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/gpuDeviceIdentity"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "capabilities": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "$comment": "Rust additionally enforces uniqueness by the capability claim tuple, independent of availability metadata.",
+      "items": {
+        "$ref": "#/$defs/capabilityEntry"
+      }
+    },
+    "limits": {
+      "$ref": "#/$defs/capabilityLimits"
+    },
+    "reasons": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/capabilityReason"
+      }
+    },
+    "generatedAtMs": {
+      "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "availability": {
+            "const": "available"
+          }
+        },
+        "required": ["availability"]
+      },
+      "then": {
+        "required": ["runtime", "device"],
+        "properties": {
+          "runtime": {
+            "$ref": "common.v1.schema.json#/$defs/runtimeIdentity"
+          },
+          "device": {
+            "$ref": "#/$defs/gpuDeviceIdentity"
+          },
+          "capabilities": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/capabilityEntry"
+                },
+                {
+                  "properties": {
+                    "available": {
+                      "const": true
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "limits": {
+            "$ref": "#/$defs/availableLimits"
+          },
+          "reasons": {
+            "type": "array",
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "availability": {
+            "const": "degraded"
+          }
+        },
+        "required": ["availability"]
+      },
+      "then": {
+        "required": ["runtime"],
+        "properties": {
+          "runtime": {
+            "$ref": "common.v1.schema.json#/$defs/runtimeIdentity"
+          },
+          "capabilities": {
+            "type": "array",
+            "minItems": 2,
+            "allOf": [
+              {
+                "contains": {
+                  "properties": {
+                    "available": {
+                      "const": true
+                    }
+                  },
+                  "required": ["available"]
+                }
+              },
+              {
+                "contains": {
+                  "properties": {
+                    "available": {
+                      "const": false
+                    }
+                  },
+                  "required": ["available"]
+                }
+              }
+            ]
+          },
+          "limits": {
+            "$ref": "#/$defs/availableLimits"
+          },
+          "reasons": {
+            "type": "array",
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "availability": {
+            "const": "unavailable"
+          }
+        },
+        "required": ["availability"]
+      },
+      "then": {
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/capabilityEntry"
+                },
+                {
+                  "properties": {
+                    "available": {
+                      "const": false
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "limits": {
+            "$ref": "#/$defs/unavailableLimits"
+          },
+          "reasons": {
+            "type": "array",
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "$comment": "A reason code may be described at most once.",
+      "properties": {
+        "reasons": {
+          "contains": { "properties": { "code": { "const": "UnsupportedArchitecture" } }, "required": ["code"] },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "reasons": {
+          "contains": { "properties": { "code": { "const": "UnsupportedOperatingSystem" } }, "required": ["code"] },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "reasons": {
+          "contains": { "properties": { "code": { "const": "MetalUnavailable" } }, "required": ["code"] },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "reasons": {
+          "contains": { "properties": { "code": { "const": "RuntimeMissing" } }, "required": ["code"] },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "reasons": {
+          "contains": { "properties": { "code": { "const": "RuntimeIntegrityError" } }, "required": ["code"] },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "reasons": {
+          "contains": { "properties": { "code": { "const": "ProtocolMismatch" } }, "required": ["code"] },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "reasons": {
+          "contains": { "properties": { "code": { "const": "KernelUnavailable" } }, "required": ["code"] },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    },
+    {
+      "$comment": "Every unavailable capability reasonCode must have a matching reasons entry.",
+      "if": {
+        "properties": {
+          "capabilities": {
+            "contains": { "properties": { "reasonCode": { "const": "UnsupportedArchitecture" } }, "required": ["reasonCode"] }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reasons": {
+            "contains": { "properties": { "code": { "const": "UnsupportedArchitecture" } }, "required": ["code"] }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capabilities": {
+            "contains": { "properties": { "reasonCode": { "const": "UnsupportedOperatingSystem" } }, "required": ["reasonCode"] }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reasons": {
+            "contains": { "properties": { "code": { "const": "UnsupportedOperatingSystem" } }, "required": ["code"] }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capabilities": {
+            "contains": { "properties": { "reasonCode": { "const": "MetalUnavailable" } }, "required": ["reasonCode"] }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reasons": {
+            "contains": { "properties": { "code": { "const": "MetalUnavailable" } }, "required": ["code"] }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capabilities": {
+            "contains": { "properties": { "reasonCode": { "const": "RuntimeMissing" } }, "required": ["reasonCode"] }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reasons": {
+            "contains": { "properties": { "code": { "const": "RuntimeMissing" } }, "required": ["code"] }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capabilities": {
+            "contains": { "properties": { "reasonCode": { "const": "RuntimeIntegrityError" } }, "required": ["reasonCode"] }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reasons": {
+            "contains": { "properties": { "code": { "const": "RuntimeIntegrityError" } }, "required": ["code"] }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capabilities": {
+            "contains": { "properties": { "reasonCode": { "const": "ProtocolMismatch" } }, "required": ["reasonCode"] }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reasons": {
+            "contains": { "properties": { "code": { "const": "ProtocolMismatch" } }, "required": ["code"] }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "capabilities": {
+            "contains": { "properties": { "reasonCode": { "const": "KernelUnavailable" } }, "required": ["reasonCode"] }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reasons": {
+            "contains": { "properties": { "code": { "const": "KernelUnavailable" } }, "required": ["code"] }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "protocolRange": {
+      "type": "object",
+      "required": ["min", "max"],
+      "additionalProperties": false,
+      "properties": {
+        "min": {
+          "const": 1
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      }
+    },
+    "platformIdentity": {
+      "type": "object",
+      "required": ["architecture", "osName", "osVersion"],
+      "additionalProperties": false,
+      "properties": {
+        "architecture": {
+          "$ref": "common.v1.schema.json#/$defs/label160"
+        },
+        "osName": {
+          "$ref": "common.v1.schema.json#/$defs/label160"
+        },
+        "osVersion": {
+          "$ref": "common.v1.schema.json#/$defs/label160"
+        }
+      }
+    },
+    "gpuDeviceIdentity": {
+      "type": "object",
+      "required": ["name", "lowPower", "unifiedMemory"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "common.v1.schema.json#/$defs/label160"
+        },
+        "registryId": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{1,16}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lowPower": {
+          "type": "boolean"
+        },
+        "unifiedMemory": {
+          "type": "boolean"
+        }
+      }
+    },
+    "capabilityMaturity": {
+      "enum": [
+        "experimental",
+        "numerically_validated",
+        "chemically_validated",
+        "production",
+        "unsupported"
+      ]
+    },
+    "capabilityReasonCode": {
+      "enum": [
+        "UnsupportedArchitecture",
+        "UnsupportedOperatingSystem",
+        "MetalUnavailable",
+        "RuntimeMissing",
+        "RuntimeIntegrityError",
+        "ProtocolMismatch",
+        "KernelUnavailable"
+      ]
+    },
+    "capabilityEntry": {
+      "type": "object",
+      "required": [
+        "workflowTemplate",
+        "method",
+        "chemistryDomain",
+        "backend",
+        "precision",
+        "maturity",
+        "available"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "workflowTemplate": {
+          "const": "cluster.v1"
+        },
+        "method": {
+          "$ref": "common.v1.schema.json#/$defs/label160"
+        },
+        "chemistryDomain": {
+          "$ref": "common.v1.schema.json#/$defs/label160"
+        },
+        "backend": {
+          "$ref": "common.v1.schema.json#/$defs/backend"
+        },
+        "precision": {
+          "$ref": "common.v1.schema.json#/$defs/precision"
+        },
+        "maturity": {
+          "$ref": "#/$defs/capabilityMaturity"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "reasonCode": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/capabilityReasonCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "available": {
+                "const": true
+              }
+            },
+            "required": ["available"]
+          },
+          "then": {
+            "properties": {
+              "maturity": {
+                "not": {
+                  "const": "unsupported"
+                }
+              },
+              "reasonCode": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "required": ["reasonCode"],
+            "properties": {
+              "reasonCode": {
+                "$ref": "#/$defs/capabilityReasonCode"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "capabilityReason": {
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/capabilityReasonCode"
+        },
+        "message": {
+          "$ref": "common.v1.schema.json#/$defs/statusText"
+        }
+      }
+    },
+    "capabilityLimits": {
+      "type": "object",
+      "required": ["maxControlFrameBytes", "maxEdges", "maxMemoryBytes", "maxDispatchMs"],
+      "additionalProperties": false,
+      "properties": {
+        "maxControlFrameBytes": {
+          "const": 1048576
+        },
+        "maxEdges": {
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+        },
+        "maxMemoryBytes": {
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+        },
+        "maxDispatchMs": {
+          "$ref": "common.v1.schema.json#/$defs/u32"
+        }
+      }
+    },
+    "availableLimits": {
+      "type": "object",
+      "required": ["maxControlFrameBytes", "maxEdges", "maxMemoryBytes", "maxDispatchMs"],
+      "additionalProperties": false,
+      "properties": {
+        "maxControlFrameBytes": {
+          "const": 1048576
+        },
+        "maxEdges": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500000000
+        },
+        "maxMemoryBytes": {
+          "type": "integer",
+          "minimum": 16777216,
+          "maximum": 34359738368
+        },
+        "maxDispatchMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2000
+        }
+      }
+    },
+    "unavailableLimits": {
+      "type": "object",
+      "required": ["maxControlFrameBytes", "maxEdges", "maxMemoryBytes", "maxDispatchMs"],
+      "additionalProperties": false,
+      "properties": {
+        "maxControlFrameBytes": {
+          "const": 1048576
+        },
+        "maxEdges": {
+          "const": 0
+        },
+        "maxMemoryBytes": {
+          "const": 0
+        },
+        "maxDispatchMs": {
+          "const": 0
+        }
+      }
+    }
+  }
+}

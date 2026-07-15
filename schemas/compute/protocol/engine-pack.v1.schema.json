@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burrete.app/schemas/compute/protocol/engine-pack.v1.schema.json",
+  "title": "Burrete EnginePackManifest cluster.v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "enginePackId",
+    "enginePackSha256",
+    "workflowTemplate",
+    "molecularSnapshot",
+    "engineId",
+    "engineVersion",
+    "normalizedSettingsSha256",
+    "layout",
+    "createdAtMs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "cluster.engine-pack.v1"
+    },
+    "enginePackId": {
+      "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+    },
+    "enginePackSha256": {
+      "$ref": "common.v1.schema.json#/$defs/sha256"
+    },
+    "workflowTemplate": {
+      "const": "cluster.v1"
+    },
+    "molecularSnapshot": {
+      "$ref": "molecular-snapshot.v1.schema.json#/$defs/molecularSnapshotRef"
+    },
+    "engineId": {
+      "$ref": "common.v1.schema.json#/$defs/cleanLabel160"
+    },
+    "engineVersion": {
+      "$ref": "common.v1.schema.json#/$defs/cleanLabel160"
+    },
+    "normalizedSettingsSha256": {
+      "$ref": "common.v1.schema.json#/$defs/sha256"
+    },
+    "layout": {
+      "$ref": "common.v1.schema.json#/$defs/packedLayout"
+    },
+    "createdAtMs": {
+      "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+    }
+  },
+  "$defs": {
+    "enginePackRef": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "enginePackId",
+        "enginePackSha256",
+        "workflowTemplate",
+        "snapshotId",
+        "snapshotSha256",
+        "engineId",
+        "engineVersion",
+        "normalizedSettingsSha256",
+        "manifest"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "cluster.engine-pack.v1"
+        },
+        "enginePackId": {
+          "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+        },
+        "enginePackSha256": {
+          "$ref": "common.v1.schema.json#/$defs/sha256"
+        },
+        "workflowTemplate": {
+          "const": "cluster.v1"
+        },
+        "snapshotId": {
+          "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+        },
+        "snapshotSha256": {
+          "$ref": "common.v1.schema.json#/$defs/sha256"
+        },
+        "engineId": {
+          "$ref": "common.v1.schema.json#/$defs/cleanLabel160"
+        },
+        "engineVersion": {
+          "$ref": "common.v1.schema.json#/$defs/cleanLabel160"
+        },
+        "normalizedSettingsSha256": {
+          "$ref": "common.v1.schema.json#/$defs/sha256"
+        },
+        "manifest": {
+          "$ref": "common.v1.schema.json#/$defs/manifestFileDescriptor"
+        }
+      }
+    }
+  }
+}

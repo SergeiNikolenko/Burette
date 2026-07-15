@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "burrete.compute-job.v1",
+  "workflowTemplate": "cluster.v1",
+  "source": {
+    "documentId": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "scope": {
+      "kind": "selected",
+      "sourceIndexes": [
+        2,
+        7
+      ]
+    }
+  },
+  "parameters": {
+    "fingerprint": {
+      "algorithm": "rdkitMorganBit.v1",
+      "rdkitVersion": "2025.03.4",
+      "radius": 2,
+      "bitCount": 2048,
+      "useChirality": true,
+      "useFeatures": false,
+      "sanitize": true,
+      "inputOrder": "sourceRecord"
+    },
+    "similarity": {
+      "cutoff": {
+        "numerator": 7,
+        "denominator": 10
+      }
+    },
+    "representativePolicy": "butinaMaxNeighbors.v1"
+  },
+  "executionPolicy": {
+    "backendPolicy": "gpuRequired",
+    "schedulingPolicy": "balanced"
+  },
+  "limits": {
+    "maxEdges": 1000000,
+    "maxMemoryBytes": 536870912,
+    "maxDispatchMs": 250
+  }
+}

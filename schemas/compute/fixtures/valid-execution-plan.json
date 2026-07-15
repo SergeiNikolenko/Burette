@@ -1,0 +1,163 @@
+{
+  "workflowTemplate": "cluster.v1",
+  "planVersion": "cluster.execution-plan.v1",
+  "backendPolicy": "gpuRequired",
+  "stages": [
+    {
+      "stageId": "freezeScope",
+      "kind": "materialize",
+      "idempotent": true,
+      "requestedBackend": "coordinator",
+      "effectiveBackend": "coordinator",
+      "precision": "notApplicable",
+      "engine": {
+        "engineId": "burrete-coordinator",
+        "version": "1.0.0",
+        "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "estimatedMemoryBytes": 1024,
+      "fallback": null,
+      "partitions": [
+        {
+          "partitionId": "supported",
+          "chemistryDomain": "cluster.v1/all",
+          "recordCount": 10,
+          "estimatedMemoryBytes": 1024,
+          "requestedBackend": "coordinator",
+          "effectiveBackend": "coordinator",
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "stageId": "fingerprints",
+      "kind": "chemistrySemantics",
+      "idempotent": true,
+      "requestedBackend": "rdkit",
+      "effectiveBackend": "rdkit",
+      "precision": "integerExact",
+      "engine": {
+        "engineId": "rdkit",
+        "version": "1.0.0",
+        "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "estimatedMemoryBytes": 1024,
+      "fallback": null,
+      "partitions": [
+        {
+          "partitionId": "supported",
+          "chemistryDomain": "cluster.v1/all",
+          "recordCount": 10,
+          "estimatedMemoryBytes": 1024,
+          "requestedBackend": "rdkit",
+          "effectiveBackend": "rdkit",
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "stageId": "tanimotoNeighbors",
+      "kind": "numericCompute",
+      "idempotent": true,
+      "requestedBackend": "nativeMetal",
+      "effectiveBackend": "nativeMetal",
+      "precision": "integerExact",
+      "engine": {
+        "engineId": "burrete-native-metal",
+        "version": "1.0.0",
+        "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "estimatedMemoryBytes": 1024,
+      "fallback": null,
+      "partitions": [
+        {
+          "partitionId": "supported",
+          "chemistryDomain": "cluster.v1/all",
+          "recordCount": 10,
+          "estimatedMemoryBytes": 1024,
+          "requestedBackend": "nativeMetal",
+          "effectiveBackend": "nativeMetal",
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "stageId": "butinaClusters",
+      "kind": "workflowSemantics",
+      "idempotent": true,
+      "requestedBackend": "referenceCpu",
+      "effectiveBackend": "referenceCpu",
+      "precision": "integerExact",
+      "engine": {
+        "engineId": "burrete-reference-cpu",
+        "version": "1.0.0",
+        "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "estimatedMemoryBytes": 1024,
+      "fallback": null,
+      "partitions": [
+        {
+          "partitionId": "supported",
+          "chemistryDomain": "cluster.v1/all",
+          "recordCount": 10,
+          "estimatedMemoryBytes": 1024,
+          "requestedBackend": "referenceCpu",
+          "effectiveBackend": "referenceCpu",
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "stageId": "validateResults",
+      "kind": "validation",
+      "idempotent": true,
+      "requestedBackend": "referenceCpu",
+      "effectiveBackend": "referenceCpu",
+      "precision": "integerExact",
+      "engine": {
+        "engineId": "burrete-reference-cpu",
+        "version": "1.0.0",
+        "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "estimatedMemoryBytes": 1024,
+      "fallback": null,
+      "partitions": [
+        {
+          "partitionId": "supported",
+          "chemistryDomain": "cluster.v1/all",
+          "recordCount": 10,
+          "estimatedMemoryBytes": 1024,
+          "requestedBackend": "referenceCpu",
+          "effectiveBackend": "referenceCpu",
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "stageId": "publishResults",
+      "kind": "artifactIo",
+      "idempotent": true,
+      "requestedBackend": "coordinator",
+      "effectiveBackend": "coordinator",
+      "precision": "notApplicable",
+      "engine": {
+        "engineId": "burrete-coordinator",
+        "version": "1.0.0",
+        "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "estimatedMemoryBytes": 1024,
+      "fallback": null,
+      "partitions": [
+        {
+          "partitionId": "supported",
+          "chemistryDomain": "cluster.v1/all",
+          "recordCount": 10,
+          "estimatedMemoryBytes": 1024,
+          "requestedBackend": "coordinator",
+          "effectiveBackend": "coordinator",
+          "fallback": null
+        }
+      ]
+    }
+  ]
+}
