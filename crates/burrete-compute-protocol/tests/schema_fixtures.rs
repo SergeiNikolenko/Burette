@@ -3,7 +3,8 @@ use std::{fs, path::PathBuf};
 use burrete_compute_protocol::{
     encode_frame, ArtifactManifest, ClusterV1SubmitRequest, ComputeCapabilityReport,
     ControlRequest, ControlResponse, EnginePackManifest, ExecutionPlan, JobSnapshot,
-    MolecularSnapshotManifest, ResultPackManifest, WorkerControlRequest, WorkerControlResponse,
+    MolecularSnapshotManifest, MolecularSnapshotRecordV1, ResultPackManifest, WorkerControlRequest,
+    WorkerControlResponse,
 };
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -57,6 +58,11 @@ fn valid_schema_fixtures_pass_authoritative_rust_validation() {
 
     let molecular: MolecularSnapshotManifest = decode("valid-molecular-snapshot-pack.json");
     molecular.validate().expect("validate molecular snapshot");
+    let molecular_record: MolecularSnapshotRecordV1 =
+        decode("valid-molecular-snapshot-record.json");
+    molecular_record
+        .validate()
+        .expect("validate molecular snapshot record");
     let engine: EnginePackManifest = decode("valid-engine-pack.json");
     engine.validate().expect("validate engine pack");
     let result: ResultPackManifest = decode("valid-result-pack.json");

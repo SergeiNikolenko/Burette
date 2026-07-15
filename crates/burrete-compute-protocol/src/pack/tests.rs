@@ -1,5 +1,6 @@
 use super::*;
 use crate::{ResultPackVersion, WorkflowTemplateId};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 fn hash(byte: char) -> String {
@@ -58,7 +59,14 @@ fn molecular_manifest() -> MolecularSnapshotManifest {
         snapshot_sha256: hash('b'),
         frozen_source: frozen_source(),
         layout: PackedLayout {
-            files: vec![file("pack/data.bin", 80, "application/octet-stream")],
+            files: vec![
+                file("pack/data.bin", 80, "application/octet-stream"),
+                file(
+                    MOLECULAR_RECORDS_FILE_PATH,
+                    256,
+                    MOLECULAR_RECORDS_MEDIA_TYPE,
+                ),
+            ],
             arrays: vec![
                 array(
                     MOLECULE_CONTENT_HASHES_ARRAY_NAME,
@@ -214,6 +222,86 @@ fn rejects_missing_or_misshaped_molecular_identity_arrays() {
     manifest.layout.arrays[0].shape = vec![2, 31];
     manifest.layout.arrays[0].byte_length = 62;
     assert!(manifest.validate().is_err());
+}
+
+#[test]
+fn molecular_snapshot_requires_the_typed_raw_record_file() {
+    let mut manifest = molecular_manifest();
+    manifest
+        .layout
+        .files
+        .retain(|file| file.relative_path != MOLECULAR_RECORDS_FILE_PATH);
+    assert!(manifest.validate().is_err());
+
+    let mut manifest = molecular_manifest();
+    manifest.layout.files[1].media_type = "application/x-ndjson".into();
+    assert!(manifest.validate().is_err());
+}
+
+#[test]
+fn molecular_snapshot_record_is_bounded_canonical_jsonl() {
+    let record = MolecularSnapshotRecordV1 {
+        schema_version: MolecularSnapshotRecordVersion::V1,
+        source_record_id: 42,
+        molecule_content_sha256: "ab".repeat(32),
+        name: "ethanol".into(),
+        smiles: Some("CCO".into()),
+        molblock: None,
+        idcode: None,
+        idcoordinates: None,
+        props: BTreeMap::from([("source".into(), "golden".into())]),
+    };
+    let line = record
+        .canonical_json_line_bytes()
+        .expect("canonical molecular snapshot record");
+    assert_eq!(line.last(), Some(&b'\n'));
+    assert_eq!(line.iter().filter(|byte| **byte == b'\n').count(), 1);
+    let decoded: MolecularSnapshotRecordV1 =
+        serde_json::from_slice(&line).expect("decode canonical JSON line");
+    assert_eq!(decoded, record);
+
+    let mut missing_chemistry = record.clone();
+    missing_chemistry.smiles = None;
+    assert!(missing_chemistry.validate().is_err());
+
+    let mut oversized_props = record;
+    oversized_props.props = (0..=64)
+        .map(|index| (format!("p{index}"), "v".into()))
+        .collect();
+    assert!(oversized_props.validate().is_err());
+}
+
+#[test]
+fn ordered_record_molecule_identity_matches_cross_language_golden() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/compute/fixtures/ordered-record-molecule-identity.v1.json"
+    ))
+    .expect("decode ordered identity fixture");
+    assert_eq!(
+        fixture["domainUtf8"].as_str(),
+        Some(std::str::from_utf8(ORDERED_RECORD_MOLECULE_IDENTITY_DOMAIN).expect("UTF-8 domain"))
+    );
+
+    let mut hasher = OrderedRecordMoleculeIdentityHasher::new();
+    for record in fixture["records"].as_array().expect("record list") {
+        hasher
+            .push(
+                record["sourceRecordId"].as_u64().expect("source record ID"),
+                record["moleculeContentSha256"]
+                    .as_str()
+                    .expect("molecule hash"),
+            )
+            .expect("append ordered identity");
+    }
+    assert_eq!(hasher.record_count(), 2);
+    assert_eq!(
+        hasher.finish_hex(),
+        fixture["expectedSha256"].as_str().expect("expected digest")
+    );
+
+    let mut out_of_order = OrderedRecordMoleculeIdentityHasher::new();
+    out_of_order.push(2, &"00".repeat(32)).expect("first ID");
+    assert!(out_of_order.push(1, &"11".repeat(32)).is_err());
 }
 
 #[test]

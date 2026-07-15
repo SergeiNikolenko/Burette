@@ -151,10 +151,18 @@ function validate(schema, value, context, path = "$") {
     for (const [key, propertySchema] of Object.entries(schema.properties ?? {})) {
       if (Object.hasOwn(value, key)) errors.push(...validate(propertySchema, value[key], context, `${path}.${key}`));
     }
+    if (schema.propertyNames) {
+      for (const key of keys) errors.push(...validate(schema.propertyNames, key, context, `${path}{propertyName}`));
+    }
     if (schema.additionalProperties === false) {
       const allowed = new Set(Object.keys(schema.properties ?? {}));
       for (const key of keys) {
         if (!allowed.has(key)) errors.push(`${path}.${key} is not allowed`);
+      }
+    } else if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+      const declared = new Set(Object.keys(schema.properties ?? {}));
+      for (const key of keys) {
+        if (!declared.has(key)) errors.push(...validate(schema.additionalProperties, value[key], context, `${path}.${key}`));
       }
     }
   }
@@ -177,6 +185,7 @@ const supportedSchemaKeywords = new Set([
   "minItems", "maxItems", "uniqueItems", "prefixItems", "items",
   "contains", "minContains", "maxContains",
   "minProperties", "maxProperties", "required", "properties", "additionalProperties",
+  "propertyNames",
   "allOf", "anyOf", "oneOf", "not", "if", "then", "else",
 ]);
 
@@ -517,6 +526,7 @@ const publicSchemaFiles = [
   "protocol/compute-capability-report.v1.schema.json",
   "protocol/control-envelope.v1.schema.json",
   "protocol/molecular-snapshot.v1.schema.json",
+  "protocol/molecular-snapshot-record.v1.schema.json",
   "protocol/engine-pack.v1.schema.json",
   "protocol/result-pack.v1.schema.json",
   "protocol/job-snapshot.v1.schema.json",
@@ -582,9 +592,11 @@ const boxedCapabilityResponse = {
 expectValid("protocol/control-envelope.v1.schema.json", boxedCapabilityResponse, "boxed capability JSON", "#/$defs/clientResponse");
 
 const molecularPack = fixture("valid-molecular-snapshot-pack.json");
+const molecularRecord = fixture("valid-molecular-snapshot-record.json");
 const enginePack = fixture("valid-engine-pack.json");
 const resultPack = fixture("valid-result-pack.json");
 expectValid("protocol/molecular-snapshot.v1.schema.json", molecularPack, "molecular snapshot pack");
+expectValid("protocol/molecular-snapshot-record.v1.schema.json", molecularRecord, "molecular snapshot record");
 expectValid("protocol/engine-pack.v1.schema.json", enginePack, "engine pack");
 expectValid("protocol/result-pack.v1.schema.json", resultPack, "result pack");
 expectSemanticValid(molecularPackSemanticErrors(molecularPack), "molecular snapshot pack");
@@ -669,6 +681,19 @@ expectInvalid("protocol/artifact-manifest.v1.schema.json", escapedArtifact, "non
 const unknownPackedField = structuredClone(molecularPack);
 unknownPackedField.layout.files[0].absolutePath = "/tmp/data.bin";
 expectInvalid("protocol/molecular-snapshot.v1.schema.json", unknownPackedField, "nested packed-file authority field");
+
+const missingMolecularRecordsFile = structuredClone(molecularPack);
+missingMolecularRecordsFile.layout.files = missingMolecularRecordsFile.layout.files
+  .filter((file) => file.relativePath !== "pack/molecular-records.v1.jsonl");
+expectInvalid("protocol/molecular-snapshot.v1.schema.json", missingMolecularRecordsFile, "missing typed molecular records file");
+
+const missingRecordChemistry = structuredClone(molecularRecord);
+missingRecordChemistry.smiles = null;
+expectInvalid("protocol/molecular-snapshot-record.v1.schema.json", missingRecordChemistry, "molecular record without chemistry input");
+
+const unknownRecordField = structuredClone(molecularRecord);
+unknownRecordField.absolutePath = "/tmp/record";
+expectInvalid("protocol/molecular-snapshot-record.v1.schema.json", unknownRecordField, "molecular record authority field");
 
 const unsafeSnapshot = structuredClone(queued);
 unsafeSnapshot.updatedAtMs = 9007199254740992;
@@ -849,5 +874,15 @@ aggregateArtifactOverflow.files.push({
 });
 expectValid("protocol/artifact-manifest.v1.schema.json", aggregateArtifactOverflow, "structurally valid artifact aggregate overflow");
 expectSemanticInvalid(artifactSemanticErrors(aggregateArtifactOverflow), "artifact aggregate byte overflow");
+
+const orderedIdentity = fixture("ordered-record-molecule-identity.v1.json");
+const orderedIdentityHash = createHash("sha256").update(Buffer.from(orderedIdentity.domainUtf8, "utf8"));
+for (const record of orderedIdentity.records) {
+  const sourceRecordId = Buffer.alloc(8);
+  sourceRecordId.writeBigUInt64BE(BigInt(record.sourceRecordId));
+  orderedIdentityHash.update(sourceRecordId);
+  orderedIdentityHash.update(Buffer.from(record.moleculeContentSha256, "hex"));
+}
+assert.equal(orderedIdentityHash.digest("hex"), orderedIdentity.expectedSha256, "ordered identity digest golden");
 
 console.log("compute schema contract tests passed");

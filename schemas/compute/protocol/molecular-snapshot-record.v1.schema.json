@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burrete.app/schemas/compute/protocol/molecular-snapshot-record.v1.schema.json",
+  "title": "Burrete MolecularSnapshotRecord v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "sourceRecordId",
+    "moleculeContentSha256",
+    "name",
+    "smiles",
+    "molblock",
+    "idcode",
+    "idcoordinates",
+    "props"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "burrete.molecular-snapshot-record.v1"
+    },
+    "sourceRecordId": {
+      "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+    },
+    "moleculeContentSha256": {
+      "$ref": "common.v1.schema.json#/$defs/sha256"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "smiles": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "molblock": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 250000
+    },
+    "idcode": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "idcoordinates": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 16384
+    },
+    "props": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    }
+  },
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "smiles": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "molblock": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "idcode": {
+          "type": "string"
+        }
+      }
+    }
+  ]
+}

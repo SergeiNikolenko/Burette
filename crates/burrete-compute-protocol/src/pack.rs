@@ -2,6 +2,7 @@ mod common;
 mod engine;
 mod layout;
 mod molecular;
+mod records;
 mod result;
 
 pub use common::{
@@ -16,6 +17,11 @@ pub use molecular::{
     FrozenSourceIdentity, MolecularSnapshotManifest, MolecularSnapshotRef,
     MOLECULE_CONTENT_HASHES_ARRAY_NAME, MOLECULE_CONTENT_HASHES_SEMANTIC,
     SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
+};
+pub use records::{
+    MolecularSnapshotRecordV1, MolecularSnapshotRecordVersion, OrderedRecordMoleculeIdentityHasher,
+    MOLECULAR_RECORDS_FILE_PATH, MOLECULAR_RECORDS_MEDIA_TYPE,
+    ORDERED_RECORD_MOLECULE_IDENTITY_DOMAIN,
 };
 pub use result::{ResultPackManifest, ResultPackRef};
 

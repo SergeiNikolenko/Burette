@@ -144,6 +144,29 @@
         }
       ]
     },
+    "molecularRecordsFile": {
+      "allOf": [
+        {
+          "$ref": "common.v1.schema.json#/$defs/packedFileDescriptor"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "relativePath": {
+              "const": "pack/molecular-records.v1.jsonl"
+            },
+            "byteLength": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1099511627776
+            },
+            "mediaType": {
+              "const": "application/vnd.burrete.molecular-records-v1+jsonl"
+            }
+          }
+        }
+      ]
+    },
     "molecularSnapshotLayout": {
       "allOf": [
         {
@@ -152,6 +175,14 @@
         {
           "type": "object",
           "properties": {
+            "files": {
+              "type": "array",
+              "contains": {
+                "$ref": "#/$defs/molecularRecordsFile"
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
             "arrays": {
               "type": "array",
               "allOf": [
