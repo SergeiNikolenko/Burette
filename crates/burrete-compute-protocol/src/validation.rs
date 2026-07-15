@@ -73,7 +73,7 @@ pub(crate) fn validate_relative_path(
 }
 
 pub(crate) fn canonical_json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, ProtocolError> {
-    serde_json::to_vec(value).map_err(ProtocolError::from)
+    serde_json_canonicalizer::to_vec(value).map_err(ProtocolError::from)
 }
 
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
@@ -112,6 +112,18 @@ mod tests {
         assert_eq!(
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn uses_rfc_8785_number_and_property_canonicalization() {
+        let value = serde_json::json!({
+            "z": 1e20,
+            "a": 1e-6,
+        });
+        assert_eq!(
+            canonical_json_bytes(&value).expect("canonical JCS bytes"),
+            br#"{"a":0.000001,"z":100000000000000000000}"#
         );
     }
 }

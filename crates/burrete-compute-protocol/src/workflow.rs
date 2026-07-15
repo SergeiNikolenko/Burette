@@ -600,7 +600,7 @@ mod tests {
             numerator: 14,
             denominator: 20,
         };
-        let expected = concat!(
+        let declaration_order_json = concat!(
             r#"{"schemaVersion":"burrete.compute-job.v1","workflowTemplate":"cluster.v1","source":{"documentId":"document-1","scope":{"kind":"selected","sourceIndexes":[2,7]}},"#,
             r#""parameters":{"fingerprint":{"algorithm":"rdkitMorganBit.v1","rdkitVersion":"2025.03.4","radius":2,"bitCount":2048,"useChirality":true,"useFeatures":false,"sanitize":true,"inputOrder":"sourceRecord"},"#,
             r#""similarity":{"cutoff":{"numerator":7,"denominator":10}},"representativePolicy":"butinaMaxNeighbors.v1"},"#,
@@ -609,13 +609,13 @@ mod tests {
         )
         .as_bytes();
 
-        assert_eq!(
+        assert_ne!(
             request.canonical_json_bytes().expect("canonical request"),
-            expected
+            declaration_order_json
         );
         assert_eq!(
             request.canonical_sha256().expect("request hash"),
-            "6e9691e38a189b1efd6cf58c7ea7357ec7027d5817dfd4d2b534c8443e0f4850"
+            "e9ac23cb9b124ece406aee5619cf49112de538f4fdf6d2f2217387df1ab202af"
         );
     }
 
@@ -688,7 +688,7 @@ mod tests {
         );
         assert_eq!(
             positive_hash,
-            "7c0af7d3a0319dc3620e6d3a099381d2758a3e3e627fd44e4343a1bd4154e280"
+            "abc35f1fd431bf053362f15ed63e7125e8f573f2762f92e40454afaf02341c9b"
         );
         assert!(
             !String::from_utf8(negative.canonical_json_bytes().expect("canonical request"))

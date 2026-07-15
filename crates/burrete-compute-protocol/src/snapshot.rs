@@ -230,6 +230,14 @@ impl JobSnapshot {
                     return validation_error("retried attempt must carry a retryable error");
                 }
             }
+            for pair in attempts.windows(2) {
+                if pair[0]
+                    .finished_at_ms
+                    .is_none_or(|finished| pair[1].started_at_ms < finished)
+                {
+                    return validation_error("stage retry attempts overlap or lack a durable finish");
+                }
+            }
             let last_state = attempts.last().map(|attempt| attempt.state);
             let retry_reset = self.state == JobState::Preparing
                 && stage.state == StageState::Queued
@@ -256,6 +264,25 @@ impl JobSnapshot {
                 != stage.error.as_ref()
             {
                 return validation_error("terminal stage and latest attempt errors differ");
+            }
+            if !retry_reset {
+                let latest = attempts.last().expect("started stage has attempt evidence");
+                if stage.started_at_ms != Some(latest.started_at_ms)
+                    || stage
+                        .updated_at_ms
+                        .is_none_or(|updated| latest.heartbeat_at_ms > updated)
+                {
+                    return validation_error(
+                        "stage execution interval differs from its latest attempt",
+                    );
+                }
+                if stage.state.is_terminal()
+                    && stage.finished_at_ms != latest.finished_at_ms
+                {
+                    return validation_error(
+                        "terminal stage finish differs from its latest attempt",
+                    );
+                }
             }
         }
         if !by_stage.is_empty() {
@@ -300,6 +327,23 @@ impl JobSnapshot {
         let terminal_time_matches = self.state.is_terminal() == self.finished_at_ms.is_some();
         if !terminal_time_matches {
             return validation_error("job terminal state and finish timestamp disagree");
+        }
+        if let Some(finished) = self.finished_at_ms {
+            let latest_stage_finish = self
+                .stages
+                .iter()
+                .filter_map(|stage| stage.finished_at_ms)
+                .max()
+                .unwrap_or(self.created_at_ms);
+            let latest_attempt_finish = self
+                .attempts
+                .iter()
+                .filter_map(|attempt| attempt.finished_at_ms)
+                .max()
+                .unwrap_or(self.created_at_ms);
+            if finished < latest_stage_finish.max(latest_attempt_finish) {
+                return validation_error("job finish precedes terminal execution evidence");
+            }
         }
         if let Some(error) = &self.error {
             error.validate()?;
@@ -352,7 +396,12 @@ impl JobSnapshot {
                 )
             }),
             JobState::Cancelled => {
-                pivot.is_some_and(|s| matches!(s.state, StageState::Queued | StageState::Cancelled))
+                pivot.is_some_and(|s| {
+                    matches!(
+                        s.state,
+                        StageState::Queued | StageState::Cancelled | StageState::Interrupted
+                    )
+                })
             }
             JobState::Failed => pivot
                 .is_some_and(|s| matches!(s.state, StageState::Failed | StageState::Interrupted)),
@@ -390,7 +439,9 @@ impl JobSnapshot {
                 {
                     return validation_error("cancelled job requires a Cancelled error");
                 }
-                if let Some(cancelled_stage) = pivot.filter(|stage| stage.state.is_terminal()) {
+                if let Some(cancelled_stage) =
+                    pivot.filter(|stage| stage.state == StageState::Cancelled)
+                {
                     if cancelled_stage.error != self.error {
                         return validation_error(
                             "cancelled job error must equal its terminal stage and attempt error",

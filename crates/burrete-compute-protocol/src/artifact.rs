@@ -108,8 +108,21 @@ impl ArtifactManifest {
                 "artifact runtime identity differs from the job's pinned runtime",
             );
         }
-        if !(job.created_at_ms..=job.updated_at_ms).contains(&self.created_at_ms) {
-            return validation_error("artifact creation time is outside the job lifetime");
+        let publish_stage = job.stages.last().ok_or_else(|| {
+            ProtocolError::Validation("successful job lacks a publish stage".into())
+        })?;
+        let publish_finish = publish_stage.finished_at_ms.ok_or_else(|| {
+            ProtocolError::Validation("successful publish stage lacks a finish time".into())
+        })?;
+        if publish_stage.kind != StageKind::ArtifactIo
+            || self.created_at_ms != publish_finish
+            || job
+                .finished_at_ms
+                .is_none_or(|job_finish| self.created_at_ms > job_finish)
+        {
+            return validation_error(
+                "artifact creation must equal the successful publish boundary",
+            );
         }
         if self.stages.len() != job.stages.len() {
             return validation_error("artifact stage provenance differs from the job stage count");

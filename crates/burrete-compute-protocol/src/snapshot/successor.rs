@@ -117,6 +117,11 @@ impl JobSnapshot {
         if self.attempts.len() < previous.attempts.len() {
             return validation_error("attempt history was truncated");
         }
+        if self.attempts.len() > previous.attempts.len().saturating_add(1) {
+            return validation_error(
+                "a durable successor may append at most one attempt boundary",
+            );
+        }
         for (current, prior) in self.attempts.iter().zip(&previous.attempts) {
             if current.attempt_id != prior.attempt_id
                 || current.stage_id != prior.stage_id
@@ -139,19 +144,24 @@ impl JobSnapshot {
             }
         }
         for appended in &self.attempts[previous.attempts.len()..] {
-            if appended.attempt_number == 1 {
-                continue;
-            }
             let prior = previous
                 .attempts
                 .iter()
                 .rev()
-                .find(|attempt| attempt.stage_id == appended.stage_id)
-                .ok_or_else(|| {
-                    ProtocolError::Validation(
-                        "new retry attempt has no durable prior attempt".into(),
-                    )
-                })?;
+                .find(|attempt| attempt.stage_id == appended.stage_id);
+            let Some(prior) = prior else {
+                if appended.attempt_number != 1 {
+                    return validation_error("first stage attempt must be numbered one");
+                }
+                continue;
+            };
+            if prior
+                .attempt_number
+                .checked_add(1)
+                .is_none_or(|expected| appended.attempt_number != expected)
+            {
+                return validation_error("retry attempt number must follow its durable predecessor");
+            }
             let stage = previous
                 .stages
                 .iter()

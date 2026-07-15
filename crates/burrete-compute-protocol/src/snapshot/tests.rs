@@ -147,7 +147,45 @@ fn rejects_atomic_attempt_termination_and_retry() {
     );
     retry.attempt_id = Uuid::from_u128(999);
     current.attempts.push(retry);
+    current.stages[3].started_at_ms = Some(206);
     current.stages[3].updated_at_ms = Some(220);
+    assert_eq!(current.validate(), Ok(()));
+    assert!(current.validate_successor(&previous).is_err());
+}
+
+#[test]
+fn rejects_multiple_retry_attempts_in_one_successor() {
+    let previous = retry_snapshot(&interrupted_snapshot(true));
+    let mut current = previous.clone();
+    current.revision += 1;
+    current.state = JobState::Preparing;
+    current.updated_at_ms = 140;
+    current.stages[0] = running_stage(&current.plan.stages[0], 0, 131, 140);
+
+    let stage_id = current.stages[0].stage_id.clone();
+    let failure = failure(&stage_id, ComputeErrorCode::WorkerCrashed, true);
+    let mut second = attempt(
+        &current.stages[0],
+        AttemptState::Interrupted,
+        2,
+        121,
+        130,
+        Some(failure),
+        Some("first durable retry"),
+    );
+    second.attempt_id = Uuid::from_u128(998);
+    let mut third = attempt(
+        &current.stages[0],
+        AttemptState::Running,
+        3,
+        131,
+        140,
+        None,
+        Some("second durable retry"),
+    );
+    third.attempt_id = Uuid::from_u128(999);
+    current.attempts.extend([second, third]);
+
     assert_eq!(current.validate(), Ok(()));
     assert!(current.validate_successor(&previous).is_err());
 }
@@ -224,6 +262,47 @@ fn terminal_job_error_must_equal_stage_and_attempt_evidence() {
     let mut snapshot = interrupted_snapshot(true);
     snapshot.error.as_mut().expect("job error").message = "Different error".into();
     assert!(snapshot.validate().is_err());
+}
+
+#[test]
+fn interrupted_job_can_be_cancelled_without_rewriting_stage_evidence() {
+    let interrupted = interrupted_snapshot(true);
+
+    let mut direct = interrupted.clone();
+    direct.revision += 1;
+    direct.state = JobState::Cancelled;
+    direct.updated_at_ms = 120;
+    direct.finished_at_ms = Some(120);
+    direct.error = Some(cancellation());
+    assert_eq!(direct.validate_successor(&interrupted), Ok(()));
+    assert_eq!(direct.stages[0].state, StageState::Interrupted);
+
+    let mut requested = interrupted.clone();
+    requested.revision += 1;
+    requested.state = JobState::CancelRequested;
+    requested.updated_at_ms = 120;
+    requested.error = None;
+    assert_eq!(requested.validate_successor(&interrupted), Ok(()));
+
+    let mut completed = requested.clone();
+    completed.revision += 1;
+    completed.state = JobState::Cancelled;
+    completed.updated_at_ms = 130;
+    completed.finished_at_ms = Some(130);
+    completed.error = Some(cancellation());
+    assert_eq!(completed.validate_successor(&requested), Ok(()));
+    assert_eq!(completed.stages[0], interrupted.stages[0]);
+}
+
+#[test]
+fn rejects_temporal_provenance_that_precedes_execution_evidence() {
+    let mut early_job_finish = succeeded_snapshot(BackendPolicy::ReferenceCpu);
+    early_job_finish.finished_at_ms = Some(140);
+    assert!(early_job_finish.validate().is_err());
+
+    let mut detached_stage = succeeded_snapshot(BackendPolicy::ReferenceCpu);
+    detached_stage.stages[0].started_at_ms = Some(102);
+    assert!(detached_stage.validate().is_err());
 }
 
 fn queued_snapshot(policy: BackendPolicy) -> JobSnapshot {
@@ -628,6 +707,16 @@ fn failure(stage_id: &str, code: ComputeErrorCode, retryable: bool) -> ComputeFa
         stage_id: Some(stage_id.into()),
         molecule_stable_id: None,
         retryable,
+    }
+}
+
+fn cancellation() -> ComputeFailure {
+    ComputeFailure {
+        code: ComputeErrorCode::Cancelled,
+        message: "Cancelled by owner.".into(),
+        stage_id: None,
+        molecule_stable_id: None,
+        retryable: false,
     }
 }
 
