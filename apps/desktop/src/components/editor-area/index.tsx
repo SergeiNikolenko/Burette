@@ -67,7 +67,7 @@ const MountedPageSurface = memo(function MountedPageSurface({
   const Page = kind.Component as ComponentType<PageComponentProps<typeof tab.location>>;
   return (
     <div className="page-surface" data-page-kind={kind.kind} data-active={isActive || undefined} aria-hidden={!isActive}>
-      <Page location={tab.location} state={state} actions={actions} isActive={isActive} />
+      <Page tabId={tab.id} location={tab.location} state={state} actions={actions} isActive={isActive} />
     </div>
   );
 }, (previous, next) => {

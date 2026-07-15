@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   registerAppResource,
   registerAppTool,
@@ -13,9 +14,14 @@ import {
   NOAUTH_SECURITY_SCHEMES,
   NOAUTH_TOOL_SECURITY,
   publicStructureOutputSchema,
+  ketcherToolMeta,
   TOOL_ANNOTATIONS,
   viewerToolMeta,
 } from "@/lib/contracts";
+import {
+  KETCHER_AGENT_API_VERSION,
+  validateKetcherAction,
+} from "@burrete/ketcher-agent-contract";
 import { getAppOrigin } from "@/lib/origin";
 import {
   prepareAttachedStructure,
@@ -25,8 +31,16 @@ import {
 import {
   createViewerResourceMeta,
   createViewerWidgetHtml,
+  createKetcherResourceMeta,
+  createKetcherWidgetHtml,
+  KETCHER_RESOURCE_URI,
   VIEWER_RESOURCE_URI,
 } from "@/lib/widget";
+import {
+  createHostedKetcherSurface,
+  executeHostedKetcherAction,
+  hostedKetcherSnapshot,
+} from "@/lib/ketcher-relay";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +53,27 @@ const CORS_HEADERS = {
     "Content-Type, Mcp-Session-Id, Last-Event-ID, Mcp-Protocol-Version",
   "Access-Control-Expose-Headers": "Mcp-Session-Id, Mcp-Protocol-Version",
 } as const;
+
+const ketcherStructureSchema = z.object({
+  format: z.enum(["ket", "mol", "rxn", "smiles"]),
+  content: z.string().max(64 * 1024),
+}).strict();
+
+const ketcherActionInputSchema = z.object({
+  apiVersion: z.literal(KETCHER_AGENT_API_VERSION),
+  type: z.literal("control_ketcher"),
+  command: z.enum(["set_structure", "clear_structure", "highlight_atoms", "get_structure", "request_persist"]),
+  surfaceId: z.string().trim().min(1).max(160),
+  actionId: z.string().trim().min(1).max(128).optional(),
+  expectedRevision: z.number().int().min(0),
+  format: z.string().trim().optional(),
+  content: z.string().max(64 * 1024).optional(),
+  contentRef: z.string().trim().max(1024).optional(),
+  indexes: z.array(z.number().int().nonnegative()).max(256).optional(),
+  formats: z.array(z.string().trim()).max(7).optional(),
+  delivery: z.enum(["inline", "artifact", "download"]).optional(),
+  suggestedBasename: z.string().trim().max(255).optional(),
+}).strict();
 
 function toolError(error: unknown) {
   const message =
@@ -78,6 +113,131 @@ function createServer(): McpServer {
         },
       ],
     }),
+  );
+
+  registerAppResource(
+    server,
+    "burrete-ketcher-editor",
+    KETCHER_RESOURCE_URI,
+    {
+      title: "Burrete Ketcher Editor",
+      description: "Revision-checked Ketcher editor surface for Burrete agent actions.",
+      mimeType: RESOURCE_MIME_TYPE,
+    },
+    async () => ({
+      contents: [
+        {
+          uri: KETCHER_RESOURCE_URI,
+          mimeType: RESOURCE_MIME_TYPE,
+          text: createKetcherWidgetHtml(appOrigin),
+          _meta: createKetcherResourceMeta(appOrigin),
+        },
+      ],
+    }),
+  );
+
+  registerAppTool(
+    server,
+    "open_ketcher",
+    {
+      title: "Open Ketcher Editor",
+      description: "Open a bounded Ketcher chemical editor surface and optionally seed it with one inline structure.",
+      inputSchema: {
+        structure: ketcherStructureSchema.optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      ...NOAUTH_TOOL_SECURITY,
+      _meta: ketcherToolMeta("Opening Ketcher editor…", "Ketcher editor ready"),
+    },
+    async ({ structure }) => {
+      const created = createHostedKetcherSurface(structure);
+      if (!created.ok) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: created.error.message }],
+          structuredContent: { ok: false, error: created.error },
+        };
+      }
+      const snapshot = created.surface ? {
+        apiVersion: KETCHER_AGENT_API_VERSION,
+        surfaceId: created.surface.surfaceId,
+        snapshot: hostedKetcherSnapshot(created.surface.surfaceId),
+      } : null;
+      const seed = created.surface.input
+        ? {
+            surfaceId: created.surface.surfaceId,
+            format: created.surface.input.format,
+            content: created.surface.input.content,
+          }
+        : null;
+      return {
+        content: [{ type: "text" as const, text: "Ketcher editor is ready." }],
+        structuredContent: {
+          ok: true,
+          surfaceId: created.surface.surfaceId,
+          ketcher: snapshot?.snapshot ?? null,
+        },
+        _meta: {
+          ketcherSeed: seed,
+          ketcher: snapshot?.snapshot ?? null,
+        },
+      };
+    },
+  );
+
+  registerAppTool(
+    server,
+    "control_ketcher",
+    {
+      title: "Control Ketcher Editor",
+      description: "Apply a bounded, revision-checked action to a hosted Ketcher surface.",
+      inputSchema: {
+        action: ketcherActionInputSchema,
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      ...NOAUTH_TOOL_SECURITY,
+      _meta: ketcherToolMeta("Applying Ketcher action…", "Ketcher action complete"),
+    },
+    async ({ action: rawAction }) => {
+      const action = rawAction.actionId
+        ? rawAction
+        : { ...rawAction, actionId: `ketcher-${randomUUID()}` };
+      const validation = validateKetcherAction(action);
+      if (!validation.ok) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: validation.error.message }],
+          structuredContent: { ok: false, error: validation.error, action },
+        };
+      }
+      const result = executeHostedKetcherAction(validation.value);
+      const seed = result.result?.ketcherSeed ?? null;
+      return {
+        content: [{ type: "text" as const, text: result.ok ? "Ketcher action complete." : result.error?.message || "Ketcher action failed." }],
+        ...(result.ok ? {} : { isError: true }),
+        structuredContent: {
+          ok: result.ok,
+          surfaceId: validation.value.surfaceId,
+          result,
+          snapshot: result.snapshot ?? null,
+          action: validation.value,
+        },
+        _meta: {
+          ketcherSeed: seed,
+          ketcher: result.snapshot ?? null,
+        },
+      };
+    },
   );
 
   registerAppTool(

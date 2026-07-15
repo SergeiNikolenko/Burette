@@ -52,6 +52,7 @@
       "name": "@burrete/public-plugin",
       "version": "0.1.0",
       "dependencies": {
+        "@burrete/ketcher-agent-contract": "workspace:*",
         "@modelcontextprotocol/ext-apps": "1.7.4",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@vercel/analytics": "2.0.1",
@@ -72,6 +73,7 @@
     "apps/desktop": {
       "name": "@burrete/desktop",
       "dependencies": {
+        "@burrete/ketcher-agent-contract": "workspace:*",
         "ketcher-core": "3.15.0",
         "ketcher-react": "3.15.0",
         "ketcher-standalone": "3.15.0",
@@ -81,6 +83,10 @@
       "name": "burrete",
       "version": "1.0.26",
       "bin": "bin/burrete.mjs",
+    },
+    "packages/ketcher-agent-contract": {
+      "name": "@burrete/ketcher-agent-contract",
+      "version": "0.1.0",
     },
   },
   "packages": {
@@ -127,6 +133,8 @@
     "@blazediff/core": ["@blazediff/core@1.9.1", "", {}, "sha512-ehg3jIkYKulZh+8om/O25vkvSsXXwC+skXmyA87FFx6A/45eqOkZsBltMw/TVteb0mloiGT8oGRTcjRAz66zaA=="],
 
     "@burrete/desktop": ["@burrete/desktop@workspace:apps/desktop"],
+
+    "@burrete/ketcher-agent-contract": ["@burrete/ketcher-agent-contract@workspace:packages/ketcher-agent-contract"],
 
     "@burrete/public-plugin": ["@burrete/public-plugin@workspace:apps/burrete-public-plugin"],
 

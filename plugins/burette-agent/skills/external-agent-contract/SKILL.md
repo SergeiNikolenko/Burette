@@ -17,9 +17,13 @@ Prefer these short tools before advanced Burrete tools:
   sessions.
 - `burrete.open_workspace`: open a molecular artifact and receive a
   `workspaceSessionId`.
+- `burrete.open_ketcher`: open the Ketcher chemical editor as the active
+  workspace surface.
 - `burrete.observe_workspace`: refresh compact model context for a session.
 - `burrete.control_viewer`: run one allowlisted viewer action against the
   session and receive refreshed model context.
+- `burrete.control_ketcher`: apply one revision-checked Ketcher action to the
+  active chemical editor.
 - `burrete.render_panel`: render markdown, table, or chart content into a
   workspace dock.
 
@@ -47,7 +51,12 @@ that was opened before this contract existed.
    `workspaceSessionId` and a serializable Burrete action such as
    `reset_camera`, `focus_ligand`, `select_residues`, `apply_scene`, or
    `set_molstar_style`.
-6. For adjacent notes or review panels, call `burrete.render_panel`.
+6. For chemical editing, call `burrete.open_ketcher`, then observe the returned
+   `modelContext.activeSurface` and `modelContext.chemicalEditor`. Send
+   `burrete.control_ketcher` actions with the returned `surfaceId` and
+   `structureRevision` as `expectedRevision`. Refresh the observation after
+   every mutation; never reuse a revision after a conflict or tab switch.
+7. For adjacent notes or review panels, call `burrete.render_panel`.
 
 ## Boundaries
 
@@ -56,6 +65,9 @@ that was opened before this contract existed.
   observe/action output is available.
 - Do not claim an action changed the viewer when the tool returns
   `applied: false` or `ok: false`.
+- Do not claim a Ketcher edit was persisted when `request_persist` returns
+  `status: "awaiting_user"`; a user confirmation and a separate save operation
+  are required.
 - Do not treat `completionState: "awaiting_browser"` as completed rendering.
 - Use advanced tools only when the short contract is missing a capability, such
   as docking-specific setup, fragment extraction, trajectory review, or bounded

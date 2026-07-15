@@ -97,7 +97,7 @@ import { expandBrowserDevStructureBundles } from "./lib/browser-dev-structure-bu
 import { writeClipboardText } from "./lib/clipboard";
 import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { structureExtensionFromPath } from "./lib/file-routing";
-import { isHostedMcpWidget } from "./lib/hosted-mcp-widget";
+import { isHostedKetcherWidget, isHostedMcpWidget } from "./lib/hosted-mcp-widget";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "./lib/viewer-bridge";
 import {
@@ -129,6 +129,7 @@ export default function App() {
   const setDocuments = useSetDocuments();
   const openNewTab = useOpenNewTab();
   const openKetcherTab = useOpenKetcherTab();
+  const hostedKetcherWidget = isHostedKetcherWidget();
   const openFepNetworkTab = useOpenFepNetworkTab();
   const openFepSetupTab = useOpenFepSetupTab();
   const openPoseReviewTab = useOpenPoseReviewTab();
@@ -149,6 +150,11 @@ export default function App() {
   const closeDocument = useCloseDocument();
   const closeActiveDocument = useCloseActiveTab();
   const closeAllDocuments = useCloseAllTabs();
+
+  useEffect(() => {
+    if (!hostedKetcherWidget || activeTab?.location.kind === "ketcher") return;
+    openKetcherTab();
+  }, [activeTab?.location.kind, hostedKetcherWidget, openKetcherTab]);
   const moveTab = useMoveTab();
   const {
     sidebarOpen,
@@ -691,7 +697,9 @@ export default function App() {
     openClipboard,
   } = useAppOpenDropController({
     activeDocument,
+    activeTabId,
     activeTabKind: activeTab?.location.kind ?? null,
+    openKetcherTab,
     addProjectRoots: addDroppedProjectRoots,
     addXyzrenderSheetItems,
     appendGridRecords,
