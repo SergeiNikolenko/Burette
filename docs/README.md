@@ -23,6 +23,9 @@ contains only documents that describe the active project.
   Ketcher editing scope, artifacts, and checks.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
   payloads, grid search, and no-regression guardrails.
+- [GPU compute platform design](superpowers/specs/2026-07-15-gpu-compute-platform-design.md):
+  approved target architecture for Apple Silicon compute jobs, molecular data,
+  scheduling, runtime distribution, and product integration.
 - [Stability program](stability.md): preview trace, runtime manifest, nightly
   smoke, and staged stability guardrails.
 - [Installing and building](installing-building.md): source build, local
