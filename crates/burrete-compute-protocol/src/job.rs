@@ -111,13 +111,12 @@ pub enum Backend {
     Coordinator,
     Rdkit,
     NativeMetal,
-    Mlx,
     ReferenceCpu,
 }
 
 impl Backend {
     pub fn is_gpu(self) -> bool {
-        matches!(self, Self::NativeMetal | Self::Mlx)
+        self == Self::NativeMetal
     }
 }
 
@@ -506,7 +505,6 @@ fn validate_engine_backend(engine: &EngineIdentity, backend: Backend) -> Result<
         Backend::Coordinator => "burrete-coordinator",
         Backend::Rdkit => "rdkit",
         Backend::NativeMetal => "burrete-native-metal",
-        Backend::Mlx => "burrete-mlx",
         Backend::ReferenceCpu => "burrete-reference-cpu",
     };
     if engine.engine_id != expected_engine {
@@ -534,7 +532,6 @@ mod tests {
                 Backend::Coordinator => "burrete-coordinator",
                 Backend::Rdkit => "rdkit",
                 Backend::NativeMetal => "burrete-native-metal",
-                Backend::Mlx => "burrete-mlx",
                 Backend::ReferenceCpu => "burrete-reference-cpu",
             }
             .into(),

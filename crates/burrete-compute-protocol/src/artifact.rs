@@ -314,7 +314,6 @@ impl StageProvenance {
             Backend::Coordinator => "burrete-coordinator",
             Backend::Rdkit => "rdkit",
             Backend::NativeMetal => "burrete-native-metal",
-            Backend::Mlx => "burrete-mlx",
             Backend::ReferenceCpu => "burrete-reference-cpu",
         };
         if self.engine.engine_id != expected_engine {

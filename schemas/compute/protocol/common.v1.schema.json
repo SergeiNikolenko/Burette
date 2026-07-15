@@ -148,7 +148,7 @@
       "enum": ["gpuRequired", "gpuPreferred", "referenceCpu"]
     },
     "backend": {
-      "enum": ["coordinator", "rdkit", "nativeMetal", "mlx", "referenceCpu"]
+      "enum": ["coordinator", "rdkit", "nativeMetal", "referenceCpu"]
     },
     "precision": {
       "enum": ["integerExact", "float32", "float64", "mixed", "notApplicable"]
@@ -247,24 +247,6 @@
                 "allOf": [
                   { "$ref": "#/$defs/engineIdentity" },
                   { "type": "object", "properties": { "engineId": { "const": "burrete-native-metal" } } }
-                ]
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "type": "object",
-            "properties": { "effectiveBackend": { "const": "mlx" } },
-            "required": ["effectiveBackend"]
-          },
-          "then": {
-            "type": "object",
-            "properties": {
-              "engine": {
-                "allOf": [
-                  { "$ref": "#/$defs/engineIdentity" },
-                  { "type": "object", "properties": { "engineId": { "const": "burrete-mlx" } } }
                 ]
               }
             }
