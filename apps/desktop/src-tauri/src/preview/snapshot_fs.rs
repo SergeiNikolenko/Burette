@@ -8,8 +8,12 @@ mod platform {
 
     use burrete_compute_protocol::MOLECULAR_RECORDS_FILE_NAME;
     use rustix::{
-        fs::{fstat, fsync, mkdirat, open, openat, statat, unlinkat, AtFlags, Mode, OFlags},
+        fs::{
+            fstat, fstatvfs, fsync, mkdirat, open, openat, statat, unlinkat, AtFlags, FileType,
+            Mode, OFlags,
+        },
         io::Errno,
+        process::geteuid,
     };
     use uuid::Uuid;
 
@@ -20,6 +24,9 @@ mod platform {
     const FILE_FLAGS: OFlags = OFlags::WRONLY
         .union(OFlags::CREATE)
         .union(OFlags::EXCL)
+        .union(OFlags::CLOEXEC)
+        .union(OFlags::NOFOLLOW);
+    const READ_FILE_FLAGS: OFlags = OFlags::RDONLY
         .union(OFlags::CLOEXEC)
         .union(OFlags::NOFOLLOW);
     const DIRECTORY_MODE: Mode = Mode::from_bits_truncate(0o700);
@@ -46,9 +53,38 @@ mod platform {
     }
 
     impl SnapshotPublicationRoot {
+        pub(crate) fn create(path: &Path) -> Result<Self, String> {
+            if !path.is_absolute() {
+                return Err("Snapshot publication root must be an absolute path".into());
+            }
+            let parent = path.parent().ok_or_else(|| {
+                "Snapshot publication root requires a parent directory".to_string()
+            })?;
+            let leaf = path.file_name().ok_or_else(|| {
+                "Snapshot publication root requires a final directory name".to_string()
+            })?;
+            let parent_directory = open_absolute_directory_nofollow(parent)?;
+            match mkdirat(&parent_directory, leaf, DIRECTORY_MODE) {
+                Ok(()) | Err(Errno::EXIST) => {}
+                Err(error) => {
+                    return Err(format!("Cannot create snapshot publication root: {error}"));
+                }
+            }
+            let directory = openat(&parent_directory, leaf, DIRECTORY_FLAGS, Mode::empty())
+                .map_err(|error| format!("Cannot open snapshot publication root: {error}"))?;
+            let identity = validate_private_directory(&directory, "publication root")?;
+            fsync(&parent_directory)
+                .map_err(|error| format!("Cannot sync snapshot publication parent: {error}"))?;
+            Ok(Self {
+                path: path.to_path_buf(),
+                directory,
+                identity,
+            })
+        }
+
         pub(crate) fn open(path: &Path) -> Result<Self, String> {
             let directory = open_absolute_directory_nofollow(path)?;
-            let identity = directory_identity(&directory)?;
+            let identity = validate_private_directory(&directory, "publication root")?;
             Ok(Self {
                 path: path.to_path_buf(),
                 directory,
@@ -60,17 +96,64 @@ mod platform {
             self.path.join(publication_leaf(snapshot_id))
         }
 
+        pub(crate) fn available_bytes(&self) -> Result<u64, String> {
+            let statistics = fstatvfs(&self.directory).map_err(|error| {
+                format!("Cannot inspect snapshot publication filesystem: {error}")
+            })?;
+            statistics
+                .f_bavail
+                .checked_mul(statistics.f_frsize)
+                .ok_or_else(|| "Snapshot publication free-space count overflowed".into())
+        }
+
         fn verify_path_identity(&self) -> Result<(), String> {
             let reopened = open_absolute_directory_nofollow(&self.path).map_err(|error| {
                 format!("Snapshot publication root path is no longer trustworthy: {error}")
             })?;
-            let reopened_identity = directory_identity(&reopened)?;
+            let reopened_identity = validate_private_directory(&reopened, "publication root")?;
             if reopened_identity != self.identity {
                 return Err(
                     "Snapshot publication root was replaced after capability creation".into(),
                 );
             }
             Ok(())
+        }
+    }
+
+    #[derive(Debug)]
+    pub(crate) struct PublishedSnapshotRoot {
+        path: PathBuf,
+        directory: OwnedFd,
+        identity: DirectoryIdentity,
+    }
+
+    impl PublishedSnapshotRoot {
+        /// Diagnostic locator only. Consumers must use this capability's
+        /// descriptor-relative open method rather than reopening this path.
+        pub(crate) fn path(&self) -> &Path {
+            &self.path
+        }
+
+        pub(crate) fn open_file(&self, relative_path: &str) -> Result<File, String> {
+            let (directory_name, file_name) = match relative_path {
+                "pack/source-record-ids.bin" => ("pack", "source-record-ids.bin"),
+                "pack/molecule-content-hashes.bin" => ("pack", "molecule-content-hashes.bin"),
+                "pack/molecular-records.v1.jsonl" => ("pack", MOLECULAR_RECORDS_FILE_NAME),
+                "snapshot/manifest.json" => ("snapshot", "manifest.json"),
+                _ => return Err("Unrecognized published snapshot file".into()),
+            };
+            let directory = openat(
+                &self.directory,
+                directory_name,
+                DIRECTORY_FLAGS,
+                Mode::empty(),
+            )
+            .map_err(|error| format!("Cannot open published snapshot directory: {error}"))?;
+            validate_private_directory(&directory, "published content directory")?;
+            let file = openat(&directory, file_name, READ_FILE_FLAGS, Mode::empty())
+                .map_err(|error| format!("Cannot open published snapshot file: {error}"))?;
+            validate_private_file(&file)?;
+            Ok(file.into())
         }
     }
 
@@ -155,8 +238,10 @@ mod platform {
                 .map_err(|error| format!("Cannot sync snapshot staging directory: {error}"))
         }
 
-        pub(crate) fn publish(mut self) -> Result<PathBuf, String> {
+        pub(crate) fn publish(mut self) -> Result<PublishedSnapshotRoot, String> {
             self.root.verify_path_identity()?;
+            let staging_identity =
+                validate_private_directory(&self.staging_directory, "staging directory")?;
             rename_noreplace(&self.root.directory, &self.active_leaf, &self.final_leaf)?;
             self.active_leaf.clone_from(&self.final_leaf);
 
@@ -164,8 +249,25 @@ mod platform {
                 .map_err(|error| format!("Cannot sync snapshot publication root: {error}"))?;
             self.root.verify_path_identity()?;
 
+            let published_directory = openat(
+                &self.root.directory,
+                self.final_leaf.as_str(),
+                DIRECTORY_FLAGS,
+                Mode::empty(),
+            )
+            .map_err(|error| format!("Cannot open published snapshot capability: {error}"))?;
+            let published_identity =
+                validate_private_directory(&published_directory, "published snapshot")?;
+            if published_identity != staging_identity {
+                return Err("Published snapshot directory identity changed during rename".into());
+            }
+
             self.armed = false;
-            Ok(self.root.path.join(&self.final_leaf))
+            Ok(PublishedSnapshotRoot {
+                path: self.root.path.join(&self.final_leaf),
+                directory: published_directory,
+                identity: published_identity,
+            })
         }
     }
 
@@ -218,13 +320,39 @@ mod platform {
         Ok(directory)
     }
 
-    fn directory_identity(directory: &OwnedFd) -> Result<DirectoryIdentity, String> {
+    fn validate_private_directory(
+        directory: &OwnedFd,
+        label: &str,
+    ) -> Result<DirectoryIdentity, String> {
         let metadata = fstat(directory)
-            .map_err(|error| format!("Cannot inspect snapshot publication root: {error}"))?;
+            .map_err(|error| format!("Cannot inspect snapshot {label}: {error}"))?;
+        if metadata.st_uid != geteuid().as_raw() {
+            return Err(format!(
+                "Snapshot {label} must be owned by the current user"
+            ));
+        }
+        if metadata.st_mode & 0o777 != 0o700 {
+            return Err(format!("Snapshot {label} permissions must be 0700"));
+        }
         Ok(DirectoryIdentity {
             device: metadata.st_dev as u64,
             inode: metadata.st_ino as u64,
         })
+    }
+
+    fn validate_private_file(file: &OwnedFd) -> Result<(), String> {
+        let metadata = fstat(file)
+            .map_err(|error| format!("Cannot inspect published snapshot file: {error}"))?;
+        if FileType::from_raw_mode(metadata.st_mode) != FileType::RegularFile {
+            return Err("Published snapshot content must be a regular file".into());
+        }
+        if metadata.st_uid != geteuid().as_raw() {
+            return Err("Published snapshot file must be owned by the current user".into());
+        }
+        if metadata.st_mode & 0o777 != 0o600 {
+            return Err("Published snapshot file permissions must be 0600".into());
+        }
+        Ok(())
     }
 
     fn ensure_missing(directory: &OwnedFd, leaf: &str) -> Result<(), String> {
@@ -333,13 +461,34 @@ mod platform {
     #[derive(Debug)]
     pub(crate) struct SnapshotPublicationRoot;
 
+    #[derive(Debug)]
+    pub(crate) struct PublishedSnapshotRoot;
+
     impl SnapshotPublicationRoot {
+        pub(crate) fn create(_path: &Path) -> Result<Self, String> {
+            Err("Snapshot publication requires Unix directory capabilities".into())
+        }
+
         pub(crate) fn open(_path: &Path) -> Result<Self, String> {
             Err("Snapshot publication requires Unix directory capabilities".into())
         }
 
         pub(crate) fn destination_path(&self, _snapshot_id: Uuid) -> PathBuf {
             PathBuf::new()
+        }
+
+        pub(crate) fn available_bytes(&self) -> Result<u64, String> {
+            Err("Snapshot publication requires Unix directory capabilities".into())
+        }
+    }
+
+    impl PublishedSnapshotRoot {
+        pub(crate) fn path(&self) -> &Path {
+            Path::new("")
+        }
+
+        pub(crate) fn open_file(&self, _relative_path: &str) -> Result<File, String> {
+            Err("Snapshot publication requires Unix directory capabilities".into())
         }
     }
 
@@ -367,14 +516,10 @@ mod platform {
             Err("Snapshot publication requires Unix directory capabilities".into())
         }
 
-        pub(crate) fn publish(self) -> Result<PathBuf, String> {
+        pub(crate) fn publish(self) -> Result<PublishedSnapshotRoot, String> {
             Err("Snapshot publication requires Unix directory capabilities".into())
         }
     }
 }
 
-#[allow(
-    unused_imports,
-    reason = "the following commit connects these capabilities to Grid snapshot publication"
-)]
-pub(crate) use platform::{SnapshotPublicationRoot, SnapshotStaging};
+pub(crate) use platform::{PublishedSnapshotRoot, SnapshotPublicationRoot, SnapshotStaging};
