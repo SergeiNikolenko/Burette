@@ -99,6 +99,17 @@ describe("submission tool contract", () => {
       pdbId: "1CRN",
       actions: [{ type: "select_residues", selector: { arbitrary: "javascript" } }],
     })).toThrow();
+    expect(() => schema.parse({
+      source: "attachment",
+      pdbId: "1CRN",
+      actions: [{ type: "reset_camera" }],
+    })).toThrow();
+
+    const jsonSchema = z.toJSONSchema(schema, { io: "input" }) as {
+      properties?: Record<string, unknown>;
+    };
+    expect(jsonSchema.properties).toHaveProperty("pdbId");
+    expect(jsonSchema.properties).toHaveProperty("structureFile");
   });
 });
 
