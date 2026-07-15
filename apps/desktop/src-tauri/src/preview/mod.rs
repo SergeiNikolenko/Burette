@@ -7,6 +7,11 @@ pub(crate) mod grid_analysis;
 pub(crate) mod grid_database;
 pub(crate) mod grid_identity;
 pub(crate) mod grid_predicate;
+#[allow(
+    dead_code,
+    reason = "the frozen Grid snapshot boundary is staged for compute submission wiring"
+)]
+pub(crate) mod grid_snapshot;
 pub(crate) mod grid_store;
 pub(crate) mod runtime;
 pub(crate) mod runtime_grid;
