@@ -147,7 +147,7 @@ fn rejects_atomic_attempt_termination_and_retry() {
     );
     retry.attempt_id = Uuid::from_u128(999);
     current.attempts.push(retry);
-    current.stages[3].started_at_ms = Some(206);
+    current.stages[3].started_at_ms = previous.stages[3].started_at_ms;
     current.stages[3].updated_at_ms = Some(220);
     assert_eq!(current.validate(), Ok(()));
     assert!(current.validate_successor(&previous).is_err());
@@ -160,7 +160,7 @@ fn rejects_multiple_retry_attempts_in_one_successor() {
     current.revision += 1;
     current.state = JobState::Preparing;
     current.updated_at_ms = 140;
-    current.stages[0] = running_stage(&current.plan.stages[0], 0, 131, 140);
+    current.stages[0] = running_stage(&current.plan.stages[0], 0, 101, 140);
 
     let stage_id = current.stages[0].stage_id.clone();
     let failure = failure(&stage_id, ComputeErrorCode::WorkerCrashed, true);
@@ -187,6 +187,9 @@ fn rejects_multiple_retry_attempts_in_one_successor() {
     current.attempts.extend([second, third]);
 
     assert_eq!(current.validate(), Ok(()));
+    let mut detached_history = current.clone();
+    detached_history.stages[0].started_at_ms = Some(131);
+    assert!(detached_history.validate().is_err());
     assert!(current.validate_successor(&previous).is_err());
 }
 

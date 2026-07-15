@@ -266,14 +266,15 @@ impl JobSnapshot {
                 return validation_error("terminal stage and latest attempt errors differ");
             }
             if !retry_reset {
+                let first = attempts.first().expect("started stage has attempt evidence");
                 let latest = attempts.last().expect("started stage has attempt evidence");
-                if stage.started_at_ms != Some(latest.started_at_ms)
+                if stage.started_at_ms != Some(first.started_at_ms)
                     || stage
                         .updated_at_ms
                         .is_none_or(|updated| latest.heartbeat_at_ms > updated)
                 {
                     return validation_error(
-                        "stage execution interval differs from its latest attempt",
+                        "stage execution interval does not cover its complete attempt history",
                     );
                 }
                 if stage.state.is_terminal()
