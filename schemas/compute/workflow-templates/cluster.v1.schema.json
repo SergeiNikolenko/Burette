@@ -97,7 +97,6 @@
         "descriptorFilters": {
           "type": "array",
           "maxItems": 64,
-          "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/descriptorFilter"
           }
@@ -105,13 +104,12 @@
         "analysisFilters": {
           "type": "array",
           "maxItems": 64,
-          "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/analysisFilter"
           }
         }
       },
-      "$comment": "Rust enforces a combined 64-filter limit and uniqueness by column ID, descriptor ID, and analysis (runId, valueId)."
+      "$comment": "Rust enforces a combined raw 64-filter limit, requires unique column IDs, and canonically intersects repeated descriptor IDs and analysis (runId, valueId) pairs."
     },
     "allScope": {
       "type": "object",
@@ -161,7 +159,8 @@
             "text": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 4096
+              "maxLength": 4096,
+              "pattern": "\\S"
             },
             "min": {
               "type": "null"

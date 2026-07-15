@@ -264,8 +264,6 @@ function clusterSemanticErrors(value) {
     const analyses = scope.analysisFilters ?? [];
     if (columns.length + descriptors.length + analyses.length > 64) errors.push("combined filter count exceeds 64");
     if (!hasUniqueKeys(columns, (filter) => filter.id)) errors.push("duplicate column filter ID");
-    if (!hasUniqueKeys(descriptors, (filter) => filter.id)) errors.push("duplicate descriptor filter ID");
-    if (!hasUniqueKeys(analyses, (filter) => `${filter.runId}\0${filter.valueId}`)) errors.push("duplicate analysis filter value");
     for (const filter of [...columns, ...descriptors, ...analyses]) {
       if (filter.min !== null && filter.min !== undefined && filter.max !== null && filter.max !== undefined && filter.min > filter.max) {
         errors.push("filter minimum exceeds maximum");

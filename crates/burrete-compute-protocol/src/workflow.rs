@@ -197,29 +197,51 @@ impl GridScope {
             source_indexes.sort_unstable();
             source_indexes.dedup();
         } else if let Self::Filtered(FilteredGridScope {
+            query,
             column_filters,
             descriptor_filters,
             analysis_filters,
-            ..
         }) = &mut self
         {
+            let filter_count =
+                column_filters.len() + descriptor_filters.len() + analysis_filters.len();
+            if filter_count > MAX_FILTERS {
+                return Err(ProtocolError::Validation(format!(
+                    "filtered scope has {filter_count} filters; limit is {MAX_FILTERS}"
+                )));
+            }
+            query.validate()?;
+            let GridTextQuery::Text { text } = query;
+            *text = normalize_like_text(text);
             for filter in column_filters.iter_mut() {
+                filter.validate()?;
                 normalize_signed_zero(&mut filter.min);
                 normalize_signed_zero(&mut filter.max);
+                if filter.filter_type == ColumnFilterKind::Text {
+                    let text = filter
+                        .text
+                        .as_mut()
+                        .expect("validated text filter contains text");
+                    *text = normalize_like_text(text);
+                }
             }
             for filter in descriptor_filters.iter_mut() {
+                filter.validate("descriptor filter")?;
                 normalize_signed_zero(&mut filter.min);
                 normalize_signed_zero(&mut filter.max);
             }
             for filter in analysis_filters.iter_mut() {
+                filter.validate("analysis filter")?;
                 normalize_signed_zero(&mut filter.min);
                 normalize_signed_zero(&mut filter.max);
             }
             column_filters.sort_by(|left, right| left.id.cmp(&right.id));
             descriptor_filters.sort_by(|left, right| left.id.cmp(&right.id));
+            merge_descriptor_filter_intersections(descriptor_filters);
             analysis_filters.sort_by(|left, right| {
                 (left.run_id, left.value_id.as_str()).cmp(&(right.run_id, right.value_id.as_str()))
             });
+            merge_analysis_filter_intersections(analysis_filters);
         }
         self.validate()?;
         Ok(self)
@@ -269,8 +291,15 @@ impl ColumnFilter {
         validate_filter_id(&self.id)?;
         match self.filter_type {
             ColumnFilterKind::Text => {
-                let text = self.text.as_deref().unwrap_or_default();
+                let text = self.text.as_deref().ok_or_else(|| {
+                    ProtocolError::Validation("text column filter requires text".into())
+                })?;
                 validate_bounded_text("column filter text", text, MAX_FILTER_TEXT_BYTES)?;
+                if normalize_like_text(text).is_empty() {
+                    return Err(ProtocolError::Validation(
+                        "text column filter requires non-whitespace text".into(),
+                    ));
+                }
                 if self.min.is_some() || self.max.is_some() {
                     return Err(ProtocolError::Validation(
                         "text column filter cannot contain numeric bounds".into(),
@@ -539,6 +568,61 @@ fn normalize_signed_zero(value: &mut Option<f64>) {
     }
 }
 
+fn normalize_like_text(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+fn merge_descriptor_filter_intersections(filters: &mut Vec<DescriptorFilter>) {
+    let mut merged: Vec<DescriptorFilter> = Vec::with_capacity(filters.len());
+    for filter in filters.drain(..) {
+        if let Some(previous) = merged
+            .last_mut()
+            .filter(|previous| previous.id == filter.id)
+        {
+            previous.min = maximum_bound(previous.min, filter.min);
+            previous.max = minimum_bound(previous.max, filter.max);
+        } else {
+            merged.push(filter);
+        }
+    }
+    *filters = merged;
+}
+
+fn merge_analysis_filter_intersections(filters: &mut Vec<AnalysisFilter>) {
+    let mut merged: Vec<AnalysisFilter> = Vec::with_capacity(filters.len());
+    for filter in filters.drain(..) {
+        if let Some(previous) = merged.last_mut().filter(|previous| {
+            previous.run_id == filter.run_id && previous.value_id == filter.value_id
+        }) {
+            previous.min = maximum_bound(previous.min, filter.min);
+            previous.max = minimum_bound(previous.max, filter.max);
+        } else {
+            merged.push(filter);
+        }
+    }
+    *filters = merged;
+}
+
+fn maximum_bound(left: Option<f64>, right: Option<f64>) -> Option<f64> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.max(right)),
+        (Some(value), None) | (None, Some(value)) => Some(value),
+        (None, None) => None,
+    }
+}
+
+fn minimum_bound(left: Option<f64>, right: Option<f64>) -> Option<f64> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.min(right)),
+        (Some(value), None) | (None, Some(value)) => Some(value),
+        (None, None) => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -757,5 +841,154 @@ mod tests {
         };
 
         assert!(filter.validate("analysis filter").is_err());
+    }
+
+    #[test]
+    fn canonical_scope_intersects_duplicate_descriptor_and_analysis_filters() {
+        let run_id = Uuid::from_u128(7);
+        let scope = GridScope::Filtered(FilteredGridScope {
+            query: GridTextQuery::Text {
+                text: String::new(),
+            },
+            column_filters: Vec::new(),
+            descriptor_filters: vec![
+                DescriptorFilter {
+                    id: "MW".into(),
+                    min: Some(40.0),
+                    max: None,
+                },
+                DescriptorFilter {
+                    id: "MW".into(),
+                    min: None,
+                    max: Some(80.0),
+                },
+            ],
+            analysis_filters: vec![
+                AnalysisFilter {
+                    run_id,
+                    value_id: "clusterScore".into(),
+                    min: Some(0.25),
+                    max: None,
+                },
+                AnalysisFilter {
+                    run_id,
+                    value_id: "clusterScore".into(),
+                    min: None,
+                    max: Some(0.75),
+                },
+            ],
+        });
+
+        let GridScope::Filtered(normalized) = scope.normalized().expect("normalize filters") else {
+            unreachable!("test creates a filtered scope")
+        };
+        assert_eq!(
+            normalized.descriptor_filters,
+            vec![DescriptorFilter {
+                id: "MW".into(),
+                min: Some(40.0),
+                max: Some(80.0),
+            }]
+        );
+        assert_eq!(
+            normalized.analysis_filters,
+            vec![AnalysisFilter {
+                run_id,
+                value_id: "clusterScore".into(),
+                min: Some(0.25),
+                max: Some(0.75),
+            }]
+        );
+    }
+
+    #[test]
+    fn normalization_rejects_invalid_raw_filters_before_intersection() {
+        let descriptor_scope = GridScope::Filtered(FilteredGridScope {
+            query: GridTextQuery::Text {
+                text: String::new(),
+            },
+            column_filters: Vec::new(),
+            descriptor_filters: vec![
+                DescriptorFilter {
+                    id: "MW".into(),
+                    min: Some(f64::NAN),
+                    max: None,
+                },
+                DescriptorFilter {
+                    id: "MW".into(),
+                    min: Some(40.0),
+                    max: None,
+                },
+            ],
+            analysis_filters: Vec::new(),
+        });
+        assert!(descriptor_scope.normalized().is_err());
+
+        let run_id = Uuid::from_u128(7);
+        let analysis_scope = GridScope::Filtered(FilteredGridScope {
+            query: GridTextQuery::Text {
+                text: String::new(),
+            },
+            column_filters: Vec::new(),
+            descriptor_filters: Vec::new(),
+            analysis_filters: vec![
+                AnalysisFilter {
+                    run_id,
+                    value_id: "clusterScore".into(),
+                    min: None,
+                    max: None,
+                },
+                AnalysisFilter {
+                    run_id,
+                    value_id: "clusterScore".into(),
+                    min: Some(0.25),
+                    max: None,
+                },
+            ],
+        });
+        assert!(analysis_scope.normalized().is_err());
+    }
+
+    #[test]
+    fn canonical_scope_normalizes_like_text_and_rejects_blank_filters() {
+        for text in [None, Some("   \n  ")] {
+            let filter = ColumnFilter {
+                id: "name".into(),
+                filter_type: ColumnFilterKind::Text,
+                text: text.map(str::to_string),
+                min: None,
+                max: None,
+            };
+            assert!(filter.validate().is_err());
+        }
+
+        let scope = GridScope::Filtered(FilteredGridScope {
+            query: GridTextQuery::Text {
+                text: "  ALPHA \n BETA  ".into(),
+            },
+            column_filters: vec![ColumnFilter {
+                id: "name".into(),
+                filter_type: ColumnFilterKind::Text,
+                text: Some("  BENZ   ENE  ".into()),
+                min: None,
+                max: None,
+            }],
+            descriptor_filters: Vec::new(),
+            analysis_filters: Vec::new(),
+        });
+        let GridScope::Filtered(normalized) = scope.normalized().expect("normalize LIKE text")
+        else {
+            unreachable!("test creates a filtered scope")
+        };
+        assert_eq!(
+            normalized.query,
+            GridTextQuery::Text {
+                text: "alpha beta".into()
+            }
+        );
+        assert_eq!(
+            normalized.column_filters[0].text.as_deref(),
+            Some("benz ene")
+        );
     }
 }
