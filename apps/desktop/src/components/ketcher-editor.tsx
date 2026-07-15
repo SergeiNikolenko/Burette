@@ -74,6 +74,7 @@ type KetcherWithEditorStruct = Ketcher & {
   changeEvent?: KetcherSubscription;
 };
 const KETCHER_INSTANCE_RETRY_DELAYS_MS = [0, 250, 500, 1000, 1500, 2500, 4000, 6000] as const;
+const USE_DIRECT_KETCHER_TEXT_IMPORT = import.meta.env.VITE_BURRETE_WEB_DEMO === "1";
 
 declare global {
   interface Window {
@@ -111,6 +112,7 @@ function suppressFilledKetcherSelectionPaths(root: HTMLElement) {
 
 function createKetcherEditorApi(
   instance: Ketcher,
+  ChemicalMimeType: KetcherCoreModule["ChemicalMimeType"],
   MolSerializer: KetcherCoreModule["MolSerializer"],
   getSvgFromDrawnStructures: KetcherCoreModule["getSvgFromDrawnStructures"],
   ZoomTool: KetcherZoomToolConstructor,
@@ -191,9 +193,17 @@ function createKetcherEditorApi(
     setMolfile: async (molfile: string) => {
       setMolfileDirectly(instance, MolSerializer, molfile);
     },
-    setMolecule: ((...args: Parameters<Ketcher["setMolecule"]>) => (
-      callKetcherWhenReady(() => instance.setMolecule(...args))
-    )) as Ketcher["setMolecule"],
+    setMolecule: (async (structure, options) => {
+      if (!USE_DIRECT_KETCHER_TEXT_IMPORT || !structure.trim()) {
+        await callKetcherWhenReady(() => instance.setMolecule(structure, options));
+        return;
+      }
+      const converted = await callKetcherWhenReady(() => instance.structService.convert({
+        struct: structure,
+        output_format: ChemicalMimeType.Mol,
+      }));
+      setMolfileDirectly(instance, MolSerializer, converted.struct);
+    }) as Ketcher["setMolecule"],
     setZoom: ((value: number) => {
       editorInstance.editor.zoomTool?.zoomTo?.(value);
       editorInstance.editor.zoom(value);
@@ -295,6 +305,7 @@ export function KetcherEditor({
   const [runtime, setRuntime] = useState<{
     Editor: KetcherReactModule["Editor"];
     getSvgFromDrawnStructures: KetcherCoreModule["getSvgFromDrawnStructures"];
+    ChemicalMimeType: KetcherCoreModule["ChemicalMimeType"];
     MolSerializer: KetcherCoreModule["MolSerializer"];
     StandaloneStructServiceProvider: KetcherStandaloneModule["StandaloneStructServiceProvider"];
     ZoomTool: KetcherZoomToolConstructor;
@@ -324,6 +335,7 @@ export function KetcherEditor({
         setRuntime({
           Editor: reactModule.Editor,
           getSvgFromDrawnStructures: coreModule.getSvgFromDrawnStructures,
+          ChemicalMimeType: coreModule.ChemicalMimeType,
           MolSerializer: coreModule.MolSerializer,
           StandaloneStructServiceProvider: standaloneModule.StandaloneStructServiceProvider,
           ZoomTool: coreModule.ZoomTool,
@@ -351,7 +363,7 @@ export function KetcherEditor({
     if (!runtime) return;
     // ketcher-react can resolve its own ketcher-core copy; both expose the same runtime API.
     const compatibleInstance = instance as unknown as Ketcher;
-    onReady(createKetcherEditorApi(compatibleInstance, runtime.MolSerializer, runtime.getSvgFromDrawnStructures, runtime.ZoomTool));
+    onReady(createKetcherEditorApi(compatibleInstance, runtime.ChemicalMimeType, runtime.MolSerializer, runtime.getSvgFromDrawnStructures, runtime.ZoomTool));
     onStatus("Ready");
   }, [onReady, onStatus, runtime]);
 
