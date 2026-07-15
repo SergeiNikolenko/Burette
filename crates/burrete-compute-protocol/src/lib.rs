@@ -13,8 +13,8 @@ pub use artifact::{
     StageProvenance,
 };
 pub use capability::{
-    CapabilityEntry, CapabilityExpectation, CapabilityLimits, CapabilityMaturity,
-    CapabilityReason, CapabilityReasonCode, CapabilityReportSchemaVersion, ComputeAvailability,
+    CapabilityEntry, CapabilityExpectation, CapabilityLimits, CapabilityMaturity, CapabilityReason,
+    CapabilityReasonCode, CapabilityReportSchemaVersion, ComputeAvailability,
     ComputeCapabilityReport, GpuDeviceIdentity, PlatformIdentity, ProtocolRange, RuntimeIdentity,
 };
 pub use error::{ComputeErrorCode, ComputeFailure, ProtocolError};
@@ -24,11 +24,12 @@ pub use job::{
     StageKind, CLUSTER_STAGE_IDS,
 };
 pub use pack::{
-    EnginePackVersion, FrozenSourceIdentity, MolecularSnapshotManifest, MolecularSnapshotRef,
-    MolecularSnapshotVersion, PackedArrayDescriptor, PackedByteOrder, PackedDType,
-    PackedFileDescriptor, PackedLayout, MAX_JSON_SAFE_INTEGER, MAX_PACK_ARRAYS, MAX_PACK_BYTES,
-    MAX_PACK_FILES, MAX_PACK_RECORDS, MOLECULE_CONTENT_HASHES_ARRAY_NAME,
-    MOLECULE_CONTENT_HASHES_SEMANTIC, SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
+    EnginePackManifest, EnginePackRef, EnginePackVersion, FrozenSourceIdentity,
+    MolecularSnapshotManifest, MolecularSnapshotRef, MolecularSnapshotVersion,
+    PackedArrayDescriptor, PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout,
+    MAX_JSON_SAFE_INTEGER, MAX_PACK_ARRAYS, MAX_PACK_BYTES, MAX_PACK_FILES, MAX_PACK_RECORDS,
+    MOLECULE_CONTENT_HASHES_ARRAY_NAME, MOLECULE_CONTENT_HASHES_SEMANTIC,
+    SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
 };
 pub use snapshot::{
     AttemptSnapshot, AttemptState, ComputeJobSnapshotSchemaVersion, JobProgress, JobSnapshot,
@@ -39,9 +40,8 @@ pub use workflow::{
     AllGridScope, AnalysisFilter, BackendPolicy, ClusterV1Parameters, ClusterV1SubmitRequest,
     ColumnFilter, ColumnFilterKind, ComputeJobSchemaVersion, DescriptorFilter, ExecutionPolicy,
     FilteredGridScope, FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
-    GridSourceReference, GridTextQuery, RdkitBaselineVersion, RepresentativePolicy,
-    ResourceLimits, SchedulingPolicy, SelectedGridScope, SimilarityCutoff, SimilaritySettings,
-    WorkflowTemplateId,
+    GridSourceReference, GridTextQuery, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
+    SchedulingPolicy, SelectedGridScope, SimilarityCutoff, SimilaritySettings, WorkflowTemplateId,
 };
 
 pub const COMPUTE_JOB_SCHEMA_V1: &str = "burrete.compute-job.v1";

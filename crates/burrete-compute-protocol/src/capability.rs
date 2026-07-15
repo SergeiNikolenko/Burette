@@ -143,8 +143,7 @@ impl ComputeCapabilityReport {
                 ));
             }
         }
-        self.limits
-            .validate_for_availability(self.availability)?;
+        self.limits.validate_for_availability(self.availability)?;
         if self.limits.max_control_frame_bytes != MAX_CONTROL_FRAME_BYTES as u64 {
             return Err(ProtocolError::Validation(
                 "capability frame limit differs from the negotiated protocol".into(),
@@ -154,10 +153,7 @@ impl ComputeCapabilityReport {
     }
 
     /// Verifies untrusted helper claims against coordinator-owned identities.
-    pub fn verify_against(
-        &self,
-        expected: &CapabilityExpectation,
-    ) -> Result<(), ProtocolError> {
+    pub fn verify_against(&self, expected: &CapabilityExpectation) -> Result<(), ProtocolError> {
         self.validate()?;
         expected.validate()?;
         if self.platform.architecture != expected.architecture
@@ -185,9 +181,11 @@ impl ComputeCapabilityReport {
                 "compute helper advertised limits above the coordinator-owned maximum".into(),
             ));
         }
-        if self.capabilities.iter().any(|capability| {
-            capability.available && capability.backend.is_gpu()
-        }) && self.device.is_none()
+        if self
+            .capabilities
+            .iter()
+            .any(|capability| capability.available && capability.backend.is_gpu())
+            && self.device.is_none()
         {
             return Err(ProtocolError::Validation(
                 "available GPU capability requires an observed GPU device".into(),

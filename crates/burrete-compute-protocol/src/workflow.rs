@@ -122,10 +122,7 @@ impl GridScope {
                         "selected source index exceeds the JSON safe integer range".into(),
                     ));
                 }
-                if source_indexes
-                    .windows(2)
-                    .any(|pair| pair[0] >= pair[1])
-                {
+                if source_indexes.windows(2).any(|pair| pair[0] >= pair[1]) {
                     return Err(ProtocolError::Validation(
                         "selected source indexes must be strictly increasing and unique".into(),
                     ));
