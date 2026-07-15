@@ -3,6 +3,8 @@ use sha2::{Digest, Sha256};
 
 use burrete_compute_protocol::MAX_JSON_SAFE_INTEGER;
 
+use super::grid_database::open_grid_database;
+
 const DOCUMENT_FINGERPRINT_DOMAIN: &[u8] = b"burrete.grid-document.v1\0";
 const MOLECULE_CONTENT_DOMAIN: &[u8] = b"burrete.grid-molecule.v1\0";
 
@@ -148,7 +150,7 @@ pub(crate) fn read_source_identity(connection: &Connection) -> Result<GridSource
 }
 
 pub(crate) fn mark_virtual_edit(database_path: &std::path::Path) -> Result<u64, String> {
-    let mut connection = Connection::open(database_path).map_err(|error| error.to_string())?;
+    let mut connection = open_grid_database(database_path)?;
     initialize(&connection)?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
