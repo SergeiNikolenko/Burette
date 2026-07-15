@@ -1626,10 +1626,13 @@ fn parse_delimited_table_batch(
                 clipped(raw_name, 160)
             };
             let name = if has_multiple_smiles_columns {
-                format!(
-                    "{} {}",
-                    base_name,
-                    column_label(&headers, *smiles_index).trim_matches('\'')
+                clipped(
+                    &format!(
+                        "{} {}",
+                        base_name,
+                        column_label(&headers, *smiles_index).trim_matches('\'')
+                    ),
+                    160,
                 )
             } else {
                 base_name
@@ -1638,9 +1641,10 @@ fn parse_delimited_table_batch(
             props.insert("CSV row".to_string(), row_number.to_string());
             props.insert(
                 "SMILES column".to_string(),
-                column_label(&headers, *smiles_index)
-                    .trim_matches('\'')
-                    .to_string(),
+                clipped(
+                    column_label(&headers, *smiles_index).trim_matches('\''),
+                    500,
+                ),
             );
             for (index, header) in headers.iter().enumerate() {
                 if smiles_indexes.contains(&index) || Some(index) == name_index {
@@ -3260,6 +3264,42 @@ mod tests {
         assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
         assert_eq!(page.rows[1].name, "Ethanol isomeric_smiles");
         assert_eq!(page.rows[1].smiles.as_deref(), Some("CCO"));
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn bounds_composite_names_and_smiles_column_properties() {
+        let runtime_dir = temp_runtime_dir();
+        let primary = format!("primary_smiles_{}", "a".repeat(600));
+        let alternate = format!("alternate_smiles_{}", "b".repeat(600));
+        let csv = format!("name,{primary},{alternate}\nCompound,CCO,CCN\n");
+
+        let (database_path, summary) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        assert_eq!(summary.records_total, 2);
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch bounded composite records");
+        assert_eq!(page.rows.len(), 2);
+        for row in &page.rows {
+            assert_eq!(row.name.chars().count(), 160);
+            assert_eq!(
+                row.props["SMILES column"].chars().count(),
+                500,
+                "snapshot-visible Grid properties must respect the public record contract"
+            );
+        }
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
