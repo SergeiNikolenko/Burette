@@ -2,6 +2,7 @@ mod artifact;
 mod capability;
 mod error;
 mod job;
+mod pack;
 mod snapshot;
 mod validation;
 mod wire;
@@ -21,6 +22,11 @@ pub use job::{
     Backend, EngineIdentity, ExecutionPartition, ExecutionPlan, ExecutionPlanVersion,
     FallbackDecision, FallbackReasonCode, JobState, OwnerSurface, PlannedStage, Precision,
     StageKind, CLUSTER_STAGE_IDS,
+};
+pub use pack::{
+    EnginePackVersion, MolecularSnapshotVersion, PackedArrayDescriptor, PackedByteOrder,
+    PackedDType, PackedFileDescriptor, PackedLayout, MAX_JSON_SAFE_INTEGER, MAX_PACK_ARRAYS,
+    MAX_PACK_BYTES, MAX_PACK_FILES, MAX_PACK_RECORDS,
 };
 pub use snapshot::{
     AttemptSnapshot, AttemptState, ComputeJobSnapshotSchemaVersion, JobProgress, JobSnapshot,
