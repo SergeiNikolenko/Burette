@@ -306,3 +306,7 @@ fn enum_text(value: &impl Serialize) -> Result<String, String> {
         .map(str::to_owned)
         .ok_or_else(|| "Analysis enum did not serialize as a string".to_string())
 }
+
+#[cfg(test)]
+#[path = "grid_analysis_tests.rs"]
+mod tests;
