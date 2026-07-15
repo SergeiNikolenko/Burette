@@ -186,7 +186,11 @@ const vendorAssetsLock = JSON.parse(vendorAssetsLockSource);
 const webRuntimeProfiles = JSON.parse(webRuntimeProfilesSource);
 const defaultCapability = JSON.parse(defaultCapabilitySource);
 const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label === 'main');
+const tauriHandlerSource = lib.match(/tauri::generate_handler!\[([\s\S]*?)\]/)?.[1] ?? '';
+const registeredTauriCommands = [...tauriHandlerSource.matchAll(/commands::(?:\w+::)+(\w+)/g)].map((match) => match[1]);
+const allowedTauriCommands = [...tauriPermissionSource.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
 
+assert.ok(tauriHandlerSource, 'the registered Tauri command handler must be discoverable');
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
 assert.ok(mainWindowConfig);
 assert.equal(tauriConfig.build.beforeBuildCommand, 'true');
@@ -209,6 +213,11 @@ assert.deepEqual(defaultCapability.windows, ['main', 'workspace-*']);
 assert.equal(defaultCapability.webviews, undefined);
 assert.equal(defaultCapability.remote, undefined);
 assert.ok(defaultCapability.permissions.includes('allow-viewer-commands'));
+assert.deepEqual(
+  registeredTauriCommands.filter((command) => !allowedTauriCommands.includes(command)),
+  [],
+  'every registered Tauri command must be included in the desktop command ACL',
+);
 for (const windowLabel of defaultCapability.windows) {
   assert.doesNotMatch(windowLabel, /quicklook|quick-look|preview|viewer/i);
 }
