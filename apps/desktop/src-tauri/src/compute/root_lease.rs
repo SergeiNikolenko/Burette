@@ -2,14 +2,18 @@
 use std::{
     os::fd::OwnedFd,
     path::{Component, Path, PathBuf},
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(not(unix))]
+use std::sync::Arc;
 
 #[cfg(unix)]
 use rustix::{
     fs::{
-        fchmod, flock, fstat, fsync, ftruncate, mkdirat, open, openat, seek, statat, AtFlags,
-        FileType, FlockOperation, Mode, OFlags, SeekFrom,
+        fchmod, flock, fstat, fsync, ftruncate, mkdirat, open, openat, seek, statat, unlinkat,
+        AtFlags, Dir, FileType, FlockOperation, Mode, OFlags, SeekFrom,
     },
     io::{write, Errno},
     process::geteuid,
@@ -23,6 +27,12 @@ use crate::compute::error::{ComputeCoordinatorError, ComputeResult};
 
 #[cfg(unix)]
 const LOCK_FILE_NAME: &str = ".compute-owner.lock";
+#[cfg(unix)]
+const SNAPSHOTS_DIRECTORY_NAME: &str = "snapshots";
+#[cfg(unix)]
+const SNAPSHOTS_TEMP_PREFIX: &str = ".snapshots.create-";
+#[cfg(unix)]
+const MAX_SNAPSHOTS_TEMP_ATTEMPTS: usize = 8;
 #[cfg(unix)]
 const LOCK_DIAGNOSTIC_SCHEMA: &str = "burrete.compute-owner.v1";
 #[cfg(unix)]
@@ -57,6 +67,19 @@ pub(crate) struct ComputeRootLease {
     lock_identity: FileIdentity,
     root_directory: OwnedFd,
     lock_file: OwnedFd,
+}
+
+/// A private child directory structurally bound to the retained compute root.
+///
+/// `path` is diagnostic only. Trusted access uses `directory`, while `lease`
+/// keeps process ownership alive and verifies the child's current root entry.
+#[cfg(unix)]
+#[derive(Debug)]
+pub(crate) struct ComputeRootChildDirectory {
+    lease: Arc<ComputeRootLease>,
+    path: PathBuf,
+    directory: OwnedFd,
+    identity: FileIdentity,
 }
 
 #[cfg(unix)]
@@ -115,12 +138,121 @@ impl ComputeRootLease {
         &self.compute_root
     }
 
+    pub(crate) fn open_or_create_snapshots_directory(
+        self: &Arc<Self>,
+    ) -> ComputeResult<ComputeRootChildDirectory> {
+        self.verify_path_identity()?;
+        match statat(
+            &self.root_directory,
+            SNAPSHOTS_DIRECTORY_NAME,
+            AtFlags::SYMLINK_NOFOLLOW,
+        ) {
+            Ok(_) => return self.open_existing_snapshots_directory(),
+            Err(Errno::NOENT) => {}
+            Err(error) => {
+                return Err(filesystem(format!(
+                    "cannot inspect the compute snapshots directory entry: {error}"
+                )));
+            }
+        }
+
+        let (temporary_leaf, directory, identity) =
+            create_temporary_snapshots_directory(&self.root_directory)?;
+        match rename_snapshots_noreplace(&self.root_directory, &temporary_leaf) {
+            Ok(true) => {
+                validate_directory_entry(
+                    &self.root_directory,
+                    SNAPSHOTS_DIRECTORY_NAME,
+                    "compute snapshots directory",
+                    identity,
+                )?;
+                require_empty_directory(&directory, "new compute snapshots directory")?;
+                self.finish_snapshots_directory(directory, identity)
+            }
+            Ok(false) => {
+                remove_owned_empty_directory(
+                    &self.root_directory,
+                    &temporary_leaf,
+                    "temporary compute snapshots directory",
+                    &directory,
+                    identity,
+                )?;
+                self.open_existing_snapshots_directory()
+            }
+            Err(rename_error) => {
+                if let Err(cleanup_error) = remove_owned_empty_directory(
+                    &self.root_directory,
+                    &temporary_leaf,
+                    "temporary compute snapshots directory",
+                    &directory,
+                    identity,
+                ) {
+                    return Err(filesystem(format!(
+                        "{rename_error}; temporary snapshots cleanup also failed: {cleanup_error}"
+                    )));
+                }
+                Err(rename_error)
+            }
+        }
+    }
+
+    fn open_existing_snapshots_directory(
+        self: &Arc<Self>,
+    ) -> ComputeResult<ComputeRootChildDirectory> {
+        self.verify_path_identity()?;
+        let directory = openat(
+            &self.root_directory,
+            SNAPSHOTS_DIRECTORY_NAME,
+            DIRECTORY_FLAGS,
+            Mode::empty(),
+        )
+        .map_err(|error| {
+            filesystem(format!(
+                "cannot open the compute snapshots directory: {error}"
+            ))
+        })?;
+        let identity = validate_private_directory(&directory, "compute snapshots directory")?;
+        validate_directory_entry(
+            &self.root_directory,
+            SNAPSHOTS_DIRECTORY_NAME,
+            "compute snapshots directory",
+            identity,
+        )?;
+        self.finish_snapshots_directory(directory, identity)
+    }
+
+    fn finish_snapshots_directory(
+        self: &Arc<Self>,
+        directory: OwnedFd,
+        identity: FileIdentity,
+    ) -> ComputeResult<ComputeRootChildDirectory> {
+        let child = ComputeRootChildDirectory {
+            lease: Arc::clone(self),
+            path: self.compute_root.join(SNAPSHOTS_DIRECTORY_NAME),
+            directory,
+            identity,
+        };
+        child.verify()?;
+        fsync(&child.directory).map_err(|error| {
+            filesystem(format!(
+                "cannot sync the compute snapshots directory: {error}"
+            ))
+        })?;
+        fsync(&self.root_directory).map_err(|error| {
+            filesystem(format!(
+                "cannot sync the compute root after opening snapshots: {error}"
+            ))
+        })?;
+        child.verify()?;
+        Ok(child)
+    }
+
     /// Revalidates both held capabilities and their current directory entries.
     ///
     /// Callers must fail closed when this check fails: a path-based open after
     /// root replacement must never silently join a second coordinator root.
     pub(crate) fn verify_path_identity(&self) -> ComputeResult<()> {
-        if validate_private_directory(&self.root_directory)? != self.root_identity {
+        if validate_private_directory(&self.root_directory, "compute root")? != self.root_identity {
             return Err(filesystem(
                 "held compute root descriptor changed filesystem identity",
             ));
@@ -135,11 +267,45 @@ impl ComputeRootLease {
     }
 }
 
+#[cfg(unix)]
+impl ComputeRootChildDirectory {
+    /// Diagnostic locator only. Consumers must use the retained descriptor.
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub(crate) fn directory(&self) -> &OwnedFd {
+        &self.directory
+    }
+
+    pub(crate) fn verify(&self) -> ComputeResult<()> {
+        self.lease.verify_path_identity()?;
+        if validate_private_directory(&self.directory, "compute snapshots directory")?
+            != self.identity
+        {
+            return Err(filesystem(
+                "held compute snapshots descriptor changed filesystem identity",
+            ));
+        }
+        validate_directory_entry(
+            &self.lease.root_directory,
+            SNAPSHOTS_DIRECTORY_NAME,
+            "compute snapshots directory",
+            self.identity,
+        )?;
+        self.lease.verify_path_identity()
+    }
+}
+
 #[cfg(not(unix))]
 #[derive(Debug)]
 pub(crate) struct ComputeRootLease {
     compute_root: std::path::PathBuf,
 }
+
+#[cfg(not(unix))]
+#[derive(Debug)]
+pub(crate) struct ComputeRootChildDirectory;
 
 #[cfg(not(unix))]
 impl ComputeRootLease {
@@ -151,6 +317,14 @@ impl ComputeRootLease {
 
     pub(crate) fn compute_root(&self) -> &std::path::Path {
         &self.compute_root
+    }
+
+    pub(crate) fn open_or_create_snapshots_directory(
+        self: &Arc<Self>,
+    ) -> ComputeResult<ComputeRootChildDirectory> {
+        Err(ComputeCoordinatorError::Unavailable(
+            "compute snapshots require Unix directory capabilities".into(),
+        ))
     }
 
     pub(crate) fn verify_path_identity(&self) -> ComputeResult<()> {
@@ -212,7 +386,7 @@ fn create_or_open_compute_root(compute_root: &Path) -> ComputeResult<(OwnedFd, F
         fsync(&parent_directory)
             .map_err(|error| filesystem(format!("cannot sync the compute root parent: {error}")))?;
     }
-    let identity = validate_private_directory(&root_directory)?;
+    let identity = validate_private_directory(&root_directory, "compute root")?;
     Ok((root_directory, identity))
 }
 
@@ -271,17 +445,19 @@ fn open_absolute_directory_nofollow(path: &Path) -> ComputeResult<OwnedFd> {
 }
 
 #[cfg(unix)]
-fn validate_private_directory(directory: &OwnedFd) -> ComputeResult<FileIdentity> {
+fn validate_private_directory(directory: &OwnedFd, label: &str) -> ComputeResult<FileIdentity> {
     let metadata = fstat(directory)
-        .map_err(|error| filesystem(format!("cannot inspect the compute root: {error}")))?;
+        .map_err(|error| filesystem(format!("cannot inspect the {label}: {error}")))?;
     if FileType::from_raw_mode(metadata.st_mode) != FileType::Directory {
-        return Err(filesystem("compute root must be a directory"));
+        return Err(filesystem(format!("{label} must be a directory")));
     }
     if metadata.st_uid != geteuid().as_raw() {
-        return Err(filesystem("compute root must be owned by the current user"));
+        return Err(filesystem(format!(
+            "{label} must be owned by the current user"
+        )));
     }
     if metadata.st_mode & 0o7777 != 0o700 {
-        return Err(filesystem("compute root permissions must be 0700"));
+        return Err(filesystem(format!("{label} permissions must be 0700")));
     }
     Ok(identity(metadata.st_dev as u64, metadata.st_ino as u64))
 }
@@ -331,13 +507,218 @@ fn validate_lock_directory_entry(
 }
 
 #[cfg(unix)]
+fn create_temporary_snapshots_directory(
+    root_directory: &OwnedFd,
+) -> ComputeResult<(String, OwnedFd, FileIdentity)> {
+    for _ in 0..MAX_SNAPSHOTS_TEMP_ATTEMPTS {
+        let leaf = format!("{SNAPSHOTS_TEMP_PREFIX}{}", Uuid::new_v4());
+        match mkdirat(root_directory, leaf.as_str(), DIRECTORY_MODE) {
+            Ok(()) => {}
+            Err(Errno::EXIST) => continue,
+            Err(error) => {
+                return Err(filesystem(format!(
+                    "cannot create a temporary compute snapshots directory: {error}"
+                )));
+            }
+        }
+        let directory = match openat(
+            root_directory,
+            leaf.as_str(),
+            DIRECTORY_FLAGS,
+            Mode::empty(),
+        ) {
+            Ok(directory) => directory,
+            Err(error) => {
+                let open_error = filesystem(format!(
+                    "cannot open the temporary compute snapshots directory: {error}"
+                ));
+                cleanup_unopened_temporary_directory(root_directory, &leaf, &open_error)?;
+                return Err(open_error);
+            }
+        };
+        let identity =
+            match inspect_directory_identity(&directory, "temporary compute snapshots directory") {
+                Ok(identity) => identity,
+                Err(error) => {
+                    cleanup_unopened_temporary_directory(root_directory, &leaf, &error)?;
+                    return Err(error);
+                }
+            };
+        let prepared = (|| {
+            fchmod(&directory, DIRECTORY_MODE).map_err(|error| {
+                filesystem(format!(
+                    "cannot set private temporary snapshots permissions: {error}"
+                ))
+            })?;
+            if validate_private_directory(&directory, "temporary compute snapshots directory")?
+                != identity
+            {
+                return Err(filesystem(
+                    "temporary compute snapshots descriptor changed filesystem identity",
+                ));
+            }
+            validate_directory_entry(
+                root_directory,
+                &leaf,
+                "temporary compute snapshots directory",
+                identity,
+            )?;
+            require_empty_directory(&directory, "temporary compute snapshots directory")?;
+            fsync(&directory).map_err(|error| {
+                filesystem(format!(
+                    "cannot sync the temporary compute snapshots directory: {error}"
+                ))
+            })
+        })();
+        if let Err(error) = prepared {
+            if let Err(cleanup_error) = remove_owned_empty_directory(
+                root_directory,
+                &leaf,
+                "temporary compute snapshots directory",
+                &directory,
+                identity,
+            ) {
+                return Err(filesystem(format!(
+                    "{error}; temporary snapshots cleanup also failed: {cleanup_error}"
+                )));
+            }
+            return Err(error);
+        }
+        return Ok((leaf, directory, identity));
+    }
+    Err(filesystem(format!(
+        "cannot allocate a unique temporary snapshots directory after {MAX_SNAPSHOTS_TEMP_ATTEMPTS} attempts"
+    )))
+}
+
+#[cfg(unix)]
+fn validate_directory_entry(
+    root_directory: &OwnedFd,
+    name: &str,
+    label: &str,
+    expected: FileIdentity,
+) -> ComputeResult<()> {
+    let metadata = statat(root_directory, name, AtFlags::SYMLINK_NOFOLLOW)
+        .map_err(|error| filesystem(format!("cannot inspect the {label} entry: {error}")))?;
+    if FileType::from_raw_mode(metadata.st_mode) != FileType::Directory
+        || identity(metadata.st_dev as u64, metadata.st_ino as u64) != expected
+    {
+        return Err(filesystem(format!(
+            "{label} entry changed after capability creation"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn require_empty_directory(directory: &OwnedFd, label: &str) -> ComputeResult<()> {
+    let mut entries = Dir::read_from(directory)
+        .map_err(|error| filesystem(format!("cannot enumerate the {label}: {error}")))?;
+    for entry in &mut entries {
+        let entry =
+            entry.map_err(|error| filesystem(format!("cannot read the {label}: {error}")))?;
+        let name = entry.file_name().to_bytes();
+        if name != b"." && name != b".." {
+            return Err(filesystem(format!("{label} contains an unexpected entry")));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(
+    unix,
+    any(target_vendor = "apple", target_os = "linux", target_os = "android")
+))]
+fn rename_snapshots_noreplace(
+    root_directory: &OwnedFd,
+    temporary_leaf: &str,
+) -> ComputeResult<bool> {
+    match rustix::fs::renameat_with(
+        root_directory,
+        temporary_leaf,
+        root_directory,
+        SNAPSHOTS_DIRECTORY_NAME,
+        rustix::fs::RenameFlags::NOREPLACE,
+    ) {
+        Ok(()) => Ok(true),
+        Err(Errno::EXIST) => Ok(false),
+        Err(error) => Err(filesystem(format!(
+            "cannot atomically publish the compute snapshots directory: {error}"
+        ))),
+    }
+}
+
+#[cfg(all(
+    unix,
+    not(any(target_vendor = "apple", target_os = "linux", target_os = "android"))
+))]
+fn rename_snapshots_noreplace(
+    _root_directory: &OwnedFd,
+    _temporary_leaf: &str,
+) -> ComputeResult<bool> {
+    Err(ComputeCoordinatorError::Unavailable(
+        "atomic no-replace snapshots publication is unsupported on this Unix platform".into(),
+    ))
+}
+
+#[cfg(unix)]
+fn remove_owned_empty_directory(
+    root_directory: &OwnedFd,
+    leaf: &str,
+    label: &str,
+    directory: &OwnedFd,
+    identity: FileIdentity,
+) -> ComputeResult<()> {
+    if inspect_directory_identity(directory, label)? != identity {
+        return Err(filesystem(format!(
+            "held {label} descriptor changed filesystem identity"
+        )));
+    }
+    validate_directory_entry(root_directory, leaf, label, identity)?;
+    require_empty_directory(directory, label)?;
+    validate_directory_entry(root_directory, leaf, label, identity)?;
+    unlinkat(root_directory, leaf, AtFlags::REMOVEDIR)
+        .map_err(|error| filesystem(format!("cannot remove the {label}: {error}")))?;
+    fsync(root_directory)
+        .map_err(|error| filesystem(format!("cannot sync removal of the {label}: {error}")))
+}
+
+#[cfg(unix)]
+fn inspect_directory_identity(directory: &OwnedFd, label: &str) -> ComputeResult<FileIdentity> {
+    let metadata = fstat(directory)
+        .map_err(|error| filesystem(format!("cannot inspect the {label}: {error}")))?;
+    if FileType::from_raw_mode(metadata.st_mode) != FileType::Directory {
+        return Err(filesystem(format!("{label} must be a directory")));
+    }
+    Ok(identity(metadata.st_dev as u64, metadata.st_ino as u64))
+}
+
+#[cfg(unix)]
+fn cleanup_unopened_temporary_directory(
+    root_directory: &OwnedFd,
+    leaf: &str,
+    original_error: &ComputeCoordinatorError,
+) -> ComputeResult<()> {
+    match unlinkat(root_directory, leaf, AtFlags::REMOVEDIR) {
+        Ok(()) | Err(Errno::NOENT) => fsync(root_directory).map_err(|error| {
+            filesystem(format!(
+                "{original_error}; cannot sync temporary snapshots cleanup: {error}"
+            ))
+        }),
+        Err(error) => Err(filesystem(format!(
+            "{original_error}; cannot safely clean the temporary snapshots directory: {error}"
+        ))),
+    }
+}
+
+#[cfg(unix)]
 fn validate_root_path_identity(compute_root: &Path, expected: FileIdentity) -> ComputeResult<()> {
     let reopened = open_absolute_directory_nofollow(compute_root).map_err(|error| {
         filesystem(format!(
             "compute root path is no longer trustworthy: {error}"
         ))
     })?;
-    let actual = validate_private_directory(&reopened)?;
+    let actual = validate_private_directory(&reopened, "compute root")?;
     if actual != expected {
         return Err(filesystem(
             "compute root was replaced during owner lock acquisition",
@@ -405,6 +786,7 @@ mod tests {
         os::unix::fs::{symlink, MetadataExt, PermissionsExt},
         path::{Path, PathBuf},
         process::{Child, Command, Stdio},
+        sync::{Arc, Barrier},
         thread,
         time::{Duration, Instant},
     };
@@ -483,6 +865,121 @@ mod tests {
     }
 
     #[test]
+    fn creates_descriptor_relative_private_snapshots_capability() {
+        let test = TestRoot::new();
+        let lease =
+            Arc::new(ComputeRootLease::acquire(&test.compute_root).expect("acquire compute root"));
+        let snapshots = lease
+            .open_or_create_snapshots_directory()
+            .expect("create snapshots capability");
+
+        assert_eq!(snapshots.path(), test.compute_root.join("snapshots"));
+        let metadata = fs::metadata(snapshots.path()).expect("snapshots metadata");
+        assert_eq!(metadata.mode() & 0o7777, 0o700);
+        assert_eq!(metadata.uid(), geteuid().as_raw());
+        assert!(fcntl_getfd(snapshots.directory())
+            .expect("snapshots descriptor flags")
+            .contains(FdFlags::CLOEXEC));
+        snapshots.verify().expect("verify snapshots capability");
+
+        drop(lease);
+        snapshots
+            .verify()
+            .expect("child capability must retain the compute root lease");
+    }
+
+    #[test]
+    fn concurrent_snapshots_creation_converges_and_reopens_the_same_identity() {
+        const CONTENDERS: usize = 16;
+
+        let test = TestRoot::new();
+        let lease =
+            Arc::new(ComputeRootLease::acquire(&test.compute_root).expect("acquire compute root"));
+        let barrier = Arc::new(Barrier::new(CONTENDERS + 1));
+        let identities = thread::scope(|scope| {
+            let handles = (0..CONTENDERS)
+                .map(|_| {
+                    let lease = Arc::clone(&lease);
+                    let barrier = Arc::clone(&barrier);
+                    scope.spawn(move || {
+                        barrier.wait();
+                        let snapshots = lease
+                            .open_or_create_snapshots_directory()
+                            .expect("open concurrent snapshots capability");
+                        snapshots
+                            .verify()
+                            .expect("verify concurrent snapshots capability");
+                        snapshots.identity
+                    })
+                })
+                .collect::<Vec<_>>();
+            barrier.wait();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().expect("join snapshots contender"))
+                .collect::<Vec<_>>()
+        });
+        let expected = identities[0];
+        assert!(identities.iter().all(|identity| *identity == expected));
+        assert!(fs::read_dir(&test.compute_root)
+            .expect("enumerate compute root")
+            .all(|entry| !entry
+                .expect("compute root entry")
+                .file_name()
+                .to_string_lossy()
+                .starts_with(SNAPSHOTS_TEMP_PREFIX)));
+
+        drop(lease);
+        let reopened_lease = Arc::new(
+            ComputeRootLease::acquire(&test.compute_root).expect("reacquire compute root"),
+        );
+        let reopened = reopened_lease
+            .open_or_create_snapshots_directory()
+            .expect("reopen durable snapshots capability");
+        assert_eq!(reopened.identity, expected);
+        reopened
+            .verify()
+            .expect("verify reopened snapshots capability");
+    }
+
+    #[test]
+    fn rejects_unsafe_existing_snapshots_entries() {
+        let symlink_test = TestRoot::new();
+        let symlink_lease = Arc::new(
+            ComputeRootLease::acquire(&symlink_test.compute_root)
+                .expect("acquire symlink test root"),
+        );
+        let external = symlink_test.parent.join("external-snapshots");
+        fs::create_dir(&external).expect("create external snapshots directory");
+        symlink(&external, symlink_test.compute_root.join("snapshots"))
+            .expect("create snapshots symlink");
+        assert!(symlink_lease.open_or_create_snapshots_directory().is_err());
+
+        let file_test = TestRoot::new();
+        let file_lease = Arc::new(
+            ComputeRootLease::acquire(&file_test.compute_root).expect("acquire file test root"),
+        );
+        let file_path = file_test.compute_root.join("snapshots");
+        fs::write(&file_path, b"not a directory").expect("create snapshots file");
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o600))
+            .expect("make snapshots file private");
+        assert!(file_lease.open_or_create_snapshots_directory().is_err());
+
+        let mode_test = TestRoot::new();
+        let mode_lease = Arc::new(
+            ComputeRootLease::acquire(&mode_test.compute_root).expect("acquire mode test root"),
+        );
+        let mode_path = mode_test.compute_root.join("snapshots");
+        fs::create_dir(&mode_path).expect("create snapshots directory");
+        fs::set_permissions(&mode_path, fs::Permissions::from_mode(0o755))
+            .expect("make snapshots directory non-private");
+        let error = mode_lease
+            .open_or_create_snapshots_directory()
+            .expect_err("non-private snapshots directory must be rejected");
+        assert!(error.to_string().contains("permissions must be 0700"));
+    }
+
+    #[test]
     fn rejects_symlink_components_and_non_private_existing_roots() {
         let test = TestRoot::new();
         let real_parent = test.parent.join("real");
@@ -539,6 +1036,47 @@ mod tests {
             .verify_path_identity()
             .expect_err("replacement root must fail closed");
         assert!(error.to_string().contains("replaced"));
+    }
+
+    #[test]
+    fn snapshots_capability_rejects_compute_root_replacement() {
+        let test = TestRoot::new();
+        let lease =
+            Arc::new(ComputeRootLease::acquire(&test.compute_root).expect("acquire compute root"));
+        let snapshots = lease
+            .open_or_create_snapshots_directory()
+            .expect("create snapshots capability");
+        let displaced = test.parent.join("displaced-compute-with-snapshots");
+        fs::rename(&test.compute_root, &displaced).expect("displace held compute root");
+        fs::create_dir(&test.compute_root).expect("create replacement compute root");
+        fs::set_permissions(&test.compute_root, fs::Permissions::from_mode(0o700))
+            .expect("make replacement root private");
+
+        let error = snapshots
+            .verify()
+            .expect_err("replacement compute root must fail child verification");
+        assert!(error.to_string().contains("replaced"));
+    }
+
+    #[test]
+    fn snapshots_capability_rejects_child_entry_replacement() {
+        let test = TestRoot::new();
+        let lease =
+            Arc::new(ComputeRootLease::acquire(&test.compute_root).expect("acquire compute root"));
+        let snapshots = lease
+            .open_or_create_snapshots_directory()
+            .expect("create snapshots capability");
+        let snapshots_path = test.compute_root.join(SNAPSHOTS_DIRECTORY_NAME);
+        let displaced = test.compute_root.join("displaced-snapshots");
+        fs::rename(&snapshots_path, &displaced).expect("displace snapshots directory");
+        fs::create_dir(&snapshots_path).expect("create replacement snapshots directory");
+        fs::set_permissions(&snapshots_path, fs::Permissions::from_mode(0o700))
+            .expect("make replacement snapshots directory private");
+
+        let error = snapshots
+            .verify()
+            .expect_err("replacement snapshots entry must fail closed");
+        assert!(error.to_string().contains("entry changed"));
     }
 
     #[test]
