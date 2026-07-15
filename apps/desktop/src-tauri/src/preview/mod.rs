@@ -1,4 +1,9 @@
 pub(crate) mod formats;
+#[allow(
+    dead_code,
+    reason = "the typed analysis apply boundary is staged for compute result publication"
+)]
+pub(crate) mod grid_analysis;
 pub(crate) mod grid_database;
 pub(crate) mod grid_identity;
 pub(crate) mod grid_predicate;

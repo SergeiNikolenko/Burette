@@ -109,7 +109,18 @@ pub(crate) fn plan_grid_predicate(
         }
         let bounds =
             validate_numeric_bounds("analysis filter", &filter.value_id, filter.min, filter.max)?;
-        let mut clause = "exists (select 1 from analysis_values as analysis_filter where analysis_filter.molecule_id = molecules.id and analysis_filter.run_id = ? and analysis_filter.value_id = ?".to_string();
+        let mut clause = "exists (
+          select 1
+          from analysis_values as analysis_filter
+          join analysis_runs as analysis_run on analysis_run.run_id = analysis_filter.run_id
+          join grid_metadata as analysis_grid on analysis_grid.id = 1
+          where analysis_filter.molecule_id = molecules.id
+            and analysis_filter.run_id = ?
+            and analysis_filter.value_id = ?
+            and analysis_run.document_fingerprint_sha256 = analysis_grid.document_fingerprint_sha256
+            and analysis_run.source_revision = analysis_grid.source_revision
+            and analysis_grid.virtual_edit_generation = 0"
+            .to_string();
         params.push(SqlValue::Text(filter.run_id.to_string()));
         params.push(SqlValue::Text(filter.value_id.clone()));
         clause.push_str(" and ");
@@ -529,6 +540,17 @@ mod tests {
                    descriptor_id text not null,
                    value_real real
                  );
+                 create table grid_metadata (
+                   id integer primary key,
+                   document_fingerprint_sha256 text not null,
+                   source_revision integer not null,
+                   virtual_edit_generation integer not null
+                 );
+                 create table analysis_runs (
+                   run_id text primary key,
+                   document_fingerprint_sha256 text not null,
+                   source_revision integer not null
+                 );
                  create table analysis_values (
                    run_id text not null,
                    molecule_id integer not null,
@@ -541,10 +563,20 @@ mod tests {
                    (2, 1, 'Beta', 'CCN', '{\"score\": 1.0}', 'beta ccn');
                  insert into descriptor_values values
                    (1, 'MW', 46.0),
-                   (2, 'MW', 45.0);",
+                   (2, 'MW', 45.0);
+                 insert into grid_metadata values
+                   (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1, 0);",
             )
             .expect("create predicate fixture");
         let run_id = Uuid::from_u128(7);
+        connection
+            .execute(
+                "insert into analysis_runs values (
+                   ?1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1
+                 )",
+                [run_id.to_string()],
+            )
+            .expect("insert current analysis run");
         for (molecule_id, cluster_id, score) in [(1, 7, 0.8), (2, 3, 0.6)] {
             connection
                 .execute(
@@ -609,6 +641,21 @@ mod tests {
             .expect("collect source indexes");
 
         assert_eq!(source_indexes, vec![0]);
+
+        connection
+            .execute(
+                "update grid_metadata set source_revision = 2 where id = 1",
+                [],
+            )
+            .expect("advance source revision");
+        let stale_indexes = connection
+            .prepare(&sql)
+            .expect("prepare stale predicate")
+            .query_map(params_from_iter(plan.params.iter()), |row| row.get(0))
+            .expect("query stale predicate")
+            .collect::<Result<Vec<i64>, _>>()
+            .expect("collect stale source indexes");
+        assert!(stale_indexes.is_empty());
     }
 
     #[test]
