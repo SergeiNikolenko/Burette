@@ -34,8 +34,8 @@ pub use pack::{
     MOLECULE_CONTENT_HASHES_SEMANTIC, SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
 };
 pub use snapshot::{
-    AttemptSnapshot, AttemptState, ComputeJobSnapshotSchemaVersion, JobProgress, JobSnapshot,
-    StageSnapshot, StageState,
+    AttemptSnapshot, AttemptState, ComputeJobSnapshotSchemaVersion, JobOutcomeSummary, JobProgress,
+    JobSnapshot, StageSnapshot, StageState,
 };
 pub use wire::{
     decode_frame, encode_frame, read_frame, write_frame, WireMessage, MAX_CONTROL_FRAME_BYTES,
