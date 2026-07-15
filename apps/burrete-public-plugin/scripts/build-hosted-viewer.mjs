@@ -16,6 +16,8 @@ const HOSTED_APP_SOURCE = path.join(APP_ROOT, "assets/burrete-hosted-app.ts");
 const HOSTED_APP_OUTPUT = path.join(APP_ROOT, "public/burrete-hosted-app.js");
 const VIEWER_FILES = [
   "burette-agent.js",
+  "grid-ui.js",
+  "grid-viewer.js",
   "viewer-runtime.css",
   "viewer-bootstrap.js",
   "viewer-shell.js",
