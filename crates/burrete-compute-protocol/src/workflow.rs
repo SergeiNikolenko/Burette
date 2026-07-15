@@ -3,7 +3,10 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{validation::validate_bounded_text, ProtocolError};
+use crate::{
+    validation::{canonical_json_bytes, sha256_hex, validate_bounded_text},
+    ProtocolError,
+};
 
 const MAX_DOCUMENT_ID_BYTES: usize = 256;
 const MAX_SELECTED_ROWS: usize = 65_536;
@@ -65,6 +68,16 @@ impl ClusterV1SubmitRequest {
         self.parameters.similarity.cutoff = self.parameters.similarity.cutoff.normalized()?;
         self.validate()?;
         Ok(self)
+    }
+
+    /// Serializes the normalized request with the field order fixed by this v1 type.
+    pub fn canonical_json_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
+        canonical_json_bytes(&self.clone().normalized()?)
+    }
+
+    /// Hashes the canonical normalized request bytes used by durable job records.
+    pub fn canonical_sha256(&self) -> Result<String, ProtocolError> {
+        self.canonical_json_bytes().map(|bytes| sha256_hex(&bytes))
     }
 }
 
@@ -190,6 +203,18 @@ impl GridScope {
             ..
         }) = &mut self
         {
+            for filter in column_filters.iter_mut() {
+                normalize_signed_zero(&mut filter.min);
+                normalize_signed_zero(&mut filter.max);
+            }
+            for filter in descriptor_filters.iter_mut() {
+                normalize_signed_zero(&mut filter.min);
+                normalize_signed_zero(&mut filter.max);
+            }
+            for filter in analysis_filters.iter_mut() {
+                normalize_signed_zero(&mut filter.min);
+                normalize_signed_zero(&mut filter.max);
+            }
             column_filters.sort_by(|left, right| left.id.cmp(&right.id));
             descriptor_filters.sort_by(|left, right| left.id.cmp(&right.id));
             analysis_filters.sort_by(|left, right| {
@@ -291,6 +316,11 @@ pub struct AnalysisFilter {
 
 impl AnalysisFilter {
     fn validate(&self, label: &str) -> Result<(), ProtocolError> {
+        if self.run_id.is_nil() {
+            return Err(ProtocolError::Validation(
+                "analysis filter runId must be a non-nil UUID".into(),
+            ));
+        }
         validate_filter_id(&self.value_id)?;
         validate_numeric_bounds(label, self.min, self.max)
     }
@@ -503,6 +533,12 @@ fn greatest_common_divisor(mut left: u32, mut right: u32) -> u32 {
     left.max(1)
 }
 
+fn normalize_signed_zero(value: &mut Option<f64>) {
+    if value.is_some_and(|bound| bound == 0.0) {
+        *value = Some(0.0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,6 +591,113 @@ mod tests {
     }
 
     #[test]
+    fn canonical_request_bytes_and_hash_are_pinned() {
+        let mut request = valid_request();
+        request.source.scope = GridScope::Selected(SelectedGridScope {
+            source_indexes: vec![7, 2, 7],
+        });
+        request.parameters.similarity.cutoff = SimilarityCutoff {
+            numerator: 14,
+            denominator: 20,
+        };
+        let expected = concat!(
+            r#"{"schemaVersion":"burrete.compute-job.v1","workflowTemplate":"cluster.v1","source":{"documentId":"document-1","scope":{"kind":"selected","sourceIndexes":[2,7]}},"#,
+            r#""parameters":{"fingerprint":{"algorithm":"rdkitMorganBit.v1","rdkitVersion":"2025.03.4","radius":2,"bitCount":2048,"useChirality":true,"useFeatures":false,"sanitize":true,"inputOrder":"sourceRecord"},"#,
+            r#""similarity":{"cutoff":{"numerator":7,"denominator":10}},"representativePolicy":"butinaMaxNeighbors.v1"},"#,
+            r#""executionPolicy":{"backendPolicy":"gpuRequired","schedulingPolicy":"balanced"},"#,
+            r#""limits":{"maxEdges":1000000,"maxMemoryBytes":536870912,"maxDispatchMs":250}}"#,
+        )
+        .as_bytes();
+
+        assert_eq!(
+            request.canonical_json_bytes().expect("canonical request"),
+            expected
+        );
+        assert_eq!(
+            request.canonical_sha256().expect("request hash"),
+            "6e9691e38a189b1efd6cf58c7ea7357ec7027d5817dfd4d2b534c8443e0f4850"
+        );
+    }
+
+    #[test]
+    fn canonical_request_normalizes_signed_zero_filter_bounds() {
+        let filtered_request = |zero| {
+            let mut request = valid_request();
+            request.source.scope = GridScope::Filtered(FilteredGridScope {
+                query: GridTextQuery::Text {
+                    text: "caffeine".into(),
+                },
+                column_filters: vec![
+                    ColumnFilter {
+                        id: "name".into(),
+                        filter_type: ColumnFilterKind::Text,
+                        text: Some("methyl".into()),
+                        min: None,
+                        max: None,
+                    },
+                    ColumnFilter {
+                        id: "mass".into(),
+                        filter_type: ColumnFilterKind::Number,
+                        text: None,
+                        min: Some(zero),
+                        max: Some(500.0),
+                    },
+                ],
+                descriptor_filters: vec![
+                    DescriptorFilter {
+                        id: "logP".into(),
+                        min: Some(zero),
+                        max: None,
+                    },
+                    DescriptorFilter {
+                        id: "hbd".into(),
+                        min: Some(1.0),
+                        max: None,
+                    },
+                ],
+                analysis_filters: vec![
+                    AnalysisFilter {
+                        run_id: Uuid::from_u128(7),
+                        value_id: "clusterScore".into(),
+                        min: None,
+                        max: Some(zero),
+                    },
+                    AnalysisFilter {
+                        run_id: Uuid::from_u128(6),
+                        value_id: "representative".into(),
+                        min: Some(1.0),
+                        max: None,
+                    },
+                ],
+            });
+            request
+        };
+        let mut negative = filtered_request(-0.0);
+        let GridScope::Filtered(scope) = &mut negative.source.scope else {
+            unreachable!("test creates a filtered scope")
+        };
+        scope.column_filters.reverse();
+        scope.descriptor_filters.reverse();
+        scope.analysis_filters.reverse();
+        let positive = filtered_request(0.0);
+        let positive_hash = positive.canonical_sha256().expect("positive zero hash");
+
+        assert_eq!(
+            negative.canonical_sha256().expect("negative zero hash"),
+            positive_hash
+        );
+        assert_eq!(
+            positive_hash,
+            "7c0af7d3a0319dc3620e6d3a099381d2758a3e3e627fd44e4343a1bd4154e280"
+        );
+        assert!(
+            !String::from_utf8(negative.canonical_json_bytes().expect("canonical request"))
+                .expect("JSON is UTF-8")
+                .contains("-0.0")
+        );
+    }
+
+    #[test]
     fn rejects_arbitrary_request_fields() {
         let mut value = serde_json::to_value(valid_request()).expect("serialize request");
         value["stages"] = serde_json::json!([]);
@@ -602,5 +745,17 @@ mod tests {
     fn rejects_fields_from_another_scope_variant() {
         let value = serde_json::json!({"kind": "all", "sourceIndexes": [2]});
         assert!(serde_json::from_value::<GridScope>(value).is_err());
+    }
+
+    #[test]
+    fn rejects_nil_analysis_run_id() {
+        let filter = AnalysisFilter {
+            run_id: Uuid::nil(),
+            value_id: "clusterId".into(),
+            min: Some(0.0),
+            max: None,
+        };
+
+        assert!(filter.validate("analysis filter").is_err());
     }
 }

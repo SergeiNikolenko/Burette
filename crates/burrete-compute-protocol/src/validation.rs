@@ -1,5 +1,8 @@
 use std::path::Path;
 
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+
 use crate::ProtocolError;
 
 pub(crate) const MAX_SAFE_JSON_INTEGER: u64 = 9_007_199_254_740_991;
@@ -69,6 +72,20 @@ pub(crate) fn validate_relative_path(
     Ok(())
 }
 
+pub(crate) fn canonical_json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>, ProtocolError> {
+    serde_json::to_vec(value).map_err(ProtocolError::from)
+}
+
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(64);
+    for byte in digest {
+        use std::fmt::Write;
+        write!(&mut encoded, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    encoded
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,6 +104,14 @@ mod tests {
         assert_eq!(
             validate_relative_path("test path", "result/data.bin", 128),
             Ok(())
+        );
+    }
+
+    #[test]
+    fn hashes_bytes_as_lowercase_sha256() {
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
     }
 }
