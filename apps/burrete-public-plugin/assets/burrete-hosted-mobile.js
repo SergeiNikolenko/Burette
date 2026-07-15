@@ -92,14 +92,6 @@
     document.body.appendChild(script);
     return loaded;
   };
-  const preloadScript = (name) => {
-    const link = document.createElement("link");
-    link.rel = "preload";
-    link.as = "script";
-    link.crossOrigin = "anonymous";
-    link.href = `${assetsBase}/${name}`;
-    document.head.appendChild(link);
-  };
   const jsonElement = (id, value) => {
     const element = document.createElement("script");
     element.id = id;
@@ -158,12 +150,10 @@
     const runtimeScripts = [
       "viewer-shell.js",
       "viewer-bootstrap.js",
-      "molstar.js",
       "burette-agent.js",
       "trajectory-smoothing.js",
       "viewer.js",
     ];
-    for (const name of runtimeScripts) preloadScript(name);
 
     await Promise.all([
       addStylesheet("viewer-runtime.css"),
@@ -213,6 +203,7 @@
 
     await loadScript(runtimeScripts[0]);
     await loadScript(runtimeScripts[1]);
+    window.BurreteMolstarURL = `${assetsBase}/molstar.js`;
     window.BurreteHostedAppBridge?.setSource(structure.source);
     void window.BurreteHostedAppBridge?.updateSelection(null, documentId);
     window.__mqlPost = (type, message, payload = {}) => {
