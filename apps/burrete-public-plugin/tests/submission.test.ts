@@ -27,7 +27,17 @@ const publicToolNames = [
   "preview_molecular_file",
   "preview_pdb_structure",
   "render_molecular_scene",
+  "open_ketcher",
+  "control_ketcher",
 ] as const;
+
+const publicToolAnnotations = {
+  preview_molecular_file: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
+  preview_pdb_structure: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
+  render_molecular_scene: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
+  open_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
+  control_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
+} as const;
 
 describe("plugin submission bundle", () => {
   test("keeps listing metadata within portal limits", () => {
@@ -37,17 +47,13 @@ describe("plugin submission bundle", () => {
 
   test("covers every public tool with explicit safe annotations", () => {
     expect(Object.keys(submission.tools).sort()).toEqual([...publicToolNames].sort());
-    for (const tool of Object.values(submission.tools)) {
-      expect(tool.annotations).toEqual({
-        readOnlyHint: true,
-        openWorldHint: false,
-        destructiveHint: false,
-      });
+    for (const toolName of publicToolNames) {
+      expect(submission.tools[toolName]?.annotations).toEqual(publicToolAnnotations[toolName]);
     }
   });
 
-  test("provides exactly five positive and three negative review cases", () => {
-    expect(submission.test_cases).toHaveLength(5);
+  test("provides exactly seven positive and three negative review cases", () => {
+    expect(submission.test_cases).toHaveLength(7);
     expect(submission.negative_test_cases).toHaveLength(3);
     for (const testCase of submission.test_cases) {
       expect(publicToolNames as readonly string[]).toContain(

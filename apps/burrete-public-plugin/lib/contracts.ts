@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 import { ListToolsRequestSchema, type ListToolsResult } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { VIEWER_RESOURCE_URI } from "./widget";
+import { KETCHER_RESOURCE_URI, VIEWER_RESOURCE_URI } from "./widget";
 
 export const PUBLIC_OUTPUT_LIMITS = {
   scalarChars: 512,
@@ -186,6 +186,18 @@ export function viewerToolMeta(invoking: string, invoked: string) {
     "openai/toolInvocation/invoking": invoking,
     "openai/toolInvocation/invoked": invoked,
     "openai/widgetAccessible": false,
+    "openai/resultCanProduceWidget": true,
+  } as const;
+}
+
+export function ketcherToolMeta(invoking: string, invoked: string) {
+  return {
+    securitySchemes: NOAUTH_SECURITY_SCHEMES,
+    ui: { resourceUri: KETCHER_RESOURCE_URI },
+    "openai/outputTemplate": KETCHER_RESOURCE_URI,
+    "openai/toolInvocation/invoking": invoking,
+    "openai/toolInvocation/invoked": invoked,
+    "openai/widgetAccessible": true,
     "openai/resultCanProduceWidget": true,
   } as const;
 }
