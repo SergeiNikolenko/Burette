@@ -32,6 +32,12 @@ public internet. Each declares an exact output schema and renders
 `ui://burrete/molecular-viewer-v21.html` with MIME type
 `text/html;profile=mcp-app`.
 
+The resource URI is a stable connector contract and must not be bumped for
+asset-only releases. JavaScript and CSS cache versions belong in their asset
+URLs. If the resource URI ever changes intentionally, refresh the ChatGPT
+developer connector before running the live smoke test or submitting a new
+version.
+
 The widget uses the MCP Apps handshake before publishing bounded selection or
 scene state through `ui/update-model-context`. Lasso selection includes up to
 96 atom identities and residues, and clearing the selection explicitly clears
