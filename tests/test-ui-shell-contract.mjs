@@ -406,6 +406,7 @@ const [
 ]);
 
 const pluginManifest = JSON.parse(await source('plugins/burette-agent/.codex-plugin/plugin.json'));
+const desktopPackage = JSON.parse(await source('apps/desktop/package.json'));
 const viewerShell = previewShell;
 const viewer = previewViewer;
 const commandDocuments = await source('apps/desktop/src-tauri/src/commands/documents.rs');
@@ -2815,7 +2816,10 @@ assert.match(ketcherEditor, /import\("ketcher-standalone\/dist\/binaryWasm"\)/);
 assert.doesNotMatch(ketcherEditor, /^\s*import\("ketcher-standalone"\),$/m);
 assert.match(ketcherEditor, /import type \{ Ketcher, Struct \} from "ketcher-core"/);
 assert.match(ketcherEditor, /import\("ketcher-core"\)/);
-assert.match(ketcherEditor, /function createKetcherEditorApi\(\s*instance: Ketcher,\s*ChemicalMimeType: KetcherCoreModule\["ChemicalMimeType"\],\s*MolSerializer: KetcherCoreModule\["MolSerializer"\],\s*getSvgFromDrawnStructures: KetcherCoreModule\["getSvgFromDrawnStructures"\],\s*ZoomTool: KetcherZoomToolConstructor,\s*\): KetcherEditorApi/s);
+assert.equal(desktopPackage.dependencies['ketcher-react'], desktopPackage.dependencies['ketcher-core']);
+assert.equal(desktopPackage.dependencies['ketcher-standalone'], desktopPackage.dependencies['ketcher-core']);
+assert.match(desktopPackage.dependencies['ketcher-core'], /^\d+\.\d+\.\d+$/);
+assert.match(ketcherEditor, /function createKetcherEditorApi\(\s*instance: Ketcher,\s*MolSerializer: KetcherCoreModule\["MolSerializer"\],\s*getSvgFromDrawnStructures: KetcherCoreModule\["getSvgFromDrawnStructures"\],\s*ZoomTool: KetcherZoomToolConstructor,\s*\): KetcherEditorApi/s);
 assert.match(ketcherEditor, /ZoomTool: coreModule\.ZoomTool/);
 assert.match(ketcherEditor, /KETCHER_INSTANCE_RETRY_DELAYS_MS = \[0, 250, 500, 1000, 1500, 2500, 4000, 6000\] as const/);
 assert.match(ketcherEditor, /addFragment: \(\(\.\.\.args: Parameters<Ketcher\["addFragment"\]>\) => \(/);
@@ -2824,10 +2828,8 @@ assert.match(ketcherEditor, /getKet: \(\(\.\.\.args: Parameters<Ketcher\["getKet
 assert.match(ketcherEditor, /callKetcherWhenReady\(\(\) => instance\.getKet\(\.\.\.args\)\)/);
 assert.match(ketcherEditor, /getMolfile: \(async \(\.\.\.args: Parameters<Ketcher\["getMolfile"\]>\) => \{/);
 assert.match(ketcherEditor, /const molfile = await callKetcherWhenReady\(\(\) => instance\.getMolfile\(\.\.\.args\)\)/);
-assert.match(ketcherEditor, /setMolecule: \(async \(structure, options\) => \{/);
-assert.match(ketcherEditor, /if \(!USE_DIRECT_KETCHER_TEXT_IMPORT \|\| !structure\.trim\(\)\)/);
-assert.match(ketcherEditor, /instance\.structService\.convert\(\{\s*struct: structure,\s*output_format: ChemicalMimeType\.Mol,/s);
-assert.match(ketcherEditor, /setMolfileDirectly\(instance, MolSerializer, converted\.struct\)/);
+assert.match(ketcherEditor, /setMolecule: \(\(\.\.\.args: Parameters<Ketcher\["setMolecule"\]>\) => \(/);
+assert.match(ketcherEditor, /callKetcherWhenReady\(\(\) => instance\.setMolecule\(\.\.\.args\)\)/);
 assert.match(ketcherEditor, /async function callKetcherWhenReady<T>\(operation: \(\) => Promise<T>\)/);
 assert.match(ketcherEditor, /if \(!isKetcherInstanceError\(error\)\) break/);
 assert.match(ketcherEditor, /return molfile\.trim\(\) \? molfile : serializeCurrentMolfile\(instance, MolSerializer\)/);
