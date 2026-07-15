@@ -381,6 +381,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "burrete-compute-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "burrete-core"
 version = "0.1.0"
 dependencies = [
