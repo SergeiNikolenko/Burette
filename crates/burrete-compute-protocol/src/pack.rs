@@ -20,7 +20,7 @@ pub use molecular::{
 };
 pub use records::{
     MolecularSnapshotRecordV1, MolecularSnapshotRecordVersion, OrderedRecordMoleculeIdentityHasher,
-    MOLECULAR_RECORDS_FILE_PATH, MOLECULAR_RECORDS_MEDIA_TYPE,
+    MOLECULAR_RECORDS_FILE_NAME, MOLECULAR_RECORDS_FILE_PATH, MOLECULAR_RECORDS_MEDIA_TYPE,
     ORDERED_RECORD_MOLECULE_IDENTITY_DOMAIN,
 };
 pub use result::{ResultPackManifest, ResultPackRef};

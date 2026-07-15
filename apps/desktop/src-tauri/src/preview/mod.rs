@@ -12,6 +12,11 @@ pub(crate) mod runtime;
 pub(crate) mod runtime_grid;
 pub(crate) mod runtime_utils;
 pub(crate) mod runtime_viewer;
+#[allow(
+    dead_code,
+    reason = "snapshot filesystem capabilities are owned by the staged Grid snapshot boundary"
+)]
+mod snapshot_fs;
 pub(crate) mod text_xyz;
 pub(crate) mod trace;
 pub(crate) mod xyz;
