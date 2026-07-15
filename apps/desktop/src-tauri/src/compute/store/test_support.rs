@@ -364,7 +364,6 @@ fn planned_stage(stage_id: &str, kind: StageKind, backend: Backend) -> PlannedSt
                 Backend::Coordinator => "burrete-coordinator",
                 Backend::Rdkit => "rdkit",
                 Backend::NativeMetal => "burrete-native-metal",
-                Backend::Mlx => "burrete-mlx",
                 Backend::ReferenceCpu => "burrete-reference-cpu",
             }
             .into(),

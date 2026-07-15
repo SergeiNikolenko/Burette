@@ -559,7 +559,7 @@
             "type": "object",
             "properties": {
               "kind": { "const": "numericCompute" },
-              "effectiveBackend": { "enum": ["nativeMetal", "mlx"] },
+              "effectiveBackend": { "const": "nativeMetal" },
               "state": { "enum": ["running", "succeeded"] }
             },
             "required": ["kind", "effectiveBackend", "state"]
@@ -578,7 +578,7 @@
             "type": "object",
             "properties": {
               "kind": { "const": "numericCompute" },
-              "effectiveBackend": { "enum": ["nativeMetal", "mlx"] },
+              "effectiveBackend": { "const": "nativeMetal" },
               "state": { "const": "succeeded" }
             },
             "required": ["kind", "effectiveBackend", "state"]
@@ -597,7 +597,7 @@
               "type": "object",
               "properties": {
                 "kind": { "const": "numericCompute" },
-                "effectiveBackend": { "enum": ["nativeMetal", "mlx"] }
+                "effectiveBackend": { "const": "nativeMetal" }
               },
               "required": ["kind", "effectiveBackend"]
             }

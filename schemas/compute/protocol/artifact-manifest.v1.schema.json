@@ -167,7 +167,7 @@
                 "const": "numericCompute"
               },
               "effectiveBackend": {
-                "enum": ["nativeMetal", "mlx"]
+                "const": "nativeMetal"
               }
             },
             "required": ["kind", "effectiveBackend"]
