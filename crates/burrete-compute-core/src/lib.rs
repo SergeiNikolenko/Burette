@@ -5,12 +5,16 @@
 //! code from `mlxmolkit` or another clustering package. The CPU path is the
 //! parity oracle for native Metal neighbor generation.
 
-use std::{fmt, num::NonZeroUsize};
+use std::{fmt, mem::size_of, num::NonZeroUsize};
 
-use burrete_compute_protocol::{ProtocolError, SimilarityCutoff};
+use burrete_compute_protocol::{
+    ProtocolError, ResourceLimits, SimilarityCutoff, MAX_COMPUTE_MEMORY_BYTES,
+    MAX_UNDIRECTED_SIMILARITY_EDGES,
+};
 
 pub const FINGERPRINT_BITS: usize = 2_048;
 pub const FINGERPRINT_WORDS: usize = FINGERPRINT_BITS / u64::BITS as usize;
+const MEMORY_ACCOUNTING_HEADROOM_BYTES: u64 = 64 * 1024;
 
 /// One fixed-width Morgan fingerprint in increasing bit/word order.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -65,14 +69,115 @@ impl TanimotoCounts {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GraphBuildOptions {
-    pub tile_size: NonZeroUsize,
-    pub max_undirected_edges: u64,
+    tile_size: NonZeroUsize,
+    max_undirected_edges: u64,
+    max_memory_bytes: u64,
+}
+
+impl GraphBuildOptions {
+    fn try_new(
+        tile_size: NonZeroUsize,
+        max_undirected_edges: u64,
+        max_memory_bytes: u64,
+    ) -> Result<Self, ClusterCoreError> {
+        if !(1..=MAX_UNDIRECTED_SIMILARITY_EDGES).contains(&max_undirected_edges) {
+            return Err(ClusterCoreError::InvalidOptions(format!(
+                "max_undirected_edges must be in 1..={MAX_UNDIRECTED_SIMILARITY_EDGES}"
+            )));
+        }
+        if !(1..=MAX_COMPUTE_MEMORY_BYTES).contains(&max_memory_bytes) {
+            return Err(ClusterCoreError::InvalidOptions(format!(
+                "max_memory_bytes must be in 1..={MAX_COMPUTE_MEMORY_BYTES}"
+            )));
+        }
+        Ok(Self {
+            tile_size,
+            max_undirected_edges,
+            max_memory_bytes,
+        })
+    }
+
+    /// Authoritative production constructor from the validated job contract.
+    pub fn from_resource_limits(
+        tile_size: NonZeroUsize,
+        limits: &ResourceLimits,
+    ) -> Result<Self, ClusterCoreError> {
+        limits
+            .validate()
+            .map_err(|error| ClusterCoreError::InvalidOptions(error.to_string()))?;
+        Self::try_new(tile_size, limits.max_edges, limits.max_memory_bytes)
+    }
+
+    pub const fn tile_size(&self) -> NonZeroUsize {
+        self.tile_size
+    }
+
+    pub const fn max_undirected_edges(&self) -> u64 {
+        self.max_undirected_edges
+    }
+
+    pub const fn max_memory_bytes(&self) -> u64 {
+        self.max_memory_bytes
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ButinaOptions {
+    max_undirected_edges: u64,
+    max_memory_bytes: u64,
+}
+
+impl ButinaOptions {
+    fn try_new(max_undirected_edges: u64, max_memory_bytes: u64) -> Result<Self, ClusterCoreError> {
+        if !(1..=MAX_UNDIRECTED_SIMILARITY_EDGES).contains(&max_undirected_edges) {
+            return Err(ClusterCoreError::InvalidOptions(format!(
+                "max_undirected_edges must be in 1..={MAX_UNDIRECTED_SIMILARITY_EDGES}"
+            )));
+        }
+        if !(1..=MAX_COMPUTE_MEMORY_BYTES).contains(&max_memory_bytes) {
+            return Err(ClusterCoreError::InvalidOptions(format!(
+                "max_memory_bytes must be in 1..={MAX_COMPUTE_MEMORY_BYTES}"
+            )));
+        }
+        Ok(Self {
+            max_undirected_edges,
+            max_memory_bytes,
+        })
+    }
+
+    /// Authoritative production constructor from the validated job contract.
+    pub fn from_resource_limits(limits: &ResourceLimits) -> Result<Self, ClusterCoreError> {
+        limits
+            .validate()
+            .map_err(|error| ClusterCoreError::InvalidOptions(error.to_string()))?;
+        Self::try_new(limits.max_edges, limits.max_memory_bytes)
+    }
+
+    pub const fn max_undirected_edges(&self) -> u64 {
+        self.max_undirected_edges
+    }
+
+    pub const fn max_memory_bytes(&self) -> u64 {
+        self.max_memory_bytes
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ClusterCoreError {
+    InvalidOptions(String),
     InvalidCutoff(String),
-    EdgeBudgetExceeded { limit: u64, observed_at_least: u64 },
+    EdgeBudgetExceeded {
+        limit: u64,
+        observed_at_least: u64,
+    },
+    MemoryBudgetExceeded {
+        required_bytes: u64,
+        limit_bytes: u64,
+    },
+    AllocationFailed {
+        buffer: &'static str,
+        requested_elements: u64,
+    },
     CsrOverflow,
     InvalidCsr(&'static str),
 }
@@ -80,6 +185,9 @@ pub enum ClusterCoreError {
 impl fmt::Display for ClusterCoreError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidOptions(message) => {
+                write!(formatter, "invalid clustering options: {message}")
+            }
             Self::InvalidCutoff(message) => write!(formatter, "invalid similarity cutoff: {message}"),
             Self::EdgeBudgetExceeded {
                 limit,
@@ -87,6 +195,20 @@ impl fmt::Display for ClusterCoreError {
             } => write!(
                 formatter,
                 "Tanimoto graph exceeds the undirected edge budget {limit} (observed at least {observed_at_least})"
+            ),
+            Self::MemoryBudgetExceeded {
+                required_bytes,
+                limit_bytes,
+            } => write!(
+                formatter,
+                "clustering requires {required_bytes} accounted working-set bytes; limit is {limit_bytes}"
+            ),
+            Self::AllocationFailed {
+                buffer,
+                requested_elements,
+            } => write!(
+                formatter,
+                "failed to reserve {requested_elements} elements for {buffer}"
             ),
             Self::CsrOverflow => formatter.write_str("CSR size exceeds integer or address limits"),
             Self::InvalidCsr(message) => write!(formatter, "invalid symmetric CSR: {message}"),
@@ -143,6 +265,12 @@ impl SymmetricCsr {
 }
 
 /// Builds the exact threshold graph without materializing an `N x N` matrix.
+///
+/// Memory admission uses a conservative logical working-set account: matching
+/// pairs, CSR columns/offsets, construction degrees/cursors, and the subsequent
+/// Butina alive/degrees/output buffers are all counted concurrently, plus fixed
+/// headroom. It intentionally does not claim to predict allocator metadata,
+/// capacity rounding, borrowed fingerprints, or process RSS exactly.
 pub fn build_tanimoto_graph(
     fingerprints: &[Fingerprint2048],
     cutoff: SimilarityCutoff,
@@ -151,22 +279,55 @@ pub fn build_tanimoto_graph(
     let cutoff = cutoff
         .normalized()
         .map_err(|error| ClusterCoreError::InvalidCutoff(error.to_string()))?;
-    let pairs = enumerate_matching_pairs(fingerprints, cutoff, options)?;
+    let edge_count = count_matching_pairs(fingerprints, cutoff, options)?;
+    let required_bytes = accounted_working_set_bytes(fingerprints.len(), edge_count)?;
+    if required_bytes > options.max_memory_bytes {
+        return Err(ClusterCoreError::MemoryBudgetExceeded {
+            required_bytes,
+            limit_bytes: options.max_memory_bytes,
+        });
+    }
+    let pairs = collect_matching_pairs(fingerprints, cutoff, options.tile_size, edge_count)?;
     csr_from_pairs(fingerprints.len(), &pairs)
 }
 
 /// Dynamic-count Butina clustering. Every cluster stores its representative
-/// first, followed by its ascending live neighbors at selection time.
-pub fn butina_clusters(graph: &SymmetricCsr) -> Vec<Vec<u64>> {
+/// first, followed by its ascending live neighbors at selection time. The
+/// budget accounts for the resident CSR and all logical Butina buffers before
+/// allocating any Butina state.
+pub fn butina_clusters(
+    graph: &SymmetricCsr,
+    options: ButinaOptions,
+) -> Result<Vec<Vec<u64>>, ClusterCoreError> {
+    let edge_count = graph.undirected_edge_count();
+    if edge_count > options.max_undirected_edges {
+        return Err(ClusterCoreError::EdgeBudgetExceeded {
+            limit: options.max_undirected_edges,
+            observed_at_least: edge_count,
+        });
+    }
     let vertex_count = graph.vertex_count();
-    let mut alive = vec![true; vertex_count];
-    let mut live_degrees: Vec<u64> = graph
-        .row_offsets
-        .windows(2)
-        .map(|window| window[1] - window[0])
-        .collect();
+    let required_bytes = accounted_butina_working_set_bytes(graph)?;
+    if required_bytes > options.max_memory_bytes {
+        return Err(ClusterCoreError::MemoryBudgetExceeded {
+            required_bytes,
+            limit_bytes: options.max_memory_bytes,
+        });
+    }
+    let mut alive = Vec::new();
+    try_reserve_exact(&mut alive, vertex_count, "Butina alive mask")?;
+    alive.resize(vertex_count, true);
+    let mut live_degrees = Vec::new();
+    try_reserve_exact(&mut live_degrees, vertex_count, "Butina live-degree buffer")?;
+    live_degrees.extend(
+        graph
+            .row_offsets
+            .windows(2)
+            .map(|window| window[1] - window[0]),
+    );
     let mut remaining = vertex_count;
     let mut clusters = Vec::new();
+    try_reserve_exact(&mut clusters, vertex_count, "Butina cluster list")?;
 
     while remaining > 0 {
         let mut representative = None;
@@ -181,23 +342,28 @@ pub fn butina_clusters(graph: &SymmetricCsr) -> Vec<Vec<u64>> {
         }
         let representative = representative.expect("remaining vertices include one live vertex");
 
+        let removed_capacity = usize::try_from(live_degrees[representative])
+            .ok()
+            .and_then(|degree| degree.checked_add(1))
+            .ok_or(ClusterCoreError::CsrOverflow)?;
         let mut removed = Vec::new();
-        removed.push(representative);
+        try_reserve_exact(&mut removed, removed_capacity, "Butina cluster members")?;
+        removed.push(representative as u64);
         removed.extend(
             graph
                 .neighbors_unchecked(representative)
                 .iter()
-                .map(|neighbor| *neighbor as usize)
-                .filter(|neighbor| alive[*neighbor]),
+                .copied()
+                .filter(|neighbor| alive[*neighbor as usize]),
         );
 
         for &vertex in &removed {
-            alive[vertex] = false;
+            alive[vertex as usize] = false;
         }
         remaining -= removed.len();
 
         for &vertex in &removed {
-            for &neighbor in graph.neighbors_unchecked(vertex) {
+            for &neighbor in graph.neighbors_unchecked(vertex as usize) {
                 let neighbor = neighbor as usize;
                 if alive[neighbor] {
                     live_degrees[neighbor] -= 1;
@@ -205,19 +371,57 @@ pub fn butina_clusters(graph: &SymmetricCsr) -> Vec<Vec<u64>> {
             }
         }
 
-        clusters.push(removed.into_iter().map(|vertex| vertex as u64).collect());
+        clusters.push(removed);
     }
 
-    clusters
+    Ok(clusters)
 }
 
-fn enumerate_matching_pairs(
+fn count_matching_pairs(
     fingerprints: &[Fingerprint2048],
     cutoff: SimilarityCutoff,
     options: GraphBuildOptions,
+) -> Result<u64, ClusterCoreError> {
+    let mut edge_count = 0_u64;
+    visit_matching_pairs(fingerprints, cutoff, options.tile_size, |_, _| {
+        edge_count = edge_count
+            .checked_add(1)
+            .ok_or(ClusterCoreError::CsrOverflow)?;
+        if edge_count > options.max_undirected_edges {
+            return Err(ClusterCoreError::EdgeBudgetExceeded {
+                limit: options.max_undirected_edges,
+                observed_at_least: edge_count,
+            });
+        }
+        Ok(())
+    })?;
+    Ok(edge_count)
+}
+
+fn collect_matching_pairs(
+    fingerprints: &[Fingerprint2048],
+    cutoff: SimilarityCutoff,
+    tile_size: NonZeroUsize,
+    edge_count: u64,
 ) -> Result<Vec<(usize, usize)>, ClusterCoreError> {
-    let tile_size = options.tile_size.get();
+    let capacity = usize::try_from(edge_count).map_err(|_| ClusterCoreError::CsrOverflow)?;
     let mut pairs = Vec::new();
+    try_reserve_exact(&mut pairs, capacity, "matching-pair buffer")?;
+    visit_matching_pairs(fingerprints, cutoff, tile_size, |left, right| {
+        pairs.push((left, right));
+        Ok(())
+    })?;
+    debug_assert_eq!(pairs.len(), capacity);
+    Ok(pairs)
+}
+
+fn visit_matching_pairs(
+    fingerprints: &[Fingerprint2048],
+    cutoff: SimilarityCutoff,
+    tile_size: NonZeroUsize,
+    mut visit: impl FnMut(usize, usize) -> Result<(), ClusterCoreError>,
+) -> Result<(), ClusterCoreError> {
+    let tile_size = tile_size.get();
 
     for row_start in (0..fingerprints.len()).step_by(tile_size) {
         let row_end = row_start.saturating_add(tile_size).min(fingerprints.len());
@@ -234,23 +438,14 @@ fn enumerate_matching_pairs(
                 for right in right_start..column_end {
                     let counts = fingerprints[left].tanimoto_counts(&fingerprints[right]);
                     if exact_match(counts, cutoff) {
-                        let observed = (pairs.len() as u64)
-                            .checked_add(1)
-                            .ok_or(ClusterCoreError::CsrOverflow)?;
-                        if observed > options.max_undirected_edges {
-                            return Err(ClusterCoreError::EdgeBudgetExceeded {
-                                limit: options.max_undirected_edges,
-                                observed_at_least: observed,
-                            });
-                        }
-                        pairs.push((left, right));
+                        visit(left, right)?;
                     }
                 }
             }
         }
     }
 
-    Ok(pairs)
+    Ok(())
 }
 
 fn exact_match(counts: TanimotoCounts, cutoff: SimilarityCutoff) -> bool {
@@ -265,7 +460,9 @@ fn csr_from_pairs(
     vertex_count: usize,
     pairs: &[(usize, usize)],
 ) -> Result<SymmetricCsr, ClusterCoreError> {
-    let mut degrees = vec![0_u64; vertex_count];
+    let mut degrees = Vec::new();
+    try_reserve_exact(&mut degrees, vertex_count, "CSR degree buffer")?;
+    degrees.resize(vertex_count, 0_u64);
     for &(left, right) in pairs {
         degrees[left] = degrees[left]
             .checked_add(1)
@@ -278,8 +475,12 @@ fn csr_from_pairs(
     let row_offsets = prefix_offsets(&degrees)?;
     let entry_count = usize::try_from(*row_offsets.last().expect("offsets include zero"))
         .map_err(|_| ClusterCoreError::CsrOverflow)?;
-    let mut column_indices = vec![0_u64; entry_count];
-    let mut cursors = row_offsets[..vertex_count].to_vec();
+    let mut column_indices = Vec::new();
+    try_reserve_exact(&mut column_indices, entry_count, "CSR column buffer")?;
+    column_indices.resize(entry_count, 0_u64);
+    let mut cursors = Vec::new();
+    try_reserve_exact(&mut cursors, vertex_count, "CSR cursor buffer")?;
+    cursors.extend_from_slice(&row_offsets[..vertex_count]);
 
     for &(left, right) in pairs {
         let left_cursor =
@@ -305,7 +506,12 @@ fn csr_from_pairs(
 }
 
 fn prefix_offsets(degrees: &[u64]) -> Result<Vec<u64>, ClusterCoreError> {
-    let mut offsets = Vec::with_capacity(degrees.len() + 1);
+    let capacity = degrees
+        .len()
+        .checked_add(1)
+        .ok_or(ClusterCoreError::CsrOverflow)?;
+    let mut offsets = Vec::new();
+    try_reserve_exact(&mut offsets, capacity, "CSR row-offset buffer")?;
     offsets.push(0_u64);
     for degree in degrees {
         offsets.push(
@@ -317,6 +523,85 @@ fn prefix_offsets(degrees: &[u64]) -> Result<Vec<u64>, ClusterCoreError> {
         );
     }
     Ok(offsets)
+}
+
+fn accounted_working_set_bytes(
+    vertex_count: usize,
+    undirected_edge_count: u64,
+) -> Result<u64, ClusterCoreError> {
+    let vertices = u64::try_from(vertex_count).map_err(|_| ClusterCoreError::CsrOverflow)?;
+    let offsets = vertices
+        .checked_add(1)
+        .ok_or(ClusterCoreError::CsrOverflow)?;
+    let directed_entries = undirected_edge_count
+        .checked_mul(2)
+        .ok_or(ClusterCoreError::CsrOverflow)?;
+
+    let accounted_buffers = [
+        checked_buffer_bytes::<(usize, usize)>(undirected_edge_count)?,
+        checked_buffer_bytes::<u64>(vertices)?, // construction degrees
+        checked_buffer_bytes::<u64>(offsets)?,
+        checked_buffer_bytes::<u64>(directed_entries)?,
+        checked_buffer_bytes::<u64>(vertices)?, // construction cursors
+        checked_buffer_bytes::<bool>(vertices)?,
+        checked_buffer_bytes::<u64>(vertices)?, // Butina live degrees
+        checked_buffer_bytes::<u64>(vertices)?, // all cluster members
+        checked_buffer_bytes::<Vec<u64>>(vertices)?, // worst-case singleton headers
+    ];
+
+    accounted_buffers
+        .into_iter()
+        .try_fold(MEMORY_ACCOUNTING_HEADROOM_BYTES, |total, bytes| {
+            total
+                .checked_add(bytes)
+                .ok_or(ClusterCoreError::CsrOverflow)
+        })
+}
+
+fn accounted_butina_working_set_bytes(graph: &SymmetricCsr) -> Result<u64, ClusterCoreError> {
+    let vertices =
+        u64::try_from(graph.vertex_count()).map_err(|_| ClusterCoreError::CsrOverflow)?;
+    let offsets = vertices
+        .checked_add(1)
+        .ok_or(ClusterCoreError::CsrOverflow)?;
+    let directed_entries =
+        u64::try_from(graph.column_indices.len()).map_err(|_| ClusterCoreError::CsrOverflow)?;
+    let accounted_buffers = [
+        checked_buffer_bytes::<u64>(offsets)?,
+        checked_buffer_bytes::<u64>(directed_entries)?,
+        checked_buffer_bytes::<bool>(vertices)?,
+        checked_buffer_bytes::<u64>(vertices)?, // live degrees
+        checked_buffer_bytes::<u64>(vertices)?, // all cluster members
+        checked_buffer_bytes::<Vec<u64>>(vertices)?, // worst-case singleton headers
+    ];
+
+    accounted_buffers
+        .into_iter()
+        .try_fold(MEMORY_ACCOUNTING_HEADROOM_BYTES, |total, bytes| {
+            total
+                .checked_add(bytes)
+                .ok_or(ClusterCoreError::CsrOverflow)
+        })
+}
+
+fn checked_buffer_bytes<T>(elements: u64) -> Result<u64, ClusterCoreError> {
+    let width = u64::try_from(size_of::<T>()).map_err(|_| ClusterCoreError::CsrOverflow)?;
+    elements
+        .checked_mul(width)
+        .ok_or(ClusterCoreError::CsrOverflow)
+}
+
+fn try_reserve_exact<T>(
+    buffer: &mut Vec<T>,
+    additional: usize,
+    name: &'static str,
+) -> Result<(), ClusterCoreError> {
+    buffer
+        .try_reserve_exact(additional)
+        .map_err(|_| ClusterCoreError::AllocationFailed {
+            buffer: name,
+            requested_elements: u64::try_from(additional).unwrap_or(u64::MAX),
+        })
 }
 
 fn validate_csr(row_offsets: &[u64], column_indices: &[u64]) -> Result<(), ClusterCoreError> {
