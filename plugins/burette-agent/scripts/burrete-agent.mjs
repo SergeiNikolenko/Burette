@@ -651,9 +651,12 @@ async function actDesktopSession(options) {
   }
   const actionsPath = resolve(options.sessionDir, 'actions.json');
   const actionsFile = await readJsonFile(actionsPath, { apiVersion: 'burette-agent-control/v1', actions: [] });
+  const itemId = `act-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   const item = {
-    id: `act-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-    action,
+    id: itemId,
+    action: action?.type === 'control_ketcher' && !action.actionId
+      ? { ...action, actionId: itemId }
+      : action,
     status: 'queued',
     createdAt: new Date().toISOString()
   };
