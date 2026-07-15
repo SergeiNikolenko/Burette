@@ -16,5 +16,6 @@ bun run test:agent
 bun run test:update
 bun run test:ui
 bun run test:tauri-structure
+bun run test:compute-metal
 plutil -lint apps/desktop/src-tauri/AppMetadata.plist apps/desktop/src-tauri/Info.plist PreviewExtension/Info.plist PreviewExtension/BurretePreview.entitlements
 ./scripts/build.sh
