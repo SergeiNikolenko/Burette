@@ -6,6 +6,7 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
+use crate::commands::source_editing::{OpenedSourceRegistry, SourceEditRegistry};
 use crate::preview::grid_store::GridRuntimeRegistry;
 
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
@@ -117,6 +118,10 @@ pub(crate) fn attach_window_cleanup<R: Runtime>(
             let _ = app
                 .state::<GridRuntimeRegistry>()
                 .unregister_prefix(&runtime_document_prefix(&label));
+            let _ = app
+                .state::<OpenedSourceRegistry>()
+                .unregister_window(&label);
+            let _ = app.state::<SourceEditRegistry>().unregister_window(&label);
         }
     });
 }

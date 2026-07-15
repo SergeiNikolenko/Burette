@@ -52,6 +52,8 @@ import { useAppViewerRuntimeRefs } from "./hooks/use-app-viewer-runtime-refs";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
 import { useAppXtbWorkflows } from "./hooks/use-app-xtb-workflows";
 import { useMenuEvents } from "./hooks/use-menu-events";
+import { useSourceEditingController } from "./hooks/use-source-editing";
+import { SourceEditingProvider } from "./lib/source-editing/context";
 import { useDockLayout } from "./hooks/use-dock-layout";
 import { useSidebar } from "./hooks/use-sidebar";
 import {
@@ -398,6 +400,13 @@ export default function App() {
   });
 
   const activeTextDocument = useAppActiveTextDocument({ activeTab, textDocuments });
+  const sourceEditing = useSourceEditingController({
+    activeDocument,
+    preferences,
+    pushErrorStatus,
+    setDockActiveTab,
+    setDockOpen,
+  });
   const {
     copyActiveDocumentPath,
     copyDocumentPath,
@@ -806,6 +815,7 @@ export default function App() {
     closeTab,
     confirmDiscardDirtyGridDocument,
     confirmDiscardDirtyGridDocuments,
+    confirmCloseSourceDocuments: sourceEditing.closeDocuments,
     copyActiveDocumentPath,
     copyDocumentPath,
     copyPath,
@@ -919,6 +929,7 @@ export default function App() {
     openLogs: actions.openLogs,
     openSettings: actions.openSettings,
     checkForUpdates: actions.checkForUpdates,
+    saveSource: () => activeDocument ? sourceEditing.save(activeDocument) : undefined,
   });
 
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
@@ -985,7 +996,7 @@ export default function App() {
   );
 
   return (
-    <>
+    <SourceEditingProvider value={sourceEditing}>
       <WindowTitle activeDocument={activeDocument} />
       <AppLayout
         state={state}
@@ -1015,6 +1026,6 @@ export default function App() {
           />
         </Suspense>
       ) : null}
-    </>
+    </SourceEditingProvider>
   );
 }

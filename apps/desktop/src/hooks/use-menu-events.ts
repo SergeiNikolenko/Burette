@@ -9,6 +9,7 @@ const MENU_REDO_EVENT = "menu:redo";
 const MENU_OPEN_SETTINGS_EVENT = "menu:open-settings";
 const MENU_OPEN_FILES_EVENT = "menu:open-files";
 const MENU_OPEN_RECENT_EVENT = "menu:open-recent";
+const MENU_SAVE_SOURCE_EVENT = "menu:save-source";
 const MENU_REVEAL_ACTIVE_EVENT = "menu:reveal-active";
 const MENU_COPY_ACTIVE_PATH_EVENT = "menu:copy-active-path";
 const MENU_SHOW_ACTIVE_METADATA_EVENT = "menu:show-active-metadata";
@@ -33,6 +34,7 @@ export function useMenuEvents({
   openLogs,
   openSettings,
   checkForUpdates,
+  saveSource,
 }: {
   actions: ShellActions;
   chooseFiles: () => void | Promise<void>;
@@ -47,6 +49,7 @@ export function useMenuEvents({
   openLogs: () => void | Promise<void>;
   openSettings: () => void;
   checkForUpdates: () => void | Promise<void>;
+  saveSource: () => void | Promise<void>;
 }) {
   const handlersRef = useRef({
     actions,
@@ -62,6 +65,7 @@ export function useMenuEvents({
     openLogs,
     openSettings,
     checkForUpdates,
+    saveSource,
   });
 
   useEffect(() => {
@@ -79,6 +83,7 @@ export function useMenuEvents({
       openLogs,
       openSettings,
       checkForUpdates,
+      saveSource,
     };
   }, [
     actions,
@@ -94,6 +99,7 @@ export function useMenuEvents({
     resetQuickLook,
     revealActiveDocument,
     showActiveDocumentMetadata,
+    saveSource,
   ]);
 
   useEffect(() => {
@@ -115,6 +121,9 @@ export function useMenuEvents({
       trackTauriListener(listen(MENU_OPEN_RECENT_EVENT, () => {
         void handlersRef.current.openMostRecentStructure();
       }), MENU_OPEN_RECENT_EVENT),
+      trackTauriListener(listen(MENU_SAVE_SOURCE_EVENT, () => {
+        void handlersRef.current.saveSource();
+      }), MENU_SAVE_SOURCE_EVENT),
       trackTauriListener(listen(MENU_REVEAL_ACTIVE_EVENT, () => {
         void handlersRef.current.revealActiveDocument();
       }), MENU_REVEAL_ACTIVE_EVENT),

@@ -47,6 +47,7 @@ type UseAppShellActionsOptions = {
   closeTab: (id: string) => void;
   confirmDiscardDirtyGridDocument: (documentId: string | null | undefined) => boolean;
   confirmDiscardDirtyGridDocuments: (documentIds: string[]) => boolean;
+  confirmCloseSourceDocuments: (documentIds: string[]) => boolean;
   copyActiveDocumentPath: ShellActions["copyActiveDocumentPath"];
   copyDocumentPath: ShellActions["copyDocumentPath"];
   copyPath: ShellActions["copyPath"];
@@ -710,6 +711,7 @@ export function useAppShellActions({
   closeTab,
   confirmDiscardDirtyGridDocument,
   confirmDiscardDirtyGridDocuments,
+  confirmCloseSourceDocuments,
   copyActiveDocumentPath,
   copyDocumentPath,
   copyPath,
@@ -903,6 +905,7 @@ export function useAppShellActions({
       closeTab,
       confirmDiscardDirtyGridDocument,
       confirmDiscardDirtyGridDocuments,
+      confirmCloseSourceDocuments,
       documents,
       forgetDirtyGridDocument,
       forgetDirtyGridDocuments,
@@ -949,7 +952,7 @@ export function useAppShellActions({
     canNavigateForward,
     canRedoWorkspace,
     canUndoWorkspace,
-  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
+  }), [activeDocument, addDockDrop, addXyzrenderSheetItemsToDocument, appendGridRecords, applyGridDescriptorControls, applyGridDescriptorResults, applyKetcherToGridRow, backToApp, calculateGridDescriptors, canNavigateBack, canNavigateForward, canRedoWorkspace, canUndoWorkspace, checkForUpdates, chooseFiles, chooseWorkspace, clearCache, clearDescriptorSource, clearDirtyGridDocuments, clearKetcherImportRequest, clearRecentStructures, closeActiveDocument, closeAllDocuments, closeDocument, closeDockTab, closeGridRuntime, closeTab, confirmCloseSourceDocuments, confirmDiscardDirtyGridDocument, confirmDiscardDirtyGridDocuments, copyActiveDocumentPath, copyDocumentPath, copyPath, documents, exportActivePreviewAsPng, exportActivePreviewAsSvg, exportDiagnostics, fetchPdbStructure, focusSidebarSearch, forgetDirtyGridDocument, forgetDirtyGridDocuments, generate3DConformer, installUpdate, listChemicalEditorTargets, mergeMoleculeCollections, moveTab, navigateBack, navigateForward, openClipboard, openCommandPalette, openDescriptorSource, openDockingDocument, openDockingStructureRecords, openDockPayload, openDockTab, openDocuments, openFepNetworkPreview, openFepSetupWorkspace, openKetcher, openKetcherExportRaw, openKetcherSketch, openKetcherWithStructures, openLogs, openMostRecentStructure, openNewTab, openNewWindow, openPathInChemicalEditor, openPathWithDefaultApp, openPaths, openProjectFolder, openRecentStructure, openSettings, openSettingsSection, openStructureRecords, openStructureUrlInMolstar, openTextDocuments, openUpdateRelease, openWorkspaceFolder, pushErrorStatus, pushStatus, reloadXyzrenderDocument, removeProjectRoot, renameProjectFolder, renameProjectRoot, resetQuickLook, revealActiveDocument, revealDocument, revealPath, runExternalRuntimeDoctor, runStructureViewerAction, saveKetcherDraft, saveKetcherExportFile, saveMoleculeCollectionAs, selectDocument, selectTextStructure, setActiveTab, setDockActiveTab, setDockDocument, setDockOpen, setDockSize, setDockTool, setExpandedProjectIds, setPreference, setSidebarQuery, setUpdatePreferences, showActiveDocumentMetadata, showDocumentMetadata, showTextFileMetadata, tabs, toggleDock, toggleDockTab, togglePinnedProjectRoot, togglePinnedStructure, toggleProjectExpanded, toggleProjectsOpen, toggleSidebar]);
 }
 
 export function createJobHistoryShellActions({
@@ -1033,6 +1036,7 @@ export function createDocumentCloseShellActions({
   closeTab,
   confirmDiscardDirtyGridDocument,
   confirmDiscardDirtyGridDocuments,
+  confirmCloseSourceDocuments,
   documents,
   forgetDirtyGridDocument,
   forgetDirtyGridDocuments,
@@ -1048,6 +1052,7 @@ export function createDocumentCloseShellActions({
   closeTab: (id: string) => void;
   confirmDiscardDirtyGridDocument: (documentId: string | null | undefined) => boolean;
   confirmDiscardDirtyGridDocuments: (documentIds: string[]) => boolean;
+  confirmCloseSourceDocuments: (documentIds: string[]) => boolean;
   documents: ViewerDocument[];
   forgetDirtyGridDocument: (documentId: string | null | undefined) => void;
   forgetDirtyGridDocuments: (documentIds: string[]) => void;
@@ -1057,6 +1062,7 @@ export function createDocumentCloseShellActions({
   return {
     closeDocument: (id: string) => {
       if (!confirmDiscardDirtyGridDocument(id)) return;
+      if (!confirmCloseSourceDocuments([id])) return;
       closeGridRuntime(id);
       forgetDirtyGridDocument(id);
       closeDocument(id);
@@ -1073,6 +1079,7 @@ export function createDocumentCloseShellActions({
         const targetDocumentId = document?.id ?? location.documentId ?? null;
         if (targetDocumentId) documentIds.push(targetDocumentId);
         if (!confirmDiscardDirtyGridDocuments(documentIds)) return;
+        if (!confirmCloseSourceDocuments(documentIds)) return;
         closeGridRuntime(targetDocumentId);
       }
       if (documentIds.length > 0) {
@@ -1082,6 +1089,7 @@ export function createDocumentCloseShellActions({
     },
     closeActiveDocument: () => {
       if (!confirmDiscardDirtyGridDocument(activeDocument?.id)) return;
+      if (activeDocument && !confirmCloseSourceDocuments([activeDocument.id])) return;
       closeGridRuntime(activeDocument?.id);
       forgetDirtyGridDocument(activeDocument?.id);
       closeActiveDocument();
@@ -1089,6 +1097,7 @@ export function createDocumentCloseShellActions({
     },
     clearAllDocuments: () => {
       if (!confirmDiscardDirtyGridDocuments(documents.map((document) => document.id))) return;
+      if (!confirmCloseSourceDocuments(documents.map((document) => document.id))) return;
       for (const document of documents) closeGridRuntime(document.id);
       clearDirtyGridDocuments();
       closeAllDocuments();
