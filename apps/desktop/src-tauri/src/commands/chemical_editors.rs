@@ -155,6 +155,8 @@ const GENERIC_CHEMICAL_EXTENSIONS: &[&str] = &[
     "xyz", "cube", "cub", "mae", "maegz", "cms", "gro", "xtc", "trr", "dcd", "pse", "pml",
 ];
 
+const FINDER_APP_PATH: &str = "/System/Library/CoreServices/Finder.app";
+
 #[tauri::command]
 pub(crate) fn list_chemical_editor_targets<R: Runtime>(
     app: tauri::AppHandle<R>,
@@ -168,6 +170,18 @@ pub(crate) fn list_chemical_editor_targets<R: Runtime>(
         &extensions,
         &app_icon_cache_dir(&app)?,
     ))
+}
+
+#[tauri::command]
+pub(crate) fn finder_icon_path<R: Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<Option<String>, String> {
+    Ok(app_icon_png_path(
+        Path::new(FINDER_APP_PATH),
+        &app_icon_cache_dir(&app)?,
+        "finder",
+    )
+    .map(|path| path.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
@@ -560,5 +574,23 @@ mod tests {
             Some("com.schrodinger.Maestro"),
             "Maestro.app"
         ));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn finder_icon_is_converted_to_webview_compatible_png() {
+        let cache_dir =
+            std::env::temp_dir().join(format!("burrete-finder-icon-test-{}", std::process::id()));
+        let icon_path = app_icon_png_path(Path::new(FINDER_APP_PATH), &cache_dir, "finder")
+            .expect("Finder icon should convert to PNG");
+        let bytes = std::fs::read(&icon_path).expect("Finder PNG should be readable");
+
+        assert_eq!(
+            icon_path.extension().and_then(|value| value.to_str()),
+            Some("png")
+        );
+        assert_eq!(bytes.get(..8), Some(b"\x89PNG\r\n\x1a\n".as_slice()));
+
+        let _ = std::fs::remove_dir_all(cache_dir);
     }
 }
