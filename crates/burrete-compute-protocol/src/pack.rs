@@ -1,5 +1,6 @@
 mod common;
 mod layout;
+mod molecular;
 
 pub use common::{
     EnginePackVersion, MolecularSnapshotVersion, MAX_JSON_SAFE_INTEGER, MAX_PACK_ARRAYS,
@@ -7,4 +8,9 @@ pub use common::{
 };
 pub use layout::{
     PackedArrayDescriptor, PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout,
+};
+pub use molecular::{
+    FrozenSourceIdentity, MolecularSnapshotManifest, MolecularSnapshotRef,
+    MOLECULE_CONTENT_HASHES_ARRAY_NAME, MOLECULE_CONTENT_HASHES_SEMANTIC,
+    SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
 };

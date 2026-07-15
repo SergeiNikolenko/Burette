@@ -36,7 +36,6 @@ pub enum EnginePackVersion {
     ClusterV1,
 }
 
-#[allow(dead_code)] // Used by the higher-level pack identity modules.
 pub(crate) fn validate_uuid(label: &str, value: Uuid) -> Result<(), ProtocolError> {
     if value.is_nil() {
         return Err(ProtocolError::Validation(format!(
@@ -54,7 +53,6 @@ pub(crate) fn validate_json_safe(label: &str, value: u64) -> Result<(), Protocol
     validate_json_safe_u64(label, value)
 }
 
-#[allow(dead_code)] // Used by the molecular snapshot identity module.
 pub(crate) fn validate_json_safe_positive(label: &str, value: u64) -> Result<(), ProtocolError> {
     validate_json_safe_u64(label, value)?;
     if value == 0 {
