@@ -201,6 +201,7 @@ const [
   buildDevScript,
   remoteCheckScript,
   patchWebAssetsScript,
+  hostedViewerBuildScript,
   desmondPreviewExtract,
   fepGraphmlSample,
   rdkitConformer,
@@ -398,6 +399,7 @@ const [
   source('scripts/build-dev.sh'),
   source('scripts/check-remote.sh'),
   source('scripts/patch-web-assets.sh'),
+  source('apps/burrete-public-plugin/scripts/build-hosted-viewer.mjs'),
   source('scripts/desmond_preview_extract.py'),
   source('samples/fep/ligand_network.graphml'),
   source('scripts/rdkit_conformer.py'),
@@ -672,6 +674,8 @@ assert.match(patchWebAssetsScript, /WEB ASSET PATCH SUCCEEDED/);
 assert.doesNotMatch(patchWebAssetsScript, /xcodebuild/);
 assert.doesNotMatch(patchWebAssetsScript, /cargo build/);
 assert.doesNotMatch(patchWebAssetsScript, /build:tauri/);
+assert.match(hostedViewerBuildScript, /"grid-ui\.js"/);
+assert.match(hostedViewerBuildScript, /"grid-viewer\.js"/);
 assert.equal(JSON.parse(tauriConfig).bundle.resources['../public/xyzrender-gallery'], 'xyzrender-gallery');
 assert.equal(JSON.parse(tauriConfig).bundle.resources['../../../PreviewExtension/Web'], 'ViewerWeb');
 assert.match(previewRuntimeViewer, /resolve\("ViewerWeb", tauri::path::BaseDirectory::Resource\)/);
