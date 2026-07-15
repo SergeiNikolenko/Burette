@@ -3,8 +3,11 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    validation::{validate_bounded_text, validate_json_safe_u64, validate_lower_sha256},
-    BackendPolicy, ProtocolError, WorkflowTemplateId,
+    validation::{
+        canonical_json_bytes as serialize_canonical_json, sha256_hex, validate_bounded_text,
+        validate_json_safe_u64, validate_lower_sha256,
+    },
+    BackendPolicy, ClusterV1SubmitRequest, ProtocolError, WorkflowTemplateId,
 };
 
 const MAX_STAGE_ID_BYTES: usize = 96;
@@ -258,6 +261,12 @@ impl PlannedStage {
                     partition.partition_id, self.stage_id
                 )));
             }
+            if partition.fallback != self.fallback {
+                return Err(ProtocolError::Validation(format!(
+                    "partition {} fallback metadata differs from stage {}",
+                    partition.partition_id, self.stage_id
+                )));
+            }
             partition_memory = partition_memory
                 .checked_add(partition.estimated_memory_bytes)
                 .ok_or_else(|| {
@@ -423,6 +432,50 @@ impl ExecutionPlan {
         Ok(())
     }
 
+    pub fn validate_against_request(
+        &self,
+        request: &ClusterV1SubmitRequest,
+        record_count: u64,
+    ) -> Result<(), ProtocolError> {
+        request.validate()?;
+        self.validate_for_record_count(record_count)?;
+        if self.workflow_template != request.workflow_template
+            || self.backend_policy != request.execution_policy.backend_policy
+        {
+            return Err(ProtocolError::Validation(
+                "execution plan differs from the requested workflow or backend policy".into(),
+            ));
+        }
+        for stage in &self.stages {
+            for partition in &stage.partitions {
+                if partition.estimated_memory_bytes > request.limits.max_memory_bytes {
+                    return Err(ProtocolError::Validation(format!(
+                        "partition {} exceeds the request maxMemoryBytes limit",
+                        partition.partition_id
+                    )));
+                }
+            }
+            if stage.estimated_memory_bytes > request.limits.max_memory_bytes {
+                return Err(ProtocolError::Validation(format!(
+                    "stage {} exceeds the request maxMemoryBytes limit",
+                    stage.stage_id
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Serializes a validated fixed execution plan with its v1 field order.
+    pub fn canonical_json_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
+        self.validate()?;
+        serialize_canonical_json(self)
+    }
+
+    /// Hashes the canonical bytes stored as the accepted execution-plan identity.
+    pub fn canonical_sha256(&self) -> Result<String, ProtocolError> {
+        self.canonical_json_bytes().map(|bytes| sha256_hex(&bytes))
+    }
+
     fn expected_similarity_request_backend(&self) -> Backend {
         match self.backend_policy {
             BackendPolicy::GpuRequired | BackendPolicy::GpuPreferred => Backend::NativeMetal,
@@ -468,6 +521,12 @@ fn validate_engine_backend(engine: &EngineIdentity, backend: Backend) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        AllGridScope, ClusterV1Parameters, ComputeJobSchemaVersion, ExecutionPolicy,
+        FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
+        GridSourceReference, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
+        SchedulingPolicy, SimilarityCutoff, SimilaritySettings,
+    };
 
     fn engine(backend: Backend) -> EngineIdentity {
         EngineIdentity {
@@ -573,6 +632,45 @@ mod tests {
         }
     }
 
+    fn request(policy: BackendPolicy, max_memory_bytes: u64) -> ClusterV1SubmitRequest {
+        ClusterV1SubmitRequest {
+            schema_version: ComputeJobSchemaVersion::V1,
+            workflow_template: WorkflowTemplateId::ClusterV1,
+            source: GridSourceReference {
+                document_id: "document-1".into(),
+                scope: GridScope::All(AllGridScope {}),
+            },
+            parameters: ClusterV1Parameters {
+                fingerprint: FingerprintSettings {
+                    algorithm: FingerprintAlgorithm::RdkitMorganBitV1,
+                    rdkit_version: RdkitBaselineVersion::V2025_03_4,
+                    radius: 2,
+                    bit_count: 2_048,
+                    use_chirality: true,
+                    use_features: false,
+                    sanitize: true,
+                    input_order: FingerprintInputOrder::SourceRecord,
+                },
+                similarity: SimilaritySettings {
+                    cutoff: SimilarityCutoff {
+                        numerator: 7,
+                        denominator: 10,
+                    },
+                },
+                representative_policy: RepresentativePolicy::ButinaMaxNeighborsV1,
+            },
+            execution_policy: ExecutionPolicy {
+                backend_policy: policy,
+                scheduling_policy: SchedulingPolicy::Balanced,
+            },
+            limits: ResourceLimits {
+                max_edges: 1_000_000,
+                max_memory_bytes,
+                max_dispatch_ms: 250,
+            },
+        }
+    }
+
     #[test]
     fn preserves_cancel_requested_as_a_distinct_state() {
         assert!(JobState::Running.can_transition_to(JobState::CancelRequested));
@@ -599,5 +697,66 @@ mod tests {
         assert!(rejected.validate().is_err());
         let fallback = plan(BackendPolicy::GpuPreferred, Backend::ReferenceCpu);
         assert_eq!(fallback.validate(), Ok(()));
+    }
+
+    #[test]
+    fn binds_plan_to_request_policy_record_count_and_memory() {
+        let accepted = plan(BackendPolicy::GpuRequired, Backend::NativeMetal);
+        let accepted_request = request(BackendPolicy::GpuRequired, 16 * 1024 * 1024);
+        assert_eq!(
+            accepted.validate_against_request(&accepted_request, 10),
+            Ok(())
+        );
+
+        let wrong_policy = request(BackendPolicy::ReferenceCpu, 16 * 1024 * 1024);
+        assert!(accepted
+            .validate_against_request(&wrong_policy, 10)
+            .is_err());
+        assert!(accepted
+            .validate_against_request(&accepted_request, 9)
+            .is_err());
+
+        let mut oversized = accepted.clone();
+        oversized.stages[2].estimated_memory_bytes = 16 * 1024 * 1024 + 1;
+        oversized.stages[2].partitions[0].estimated_memory_bytes = 16 * 1024 * 1024 + 1;
+        assert!(oversized
+            .validate_against_request(&accepted_request, 10)
+            .is_err());
+    }
+
+    #[test]
+    fn requires_exact_stage_partition_fallback_metadata() {
+        let mut mismatched = plan(BackendPolicy::GpuPreferred, Backend::ReferenceCpu);
+        mismatched.stages[2].partitions[0].fallback = Some(FallbackDecision {
+            code: FallbackReasonCode::MemoryAdmissionDenied,
+            reason: "The admitted partition exceeds the GPU memory budget.".into(),
+        });
+        let request = request(BackendPolicy::GpuPreferred, 16 * 1024 * 1024);
+
+        assert!(mismatched.validate_against_request(&request, 10).is_err());
+    }
+
+    #[test]
+    fn canonical_plan_bytes_and_hash_are_pinned() {
+        let plan = plan(BackendPolicy::GpuRequired, Backend::NativeMetal);
+        let expected = concat!(
+            r#"{"workflowTemplate":"cluster.v1","planVersion":"cluster.execution-plan.v1","backendPolicy":"gpuRequired","stages":["#,
+            r#"{"stageId":"freezeScope","kind":"materialize","idempotent":true,"requestedBackend":"coordinator","effectiveBackend":"coordinator","precision":"notApplicable","engine":{"engineId":"burrete-coordinator","version":"1.0.0","manifestSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"estimatedMemoryBytes":1024,"fallback":null,"partitions":[{"partitionId":"supported","chemistryDomain":"cluster.v1/all","recordCount":10,"estimatedMemoryBytes":1024,"requestedBackend":"coordinator","effectiveBackend":"coordinator","fallback":null}]}"#,
+            r#",{"stageId":"fingerprints","kind":"chemistrySemantics","idempotent":true,"requestedBackend":"rdkit","effectiveBackend":"rdkit","precision":"integerExact","engine":{"engineId":"rdkit","version":"1.0.0","manifestSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"estimatedMemoryBytes":1024,"fallback":null,"partitions":[{"partitionId":"supported","chemistryDomain":"cluster.v1/all","recordCount":10,"estimatedMemoryBytes":1024,"requestedBackend":"rdkit","effectiveBackend":"rdkit","fallback":null}]}"#,
+            r#",{"stageId":"tanimotoNeighbors","kind":"numericCompute","idempotent":true,"requestedBackend":"nativeMetal","effectiveBackend":"nativeMetal","precision":"integerExact","engine":{"engineId":"burrete-native-metal","version":"1.0.0","manifestSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"estimatedMemoryBytes":1024,"fallback":null,"partitions":[{"partitionId":"supported","chemistryDomain":"cluster.v1/all","recordCount":10,"estimatedMemoryBytes":1024,"requestedBackend":"nativeMetal","effectiveBackend":"nativeMetal","fallback":null}]}"#,
+            r#",{"stageId":"butinaClusters","kind":"workflowSemantics","idempotent":true,"requestedBackend":"referenceCpu","effectiveBackend":"referenceCpu","precision":"integerExact","engine":{"engineId":"burrete-reference-cpu","version":"1.0.0","manifestSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"estimatedMemoryBytes":1024,"fallback":null,"partitions":[{"partitionId":"supported","chemistryDomain":"cluster.v1/all","recordCount":10,"estimatedMemoryBytes":1024,"requestedBackend":"referenceCpu","effectiveBackend":"referenceCpu","fallback":null}]}"#,
+            r#",{"stageId":"validateResults","kind":"validation","idempotent":true,"requestedBackend":"referenceCpu","effectiveBackend":"referenceCpu","precision":"integerExact","engine":{"engineId":"burrete-reference-cpu","version":"1.0.0","manifestSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"estimatedMemoryBytes":1024,"fallback":null,"partitions":[{"partitionId":"supported","chemistryDomain":"cluster.v1/all","recordCount":10,"estimatedMemoryBytes":1024,"requestedBackend":"referenceCpu","effectiveBackend":"referenceCpu","fallback":null}]}"#,
+            r#",{"stageId":"publishResults","kind":"artifactIo","idempotent":true,"requestedBackend":"coordinator","effectiveBackend":"coordinator","precision":"notApplicable","engine":{"engineId":"burrete-coordinator","version":"1.0.0","manifestSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"estimatedMemoryBytes":1024,"fallback":null,"partitions":[{"partitionId":"supported","chemistryDomain":"cluster.v1/all","recordCount":10,"estimatedMemoryBytes":1024,"requestedBackend":"coordinator","effectiveBackend":"coordinator","fallback":null}]}]}"#,
+        )
+        .as_bytes();
+
+        assert_eq!(
+            plan.canonical_json_bytes().expect("canonical plan"),
+            expected
+        );
+        assert_eq!(
+            plan.canonical_sha256().expect("plan hash"),
+            "611ba58236f255075326bd67dc00c529edfdf8f58c160172eb2cb79543df346b"
+        );
     }
 }
