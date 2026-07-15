@@ -32,6 +32,11 @@
       "observedContentType": "com.revvity.external.cif"
     },
     {
+      "path": "tests/fixtures/quicklook-compatibility/single.smi",
+      "formatId": "smiles",
+      "observedContentType": "gg.flew.unfold.subtitle-smi"
+    },
+    {
       "path": "tests/fixtures/quicklook-compatibility/junk2.sdf",
       "formatId": "sdf",
       "observedContentType": "com.schrodinger.sdf"
