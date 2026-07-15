@@ -625,10 +625,12 @@
           "const": 1048576
         },
         "maxEdges": {
-          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt",
+          "description": "Maximum number of qualifying undirected similarity edges; unavailable capabilities report zero."
         },
         "maxMemoryBytes": {
-          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt",
+          "description": "Maximum conservative accounted compute working set; this is not an exact process-RSS claim."
         },
         "maxDispatchMs": {
           "$ref": "common.v1.schema.json#/$defs/u32"
@@ -646,12 +648,14 @@
         "maxEdges": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 500000000
+          "maximum": 500000000,
+          "description": "Maximum number of qualifying undirected similarity edges. Each unordered record pair counts once."
         },
         "maxMemoryBytes": {
           "type": "integer",
           "minimum": 16777216,
-          "maximum": 34359738368
+          "maximum": 34359738368,
+          "description": "Maximum conservative accounted compute working set; this is not an exact process-RSS claim."
         },
         "maxDispatchMs": {
           "type": "integer",
@@ -669,7 +673,8 @@
           "const": 1048576
         },
         "maxEdges": {
-          "const": 0
+          "const": 0,
+          "description": "Unavailable compute advertises zero undirected similarity edges."
         },
         "maxMemoryBytes": {
           "const": 0

@@ -14,9 +14,9 @@ const MAX_FILTERS: usize = 64;
 const MAX_QUERY_BYTES: usize = 4_096;
 const MAX_FILTER_ID_BYTES: usize = 160;
 const MAX_FILTER_TEXT_BYTES: usize = 4_096;
-const MIN_MEMORY_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_MEMORY_BYTES: u64 = 32 * 1024 * 1024 * 1024;
-const MAX_EDGE_BUDGET: u64 = 500_000_000;
+pub const MIN_COMPUTE_MEMORY_BYTES: u64 = 16 * 1024 * 1024;
+pub const MAX_COMPUTE_MEMORY_BYTES: u64 = 32 * 1024 * 1024 * 1024;
+pub const MAX_UNDIRECTED_SIMILARITY_EDGES: u64 = 500_000_000;
 const MAX_DISPATCH_MS: u32 = 2_000;
 const MAX_SAFE_JSON_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -500,6 +500,8 @@ pub enum SchedulingPolicy {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResourceLimits {
+    /// Maximum qualifying unordered record pairs. Each `{i, j}` pair counts
+    /// once even though the symmetric CSR stores both directed entries.
     pub max_edges: u64,
     pub max_memory_bytes: u64,
     pub max_dispatch_ms: u32,
@@ -507,14 +509,14 @@ pub struct ResourceLimits {
 
 impl ResourceLimits {
     pub fn validate(&self) -> Result<(), ProtocolError> {
-        if self.max_edges == 0 || self.max_edges > MAX_EDGE_BUDGET {
+        if self.max_edges == 0 || self.max_edges > MAX_UNDIRECTED_SIMILARITY_EDGES {
             return Err(ProtocolError::Validation(format!(
-                "maxEdges must be in 1..={MAX_EDGE_BUDGET}"
+                "maxEdges counts undirected similarity edges and must be in 1..={MAX_UNDIRECTED_SIMILARITY_EDGES}"
             )));
         }
-        if !(MIN_MEMORY_BYTES..=MAX_MEMORY_BYTES).contains(&self.max_memory_bytes) {
+        if !(MIN_COMPUTE_MEMORY_BYTES..=MAX_COMPUTE_MEMORY_BYTES).contains(&self.max_memory_bytes) {
             return Err(ProtocolError::Validation(format!(
-                "maxMemoryBytes must be in {MIN_MEMORY_BYTES}..={MAX_MEMORY_BYTES}"
+                "maxMemoryBytes must be in {MIN_COMPUTE_MEMORY_BYTES}..={MAX_COMPUTE_MEMORY_BYTES}"
             )));
         }
         if self.max_dispatch_ms == 0 || self.max_dispatch_ms > MAX_DISPATCH_MS {
@@ -672,6 +674,17 @@ mod tests {
         let mut changed = valid_request();
         changed.parameters.fingerprint.radius = 3;
         assert!(changed.validate().is_err());
+    }
+
+    #[test]
+    fn max_edges_is_a_bounded_undirected_similarity_edge_count() {
+        let mut request = valid_request();
+        request.limits.max_edges = MAX_UNDIRECTED_SIMILARITY_EDGES;
+        assert_eq!(request.validate(), Ok(()));
+
+        request.limits.max_edges = MAX_UNDIRECTED_SIMILARITY_EDGES + 1;
+        let error = request.validate().expect_err("edge budget above maximum");
+        assert!(error.to_string().contains("undirected similarity edges"));
     }
 
     #[test]

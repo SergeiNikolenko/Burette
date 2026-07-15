@@ -392,12 +392,14 @@
         "maxEdges": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 500000000
+          "maximum": 500000000,
+          "description": "Maximum number of qualifying undirected similarity edges. Each unordered record pair counts once; symmetric CSR stores two directed entries."
         },
         "maxMemoryBytes": {
           "type": "integer",
           "minimum": 16777216,
-          "maximum": 34359738368
+          "maximum": 34359738368,
+          "description": "Hard admission limit for the conservative accounted clustering working set; it is not an exact process-RSS or allocator-byte prediction."
         },
         "maxDispatchMs": {
           "type": "integer",

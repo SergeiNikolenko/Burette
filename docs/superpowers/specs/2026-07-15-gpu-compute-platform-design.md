@@ -366,8 +366,9 @@ stable CPU boundary, such as fingerprint-to-CSR similarity. Any transfer between
 islands is a measured `materialize` stage in provenance.
 
 Dense Tanimoto graphs and volumetric surfaces have explicit edge and voxel
-budgets. Admission fails before allocation if a declared hard limit cannot be
-met.
+budgets. `maxEdges` counts qualifying undirected record pairs; the corresponding
+symmetric CSR contains twice as many directed entries. Admission fails before
+allocation if a declared hard limit cannot be met.
 
 ## Engines And Functional Scope
 
