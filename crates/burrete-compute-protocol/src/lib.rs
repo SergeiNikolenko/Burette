@@ -37,6 +37,10 @@ pub use snapshot::{
     AttemptSnapshot, AttemptState, ComputeJobSnapshotSchemaVersion, JobOutcomeSummary, JobProgress,
     JobSnapshot, StageSnapshot, StageState,
 };
+pub use wire::control::{
+    ControlCommand, ControlErrorCode, ControlRequest, ControlResponse, ControlResult,
+    JobCapabilityToken, SessionToken,
+};
 pub use wire::{
     decode_frame, encode_frame, read_frame, write_frame, WireMessage, MAX_CONTROL_FRAME_BYTES,
 };
