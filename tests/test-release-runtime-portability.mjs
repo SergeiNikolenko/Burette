@@ -15,6 +15,9 @@ const registry = JSON.parse(source("config/preview-formats.json"));
 assert.match(buildScript, /relocate_bundled_python_runtime/);
 assert.match(buildScript, /install_name_tool/);
 assert.match(buildScript, /assert_no_external_python_dependencies/);
+assert.match(buildScript, /prepare_bundled_python_for_signing/);
+assert.match(buildScript, /_CodeSignature/);
+assert.match(buildScript, /codesign --verify --deep --strict \"\$python_framework\"/);
 assert.match(buildScript, /otool -L/);
 assert.match(buildScript, /External Homebrew dependency/);
 
