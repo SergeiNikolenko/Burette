@@ -1,7 +1,11 @@
 mod error;
+mod job;
+mod wire;
 mod workflow;
 
 pub use error::ProtocolError;
+pub use job::{Backend, ExecutionPlan, JobState, OwnerSurface, PlannedStage, Precision, StageKind};
+pub use wire::{decode_frame, encode_frame, read_frame, write_frame, MAX_CONTROL_FRAME_BYTES};
 pub use workflow::{
     AnalysisFilter, BackendPolicy, ClusterV1Parameters, ClusterV1SubmitRequest, ColumnFilter,
     ColumnFilterKind, ComputeJobSchemaVersion, DescriptorFilter, ExecutionPolicy,
