@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, sync::Arc};
 
 use burrete_compute_protocol::{
     AttemptSnapshot, AttemptState, Backend, BackendPolicy, ClusterV1Parameters,
@@ -11,7 +11,7 @@ use burrete_compute_protocol::{
     SelectedGridScope, SimilarityCutoff, SimilaritySettings, StageKind, StageSnapshot, StageState,
     WorkflowTemplateId,
 };
-use rusqlite::TransactionBehavior;
+use rusqlite::{Connection, TransactionBehavior};
 use uuid::Uuid;
 
 use super::*;
@@ -23,8 +23,51 @@ pub(super) struct TestStore {
 
 impl TestStore {
     pub(super) fn new() -> Self {
-        let root = std::env::temp_dir().join(format!("burrete-compute-store-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir()
+            .canonicalize()
+            .expect("canonical temporary directory")
+            .join(format!("burrete-compute-store-{}", Uuid::new_v4()));
         let store = ComputeStore::initialize(root.clone()).expect("initialize compute store");
+        Self { root, store }
+    }
+
+    pub(super) fn new_legacy_v1_with_job(owner: &str, snapshot: &JobSnapshot) -> Self {
+        Self::new_legacy_v1_with_jobs(owner, std::slice::from_ref(snapshot))
+    }
+
+    pub(super) fn new_legacy_v1_with_jobs(owner: &str, snapshots: &[JobSnapshot]) -> Self {
+        let root = std::env::temp_dir()
+            .canonicalize()
+            .expect("canonical temporary directory")
+            .join(format!("burrete-compute-store-v1-{}", Uuid::new_v4()));
+        let root_lease = Arc::new(
+            crate::compute::root_lease::ComputeRootLease::acquire(&root)
+                .expect("acquire legacy v1 compute root"),
+        );
+        let database_path = root.join("coordinator.sqlite3");
+        let mut connection = Connection::open(&database_path).expect("open legacy v1 database");
+        schema::configure(&connection).expect("configure legacy v1 database");
+        schema::initialize_legacy_v1_fixture(&mut connection).expect("initialize legacy v1 schema");
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .expect("begin legacy v1 fixture transaction");
+        for snapshot in snapshots {
+            jobs::insert_job_row(
+                &transaction,
+                owner_principal_for_window(owner).expect("trusted owner"),
+                owner,
+                snapshot,
+            )
+            .expect("insert legacy v1 job");
+            jobs::replace_child_rows(&transaction, snapshot).expect("insert legacy v1 child rows");
+            events::insert_event(&transaction, snapshot).expect("insert legacy v1 event");
+        }
+        transaction.commit().expect("commit legacy v1 job");
+        drop(connection);
+        let store = ComputeStore {
+            root_lease,
+            database_path: Arc::new(database_path),
+        };
         Self { root, store }
     }
 }
@@ -48,9 +91,48 @@ pub(super) fn insert_recovery_fixture(store: &ComputeStore, owner: &str, snapsho
         snapshot,
     )
     .expect("insert recovery job");
+    jobs::insert_source_snapshot_row(&transaction, snapshot)
+        .expect("insert recovery source snapshot");
     jobs::replace_child_rows(&transaction, snapshot).expect("insert recovery child rows");
     events::insert_event(&transaction, snapshot).expect("insert recovery event");
     transaction.commit().expect("commit recovery fixture");
+}
+
+pub(super) fn create_renamed_intent(store: &ComputeStore, snapshot: &JobSnapshot) -> Uuid {
+    let attempt_id = Uuid::new_v4();
+    let draft = SnapshotIntentDraft {
+        snapshot_id: snapshot.frozen_source.snapshot_id,
+        job_id: snapshot.job_id,
+        attempt_id,
+        reservation_bytes: 4_096,
+        created_at_ms: snapshot.created_at_ms,
+    };
+    store
+        .reserve_snapshot_intent(&draft)
+        .expect("reserve snapshot intent");
+    store
+        .mark_snapshot_intent_writing(draft.snapshot_id, attempt_id, draft.created_at_ms + 1)
+        .expect("begin snapshot write");
+    store
+        .mark_snapshot_intent_synced(
+            draft.snapshot_id,
+            attempt_id,
+            1_024,
+            &snapshot.frozen_source,
+            draft.created_at_ms + 2,
+        )
+        .expect("sync snapshot intent");
+    store
+        .mark_snapshot_intent_renamed(draft.snapshot_id, attempt_id, draft.created_at_ms + 3)
+        .expect("rename snapshot intent");
+    attempt_id
+}
+
+pub(super) fn insert_prepared_fixture(store: &ComputeStore, owner: &str, snapshot: &JobSnapshot) {
+    let attempt_id = create_renamed_intent(store, snapshot);
+    store
+        .insert_prepared_job(owner, snapshot, attempt_id)
+        .expect("insert prepared job");
 }
 
 pub(super) fn boundary_snapshot(

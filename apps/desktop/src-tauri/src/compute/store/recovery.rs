@@ -3,31 +3,44 @@ use burrete_compute_protocol::{
 };
 use uuid::Uuid;
 
-use super::{decode_snapshot, ComputeCoordinatorError, ComputeResult, ComputeStore};
+use super::{decode_snapshot_with_source, ComputeCoordinatorError, ComputeResult, ComputeStore};
 
 impl ComputeStore {
     pub(crate) fn recover_active_jobs(&self, recovered_at_ms: u64) -> ComputeResult<usize> {
         let connection = self.open_connection()?;
         let mut statement = connection.prepare(
-            "SELECT created_window_label, snapshot_json
+            "SELECT jobs.created_window_label, jobs.snapshot_json,
+                    job_source_snapshots.snapshot_id,
+                    job_source_snapshots.snapshot_ref_json
              FROM jobs
-             WHERE state NOT IN (
+             LEFT JOIN job_source_snapshots
+               ON job_source_snapshots.job_id = jobs.job_id
+             WHERE jobs.state NOT IN (
                'queued', 'cancelled', 'failed', 'interrupted',
                'succeeded', 'succeeded_with_failures'
              )
-             ORDER BY created_at_ms ASC, job_id ASC",
+             ORDER BY jobs.created_at_ms ASC, jobs.job_id ASC",
         )?;
         let encoded = statement
             .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         drop(statement);
         drop(connection);
 
         let mut recovered = 0;
-        for (owner, encoded_snapshot) in encoded {
-            let previous = decode_snapshot(&encoded_snapshot)?;
+        for (owner, encoded_snapshot, source_id, source) in encoded {
+            let previous = decode_snapshot_with_source(
+                &encoded_snapshot,
+                source_id.as_deref(),
+                source.as_deref(),
+            )?;
             let Some(stage_index) = previous
                 .stages
                 .iter()
