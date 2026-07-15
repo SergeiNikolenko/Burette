@@ -12,6 +12,7 @@ pub(crate) mod pubchem;
 pub(crate) mod quicklook;
 pub(crate) mod runtime_doctor;
 pub(crate) mod shell;
+pub(crate) mod source_editing;
 pub(crate) mod startup;
 pub(crate) mod text_files;
 pub(crate) mod update_progress;
