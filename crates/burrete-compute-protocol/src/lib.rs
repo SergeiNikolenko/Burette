@@ -12,9 +12,9 @@ pub use artifact::{
     StageProvenance,
 };
 pub use capability::{
-    CapabilityEntry, CapabilityLimits, CapabilityMaturity, CapabilityReason, CapabilityReasonCode,
-    CapabilityReportSchemaVersion, ComputeAvailability, ComputeCapabilityReport, GpuDeviceIdentity,
-    PlatformIdentity, ProtocolRange, RuntimeIdentity,
+    CapabilityEntry, CapabilityExpectation, CapabilityLimits, CapabilityMaturity,
+    CapabilityReason, CapabilityReasonCode, CapabilityReportSchemaVersion, ComputeAvailability,
+    ComputeCapabilityReport, GpuDeviceIdentity, PlatformIdentity, ProtocolRange, RuntimeIdentity,
 };
 pub use error::{ComputeErrorCode, ComputeFailure, ProtocolError};
 pub use job::{Backend, ExecutionPlan, JobState, OwnerSurface, PlannedStage, Precision, StageKind};
