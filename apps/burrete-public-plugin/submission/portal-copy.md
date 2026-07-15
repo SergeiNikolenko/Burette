@@ -15,6 +15,8 @@
   captured from the production v21 widget in a real ChatGPT conversation after
   refreshing the developer connector.
 - **Live ChatGPT proof:** https://chatgpt.com/c/6a57781a-b1b0-83ea-bb65-4c5b13bcc3a8
+- **Desktop demo video:** https://burrete-landing.vercel.app/assets/burrete-chatgpt-plugin-demo.mp4
+- **Physical iPhone demo video:** https://burrete-landing.vercel.app/assets/burrete-chatgpt-plugin-demo-iphone.mp4
 - **Mobile verification:** the same production v21 plugin was confirmed working
   on a physical iPhone on July 15, 2026.
 
