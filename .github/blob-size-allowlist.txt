@@ -16,6 +16,7 @@ plugins/burette-agent/browser-shell-dist/assets/plotly-basic.min-DmcrXewL.js
 plugins/burette-agent/browser-shell-dist/index.js
 tests/test-ui-shell-contract.mjs
 docs/public/burrete-quick-look-preview.png
+samples/collections/tables/moses-10k.csv
 samples/large/moses_10k.csv
 samples/large/moses_10k_descriptors_preview.csv
 samples/quantum/volumes/base-pair-density.cube
