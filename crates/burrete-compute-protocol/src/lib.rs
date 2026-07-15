@@ -3,6 +3,7 @@ mod capability;
 mod error;
 mod job;
 mod snapshot;
+mod validation;
 mod wire;
 mod workflow;
 
@@ -23,10 +24,11 @@ pub use snapshot::{
 };
 pub use wire::{decode_frame, encode_frame, read_frame, write_frame, MAX_CONTROL_FRAME_BYTES};
 pub use workflow::{
-    AnalysisFilter, BackendPolicy, ClusterV1Parameters, ClusterV1SubmitRequest, ColumnFilter,
-    ColumnFilterKind, ComputeJobSchemaVersion, DescriptorFilter, ExecutionPolicy,
-    FingerprintAlgorithm, FingerprintSettings, GridScope, GridSourceReference, GridTextQuery,
-    RepresentativePolicy, ResourceLimits, SchedulingPolicy, SimilarityCutoff, SimilaritySettings,
+    AllGridScope, AnalysisFilter, BackendPolicy, ClusterV1Parameters, ClusterV1SubmitRequest,
+    ColumnFilter, ColumnFilterKind, ComputeJobSchemaVersion, DescriptorFilter, ExecutionPolicy,
+    FilteredGridScope, FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
+    GridSourceReference, GridTextQuery, RdkitBaselineVersion, RepresentativePolicy,
+    ResourceLimits, SchedulingPolicy, SelectedGridScope, SimilarityCutoff, SimilaritySettings,
     WorkflowTemplateId,
 };
 

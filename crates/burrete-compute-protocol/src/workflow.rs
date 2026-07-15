@@ -1,6 +1,9 @@
-use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
-use crate::ProtocolError;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::{validation::validate_bounded_text, ProtocolError};
 
 const MAX_DOCUMENT_ID_BYTES: usize = 256;
 const MAX_SELECTED_ROWS: usize = 65_536;
@@ -39,6 +42,13 @@ pub struct ClusterV1SubmitRequest {
 
 impl ClusterV1SubmitRequest {
     pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.schema_version != ComputeJobSchemaVersion::V1
+            || self.workflow_template != WorkflowTemplateId::ClusterV1
+        {
+            return Err(ProtocolError::Validation(
+                "cluster request has an incompatible schema or workflow template".into(),
+            ));
+        }
         validate_bounded_text(
             "documentId",
             &self.source.document_id,
@@ -47,6 +57,14 @@ impl ClusterV1SubmitRequest {
         self.source.scope.validate()?;
         self.parameters.validate()?;
         self.limits.validate()
+    }
+
+    /// Returns the only representation accepted for immutable request hashing.
+    pub fn normalized(mut self) -> Result<Self, ProtocolError> {
+        self.source.scope = self.source.scope.normalized()?;
+        self.parameters.similarity.cutoff = self.parameters.similarity.cutoff.normalized()?;
+        self.validate()?;
+        Ok(self)
     }
 }
 
@@ -60,26 +78,37 @@ pub struct GridSourceReference {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum GridScope {
-    Selected {
-        #[serde(rename = "sourceIndexes")]
-        source_indexes: Vec<u64>,
-    },
-    Filtered {
-        query: GridTextQuery,
-        #[serde(default, rename = "columnFilters")]
-        column_filters: Vec<ColumnFilter>,
-        #[serde(default, rename = "descriptorFilters")]
-        descriptor_filters: Vec<DescriptorFilter>,
-        #[serde(default, rename = "analysisFilters")]
-        analysis_filters: Vec<AnalysisFilter>,
-    },
-    All,
+    Selected(SelectedGridScope),
+    Filtered(FilteredGridScope),
+    All(AllGridScope),
 }
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SelectedGridScope {
+    pub source_indexes: Vec<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FilteredGridScope {
+    pub query: GridTextQuery,
+    #[serde(default)]
+    pub column_filters: Vec<ColumnFilter>,
+    #[serde(default)]
+    pub descriptor_filters: Vec<DescriptorFilter>,
+    #[serde(default)]
+    pub analysis_filters: Vec<AnalysisFilter>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AllGridScope {}
 
 impl GridScope {
     pub fn validate(&self) -> Result<(), ProtocolError> {
         match self {
-            Self::Selected { source_indexes } => {
+            Self::Selected(SelectedGridScope { source_indexes }) => {
                 if source_indexes.is_empty() || source_indexes.len() > MAX_SELECTED_ROWS {
                     return Err(ProtocolError::Validation(format!(
                         "selected scope requires 1..={MAX_SELECTED_ROWS} source indexes"
@@ -93,13 +122,21 @@ impl GridScope {
                         "selected source index exceeds the JSON safe integer range".into(),
                     ));
                 }
+                if source_indexes
+                    .windows(2)
+                    .any(|pair| pair[0] >= pair[1])
+                {
+                    return Err(ProtocolError::Validation(
+                        "selected source indexes must be strictly increasing and unique".into(),
+                    ));
+                }
             }
-            Self::Filtered {
+            Self::Filtered(FilteredGridScope {
                 query,
                 column_filters,
                 descriptor_filters,
                 analysis_filters,
-            } => {
+            }) => {
                 query.validate()?;
                 let filter_count =
                     column_filters.len() + descriptor_filters.len() + analysis_filters.len();
@@ -108,19 +145,62 @@ impl GridScope {
                         "filtered scope has {filter_count} filters; limit is {MAX_FILTERS}"
                     )));
                 }
+                let mut column_ids = BTreeSet::new();
                 for filter in column_filters {
                     filter.validate()?;
+                    if !column_ids.insert(filter.id.as_str()) {
+                        return Err(ProtocolError::Validation(format!(
+                            "duplicate column filter ID: {}",
+                            filter.id
+                        )));
+                    }
                 }
+                let mut descriptor_ids = BTreeSet::new();
                 for filter in descriptor_filters {
                     filter.validate("descriptor filter")?;
+                    if !descriptor_ids.insert(filter.id.as_str()) {
+                        return Err(ProtocolError::Validation(format!(
+                            "duplicate descriptor filter ID: {}",
+                            filter.id
+                        )));
+                    }
                 }
+                let mut analysis_ids = BTreeSet::new();
                 for filter in analysis_filters {
                     filter.validate("analysis filter")?;
+                    if !analysis_ids.insert((filter.run_id, filter.value_id.as_str())) {
+                        return Err(ProtocolError::Validation(format!(
+                            "duplicate analysis filter value: {}",
+                            filter.value_id
+                        )));
+                    }
                 }
             }
-            Self::All => {}
+            Self::All(_) => {}
         }
         Ok(())
+    }
+
+    /// Produces the canonical request representation used for hashing.
+    pub fn normalized(mut self) -> Result<Self, ProtocolError> {
+        if let Self::Selected(SelectedGridScope { source_indexes }) = &mut self {
+            source_indexes.sort_unstable();
+            source_indexes.dedup();
+        } else if let Self::Filtered(FilteredGridScope {
+            column_filters,
+            descriptor_filters,
+            analysis_filters,
+            ..
+        }) = &mut self
+        {
+            column_filters.sort_by(|left, right| left.id.cmp(&right.id));
+            descriptor_filters.sort_by(|left, right| left.id.cmp(&right.id));
+            analysis_filters.sort_by(|left, right| {
+                (left.run_id, left.value_id.as_str()).cmp(&(right.run_id, right.value_id.as_str()))
+            });
+        }
+        self.validate()?;
+        Ok(self)
     }
 }
 
@@ -203,7 +283,21 @@ impl DescriptorFilter {
     }
 }
 
-pub type AnalysisFilter = DescriptorFilter;
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AnalysisFilter {
+    pub run_id: Uuid,
+    pub value_id: String,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+}
+
+impl AnalysisFilter {
+    fn validate(&self, label: &str) -> Result<(), ProtocolError> {
+        validate_filter_id(&self.value_id)?;
+        validate_numeric_bounds(label, self.min, self.max)
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -230,21 +324,44 @@ pub enum FingerprintAlgorithm {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FingerprintSettings {
     pub algorithm: FingerprintAlgorithm,
+    pub rdkit_version: RdkitBaselineVersion,
     pub radius: u8,
     pub bit_count: u16,
     pub use_chirality: bool,
     pub use_features: bool,
+    pub sanitize: bool,
+    pub input_order: FingerprintInputOrder,
 }
 
 impl FingerprintSettings {
     fn validate(&self) -> Result<(), ProtocolError> {
-        if self.radius != 2 || self.bit_count != 2_048 || !self.use_chirality || self.use_features {
+        if self.algorithm != FingerprintAlgorithm::RdkitMorganBitV1
+            || self.rdkit_version != RdkitBaselineVersion::V2025_03_4
+            || self.radius != 2
+            || self.bit_count != 2_048
+            || !self.use_chirality
+            || self.use_features
+            || !self.sanitize
+            || self.input_order != FingerprintInputOrder::SourceRecord
+        {
             return Err(ProtocolError::Validation(
-                "cluster.v1 requires the RDKit Morgan radius=2, bitCount=2048, useChirality=true, useFeatures=false baseline".into(),
+                "cluster.v1 requires the RDKit 2025.03.4 Morgan radius=2, bitCount=2048, useChirality=true, useFeatures=false, sanitize=true, source-record-order baseline".into(),
             ));
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum RdkitBaselineVersion {
+    #[serde(rename = "2025.03.4")]
+    V2025_03_4,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FingerprintInputOrder {
+    SourceRecord,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -282,8 +399,13 @@ impl SimilarityCutoff {
 
     pub fn matches_counts(self, intersection: u64, union: u64) -> Result<bool, ProtocolError> {
         let cutoff = self.normalized()?;
+        if intersection > union {
+            return Err(ProtocolError::Validation(
+                "fingerprint intersection cannot exceed union".into(),
+            ));
+        }
         if union == 0 {
-            return Ok(true);
+            return Ok(cutoff.numerator == 0);
         }
         Ok(u128::from(intersection) * u128::from(cutoff.denominator)
             >= u128::from(union) * u128::from(cutoff.numerator))
@@ -328,7 +450,7 @@ pub struct ResourceLimits {
 }
 
 impl ResourceLimits {
-    fn validate(&self) -> Result<(), ProtocolError> {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
         if self.max_edges == 0 || self.max_edges > MAX_EDGE_BUDGET {
             return Err(ProtocolError::Validation(format!(
                 "maxEdges must be in 1..={MAX_EDGE_BUDGET}"
@@ -350,15 +472,6 @@ impl ResourceLimits {
 
 fn validate_filter_id(value: &str) -> Result<(), ProtocolError> {
     validate_bounded_text("filter id", value, MAX_FILTER_ID_BYTES)
-}
-
-fn validate_bounded_text(label: &str, value: &str, max: usize) -> Result<(), ProtocolError> {
-    if value.is_empty() || value.len() > max {
-        return Err(ProtocolError::Validation(format!(
-            "{label} must contain 1..={max} bytes"
-        )));
-    }
-    Ok(())
 }
 
 fn validate_numeric_bounds(
@@ -403,15 +516,18 @@ mod tests {
             workflow_template: WorkflowTemplateId::ClusterV1,
             source: GridSourceReference {
                 document_id: "document-1".into(),
-                scope: GridScope::All,
+                scope: GridScope::All(AllGridScope {}),
             },
             parameters: ClusterV1Parameters {
                 fingerprint: FingerprintSettings {
                     algorithm: FingerprintAlgorithm::RdkitMorganBitV1,
+                    rdkit_version: RdkitBaselineVersion::V2025_03_4,
                     radius: 2,
                     bit_count: 2_048,
                     use_chirality: true,
                     use_features: false,
+                    sanitize: true,
+                    input_order: FingerprintInputOrder::SourceRecord,
                 },
                 similarity: SimilaritySettings {
                     cutoff: SimilarityCutoff {
@@ -456,19 +572,38 @@ mod tests {
         };
         assert!(cutoff.matches_counts(7, 10).expect("compare boundary"));
         assert!(!cutoff.matches_counts(699, 1_000).expect("compare below"));
-        assert!(cutoff.matches_counts(0, 0).expect("compare empty"));
+        assert!(!cutoff.matches_counts(0, 0).expect("compare empty"));
+        assert!(SimilarityCutoff {
+            numerator: 0,
+            denominator: 1,
+        }
+        .matches_counts(0, 0)
+        .expect("compare empty at zero cutoff"));
+        assert!(cutoff.matches_counts(2, 1).is_err());
     }
 
     #[test]
     fn normalizes_selected_scope_bounds() {
-        let selected = GridScope::Selected {
+        let selected = GridScope::Selected(SelectedGridScope {
             source_indexes: vec![2, 2, 7],
-        };
-        assert_eq!(selected.validate(), Ok(()));
-        assert!(GridScope::Selected {
+        });
+        assert!(selected.validate().is_err());
+        assert_eq!(
+            selected.normalized().expect("normalize selected"),
+            GridScope::Selected(SelectedGridScope {
+                source_indexes: vec![2, 7]
+            })
+        );
+        assert!(GridScope::Selected(SelectedGridScope {
             source_indexes: Vec::new()
-        }
+        })
         .validate()
         .is_err());
+    }
+
+    #[test]
+    fn rejects_fields_from_another_scope_variant() {
+        let value = serde_json::json!({"kind": "all", "sourceIndexes": [2]});
+        assert!(serde_json::from_value::<GridScope>(value).is_err());
     }
 }
