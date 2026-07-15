@@ -3,9 +3,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    validation::{
-        validate_bounded_text, validate_json_safe_u64, validate_lower_sha256,
-    },
+    validation::{validate_bounded_text, validate_json_safe_u64, validate_lower_sha256},
     BackendPolicy, ProtocolError, WorkflowTemplateId,
 };
 
@@ -147,11 +145,7 @@ pub struct EngineIdentity {
 impl EngineIdentity {
     pub fn validate(&self) -> Result<(), ProtocolError> {
         validate_bounded_text("engine ID", &self.engine_id, MAX_ENGINE_ID_BYTES)?;
-        validate_bounded_text(
-            "engine version",
-            &self.version,
-            MAX_ENGINE_VERSION_BYTES,
-        )?;
+        validate_bounded_text("engine version", &self.version, MAX_ENGINE_VERSION_BYTES)?;
         validate_lower_sha256("engine manifest", &self.manifest_sha256)
     }
 }
@@ -291,9 +285,9 @@ impl PlannedStage {
 
     fn partition_record_count(&self) -> Result<u64, ProtocolError> {
         self.partitions.iter().try_fold(0_u64, |total, partition| {
-            total.checked_add(partition.record_count).ok_or_else(|| {
-                ProtocolError::Validation("partition record count overflow".into())
-            })
+            total
+                .checked_add(partition.record_count)
+                .ok_or_else(|| ProtocolError::Validation("partition record count overflow".into()))
         })
     }
 }
@@ -378,9 +372,10 @@ impl ExecutionPlan {
                 )));
             }
             let stage_record_count = stage.partition_record_count()?;
-            if record_count.replace(stage_record_count).is_some_and(|value| {
-                value != stage_record_count
-            }) {
+            if record_count
+                .replace(stage_record_count)
+                .is_some_and(|value| value != stage_record_count)
+            {
                 return Err(ProtocolError::Validation(
                     "cluster.v1 stages do not cover the same frozen record count".into(),
                 ));
@@ -453,10 +448,7 @@ fn validate_fallback(
     }
 }
 
-fn validate_engine_backend(
-    engine: &EngineIdentity,
-    backend: Backend,
-) -> Result<(), ProtocolError> {
+fn validate_engine_backend(engine: &EngineIdentity, backend: Backend) -> Result<(), ProtocolError> {
     let expected_engine = match backend {
         Backend::Coordinator => "burrete-coordinator",
         Backend::Rdkit => "rdkit",

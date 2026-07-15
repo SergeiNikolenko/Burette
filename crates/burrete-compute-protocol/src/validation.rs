@@ -84,6 +84,9 @@ mod tests {
         for path in ["../result.bin", "./result.bin", "a//b", "a\\b", "/tmp/x"] {
             assert!(validate_relative_path("test path", path, 128).is_err());
         }
-        assert_eq!(validate_relative_path("test path", "result/data.bin", 128), Ok(()));
+        assert_eq!(
+            validate_relative_path("test path", "result/data.bin", 128),
+            Ok(())
+        );
     }
 }

@@ -154,9 +154,7 @@ impl PackedArrayDescriptor {
             || !self.alignment.is_power_of_two()
             || u64::from(self.alignment) < width
             || u64::from(self.alignment) % width != 0
-            || !self
-                .byte_offset
-                .is_multiple_of(u64::from(self.alignment))
+            || !self.byte_offset.is_multiple_of(u64::from(self.alignment))
         {
             return Err(ProtocolError::Validation(
                 "packed array alignment is invalid for its dtype and offset".into(),
