@@ -1,4 +1,6 @@
-use rusqlite::{params, params_from_iter, types::Value as SqlValue, Connection};
+use rusqlite::{
+    params, params_from_iter, types::Value as SqlValue, Connection, TransactionBehavior,
+};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -9,7 +11,7 @@ use std::sync::{
 use std::thread;
 
 use super::{
-    grid_identity,
+    grid_identity, grid_predicate,
     runtime_utils::{clipped, decode_text, normalized_lines},
 };
 
@@ -106,26 +108,15 @@ pub(crate) struct GridQuery {
     pub(crate) sort: String,
     pub(crate) column_filters: Vec<GridColumnFilter>,
     pub(crate) descriptor_filters: Vec<GridDescriptorFilter>,
+    pub(crate) analysis_filters: Vec<GridAnalysisFilter>,
     pub(crate) descriptor_sort: Option<GridDescriptorSort>,
     pub(crate) offset: usize,
     pub(crate) limit: usize,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct GridColumnFilter {
-    pub(crate) id: String,
-    pub(crate) filter_type: String,
-    pub(crate) text: Option<String>,
-    pub(crate) min: Option<f64>,
-    pub(crate) max: Option<f64>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct GridDescriptorFilter {
-    pub(crate) id: String,
-    pub(crate) min: Option<f64>,
-    pub(crate) max: Option<f64>,
-}
+pub(crate) type GridColumnFilter = burrete_compute_protocol::ColumnFilter;
+pub(crate) type GridDescriptorFilter = burrete_compute_protocol::DescriptorFilter;
+pub(crate) type GridAnalysisFilter = burrete_compute_protocol::AnalysisFilter;
 
 #[derive(Debug, Clone)]
 pub(crate) struct GridDescriptorSort {
@@ -491,205 +482,129 @@ fn grid_format(extension: &str) -> Option<&'static str> {
 }
 
 fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult, String> {
-    let connection = Connection::open(database_path).map_err(|err| err.to_string())?;
-    let index_state = read_index_state(&connection)?;
-    let normalized_query = normalize_grid_query(&query.query);
+    let mut connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Deferred)
+        .map_err(|err| err.to_string())?;
+    let index_state = read_index_state(&transaction)?;
     let limit = query.limit.clamp(1, 240);
     let offset = query.offset;
     let sort_clause = page_sort_clause(query.descriptor_sort.as_ref(), &query.sort);
-    if !query.descriptor_filters.is_empty() || !query.column_filters.is_empty() {
-        return fetch_descriptor_filtered_page(
-            &connection,
-            &normalized_query,
-            &query.column_filters,
-            &query.descriptor_filters,
-            &sort_clause,
-            limit,
-            offset,
-            index_state,
-        );
-    }
-    let total_rows = if normalized_query.is_empty() {
-        connection
-            .query_row("select count(*) from molecules", [], |row| {
-                row.get::<_, i64>(0)
-            })
-            .map_err(|err| err.to_string())? as usize
-    } else {
-        return fetch_filtered_page(
-            &connection,
-            &normalized_query,
-            &sort_clause,
-            limit,
-            offset,
-            index_state,
-        );
+    let text_query = burrete_compute_protocol::GridTextQuery::Text {
+        text: query.query.clone(),
     };
-
-    let sql = format!(
-        "select id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json \
-         from molecules \
-         {join_sql} \
-         order by {order_sql} \
-         limit ? offset ?",
-        join_sql = sort_clause.join_sql,
-        order_sql = sort_clause.order_sql
-    );
-    let mut statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
-    let mut page_params = sort_clause.params;
-    page_params.push(SqlValue::Integer(limit as i64));
-    page_params.push(SqlValue::Integer(offset as i64));
-    let rows = statement
-        .query(params_from_iter(page_params.iter()))
-        .map_err(|err| err.to_string())?;
-    let mut page_rows = collect_page_rows(rows)?;
-    attach_descriptor_cells(&connection, &mut page_rows)?;
-    Ok(GridPageResult {
-        rows: page_rows,
-        total_rows,
-        offset,
-        limit,
-        indexing: !index_state.index_ready,
-        records_indexed: index_state.records_indexed,
-        records_total_hint: index_state.records_total,
-        index_ready: index_state.index_ready,
-        descriptor_ids: descriptor_ids_in_connection(&connection)?,
-    })
-}
-
-fn fetch_filtered_page(
-    connection: &Connection,
-    normalized_query: &str,
-    sort_clause: &PageSortClause,
-    limit: usize,
-    offset: usize,
-    index_state: GridIndexState,
-) -> Result<GridPageResult, String> {
-    if let Some(fts_query) = fts_query(normalized_query) {
-        if let Ok(result) = fetch_filtered_page_with_fts(
-            connection,
-            &fts_query,
-            sort_clause,
-            limit,
-            offset,
-            index_state,
-        ) {
-            if result.total_rows > 0 {
-                return Ok(result);
-            }
-        }
-    }
-    fetch_filtered_page_with_like(
-        connection,
-        normalized_query,
-        sort_clause,
+    let predicate = grid_predicate::plan_grid_predicate(
+        &text_query,
+        &query.column_filters,
+        &query.descriptor_filters,
+        &query.analysis_filters,
+    )?;
+    let result = fetch_predicate_page(
+        &transaction,
+        &predicate,
+        &sort_clause,
         limit,
         offset,
         index_state,
-    )
+    )?;
+    transaction.commit().map_err(|err| err.to_string())?;
+    Ok(result)
 }
 
-fn fetch_filtered_page_with_fts(
+fn fetch_predicate_page(
     connection: &Connection,
+    predicate: &grid_predicate::GridPredicatePlan,
+    sort_clause: &PageSortClause,
+    limit: usize,
+    offset: usize,
+    index_state: GridIndexState,
+) -> Result<GridPageResult, String> {
+    let where_sql = if predicate.predicate_sql.is_empty() {
+        String::new()
+    } else {
+        format!(" where {}", predicate.predicate_sql)
+    };
+    let count_sql = format!("select count(*) from molecules{where_sql}");
+    let total_rows = connection
+        .query_row(
+            &count_sql,
+            params_from_iter(predicate.params.iter()),
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|err| err.to_string())? as usize;
+    let fts_query = predicate.fts_query.as_deref().filter(|fts_query| {
+        fts_candidates_cover_exact_result(connection, predicate, fts_query, total_rows)
+    });
+    let fts_sql = if fts_query.is_some() {
+        " and molecules.id in (
+             select rowid from molecules_fts where molecules_fts match ?
+           )"
+    } else {
+        ""
+    };
+    let sql = format!(
+        "select id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json \
+         from molecules \
+         {join_sql} \
+         {where_sql}{fts_sql} \
+         order by {order_sql} \
+         limit ? offset ?",
+        join_sql = sort_clause.join_sql,
+        order_sql = sort_clause.order_sql
+    );
+    let mut statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
+    let mut page_params = sort_clause.params.clone();
+    page_params.extend(predicate.params.iter().cloned());
+    if let Some(fts_query) = fts_query {
+        page_params.push(SqlValue::Text(fts_query.to_string()));
+    }
+    page_params.push(SqlValue::Integer(limit as i64));
+    page_params.push(SqlValue::Integer(offset as i64));
+    let rows = statement
+        .query(params_from_iter(page_params.iter()))
+        .map_err(|err| err.to_string())?;
+    Ok(GridPageResult {
+        rows: {
+            let mut page_rows = collect_page_rows(rows)?;
+            attach_descriptor_cells(connection, &mut page_rows)?;
+            page_rows
+        },
+        total_rows,
+        offset,
+        limit,
+        indexing: !index_state.index_ready,
+        records_indexed: index_state.records_indexed,
+        records_total_hint: index_state.records_total,
+        index_ready: index_state.index_ready,
+        descriptor_ids: descriptor_ids_in_connection(connection)?,
+    })
+}
+
+fn fts_candidates_cover_exact_result(
+    connection: &Connection,
+    predicate: &grid_predicate::GridPredicatePlan,
     fts_query: &str,
-    sort_clause: &PageSortClause,
-    limit: usize,
-    offset: usize,
-    index_state: GridIndexState,
-) -> Result<GridPageResult, String> {
-    let total_rows = connection
-        .query_row(
-            "select count(*) \
-             from molecules \
-             where id in (select rowid from molecules_fts where molecules_fts match ?1)",
-            params![fts_query],
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(|err| err.to_string())? as usize;
+    exact_total: usize,
+) -> bool {
+    let where_sql = if predicate.predicate_sql.is_empty() {
+        "where".to_string()
+    } else {
+        format!("where {} and", predicate.predicate_sql)
+    };
     let sql = format!(
-        "select id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json \
-         from molecules \
-         {join_sql} \
-         where id in (select rowid from molecules_fts where molecules_fts match ?) \
-         order by {order_sql} \
-         limit ? offset ?",
-        join_sql = sort_clause.join_sql,
-        order_sql = sort_clause.order_sql
+        "select count(*) from molecules
+         {where_sql} molecules.id in (
+           select rowid from molecules_fts where molecules_fts match ?
+         )"
     );
-    let mut statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
-    let mut page_params = sort_clause.params.clone();
-    page_params.push(SqlValue::Text(fts_query.to_string()));
-    page_params.push(SqlValue::Integer(limit as i64));
-    page_params.push(SqlValue::Integer(offset as i64));
-    let rows = statement
-        .query(params_from_iter(page_params.iter()))
-        .map_err(|err| err.to_string())?;
-    Ok(GridPageResult {
-        rows: {
-            let mut page_rows = collect_page_rows(rows)?;
-            attach_descriptor_cells(connection, &mut page_rows)?;
-            page_rows
-        },
-        total_rows,
-        offset,
-        limit,
-        indexing: !index_state.index_ready,
-        records_indexed: index_state.records_indexed,
-        records_total_hint: index_state.records_total,
-        index_ready: index_state.index_ready,
-        descriptor_ids: descriptor_ids_in_connection(connection)?,
-    })
-}
-
-fn fetch_filtered_page_with_like(
-    connection: &Connection,
-    normalized_query: &str,
-    sort_clause: &PageSortClause,
-    limit: usize,
-    offset: usize,
-    index_state: GridIndexState,
-) -> Result<GridPageResult, String> {
-    let pattern = like_pattern(normalized_query);
-    let total_rows = connection
-        .query_row(
-            "select count(*) from molecules where search_text like ?1 escape '\\'",
-            params![pattern],
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(|err| err.to_string())? as usize;
-    let sql = format!(
-        "select id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json \
-         from molecules \
-         {join_sql} \
-         where search_text like ? escape '\\' \
-         order by {order_sql} \
-         limit ? offset ?",
-        join_sql = sort_clause.join_sql,
-        order_sql = sort_clause.order_sql
-    );
-    let mut statement = connection.prepare(&sql).map_err(|err| err.to_string())?;
-    let mut page_params = sort_clause.params.clone();
-    page_params.push(SqlValue::Text(pattern));
-    page_params.push(SqlValue::Integer(limit as i64));
-    page_params.push(SqlValue::Integer(offset as i64));
-    let rows = statement
-        .query(params_from_iter(page_params.iter()))
-        .map_err(|err| err.to_string())?;
-    Ok(GridPageResult {
-        rows: {
-            let mut page_rows = collect_page_rows(rows)?;
-            attach_descriptor_cells(connection, &mut page_rows)?;
-            page_rows
-        },
-        total_rows,
-        offset,
-        limit,
-        indexing: !index_state.index_ready,
-        records_indexed: index_state.records_indexed,
-        records_total_hint: index_state.records_total,
-        index_ready: index_state.index_ready,
-        descriptor_ids: descriptor_ids_in_connection(connection)?,
-    })
+    let mut params = predicate.params.clone();
+    params.push(SqlValue::Text(fts_query.to_string()));
+    connection
+        .query_row(&sql, params_from_iter(params.iter()), |row| {
+            row.get::<_, i64>(0)
+        })
+        .map(|count| count as usize == exact_total)
+        .unwrap_or(false)
 }
 
 fn collect_page_rows(mut rows: rusqlite::Rows<'_>) -> Result<Vec<GridPageRow>, String> {
@@ -795,193 +710,6 @@ fn page_sort_clause(
         ),
         params: vec![SqlValue::Text(sort.id.clone())],
     }
-}
-
-fn fetch_descriptor_filtered_page(
-    connection: &Connection,
-    normalized_query: &str,
-    column_filters: &[GridColumnFilter],
-    filters: &[GridDescriptorFilter],
-    sort_clause: &PageSortClause,
-    limit: usize,
-    offset: usize,
-    index_state: GridIndexState,
-) -> Result<GridPageResult, String> {
-    let (filter_sql, filter_params) = descriptor_filter_sql(filters)?;
-    let mut clauses = Vec::new();
-    let mut query_params: Vec<SqlValue> = Vec::new();
-    if !normalized_query.is_empty() {
-        clauses.push("search_text like ? escape '\\'".to_string());
-        query_params.push(SqlValue::Text(like_pattern(normalized_query)));
-    }
-    let (column_filter_sql, column_filter_params) = column_filter_sql(column_filters)?;
-    if !column_filter_sql.is_empty() {
-        clauses.push(column_filter_sql);
-        query_params.extend(column_filter_params);
-    }
-    if !filter_sql.is_empty() {
-        clauses.push(filter_sql);
-        query_params.extend(filter_params);
-    }
-    let where_sql = if clauses.is_empty() {
-        String::new()
-    } else {
-        format!(" where {}", clauses.join(" and "))
-    };
-    let count_sql = format!("select count(*) from molecules{where_sql}");
-    let total_rows = connection
-        .query_row(&count_sql, params_from_iter(query_params.iter()), |row| {
-            row.get::<_, i64>(0)
-        })
-        .map_err(|err| err.to_string())? as usize;
-    let page_sql = format!(
-        "select id, source_index, name, smiles, molblock, idcode, idcoordinates, props_json
-         from molecules
-         {join_sql}
-         {where_sql}
-         order by {order_sql}
-         limit ? offset ?",
-        join_sql = sort_clause.join_sql,
-        order_sql = sort_clause.order_sql
-    );
-    let mut page_params = sort_clause.params.clone();
-    page_params.extend(query_params);
-    page_params.push(SqlValue::Integer(limit as i64));
-    page_params.push(SqlValue::Integer(offset as i64));
-    let mut statement = connection
-        .prepare(&page_sql)
-        .map_err(|err| err.to_string())?;
-    let rows = statement
-        .query(params_from_iter(page_params.iter()))
-        .map_err(|err| err.to_string())?;
-    let mut page_rows = collect_page_rows(rows)?;
-    attach_descriptor_cells(connection, &mut page_rows)?;
-    Ok(GridPageResult {
-        rows: page_rows,
-        total_rows,
-        offset,
-        limit,
-        indexing: !index_state.index_ready,
-        records_indexed: index_state.records_indexed,
-        records_total_hint: index_state.records_total,
-        index_ready: index_state.index_ready,
-        descriptor_ids: descriptor_ids_in_connection(connection)?,
-    })
-}
-
-fn descriptor_filter_sql(
-    filters: &[GridDescriptorFilter],
-) -> Result<(String, Vec<SqlValue>), String> {
-    let mut clauses = Vec::new();
-    let mut params = Vec::new();
-    for filter in filters {
-        if !is_descriptor_identifier(&filter.id) {
-            return Err(format!("Invalid descriptor filter id: {}", filter.id));
-        }
-        let mut clause = "exists (select 1 from descriptor_values where molecule_id = molecules.id and descriptor_id = ?".to_string();
-        params.push(SqlValue::Text(filter.id.clone()));
-        if let Some(min) = filter.min {
-            clause.push_str(" and value_real >= ?");
-            params.push(SqlValue::Real(min));
-        }
-        if let Some(max) = filter.max {
-            clause.push_str(" and value_real <= ?");
-            params.push(SqlValue::Real(max));
-        }
-        clause.push(')');
-        clauses.push(clause);
-    }
-    Ok((clauses.join(" and "), params))
-}
-
-fn column_filter_sql(filters: &[GridColumnFilter]) -> Result<(String, Vec<SqlValue>), String> {
-    let mut clauses = Vec::new();
-    let mut params = Vec::new();
-    for filter in filters {
-        let filter_type = filter.filter_type.as_str();
-        if filter_type == "number" {
-            let Some(expression) = numeric_column_expression(&filter.id)? else {
-                continue;
-            };
-            let mut parts = Vec::new();
-            if let Some(min) = filter.min {
-                parts.push(format!("{expression} >= ?"));
-                params.push(SqlValue::Real(min));
-            }
-            if let Some(max) = filter.max {
-                parts.push(format!("{expression} <= ?"));
-                params.push(SqlValue::Real(max));
-            }
-            if !parts.is_empty() {
-                clauses.push(format!("({})", parts.join(" and ")));
-            }
-            continue;
-        }
-        let Some(text) = filter
-            .text
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        else {
-            continue;
-        };
-        let Some(expression) = text_column_expression(&filter.id)? else {
-            continue;
-        };
-        clauses.push(format!(
-            "lower(coalesce({expression}, '')) like ? escape '\\'"
-        ));
-        params.push(SqlValue::Text(like_pattern(&text.to_lowercase())));
-    }
-    Ok((clauses.join(" and "), params))
-}
-
-fn numeric_column_expression(id: &str) -> Result<Option<String>, String> {
-    if id == "index" {
-        return Ok(Some("(source_index + 1)".to_string()));
-    }
-    if let Some(key) = id.strip_prefix("prop:") {
-        return property_json_number_expression(key).map(Some);
-    }
-    Ok(None)
-}
-
-fn text_column_expression(id: &str) -> Result<Option<String>, String> {
-    match id {
-        "name" => Ok(Some("name".to_string())),
-        "smiles" => Ok(Some("smiles".to_string())),
-        _ => {
-            if let Some(key) = id.strip_prefix("prop:") {
-                return property_json_text_expression(key).map(Some);
-            }
-            Ok(None)
-        }
-    }
-}
-
-fn property_json_text_expression(key: &str) -> Result<String, String> {
-    Ok(format!(
-        "json_extract(props_json, '{}')",
-        property_json_path(key)?
-    ))
-}
-
-fn property_json_number_expression(key: &str) -> Result<String, String> {
-    Ok(format!(
-        "cast(json_extract(props_json, '{}') as real)",
-        property_json_path(key)?
-    ))
-}
-
-fn property_json_path(key: &str) -> Result<String, String> {
-    if key.is_empty() || key.len() > 120 {
-        return Err(format!("Invalid property filter id: prop:{key}"));
-    }
-    let escaped = key
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\'', "''");
-    Ok(format!("$.\"{escaped}\""))
 }
 
 fn is_descriptor_identifier(value: &str) -> bool {
@@ -2101,48 +1829,6 @@ fn build_props_text(record: &GridInputRecord) -> String {
     parts.join("\n")
 }
 
-fn normalize_grid_query(query: &str) -> String {
-    query
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
-}
-
-fn fts_query(query: &str) -> Option<String> {
-    let mut tokens = Vec::new();
-    let mut token = String::new();
-    for ch in query.chars() {
-        if ch.is_alphanumeric() {
-            token.push(ch);
-        } else if !token.is_empty() {
-            tokens.push(std::mem::take(&mut token));
-        }
-    }
-    if !token.is_empty() {
-        tokens.push(token);
-    }
-    if tokens.is_empty() {
-        return None;
-    }
-    Some(
-        tokens
-            .into_iter()
-            .take(16)
-            .map(|token| format!("\"{}\"", token.replace('"', "\"\"")))
-            .collect::<Vec<_>>()
-            .join(" AND "),
-    )
-}
-
-fn like_pattern(query: &str) -> String {
-    let escaped = query
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_");
-    format!("%{escaped}%")
-}
-
 fn parse_delimited_line(line: &str, separator: char) -> Vec<String> {
     let chars: Vec<_> = line.chars().collect();
     let mut fields = Vec::new();
@@ -2492,6 +2178,9 @@ fn is_molfile_counts_line(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use burrete_compute_protocol::{
+        AnalysisFilter, ColumnFilterKind, FilteredGridScope, GridScope, GridTextQuery,
+    };
 
     fn temp_runtime_dir() -> PathBuf {
         let dir = std::env::temp_dir().join(format!("burrete-grid-store-{}", uuid::Uuid::new_v4()));
@@ -2538,6 +2227,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -2572,6 +2262,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "name".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -2594,6 +2285,7 @@ mod tests {
             &GridQuery {
                 query: "gamma".to_string(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -2622,17 +2314,18 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: vec![
                     GridColumnFilter {
                         id: "prop:series".to_string(),
-                        filter_type: "text".to_string(),
+                        filter_type: ColumnFilterKind::Text,
                         text: Some("alpha".to_string()),
                         min: None,
                         max: None,
                     },
                     GridColumnFilter {
                         id: "prop:score".to_string(),
-                        filter_type: "number".to_string(),
+                        filter_type: ColumnFilterKind::Number,
                         text: None,
                         min: Some(2.0),
                         max: None,
@@ -2653,9 +2346,10 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: vec![GridColumnFilter {
                     id: "name".to_string(),
-                    filter_type: "text".to_string(),
+                    filter_type: ColumnFilterKind::Text,
                     text: Some("benz".to_string()),
                     min: None,
                     max: None,
@@ -2675,9 +2369,10 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: vec![GridColumnFilter {
                     id: "index".to_string(),
-                    filter_type: "number".to_string(),
+                    filter_type: ColumnFilterKind::Number,
                     text: None,
                     min: Some(2.0),
                     max: Some(3.0),
@@ -2715,6 +2410,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -2752,12 +2448,20 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
-                descriptor_filters: vec![GridDescriptorFilter {
-                    id: "MW".to_string(),
-                    min: Some(46.0),
-                    max: Some(80.0),
-                }],
+                descriptor_filters: vec![
+                    GridDescriptorFilter {
+                        id: "MW".to_string(),
+                        min: Some(46.0),
+                        max: None,
+                    },
+                    GridDescriptorFilter {
+                        id: "MW".to_string(),
+                        min: None,
+                        max: Some(80.0),
+                    },
+                ],
                 descriptor_sort: Some(GridDescriptorSort {
                     id: "MW".to_string(),
                     direction: "desc".to_string(),
@@ -2789,6 +2493,206 @@ mod tests {
     }
 
     #[test]
+    fn analysis_filtered_page_matches_the_shared_predicate() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "smiles,name\nCCO,Ethanol\nc1ccccc1,Benzene\nCCN,Ethylamine\n";
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        wait_for_index_ready(&database_path);
+        let connection = Connection::open(&database_path).expect("open database");
+        connection
+            .execute_batch(
+                "create table analysis_values (
+                   run_id text not null,
+                   molecule_id integer not null,
+                   value_id text not null,
+                   value_integer integer,
+                   value_real real
+                 );",
+            )
+            .expect("create analysis predicate fixture");
+        let run_id = uuid::Uuid::from_u128(7);
+        let molecules = {
+            let mut statement = connection
+                .prepare("select id, source_index from molecules order by source_index")
+                .expect("prepare molecule identities");
+            statement
+                .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
+                .expect("query molecule identities")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("collect molecule identities")
+        };
+        for (molecule_id, source_index) in molecules {
+            connection
+                .execute(
+                    "insert into analysis_values(
+                       run_id, molecule_id, value_id, value_integer
+                     ) values (?1, ?2, 'clusterId', ?3)",
+                    params![run_id.to_string(), molecule_id, (source_index + 1) * 10,],
+                )
+                .expect("insert analysis value");
+        }
+        drop(connection);
+
+        let analysis_filters = vec![AnalysisFilter {
+            run_id,
+            value_id: "clusterId".to_string(),
+            min: Some(15.0),
+            max: Some(25.0),
+        }];
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: analysis_filters.clone(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch analysis-filtered page");
+        let plan = grid_predicate::plan_grid_predicate(
+            &GridTextQuery::Text {
+                text: String::new(),
+            },
+            &[],
+            &[],
+            &analysis_filters,
+        )
+        .expect("plan matching predicate");
+        let connection = Connection::open(&database_path).expect("reopen database");
+        let direct_sql = format!(
+            "select source_index from molecules where {} order by source_index",
+            plan.predicate_sql
+        );
+        let direct_indexes = connection
+            .prepare(&direct_sql)
+            .expect("prepare direct predicate")
+            .query_map(params_from_iter(plan.params.iter()), |row| row.get(0))
+            .expect("query direct predicate")
+            .collect::<Result<Vec<usize>, _>>()
+            .expect("collect direct indexes");
+
+        assert_eq!(
+            page.rows.iter().map(|row| row.index).collect::<Vec<_>>(),
+            direct_indexes
+        );
+        assert_eq!(direct_indexes, vec![1]);
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn duplicate_descriptor_page_filters_match_the_normalized_scope_predicate() {
+        let runtime_dir = temp_runtime_dir();
+        let csv = "smiles,name\nCCO,Ethanol\nc1ccccc1,Benzene\nCCN,Ethylamine\n";
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        wait_for_index_ready(&database_path);
+        let connection = Connection::open(&database_path).expect("open database");
+        let rows = {
+            let mut statement = connection
+                .prepare("select id, name from molecules order by source_index")
+                .expect("prepare molecules");
+            statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })
+                .expect("query molecules")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("collect molecules")
+        };
+        for (molecule_id, name) in rows {
+            let value = match name.as_str() {
+                "Ethanol" => 46.07,
+                "Benzene" => 78.11,
+                "Ethylamine" => 45.08,
+                _ => unreachable!("unexpected molecule"),
+            };
+            connection
+                .execute(
+                    "insert into descriptor_values(
+                       molecule_id, descriptor_id, label, value_real, value_text,
+                       missing_kind, error_text, updated_at_ms
+                     ) values (?1, 'MW', 'Molecular weight', ?2, null, null, null, 1)",
+                    params![molecule_id, value],
+                )
+                .expect("insert descriptor");
+        }
+        drop(connection);
+
+        let descriptor_filters = vec![
+            GridDescriptorFilter {
+                id: "MW".to_string(),
+                min: Some(46.0),
+                max: None,
+            },
+            GridDescriptorFilter {
+                id: "MW".to_string(),
+                min: None,
+                max: Some(80.0),
+            },
+        ];
+        let page = fetch_page(
+            &database_path,
+            &GridQuery {
+                query: String::new(),
+                sort: "index".to_string(),
+                analysis_filters: Vec::new(),
+                column_filters: Vec::new(),
+                descriptor_filters: descriptor_filters.clone(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch duplicate descriptor filters");
+        let GridScope::Filtered(normalized) = GridScope::Filtered(FilteredGridScope {
+            query: GridTextQuery::Text {
+                text: String::new(),
+            },
+            column_filters: Vec::new(),
+            descriptor_filters,
+            analysis_filters: Vec::new(),
+        })
+        .normalized()
+        .expect("normalize duplicate descriptor filters") else {
+            unreachable!("test creates a filtered scope")
+        };
+        let plan = grid_predicate::plan_grid_predicate(
+            &normalized.query,
+            &normalized.column_filters,
+            &normalized.descriptor_filters,
+            &normalized.analysis_filters,
+        )
+        .expect("plan normalized descriptor predicate");
+        let direct_sql = format!(
+            "select source_index from molecules where {} order by source_index",
+            plan.predicate_sql
+        );
+        let direct_connection = Connection::open(&database_path).expect("reopen database");
+        let direct_indexes = direct_connection
+            .prepare(&direct_sql)
+            .expect("prepare normalized predicate")
+            .query_map(params_from_iter(plan.params.iter()), |row| {
+                row.get::<_, u64>(0)
+            })
+            .expect("query normalized predicate")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect normalized indexes");
+
+        assert_eq!(
+            page.rows
+                .iter()
+                .map(|row| row.index as u64)
+                .collect::<Vec<_>>(),
+            direct_indexes
+        );
+        assert_eq!(direct_indexes, vec![0, 1]);
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
     fn sorts_descriptor_values_without_filtering() {
         let runtime_dir = temp_runtime_dir();
         let csv =
@@ -2802,6 +2706,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -2841,6 +2746,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: Some(GridDescriptorSort {
@@ -2868,6 +2774,7 @@ mod tests {
             &GridQuery {
                 query: "alpha".to_string(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: Some(GridDescriptorSort {
@@ -2899,6 +2806,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -2938,6 +2846,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -2981,6 +2890,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3087,6 +2997,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3119,6 +3030,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3164,6 +3076,7 @@ mod tests {
             &GridQuery {
                 query: "column 3".to_string(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3197,6 +3110,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3228,6 +3142,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3257,6 +3172,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3298,6 +3214,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3337,6 +3254,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3373,6 +3291,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3391,6 +3310,7 @@ mod tests {
             &GridQuery {
                 query: "Molecule 09999".to_string(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3440,6 +3360,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3472,6 +3393,7 @@ mod tests {
             &GridQuery {
                 query: "benzene".to_string(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3488,6 +3410,7 @@ mod tests {
             &GridQuery {
                 query: "CCN".to_string(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3504,6 +3427,7 @@ mod tests {
             &GridQuery {
                 query: "aromatic".to_string(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3531,6 +3455,7 @@ mod tests {
             &GridQuery {
                 query: "   ".to_string(),
                 sort: "name".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3548,6 +3473,7 @@ mod tests {
             &GridQuery {
                 query: "eth".to_string(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3567,6 +3493,36 @@ mod tests {
         );
 
         let connection = Connection::open(&database_path).expect("open database");
+        let substring_plan = grid_predicate::plan_grid_predicate(
+            &GridTextQuery::Text {
+                text: "eth".to_string(),
+            },
+            &[],
+            &[],
+            &[],
+        )
+        .expect("plan substring query");
+        assert!(!fts_candidates_cover_exact_result(
+            &connection,
+            &substring_plan,
+            substring_plan.fts_query.as_deref().expect("FTS candidate"),
+            2,
+        ));
+        let exact_plan = grid_predicate::plan_grid_predicate(
+            &GridTextQuery::Text {
+                text: "gamma".to_string(),
+            },
+            &[],
+            &[],
+            &[],
+        )
+        .expect("plan exact-token query");
+        assert!(fts_candidates_cover_exact_result(
+            &connection,
+            &exact_plan,
+            exact_plan.fts_query.as_deref().expect("FTS candidate"),
+            1,
+        ));
         connection
             .execute("drop table molecules_fts", [])
             .expect("drop fts table");
@@ -3575,6 +3531,7 @@ mod tests {
             &GridQuery {
                 query: "gamma".to_string(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3585,6 +3542,60 @@ mod tests {
         .expect("fetch through missing fts fallback");
         assert_eq!(missing_fts.total_rows, 1);
         assert_eq!(missing_fts.rows[0].name, "Ethylamine");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    #[ignore = "50k row perf smoke is opt-in for local developer runs"]
+    fn exact_fts_fast_path_is_faster_than_like_fallback_on_synthetic_collection() {
+        let runtime_dir = temp_runtime_dir();
+        let mut csv = String::from("smiles,name,series\n");
+        for index in 0..50_000 {
+            let marker = if index == 42_424 {
+                "NeedlePerfMarker"
+            } else {
+                "BulkPerfMarker"
+            };
+            csv.push_str(&format!("CC{index},Molecule {index:05},{marker}\n"));
+        }
+
+        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+        wait_for_index_ready(&database_path);
+        let query = GridQuery {
+            query: "NeedlePerfMarker".to_string(),
+            sort: "index".to_string(),
+            analysis_filters: Vec::new(),
+            column_filters: Vec::new(),
+            descriptor_filters: Vec::new(),
+            descriptor_sort: None,
+            offset: 0,
+            limit: 96,
+        };
+        let started = std::time::Instant::now();
+        let indexed = fetch_page(&database_path, &query).expect("fetch through exact FTS path");
+        let indexed_elapsed = started.elapsed();
+
+        let connection = Connection::open(&database_path).expect("open database");
+        connection
+            .execute("drop table molecules_fts", [])
+            .expect("disable FTS fast path");
+        drop(connection);
+        let started = std::time::Instant::now();
+        let fallback = fetch_page(&database_path, &query).expect("fetch through LIKE fallback");
+        let fallback_elapsed = started.elapsed();
+
+        eprintln!(
+            "grid_exact_fts_ms={:?} grid_like_fallback_ms={:?}",
+            indexed_elapsed, fallback_elapsed
+        );
+        assert_eq!(indexed.total_rows, 1);
+        assert_eq!(fallback.total_rows, indexed.total_rows);
+        assert_eq!(fallback.rows[0].name, indexed.rows[0].name);
+        assert!(
+            indexed_elapsed < fallback_elapsed,
+            "expected exact FTS fast path ({indexed_elapsed:?}) to beat LIKE fallback ({fallback_elapsed:?})"
+        );
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
@@ -3605,6 +3616,7 @@ mod tests {
             &GridQuery {
                 query: "SharedNeedle".to_string(),
                 sort: "name".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3618,6 +3630,7 @@ mod tests {
             &GridQuery {
                 query: "SharedNeedle".to_string(),
                 sort: "name".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3652,6 +3665,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "prop:series".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3675,6 +3689,7 @@ mod tests {
             &GridQuery {
                 query: "gamma".to_string(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,
@@ -3690,64 +3705,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
 
-    #[test]
-    #[ignore = "50k row perf smoke is opt-in for local developer runs"]
-    fn fts_search_is_faster_than_like_on_synthetic_collection() {
-        let runtime_dir = temp_runtime_dir();
-        let mut csv = String::from("smiles,name,series\n");
-        for index in 0..50_000 {
-            let marker = if index == 42_424 {
-                "NeedlePerfMarker"
-            } else {
-                "BulkPerfMarker"
-            };
-            csv.push_str(&format!("CC{index},Molecule {index:05},{marker}\n"));
-        }
-
-        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
-        wait_for_index_ready(&database_path);
-        let connection = Connection::open(&database_path).expect("open database");
-        let fts_query = fts_query("NeedlePerfMarker").expect("fts query");
-        let sort_clause = page_sort_clause(None, "index");
-        let started = std::time::Instant::now();
-        let fts_total = fetch_filtered_page_with_fts(
-            &connection,
-            &fts_query,
-            &sort_clause,
-            96,
-            0,
-            read_index_state(&connection).expect("read index state"),
-        )
-        .expect("fts query")
-        .total_rows;
-        let fts_elapsed = started.elapsed();
-
-        let started = std::time::Instant::now();
-        let like_total = fetch_filtered_page_with_like(
-            &connection,
-            "needleperfmarker",
-            &sort_clause,
-            96,
-            0,
-            read_index_state(&connection).expect("read index state"),
-        )
-        .expect("like query")
-        .total_rows;
-        let like_elapsed = started.elapsed();
-
-        eprintln!(
-            "grid_fts_ms={:?} grid_like_ms={:?}",
-            fts_elapsed, like_elapsed
-        );
-        assert_eq!(fts_total, 1);
-        assert_eq!(like_total, 1);
-        assert!(
-            fts_elapsed < like_elapsed,
-            "expected FTS ({fts_elapsed:?}) to beat LIKE ({like_elapsed:?})"
-        );
-
-        let _ = std::fs::remove_dir_all(&runtime_dir);
-    }
     #[test]
     fn lists_delimited_structure_column_choices() {
         let csv = "compound,active,decoy\nLigand A,CCO,CCN\nLigand B,c1ccccc1,CCCl\n";
@@ -3807,6 +3764,7 @@ mod tests {
             &GridQuery {
                 query: String::new(),
                 sort: "index".to_string(),
+                analysis_filters: Vec::new(),
                 column_filters: Vec::new(),
                 descriptor_filters: Vec::new(),
                 descriptor_sort: None,

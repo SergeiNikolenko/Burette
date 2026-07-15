@@ -53,6 +53,7 @@ export function useAppGridRuntimeMessages({
               sort: typeof body.sort === "string" ? body.sort : "index",
               columnFilters: Array.isArray(body.columnFilters) ? body.columnFilters : [],
               descriptorFilters: Array.isArray(body.descriptorFilters) ? body.descriptorFilters : [],
+              analysisFilters: Array.isArray(body.analysisFilters) ? body.analysisFilters : [],
               descriptorSort: body.descriptorSort && typeof body.descriptorSort === "object" ? body.descriptorSort : null,
               offset: typeof body.offset === "number" ? body.offset : 0,
               limit: typeof body.limit === "number" ? body.limit : 96,
