@@ -4,6 +4,7 @@ mod platform {
         fs::File,
         os::fd::OwnedFd,
         path::{Component, Path, PathBuf},
+        sync::Mutex,
     };
 
     use burrete_compute_protocol::MOLECULAR_RECORDS_FILE_NAME;
@@ -50,6 +51,7 @@ mod platform {
         path: PathBuf,
         directory: OwnedFd,
         identity: DirectoryIdentity,
+        reservations: ReservationPool,
     }
 
     impl SnapshotPublicationRoot {
@@ -79,6 +81,7 @@ mod platform {
                 path: path.to_path_buf(),
                 directory,
                 identity,
+                reservations: ReservationPool::default(),
             })
         }
 
@@ -89,6 +92,7 @@ mod platform {
                 path: path.to_path_buf(),
                 directory,
                 identity,
+                reservations: ReservationPool::default(),
             })
         }
 
@@ -106,6 +110,16 @@ mod platform {
                 .ok_or_else(|| "Snapshot publication free-space count overflowed".into())
         }
 
+        pub(crate) fn reserve_bytes(
+            &self,
+            required_bytes: u64,
+            headroom_bytes: u64,
+        ) -> Result<SnapshotByteReservation<'_>, String> {
+            let available_bytes = self.available_bytes()?;
+            self.reservations
+                .reserve(required_bytes, headroom_bytes, available_bytes)
+        }
+
         fn verify_path_identity(&self) -> Result<(), String> {
             let reopened = open_absolute_directory_nofollow(&self.path).map_err(|error| {
                 format!("Snapshot publication root path is no longer trustworthy: {error}")
@@ -117,6 +131,62 @@ mod platform {
                 );
             }
             Ok(())
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct ReservationPool {
+        reserved_bytes: Mutex<u64>,
+    }
+
+    impl ReservationPool {
+        fn reserve(
+            &self,
+            required_bytes: u64,
+            headroom_bytes: u64,
+            available_bytes: u64,
+        ) -> Result<SnapshotByteReservation<'_>, String> {
+            let mut reserved_bytes = self
+                .reserved_bytes
+                .lock()
+                .map_err(|_| "Snapshot publication reservation state is poisoned")?;
+            let aggregate_bytes = reserved_bytes
+                .checked_add(required_bytes)
+                .and_then(|bytes| bytes.checked_add(headroom_bytes))
+                .ok_or_else(|| "Snapshot publication reservation count overflowed".to_string())?;
+            if aggregate_bytes > available_bytes {
+                return Err(format!(
+                    "Snapshot publication requires {required_bytes} bytes with {headroom_bytes} bytes of headroom and {} bytes already reserved; only {available_bytes} bytes are available",
+                    *reserved_bytes
+                ));
+            }
+            *reserved_bytes = reserved_bytes
+                .checked_add(required_bytes)
+                .expect("aggregate reservation was checked above");
+            Ok(SnapshotByteReservation {
+                pool: self,
+                reserved_bytes: required_bytes,
+            })
+        }
+    }
+
+    #[derive(Debug)]
+    #[must_use = "snapshot byte reservations must remain alive through publication or cleanup"]
+    pub(crate) struct SnapshotByteReservation<'a> {
+        pool: &'a ReservationPool,
+        reserved_bytes: u64,
+    }
+
+    impl Drop for SnapshotByteReservation<'_> {
+        fn drop(&mut self) {
+            let mut reserved_bytes = self
+                .pool
+                .reserved_bytes
+                .lock()
+                .expect("snapshot publication reservation state is poisoned");
+            *reserved_bytes = reserved_bytes
+                .checked_sub(self.reserved_bytes)
+                .expect("snapshot publication reservation accounting underflowed");
         }
     }
 
@@ -447,6 +517,50 @@ mod platform {
         let _ = unlinkat(staging, "snapshot", AtFlags::REMOVEDIR);
         let _ = unlinkat(root, active_leaf, AtFlags::REMOVEDIR);
     }
+
+    #[cfg(test)]
+    mod tests {
+        use std::sync::{Arc, Barrier};
+
+        use super::ReservationPool;
+
+        #[test]
+        fn concurrent_reservations_cannot_overcommit_the_same_quota() {
+            let pool = Arc::new(ReservationPool::default());
+            let barrier = Arc::new(Barrier::new(3));
+            let outcomes = std::thread::scope(|scope| {
+                let handles = (0..2)
+                    .map(|_| {
+                        let pool = Arc::clone(&pool);
+                        let barrier = Arc::clone(&barrier);
+                        scope.spawn(move || {
+                            barrier.wait();
+                            let reservation = pool.reserve(60, 10, 100);
+                            barrier.wait();
+                            reservation.is_ok()
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                barrier.wait();
+                barrier.wait();
+                handles
+                    .into_iter()
+                    .map(|handle| handle.join().expect("join reservation contender"))
+                    .collect::<Vec<_>>()
+            });
+
+            assert_eq!(outcomes.iter().filter(|accepted| **accepted).count(), 1);
+        }
+
+        #[test]
+        fn released_reservation_restores_capacity() {
+            let pool = ReservationPool::default();
+            let reservation = pool.reserve(60, 10, 100).expect("first reservation");
+            assert!(pool.reserve(40, 10, 100).is_err());
+            drop(reservation);
+            assert!(pool.reserve(40, 10, 100).is_ok());
+        }
+    }
 }
 
 #[cfg(not(unix))]
@@ -464,6 +578,11 @@ mod platform {
     #[derive(Debug)]
     pub(crate) struct PublishedSnapshotRoot;
 
+    #[derive(Debug)]
+    pub(crate) struct SnapshotByteReservation<'a> {
+        _root: &'a SnapshotPublicationRoot,
+    }
+
     impl SnapshotPublicationRoot {
         pub(crate) fn create(_path: &Path) -> Result<Self, String> {
             Err("Snapshot publication requires Unix directory capabilities".into())
@@ -478,6 +597,14 @@ mod platform {
         }
 
         pub(crate) fn available_bytes(&self) -> Result<u64, String> {
+            Err("Snapshot publication requires Unix directory capabilities".into())
+        }
+
+        pub(crate) fn reserve_bytes(
+            &self,
+            _required_bytes: u64,
+            _headroom_bytes: u64,
+        ) -> Result<SnapshotByteReservation<'_>, String> {
             Err("Snapshot publication requires Unix directory capabilities".into())
         }
     }
@@ -522,4 +649,6 @@ mod platform {
     }
 }
 
-pub(crate) use platform::{PublishedSnapshotRoot, SnapshotPublicationRoot, SnapshotStaging};
+pub(crate) use platform::{
+    PublishedSnapshotRoot, SnapshotByteReservation, SnapshotPublicationRoot, SnapshotStaging,
+};

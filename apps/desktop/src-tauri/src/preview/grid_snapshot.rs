@@ -9,9 +9,9 @@ use burrete_compute_protocol::{
     FrozenSourceIdentity, GridScope, GridTextQuery, MolecularSnapshotManifest,
     MolecularSnapshotRecordV1, MolecularSnapshotRecordVersion, MolecularSnapshotRef,
     MolecularSnapshotVersion, OrderedRecordMoleculeIdentityHasher, PackedArrayDescriptor,
-    PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout, MAX_JSON_SAFE_INTEGER,
-    MAX_PACK_BYTES, MAX_PACK_RECORDS, MOLECULAR_RECORDS_FILE_NAME, MOLECULAR_RECORDS_FILE_PATH,
-    MOLECULAR_RECORDS_MEDIA_TYPE, MOLECULE_CONTENT_HASHES_ARRAY_NAME,
+    PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout, MAX_CONTROL_FRAME_BYTES,
+    MAX_JSON_SAFE_INTEGER, MAX_PACK_BYTES, MAX_PACK_RECORDS, MOLECULAR_RECORDS_FILE_NAME,
+    MOLECULAR_RECORDS_FILE_PATH, MOLECULAR_RECORDS_MEDIA_TYPE, MOLECULE_CONTENT_HASHES_ARRAY_NAME,
     MOLECULE_CONTENT_HASHES_SEMANTIC, SOURCE_RECORD_IDS_ARRAY_NAME, SOURCE_RECORD_IDS_SEMANTIC,
 };
 use rusqlite::{params_from_iter, types::Value as SqlValue, Connection, Row, Statement};
@@ -22,10 +22,11 @@ use super::{
     grid_database::open_grid_database_read_only,
     grid_identity,
     grid_predicate::plan_grid_predicate,
-    snapshot_fs::{PublishedSnapshotRoot, SnapshotStaging},
+    snapshot_fs::{PublishedSnapshotRoot, SnapshotByteReservation, SnapshotStaging},
 };
 
 const SNAPSHOT_DISK_HEADROOM_BYTES: u64 = 64 * 1024 * 1024;
+const SNAPSHOT_FILESYSTEM_OVERHEAD_BYTES: u64 = 1024 * 1024;
 const IDENTITY_BYTES_PER_RECORD: u64 = 8 + 32;
 
 pub(crate) use super::snapshot_fs::SnapshotPublicationRoot;
@@ -91,7 +92,7 @@ pub(crate) fn freeze_grid_scope(
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?;
     let expected_pack_bytes = measure_scope_pack(&mut statement, &scope_sql.params, record_count)?;
-    require_publication_capacity(publication_root, expected_pack_bytes)?;
+    let _reservation = reserve_publication_capacity(publication_root, expected_pack_bytes)?;
 
     let staging = SnapshotStaging::create(publication_root, snapshot_id)?;
     let mut source_ids = HashedFile::new(staging.create_pack_file("source-record-ids.bin")?);
@@ -318,20 +319,15 @@ fn measure_scope_pack(
     Ok(total_bytes)
 }
 
-fn require_publication_capacity(
+fn reserve_publication_capacity(
     publication_root: &SnapshotPublicationRoot,
     pack_bytes: u64,
-) -> Result<(), String> {
-    let required = pack_bytes
-        .checked_add(SNAPSHOT_DISK_HEADROOM_BYTES)
-        .ok_or_else(|| "Frozen Grid disk preflight overflowed".to_string())?;
-    let available = publication_root.available_bytes()?;
-    if available < required {
-        return Err(format!(
-            "Frozen Grid snapshot requires {pack_bytes} bytes plus {SNAPSHOT_DISK_HEADROOM_BYTES} bytes of publication headroom; only {available} bytes are available"
-        ));
-    }
-    Ok(())
+) -> Result<SnapshotByteReservation<'_>, String> {
+    let publication_bytes = pack_bytes
+        .checked_add(MAX_CONTROL_FRAME_BYTES as u64)
+        .and_then(|bytes| bytes.checked_add(SNAPSHOT_FILESYSTEM_OVERHEAD_BYTES))
+        .ok_or_else(|| "Frozen Grid disk reservation overflowed".to_string())?;
+    publication_root.reserve_bytes(publication_bytes, SNAPSHOT_DISK_HEADROOM_BYTES)
 }
 
 struct PreparedSnapshotRecord {
