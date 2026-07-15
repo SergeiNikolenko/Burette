@@ -117,6 +117,13 @@ const WEB_ASSETS_BASE = String(
   || "",
 )
   || fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
+const WEB_DEMO_ENABLED = import.meta.env.VITE_BURRETE_WEB_DEMO === "1";
+const RDKIT_WASM_PATH = WEB_DEMO_ENABLED
+  ? `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/rdkit/RDKit_minimal.wasm`
+  : "/__burette/rdkit-wasm";
+const XYZRENDER_ENDPOINT = WEB_DEMO_ENABLED
+  ? "/api/xyzrender"
+  : "/__burette/xyzrender";
 const AMBER_NETCDF_EXTENSIONS = new Set(["nc", "ncdf", "netcdf", "ncrst"]);
 const TRAJECTORY_PAIR_EXTENSIONS = new Set([
   "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
@@ -1209,7 +1216,7 @@ function viewerHtml(
     trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1,
     trajectoryFrameCount,
     ...(reloadOptions?.activeModel != null ? { activeModel: reloadOptions.activeModel } : {}),
-    rdkitWasmPath: "/__burette/rdkit-wasm",
+    rdkitWasmPath: RDKIT_WASM_PATH,
     ...(reloadOptions?.sdfPoseControlLabel ? { sdfPoseControlLabel: reloadOptions.sdfPoseControlLabel } : {}),
     ...(stagedEntries?.some((entry) => entry?.representation === "structure-scene-entry") ? { structureSceneMode: "structurePoses" } : {}),
     appViewer: true,
@@ -1220,7 +1227,7 @@ function viewerHtml(
     ...(stagedEntries?.length ? { stagedEntries } : {}),
     xyzrenderViewer: renderer === "xyzrender-external",
     xyzrenderAvailable,
-    xyzrenderEndpoint: "/__burette/xyzrender",
+    xyzrenderEndpoint: XYZRENDER_ENDPOINT,
     molstarAvailable: !format.externalOnly || externalMolstarAvailable,
     canOpenInVesta: format.canOpenInVesta,
     showPanelControls: true,
@@ -1229,7 +1236,7 @@ function viewerHtml(
     ...(externalArtifact ? { externalArtifact } : {}),
     ...(xyzrenderPresetOptions ? { xyzrenderPresetOptions } : {}),
     ...(xyzrenderControls ? { xyzrenderControls } : {}),
-    ...(renderer === "xyzrender-external" && browserDevVirtualTextDocuments.has(path)
+    ...((WEB_DEMO_ENABLED || (renderer === "xyzrender-external" && browserDevVirtualTextDocuments.has(path)))
       ? {
           xyzrenderInputDataBase64: bytesToBase64(bytes),
           xyzrenderInputExtension: extension,
@@ -1254,7 +1261,6 @@ function viewerHtml(
     : `<script>${viewerBridgeJs()}</script>
   <script>
     window.BurreteConfig = ${serializeInlineJson(config)};
-    if (!document.baseURI.includes('/@fs/')) window.BurreteConfig.rdkitWasmPath = new URL('rdkit/RDKit_minimal.wasm', document.baseURI).href;
   </script>
   <script>window.BurreteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>`;
   return `<!doctype html>
@@ -1360,7 +1366,7 @@ async function requestBrowserDevXyzrender(
   inputExtension = "xyz",
   activeModel: number | null = null,
 ) {
-  const url = new URL("/__burette/xyzrender", window.location.origin);
+  const url = new URL(XYZRENDER_ENDPOINT, window.location.origin);
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1422,12 +1428,12 @@ async function gridHtml(
     canvasBackground: visuals.canvasBackground,
     overlayOpacity: 0.9,
     transparentBackground: visuals.transparentBackground,
-    xyzrenderEndpoint: "/__burette/xyzrender",
+    xyzrenderEndpoint: XYZRENDER_ENDPOINT,
     recordsTotal: records.length,
     recordsIncluded: records.length,
     recordsTruncated: false,
     pageSize: 720,
-    rdkitWasmPath: "/__burette/rdkit-wasm",
+    rdkitWasmPath: RDKIT_WASM_PATH,
     xyzrenderPreset: "default",
     xyzrenderPresetOptions: [
       { value: "default", label: "Default" },
@@ -1493,7 +1499,6 @@ async function gridHtml(
   <div id="status">Loading molecule grid...</div>
   <script>
     window.BurreteConfig = ${serializeInlineJson(config)};
-    if (!document.baseURI.includes('/@fs/')) window.BurreteConfig.rdkitWasmPath = new URL('rdkit/RDKit_minimal.wasm', document.baseURI).href;
   </script>
   <script>window.BurreteGridRecords = ${serializeInlineJson(records)};</script>
   ${format === "dwar" ? `<script src="openchemlib/openchemlib.js?v=${GRID_ASSET_VERSION}"></script>` : ""}
