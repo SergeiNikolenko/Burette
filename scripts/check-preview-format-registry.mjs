@@ -86,6 +86,7 @@ const allowedSystemQuickLookContentTypes = new Set([
   'com.schrodinger.pdb',
   'com.schrodinger.sdf',
   'gg.flew.unfold.gromacs-structure',
+  'gg.flew.unfold.subtitle-smi',
   'net.sourceforge.openbabel.mdl',
   'net.sourceforge.openbabel.xyz',
   'public.cif',
