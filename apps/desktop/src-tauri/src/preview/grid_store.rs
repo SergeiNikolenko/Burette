@@ -8,7 +8,10 @@ use std::sync::{
 };
 use std::thread;
 
-use super::runtime_utils::{clipped, decode_text, normalized_lines};
+use super::{
+    grid_identity,
+    runtime_utils::{clipped, decode_text, normalized_lines},
+};
 
 const GRID_INITIAL_ROWS: usize = 192;
 const GRID_INGEST_BATCH_ROWS: usize = 1_000;
@@ -327,6 +330,11 @@ impl GridRuntimeRegistry {
         descriptor_run_summary_in_database(&database_path)
     }
 
+    pub(crate) fn mark_virtual_edit(&self, document_id: &str) -> Result<u64, String> {
+        let database_path = self.database_path(document_id)?;
+        grid_identity::mark_virtual_edit(&database_path)
+    }
+
     fn database_path(&self, document_id: &str) -> Result<PathBuf, String> {
         let entries = self
             .entries
@@ -384,7 +392,9 @@ pub(crate) fn build_grid_store_with_options(
         let _ = std::fs::remove_file(&database_path);
         return Ok(None);
     }
-    if !first_batch.complete {
+    if first_batch.complete {
+        grid_identity::finalize_source_revision(&connection)?;
+    } else {
         spawn_grid_ingest_worker(
             database_path.clone(),
             extension.to_string(),
@@ -419,7 +429,10 @@ fn append_grid_text(
     if !index_state.index_ready {
         return Err("Cannot append records while grid indexing is still in progress".to_string());
     }
-    let start_index = molecule_count(&connection)?;
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let start_index = molecule_count(&transaction)?;
     let mut records_appended = 0usize;
     let mut next_line = 0usize;
     let mut next_index = start_index;
@@ -434,7 +447,7 @@ fn append_grid_text(
         )?;
         if !batch.records.is_empty() {
             records_appended += batch.records.len();
-            insert_records(&connection, &batch.records)?;
+            insert_records_in_connection(&transaction, &batch.records)?;
         }
         next_line = batch.next_line;
         next_index = batch.next_index;
@@ -447,8 +460,10 @@ fn append_grid_text(
             "{format} source does not contain supported molecule records"
         ));
     }
-    let total_rows = molecule_count(&connection)?;
-    update_index_state(&connection, total_rows, Some(total_rows), true, None)?;
+    let total_rows = molecule_count(&transaction)?;
+    grid_identity::advance_source_revision(&transaction)?;
+    update_index_state(&transaction, total_rows, Some(total_rows), true, None)?;
+    transaction.commit().map_err(|error| error.to_string())?;
     Ok(GridAppendSummary {
         records_appended,
         total_rows,
@@ -1079,6 +1094,9 @@ fn spawn_grid_ingest_worker(
             next_line = batch.next_line;
             next_index = batch.next_index;
             let records_total = batch.complete.then_some(next_index);
+            if batch.complete && grid_identity::finalize_source_revision(&connection).is_err() {
+                return;
+            }
             let _ =
                 update_index_state(&connection, next_index, records_total, batch.complete, None);
             if batch.complete {
@@ -1101,6 +1119,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
                  molblock text,
                  idcode text,
                  idcoordinates text,
+                 molecule_content_sha256 text not null,
                  props_json text not null,
                  props_text text not null,
                  search_text text not null
@@ -1154,7 +1173,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
              values (new.id, new.name, coalesce(new.smiles, ''), new.props_text);
          end;",
     );
-    Ok(())
+    grid_identity::initialize(connection)
 }
 
 pub(crate) fn descriptor_source_row_count(database_path: &Path) -> Result<usize, String> {
@@ -2006,17 +2025,29 @@ fn insert_records(connection: &Connection, records: &[GridInputRecord]) -> Resul
     let tx = connection
         .unchecked_transaction()
         .map_err(|err| err.to_string())?;
-    let mut insert = tx
+    insert_records_in_connection(&tx, records)?;
+    tx.commit().map_err(|err| err.to_string())
+}
+
+fn insert_records_in_connection(
+    connection: &Connection,
+    records: &[GridInputRecord],
+) -> Result<(), String> {
+    if records.is_empty() {
+        return Ok(());
+    }
+    let mut insert = connection
         .prepare(
-            "insert into molecules (source_index, name, smiles, molblock, idcode, idcoordinates, props_json, props_text, search_text)
-             values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "insert into molecules (
+               source_index, name, smiles, molblock, idcode, idcoordinates,
+               molecule_content_sha256, props_json, props_text, search_text
+             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         )
         .map_err(|err| err.to_string())?;
     for record in records {
         insert_record(&mut insert, record)?;
     }
-    drop(insert);
-    tx.commit().map_err(|err| err.to_string())
+    Ok(())
 }
 
 fn insert_record(
@@ -2026,6 +2057,12 @@ fn insert_record(
     let props_json = serde_json::to_string(&record.props).map_err(|err| err.to_string())?;
     let props_text = build_props_text(record);
     let search_text = build_search_text(record);
+    let molecule_content_sha256 = grid_identity::molecule_content_sha256(
+        record.smiles.as_deref(),
+        record.molblock.as_deref(),
+        record.idcode.as_deref(),
+        record.idcoordinates.as_deref(),
+    );
     insert
         .execute(params![
             record.index as i64,
@@ -2034,6 +2071,7 @@ fn insert_record(
             record.molblock,
             record.idcode,
             record.idcoordinates,
+            molecule_content_sha256,
             props_json,
             props_text,
             search_text,
@@ -3365,6 +3403,10 @@ mod tests {
         assert_eq!(ready_page.records_total_hint, Some(10_000));
         assert_eq!(ready_page.total_rows, 1);
         assert_eq!(ready_page.rows[0].name, "Molecule 09999");
+        let connection = Connection::open(&database_path).expect("open completed database");
+        let identity = grid_identity::read_source_identity(&connection)
+            .expect("read completed source identity");
+        assert_eq!(identity.source_revision, 1);
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
@@ -3727,6 +3769,11 @@ mod tests {
             .expect("build grid store")
             .expect("collection");
         assert_eq!(handle.summary.records_total, 2);
+        let connection = Connection::open(&handle.database_path).expect("open grid database");
+        let initial_identity =
+            grid_identity::read_source_identity(&connection).expect("read initial source identity");
+        assert_eq!(initial_identity.source_revision, 1);
+        drop(connection);
 
         let appended = append_grid_text(
             &handle.database_path,
@@ -3737,6 +3784,23 @@ mod tests {
         .expect("append sdf");
         assert_eq!(appended.records_appended, 1);
         assert_eq!(appended.total_rows, 3);
+        let connection = Connection::open(&handle.database_path).expect("open grid database");
+        let appended_identity = grid_identity::read_source_identity(&connection)
+            .expect("read appended source identity");
+        assert_eq!(appended_identity.source_revision, 2);
+        assert_ne!(
+            initial_identity.document_fingerprint_sha256,
+            appended_identity.document_fingerprint_sha256
+        );
+        let hashed_records: i64 = connection
+            .query_row(
+                "select count(*) from molecules where length(molecule_content_sha256) = 64",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count molecule hashes");
+        assert_eq!(hashed_records, 3);
+        drop(connection);
 
         let page = fetch_page(
             &handle.database_path,
