@@ -26,3 +26,6 @@ pub(crate) mod text_xyz;
 pub(crate) mod trace;
 pub(crate) mod xyz;
 pub(crate) mod xyzrender;
+
+#[cfg(all(test, unix))]
+mod grid_snapshot_tests;
