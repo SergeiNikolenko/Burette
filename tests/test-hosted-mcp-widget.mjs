@@ -91,7 +91,8 @@ const hostedContextDocument = await openBrowserDevMolstarContextDocument({
     data: "ATOM      1  C   MOL A   1       0.000   0.000   0.000  1.00  0.00           C\nEND\n",
   }],
 }, defaultPreferences);
-assert.match(hostedContextDocument.runtimePath, /"canvasBackground":"black"/);
+assert.match(hostedContextDocument.runtimePath, /"canvasBackground":"auto"/);
+assert.doesNotMatch(hostedContextDocument.runtimePath, /"canvasBackground":"black"/);
 deleteBrowserDevVirtualTextDocument(hostedContextDocument.path);
 
 const replacementDocument = await openBrowserDevMolstarContextDocument({
