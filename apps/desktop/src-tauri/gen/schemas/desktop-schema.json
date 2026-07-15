@@ -345,6 +345,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows trusted Burrete desktop windows to inspect and control durable local compute jobs.",
+          "type": "string",
+          "const": "allow-compute-commands",
+          "markdownDescription": "Allows trusted Burrete desktop windows to inspect and control durable local compute jobs."
+        },
+        {
           "description": "Allows the Burrete desktop shell to open structures and manage local viewer runtime state.",
           "type": "string",
           "const": "allow-viewer-commands",
