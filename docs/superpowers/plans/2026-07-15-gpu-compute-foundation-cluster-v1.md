@@ -208,6 +208,14 @@ including one merely marked clean after a frontend save.
 The coordinator copies resolved records and hashes to its immutable job root.
 Closing the transient Grid runtime cannot invalidate the snapshot.
 
+The frozen `MolecularSnapshot v1` writes two typed identity arrays and one
+canonical source-record stream at `pack/molecular-records.v1.jsonl`. Records use
+the public `burrete.molecular-snapshot-record.v1` contract and remain raw
+preparation input; normalized chemistry and fingerprints belong to EnginePacks.
+The ordered identity digest is a domain-separated stream of strictly increasing
+big-endian source IDs and raw molecule SHA-256 bytes, with cross-language golden
+vectors. The manifest requires the exact records path and media type.
+
 ### Analysis model
 
 Each run is insert-only and namespaced by `run_id`, with workflow, source

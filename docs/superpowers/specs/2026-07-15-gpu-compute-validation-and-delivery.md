@@ -31,6 +31,8 @@ never receives one blanket validation status.
 - job lifecycle, persistence, revision reads, resume, and cancellation;
 - MolecularSnapshot, EnginePack, and ResultPack round trips across Rust, Python,
   and Node clients;
+- canonical MolecularSnapshot JSONL records and ordered source-ID/molecule-hash
+  digest parity across Rust and Node golden vectors;
 - ragged offsets, atom maps, units, dtype, byte order, alignment, and schema
   compatibility;
 - immutable job roots, symlink rejection, file truncation, exact byte-size and

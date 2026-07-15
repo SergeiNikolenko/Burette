@@ -282,18 +282,25 @@ persistence or IPC formats.
 
 ### MolecularSnapshot
 
-`MolecularSnapshot v1` contains only source chemistry and identity:
+`MolecularSnapshot v1` is the immutable, source-preserving preparation input.
+It contains the source document fingerprint and revision, ordered source-record
+IDs and molecule-content hashes as typed identity arrays, plus canonical JSONL
+records carrying the bounded source name, SMILES/molblock/IDCode fields, optional
+IDCoordinates, and source properties. It does not contain descriptors, analysis
+columns, RDKit objects, fingerprints, or computed conformers.
 
-- stable molecule, source row, atom, and conformer identifiers;
-- atom offsets and atomic numbers;
-- isotope, formal charge, aromaticity, and atom-map arrays;
-- bond offsets, endpoint indexes, bond order, and stereo arrays;
-- total charge and multiplicity;
-- conformer offsets, coordinates, coordinate units, and dtype;
-- distance, chirality, and torsion constraints;
-- per-molecule validity masks and structured errors;
-- the source document fingerprint, source revision, source record key, and
-  molecule content hash.
+Each JSONL line is a `burrete.molecular-snapshot-record.v1` RFC 8785 canonical
+object followed by one LF. The file path is
+`pack/molecular-records.v1.jsonl` and its media type is
+`application/vnd.burrete.molecular-records-v1+jsonl`. The ordered identity digest
+starts with `burrete.snapshot-record-identity.v1\0`; every record then contributes
+its source ID as big-endian `u64` and the raw 32 molecule-hash bytes. This digest
+encoding is independent of the little-endian packed source-ID array.
+
+This raw staging file is deliberately not a GPU-ready atom/bond tensor pack.
+Normalized atom, bond, conformer, validity/error, constraint, and fingerprint
+arrays are emitted by pinned preparation engines as versioned EnginePacks, so a
+change in chemistry semantics cannot silently mutate the source snapshot.
 
 ### EnginePack
 
@@ -311,9 +318,10 @@ per-molecule errors, and per-stage provenance. Results are applied back to a
 live Grid only when its source revision still matches the snapshot. Otherwise
 they remain a standalone artifact.
 
-The logical schema does not require Arrow. Physical packs use bounded flat typed
-arrays with explicit dtype, shape, byte order, alignment, offsets, exact file
-sizes, and hashes. Arrow IPC may be adopted only through a separate ADR after
+The logical schema does not require Arrow. GPU-facing physical arrays use
+bounded flat typed storage with explicit dtype, shape, byte order, alignment,
+offsets, exact file sizes, and hashes; MolecularSnapshot raw JSONL is consumed
+only by the bounded preparation stage. Arrow IPC may be adopted only through a separate ADR after
 measuring bundle size, parse time, data copies, and peak RSS. The first
 Tanimoto slice needs only a packed `u64[N,W]` fingerprint matrix and chunked CSR
 output.
