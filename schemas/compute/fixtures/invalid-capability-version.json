@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "burrete.compute-capability-report.v2",
+  "reportRevision": 1,
+  "protocol": {
+    "min": 1,
+    "max": 1
+  },
+  "availability": "available",
+  "platform": {
+    "architecture": "arm64",
+    "osName": "macOS",
+    "osVersion": "15.5"
+  },
+  "runtime": {
+    "version": "compute-runtime-1.0.0",
+    "manifestSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+    "helperSha256": "7777777777777777777777777777777777777777777777777777777777777777",
+    "metallibSha256": "8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  "device": {
+    "name": "Apple M3 Max",
+    "registryId": "0x1a2b3c",
+    "lowPower": false,
+    "unifiedMemory": true
+  },
+  "capabilities": [
+    {
+      "workflowTemplate": "cluster.v1",
+      "method": "butinaMaxNeighbors.v1",
+      "chemistryDomain": "rdkitMorganBit2048.v1",
+      "backend": "referenceCpu",
+      "precision": "integerExact",
+      "maturity": "chemically_validated",
+      "available": true,
+      "reasonCode": null
+    },
+    {
+      "workflowTemplate": "cluster.v1",
+      "method": "tanimotoCsrU64.v1",
+      "chemistryDomain": "rdkitMorganBit2048.v1",
+      "backend": "nativeMetal",
+      "precision": "integerExact",
+      "maturity": "numerically_validated",
+      "available": true,
+      "reasonCode": null
+    }
+  ],
+  "limits": {
+    "maxControlFrameBytes": 1048576,
+    "maxEdges": 500000000,
+    "maxMemoryBytes": 34359738368,
+    "maxDispatchMs": 2000
+  },
+  "reasons": [],
+  "generatedAtMs": 1784101800000
+}

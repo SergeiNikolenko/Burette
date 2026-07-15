@@ -1,0 +1,354 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burrete.app/schemas/compute/protocol/control-envelope.v1.schema.json",
+  "title": "Burrete compute control envelopes protocol v1",
+  "description": "Strict client/coordinator and coordinator/worker messages carried by the bounded length-prefixed channel.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "protocolVersion": {
+      "const": 1
+    },
+    "requestId": {
+      "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+    },
+    "command": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/clientCommand"
+        },
+        {
+          "$ref": "#/$defs/workerCommand"
+        }
+      ]
+    },
+    "result": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/clientResult"
+        },
+        {
+          "$ref": "#/$defs/workerResult"
+        }
+      ]
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/clientRequest"
+    },
+    {
+      "$ref": "#/$defs/clientResponse"
+    },
+    {
+      "$ref": "#/$defs/workerControlRequest"
+    },
+    {
+      "$ref": "#/$defs/workerControlResponse"
+    }
+  ],
+  "$defs": {
+    "nonce": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{16,128}$"
+    },
+    "sessionToken": {
+      "type": "string",
+      "pattern": "^session\\.v1\\.[A-Za-z0-9_-]{32,192}$"
+    },
+    "jobCapabilityToken": {
+      "type": "string",
+      "pattern": "^job-capability\\.v1\\.[A-Za-z0-9_-]{32,192}$"
+    },
+    "revision": {
+      "$ref": "common.v1.schema.json#/$defs/positiveJsonSafeUInt"
+    },
+    "controlErrorCode": {
+      "enum": [
+        "invalidRequest",
+        "unauthorized",
+        "capabilityDenied",
+        "jobNotFound",
+        "conflict",
+        "unavailable",
+        "internal"
+      ]
+    },
+    "clientRequest": {
+      "type": "object",
+      "required": ["protocolVersion", "requestId", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+        },
+        "command": {
+          "$ref": "#/$defs/clientCommand"
+        }
+      }
+    },
+    "clientResponse": {
+      "type": "object",
+      "required": ["protocolVersion", "requestId", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+        },
+        "result": {
+          "$ref": "#/$defs/clientResult"
+        }
+      }
+    },
+    "workerControlRequest": {
+      "type": "object",
+      "required": ["protocolVersion", "requestId", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+        },
+        "command": {
+          "$ref": "#/$defs/workerCommand"
+        }
+      }
+    },
+    "workerControlResponse": {
+      "type": "object",
+      "required": ["protocolVersion", "requestId", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+        },
+        "result": {
+          "$ref": "#/$defs/workerResult"
+        }
+      }
+    },
+    "clientCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "clientNonce"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "handshake" },
+            "clientNonce": { "$ref": "#/$defs/nonce" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "sessionToken"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "capabilities" },
+            "sessionToken": { "$ref": "#/$defs/sessionToken" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "sessionToken", "request"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "submitClusterV1" },
+            "sessionToken": { "$ref": "#/$defs/sessionToken" },
+            "request": { "$ref": "../workflow-templates/cluster.v1.schema.json" }
+          }
+        },
+        {
+          "$ref": "#/$defs/clientJobCommand"
+        }
+      ]
+    },
+    "clientJobCommand": {
+      "type": "object",
+      "required": ["kind", "sessionToken", "jobId"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["jobStatus", "cancelJob"] },
+        "sessionToken": { "$ref": "#/$defs/sessionToken" },
+        "jobId": { "$ref": "common.v1.schema.json#/$defs/nonNilUuid" }
+      }
+    },
+    "clientResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "sessionToken", "clientNonce", "serverNonce"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "handshakeAccepted" },
+            "sessionToken": { "$ref": "#/$defs/sessionToken" },
+            "clientNonce": { "$ref": "#/$defs/nonce" },
+            "serverNonce": { "$ref": "#/$defs/nonce" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "report"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "capabilities" },
+            "report": { "$ref": "compute-capability-report.v1.schema.json" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "jobId", "revision"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "jobAccepted" },
+            "jobId": { "$ref": "common.v1.schema.json#/$defs/nonNilUuid" },
+            "revision": { "$ref": "#/$defs/revision" }
+          }
+        },
+        {
+          "$ref": "#/$defs/jobStatusResult"
+        },
+        {
+          "type": "object",
+          "required": ["kind", "jobId", "revision"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "cancelAccepted" },
+            "jobId": { "$ref": "common.v1.schema.json#/$defs/nonNilUuid" },
+            "revision": { "$ref": "#/$defs/revision" }
+          }
+        },
+        {
+          "$ref": "#/$defs/errorResult"
+        }
+      ]
+    },
+    "workerCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "sessionToken", "coordinatorNonce"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "handshake" },
+            "sessionToken": { "$ref": "#/$defs/sessionToken" },
+            "coordinatorNonce": { "$ref": "#/$defs/nonce" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "sessionToken"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "capabilities" },
+            "sessionToken": { "$ref": "#/$defs/sessionToken" }
+          }
+        },
+        {
+          "$ref": "#/$defs/workerJobStatusCommand"
+        },
+        {
+          "type": "object",
+          "required": ["kind", "sessionToken", "nonce"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "ping" },
+            "sessionToken": { "$ref": "#/$defs/sessionToken" },
+            "nonce": { "$ref": "#/$defs/nonce" }
+          }
+        }
+      ]
+    },
+    "workerJobStatusCommand": {
+      "type": "object",
+      "required": ["kind", "sessionToken", "jobId", "capability"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["jobStatus", "interrupt"] },
+        "sessionToken": { "$ref": "#/$defs/sessionToken" },
+        "jobId": { "$ref": "common.v1.schema.json#/$defs/nonNilUuid" },
+        "capability": { "$ref": "#/$defs/jobCapabilityToken" }
+      }
+    },
+    "workerResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "workerId", "coordinatorNonce", "workerNonce"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "handshakeAccepted" },
+            "workerId": { "$ref": "common.v1.schema.json#/$defs/nonNilUuid" },
+            "coordinatorNonce": { "$ref": "#/$defs/nonce" },
+            "workerNonce": { "$ref": "#/$defs/nonce" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "report"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "capabilities" },
+            "report": { "$ref": "compute-capability-report.v1.schema.json" }
+          }
+        },
+        {
+          "$ref": "#/$defs/jobStatusResult"
+        },
+        {
+          "type": "object",
+          "required": ["kind", "nonce"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "pong" },
+            "nonce": { "$ref": "#/$defs/nonce" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "jobId", "revision"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "interruptAccepted" },
+            "jobId": { "$ref": "common.v1.schema.json#/$defs/nonNilUuid" },
+            "revision": { "$ref": "#/$defs/revision" }
+          }
+        },
+        {
+          "$ref": "#/$defs/errorResult"
+        }
+      ]
+    },
+    "jobStatusResult": {
+      "type": "object",
+      "required": ["kind", "jobId", "revision", "state"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "jobStatus" },
+        "jobId": { "$ref": "common.v1.schema.json#/$defs/nonNilUuid" },
+        "revision": { "$ref": "#/$defs/revision" },
+        "state": { "$ref": "common.v1.schema.json#/$defs/jobState" }
+      }
+    },
+    "errorResult": {
+      "type": "object",
+      "required": ["kind", "code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "error" },
+        "code": { "$ref": "#/$defs/controlErrorCode" },
+        "message": { "$ref": "common.v1.schema.json#/$defs/statusText" }
+      }
+    }
+  }
+}
