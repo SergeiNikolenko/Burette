@@ -17,7 +17,11 @@ pub use capability::{
     ComputeCapabilityReport, GpuDeviceIdentity, PlatformIdentity, ProtocolRange, RuntimeIdentity,
 };
 pub use error::{ComputeErrorCode, ComputeFailure, ProtocolError};
-pub use job::{Backend, ExecutionPlan, JobState, OwnerSurface, PlannedStage, Precision, StageKind};
+pub use job::{
+    Backend, EngineIdentity, ExecutionPartition, ExecutionPlan, ExecutionPlanVersion,
+    FallbackDecision, FallbackReasonCode, JobState, OwnerSurface, PlannedStage, Precision,
+    StageKind, CLUSTER_STAGE_IDS,
+};
 pub use snapshot::{
     AttemptSnapshot, AttemptState, ComputeJobSnapshotSchemaVersion, JobProgress, JobSnapshot,
     StageSnapshot, StageState,
