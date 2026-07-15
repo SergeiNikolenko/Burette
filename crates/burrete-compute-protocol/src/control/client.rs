@@ -7,10 +7,14 @@ use super::auth::{
 };
 use crate::wire::{sealed::Sealed, WireMessage};
 use crate::{
-    ClusterV1SubmitRequest, ComputeAvailability, JobState, ProtocolError, PROTOCOL_VERSION,
+    ClusterV1SubmitRequest, ComputeCapabilityReport, JobState, ProtocolError, PROTOCOL_VERSION,
 };
 
 /// Strict public client-to-coordinator control envelope.
+///
+/// The coordinator must treat `request_id` as a replay key scoped to the
+/// authenticated session. A handshake response echoes the client nonce so the
+/// caller can bind the accepted session to the live transcript.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ControlRequest {
@@ -98,7 +102,7 @@ impl ControlCommand {
 }
 
 /// Strict coordinator-to-client control envelope.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ControlResponse {
     protocol_version: u32,
@@ -129,7 +133,7 @@ impl WireMessage for ControlResponse {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(
     tag = "kind",
     rename_all = "camelCase",
@@ -139,11 +143,11 @@ impl WireMessage for ControlResponse {
 pub enum ControlResult {
     HandshakeAccepted {
         session_token: SessionToken,
+        client_nonce: String,
         server_nonce: String,
     },
     Capabilities {
-        availability: ComputeAvailability,
-        report_revision: u64,
+        report: Box<ComputeCapabilityReport>,
     },
     JobAccepted {
         job_id: Uuid,
@@ -169,14 +173,14 @@ impl ControlResult {
         match self {
             Self::HandshakeAccepted {
                 session_token,
+                client_nonce,
                 server_nonce,
             } => {
                 session_token.validate()?;
+                validate_nonce("echoed client nonce", client_nonce)?;
                 validate_nonce("server nonce", server_nonce)
             }
-            Self::Capabilities {
-                report_revision, ..
-            } => validate_revision("capability report revision", *report_revision),
+            Self::Capabilities { report } => report.validate(),
             Self::JobAccepted { job_id, revision }
             | Self::JobStatus {
                 job_id, revision, ..
