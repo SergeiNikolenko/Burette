@@ -1,6 +1,7 @@
 mod artifact;
 mod capability;
 mod error;
+mod event;
 mod job;
 mod pack;
 mod snapshot;
@@ -18,6 +19,7 @@ pub use capability::{
     ComputeCapabilityReport, GpuDeviceIdentity, PlatformIdentity, ProtocolRange, RuntimeIdentity,
 };
 pub use error::{ComputeErrorCode, ComputeFailure, ProtocolError};
+pub use event::{ComputeJobEventSchemaVersion, JobRevisionEvent};
 pub use job::{
     Backend, EngineIdentity, ExecutionPartition, ExecutionPlan, ExecutionPlanVersion,
     FallbackDecision, FallbackReasonCode, JobState, OwnerSurface, PlannedStage, Precision,
