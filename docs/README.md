@@ -23,14 +23,19 @@ contains only documents that describe the active project.
   Ketcher editing scope, artifacts, and checks.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
   payloads, grid search, and no-regression guardrails.
-- [GPU compute platform design](superpowers/specs/2026-07-15-gpu-compute-platform-design.md):
-  approved target architecture for Apple Silicon compute jobs, molecular data,
-  scheduling, runtime distribution, and product integration. Its companion
+- [Native GPU Compute Layer](superpowers/specs/2026-07-15-gpu-compute-platform-design.md):
+  authoritative target architecture for selectively adapting the useful
+  `mlxmolkit` algorithms into native Apple Silicon workflows without a
+  production Python/MLX dependency. It covers attribution, provenance,
+  clustering, conformers, MMFF, alignment/scoring, semiempirical chemistry,
+  scheduling, and product integration. Its companion
   [validation and delivery contract](superpowers/specs/2026-07-15-gpu-compute-validation-and-delivery.md)
   defines scientific gates, failure testing, and staged completion criteria.
   The active
   [foundation and `cluster.v1` implementation plan](superpowers/plans/2026-07-15-gpu-compute-foundation-cluster-v1.md)
   gives the file-by-file delivery sequence for the first packaged Metal slice.
+  The [mlxmolkit provenance ledger](third-party/mlxmolkit-provenance.md) is the
+  mandatory source/license mapping gate for every adapted file.
 - [Stability program](stability.md): preview trace, runtime manifest, nightly
   smoke, and staged stability guardrails.
 - [Installing and building](installing-building.md): source build, local
