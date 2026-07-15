@@ -3,8 +3,8 @@ use rusqlite::{params, OptionalExtension};
 use uuid::Uuid;
 
 use super::{
-    decode_snapshot, owner_principal_for_window, ComputeCoordinatorError, ComputeResult,
-    ComputeStore,
+    decode_snapshot_with_source, owner_principal_for_window, ComputeCoordinatorError,
+    ComputeResult, ComputeStore,
 };
 
 impl ComputeStore {
@@ -17,14 +17,25 @@ impl ComputeStore {
         let connection = self.open_connection()?;
         let row = connection
             .query_row(
-                "SELECT artifacts.manifest_json, jobs.snapshot_json
+                "SELECT artifacts.manifest_json, jobs.snapshot_json,
+                        job_source_snapshots.snapshot_id,
+                        job_source_snapshots.snapshot_ref_json
                  FROM artifacts
                  INNER JOIN jobs ON jobs.job_id = artifacts.job_id
+                 LEFT JOIN job_source_snapshots
+                   ON job_source_snapshots.job_id = jobs.job_id
                  WHERE artifacts.artifact_id = ?1
                    AND artifacts.publication_state = 'published'
                    AND jobs.owner_principal = ?2",
                 params![artifact_id.to_string(), owner_principal],
-                |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, String>(1)?)),
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                    ))
+                },
             )
             .optional()?
             .ok_or_else(|| artifact_not_found(artifact_id))?;
@@ -34,7 +45,7 @@ impl ComputeStore {
             )
         })?;
         let manifest: ArtifactManifest = serde_json::from_str(&manifest_json)?;
-        let job = decode_snapshot(&row.1)?;
+        let job = decode_snapshot_with_source(&row.1, row.2.as_deref(), row.3.as_deref())?;
         manifest.validate_against_job(&job)?;
         Ok(manifest)
     }

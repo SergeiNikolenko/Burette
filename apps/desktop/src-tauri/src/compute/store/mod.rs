@@ -1,12 +1,15 @@
 use std::{path::PathBuf, sync::Arc};
 
-use burrete_compute_protocol::JobSnapshot;
-use rusqlite::Connection;
+use burrete_compute_protocol::{JobSnapshot, MolecularSnapshotRef};
+use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    compute::error::{ComputeCoordinatorError, ComputeResult},
+    compute::{
+        error::{ComputeCoordinatorError, ComputeResult},
+        root_lease::ComputeRootLease,
+    },
     windows::{MAIN_WINDOW_LABEL, WORKSPACE_WINDOW_PREFIX},
 };
 
@@ -15,32 +18,58 @@ mod events;
 mod jobs;
 mod recovery;
 mod schema;
+mod snapshot_intents;
+
+#[allow(
+    unused_imports,
+    reason = "the submit coordinator consumes the typed intent record after snapshot wiring"
+)]
+pub(crate) use snapshot_intents::{SnapshotIntentDraft, SnapshotIntentRecord, SnapshotIntentState};
 
 const DESKTOP_OWNER_PRINCIPAL: &str = "desktop";
 
 #[derive(Clone, Debug)]
 pub(crate) struct ComputeStore {
-    compute_root: Arc<PathBuf>,
+    root_lease: Arc<ComputeRootLease>,
     database_path: Arc<PathBuf>,
 }
 
 impl ComputeStore {
     pub(crate) fn initialize(compute_root: PathBuf) -> ComputeResult<Self> {
-        std::fs::create_dir_all(&compute_root)?;
-        let database_path = compute_root.join("coordinator.sqlite3");
-        let mut connection = Connection::open(&database_path)?;
+        let root_lease = Arc::new(ComputeRootLease::acquire(&compute_root)?);
+        Self::initialize_with_lease(root_lease)
+    }
+
+    fn initialize_with_lease(root_lease: Arc<ComputeRootLease>) -> ComputeResult<Self> {
+        root_lease.verify_path_identity()?;
+        let database_path = root_lease.compute_root().join("coordinator.sqlite3");
+        let mut connection = Connection::open_with_flags(
+            &database_path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE,
+        )?;
+        root_lease.verify_path_identity()?;
         schema::configure(&connection)?;
         schema::initialize(&mut connection)?;
         Ok(Self {
-            compute_root: Arc::new(compute_root),
+            root_lease,
             database_path: Arc::new(database_path),
         })
     }
 
     fn open_connection(&self) -> ComputeResult<Connection> {
-        let connection = Connection::open(self.database_path.as_ref())?;
+        self.root_lease.verify_path_identity()?;
+        let connection = Connection::open_with_flags(
+            self.database_path.as_ref(),
+            OpenFlags::SQLITE_OPEN_READ_WRITE,
+        )?;
+        self.root_lease.verify_path_identity()?;
         schema::configure(&connection)?;
         Ok(connection)
+    }
+
+    #[cfg(test)]
+    fn reopen(&self) -> ComputeResult<Self> {
+        Self::initialize_with_lease(self.root_lease.clone())
     }
 
     #[cfg(test)]
@@ -52,14 +81,44 @@ impl ComputeStore {
         dead_code,
         reason = "the Stage 4 artifact publisher owns descriptor-relative access below this root"
     )]
-    pub(crate) fn artifact_root(&self) -> PathBuf {
-        self.compute_root.join("artifacts")
+    pub(crate) fn artifact_root(&self) -> ComputeResult<PathBuf> {
+        self.root_lease.verify_path_identity()?;
+        Ok(self.root_lease.compute_root().join("artifacts"))
     }
 }
 
 fn decode_snapshot(encoded: &str) -> ComputeResult<JobSnapshot> {
     let snapshot: JobSnapshot = serde_json::from_str(encoded)?;
     snapshot.validate()?;
+    Ok(snapshot)
+}
+
+fn decode_snapshot_with_source(
+    encoded: &str,
+    source_snapshot_id: Option<&str>,
+    source_snapshot_json: Option<&str>,
+) -> ComputeResult<JobSnapshot> {
+    let snapshot = decode_snapshot(encoded)?;
+    let source_snapshot_id = source_snapshot_id.ok_or_else(|| {
+        ComputeCoordinatorError::Protocol(format!(
+            "compute job {} is missing its normalized source snapshot row",
+            snapshot.job_id
+        ))
+    })?;
+    let source_snapshot_json = source_snapshot_json.ok_or_else(|| {
+        ComputeCoordinatorError::Protocol(format!(
+            "compute job {} is missing its normalized source snapshot reference",
+            snapshot.job_id
+        ))
+    })?;
+    let source: MolecularSnapshotRef = serde_json::from_str(source_snapshot_json)?;
+    source.validate()?;
+    if source.snapshot_id.to_string() != source_snapshot_id || source != snapshot.frozen_source {
+        return Err(ComputeCoordinatorError::Protocol(format!(
+            "compute job {} differs from its normalized source snapshot row",
+            snapshot.job_id
+        )));
+    }
     Ok(snapshot)
 }
 
@@ -104,6 +163,8 @@ fn owner_principal_for_window(label: &str) -> ComputeResult<&'static str> {
 
 #[cfg(test)]
 mod recovery_tests;
+#[cfg(test)]
+mod snapshot_intents_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]

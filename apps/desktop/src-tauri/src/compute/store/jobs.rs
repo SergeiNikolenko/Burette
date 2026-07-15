@@ -1,9 +1,12 @@
-use burrete_compute_protocol::{JobRevisionEvent, JobSnapshot, JobState, OwnerSurface};
+use burrete_compute_protocol::{
+    ComputeJobEventSchemaVersion, JobRevisionEvent, JobSnapshot, JobState, OwnerSurface,
+};
 use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
 use uuid::Uuid;
 
+use super::snapshot_intents::{delete_renamed_intent, require_renamed_intent};
 use super::{
-    decode_snapshot,
+    decode_snapshot_with_source,
     events::{insert_event, prune_events},
     owner_principal_for_window, to_json, ComputeCoordinatorError, ComputeResult, ComputeStore,
 };
@@ -19,6 +22,7 @@ impl ComputeStore {
         &self,
         owner_window_label: &str,
         snapshot: &JobSnapshot,
+        snapshot_attempt_id: Uuid,
     ) -> ComputeResult<JobRevisionEvent> {
         let owner_principal = owner_principal_for_window(owner_window_label)?;
         snapshot.validate()?;
@@ -35,9 +39,23 @@ impl ComputeStore {
 
         let mut connection = self.open_connection()?;
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(event) = resolve_existing_prepared_job(&transaction, owner_principal, snapshot)?
+        {
+            transaction.commit()?;
+            return Ok(event);
+        }
+        let intent = require_renamed_intent(
+            &transaction,
+            snapshot.frozen_source.snapshot_id,
+            snapshot.job_id,
+            snapshot_attempt_id,
+            &snapshot.frozen_source,
+        )?;
         insert_job_row(&transaction, owner_principal, owner_window_label, snapshot)?;
+        insert_source_snapshot_row(&transaction, snapshot)?;
         replace_child_rows(&transaction, snapshot)?;
         let event = insert_event(&transaction, snapshot)?;
+        delete_renamed_intent(&transaction, &intent)?;
         transaction.commit()?;
         Ok(event)
     }
@@ -51,13 +69,25 @@ impl ComputeStore {
         let connection = self.open_connection()?;
         let encoded = connection
             .query_row(
-                "SELECT snapshot_json FROM jobs WHERE job_id = ?1 AND owner_principal = ?2",
+                "SELECT jobs.snapshot_json,
+                        job_source_snapshots.snapshot_id,
+                        job_source_snapshots.snapshot_ref_json
+                 FROM jobs
+                 LEFT JOIN job_source_snapshots
+                   ON job_source_snapshots.job_id = jobs.job_id
+                 WHERE jobs.job_id = ?1 AND jobs.owner_principal = ?2",
                 params![job_id.to_string(), owner_principal],
-                |row| row.get::<_, String>(0),
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
             )
             .optional()?
             .ok_or_else(|| job_not_found(job_id))?;
-        decode_snapshot(&encoded)
+        decode_snapshot_with_source(&encoded.0, encoded.1.as_deref(), encoded.2.as_deref())
     }
 
     pub(crate) fn list_jobs(
@@ -73,20 +103,30 @@ impl ComputeStore {
         }
         let connection = self.open_connection()?;
         let mut statement = connection.prepare(
-            "SELECT snapshot_json
+            "SELECT jobs.snapshot_json,
+                    job_source_snapshots.snapshot_id,
+                    job_source_snapshots.snapshot_ref_json
              FROM jobs
-             WHERE owner_principal = ?1
-             ORDER BY updated_at_ms DESC, job_id ASC
+             LEFT JOIN job_source_snapshots
+               ON job_source_snapshots.job_id = jobs.job_id
+             WHERE jobs.owner_principal = ?1
+             ORDER BY jobs.updated_at_ms DESC, jobs.job_id ASC
              LIMIT ?2",
         )?;
         let encoded = statement
             .query_map(params![owner_principal, limit as i64], |row| {
-                row.get::<_, String>(0)
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         encoded
             .iter()
-            .map(|snapshot| decode_snapshot(snapshot))
+            .map(|(snapshot, source_id, source)| {
+                decode_snapshot_with_source(snapshot, source_id.as_deref(), source.as_deref())
+            })
             .collect()
     }
 
@@ -238,6 +278,22 @@ pub(super) fn insert_job_row(
     Ok(())
 }
 
+pub(super) fn insert_source_snapshot_row(
+    transaction: &Transaction<'_>,
+    snapshot: &JobSnapshot,
+) -> ComputeResult<()> {
+    transaction.execute(
+        "INSERT INTO job_source_snapshots(job_id, snapshot_id, snapshot_ref_json)
+         VALUES (?1, ?2, ?3)",
+        params![
+            snapshot.job_id.to_string(),
+            snapshot.frozen_source.snapshot_id.to_string(),
+            to_json(&snapshot.frozen_source)?,
+        ],
+    )?;
+    Ok(())
+}
+
 pub(super) fn replace_child_rows(
     transaction: &Transaction<'_>,
     snapshot: &JobSnapshot,
@@ -281,15 +337,83 @@ fn load_snapshot(
     owner_principal: &str,
     job_id: Uuid,
 ) -> ComputeResult<JobSnapshot> {
+    load_snapshot_if_present(transaction, owner_principal, job_id)?
+        .ok_or_else(|| job_not_found(job_id))
+}
+
+fn load_snapshot_if_present(
+    transaction: &Transaction<'_>,
+    owner_principal: &str,
+    job_id: Uuid,
+) -> ComputeResult<Option<JobSnapshot>> {
     let encoded = transaction
         .query_row(
-            "SELECT snapshot_json FROM jobs WHERE job_id = ?1 AND owner_principal = ?2",
+            "SELECT jobs.snapshot_json,
+                    job_source_snapshots.snapshot_id,
+                    job_source_snapshots.snapshot_ref_json
+             FROM jobs
+             LEFT JOIN job_source_snapshots
+               ON job_source_snapshots.job_id = jobs.job_id
+             WHERE jobs.job_id = ?1 AND jobs.owner_principal = ?2",
             params![job_id.to_string(), owner_principal],
-            |row| row.get::<_, String>(0),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .optional()?;
+    encoded
+        .map(|encoded| {
+            decode_snapshot_with_source(&encoded.0, encoded.1.as_deref(), encoded.2.as_deref())
+        })
+        .transpose()
+}
+
+fn resolve_existing_prepared_job(
+    transaction: &Transaction<'_>,
+    owner_principal: &str,
+    candidate: &JobSnapshot,
+) -> ComputeResult<Option<JobRevisionEvent>> {
+    let Some(existing) = load_snapshot_if_present(transaction, owner_principal, candidate.job_id)?
+    else {
+        return Ok(None);
+    };
+    if existing != *candidate {
+        return Err(ComputeCoordinatorError::Validation(format!(
+            "compute job {} is already committed with different durable state",
+            candidate.job_id
+        )));
+    }
+    let emitted_at_ms = transaction
+        .query_row(
+            "SELECT emitted_at_ms FROM events WHERE job_id = ?1 AND revision = ?2",
+            params![candidate.job_id.to_string(), candidate.revision as i64],
+            |row| row.get::<_, i64>(0),
         )
         .optional()?
-        .ok_or_else(|| job_not_found(job_id))?;
-    decode_snapshot(&encoded)
+        .ok_or_else(|| {
+            ComputeCoordinatorError::Protocol(format!(
+                "idempotently committed job {} is missing its revision event",
+                candidate.job_id
+            ))
+        })?;
+    let emitted_at_ms = u64::try_from(emitted_at_ms).map_err(|_| {
+        ComputeCoordinatorError::Protocol(format!(
+            "idempotently committed job {} has a negative event timestamp",
+            candidate.job_id
+        ))
+    })?;
+    let event = JobRevisionEvent {
+        schema_version: ComputeJobEventSchemaVersion::V1,
+        job_id: candidate.job_id,
+        revision: candidate.revision,
+        emitted_at_ms,
+    };
+    event.validate()?;
+    Ok(Some(event))
 }
 
 fn load_revision(

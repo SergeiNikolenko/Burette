@@ -1,4 +1,7 @@
-use std::{sync::Barrier, thread};
+use std::{fs, sync::Barrier, thread};
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 use burrete_compute_protocol::{ComputeErrorCode, ComputeFailure, JobState, OwnerSurface};
 use rusqlite::Connection;
@@ -16,20 +19,66 @@ fn initializes_durable_sqlite_pragmas_and_rejects_future_schemas() {
     let synchronous: i64 = connection
         .pragma_query_value(None, "synchronous", |row| row.get(0))
         .expect("synchronous mode");
+    let user_version: i64 = connection
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .expect("user version");
+    let schema_version: i64 = connection
+        .query_row(
+            "SELECT integer_value FROM compute_meta WHERE key = 'schema_version'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("schema version");
     assert_eq!(journal.to_lowercase(), "wal");
     assert_eq!(synchronous, 2);
+    assert_eq!((schema_version, user_version), (2, 2));
 
     connection
         .execute(
-            "UPDATE compute_meta SET integer_value = 2 WHERE key = 'schema_version'",
+            "UPDATE compute_meta SET integer_value = 3 WHERE key = 'schema_version'",
             [],
         )
         .expect("write future schema version");
     drop(connection);
     assert!(matches!(
+        test.store.reopen(),
+        Err(ComputeCoordinatorError::Unavailable(_))
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn store_holds_exclusive_root_ownership_and_fails_closed_after_replacement() {
+    let test = TestStore::new();
+    assert!(matches!(
         ComputeStore::initialize(test.root.clone()),
         Err(ComputeCoordinatorError::Unavailable(_))
     ));
+
+    let displaced = test.root.with_file_name(format!(
+        "{}-displaced",
+        test.root
+            .file_name()
+            .expect("compute root leaf")
+            .to_string_lossy()
+    ));
+    fs::rename(&test.root, &displaced).expect("displace compute root");
+    fs::create_dir(&test.root).expect("create replacement compute root");
+    fs::set_permissions(&test.root, fs::Permissions::from_mode(0o700))
+        .expect("make replacement root private");
+
+    assert!(matches!(
+        test.store.list_jobs(MAIN_WINDOW_LABEL, 10),
+        Err(ComputeCoordinatorError::Filesystem(_))
+    ));
+
+    fs::remove_dir(&test.root).expect("remove replacement root");
+    fs::rename(displaced, &test.root).expect("restore held compute root");
+    assert!(test
+        .store
+        .list_jobs(MAIN_WINDOW_LABEL, 10)
+        .expect("read after restoring held root")
+        .is_empty());
 }
 
 #[test]
@@ -37,9 +86,7 @@ fn persists_snapshots_for_stable_desktop_owner_and_bounded_events() {
     let test = TestStore::new();
     let mut snapshot = queued_snapshot();
     let created_window = format!("{WORKSPACE_WINDOW_PREFIX}{}", Uuid::new_v4());
-    test.store
-        .insert_prepared_job(&created_window, &snapshot)
-        .expect("insert prepared job");
+    insert_prepared_fixture(&test.store, &created_window, &snapshot);
 
     assert_eq!(
         test.store
@@ -93,7 +140,7 @@ fn persists_snapshots_for_stable_desktop_owner_and_bounded_events() {
     assert_eq!(owner_audit, ("desktop".into(), created_window));
     drop(connection);
 
-    let reopened = ComputeStore::initialize(test.root.clone()).expect("reopen durable store");
+    let reopened = test.store.reopen().expect("reopen durable store");
     assert_eq!(
         reopened
             .get_job(MAIN_WINDOW_LABEL, snapshot.job_id)
@@ -106,9 +153,7 @@ fn persists_snapshots_for_stable_desktop_owner_and_bounded_events() {
 fn compare_and_swap_allows_only_one_concurrent_cancellation() {
     let test = TestStore::new();
     let snapshot = queued_snapshot();
-    test.store
-        .insert_prepared_job(MAIN_WINDOW_LABEL, &snapshot)
-        .expect("insert prepared job");
+    insert_prepared_fixture(&test.store, MAIN_WINDOW_LABEL, &snapshot);
 
     let barrier = std::sync::Arc::new(Barrier::new(3));
     let handles = (0..2)
@@ -235,7 +280,8 @@ fn rejects_non_desktop_owner_surface_on_tauri_store_path() {
     snapshot.owner_surface = OwnerSurface::DesktopAgent;
     snapshot.validate().expect("valid desktop-agent snapshot");
     assert!(matches!(
-        test.store.insert_prepared_job(MAIN_WINDOW_LABEL, &snapshot),
+        test.store
+            .insert_prepared_job(MAIN_WINDOW_LABEL, &snapshot, Uuid::new_v4()),
         Err(ComputeCoordinatorError::Forbidden(_))
     ));
 }

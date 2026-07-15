@@ -4,7 +4,10 @@ use burrete_compute_protocol::{
 use uuid::Uuid;
 
 use super::{
-    test_support::{boundary_snapshot, insert_recovery_fixture, queued_snapshot, TestStore},
+    test_support::{
+        boundary_snapshot, insert_prepared_fixture, insert_recovery_fixture, queued_snapshot,
+        TestStore,
+    },
     *,
 };
 
@@ -16,9 +19,7 @@ fn restart_recovery_interrupts_running_non_idempotent_work() {
     queued.stages[0].idempotent = false;
     queued.accepted_plan_sha256 = queued.plan.canonical_sha256().expect("changed plan hash");
     queued.validate().expect("valid non-idempotent queued job");
-    test.store
-        .insert_prepared_job(MAIN_WINDOW_LABEL, &queued)
-        .expect("insert prepared job");
+    insert_prepared_fixture(&test.store, MAIN_WINDOW_LABEL, &queued);
 
     let mut running = queued.clone();
     running.revision = 2;
