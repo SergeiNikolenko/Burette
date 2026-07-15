@@ -5755,6 +5755,7 @@ assert.match(fileExport, /export function exportDialogFilters\(fileName: string,
 assert.match(viewerBridgeMessagesLib, /handleGridRuntimeMessage\(body, eventSource\)/);
 assert.match(appGridRuntimeMessagesHook, /if \(body\?\.type === "gridFetchPage"\) \{\s*if \(!body\.requestId \|\| !body\.documentId\) return true;/s);
 assert.match(appGridRuntimeMessagesHook, /invoke\("grid_fetch_page"/);
+assert.match(appGridRuntimeMessagesHook, /columnFilters:\s*Array\.isArray\(body\.columnFilters\)\s*\?\s*body\.columnFilters\s*:\s*\[\]/);
 assert.match(appGridRuntimeMessagesHook, /source: "burrete-grid-host"/);
 assert.match(appGridRuntimeMessagesHook, /readBrowserDevVirtualTextDocument\(path\) \?\? await readStructureText\(path\)/);
 assert.match(fileRouting, /export type GridDelimitedColumnChoice = \{/);
