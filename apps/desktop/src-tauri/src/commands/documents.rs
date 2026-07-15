@@ -17,6 +17,7 @@ use tauri::{Manager, Runtime};
 #[cfg(not(target_os = "macos"))]
 use tauri_plugin_dialog::DialogExt;
 
+use crate::commands::source_editing::OpenedSourceRegistry;
 use crate::preview::formats::{
     format_for_extension, resolve_renderer, structure_path_extension,
     supported_structure_extensions,
@@ -346,6 +347,7 @@ pub(crate) fn open_documents_for_window_label<R: Runtime>(
         return Ok(OpenDocumentsResult { documents, errors });
     }
     for path in document_paths {
+        let source_path = path.canonicalize().ok();
         match open_document_for_window(
             app,
             window_label,
@@ -353,7 +355,20 @@ pub(crate) fn open_documents_for_window_label<R: Runtime>(
             &preferences,
             reload_options.as_ref(),
         ) {
-            Ok(document) => documents.push(document),
+            Ok(document) => {
+                if let Some(source_path) = source_path {
+                    let document_id = crate::preview::runtime_utils::stable_id(&source_path);
+                    if let Err(error) = app.state::<OpenedSourceRegistry>().register(
+                        document_id,
+                        window_label.to_string(),
+                        source_path,
+                        "structure",
+                    ) {
+                        errors.push(error);
+                    }
+                }
+                documents.push(document)
+            }
             Err(error) => errors.push(error),
         }
     }

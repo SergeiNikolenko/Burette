@@ -3872,6 +3872,30 @@ img.radix-menu-item-icon {
   border-bottom: 1px solid var(--line-subtler);
   background: color-mix(in srgb, var(--bg-base) 88%, var(--surface-subtle));
 }
+
+.source-edit-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.source-edit-dirty {
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.source-edit-diagnostic {
+  padding: 8px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--danger, #d14) 32%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--danger, #d14) 22%, transparent);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--danger, #d14) 9%, transparent);
+  font-size: 12px;
+  line-height: 1.35;
+}
 .text-file-title {
   min-width: 0;
   display: flex;

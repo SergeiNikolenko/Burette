@@ -87,13 +87,13 @@ assert.match(tabsHook, /export function useOpenTextDocuments\(/);
 assert.match(tabsHook, /export function useAddTextTabs\(/);
 
 assert.match(textViewer, /new EditorView\(/);
-assert.match(textViewer, /textStructureSelectionFromRange\(document, range\.from, range\.to\)/);
-assert.match(textViewer, /textStructureSelectionFromSelectedText\(document, selection\.toString\(\)\)/);
+assert.match(textViewer, /textStructureSelectionFromRange\(documentRef\.current, range\.from, range\.to\)/);
+assert.match(textViewer, /textStructureSelectionFromSelectedText\(documentRef\.current, selection\.toString\(\)\)/);
 assert.match(textViewer, /onStructureSelectionRef\.current\?\.\(document, selection\)/);
 assert.match(textViewer, /window\.document\.addEventListener\("selectionchange", emitNativeStructureSelection\)/);
 assert.match(textViewer, /view\.posAtDOM\(lineElement, 0\)/);
 assert.match(textViewer, /range\.intersectsNode\(lineElement\)/);
-assert.match(textViewer, /textStructureSelectionFromRange\(document, from, to\)/);
+assert.match(textViewer, /textStructureSelectionFromRange\(documentRef\.current, from, to\)/);
 assert.doesNotMatch(textViewer, /textStructureSelectionFromRange\(document, line\.from, line\.to, \{ preferAtom: true \}\)/);
 assert.match(textViewer, /lineDragStartRef/);
 assert.doesNotMatch(textViewer, /hoverTimeoutRef/);
@@ -105,6 +105,10 @@ assert.match(textViewer, /parent\.addEventListener\("pointercancel", onPointerCa
 assert.match(textViewer, /parent\.addEventListener\("pointerleave", onPointerLeave\)/);
 assert.match(textViewer, /EditorState\.readOnly\.of\(true\)/);
 assert.match(textViewer, /EditorView\.editable\.of\(false\)/);
+assert.match(textViewer, /EditorState\.readOnly\.of\(false\)/);
+assert.match(textViewer, /EditorView\.editable\.of\(true\)/);
+assert.match(textViewer, /onContentChangeRef\.current\?\.\(update\.state\.doc\.toString\(\)\)/);
+assert.match(textViewer, />Edit Source<\/button>/);
 assert.doesNotMatch(textViewer, /EditorView\.lineWrapping/);
 assert.match(textViewer, /markdown\(\{ codeLanguages: languages \}\)/);
 assert.match(textViewer, /LanguageDescription\.matchFilename\(languages, document\.title\)/);

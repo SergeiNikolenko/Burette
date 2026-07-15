@@ -19,24 +19,49 @@ export function TextFileViewer({
   document,
   openPaths,
   onStructureSelection,
+  sourceEditing,
 }: {
   document: TextFileDocument;
   openPaths?: MarkdownOpenPaths;
   onStructureSelection?: (document: TextFileDocument, selection: TextStructureSelection) => void;
+  sourceEditing?: {
+    editable: boolean;
+    content: string;
+    status: string;
+    dirty: boolean;
+    saving: boolean;
+    diagnostic?: string | null;
+    saveDisabledReason?: string | null;
+    showApplyPreview?: boolean;
+    onBeginEditing?: () => void;
+    onChange?: (content: string) => void;
+    onSave?: () => void | Promise<void>;
+    onApplyPreview?: () => void | Promise<void>;
+  };
 }) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const selectionTimeoutRef = useRef<number | null>(null);
   const onStructureSelectionRef = useRef(onStructureSelection);
+  const onContentChangeRef = useRef(sourceEditing?.onChange);
+  const documentRef = useRef(document);
+  const syncingContentRef = useRef(false);
   const lastStructureSelectionKeyRef = useRef<string | null>(null);
   const lineDragStartRef = useRef<{ from: number; to: number } | null>(null);
   const languageCompartment = useMemo(() => new Compartment(), [document.id]);
   const markdownDocument = isMarkdown(document);
   const maestroDocument = isMaestroText(document);
+  const editorContent = sourceEditing?.content ?? document.content;
+  const editable = Boolean(sourceEditing?.editable);
 
   useEffect(() => {
     onStructureSelectionRef.current = onStructureSelection;
   }, [onStructureSelection]);
+
+  useEffect(() => {
+    onContentChangeRef.current = sourceEditing?.onChange;
+    documentRef.current = document;
+  }, [document, sourceEditing?.onChange]);
 
   useEffect(() => {
     if (markdownDocument || maestroDocument) return undefined;
@@ -59,7 +84,7 @@ export function TextFileViewer({
     const view = new EditorView({
       parent,
       state: EditorState.create({
-        doc: document.content,
+        doc: editorContent,
         extensions: [
           lineNumbers(),
           highlightActiveLineGutter(),
@@ -71,13 +96,17 @@ export function TextFileViewer({
           highlightActiveLine(),
           highlightSelectionMatches(),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-          EditorState.readOnly.of(true),
-          EditorView.editable.of(false),
+          ...(editable
+            ? [EditorState.readOnly.of(false), EditorView.editable.of(true)]
+            : [EditorState.readOnly.of(true), EditorView.editable.of(false)]),
           EditorView.updateListener.of((update) => {
+            if (update.docChanged && !syncingContentRef.current) {
+              onContentChangeRef.current?.(update.state.doc.toString());
+            }
             if (!update.selectionSet) return;
             const range = update.state.selection.main;
             if (range.empty) return;
-            const selection = textStructureSelectionFromRange(document, range.from, range.to);
+            const selection = textStructureSelectionFromRange(documentRef.current, range.from, range.to);
             if (selection) emitStructureSelection(selection);
           }),
           keymap.of([...searchKeymap, ...defaultKeymap]),
@@ -96,7 +125,7 @@ export function TextFileViewer({
       return target && parent.contains(target) ? target : null;
     };
     const emitStructureRange = (from: number, to: number) => {
-      const structureSelection = textStructureSelectionFromRange(document, from, to);
+      const structureSelection = textStructureSelectionFromRange(documentRef.current, from, to);
       if (structureSelection) emitStructureSelection(structureSelection);
     };
     const emitLineDragStructureSelection = (lineElement: HTMLElement) => {
@@ -113,7 +142,7 @@ export function TextFileViewer({
       if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
       if (!selection.anchorNode || !parent.contains(selection.anchorNode)) return;
       if (!selection.focusNode || !parent.contains(selection.focusNode)) return;
-      const selectedTextStructureSelection = textStructureSelectionFromSelectedText(document, selection.toString());
+      const selectedTextStructureSelection = textStructureSelectionFromSelectedText(documentRef.current, selection.toString());
       if (selectedTextStructureSelection) {
         emitStructureSelection(selectedTextStructureSelection);
         return;
@@ -132,7 +161,7 @@ export function TextFileViewer({
       if (selectedDocumentLines.length === 0) return;
       const from = Math.min(...selectedDocumentLines.map((line) => line.from));
       const to = Math.max(...selectedDocumentLines.map((line) => line.to));
-      const structureSelection = textStructureSelectionFromRange(document, from, to);
+      const structureSelection = textStructureSelectionFromRange(documentRef.current, from, to);
       if (structureSelection) emitStructureSelection(structureSelection);
     };
     window.document.addEventListener("selectionchange", emitNativeStructureSelection);
@@ -193,7 +222,18 @@ export function TextFileViewer({
       view.destroy();
       viewRef.current = null;
     };
-  }, [document, languageCompartment, markdownDocument, maestroDocument]);
+  }, [document.id, editable, languageCompartment, markdownDocument, maestroDocument]);
+
+  useEffect(() => {
+    if (markdownDocument || maestroDocument) return;
+    const view = viewRef.current;
+    if (!view || view.state.doc.toString() === editorContent) return;
+    syncingContentRef.current = true;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: editorContent },
+    });
+    syncingContentRef.current = false;
+  }, [editorContent, markdownDocument, maestroDocument]);
 
   useEffect(() => {
     if (markdownDocument || maestroDocument) return undefined;
@@ -219,10 +259,36 @@ export function TextFileViewer({
           {document.truncated && <span className="text-file-badge">Truncated</span>}
         </div>
         <div className="text-file-meta">
+          {sourceEditing && (
+            <span className="source-edit-status" aria-live="polite">
+              {sourceEditing.dirty && <span className="source-edit-dirty" aria-label="Unsaved changes">●</span>}
+              {sourceEditing.status}
+            </span>
+          )}
           <span>{document.language}</span>
-          <span>{formatBytes(document.byteCount)}</span>
+          <span>{formatBytes(new TextEncoder().encode(editorContent).byteLength)}</span>
+          {sourceEditing?.onBeginEditing && !sourceEditing.editable && (
+            <button type="button" className="dock-action dock-action-compact" onClick={sourceEditing.onBeginEditing}>Edit Source</button>
+          )}
+          {sourceEditing?.showApplyPreview && sourceEditing.editable && (
+            <button type="button" className="dock-action dock-action-compact" onClick={() => void sourceEditing.onApplyPreview?.()}>Apply Preview</button>
+          )}
+          {sourceEditing?.editable && (
+            <button
+              type="button"
+              className="dock-action dock-action-compact"
+              disabled={sourceEditing.saving || Boolean(sourceEditing.saveDisabledReason) || !sourceEditing.dirty}
+              title={sourceEditing.saveDisabledReason ?? "Save source (Command-S)"}
+              onClick={() => void sourceEditing.onSave?.()}
+            >
+              Save
+            </button>
+          )}
         </div>
       </div>
+      {sourceEditing?.diagnostic && (
+        <div className="source-edit-diagnostic" role="status">{sourceEditing.diagnostic}</div>
+      )}
       {markdownDocument ? (
         <MarkdownRichViewer document={document} openPaths={openPaths} />
       ) : maestroDocument ? (
