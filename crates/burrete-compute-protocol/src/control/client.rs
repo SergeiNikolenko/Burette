@@ -84,7 +84,7 @@ impl ControlCommand {
                 request,
             } => {
                 session_token.validate()?;
-                request.validate()
+                request.clone().normalized().map(|_| ())
             }
             Self::JobStatus {
                 session_token,

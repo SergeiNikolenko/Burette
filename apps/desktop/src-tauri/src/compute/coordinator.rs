@@ -107,7 +107,7 @@ impl ComputeCoordinator {
         request: &ClusterV1SubmitRequest,
     ) -> ComputeResult<JobSnapshot> {
         validate_owner_window_label(owner)?;
-        request.validate()?;
+        let _normalized_request = request.clone().normalized()?;
         let _ = self.store()?;
         Err(ComputeCoordinatorError::SourceSnapshotUnavailable(
             "cluster.v1 submission requires a transactionally frozen Grid source; Stage 3 has not connected that resolver yet".into(),
