@@ -144,13 +144,13 @@ function createServer(): McpServer {
     async (input) => {
       try {
         const prepared = input.source === "pdb"
-          ? await preparePdbStructure(input.pdbId)
-          : await prepareAttachedStructure(input.structureFile);
+          ? await preparePdbStructure(input.pdbId!)
+          : await prepareAttachedStructure(input.structureFile!);
         const sourceDescriptor = input.source === "pdb"
-          ? { kind: "pdb", pdbId: input.pdbId.toUpperCase() }
+          ? { kind: "pdb", pdbId: input.pdbId!.toUpperCase() }
           : {
               kind: "attachment",
-              fileName: input.structureFile.file_name ?? prepared.summary.fileName,
+              fileName: input.structureFile!.file_name ?? prepared.summary.fileName,
             };
         return {
           content: [{

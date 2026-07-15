@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily as collectionFamilyForExtension, type CollectionFamily } from "../lib/collection-documents";
+import { detectKetcherImportFormat } from "../lib/ketcher-import-format";
 import { readStructureText } from "../lib/structure-text";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
@@ -53,10 +54,9 @@ type KetcherTextFormat =
   | "inchi-aux"
   | "inchi-key"
   | "svg";
-type KetcherPanelMode = {
-  purpose: "export" | "import";
-  format: KetcherTextFormat;
-};
+type KetcherPanelMode =
+  | { purpose: "export"; format: KetcherTextFormat }
+  | { purpose: "import"; format: KetcherTextFormat | "auto" };
 
 const KETCHER_ZOOM_LEVELS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 2, 2.5, 3, 3.5, 4] as const;
 const DEFAULT_KETCHER_ZOOM = 1;
@@ -159,7 +159,8 @@ const KETCHER_TOOLTIP_LABELS: Record<string, string> = {
   image: "Add image",
   "template-lib": "Open template library",
 };
-const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat, string> = {
+const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat | "auto", string> = {
+  auto: "Auto",
   smiles: "SMILES",
   "extended-smiles": "Extended SMILES",
   "molfile-v2000": "Molfile V2000",
@@ -180,7 +181,8 @@ const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat, string> = {
   "inchi-key": "InChIKey",
   svg: "SVG",
 };
-const KETCHER_FORMAT_DETAILS: Record<KetcherTextFormat, string> = {
+const KETCHER_FORMAT_DETAILS: Record<KetcherTextFormat | "auto", string> = {
+  auto: "Detect the structure format from its contents.",
   smiles: "Compact one-line molecule notation.",
   "extended-smiles": "SMILES with Ketcher extended annotations.",
   "molfile-v2000": "Legacy MDL MOL structure format.",
@@ -222,7 +224,8 @@ const KETCHER_EXPORT_FORMATS: KetcherTextFormat[] = [
   "inchi-key",
   "svg",
 ];
-const KETCHER_IMPORT_FORMATS: KetcherTextFormat[] = [
+const KETCHER_IMPORT_FORMATS: Array<KetcherTextFormat | "auto"> = [
+  "auto",
   "smiles",
   "extended-smiles",
   "molfile-v2000",
@@ -241,7 +244,7 @@ const KETCHER_IMPORT_FORMATS: KetcherTextFormat[] = [
   "inchi",
 ];
 const DEFAULT_KETCHER_EXPORT_FORMAT: KetcherTextFormat = "sdf-v2000";
-const DEFAULT_KETCHER_IMPORT_FORMAT: KetcherTextFormat = "sdf-v2000";
+const DEFAULT_KETCHER_IMPORT_FORMAT = "auto" as const;
 const KETCHER_EXPORT_FILE_EXTENSIONS: Record<KetcherTextFormat, string> = {
   smiles: "smi",
   "extended-smiles": "smi",
@@ -374,12 +377,12 @@ export function KetcherPage({
   const [ketcherZoom, setKetcherZoom] = useState(DEFAULT_KETCHER_ZOOM);
   const [outputPanelHeight, setOutputPanelHeight] = useState(KETCHER_OUTPUT_DEFAULT_HEIGHT);
   const [dockPortalElement, setDockPortalElement] = useState<HTMLElement | null>(null);
-  const [liveSmilesImportDirty, setLiveSmilesImportDirty] = useState(false);
+  const [liveImportDirty, setLiveImportDirty] = useState(false);
   const [selectedCollectionPath, setSelectedCollectionPath] = useState("");
   const [gridEditSource, setGridEditSource] = useState<NonNullable<NonNullable<KetcherImportRequest["fragments"]>[number]["source"]> | null>(null);
   const [preserved3dSource, setPreserved3dSource] = useState<KetcherSource3D | null>(null);
   const handledImportRequestIdRef = useRef<number | null>(null);
-  const liveSmilesImportSerialRef = useRef(0);
+  const liveImportSerialRef = useRef(0);
   const locallySavedDraftRef = useRef("");
   const inFlightImportRequestIdRef = useRef<number | null>(null);
   const nextImportRetryAtRef = useRef(0);
@@ -394,7 +397,12 @@ export function KetcherPage({
   const ketcherThemeTitle = `Switch to ${nextKetcherTheme} theme`;
   const ketcherZoomIndex = nearestKetcherZoomIndex(ketcherZoom);
   const ketcherZoomPercent = Math.round(ketcherZoom * 100);
-  const panelFormatLabel = panelMode ? KETCHER_FORMAT_LABELS[panelMode.format] : "";
+  const detectedImportFormat = useMemo(() => detectKetcherImportFormat(output), [output]);
+  const panelFormatLabel = panelMode
+    ? panelMode.purpose === "import" && panelMode.format === "auto" && output.trim()
+      ? `Auto · ${KETCHER_FORMAT_LABELS[detectedImportFormat]}`
+      : KETCHER_FORMAT_LABELS[panelMode.format]
+    : "";
   const ketcherUIScaleStyle = useMemo(() => ({
     "--ketcher-ui-scale": String(ketcherZoom),
   }) as CSSProperties, [ketcherZoom]);
@@ -576,8 +584,8 @@ export function KetcherPage({
     };
   }, [ketcher, panelMode]);
 
-  const startImport = useCallback((format: KetcherTextFormat) => {
-    setLiveSmilesImportDirty(false);
+  const startImport = useCallback((format: KetcherTextFormat | "auto") => {
+    setLiveImportDirty(false);
     setOutput((current) => (panelMode?.purpose === "import" && panelMode.format === format ? current : ""));
     setPanelMode({ purpose: "import", format });
     setStatus(`Paste ${KETCHER_FORMAT_LABELS[format]} to import`);
@@ -588,7 +596,7 @@ export function KetcherPage({
     showExport(format);
   }, [actions, showExport]);
 
-  const selectImportFormat = useCallback((format: KetcherTextFormat) => {
+  const selectImportFormat = useCallback((format: KetcherTextFormat | "auto") => {
     actions.setDockTool("bottom", "ketcher");
     startImport(format);
   }, [actions, startImport]);
@@ -641,8 +649,10 @@ export function KetcherPage({
     }
     try {
       setStatus(`Loading ${label}`);
-      const importText = normalizeKetcherImportText(output, panelMode.format);
-      await withKetcherTimeout(ketcher.setMolecule(importText, { needZoom: true }), "Sketch import");
+      const format = panelMode.format === "auto" ? detectKetcherImportFormat(output) : panelMode.format;
+      const importText = normalizeKetcherImportText(output, format);
+      await withKetcherTimeout(loadInteractiveKetcherImport(ketcher, importText, format), "Sketch import");
+      await waitForKetcherCanvasUpdate();
       const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Sketch import verification");
       if (isBlankKetcherMolfile(molfile)) {
         setHasSketch(false);
@@ -659,29 +669,32 @@ export function KetcherPage({
   }, [actions, ketcher, output, panelMode]);
 
   useEffect(() => {
-    if (!ketcher || panelMode?.purpose !== "import" || panelMode.format !== "smiles") return;
-    if (!liveSmilesImportDirty) return;
-    const smiles = output.trim();
-    const serial = liveSmilesImportSerialRef.current + 1;
-    liveSmilesImportSerialRef.current = serial;
+    if (!ketcher || panelMode?.purpose !== "import" || !liveImportDirty) return;
+    const format = panelMode.format === "auto" ? detectedImportFormat : panelMode.format;
+    const importText = normalizeKetcherImportText(output, format);
+    const label = KETCHER_FORMAT_LABELS[format];
+    const serial = liveImportSerialRef.current + 1;
+    liveImportSerialRef.current = serial;
     const timer = window.setTimeout(() => {
       void (async () => {
+        if (liveImportSerialRef.current !== serial) return;
         try {
-          setStatus(smiles ? "Loading SMILES" : "Clearing sketch");
-          await withKetcherTimeout(ketcher.setMolecule(smiles, { needZoom: true }), "SMILES import");
-          if (liveSmilesImportSerialRef.current !== serial) return;
-          if (!smiles) {
+          setStatus(importText ? `Loading ${label}` : "Clearing sketch");
+          await withKetcherTimeout(loadInteractiveKetcherImport(ketcher, importText, format), `${label} import`);
+          await waitForKetcherCanvasUpdate();
+          if (liveImportSerialRef.current !== serial) return;
+          if (!importText) {
             actions.saveKetcherDraft("");
             setPreserved3dSource(null);
             setHasSketch(false);
             setStatus("Ready");
             return;
           }
-          const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "SMILES import verification");
-          if (liveSmilesImportSerialRef.current !== serial) return;
+          const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), `${label} import verification`);
+          if (liveImportSerialRef.current !== serial) return;
           if (isBlankKetcherMolfile(molfile)) {
             setHasSketch(false);
-            setStatus("SMILES did not produce a sketch");
+            setStatus(`${label} did not produce a sketch`);
             return;
           }
           locallySavedDraftRef.current = molfile.trimEnd();
@@ -690,13 +703,13 @@ export function KetcherPage({
           setHasSketch(true);
           setStatus("Ready");
         } catch (error) {
-          if (liveSmilesImportSerialRef.current !== serial) return;
-          setStatus("SMILES import failed: " + (error instanceof Error ? error.message : String(error)));
+          if (liveImportSerialRef.current !== serial) return;
+          setStatus(`${label} import failed: ` + (error instanceof Error ? error.message : String(error)));
         }
       })();
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [actions, ketcher, liveSmilesImportDirty, output, panelMode]);
+  }, [actions, detectedImportFormat, ketcher, liveImportDirty, output, panelMode]);
 
   const openSketch = useCallback(async (target: KetcherSketchTarget, collectionTargetPath?: string | null) => {
     if (!ketcher || exportingSketch) return;
@@ -1246,7 +1259,7 @@ export function KetcherPage({
               value={output}
               onChange={(event) => {
                 setOutput(event.target.value);
-                if (panelMode.purpose === "import") setLiveSmilesImportDirty(true);
+                if (panelMode.purpose === "import") setLiveImportDirty(true);
               }}
             />
           </div>
@@ -1521,6 +1534,16 @@ function loadAdditionalKetcherImportCandidate(instance: KetcherEditorApi, candid
   return looksLikeMolBlock(candidate)
     ? instance.addMolfileFragment(candidate)
     : instance.addFragment(candidate, { needZoom: true });
+}
+
+function loadInteractiveKetcherImport(instance: KetcherEditorApi, text: string, format: KetcherTextFormat) {
+  return format.startsWith("molfile-") || format.startsWith("sdf-")
+    ? instance.setMolfile(firstMolBlock(text))
+    : instance.setMolecule(text, { needZoom: true });
+}
+
+function firstMolBlock(text: string) {
+  return /[\s\S]*?\nM\s+END(?:\n|$)/u.exec(text)?.[0] ?? text;
 }
 
 function waitForKetcherCanvasUpdate() {

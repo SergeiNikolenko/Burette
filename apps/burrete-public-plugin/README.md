@@ -29,7 +29,7 @@ The production Streamable HTTP endpoint is
 
 All tools are read-only, idempotent, non-destructive, and cannot write to the
 public internet. Each declares an exact output schema and renders
-`ui://burrete/molecular-viewer-v17.html` with MIME type
+`ui://burrete/molecular-viewer-v21.html` with MIME type
 `text/html;profile=mcp-app`.
 
 The widget uses the MCP Apps handshake before publishing bounded selection or
@@ -55,7 +55,7 @@ from the model and conversation transcript.
 - PDB lookups use the fixed `files.rcsb.org` download origin.
 - The MCP resource mounts the compiled Burrete React shell directly instead of
   wrapping a separate viewer page. Its CSP permits only the stable production
-  origin for runtime fetches, resources, and the shell's internal viewer frame.
+  origin for runtime fetches and resources; the widget does not embed subframes.
 - The hosted shell loads only the plugin's pinned, self-hosted Burrete, Mol*,
   and RDKit runtime assets.
 - The Mol* 5.7.0 build is transformed by
@@ -68,6 +68,10 @@ from the model and conversation transcript.
   widget-only `_meta`.
 
 Hosting infrastructure may retain ordinary request metadata in platform logs.
+The hosted widget also sends one anonymized Vercel Web Analytics pageview for
+the fixed path `/mcp/widget` when it loads. Automatic URL tracking is disabled,
+and the event does not contain PDB IDs, filenames, molecular content, viewer
+selection, or chat/session identifiers.
 The public [privacy policy](https://burrete-landing.vercel.app/privacy)
 describes that hosting boundary, recipients, retention, user controls, and RCSB
 lookup behavior.

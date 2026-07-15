@@ -14,15 +14,12 @@
       try { window.parent.postMessage({ source: 'burrete-viewer', body }, '*'); } catch (_) {}
     }
   };
-  const webkit = window.webkit || {};
-  const messageHandlers = webkit.messageHandlers || {};
-  if (!messageHandlers.burrete) {
-    messageHandlers.burrete = { postMessage: postToParent };
-  }
-  webkit.messageHandlers = messageHandlers;
-  window.webkit = webkit;
+  const nativeHandler = window.webkit?.messageHandlers?.burrete;
+  const burreteHandler = nativeHandler && typeof nativeHandler.postMessage === 'function'
+    ? nativeHandler
+    : { postMessage: postToParent };
   window.__mqlPost = (type, message, payload) => postToParent({ type, message: message || '', ...(payload || {}) });
-  window.__mqlAction = (name) => messageHandlers.burrete.postMessage({ type: 'action', message: name });
+  window.__mqlAction = (name) => burreteHandler.postMessage({ type: 'action', message: name });
   window.__mqlDebug = () => {};
   window.BurreteInlineMode = true;
   window.BurreteDebug = false;
