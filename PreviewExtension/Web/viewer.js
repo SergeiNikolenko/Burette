@@ -13486,6 +13486,13 @@
     throw lastError || new Error('RDKit_minimal.wasm is missing.');
   }
 
+  async function molstarPreviewLoadRDKitWasmData() {
+    if (window.BurreteRDKitWasmBase64) return;
+    const dataURL = runtimeURL('BurreteRDKitWasmDataURL', '');
+    if (!dataURL) return;
+    await molstarPreviewLoadScript(dataURL);
+  }
+
   function molstarPreviewRDKitWasmPath(file) {
     if (!String(file || '').endsWith('.wasm')) return file;
     return molstarPreviewRDKitWasmCandidates()[0] || 'rdkit/RDKit_minimal.wasm';
@@ -13499,6 +13506,7 @@
         await molstarPreviewLoadRDKitScript();
       }
       if (typeof window.initRDKitModule !== 'function') throw new Error('RDKit_minimal.js is missing.');
+      await molstarPreviewLoadRDKitWasmData();
       const options = { locateFile: molstarPreviewRDKitWasmPath };
       if (window.BurreteRDKitWasmBase64) {
         options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
