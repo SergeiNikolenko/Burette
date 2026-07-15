@@ -158,7 +158,7 @@ export const molecularSceneInputSchema = z.discriminatedUnion("source", [
 export function viewerToolMeta(invoking: string, invoked: string) {
   return {
     securitySchemes: NOAUTH_SECURITY_SCHEMES,
-    ui: { resourceUri: VIEWER_RESOURCE_URI, visibility: ["model"] as const },
+    ui: { resourceUri: VIEWER_RESOURCE_URI },
     "openai/outputTemplate": VIEWER_RESOURCE_URI,
     "openai/toolInvocation/invoking": invoking,
     "openai/toolInvocation/invoked": invoked,
