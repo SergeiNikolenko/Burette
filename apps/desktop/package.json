@@ -11,8 +11,8 @@
     "tauri": "bunx --bun tauri"
   },
   "dependencies": {
-    "ketcher-core": "^3.15.0",
-    "ketcher-react": "^3.12.0",
-    "ketcher-standalone": "^3.12.0"
+    "ketcher-core": "3.15.0",
+    "ketcher-react": "3.15.0",
+    "ketcher-standalone": "3.15.0"
   }
 }
