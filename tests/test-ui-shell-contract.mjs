@@ -1398,7 +1398,8 @@ assert.match(fileKind, /path: location\.path/);
 assert.match(fileKind, /const document = findDocument\(location, state\.documents\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} \/> : null;/);
 assert.doesNotMatch(fileKind, /findDocument\(location, state\.documents\) \?\? state\.activeDocument/);
 assert.match(fileKind, /className="molecule-stage"/);
-assert.match(fileKind, /<ViewerFrame document=\{document\} iframeRef=\{iframeRef\} \/>/);
+assert.match(fileKind, /sourcePreview=\{sourceSession\?\.sourcePreview \?\? undefined\}/);
+assert.match(fileKind, /onStagingLoad=\{\(identity, frame\) => sourceEditing\?\.stagingLoaded\(document, identity, frame\)\}/);
 assert.match(viewerFrame, /export function ViewerFrame/);
 assert.match(viewerFrame, /className = "viewer-iframe"/);
 assert.match(viewerFrame, /<iframe key=\{document\.runtimePath\} \{\.\.\.commonProps\} src=\{convertFileSrc\(document\.runtimePath\)\} \/>/);
@@ -1411,6 +1412,9 @@ assert.match(viewerFrame, /convertFileSrc\(document\.runtimePath\)/);
 assert.match(viewerFrame, /"allow-scripts allow-downloads allow-same-origin"/);
 assert.match(viewerFrame, /isHostedMcpWidget\(\)[\s\S]*?\? undefined/);
 assert.match(viewerFrame, /\.\.\.\(sandbox \? \{ sandbox \} : \{\}\)/);
+assert.match(viewerFrame, /"data-source-preview-role": active \? "active" : "staging"/);
+assert.match(viewerFrame, /"aria-hidden": active \? undefined : true/);
+assert.match(viewerFrame, /inert: active \? undefined : true/);
 assert.match(fileKind, /const sheetDropTarget = document\.renderer === "xyzrender-external"/);
 assert.match(fileKind, /const collectionDropTarget = document\.renderer === "grid2d"/);
 assert.doesNotMatch(fileKind, /viewer-generate-3d-button/);
@@ -3751,7 +3755,7 @@ assert.match(appOpenActionsHook, /No recent structures to open/);
 assert.match(appOpenActionsHook, /const chooseFiles = useCallback/);
 assert.match(
   app,
-  /useMenuEvents\(\{\s*actions,\s*chooseFiles: actions\.chooseFiles,\s*openMostRecentStructure: actions\.openMostRecentStructure,\s*revealActiveDocument: actions\.revealActiveDocument,\s*copyActiveDocumentPath: actions\.copyActiveDocumentPath,\s*showActiveDocumentMetadata: actions\.showActiveDocumentMetadata,\s*exportActivePreviewAsPng: actions\.exportActivePreviewAsPng,\s*exportActivePreviewAsSvg: actions\.exportActivePreviewAsSvg,\s*clearCache: actions\.clearCache,\s*resetQuickLook: actions\.resetQuickLook,\s*openLogs: actions\.openLogs,\s*openSettings: actions\.openSettings,\s*checkForUpdates: actions\.checkForUpdates,\s*\}\)/s,
+  /useMenuEvents\(\{\s*actions,\s*chooseFiles: actions\.chooseFiles,\s*openMostRecentStructure: actions\.openMostRecentStructure,\s*revealActiveDocument: actions\.revealActiveDocument,\s*copyActiveDocumentPath: actions\.copyActiveDocumentPath,\s*showActiveDocumentMetadata: actions\.showActiveDocumentMetadata,\s*exportActivePreviewAsPng: actions\.exportActivePreviewAsPng,\s*exportActivePreviewAsSvg: actions\.exportActivePreviewAsSvg,\s*clearCache: actions\.clearCache,\s*resetQuickLook: actions\.resetQuickLook,\s*openLogs: actions\.openLogs,\s*openSettings: actions\.openSettings,\s*checkForUpdates: actions\.checkForUpdates,\s*saveSource:/s,
 );
 assert.match(app, /from "\.\/hooks\/use-app-host-runtime-operations"/);
 assert.match(app, /from "\.\/hooks\/use-app-preference-effects"/);
