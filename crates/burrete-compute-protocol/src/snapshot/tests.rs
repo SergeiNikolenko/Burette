@@ -91,8 +91,146 @@ fn partial_success_requires_a_non_empty_valid_result() {
     assert_eq!(snapshot.validate(), Ok(()));
 }
 
+#[test]
+fn validates_each_durable_stage_boundary() {
+    let expected = [
+        JobState::Preparing,
+        JobState::Preparing,
+        JobState::Running,
+        JobState::Running,
+        JobState::Validating,
+        JobState::Publishing,
+    ];
+    for (stage_index, state) in expected.into_iter().enumerate() {
+        assert_eq!(
+            boundary_snapshot(BackendPolicy::ReferenceCpu, stage_index, false, state).validate(),
+            Ok(()),
+            "queued boundary for stage {stage_index}"
+        );
+        assert_eq!(
+            boundary_snapshot(BackendPolicy::ReferenceCpu, stage_index, true, state).validate(),
+            Ok(()),
+            "running boundary for stage {stage_index}"
+        );
+    }
+    assert_eq!(
+        boundary_snapshot(BackendPolicy::GpuRequired, 2, false, JobState::WaitingGpu).validate(),
+        Ok(())
+    );
+    assert_eq!(
+        boundary_snapshot(BackendPolicy::GpuRequired, 2, true, JobState::Running).validate(),
+        Ok(())
+    );
+}
+
+#[test]
+fn rejects_atomic_attempt_termination_and_retry() {
+    let previous = boundary_snapshot(BackendPolicy::ReferenceCpu, 3, true, JobState::Running);
+    let mut current = previous.clone();
+    current.revision += 1;
+    current.updated_at_ms = 220;
+    let stage_id = current.stages[3].stage_id.clone();
+    let failure = failure(&stage_id, ComputeErrorCode::WorkerCrashed, true);
+    let prior_attempt = current.attempts.last_mut().expect("running attempt");
+    prior_attempt.state = AttemptState::Interrupted;
+    prior_attempt.heartbeat_at_ms = 205;
+    prior_attempt.finished_at_ms = Some(205);
+    prior_attempt.error = Some(failure);
+    let mut retry = attempt(
+        &current.stages[3],
+        AttemptState::Running,
+        2,
+        206,
+        220,
+        None,
+        Some("retryable interruption"),
+    );
+    retry.attempt_id = Uuid::from_u128(999);
+    current.attempts.push(retry);
+    current.stages[3].updated_at_ms = Some(220);
+    assert_eq!(current.validate(), Ok(()));
+    assert!(current.validate_successor(&previous).is_err());
+}
+
+#[test]
+fn rejects_retry_history_for_a_non_idempotent_stage() {
+    let mut snapshot = boundary_snapshot(BackendPolicy::ReferenceCpu, 3, true, JobState::Running);
+    snapshot.plan.stages[3].idempotent = false;
+    snapshot.accepted_plan_sha256 = snapshot
+        .plan
+        .canonical_sha256()
+        .expect("canonical non-idempotent plan hash");
+    snapshot.stages[3].idempotent = false;
+    let stage_id = snapshot.stages[3].stage_id.clone();
+    let failure = failure(&stage_id, ComputeErrorCode::WorkerCrashed, true);
+    let first = snapshot.attempts.last_mut().expect("running attempt");
+    first.state = AttemptState::Interrupted;
+    first.finished_at_ms = Some(first.heartbeat_at_ms);
+    first.error = Some(failure);
+    let mut retry = attempt(
+        &snapshot.stages[3],
+        AttemptState::Running,
+        2,
+        first.heartbeat_at_ms,
+        snapshot.updated_at_ms,
+        None,
+        Some("retryable interruption"),
+    );
+    retry.attempt_id = Uuid::from_u128(999);
+    snapshot.attempts.push(retry);
+    assert!(snapshot.validate().is_err());
+}
+
+#[test]
+fn freezes_gpu_device_kernel_and_runtime_identity() {
+    let previous = boundary_snapshot(BackendPolicy::GpuRequired, 2, true, JobState::Running);
+    let mut changed_trace = previous.clone();
+    changed_trace.revision += 1;
+    changed_trace.updated_at_ms = 220;
+    changed_trace.state = JobState::Running;
+    let stage = &mut changed_trace.stages[2];
+    stage.state = StageState::Succeeded;
+    stage.progress.completed_units = stage.progress.total_units;
+    stage.device = Some("Different Apple GPU".into());
+    stage.kernel_id = Some("different.kernel".into());
+    stage.gpu_time_ms = Some(2.0);
+    stage.host_time_ms = Some(3.0);
+    stage.updated_at_ms = Some(210);
+    stage.finished_at_ms = Some(210);
+    changed_trace.progress.completed_units += 1;
+    let attempt = changed_trace.attempts.last_mut().expect("running attempt");
+    attempt.state = AttemptState::Succeeded;
+    attempt.heartbeat_at_ms = 210;
+    attempt.finished_at_ms = Some(210);
+    assert_eq!(changed_trace.validate(), Ok(()));
+    assert!(changed_trace.validate_successor(&previous).is_err());
+
+    let mut changed_runtime = previous.clone();
+    changed_runtime.revision += 1;
+    changed_runtime.updated_at_ms += 1;
+    changed_runtime.pinned_runtime.helper_sha256 = hash('9');
+    changed_runtime.stages[2].updated_at_ms = Some(changed_runtime.updated_at_ms);
+    changed_runtime
+        .attempts
+        .last_mut()
+        .expect("running attempt")
+        .heartbeat_at_ms = changed_runtime.updated_at_ms;
+    assert_eq!(changed_runtime.validate(), Ok(()));
+    assert!(changed_runtime.validate_successor(&previous).is_err());
+}
+
+#[test]
+fn terminal_job_error_must_equal_stage_and_attempt_evidence() {
+    let mut snapshot = interrupted_snapshot(true);
+    snapshot.error.as_mut().expect("job error").message = "Different error".into();
+    assert!(snapshot.validate().is_err());
+}
+
 fn queued_snapshot(policy: BackendPolicy) -> JobSnapshot {
+    let request = request(policy);
     let plan = plan(policy);
+    let normalized_request_sha256 = request.canonical_sha256().expect("canonical request hash");
+    let accepted_plan_sha256 = plan.canonical_sha256().expect("canonical plan hash");
     let stages = plan
         .stages
         .iter()
@@ -106,8 +244,8 @@ fn queued_snapshot(policy: BackendPolicy) -> JobSnapshot {
         owner_surface: OwnerSurface::Desktop,
         workflow_template: WorkflowTemplateId::ClusterV1,
         state: JobState::Queued,
-        request: request(policy),
-        normalized_request_sha256: hash('a'),
+        request,
+        normalized_request_sha256,
         frozen_source: frozen_source(),
         progress: JobProgress {
             completed_units: 0,
@@ -115,13 +253,13 @@ fn queued_snapshot(policy: BackendPolicy) -> JobSnapshot {
             message: "Queued".into(),
         },
         plan,
-        accepted_plan_sha256: hash('b'),
+        accepted_plan_sha256,
         stages,
         attempts: Vec::new(),
         artifact_ids: Vec::new(),
         result_pack: None,
         outcome: None,
-        pinned_runtime_version: Some(RUNTIME.into()),
+        pinned_runtime: runtime_identity(),
         error: None,
         created_at_ms: 100,
         updated_at_ms: 100,
@@ -180,6 +318,10 @@ fn interrupted_snapshot(idempotent: bool) -> JobSnapshot {
     snapshot.state = JobState::Interrupted;
     snapshot.updated_at_ms = 110;
     snapshot.plan.stages[0].idempotent = idempotent;
+    snapshot.accepted_plan_sha256 = snapshot
+        .plan
+        .canonical_sha256()
+        .expect("canonical interrupted plan hash");
     let failure = failure("freezeScope", ComputeErrorCode::WorkerCrashed, true);
     snapshot.stages[0] = interrupted_stage(&snapshot.plan.stages[0], 0, 101, 110, failure.clone());
     snapshot.attempts = vec![attempt(
@@ -204,6 +346,60 @@ fn retry_snapshot(previous: &JobSnapshot) -> JobSnapshot {
     current.error = None;
     current.stages[0] = queued_stage(&current.plan.stages[0], 0);
     current
+}
+
+fn boundary_snapshot(
+    policy: BackendPolicy,
+    stage_index: usize,
+    running: bool,
+    state: JobState,
+) -> JobSnapshot {
+    let mut snapshot = queued_snapshot(policy);
+    snapshot.revision = 10 + stage_index as u64;
+    snapshot.state = state;
+    snapshot.updated_at_ms = 200;
+    snapshot.progress.completed_units = stage_index as u64;
+    snapshot.progress.message = format!("Boundary {stage_index}");
+    snapshot.stages = snapshot
+        .plan
+        .stages
+        .iter()
+        .enumerate()
+        .map(|(ordinal, planned)| {
+            if ordinal < stage_index {
+                succeeded_stage(planned, ordinal, 101 + ordinal as u64 * 10)
+            } else if ordinal == stage_index && running {
+                running_stage(planned, ordinal, 101 + ordinal as u64 * 10, 200)
+            } else {
+                queued_stage(planned, ordinal)
+            }
+        })
+        .collect();
+    snapshot.attempts = snapshot
+        .stages
+        .iter()
+        .enumerate()
+        .filter(|(ordinal, _)| *ordinal < stage_index || (*ordinal == stage_index && running))
+        .map(|(ordinal, stage)| {
+            let attempt_state = if ordinal < stage_index {
+                AttemptState::Succeeded
+            } else {
+                AttemptState::Running
+            };
+            let mut attempt = attempt(
+                stage,
+                attempt_state,
+                1,
+                stage.started_at_ms.expect("started stage"),
+                stage.updated_at_ms.expect("updated stage"),
+                None,
+                None,
+            );
+            attempt.attempt_id = Uuid::from_u128(100 + ordinal as u128);
+            attempt
+        })
+        .collect();
+    snapshot
 }
 
 fn request(policy: BackendPolicy) -> ClusterV1SubmitRequest {
@@ -447,6 +643,15 @@ fn engine(backend: Backend) -> EngineIdentity {
         .into(),
         version: "1.0.0".into(),
         manifest_sha256: hash('e'),
+    }
+}
+
+fn runtime_identity() -> RuntimeIdentity {
+    RuntimeIdentity {
+        version: RUNTIME.into(),
+        manifest_sha256: hash('6'),
+        helper_sha256: hash('7'),
+        metallib_sha256: hash('8'),
     }
 }
 

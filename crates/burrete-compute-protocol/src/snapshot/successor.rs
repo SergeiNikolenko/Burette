@@ -16,7 +16,7 @@ impl JobSnapshot {
             || self.plan != previous.plan
             || self.accepted_plan_sha256 != previous.accepted_plan_sha256
             || self.created_at_ms != previous.created_at_ms
-            || self.pinned_runtime_version != previous.pinned_runtime_version
+            || self.pinned_runtime != previous.pinned_runtime
         {
             return validation_error("immutable job snapshot fields changed");
         }
@@ -84,6 +84,14 @@ impl JobSnapshot {
                 || current.transferred_bytes < prior.transferred_bytes
                 || regressed_optional(current.gpu_time_ms, prior.gpu_time_ms)
                 || regressed_optional(current.host_time_ms, prior.host_time_ms)
+                || prior
+                    .device
+                    .as_ref()
+                    .is_some_and(|device| current.device.as_ref() != Some(device))
+                || prior
+                    .kernel_id
+                    .as_ref()
+                    .is_some_and(|kernel| current.kernel_id.as_ref() != Some(kernel))
                 || current.finished_at_ms.is_some_and(|time| {
                     prior
                         .updated_at_ms
@@ -128,6 +136,39 @@ impl JobSnapshot {
             }
             if !prior.state.can_transition_to(current.state) {
                 return validation_error("attempt successor skipped a state");
+            }
+        }
+        for appended in &self.attempts[previous.attempts.len()..] {
+            if appended.attempt_number == 1 {
+                continue;
+            }
+            let prior = previous
+                .attempts
+                .iter()
+                .rev()
+                .find(|attempt| attempt.stage_id == appended.stage_id)
+                .ok_or_else(|| {
+                    ProtocolError::Validation(
+                        "new retry attempt has no durable prior attempt".into(),
+                    )
+                })?;
+            let stage = previous
+                .stages
+                .iter()
+                .find(|stage| stage.stage_id == appended.stage_id)
+                .ok_or_else(|| {
+                    ProtocolError::Validation("retry references an unknown stage".into())
+                })?;
+            if !stage.idempotent
+                || !matches!(
+                    prior.state,
+                    AttemptState::Failed | AttemptState::Interrupted
+                )
+                || prior.error.as_ref().is_none_or(|error| !error.retryable)
+            {
+                return validation_error(
+                    "retry requires a durable retryable terminal attempt on an idempotent stage",
+                );
             }
         }
         Ok(())
