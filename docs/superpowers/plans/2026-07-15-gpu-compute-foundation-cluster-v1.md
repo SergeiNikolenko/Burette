@@ -18,8 +18,10 @@ preparation, native Metal Tanimoto neighbor generation, deterministic CPU
 Butina clustering, namespaced Grid analysis results, representative export,
 and packaged-app proof.
 
-Conformer, shape, surface, MLX, and semiempirical QM product implementation
+Conformer, MMFF, alignment/scoring, and semiempirical product implementation
 starts only after this slice passes its scientific and release gates.
+Python/MLX remains reference-oracle tooling and is never part of the production
+runtime.
 
 No `mlxmolkit` source is copied or vendored in this slice. Its referenced
 commit has no root license file, and clustering can be implemented from the

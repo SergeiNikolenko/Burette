@@ -1,7 +1,7 @@
 # Burrete GPU Compute Validation And Delivery
 
-Status: companion acceptance contract for the approved GPU compute platform
-design; written specification pending user review.
+Status: authoritative companion acceptance contract for the native GPU Compute
+Layer.
 
 Date: 2026-07-15
 
@@ -29,8 +29,8 @@ never receives one blanket validation status.
 - JSON schema compatibility, unknown-field handling, and version rejection;
 - fixed workflow-template validation and rejection of arbitrary stages;
 - job lifecycle, persistence, revision reads, resume, and cancellation;
-- MolecularSnapshot, EnginePack, and ResultPack round trips across Rust, Python,
-  and Node clients;
+- MolecularSnapshot, EnginePack, and ResultPack round trips across production
+  Rust/TypeScript clients, plus separate Python-oracle fixture compatibility;
 - canonical MolecularSnapshot JSONL records and ordered source-ID/molecule-hash
   digest parity across Rust and Node golden vectors;
 - ragged offsets, atom maps, units, dtype, byte order, alignment, and schema
@@ -48,7 +48,7 @@ never receives one blanket validation status.
 - finite-difference gradients for every DG, ETK, MMFF, and QM energy term;
 - chunked versus unchunked parity;
 - deterministic behavior for fixed seeds and deterministic modes;
-- copy counts and materialization timing at engine-island boundaries;
+- copy counts and materialization timing at CPU/Metal and helper IPC boundaries;
 - memory-boundary and admission rejection before allocation;
 - GPU epoch drain, command-buffer timeout, cache eviction, and worker restart.
 
@@ -81,7 +81,8 @@ For `cluster.v1`:
   while symmetric CSR stores two entries), and tiled cancellable dispatches
   replace one unbounded `O(N^2)` command;
 - Butina cluster membership, ordering, and chosen representatives match the
-  frozen CPU reference;
+  frozen versioned CPU reference, with a declared tie-breaking contract and a
+  separate comparison against the pinned RDKit behavior;
 - selected, filtered, and all-row scopes use the frozen Grid revision;
 - namespaced analysis runs never overwrite descriptor values or another run;
 - representative subset export round-trips molecule identity and provenance.
@@ -134,9 +135,9 @@ Atropisomerism, disconnected salts, radicals, organometallics, and coordination
 chemistry remain explicit rejection domains until they receive separate
 contracts.
 
-## Shape, Electrostatics, And Surface Gates
+## Alignment, Shape, And Electrostatic Gates
 
-CHEESE scoring requires:
+Alignment and scoring require:
 
 - exact fixed-pose float32 GPU scoring against an independent float64 Gaussian
   shape and ESP formula;
@@ -151,6 +152,17 @@ CHEESE scoring requires:
   result by more than `1e-4` for at least 99.5% of the frozen pair corpus;
 - top-K recall, Spearman correlation, and NDCG against exact-score ranking;
 - GPU screening followed by explicitly labelled CPU refinement when used.
+
+- atom mapping, atom-count, and atom-order requirements are explicit for every
+  alignment mode;
+- pair scheduling is tiled and never materializes an unbounded
+  `poses x references x atoms x 3` tensor;
+- ensemble and docking-pose outputs preserve pose identity and transform
+  provenance.
+
+Surface/SES work is outside the required similarity, conformer, MMFF,
+alignment, and semiempirical delivery sequence. If it is resumed later, it must
+meet the following separate gates.
 
 SES requires:
 
@@ -185,10 +197,12 @@ requires:
   invariance;
 - separate evidence for GPU eigensolve, CPU eigensolve, and mixed paths;
 - no promotion of open-shell support from a closed-shell implementation;
-- an initial allowlist restricted to proven closed-shell RM1/AM1 sp-only
-  chemistry;
-- PM3, PM6, PM6_D, radicals, odd-electron species, transition metals, excited
-  states, and multiplicity reported as unsupported until independently proven;
+- a separate allowlist for every proven closed-shell RM1, AM1, PM3, PM6,
+  PM6_SP, PM6_D, and AM1* method/element/orbital combination;
+- PM6_SP identity, PM6 versus PM6_D parameter identity, d-orbital Fock, D3, H4,
+  and HH correction paths remain unsupported until independently proven;
+- radicals, odd-electron species, transition metals, excited states, and
+  unsupported multiplicities remain unavailable until separate contracts pass;
 - no AM1-BCC claim until parameter data, licensing, and provenance are present.
 
 ## Performance And Memory Matrix
@@ -234,7 +248,7 @@ service should release process-owned memory within five seconds.
 
 - runtime install, health check, atomic activation, rollback, offline restart,
   uninstall, and update while a job is active;
-- helper kill, MLX child crash, Metal command failure or hang, corrupt compiler
+- helper kill, Metal command failure or hang, corrupt compiler
   cache, corrupt manifest, corrupt pack, disk full, and incompatible protocol;
 - memory-pressure rejection, forced microbatch shrink, and high-watermark worker
   restart;
@@ -260,48 +274,60 @@ host time, transfer bytes, and fallback reason.
 
 ## Delivery Decomposition
 
-This program is delivered as five separately reviewed design and implementation
-cycles.
+This program is delivered as seven separately reviewed vertical product cycles.
 
-### 1. Compute foundation and Tanimoto
+### 1. Native compute foundation
 
-- Packaging Spike 0 in a signed and notarized app;
+- native-helper packaging and real Metal dispatch in a signed and notarized app;
 - protocol crate and fixed `cluster.v1` template;
 - coordinator, immutable snapshots, durable jobs, attempts, bounded events, and
   artifact publication;
 - capability handshake, execution plan, GPU epoch/drain, memory admission, and
   typed compute doctor;
-- source-built fused Tanimoto, CPU Butina, and namespaced Grid analysis runs;
-- selected, filtered, and all-row scopes, progress, cancellation, crash/restart,
-  representative export, runtime rollback, and artifact GC.
+- authenticated same-FD handoff, crash-safe reconciliation, native pipeline
+  cache, source-built known-answer dispatch, and strict backend evidence.
 
-### 2. Conformer engine
+### 2. Similarity and clustering product
+
+- fingerprint ABI, fused/blockwise Tanimoto, bounded CSR, and versioned Butina;
+- cluster, similarity-search, and diverse-selection Grid actions;
+- selected, filtered, and all-row scopes, progress, cancellation, crash/restart,
+  result writeback, representative export, reports, and artifact GC.
+
+### 3. Conformer generation product
 
 - conformer EnginePack schemas and `N x k` scheduling;
 - DG, collapse, ETK, MMFF, RMSD pruning, stereo and energy validation;
 - ensemble ResultPack, SDF/trajectory artifacts, and viewer handoff.
 
-### 3. Shape, electrostatics, and surfaces
+### 4. MMFF optimization product
 
-- tiled CHEESE scoring, top-K screening, and alignment policy;
-- ESP artifacts, SES fields, mesh production, and viewer overlays.
+- MMFF94/MMFF94s and all seven energy terms;
+- per-molecule BFGS/L-BFGS selection, explicit convergence reasons, retries,
+  optimized structures, energy tables, Grid writeback, and reports.
 
-### 4. GPU QM and charges
+### 5. Alignment and scoring product
+
+- tiled Horn/RMSD, shape/electrostatic scoring, mapping policy, and top-K;
+- ensemble/docking-pose tables, aligned structures, Grid writeback, and reports.
+
+### 6. Semiempirical products
 
 - method capability matrix and execution plans;
-- closed-shell AM1/RM1 research path and independent references;
+- separate closed-shell RM1, AM1, PM3, PM6, PM6_SP, PM6_D, and AM1* paths;
 - explicit blocked states for incomplete methods and datasets.
 
-### 5. Unified product and Agent workflows
+### 7. Cross-workflow optimization and release
 
-- final Compute jobs dock migration;
-- CLI and observe/action contracts, then bounded MCP wrappers;
+- benchmark-driven GPU residency and unified-memory tuning;
+- CLI and observe/action contracts, then bounded MCP wrappers for already
+  completed product workflows;
 - settings, diagnostics, retention controls, and cross-surface release evidence.
 
-The capability release order is native Tanimoto exact-contract, conformer
-kernel differential harness, validated conformer product, fixed-pose CHEESE,
-heuristic overlay, `preview_jfa` surface, and closed-shell RM1/AM1 sp-only Labs.
-PM6/PM6_D, learned CHEESE, and exact GPU SES remain separate research tracks.
+Every cycle includes its Grid/3D UI, durable job, artifacts, writeback, report,
+and packaged-app smoke; user integration is never postponed to a final phase.
+SES, learned models, and other experimental surfaces remain separate research
+tracks until the required sequence is complete.
 
 ## First Vertical Slice Completion Contract
 
@@ -317,7 +343,7 @@ The foundation slice is complete only when a packaged Apple Silicon desktop can:
 7. export a representative subset and provenance manifest;
 8. cancel safely and recover after helper or app restart;
 9. prove exact end-to-end parity with the frozen CPU reference;
-10. install, activate, roll back, and uninstall its signed runtime components;
+10. verify and execute its bundled signed native helper and Metal libraries;
 11. pass artifact retention and garbage-collection smoke tests.
 
 Browser development must exercise the same request and result schemas, while

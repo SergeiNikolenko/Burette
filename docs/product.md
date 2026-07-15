@@ -17,9 +17,30 @@ Burrete is a molecular file workspace with four connected surfaces:
 - Agent/plugin tooling for typed observe/action workflows, reports, and bounded
   molecular workspace automation.
 
-The product is intentionally a utility for inspection and workflow handoff. It
-is not a full molecular modeling suite, cloud ELN, collaborative notebook, or
-general chemistry platform.
+The product is a local molecular workspace for inspection, workflow handoff,
+and a curated set of reproducible native compute operations. It is not a cloud
+ELN, collaborative notebook, arbitrary script environment, or unrestricted
+molecular-modeling suite.
+
+## Native Compute Layer Status
+
+The Apple Silicon Compute Layer is under active implementation. The durable
+protocol, coordinator store, immutable Grid snapshots, CPU clustering reference,
+and initial Metal kernel contract exist. The packaged helper, real Metal
+dispatch, and end-user workflows remain unavailable and must not be presented
+as released functionality yet.
+
+| Workflow family | Product status |
+| --- | --- |
+| Similarity, clustering, diverse selection | Foundation implemented; Grid-to-Metal-to-result flow not yet available |
+| Conformer generation | Planned after the clustering vertical slice |
+| MMFF94/MMFF94s optimization | Planned after conformer generation |
+| Alignment, RMSD, shape/electrostatic scoring | Planned after MMFF |
+| Semiempirical energies and charges | Planned method by method after independent parity gates |
+
+Production compute is native Metal plus native CPU/reference chemistry. Python
+and MLX are permitted only in development as pinned reference oracles and are
+not ordinary application dependencies.
 
 ## Primary Users
 
@@ -53,6 +74,9 @@ and a way to recover when renderer or Quick Look infrastructure needs attention.
   cleanup, logs, diagnostics, update checks, and install health.
 - Use typed agent workflows where screenshots are not enough: open, observe,
   act, render bounded panels, and validate molecular artifacts.
+- Run curated similarity, conformer, optimization, alignment, and energy
+  workflows from Grid or the 3D inspector once each workflow reaches its
+  packaged-app completion gate.
 - Build and use the iPhone app from source for mobile file handoff and
   inspection.
 
