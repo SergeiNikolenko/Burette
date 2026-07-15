@@ -513,3 +513,166 @@ fn rejects_publication_roots_that_are_not_private() {
 
     let _ = fs::remove_dir_all(root_path);
 }
+
+#[test]
+fn verifies_canonical_snapshot_on_the_retained_file_descriptors() {
+    let runtime_root = temporary_root("grid-snapshot-verified-runtime");
+    let output_root = temporary_root("grid-snapshot-verified-output");
+    let database_path = build_fixture(&runtime_root);
+    let publication_root = publication_root(&output_root);
+    let frozen = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &publication_root,
+        Uuid::new_v4(),
+        700,
+    )
+    .expect("freeze verified snapshot");
+    let FrozenGridSnapshot {
+        manifest,
+        reference,
+        root,
+    } = frozen;
+    let retained_pack_path = root.path().join("pack/source-record-ids.bin");
+
+    let mut verified = root.verify(&reference).expect("verify snapshot capability");
+    assert_eq!(verified.snapshot_id(), reference.snapshot_id);
+    assert_eq!(verified.reference(), &reference);
+    assert_eq!(verified.manifest(), &manifest);
+    verified
+        .reverify()
+        .expect("reverify retained snapshot descriptors");
+    fs::OpenOptions::new()
+        .write(true)
+        .open(retained_pack_path)
+        .expect("open verified pack for mutation")
+        .write_all(&[0xfe])
+        .expect("mutate verified pack after initial hash");
+    assert!(verified.reverify().is_err());
+
+    drop(verified);
+    let _ = fs::remove_dir_all(runtime_root);
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
+fn verification_rejects_pack_corruption_and_unexpected_entries() {
+    let runtime_root = temporary_root("grid-snapshot-corrupt-runtime");
+    let output_root = temporary_root("grid-snapshot-corrupt-output");
+    let database_path = build_fixture(&runtime_root);
+    let publication_root = publication_root(&output_root);
+    let frozen = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &publication_root,
+        Uuid::new_v4(),
+        701,
+    )
+    .expect("freeze corruption fixture");
+    let pack_file = frozen.root.path().join("pack/source-record-ids.bin");
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&pack_file)
+        .expect("open pack file for corruption")
+        .write_all(&[0xff])
+        .expect("corrupt first pack byte");
+    let error = frozen
+        .root
+        .verify(&frozen.reference)
+        .expect_err("corrupt pack must fail verification");
+    assert!(error.contains("hash differs"));
+
+    let second = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &publication_root,
+        Uuid::new_v4(),
+        702,
+    )
+    .expect("freeze whitelist fixture");
+    fs::write(
+        second.root.path().join("pack/unexpected.bin"),
+        b"unexpected",
+    )
+    .expect("write unexpected pack entry");
+    let error = second
+        .root
+        .verify(&second.reference)
+        .expect_err("unexpected pack entry must fail verification");
+    assert!(error.contains("fixed whitelist"));
+
+    let truncated = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &publication_root,
+        Uuid::new_v4(),
+        704,
+    )
+    .expect("freeze truncation fixture");
+    fs::OpenOptions::new()
+        .write(true)
+        .open(truncated.root.path().join("pack/source-record-ids.bin"))
+        .expect("open pack file for truncation")
+        .set_len(0)
+        .expect("truncate pack file");
+    let error = truncated
+        .root
+        .verify(&truncated.reference)
+        .expect_err("truncated pack must fail verification");
+    assert!(error.contains("size differs"));
+
+    let linked = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &publication_root,
+        Uuid::new_v4(),
+        705,
+    )
+    .expect("freeze symlink fixture");
+    let linked_file = linked.root.path().join("pack/source-record-ids.bin");
+    fs::remove_file(&linked_file).expect("remove pack file before symlink replacement");
+    symlink("molecule-content-hashes.bin", &linked_file).expect("replace pack file with symlink");
+    let error = linked
+        .root
+        .verify(&linked.reference)
+        .expect_err("symlinked pack must fail verification");
+    assert!(error.contains("Cannot open published snapshot file"));
+
+    let _ = fs::remove_dir_all(runtime_root);
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
+fn verification_rejects_hardlinked_snapshot_files() {
+    let runtime_root = temporary_root("grid-snapshot-hardlink-runtime");
+    let output_root = temporary_root("grid-snapshot-hardlink-output");
+    let database_path = build_fixture(&runtime_root);
+    let publication_root = publication_root(&output_root);
+    let frozen = freeze_grid_scope(
+        &database_path,
+        &GridScope::All(AllGridScope {}),
+        &publication_root,
+        Uuid::new_v4(),
+        703,
+    )
+    .expect("freeze hardlink fixture");
+    let link_path = output_root
+        .parent()
+        .expect("snapshot root parent")
+        .join(format!("burrete-snapshot-hardlink-{}", Uuid::new_v4()));
+    fs::hard_link(
+        frozen.root.path().join("pack/source-record-ids.bin"),
+        &link_path,
+    )
+    .expect("create external hard link");
+
+    let error = frozen
+        .root
+        .verify(&frozen.reference)
+        .expect_err("hardlinked pack must fail verification");
+    assert!(error.contains("must not have hard links"));
+
+    let _ = fs::remove_file(link_path);
+    let _ = fs::remove_dir_all(runtime_root);
+    let _ = fs::remove_dir_all(output_root);
+}
