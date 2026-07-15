@@ -1,4 +1,5 @@
 pub(crate) mod formats;
+pub(crate) mod grid_database;
 pub(crate) mod grid_identity;
 pub(crate) mod grid_predicate;
 pub(crate) mod grid_store;

@@ -11,6 +11,7 @@ use std::sync::{
 use std::thread;
 
 use super::{
+    grid_database::open_grid_database,
     grid_identity, grid_predicate,
     runtime_utils::{clipped, decode_text, normalized_lines},
 };
@@ -358,7 +359,7 @@ pub(crate) fn build_grid_store_with_options(
     };
     let text = decode_text(data);
     let database_path = runtime_dir.join("collection.sqlite");
-    let connection = Connection::open(&database_path).map_err(|err| err.to_string())?;
+    let connection = open_grid_database(&database_path)?;
     initialize_schema(&connection)?;
     let cancel_token = Arc::new(AtomicBool::new(false));
     let first_batch =
@@ -414,7 +415,7 @@ fn append_grid_text(
     text: &str,
     options: &GridParseOptions,
 ) -> Result<GridAppendSummary, String> {
-    let connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    let connection = open_grid_database(database_path)?;
     initialize_schema(&connection)?;
     let index_state = read_index_state(&connection)?;
     if !index_state.index_ready {
@@ -482,7 +483,7 @@ fn grid_format(extension: &str) -> Option<&'static str> {
 }
 
 fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult, String> {
-    let mut connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    let mut connection = open_grid_database(database_path)?;
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Deferred)
         .map_err(|err| err.to_string())?;
@@ -786,7 +787,7 @@ fn spawn_grid_ingest_worker(
     cancel_token: Arc<AtomicBool>,
 ) {
     thread::spawn(move || {
-        let Ok(connection) = Connection::open(&database_path) else {
+        let Ok(connection) = open_grid_database(&database_path) else {
             return;
         };
         let options = GridParseOptions {
@@ -905,7 +906,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
 }
 
 pub(crate) fn descriptor_source_row_count(database_path: &Path) -> Result<usize, String> {
-    let connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    let connection = open_grid_database(database_path)?;
     initialize_schema(&connection)?;
     connection
         .query_row("select count(*) from molecules", [], |row| {
@@ -922,7 +923,7 @@ pub(crate) fn descriptor_source_row_batch(
     offset: usize,
     limit: usize,
 ) -> Result<Vec<GridDescriptorSourceRow>, String> {
-    let connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    let connection = open_grid_database(database_path)?;
     initialize_schema(&connection)?;
     let mut statement = connection
         .prepare(
@@ -956,7 +957,7 @@ pub(crate) fn descriptor_source_rows_by_indices(
     if indexes.is_empty() {
         return Ok(Vec::new());
     }
-    let connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    let connection = open_grid_database(database_path)?;
     initialize_schema(&connection)?;
     let placeholders = std::iter::repeat_n("?", indexes.len())
         .collect::<Vec<_>>()
@@ -991,7 +992,7 @@ pub(crate) fn replace_descriptor_values_in_database(
     row_id: i64,
     values: &[GridDescriptorValueInput],
 ) -> Result<(), String> {
-    let mut connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    let mut connection = open_grid_database(database_path)?;
     initialize_schema(&connection)?;
     let tx = connection.transaction().map_err(|err| err.to_string())?;
     tx.execute(
@@ -1032,7 +1033,7 @@ pub(crate) fn replace_descriptor_values_in_database(
 pub(crate) fn descriptor_run_summary_in_database(
     database_path: &Path,
 ) -> Result<GridDescriptorRunSummary, String> {
-    let connection = Connection::open(database_path).map_err(|err| err.to_string())?;
+    let connection = open_grid_database(database_path)?;
     initialize_schema(&connection)?;
     let total_rows = molecule_count(&connection)?;
     let calculated_rows = connection
