@@ -19,12 +19,18 @@ mod jobs;
 mod recovery;
 mod schema;
 mod snapshot_intents;
+mod snapshot_reconciliation;
 
 #[allow(
     unused_imports,
     reason = "the submit coordinator consumes the typed intent record after snapshot wiring"
 )]
 pub(crate) use snapshot_intents::{SnapshotIntentDraft, SnapshotIntentRecord, SnapshotIntentState};
+#[allow(
+    unused_imports,
+    reason = "the snapshot repository consumes the reconciliation state after filesystem wiring"
+)]
+pub(crate) use snapshot_reconciliation::SnapshotReconciliationState;
 
 const DESKTOP_OWNER_PRINCIPAL: &str = "desktop";
 

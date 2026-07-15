@@ -497,6 +497,142 @@ fn schema_v1_migration_allows_multiple_jobs_to_reuse_one_snapshot() {
     );
 }
 
+#[test]
+fn reconciliation_state_deduplicates_committed_sources_and_captures_intents() {
+    let test = TestStore::new();
+    let first = queued_snapshot();
+    insert_prepared_fixture(&test.store, MAIN_WINDOW_LABEL, &first);
+    let mut second = first.clone();
+    second.job_id = Uuid::new_v4();
+    second.validate().expect("valid shared-source job");
+    insert_prepared_fixture(&test.store, MAIN_WINDOW_LABEL, &second);
+
+    let pending = queued_snapshot();
+    let pending_draft = draft_for(&pending, 4_096);
+    test.store
+        .reserve_snapshot_intent(&pending_draft)
+        .expect("reserve pending reconciliation intent");
+
+    let state = test
+        .store
+        .snapshot_reconciliation_state()
+        .expect("capture reconciliation state");
+    assert_eq!(state.intents.len(), 1);
+    assert_eq!(state.intents[0].snapshot_id, pending_draft.snapshot_id);
+    assert_eq!(state.committed_sources.len(), 1);
+    assert_eq!(
+        state
+            .committed_sources
+            .get(&first.frozen_source.snapshot_id),
+        Some(&first.frozen_source)
+    );
+}
+
+#[test]
+fn reconciliation_state_rejects_missing_or_mismatched_normalized_sources() {
+    let test = TestStore::new();
+    let snapshot = queued_snapshot();
+    insert_prepared_fixture(&test.store, MAIN_WINDOW_LABEL, &snapshot);
+
+    let mut mismatched = snapshot.frozen_source.clone();
+    mismatched.snapshot_sha256 = repeated_hash('9');
+    let connection = Connection::open(test.store.database_path()).expect("open compute database");
+    connection
+        .execute(
+            "UPDATE job_source_snapshots SET snapshot_ref_json = ?1 WHERE job_id = ?2",
+            rusqlite::params![
+                serde_json::to_string(&mismatched).expect("encode mismatch"),
+                snapshot.job_id.to_string(),
+            ],
+        )
+        .expect("corrupt normalized source reference");
+    drop(connection);
+    assert!(matches!(
+        test.store.snapshot_reconciliation_state(),
+        Err(ComputeCoordinatorError::Protocol(_))
+    ));
+
+    let connection = Connection::open(test.store.database_path()).expect("open compute database");
+    connection
+        .execute(
+            "DELETE FROM job_source_snapshots WHERE job_id = ?1",
+            [snapshot.job_id.to_string()],
+        )
+        .expect("remove normalized source row");
+    drop(connection);
+    assert!(matches!(
+        test.store.snapshot_reconciliation_state(),
+        Err(ComputeCoordinatorError::Protocol(_))
+    ));
+}
+
+#[test]
+fn reconciliation_state_rejects_oversized_reference_json_before_loading_rows() {
+    let committed = TestStore::new();
+    let committed_snapshot = queued_snapshot();
+    insert_prepared_fixture(&committed.store, MAIN_WINDOW_LABEL, &committed_snapshot);
+    let connection =
+        Connection::open(committed.store.database_path()).expect("open compute database");
+    connection
+        .execute(
+            "UPDATE job_source_snapshots SET snapshot_ref_json = ?1 WHERE job_id = ?2",
+            rusqlite::params![
+                oversized_reference_json(&committed_snapshot.frozen_source),
+                committed_snapshot.job_id.to_string(),
+            ],
+        )
+        .expect("inflate committed source reference");
+    drop(connection);
+    assert!(matches!(
+        committed.store.snapshot_reconciliation_state(),
+        Err(ComputeCoordinatorError::Unavailable(_))
+    ));
+
+    let pending = TestStore::new();
+    let pending_snapshot = queued_snapshot();
+    let draft = draft_for(&pending_snapshot, 4_096);
+    pending
+        .store
+        .reserve_snapshot_intent(&draft)
+        .expect("reserve pending intent");
+    pending
+        .store
+        .mark_snapshot_intent_writing(draft.snapshot_id, draft.attempt_id, draft.created_at_ms + 1)
+        .expect("begin pending write");
+    pending
+        .store
+        .mark_snapshot_intent_synced(
+            draft.snapshot_id,
+            draft.attempt_id,
+            1_024,
+            &pending_snapshot.frozen_source,
+            draft.created_at_ms + 2,
+        )
+        .expect("sync pending intent");
+    let connection =
+        Connection::open(pending.store.database_path()).expect("open compute database");
+    connection
+        .execute(
+            "UPDATE snapshot_intents SET snapshot_ref_json = ?1 WHERE snapshot_id = ?2",
+            rusqlite::params![
+                oversized_reference_json(&pending_snapshot.frozen_source),
+                pending_snapshot.frozen_source.snapshot_id.to_string(),
+            ],
+        )
+        .expect("inflate pending source reference");
+    drop(connection);
+    assert!(matches!(
+        pending.store.snapshot_reconciliation_state(),
+        Err(ComputeCoordinatorError::Unavailable(_))
+    ));
+}
+
+fn oversized_reference_json(reference: &burrete_compute_protocol::MolecularSnapshotRef) -> String {
+    let mut encoded = serde_json::to_string(reference).expect("encode snapshot reference");
+    encoded.push_str(&" ".repeat(burrete_compute_protocol::MAX_CONTROL_FRAME_BYTES));
+    encoded
+}
+
 fn draft_for(snapshot: &JobSnapshot, reservation_bytes: u64) -> SnapshotIntentDraft {
     SnapshotIntentDraft {
         snapshot_id: snapshot.frozen_source.snapshot_id,

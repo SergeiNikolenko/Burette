@@ -1,10 +1,14 @@
-use burrete_compute_protocol::{MolecularSnapshotRef, MAX_JSON_SAFE_INTEGER};
+use burrete_compute_protocol::{
+    MolecularSnapshotRef, MAX_CONTROL_FRAME_BYTES, MAX_JSON_SAFE_INTEGER,
+};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use uuid::Uuid;
 
 use super::{to_json, ComputeCoordinatorError, ComputeResult, ComputeStore};
 
 const MAX_SNAPSHOT_INTENTS: usize = 1_024;
+const MAX_SNAPSHOT_INTENT_REFERENCE_BYTES: usize = MAX_CONTROL_FRAME_BYTES;
+const MAX_SNAPSHOT_INTENT_REFERENCE_BYTES_TOTAL: usize = 8 * MAX_CONTROL_FRAME_BYTES;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SnapshotIntentState {
@@ -157,32 +161,11 @@ impl ComputeStore {
     pub(crate) fn snapshot_intents_for_reconciliation(
         &self,
     ) -> ComputeResult<Vec<SnapshotIntentRecord>> {
-        let connection = self.open_connection()?;
-        let count = connection.query_row("SELECT COUNT(*) FROM snapshot_intents", [], |row| {
-            row.get::<_, i64>(0)
-        })?;
-        let count = usize::try_from(count).map_err(|_| {
-            ComputeCoordinatorError::Protocol(
-                "snapshot intent count cannot be represented in memory".into(),
-            )
-        })?;
-        if count > MAX_SNAPSHOT_INTENTS {
-            return Err(ComputeCoordinatorError::Unavailable(format!(
-                "snapshot reconciliation has {count} intents, exceeding the supported bound of {MAX_SNAPSHOT_INTENTS}"
-            )));
-        }
-        let mut statement = connection.prepare(
-            "SELECT snapshot_id, job_id, attempt_id, state, reservation_bytes,
-                    remaining_reservation_bytes, actual_payload_bytes, snapshot_ref_json,
-                    created_at_ms, updated_at_ms
-             FROM snapshot_intents
-             ORDER BY created_at_ms ASC, snapshot_id ASC",
-        )?;
-        let records = statement
-            .query_map([], read_raw_intent)?
-            .map(|raw| decode_record(raw?))
-            .collect();
-        records
+        let mut connection = self.open_connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let records = load_snapshot_intents_for_reconciliation(&transaction)?;
+        transaction.commit()?;
+        Ok(records)
     }
 
     /// Deletes exactly the intent whose filesystem state the repository has
@@ -349,6 +332,66 @@ impl ComputeStore {
         transaction.commit()?;
         Ok(record)
     }
+}
+
+pub(super) fn load_snapshot_intents_for_reconciliation(
+    connection: &Transaction<'_>,
+) -> ComputeResult<Vec<SnapshotIntentRecord>> {
+    let count = connection.query_row("SELECT COUNT(*) FROM snapshot_intents", [], |row| {
+        row.get::<_, i64>(0)
+    })?;
+    let count = usize::try_from(count).map_err(|_| {
+        ComputeCoordinatorError::Protocol(
+            "snapshot intent count cannot be represented in memory".into(),
+        )
+    })?;
+    if count > MAX_SNAPSHOT_INTENTS {
+        return Err(ComputeCoordinatorError::Unavailable(format!(
+                "snapshot reconciliation has {count} intents, exceeding the supported bound of {MAX_SNAPSHOT_INTENTS}"
+            )));
+    }
+    let (largest_reference, aggregate_references) = connection.query_row(
+        "SELECT
+           COALESCE(MAX(COALESCE(length(CAST(snapshot_ref_json AS BLOB)), 0)), 0),
+           COALESCE(SUM(COALESCE(length(CAST(snapshot_ref_json AS BLOB)), 0)), 0)
+         FROM snapshot_intents",
+        [],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+    )?;
+    let largest_reference =
+        decode_reconciliation_bytes("largest snapshot intent reference", largest_reference)?;
+    if largest_reference > MAX_SNAPSHOT_INTENT_REFERENCE_BYTES {
+        return Err(ComputeCoordinatorError::Unavailable(format!(
+            "snapshot intent reference requires {largest_reference} bytes, exceeding the supported bound of {MAX_SNAPSHOT_INTENT_REFERENCE_BYTES}"
+        )));
+    }
+    let aggregate_references =
+        decode_reconciliation_bytes("aggregate snapshot intent references", aggregate_references)?;
+    if aggregate_references > MAX_SNAPSHOT_INTENT_REFERENCE_BYTES_TOTAL {
+        return Err(ComputeCoordinatorError::Unavailable(format!(
+            "snapshot intent references require {aggregate_references} bytes, exceeding the supported bound of {MAX_SNAPSHOT_INTENT_REFERENCE_BYTES_TOTAL}"
+        )));
+    }
+    let mut statement = connection.prepare(
+        "SELECT snapshot_id, job_id, attempt_id, state, reservation_bytes,
+                    remaining_reservation_bytes, actual_payload_bytes, snapshot_ref_json,
+                    created_at_ms, updated_at_ms
+             FROM snapshot_intents
+             ORDER BY created_at_ms ASC, snapshot_id ASC",
+    )?;
+    let records = statement
+        .query_map([], read_raw_intent)?
+        .map(|raw| decode_record(raw?))
+        .collect();
+    records
+}
+
+fn decode_reconciliation_bytes(label: &str, value: i64) -> ComputeResult<usize> {
+    usize::try_from(value).map_err(|_| {
+        ComputeCoordinatorError::Protocol(format!(
+            "{label} is negative or cannot be represented in memory"
+        ))
+    })
 }
 
 pub(super) fn load_snapshot_intent(
