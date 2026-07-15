@@ -40,6 +40,7 @@ commands.allow = [
   "create_molecule_collection",
   "save_molecule_collection_as",
   "grid_fetch_page",
+  "grid_mark_virtual_edit",
   "grid_close_runtime",
   "grid_append_records",
   "grid_delimited_columns",

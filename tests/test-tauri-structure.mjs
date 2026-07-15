@@ -324,6 +324,7 @@ for (const commandPath of [
   'commands::descriptors::descriptor_grid_job_status',
   'commands::descriptors::descriptor_cancel_grid',
   'commands::grid::grid_fetch_page',
+  'commands::grid::grid_mark_virtual_edit',
   'commands::grid::grid_append_records',
   'commands::grid::grid_delimited_columns',
   'commands::grid::grid_append_delimited_records',
@@ -472,6 +473,7 @@ assert.match(documentsCommand, /ViewerDocument::virtual_structure/);
 assert.match(documentsCommand, /open_document_for_window\(\s*app,\s*window_label,\s*output_path,\s*&preferences,\s*reload_options\.as_ref\(\),\s*\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
 assert.match(documentsCommand, /open_document_for_window\(&app, window\.label\(\), output_path, &preferences, None\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_fetch_page/);
+assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_mark_virtual_edit/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_append_records/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_delimited_columns/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_append_delimited_records/);

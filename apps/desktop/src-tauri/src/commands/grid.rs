@@ -26,6 +26,12 @@ pub(crate) struct GridPageRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct GridVirtualEditRequest {
+    document_id: String,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GridDescriptorFilterRequest {
     id: String,
@@ -129,6 +135,16 @@ pub(crate) fn grid_fetch_page<R: Runtime>(
             limit: request.limit.unwrap_or(48),
         },
     )
+}
+
+#[tauri::command]
+pub(crate) fn grid_mark_virtual_edit<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    registry: State<'_, GridRuntimeRegistry>,
+    request: GridVirtualEditRequest,
+) -> Result<u64, String> {
+    let document_id = crate::windows::runtime_document_id(window.label(), &request.document_id);
+    registry.mark_virtual_edit(&document_id)
 }
 
 #[tauri::command]

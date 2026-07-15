@@ -5737,6 +5737,7 @@ assert.match(appGridFileActionsHook, /invoke<string>\("save_text_as"/);
 assert.match(appGridFileActionsHook, /body\?\.type === "saveGridAs"/);
 assert.match(appGridFileActionsHook, /body\?\.type === "saveGrid"/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "gridDirtyChanged"/);
+assert.match(appGridControlMessagesHook, /invoke\("grid_mark_virtual_edit",\s*\{\s*request:\s*\{\s*documentId\s*\}\s*\}\)/);
 assert.match(appGridControlMessagesHook, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
 assert.match(appDirtyGridHook, /This grid has unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
 assert.match(appDirtyGridHook, /\$\{dirtyCount\} grid document\$\{dirtyCount === 1 \? " has" : "s have"\} unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);

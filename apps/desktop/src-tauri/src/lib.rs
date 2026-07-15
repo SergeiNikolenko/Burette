@@ -162,6 +162,7 @@ pub fn run() {
             commands::documents::render_xyzrender_sheet_item,
             commands::documents::render_xyzrender_sheet_items,
             commands::grid::grid_fetch_page,
+            commands::grid::grid_mark_virtual_edit,
             commands::grid::grid_append_records,
             commands::grid::grid_delimited_columns,
             commands::grid::grid_append_delimited_records,
