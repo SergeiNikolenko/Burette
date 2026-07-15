@@ -35,7 +35,9 @@ pub use snapshot::{
     AttemptSnapshot, AttemptState, ComputeJobSnapshotSchemaVersion, JobProgress, JobSnapshot,
     StageSnapshot, StageState,
 };
-pub use wire::{decode_frame, encode_frame, read_frame, write_frame, MAX_CONTROL_FRAME_BYTES};
+pub use wire::{
+    decode_frame, encode_frame, read_frame, write_frame, WireMessage, MAX_CONTROL_FRAME_BYTES,
+};
 pub use workflow::{
     AllGridScope, AnalysisFilter, BackendPolicy, ClusterV1Parameters, ClusterV1SubmitRequest,
     ColumnFilter, ColumnFilterKind, ComputeJobSchemaVersion, DescriptorFilter, ExecutionPolicy,
