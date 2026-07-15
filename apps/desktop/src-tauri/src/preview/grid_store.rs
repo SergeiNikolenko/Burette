@@ -22,14 +22,46 @@ const GRID_INGEST_BATCH_ROWS: usize = 1_000;
 
 #[derive(Default)]
 pub(crate) struct GridRuntimeRegistry {
-    entries: Mutex<HashMap<String, RegisteredGridRuntime>>,
+    entries: Mutex<HashMap<String, Arc<RegisteredGridRuntime>>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct RegisteredGridRuntime {
     database_path: PathBuf,
     format: &'static str,
     cancel_token: Arc<AtomicBool>,
+}
+
+impl Drop for RegisteredGridRuntime {
+    fn drop(&mut self) {
+        self.cancel_token.store(true, Ordering::Relaxed);
+        if let Some(runtime_dir) = self.database_path.parent() {
+            let _ = std::fs::remove_dir_all(runtime_dir);
+        }
+    }
+}
+
+/// Pins the exact Grid runtime selected for snapshot materialization.
+///
+/// Removing or replacing the registry entry cancels ingestion immediately, but
+/// the runtime directory remains available until this lease is dropped.
+#[derive(Debug)]
+#[allow(
+    dead_code,
+    reason = "the compute snapshot submission path consumes this lease"
+)]
+pub(crate) struct GridSnapshotLease {
+    runtime: Arc<RegisteredGridRuntime>,
+}
+
+#[allow(
+    dead_code,
+    reason = "the compute snapshot submission path consumes this lease"
+)]
+impl GridSnapshotLease {
+    pub(crate) fn database_path_for_freeze(&self) -> &Path {
+        &self.runtime.database_path
+    }
 }
 
 #[derive(Debug)]
@@ -194,21 +226,19 @@ impl GridRuntimeRegistry {
         format: &'static str,
         cancel_token: Arc<AtomicBool>,
     ) -> Result<(), String> {
-        let mut entries = self
+        let runtime = Arc::new(RegisteredGridRuntime {
+            database_path,
+            format,
+            cancel_token,
+        });
+        let existing = self
             .entries
             .lock()
-            .map_err(|_| "grid runtime registry is poisoned")?;
-        if let Some(existing) = entries.remove(document_id) {
+            .map_err(|_| "grid runtime registry is poisoned")?
+            .insert(document_id.to_string(), runtime);
+        if let Some(existing) = existing {
             existing.cancel_token.store(true, Ordering::Relaxed);
         }
-        entries.insert(
-            document_id.to_string(),
-            RegisteredGridRuntime {
-                database_path,
-                format,
-                cancel_token,
-            },
-        );
         Ok(())
     }
 
@@ -220,9 +250,6 @@ impl GridRuntimeRegistry {
             .remove(document_id);
         if let Some(entry) = entry {
             entry.cancel_token.store(true, Ordering::Relaxed);
-            if let Some(runtime_dir) = entry.database_path.parent() {
-                let _ = std::fs::remove_dir_all(runtime_dir);
-            }
         }
         Ok(())
     }
@@ -245,11 +272,21 @@ impl GridRuntimeRegistry {
         };
         for entry in entries {
             entry.cancel_token.store(true, Ordering::Relaxed);
-            if let Some(runtime_dir) = entry.database_path.parent() {
-                let _ = std::fs::remove_dir_all(runtime_dir);
-            }
         }
         Ok(())
+    }
+
+    #[allow(
+        dead_code,
+        reason = "the compute snapshot submission path acquires this lease"
+    )]
+    pub(crate) fn acquire_snapshot_lease(
+        &self,
+        namespaced_document_id: &str,
+    ) -> Result<GridSnapshotLease, String> {
+        Ok(GridSnapshotLease {
+            runtime: self.runtime_entry(namespaced_document_id)?,
+        })
     }
 
     pub(crate) fn fetch_page(
@@ -257,17 +294,8 @@ impl GridRuntimeRegistry {
         document_id: &str,
         query: &GridQuery,
     ) -> Result<GridPageResult, String> {
-        let database_path = {
-            let entries = self
-                .entries
-                .lock()
-                .map_err(|_| "grid runtime registry is poisoned")?;
-            entries
-                .get(document_id)
-                .map(|entry| entry.database_path.clone())
-                .ok_or_else(|| format!("grid runtime is unavailable for document {document_id}"))?
-        };
-        fetch_page(&database_path, query)
+        let runtime = self.runtime_entry(document_id)?;
+        fetch_page(&runtime.database_path, query)
     }
 
     pub(crate) fn append_text(
@@ -286,29 +314,21 @@ impl GridRuntimeRegistry {
         text: &str,
         options: &GridParseOptions,
     ) -> Result<GridAppendSummary, String> {
-        let (database_path, target_format) = {
-            let entries = self
-                .entries
-                .lock()
-                .map_err(|_| "grid runtime registry is poisoned")?;
-            let entry = entries
-                .get(document_id)
-                .ok_or_else(|| format!("grid runtime is unavailable for document {document_id}"))?;
-            (entry.database_path.clone(), entry.format)
-        };
+        let runtime = self.runtime_entry(document_id)?;
         let source_format = grid_format(extension)
             .ok_or_else(|| format!("Unsupported grid append extension: {extension}"))?;
-        if source_format != target_format {
+        if source_format != runtime.format {
             return Err(format!(
-                "Cannot append {source_format} records to {target_format} grid"
+                "Cannot append {source_format} records to {} grid",
+                runtime.format
             ));
         }
-        append_grid_text(&database_path, source_format, text, options)
+        append_grid_text(&runtime.database_path, source_format, text, options)
     }
 
     pub(crate) fn descriptor_source_row_count(&self, document_id: &str) -> Result<usize, String> {
-        let database_path = self.database_path(document_id)?;
-        descriptor_source_row_count(&database_path)
+        let runtime = self.runtime_entry(document_id)?;
+        descriptor_source_row_count(&runtime.database_path)
     }
 
     pub(crate) fn descriptor_database_path(&self, document_id: &str) -> Result<PathBuf, String> {
@@ -319,23 +339,27 @@ impl GridRuntimeRegistry {
         &self,
         document_id: &str,
     ) -> Result<GridDescriptorRunSummary, String> {
-        let database_path = self.database_path(document_id)?;
-        descriptor_run_summary_in_database(&database_path)
+        let runtime = self.runtime_entry(document_id)?;
+        descriptor_run_summary_in_database(&runtime.database_path)
     }
 
     pub(crate) fn mark_virtual_edit(&self, document_id: &str) -> Result<u64, String> {
-        let database_path = self.database_path(document_id)?;
-        grid_identity::mark_virtual_edit(&database_path)
+        let runtime = self.runtime_entry(document_id)?;
+        grid_identity::mark_virtual_edit(&runtime.database_path)
     }
 
     fn database_path(&self, document_id: &str) -> Result<PathBuf, String> {
+        Ok(self.runtime_entry(document_id)?.database_path.clone())
+    }
+
+    fn runtime_entry(&self, document_id: &str) -> Result<Arc<RegisteredGridRuntime>, String> {
         let entries = self
             .entries
             .lock()
             .map_err(|_| "grid runtime registry is poisoned")?;
         entries
             .get(document_id)
-            .map(|entry| entry.database_path.clone())
+            .cloned()
             .ok_or_else(|| format!("grid runtime is unavailable for document {document_id}"))
     }
 }
@@ -3472,6 +3496,145 @@ mod tests {
             },
         );
         assert!(missing.is_err());
+    }
+
+    #[test]
+    fn unregister_keeps_runtime_alive_until_snapshot_lease_drops() {
+        fn assert_send_static<T: Send + 'static>() {}
+        assert_send_static::<GridSnapshotLease>();
+
+        let runtime_dir = temp_runtime_dir();
+        let handle = build_grid_store(&runtime_dir, "smi", b"CC Ethane\n")
+            .expect("build grid store")
+            .expect("collection");
+        let cancel_token = handle.cancel_token.clone();
+        let registry = GridRuntimeRegistry::default();
+        registry
+            .register(
+                "main:doc-grid",
+                handle.database_path,
+                handle.summary.format,
+                handle.cancel_token,
+            )
+            .expect("register grid runtime");
+        let lease = registry
+            .acquire_snapshot_lease("main:doc-grid")
+            .expect("acquire snapshot lease");
+        let database_path = lease.database_path_for_freeze().to_path_buf();
+        let rendezvous = Arc::new(std::sync::Barrier::new(2));
+        let worker_rendezvous = Arc::clone(&rendezvous);
+        let worker = thread::spawn(move || {
+            assert!(lease.database_path_for_freeze().is_file());
+            worker_rendezvous.wait();
+            worker_rendezvous.wait();
+            assert!(lease.database_path_for_freeze().is_file());
+            drop(lease);
+        });
+
+        rendezvous.wait();
+        registry
+            .unregister("main:doc-grid")
+            .expect("unregister grid runtime");
+        assert!(cancel_token.load(Ordering::Relaxed));
+        assert!(database_path.is_file());
+        assert!(registry.acquire_snapshot_lease("main:doc-grid").is_err());
+        rendezvous.wait();
+        worker.join().expect("snapshot lease worker");
+        assert!(!runtime_dir.exists());
+    }
+
+    #[test]
+    fn replacement_keeps_existing_lease_pinned_to_old_runtime() {
+        let old_runtime_dir = temp_runtime_dir();
+        let old_handle = build_grid_store(&old_runtime_dir, "smi", b"CC Ethane\n")
+            .expect("build old grid store")
+            .expect("old collection");
+        let old_database_path = old_handle.database_path.clone();
+        let old_cancel_token = old_handle.cancel_token.clone();
+        let registry = GridRuntimeRegistry::default();
+        registry
+            .register(
+                "main:doc-grid",
+                old_handle.database_path,
+                old_handle.summary.format,
+                old_handle.cancel_token,
+            )
+            .expect("register old grid runtime");
+        let old_lease = registry
+            .acquire_snapshot_lease("main:doc-grid")
+            .expect("acquire old snapshot lease");
+
+        let new_runtime_dir = temp_runtime_dir();
+        let new_handle = build_grid_store(&new_runtime_dir, "smi", b"O Water\n")
+            .expect("build new grid store")
+            .expect("new collection");
+        let new_database_path = new_handle.database_path.clone();
+        let new_cancel_token = new_handle.cancel_token.clone();
+        registry
+            .register(
+                "main:doc-grid",
+                new_handle.database_path,
+                new_handle.summary.format,
+                new_handle.cancel_token,
+            )
+            .expect("replace grid runtime");
+
+        assert!(old_cancel_token.load(Ordering::Relaxed));
+        assert_eq!(
+            old_lease.database_path_for_freeze(),
+            old_database_path.as_path()
+        );
+        assert!(old_database_path.is_file());
+        let new_lease = registry
+            .acquire_snapshot_lease("main:doc-grid")
+            .expect("acquire new snapshot lease");
+        assert_eq!(
+            new_lease.database_path_for_freeze(),
+            new_database_path.as_path()
+        );
+
+        drop(old_lease);
+        assert!(!old_runtime_dir.exists());
+        assert!(new_runtime_dir.exists());
+        registry
+            .unregister("main:doc-grid")
+            .expect("unregister replacement");
+        assert!(new_cancel_token.load(Ordering::Relaxed));
+        assert!(new_runtime_dir.exists());
+        drop(new_lease);
+        assert!(!new_runtime_dir.exists());
+    }
+
+    #[test]
+    fn snapshot_lease_uses_the_full_namespaced_document_id() {
+        let runtime_dir = temp_runtime_dir();
+        let handle = build_grid_store(&runtime_dir, "smi", b"CC Ethane\n")
+            .expect("build grid store")
+            .expect("collection");
+        let registry = GridRuntimeRegistry::default();
+        registry
+            .register(
+                "workspace-a:doc-grid",
+                handle.database_path,
+                handle.summary.format,
+                handle.cancel_token,
+            )
+            .expect("register namespaced grid runtime");
+
+        assert!(registry.acquire_snapshot_lease("doc-grid").is_err());
+        assert!(registry
+            .acquire_snapshot_lease("workspace-b:doc-grid")
+            .is_err());
+        let lease = registry
+            .acquire_snapshot_lease("workspace-a:doc-grid")
+            .expect("acquire exact namespaced grid runtime");
+        assert!(lease.database_path_for_freeze().is_file());
+
+        registry
+            .unregister("workspace-a:doc-grid")
+            .expect("unregister namespaced grid runtime");
+        drop(lease);
+        assert!(!runtime_dir.exists());
     }
 
     #[test]
