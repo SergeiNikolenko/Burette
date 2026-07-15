@@ -61,6 +61,7 @@
           "$ref": "#/$defs/label64"
         },
         {
+          "type": "string",
           "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f]+$"
         }
       ]
@@ -71,6 +72,7 @@
           "$ref": "#/$defs/label160"
         },
         {
+          "type": "string",
           "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f]+$"
         }
       ]
@@ -81,6 +83,7 @@
           "$ref": "#/$defs/label256"
         },
         {
+          "type": "string",
           "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f]+$"
         }
       ]
@@ -96,6 +99,7 @@
           "$ref": "#/$defs/statusText"
         },
         {
+          "type": "string",
           "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f]+$"
         }
       ]
@@ -132,6 +136,7 @@
           "$ref": "#/$defs/canonicalRelativePath"
         },
         {
+          "type": "string",
           "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f]+$"
         }
       ]
@@ -195,15 +200,17 @@
       "allOf": [
         {
           "if": {
+            "type": "object",
             "properties": { "effectiveBackend": { "const": "coordinator" } },
             "required": ["effectiveBackend"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "engine": {
                 "allOf": [
                   { "$ref": "#/$defs/engineIdentity" },
-                  { "properties": { "engineId": { "const": "burrete-coordinator" } } }
+                  { "type": "object", "properties": { "engineId": { "const": "burrete-coordinator" } } }
                 ]
               }
             }
@@ -211,15 +218,17 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": { "effectiveBackend": { "const": "rdkit" } },
             "required": ["effectiveBackend"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "engine": {
                 "allOf": [
                   { "$ref": "#/$defs/engineIdentity" },
-                  { "properties": { "engineId": { "const": "rdkit" } } }
+                  { "type": "object", "properties": { "engineId": { "const": "rdkit" } } }
                 ]
               }
             }
@@ -227,15 +236,17 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": { "effectiveBackend": { "const": "nativeMetal" } },
             "required": ["effectiveBackend"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "engine": {
                 "allOf": [
                   { "$ref": "#/$defs/engineIdentity" },
-                  { "properties": { "engineId": { "const": "burrete-native-metal" } } }
+                  { "type": "object", "properties": { "engineId": { "const": "burrete-native-metal" } } }
                 ]
               }
             }
@@ -243,15 +254,17 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": { "effectiveBackend": { "const": "mlx" } },
             "required": ["effectiveBackend"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "engine": {
                 "allOf": [
                   { "$ref": "#/$defs/engineIdentity" },
-                  { "properties": { "engineId": { "const": "burrete-mlx" } } }
+                  { "type": "object", "properties": { "engineId": { "const": "burrete-mlx" } } }
                 ]
               }
             }
@@ -259,15 +272,17 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": { "effectiveBackend": { "const": "referenceCpu" } },
             "required": ["effectiveBackend"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "engine": {
                 "allOf": [
                   { "$ref": "#/$defs/engineIdentity" },
-                  { "properties": { "engineId": { "const": "burrete-reference-cpu" } } }
+                  { "type": "object", "properties": { "engineId": { "const": "burrete-reference-cpu" } } }
                 ]
               }
             }
@@ -379,6 +394,7 @@
       "allOf": [
         {
           "if": {
+            "type": "object",
             "properties": {
               "code": {
                 "const": "Cancelled"
@@ -387,6 +403,7 @@
             "required": ["code"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "retryable": {
                 "const": false
@@ -433,6 +450,7 @@
           "$ref": "#/$defs/packedFileDescriptor"
         },
         {
+          "type": "object",
           "properties": {
             "byteLength": {
               "type": "integer",
@@ -517,6 +535,7 @@
       "allOf": [
         {
           "if": {
+            "type": "object",
             "properties": {
               "dtype": {
                 "enum": ["bool8", "u8", "i8"]
@@ -525,6 +544,7 @@
             "required": ["dtype"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOrder": {
                 "const": "notApplicable"
@@ -532,6 +552,7 @@
             }
           },
           "else": {
+            "type": "object",
             "properties": {
               "byteOrder": {
                 "enum": ["littleEndian", "bigEndian"]
@@ -541,6 +562,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "dtype": {
                 "enum": ["u16", "i16"]
@@ -549,6 +571,7 @@
             "required": ["dtype"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "enum": [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
@@ -558,6 +581,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "dtype": {
                 "enum": ["u32", "i32", "f32"]
@@ -566,6 +590,7 @@
             "required": ["dtype"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "enum": [4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
@@ -575,6 +600,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "dtype": {
                 "enum": ["u64", "i64", "f64"]
@@ -583,6 +609,7 @@
             "required": ["dtype"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "enum": [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
@@ -592,6 +619,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 2
@@ -600,8 +628,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 2
               }
             }
@@ -609,6 +639,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 4
@@ -617,8 +648,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 4
               }
             }
@@ -626,6 +659,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 8
@@ -634,8 +668,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 8
               }
             }
@@ -643,6 +679,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 16
@@ -651,8 +688,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 16
               }
             }
@@ -660,6 +699,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 32
@@ -668,8 +708,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 32
               }
             }
@@ -677,6 +719,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 64
@@ -685,8 +728,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 64
               }
             }
@@ -694,6 +739,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 128
@@ -702,8 +748,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 128
               }
             }
@@ -711,6 +759,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 256
@@ -719,8 +768,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 256
               }
             }
@@ -728,6 +779,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 512
@@ -736,8 +788,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 512
               }
             }
@@ -745,6 +799,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 1024
@@ -753,8 +808,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 1024
               }
             }
@@ -762,6 +819,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 2048
@@ -770,8 +828,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 2048
               }
             }
@@ -779,6 +839,7 @@
         },
         {
           "if": {
+            "type": "object",
             "properties": {
               "alignment": {
                 "const": 4096
@@ -787,8 +848,10 @@
             "required": ["alignment"]
           },
           "then": {
+            "type": "object",
             "properties": {
               "byteOffset": {
+                "type": "integer",
                 "multipleOf": 4096
               }
             }

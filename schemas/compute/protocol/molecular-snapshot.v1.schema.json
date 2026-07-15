@@ -80,6 +80,7 @@
           "$ref": "common.v1.schema.json#/$defs/packedArrayDescriptor"
         },
         {
+          "type": "object",
           "properties": {
             "name": {
               "const": "sourceRecordIds"
@@ -111,6 +112,7 @@
           "$ref": "common.v1.schema.json#/$defs/packedArrayDescriptor"
         },
         {
+          "type": "object",
           "properties": {
             "name": {
               "const": "moleculeContentHashes"
@@ -148,11 +150,13 @@
           "$ref": "common.v1.schema.json#/$defs/packedLayout"
         },
         {
+          "type": "object",
           "properties": {
             "arrays": {
               "type": "array",
               "allOf": [
                 {
+                  "type": "array",
                   "contains": {
                     "$ref": "#/$defs/sourceRecordIdsArray"
                   },
@@ -160,6 +164,7 @@
                   "maxContains": 1
                 },
                 {
+                  "type": "array",
                   "contains": {
                     "$ref": "#/$defs/moleculeContentHashesArray"
                   },

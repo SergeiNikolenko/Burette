@@ -196,6 +196,36 @@ function assertValidatorCoverage(schema, path = "$") {
   }
 }
 
+const strictKeywordTypes = [
+  [["properties", "required", "minProperties", "maxProperties"], ["object"]],
+  [["items", "prefixItems", "contains", "minContains", "maxContains", "minItems", "maxItems", "uniqueItems"], ["array"]],
+  [["pattern", "minLength", "maxLength", "format"], ["string"]],
+  [["minimum", "maximum", "multipleOf"], ["number", "integer"]],
+];
+
+function assertStrictTypeCoverage(schema, path = "$") {
+  if (typeof schema === "boolean") return;
+  const declaredTypes = new Set(Array.isArray(schema.type) ? schema.type : [schema.type]);
+  for (const [keywords, acceptedTypes] of strictKeywordTypes) {
+    const usedKeywords = keywords.filter((keyword) => Object.hasOwn(schema, keyword));
+    if (usedKeywords.length === 0) continue;
+    assert.ok(
+      acceptedTypes.some((type) => declaredTypes.has(type)),
+      `${path} uses ${usedKeywords.join(", ")} without a local ${acceptedTypes.join("|")} type`,
+    );
+  }
+  for (const [keyword, value] of Object.entries(schema)) {
+    if (keyword === "$defs" || keyword === "properties") {
+      for (const [name, child] of Object.entries(value)) assertStrictTypeCoverage(child, `${path}.${keyword}.${name}`);
+    } else if (["allOf", "anyOf", "oneOf", "prefixItems"].includes(keyword)) {
+      for (const [index, child] of value.entries()) assertStrictTypeCoverage(child, `${path}.${keyword}[${index}]`);
+    } else if (["items", "contains", "not", "if", "then", "else", "additionalProperties"].includes(keyword)
+      && (typeof value === "boolean" || (value !== null && typeof value === "object"))) {
+      assertStrictTypeCoverage(value, `${path}.${keyword}`);
+    }
+  }
+}
+
 function expectValid(schemaFile, value, label, fragment = "#") {
   assert.deepEqual(validateWith(schemaFile, value, fragment), [], `${label} must satisfy ${schemaFile}${fragment}`);
 }
@@ -423,10 +453,15 @@ function jobSnapshotSemanticErrors(value) {
         && !["failed", "interrupted"].includes(attempt.state)) errors.push("non-retryable attempt has a successor");
       if (index + 1 < stageAttempts.length && attempt.error?.retryable !== true) errors.push("retried attempt lacks a retryable error");
     }
+    const first = stageAttempts.at(0);
     const latest = stageAttempts.at(-1);
-    if (stage.state === "queued" && stageAttempts.length === 0) continue;
+    const retryReset = value.state === "preparing"
+      && stage.state === "queued"
+      && stage.idempotent
+      && latest?.state === "interrupted";
+    if (stage.state === "queued" && (stageAttempts.length === 0 || retryReset)) continue;
     if (!latest || latest.state !== attemptStateForStage[stage.state]) errors.push("latest attempt state differs from stage state");
-    if (latest && stage.startedAtMs !== latest.startedAtMs) errors.push("stage start differs from latest attempt");
+    if (first && stage.startedAtMs !== first.startedAtMs) errors.push("stage start differs from first attempt");
     if (latest && (stage.updatedAtMs === null || latest.heartbeatAtMs > stage.updatedAtMs)) errors.push("stage update precedes latest attempt heartbeat");
     if (latest && ["succeeded", "failed", "interrupted", "cancelled"].includes(stage.state)
       && stage.finishedAtMs !== latest.finishedAtMs) errors.push("stage finish differs from latest attempt");
@@ -493,6 +528,7 @@ const publicSchemaFiles = [
 for (const file of ["protocol/common.v1.schema.json", ...publicSchemaFiles]) {
   const schema = readJson(schemaPath(file));
   assertValidatorCoverage(schema, file);
+  assertStrictTypeCoverage(schema, file);
   assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema", `${file} must use JSON Schema 2020-12`);
   assert.match(schema.$id, /^https:\/\/burrete\.app\/schemas\/compute\//u, `${file} must have a stable schema ID`);
 }
@@ -560,6 +596,31 @@ for (const snapshot of [queued, succeeded]) {
   assert.equal(snapshot.acceptedPlanSha256, jcsSha256(snapshot.plan));
   expectSemanticValid(jobSnapshotSemanticErrors(snapshot), `${snapshot.state} job snapshot`);
 }
+
+const retryReset = structuredClone(queued);
+retryReset.revision = 2;
+retryReset.state = "preparing";
+retryReset.updatedAtMs = 120;
+retryReset.attempts = [{
+  attemptId: "018f48f2-2e20-7e53-976b-cf93e0897721",
+  stageId: "freezeScope",
+  attemptNumber: 1,
+  runtimeVersion: retryReset.pinnedRuntime.version,
+  state: "interrupted",
+  startedAtMs: 101,
+  heartbeatAtMs: 110,
+  finishedAtMs: 110,
+  error: {
+    code: "WorkerCrashed",
+    message: "Worker interrupted before retry reset.",
+    stageId: "freezeScope",
+    moleculeStableId: null,
+    retryable: true,
+  },
+  retryReason: null,
+}];
+expectValid("protocol/job-snapshot.v1.schema.json", retryReset, "retry-reset job snapshot");
+expectSemanticValid(jobSnapshotSemanticErrors(retryReset), "retry-reset job snapshot");
 
 const artifact = fixture("valid-artifact-manifest.json");
 expectValid("protocol/artifact-manifest.v1.schema.json", artifact, "artifact manifest");
