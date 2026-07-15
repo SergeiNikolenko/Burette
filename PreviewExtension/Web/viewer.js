@@ -2851,12 +2851,40 @@
     return MOLSTAR_STYLE_OPTIONS.find(option => option.value === value)?.label || value;
   }
 
+  function captureMolstarCameraSnapshot(viewer) {
+    const camera = viewer?.plugin?.canvas3d?.camera;
+    if (!camera || typeof camera.getSnapshot !== 'function') return null;
+    try {
+      const snapshot = camera.getSnapshot();
+      if (!snapshot) return null;
+      return {
+        ...snapshot,
+        position: snapshot.position?.slice?.() || snapshot.position,
+        target: snapshot.target?.slice?.() || snapshot.target,
+        up: snapshot.up?.slice?.() || snapshot.up
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function restoreMolstarCameraSnapshot(viewer, snapshot) {
+    if (!snapshot) return;
+    const canvas3d = viewer?.plugin?.canvas3d;
+    if (!canvas3d?.requestCameraReset) return;
+    try {
+      canvas3d.requestCameraReset({ snapshot, durationMs: 0 });
+      canvas3d.requestDraw?.();
+    } catch (_) {}
+  }
+
   async function reloadMolstarStyle(viewer, style, serial) {
     const prepared = activeMolstarPrepared;
     if (!prepared) {
       await applyMolstarStyle(viewer, style);
       return;
     }
+    const cameraSnapshot = captureMolstarCameraSnapshot(viewer);
     const plugin = viewer?.plugin;
     if (typeof plugin?.clear === 'function') {
       await plugin.clear();
@@ -2869,6 +2897,7 @@
     applyLayoutState(viewer);
     scheduleLayoutStateReapply(viewer);
     try { viewer.handleResize(); } catch (_) {}
+    restoreMolstarCameraSnapshot(viewer, cameraSnapshot);
     setStatus(`[web] Applied Mol* ${molstarStyleLabel(style)} style`);
     setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
