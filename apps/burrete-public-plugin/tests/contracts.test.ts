@@ -127,10 +127,10 @@ describe("viewer resource contract", () => {
 
   test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v19.html");
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v20.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-v19");
+    expect(html).toContain("?v=viewer-v20");
     expect(html).toContain(`https://burrete.example${VIEWER_MOBILE_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_APP_BRIDGE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
@@ -167,7 +167,7 @@ describe("viewer resource contract", () => {
     expect(source).toContain('window.BurreteMolstarURL = `${assetsBase}/molstar.js`');
     expect(source).toContain('molstarPreferWebgl1: true');
     expect(source).toContain('molstarDisableAntialiasing: true');
-    expect(source).toContain('molstarPixelScale: 0.75');
+    expect(source).toContain('molstarPixelScale: 2');
     expect(source).toContain('molstarPickScale: 0.75');
     expect(source).toContain('molstarResolutionMode: "scaled"');
     expect(source).toContain('layoutShowControls: false');
@@ -177,7 +177,8 @@ describe("viewer resource contract", () => {
     expect(source).toContain('await Promise.all([\n      addStylesheet("viewer-runtime.css"),\n      addStylesheet("molstar.css"),\n    ])');
     expect(source).not.toContain('link.rel = "preload"');
     expect(source).not.toContain('preloadScript');
-    expect(source).toContain('canvasBackground: "black"');
+    expect(source).toContain('canvasBackground: "auto"');
+    expect(source).not.toContain('canvasBackground: "black"');
     expect(source).toContain("BurreteHostedAppBridge");
     expect(source).not.toContain("<iframe");
     expect(source).not.toContain("srcdoc");
