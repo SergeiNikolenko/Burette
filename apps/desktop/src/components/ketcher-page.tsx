@@ -67,6 +67,13 @@ const KETCHER_EXPORT_TIMEOUT_MS = 15000;
 const KETCHER_IMPORT_INSTANCE_RETRY_DELAYS_MS = [0, 250, 750, 1500, 2500] as const;
 const KETCHER_IMPORT_REQUEST_RETRY_MS = 5000;
 type KetcherImportResult = "success" | "transient-failure" | "failure";
+const IS_KETCHER_WEB_DEMO = import.meta.env.VITE_BURRETE_WEB_DEMO === "1";
+let ketcherStructServiceReady = false;
+if (typeof window !== "undefined") {
+  window.addEventListener("struct-service-initialized", () => {
+    ketcherStructServiceReady = true;
+  }, { once: true });
+}
 const KETCHER_TOOLTIP_ATTRIBUTE = "data-burette-ketcher-tooltip";
 const KETCHER_TOOLTIP_SELECTOR = [
   '[data-testid="top-toolbar"] button',
@@ -449,6 +456,7 @@ export function KetcherPage({
 
   const restoreDraft = useCallback((instance: KetcherEditorApi) => {
     if (location.importRequest) return Promise.resolve(false);
+    if (panelMode?.purpose === "import" && liveImportDirty) return Promise.resolve(false);
     const draftKet = location.draftKet ?? "";
     const draftMolfile = location.draftMolfile ?? state.ketcherDraftMolfile;
     if (!draftKet.trim() && !draftMolfile.trim()) return Promise.resolve(false);
@@ -470,7 +478,7 @@ export function KetcherPage({
         setStatus("Ketcher restore failed: " + (error instanceof Error ? error.message : String(error)));
         return false;
       });
-  }, [location.draftKet, location.draftMolfile, location.importRequest, state.ketcherDraftMolfile]);
+  }, [liveImportDirty, location.draftKet, location.draftMolfile, location.importRequest, panelMode, state.ketcherDraftMolfile]);
 
   const handleReady = useCallback((instance: KetcherEditorApi) => {
     instance.switchToMoleculesMode();
@@ -651,6 +659,7 @@ export function KetcherPage({
       setStatus(`Loading ${label}`);
       const format = panelMode.format === "auto" ? detectKetcherImportFormat(output) : panelMode.format;
       const importText = normalizeKetcherImportText(output, format);
+      if (IS_KETCHER_WEB_DEMO && ketcherImportUsesStructService(format)) await waitForKetcherStructServiceReady();
       await withKetcherTimeout(loadInteractiveKetcherImport(ketcher, importText, format), "Sketch import");
       await waitForKetcherCanvasUpdate();
       const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Sketch import verification");
@@ -680,6 +689,9 @@ export function KetcherPage({
         if (liveImportSerialRef.current !== serial) return;
         try {
           setStatus(importText ? `Loading ${label}` : "Clearing sketch");
+          if (IS_KETCHER_WEB_DEMO && importText && ketcherImportUsesStructService(format)) {
+            await waitForKetcherStructServiceReady();
+          }
           await withKetcherTimeout(loadInteractiveKetcherImport(ketcher, importText, format), `${label} import`);
           await waitForKetcherCanvasUpdate();
           if (liveImportSerialRef.current !== serial) return;
@@ -1537,9 +1549,13 @@ function loadAdditionalKetcherImportCandidate(instance: KetcherEditorApi, candid
 }
 
 function loadInteractiveKetcherImport(instance: KetcherEditorApi, text: string, format: KetcherTextFormat) {
-  return format.startsWith("molfile-") || format.startsWith("sdf-")
-    ? instance.setMolfile(firstMolBlock(text))
-    : instance.setMolecule(text, { needZoom: true });
+  return ketcherImportUsesStructService(format)
+    ? instance.setMolecule(text, { needZoom: true })
+    : instance.setMolfile(firstMolBlock(text));
+}
+
+function ketcherImportUsesStructService(format: KetcherTextFormat) {
+  return !format.startsWith("molfile-") && !format.startsWith("sdf-");
 }
 
 function firstMolBlock(text: string) {
@@ -1553,18 +1569,23 @@ function waitForKetcherCanvasUpdate() {
 }
 
 function waitForKetcherStructServiceReady() {
+  if (ketcherStructServiceReady) return Promise.resolve();
   return new Promise<void>((resolve) => {
     let settled = false;
     let fallbackId = 0;
     const finish = () => {
       if (settled) return;
       settled = true;
-      window.removeEventListener("struct-service-initialized", finish);
+      window.removeEventListener("struct-service-initialized", markReady);
       window.clearTimeout(fallbackId);
       resolve();
     };
-    window.addEventListener("struct-service-initialized", finish, { once: true });
-    fallbackId = window.setTimeout(finish, 750);
+    const markReady = () => {
+      ketcherStructServiceReady = true;
+      finish();
+    };
+    window.addEventListener("struct-service-initialized", markReady, { once: true });
+    if (!IS_KETCHER_WEB_DEMO) fallbackId = window.setTimeout(finish, 750);
   });
 }
 
