@@ -3,7 +3,8 @@
   "kernelId": "burrete.mmff-energy.v1",
   "entrypoints": [
     "burrete_mmff_energy_v1",
-    "burrete_mmff_reference_gradient_v1"
+    "burrete_mmff_reference_gradient_v1",
+    "burrete_mmff_optimize_v1"
   ],
   "positionType": "float4",
   "termType": {
@@ -20,6 +21,13 @@
   "gradientUnits": "kcal/(mol*angstrom)",
   "gradientMethod": "centralDifference",
   "gradientStepAngstrom": 0.001,
+  "optimization": {
+    "smallMoleculeOptimizer": "BFGS",
+    "largeMoleculeOptimizer": "L-BFGS",
+    "automaticAtomThreshold": 32,
+    "lineSearch": "boundedArmijo",
+    "statusCodes": ["convergedGradient", "convergedStep", "lineSearchExhausted", "maxIterations"]
+  },
   "energyTerms": [
     "bondStretch",
     "angleBend",
