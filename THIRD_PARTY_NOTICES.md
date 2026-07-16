@@ -127,6 +127,12 @@ principal quantum numbers one through five. The mathematical behavior is
 checked against `mlxmolkit/rm1/slater_overlap_ref.py` and the d-channel layout
 in `mlxmolkit/rm1/overlap_d.py`; no Python or SciPy runtime is included.
 
+PM6 d-basis charge separations and the `rho3` through `rho6` additive terms
+adapt the AIJL, Slater-Condon, and POIJ derivation from PYSEQM
+`two_elec_two_center_int.py` and `cal_par.py`, including its distinct
+transition-metal and main-group branches. PYSEQM BSD-3-Clause attribution
+applies.
+
 The PM6-D3H4 H4 hydrogen-bond equations, covalent-radius table, short-range
 H-H polynomial, and CHNO D3 C6/CN/r0 reference records are adapted from
 OpenMOPAC correction behavior through the pinned
