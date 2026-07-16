@@ -16,4 +16,4 @@ pub use runtime::{
     MetalTanimotoRuntime, Pm6CorrectionMoleculeDescriptor, Pm6D3H4Correction, Pm6H4HhCorrection,
 };
 
-pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v18";
+pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v19";

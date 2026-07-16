@@ -1672,6 +1672,10 @@ impl MetalComputeRuntime {
             semiempirical_atom(1, [-0.629, -0.629, 0.629]),
             semiempirical_atom(1, [-0.629, 0.629, -0.629]),
             semiempirical_atom(1, [0.629, -0.629, -0.629]),
+            semiempirical_atom(16, [0.0, 0.0, 0.0]),
+            semiempirical_atom(17, [2.1, 0.0, 0.0]),
+            semiempirical_atom(35, [0.0, 2.6, 0.0]),
+            semiempirical_atom(53, [0.0, 0.0, 3.1]),
         ];
         let correction_descriptors = [
             Pm6CorrectionMoleculeDescriptor {
@@ -1682,6 +1686,10 @@ impl MetalComputeRuntime {
                 atom_start: 6,
                 atom_count: 5,
             },
+            Pm6CorrectionMoleculeDescriptor {
+                atom_start: 11,
+                atom_count: 4,
+            },
         ];
         let correction = self.evaluate_pm6_d3h4_profiled(
             MetalPm6CorrectionBatch {
@@ -1690,7 +1698,11 @@ impl MetalComputeRuntime {
             },
             MIN_COMPUTE_MEMORY_BYTES,
         )?;
-        if correction.gpu_time_ms == 0 || correction.corrections.len() != 2 {
+        if correction.gpu_time_ms == 0
+            || correction.corrections.len() != 3
+            || (correction.corrections[2].dispersion_energy_ev + 0.741_957_085_936_019_2).abs()
+                > 2.0e-5
+        {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal startup PM6-D3H4 correction returned invalid profiling output".into(),
             ));

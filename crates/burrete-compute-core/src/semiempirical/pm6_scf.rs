@@ -501,10 +501,10 @@ pub fn evaluate_pm6_with_accelerators(
 ) -> Result<Rm1Evaluation, SemiempiricalError> {
     if !matches!(
         molecule.method,
-        SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D
+        SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D | SemiempiricalMethod::Pm6D3H4
     ) {
         return Err(SemiempiricalError::InvalidInput(
-            "full PM6 evaluation requires PM6 or PM6_D".into(),
+            "full PM6 evaluation requires PM6, PM6_D, or PM6_D3H4".into(),
         ));
     }
     let pairs = pm6_fock_pairs(molecule)?;
@@ -562,10 +562,17 @@ pub fn evaluate_pm6_with_accelerators(
             .map(|(density, (core, fock))| density * (core + fock))
             .sum::<f64>();
     let nuclear_energy_ev = semiempirical_nuclear_repulsion_energy(molecule)?;
+    let correction_ev = if molecule.method == SemiempiricalMethod::Pm6D3H4 {
+        super::pm6_d3_dispersion_energy(&molecule.atoms)?
+            + super::pm6_h4_energy(&molecule.atoms)?
+            + super::pm6_hh_repulsion_energy(&molecule.atoms)?
+    } else {
+        0.0
+    };
     Ok(Rm1Evaluation {
         electronic_energy_ev,
         nuclear_energy_ev,
-        total_energy_ev: electronic_energy_ev + nuclear_energy_ev,
+        total_energy_ev: electronic_energy_ev + nuclear_energy_ev + correction_ev,
         atomic_charges: molecule.atomic_charges(&scf.density)?,
         scf,
     })
@@ -611,7 +618,7 @@ mod tests {
             left_core_attraction_ev: vec![0.0; 81],
             right_core_attraction_ev: vec![0.0],
         };
-        assert!(contract_pm6_pair_fock(9, &[0.0; 81], &[pair.clone()]).is_err());
+        assert!(contract_pm6_pair_fock(9, &[0.0; 81], std::slice::from_ref(&pair)).is_err());
         let mut invalid_shape = pair;
         invalid_shape.repulsion_ev.pop();
         assert!(contract_pm6_pair_fock(10, &[0.0; 100], &[invalid_shape]).is_err());
@@ -702,5 +709,49 @@ mod tests {
         ]) {
             assert!((actual - expected).abs() < 2.0e-6, "{actual} != {expected}");
         }
+    }
+
+    #[test]
+    fn d3h4_is_a_post_scf_energy_only_correction() {
+        let atoms = vec![
+            SemiempiricalAtom {
+                atomic_number: 6,
+                position_angstrom: [0.0, 0.0, 0.0],
+            },
+            SemiempiricalAtom {
+                atomic_number: 1,
+                position_angstrom: [0.629, 0.629, 0.629],
+            },
+            SemiempiricalAtom {
+                atomic_number: 1,
+                position_angstrom: [-0.629, -0.629, 0.629],
+            },
+            SemiempiricalAtom {
+                atomic_number: 1,
+                position_angstrom: [-0.629, 0.629, -0.629],
+            },
+            SemiempiricalAtom {
+                atomic_number: 1,
+                position_angstrom: [0.629, -0.629, -0.629],
+            },
+        ];
+        let plain = evaluate_pm6(
+            &SemiempiricalMolecule::new(SemiempiricalMethod::Pm6D, atoms.clone(), 0).unwrap(),
+            SemiempiricalScfOptions::default(),
+        )
+        .unwrap();
+        let corrected = evaluate_pm6(
+            &SemiempiricalMolecule::new(SemiempiricalMethod::Pm6D3H4, atoms, 0).unwrap(),
+            SemiempiricalScfOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(plain.scf.density, corrected.scf.density);
+        assert_eq!(plain.atomic_charges, corrected.atomic_charges);
+        assert_eq!(plain.electronic_energy_ev, corrected.electronic_energy_ev);
+        assert_eq!(plain.nuclear_energy_ev, corrected.nuclear_energy_ev);
+        assert!(
+            (corrected.total_energy_ev - plain.total_energy_ev - 0.174_321_825_810_168_7).abs()
+                < 1.0e-12
+        );
     }
 }

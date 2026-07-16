@@ -145,7 +145,7 @@ pub fn evaluate_semiempirical(
 ) -> Result<Rm1Evaluation, SemiempiricalError> {
     if matches!(
         molecule.method,
-        SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D
+        SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D | SemiempiricalMethod::Pm6D3H4
     ) {
         return super::evaluate_pm6(molecule, options);
     }

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, ffi::c_void, mem::size_of_val};
+use std::{collections::HashSet, ffi::c_void, mem::size_of_val, sync::OnceLock};
 
 use burrete_compute_core::{
     pm6_h4_covalent_radius, rm1_multipole_parameters, semiempirical_parameters,
@@ -236,6 +236,20 @@ struct Pm6CorrectionMoleculeV1 {
     span: [u32; 4],
 }
 
+struct Pm6D3MetalTables {
+    covalent_radii: Vec<f32>,
+    pair_r0: Vec<f32>,
+    reference_offsets: Vec<u32>,
+    references: Vec<[f32; 4]>,
+}
+
+const PM6_D3_TABLE: &[u8] =
+    include_bytes!("../../../burrete-compute-core/src/semiempirical/pm6_d3.generated.bin");
+const PM6_D3_ELEMENTS: usize = 94;
+const PM6_D3_PAIRS: usize = PM6_D3_ELEMENTS * PM6_D3_ELEMENTS;
+const PM6_D3_REFERENCES: usize = 64_516;
+const PM6_D3_HEADER_BYTES: usize = 24;
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
@@ -312,7 +326,7 @@ impl MetalHost {
         let rm1_eigen_pipeline = pipeline(&device, library, "burrete_rm1_symmetric_eigen_v1")?;
         let rm1_pair_rotate_pipeline = pipeline(&device, library, "burrete_rm1_pair_rotate_v1")?;
         let pm6_h4_hh_pipeline = pipeline(&device, library, "burrete_pm6_h4_hh_v1")?;
-        let pm6_d3_pipeline = pipeline(&device, library, "burrete_pm6_d3_chno_v1")?;
+        let pm6_d3_pipeline = pipeline(&device, library, "burrete_pm6_d3_v2")?;
         let pm6_one_center_fock_pipeline =
             pipeline(&device, library, "burrete_pm6_one_center_fock_v1")?;
         Ok(Self {
@@ -2253,6 +2267,14 @@ impl MetalHost {
         batch: MetalPm6CorrectionBatch<'_>,
         max_memory_bytes: u64,
     ) -> Result<MetalPm6D3Dispatch, MetalRuntimeError> {
+        let tables = pm6_d3_metal_tables()?;
+        let table_bytes =
+            (tables.covalent_radii.len() + tables.pair_r0.len() + tables.references.len() * 4)
+                .checked_mul(std::mem::size_of::<f32>())
+                .and_then(|bytes| {
+                    bytes.checked_add(tables.reference_offsets.len() * std::mem::size_of::<u32>())
+                })
+                .ok_or_else(memory_overflow)?;
         let required_bytes = MEMORY_HEADROOM_BYTES
             .checked_add(
                 u64::try_from(batch.atoms.len())
@@ -2266,6 +2288,7 @@ impl MetalHost {
                         as u64,
                 )?)
             })
+            .and_then(|bytes| bytes.checked_add(u64::try_from(table_bytes).ok()?))
             .ok_or_else(memory_overflow)?;
         if required_bytes > max_memory_bytes {
             return resource_limit(format!(
@@ -2302,6 +2325,10 @@ impl MetalHost {
         let atom_buffer = buffer_with_slice(&self.device, &atoms);
         let molecule_buffer = buffer_with_slice(&self.device, &molecules);
         let output_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; molecules.len()]);
+        let covalent_radii_buffer = buffer_with_slice(&self.device, &tables.covalent_radii);
+        let pair_r0_buffer = buffer_with_slice(&self.device, &tables.pair_r0);
+        let reference_offsets_buffer = buffer_with_slice(&self.device, &tables.reference_offsets);
+        let references_buffer = buffer_with_slice(&self.device, &tables.references);
         let molecule_count = u32::try_from(molecules.len()).map_err(|_| memory_overflow())?;
         let gpu_time = autoreleasepool(|| {
             let command = self.queue.new_command_buffer();
@@ -2314,7 +2341,11 @@ impl MetalHost {
                 size_of_val(&molecule_count) as u64,
                 (&molecule_count as *const u32).cast(),
             );
-            encoder.set_buffer(3, Some(&output_buffer), 0);
+            encoder.set_buffer(3, Some(&covalent_radii_buffer), 0);
+            encoder.set_buffer(4, Some(&pair_r0_buffer), 0);
+            encoder.set_buffer(5, Some(&reference_offsets_buffer), 0);
+            encoder.set_buffer(6, Some(&references_buffer), 0);
+            encoder.set_buffer(7, Some(&output_buffer), 0);
             let thread_width = self
                 .pm6_d3_pipeline
                 .thread_execution_width()
@@ -3006,6 +3037,66 @@ fn pipeline(
                 "Metal entrypoint {name} cannot create a pipeline: {error}"
             ))
         })
+}
+
+fn pm6_d3_metal_tables() -> Result<&'static Pm6D3MetalTables, MetalRuntimeError> {
+    static TABLES: OnceLock<Pm6D3MetalTables> = OnceLock::new();
+    if let Some(tables) = TABLES.get() {
+        return Ok(tables);
+    }
+    let r0_offset = PM6_D3_HEADER_BYTES + PM6_D3_ELEMENTS * 8;
+    let offsets_offset = r0_offset + PM6_D3_PAIRS * 8;
+    let references_offset = offsets_offset + (PM6_D3_PAIRS + 1) * 4;
+    let expected_bytes = references_offset + PM6_D3_REFERENCES * 24;
+    if PM6_D3_TABLE.len() != expected_bytes
+        || &PM6_D3_TABLE[..8] != b"BD3V1\0\0\0"
+        || read_d3_u32(8) as usize != PM6_D3_ELEMENTS
+        || read_d3_u32(12) as usize != PM6_D3_PAIRS
+        || read_d3_u32(16) as usize != PM6_D3_REFERENCES
+        || read_d3_u32(20) as usize != PM6_D3_PAIRS + 1
+    {
+        return Err(MetalRuntimeError::Integrity(
+            "embedded PM6 D3 table has an invalid layout".into(),
+        ));
+    }
+    Ok(TABLES.get_or_init(|| Pm6D3MetalTables {
+        covalent_radii: (0..PM6_D3_ELEMENTS)
+            .map(|index| read_d3_f64(PM6_D3_HEADER_BYTES + index * 8) as f32)
+            .collect(),
+        pair_r0: (0..PM6_D3_PAIRS)
+            .map(|index| read_d3_f64(r0_offset + index * 8) as f32)
+            .collect(),
+        reference_offsets: (0..=PM6_D3_PAIRS)
+            .map(|index| read_d3_u32(offsets_offset + index * 4))
+            .collect(),
+        references: (0..PM6_D3_REFERENCES)
+            .map(|index| {
+                let offset = references_offset + index * 24;
+                [
+                    read_d3_f64(offset) as f32,
+                    read_d3_f64(offset + 8) as f32,
+                    read_d3_f64(offset + 16) as f32,
+                    0.0,
+                ]
+            })
+            .collect(),
+    }))
+}
+
+fn read_d3_u32(offset: usize) -> u32 {
+    u32::from_le_bytes(
+        PM6_D3_TABLE[offset..offset + 4]
+            .try_into()
+            .expect("bounded PM6 D3 u32"),
+    )
+}
+
+fn read_d3_f64(offset: usize) -> f64 {
+    f64::from_le_bytes(
+        PM6_D3_TABLE[offset..offset + 8]
+            .try_into()
+            .expect("bounded PM6 D3 f64"),
+    )
 }
 
 fn buffer_with_slice<T>(device: &Device, values: &[T]) -> Buffer {

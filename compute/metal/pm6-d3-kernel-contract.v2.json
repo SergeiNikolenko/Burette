@@ -1,19 +1,23 @@
 {
   "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "kernel": "burrete_pm6_d3_chno_v1",
-  "model": "PM6-D3H4 zero-damping D3 dispersion over the parity-gated CHNO domain",
+  "kernel": "burrete_pm6_d3_v2",
+  "model": "PM6-D3H4 zero-damping D3 dispersion over the complete upstream Z=1..=94 domain",
   "dispatch": "one GPU thread per molecule with no cross-molecule atomics",
   "inputs": {
     "atoms": "packed float4 positions and uint4 atomic identity",
     "molecules": "uint4 atom start/count spans",
-    "referenceTables": "checked-in CHNO C6/CN interpolation records and r0 pair radii"
+    "covalentRadii": "float[94]",
+    "pairR0": "float[94*94] ordered-pair radii",
+    "referenceOffsets": "uint[94*94+1]",
+    "references": "float4[64516] ordered C6/CN interpolation records"
   },
   "outputs": {
     "dispersionEv": "one float32 dispersion energy per molecule"
   },
   "precision": "float32 Metal with mandatory float64 CPU parity gate",
   "bounds": {
-    "elements": [1, 6, 7, 8],
+    "minimumAtomicNumber": 1,
+    "maximumAtomicNumber": 94,
     "maximumAtomsPerMolecule": 128,
     "maximumMolecules": 256,
     "cutoffAngstrom": 15.0
