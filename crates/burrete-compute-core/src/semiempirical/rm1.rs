@@ -25,6 +25,8 @@ pub struct Rm1FockPair {
     pub right_orbital_start: usize,
     pub right_orbital_count: usize,
     pub repulsion_ev: Vec<f64>,
+    pub left_core_attraction_ev: [f64; 16],
+    pub right_core_attraction_ev: [f64; 16],
 }
 
 pub fn rm1_fock_pairs(
@@ -55,6 +57,8 @@ pub fn rm1_fock_pairs(
                 right_orbital_start: molecule.orbital_offsets[right_index],
                 right_orbital_count: usize::from(right.orbital_count),
                 repulsion_ev: pair.repulsion_ev.to_vec(),
+                left_core_attraction_ev: pair.left_core_attraction_ev,
+                right_core_attraction_ev: pair.right_core_attraction_ev,
             });
         }
     }
@@ -148,6 +152,27 @@ pub fn evaluate_rm1_with_pair_contractor(
 pub fn evaluate_rm1_with_accelerators(
     molecule: &SemiempiricalMolecule,
     options: SemiempiricalScfOptions,
+    contract_pairs: impl FnMut(
+        usize,
+        &[f64],
+        &[Rm1FockPair],
+    ) -> Result<Vec<f64>, SemiempiricalError>,
+    diagonalize: impl FnMut(&[f64], usize) -> Result<(Vec<f64>, Vec<f64>), SemiempiricalError>,
+) -> Result<Rm1Evaluation, SemiempiricalError> {
+    let pairs = rm1_fock_pairs(molecule)?;
+    evaluate_rm1_with_prepared_pairs_and_accelerators(
+        molecule,
+        options,
+        &pairs,
+        contract_pairs,
+        diagonalize,
+    )
+}
+
+pub fn evaluate_rm1_with_prepared_pairs_and_accelerators(
+    molecule: &SemiempiricalMolecule,
+    options: SemiempiricalScfOptions,
+    pairs: &[Rm1FockPair],
     mut contract_pairs: impl FnMut(
         usize,
         &[f64],
@@ -155,8 +180,17 @@ pub fn evaluate_rm1_with_accelerators(
     ) -> Result<Vec<f64>, SemiempiricalError>,
     diagonalize: impl FnMut(&[f64], usize) -> Result<(Vec<f64>, Vec<f64>), SemiempiricalError>,
 ) -> Result<Rm1Evaluation, SemiempiricalError> {
-    let core = build_core_hamiltonian(molecule)?;
-    let pairs = rm1_fock_pairs(molecule)?;
+    let expected_pair_count = molecule
+        .atoms
+        .len()
+        .saturating_mul(molecule.atoms.len().saturating_sub(1))
+        / 2;
+    if pairs.len() != expected_pair_count {
+        return Err(SemiempiricalError::InvalidInput(
+            "RM1 prepared pair pack does not match the molecule".into(),
+        ));
+    }
+    let core = build_core_hamiltonian(molecule, pairs)?;
     let scf = solve_closed_shell_scf_with_eigensolver(
         molecule.orbital_count,
         molecule.electron_count,
@@ -190,6 +224,7 @@ pub fn evaluate_rm1_with_accelerators(
 
 fn build_core_hamiltonian(
     molecule: &SemiempiricalMolecule,
+    pairs: &[Rm1FockPair],
 ) -> Result<Vec<f64>, SemiempiricalError> {
     let n = molecule.orbital_count;
     let mut core = vec![0.0; n * n];
@@ -202,6 +237,7 @@ fn build_core_hamiltonian(
         }
     }
 
+    let mut pair_index = 0;
     for left_index in 0..molecule.atoms.len() {
         for right_index in (left_index + 1)..molecule.atoms.len() {
             let left_atom = &molecule.atoms[left_index];
@@ -236,12 +272,18 @@ fn build_core_hamiltonian(
                 }
             }
 
-            let pair = rm1_rotated_pair_integrals(
-                left,
-                right,
-                left_atom.position_angstrom,
-                right_atom.position_angstrom,
-            )?;
+            let pair = &pairs[pair_index];
+            pair_index += 1;
+            if pair.left_orbital_start != left_start
+                || pair.left_orbital_count != usize::from(left.orbital_count)
+                || pair.right_orbital_start != right_start
+                || pair.right_orbital_count != usize::from(right.orbital_count)
+                || pair.repulsion_ev.len() != 256
+            {
+                return Err(SemiempiricalError::InvalidInput(
+                    "RM1 prepared pair pack has an invalid canonical span".into(),
+                ));
+            }
             for row in 0..usize::from(left.orbital_count) {
                 for column in 0..usize::from(left.orbital_count) {
                     core[(left_start + row) * n + left_start + column] +=

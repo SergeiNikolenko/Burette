@@ -1152,6 +1152,8 @@ impl MetalComputeRuntime {
             right_orbital_start: 1,
             right_orbital_count: 1,
             repulsion_ev: rm1_tensor,
+            left_core_attraction_ev: [0.0; 16],
+            right_core_attraction_ev: [0.0; 16],
         }];
         let rm1_density = [1.0, 0.2, 0.2, 1.0];
         let expected_rm1 = contract_rm1_pair_fock(2, &rm1_density, &rm1_pairs)

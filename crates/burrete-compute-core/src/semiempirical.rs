@@ -10,7 +10,8 @@ pub use overlap::{rm1_sp_overlap, Rm1OverlapMatrix};
 pub use parameters::{rm1_parameters, SemiempiricalElementParameters};
 pub use rm1::{
     contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators,
-    evaluate_rm1_with_pair_contractor, rm1_fock_pairs, Rm1Evaluation, Rm1FockPair,
+    evaluate_rm1_with_pair_contractor, evaluate_rm1_with_prepared_pairs_and_accelerators,
+    rm1_fock_pairs, Rm1Evaluation, Rm1FockPair,
 };
 pub use rotation::{rm1_rotated_pair_integrals, Rm1RotatedPairIntegrals};
 pub use two_center::{
