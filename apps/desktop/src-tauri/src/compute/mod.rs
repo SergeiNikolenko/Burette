@@ -3,6 +3,11 @@ mod artifact_reader;
 mod cluster_executor;
 mod cluster_plan;
 pub(crate) mod commands;
+#[allow(
+    dead_code,
+    reason = "conformer admission is staged before coordinator activation"
+)]
+mod conformer_plan;
 pub(crate) mod coordinator;
 mod engine_catalog;
 pub(crate) mod error;
