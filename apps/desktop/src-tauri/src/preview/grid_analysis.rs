@@ -92,7 +92,9 @@ pub(crate) struct GridConformerAssignmentInput {
     pub(crate) conformer_count: u64,
     pub(crate) passed_count: u64,
     pub(crate) best_etk_energy: Option<f64>,
+    pub(crate) best_mmff_energy: Option<f64>,
     pub(crate) error: Option<String>,
+    pub(crate) mmff_error: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -411,6 +413,9 @@ pub(crate) fn apply_conformer_analysis_run(
             || assignment
                 .best_etk_energy
                 .is_some_and(|value| !value.is_finite())
+            || assignment
+                .best_mmff_energy
+                .is_some_and(|value| !value.is_finite())
         {
             return Err("Conformer assignment contains inconsistent counts or energy".into());
         }
@@ -454,6 +459,38 @@ pub(crate) fn apply_conformer_analysis_run(
                 molecule_content_sha256: assignment.molecule_content_sha256.clone(),
                 value_id: "bestEtkEnergy".into(),
                 value: GridAnalysisValue::Real(energy),
+            });
+        }
+        if let Some(energy) = assignment.best_mmff_energy {
+            values.push(GridAnalysisValueInput {
+                molecule_id,
+                source_index: assignment.source_index,
+                molecule_content_sha256: assignment.molecule_content_sha256.clone(),
+                value_id: "bestMmff94sEnergy".into(),
+                value: GridAnalysisValue::Real(energy),
+            });
+        }
+        values.push(GridAnalysisValueInput {
+            molecule_id,
+            source_index: assignment.source_index,
+            molecule_content_sha256: assignment.molecule_content_sha256.clone(),
+            value_id: "mmffOptimizationStatus".into(),
+            value: GridAnalysisValue::Text(
+                if assignment.best_mmff_energy.is_some() {
+                    "optimized"
+                } else {
+                    "unavailable"
+                }
+                .into(),
+            ),
+        });
+        if let Some(error) = &assignment.mmff_error {
+            values.push(GridAnalysisValueInput {
+                molecule_id,
+                source_index: assignment.source_index,
+                molecule_content_sha256: assignment.molecule_content_sha256.clone(),
+                value_id: "mmffOptimizationError".into(),
+                value: GridAnalysisValue::Text(error.clone()),
             });
         }
         if let Some(error) = &assignment.error {

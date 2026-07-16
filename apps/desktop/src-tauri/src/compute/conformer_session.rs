@@ -5,7 +5,8 @@ use std::{
 };
 
 use burrete_compute_core::{
-    ConformerEnginePackArrays, ConformerEnginePackBuilder, ExtractedConformerParameters,
+    decode_native_mmff_parameters, ConformerEnginePackArrays, ConformerEnginePackBuilder,
+    ExtractedConformerParameters, NativeMmffParameters,
 };
 use burrete_compute_protocol::{
     ConformerV1SubmitRequest, ConformerVariant, JobSnapshot, MolecularSnapshotRecordV1,
@@ -72,6 +73,8 @@ pub(crate) struct CompletedConformerExtraction {
     pub(crate) arrays: ConformerEnginePackArrays,
     pub(crate) identities: Vec<ConformerMoleculeIdentity>,
     pub(crate) errors: Vec<Option<String>>,
+    pub(crate) mmff_parameters: Vec<Option<NativeMmffParameters>>,
+    pub(crate) mmff_errors: Vec<Option<String>>,
     pub(crate) verified: VerifiedSnapshot,
 }
 
@@ -89,6 +92,8 @@ pub(crate) struct ConformerExtractionSession {
     builder: ConformerEnginePackBuilder,
     identities: Vec<ConformerMoleculeIdentity>,
     errors: Vec<Option<String>>,
+    mmff_parameters: Vec<Option<NativeMmffParameters>>,
+    mmff_errors: Vec<Option<String>>,
     reached_eof: bool,
 }
 
@@ -149,6 +154,8 @@ impl ConformerExtractionSession {
             builder: ConformerEnginePackBuilder::new(request.parameters.variant, engine_budget),
             identities: reserve(capacity, "conformer identity buffer")?,
             errors: reserve(capacity, "conformer error buffer")?,
+            mmff_parameters: reserve(capacity, "MMFF parameter buffer")?,
+            mmff_errors: reserve(capacity, "MMFF error buffer")?,
             reached_eof: false,
         };
         let chunk = session
@@ -194,18 +201,33 @@ impl ConformerExtractionSession {
         for (observed, source) in result.records.iter().zip(&expected.records) {
             validate_record_identity(observed, source)?;
             let value = match &observed.output {
-                Ok(bytes) => Ok(ExtractedConformerParameters::decode(
-                    bytes,
-                    self.variant,
-                    MAX_CONFORMER_RESULT_ENVELOPE_BYTES as u64,
-                )
-                .map_err(|error| protocol(format!("invalid BCEX result: {error}")))?),
+                Ok(bytes) => {
+                    let conformer = ExtractedConformerParameters::decode(
+                        bytes,
+                        self.variant,
+                        MAX_CONFORMER_RESULT_ENVELOPE_BYTES as u64,
+                    )
+                    .map_err(|error| protocol(format!("invalid BCEX result: {error}")))?;
+                    let mmff = match observed.mmff_output.as_ref().ok_or_else(|| {
+                        protocol("successful conformer extraction lacks an MMFF result")
+                    })? {
+                        Ok(bytes) => Ok(decode_native_mmff_parameters(
+                            bytes,
+                            MAX_CONFORMER_RESULT_ENVELOPE_BYTES,
+                        )
+                        .map_err(|error| protocol(format!("invalid BMFX result: {error}")))?),
+                        Err(error) => Err(error.clone()),
+                    };
+                    Ok((conformer, mmff))
+                }
                 Err(error) => Err(error.clone()),
             };
             decoded.push(value);
         }
         let mut pack_records = Vec::new();
         let mut chunk_errors = Vec::new();
+        let mut chunk_mmff_parameters = Vec::new();
+        let mut chunk_mmff_errors = Vec::new();
         pack_records
             .try_reserve_exact(decoded.len())
             .map_err(|_| unavailable("cannot allocate conformer pack chunk"))?;
@@ -214,13 +236,25 @@ impl ConformerExtractionSession {
             .map_err(|_| unavailable("cannot allocate conformer error chunk"))?;
         for value in decoded {
             match value {
-                Ok(extracted) => {
+                Ok((extracted, mmff)) => {
                     pack_records.push(Some(extracted));
                     chunk_errors.push(None);
+                    match mmff {
+                        Ok(parameters) => {
+                            chunk_mmff_parameters.push(Some(parameters));
+                            chunk_mmff_errors.push(None);
+                        }
+                        Err(error) => {
+                            chunk_mmff_parameters.push(None);
+                            chunk_mmff_errors.push(Some(error));
+                        }
+                    }
                 }
                 Err(error) => {
                     pack_records.push(None);
                     chunk_errors.push(Some(error));
+                    chunk_mmff_parameters.push(None);
+                    chunk_mmff_errors.push(None);
                 }
             }
         }
@@ -237,6 +271,8 @@ impl ConformerExtractionSession {
                 }),
         );
         self.errors.extend(chunk_errors);
+        self.mmff_parameters.extend(chunk_mmff_parameters);
+        self.mmff_errors.extend(chunk_mmff_errors);
         self.pending = None;
         let next = self.read_next_chunk()?;
         self.pending = next.clone();
@@ -249,6 +285,8 @@ impl ConformerExtractionSession {
             return Err(protocol("conformer extraction session is not complete"));
         }
         if self.identities.len() != self.errors.len()
+            || self.identities.len() != self.mmff_parameters.len()
+            || self.identities.len() != self.mmff_errors.len()
             || self.identities.len() as u64 != self.expected_records
         {
             return Err(protocol(
@@ -277,6 +315,8 @@ impl ConformerExtractionSession {
             arrays,
             identities: self.identities,
             errors: self.errors,
+            mmff_parameters: self.mmff_parameters,
+            mmff_errors: self.mmff_errors,
             verified: self.verified,
         })
     }

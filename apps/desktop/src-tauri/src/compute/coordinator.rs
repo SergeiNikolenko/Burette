@@ -8,7 +8,9 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use burrete_compute_core::{build_tanimoto_graph, ConformerEnginePackArrays, SymmetricCsr};
+use burrete_compute_core::{
+    build_tanimoto_graph, ConformerEnginePackArrays, NativeMmffParameters, SymmetricCsr,
+};
 use burrete_compute_metal::{MetalRuntimeError, MetalTanimotoRuntime};
 use burrete_compute_protocol::{
     Backend, BackendPolicy, CapabilityEntry, CapabilityLimits, CapabilityMaturity,
@@ -123,6 +125,8 @@ struct PreparedConformerBatch {
     arrays: ConformerEnginePackArrays,
     identities: Vec<ConformerMoleculeIdentity>,
     errors: Vec<Option<String>>,
+    mmff_parameters: Vec<Option<NativeMmffParameters>>,
+    mmff_errors: Vec<Option<String>>,
 }
 
 #[derive(Debug)]
@@ -133,6 +137,7 @@ struct ComputedConformerBatch {
     stereo: Option<ConformerStereoComputation>,
     identities: Vec<ConformerMoleculeIdentity>,
     errors: Vec<Option<String>>,
+    mmff_errors: Vec<Option<String>>,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -519,6 +524,8 @@ impl ComputeCoordinator {
             arrays,
             identities,
             errors,
+            mmff_parameters,
+            mmff_errors,
             verified,
         } = completed;
         if verified.reference() != &frozen.reference {
@@ -568,6 +575,8 @@ impl ComputeCoordinator {
                 arrays,
                 identities,
                 errors,
+                mmff_parameters,
+                mmff_errors,
             },
         );
         Ok(snapshot)
@@ -714,6 +723,7 @@ impl ComputeCoordinator {
             request,
             prepared.arrays,
             &prepared.identities,
+            &prepared.mmff_parameters,
             distance_running.stages[2].effective_backend,
             distance_running.stages[3].effective_backend,
             match &ready.native_metal {
@@ -771,6 +781,7 @@ impl ComputeCoordinator {
             stereo: None,
             identities: prepared.identities,
             errors: prepared.errors,
+            mmff_errors: prepared.mmff_errors,
         };
         if ready
             .computed_conformers
@@ -1170,7 +1181,9 @@ impl ComputeCoordinator {
                 conformer_count: 0,
                 passed_count: 0,
                 best_etk_energy: None,
+                best_mmff_energy: None,
                 error: computed.errors[record].clone(),
+                mmff_error: computed.mmff_errors[record].clone(),
             })
             .collect::<Vec<_>>();
         for conformer in 0..computed.distance.conformer_count() {
@@ -1184,6 +1197,14 @@ impl ComputeCoordinator {
                         .best_etk_energy
                         .map_or(energy, |current| current.min(energy)),
                 );
+                if matches!(computed.distance.mmff_statuses[conformer], 0 | 1) {
+                    let energy = f64::from(computed.distance.mmff_energies[conformer]);
+                    assignments[record].best_mmff_energy = Some(
+                        assignments[record]
+                            .best_mmff_energy
+                            .map_or(energy, |current| current.min(energy)),
+                    );
+                }
             }
         }
         let grid_input = GridConformerAnalysisApplyInput {

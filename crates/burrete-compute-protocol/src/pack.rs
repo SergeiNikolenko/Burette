@@ -26,7 +26,10 @@ pub use records::{
     MOLECULAR_RECORDS_FILE_NAME, MOLECULAR_RECORDS_FILE_PATH, MOLECULAR_RECORDS_MEDIA_TYPE,
     ORDERED_RECORD_MOLECULE_IDENTITY_DOMAIN,
 };
-pub use result::{ResultPackManifest, ResultPackRef, CONFORMER_RESULT_ARRAY_NAMES};
+pub use result::{
+    ResultPackManifest, ResultPackRef, CONFORMER_RESULT_ARRAY_NAMES,
+    CONFORMER_RESULT_V2_ARRAY_NAMES,
+};
 
 #[cfg(test)]
 mod tests;

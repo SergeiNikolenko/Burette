@@ -806,6 +806,9 @@ fn analysis_label(value_id: &str) -> &str {
         "conformerPassedCount" => "Valid conformers",
         "conformerStatus" => "Conformer status",
         "bestEtkEnergy" => "Best ETK energy",
+        "bestMmff94sEnergy" => "Best MMFF94s energy",
+        "mmffOptimizationStatus" => "MMFF94s status",
+        "mmffOptimizationError" => "MMFF94s error",
         "conformerError" => "Conformer error",
         _ => value_id,
     }

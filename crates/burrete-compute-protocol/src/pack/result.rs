@@ -27,6 +27,23 @@ pub const CONFORMER_RESULT_ARRAY_NAMES: [&str; 11] = [
     "stereoFailureFlags",
 ];
 
+pub const CONFORMER_RESULT_V2_ARRAY_NAMES: [&str; 14] = [
+    "conformerAtomStarts",
+    "conformerMoleculeIndices",
+    "conformerOrdinals",
+    "embeddingAttemptCounts",
+    "embeddingEnergies",
+    "embeddingStatuses",
+    "etkEnergies",
+    "etkStatuses",
+    "mmffEnergies",
+    "mmffOptimizerKinds",
+    "mmffStatuses",
+    "positions",
+    "seedWords",
+    "stereoFailureFlags",
+];
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResultPackManifest {
@@ -66,16 +83,22 @@ impl ResultPackManifest {
     }
 
     fn validate_conformer_layout(&self) -> Result<(), ProtocolError> {
-        if self.layout.arrays.len() != CONFORMER_RESULT_ARRAY_NAMES.len()
+        let expected = match self.schema_version {
+            ResultPackVersion::ConformerV1 => CONFORMER_RESULT_ARRAY_NAMES.as_slice(),
+            ResultPackVersion::ConformerV2 => CONFORMER_RESULT_V2_ARRAY_NAMES.as_slice(),
+            ResultPackVersion::ClusterV1 => unreachable!("validated conformer workflow"),
+        };
+        if self.layout.arrays.len() != expected.len()
             || self
                 .layout
                 .arrays
                 .iter()
                 .map(|array| array.name.as_str())
-                .ne(CONFORMER_RESULT_ARRAY_NAMES)
+                .ne(expected.iter().copied())
         {
             return Err(ProtocolError::Validation(
-                "conformer ResultPack requires the exact canonical v1 array set".into(),
+                "conformer ResultPack requires the exact canonical array set for its version"
+                    .into(),
             ));
         }
         let conformers = first_dimension(self.array("conformerMoleculeIndices")?)?;
@@ -138,6 +161,29 @@ impl ResultPackManifest {
             PackedDType::U8,
             &[conformers],
         )?;
+        if self.schema_version == ResultPackVersion::ConformerV2 {
+            require_array(
+                self.array("mmffEnergies")?,
+                "mmff94s_energy",
+                Some("kcal/mol"),
+                PackedDType::F32,
+                &[conformers],
+            )?;
+            require_array(
+                self.array("mmffOptimizerKinds")?,
+                "mmff_optimizer_kind",
+                None,
+                PackedDType::U8,
+                &[conformers],
+            )?;
+            require_array(
+                self.array("mmffStatuses")?,
+                "mmff_optimization_status",
+                None,
+                PackedDType::U8,
+                &[conformers],
+            )?;
+        }
         let coordinate_atoms = first_dimension(self.array("positions")?)?;
         require_array(
             self.array("positions")?,
@@ -307,7 +353,10 @@ fn validate_compatibility(
 ) -> Result<(), ProtocolError> {
     match (workflow, version) {
         (WorkflowTemplateId::ClusterV1, ResultPackVersion::ClusterV1) => Ok(()),
-        (WorkflowTemplateId::ConformerV1, ResultPackVersion::ConformerV1) => Ok(()),
+        (
+            WorkflowTemplateId::ConformerV1,
+            ResultPackVersion::ConformerV1 | ResultPackVersion::ConformerV2,
+        ) => Ok(()),
         _ => Err(ProtocolError::Validation(
             "result pack schema is incompatible with its workflow".into(),
         )),

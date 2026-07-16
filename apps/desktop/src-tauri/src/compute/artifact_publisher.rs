@@ -534,7 +534,7 @@ pub(crate) fn materialize_conformer_artifact(
         writer.write("result/conformers.xyz", "chemical/x-xyz", &xyz)?;
         let result_pack_id = Uuid::new_v4();
         let result_pack_sha256 = pack_identity_sha256(&PackIdentity {
-            kind: "conformer.result-pack.v1",
+            kind: "conformer.result-pack.v2",
             pack_id: result_pack_id,
             job_id: job.job_id,
             snapshot_sha256: &job.frozen_source.snapshot_sha256,
@@ -542,7 +542,7 @@ pub(crate) fn materialize_conformer_artifact(
             layout: &result_layout,
         })?;
         let result_manifest = ResultPackManifest {
-            schema_version: ResultPackVersion::ConformerV1,
+            schema_version: ResultPackVersion::ConformerV2,
             result_pack_id,
             result_pack_sha256,
             job_id: job.job_id,
@@ -1066,6 +1066,21 @@ fn write_conformer_results(
         "application/octet-stream",
         &distance.etk_statuses,
     )?;
+    let mmff_energies = writer.write(
+        "result/mmff-energies.bin",
+        "application/octet-stream",
+        &encode_f32(&distance.mmff_energies),
+    )?;
+    let mmff_optimizer_kinds = writer.write(
+        "result/mmff-optimizer-kinds.bin",
+        "application/octet-stream",
+        &distance.mmff_optimizer_kinds,
+    )?;
+    let mmff_statuses = writer.write(
+        "result/mmff-statuses.bin",
+        "application/octet-stream",
+        &distance.mmff_statuses,
+    )?;
     let positions = writer.write(
         "result/positions.bin",
         "application/octet-stream",
@@ -1104,6 +1119,9 @@ fn write_conformer_results(
         embedding_statuses.clone(),
         etk_energies.clone(),
         etk_statuses.clone(),
+        mmff_energies.clone(),
+        mmff_optimizer_kinds.clone(),
+        mmff_statuses.clone(),
         positions.clone(),
         seeds.clone(),
         stereo_flags.clone(),
@@ -1182,6 +1200,34 @@ fn write_conformer_results(
             1,
         )?,
         packed_array_with_unit(
+            "mmffEnergies",
+            "mmff94s_energy",
+            Some("kcal/mol"),
+            &mmff_energies,
+            PackedDType::F32,
+            vec![conformers],
+            PackedByteOrder::LittleEndian,
+            4,
+        )?,
+        packed_array(
+            "mmffOptimizerKinds",
+            "mmff_optimizer_kind",
+            &mmff_optimizer_kinds,
+            PackedDType::U8,
+            vec![conformers],
+            PackedByteOrder::NotApplicable,
+            1,
+        )?,
+        packed_array(
+            "mmffStatuses",
+            "mmff_optimization_status",
+            &mmff_statuses,
+            PackedDType::U8,
+            vec![conformers],
+            PackedByteOrder::NotApplicable,
+            1,
+        )?,
+        packed_array_with_unit(
             "positions",
             "cartesian_position",
             Some("angstrom"),
@@ -1240,8 +1286,29 @@ fn encode_conformer_xyz(
     xyz.try_reserve(capacity).map_err(|_| {
         ComputeCoordinatorError::Unavailable("cannot allocate conformer XYZ".into())
     })?;
-    for conformer in 0..distance.conformer_count() {
+    let mut ranked = (0..distance.conformer_count()).collect::<Vec<_>>();
+    ranked.sort_by(|left, right| {
+        distance.conformer_molecule_indices[*left]
+            .cmp(&distance.conformer_molecule_indices[*right])
+            .then_with(|| {
+                mmff_rank_group(distance.mmff_statuses[*left])
+                    .cmp(&mmff_rank_group(distance.mmff_statuses[*right]))
+            })
+            .then_with(|| distance.mmff_energies[*left].total_cmp(&distance.mmff_energies[*right]))
+            .then_with(|| {
+                distance.conformer_ordinals[*left].cmp(&distance.conformer_ordinals[*right])
+            })
+    });
+    let mut previous_molecule = None;
+    let mut energy_rank = 0_u32;
+    for conformer in ranked {
         let molecule = distance.conformer_molecule_indices[conformer] as usize;
+        if previous_molecule == Some(molecule) {
+            energy_rank += 1;
+        } else {
+            previous_molecule = Some(molecule);
+            energy_rank = 1;
+        }
         let atom_start =
             usize::try_from(distance.conformer_atom_starts[conformer]).map_err(|_| {
                 ComputeCoordinatorError::Protocol("conformer atom offset exceeds host range".into())
@@ -1275,12 +1342,21 @@ fn encode_conformer_xyz(
             ));
         }
         writeln!(xyz, "{}", atom_end - atom_start).map_err(formatting_error)?;
+        let mmff_status = distance.mmff_statuses[conformer];
+        let mmff_energy = if mmff_status == 4 {
+            "unavailable".into()
+        } else {
+            format!("{:.8}", distance.mmff_energies[conformer])
+        };
         writeln!(
             xyz,
-            "Burrete conformer molecule={} ordinal={} etkEnergy={:.8} stereo={}",
+            "Burrete conformer molecule={} energyRank={} ordinal={} etkEnergy={:.8} mmff94sEnergy={} mmffStatus={} stereo={}",
             molecule,
+            energy_rank,
             distance.conformer_ordinals[conformer],
             distance.etk_energies[conformer],
+            mmff_energy,
+            mmff_status_label(mmff_status),
             if stereo.failure_flags[conformer] == 0 {
                 "passed"
             } else {
@@ -1306,6 +1382,24 @@ fn encode_conformer_xyz(
         }
     }
     Ok(xyz.into_bytes())
+}
+
+fn mmff_rank_group(status: u8) -> u8 {
+    match status {
+        0 | 1 => 0,
+        2 | 3 => 1,
+        _ => 2,
+    }
+}
+
+fn mmff_status_label(status: u8) -> &'static str {
+    match status {
+        0 => "converged-gradient",
+        1 => "converged-step",
+        2 => "line-search-exhausted",
+        3 => "max-iterations",
+        _ => "unavailable",
+    }
 }
 
 fn formatting_error(_: std::fmt::Error) -> ComputeCoordinatorError {

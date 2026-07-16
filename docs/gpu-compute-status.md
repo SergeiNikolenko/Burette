@@ -6,8 +6,9 @@ variant/seed/adaptive batching, packaged native RDKit extraction, raw job
 submission, adaptive CPU/Metal distance-geometry execution, Metal ETK
 refinement, stereo-aware retry, and final Metal stereo validation implemented;
 conformer EnginePack/ResultPack publication and Grid-to-Mol* workflow
-implemented; seven-term MMFF CPU/Metal evaluation implemented; production
-release, MMFF optimization workflow, and scale proof pending
+implemented; seven-term MMFF94s extraction, CPU/Metal optimization, retry,
+energy-ranked ResultPack v2/XYZ publication, and Grid writeback implemented;
+production release, scientific-corpus parity, and scale proof pending
 
 Updated: 2026-07-16
 
@@ -76,18 +77,18 @@ embedding chirality helpers, and emits a bounded little-endian binary ABI that
 maps directly to the shared EnginePack arrays. It is separate from renderer
 MinimalLib and has no Python runtime. The worker-only ES module and WASM pair
 are now covered by the vendored asset lock, verified by the native engine
-catalog, and bound to the exact RDKit source revision and BCEX ABI. Broader
-RDKit/upstream fixtures, durable publication, and UI remain incomplete. The
-paired `conformer.result-pack.v1` ABI is defined and
+catalog, and bound to the exact RDKit source revision, BCEX ABI, and BMFX ABI.
+Broader RDKit/upstream fixtures and packaged UI proof remain incomplete. The
+paired `conformer.result-pack.v2` ABI is defined and
 strictly validates ragged coordinate offsets, Cartesian positions, molecule and
 conformer identity, DG and ETK status/objective values, stereo failure flags,
-embedding attempt counts, and the exact 128-bit seed words used for every
-generated structure.
+embedding attempt counts, MMFF94s energies, explicit optimizer and convergence
+status, and the exact 128-bit seed words used for every generated structure.
 
 The extractor ABI now has a bounded binary Web Worker and Rust decoder. The
-worker verifies the exported RDKit revision and BCEX version, emits raw BCER
-envelopes through transferable buffers, and never serializes chemistry arrays
-as JSON. The Rust path validates every header, count, alignment,
+worker verifies the exported RDKit revision plus BCEX and BMFX versions, emits
+raw BCER v2 envelopes through transferable buffers, and never serializes
+chemistry arrays as JSON. The Rust path validates every header, count, alignment,
 index, numeric domain, and parallel-array length before assembly. A canonical
 EnginePack builder then globalizes molecule-local atom indices, preserves
 invalid source records with empty offset spans, constructs all seven ragged
@@ -160,8 +161,9 @@ reduce a known MMFF bond objective before the runtime becomes available.
 The pinned native RDKit adapter source also exposes a separate `BMFX` v1 MMFF94/
 MMFF94s parameter boundary with partial charges and seven fixed-width term
 groups. Its C++ serializer and strict Rust decoder are tested; rebuilding and
-vendoring the augmented WASM artifact is the next packaging gate, so the
-installed extractor must not yet claim this operation.
+vendoring the augmented WASM artifact is complete. The hash-locked packaged
+module was executed against `CCO` and returned both `BCEX` and `BMFX` payloads
+from the pinned RDKit revision.
 A deterministic optimization oracle now selects full BFGS through 32 atoms and
 bounded L-BFGS above that threshold. Both paths share Armijo line search,
 gradient/step convergence, and distinct line-search/max-iteration outcomes.
@@ -177,9 +179,11 @@ the adaptive scheduler uses the same seven position-sized buffers and
 three-way transient history peak.
 This proves the iterative DG distance-bound optimizer, ETK refinement, stereo
 evaluation primitives, deterministic stereo-aware retries, and MMFF
-single-point GPU evaluation. Conformer artifact publication and the
-Grid-to-Mol* workflow are implemented separately; MMFF optimization remains
-unfinished.
+optimization primitives. The durable conformer workflow now applies MMFF94s
+after ETK, retries non-converged structures with a conservative bounded policy,
+validates stereochemistry after optimization, publishes explicit unavailable
+or non-converged states without false GPU claims, ranks converged structures by
+MMFF94s energy, and writes the best converged energy back to Grid.
 
 The durable executor now consumes the admitted EnginePack without an `N x N`
 allocation, rebuilds the exact adaptive `molecule x conformer` schedule, derives
@@ -356,16 +360,19 @@ separate product increments.
   finite-difference gradient validation, rebatching invariance, and memory
   rejection checks. Focused protocol/core/Metal clippy also passes with warnings
   denied.
-- Thirteen focused desktop conformer tests pass, including independent GPU
+- Twenty-one focused desktop conformer tests pass, including independent GPU
   admission for both numeric stages, honest mixed-backend fallback, bounded
   preflight/result memory rejection, canonical queued snapshot construction,
+  BMFX decoding, MMFF94s CPU execution and retry, ResultPack v2/Grid writeback,
   and the existing process-boundary conformer safeguards.
-- The pinned RDKit extractor was built with Emscripten 3.1.74 from exact RDKit
+- The pinned RDKit extractor was rebuilt with Emscripten 4.0.10 from exact RDKit
   commit `276b5a662302c6a548ac4f1363c066f3258e3a20`. Its exported revision and
-  BCEX ABI were executed for all eight variants. The packaged JS SHA-256 is
-  `d359d9a41a496d9cb28ff72414a12f90a2b976a31714daba4a95148294413f55`; the
+  BCEX/BMFX ABIs were executed directly from the packaged artifacts; `CCO`
+  produced `BCEX` and `BMFX` payloads of 1,568 and 3,040 bytes. The packaged JS
+  SHA-256 is
+  `ccf362fdb1f8077d7015a4f851a3ac2cb230132ab961a2876d43152d707a4882`; the
   WASM SHA-256 is
-  `69d58c733fa9d409818cbdcc623c0a45db320404262982fc70830056c448c509`.
+  `8ba8ab76a9aa31c0ee02f9e50fdcd4078520b882d6a98cb254a165775348a589`.
 - The raw Grid submission integration test continues through deterministic
   reference execution, covering six conformers, CPU-reference validation,
   atomic EnginePack/ResultPack publication, manifest readback, and durable job
@@ -396,9 +403,9 @@ separate product increments.
   reject unknown artifact entries, and disable compute after artifact
   corruption.
 
-These checks prove the source implementation, an isolated current v5 runtime
+These checks prove the source implementation, an isolated current v10 runtime
 generation, and the earlier unique v1 ad-hoc development package, not a current
-v5 desktop package or production release. They do not replace the scientific
+v10 desktop package or production release. They do not replace the scientific
 corpus, 100k-scale benchmark, Developer ID hardened-runtime signature,
 notarization, or visual UI-triggered clustering evidence.
 
@@ -427,8 +434,9 @@ fixed order below:
 
 1. complete conformer scientific-corpus and packaged UI release gates for the
    implemented Grid-to-Mol* native workflow;
-2. finish native MMFF94/MMFF94s parameter extraction, analytic gradients,
-   per-molecule BFGS/L-BFGS policy, retry, and the Grid/3D workflow;
+2. finish MMFF94/MMFF94s scientific-corpus parity, expose both variants and a
+   standalone geometry-optimization action, and replace the bounded numerical
+   gradient with an independently validated analytic Metal gradient;
 3. quaternion/Horn alignment, RMSD, shape, electrostatic, ensemble, and docking
    pose scoring;
 4. audited semiempirical methods method by method, starting with a native CPU

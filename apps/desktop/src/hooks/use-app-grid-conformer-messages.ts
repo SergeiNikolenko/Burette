@@ -68,7 +68,7 @@ export function useAppGridConformerMessages({
         const result = await runConformerWorkflow(documentId, sourceIndexes, (phase) => {
           const labels = {
             extracting: "Extracting ETKDG constraints...",
-            embedding: "Generating conformers on Metal...",
+            embedding: "Generating and MMFF94s-optimizing conformers...",
             stereo: "Validating stereochemistry on Metal...",
             validation: "Checking CPU reference parity...",
             publishing: "Publishing conformers and updating Grid...",
@@ -82,7 +82,7 @@ export function useAppGridConformerMessages({
         );
         const backend = result.backend === "nativeMetal" ? "Metal GPU" : "reference CPU";
         pushStatus(
-          `Generated ${result.passedCount.toLocaleString()} valid conformers via ${backend} and opened the ensemble in Molstar.`,
+          `Generated and MMFF94s-ranked ${result.passedCount.toLocaleString()} valid conformers via ${backend} and opened the ensemble in Molstar.`,
           result.gridApplied ? "success" : "error",
           result.gridWarning ? [result.gridWarning] : undefined,
         );
