@@ -28,7 +28,7 @@
       {
         "relativePath": "pack/data.bin",
         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "byteLength": 64,
+        "byteLength": 512,
         "mediaType": "application/octet-stream"
       }
     ],
@@ -41,12 +41,12 @@
         "dtype": "u64",
         "shape": [
           2,
-          4
+          32
         ],
         "byteOrder": "littleEndian",
         "alignment": 8,
         "byteOffset": 0,
-        "byteLength": 64
+        "byteLength": 512
       }
     ]
   },

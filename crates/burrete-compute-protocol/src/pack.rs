@@ -9,7 +9,10 @@ pub use common::{
     EnginePackVersion, MolecularSnapshotVersion, MAX_JSON_SAFE_INTEGER, MAX_PACK_ARRAYS,
     MAX_PACK_BYTES, MAX_PACK_FILES, MAX_PACK_RECORDS,
 };
-pub use engine::{EnginePackManifest, EnginePackRef};
+pub use engine::{
+    EnginePackManifest, EnginePackRef, CLUSTER_FINGERPRINT_ARRAY_NAME,
+    CLUSTER_FINGERPRINT_SEMANTIC, CLUSTER_FINGERPRINT_WORDS,
+};
 pub use layout::{
     PackedArrayDescriptor, PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout,
 };

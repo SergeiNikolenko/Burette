@@ -14,6 +14,8 @@ use burrete_compute_protocol::{
 
 pub const FINGERPRINT_BITS: usize = 2_048;
 pub const FINGERPRINT_WORDS: usize = FINGERPRINT_BITS / u64::BITS as usize;
+pub const FINGERPRINT_METAL_WORDS: usize = FINGERPRINT_BITS / u32::BITS as usize;
+pub const FINGERPRINT_BYTES: usize = FINGERPRINT_BITS / u8::BITS as usize;
 const MEMORY_ACCOUNTING_HEADROOM_BYTES: u64 = 64 * 1024;
 
 /// One fixed-width Morgan fingerprint in increasing bit/word order.
@@ -33,6 +35,38 @@ impl Fingerprint2048 {
 
     pub const fn words(&self) -> &[u64; FINGERPRINT_WORDS] {
         &self.words
+    }
+
+    /// Decodes the canonical EnginePack little-endian `u64[32]` row.
+    pub fn from_le_bytes(bytes: [u8; FINGERPRINT_BYTES]) -> Self {
+        let mut words = [0_u64; FINGERPRINT_WORDS];
+        for (word, chunk) in words.iter_mut().zip(bytes.chunks_exact(8)) {
+            *word = u64::from_le_bytes(chunk.try_into().expect("fixed eight-byte chunk"));
+        }
+        Self { words }
+    }
+
+    /// Encodes the canonical EnginePack little-endian `u64[32]` row.
+    pub fn to_le_bytes(self) -> [u8; FINGERPRINT_BYTES] {
+        let mut bytes = [0_u8; FINGERPRINT_BYTES];
+        for (chunk, word) in bytes.chunks_exact_mut(8).zip(self.words) {
+            chunk.copy_from_slice(&word.to_le_bytes());
+        }
+        bytes
+    }
+
+    /// Returns the Metal `uint32[64]` view of the canonical row.
+    ///
+    /// Each canonical `u64` is split low word first, then high word. On the
+    /// supported little-endian Apple Silicon runtime this is byte-identical to
+    /// the persisted row and can be uploaded without repacking.
+    pub fn to_metal_words(self) -> [u32; FINGERPRINT_METAL_WORDS] {
+        let mut words = [0_u32; FINGERPRINT_METAL_WORDS];
+        for (index, word) in self.words.into_iter().enumerate() {
+            words[index * 2] = word as u32;
+            words[index * 2 + 1] = (word >> 32) as u32;
+        }
+        words
     }
 
     pub fn tanimoto_counts(&self, other: &Self) -> TanimotoCounts {
