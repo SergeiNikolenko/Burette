@@ -64,10 +64,10 @@ pub use mmff_extract::{
     decode_native_mmff_parameters, MmffExtractError, NativeMmffParameters,
 };
 pub use semiempirical::{
-    rm1_multipole_parameters, rm1_nuclear_repulsion_energy, rm1_parameters,
+    evaluate_rm1, rm1_multipole_parameters, rm1_nuclear_repulsion_energy, rm1_parameters,
     rm1_rotated_pair_integrals, rm1_sp_overlap, rm1_two_center_integrals,
     solve_closed_shell_scf, Rm1MultipoleParameters, Rm1OverlapMatrix,
-    Rm1RotatedPairIntegrals, Rm1TwoCenterIntegrals, SemiempiricalAtom,
+    Rm1Evaluation, Rm1RotatedPairIntegrals, Rm1TwoCenterIntegrals, SemiempiricalAtom,
     SemiempiricalElementParameters, SemiempiricalError, SemiempiricalMethod,
     SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfResult,
     SemiempiricalScfStatus,

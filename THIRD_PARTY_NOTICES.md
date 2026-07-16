@@ -82,3 +82,7 @@ The quaternion molecular-frame rotation and sp pair-tensor contraction are
 adapted from `seqm/seqm_functions/two_elec_two_center_int.py` at that revision.
 The first- and second-row sp overlap equations are adapted from
 `seqm/seqm_functions/diat_overlap_PM6_SP.py` at that revision.
+The RM1 NDDO core-Hamiltonian, one-/two-center Fock contractions, and electronic
+energy equation are adapted from `seqm/seqm_functions/fock.py` and `energy.py`
+at that revision. Burrete's bounded SCF/DIIS driver and eigensolver remain
+independently written.
