@@ -8,7 +8,10 @@ mod two_center;
 
 pub use overlap::{rm1_sp_overlap, Rm1OverlapMatrix};
 pub use parameters::{rm1_parameters, SemiempiricalElementParameters};
-pub use rm1::{evaluate_rm1, Rm1Evaluation};
+pub use rm1::{
+    contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_pair_contractor, rm1_fock_pairs,
+    Rm1Evaluation, Rm1FockPair,
+};
 pub use rotation::{rm1_rotated_pair_integrals, Rm1RotatedPairIntegrals};
 pub use two_center::{
     rm1_multipole_parameters, rm1_two_center_integrals, Rm1MultipoleParameters,
