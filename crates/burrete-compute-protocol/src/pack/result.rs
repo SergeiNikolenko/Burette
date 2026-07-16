@@ -6,10 +6,23 @@ use uuid::Uuid;
 use super::{
     common::{validate_json_safe, validate_sha256, validate_uuid, MAX_ENGINE_PACK_REFS},
     engine::EnginePackRef,
-    layout::{PackedFileDescriptor, PackedLayout},
+    layout::{
+        PackedArrayDescriptor, PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout,
+    },
     molecular::MolecularSnapshotRef,
 };
 use crate::{ProtocolError, ResultPackVersion, WorkflowTemplateId};
+
+pub const CONFORMER_RESULT_ARRAY_NAMES: [&str; 8] = [
+    "conformerAtomStarts",
+    "conformerMoleculeIndices",
+    "conformerOrdinals",
+    "embeddingAttemptCounts",
+    "embeddingEnergies",
+    "embeddingStatuses",
+    "positions",
+    "seedWords",
+];
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -40,10 +53,95 @@ impl ResultPackManifest {
         }
         let reserved_paths = self.validate_engine_refs()?;
         self.layout.validate()?;
+        if self.workflow_template == WorkflowTemplateId::ConformerV1 {
+            self.validate_conformer_layout()?;
+        }
         for path in reserved_paths {
             self.layout.reject_file_path(path, "referenced manifest")?;
         }
         Ok(())
+    }
+
+    fn validate_conformer_layout(&self) -> Result<(), ProtocolError> {
+        if self.layout.arrays.len() != CONFORMER_RESULT_ARRAY_NAMES.len()
+            || self
+                .layout
+                .arrays
+                .iter()
+                .map(|array| array.name.as_str())
+                .ne(CONFORMER_RESULT_ARRAY_NAMES)
+        {
+            return Err(ProtocolError::Validation(
+                "conformer ResultPack requires the exact canonical v1 array set".into(),
+            ));
+        }
+        let conformers = first_dimension(self.array("conformerMoleculeIndices")?)?;
+        let starts = conformers.checked_add(1).ok_or_else(|| {
+            ProtocolError::Validation("conformer result count overflowed".into())
+        })?;
+        require_array(
+            self.array("conformerAtomStarts")?,
+            "conformer_atom_offsets",
+            None,
+            PackedDType::U64,
+            &[starts],
+        )?;
+        require_array(
+            self.array("conformerMoleculeIndices")?,
+            "conformer_molecule_index",
+            None,
+            PackedDType::U32,
+            &[conformers],
+        )?;
+        require_array(
+            self.array("conformerOrdinals")?,
+            "conformer_ordinal",
+            None,
+            PackedDType::U32,
+            &[conformers],
+        )?;
+        require_array(
+            self.array("embeddingAttemptCounts")?,
+            "embedding_attempt_count",
+            None,
+            PackedDType::U16,
+            &[conformers],
+        )?;
+        require_array(
+            self.array("embeddingEnergies")?,
+            "distance_geometry_objective",
+            None,
+            PackedDType::F32,
+            &[conformers],
+        )?;
+        require_array(
+            self.array("embeddingStatuses")?,
+            "conformer_embedding_status",
+            None,
+            PackedDType::U8,
+            &[conformers],
+        )?;
+        let coordinate_atoms = first_dimension(self.array("positions")?)?;
+        require_array(
+            self.array("positions")?,
+            "cartesian_position",
+            Some("angstrom"),
+            PackedDType::F32,
+            &[coordinate_atoms, 3],
+        )?;
+        require_array(
+            self.array("seedWords")?,
+            "conformer_seed_words",
+            None,
+            PackedDType::U32,
+            &[conformers, 4],
+        )
+    }
+
+    fn array(&self, name: &str) -> Result<&PackedArrayDescriptor, ProtocolError> {
+        self.layout.array(name).ok_or_else(|| {
+            ProtocolError::Validation(format!("conformer ResultPack lacks {name}"))
+        })
     }
 
     fn validate_engine_refs(&self) -> Result<BTreeSet<&str>, ProtocolError> {
@@ -76,6 +174,40 @@ impl ResultPackManifest {
         }
         Ok(reserved_paths)
     }
+}
+
+fn first_dimension(array: &PackedArrayDescriptor) -> Result<u64, ProtocolError> {
+    array.shape.first().copied().ok_or_else(|| {
+        ProtocolError::Validation(format!("packed array {} has no dimensions", array.name))
+    })
+}
+
+fn require_array(
+    array: &PackedArrayDescriptor,
+    semantic: &str,
+    unit: Option<&str>,
+    dtype: PackedDType,
+    shape: &[u64],
+) -> Result<(), ProtocolError> {
+    let alignment = dtype.byte_width() as u32;
+    let byte_order = if dtype.byte_width() == 1 {
+        PackedByteOrder::NotApplicable
+    } else {
+        PackedByteOrder::LittleEndian
+    };
+    if array.semantic != semantic
+        || array.unit.as_deref() != unit
+        || array.dtype != dtype
+        || array.shape != shape
+        || array.byte_order != byte_order
+        || array.alignment < alignment
+    {
+        return Err(ProtocolError::Validation(format!(
+            "conformer result array {} violates its v1 contract",
+            array.name
+        )));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -151,8 +283,9 @@ fn validate_compatibility(
 ) -> Result<(), ProtocolError> {
     match (workflow, version) {
         (WorkflowTemplateId::ClusterV1, ResultPackVersion::ClusterV1) => Ok(()),
+        (WorkflowTemplateId::ConformerV1, ResultPackVersion::ConformerV1) => Ok(()),
         _ => Err(ProtocolError::Validation(
-            "cluster result packs are compatible only with cluster.v1".into(),
+            "result pack schema is incompatible with its workflow".into(),
         )),
     }
 }

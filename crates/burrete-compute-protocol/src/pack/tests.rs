@@ -212,6 +212,43 @@ fn conformer_engine_manifest() -> EnginePackManifest {
     }
 }
 
+fn conformer_engine_ref() -> EnginePackRef {
+    EnginePackRef::from_manifest(
+        &conformer_engine_manifest(),
+        file("conformer-engine/manifest.json", 128, "application/json"),
+    )
+    .expect("derive conformer engine pack reference")
+}
+
+fn conformer_result_manifest() -> ResultPackManifest {
+    let mut arrays = vec![
+        conformer_array("conformerAtomStarts", "conformer_atom_offsets", None, PackedDType::U64, vec![5]),
+        conformer_array("conformerMoleculeIndices", "conformer_molecule_index", None, PackedDType::U32, vec![4]),
+        conformer_array("conformerOrdinals", "conformer_ordinal", None, PackedDType::U32, vec![4]),
+        conformer_array("embeddingAttemptCounts", "embedding_attempt_count", None, PackedDType::U16, vec![4]),
+        conformer_array("embeddingEnergies", "distance_geometry_objective", None, PackedDType::F32, vec![4]),
+        conformer_array("embeddingStatuses", "conformer_embedding_status", None, PackedDType::U8, vec![4]),
+        conformer_array("positions", "cartesian_position", Some("angstrom"), PackedDType::F32, vec![10, 3]),
+        conformer_array("seedWords", "conformer_seed_words", None, PackedDType::U32, vec![4, 4]),
+    ];
+    arrays.sort_by(|left, right| left.name.cmp(&right.name));
+    let files = arrays
+        .iter()
+        .map(|array| file(&array.file_relative_path, array.byte_length, "application/octet-stream"))
+        .collect();
+    ResultPackManifest {
+        schema_version: ResultPackVersion::ConformerV1,
+        result_pack_id: Uuid::from_u128(21),
+        result_pack_sha256: hash('9'),
+        job_id: Uuid::from_u128(22),
+        workflow_template: WorkflowTemplateId::ConformerV1,
+        molecular_snapshot: snapshot_ref(),
+        engine_packs: vec![conformer_engine_ref()],
+        layout: PackedLayout { files, arrays },
+        created_at_ms: 12,
+    }
+}
+
 fn result_manifest() -> ResultPackManifest {
     ResultPackManifest {
         schema_version: ResultPackVersion::ClusterV1,
@@ -261,6 +298,35 @@ fn round_trips_and_binds_all_pack_contracts() {
     let decoded: ResultPackManifest =
         serde_json::from_slice(&encoded).expect("decode result pack manifest");
     assert_eq!(decoded, result);
+}
+
+#[test]
+fn conformer_result_pack_binds_coordinates_status_energy_and_seed_provenance() {
+    let manifest = conformer_result_manifest();
+    assert_eq!(manifest.validate(), Ok(()));
+    let reference = ResultPackRef::from_manifest(
+        &manifest,
+        file("conformer-result/manifest.json", 128, "application/json"),
+    )
+    .expect("derive conformer result reference");
+    assert_eq!(reference.validate_against_manifest(&manifest), Ok(()));
+
+    let mut wrong_unit = manifest.clone();
+    wrong_unit
+        .layout
+        .arrays
+        .iter_mut()
+        .find(|array| array.name == "positions")
+        .expect("positions")
+        .unit = Some("nanometer".into());
+    assert!(wrong_unit.validate().is_err());
+
+    let mut missing_seed = manifest.clone();
+    missing_seed
+        .layout
+        .arrays
+        .retain(|array| array.name != "seedWords");
+    assert!(missing_seed.validate().is_err());
 }
 
 #[test]

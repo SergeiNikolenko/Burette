@@ -66,8 +66,11 @@ stores molecular topology and all shared DG, chiral, torsion, improper, ETK
 distance, and stereo constraints once per molecule in 26 typed canonical
 arrays. Manifest validation rejects missing, extra, reordered, misshaped, or
 unit-incompatible arrays before execution. This remains runtime foundation:
-native parameter extraction, DG/ETK kernels, durable ResultPacks, and UI are not
-yet complete.
+native parameter extraction, DG/ETK kernels, durable publication, and UI are
+not yet complete. The paired `conformer.result-pack.v1` ABI is defined and
+strictly validates ragged coordinate offsets, Cartesian positions, molecule and
+conformer identity, embedding status/objective/attempt counts, and the exact
+128-bit seed words used for every generated structure.
 
 ## Product Truth By Surface
 
