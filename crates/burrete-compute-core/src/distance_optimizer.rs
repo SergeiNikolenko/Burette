@@ -2,7 +2,10 @@
 
 use std::collections::VecDeque;
 
-use crate::{evaluate_distance_constraints, DistanceConstraint, DistanceGeometryError};
+use crate::{
+    evaluate_distance_constraints, evaluate_etk_geometry, DistanceConstraint,
+    DistanceGeometryError, EtkGeometryTerms,
+};
 
 const MAX_OPTIMIZER_ITERATIONS: u32 = 10_000;
 const MAX_LINE_SEARCH_STEPS: u8 = 64;
@@ -97,11 +100,46 @@ pub fn optimize_distance_geometry(
     constraints: &[DistanceConstraint],
     options: DistanceGeometryOptimizationOptions,
 ) -> Result<DistanceGeometryOptimization, DistanceGeometryError> {
+    optimize_geometry(initial_positions, options, |positions| {
+        let evaluation = evaluate_distance_constraints(positions, constraints)?;
+        Ok(ObjectiveEvaluation {
+            energy: evaluation.total_energy(),
+            gradients: evaluation.gradients,
+        })
+    })
+}
+
+pub fn optimize_etk_geometry(
+    initial_positions: &[[f32; 4]],
+    terms: EtkGeometryTerms<'_>,
+    options: DistanceGeometryOptimizationOptions,
+) -> Result<DistanceGeometryOptimization, DistanceGeometryError> {
+    optimize_geometry(initial_positions, options, |positions| {
+        let evaluation =
+            evaluate_etk_geometry(positions, terms.torsions, terms.impropers, terms.distances)
+                .map_err(|error| invalid(format!("ETK optimizer objective is invalid: {error}")))?;
+        Ok(ObjectiveEvaluation {
+            energy: evaluation.energy,
+            gradients: evaluation.gradients,
+        })
+    })
+}
+
+struct ObjectiveEvaluation {
+    energy: f32,
+    gradients: Vec<[f32; 4]>,
+}
+
+fn optimize_geometry(
+    initial_positions: &[[f32; 4]],
+    options: DistanceGeometryOptimizationOptions,
+    evaluate: impl Fn(&[[f32; 4]]) -> Result<ObjectiveEvaluation, DistanceGeometryError>,
+) -> Result<DistanceGeometryOptimization, DistanceGeometryError> {
     let options = options.validate()?;
     let mut positions = initial_positions.to_vec();
-    let mut evaluation = evaluate_distance_constraints(&positions, constraints)?;
+    let mut evaluation = evaluate(&positions)?;
     let mut gradient = flatten(&evaluation.gradients);
-    let mut energy = evaluation.total_energy();
+    let mut energy = evaluation.energy;
     let mut scaled_gradient_max = scaled_gradient_maximum(&positions, &gradient, energy);
     if scaled_gradient_max < options.gradient_tolerance {
         return Ok(result(
@@ -160,8 +198,8 @@ pub fn optimize_distance_geometry(
                 .map(|(position, step)| position + line_step * step)
                 .collect::<Vec<_>>();
             let trial_positions = unflatten(&trial_flat)?;
-            let trial_evaluation = evaluate_distance_constraints(&trial_positions, constraints)?;
-            let trial_energy = trial_evaluation.total_energy();
+            let trial_evaluation = evaluate(&trial_positions)?;
+            let trial_energy = trial_evaluation.energy;
             if trial_energy <= old_energy + options.armijo_coefficient * line_step * slope {
                 accepted = Some((trial_positions, trial_evaluation, trial_energy));
                 break;
@@ -439,5 +477,57 @@ mod tests {
         );
         assert_eq!(result.iterations, 0);
         assert_eq!(result.positions, positions);
+    }
+
+    #[test]
+    fn etk_optimizer_reduces_the_reference_objective_deterministically() {
+        let positions = [
+            [0.1, 0.2, -0.3, 0.0],
+            [1.2, -0.1, 0.4, 0.0],
+            [2.0, 0.8, -0.2, 0.0],
+            [2.7, 1.1, 0.9, 0.0],
+        ];
+        let torsions = [crate::EtkTorsionConstraint {
+            atoms: [0, 1, 2, 3],
+            coefficients: [0.7, 0.3, 0.2, 0.0, 0.1, 0.0],
+            signs: [1, -1, 1, 0, -1, 0],
+        }];
+        let impropers = [crate::EtkImproperConstraint {
+            atoms: [3, 2, 1, 0],
+            weight: 0.4,
+        }];
+        let distances = [crate::EtkDistanceConstraint {
+            atoms: [0, 3],
+            lower: 0.5,
+            upper: 1.5,
+            weight: 0.8,
+        }];
+        let terms = EtkGeometryTerms {
+            torsions: &torsions,
+            impropers: &impropers,
+            distances: &distances,
+        };
+        let initial = evaluate_etk_geometry(&positions, &torsions, &impropers, &distances)
+            .expect("initial ETK energy")
+            .energy;
+        let first = optimize_etk_geometry(
+            &positions,
+            terms,
+            DistanceGeometryOptimizationOptions::default(),
+        )
+        .expect("optimize ETK geometry");
+        let second = optimize_etk_geometry(
+            &positions,
+            terms,
+            DistanceGeometryOptimizationOptions::default(),
+        )
+        .expect("repeat ETK optimization");
+        assert_eq!(first, second);
+        assert!(first.energy < initial);
+        assert!(matches!(
+            first.status,
+            DistanceGeometryOptimizationStatus::ConvergedGradient
+                | DistanceGeometryOptimizationStatus::ConvergedStep
+        ));
     }
 }

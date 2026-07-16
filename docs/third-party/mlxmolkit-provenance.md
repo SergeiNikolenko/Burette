@@ -53,7 +53,9 @@ provenance and scientific behavior still require review.
 | `mlxmolkit/dg_extract.py` | DG bounds/parameters | reference-only; native RDKit adapter staged | nvMolKit remains blocked; production extraction calls pinned RDKit directly |
 | `mlxmolkit/etk_extract.py` | ETK torsions/constraints | reference-only; native RDKit adapter staged | All variant presets are selected from pinned RDKit C++ constants |
 | `mlxmolkit/conformer_metal.py` | DG Metal logic | pending-audit | Seed currently depends on chunk schedule |
-| `mlxmolkit/etk_metal.py` | ETK Metal logic | pending-audit | Prove all eight requested variants independently |
+| `mlxmolkit/etk_energy_metal.py` | ETK objective reference | formula-only reference; independent CPU/Metal objective shipped | Prove all eight requested variants independently; secondary notices remain release-blocking |
+| `mlxmolkit/etk_minimize_metal.py` | ETK minimizer reference | formula-only reference; independent bounded CPU/Metal optimizer shipped | Secondary notices and broader upstream/RDKit parity remain release-blocking |
+| `mlxmolkit/etk_metal.py` | ETK workflow orchestration | reference-only | Stereo-aware retry and all eight variant workflows remain incomplete |
 | `mlxmolkit/stereo_checks.py` | Stereo validation oracle | reference-only | Preserve atom mapping and fail explicitly |
 | `mlxmolkit/stereo_checks_metal.py` | Stereo Metal candidate | pending-audit | Independent parity and domain gates required |
 | `mlxmolkit/mmff_params.py` | MMFF parameter pack | pending-audit | RDKit identity and MMFF94/MMFF94s versioning |
@@ -127,6 +129,14 @@ or notice file, `dg_extract.py` names nvMolKit as its reference, and
 Those DG/ETK files remain blocked from adaptation until the exact secondary
 revisions and required Apache-2.0/MIT notices are recorded.
 
+The ETK objective and optimizer increment follows the same formula-only rule.
+The CPU evaluator and Metal kernel independently implement Fourier torsions,
+improper-angle penalties, and flat-bottom distance terms extracted through the
+pinned RDKit adapter. The existing Burrete bounded L-BFGS contract was reused
+for CPU and Metal refinement; no upstream Python or Metal source text was
+copied. The pinned `mlxmolkit/etk_energy_metal.py` and
+`mlxmolkit/etk_minimize_metal.py` files are numerical behavior references only.
+
 ## Burrete adaptation ledger
 
 This table is mandatory for every adapted, translated, or formula-referenced
@@ -139,8 +149,11 @@ copy `mlxmolkit` source.
 | --- | --- | --- | --- | --- | --- |
 | `crates/burrete-compute-core/src/distance_geometry.rs` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only objective reference; independently implemented CPU oracle | nvMolKit named upstream; exact secondary revision still release-blocking | upper/lower known answers and finite-difference gradient |
 | `compute/metal/conformer-distance.v1.metal` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only objective reference; independent atom-gather Metal kernel | nvMolKit named upstream; exact secondary revision still release-blocking | CPU/Metal parity and packaged startup KAT on Apple M2 Pro |
-| `crates/burrete-compute-core/src/distance_optimizer.rs` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only L-BFGS behavioral reference; independently structured bounded CPU oracle | nvMolKit named upstream; exact secondary revision still release-blocking | deterministic convergence, no-op satisfied case, bounded line-search exhaustion |
+| `crates/burrete-compute-core/src/distance_optimizer.rs` | `mlxmolkit/conformer_metal.py`, `mlxmolkit/etk_minimize_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only L-BFGS behavioral reference; independently structured bounded CPU oracle shared by DG and ETK objectives | nvMolKit/Shivam Patel named upstream; exact secondary revisions still release-blocking | deterministic convergence, no-op satisfied case, bounded line-search exhaustion, ETK objective reduction |
 | `compute/metal/conformer-optimize.v1.metal` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only L-BFGS behavioral reference; independent fused atom-gather Metal optimizer | nvMolKit named upstream; exact secondary revision still release-blocking | CPU/Metal startup parity and packaged KAT on Apple M2 Pro |
+| `crates/burrete-compute-core/src/etk_geometry.rs` | `mlxmolkit/etk_energy_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only ETK objective reference; independent CPU evaluator and analytic gradients | nvMolKit/Shivam Patel named upstream; exact secondary revisions still release-blocking | deterministic known answers and finite-difference gradients |
+| `compute/metal/conformer-etk.v1.metal` | `mlxmolkit/etk_energy_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only ETK objective reference; independent atom-gather Metal evaluator | nvMolKit/Shivam Patel named upstream; exact secondary revisions still release-blocking | CPU/Metal energy and gradient startup KAT on Apple M2 Pro |
+| `compute/metal/conformer-etk-optimize.v1.metal` | `mlxmolkit/etk_minimize_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only minimizer reference; Burrete bounded L-BFGS structure adapted to the ETK objective | nvMolKit/Shivam Patel named upstream; exact secondary revisions still release-blocking | packaged optimizer KAT and real executor smoke on Apple M2 Pro |
 | `compute/rdkit-conformer/conformer_extractor.cpp` | `mlxmolkit/dg_extract.py`, `mlxmolkit/etk_extract.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | parity reference only; independent adapter over official RDKit C++ APIs | RDKit `276b5a662302c6a548ac4f1363c066f3258e3a20`, BSD-3-Clause | binary ABI unit test present; RDKit/WASM parity fixtures pending |
 
 ## Acceptance procedure
