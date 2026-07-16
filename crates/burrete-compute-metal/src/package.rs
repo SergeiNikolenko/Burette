@@ -13,8 +13,8 @@ const POINTER_MAX_BYTES: u64 = 4 * 1024;
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 const METALLIB_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const METADATA_FILE: &str = "build-metadata.v2.json";
-const METALLIB_FILE: &str = "native-compute.v5.metallib";
-const SOURCES: [(&str, &[u8]); 4] = [
+const METALLIB_FILE: &str = "native-compute.v6.metallib";
+const SOURCES: [(&str, &[u8]); 5] = [
     (
         "compute/metal/tanimoto.v2.metal",
         include_bytes!("../../../compute/metal/tanimoto.v2.metal"),
@@ -31,8 +31,12 @@ const SOURCES: [(&str, &[u8]); 4] = [
         "compute/metal/conformer-optimize.v1.metal",
         include_bytes!("../../../compute/metal/conformer-optimize.v1.metal"),
     ),
+    (
+        "compute/metal/conformer-stereo.v1.metal",
+        include_bytes!("../../../compute/metal/conformer-stereo.v1.metal"),
+    ),
 ];
-const CONTRACTS: [(&str, &[u8]); 4] = [
+const CONTRACTS: [(&str, &[u8]); 5] = [
     (
         "compute/metal/tanimoto-kernel-contract.v2.json",
         include_bytes!("../../../compute/metal/tanimoto-kernel-contract.v2.json"),
@@ -49,20 +53,26 @@ const CONTRACTS: [(&str, &[u8]); 4] = [
         "compute/metal/conformer-optimize-kernel-contract.v1.json",
         include_bytes!("../../../compute/metal/conformer-optimize-kernel-contract.v1.json"),
     ),
+    (
+        "compute/metal/conformer-stereo-kernel-contract.v1.json",
+        include_bytes!("../../../compute/metal/conformer-stereo-kernel-contract.v1.json"),
+    ),
 ];
-const AIR_PATHS: [&str; 4] = [
+const AIR_PATHS: [&str; 5] = [
     "tanimoto.v2.air",
     "conformer-initialize.v1.air",
     "conformer-distance.v1.air",
     "conformer-optimize.v1.air",
+    "conformer-stereo.v1.air",
 ];
-const ENTRYPOINTS: [&str; 6] = [
+const ENTRYPOINTS: [&str; 7] = [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
     "burrete_tanimoto_query_counts_v1",
     "burrete_conformer_initialize_v1",
     "burrete_conformer_distance_v1",
     "burrete_conformer_optimize_v1",
+    "burrete_conformer_stereo_validate_v1",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -199,7 +209,12 @@ fn validate_metadata(metadata: &BuildMetadata) -> Result<(), MetalRuntimeError> 
         .sources
         .iter()
         .map(|item| ("source", &item.sha256))
-        .chain(metadata.contracts.iter().map(|item| ("contract", &item.sha256)))
+        .chain(
+            metadata
+                .contracts
+                .iter()
+                .map(|item| ("contract", &item.sha256)),
+        )
         .chain(metadata.air.iter().map(|item| ("AIR", &item.sha256)))
         .chain([
             ("metallib", &metadata.metallib.sha256),
@@ -212,7 +227,7 @@ fn validate_metadata(metadata: &BuildMetadata) -> Result<(), MetalRuntimeError> 
     let expected_entrypoints: Vec<String> = ENTRYPOINTS.iter().map(ToString::to_string).collect();
     if metadata.schema_version != "burrete.compute.metal-build-metadata.v2"
         || metadata.runtime_version != NATIVE_METAL_RUNTIME_VERSION
-        || metadata.library_id != "burrete.compute.native.v5"
+        || metadata.library_id != "burrete.compute.native.v6"
         || !matches_hashed_inputs(&metadata.sources, &SOURCES)
         || !matches_hashed_inputs(&metadata.contracts, &CONTRACTS)
         || metadata.air.len() != AIR_PATHS.len()
@@ -445,7 +460,7 @@ mod tests {
             json!({
                 "schemaVersion": "burrete.compute.metal-build-metadata.v2",
                 "runtimeVersion": NATIVE_METAL_RUNTIME_VERSION,
-                "libraryId": "burrete.compute.native.v5",
+                "libraryId": "burrete.compute.native.v6",
                 "sources": SOURCES.map(|(path, bytes)| json!({
                     "path": path,
                     "sha256": sha256(bytes),

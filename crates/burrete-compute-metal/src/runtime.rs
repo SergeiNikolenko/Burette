@@ -2,9 +2,10 @@ use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
 use burrete_compute_core::{
     build_tanimoto_graph, evaluate_distance_constraints, initialize_conformer_positions,
-    optimize_distance_geometry, score_tanimoto_query, DistanceConstraint,
-    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, Fingerprint2048,
-    GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, FINGERPRINT_WORDS,
+    optimize_distance_geometry, score_tanimoto_query, validate_conformer_stereo,
+    ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
+    DistanceGeometryOptimizationStatus, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
+    TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -74,6 +75,12 @@ pub struct MetalDistanceEmbedding {
     pub iterations: Vec<u32>,
     pub statuses: Vec<DistanceGeometryOptimizationStatus>,
     /// Sum of initialization and optimization command-buffer GPU intervals.
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalStereoValidation {
+    pub failure_flags: Vec<u32>,
     pub gpu_time_ms: u64,
 }
 
@@ -206,11 +213,11 @@ impl MetalComputeRuntime {
         max_memory_bytes: u64,
     ) -> Result<MetalDistanceEvaluation, MetalRuntimeError> {
         let dispatch = self.host.evaluate_distance_constraints_profiled(
-                positions,
-                atom_count,
-                constraints,
-                max_memory_bytes.min(self.limits.max_memory_bytes),
-            )?;
+            positions,
+            atom_count,
+            constraints,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
         Ok(MetalDistanceEvaluation {
             atom_energies: dispatch.atom_energies,
             gradients: dispatch.gradients,
@@ -233,7 +240,11 @@ impl MetalComputeRuntime {
             options,
             max_memory_bytes.min(self.limits.max_memory_bytes),
         )?;
-        if dispatch.positions.iter().flatten().any(|value| !value.is_finite())
+        if dispatch
+            .positions
+            .iter()
+            .flatten()
+            .any(|value| !value.is_finite())
             || dispatch.energies.iter().any(|value| !value.is_finite())
             || dispatch
                 .scaled_gradient_maxima
@@ -293,6 +304,27 @@ impl MetalComputeRuntime {
             iterations: optimized.iterations,
             statuses: optimized.statuses,
             gpu_time_ms,
+        })
+    }
+
+    pub fn validate_stereo_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        chiral: &[ChiralVolumeConstraint],
+        tetrahedral: &[TetrahedralConstraint],
+        max_memory_bytes: u64,
+    ) -> Result<MetalStereoValidation, MetalRuntimeError> {
+        let dispatch = self.host.validate_stereo_profiled(
+            positions,
+            atom_count,
+            chiral,
+            tetrahedral,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        Ok(MetalStereoValidation {
+            failure_flags: dispatch.failure_flags,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
         })
     }
 
@@ -367,37 +399,30 @@ impl MetalComputeRuntime {
         let distance_positions = [[0.0; 4], [2.0, 0.5, 0.0, 0.0]];
         let expected_distance = evaluate_distance_constraints(&distance_positions, &constraints)
             .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
-        let observed_distance = self
-            .host
-            .evaluate_distance_constraints_profiled(
-                &distance_positions,
-                2,
-                &constraints,
-                MIN_COMPUTE_MEMORY_BYTES,
-            )?;
+        let observed_distance = self.host.evaluate_distance_constraints_profiled(
+            &distance_positions,
+            2,
+            &constraints,
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
         if !float_slices_close(
             &observed_distance.atom_energies,
             &expected_distance.atom_energies,
             1.0e-5,
-        )
-            || !float_slices_close(
-                observed_distance.gradients.as_flattened(),
-                expected_distance.gradients.as_flattened(),
-                1.0e-5,
-            )
-        {
+        ) || !float_slices_close(
+            observed_distance.gradients.as_flattened(),
+            expected_distance.gradients.as_flattened(),
+            1.0e-5,
+        ) {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal startup distance objective differs from the CPU reference".into(),
             ));
         }
         let optimization_positions = [[0.0; 4], [4.0, 1.0, 0.5, 0.0]];
         let optimization_options = DistanceGeometryOptimizationOptions::default();
-        let expected_optimization = optimize_distance_geometry(
-            &optimization_positions,
-            &constraints,
-            optimization_options,
-        )
-        .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let expected_optimization =
+            optimize_distance_geometry(&optimization_positions, &constraints, optimization_options)
+                .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
         let observed_optimization = self.host.optimize_distance_geometry_profiled(
             &optimization_positions,
             2,
@@ -405,9 +430,10 @@ impl MetalComputeRuntime {
             optimization_options,
             MIN_COMPUTE_MEMORY_BYTES,
         )?;
-        if observed_optimization.statuses != [distance_optimization_status_code(
-            expected_optimization.status,
-        )]
+        if observed_optimization.statuses
+            != [distance_optimization_status_code(
+                expected_optimization.status,
+            )]
             || !float_slices_close(
                 observed_optimization.positions.as_flattened(),
                 expected_optimization.positions.as_flattened(),
@@ -421,6 +447,36 @@ impl MetalComputeRuntime {
         {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal startup distance optimization differs from the CPU reference".into(),
+            ));
+        }
+        let stereo_positions = [
+            [1.0, 1.0, 1.0, 0.0],
+            [1.0, -1.0, -1.0, 0.0],
+            [-1.0, 1.0, -1.0, 0.0],
+            [-1.0, -1.0, 1.0, 0.0],
+        ];
+        let chiral = [ChiralVolumeConstraint {
+            atoms: [0, 1, 2, 3],
+            lower: -17.0,
+            upper: -15.0,
+        }];
+        let tetrahedral = [TetrahedralConstraint {
+            atoms: [0, 0, 1, 2, 3],
+            in_fused_small_ring: false,
+        }];
+        let expected_stereo =
+            validate_conformer_stereo(&stereo_positions, &chiral, &tetrahedral)
+                .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let observed_stereo = self.host.validate_stereo_profiled(
+            &stereo_positions,
+            4,
+            &chiral,
+            &tetrahedral,
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        if observed_stereo.failure_flags != [expected_stereo] {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup stereo validation differs from the CPU reference".into(),
             ));
         }
         Ok(())
