@@ -43,6 +43,10 @@ use crate::compute::{
         StageStartEvidence,
     },
     representative_export::{export_cluster_representatives, ClusterRepresentativeExportResult},
+    similarity_search::{
+        execute_similarity_search, SimilaritySearchBackend, SimilaritySearchRequest,
+        SimilaritySearchResult,
+    },
     snapshot_repository::SnapshotRepository,
     store::{validate_owner_window_label, ComputeStore},
 };
@@ -965,6 +969,78 @@ impl ComputeCoordinator {
             &artifact,
             &output_directory,
             collection_name,
+            now_ms(),
+        )
+    }
+
+    pub(crate) fn find_similar(
+        &self,
+        owner: &str,
+        source_job_id: Uuid,
+        grid_lease: GridSnapshotLease,
+        request: SimilaritySearchRequest,
+    ) -> ComputeResult<SimilaritySearchResult> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let job = ready.store.get_job(owner, source_job_id)?;
+        if grid_lease.namespaced_document_id()
+            != runtime_document_id(owner, &job.request.source.document_id)
+        {
+            return Err(ComputeCoordinatorError::SourceSnapshotUnavailable(
+                "The Grid lease does not belong to the similarity source job".into(),
+            ));
+        }
+        let result_pack = job.result_pack.as_ref().ok_or_else(|| {
+            ComputeCoordinatorError::Protocol(
+                "similarity source job lacks its ResultPack reference".into(),
+            )
+        })?;
+        let mut artifact = None;
+        for artifact_id in &job.artifact_ids {
+            let candidate = ready.store.get_artifact_manifest(owner, *artifact_id)?;
+            if &candidate.result_pack == result_pack && artifact.replace(candidate).is_some() {
+                return Err(ComputeCoordinatorError::Protocol(
+                    "similarity source job has multiple artifacts for the same ResultPack".into(),
+                ));
+            }
+        }
+        let artifact = artifact.ok_or_else(|| {
+            ComputeCoordinatorError::Protocol(
+                "similarity source job has no published artifact for its ResultPack".into(),
+            )
+        })?;
+        let backend = match (
+            job.request.execution_policy.backend_policy,
+            &ready.native_metal,
+        ) {
+            (BackendPolicy::ReferenceCpu, _) => SimilaritySearchBackend::ReferenceCpu {
+                engine: &ready.engines.identities().reference_cpu,
+                fallback_reason: None,
+            },
+            (
+                BackendPolicy::GpuRequired | BackendPolicy::GpuPreferred,
+                NativeMetalState::Available(runtime),
+            ) => SimilaritySearchBackend::NativeMetal(runtime),
+            (BackendPolicy::GpuRequired, NativeMetalState::Unavailable { message, .. }) => {
+                return Err(ComputeCoordinatorError::Unavailable(format!(
+                    "GPU-required similarity search cannot start: {message}"
+                )))
+            }
+            (BackendPolicy::GpuPreferred, NativeMetalState::Unavailable { message, .. }) => {
+                SimilaritySearchBackend::ReferenceCpu {
+                    engine: &ready.engines.identities().reference_cpu,
+                    fallback_reason: Some(message.clone()),
+                }
+            }
+        };
+        execute_similarity_search(
+            &ready.store,
+            &ready.snapshots,
+            &job,
+            &artifact,
+            &grid_lease,
+            request,
+            backend,
             now_ms(),
         )
     }

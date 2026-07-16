@@ -13,6 +13,7 @@ use crate::compute::{
     error::{ComputeCoordinatorError, ComputeResult},
     fingerprint_session::{FingerprintChunkResult, FingerprintExecutionStep},
     representative_export::ClusterRepresentativeExportResult,
+    similarity_search::{SimilaritySearchRequest, SimilaritySearchResult},
     store::validate_owner_window_label,
 };
 use crate::{preview::grid_store::GridRuntimeRegistry, windows::runtime_document_id};
@@ -216,6 +217,33 @@ pub(crate) async fn compute_export_cluster_representatives<R: Runtime>(
         )
     })
     .await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_find_similar<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    registry: State<'_, GridRuntimeRegistry>,
+    job_id: String,
+    request: SimilaritySearchRequest,
+) -> Result<SimilaritySearchResult, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let job_id = parse_uuid("job ID", &job_id)?;
+    let coordinator = coordinator.inner().clone();
+    let job = {
+        let coordinator = coordinator.clone();
+        let owner = owner.clone();
+        run_blocking(move || coordinator.get_job(&owner, job_id)).await?
+    };
+    let namespaced_document_id = runtime_document_id(&owner, &job.request.source.document_id);
+    let grid_lease = registry
+        .acquire_snapshot_lease(&namespaced_document_id)
+        .map_err(|error| {
+            ComputeCommandError::from(ComputeCoordinatorError::SourceSnapshotUnavailable(format!(
+                "The similarity-search Grid source is unavailable: {error}"
+            )))
+        })?;
+    run_blocking(move || coordinator.find_similar(&owner, job_id, grid_lease, request)).await
 }
 
 #[tauri::command]

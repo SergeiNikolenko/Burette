@@ -13,5 +13,6 @@ commands.allow = [
   "compute_cancel_job",
   "compute_get_artifact_manifest",
   "compute_export_cluster_representatives",
+  "compute_find_similar",
   "compute_purge_job"
 ]

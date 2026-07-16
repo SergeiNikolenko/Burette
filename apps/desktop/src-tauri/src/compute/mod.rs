@@ -17,10 +17,6 @@ mod representative_export;
 mod root_lease;
 mod similarity_artifact;
 pub(crate) use root_lease::ComputeRootChildDirectory;
-#[allow(
-    dead_code,
-    reason = "the query engine is consumed by the similarity-search coordinator command"
-)]
 mod similarity_search;
 mod snapshot_repository;
 pub(crate) mod store;

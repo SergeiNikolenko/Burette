@@ -7,6 +7,7 @@ use burrete_compute_protocol::{
     SchedulingPolicy, SimilarityCutoff, SimilaritySettings,
 };
 
+use crate::compute::similarity_search::SimilaritySearchRequest;
 use crate::preview::grid_store::{build_grid_store, GridQuery, GridRuntimeRegistry};
 
 #[test]
@@ -190,6 +191,74 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
         2
     );
 
+    let similarity = coordinator
+        .find_similar(
+            "main",
+            publication.job.job_id,
+            registry
+                .acquire_snapshot_lease("main:cluster-e2e")
+                .expect("lease Grid for similarity search"),
+            SimilaritySearchRequest {
+                query_source_index: 0,
+                top_k: 50,
+                minimum_similarity: SimilarityCutoff {
+                    numerator: 1,
+                    denominator: 2,
+                },
+            },
+        )
+        .expect("find similar molecules from the verified EnginePack");
+    assert_eq!(similarity.backend, Backend::ReferenceCpu);
+    assert!(similarity.fallback_reason.is_some());
+    assert_eq!(similarity.gpu_time_ms, None);
+    assert_eq!(similarity.library_record_count, 3);
+    assert_eq!(similarity.valid_record_count, 3);
+    assert_eq!(similarity.qualified_match_count, 1);
+    assert_eq!(similarity.matches.len(), 1);
+    assert_eq!(similarity.matches[0].source_record_id, 1);
+    assert_eq!(similarity.matches[0].intersection, 1);
+    assert_eq!(similarity.matches[0].union, 1);
+    assert!(similarity.grid_applied, "{:?}", similarity.grid_warning);
+    let similarity_page = registry
+        .fetch_page(
+            "main:cluster-e2e",
+            &GridQuery {
+                query: String::new(),
+                sort: "index".into(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                analysis_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch cluster and similarity analysis columns");
+    assert_eq!(similarity_page.analysis_columns.len(), 8);
+    assert!(similarity_page.analysis_columns.iter().any(|column| {
+        column.run_id == similarity.run_id.to_string()
+            && column.value_id == "similarityToQuery"
+            && column.label == "Tanimoto to query"
+    }));
+    assert_eq!(
+        similarity_page.rows[0]
+            .analyses
+            .get("isSimilarityQuery")
+            .map(|cell| &cell.value),
+        Some(&serde_json::json!(true))
+    );
+    assert_eq!(
+        similarity_page.rows[1]
+            .analyses
+            .get("similarityRank")
+            .map(|cell| &cell.value),
+        Some(&serde_json::json!(1))
+    );
+    assert!(similarity_page
+        .rows
+        .iter()
+        .all(|row| row.analyses.contains_key("clusterId")));
+
     let export_root = temp_root.join(format!("burrete-cluster-export-e2e-{fixture_id}"));
     std::fs::create_dir(&export_root).expect("create representative export root");
     let export = coordinator
@@ -269,10 +338,29 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
         std::fs::read(&restarted_export.table_path).expect("read restarted representative table"),
         std::fs::read(&export.table_path).expect("reread representative table")
     );
+    let restarted_similarity = restarted
+        .find_similar(
+            "main",
+            publication.job.job_id,
+            registry
+                .acquire_snapshot_lease("main:cluster-e2e")
+                .expect("lease Grid for restarted similarity search"),
+            SimilaritySearchRequest {
+                query_source_index: 0,
+                top_k: 1,
+                minimum_similarity: SimilarityCutoff {
+                    numerator: 1,
+                    denominator: 2,
+                },
+            },
+        )
+        .expect("find similar molecules after coordinator restart");
+    assert_eq!(restarted_similarity.matches[0].source_record_id, 1);
     let cluster_ids_path = compute_root
         .join("artifacts")
         .join(format!("artifact-{}", publication.artifact_id))
         .join("result/cluster-ids.bin");
+    let cluster_ids = std::fs::read(&cluster_ids_path).expect("read cluster IDs before corruption");
     std::fs::write(&cluster_ids_path, b"corrupt").expect("corrupt one published artifact file");
     let export_error = restarted
         .export_cluster_representatives(
@@ -283,6 +371,33 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
         )
         .expect_err("representative export must reject corrupt ResultPack bytes");
     assert!(export_error
+        .to_string()
+        .contains("artifact file identity changed"));
+    std::fs::write(&cluster_ids_path, cluster_ids).expect("restore cluster IDs");
+    let fingerprints_path = compute_root
+        .join("artifacts")
+        .join(format!("artifact-{}", publication.artifact_id))
+        .join("engine/fingerprints.bin");
+    std::fs::write(&fingerprints_path, b"corrupt")
+        .expect("corrupt the similarity fingerprint source");
+    let similarity_error = restarted
+        .find_similar(
+            "main",
+            publication.job.job_id,
+            registry
+                .acquire_snapshot_lease("main:cluster-e2e")
+                .expect("lease Grid for corrupt similarity search"),
+            SimilaritySearchRequest {
+                query_source_index: 0,
+                top_k: 1,
+                minimum_similarity: SimilarityCutoff {
+                    numerator: 1,
+                    denominator: 2,
+                },
+            },
+        )
+        .expect_err("similarity search must reject corrupt EnginePack bytes");
+    assert!(similarity_error
         .to_string()
         .contains("artifact file identity changed"));
     drop(restarted);
