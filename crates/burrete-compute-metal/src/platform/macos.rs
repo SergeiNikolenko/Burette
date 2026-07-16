@@ -8,6 +8,7 @@ use metal::{
     MTLSize,
 };
 use objc::rc::autoreleasepool;
+use objc::{runtime::Sel, Message};
 
 use crate::MetalRuntimeError;
 
@@ -89,11 +90,22 @@ impl MetalHost {
         cutoff: SimilarityCutoff,
         options: GraphBuildOptions,
     ) -> Result<SymmetricCsr, MetalRuntimeError> {
+        self.build_graph_profiled(fingerprints, cutoff, options)
+            .map(|(graph, _)| graph)
+    }
+
+    pub(crate) fn build_graph_profiled(
+        &self,
+        fingerprints: &[Fingerprint2048],
+        cutoff: SimilarityCutoff,
+        options: GraphBuildOptions,
+    ) -> Result<(SymmetricCsr, f64), MetalRuntimeError> {
         let cutoff = cutoff
             .normalized()
             .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
         if fingerprints.is_empty() {
             return SymmetricCsr::try_new(vec![0], Vec::new())
+                .map(|graph| (graph, 0.0))
                 .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()));
         }
         let record_count = fingerprints.len();
@@ -103,7 +115,7 @@ impl MetalHost {
         admit_memory(record_count, 0, options.max_memory_bytes())?;
         let fingerprints_buffer = buffer_with_slice(&self.device, fingerprints);
         let degree_buffer = buffer_with_slice(&self.device, &vec![0_u64; record_count]);
-        self.dispatch_tiles(
+        let mut gpu_time_seconds = self.dispatch_tiles(
             record_count,
             cutoff,
             options.tile_size().get(),
@@ -119,6 +131,7 @@ impl MetalHost {
         admit_memory(record_count, directed_entries, options.max_memory_bytes())?;
         if directed_entries == 0 {
             return SymmetricCsr::try_new(row_offsets, Vec::new())
+                .map(|graph| (graph, gpu_time_seconds))
                 .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()));
         }
 
@@ -128,7 +141,7 @@ impl MetalHost {
         let cursor_buffer = buffer_with_slice(&self.device, &row_offsets[..record_count]);
         let column_buffer = buffer_with_slice(&self.device, &vec![0_u64; entry_count]);
         let status_buffer = buffer_with_slice(&self.device, &vec![0_u32; record_count]);
-        self.dispatch_tiles(
+        gpu_time_seconds += self.dispatch_tiles(
             record_count,
             cutoff,
             options.tile_size().get(),
@@ -150,6 +163,7 @@ impl MetalHost {
         }
         let columns = read_buffer::<u64>(&column_buffer, entry_count, "column")?;
         SymmetricCsr::try_new(row_offsets, columns)
+            .map(|graph| (graph, gpu_time_seconds))
             .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))
     }
 
@@ -160,7 +174,7 @@ impl MetalHost {
         requested_tile: usize,
         pipeline: &ComputePipelineStateRef,
         bind: impl Fn(&ComputeCommandEncoderRef),
-    ) -> Result<(), MetalRuntimeError> {
+    ) -> Result<f64, MetalRuntimeError> {
         let tile_size = requested_tile.min(MAX_TILE_RECORDS);
         let thread_width = pipeline
             .thread_execution_width()
@@ -170,6 +184,7 @@ impl MetalHost {
                 "Metal pipeline advertises a zero thread width".into(),
             ));
         }
+        let mut gpu_time_seconds = 0.0;
         for row_start in (0..record_count).step_by(tile_size) {
             let row_count = tile_size.min(record_count - row_start);
             for column_start in (0..record_count).step_by(tile_size) {
@@ -182,7 +197,7 @@ impl MetalHost {
                     cutoff_numerator: u64::from(cutoff.numerator),
                     cutoff_denominator: u64::from(cutoff.denominator),
                 };
-                autoreleasepool(|| {
+                gpu_time_seconds += autoreleasepool(|| {
                     let command = self.queue.new_command_buffer();
                     let encoder = command.new_compute_command_encoder();
                     encoder.set_compute_pipeline_state(pipeline);
@@ -213,12 +228,34 @@ impl MetalHost {
                             command.status()
                         )));
                     }
-                    Ok(())
+                    let gpu_start = command_gpu_timestamp(command, "GPUStartTime")?;
+                    let gpu_end = command_gpu_timestamp(command, "GPUEndTime")?;
+                    if !gpu_start.is_finite()
+                        || !gpu_end.is_finite()
+                        || gpu_start < 0.0
+                        || gpu_end < gpu_start
+                    {
+                        return Err(MetalRuntimeError::Dispatch(
+                            "Metal command buffer returned invalid GPU timing evidence".into(),
+                        ));
+                    }
+                    Ok(gpu_end - gpu_start)
                 })?;
             }
         }
-        Ok(())
+        Ok(gpu_time_seconds)
     }
+}
+
+fn command_gpu_timestamp(
+    command: &metal::CommandBufferRef,
+    selector: &str,
+) -> Result<f64, MetalRuntimeError> {
+    unsafe { command.send_message(Sel::register(selector), ()) }.map_err(|error| {
+        MetalRuntimeError::Dispatch(format!(
+            "Metal command buffer cannot read {selector}: {error}"
+        ))
+    })
 }
 
 fn pipeline(

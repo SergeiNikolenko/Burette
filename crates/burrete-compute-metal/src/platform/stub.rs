@@ -31,4 +31,15 @@ impl MetalHost {
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))
     }
+
+    pub(crate) fn build_graph_profiled(
+        &self,
+        _fingerprints: &[Fingerprint2048],
+        _cutoff: SimilarityCutoff,
+        _options: GraphBuildOptions,
+    ) -> Result<(SymmetricCsr, f64), MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
 }
