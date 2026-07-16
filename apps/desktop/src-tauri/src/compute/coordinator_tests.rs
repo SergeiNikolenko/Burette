@@ -58,7 +58,8 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
 
     let viewer_root =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../PreviewExtension/Web");
-    let coordinator = ComputeCoordinator::initialize(compute_root.clone(), None, Some(viewer_root));
+    let coordinator =
+        ComputeCoordinator::initialize(compute_root.clone(), None, Some(viewer_root.clone()));
     let request = ClusterV1SubmitRequest {
         schema_version: ComputeJobSchemaVersion::V1,
         workflow_template: WorkflowTemplateId::ClusterV1,
@@ -190,6 +191,29 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
     );
 
     drop(coordinator);
+    let restarted =
+        ComputeCoordinator::initialize(compute_root.clone(), None, Some(viewer_root.clone()));
+    restarted
+        .get_artifact_manifest("main", publication.artifact_id)
+        .expect("recover the published artifact after restart");
+    drop(restarted);
+    std::fs::write(
+        compute_root
+            .join("artifacts")
+            .join(format!("artifact-{}", publication.artifact_id))
+            .join("result/cluster-ids.bin"),
+        b"corrupt",
+    )
+    .expect("corrupt one published artifact file");
+    let corrupt = ComputeCoordinator::initialize(compute_root.clone(), None, Some(viewer_root));
+    assert_eq!(
+        corrupt
+            .capability_report()
+            .expect("read unavailable capability report")
+            .availability,
+        ComputeAvailability::Unavailable
+    );
+    drop(corrupt);
     drop(registry);
     let _ = std::fs::remove_dir_all(compute_root);
     let _ = std::fs::remove_dir_all(grid_root);

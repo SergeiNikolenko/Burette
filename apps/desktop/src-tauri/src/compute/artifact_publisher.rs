@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
@@ -28,6 +29,7 @@ use super::{
 
 const ARTIFACT_DIRECTORY_MODE: u32 = 0o700;
 const ARTIFACT_FILE_MODE: u32 = 0o600;
+const MAX_ARTIFACT_ROOT_ENTRIES: usize = 4_096;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -422,6 +424,102 @@ pub(crate) fn materialize_cluster_artifact(
     result
 }
 
+/// Removes filesystem publication orphans left before the SQLite commit.
+///
+/// A published directory is retained only when the durable store names the
+/// exact canonical relative directory. Unknown or unsafe entries fail closed;
+/// recovery never follows symlinks or removes non-private directories.
+pub(crate) fn reconcile_artifact_root(store: &ComputeStore) -> ComputeResult<()> {
+    let root = store.artifact_root()?;
+    initialize_artifact_root(&root)?;
+    let published = store.published_artifact_inventory()?;
+    for directory in published.keys() {
+        let leaf = directory.strip_prefix("artifacts/").ok_or_else(|| {
+            ComputeCoordinatorError::Filesystem(format!(
+                "published compute artifact has an invalid directory: {directory}"
+            ))
+        })?;
+        if !matches!(canonical_artifact_leaf(leaf), Some(ArtifactLeaf::Final(_))) {
+            return Err(ComputeCoordinatorError::Filesystem(format!(
+                "published compute artifact has a noncanonical directory: {directory}"
+            )));
+        }
+    }
+    let mut entries = fs::read_dir(&root)?;
+    let mut observed = 0_usize;
+    let mut changed = false;
+    let mut retained = BTreeSet::new();
+    while let Some(entry) = entries.next().transpose()? {
+        observed = observed.checked_add(1).ok_or_else(|| {
+            ComputeCoordinatorError::Unavailable(
+                "compute artifact inventory counter overflowed".into(),
+            )
+        })?;
+        if observed > MAX_ARTIFACT_ROOT_ENTRIES {
+            return Err(ComputeCoordinatorError::Unavailable(
+                "compute artifact inventory exceeds the recovery bound".into(),
+            ));
+        }
+        let leaf = entry.file_name().into_string().map_err(|_| {
+            ComputeCoordinatorError::Filesystem(
+                "compute artifact directory contains a non-UTF-8 entry".into(),
+            )
+        })?;
+        let canonical = canonical_artifact_leaf(&leaf).ok_or_else(|| {
+            ComputeCoordinatorError::Filesystem(format!(
+                "compute artifact directory contains an unknown entry: {leaf}"
+            ))
+        })?;
+        let path = root.join(&leaf);
+        validate_private_directory(&path)?;
+        let retain = matches!(canonical, ArtifactLeaf::Final(id)
+            if published.contains_key(&format!("artifacts/artifact-{id}")));
+        if retain {
+            let directory = format!("artifacts/{leaf}");
+            let manifest = published.get(&directory).ok_or_else(|| {
+                ComputeCoordinatorError::Filesystem(
+                    "published artifact disappeared from the recovery inventory".into(),
+                )
+            })?;
+            verify_materialized_files(&path, &files_as_descriptors(&manifest.files))?;
+            retained.insert(directory);
+        } else {
+            fs::remove_dir_all(&path)?;
+            changed = true;
+        }
+    }
+    let expected = published.keys().cloned().collect::<BTreeSet<_>>();
+    if retained != expected {
+        return Err(ComputeCoordinatorError::Filesystem(
+            "a published compute artifact directory is missing during recovery".into(),
+        ));
+    }
+    if changed {
+        File::open(&root)?.sync_all()?;
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ArtifactLeaf {
+    Staging(Uuid),
+    Final(Uuid),
+}
+
+fn canonical_artifact_leaf(leaf: &str) -> Option<ArtifactLeaf> {
+    if let Some(id) = leaf
+        .strip_prefix(".artifact-")
+        .and_then(|value| value.strip_suffix(".staging"))
+        .and_then(|value| Uuid::parse_str(value).ok())
+    {
+        return (leaf == format!(".artifact-{id}.staging")).then_some(ArtifactLeaf::Staging(id));
+    }
+    let id = leaf
+        .strip_prefix("artifact-")
+        .and_then(|value| Uuid::parse_str(value).ok())?;
+    (leaf == format!("artifact-{id}")).then_some(ArtifactLeaf::Final(id))
+}
+
 pub(crate) fn artifact_manifest_sha256(manifest: &ArtifactManifest) -> ComputeResult<String> {
     manifest.validate()?;
     Ok(sha256_hex(&serde_json::to_vec(manifest)?))
@@ -663,4 +761,47 @@ fn hex_bytes(bytes: &[u8]) -> String {
         encoded.push(HEX[(byte & 0x0f) as usize] as char);
     }
     encoded
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::*;
+
+    #[test]
+    fn startup_removes_only_canonical_uncommitted_artifact_directories() {
+        let temp_root = std::fs::canonicalize(std::env::temp_dir()).expect("canonical temp root");
+        let compute_root = temp_root.join(format!("burrete-artifact-recovery-{}", Uuid::new_v4()));
+        let store =
+            ComputeStore::initialize(compute_root.clone()).expect("initialize compute store");
+        let artifacts = store.artifact_root().expect("artifact root");
+        initialize_artifact_root(&artifacts).expect("initialize artifact root");
+        let staging = artifacts.join(format!(".artifact-{}.staging", Uuid::new_v4()));
+        let renamed = artifacts.join(format!("artifact-{}", Uuid::new_v4()));
+        create_private_directory(&staging).expect("create staging orphan");
+        create_private_directory(&renamed).expect("create renamed orphan");
+
+        reconcile_artifact_root(&store).expect("reconcile artifact root");
+
+        assert!(!staging.exists());
+        assert!(!renamed.exists());
+        drop(store);
+        let _ = fs::remove_dir_all(compute_root);
+    }
+
+    #[test]
+    fn startup_fails_closed_on_unknown_artifact_entries() {
+        let temp_root = std::fs::canonicalize(std::env::temp_dir()).expect("canonical temp root");
+        let compute_root = temp_root.join(format!("burrete-artifact-recovery-{}", Uuid::new_v4()));
+        let store =
+            ComputeStore::initialize(compute_root.clone()).expect("initialize compute store");
+        let artifacts = store.artifact_root().expect("artifact root");
+        initialize_artifact_root(&artifacts).expect("initialize artifact root");
+        create_private_directory(&artifacts.join("unexpected"))
+            .expect("create unknown private directory");
+
+        let error = reconcile_artifact_root(&store).expect_err("unknown entry must fail closed");
+        assert!(error.to_string().contains("unknown entry"));
+        drop(store);
+        let _ = fs::remove_dir_all(compute_root);
+    }
 }
