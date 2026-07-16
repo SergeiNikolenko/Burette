@@ -4,15 +4,15 @@ use burrete_compute_core::{
     align_and_score, build_tanimoto_graph, contract_rm1_pair_fock, evaluate_distance_constraints,
     evaluate_etk_geometry, evaluate_mmff, initialize_conformer_positions,
     optimize_distance_geometry, pm6_d3_dispersion_energy, pm6_h4_energy, pm6_hh_repulsion_energy,
-    rm1_fock_pairs, score_tanimoto_query, symmetric_eigendecomposition, validate_conformer_stereo,
-    AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping, ChiralVolumeConstraint,
-    DistanceConstraint, DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus,
-    EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
-    Fingerprint2048, GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm,
-    MmffEnergyBreakdown, MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters,
-    MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm, MmffVariant, RigidTransform,
-    Rm1FockPair, SemiempiricalAtom, SemiempiricalMolecule, SymmetricCsr, TanimotoCounts,
-    TanimotoQueryOptions, TetrahedralConstraint, FINGERPRINT_WORDS,
+    pm6_one_center_d_fock, rm1_fock_pairs, score_tanimoto_query, symmetric_eigendecomposition,
+    validate_conformer_stereo, AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping,
+    ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
+    DistanceGeometryOptimizationStatus, EtkDistanceConstraint, EtkGeometryTerms,
+    EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048, GraphBuildOptions, MmffAngleTerm,
+    MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown, MmffOptimizerKind,
+    MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm,
+    MmffVariant, RigidTransform, Rm1FockPair, SemiempiricalAtom, SemiempiricalMolecule,
+    SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -193,6 +193,18 @@ pub struct MetalPm6H4HhExecution {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetalPm6D3Execution {
     pub dispersion_energy_ev: Vec<f64>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MetalPm6OneCenterFockBatch<'a> {
+    pub densities: &'a [[f64; 81]],
+    pub w_integrals: &'a [[f64; 243]],
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalPm6OneCenterFockExecution {
+    pub contributions_ev: Vec<[f64; 81]>,
     pub gpu_time_ms: u64,
 }
 
@@ -574,6 +586,59 @@ impl MetalComputeRuntime {
         Ok(MetalPm6D3H4Execution {
             corrections,
             gpu_time_ms: d3.gpu_time_ms.saturating_add(h4_hh.gpu_time_ms),
+        })
+    }
+
+    pub fn evaluate_pm6_one_center_fock_profiled(
+        &self,
+        batch: MetalPm6OneCenterFockBatch<'_>,
+        max_memory_bytes: u64,
+    ) -> Result<MetalPm6OneCenterFockExecution, MetalRuntimeError> {
+        if batch.densities.is_empty()
+            || batch.densities.len() > 256
+            || batch.densities.len() != batch.w_integrals.len()
+        {
+            return Err(MetalRuntimeError::ResourceLimit(
+                "PM6 one-center Fock batch requires 1..=256 paired density/W blocks".into(),
+            ));
+        }
+        let expected = batch
+            .densities
+            .iter()
+            .zip(batch.w_integrals)
+            .map(|(density, w)| {
+                pm6_one_center_d_fock(density, w)
+                    .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let dispatch = self.host.evaluate_pm6_one_center_fock_profiled(
+            batch,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if dispatch.contributions_ev.len() != expected.len() * 81 {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal PM6 one-center Fock returned an invalid output shape".into(),
+            ));
+        }
+        let mut contributions = Vec::with_capacity(expected.len());
+        for (block, expected_block) in expected.iter().enumerate() {
+            let observed = &dispatch.contributions_ev[block * 81..(block + 1) * 81];
+            if observed
+                .iter()
+                .zip(expected_block)
+                .any(|(observed, expected)| {
+                    !observed.is_finite() || (f64::from(*observed) - expected).abs() > 2.0e-4
+                })
+            {
+                return Err(MetalRuntimeError::KernelUnavailable(format!(
+                    "Metal PM6 one-center Fock differs from the float64 CPU reference at block {block}"
+                )));
+            }
+            contributions.push(std::array::from_fn(|index| f64::from(observed[index])));
+        }
+        Ok(MetalPm6OneCenterFockExecution {
+            contributions_ev: contributions,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
         })
     }
 
@@ -1541,6 +1606,28 @@ impl MetalComputeRuntime {
         if correction.gpu_time_ms == 0 || correction.corrections.len() != 2 {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal startup PM6-D3H4 correction returned invalid profiling output".into(),
+            ));
+        }
+
+        let mut pm6_density = [0.0; 81];
+        for row in 0..9 {
+            for column in 0..=row {
+                let value = (row + 1) as f64 * 0.2 + (column + 1) as f64 * 0.03;
+                pm6_density[row * 9 + column] = value;
+                pm6_density[column * 9 + row] = value;
+            }
+        }
+        let pm6_w = std::array::from_fn(|index| (index + 1) as f64 * 0.03125);
+        let pm6_fock = self.evaluate_pm6_one_center_fock_profiled(
+            MetalPm6OneCenterFockBatch {
+                densities: &[pm6_density],
+                w_integrals: &[pm6_w],
+            },
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        if pm6_fock.gpu_time_ms == 0 || pm6_fock.contributions_ev.len() != 1 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup PM6 one-center Fock returned invalid profiling output".into(),
             ));
         }
 

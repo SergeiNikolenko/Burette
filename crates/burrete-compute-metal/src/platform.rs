@@ -77,6 +77,11 @@ pub(crate) struct MetalPm6D3Dispatch {
     pub(crate) gpu_time_seconds: f64,
 }
 
+pub(crate) struct MetalPm6OneCenterFockDispatch {
+    pub(crate) contributions_ev: Vec<f32>,
+    pub(crate) gpu_time_seconds: f64,
+}
+
 #[cfg(target_os = "macos")]
 #[path = "platform/macos.rs"]
 mod implementation;
