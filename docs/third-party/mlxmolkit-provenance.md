@@ -50,8 +50,8 @@ provenance and scientific behavior still require review.
 | `mlxmolkit/butina.py` | Butina semantics | reference-only; independent Burrete policy shipped | Versioned deterministic tie-breaking; upstream/RDKit corpus parity remains gated |
 | `mlxmolkit/morgan_cpu.py` | Morgan oracle | reference-only | Entire stage is RDKit CPU, not GPU |
 | `mlxmolkit/shared_batch.py` | Shared `N x K` constraints | reference-only; independent Burrete scheduler and EnginePack ABI shipped | Burrete constraints are stored once per molecule; seeds are identity-derived and chunk-invariant |
-| `mlxmolkit/dg_extract.py` | DG bounds/parameters | pending-audit | nvMolKit/RDKit provenance and exception handling |
-| `mlxmolkit/etk_extract.py` | ETK torsions/constraints | pending-audit | Variant-specific activation and RDKit provenance |
+| `mlxmolkit/dg_extract.py` | DG bounds/parameters | reference-only; native RDKit adapter staged | nvMolKit remains blocked; production extraction calls pinned RDKit directly |
+| `mlxmolkit/etk_extract.py` | ETK torsions/constraints | reference-only; native RDKit adapter staged | All variant presets are selected from pinned RDKit C++ constants |
 | `mlxmolkit/conformer_metal.py` | DG Metal logic | pending-audit | Seed currently depends on chunk schedule |
 | `mlxmolkit/etk_metal.py` | ETK Metal logic | pending-audit | Prove all eight requested variants independently |
 | `mlxmolkit/stereo_checks.py` | Stereo validation oracle | reference-only | Preserve atom mapping and fail explicitly |
@@ -110,6 +110,16 @@ backend decisions for distance geometry and stereo validation, canonical
 durable snapshot construction, and capability-rooted frozen-source binding.
 It does not copy upstream planning, packaging, or execution code.
 
+The native conformer extractor under `compute/rdkit-conformer` is likewise a
+Burrete-owned adapter rather than a translation of the Python extractors. It is
+version-locked to official RDKit `Release_2025_03_4` commit
+`276b5a662302c6a548ac4f1363c066f3258e3a20`, calls RDKit's own variant presets,
+bounds construction and smoothing, CrystalFF terms, and embedding chirality
+helpers, and emits a bounded little-endian binary ABI. The separately cloned
+`mlxmolkit` files remain parity oracles. The adapter build is not yet a shipped
+artifact; package inclusion remains gated on a reproducible WASM build, hashes,
+fixtures, and the recorded permission evidence identifier.
+
 The same audit confirmed that the pinned repository still has no root license
 or notice file, `dg_extract.py` names nvMolKit as its reference, and
 `etk_metal.py` describes helper code as unchanged from Shivam Patel's work.
@@ -130,6 +140,7 @@ copy `mlxmolkit` source.
 | `compute/metal/conformer-distance.v1.metal` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only objective reference; independent atom-gather Metal kernel | nvMolKit named upstream; exact secondary revision still release-blocking | CPU/Metal parity and packaged startup KAT on Apple M2 Pro |
 | `crates/burrete-compute-core/src/distance_optimizer.rs` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only L-BFGS behavioral reference; independently structured bounded CPU oracle | nvMolKit named upstream; exact secondary revision still release-blocking | deterministic convergence, no-op satisfied case, bounded line-search exhaustion |
 | `compute/metal/conformer-optimize.v1.metal` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only L-BFGS behavioral reference; independent fused atom-gather Metal optimizer | nvMolKit named upstream; exact secondary revision still release-blocking | CPU/Metal startup parity and packaged KAT on Apple M2 Pro |
+| `compute/rdkit-conformer/conformer_extractor.cpp` | `mlxmolkit/dg_extract.py`, `mlxmolkit/etk_extract.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | parity reference only; independent adapter over official RDKit C++ APIs | RDKit `276b5a662302c6a548ac4f1363c066f3258e3a20`, BSD-3-Clause | binary ABI unit test present; RDKit/WASM parity fixtures pending |
 
 ## Acceptance procedure
 
