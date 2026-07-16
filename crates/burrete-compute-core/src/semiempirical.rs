@@ -4,7 +4,10 @@ mod parameters;
 mod two_center;
 
 pub use parameters::{rm1_parameters, SemiempiricalElementParameters};
-pub use two_center::{rm1_multipole_parameters, Rm1MultipoleParameters};
+pub use two_center::{
+    rm1_multipole_parameters, rm1_two_center_integrals, Rm1MultipoleParameters,
+    Rm1TwoCenterIntegrals,
+};
 
 const MAX_ATOMS: usize = 128;
 const MAX_ORBITALS: usize = 256;

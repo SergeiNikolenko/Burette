@@ -75,4 +75,6 @@ written.
 
 The RM1 sp-basis multipole separation and additive-term equations are adapted
 from the same PYSEQM revision, file `seqm/seqm_functions/cal_par.py`, under the
-same BSD-3-Clause notice.
+same BSD-3-Clause notice. H-H and heavy-H local-frame two-center integrals are
+adapted from `seqm/seqm_functions/two_elec_two_center_int_local_frame.py` at
+that revision.

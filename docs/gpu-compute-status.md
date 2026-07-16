@@ -467,8 +467,9 @@ fixed order below:
 4. extend the implemented native closed-shell SCF/DIIS/adaptive-damping CPU
    scaffold, audited RM1 parameter table, bounded molecule/basis pack, and
    population-charge contract plus verified RM1 core-core energy and sp-basis
-   multipole parameters with the full electronic NDDO integral contraction and
-   remaining parameter sets method by method, adding Metal only after
-   independent known-answer and external parity gates;
+   multipole parameters plus H-H/X-H local-frame integrals with heavy-heavy
+   integrals, rotation, electronic NDDO contraction, and remaining parameter
+   sets method by method, adding Metal only after independent known-answer and
+   external parity gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.
