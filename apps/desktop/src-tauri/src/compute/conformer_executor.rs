@@ -348,10 +348,10 @@ struct AttemptBatch {
     gpu_time_ms: Option<u64>,
 }
 
-struct LocalEtkTerms {
-    torsions: Vec<EtkTorsionConstraint>,
-    impropers: Vec<EtkImproperConstraint>,
-    distances: Vec<EtkDistanceConstraint>,
+pub(crate) struct LocalEtkTerms {
+    pub(crate) torsions: Vec<EtkTorsionConstraint>,
+    pub(crate) impropers: Vec<EtkImproperConstraint>,
+    pub(crate) distances: Vec<EtkDistanceConstraint>,
 }
 
 struct LocalStereoTerms {
@@ -360,7 +360,7 @@ struct LocalStereoTerms {
 }
 
 impl LocalEtkTerms {
-    fn as_terms(&self) -> EtkGeometryTerms<'_> {
+    pub(crate) fn as_terms(&self) -> EtkGeometryTerms<'_> {
         EtkGeometryTerms {
             torsions: &self.torsions,
             impropers: &self.impropers,
@@ -498,7 +498,7 @@ fn refine_etk(
     }
 }
 
-fn local_etk_terms(
+pub(crate) fn local_etk_terms(
     deferred: &ConformerDeferredConstraints,
     record: usize,
 ) -> ComputeResult<LocalEtkTerms> {

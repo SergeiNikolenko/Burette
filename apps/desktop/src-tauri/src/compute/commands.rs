@@ -11,7 +11,8 @@ use crate::compute::{
     cluster_executor::ClusterExecutionStep,
     conformer_session::ConformerSubmissionStep,
     coordinator::{
-        ComputeCoordinator, ConformerDistanceExecutionStep, ConformerStereoExecutionStep,
+        ComputeCoordinator, ConformerDistanceExecutionStep, ConformerReferenceValidationStep,
+        ConformerStereoExecutionStep,
     },
     error::{ComputeCoordinatorError, ComputeResult},
     fingerprint_session::{FingerprintChunkResult, FingerprintExecutionStep},
@@ -154,6 +155,23 @@ pub(crate) async fn compute_execute_conformer_stereo<R: Runtime>(
     let coordinator = coordinator.inner().clone();
     run_blocking(move || coordinator.execute_conformer_stereo_v1(&owner, job_id, expected_revision))
         .await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_validate_conformer_reference<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    job_id: String,
+    expected_revision: u64,
+) -> Result<ConformerReferenceValidationStep, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let job_id = parse_uuid("job ID", &job_id)?;
+    validate_revision(expected_revision)?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || {
+        coordinator.validate_conformer_reference_v1(&owner, job_id, expected_revision)
+    })
+    .await
 }
 
 #[tauri::command]

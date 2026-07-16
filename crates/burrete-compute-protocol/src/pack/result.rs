@@ -13,15 +13,18 @@ use super::{
 };
 use crate::{ProtocolError, ResultPackVersion, WorkflowTemplateId};
 
-pub const CONFORMER_RESULT_ARRAY_NAMES: [&str; 8] = [
+pub const CONFORMER_RESULT_ARRAY_NAMES: [&str; 11] = [
     "conformerAtomStarts",
     "conformerMoleculeIndices",
     "conformerOrdinals",
     "embeddingAttemptCounts",
     "embeddingEnergies",
     "embeddingStatuses",
+    "etkEnergies",
+    "etkStatuses",
     "positions",
     "seedWords",
+    "stereoFailureFlags",
 ];
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -76,9 +79,9 @@ impl ResultPackManifest {
             ));
         }
         let conformers = first_dimension(self.array("conformerMoleculeIndices")?)?;
-        let starts = conformers.checked_add(1).ok_or_else(|| {
-            ProtocolError::Validation("conformer result count overflowed".into())
-        })?;
+        let starts = conformers
+            .checked_add(1)
+            .ok_or_else(|| ProtocolError::Validation("conformer result count overflowed".into()))?;
         require_array(
             self.array("conformerAtomStarts")?,
             "conformer_atom_offsets",
@@ -121,6 +124,20 @@ impl ResultPackManifest {
             PackedDType::U8,
             &[conformers],
         )?;
+        require_array(
+            self.array("etkEnergies")?,
+            "etk_geometry_objective",
+            None,
+            PackedDType::F32,
+            &[conformers],
+        )?;
+        require_array(
+            self.array("etkStatuses")?,
+            "etk_optimization_status",
+            None,
+            PackedDType::U8,
+            &[conformers],
+        )?;
         let coordinate_atoms = first_dimension(self.array("positions")?)?;
         require_array(
             self.array("positions")?,
@@ -135,13 +152,20 @@ impl ResultPackManifest {
             None,
             PackedDType::U32,
             &[conformers, 4],
+        )?;
+        require_array(
+            self.array("stereoFailureFlags")?,
+            "stereo_failure_flags",
+            None,
+            PackedDType::U32,
+            &[conformers],
         )
     }
 
     fn array(&self, name: &str) -> Result<&PackedArrayDescriptor, ProtocolError> {
-        self.layout.array(name).ok_or_else(|| {
-            ProtocolError::Validation(format!("conformer ResultPack lacks {name}"))
-        })
+        self.layout
+            .array(name)
+            .ok_or_else(|| ProtocolError::Validation(format!("conformer ResultPack lacks {name}")))
     }
 
     fn validate_engine_refs(&self) -> Result<BTreeSet<&str>, ProtocolError> {

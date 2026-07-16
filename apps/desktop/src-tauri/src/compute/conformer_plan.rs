@@ -640,8 +640,11 @@ fn result_pack_payload_bytes(
         (conformer_count, ATTEMPT_COUNT_BYTES, 2),
         (conformer_count, ENERGY_BYTES, 4),
         (conformer_count, STATUS_BYTES, 1),
+        (conformer_count, ENERGY_BYTES, 4),
+        (conformer_count, STATUS_BYTES, 1),
         (positioned_atom_count, POSITION_COMPONENTS * F32_BYTES, 4),
         (conformer_count, SEED_BYTES, 4),
+        (conformer_count, MOLECULE_INDEX_BYTES, 4),
     ];
     arrays
         .into_iter()
