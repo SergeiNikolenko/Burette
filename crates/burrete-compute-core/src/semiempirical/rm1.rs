@@ -18,18 +18,140 @@ pub struct Rm1Evaluation {
     pub scf: SemiempiricalScfResult,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Rm1FockPair {
+    pub left_orbital_start: usize,
+    pub left_orbital_count: usize,
+    pub right_orbital_start: usize,
+    pub right_orbital_count: usize,
+    pub repulsion_ev: Vec<f64>,
+}
+
+pub fn rm1_fock_pairs(
+    molecule: &SemiempiricalMolecule,
+) -> Result<Vec<Rm1FockPair>, SemiempiricalError> {
+    let mut pairs = Vec::with_capacity(
+        molecule
+            .atoms
+            .len()
+            .saturating_mul(molecule.atoms.len().saturating_sub(1))
+            / 2,
+    );
+    for left_index in 0..molecule.atoms.len() {
+        for right_index in (left_index + 1)..molecule.atoms.len() {
+            let left_atom = &molecule.atoms[left_index];
+            let right_atom = &molecule.atoms[right_index];
+            let left = rm1_parameters(left_atom.atomic_number).unwrap();
+            let right = rm1_parameters(right_atom.atomic_number).unwrap();
+            let pair = rm1_rotated_pair_integrals(
+                left,
+                right,
+                left_atom.position_angstrom,
+                right_atom.position_angstrom,
+            )?;
+            pairs.push(Rm1FockPair {
+                left_orbital_start: molecule.orbital_offsets[left_index],
+                left_orbital_count: usize::from(left.orbital_count),
+                right_orbital_start: molecule.orbital_offsets[right_index],
+                right_orbital_count: usize::from(right.orbital_count),
+                repulsion_ev: pair.repulsion_ev.to_vec(),
+            });
+        }
+    }
+    Ok(pairs)
+}
+
+pub fn contract_rm1_pair_fock(
+    orbital_count: usize,
+    density: &[f64],
+    pairs: &[Rm1FockPair],
+) -> Result<Vec<f64>, SemiempiricalError> {
+    if orbital_count == 0 || density.len() != orbital_count * orbital_count {
+        return Err(SemiempiricalError::InvalidInput(
+            "RM1 pair contraction requires a square non-empty density matrix".into(),
+        ));
+    }
+    let mut contribution = vec![0.0; density.len()];
+    for pair in pairs {
+        if pair.repulsion_ev.len() != 256
+            || pair.left_orbital_count == 0
+            || pair.left_orbital_count > 4
+            || pair.right_orbital_count == 0
+            || pair.right_orbital_count > 4
+            || pair.left_orbital_start + pair.left_orbital_count > orbital_count
+            || pair.right_orbital_start + pair.right_orbital_count > orbital_count
+        {
+            return Err(SemiempiricalError::InvalidInput(
+                "RM1 pair contraction received an invalid orbital span or tensor".into(),
+            ));
+        }
+        for a in 0..pair.left_orbital_count {
+            for b in 0..pair.left_orbital_count {
+                for c in 0..pair.right_orbital_count {
+                    for d in 0..pair.right_orbital_count {
+                        let integral = pair.repulsion_ev[((a * 4 + b) * 4 + c) * 4 + d];
+                        contribution[(pair.left_orbital_start + a) * orbital_count
+                            + pair.left_orbital_start
+                            + b] += density[(pair.right_orbital_start + c) * orbital_count
+                            + pair.right_orbital_start
+                            + d]
+                            * integral;
+                        contribution[(pair.right_orbital_start + c) * orbital_count
+                            + pair.right_orbital_start
+                            + d] += density[(pair.left_orbital_start + a) * orbital_count
+                            + pair.left_orbital_start
+                            + b]
+                            * integral;
+                        let exchange = -0.5
+                            * density[(pair.left_orbital_start + b) * orbital_count
+                                + pair.right_orbital_start
+                                + d]
+                            * integral;
+                        contribution[(pair.left_orbital_start + a) * orbital_count
+                            + pair.right_orbital_start
+                            + c] += exchange;
+                        contribution[(pair.right_orbital_start + c) * orbital_count
+                            + pair.left_orbital_start
+                            + a] += exchange;
+                    }
+                }
+            }
+        }
+    }
+    Ok(contribution)
+}
+
 pub fn evaluate_rm1(
     molecule: &SemiempiricalMolecule,
     options: SemiempiricalScfOptions,
 ) -> Result<Rm1Evaluation, SemiempiricalError> {
+    evaluate_rm1_with_pair_contractor(molecule, options, contract_rm1_pair_fock)
+}
+
+pub fn evaluate_rm1_with_pair_contractor(
+    molecule: &SemiempiricalMolecule,
+    options: SemiempiricalScfOptions,
+    mut contract_pairs: impl FnMut(
+        usize,
+        &[f64],
+        &[Rm1FockPair],
+    ) -> Result<Vec<f64>, SemiempiricalError>,
+) -> Result<Rm1Evaluation, SemiempiricalError> {
     let core = build_core_hamiltonian(molecule)?;
+    let pairs = rm1_fock_pairs(molecule)?;
     let scf = solve_closed_shell_scf(
         molecule.orbital_count,
         molecule.electron_count,
         options,
-        |density| build_fock(molecule, &core, density),
+        |density| build_fock(molecule, &core, density, &pairs, &mut contract_pairs),
     )?;
-    let final_fock = build_fock(molecule, &core, &scf.density)?;
+    let final_fock = build_fock(
+        molecule,
+        &core,
+        &scf.density,
+        &pairs,
+        &mut contract_pairs,
+    )?;
     let electronic_energy_ev = 0.5
         * scf
             .density
@@ -122,6 +244,12 @@ fn build_fock(
     molecule: &SemiempiricalMolecule,
     core: &[f64],
     density: &[f64],
+    pairs: &[Rm1FockPair],
+    contract_pairs: &mut impl FnMut(
+        usize,
+        &[f64],
+        &[Rm1FockPair],
+    ) -> Result<Vec<f64>, SemiempiricalError>,
 ) -> Result<Vec<f64>, SemiempiricalError> {
     let n = molecule.orbital_count;
     let mut fock = core.to_vec();
@@ -161,40 +289,11 @@ fn build_fock(
         }
     }
 
-    for left_index in 0..molecule.atoms.len() {
-        for right_index in (left_index + 1)..molecule.atoms.len() {
-            let left_atom = &molecule.atoms[left_index];
-            let right_atom = &molecule.atoms[right_index];
-            let left = rm1_parameters(left_atom.atomic_number).unwrap();
-            let right = rm1_parameters(right_atom.atomic_number).unwrap();
-            let left_count = usize::from(left.orbital_count);
-            let right_count = usize::from(right.orbital_count);
-            let left_start = molecule.orbital_offsets[left_index];
-            let right_start = molecule.orbital_offsets[right_index];
-            let pair = rm1_rotated_pair_integrals(
-                left,
-                right,
-                left_atom.position_angstrom,
-                right_atom.position_angstrom,
-            )?;
-            for a in 0..left_count {
-                for b in 0..left_count {
-                    for c in 0..right_count {
-                        for d in 0..right_count {
-                            let integral = pair.repulsion_ev[((a * 4 + b) * 4 + c) * 4 + d];
-                            fock[(left_start + a) * n + left_start + b] +=
-                                density[(right_start + c) * n + right_start + d] * integral;
-                            fock[(right_start + c) * n + right_start + d] +=
-                                density[(left_start + a) * n + left_start + b] * integral;
-                            let exchange =
-                                -0.5 * density[(left_start + b) * n + right_start + d] * integral;
-                            fock[(left_start + a) * n + right_start + c] += exchange;
-                            fock[(right_start + c) * n + left_start + a] += exchange;
-                        }
-                    }
-                }
-            }
-        }
+    for (target, pair) in fock
+        .iter_mut()
+        .zip(contract_pairs(n, density, pairs)?)
+    {
+        *target += pair;
     }
     Ok(fock)
 }
