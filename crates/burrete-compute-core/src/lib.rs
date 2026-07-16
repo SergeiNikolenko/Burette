@@ -5,6 +5,8 @@
 //! code from `mlxmolkit` or another clustering package. The CPU path is the
 //! parity oracle for native Metal neighbor generation.
 
+use std::{cmp::Reverse, collections::BinaryHeap};
+
 mod alignment;
 mod conformer_engine;
 mod conformer_extract;
@@ -524,22 +526,35 @@ pub fn butina_clusters(
             .windows(2)
             .map(|window| window[1] - window[0]),
     );
+    let priority_capacity = vertex_count
+        .checked_add(graph.column_indices.len())
+        .ok_or(ClusterCoreError::CsrOverflow)?;
+    let mut representatives = BinaryHeap::new();
+    representatives
+        .try_reserve(priority_capacity)
+        .map_err(|_| ClusterCoreError::AllocationFailed {
+            buffer: "Butina representative priority queue",
+            requested_elements: u64::try_from(priority_capacity).unwrap_or(u64::MAX),
+        })?;
+    representatives.extend(
+        live_degrees
+            .iter()
+            .enumerate()
+            .map(|(vertex, &degree)| (degree, Reverse(vertex))),
+    );
     let mut remaining = vertex_count;
     let mut clusters = Vec::new();
     try_reserve_exact(&mut clusters, vertex_count, "Butina cluster list")?;
 
     while remaining > 0 {
-        let mut representative = None;
-        for vertex in 0..vertex_count {
-            if alive[vertex]
-                && representative
-                    .map(|current| live_degrees[vertex] > live_degrees[current])
-                    .unwrap_or(true)
-            {
-                representative = Some(vertex);
+        let representative = loop {
+            let (degree, Reverse(vertex)) = representatives
+                .pop()
+                .expect("remaining vertices include one priority entry");
+            if alive[vertex] && live_degrees[vertex] == degree {
+                break vertex;
             }
-        }
-        let representative = representative.expect("remaining vertices include one live vertex");
+        };
 
         let removed_capacity = usize::try_from(live_degrees[representative])
             .ok()
@@ -566,6 +581,7 @@ pub fn butina_clusters(
                 let neighbor = neighbor as usize;
                 if alive[neighbor] {
                     live_degrees[neighbor] -= 1;
+                    representatives.push((live_degrees[neighbor], Reverse(neighbor)));
                 }
             }
         }
@@ -770,6 +786,11 @@ fn accounted_butina_working_set_bytes(graph: &SymmetricCsr) -> Result<u64, Clust
         checked_buffer_bytes::<u64>(directed_entries)?,
         checked_buffer_bytes::<bool>(vertices)?,
         checked_buffer_bytes::<u64>(vertices)?, // live degrees
+        checked_buffer_bytes::<(u64, Reverse<usize>)>(
+            vertices
+                .checked_add(directed_entries)
+                .ok_or(ClusterCoreError::CsrOverflow)?,
+        )?, // representative priority queue including lazy stale entries
         checked_buffer_bytes::<u64>(vertices)?, // all cluster members
         checked_buffer_bytes::<Vec<u64>>(vertices)?, // worst-case singleton headers
     ];

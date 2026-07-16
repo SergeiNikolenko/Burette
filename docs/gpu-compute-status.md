@@ -339,7 +339,13 @@ separate product increments.
 
 - 66 focused desktop compute tests pass, including the real Grid-to-artifact
   workflow and representative export before and after coordinator restart.
-- 32 Grid store tests pass; the 50,000-row performance smoke remains opt-in.
+- The deterministic v20 benchmark handles an exact 100,000-fingerprint query
+  in 1--2 ms GPU time and constructs a 100,000-vertex sparse exact CSR in
+  27.6 seconds GPU time on Apple M2 Pro without a dense matrix. Dynamic-count
+  Butina over that CSR takes 66 ms after replacing the quadratic representative
+  scan with a deterministic lazy priority queue. A separate 10,000-record,
+  5,000-edge case exercises count plus fill in 526 ms GPU time. Full evidence
+  and commands are in `docs/benchmarks/apple-m2-pro-v20.md`.
 - Metal crate unit/parity tests pass, including real graph and exact query-count
   dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
   support.
@@ -560,8 +566,8 @@ notarization, or visual UI-triggered clustering evidence.
    restart, and artifacts.
 3. Run fingerprint parity against pinned native RDKit and upstream fixtures,
    plus exact CPU-versus-Metal CSR parity over the frozen scientific corpus.
-4. Run sparse, dense, invalid-record, cutoff-boundary, cancellation,
-   memory-pressure, and 100k+ benchmarks on named Apple Silicon hardware.
+4. Extend the passing sparse 100k and paired-fill benchmarks with dense,
+   invalid-record, cutoff-boundary, cancellation, and memory-pressure runs.
 5. Install the unique package and repeat the desktop UI workflow with real
    SDF/SMILES/CSV samples under memory pressure.
 6. Add artifact/report inspection and cancellation polling between bounded

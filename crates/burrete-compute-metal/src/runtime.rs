@@ -1898,6 +1898,7 @@ mod tests {
     use std::path::PathBuf;
 
     use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use burrete_compute_core::{butina_clusters, ButinaOptions};
     use serde::Deserialize;
 
     use super::*;
@@ -2052,5 +2053,120 @@ mod tests {
                 case.expected_optimized_energy_kcal_mol
             );
         }
+    }
+
+    #[test]
+    #[ignore = "manual Apple GPU scale benchmark; set BURRETE_METAL_RUNTIME_ROOT"]
+    fn benchmarks_large_fingerprint_libraries_on_the_real_gpu() {
+        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+            .map(PathBuf::from)
+            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged ComputeMetal directory");
+        let runtime = MetalComputeRuntime::load(&root, &"0".repeat(64))
+            .expect("verified packaged Metal runtime");
+        let graph_count = std::env::var("BURRETE_METAL_GRAPH_BENCHMARK_COUNT")
+            .ok()
+            .map(|value| value.parse::<usize>().expect("numeric graph count"))
+            .unwrap_or(10_000);
+        assert!((2..=100_000).contains(&graph_count));
+        let fingerprints = deterministic_fingerprints(100_000);
+        let query_options =
+            TanimotoQueryOptions::new(256 * 1024 * 1024).expect("admit 100k query output");
+        let query_host_start = std::time::Instant::now();
+        let query = runtime
+            .score_query_profiled(&fingerprints[0], &fingerprints, query_options)
+            .expect("score 100k library");
+        let query_host_ms = query_host_start.elapsed().as_millis();
+        assert_eq!(query.counts.len(), 100_000);
+        for &index in &[0, 1, 17, 9_999, 99_999] {
+            assert_eq!(
+                query.counts[index],
+                fingerprints[0].tanimoto_counts(&fingerprints[index])
+            );
+        }
+
+        let limits = ResourceLimits {
+            max_edges: 1_000_000,
+            max_memory_bytes: 512 * 1024 * 1024,
+            max_dispatch_ms: MAX_DISPATCH_MS,
+        };
+        let graph_options = GraphBuildOptions::from_resource_limits(
+            NonZeroUsize::new(1_024).expect("nonzero tile"),
+            &limits,
+        )
+        .expect("admit graph benchmark");
+        let graph_host_start = std::time::Instant::now();
+        let graph = runtime
+            .build_graph_profiled(
+                &fingerprints[..graph_count],
+                SimilarityCutoff {
+                    numerator: 95,
+                    denominator: 100,
+                },
+                graph_options,
+            )
+            .expect("build sparse exact graph");
+        let graph_host_ms = graph_host_start.elapsed().as_millis();
+        assert_eq!(graph.graph.vertex_count(), graph_count);
+        assert_eq!(graph.graph.undirected_edge_count(), 0);
+        let cluster_host_start = std::time::Instant::now();
+        let clusters = butina_clusters(
+            &graph.graph,
+            ButinaOptions::from_resource_limits(&limits).expect("admit Butina benchmark"),
+        )
+        .expect("cluster sparse exact graph");
+        let cluster_host_ms = cluster_host_start.elapsed().as_millis();
+        assert_eq!(clusters.len(), graph_count);
+        let paired = fingerprints[..5_000]
+            .iter()
+            .flat_map(|fingerprint| [*fingerprint, *fingerprint])
+            .collect::<Vec<_>>();
+        let fill_host_start = std::time::Instant::now();
+        let fill_graph = runtime
+            .build_graph_profiled(
+                &paired,
+                SimilarityCutoff {
+                    numerator: 1,
+                    denominator: 1,
+                },
+                graph_options,
+            )
+            .expect("build paired exact graph");
+        let fill_host_ms = fill_host_start.elapsed().as_millis();
+        assert_eq!(fill_graph.graph.undirected_edge_count(), 5_000);
+        let paired_clusters = butina_clusters(
+            &fill_graph.graph,
+            ButinaOptions::from_resource_limits(&limits).expect("admit paired Butina benchmark"),
+        )
+        .expect("cluster paired exact graph");
+        assert_eq!(paired_clusters.len(), 5_000);
+        eprintln!(
+            "{{\"device\":\"{}\",\"queryRecords\":100000,\"queryGpuMs\":{},\"queryHostMs\":{},\"graphRecords\":{},\"graphGpuMs\":{},\"graphHostMs\":{},\"graphEdges\":0,\"butinaHostMs\":{},\"clusterCount\":{},\"fillRecords\":10000,\"fillGpuMs\":{},\"fillHostMs\":{},\"fillEdges\":5000,\"pairedClusters\":5000}}",
+            runtime.device_identity().name,
+            query.gpu_time_ms,
+            query_host_ms,
+            graph_count,
+            graph.gpu_time_ms,
+            graph_host_ms,
+            cluster_host_ms,
+            clusters.len(),
+            fill_graph.gpu_time_ms,
+            fill_host_ms,
+        );
+    }
+
+    fn deterministic_fingerprints(count: usize) -> Vec<Fingerprint2048> {
+        let mut state = 0x6a09_e667_f3bc_c909_u64;
+        (0..count)
+            .map(|_| {
+                let mut words = [0_u64; FINGERPRINT_WORDS];
+                for word in &mut words {
+                    state ^= state << 13;
+                    state ^= state >> 7;
+                    state ^= state << 17;
+                    *word = state;
+                }
+                Fingerprint2048::from_words(words)
+            })
+            .collect()
     }
 }

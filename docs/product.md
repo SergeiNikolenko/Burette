@@ -36,7 +36,7 @@ installed-app evidence.
 
 | Workflow family | Product status |
 | --- | --- |
-| Similarity and clustering | `Cluster all`/`Cluster selected` source workflow and ad-hoc packaged Metal dispatch proven; production release/scale gates pending |
+| Similarity and clustering | `Cluster all`/`Cluster selected` is wired end to end; deterministic v20 tests cover a 100k exact query and 100k CSR construction without a dense matrix, plus priority-queue Butina and CSR fill, while real-library density and production-package gates remain |
 | Similarity search and diverse selection | `Find similar` reuses a verified cluster EnginePack for exact CPU/Metal top-50 ranking and Grid writeback; immutable diverse export includes structures, table, and provenance |
 | Conformer generation | Native Grid selection runs RDKit parameter extraction, adaptive `N x K` Metal DG/ETK/stereo execution, CPU reference validation, durable EnginePack/ResultPack publication, typed Grid writeback, and path-based Mol* ensemble opening; a 32-case all-variant packaged-RDKit/real-Metal corpus passes, while external coordinate-distribution and production-package gates remain |
 | MMFF94/MMFF94s optimization | Seven-term CPU/Metal evaluation, BMFX RDKit parameter ABI, fused Metal BFGS/L-BFGS selection, selectable MMFF94/MMFF94s conformer ranking, standalone input-coordinate `Optimize geometry`, exact Grid/XYZ provenance, and all eight DG/ETDG/ETKDG Grid choices are implemented; broad scientific-corpus parity remains in progress |
