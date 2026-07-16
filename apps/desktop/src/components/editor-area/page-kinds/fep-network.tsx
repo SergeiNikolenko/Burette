@@ -19,6 +19,10 @@ type RDKitModuleOptions = {
   wasmBinary?: Uint8Array;
 };
 
+type RDKitWindow = Window & {
+  initRDKitModule?: (options?: RDKitModuleOptions) => Promise<RDKitModule>;
+};
+
 type RDKitMol = {
   delete?: () => void;
   get_aromatic_form?: () => string;
@@ -53,12 +57,6 @@ const gridAssetsBaseUrl = `${new URL("../../../../../../PreviewExtension/Web/", 
 const gridAssetVersion = "grid-ui-v100";
 const cardSize = { width: 16.4, height: 25.8 };
 const edgeLabelAvoidanceCardSize = { width: 17.4, height: 29.2 };
-
-declare global {
-  interface Window {
-    initRDKitModule?: (options?: RDKitModuleOptions) => Promise<RDKitModule>;
-  }
-}
 
 export type { FepNetworkLocation };
 
@@ -787,10 +785,11 @@ async function loadFepNetworkData(graphmlText?: string) {
 }
 
 async function loadRDKit() {
-  if (!window.initRDKitModule) await loadScript(rdkitScriptUrl);
-  if (!window.initRDKitModule) throw new Error("RDKit loader is unavailable");
+  const rdkitWindow = window as unknown as RDKitWindow;
+  if (!rdkitWindow.initRDKitModule) await loadScript(rdkitScriptUrl);
+  if (!rdkitWindow.initRDKitModule) throw new Error("RDKit loader is unavailable");
   const wasm = await loadRDKitWasmBinary();
-  return window.initRDKitModule({ locateFile: () => wasm.path, wasmBinary: wasm.bytes });
+  return rdkitWindow.initRDKitModule({ locateFile: () => wasm.path, wasmBinary: wasm.bytes });
 }
 
 async function loadRDKitWasmBinary() {
