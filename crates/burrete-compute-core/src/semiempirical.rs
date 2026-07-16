@@ -4,6 +4,7 @@ mod parameters;
 
 pub use parameters::{rm1_parameters, SemiempiricalElementParameters};
 
+const MAX_ATOMS: usize = 128;
 const MAX_ORBITALS: usize = 256;
 
 /// Semi-empirical methods exposed by the native compute contract.
@@ -107,6 +108,102 @@ impl fmt::Display for SemiempiricalError {
 }
 
 impl Error for SemiempiricalError {}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SemiempiricalAtom {
+    pub atomic_number: u8,
+    pub position_angstrom: [f64; 3],
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SemiempiricalMolecule {
+    pub atoms: Vec<SemiempiricalAtom>,
+    pub charge: i32,
+    pub orbital_offsets: Vec<usize>,
+    pub orbital_count: usize,
+    pub electron_count: usize,
+}
+
+impl SemiempiricalMolecule {
+    pub fn rm1(atoms: Vec<SemiempiricalAtom>, charge: i32) -> Result<Self, SemiempiricalError> {
+        if atoms.is_empty() || atoms.len() > MAX_ATOMS {
+            return Err(SemiempiricalError::InvalidInput(format!(
+                "RM1 molecule must contain 1..={MAX_ATOMS} atoms"
+            )));
+        }
+
+        let mut orbital_offsets = Vec::with_capacity(atoms.len() + 1);
+        orbital_offsets.push(0);
+        let mut valence_electrons = 0_usize;
+        for atom in &atoms {
+            if atom
+                .position_angstrom
+                .iter()
+                .any(|value| !value.is_finite())
+            {
+                return Err(SemiempiricalError::InvalidInput(
+                    "atom coordinates must be finite".into(),
+                ));
+            }
+            let parameters = rm1_parameters(atom.atomic_number).ok_or_else(|| {
+                SemiempiricalError::InvalidInput(format!(
+                    "atomic number {} is not parameterized for RM1",
+                    atom.atomic_number
+                ))
+            })?;
+            valence_electrons += usize::from(parameters.valence_electrons);
+            orbital_offsets.push(
+                orbital_offsets.last().copied().unwrap() + usize::from(parameters.orbital_count),
+            );
+        }
+        let electron_count = i64::try_from(valence_electrons).unwrap() - i64::from(charge);
+        let orbital_count = *orbital_offsets.last().unwrap();
+        if electron_count <= 0
+            || electron_count & 1 != 0
+            || usize::try_from(electron_count).unwrap() > orbital_count * 2
+        {
+            return Err(SemiempiricalError::InvalidInput(
+                "RM1 currently requires a non-empty closed-shell electron configuration".into(),
+            ));
+        }
+        if orbital_count > MAX_ORBITALS {
+            return Err(SemiempiricalError::InvalidInput(format!(
+                "molecule requires {orbital_count} orbitals, maximum is {MAX_ORBITALS}"
+            )));
+        }
+
+        Ok(Self {
+            atoms,
+            charge,
+            orbital_offsets,
+            orbital_count,
+            electron_count: usize::try_from(electron_count).unwrap(),
+        })
+    }
+
+    /// Returns valence-population charges from a converged AO density matrix.
+    pub fn atomic_charges(&self, density: &[f64]) -> Result<Vec<f64>, SemiempiricalError> {
+        let matrix_len = self.orbital_count * self.orbital_count;
+        if density.len() != matrix_len || density.iter().any(|value| !value.is_finite()) {
+            return Err(SemiempiricalError::InvalidInput(format!(
+                "density matrix must contain {matrix_len} finite values"
+            )));
+        }
+        Ok(self
+            .atoms
+            .iter()
+            .enumerate()
+            .map(|(atom_index, atom)| {
+                let parameters = rm1_parameters(atom.atomic_number).unwrap();
+                let population: f64 = (self.orbital_offsets[atom_index]
+                    ..self.orbital_offsets[atom_index + 1])
+                    .map(|orbital| density[orbital * self.orbital_count + orbital])
+                    .sum();
+                f64::from(parameters.valence_electrons) - population
+            })
+            .collect())
+    }
+}
 
 /// Runs a deterministic restricted, closed-shell SCF cycle.
 ///
@@ -459,5 +556,60 @@ mod tests {
             ))
             .is_err()
         );
+    }
+
+    #[test]
+    fn rm1_molecule_builds_a_stable_basis_and_population_charges() {
+        let water = SemiempiricalMolecule::rm1(
+            vec![
+                SemiempiricalAtom {
+                    atomic_number: 8,
+                    position_angstrom: [0.0, 0.0, 0.0],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [0.96, 0.0, 0.0],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [-0.24, 0.93, 0.0],
+                },
+            ],
+            0,
+        )
+        .unwrap();
+        assert_eq!(water.orbital_offsets, [0, 4, 5, 6]);
+        assert_eq!(water.orbital_count, 6);
+        assert_eq!(water.electron_count, 8);
+
+        let mut density = vec![0.0; 36];
+        for (orbital, population) in [1.8, 1.8, 1.3, 1.3, 0.9, 0.9].into_iter().enumerate() {
+            density[orbital * 6 + orbital] = population;
+        }
+        let charges = water.atomic_charges(&density).unwrap();
+        assert_eq!(charges.len(), 3);
+        assert!(charges.iter().sum::<f64>().abs() < 1.0e-12);
+        assert!((charges[0] + 0.2).abs() < 1.0e-12);
+        assert!((charges[1] - 0.1).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn rm1_molecule_rejects_unsupported_elements_and_open_shells() {
+        assert!(SemiempiricalMolecule::rm1(
+            vec![SemiempiricalAtom {
+                atomic_number: 14,
+                position_angstrom: [0.0; 3],
+            }],
+            0,
+        )
+        .is_err());
+        assert!(SemiempiricalMolecule::rm1(
+            vec![SemiempiricalAtom {
+                atomic_number: 1,
+                position_angstrom: [0.0; 3],
+            }],
+            0,
+        )
+        .is_err());
     }
 }
