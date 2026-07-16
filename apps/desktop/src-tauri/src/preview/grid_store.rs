@@ -205,6 +205,12 @@ pub(crate) struct GridAlignmentSourceRow {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct GridAlignmentChargeSet {
+    pub(crate) value_id: String,
+    pub(crate) charges_by_row_id: BTreeMap<i64, Vec<f32>>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct GridDescriptorValueInput {
     pub(crate) id: String,
     pub(crate) label: String,
@@ -1227,6 +1233,101 @@ pub(crate) fn alignment_source_rows_by_indices(
         return Err("Grid alignment source contains an invalid source index".into());
     }
     Ok(rows)
+}
+
+pub(crate) fn alignment_charge_set_for_rows(
+    database_path: &Path,
+    row_ids: &[i64],
+) -> Result<Option<GridAlignmentChargeSet>, String> {
+    if row_ids.is_empty() {
+        return Ok(None);
+    }
+    const CHARGE_COLUMNS: [&str; 8] = [
+        "pm6D3H4AtomicCharges",
+        "pm6DAtomicCharges",
+        "pm6AtomicCharges",
+        "rm1AtomicCharges",
+        "pm6SpAtomicCharges",
+        "am1StarAtomicCharges",
+        "pm3AtomicCharges",
+        "am1AtomicCharges",
+    ];
+    #[derive(Default)]
+    struct Candidate {
+        value_id: String,
+        created_at_ms: i64,
+        charges_by_row_id: BTreeMap<i64, Vec<f32>>,
+    }
+
+    let connection = open_grid_database(database_path)?;
+    initialize_schema(&connection)?;
+    let placeholders = std::iter::repeat_n("?", row_ids.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "select analysis_values.run_id, analysis_values.value_id,
+                analysis_runs.created_at_ms, analysis_values.molecule_id,
+                analysis_values.value_text
+         from analysis_values
+         join analysis_runs on analysis_runs.run_id = analysis_values.run_id
+         join grid_metadata on grid_metadata.id = 1
+         where analysis_runs.workflow_template = 'semiempirical.v1'
+           and analysis_runs.document_fingerprint_sha256 = grid_metadata.document_fingerprint_sha256
+           and analysis_runs.source_revision = grid_metadata.source_revision
+           and analysis_values.value_kind = 'text'
+           and analysis_values.value_id in ({})
+           and analysis_values.molecule_id in ({placeholders})",
+        std::iter::repeat_n("?", CHARGE_COLUMNS.len())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    let parameters = CHARGE_COLUMNS
+        .iter()
+        .map(|value| SqlValue::Text((*value).into()))
+        .chain(row_ids.iter().copied().map(SqlValue::Integer));
+    let mut statement = connection
+        .prepare(&sql)
+        .map_err(|error| error.to_string())?;
+    let mut rows = statement
+        .query(params_from_iter(parameters))
+        .map_err(|error| error.to_string())?;
+    let mut candidates = BTreeMap::<String, Candidate>::new();
+    while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+        let run_id: String = row.get(0).map_err(|error| error.to_string())?;
+        let value_id: String = row.get(1).map_err(|error| error.to_string())?;
+        let created_at_ms: i64 = row.get(2).map_err(|error| error.to_string())?;
+        let molecule_id: i64 = row.get(3).map_err(|error| error.to_string())?;
+        let value_text: String = row.get(4).map_err(|error| error.to_string())?;
+        let charges = serde_json::from_str::<Vec<f32>>(&value_text)
+            .map_err(|error| format!("Invalid {value_id} analysis value: {error}"))?;
+        if charges.is_empty() || charges.iter().any(|value| !value.is_finite()) {
+            continue;
+        }
+        let candidate = candidates.entry(run_id).or_default();
+        candidate.value_id = value_id;
+        candidate.created_at_ms = created_at_ms;
+        candidate.charges_by_row_id.insert(molecule_id, charges);
+    }
+    let mut complete = candidates
+        .into_values()
+        .filter(|candidate| candidate.charges_by_row_id.len() == row_ids.len())
+        .collect::<Vec<_>>();
+    complete.sort_by_key(|candidate| {
+        (
+            CHARGE_COLUMNS
+                .iter()
+                .position(|value| *value == candidate.value_id.as_str())
+                .unwrap_or(CHARGE_COLUMNS.len()),
+            std::cmp::Reverse(candidate.created_at_ms),
+        )
+    });
+    Ok(complete
+        .into_iter()
+        .next()
+        .map(|candidate| GridAlignmentChargeSet {
+            value_id: candidate.value_id,
+            charges_by_row_id: candidate.charges_by_row_id,
+        }))
 }
 
 pub(crate) fn replace_descriptor_values_in_database(
@@ -4271,6 +4372,81 @@ mod tests {
         assert_eq!(page.rows.len(), 1);
         assert_eq!(page.rows[0].index, 2);
         assert_eq!(page.rows[0].name, "Third");
+
+        let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn selects_a_complete_semiempirical_charge_run_for_alignment() {
+        let runtime_dir = temp_runtime_dir();
+        let (database_path, _) = build_store(
+            &runtime_dir,
+            "csv",
+            b"smiles,name\nO,Water one\nO,Water two\n",
+        );
+        wait_for_index_ready(&database_path);
+        let connection = Connection::open(&database_path).expect("open database");
+        let identity = grid_identity::read_source_identity(&connection).expect("read identity");
+        let molecules = {
+            let mut statement = connection
+                .prepare(
+                    "select id, source_index, molecule_content_sha256
+                     from molecules order by source_index",
+                )
+                .expect("prepare identities");
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, u64>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                })
+                .expect("query identities")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("collect identities")
+        };
+        drop(connection);
+        grid_analysis::apply_analysis_run(
+            &database_path,
+            &grid_analysis::GridAnalysisApplyInput {
+                run_id: uuid::Uuid::from_u128(41),
+                workflow_template: WorkflowTemplateId::SemiempiricalV1,
+                document_fingerprint_sha256: identity.document_fingerprint_sha256,
+                source_revision: identity.source_revision,
+                snapshot_id: uuid::Uuid::from_u128(42),
+                snapshot_sha256: "a".repeat(64),
+                normalized_settings_sha256: "b".repeat(64),
+                maturity: CapabilityMaturity::Experimental,
+                representative_policy: RepresentativePolicy::NotApplicable,
+                provenance: serde_json::json!({}),
+                created_at_ms: 42,
+                values: molecules
+                    .iter()
+                    .map(|(molecule_id, source_index, molecule_content_sha256)| {
+                        grid_analysis::GridAnalysisValueInput {
+                            molecule_id: *molecule_id,
+                            source_index: *source_index,
+                            molecule_content_sha256: molecule_content_sha256.clone(),
+                            value_id: "pm6AtomicCharges".into(),
+                            value: grid_analysis::GridAnalysisValue::Text("[-0.4,0.2,0.2]".into()),
+                        }
+                    })
+                    .collect(),
+                artifacts: Vec::new(),
+            },
+        )
+        .expect("apply charge analysis");
+        let row_ids = molecules
+            .iter()
+            .map(|(molecule_id, _, _)| *molecule_id)
+            .collect::<Vec<_>>();
+        let selected = alignment_charge_set_for_rows(&database_path, &row_ids)
+            .expect("select charge run")
+            .expect("charge run");
+        assert_eq!(selected.value_id, "pm6AtomicCharges");
+        assert_eq!(selected.charges_by_row_id.len(), 2);
+        assert_eq!(selected.charges_by_row_id[&row_ids[0]], [-0.4, 0.2, 0.2]);
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }

@@ -13,7 +13,9 @@ use crate::preview::{
     },
     grid_database::open_grid_database,
     grid_identity,
-    grid_store::{alignment_source_rows_by_indices, GridAlignmentSourceRow},
+    grid_store::{
+        alignment_charge_set_for_rows, alignment_source_rows_by_indices, GridAlignmentSourceRow,
+    },
 };
 
 use super::error::{ComputeCoordinatorError, ComputeResult};
@@ -53,7 +55,7 @@ pub(crate) struct GridAlignmentResult {
     pub(crate) gpu_time_ms: u64,
     pub(crate) backend: &'static str,
     pub(crate) mapping: &'static str,
-    pub(crate) charge_model: &'static str,
+    pub(crate) charge_model: String,
     pub(crate) grid_applied: bool,
 }
 
@@ -61,8 +63,17 @@ pub(crate) struct GridAlignmentResult {
 pub(super) struct ParsedMolfile {
     pub(super) atoms: Vec<AlignmentAtom>,
     pub(super) symbols: Vec<String>,
+    formal_charges: Vec<i32>,
+    bonds: Vec<ParsedBond>,
     lines: Vec<String>,
     layout: MolfileLayout,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ParsedBond {
+    left: usize,
+    right: usize,
+    order: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -84,40 +95,35 @@ pub(crate) fn execute_grid_alignment(
             "One or more selected Grid rows no longer exist".into(),
         ));
     }
-    let parsed = rows
+    let mut parsed = rows
         .iter()
         .map(parse_row)
         .collect::<ComputeResult<Vec<_>>>()?;
+    let charge_model = apply_best_grid_charges(database_path, &rows, &mut parsed)?;
     let reference = &parsed[0];
     let mut probe_atoms = Vec::new();
     let mut reference_atoms = Vec::new();
     let mut mappings = Vec::new();
+    let mut pair_mappings = Vec::new();
     let mut descriptors = Vec::new();
     for probe in parsed.iter().skip(1) {
-        if probe.symbols != reference.symbols {
-            return Err(ComputeCoordinatorError::Validation(
-                "Mapped pose alignment requires the same explicit atom order and elements; atom-order remapping is not inferred".into(),
-            ));
-        }
+        let pair_mapping = infer_atom_mapping(probe, reference)?;
         let probe_start = probe_atoms.len() as u64;
         let reference_start = reference_atoms.len() as u64;
         let mapping_start = mappings.len() as u64;
         probe_atoms.extend_from_slice(&probe.atoms);
         reference_atoms.extend_from_slice(&reference.atoms);
-        mappings.extend((0..probe.atoms.len()).map(|index| AtomMapping {
-            probe_atom: index as u32,
-            reference_atom: index as u32,
-            weight: 1.0,
-        }));
+        mappings.extend_from_slice(&pair_mapping);
         descriptors.push(AlignmentPairDescriptor {
             probe_atom_start: probe_start,
             probe_atom_count: probe.atoms.len() as u64,
             reference_atom_start: reference_start,
             reference_atom_count: reference.atoms.len() as u64,
             mapping_start,
-            mapping_count: probe.atoms.len() as u64,
+            mapping_count: pair_mapping.len() as u64,
             mode: AlignmentMode::MappedHorn,
         });
+        pair_mappings.push(pair_mapping);
     }
     let max_memory_bytes = request.max_memory_bytes.unwrap_or(DEFAULT_MAX_MEMORY_BYTES);
     let execution = runtime
@@ -153,7 +159,7 @@ pub(crate) fn execute_grid_alignment(
     )?];
     for (pair_index, metal) in execution.pairs.iter().enumerate() {
         let probe = &parsed[pair_index + 1];
-        validate_cpu_parity(probe, reference, metal)?;
+        validate_cpu_parity(probe, reference, &pair_mappings[pair_index], metal)?;
         let score = GridAlignmentScore {
             source_index: rows[pair_index + 1].source_index,
             name: rows[pair_index + 1].name.clone(),
@@ -189,6 +195,7 @@ pub(crate) fn execute_grid_alignment(
         &scores,
         runtime,
         execution.gpu_time_ms,
+        &charge_model,
     )?;
     Ok(GridAlignmentResult {
         run_id,
@@ -197,8 +204,8 @@ pub(crate) fn execute_grid_alignment(
         scores,
         gpu_time_ms: execution.gpu_time_ms,
         backend: "nativeMetal",
-        mapping: "explicitIdentityAtomOrder",
-        charge_model: "molfileFormalCharge",
+        mapping: "deterministicElementBondGraph",
+        charge_model,
         grid_applied: true,
     })
 }
@@ -215,12 +222,217 @@ fn normalized_indexes(indexes: &[usize]) -> ComputeResult<Vec<usize>> {
     Ok(normalized)
 }
 
+fn infer_atom_mapping(
+    probe: &ParsedMolfile,
+    reference: &ParsedMolfile,
+) -> ComputeResult<Vec<AtomMapping>> {
+    if probe.atoms.len() != reference.atoms.len() || probe.bonds.len() != reference.bonds.len() {
+        return Err(ComputeCoordinatorError::Validation(
+            "Pose alignment requires molecules with the same explicit atom and bond graph".into(),
+        ));
+    }
+    let atom_count = probe.atoms.len();
+    let probe_graph = bond_matrix(atom_count, &probe.bonds)?;
+    let reference_graph = bond_matrix(atom_count, &reference.bonds)?;
+    let mut candidates = Vec::with_capacity(atom_count);
+    for probe_atom in 0..atom_count {
+        let signature = atom_signature(probe, &probe_graph, probe_atom);
+        let matches = (0..atom_count)
+            .filter(|&reference_atom| {
+                atom_signature(reference, &reference_graph, reference_atom) == signature
+            })
+            .collect::<Vec<_>>();
+        if matches.is_empty() {
+            return Err(ComputeCoordinatorError::Validation(
+                "Pose alignment could not match the element and bond environments".into(),
+            ));
+        }
+        candidates.push(matches);
+    }
+    let mut search_order = (0..atom_count).collect::<Vec<_>>();
+    search_order.sort_by_key(|&atom| {
+        (
+            candidates[atom].len(),
+            usize::MAX - degree(&probe_graph, atom),
+            atom,
+        )
+    });
+    let mut assigned = vec![None; atom_count];
+    let mut used = vec![false; atom_count];
+    if !assign_graph_mapping(
+        0,
+        &search_order,
+        &candidates,
+        &probe_graph,
+        &reference_graph,
+        &mut assigned,
+        &mut used,
+    ) {
+        return Err(ComputeCoordinatorError::Validation(
+            "Pose alignment requires an exact element and bond-graph match".into(),
+        ));
+    }
+    assigned
+        .into_iter()
+        .enumerate()
+        .map(|(probe_atom, reference_atom)| {
+            Ok(AtomMapping {
+                probe_atom: u32::try_from(probe_atom).map_err(|_| {
+                    ComputeCoordinatorError::Validation("Alignment atom index exceeds u32".into())
+                })?,
+                reference_atom: u32::try_from(reference_atom.expect("complete graph mapping"))
+                    .map_err(|_| {
+                        ComputeCoordinatorError::Validation(
+                            "Alignment atom index exceeds u32".into(),
+                        )
+                    })?,
+                weight: 1.0,
+            })
+        })
+        .collect()
+}
+
+fn bond_matrix(atom_count: usize, bonds: &[ParsedBond]) -> ComputeResult<Vec<u8>> {
+    let mut matrix = vec![0; atom_count * atom_count];
+    for bond in bonds {
+        if bond.left >= atom_count || bond.right >= atom_count || bond.left == bond.right {
+            return Err(ComputeCoordinatorError::Validation(
+                "Molfile bond index is out of range".into(),
+            ));
+        }
+        let forward = bond.left * atom_count + bond.right;
+        let reverse = bond.right * atom_count + bond.left;
+        if matrix[forward] != 0 {
+            return Err(ComputeCoordinatorError::Validation(
+                "Molfile contains a duplicate bond".into(),
+            ));
+        }
+        matrix[forward] = bond.order;
+        matrix[reverse] = bond.order;
+    }
+    Ok(matrix)
+}
+
+fn degree(graph: &[u8], atom: usize) -> usize {
+    let atom_count = graph.len().isqrt();
+    graph[atom * atom_count..(atom + 1) * atom_count]
+        .iter()
+        .filter(|&&order| order != 0)
+        .count()
+}
+
+fn atom_signature(
+    molecule: &ParsedMolfile,
+    graph: &[u8],
+    atom: usize,
+) -> (String, i32, Vec<(String, u8)>) {
+    let atom_count = molecule.atoms.len();
+    let mut neighbors = (0..atom_count)
+        .filter_map(|neighbor| {
+            let order = graph[atom * atom_count + neighbor];
+            (order != 0).then(|| (molecule.symbols[neighbor].clone(), order))
+        })
+        .collect::<Vec<_>>();
+    neighbors.sort();
+    (
+        molecule.symbols[atom].clone(),
+        molecule.formal_charges[atom],
+        neighbors,
+    )
+}
+
+fn assign_graph_mapping(
+    depth: usize,
+    search_order: &[usize],
+    candidates: &[Vec<usize>],
+    probe_graph: &[u8],
+    reference_graph: &[u8],
+    assigned: &mut [Option<usize>],
+    used: &mut [bool],
+) -> bool {
+    if depth == search_order.len() {
+        return true;
+    }
+    let atom_count = assigned.len();
+    let probe_atom = search_order[depth];
+    for &reference_atom in &candidates[probe_atom] {
+        if used[reference_atom] {
+            continue;
+        }
+        let consistent = assigned
+            .iter()
+            .enumerate()
+            .all(|(other_probe, other_reference)| {
+                other_reference.is_none_or(|other_reference| {
+                    probe_graph[probe_atom * atom_count + other_probe]
+                        == reference_graph[reference_atom * atom_count + other_reference]
+                })
+            });
+        if !consistent {
+            continue;
+        }
+        assigned[probe_atom] = Some(reference_atom);
+        used[reference_atom] = true;
+        if assign_graph_mapping(
+            depth + 1,
+            search_order,
+            candidates,
+            probe_graph,
+            reference_graph,
+            assigned,
+            used,
+        ) {
+            return true;
+        }
+        assigned[probe_atom] = None;
+        used[reference_atom] = false;
+    }
+    false
+}
+
 fn parse_row(row: &GridAlignmentSourceRow) -> ComputeResult<ParsedMolfile> {
     let molblock = row.molblock.as_deref().ok_or_else(|| {
         ComputeCoordinatorError::Validation(format!("{} has no molfile coordinates", row.name))
     })?;
     parse_molfile(molblock)
         .map_err(|message| ComputeCoordinatorError::Validation(format!("{}: {message}", row.name)))
+}
+
+fn apply_best_grid_charges(
+    database_path: &Path,
+    rows: &[GridAlignmentSourceRow],
+    molecules: &mut [ParsedMolfile],
+) -> ComputeResult<String> {
+    let row_ids = rows.iter().map(|row| row.row_id).collect::<Vec<_>>();
+    let Some(charge_set) = alignment_charge_set_for_rows(database_path, &row_ids)
+        .map_err(ComputeCoordinatorError::Validation)?
+    else {
+        return Ok("molfileFormalCharge".into());
+    };
+    for (row, molecule) in rows.iter().zip(molecules) {
+        let charges = charge_set
+            .charges_by_row_id
+            .get(&row.row_id)
+            .ok_or_else(|| {
+                ComputeCoordinatorError::Validation(format!(
+                    "{} charge analysis is incomplete for {}",
+                    charge_set.value_id, row.name
+                ))
+            })?;
+        if charges.len() != molecule.atoms.len() {
+            return Err(ComputeCoordinatorError::Validation(format!(
+                "{} has {} charges for {} explicit atoms in {}",
+                charge_set.value_id,
+                charges.len(),
+                molecule.atoms.len(),
+                row.name
+            )));
+        }
+        for (atom, &charge) in molecule.atoms.iter_mut().zip(charges) {
+            atom.partial_charge = charge;
+        }
+    }
+    Ok(format!("gridAnalysis:{}", charge_set.value_id))
 }
 
 pub(super) fn parse_molfile(text: &str) -> Result<ParsedMolfile, String> {
@@ -243,6 +455,13 @@ fn parse_v2000(lines: Vec<String>) -> Result<ParsedMolfile, String> {
     if count == 0 || lines.len() < 4 + count {
         return Err("V2000 atom block is empty or truncated".into());
     }
+    let bond_count = fixed_field(&lines[3], 3, 6)
+        .trim()
+        .parse::<usize>()
+        .map_err(|_| "invalid V2000 bond count")?;
+    if lines.len() < 4 + count + bond_count {
+        return Err("V2000 bond block is truncated".into());
+    }
     let mut atoms = Vec::with_capacity(count);
     let mut symbols = Vec::with_capacity(count);
     for line in &lines[4..4 + count] {
@@ -261,10 +480,29 @@ fn parse_v2000(lines: Vec<String>) -> Result<ParsedMolfile, String> {
         )?);
         symbols.push(symbol);
     }
+    let mut bonds = Vec::with_capacity(bond_count);
+    for line in &lines[4 + count..4 + count + bond_count] {
+        let left = parse_v2000_atom_index(line, 0, 3, count)?;
+        let right = parse_v2000_atom_index(line, 3, 6, count)?;
+        let order = fixed_field(line, 6, 9)
+            .trim()
+            .parse::<u8>()
+            .map_err(|_| "invalid V2000 bond order")?;
+        if left == right || order == 0 {
+            return Err("invalid V2000 bond record".into());
+        }
+        bonds.push(ParsedBond { left, right, order });
+    }
     apply_v2000_charges(&lines, &mut atoms)?;
+    let formal_charges = atoms
+        .iter()
+        .map(|atom| atom.partial_charge.round() as i32)
+        .collect();
     Ok(ParsedMolfile {
         atoms,
         symbols,
+        formal_charges,
+        bonds,
         lines,
         layout: MolfileLayout::V2000 { atom_start: 4 },
     })
@@ -287,10 +525,18 @@ fn parse_v3000(lines: Vec<String>) -> Result<ParsedMolfile, String> {
     }
     let mut atoms = Vec::with_capacity(atom_lines.len());
     let mut symbols = Vec::with_capacity(atom_lines.len());
+    let mut formal_charges = Vec::with_capacity(atom_lines.len());
+    let mut atom_ids = std::collections::BTreeMap::new();
     for &line_index in &atom_lines {
         let tokens = lines[line_index].split_whitespace().collect::<Vec<_>>();
         if tokens.len() < 8 || tokens[0] != "M" || tokens[1] != "V30" {
             return Err("invalid V3000 atom record".into());
+        }
+        let atom_id = tokens[2]
+            .parse::<usize>()
+            .map_err(|_| "invalid V3000 atom index")?;
+        if atom_ids.insert(atom_id, atoms.len()).is_some() {
+            return Err("duplicate V3000 atom index".into());
         }
         let symbol = tokens[3].to_string();
         let position = [
@@ -312,10 +558,50 @@ fn parse_v3000(lines: Vec<String>) -> Result<ParsedMolfile, String> {
             .unwrap_or(0);
         atoms.push(alignment_atom(position, &symbol, charge)?);
         symbols.push(symbol);
+        formal_charges.push(charge);
+    }
+    let bond_begin = lines
+        .iter()
+        .position(|line| line.trim() == "M  V30 BEGIN BOND");
+    let mut bonds = Vec::new();
+    if let Some(bond_begin) = bond_begin {
+        let bond_end = lines
+            .iter()
+            .skip(bond_begin + 1)
+            .position(|line| line.trim() == "M  V30 END BOND")
+            .map(|offset| bond_begin + 1 + offset)
+            .ok_or("V3000 bond block is truncated")?;
+        for line in &lines[bond_begin + 1..bond_end] {
+            let tokens = line.split_whitespace().collect::<Vec<_>>();
+            if tokens.len() < 6 || tokens[0] != "M" || tokens[1] != "V30" {
+                return Err("invalid V3000 bond record".into());
+            }
+            let order = tokens[3]
+                .parse::<u8>()
+                .map_err(|_| "invalid V3000 bond order")?;
+            let left_id = tokens[4]
+                .parse::<usize>()
+                .map_err(|_| "invalid V3000 bond atom")?;
+            let right_id = tokens[5]
+                .parse::<usize>()
+                .map_err(|_| "invalid V3000 bond atom")?;
+            let left = *atom_ids
+                .get(&left_id)
+                .ok_or("V3000 bond atom is out of range")?;
+            let right = *atom_ids
+                .get(&right_id)
+                .ok_or("V3000 bond atom is out of range")?;
+            if left == right || order == 0 {
+                return Err("invalid V3000 bond record".into());
+            }
+            bonds.push(ParsedBond { left, right, order });
+        }
     }
     Ok(ParsedMolfile {
         atoms,
         symbols,
+        formal_charges,
+        bonds,
         lines,
         layout: MolfileLayout::V3000 { atom_lines },
     })
@@ -394,19 +680,13 @@ fn apply_v2000_charges(lines: &[String], atoms: &mut [AlignmentAtom]) -> Result<
 fn validate_cpu_parity(
     probe: &ParsedMolfile,
     reference: &ParsedMolfile,
+    mapping: &[AtomMapping],
     metal: &burrete_compute_metal::MetalAlignmentPairResult,
 ) -> ComputeResult<()> {
-    let mapping = (0..probe.atoms.len())
-        .map(|index| AtomMapping {
-            probe_atom: index as u32,
-            reference_atom: index as u32,
-            weight: 1.0,
-        })
-        .collect::<Vec<_>>();
     let cpu = align_and_score(
         &probe.atoms,
         &reference.atoms,
-        &mapping,
+        mapping,
         AlignmentMode::MappedHorn,
     )
     .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
@@ -491,7 +771,7 @@ fn sdf_record(
     let esp = score
         .electrostatic_carbo
         .map(|value| format!("{value:.8}"))
-        .unwrap_or_else(|| "unavailable (no non-zero molfile formal charges)".into());
+        .unwrap_or_else(|| "unavailable (no non-zero atomic charges)".into());
     Ok(format!(
         "{}\n>  <BURRETE_ALIGNMENT_REFERENCE>\n{}\n\n>  <BURRETE_ALIGNED_RMSD>\n{:.8}\n\n>  <BURRETE_SHAPE_TANIMOTO>\n{:.8}\n\n>  <BURRETE_ELECTROSTATIC_CARBO>\n{}\n\n>  <BURRETE_COMBINED_SIMILARITY>\n{:.8}\n\n>  <BURRETE_COMPUTE_BACKEND>\nMetal GPU ({})\n\n$$$$",
         lines.join("\n"),
@@ -511,15 +791,16 @@ fn apply_grid_scores(
     scores: &[GridAlignmentScore],
     runtime: &MetalTanimotoRuntime,
     gpu_time_ms: u64,
+    charge_model: &str,
 ) -> ComputeResult<()> {
     let connection: Connection =
         open_grid_database(database_path).map_err(ComputeCoordinatorError::Validation)?;
     let identity = grid_identity::read_source_identity(&connection)
         .map_err(ComputeCoordinatorError::Validation)?;
     let settings = serde_json::json!({
-        "mapping": "explicitIdentityAtomOrder",
+        "mapping": "deterministicElementBondGraph",
         "shapeGaussian": "alpha=2.4179878/r_vdw^2; amplitude=1",
-        "chargeModel": "molfileFormalCharge",
+        "chargeModel": charge_model,
         "runtime": runtime.runtime_identity().version,
     });
     let settings_bytes = serde_json::to_vec(&settings)
@@ -560,8 +841,9 @@ fn apply_grid_scores(
                 "device": runtime.device_identity(),
                 "gpuTimeMs": gpu_time_ms,
                 "cpuParity": "passed",
-                "mapping": "explicit identity mapping after element-order validation",
-                "chargeModel": "molfile formal charges; electrostatic score unavailable when all charges are zero",
+                "mapping": "deterministic exact element and bond-graph isomorphism",
+                "chargeModel": charge_model,
+                "electrostaticFallback": "score unavailable when all atomic charges are zero",
                 "upstream": "https://github.com/guillaume-osmo/mlxmolkit",
             }),
             created_at_ms: now_ms(),
@@ -573,6 +855,23 @@ fn apply_grid_scores(
 
 fn fixed_field(text: &str, start: usize, end: usize) -> &str {
     text.get(start..end).unwrap_or("")
+}
+
+fn parse_v2000_atom_index(
+    text: &str,
+    start: usize,
+    end: usize,
+    atom_count: usize,
+) -> Result<usize, String> {
+    let one_based = fixed_field(text, start, end)
+        .trim()
+        .parse::<usize>()
+        .map_err(|_| "invalid V2000 bond atom")?;
+    let index = one_based.checked_sub(1).ok_or("invalid V2000 bond atom")?;
+    if index >= atom_count {
+        return Err("V2000 bond atom is out of range".into());
+    }
+    Ok(index)
 }
 
 fn parse_fixed_f32(text: &str, start: usize, end: usize) -> Result<f32, String> {
@@ -607,9 +906,75 @@ mod tests {
     }
 
     #[test]
+    fn infers_non_identity_mapping_from_element_and_bond_graph() {
+        let reference = parse_molfile(
+            "methanol\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\nM  END",
+        )
+        .expect("parse reference");
+        let reordered = parse_molfile(
+            "methanol pose\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n  2  3  1  0  0  0  0\n  3  1  1  0  0  0  0\nM  END",
+        )
+        .expect("parse reordered pose");
+        let mapping = infer_atom_mapping(&reordered, &reference).expect("infer mapping");
+        let pairs = mapping
+            .iter()
+            .map(|item| (item.probe_atom, item.reference_atom))
+            .collect::<Vec<_>>();
+        assert_eq!(pairs, [(0, 2), (1, 0), (2, 1)]);
+    }
+
+    #[test]
+    fn rejects_same_elements_with_a_different_bond_graph() {
+        let connected = parse_molfile(
+            "connected\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\nM  END",
+        )
+        .expect("parse connected");
+        let disconnected = parse_molfile(
+            "disconnected\n  Burrete\n\n  3  1  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\nM  END",
+        )
+        .expect("parse disconnected");
+        assert!(infer_atom_mapping(&disconnected, &connected).is_err());
+    }
+
+    #[test]
     fn rejects_unknown_elements_and_invalid_selection_sizes() {
         let mol = "x\n  Burrete\n\n  1  0  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 Xx  0  0  0  0  0  0  0  0  0  0  0  0\nM  END";
         assert!(parse_molfile(mol).is_err());
         assert!(normalized_indexes(&[1]).is_err());
+    }
+
+    #[test]
+    #[ignore = "manual real-GPU smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    fn aligns_a_reordered_grid_pose_on_the_real_gpu() {
+        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+            .map(std::path::PathBuf::from)
+            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged runtime");
+        let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
+            .expect("load verified Metal runtime");
+        let grid_root =
+            std::env::temp_dir().join(format!("burrete-alignment-grid-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&grid_root).expect("create Grid root");
+        let sdf = "methanol\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\nM  END\n$$$$\nmethanol pose\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n  2  3  1  0  0  0  0\n  3  1  1  0  0  0  0\nM  END\n$$$$\n";
+        let handle =
+            crate::preview::grid_store::build_grid_store(&grid_root, "sdf", sdf.as_bytes())
+                .expect("build Grid")
+                .expect("Grid handle");
+        let result = execute_grid_alignment(
+            &runtime,
+            &handle.database_path,
+            &GridAlignmentRequest {
+                document_id: "alignment-smoke".into(),
+                source_indexes: vec![0, 1],
+                max_memory_bytes: Some(64 * 1024 * 1024),
+            },
+        )
+        .expect("execute Metal alignment");
+        assert_eq!(result.backend, "nativeMetal");
+        assert_eq!(result.mapping, "deterministicElementBondGraph");
+        assert!(result.scores[1].rmsd < 1.0e-4);
+        assert!(result.grid_applied);
+        assert!(result.aligned_sdf.contains("Metal GPU"));
+
+        let _ = std::fs::remove_dir_all(&grid_root);
     }
 }
