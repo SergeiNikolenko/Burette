@@ -53,6 +53,15 @@ def main() -> None:
             force_field = AllChem.MMFFGetMoleculeForceField(molecule, properties)
             if force_field is None:
                 raise RuntimeError(f"RDKit force field failed for {name} {variant}")
+            optimized = Chem.Mol(molecule)
+            optimized_properties = AllChem.MMFFGetMoleculeProperties(
+                optimized, mmffVariant=variant
+            )
+            optimized_force_field = AllChem.MMFFGetMoleculeForceField(
+                optimized, optimized_properties
+            )
+            if optimized_force_field.Minimize(maxIts=1000) != 0:
+                raise RuntimeError(f"RDKit MMFF optimization failed for {name} {variant}")
             cases.append(
                 {
                     "name": name,
@@ -61,6 +70,9 @@ def main() -> None:
                     "molblock": molblock,
                     "positions": positions,
                     "expectedEnergyKcalMol": float(force_field.CalcEnergy()),
+                    "expectedOptimizedEnergyKcalMol": float(
+                        optimized_force_field.CalcEnergy()
+                    ),
                 }
             )
     output = Path(__file__).with_name("fixtures") / "mmff-rdkit-2025.03.4.json"
