@@ -65,11 +65,6 @@ pub fn rm1_sp_overlap(
         (3, 3) => 6,
         _ => unreachable!(),
     };
-    if matches!(jcall, 5 | 6) {
-        return Err(SemiempiricalError::InvalidInput(
-            "RM1 overlap for two heavy atoms involving the third row is not implemented yet".into(),
-        ));
-    }
     let integrals = |zeta_left: f64, zeta_right: f64| {
         let alpha = 0.5 * distance * (zeta_left + zeta_right);
         let beta = 0.5 * distance * (zeta_left - zeta_right);
@@ -145,6 +140,91 @@ pub fn rm1_sp_overlap(
                     - b_ps[3] * (a_ps[2] + a_ps[0]))
                 / (8.0 * 30.0_f64.sqrt());
             (ss, ps, 0.0, 0.0, 0.0)
+        }
+        5 => {
+            let scale = distance.powi(6);
+            let ss = right.zeta_s_bohr_inv.powf(2.5)
+                * left.zeta_s_bohr_inv.powf(3.5)
+                * scale
+                * (a_ss[5] * b_ss[0] + b_ss[1] * a_ss[4]
+                    - 2.0 * b_ss[2] * a_ss[3]
+                    - 2.0 * a_ss[2] * b_ss[3]
+                    + b_ss[4] * a_ss[1]
+                    + b_ss[5] * a_ss[0])
+                / (30.0_f64.sqrt() * 48.0);
+            let ps = right.zeta_s_bohr_inv.powf(2.5)
+                * left.zeta_p_bohr_inv.powf(3.5)
+                * scale
+                * (a_ps[4] * b_ps[0] + b_ps[1] * a_ps[5]
+                    - 2.0 * b_ps[3] * a_ps[3]
+                    - 2.0 * a_ps[2] * b_ps[2]
+                    + a_ps[1] * b_ps[5]
+                    + a_ps[0] * b_ps[4])
+                / (48.0 * 10.0_f64.sqrt());
+            let sp = right.zeta_p_bohr_inv.powf(2.5)
+                * left.zeta_s_bohr_inv.powf(3.5)
+                * scale
+                * ((a_sp[4] * b_sp[0] - a_sp[5] * b_sp[1])
+                    + 2.0 * (a_sp[3] * b_sp[1] - a_sp[4] * b_sp[2])
+                    - 2.0 * (a_sp[1] * b_sp[3] - a_sp[2] * b_sp[4])
+                    - (a_sp[0] * b_sp[4] - a_sp[1] * b_sp[5]))
+                / (48.0 * 10.0_f64.sqrt());
+            let sigma = right.zeta_p_bohr_inv.powf(2.5)
+                * left.zeta_p_bohr_inv.powf(3.5)
+                * scale
+                * ((a_pp[3] * b_pp[0] - a_pp[5] * b_pp[2])
+                    + (a_pp[2] * b_pp[1] - a_pp[4] * b_pp[3])
+                    - (a_pp[1] * b_pp[2] - a_pp[3] * b_pp[4])
+                    - (a_pp[0] * b_pp[3] - a_pp[2] * b_pp[5]))
+                / (16.0 * 30.0_f64.sqrt());
+            let pi = right.zeta_p_bohr_inv.powf(2.5)
+                * left.zeta_p_bohr_inv.powf(3.5)
+                * scale
+                * ((a_pp[5] - a_pp[3]) * (b_pp[0] - b_pp[2])
+                    + (a_pp[4] - a_pp[2]) * (b_pp[1] - b_pp[3])
+                    - (a_pp[3] - a_pp[1]) * (b_pp[2] - b_pp[4])
+                    - (a_pp[2] - a_pp[0]) * (b_pp[3] - b_pp[5]))
+                / (32.0 * 30.0_f64.sqrt());
+            (ss, ps, sp, sigma, pi)
+        }
+        6 => {
+            let scale = distance.powi(7);
+            let ss = (left.zeta_s_bohr_inv * right.zeta_s_bohr_inv).powf(3.5)
+                * scale
+                * (a_ss[6] * b_ss[0] - 3.0 * b_ss[2] * a_ss[4] + 3.0 * a_ss[2] * b_ss[4]
+                    - a_ss[0] * b_ss[6])
+                / 1440.0;
+            let ps = (right.zeta_s_bohr_inv * left.zeta_p_bohr_inv).powf(3.5)
+                * scale
+                * ((a_ps[5] * b_ps[0] + a_ps[6] * b_ps[1])
+                    + (-a_ps[4] * b_ps[1] - a_ps[5] * b_ps[2])
+                    - 2.0 * (a_ps[3] * b_ps[2] + a_ps[4] * b_ps[3])
+                    - 2.0 * (-a_ps[2] * b_ps[3] - a_ps[3] * b_ps[4])
+                    + (a_ps[1] * b_ps[4] + a_ps[2] * b_ps[5])
+                    + (-a_ps[0] * b_ps[5] - a_ps[1] * b_ps[6]))
+                / (480.0 * 3.0_f64.sqrt());
+            let sp = (right.zeta_p_bohr_inv * left.zeta_s_bohr_inv).powf(3.5)
+                * scale
+                * ((a_sp[5] * b_sp[0] - a_sp[6] * b_sp[1])
+                    + (a_sp[4] * b_sp[1] - a_sp[5] * b_sp[2])
+                    - 2.0 * (a_sp[3] * b_sp[2] - a_sp[4] * b_sp[3])
+                    - 2.0 * (a_sp[2] * b_sp[3] - a_sp[3] * b_sp[4])
+                    + (a_sp[1] * b_sp[4] - a_sp[2] * b_sp[5])
+                    + (a_sp[0] * b_sp[5] - a_sp[1] * b_sp[6]))
+                / (480.0 * 3.0_f64.sqrt());
+            let sigma = (right.zeta_p_bohr_inv * left.zeta_p_bohr_inv).powf(3.5)
+                * scale
+                * ((a_pp[4] * b_pp[0] - a_pp[6] * b_pp[2])
+                    - 2.0 * (a_pp[2] * b_pp[2] - a_pp[4] * b_pp[4])
+                    + (a_pp[0] * b_pp[4] - a_pp[2] * b_pp[6]))
+                / 480.0;
+            let pi = (right.zeta_p_bohr_inv * left.zeta_p_bohr_inv).powf(3.5)
+                * scale
+                * ((a_pp[6] - a_pp[4]) * (b_pp[0] - b_pp[2])
+                    - 2.0 * (a_pp[4] - a_pp[2]) * (b_pp[2] - b_pp[4])
+                    + (a_pp[2] - a_pp[0]) * (b_pp[4] - b_pp[6]))
+                / 960.0;
+            (ss, ps, sp, sigma, pi)
         }
         _ => unreachable!(),
     };
@@ -315,6 +395,44 @@ mod tests {
         for (actual, expected) in sulfur_hydrogen.values[..4].iter().zip(expected) {
             assert!((*actual - expected).abs() < 1.0e-13);
         }
+        let sulfur_oxygen = rm1_sp_overlap(
+            rm1_parameters(16).unwrap(),
+            rm1_parameters(8).unwrap(),
+            [0.0; 3],
+            [1.5, 0.2, 0.1],
+        )
+        .unwrap();
+        let expected_so = [
+            0.149_330_105_431_9,
+            -0.188_114_817_832_677,
+            -0.025_081_975_711_024,
+            -0.012_540_987_855_512,
+            0.276_790_037_475_652,
+            -0.246_203_489_325_531,
+            -0.048_053_205_195_144,
+            -0.024_026_602_597_572,
+            0.036_905_338_330_087,
+            -0.048_053_205_195_144,
+            0.107_788_455_612_032,
+            -0.003_203_547_013_01,
+            0.018_452_669_165_043,
+            -0.024_026_602_597_572,
+            -0.003_203_547_013_01,
+            0.112_593_776_131_546,
+        ];
+        for (actual, expected) in sulfur_oxygen.values.into_iter().zip(expected_so) {
+            assert!((actual - expected).abs() < 1.0e-12);
+        }
+        let sulfur_chlorine = rm1_sp_overlap(
+            rm1_parameters(16).unwrap(),
+            rm1_parameters(17).unwrap(),
+            [0.0; 3],
+            [2.0, 0.3, -0.2],
+        )
+        .unwrap();
+        assert!((sulfur_chlorine.values[0] - 0.049_279_655_009_174).abs() < 1.0e-13);
+        assert!((sulfur_chlorine.values[5] + 0.316_130_036_575_148).abs() < 1.0e-12);
+        assert!((sulfur_chlorine.values[15] - 0.117_201_352_836_058).abs() < 1.0e-12);
         assert!(rm1_sp_overlap(
             rm1_parameters(35).unwrap(),
             rm1_parameters(1).unwrap(),
