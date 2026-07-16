@@ -101,9 +101,10 @@ the existing on-disk JSON shape unchanged. Snapshot validation dispatches to
 the matching fixed execution-plan contract, and a conformer snapshot now
 round-trips through JSON with its canonical request and plan hashes. The wire
 protocol also has a strict `submitConformerV1` command. Desktop admission now
-requires a verified chemistry preflight with exact record, valid-molecule,
-atom, distance-constraint, EnginePack, ResultPack, and accounted numeric peak
-sizes. It rejects inconsistent frozen-source counts, undersized ResultPack
+requires a verified chemistry preflight bound to the frozen library's ordered
+molecule-identity hash, with exact record, valid-molecule, atom,
+distance-constraint, EnginePack, ResultPack, and accounted numeric peak sizes.
+It rejects identity/count swaps, undersized ResultPack
 payloads, and any stage above `maxMemoryBytes` before queueing. Distance
 geometry and stereo validation receive independent probed backend decisions,
 so `gpuRequired` fails if either verified Metal capability is absent and

@@ -166,7 +166,10 @@ pub(crate) fn build_queued_conformer_v1_job(
     let admitted = admit_conformer_v1_plan(
         &request,
         frozen_source.frozen_source.record_count,
-        input.preflight,
+        &frozen_source
+            .frozen_source
+            .ordered_record_molecule_identity_sha256,
+        &input.preflight,
         &input.engines,
         input.distance_admission,
         input.stereo_admission,
@@ -371,6 +374,7 @@ mod tests {
             },
             preflight: ConformerV1Preflight {
                 record_count: 3,
+                ordered_record_molecule_identity_sha256: test_only_hash('7'),
                 valid_record_count: 3,
                 total_atom_count: 12,
                 total_distance_constraint_count: 24,

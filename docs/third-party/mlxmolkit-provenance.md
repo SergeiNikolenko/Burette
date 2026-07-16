@@ -92,7 +92,8 @@ was likewise derived independently from its documented mathematical contract;
 no upstream DG implementation was copied or translated.
 
 The conformer admission and queued-job increment was also independently
-implemented. It adds a typed chemistry-preflight memory envelope, independent
+implemented. It adds a frozen-molecule-identity-bound chemistry-preflight
+memory envelope, independent
 backend decisions for distance geometry and stereo validation, canonical
 durable snapshot construction, and capability-rooted frozen-source binding.
 It does not copy upstream planning, packaging, or execution code.
