@@ -24,9 +24,7 @@ pub fn rm1_sp_overlap(
     let qn_left = principal_quantum_number(left.atomic_number);
     let qn_right = principal_quantum_number(right.atomic_number);
     if qn_left > 3 || qn_right > 3 {
-        return Err(SemiempiricalError::InvalidInput(
-            "RM1 overlap currently supports principal quantum numbers 1-3".into(),
-        ));
+        return numerical_sp_overlap(left, right, left_position_angstrom, right_position_angstrom);
     }
     if qn_left < qn_right {
         let swapped = rm1_sp_overlap(right, left, right_position_angstrom, left_position_angstrom)?;
@@ -329,6 +327,232 @@ fn principal_quantum_number(atomic_number: u8) -> u8 {
     }
 }
 
+fn numerical_sp_overlap(
+    left: &SemiempiricalElementParameters,
+    right: &SemiempiricalElementParameters,
+    left_position_angstrom: [f64; 3],
+    right_position_angstrom: [f64; 3],
+) -> Result<Rm1OverlapMatrix, SemiempiricalError> {
+    let delta = [
+        right_position_angstrom[0] - left_position_angstrom[0],
+        right_position_angstrom[1] - left_position_angstrom[1],
+        right_position_angstrom[2] - left_position_angstrom[2],
+    ];
+    let distance_angstrom = delta.iter().map(|value| value * value).sum::<f64>().sqrt();
+    if !distance_angstrom.is_finite() || distance_angstrom <= 1.0e-8 {
+        return Err(SemiempiricalError::InvalidInput(
+            "overlap requires distinct finite coordinates".into(),
+        ));
+    }
+    let distance = distance_angstrom * ANGSTROM_TO_BOHR_MOPAC;
+    let left_n = principal_quantum_number(left.atomic_number);
+    let right_n = principal_quantum_number(right.atomic_number);
+    let s_ss = reduced_sto_overlap(
+        left_n,
+        0,
+        right_n,
+        0,
+        0,
+        left.zeta_s_bohr_inv,
+        right.zeta_s_bohr_inv,
+        distance,
+    );
+    let s_ps = (left.orbital_count > 1).then(|| {
+        reduced_sto_overlap(
+            left_n,
+            1,
+            right_n,
+            0,
+            0,
+            left.zeta_p_bohr_inv,
+            right.zeta_s_bohr_inv,
+            distance,
+        )
+    });
+    let s_sp = (right.orbital_count > 1).then(|| {
+        reduced_sto_overlap(
+            left_n,
+            0,
+            right_n,
+            1,
+            0,
+            left.zeta_s_bohr_inv,
+            right.zeta_p_bohr_inv,
+            distance,
+        )
+    });
+    let p_pair = (left.orbital_count > 1 && right.orbital_count > 1).then(|| {
+        (
+            reduced_sto_overlap(
+                left_n,
+                1,
+                right_n,
+                1,
+                0,
+                left.zeta_p_bohr_inv,
+                right.zeta_p_bohr_inv,
+                distance,
+            ),
+            reduced_sto_overlap(
+                left_n,
+                1,
+                right_n,
+                1,
+                1,
+                left.zeta_p_bohr_inv,
+                right.zeta_p_bohr_inv,
+                distance,
+            ),
+        )
+    });
+
+    let direction = [
+        delta[0] / distance_angstrom,
+        delta[1] / distance_angstrom,
+        delta[2] / distance_angstrom,
+    ];
+    let rotation = rotation_matrix(direction);
+    let (r0, r1, r2) = (rotation[0], rotation[1], rotation[2]);
+    let rows = usize::from(left.orbital_count);
+    let columns = usize::from(right.orbital_count);
+    let mut values = [0.0; 16];
+    values[0] = s_ss;
+    if let Some(s_ps) = s_ps {
+        for k in 0..3 {
+            values[(k + 1) * columns] = s_ps * r0[k];
+        }
+    }
+    if let Some(s_sp) = s_sp {
+        for k in 0..3 {
+            values[k + 1] = -s_sp * r0[k];
+        }
+    }
+    if let Some((sigma, pi)) = p_pair {
+        for k in 0..3 {
+            for l in 0..3 {
+                values[(k + 1) * columns + l + 1] =
+                    -sigma * r0[k] * r0[l] + pi * (r1[k] * r1[l] + r2[k] * r2[l]);
+            }
+        }
+    }
+    Ok(Rm1OverlapMatrix {
+        rows,
+        columns,
+        values,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn reduced_sto_overlap(
+    left_n: u8,
+    left_l: u8,
+    right_n: u8,
+    right_l: u8,
+    magnetic: u8,
+    left_zeta: f64,
+    right_zeta: f64,
+    distance_bohr: f64,
+) -> f64 {
+    let radial_left = radial_normalization(left_n, left_zeta);
+    let radial_right = radial_normalization(right_n, right_zeta);
+    let angular_left = angular_normalization(left_l, magnetic);
+    let angular_right = angular_normalization(right_l, magnetic);
+    let phi_integral = if magnetic == 0 {
+        2.0 * std::f64::consts::PI
+    } else {
+        std::f64::consts::PI
+    };
+    let half = 0.5 * distance_bohr;
+    let xi_max = 1.0 + 40.0 / ((left_zeta + right_zeta) * half).max(1.0e-6);
+    let (nodes, weights) = gauss_legendre_48();
+    let mut integral = 0.0;
+    for (&xi_node, &xi_weight) in nodes.iter().zip(&weights) {
+        let xi = 0.5 * ((xi_max - 1.0) * xi_node + xi_max + 1.0);
+        let scaled_xi_weight = 0.5 * (xi_max - 1.0) * xi_weight;
+        for (&eta, &eta_weight) in nodes.iter().zip(&weights) {
+            let radius_left = half * (xi + eta);
+            let radius_right = half * (xi - eta);
+            let cos_left = ((1.0 + xi * eta) / (xi + eta)).clamp(-1.0, 1.0);
+            let cos_right = ((1.0 - xi * eta) / (xi - eta)).clamp(-1.0, 1.0);
+            let radial = radial_left
+                * radius_left.powi(i32::from(left_n) - 1)
+                * (-left_zeta * radius_left).exp()
+                * radial_right
+                * radius_right.powi(i32::from(right_n) - 1)
+                * (-right_zeta * radius_right).exp();
+            let angular = associated_legendre(left_l, magnetic, cos_left)
+                * associated_legendre(right_l, magnetic, cos_right);
+            integral += scaled_xi_weight * eta_weight * radial * angular * (xi * xi - eta * eta);
+        }
+    }
+    angular_left * angular_right * phi_integral * half.powi(3) * integral
+}
+
+fn radial_normalization(n: u8, zeta: f64) -> f64 {
+    (2.0 * zeta).powf(f64::from(n) + 0.5) / factorial(2 * n).sqrt()
+}
+
+fn angular_normalization(l: u8, magnetic: u8) -> f64 {
+    let numerator = f64::from(2 * l + 1);
+    if magnetic == 0 {
+        (numerator / (4.0 * std::f64::consts::PI)).sqrt()
+    } else {
+        (numerator / (2.0 * std::f64::consts::PI) * factorial(l - magnetic)
+            / factorial(l + magnetic))
+        .sqrt()
+    }
+}
+
+fn associated_legendre(l: u8, magnetic: u8, cosine: f64) -> f64 {
+    match (l, magnetic) {
+        (0, 0) => 1.0,
+        (1, 0) => cosine,
+        (1, 1) => -(1.0 - cosine * cosine).max(0.0).sqrt(),
+        _ => 0.0,
+    }
+}
+
+fn factorial(value: u8) -> f64 {
+    (1..=u64::from(value)).product::<u64>() as f64
+}
+
+fn gauss_legendre_48() -> ([f64; 48], [f64; 48]) {
+    let mut nodes = [0.0; 48];
+    let mut weights = [0.0; 48];
+    for root in 0..24 {
+        let mut value = (std::f64::consts::PI * (root as f64 + 0.75) / 48.5).cos();
+        loop {
+            let (polynomial, derivative) = legendre_48(value);
+            let next = value - polynomial / derivative;
+            if (next - value).abs() <= 1.0e-15 {
+                value = next;
+                break;
+            }
+            value = next;
+        }
+        let (_, derivative) = legendre_48(value);
+        let weight = 2.0 / ((1.0 - value * value) * derivative * derivative);
+        nodes[root] = value;
+        nodes[47 - root] = -value;
+        weights[root] = weight;
+        weights[47 - root] = weight;
+    }
+    (nodes, weights)
+}
+
+fn legendre_48(value: f64) -> (f64, f64) {
+    let mut previous = 1.0;
+    let mut current = value;
+    for order in 2..=48 {
+        let next = ((2 * order - 1) as f64 * value * current - (order - 1) as f64 * previous)
+            / order as f64;
+        previous = current;
+        current = next;
+    }
+    let derivative = 48.0 * (value * current - previous) / (value * value - 1.0);
+    (current, derivative)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -378,7 +602,7 @@ mod tests {
     }
 
     #[test]
-    fn third_row_hydrogen_matches_oracle_and_higher_period_is_explicit() {
+    fn third_row_and_numerical_higher_period_overlap_match_oracles() {
         let sulfur_hydrogen = rm1_sp_overlap(
             rm1_parameters(16).unwrap(),
             rm1_parameters(1).unwrap(),
@@ -433,12 +657,27 @@ mod tests {
         assert!((sulfur_chlorine.values[0] - 0.049_279_655_009_174).abs() < 1.0e-13);
         assert!((sulfur_chlorine.values[5] + 0.316_130_036_575_148).abs() < 1.0e-12);
         assert!((sulfur_chlorine.values[15] - 0.117_201_352_836_058).abs() < 1.0e-12);
-        assert!(rm1_sp_overlap(
+        let bromine_hydrogen = rm1_sp_overlap(
             rm1_parameters(35).unwrap(),
             rm1_parameters(1).unwrap(),
             [0.0; 3],
-            [1.0, 0.0, 0.0]
+            [2.4, 0.0, 0.0],
         )
-        .is_err());
+        .unwrap();
+        assert!((bromine_hydrogen.values[0] - 0.018_869_291_837_46).abs() < 2.0e-10);
+        assert!((bromine_hydrogen.values[1] - 0.193_008_519_774_526).abs() < 2.0e-10);
+
+        let iodine_carbon = rm1_sp_overlap(
+            rm1_parameters(53).unwrap(),
+            rm1_parameters(6).unwrap(),
+            [0.0; 3],
+            [2.14, 0.0, 0.0],
+        )
+        .unwrap();
+        assert!((iodine_carbon.values[0] - 0.161_240_907_343_303).abs() < 2.0e-10);
+        assert!((iodine_carbon.values[4] - 0.272_975_050_886_505).abs() < 2.0e-10);
+        assert!((iodine_carbon.values[1] + 0.199_626_584_677_874).abs() < 2.0e-10);
+        assert!((iodine_carbon.values[5] + 0.285_293_336_714_26).abs() < 2.0e-10);
+        assert!((iodine_carbon.values[10] - 0.093_847_690_942_708).abs() < 2.0e-10);
     }
 }
