@@ -37,6 +37,8 @@ import { useAppMolstarXtbContext } from "./hooks/use-app-molstar-xtb-context";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
 import { useAppOpenDropController } from "./hooks/use-app-open-drop-controller";
 import { useAppPreferenceEffects } from "./hooks/use-app-preference-effects";
+import { useAppQuickLook } from "./hooks/use-app-quick-look";
+import { useAppQuickLookDocumentOpen } from "./hooks/use-app-quick-look-document-open";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppShellActions } from "./hooks/use-app-shell-actions";
@@ -385,7 +387,19 @@ export default function App() {
   const {
     browserDevExplicitFolders,
     browserDevHasExplicitWorkspaceQuery,
+    browserDevQuickLookPath,
   } = useAppBrowserDevStartup();
+  const { openQuickLookDocument } = useAppQuickLookDocumentOpen({ preferences });
+  const {
+    closeQuickLookPreview,
+    quickLookDocument,
+    quickLookError,
+    quickLookStandalone,
+  } = useAppQuickLook({
+    browserDevQuickLookPath,
+    openQuickLookDocument,
+    pushErrorStatus,
+  });
   const {
     activeProject,
     setWorkspacePath,
@@ -820,6 +834,7 @@ export default function App() {
     closeDocument,
     closeDockTab,
     closeGridRuntime,
+    closeQuickLookPreview,
     closeTab,
     confirmDiscardDirtyGridDocument,
     confirmDiscardDirtyGridDocuments,
@@ -949,6 +964,9 @@ export default function App() {
     activeTab,
     activeTabId,
     activeDocument,
+    quickLookDocument,
+    quickLookError,
+    quickLookStandalone,
     recentStructures,
     sidebarProjects,
     projectsOpen,
