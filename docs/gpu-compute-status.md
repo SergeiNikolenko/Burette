@@ -490,9 +490,11 @@ separate product increments.
   pair rotation expands it into the dense molecular `9x9x9x9` d extension;
   sulfur-sulfur local parity covers 398 nonzero entries, while an arbitrary-axis
   tensor covers 6305 nonzero entries and matches the complete pinned oracle
-  aggregate. YX/YY electron-core terms, Metal W generation, full PM6 SCF
-  integration, broader D3 tables, and production PM6-D3H4 composition remain
-  gated.
+  aggregate. Native YX/YY d-extension electron-core contractions now include
+  the PM6 transition-metal `rho_core` override and match arbitrary-axis S-O,
+  S-S, and Fe-Fe PYSEQM values. The separately owned sp core block, Metal W
+  generation, full PM6 SCF integration, broader D3 tables, and production
+  PM6-D3H4 composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.

@@ -27,6 +27,8 @@ pub struct Pm6DSpLocalPairIntegrals {
 pub struct Pm6DSpPairIntegrals {
     /// Dense d-extension tensor with shape `9 x 9 x 4 x 4`; its sp-only block is zero.
     pub repulsion_ev: [f64; 1296],
+    /// Attraction of d-basis electron pairs to the sp-atom core.
+    pub d_core_attraction_ev: [f64; 81],
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -39,6 +41,10 @@ pub struct Pm6DDLocalPairIntegrals {
 pub struct Pm6DDPairIntegrals {
     /// Dense d-extension tensor with shape `9 x 9 x 9 x 9`; its sp-only block is zero.
     pub repulsion_ev: Vec<f64>,
+    /// Attraction of left-atom electron pairs to the right-atom core.
+    pub left_core_attraction_ev: [f64; 81],
+    /// Attraction of right-atom electron pairs to the left-atom core.
+    pub right_core_attraction_ev: [f64; 81],
 }
 
 fn principal_quantum_number(atomic_number: u8) -> f64 {
@@ -178,39 +184,49 @@ pub fn pm6_d_d_local_pair_integrals(
             "PM6 YY integrals require a positive finite distance".into(),
         ));
     }
+    Ok(Pm6DDLocalPairIntegrals {
+        repulsion_ev: pm6_yy_local_for_core_widths(left, right, distance_bohr, None, None)?,
+    })
+}
+
+fn pm6_yy_local_for_core_widths(
+    left: &Pm6FullElementParameters,
+    right: &Pm6FullElementParameters,
+    distance_bohr: f64,
+    left_core_width: Option<f64>,
+    right_core_width: Option<f64>,
+) -> Result<[f64; 2025], SemiempiricalError> {
     let left_sp = sp_multipoles(left);
     let right_sp = sp_multipoles(right);
     let left_d = pm6_d_multipole_parameters(left)?;
     let right_d = pm6_d_multipole_parameters(right)?;
-    Ok(Pm6DDLocalPairIntegrals {
-        repulsion_ev: pm6_yy_local(Pm6YyLocalInput {
-            r0: distance_bohr,
-            da0: left_sp.dipole_separation_bohr,
-            db0: right_sp.dipole_separation_bohr,
-            qa0: left_sp.quadrupole_separation_bohr,
-            qb0: right_sp.quadrupole_separation_bohr,
-            dpa0: left_d.dp,
-            dpb0: right_d.dp,
-            dsa0: left_d.ds,
-            dsb0: right_d.ds,
-            dda0: left_d.d_orbital,
-            ddb0: right_d.d_orbital,
-            rho0a: left_sp.rho_monopole_bohr,
-            rho0b: right_sp.rho_monopole_bohr,
-            rho1a: left_sp.rho_dipole_bohr,
-            rho1b: right_sp.rho_dipole_bohr,
-            rho2a: left_sp.rho_quadrupole_bohr,
-            rho2b: right_sp.rho_quadrupole_bohr,
-            rho3a: left_d.rho3,
-            rho3b: right_d.rho3,
-            rho4a: left_d.rho4,
-            rho4b: right_d.rho4,
-            rho5a: left_d.rho5,
-            rho5b: right_d.rho5,
-            rho6a: left_d.rho6,
-            rho6b: right_d.rho6,
-        }),
-    })
+    Ok(pm6_yy_local(Pm6YyLocalInput {
+        r0: distance_bohr,
+        da0: left_sp.dipole_separation_bohr,
+        db0: right_sp.dipole_separation_bohr,
+        qa0: left_sp.quadrupole_separation_bohr,
+        qb0: right_sp.quadrupole_separation_bohr,
+        dpa0: left_d.dp,
+        dpb0: right_d.dp,
+        dsa0: left_d.ds,
+        dsb0: right_d.ds,
+        dda0: left_d.d_orbital,
+        ddb0: right_d.d_orbital,
+        rho0a: left_core_width.unwrap_or(left_sp.rho_monopole_bohr),
+        rho0b: right_core_width.unwrap_or(right_sp.rho_monopole_bohr),
+        rho1a: left_sp.rho_dipole_bohr,
+        rho1b: right_sp.rho_dipole_bohr,
+        rho2a: left_sp.rho_quadrupole_bohr,
+        rho2b: right_sp.rho_quadrupole_bohr,
+        rho3a: left_d.rho3,
+        rho3b: right_d.rho3,
+        rho4a: left_d.rho4,
+        rho4b: right_d.rho4,
+        rho5a: left_d.rho5,
+        rho5b: right_d.rho5,
+        rho6a: left_d.rho6,
+        rho6b: right_d.rho6,
+    }))
 }
 
 /// Rotates the complete PM6 YX tensor into the molecular frame.
@@ -283,7 +299,18 @@ pub fn pm6_d_sp_pair_integrals(
             }
         }
     }
-    Ok(Pm6DSpPairIntegrals { repulsion_ev })
+    let mut d_core_attraction_ev = [0.0; 81];
+    let core_charge = f64::from(sp_atom.valence_electrons);
+    for mu in 0..9 {
+        for nu in 0..9 {
+            d_core_attraction_ev[mu * 9 + nu] =
+                -core_charge * repulsion_ev[((mu * 9 + nu) * 4) * 4];
+        }
+    }
+    Ok(Pm6DSpPairIntegrals {
+        repulsion_ev,
+        d_core_attraction_ev,
+    })
 }
 
 /// Rotates the complete PM6 YY d-extension tensor into the molecular frame.
@@ -302,7 +329,8 @@ pub fn pm6_d_d_pair_integrals(
             "PM6 YY rotation requires distinct finite coordinates".into(),
         ));
     }
-    let local = pm6_d_d_local_pair_integrals(left, right, distance_angstrom * ANGSTROM_TO_BOHR)?;
+    let distance_bohr = distance_angstrom * ANGSTROM_TO_BOHR;
+    let local = pm6_d_d_local_pair_integrals(left, right, distance_bohr)?;
     let rotation = pyseqm_orbital_rotation(delta.map(|value| value / distance_angstrom));
     let mut pair_rotation = [[0.0; 45]; 81];
     for mu in 0..9 {
@@ -340,7 +368,37 @@ pub fn pm6_d_d_pair_integrals(
             }
         }
     }
-    Ok(Pm6DDPairIntegrals { repulsion_ev })
+    let left_core_width = if left.rho_core > 0.0 {
+        left.rho_core
+    } else {
+        sp_multipoles(left).rho_monopole_bohr
+    };
+    let right_core_width = if right.rho_core > 0.0 {
+        right.rho_core
+    } else {
+        sp_multipoles(right).rho_monopole_bohr
+    };
+    let left_core_local =
+        pm6_yy_local_for_core_widths(left, right, distance_bohr, None, Some(right_core_width))?;
+    let right_core_local =
+        pm6_yy_local_for_core_widths(left, right, distance_bohr, Some(left_core_width), None)?;
+    let mut left_core_attraction_ev = [0.0; 81];
+    let mut right_core_attraction_ev = [0.0; 81];
+    for mu in 0..9 {
+        for nu in 0..9 {
+            for (pair, weight) in pair_rotation[mu * 9 + nu].iter().enumerate() {
+                left_core_attraction_ev[mu * 9 + nu] -=
+                    f64::from(right.valence_electrons) * weight * left_core_local[pair];
+                right_core_attraction_ev[mu * 9 + nu] -=
+                    f64::from(left.valence_electrons) * weight * right_core_local[45 * pair];
+            }
+        }
+    }
+    Ok(Pm6DDPairIntegrals {
+        repulsion_ev,
+        left_core_attraction_ev,
+        right_core_attraction_ev,
+    })
 }
 
 fn pyseqm_orbital_rotation(unit_d_to_h: [f64; 3]) -> [[f64; 9]; 9] {
@@ -637,6 +695,16 @@ mod tests {
             1040
         );
         assert!((result.repulsion_ev.iter().sum::<f64>() - 185.245_521_806_165_98).abs() < 3.0e-9);
+        for (row, column, expected) in [
+            (0, 4, -0.112_535_647_952_247_3),
+            (1, 4, -2.569_865_919_806_241),
+            (4, 4, -53.493_989_366_958_04),
+            (5, 7, 0.559_719_513_679_704_4),
+            (8, 8, -53.493_989_423_059_6),
+        ] {
+            let actual = result.d_core_attraction_ev[row * 9 + column];
+            assert!((actual - expected).abs() < 3.0e-9);
+        }
     }
 
     #[test]
@@ -712,5 +780,49 @@ mod tests {
             6305
         );
         assert!((result.repulsion_ev.iter().sum::<f64>() - 605.771_199_417_005_3).abs() < 4.0e-8);
+        for (row, column, left_expected, right_expected) in [
+            (0, 4, -0.089_511_982_088_136_95, -0.089_511_982_088_136_95),
+            (1, 4, -2.191_057_308_631_099, 2.191_057_308_631_099),
+            (4, 4, -50.810_779_161_658_9, -50.810_779_161_658_9),
+            (5, 7, 0.430_635_993_158_544_4, 0.430_635_993_158_544_4),
+            (8, 8, -50.810_779_204_822_75, -50.810_779_204_822_75),
+        ] {
+            let index = row * 9 + column;
+            assert!(
+                (result.left_core_attraction_ev[index] - left_expected).abs() < 3.0e-9,
+                "left {row},{column}: {} != {left_expected}",
+                result.left_core_attraction_ev[index]
+            );
+            assert!(
+                (result.right_core_attraction_ev[index] - right_expected).abs() < 3.0e-9,
+                "right {row},{column}: {} != {right_expected}",
+                result.right_core_attraction_ev[index]
+            );
+        }
+    }
+
+    #[test]
+    fn iron_core_width_override_matches_the_pinned_pyseqm_port() {
+        let iron = pm6_full_parameters(26).unwrap();
+        let result = pm6_d_d_pair_integrals(iron, iron, [0.0; 3], [1.8, -0.3, 0.5]).unwrap();
+        for (row, column, left_expected, right_expected) in [
+            (0, 4, -3.800_331_800_641_999, -3.800_331_800_641_999),
+            (1, 4, -0.991_927_660_283_527_3, 0.991_927_660_283_527_3),
+            (4, 4, -54.170_530_813_084_625, -54.170_530_813_084_625),
+            (5, 7, 1.209_647_191_492_244_6, 1.209_647_191_492_244_6),
+            (8, 8, -54.170_532_182_830_44, -54.170_532_182_830_44),
+        ] {
+            let index = row * 9 + column;
+            assert!(
+                (result.left_core_attraction_ev[index] - left_expected).abs() < 4.0e-9,
+                "left {row},{column}: {} != {left_expected}",
+                result.left_core_attraction_ev[index]
+            );
+            assert!(
+                (result.right_core_attraction_ev[index] - right_expected).abs() < 4.0e-9,
+                "right {row},{column}: {} != {right_expected}",
+                result.right_core_attraction_ev[index]
+            );
+        }
     }
 }
