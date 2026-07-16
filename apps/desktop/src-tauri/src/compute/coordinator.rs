@@ -24,8 +24,8 @@ use uuid::Uuid;
 
 use crate::compute::{
     artifact_publisher::{
-        artifact_manifest_sha256, materialize_cluster_artifact, reconcile_artifact_root,
-        ClusterPublicationStep,
+        artifact_manifest_sha256, materialize_cluster_artifact, materialize_conformer_artifact,
+        reconcile_artifact_root, ClusterPublicationStep, ConformerPublicationStep,
     },
     cluster_executor::{
         finish_clustering, graph_options, valid_fingerprints, validate_computation,
@@ -127,6 +127,7 @@ struct PreparedConformerBatch {
 #[derive(Debug)]
 #[allow(dead_code, reason = "consumed by the next ETK/stereo execution stage")]
 struct ComputedConformerBatch {
+    engine_arrays: ConformerEnginePackArrays,
     distance: ConformerDistanceComputation,
     stereo: Option<ConformerStereoComputation>,
     identities: Vec<ConformerMoleculeIdentity>,
@@ -704,6 +705,7 @@ impl ComputeCoordinator {
             .map_err(|_| poisoned("prepared conformer registry"))?
             .remove(&job_id)
             .expect("prepared conformer checked above");
+        let engine_arrays = prepared.arrays.clone();
         let request = distance_running.request.as_conformer()?;
         let started = Instant::now();
         let result = execute_conformer_distance_geometry(
@@ -763,6 +765,7 @@ impl ComputeCoordinator {
             .store
             .apply_successor(owner, distance_running.revision, &distance_succeeded)?;
         let computed = ComputedConformerBatch {
+            engine_arrays,
             distance,
             stereo: None,
             identities: prepared.identities,
@@ -996,6 +999,162 @@ impl ComputeCoordinator {
             passed_count: validation.passed_count,
             failed_count: validation.failed_count,
             ready_for_publication: true,
+        })
+    }
+
+    pub(crate) fn publish_conformer_v1(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        expected_revision: u64,
+    ) -> ComputeResult<ConformerPublicationStep> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let validated = ready.store.get_job(owner, job_id)?;
+        if validated.revision != expected_revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: validated.revision,
+            });
+        }
+        let publish_running = start_stage(
+            &validated,
+            5,
+            JobState::Publishing,
+            now_ms(),
+            "Publishing verified conformer result packs",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, validated.revision, &publish_running)?;
+        let computed = ready
+            .computed_conformers
+            .lock()
+            .map_err(|_| poisoned("computed conformer registry"))?
+            .remove(&job_id)
+            .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                entity: "computed conformer",
+                id: job_id.to_string(),
+            })?;
+        let stereo = computed.stereo.as_ref().ok_or_else(|| {
+            ComputeCoordinatorError::Protocol(
+                "conformer publication requires stereo results".into(),
+            )
+        })?;
+        let publish_started = Instant::now();
+        let created_at_ms = now_ms().max(publish_running.updated_at_ms);
+        let materialized = match materialize_conformer_artifact(
+            &ready.store,
+            &publish_running,
+            &computed.engine_arrays,
+            &computed.distance,
+            stereo,
+            created_at_ms,
+        ) {
+            Ok(artifact) => artifact,
+            Err(error) => {
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &publish_running,
+                    5,
+                    ComputeErrorCode::ArtifactCorrupt,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms: publish_started.elapsed().as_secs_f64() * 1_000.0,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
+            }
+        };
+        let mut successful_sources = vec![false; computed.errors.len()];
+        for (conformer, failure) in stereo.failure_flags.iter().enumerate() {
+            if *failure == 0 {
+                let record = computed.distance.conformer_molecule_indices[conformer] as usize;
+                successful_sources[record] = true;
+            }
+        }
+        for (successful, error) in successful_sources.iter_mut().zip(&computed.errors) {
+            *successful &= error.is_none();
+        }
+        let successful_records = successful_sources.iter().filter(|value| **value).count() as u64;
+        let total_records = validated.frozen_source.frozen_source.record_count;
+        let failed_records = total_records
+            .checked_sub(successful_records)
+            .ok_or_else(|| {
+                ComputeCoordinatorError::Protocol(
+                    "conformer outcome record count underflowed".into(),
+                )
+            })?;
+        let publication = (|| {
+            let successful_job = finish_publish_stage(
+                &publish_running,
+                materialized.created_at_ms,
+                materialized.artifact_id,
+                materialized.result_pack.clone(),
+                JobOutcomeSummary {
+                    successful_records,
+                    failed_records,
+                },
+                StageFinishMetrics {
+                    host_time_ms: publish_started.elapsed().as_secs_f64() * 1_000.0,
+                    transferred_bytes: materialized.byte_count,
+                    ..StageFinishMetrics::default()
+                },
+            )?;
+            let manifest = materialized.manifest_for_job(&successful_job)?;
+            let manifest_sha256 = artifact_manifest_sha256(&manifest)?;
+            Ok((successful_job, manifest, manifest_sha256))
+        })();
+        let (successful_job, manifest, manifest_sha256) = match publication {
+            Ok(publication) => publication,
+            Err(error) => {
+                let cleanup = materialized.cleanup();
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &publish_running,
+                    5,
+                    ComputeErrorCode::ArtifactCorrupt,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms: publish_started.elapsed().as_secs_f64() * 1_000.0,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                cleanup?;
+                return Err(error);
+            }
+        };
+        if let Err(error) = ready.store.commit_published_artifact(
+            owner,
+            publish_running.revision,
+            &successful_job,
+            &manifest,
+            &materialized.relative_directory,
+        ) {
+            let cleanup = materialized.cleanup();
+            persist_failed_stage(
+                &ready.store,
+                owner,
+                &publish_running,
+                5,
+                ComputeErrorCode::ArtifactCorrupt,
+                &error,
+                StageFinishMetrics {
+                    host_time_ms: publish_started.elapsed().as_secs_f64() * 1_000.0,
+                    ..StageFinishMetrics::default()
+                },
+            )?;
+            cleanup?;
+            return Err(error);
+        }
+        Ok(ConformerPublicationStep {
+            job: successful_job,
+            artifact_id: materialized.artifact_id,
+            artifact_manifest_sha256: manifest_sha256,
         })
     }
 

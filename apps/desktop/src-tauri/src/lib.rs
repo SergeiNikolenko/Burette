@@ -131,6 +131,7 @@ pub fn run() {
             compute::commands::compute_execute_conformer_distance,
             compute::commands::compute_execute_conformer_stereo,
             compute::commands::compute_validate_conformer_reference,
+            compute::commands::compute_publish_conformer,
             compute::commands::compute_begin_cluster_execution,
             compute::commands::compute_submit_fingerprint_chunk,
             compute::commands::compute_execute_cluster,

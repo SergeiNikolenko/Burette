@@ -7,7 +7,7 @@ use tauri::{Runtime, State, WebviewWindow};
 use uuid::Uuid;
 
 use crate::compute::{
-    artifact_publisher::ClusterPublicationStep,
+    artifact_publisher::{ClusterPublicationStep, ConformerPublicationStep},
     cluster_executor::ClusterExecutionStep,
     conformer_session::ConformerSubmissionStep,
     coordinator::{
@@ -172,6 +172,20 @@ pub(crate) async fn compute_validate_conformer_reference<R: Runtime>(
         coordinator.validate_conformer_reference_v1(&owner, job_id, expected_revision)
     })
     .await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_publish_conformer<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    job_id: String,
+    expected_revision: u64,
+) -> Result<ConformerPublicationStep, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let job_id = parse_uuid("job ID", &job_id)?;
+    validate_revision(expected_revision)?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || coordinator.publish_conformer_v1(&owner, job_id, expected_revision)).await
 }
 
 #[tauri::command]

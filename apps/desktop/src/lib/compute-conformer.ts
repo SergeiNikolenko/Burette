@@ -68,6 +68,12 @@ export type ConformerReferenceValidationStep = {
   readyForPublication: boolean;
 };
 
+export type ConformerPublicationStep = {
+  job: ConformerComputeJob;
+  artifactId: string;
+  artifactManifestSha256: string;
+};
+
 export function executeConformerDistance(job: ConformerComputeJob) {
   return invoke<ConformerDistanceExecutionStep>("compute_execute_conformer_distance", {
     jobId: job.jobId,
@@ -84,6 +90,13 @@ export function executeConformerStereo(job: ConformerComputeJob) {
 
 export function validateConformerReference(job: ConformerComputeJob) {
   return invoke<ConformerReferenceValidationStep>("compute_validate_conformer_reference", {
+    jobId: job.jobId,
+    expectedRevision: job.revision,
+  });
+}
+
+export function publishConformer(job: ConformerComputeJob) {
+  return invoke<ConformerPublicationStep>("compute_publish_conformer", {
     jobId: job.jobId,
     expectedRevision: job.revision,
   });
