@@ -7,6 +7,7 @@
 
 mod conformer_schedule;
 mod conformer_initialize;
+mod conformer_engine;
 mod distance_geometry;
 mod distance_optimizer;
 
@@ -15,6 +16,9 @@ pub use conformer_schedule::{
     ConformerScheduleError, ConformerSchedulingOptions, ConformerSpan, ConformerWorkIdentity,
 };
 pub use conformer_initialize::initialize_conformer_positions;
+pub use conformer_engine::{
+    ConformerDistanceEngine, ConformerDistanceMolecule, ConformerEngineError,
+};
 pub use distance_geometry::{
     evaluate_distance_constraints, DistanceConstraint, DistanceConstraintEvaluation,
     DistanceGeometryError,
