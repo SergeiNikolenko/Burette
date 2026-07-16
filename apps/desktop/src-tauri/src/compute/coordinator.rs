@@ -1,16 +1,20 @@
 use std::{
+    fs::File,
+    io::Read,
     path::PathBuf,
     process::Command,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use burrete_compute_metal::{MetalRuntimeError, MetalTanimotoRuntime};
 use burrete_compute_protocol::{
     Backend, CapabilityEntry, CapabilityLimits, CapabilityMaturity, CapabilityReason,
     CapabilityReasonCode, CapabilityReportSchemaVersion, ClusterV1SubmitRequest,
     ComputeAvailability, ComputeCapabilityReport, JobRevisionEvent, JobSnapshot, PlatformIdentity,
     Precision, ProtocolRange, WorkflowTemplateId, MAX_CONTROL_FRAME_BYTES, PROTOCOL_VERSION,
 };
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::compute::{
@@ -26,7 +30,7 @@ pub(crate) struct ComputeCoordinator {
 
 #[derive(Debug)]
 enum CoordinatorState {
-    Ready(ReadyCoordinator),
+    Ready(Box<ReadyCoordinator>),
     Unavailable(String),
 }
 
@@ -34,14 +38,28 @@ enum CoordinatorState {
 struct ReadyCoordinator {
     store: ComputeStore,
     snapshots: SnapshotRepository,
+    native_metal: NativeMetalState,
+}
+
+#[derive(Debug)]
+enum NativeMetalState {
+    Available(MetalTanimotoRuntime),
+    Unavailable {
+        code: CapabilityReasonCode,
+        message: String,
+    },
 }
 
 impl ComputeCoordinator {
-    pub(crate) fn initialize(compute_root: PathBuf) -> Self {
+    pub(crate) fn initialize(compute_root: PathBuf, metal_runtime_root: Option<PathBuf>) -> Self {
         let state = match ComputeStore::initialize(compute_root) {
             Ok(store) => match SnapshotRepository::initialize(&store) {
                 Ok(snapshots) => match store.recover_active_jobs(now_ms()) {
-                    Ok(_) => CoordinatorState::Ready(ReadyCoordinator { store, snapshots }),
+                    Ok(_) => CoordinatorState::Ready(Box::new(ReadyCoordinator {
+                        store,
+                        snapshots,
+                        native_metal: NativeMetalState::probe(metal_runtime_root),
+                    })),
                     Err(error) => CoordinatorState::Unavailable(error.to_string()),
                 },
                 Err(error) => CoordinatorState::Unavailable(error.to_string()),
@@ -60,58 +78,23 @@ impl ComputeCoordinator {
     }
 
     pub(crate) fn capability_report(&self) -> ComputeResult<ComputeCapabilityReport> {
-        let (reason_code, reason_message) = match self.state.as_ref() {
+        let report = match self.state.as_ref() {
             CoordinatorState::Ready(ready) => match ready.snapshots.health_check() {
-                Ok(()) => (
-                    CapabilityReasonCode::RuntimeMissing,
-                    "The versioned Burrete GPU runtime has not been installed yet.".to_string(),
-                ),
-                Err(error) => (
+                Ok(()) => match &ready.native_metal {
+                    NativeMetalState::Available(runtime) => available_report(runtime),
+                    NativeMetalState::Unavailable { code, message } => {
+                        unavailable_report(*code, message.clone())
+                    }
+                },
+                Err(error) => unavailable_report(
                     CapabilityReasonCode::RuntimeIntegrityError,
                     format!("The durable compute snapshot repository is unavailable: {error}"),
                 ),
             },
-            CoordinatorState::Unavailable(message) => (
+            CoordinatorState::Unavailable(message) => unavailable_report(
                 CapabilityReasonCode::RuntimeIntegrityError,
                 format!("The durable compute coordinator is unavailable: {message}"),
             ),
-        };
-        let report = ComputeCapabilityReport {
-            schema_version: CapabilityReportSchemaVersion::V1,
-            report_revision: 1,
-            protocol: ProtocolRange {
-                min: PROTOCOL_VERSION,
-                max: PROTOCOL_VERSION,
-            },
-            availability: ComputeAvailability::Unavailable,
-            platform: PlatformIdentity {
-                architecture: std::env::consts::ARCH.into(),
-                os_name: "macOS".into(),
-                os_version: macos_version(),
-            },
-            runtime: None,
-            device: None,
-            capabilities: vec![CapabilityEntry {
-                workflow_template: WorkflowTemplateId::ClusterV1,
-                method: "tanimotoNeighbors".into(),
-                chemistry_domain: "cluster.v1/all".into(),
-                backend: Backend::NativeMetal,
-                precision: Precision::IntegerExact,
-                maturity: CapabilityMaturity::Experimental,
-                available: false,
-                reason_code: Some(reason_code),
-            }],
-            limits: CapabilityLimits {
-                max_control_frame_bytes: MAX_CONTROL_FRAME_BYTES as u64,
-                max_edges: 0,
-                max_memory_bytes: 0,
-                max_dispatch_ms: 0,
-            },
-            reasons: vec![CapabilityReason {
-                code: reason_code,
-                message: reason_message,
-            }],
-            generated_at_ms: now_ms(),
         };
         report.validate()?;
         Ok(report)
@@ -167,6 +150,196 @@ impl ComputeCoordinator {
                 Err(ComputeCoordinatorError::Unavailable(message.clone()))
             }
         }
+    }
+}
+
+impl NativeMetalState {
+    fn probe(runtime_root: Option<PathBuf>) -> Self {
+        let Some(runtime_root) = runtime_root else {
+            return Self::unavailable(
+                CapabilityReasonCode::RuntimeMissing,
+                "The bundled Burrete Metal runtime directory is unavailable.",
+            );
+        };
+        if !runtime_root.is_dir() {
+            return Self::unavailable(
+                CapabilityReasonCode::RuntimeMissing,
+                format!(
+                    "The bundled Burrete Metal runtime is missing at {}.",
+                    runtime_root.display()
+                ),
+            );
+        }
+        let helper_sha256 = match current_executable_sha256() {
+            Ok(hash) => hash,
+            Err(message) => {
+                return Self::unavailable(CapabilityReasonCode::RuntimeIntegrityError, message)
+            }
+        };
+        match MetalTanimotoRuntime::load(&runtime_root, &helper_sha256) {
+            Ok(runtime) => Self::Available(runtime),
+            Err(error) => {
+                Self::unavailable(reason_code_for_runtime_error(&error), error.to_string())
+            }
+        }
+    }
+
+    fn unavailable(code: CapabilityReasonCode, message: impl Into<String>) -> Self {
+        Self::Unavailable {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+fn available_report(runtime: &MetalTanimotoRuntime) -> ComputeCapabilityReport {
+    ComputeCapabilityReport {
+        schema_version: CapabilityReportSchemaVersion::V1,
+        report_revision: 1,
+        protocol: protocol_range(),
+        availability: ComputeAvailability::Available,
+        platform: platform_identity(),
+        runtime: Some(runtime.runtime_identity().clone()),
+        device: Some(runtime.device_identity().clone()),
+        capabilities: vec![capability_entry(true, None)],
+        limits: runtime.limits().clone(),
+        reasons: Vec::new(),
+        generated_at_ms: now_ms(),
+    }
+}
+
+fn unavailable_report(
+    reason_code: CapabilityReasonCode,
+    reason_message: String,
+) -> ComputeCapabilityReport {
+    ComputeCapabilityReport {
+        schema_version: CapabilityReportSchemaVersion::V1,
+        report_revision: 1,
+        protocol: protocol_range(),
+        availability: ComputeAvailability::Unavailable,
+        platform: platform_identity(),
+        runtime: None,
+        device: None,
+        capabilities: vec![capability_entry(false, Some(reason_code))],
+        limits: CapabilityLimits {
+            max_control_frame_bytes: MAX_CONTROL_FRAME_BYTES as u64,
+            max_edges: 0,
+            max_memory_bytes: 0,
+            max_dispatch_ms: 0,
+        },
+        reasons: vec![CapabilityReason {
+            code: reason_code,
+            message: reason_message,
+        }],
+        generated_at_ms: now_ms(),
+    }
+}
+
+fn capability_entry(available: bool, reason_code: Option<CapabilityReasonCode>) -> CapabilityEntry {
+    CapabilityEntry {
+        workflow_template: WorkflowTemplateId::ClusterV1,
+        method: "tanimotoNeighbors".into(),
+        chemistry_domain: "cluster.v1/all".into(),
+        backend: Backend::NativeMetal,
+        precision: Precision::IntegerExact,
+        maturity: CapabilityMaturity::Experimental,
+        available,
+        reason_code,
+    }
+}
+
+fn protocol_range() -> ProtocolRange {
+    ProtocolRange {
+        min: PROTOCOL_VERSION,
+        max: PROTOCOL_VERSION,
+    }
+}
+
+fn platform_identity() -> PlatformIdentity {
+    PlatformIdentity {
+        architecture: std::env::consts::ARCH.into(),
+        os_name: if std::env::consts::OS == "macos" {
+            "macOS".into()
+        } else {
+            std::env::consts::OS.into()
+        },
+        os_version: macos_version(),
+    }
+}
+
+fn reason_code_for_runtime_error(error: &MetalRuntimeError) -> CapabilityReasonCode {
+    match error {
+        MetalRuntimeError::RuntimeMissing(_) => CapabilityReasonCode::RuntimeMissing,
+        MetalRuntimeError::Integrity(_) => CapabilityReasonCode::RuntimeIntegrityError,
+        MetalRuntimeError::UnsupportedPlatform(_) => {
+            if std::env::consts::OS == "macos" {
+                CapabilityReasonCode::UnsupportedArchitecture
+            } else {
+                CapabilityReasonCode::UnsupportedOperatingSystem
+            }
+        }
+        MetalRuntimeError::MetalUnavailable(_) | MetalRuntimeError::ResourceLimit(_) => {
+            CapabilityReasonCode::MetalUnavailable
+        }
+        MetalRuntimeError::KernelUnavailable(_) | MetalRuntimeError::Dispatch(_) => {
+            CapabilityReasonCode::KernelUnavailable
+        }
+    }
+}
+
+fn current_executable_sha256() -> Result<String, String> {
+    let path = std::env::current_exe()
+        .map_err(|error| format!("The Burrete executable path is unavailable: {error}"))?;
+    let mut file = File::open(&path).map_err(|error| {
+        format!(
+            "The Burrete executable cannot be opened for runtime attestation at {}: {error}",
+            path.display()
+        )
+    })?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 1024 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("The Burrete executable cannot be hashed: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    let mut encoded = String::with_capacity(64);
+    use std::fmt::Write;
+    for byte in hasher.finalize() {
+        write!(encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    Ok(encoded)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_runtime_never_advertises_gpu_execution() {
+        let missing =
+            std::env::temp_dir().join(format!("burrete-missing-metal-{}", Uuid::new_v4()));
+        let state = NativeMetalState::probe(Some(missing));
+        let NativeMetalState::Unavailable { code, message } = state else {
+            panic!("missing runtime cannot become available");
+        };
+        assert_eq!(code, CapabilityReasonCode::RuntimeMissing);
+        let report = unavailable_report(code, message);
+        assert_eq!(report.availability, ComputeAvailability::Unavailable);
+        assert_eq!(report.limits.max_edges, 0);
+        assert!(!report.capabilities[0].available);
+        assert_eq!(report.validate(), Ok(()));
+    }
+
+    #[test]
+    fn helper_attestation_is_a_real_sha256_digest() {
+        let hash = current_executable_sha256().expect("hash current test executable");
+        assert_eq!(hash.len(), 64);
+        assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
     }
 }
 
