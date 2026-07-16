@@ -18,6 +18,9 @@ pub const MIN_COMPUTE_MEMORY_BYTES: u64 = 16 * 1024 * 1024;
 pub const MAX_COMPUTE_MEMORY_BYTES: u64 = 32 * 1024 * 1024 * 1024;
 pub const MAX_UNDIRECTED_SIMILARITY_EDGES: u64 = 500_000_000;
 const MAX_DISPATCH_MS: u32 = 2_000;
+pub const MAX_CONFORMERS_PER_MOLECULE: u32 = 4_096;
+pub const MAX_CONFORMER_ATTEMPTS: u16 = 64;
+pub const MAX_CONFORMERS_PER_BATCH: u32 = 65_536;
 const MAX_SAFE_JSON_INTEGER: u64 = 9_007_199_254_740_991;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -126,6 +129,51 @@ impl ClusterV1SubmitRequest {
     }
 
     /// Hashes the canonical normalized request bytes used by durable job records.
+    pub fn canonical_sha256(&self) -> Result<String, ProtocolError> {
+        self.canonical_json_bytes().map(|bytes| sha256_hex(&bytes))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConformerV1SubmitRequest {
+    pub schema_version: ComputeJobSchemaVersion,
+    pub workflow_template: WorkflowTemplateId,
+    pub source: GridSourceReference,
+    pub parameters: ConformerV1Parameters,
+    pub execution_policy: ExecutionPolicy,
+    pub limits: ConformerResourceLimits,
+}
+
+impl ConformerV1SubmitRequest {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.schema_version != ComputeJobSchemaVersion::V1
+            || self.workflow_template != WorkflowTemplateId::ConformerV1
+        {
+            return Err(ProtocolError::Validation(
+                "conformer request has an incompatible schema or workflow template".into(),
+            ));
+        }
+        validate_bounded_text(
+            "documentId",
+            &self.source.document_id,
+            MAX_DOCUMENT_ID_BYTES,
+        )?;
+        self.source.scope.validate()?;
+        self.parameters.validate()?;
+        self.limits.validate()
+    }
+
+    pub fn normalized(mut self) -> Result<Self, ProtocolError> {
+        self.source.scope = self.source.scope.normalized()?;
+        self.validate()?;
+        Ok(self)
+    }
+
+    pub fn canonical_json_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
+        canonical_json_bytes(&self.clone().normalized()?)
+    }
+
     pub fn canonical_sha256(&self) -> Result<String, ProtocolError> {
         self.canonical_json_bytes().map(|bytes| sha256_hex(&bytes))
     }
@@ -413,6 +461,34 @@ pub struct ClusterV1Parameters {
     pub representative_policy: RepresentativePolicy,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConformerV1Parameters {
+    pub variant: ConformerVariant,
+    pub conformers_per_molecule: u32,
+    pub max_attempts_per_conformer: u16,
+}
+
+impl ConformerV1Parameters {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        if self.conformers_per_molecule == 0
+            || self.conformers_per_molecule > MAX_CONFORMERS_PER_MOLECULE
+        {
+            return Err(ProtocolError::Validation(format!(
+                "conformersPerMolecule must be in 1..={MAX_CONFORMERS_PER_MOLECULE}"
+            )));
+        }
+        if self.max_attempts_per_conformer == 0
+            || self.max_attempts_per_conformer > MAX_CONFORMER_ATTEMPTS
+        {
+            return Err(ProtocolError::Validation(format!(
+                "maxAttemptsPerConformer must be in 1..={MAX_CONFORMER_ATTEMPTS}"
+            )));
+        }
+        Ok(())
+    }
+}
+
 impl ClusterV1Parameters {
     fn validate(&self) -> Result<(), ProtocolError> {
         self.fingerprint.validate()?;
@@ -583,6 +659,37 @@ impl ResourceLimits {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConformerResourceLimits {
+    pub max_memory_bytes: u64,
+    pub max_dispatch_ms: u32,
+    pub max_conformers_per_batch: u32,
+}
+
+impl ConformerResourceLimits {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if !(MIN_COMPUTE_MEMORY_BYTES..=MAX_COMPUTE_MEMORY_BYTES).contains(&self.max_memory_bytes) {
+            return Err(ProtocolError::Validation(format!(
+                "maxMemoryBytes must be in {MIN_COMPUTE_MEMORY_BYTES}..={MAX_COMPUTE_MEMORY_BYTES}"
+            )));
+        }
+        if self.max_dispatch_ms == 0 || self.max_dispatch_ms > MAX_DISPATCH_MS {
+            return Err(ProtocolError::Validation(format!(
+                "maxDispatchMs must be in 1..={MAX_DISPATCH_MS}"
+            )));
+        }
+        if self.max_conformers_per_batch == 0
+            || self.max_conformers_per_batch > MAX_CONFORMERS_PER_BATCH
+        {
+            return Err(ProtocolError::Validation(format!(
+                "maxConformersPerBatch must be in 1..={MAX_CONFORMERS_PER_BATCH}"
+            )));
+        }
+        Ok(())
+    }
+}
+
 fn validate_filter_id(value: &str) -> Result<(), ProtocolError> {
     validate_bounded_text("filter id", value, MAX_FILTER_ID_BYTES)
 }
@@ -713,6 +820,59 @@ mod tests {
             })
             .collect::<BTreeSet<_>>();
         assert_eq!(encoded.len(), ConformerVariant::ALL.len());
+    }
+
+    fn valid_conformer_request() -> ConformerV1SubmitRequest {
+        ConformerV1SubmitRequest {
+            schema_version: ComputeJobSchemaVersion::V1,
+            workflow_template: WorkflowTemplateId::ConformerV1,
+            source: GridSourceReference {
+                document_id: "document-1".into(),
+                scope: GridScope::Selected(SelectedGridScope {
+                    source_indexes: vec![7, 2, 7],
+                }),
+            },
+            parameters: ConformerV1Parameters {
+                variant: ConformerVariant::EtkdgV3,
+                conformers_per_molecule: 32,
+                max_attempts_per_conformer: 8,
+            },
+            execution_policy: ExecutionPolicy {
+                backend_policy: BackendPolicy::GpuPreferred,
+                scheduling_policy: SchedulingPolicy::Balanced,
+            },
+            limits: ConformerResourceLimits {
+                max_memory_bytes: 512 * 1024 * 1024,
+                max_dispatch_ms: 250,
+                max_conformers_per_batch: 2_048,
+            },
+        }
+    }
+
+    #[test]
+    fn conformer_request_is_bounded_normalized_and_hashable() {
+        let request = valid_conformer_request();
+        let normalized = request.clone().normalized().expect("normalize request");
+        assert_eq!(
+            normalized.source.scope,
+            GridScope::Selected(SelectedGridScope {
+                source_indexes: vec![2, 7]
+            })
+        );
+        assert_eq!(
+            request.canonical_sha256().expect("hash request"),
+            normalized.canonical_sha256().expect("hash normalized request")
+        );
+
+        let mut invalid = normalized.clone();
+        invalid.parameters.conformers_per_molecule = 0;
+        assert!(invalid.validate().is_err());
+        invalid = normalized.clone();
+        invalid.parameters.max_attempts_per_conformer = MAX_CONFORMER_ATTEMPTS + 1;
+        assert!(invalid.validate().is_err());
+        invalid = normalized;
+        invalid.limits.max_conformers_per_batch = MAX_CONFORMERS_PER_BATCH + 1;
+        assert!(invalid.validate().is_err());
     }
 
     fn valid_request() -> ClusterV1SubmitRequest {
