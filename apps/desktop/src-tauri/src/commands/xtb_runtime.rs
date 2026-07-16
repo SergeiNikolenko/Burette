@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -169,17 +170,45 @@ fn resolve_from_root(root: &Path) -> Result<XtbRuntimeResolution, String> {
         });
     }
 
-    for (path, source) in automatic_candidates(root) {
-        if validate_xtb(&path).is_ok() {
-            return Ok(XtbRuntimeResolution {
-                executable_path: fs::canonicalize(&path).unwrap_or(path),
-                source,
-                selected_executable_path: None,
-            });
-        }
+    if let Some(resolution) = resolve_automatic_candidates(automatic_candidates(root))? {
+        return Ok(resolution);
     }
 
     Err("xTB was not found. Choose an existing xTB executable in Settings or install a Burrete-managed copy.".into())
+}
+
+fn resolve_automatic_candidates(
+    candidates: Vec<(PathBuf, XtbRuntimeSource)>,
+) -> Result<Option<XtbRuntimeResolution>, String> {
+    let mut rejected_candidates = Vec::new();
+    for (path, source) in candidates {
+        match validate_xtb(&path) {
+            Ok(_) => {
+                return Ok(Some(XtbRuntimeResolution {
+                    executable_path: fs::canonicalize(&path).unwrap_or(path),
+                    source,
+                    selected_executable_path: None,
+                }));
+            }
+            Err(error) if path.exists() => {
+                rejected_candidates.push(format!("{}: {error}", path.display()));
+            }
+            Err(_) => {}
+        }
+    }
+
+    if !rejected_candidates.is_empty() {
+        return Err(format!(
+            "Found xTB candidates but could not validate them: {}",
+            rejected_candidates
+                .into_iter()
+                .take(6)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ));
+    }
+
+    Ok(None)
 }
 
 fn automatic_candidates(root: &Path) -> Vec<(PathBuf, XtbRuntimeSource)> {
@@ -201,6 +230,8 @@ fn automatic_candidates(root: &Path) -> Vec<(PathBuf, XtbRuntimeSource)> {
                 XtbRuntimeSource::Conda,
             ));
         }
+        candidates.extend(conda_environment_candidates(&home));
+        candidates.extend(registered_conda_environment_candidates(&home));
         candidates.push((home.join(".pixi/bin/xtb"), XtbRuntimeSource::Pixi));
         candidates.push((home.join(".local/bin/xtb"), XtbRuntimeSource::Path));
     }
@@ -218,7 +249,58 @@ fn automatic_candidates(root: &Path) -> Vec<(PathBuf, XtbRuntimeSource)> {
         PathBuf::from("/usr/local/bin/xtb"),
         XtbRuntimeSource::Homebrew,
     ));
+    let mut seen = HashSet::new();
+    candidates.retain(|(path, _)| seen.insert(path.clone()));
     candidates
+}
+
+fn conda_environment_candidates(home: &Path) -> Vec<(PathBuf, XtbRuntimeSource)> {
+    let mut candidates = Vec::new();
+    let roots = [
+        home.join("miniconda3").join("envs"),
+        home.join("miniforge3").join("envs"),
+        home.join("mambaforge").join("envs"),
+        home.join("anaconda3").join("envs"),
+        home.join(".conda").join("envs"),
+    ];
+    for root in roots {
+        let Ok(entries) = fs::read_dir(root) else {
+            continue;
+        };
+        candidates.extend(entries.flatten().filter_map(|entry| {
+            entry
+                .file_type()
+                .ok()
+                .filter(|file_type| file_type.is_dir())
+                .map(|_| (entry.path().join("bin/xtb"), XtbRuntimeSource::Conda))
+        }));
+    }
+    candidates
+}
+
+fn registered_conda_environment_candidates(home: &Path) -> Vec<(PathBuf, XtbRuntimeSource)> {
+    const REGISTRY_MAX_BYTES: u64 = 256 * 1024;
+    const REGISTRY_MAX_ENTRIES: usize = 256;
+    let registry = home.join(".conda/environments.txt");
+    let Ok(file) = fs::File::open(registry) else {
+        return Vec::new();
+    };
+    let mut text = String::new();
+    if file
+        .take(REGISTRY_MAX_BYTES)
+        .read_to_string(&mut text)
+        .is_err()
+    {
+        return Vec::new();
+    }
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(REGISTRY_MAX_ENTRIES)
+        .map(PathBuf::from)
+        .filter(|prefix| prefix.is_absolute())
+        .map(|prefix| (prefix.join("bin/xtb"), XtbRuntimeSource::Conda))
+        .collect()
 }
 
 fn resolve_pixi() -> Option<PathBuf> {
@@ -316,7 +398,14 @@ fn validate_xtb(path: &Path) -> Result<String, String> {
         .map(str::trim)
         .find(|line| line.to_ascii_lowercase().contains("xtb version"))
         .filter(|_| status.success())
-        .ok_or_else(|| format!("{} did not report a valid xTB version.", path.display()))?;
+        .ok_or_else(|| {
+            format!(
+                "{} did not report a valid xTB version (status: {}). Output: {}",
+                path.display(),
+                status,
+                truncate_output(&text, 1200)
+            )
+        })?;
     Ok(version.to_string())
 }
 
@@ -530,6 +619,57 @@ mod tests {
             fs::canonicalize(managed).expect("canonical managed executable")
         );
         assert_eq!(resolution.source, XtbRuntimeSource::Managed);
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn discovers_xtb_in_named_conda_environment() {
+        let home = fixture_root();
+        let executable = home.join("miniconda3/envs/chem/bin/xtb");
+        make_executable(&executable);
+
+        let candidates = conda_environment_candidates(&home);
+
+        assert!(candidates.contains(&(executable, XtbRuntimeSource::Conda)));
+        fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn discovers_xtb_in_registered_conda_prefix() {
+        let home = fixture_root();
+        let prefix = fixture_root().join("external-conda");
+        fs::create_dir_all(home.join(".conda")).expect("create conda registry parent");
+        fs::write(
+            home.join(".conda/environments.txt"),
+            format!("{}\n", prefix.display()),
+        )
+        .expect("write conda registry");
+
+        let candidates = registered_conda_environment_candidates(&home);
+
+        assert_eq!(
+            candidates,
+            vec![(prefix.join("bin/xtb"), XtbRuntimeSource::Conda)]
+        );
+        fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn reports_existing_candidates_that_fail_validation() {
+        let root = fixture_root();
+        let executable = root.join("current/.pixi/envs/default/bin/xtb");
+        fs::create_dir_all(executable.parent().expect("parent")).expect("create parent");
+        fs::write(&executable, "#!/bin/sh\necho broken >&2\nexit 1\n").expect("write executable");
+        let mut permissions = fs::metadata(&executable).expect("metadata").permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&executable, permissions).expect("set permissions");
+
+        let error =
+            resolve_automatic_candidates(vec![(executable.clone(), XtbRuntimeSource::Managed)])
+                .expect_err("invalid candidate must be reported");
+
+        assert!(error.contains("Found xTB candidates but could not validate them"));
+        assert!(error.contains(&executable.display().to_string()));
         fs::remove_dir_all(root).ok();
     }
 

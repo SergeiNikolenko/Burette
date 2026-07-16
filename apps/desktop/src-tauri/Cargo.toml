@@ -1,6 +1,6 @@
 [package]
 name = "burrete"
-version = "1.0.26"
+version = "1.0.27"
 description = "Tauri/Rust shell for local molecular previews"
 authors = ["Burrete"]
 edition = "2021"
@@ -15,7 +15,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 base64 = "0.22"
 burrete-core = { path = "../../../crates/burrete-core" }
-ed25519-dalek = "2"
+ed25519-dalek = "3"
 flate2 = "1"
 plist = "1"
 serde = { version = "1", features = ["derive"] }

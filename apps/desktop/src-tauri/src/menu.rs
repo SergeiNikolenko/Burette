@@ -8,6 +8,7 @@ pub(crate) const MENU_UNDO_EVENT: &str = "menu:undo";
 pub(crate) const MENU_REDO_EVENT: &str = "menu:redo";
 pub(crate) const MENU_OPEN_FILES_EVENT: &str = "menu:open-files";
 pub(crate) const MENU_OPEN_RECENT_EVENT: &str = "menu:open-recent";
+pub(crate) const MENU_SAVE_SOURCE_EVENT: &str = "menu:save-source";
 pub(crate) const MENU_REVEAL_ACTIVE_EVENT: &str = "menu:reveal-active";
 pub(crate) const MENU_COPY_ACTIVE_PATH_EVENT: &str = "menu:copy-active-path";
 pub(crate) const MENU_SHOW_ACTIVE_METADATA_EVENT: &str = "menu:show-active-metadata";
@@ -37,6 +38,9 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .build(app)?;
     let open_recent = MenuItemBuilder::with_id("file.open-recent", "Open Recent")
         .accelerator("CmdOrCtrl+Shift+O")
+        .build(app)?;
+    let save_source = MenuItemBuilder::with_id("file.save-source", "Save")
+        .accelerator("CmdOrCtrl+S")
         .build(app)?;
     let reveal_active = MenuItemBuilder::with_id("file.reveal-active", "Reveal in Finder")
         .accelerator("CmdOrCtrl+Shift+R")
@@ -96,6 +100,7 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &PredefinedMenuItem::separator(app)?,
             &open,
             &open_recent,
+            &save_source,
             &PredefinedMenuItem::separator(app)?,
             &reveal_active,
             &copy_active_path,

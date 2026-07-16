@@ -11,7 +11,16 @@ const ACTION_POLL_INTERVAL_MS = 500;
 const BROWSER_AGENT_SESSION_DIR = "__browser_agent_shell__";
 const isBrowserAgentShell = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
 
+type KetcherAgentModule = typeof import("../lib/ketcher-agent");
+let ketcherAgentModulePromise: Promise<KetcherAgentModule> | null = null;
+
+function loadKetcherAgentModule() {
+  ketcherAgentModulePromise ??= import("../lib/ketcher-agent");
+  return ketcherAgentModulePromise;
+}
+
 type OpenPaths = (paths: string[]) => void | Promise<void>;
+type OpenKetcherTab = () => void | Promise<void>;
 type OpenTextDocuments = (
   paths: string[],
   options?: { inActiveTab?: boolean; background?: boolean },
@@ -72,6 +81,9 @@ type AgentSceneSelection = {
 
 type UseAgentSessionArgs = {
   activeDocument: ViewerDocument | null | undefined;
+  activeTabId: string | null | undefined;
+  activeTabKind: string | null | undefined;
+  openKetcherTab: OpenKetcherTab;
   documents: ViewerDocument[];
   openTextDocuments: OpenTextDocuments;
   openPaths: OpenPaths;
@@ -81,6 +93,9 @@ type UseAgentSessionArgs = {
 
 export function useAgentSession({
   activeDocument,
+  activeTabId,
+  activeTabKind,
+  openKetcherTab,
   documents,
   openTextDocuments,
   openPaths,
@@ -89,8 +104,11 @@ export function useAgentSession({
 }: UseAgentSessionArgs) {
   const sessionDirRef = useRef<string | null>(null);
   const activeDocumentRef = useRef<ViewerDocument | null | undefined>(activeDocument);
+  const activeTabIdRef = useRef<string | null | undefined>(activeTabId);
+  const activeTabKindRef = useRef<string | null | undefined>(activeTabKind);
   const documentsRef = useRef<ViewerDocument[]>(documents);
   const openPathsRef = useRef(openPaths);
+  const openKetcherTabRef = useRef(openKetcherTab);
   const openTextDocumentsRef = useRef(openTextDocuments);
   const pushErrorStatusRef = useRef(pushErrorStatus);
   const setDockDocumentRef = useRef(setDockDocument);
@@ -98,24 +116,28 @@ export function useAgentSession({
   const workspacePanelsRef = useRef<AgentWorkspacePanel[]>([]);
   const viewerAgentStatesRef = useRef<Record<string, ViewerAgentState>>({});
 
+  activeTabIdRef.current = activeTabId;
+  activeTabKindRef.current = activeTabKind;
+
   useEffect(() => {
     activeDocumentRef.current = activeDocument;
     documentsRef.current = documents;
-    void writeObserve(sessionDirRef.current, activeDocument, documents, workspacePanelsRef.current, viewerAgentStatesRef.current);
-  }, [activeDocument, documents]);
+    void writeObserve(sessionDirRef.current, activeDocument, documents, workspacePanelsRef.current, viewerAgentStatesRef.current, activeTabIdRef.current, activeTabKindRef.current);
+  }, [activeDocument, activeTabId, activeTabKind, documents]);
 
   useEffect(() => {
     openPathsRef.current = openPaths;
+    openKetcherTabRef.current = openKetcherTab;
     openTextDocumentsRef.current = openTextDocuments;
     pushErrorStatusRef.current = pushErrorStatus;
     setDockDocumentRef.current = setDockDocument;
-  }, [openPaths, openTextDocuments, pushErrorStatus, setDockDocument]);
+  }, [openKetcherTab, openPaths, openTextDocuments, pushErrorStatus, setDockDocument]);
 
   const activateSession = useCallback((sessionDir: string | null | undefined) => {
     const cleanSessionDir = typeof sessionDir === "string" ? sessionDir.trim() : "";
     if (!cleanSessionDir) return;
     sessionDirRef.current = cleanSessionDir;
-    void writeObserve(cleanSessionDir, activeDocumentRef.current, documentsRef.current, workspacePanelsRef.current, viewerAgentStatesRef.current);
+    void writeObserve(cleanSessionDir, activeDocumentRef.current, documentsRef.current, workspacePanelsRef.current, viewerAgentStatesRef.current, activeTabIdRef.current, activeTabKindRef.current);
   }, []);
 
   useEffect(() => {
@@ -162,6 +184,8 @@ export function useAgentSession({
             documentsRef.current,
             workspacePanelsRef.current,
             viewerAgentStatesRef.current,
+            activeTabIdRef.current,
+            activeTabKindRef.current,
           );
         }
         const resolve = pendingViewerActionsRef.current.get(body.id);
@@ -182,6 +206,8 @@ export function useAgentSession({
         documentsRef.current,
         workspacePanelsRef.current,
         viewerAgentStatesRef.current,
+        activeTabIdRef.current,
+        activeTabKindRef.current,
       );
     };
     window.addEventListener("message", handler);
@@ -198,6 +224,7 @@ export function useAgentSession({
       void pollAgentActions(
         sessionDir,
         openPathsRef.current,
+        openKetcherTabRef.current,
         openTextDocumentsRef.current,
         setDockDocumentRef.current,
         pendingViewerActionsRef.current,
@@ -205,6 +232,8 @@ export function useAgentSession({
         activeDocumentRef.current,
         documentsRef.current,
         viewerAgentStatesRef.current,
+        activeTabIdRef.current,
+        activeTabKindRef.current,
       )
         .catch((error) => pushErrorStatusRef.current(error, "Agent action failed"))
         .finally(() => {
@@ -230,10 +259,15 @@ async function writeObserve(
   documents: ViewerDocument[],
   workspacePanels: AgentWorkspacePanel[],
   viewerAgentStates: Record<string, ViewerAgentState>,
+  activeTabId: string | null | undefined,
+  activeTabKind: string | null | undefined,
 ) {
   if (!sessionDir || (!isTauriRuntime() && !isBrowserAgentSessionDir(sessionDir))) return;
   const activeAgentState = activeDocument ? viewerAgentStates[activeDocument.id] : undefined;
   const activeMolstar = !!activeDocument && activeDocument.renderer === "molstar";
+  const ketcherAgent = activeTabKind === "ketcher" ? await loadKetcherAgentModule() : null;
+  const activeKetcher = ketcherAgent?.getKetcherAgentController(activeTabId) ?? null;
+  const ketcherSnapshot = activeKetcher?.snapshot() ?? null;
   const activeReady = activeDocument
     ? activeMolstar
       ? !!(activeAgentState?.viewerReady || activeAgentState?.agentReady)
@@ -254,7 +288,7 @@ async function writeObserve(
         }
       : {
           ready: false,
-          note: "No active document is open in the desktop app.",
+          note: activeKetcher ? "The active surface is a Ketcher editor." : "No active document is open in the desktop app.",
         },
     documents: documents.map((document) => ({
       id: document.id,
@@ -263,6 +297,18 @@ async function writeObserve(
       renderer: document.renderer,
       byteCount: document.byteCount,
     })),
+    activeSurface: activeKetcher
+      ? {
+          kind: "ketcher",
+          tabId: activeTabId ?? null,
+          surfaceId: ketcherSnapshot?.surfaceId ?? null,
+          phase: ketcherSnapshot?.phase ?? "loading",
+          ready: ketcherSnapshot?.phase === "ready",
+        }
+      : activeDocument
+        ? { kind: "viewer", documentId: activeDocument.id, renderer: activeDocument.renderer }
+        : null,
+    chemicalEditor: ketcherSnapshot,
     viewerAgent: {
       apiVersion: "burette-agent/v1",
       available: activeMolstar && !!activeAgentState?.agentReady,
@@ -291,6 +337,7 @@ async function writeObserve(
 async function pollAgentActions(
   sessionDir: string,
   openPaths: OpenPaths,
+  openKetcherTab: OpenKetcherTab,
   openTextDocuments: OpenTextDocuments,
   setDockDocument: (area: DockArea, documentId: string | null) => void,
   pendingViewerActions: Map<string, (result: unknown) => void>,
@@ -298,6 +345,8 @@ async function pollAgentActions(
   activeDocument: ViewerDocument | null | undefined,
   documents: ViewerDocument[],
   viewerAgentStates: Record<string, ViewerAgentState>,
+  activeTabId: string | null | undefined,
+  activeTabKind: string | null | undefined,
 ) {
   const actionsPath = joinSessionPath(sessionDir, "actions.json");
   const actionsFile = await readJson<AgentActionsFile>(actionsPath, { apiVersion: AGENT_API_VERSION, actions: [] });
@@ -310,31 +359,53 @@ async function pollAgentActions(
   const result = await executeDesktopAgentAction(
     nextAction,
     openPaths,
+    openKetcherTab,
     openTextDocuments,
     setDockDocument,
     pendingViewerActions,
     workspacePanels,
     activeDocument,
     viewerAgentStates,
+    activeTabId,
+    activeTabKind,
   );
   nextAction.completedAt = new Date().toISOString();
   nextAction.result = result;
   nextAction.status = isFailedResult(result) ? "failed" : "completed";
   await writeJson(actionsPath, { apiVersion: AGENT_API_VERSION, actions });
-  await writeObserve(sessionDir, activeDocument, documents, workspacePanels, viewerAgentStates);
+  await writeObserve(sessionDir, activeDocument, documents, workspacePanels, viewerAgentStates, activeTabId, activeTabKind);
 }
 
 async function executeDesktopAgentAction(
   item: AgentActionItem,
   openPaths: OpenPaths,
+  openKetcherTab: OpenKetcherTab,
   openTextDocuments: OpenTextDocuments,
   setDockDocument: (area: DockArea, documentId: string | null) => void,
   pendingViewerActions: Map<string, (result: unknown) => void>,
   workspacePanels: AgentWorkspacePanel[],
   activeDocument: ViewerDocument | null | undefined,
   viewerAgentStates: Record<string, ViewerAgentState>,
+  activeTabId: string | null | undefined,
+  activeTabKind: string | null | undefined,
 ) {
   const type = String(item.action?.type || "");
+  if (type === "open_ketcher") {
+    await openKetcherTab();
+    return { ok: true, command: type, result: { opened: true } };
+  }
+  if (type === "control_ketcher") {
+    if (activeTabKind !== "ketcher") {
+      return agentFailure(type, "STALE_TARGET", "Ketcher actions require the observed active Ketcher tab.");
+    }
+    const ketcherAgent = await loadKetcherAgentModule();
+    const controller = ketcherAgent.getKetcherAgentController(activeTabId);
+    if (!controller) return agentFailure(type, "STALE_TARGET", "The observed Ketcher surface is no longer mounted.");
+    if (item.action.surfaceId !== controller.surfaceId) {
+      return agentFailure(type, "STALE_TARGET", "The requested Ketcher surface is not the active observed tab.");
+    }
+    return controller.execute(item.action);
+  }
   if (type === "open_files") {
     const paths = Array.isArray(item.action.paths) ? item.action.paths.filter((path): path is string => typeof path === "string" && path.trim().length > 0) : [];
     if (paths.length === 0) {

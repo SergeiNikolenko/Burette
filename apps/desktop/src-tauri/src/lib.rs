@@ -9,6 +9,7 @@ mod tray;
 mod windows;
 
 use commands::descriptors::DescriptorGridJobRegistry;
+use commands::source_editing::{OpenedSourceRegistry, SourceEditRegistry};
 use preview::grid_store::GridRuntimeRegistry;
 use std::path::PathBuf;
 use tauri::{Manager, RunEvent};
@@ -30,6 +31,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(GridRuntimeRegistry::default())
         .manage(DescriptorGridJobRegistry::default())
+        .manage(OpenedSourceRegistry::default())
+        .manage(SourceEditRegistry::default())
         .manage(startup::PendingOpenDocuments::default())
         .setup(|app| {
             let argv: Vec<String> = std::env::args().collect();
@@ -64,6 +67,9 @@ pub fn run() {
                 "file.open" => menu::emit_to_focused_window(app, menu::MENU_OPEN_FILES_EVENT),
                 "file.open-recent" => {
                     menu::emit_to_focused_window(app, menu::MENU_OPEN_RECENT_EVENT)
+                }
+                "file.save-source" => {
+                    menu::emit_to_focused_window(app, menu::MENU_SAVE_SOURCE_EVENT)
                 }
                 "file.reveal-active" => {
                     menu::emit_to_focused_window(app, menu::MENU_REVEAL_ACTIVE_EVENT)
@@ -103,6 +109,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::agent_integration::agent_integration_status,
+            commands::chemical_editors::finder_icon_path,
             commands::chemical_editors::list_chemical_editor_targets,
             commands::chemical_editors::open_in_chemical_editor,
             commands::descriptors::descriptor_runtime_status,
@@ -124,6 +131,13 @@ pub fn run() {
             commands::text_files::open_text_files,
             commands::documents::read_structure_text,
             commands::documents::fetch_pdb_structure,
+            commands::source_editing::open_source_edit_session,
+            commands::source_editing::inspect_source_edit_session,
+            commands::source_editing::reload_source_edit_session,
+            commands::source_editing::save_source_document,
+            commands::source_editing::reconcile_source_commit,
+            commands::source_editing::close_source_edit_session,
+            commands::source_editing::close_opened_source_document,
             commands::conformer::conformer_status,
             commands::conformer::prepare_conformer_job,
             commands::conformer::run_conformer_job,

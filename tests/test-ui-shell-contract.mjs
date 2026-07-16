@@ -201,6 +201,7 @@ const [
   buildDevScript,
   remoteCheckScript,
   patchWebAssetsScript,
+  hostedViewerBuildScript,
   desmondPreviewExtract,
   fepGraphmlSample,
   rdkitConformer,
@@ -398,12 +399,14 @@ const [
   source('scripts/build-dev.sh'),
   source('scripts/check-remote.sh'),
   source('scripts/patch-web-assets.sh'),
+  source('apps/burrete-public-plugin/scripts/build-hosted-viewer.mjs'),
   source('scripts/desmond_preview_extract.py'),
   source('samples/fep/ligand_network.graphml'),
   source('scripts/rdkit_conformer.py'),
 ]);
 
 const pluginManifest = JSON.parse(await source('plugins/burette-agent/.codex-plugin/plugin.json'));
+const desktopPackage = JSON.parse(await source('apps/desktop/package.json'));
 const viewerShell = previewShell;
 const viewer = previewViewer;
 const commandDocuments = await source('apps/desktop/src-tauri/src/commands/documents.rs');
@@ -469,7 +472,7 @@ assert.match(sidebarHook, /export function useSidebar\(/);
 assert.match(sidebarHook, /from "\.\.\/stores\/shell-store"/);
 assert.match(sidebarHook, /sidebarWidth/);
 assert.match(shellStore, /sidebarWidth: 240/);
-assert.match(shellStore, /rightDockOpen: true/);
+assert.match(shellStore, /rightDockOpen: false/);
 assert.match(shellStore, /bottomDockOpen: false/);
 assert.match(viewerFrame, /"data-renderer": document\.renderer/);
 assert.match(appViewerReloadActionsHook, /activeViewerIframeForDocument\(document\.id\)/);
@@ -594,7 +597,12 @@ assert.match(browserDevDocuments, /if \(normalized === "molstar" && externalMols
 assert.match(browserDevDocuments, /if \(normalized === "xyzrender-external"\) return canUseXyzrender \? "xyzrender-external" : "molstar";\s*return "molstar";/);
 assert.match(browserDevDocuments, /requestedRenderer: normalizeRendererMode\(preferences\.rendererMode\)/);
 assert.match(browserDevDocuments, /sourcePath: path/);
-assert.match(browserDevDocuments, /xyzrenderEndpoint: "\/__burette\/xyzrender"/);
+assert.match(browserDevDocuments, /const WEB_DEMO_ENABLED = import\.meta\.env\.VITE_BURRETE_WEB_DEMO === "1";/);
+assert.match(browserDevDocuments, /const RDKIT_WASM_PATH = WEB_DEMO_ENABLED[\s\S]*?\/rdkit\/RDKit_minimal\.wasm`[\s\S]*?"\/__burette\/rdkit-wasm";/);
+assert.match(browserDevDocuments, /const XYZRENDER_ENDPOINT = WEB_DEMO_ENABLED\s*\? "\/api\/xyzrender"\s*:\s*"\/__burette\/xyzrender";/);
+assert.equal(browserDevDocuments.match(/xyzrenderEndpoint: XYZRENDER_ENDPOINT/g)?.length, 2);
+assert.doesNotMatch(browserDevDocuments, /new URL\('rdkit\/RDKit_minimal\.wasm', document\.baseURI\)/);
+assert.match(browserDevDocuments, /WEB_DEMO_ENABLED \|\| \(renderer === "xyzrender-external" && browserDevVirtualTextDocuments\.has\(path\)\)/);
 assert.match(browserDevDocuments, /vdwAtoms: null/);
 assert.match(browserDevDocuments, /hullMode: null/);
 assert.match(browserDevDocuments, /hullAtoms: null/);
@@ -672,6 +680,9 @@ assert.match(patchWebAssetsScript, /WEB ASSET PATCH SUCCEEDED/);
 assert.doesNotMatch(patchWebAssetsScript, /xcodebuild/);
 assert.doesNotMatch(patchWebAssetsScript, /cargo build/);
 assert.doesNotMatch(patchWebAssetsScript, /build:tauri/);
+assert.match(hostedViewerBuildScript, /"grid\.css"/);
+assert.match(hostedViewerBuildScript, /"grid-ui\.js"/);
+assert.match(hostedViewerBuildScript, /"grid-viewer\.js"/);
 assert.equal(JSON.parse(tauriConfig).bundle.resources['../public/xyzrender-gallery'], 'xyzrender-gallery');
 assert.equal(JSON.parse(tauriConfig).bundle.resources['../../../PreviewExtension/Web'], 'ViewerWeb');
 assert.match(previewRuntimeViewer, /resolve\("ViewerWeb", tauri::path::BaseDirectory::Resource\)/);
@@ -1387,7 +1398,8 @@ assert.match(fileKind, /path: location\.path/);
 assert.match(fileKind, /const document = findDocument\(location, state\.documents\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} \/> : null;/);
 assert.doesNotMatch(fileKind, /findDocument\(location, state\.documents\) \?\? state\.activeDocument/);
 assert.match(fileKind, /className="molecule-stage"/);
-assert.match(fileKind, /<ViewerFrame document=\{document\} iframeRef=\{iframeRef\} \/>/);
+assert.match(fileKind, /sourcePreview=\{sourceSession\?\.sourcePreview \?\? undefined\}/);
+assert.match(fileKind, /onStagingLoad=\{\(identity, frame\) => sourceEditing\?\.stagingLoaded\(document, identity, frame\)\}/);
 assert.match(viewerFrame, /export function ViewerFrame/);
 assert.match(viewerFrame, /className = "viewer-iframe"/);
 assert.match(viewerFrame, /<iframe key=\{document\.runtimePath\} \{\.\.\.commonProps\} src=\{convertFileSrc\(document\.runtimePath\)\} \/>/);
@@ -1400,6 +1412,9 @@ assert.match(viewerFrame, /convertFileSrc\(document\.runtimePath\)/);
 assert.match(viewerFrame, /"allow-scripts allow-downloads allow-same-origin"/);
 assert.match(viewerFrame, /isHostedMcpWidget\(\)[\s\S]*?\? undefined/);
 assert.match(viewerFrame, /\.\.\.\(sandbox \? \{ sandbox \} : \{\}\)/);
+assert.match(viewerFrame, /"data-source-preview-role": active \? "active" : "staging"/);
+assert.match(viewerFrame, /"aria-hidden": active \? undefined : true/);
+assert.match(viewerFrame, /inert: active \? undefined : true/);
 assert.match(fileKind, /const sheetDropTarget = document\.renderer === "xyzrender-external"/);
 assert.match(fileKind, /const collectionDropTarget = document\.renderer === "grid2d"/);
 assert.doesNotMatch(fileKind, /viewer-generate-3d-button/);
@@ -2053,6 +2068,7 @@ assert.match(dockPanel, /const xyzrenderDockDocument = area === "right" && activ
 assert.match(dockPanel, /const runtimeTabs = xyzrenderDockDocument && !tabs\.some\(\(tab\) => tab\.kind === "xyzrender"\)/);
 assert.match(dockPanel, /actions\.openDockTab\("right", "xyzrender"\)/);
 assert.match(dockPanel, /const xyzrenderDocument = area === "right" && dockStructureDocument\?\.renderer === "xyzrender-external"/);
+assert.match(dockPanel, /if \(kind === "xyzrender"\) return Boolean\(xyzrenderDockDocument\)/);
 assert.match(dockPanel, /function XyzrenderDockPanel\(\{ document, actions \}: \{ document: ViewerDocument; actions: ShellActions \}\)/);
 assert.match(dockPanel, /const controlsRef = useRef<XyzrenderControls>\(xyzrenderDockControls\(document\)\)/);
 assert.match(dockPanel, /const presetRef = useRef\(document\.xyzrenderPreset \|\| "default"\)/);
@@ -2537,7 +2553,7 @@ assert.match(ketcherKind, /export type KetcherLocationImportRequest = \{/);
 assert.match(ketcherKind, /export type KetcherLocation = \{/);
 assert.match(ketcherKind, /importRequestId\?: number/);
 assert.match(ketcherKind, /importRequest\?: KetcherLocationImportRequest/);
-assert.match(ketcherKind, /<KetcherPage location=\{location\} state=\{state\} actions=\{actions\} isActive=\{isActive\} \/>/);
+assert.match(ketcherKind, /<KetcherPage tabId=\{tabId\} location=\{location\} state=\{state\} actions=\{actions\} isActive=\{isActive\} \/>/);
 assert.doesNotMatch(dockPanel, /import \{ KetcherPage \} from "\.\/ketcher-page"/);
 assert.doesNotMatch(dockPanel, /const KetcherPage = lazy\(\(\) => import\("\.\/ketcher-page"\)/);
 assert.match(dockPanel, /data-ketcher-dock-portal="bottom"/);
@@ -2629,7 +2645,9 @@ assert.match(ketcherPage, /const applyZoom = \(\) => \{/);
 assert.match(ketcherPage, /instance\.setZoom\(DEFAULT_KETCHER_ZOOM\)/);
 assert.match(ketcherPage, /setKetcherZoom\(DEFAULT_KETCHER_ZOOM\)/);
 assert.match(ketcherPage, /window\.setTimeout\(applyZoom, 180\)/);
-assert.match(ketcherPage, /void restoreDraft\(instance\)\.finally\(\(\) => applyDefaultKetcherZoom\(instance\)\)/);
+assert.match(ketcherPage, /void restoreDraft\(instance\)\.then\((?:async )?\(\) =>/);
+assert.match(ketcherPage, /registerKetcherAgentController\(tabId, instance\)/);
+assert.match(ketcherPage, /\.finally\(\(\) => applyDefaultKetcherZoom\(instance\)\)/);
 assert.match(ketcherPage, /ketcher\.subscribeZoom\(\(zoom\) => setKetcherZoom\(normalizeKetcherZoom\(zoom\)\)\)/);
 assert.match(ketcherPage, /return installKetcherTooltips\(editorShellRef\.current\)/);
 assert.match(ketcherPage, /ref=\{editorShellRef\}/);
@@ -2714,7 +2732,7 @@ assert.match(ketcherPage, /const copyExportOutput = useCallback\(async \(\) =>/)
 assert.match(ketcherPage, /actions\.openKetcherExportRaw\(\{/);
 assert.match(ketcherPage, /const saveExportOutput = useCallback\(\(\) =>/);
 assert.match(ketcherPage, /actions\.saveKetcherExportFile\(\{/);
-assert.match(ketcherPage, /const KETCHER_FORMAT_DETAILS: Record<KetcherTextFormat, string> = \{/);
+assert.match(ketcherPage, /const KETCHER_FORMAT_DETAILS: Record<KetcherTextFormat \| "auto", string> = \{/);
 assert.match(ketcherPage, /detail: `Export \$\{KETCHER_FORMAT_DETAILS\[format\]\}`/);
 assert.match(ketcherPage, /detail: `Import \$\{KETCHER_FORMAT_DETAILS\[format\]\}`/);
 assert.match(ketcherPage, /<ShortcutTooltip label="Export sketch to a text or image format" side="top" \/>/);
@@ -2809,7 +2827,10 @@ assert.match(ketcherEditor, /import\("ketcher-standalone\/dist\/binaryWasm"\)/);
 assert.doesNotMatch(ketcherEditor, /^\s*import\("ketcher-standalone"\),$/m);
 assert.match(ketcherEditor, /import type \{ Ketcher, Struct \} from "ketcher-core"/);
 assert.match(ketcherEditor, /import\("ketcher-core"\)/);
-assert.match(ketcherEditor, /function createKetcherEditorApi\(\s*instance: Ketcher,\s*MolSerializer: KetcherCoreModule\["MolSerializer"\],\s*getSvgFromDrawnStructures: KetcherCoreModule\["getSvgFromDrawnStructures"\],\s*ZoomTool: KetcherZoomToolConstructor,\s*\): KetcherEditorApi/s);
+assert.equal(desktopPackage.dependencies['ketcher-react'], desktopPackage.dependencies['ketcher-core']);
+assert.equal(desktopPackage.dependencies['ketcher-standalone'], desktopPackage.dependencies['ketcher-core']);
+assert.match(desktopPackage.dependencies['ketcher-core'], /^\d+\.\d+\.\d+$/);
+assert.match(ketcherEditor, /function createKetcherEditorApi\(\s*instance: Ketcher,\s*MolSerializer: KetcherCoreModule\["MolSerializer"\],\s*getSvgFromDrawnStructures: KetcherCoreModule\["getSvgFromDrawnStructures"\],\s*ZoomTool: KetcherZoomToolConstructor,\s*root: HTMLElement \| null,\s*\): KetcherEditorApi/s);
 assert.match(ketcherEditor, /ZoomTool: coreModule\.ZoomTool/);
 assert.match(ketcherEditor, /KETCHER_INSTANCE_RETRY_DELAYS_MS = \[0, 250, 500, 1000, 1500, 2500, 4000, 6000\] as const/);
 assert.match(ketcherEditor, /addFragment: \(\(\.\.\.args: Parameters<Ketcher\["addFragment"\]>\) => \(/);
@@ -3074,28 +3095,29 @@ assert.doesNotMatch(ketcherPage, /\| "helm"/);
 assert.doesNotMatch(ketcherPage, /\| "fasta"/);
 assert.match(ketcherPage, /const KETCHER_EXPORT_FORMATS: KetcherTextFormat\[\] = \[[\s\S]*"rxn-v3000"[\s\S]*"sdf-v3000"[\s\S]*"inchi-key"[\s\S]*"svg"/);
 assert.doesNotMatch(ketcherPage, /const KETCHER_EXPORT_FORMATS[\s\S]*"fasta"/);
-assert.match(ketcherPage, /const KETCHER_IMPORT_FORMATS: KetcherTextFormat\[\] = \[[\s\S]*"rxn-v3000"[\s\S]*"sdf-v3000"[\s\S]*"inchi"/);
+assert.match(ketcherPage, /const KETCHER_IMPORT_FORMATS: Array<KetcherTextFormat \| "auto"> = \[[\s\S]*"auto"[\s\S]*"rxn-v3000"[\s\S]*"sdf-v3000"[\s\S]*"inchi"/);
 assert.doesNotMatch(ketcherPage, /const KETCHER_IMPORT_FORMATS[\s\S]*"helm"/);
 assert.match(ketcherPage, /const DEFAULT_KETCHER_EXPORT_FORMAT: KetcherTextFormat = "sdf-v2000"/);
-assert.match(ketcherPage, /const DEFAULT_KETCHER_IMPORT_FORMAT: KetcherTextFormat = "sdf-v2000"/);
+assert.match(ketcherPage, /const DEFAULT_KETCHER_IMPORT_FORMAT = "auto" as const/);
 assert.match(ketcherPage, /case "sdf-v2000":\s*return exportKetcherSdf\(ketcher, "v2000"\)/);
 assert.match(ketcherPage, /case "sdf-v3000":\s*return exportKetcherSdf\(ketcher, "v3000"\)/);
 assert.match(ketcherPage, /function exportKetcherSdf\(ketcher: KetcherEditorApi, version: "v2000" \| "v3000"\)/);
 assert.match(ketcherPage, /return ketcher\.getMolfile\(version\)\.then\(\(molfile\) => molfileToSdf\(molfile\)\)/);
 assert.match(ketcherPage, /const \[panelMode, setPanelMode\] = useState<KetcherPanelMode \| null>\(null\)/);
-assert.match(ketcherPage, /const \[liveSmilesImportDirty, setLiveSmilesImportDirty\] = useState\(false\)/);
-assert.match(ketcherPage, /const liveSmilesImportSerialRef = useRef\(0\)/);
+assert.match(ketcherPage, /const \[liveImportDirty, setLiveImportDirty\] = useState\(false\)/);
+assert.match(ketcherPage, /const liveImportSerialRef = useRef\(0\)/);
 assert.match(ketcherPage, /const locallySavedDraftRef = useRef\(""\)/);
+assert.match(ketcherPage, /if \(panelMode\?\.purpose === "import" && liveImportDirty\) return Promise\.resolve\(false\)/);
 assert.match(ketcherPage, /if \(!draftKet\.trim\(\) && draftMolfile\.trimEnd\(\) === locallySavedDraftRef\.current\) return Promise\.resolve\(false\);/);
 assert.match(ketcherPage, /const showExport = useCallback\(\(format: KetcherTextFormat\) =>/);
 assert.match(ketcherPage, /setStatus\(`Exporting \$\{label\}`\);\s*setOutput\(""\);\s*setPanelMode\(\{ purpose: "export", format \}\);/);
 assert.doesNotMatch(ketcherPage, /const showExport = useCallback\(async/);
 assert.match(ketcherPage, /const refreshExport = \(\) => \{/);
 assert.match(ketcherPage, /const unsubscribe = ketcher\.subscribeChange\(scheduleRefresh\)/);
-assert.match(ketcherPage, /const startImport = useCallback\(\(format: KetcherTextFormat\) =>/);
-assert.match(ketcherPage, /setLiveSmilesImportDirty\(false\);\s*setOutput/);
+assert.match(ketcherPage, /const startImport = useCallback\(\(format: KetcherTextFormat \| "auto"\) =>/);
+assert.match(ketcherPage, /setLiveImportDirty\(false\);\s*setOutput/);
 assert.match(ketcherPage, /const applyOutput = useCallback\(async \(\) =>/);
-assert.match(ketcherPage, /await withKetcherTimeout\(ketcher\.setMolecule\(importText, \{ needZoom: true \}\), "Sketch import"\)/);
+assert.match(ketcherPage, /await withKetcherTimeout\(loadInteractiveKetcherImport\(ketcher, importText, format\), "Sketch import"\)/);
 assert.doesNotMatch(ketcherPage, /const importOperation = panelMode\.format === "helm"/);
 assert.doesNotMatch(ketcherPage, /KETCHER_ZOOM_SYNC_INTERVAL_MS/);
 assert.match(ketcherPage, /return ketcher\.subscribeZoom\(\(zoom\) => setKetcherZoom\(normalizeKetcherZoom\(zoom\)\)\)/);
@@ -3110,16 +3132,19 @@ assert.match(ketcherPage, /resizeTarget\.releasePointerCapture\(pointerId\)/);
 assert.match(ketcherPage, /const resizeOutputPanelWithMouse = useCallback\(\(event: ReactMouseEvent<HTMLButtonElement>\) => \{/);
 assert.match(ketcherPage, /window\.addEventListener\("mousemove", move\)/);
 assert.match(ketcherPage, /window\.removeEventListener\("mousemove", move\)/);
-assert.match(ketcherPage, /if \(!ketcher \|\| panelMode\?\.purpose !== "import" \|\| panelMode\.format !== "smiles"\) return;/);
-assert.match(ketcherPage, /if \(!liveSmilesImportDirty\) return;/);
-assert.match(ketcherPage, /liveSmilesImportSerialRef\.current = serial;/);
-assert.match(ketcherPage, /setStatus\(smiles \? "Loading SMILES" : "Clearing sketch"\)/);
-assert.match(ketcherPage, /await withKetcherTimeout\(ketcher\.setMolecule\(smiles, \{ needZoom: true \}\), "SMILES import"\)/);
-assert.match(ketcherPage, /const molfile = await withKetcherTimeout\(ketcher\.getMolfile\("v2000"\), "SMILES import verification"\)/);
+assert.match(ketcherPage, /if \(!ketcher \|\| panelMode\?\.purpose !== "import" \|\| !liveImportDirty\) return;/);
+assert.match(ketcherPage, /panelMode\.format === "auto" \? detectedImportFormat : panelMode\.format/);
+assert.match(ketcherPage, /liveImportSerialRef\.current = serial;/);
+assert.match(ketcherPage, /IS_KETCHER_WEB_DEMO && importText && ketcherImportUsesStructService\(format\)/);
+assert.match(ketcherPage, /await withKetcherTimeout\(loadInteractiveKetcherImport\(ketcher, importText, format\), `\$\{label\} import`\)/);
+assert.match(ketcherPage, /const handleDrop = useCallback[\s\S]*?const payload = readStructureDragPayload\(event\.dataTransfer\);\s*const choices = shellDropActionChoices[\s\S]*?if \(choices\.length === 0\) return;\s*event\.preventDefault\(\);\s*event\.stopPropagation\(\);/);
+assert.match(ketcherPage, /ketcherImportUsesStructService\(format\)\s*\?\s*instance\.setMolecule\(text, \{ needZoom: true \}\)\s*:\s*instance\.setMolfile\(firstMolBlock\(text\)\)/);
+assert.match(ketcherPage, /if \(ketcherStructServiceReady\) return Promise\.resolve\(\)/);
+assert.match(ketcherPage, /if \(!IS_KETCHER_WEB_DEMO\) fallbackId = window\.setTimeout\(finish, 750\)/);
 assert.match(ketcherPage, /locallySavedDraftRef\.current = molfile\.trimEnd\(\)/);
 assert.match(ketcherPage, /actions\.saveKetcherDraft\(molfile\)/);
 assert.match(ketcherPage, /aria-label=\{`\$\{panelMode\.purpose === "import" \? "Import" : "Export"\} \$\{panelFormatLabel\}`\}/);
-assert.match(ketcherPage, /if \(panelMode\.purpose === "import"\) setLiveSmilesImportDirty\(true\);/);
+assert.match(ketcherPage, /if \(panelMode\.purpose === "import"\) setLiveImportDirty\(true\);/);
 assert.match(ketcherPage, /className="ketcher-output-panel" style=\{outputPanelStyle\}/);
 assert.match(ketcherPage, /className="ketcher-output-resizer"[\s\S]*aria-label="Resize Ketcher output panel"/);
 assert.match(ketcherPage, /onMouseDown=\{resizeOutputPanelWithMouse\}/);
@@ -3731,7 +3756,7 @@ assert.match(appOpenActionsHook, /No recent structures to open/);
 assert.match(appOpenActionsHook, /const chooseFiles = useCallback/);
 assert.match(
   app,
-  /useMenuEvents\(\{\s*actions,\s*chooseFiles: actions\.chooseFiles,\s*openMostRecentStructure: actions\.openMostRecentStructure,\s*revealActiveDocument: actions\.revealActiveDocument,\s*copyActiveDocumentPath: actions\.copyActiveDocumentPath,\s*showActiveDocumentMetadata: actions\.showActiveDocumentMetadata,\s*exportActivePreviewAsPng: actions\.exportActivePreviewAsPng,\s*exportActivePreviewAsSvg: actions\.exportActivePreviewAsSvg,\s*clearCache: actions\.clearCache,\s*resetQuickLook: actions\.resetQuickLook,\s*openLogs: actions\.openLogs,\s*openSettings: actions\.openSettings,\s*checkForUpdates: actions\.checkForUpdates,\s*\}\)/s,
+  /useMenuEvents\(\{\s*actions,\s*chooseFiles: actions\.chooseFiles,\s*openMostRecentStructure: actions\.openMostRecentStructure,\s*revealActiveDocument: actions\.revealActiveDocument,\s*copyActiveDocumentPath: actions\.copyActiveDocumentPath,\s*showActiveDocumentMetadata: actions\.showActiveDocumentMetadata,\s*exportActivePreviewAsPng: actions\.exportActivePreviewAsPng,\s*exportActivePreviewAsSvg: actions\.exportActivePreviewAsSvg,\s*clearCache: actions\.clearCache,\s*resetQuickLook: actions\.resetQuickLook,\s*openLogs: actions\.openLogs,\s*openSettings: actions\.openSettings,\s*checkForUpdates: actions\.checkForUpdates,\s*saveSource:/s,
 );
 assert.match(app, /from "\.\/hooks\/use-app-host-runtime-operations"/);
 assert.match(app, /from "\.\/hooks\/use-app-preference-effects"/);
@@ -4076,7 +4101,7 @@ assert.match(browserDevAgentSession, /changedFileName === "actions\.json"/);
 assert.doesNotMatch(app, /from "\.\/hooks\/use-app-agent-session-actions"/);
 assert.doesNotMatch(app, /const agentTabActions = useAppAgentSessionActions\(\{/);
 assert.doesNotMatch(app, /tabActions: agentTabActions/);
-assert.match(appOpenDropControllerHook, /useAgentSession\(\{\s*activeDocument,\s*documents,\s*openTextDocuments,\s*openPaths,\s*pushErrorStatus,\s*setDockDocument,\s*\}\);/s);
+assert.match(appOpenDropControllerHook, /useAgentSession\(\{\s*activeDocument,\s*activeTabId,\s*activeTabKind,\s*openKetcherTab,\s*documents,\s*openTextDocuments,\s*openPaths,\s*pushErrorStatus,\s*setDockDocument,\s*\}\);/s);
 assert.match(agentSessionHook, /type UseAgentSessionArgs = \{/);
 assert.match(agentSessionHook, /setDockDocument: \(area: DockArea, documentId: string \| null\) => void/);
 assert.doesNotMatch(agentSessionHook, /tabActions:/);
@@ -4100,7 +4125,7 @@ assert.match(browserDevDocuments, /method: "POST"/);
 assert.match(browserDevDocuments, /reloadOptions\?\.xyzrenderPreset \?\? "default"/);
 assert.match(browserDevDocuments, /async function defaultXyzrenderPlanForDocument\(path: string, extension: string, text: string\): Promise<DefaultXyzrenderPlan \| null>/);
 assert.match(browserDevDocuments, /defaultXyzrender\?\.inputPath \?\? path/);
-assert.match(browserDevDocuments, /xyzrenderEndpoint: "\/__burette\/xyzrender"/);
+assert.match(browserDevDocuments, /xyzrenderEndpoint: XYZRENDER_ENDPOINT/);
 assert.match(browserDevDocuments, /xyzrenderPreset: "default"/);
 assert.doesNotMatch(browserDevDocuments, /xyzrenderPreset: "skeletal"/);
 assert.doesNotMatch(browserDevDocuments, /xyzrenderCards: true/);
@@ -4685,6 +4710,10 @@ assert.match(previewViewer, /function populateMolstarStyleSelect\(select\)/);
 assert.match(previewViewer, /function bindMolstarStyleControls\(toolbar\)/);
 assert.match(previewViewer, /function requestMolstarStyle\(style\)/);
 assert.match(previewViewer, /async function reloadMolstarStyle\(viewer, style, serial\)/);
+assert.match(previewViewer, /function captureMolstarCameraSnapshot\(viewer\)/);
+assert.match(previewViewer, /function restoreMolstarCameraSnapshot\(viewer, snapshot\)/);
+assert.match(previewViewer, /const cameraSnapshot = captureMolstarCameraSnapshot\(viewer\);[\s\S]*?await plugin\.clear\(\);/);
+assert.match(previewViewer, /await loadPreparedStructure\(viewer, prepared\);[\s\S]*?restoreMolstarCameraSnapshot\(viewer, cameraSnapshot\);/);
 assert.match(previewViewer, /async function applyMolstarUniformRepresentation\(viewer, representation\)/);
 assert.match(previewViewer, /prepared\.format === 'mol' && typeof viewer\.loadStructureFromData === 'function'/);
 assert.match(previewViewer, /Open Babel writes Cartesian coordinates under fractional tags/);
@@ -5286,9 +5315,9 @@ assert.match(previewViewController, /let panel = NSSavePanel\(\)/);
 assert.match(previewViewController, /try data\.write\(to: url, options: \[\.atomic\]\)/);
 assert.match(browserDevDocuments, /export async function openBrowserDevMolstarContextDocument/);
 assert.match(browserDevDocuments, /const hostedMcpWidget = contextDocument\.context\?\.hostedMcpWidget === true;/);
-assert.match(browserDevDocuments, /\? \{ \.\.\.preferences, canvasBackground: "black" as const \}/);
+assert.doesNotMatch(browserDevDocuments, /canvasBackground: "black" as const/);
 assert.match(browserDevDocuments, /entry\.role === "ligand" && entry\.extension === "sdf" && entry\.format\.molstarFormat === "sdf"/);
-assert.match(browserDevDocuments, /openBrowserDevTextDocument\([\s\S]*?\{ \.\.\.contextPreferences, rendererMode: "molstar" \},[\s\S]*?\{\},[\s\S]*?\)/);
+assert.match(browserDevDocuments, /openBrowserDevTextDocument\([\s\S]*?\{ \.\.\.preferences, rendererMode: "molstar" \},[\s\S]*?\{\},[\s\S]*?\)/);
 assert.match(browserDevDocuments, /return \{ \.\.\.document, title: label \};/);
 assert.match(browserDevDocuments, /molstarContextFocus: contextFocus/);
 assert.match(previewViewer, /async function applyMolstarContextFocus\(config\)/);
@@ -5889,7 +5918,7 @@ assert.match(browserDevDocuments, /documentId,\s*sourcePath: path,/);
 assert.match(browserDevDocuments, /body\.documentId = String\(window\.BurreteConfig\.documentId\)/);
 assert.match(browserDevDocuments, /window\.BurreteGridRecords =/);
 assert.match(browserDevDocuments, /openchemlib\/openchemlib\.js\?v=\$\{GRID_ASSET_VERSION\}/);
-assert.match(browserDevDocuments, /rdkitWasmPath: "\/__burette\/rdkit-wasm"/);
+assert.equal(browserDevDocuments.match(/rdkitWasmPath: RDKIT_WASM_PATH/g)?.length, 2);
 assert.doesNotMatch(browserDevDocuments, /BurreteRDKitWasmBase64/);
 assert.match(gridViewer, /cfg\.appViewer === true && cfg\.gridDataMode === 'bridge'/);
 assert.match(gridViewer, /\(cfg\.appViewer === true \|\| cfg\.quickLookViewer === true\) && !!caps\.rendererSwitch/);

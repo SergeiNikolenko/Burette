@@ -17,13 +17,16 @@ import { createPortal } from "react-dom";
 
 import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily as collectionFamilyForExtension, type CollectionFamily } from "../lib/collection-documents";
+import { detectKetcherImportFormat, normalizeKetcherSmilesImport } from "../lib/ketcher-import-format";
 import { readStructureText } from "../lib/structure-text";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
+import { hostedKetcherSeedFromWindow, isHostedKetcherWidget, type HostedKetcherSeed } from "../lib/hosted-mcp-widget";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action-executor";
 import type { KetcherLocation } from "./editor-area/page-kinds";
 import type { KetcherEditorApi } from "./ketcher-editor";
+import { registerKetcherAgentController, unregisterKetcherAgentController } from "../lib/ketcher-agent";
 import { RadixDropdownMenu, showRadixContextMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { KetcherImportRequest, KetcherSketchTarget, KetcherSource3D, ShellActions, ShellViewState } from "./types";
@@ -53,10 +56,9 @@ type KetcherTextFormat =
   | "inchi-aux"
   | "inchi-key"
   | "svg";
-type KetcherPanelMode = {
-  purpose: "export" | "import";
-  format: KetcherTextFormat;
-};
+type KetcherPanelMode =
+  | { purpose: "export"; format: KetcherTextFormat }
+  | { purpose: "import"; format: KetcherTextFormat | "auto" };
 
 const KETCHER_ZOOM_LEVELS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 2, 2.5, 3, 3.5, 4] as const;
 const DEFAULT_KETCHER_ZOOM = 1;
@@ -67,6 +69,13 @@ const KETCHER_EXPORT_TIMEOUT_MS = 15000;
 const KETCHER_IMPORT_INSTANCE_RETRY_DELAYS_MS = [0, 250, 750, 1500, 2500] as const;
 const KETCHER_IMPORT_REQUEST_RETRY_MS = 5000;
 type KetcherImportResult = "success" | "transient-failure" | "failure";
+const IS_KETCHER_WEB_DEMO = import.meta.env.VITE_BURRETE_WEB_DEMO === "1";
+let ketcherStructServiceReady = false;
+if (typeof window !== "undefined") {
+  window.addEventListener("struct-service-initialized", () => {
+    ketcherStructServiceReady = true;
+  }, { once: true });
+}
 const KETCHER_TOOLTIP_ATTRIBUTE = "data-burette-ketcher-tooltip";
 const KETCHER_TOOLTIP_SELECTOR = [
   '[data-testid="top-toolbar"] button',
@@ -159,7 +168,8 @@ const KETCHER_TOOLTIP_LABELS: Record<string, string> = {
   image: "Add image",
   "template-lib": "Open template library",
 };
-const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat, string> = {
+const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat | "auto", string> = {
+  auto: "Auto",
   smiles: "SMILES",
   "extended-smiles": "Extended SMILES",
   "molfile-v2000": "Molfile V2000",
@@ -180,7 +190,8 @@ const KETCHER_FORMAT_LABELS: Record<KetcherTextFormat, string> = {
   "inchi-key": "InChIKey",
   svg: "SVG",
 };
-const KETCHER_FORMAT_DETAILS: Record<KetcherTextFormat, string> = {
+const KETCHER_FORMAT_DETAILS: Record<KetcherTextFormat | "auto", string> = {
+  auto: "Detect the structure format from its contents.",
   smiles: "Compact one-line molecule notation.",
   "extended-smiles": "SMILES with Ketcher extended annotations.",
   "molfile-v2000": "Legacy MDL MOL structure format.",
@@ -222,7 +233,8 @@ const KETCHER_EXPORT_FORMATS: KetcherTextFormat[] = [
   "inchi-key",
   "svg",
 ];
-const KETCHER_IMPORT_FORMATS: KetcherTextFormat[] = [
+const KETCHER_IMPORT_FORMATS: Array<KetcherTextFormat | "auto"> = [
+  "auto",
   "smiles",
   "extended-smiles",
   "molfile-v2000",
@@ -241,7 +253,7 @@ const KETCHER_IMPORT_FORMATS: KetcherTextFormat[] = [
   "inchi",
 ];
 const DEFAULT_KETCHER_EXPORT_FORMAT: KetcherTextFormat = "sdf-v2000";
-const DEFAULT_KETCHER_IMPORT_FORMAT: KetcherTextFormat = "sdf-v2000";
+const DEFAULT_KETCHER_IMPORT_FORMAT = "auto" as const;
 const KETCHER_EXPORT_FILE_EXTENSIONS: Record<KetcherTextFormat, string> = {
   smiles: "smi",
   "extended-smiles": "smi",
@@ -348,12 +360,14 @@ function installKetcherTooltips(root: HTMLElement) {
 }
 
 export function KetcherPage({
+  tabId,
   location,
   state,
   actions,
   isActive,
   acceptImportRequests = true,
 }: {
+  tabId: string;
   location: KetcherLocation;
   state: ShellViewState;
   actions: ShellActions;
@@ -361,9 +375,11 @@ export function KetcherPage({
   acceptImportRequests?: boolean;
 }) {
   const [ketcher, setKetcher] = useState<KetcherEditorApi | null>(null);
+  const ketcherAgentControllerRef = useRef<ReturnType<typeof registerKetcherAgentController> | null>(null);
   const [status, setStatus] = useState("Loading editor");
   const [output, setOutput] = useState("");
   const [panelMode, setPanelMode] = useState<KetcherPanelMode | null>(null);
+  const hostedSeedKeyRef = useRef<string | null>(null);
   const [editorReloadKey, setEditorReloadKey] = useState(0);
   const [dropActive, setDropActive] = useState(false);
   const [editorHasActivated, setEditorHasActivated] = useState(false);
@@ -374,12 +390,12 @@ export function KetcherPage({
   const [ketcherZoom, setKetcherZoom] = useState(DEFAULT_KETCHER_ZOOM);
   const [outputPanelHeight, setOutputPanelHeight] = useState(KETCHER_OUTPUT_DEFAULT_HEIGHT);
   const [dockPortalElement, setDockPortalElement] = useState<HTMLElement | null>(null);
-  const [liveSmilesImportDirty, setLiveSmilesImportDirty] = useState(false);
+  const [liveImportDirty, setLiveImportDirty] = useState(false);
   const [selectedCollectionPath, setSelectedCollectionPath] = useState("");
   const [gridEditSource, setGridEditSource] = useState<NonNullable<NonNullable<KetcherImportRequest["fragments"]>[number]["source"]> | null>(null);
   const [preserved3dSource, setPreserved3dSource] = useState<KetcherSource3D | null>(null);
   const handledImportRequestIdRef = useRef<number | null>(null);
-  const liveSmilesImportSerialRef = useRef(0);
+  const liveImportSerialRef = useRef(0);
   const locallySavedDraftRef = useRef("");
   const inFlightImportRequestIdRef = useRef<number | null>(null);
   const nextImportRetryAtRef = useRef(0);
@@ -394,7 +410,12 @@ export function KetcherPage({
   const ketcherThemeTitle = `Switch to ${nextKetcherTheme} theme`;
   const ketcherZoomIndex = nearestKetcherZoomIndex(ketcherZoom);
   const ketcherZoomPercent = Math.round(ketcherZoom * 100);
-  const panelFormatLabel = panelMode ? KETCHER_FORMAT_LABELS[panelMode.format] : "";
+  const detectedImportFormat = useMemo(() => detectKetcherImportFormat(output), [output]);
+  const panelFormatLabel = panelMode
+    ? panelMode.purpose === "import" && panelMode.format === "auto" && output.trim()
+      ? `Auto · ${KETCHER_FORMAT_LABELS[detectedImportFormat]}`
+      : KETCHER_FORMAT_LABELS[panelMode.format]
+    : "";
   const ketcherUIScaleStyle = useMemo(() => ({
     "--ketcher-ui-scale": String(ketcherZoom),
   }) as CSSProperties, [ketcherZoom]);
@@ -441,6 +462,7 @@ export function KetcherPage({
 
   const restoreDraft = useCallback((instance: KetcherEditorApi) => {
     if (location.importRequest) return Promise.resolve(false);
+    if (panelMode?.purpose === "import" && liveImportDirty) return Promise.resolve(false);
     const draftKet = location.draftKet ?? "";
     const draftMolfile = location.draftMolfile ?? state.ketcherDraftMolfile;
     if (!draftKet.trim() && !draftMolfile.trim()) return Promise.resolve(false);
@@ -462,18 +484,57 @@ export function KetcherPage({
         setStatus("Ketcher restore failed: " + (error instanceof Error ? error.message : String(error)));
         return false;
       });
-  }, [location.draftKet, location.draftMolfile, location.importRequest, state.ketcherDraftMolfile]);
+  }, [liveImportDirty, location.draftKet, location.draftMolfile, location.importRequest, panelMode, state.ketcherDraftMolfile]);
+
+  const applyHostedSeed = useCallback(async (instance: KetcherEditorApi, seed: HostedKetcherSeed | null) => {
+    if (!seed) return;
+    const key = `${seed.surfaceId ?? ""}:${seed.format}:${seed.content}`;
+    if (hostedSeedKeyRef.current === key) return;
+    if (seed.format === "mol") await instance.setMolfile(seed.content);
+    else await instance.setMolecule(seed.content, { needZoom: true });
+    hostedSeedKeyRef.current = key;
+    setOutput("");
+    setPanelMode(null);
+    setHasSketch(Boolean(seed.content.trim()));
+    setStatus("Ready");
+  }, []);
 
   const handleReady = useCallback((instance: KetcherEditorApi) => {
     instance.switchToMoleculesMode();
     setKetcher(instance);
-    void restoreDraft(instance).finally(() => applyDefaultKetcherZoom(instance));
-  }, [applyDefaultKetcherZoom, restoreDraft]);
+    void restoreDraft(instance).then(async () => {
+      if (isHostedKetcherWidget()) {
+        try {
+          await applyHostedSeed(instance, hostedKetcherSeedFromWindow());
+        } catch (error) {
+          setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
+        }
+      }
+      ketcherAgentControllerRef.current = registerKetcherAgentController(tabId, instance);
+    }).finally(() => applyDefaultKetcherZoom(instance));
+  }, [applyDefaultKetcherZoom, applyHostedSeed, restoreDraft, tabId]);
+
+  useEffect(() => () => {
+    unregisterKetcherAgentController(tabId, ketcherAgentControllerRef.current ?? undefined);
+    ketcherAgentControllerRef.current = null;
+  }, [tabId]);
 
   useEffect(() => {
     if (!ketcher) return;
     return ketcher.subscribeZoom((zoom) => setKetcherZoom(normalizeKetcherZoom(zoom)));
   }, [ketcher]);
+
+  useEffect(() => {
+    if (!ketcher || !isHostedKetcherWidget()) return undefined;
+    const handleSeed = () => {
+      void applyHostedSeed(ketcher, hostedKetcherSeedFromWindow()).catch((error) => {
+        setStatus("Ketcher seed failed: " + (error instanceof Error ? error.message : String(error)));
+      });
+    };
+    window.addEventListener("burrete-ketcher-seed", handleSeed);
+    handleSeed();
+    return () => window.removeEventListener("burrete-ketcher-seed", handleSeed);
+  }, [applyHostedSeed, ketcher]);
 
   useEffect(() => {
     if (!shouldMountEditor || !editorShellRef.current) return undefined;
@@ -576,8 +637,8 @@ export function KetcherPage({
     };
   }, [ketcher, panelMode]);
 
-  const startImport = useCallback((format: KetcherTextFormat) => {
-    setLiveSmilesImportDirty(false);
+  const startImport = useCallback((format: KetcherTextFormat | "auto") => {
+    setLiveImportDirty(false);
     setOutput((current) => (panelMode?.purpose === "import" && panelMode.format === format ? current : ""));
     setPanelMode({ purpose: "import", format });
     setStatus(`Paste ${KETCHER_FORMAT_LABELS[format]} to import`);
@@ -588,7 +649,7 @@ export function KetcherPage({
     showExport(format);
   }, [actions, showExport]);
 
-  const selectImportFormat = useCallback((format: KetcherTextFormat) => {
+  const selectImportFormat = useCallback((format: KetcherTextFormat | "auto") => {
     actions.setDockTool("bottom", "ketcher");
     startImport(format);
   }, [actions, startImport]);
@@ -641,8 +702,11 @@ export function KetcherPage({
     }
     try {
       setStatus(`Loading ${label}`);
-      const importText = normalizeKetcherImportText(output, panelMode.format);
-      await withKetcherTimeout(ketcher.setMolecule(importText, { needZoom: true }), "Sketch import");
+      const format = panelMode.format === "auto" ? detectKetcherImportFormat(output) : panelMode.format;
+      const importText = normalizeKetcherImportText(output, format);
+      if (IS_KETCHER_WEB_DEMO && ketcherImportUsesStructService(format)) await waitForKetcherStructServiceReady();
+      await withKetcherTimeout(loadInteractiveKetcherImport(ketcher, importText, format), "Sketch import");
+      await waitForKetcherCanvasUpdate();
       const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Sketch import verification");
       if (isBlankKetcherMolfile(molfile)) {
         setHasSketch(false);
@@ -659,29 +723,35 @@ export function KetcherPage({
   }, [actions, ketcher, output, panelMode]);
 
   useEffect(() => {
-    if (!ketcher || panelMode?.purpose !== "import" || panelMode.format !== "smiles") return;
-    if (!liveSmilesImportDirty) return;
-    const smiles = output.trim();
-    const serial = liveSmilesImportSerialRef.current + 1;
-    liveSmilesImportSerialRef.current = serial;
+    if (!ketcher || panelMode?.purpose !== "import" || !liveImportDirty) return;
+    const format = panelMode.format === "auto" ? detectedImportFormat : panelMode.format;
+    const importText = normalizeKetcherImportText(output, format);
+    const label = KETCHER_FORMAT_LABELS[format];
+    const serial = liveImportSerialRef.current + 1;
+    liveImportSerialRef.current = serial;
     const timer = window.setTimeout(() => {
       void (async () => {
+        if (liveImportSerialRef.current !== serial) return;
         try {
-          setStatus(smiles ? "Loading SMILES" : "Clearing sketch");
-          await withKetcherTimeout(ketcher.setMolecule(smiles, { needZoom: true }), "SMILES import");
-          if (liveSmilesImportSerialRef.current !== serial) return;
-          if (!smiles) {
+          setStatus(importText ? `Loading ${label}` : "Clearing sketch");
+          if (IS_KETCHER_WEB_DEMO && importText && ketcherImportUsesStructService(format)) {
+            await waitForKetcherStructServiceReady();
+          }
+          await withKetcherTimeout(loadInteractiveKetcherImport(ketcher, importText, format), `${label} import`);
+          await waitForKetcherCanvasUpdate();
+          if (liveImportSerialRef.current !== serial) return;
+          if (!importText) {
             actions.saveKetcherDraft("");
             setPreserved3dSource(null);
             setHasSketch(false);
             setStatus("Ready");
             return;
           }
-          const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "SMILES import verification");
-          if (liveSmilesImportSerialRef.current !== serial) return;
+          const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), `${label} import verification`);
+          if (liveImportSerialRef.current !== serial) return;
           if (isBlankKetcherMolfile(molfile)) {
             setHasSketch(false);
-            setStatus("SMILES did not produce a sketch");
+            setStatus(`${label} did not produce a sketch`);
             return;
           }
           locallySavedDraftRef.current = molfile.trimEnd();
@@ -690,13 +760,13 @@ export function KetcherPage({
           setHasSketch(true);
           setStatus("Ready");
         } catch (error) {
-          if (liveSmilesImportSerialRef.current !== serial) return;
-          setStatus("SMILES import failed: " + (error instanceof Error ? error.message : String(error)));
+          if (liveImportSerialRef.current !== serial) return;
+          setStatus(`${label} import failed: ` + (error instanceof Error ? error.message : String(error)));
         }
       })();
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [actions, ketcher, liveSmilesImportDirty, output, panelMode]);
+  }, [actions, detectedImportFormat, ketcher, liveImportDirty, output, panelMode]);
 
   const openSketch = useCallback(async (target: KetcherSketchTarget, collectionTargetPath?: string | null) => {
     if (!ketcher || exportingSketch) return;
@@ -990,13 +1060,13 @@ export function KetcherPage({
 
   const handleDrop = useCallback((event: DragEvent<HTMLElement>) => {
     if (!hasStructureDrag(event.dataTransfer)) return;
+    const payload = readStructureDragPayload(event.dataTransfer);
+    const choices = shellDropActionChoices(payload, { kind: "ketcher" }, { kind: "ketcher" });
+    if (choices.length === 0) return;
     event.preventDefault();
     event.stopPropagation();
     actions.setStructureDragActive(false);
     setDropActive(false);
-    const payload = readStructureDragPayload(event.dataTransfer);
-    const choices = shellDropActionChoices(payload, { kind: "ketcher" }, { kind: "ketcher" });
-    if (choices.length === 0) return;
     runShellDropActionChoices(actions, payload, choices.slice(0, 1), { x: event.clientX, y: event.clientY }, {
       importKetcherStructures: (actionPayload) => {
         if (!ketcher) return false;
@@ -1246,7 +1316,7 @@ export function KetcherPage({
               value={output}
               onChange={(event) => {
                 setOutput(event.target.value);
-                if (panelMode.purpose === "import") setLiveSmilesImportDirty(true);
+                if (panelMode.purpose === "import") setLiveImportDirty(true);
               }}
             />
           </div>
@@ -1473,7 +1543,7 @@ function peekQueuedKetcherImportRequest() {
 
 function ketcherImportCandidates(text: string) {
   return Array.from(new Set([
-    normalizeKetcherImportText(text),
+    normalizeKetcherImportText(text, detectKetcherImportFormat(text)),
     text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd(),
   ].map((candidate) => candidate.trimEnd()).filter(Boolean)));
 }
@@ -1523,6 +1593,20 @@ function loadAdditionalKetcherImportCandidate(instance: KetcherEditorApi, candid
     : instance.addFragment(candidate, { needZoom: true });
 }
 
+function loadInteractiveKetcherImport(instance: KetcherEditorApi, text: string, format: KetcherTextFormat) {
+  return ketcherImportUsesStructService(format)
+    ? instance.setMolecule(text, { needZoom: true })
+    : instance.setMolfile(firstMolBlock(text));
+}
+
+function ketcherImportUsesStructService(format: KetcherTextFormat) {
+  return !format.startsWith("molfile-") && !format.startsWith("sdf-");
+}
+
+function firstMolBlock(text: string) {
+  return /[\s\S]*?\nM\s+END(?:\n|$)/u.exec(text)?.[0] ?? text;
+}
+
 function waitForKetcherCanvasUpdate() {
   return new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
@@ -1530,18 +1614,23 @@ function waitForKetcherCanvasUpdate() {
 }
 
 function waitForKetcherStructServiceReady() {
+  if (ketcherStructServiceReady) return Promise.resolve();
   return new Promise<void>((resolve) => {
     let settled = false;
     let fallbackId = 0;
     const finish = () => {
       if (settled) return;
       settled = true;
-      window.removeEventListener("struct-service-initialized", finish);
+      window.removeEventListener("struct-service-initialized", markReady);
       window.clearTimeout(fallbackId);
       resolve();
     };
-    window.addEventListener("struct-service-initialized", finish, { once: true });
-    fallbackId = window.setTimeout(finish, 750);
+    const markReady = () => {
+      ketcherStructServiceReady = true;
+      finish();
+    };
+    window.addEventListener("struct-service-initialized", markReady, { once: true });
+    if (!IS_KETCHER_WEB_DEMO) fallbackId = window.setTimeout(finish, 750);
   });
 }
 
@@ -1551,6 +1640,7 @@ function waitForMs(ms: number) {
 
 function normalizeKetcherImportText(text: string, format?: KetcherTextFormat) {
   const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
+  if (format === "smiles") return normalizeKetcherSmilesImport(normalized);
   if (
     looksLikeMolBlock(normalized) ||
     looksLikeSdfRecord(normalized) ||

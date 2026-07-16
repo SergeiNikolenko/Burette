@@ -232,7 +232,7 @@ export const useShellStore = create<ShellState>()(
     (set) => ({
       sidebarOpen: true,
       sidebarWidth: 240,
-      rightDockOpen: true,
+      rightDockOpen: false,
       rightDockWidth: 360,
       rightDockTabs: normalizeDockTabs("right", undefined),
       rightDockActiveTab: firstDockTabKind("right"),

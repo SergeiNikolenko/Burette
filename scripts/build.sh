@@ -188,6 +188,94 @@ PY
 import datamol
 PY
 }
+relocate_bundled_python_runtime() {
+  local python_root="$1"
+  local framework_binary
+  framework_binary="$(find "$python_root" -type f -path '*/Python.framework/Versions/*/Python' -perm -111 -print -quit)"
+  [[ -n "$framework_binary" ]] || return 0
+  local framework_version
+  framework_version="$(basename "$(dirname "$framework_binary")")"
+  local bundled_install_name="@rpath/Python.framework/Versions/$framework_version/Python"
+
+  install_name_tool -id "$bundled_install_name" "$framework_binary"
+  while IFS= read -r -d '' binary; do
+    [[ "$(file -b "$binary")" == *Mach-O* ]] || continue
+    local install_id
+    install_id="$(otool -D "$binary" 2>/dev/null | tail -n +2 | head -n 1 || true)"
+    if [[ "$install_id" == */Python.framework/Versions/*/Python ]]; then
+      install_name_tool -id "$bundled_install_name" "$binary"
+    fi
+    while IFS= read -r dependency; do
+      [[ "$dependency" == */Python.framework/Versions/*/Python ]] || continue
+      [[ "$dependency" == "$bundled_install_name" ]] && continue
+      install_name_tool -change "$dependency" "$bundled_install_name" "$binary"
+    done < <(otool -L "$binary" | tail -n +2 | sed -E 's/^[[:space:]]*([^[:space:]]+).*/\1/')
+  done < <(find "$python_root" -type f \( \
+      -name python -o \
+      -name python3 -o \
+      -name 'python3.*' -o \
+      -name Python -o \
+      -name '*.dylib' -o \
+      -name '*.so' \
+    \) -print0)
+
+  while IFS= read -r -d '' launcher; do
+    [[ "$(file -b "$launcher")" == *Mach-O* ]] || continue
+    local framework_rpath='@executable_path/../Frameworks'
+    if [[ "$launcher" == */Python.framework/Versions/*/Resources/Python.app/Contents/MacOS/Python ]]; then
+      framework_rpath='@executable_path/../../../../../../..'
+    elif [[ "$launcher" == */Python.framework/Versions/*/bin/* ]]; then
+      framework_rpath='@executable_path/../../../..'
+    elif [[ "$launcher" == */IDLE\ *.app/Contents/MacOS/Python ]]; then
+      framework_rpath='@executable_path/../../../Frameworks'
+    elif [[ "$launcher" == */libexec/bin/python ]]; then
+      framework_rpath='@executable_path/../../Frameworks'
+    fi
+    if [[ "$(otool -l "$launcher")" != *"$framework_rpath"* ]]; then
+      install_name_tool -add_rpath "$framework_rpath" "$launcher"
+    fi
+  done < <(find "$python_root" -type f \( \
+      -name Python -o \
+      -name python -o \
+      -name python3 -o \
+      -name 'python3.*' \
+    \) -print0)
+}
+assert_no_external_python_dependencies() {
+  local python_root="$1"
+  local external_dependencies=""
+  while IFS= read -r -d '' binary; do
+    [[ "$(file -b "$binary")" == *Mach-O* ]] || continue
+    local matches
+    matches="$(otool -L "$binary" | grep -E '/(opt/homebrew|usr/local)/.*Python\.framework' || true)"
+    if [[ -n "$matches" ]]; then
+      external_dependencies+="$binary"$'\n'"$matches"$'\n'
+    fi
+  done < <(find "$python_root" -type f \( \
+      -name python -o \
+      -name python3 -o \
+      -name 'python3.*' -o \
+      -name Python -o \
+      -name '*.dylib' -o \
+      -name '*.so' \
+    \) -print0)
+  [[ -z "$external_dependencies" ]] || {
+    echo "error: External Homebrew dependency remains in bundled Python runtime:" >&2
+    printf '%s' "$external_dependencies" >&2
+    exit 1
+  }
+}
+prepare_bundled_python_for_signing() {
+  local python_root="$1"
+  rm -rf "$python_root/IDLE 3.app" "$python_root/Python Launcher 3.app"
+  find "$python_root" -type l \
+    -path '*/Python.framework/Versions/*/lib/python*/site-packages' \
+    -delete
+  find "$python_root" -type f \
+    -path '*/Python.framework/Versions/*/Resources/Python.app/Contents/Info.plist' \
+    -delete
+  find "$python_root" -type d -name _CodeSignature -prune -exec rm -rf {} +
+}
 bundle_xyzrender_runtime() {
   local app="$1"
   local runtime="$app/Contents/Resources/xyzrender-runtime"
@@ -202,8 +290,11 @@ bundle_xyzrender_runtime() {
   rm -rf "$runtime" "$python_root"
   mkdir -p "$runtime" "$python_root"
   rsync -aL --delete "$LOCAL_XYZRENDER_ENV/" "$runtime/"
-  rsync -aL --delete "$LOCAL_XYZRENDER_PYTHON_ROOT/" "$python_root/"
+  rsync -a --delete "$LOCAL_XYZRENDER_PYTHON_ROOT/" "$python_root/"
   clean_detritus "$python_root"
+  relocate_bundled_python_runtime "$python_root"
+  assert_no_external_python_dependencies "$python_root"
+  prepare_bundled_python_for_signing "$python_root"
   cat >"$runtime/bin/xyzrender" <<'EOF'
 #!/bin/sh
 set -eu
@@ -244,17 +335,38 @@ assert_bundled_xyzrender_runtime() {
     echo "error: bundled xyzrender python runtime missing $stage: $python_root/bin/python3" >&2
     exit 1
   }
+  assert_no_external_python_dependencies "$python_root"
+  local python_framework
+  python_framework="$(find "$python_root" -type d -name Python.framework -print -quit)"
+  if [[ -n "$python_framework" ]]; then
+    codesign --verify --deep --strict "$python_framework" >/dev/null || {
+      echo "error: bundled Python framework signature is invalid $stage" >&2
+      exit 1
+    }
+  fi
+  PYTHONNOUSERSITE=1 "$python_root/bin/python3" -c 'import sys; print(sys.version)' >/dev/null || {
+    echo "error: bundled xyzrender Python runtime does not launch $stage" >&2
+    exit 1
+  }
 }
 sign_xyzrender_binaries() {
   while IFS= read -r binary; do
     codesign --remove-signature "$binary" >/dev/null 2>&1 || true
     codesign "${CODESIGN_ARGS[@]}" "$binary" >/dev/null
   done < <(find "$@" -type f \( \
+      -name Python -o \
+      -name python -o \
       -name python3 -o \
       -name 'python3.*' -o \
       -name '*.dylib' -o \
       -name '*.so' \
     \))
+  local python_framework
+  python_framework="$(find "$@" -type d -name Python.framework -print -quit)"
+  if [[ -n "$python_framework" ]]; then
+    codesign --remove-signature "$python_framework" >/dev/null 2>&1 || true
+    codesign "${CODESIGN_ARGS[@]}" "$python_framework" >/dev/null
+  fi
 }
 sign_bundled_xyzrender_runtime() {
   local app="$1"

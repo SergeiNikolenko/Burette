@@ -957,6 +957,7 @@ fi
 /usr/bin/qlmanage -r >/dev/null 2>&1 || true
 /usr/bin/qlmanage -r cache >/dev/null 2>&1 || true
 /usr/bin/killall quicklookd >/dev/null 2>&1 || true
+/usr/bin/killall Finder >/dev/null 2>&1 || true
 sync_burrete_codex_plugin() {{
   local plugin_src="$DEST_APP/Contents/Resources/plugins/burette-agent"
   if [ ! -f "$plugin_src/.codex-plugin/plugin.json" ]; then

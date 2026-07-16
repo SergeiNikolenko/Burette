@@ -35,6 +35,7 @@
 				<string>com.local.burrete10.mmtf</string>
 				<string>com.local.burrete10.sdf</string>
 				<string>com.local.burrete10.smiles</string>
+				<string>gg.flew.unfold.subtitle-smi</string>
 				<string>com.local.burrete10.csv</string>
 				<string>com.local.burrete10.datawarrior</string>
 				<string>com.local.burrete10.tsv</string>
@@ -42,6 +43,9 @@
 				<string>public.tab-separated-values-text</string>
 				<string>com.local.burrete10.mol</string>
 				<string>com.local.burrete10.mol2</string>
+				<string>com.revvity.external.mdl3000</string>
+				<string>com.mdli.molfile</string>
+				<string>com.revvity.external.cif</string>
 				<string>com.schrodinger.mol</string>
 				<string>net.sourceforge.openbabel.mdl</string>
 				<string>com.schrodinger.pdb</string>

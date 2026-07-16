@@ -1,5 +1,6 @@
 import type { SidebarProjectStructure } from "./sidebar-projects";
 import { writeBrowserDevVirtualTextDocument } from "./browser-dev-documents";
+import moses10k from "../../../../samples/collections/tables/moses-10k.csv?raw";
 import extxyzCell from "../../../../samples/extxyz-cell.xyz?raw";
 import ketcher2dBenzene from "../../../../samples/ketcher-2d-benzene.sdf?raw";
 import ketcher3dCore from "../../../../samples/ketcher-3d-core.sdf?raw";
@@ -9,9 +10,15 @@ import miniSdf from "../../../../samples/mini.sdf?raw";
 import miniXyz from "../../../../samples/mini.xyz?raw";
 import pairedPdb from "../../../../samples/md/paired/paired.pdb?raw";
 import nad2d from "../../../../samples/nad-2d.sdf?raw";
+import massSpecGym from "../../../../samples/spectra/massspecgym-0075191.ms?raw";
 import caffeineCif from "../../../../samples/structures/crystals/caffeine.cif?raw";
 import mof5 from "../../../../samples/structures/crystals/mof-5.xyz?raw";
 import nv63Cell from "../../../../samples/structures/crystals/nv63-cell.xyz?raw";
+import bimp from "../../../../samples/structures/demo/bimp.v000.xyz?raw";
+import buckyball from "../../../../samples/structures/demo/buckyball.xyz?raw";
+import caffeineCell from "../../../../samples/structures/demo/caffeine_cell.xyz?raw";
+import mnH2 from "../../../../samples/structures/demo/mn-h2.v000.xyz?raw";
+import sn2 from "../../../../samples/structures/demo/sn2.v000.xyz?raw";
 import oneHtb from "../../../../samples/structures/proteins/1htb.pdb?raw";
 import benzene from "../../../../samples/structures/small-molecules/benzene.xyz?raw";
 import caffeineSdf from "../../../../samples/structures/small-molecules/caffeine.sdf?raw";
@@ -38,8 +45,15 @@ const DEMO_STRUCTURES = [
   ["proteins/1HTB.pdb", oneHtb],
   ["proteins/paired.pdb", pairedPdb],
   ["crystals/caffeine.cif", caffeineCif],
-  ["crystals/MOF-5.xyz", mof5],
-  ["crystals/NV63-cell.xyz", nv63Cell],
+  ["structures/bimp.v000.xyz", bimp],
+  ["structures/buckyball.xyz", buckyball],
+  ["structures/caffeine_cell.xyz", caffeineCell],
+  ["structures/mn-h2.v000.xyz", mnH2],
+  ["structures/MOF-5.xyz", mof5],
+  ["structures/NV63_cell.xyz", nv63Cell],
+  ["structures/sn2.v000.xyz", sn2],
+  ["spectra/massspecgym-0075191.ms", massSpecGym],
+  ["collections/tables/moses-10k.csv", moses10k],
   ["small-molecules/benzene.xyz", benzene],
   ["small-molecules/caffeine.sdf", caffeineSdf],
   ["small-molecules/multi-molecule.sdf", multiMolecule],

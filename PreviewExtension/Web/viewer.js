@@ -2851,12 +2851,40 @@
     return MOLSTAR_STYLE_OPTIONS.find(option => option.value === value)?.label || value;
   }
 
+  function captureMolstarCameraSnapshot(viewer) {
+    const camera = viewer?.plugin?.canvas3d?.camera;
+    if (!camera || typeof camera.getSnapshot !== 'function') return null;
+    try {
+      const snapshot = camera.getSnapshot();
+      if (!snapshot) return null;
+      return {
+        ...snapshot,
+        position: snapshot.position?.slice?.() || snapshot.position,
+        target: snapshot.target?.slice?.() || snapshot.target,
+        up: snapshot.up?.slice?.() || snapshot.up
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function restoreMolstarCameraSnapshot(viewer, snapshot) {
+    if (!snapshot) return;
+    const canvas3d = viewer?.plugin?.canvas3d;
+    if (!canvas3d?.requestCameraReset) return;
+    try {
+      canvas3d.requestCameraReset({ snapshot, durationMs: 0 });
+      canvas3d.requestDraw?.();
+    } catch (_) {}
+  }
+
   async function reloadMolstarStyle(viewer, style, serial) {
     const prepared = activeMolstarPrepared;
     if (!prepared) {
       await applyMolstarStyle(viewer, style);
       return;
     }
+    const cameraSnapshot = captureMolstarCameraSnapshot(viewer);
     const plugin = viewer?.plugin;
     if (typeof plugin?.clear === 'function') {
       await plugin.clear();
@@ -2869,6 +2897,7 @@
     applyLayoutState(viewer);
     scheduleLayoutStateReapply(viewer);
     try { viewer.handleResize(); } catch (_) {}
+    restoreMolstarCameraSnapshot(viewer, cameraSnapshot);
     setStatus(`[web] Applied Mol* ${molstarStyleLabel(style)} style`);
     setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
@@ -13486,6 +13515,13 @@
     throw lastError || new Error('RDKit_minimal.wasm is missing.');
   }
 
+  async function molstarPreviewLoadRDKitWasmData() {
+    if (window.BurreteRDKitWasmBase64) return;
+    const dataURL = runtimeURL('BurreteRDKitWasmDataURL', '');
+    if (!dataURL) return;
+    await molstarPreviewLoadScript(dataURL);
+  }
+
   function molstarPreviewRDKitWasmPath(file) {
     if (!String(file || '').endsWith('.wasm')) return file;
     return molstarPreviewRDKitWasmCandidates()[0] || 'rdkit/RDKit_minimal.wasm';
@@ -13499,6 +13535,7 @@
         await molstarPreviewLoadRDKitScript();
       }
       if (typeof window.initRDKitModule !== 'function') throw new Error('RDKit_minimal.js is missing.');
+      await molstarPreviewLoadRDKitWasmData();
       const options = { locateFile: molstarPreviewRDKitWasmPath };
       if (window.BurreteRDKitWasmBase64) {
         options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
@@ -14623,7 +14660,10 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
   function showError(error) {
     const message = error && (error.stack || error.message) ? (error.stack || error.message) : String(error);
-    setStatus(`[web] Burrete web renderer failed to load this file.\n\n${message}\n\nCheck: ./scripts/tail-log.sh`, 'error');
+    const diagnostics = window.__BURRETE_HOSTED_MCP_WIDGET__ === true
+      ? ''
+      : '\n\nCheck: ./scripts/tail-log.sh';
+    setStatus(`[web] Burrete web renderer failed to load this file.\n\n${message}${diagnostics}`, 'error');
     // eslint-disable-next-line no-console
     console.error(error);
   }

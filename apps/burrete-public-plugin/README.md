@@ -7,8 +7,9 @@ plugin. It is intentionally separate from the local stdio plugin under
 - the hosted plugin is designed for ChatGPT and Codex without local installation,
   with directory installation available after OpenAI review and publication;
 - the local plugin can open local files and control the Burrete macOS app;
-- the hosted plugin is read-only and never controls a user's desktop or local
-  Burrete sessions.
+- the hosted public-structure tools are read-only and never control a user's
+  desktop or local Burrete sessions; the separate hosted Ketcher relay is an
+  ephemeral, isolated editor surface.
 
 Tool results open directly in a focused Burrete molecular preview. The hosted
 widget omits desktop document tabs, sidebars, and docks while preserving the
@@ -19,24 +20,36 @@ the root URL redirects to the public plugin documentation.
 ## MCP contract
 
 The production Streamable HTTP endpoint is
-<https://burrete-plugin.vercel.app/mcp>. It exposes three no-auth tools:
+<https://burrete-plugin.vercel.app/mcp>. It exposes the public preview tools and
+an isolated Ketcher editor contract:
 
 | Tool | Behavior |
 | --- | --- |
 | `preview_molecular_file` | Reads one ChatGPT-authorized PDB, ENT, PDBQT, CIF, mmCIF, SDF, SD, XYZ, or extXYZ attachment. |
 | `preview_pdb_structure` | Retrieves one public RCSB structure from an explicit four-character PDB ID. |
 | `render_molecular_scene` | Re-renders one PDB entry or authorized attachment with bounded select, focus, clear, reset, and component visibility actions. |
+| `open_ketcher` | Creates an ephemeral Ketcher editor surface and optionally seeds one bounded inline KET, MOL, RXN, or SMILES structure. |
+| `control_ketcher` | Applies a revision-checked Ketcher action and returns a bounded editor snapshot plus widget seed. |
 
-All tools are read-only, idempotent, non-destructive, and cannot write to the
-public internet. Each declares an exact output schema and renders
-`ui://burrete/molecular-viewer-v16.html` with MIME type
+The three public-structure tools are read-only and idempotent. Ketcher actions
+are scoped to an in-memory relay, are bounded and revision-checked, and never
+write files or the public internet. Each Ketcher result renders
+`ui://burrete/ketcher-editor-v1.html`; the structure-preview tools render
+`ui://burrete/molecular-viewer-v21.html`, both with MIME type
 `text/html;profile=mcp-app`.
 
-The widget uses the MCP Apps handshake before publishing bounded selection or
-scene state through `ui/update-model-context`. Lasso selection includes up to
-96 atom identities and residues, and clearing the selection explicitly clears
-the model-visible state. Viewer actions run client-side in the isolated widget;
-the server does not persist a shared molecular workspace.
+The resource URI is a stable connector contract and must not be bumped for
+asset-only releases. JavaScript and CSS cache versions belong in their asset
+URLs. If the resource URI ever changes intentionally, refresh the ChatGPT
+developer connector before running the live smoke test or submitting a new
+version.
+
+The widgets use the MCP Apps handshake before publishing bounded selection,
+scene, or chemical-editor state through `ui/update-model-context`. Lasso
+selection includes up to 96 atom identities and residues, and clearing the
+selection explicitly clears the model-visible state. Ketcher mutations run
+through the revision-checked relay; the server does not persist a shared
+molecular workspace.
 
 The model receives only bounded structure summaries. Original molecular text
 is placed in tool-result `_meta`, which is delivered to the viewer but hidden
@@ -53,9 +66,13 @@ from the model and conversation transcript.
   and Host header, preventing a second DNS resolution from changing the target.
 - Downloads time out after 15 seconds and are bounded while streaming.
 - PDB lookups use the fixed `files.rcsb.org` download origin.
+- Hosted Ketcher surfaces are process-local and ephemeral. Inline structure
+  content is capped at 64 KiB, atom-index lists at 256 entries, and inline
+  exports at 64 KiB. `contentRef` is rejected until a scoped artifact relay is
+  deployed.
 - The MCP resource mounts the compiled Burrete React shell directly instead of
   wrapping a separate viewer page. Its CSP permits only the stable production
-  origin for runtime fetches, resources, and the shell's internal viewer frame.
+  origin for runtime fetches and resources; the widget does not embed subframes.
 - The hosted shell loads only the plugin's pinned, self-hosted Burrete, Mol*,
   and RDKit runtime assets.
 - The Mol* 5.7.0 build is transformed by
@@ -130,7 +147,7 @@ build output and are not committed.
 
 ## Submission materials
 
-- `chatgpt-app-submission.json` — listing suggestions and exactly five positive
+- `chatgpt-app-submission.json` — listing suggestions and exactly seven positive
   plus three negative review tests.
 - `submission/skills/preview-molecular-structures/SKILL.md` — public bundled
   skill for the plugin submission.

@@ -13,8 +13,9 @@
   "dependencies": {
     "@vercel/analytics": "2.0.1",
     "@vercel/speed-insights": "2.0.0",
-    "ketcher-core": "^3.15.0",
-    "ketcher-react": "^3.12.0",
-    "ketcher-standalone": "^3.12.0"
+    "@burrete/ketcher-agent-contract": "workspace:*",
+    "ketcher-core": "3.15.0",
+    "ketcher-react": "3.15.0",
+    "ketcher-standalone": "3.15.0"
   }
 }

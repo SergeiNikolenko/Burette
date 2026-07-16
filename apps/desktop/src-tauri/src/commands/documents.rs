@@ -17,6 +17,7 @@ use tauri::{Manager, Runtime};
 #[cfg(not(target_os = "macos"))]
 use tauri_plugin_dialog::DialogExt;
 
+use crate::commands::source_editing::OpenedSourceRegistry;
 use crate::preview::formats::{
     format_for_extension, resolve_renderer, structure_path_extension,
     supported_structure_extensions,
@@ -346,6 +347,7 @@ pub(crate) fn open_documents_for_window_label<R: Runtime>(
         return Ok(OpenDocumentsResult { documents, errors });
     }
     for path in document_paths {
+        let source_path = path.canonicalize().ok();
         match open_document_for_window(
             app,
             window_label,
@@ -353,7 +355,20 @@ pub(crate) fn open_documents_for_window_label<R: Runtime>(
             &preferences,
             reload_options.as_ref(),
         ) {
-            Ok(document) => documents.push(document),
+            Ok(document) => {
+                if let Some(source_path) = source_path {
+                    let document_id = crate::preview::runtime_utils::stable_id(&source_path);
+                    if let Err(error) = app.state::<OpenedSourceRegistry>().register(
+                        document_id,
+                        window_label.to_string(),
+                        source_path,
+                        "structure",
+                    ) {
+                        errors.push(error);
+                    }
+                }
+                documents.push(document)
+            }
             Err(error) => errors.push(error),
         }
     }
@@ -828,7 +843,7 @@ pub(crate) fn generate_3d_conformer(
         "source3d": request.source_3d,
     })
     .to_string();
-    let mut last_error = String::new();
+    let mut candidate_errors = Vec::new();
     for python in conformer_python_candidates(&engine) {
         let mut command = Command::new(&python.command);
         command
@@ -842,13 +857,16 @@ pub(crate) fn generate_3d_conformer(
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(error) => {
-                last_error = format!("{}: {error}", python.label);
+                candidate_errors.push(format!("{}: {error}", python.label));
                 continue;
             }
         };
         if let Some(mut stdin) = child.stdin.take() {
             if let Err(error) = stdin.write_all(input_payload.as_bytes()) {
-                last_error = format!("{}: failed to send structure text: {error}", python.label);
+                candidate_errors.push(format!(
+                    "{}: failed to send structure text: {error}",
+                    python.label
+                ));
                 let _ = child.kill();
                 let _ = child.wait();
                 continue;
@@ -861,13 +879,15 @@ pub(crate) fn generate_3d_conformer(
             )
         })?;
         if !output.status.success() {
-            last_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            if last_error.is_empty() {
-                last_error = format!(
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            candidate_errors.push(if stderr.is_empty() {
+                format!(
                     "{}: conformer generator exited with {}",
                     python.label, output.status
-                );
-            }
+                )
+            } else {
+                format!("{}: {stderr}", python.label)
+            });
             continue;
         }
         let generated: ConformerPythonResult =
@@ -898,11 +918,30 @@ pub(crate) fn generate_3d_conformer(
     } else {
         ("RDKit", "BURRETE_RDKIT_PYTHON")
     };
-    Err(if last_error.is_empty() {
+    Err(if candidate_errors.is_empty() {
         format!("{engine_label} Python is required for 3D conformer generation. Set {env_name} to a Python executable with {engine} installed.")
     } else {
-        format!("{engine_label} conformer generation failed: {last_error}")
+        format!(
+            "{engine_label} conformer generation failed: {}",
+            format_conformer_candidate_errors(&candidate_errors)
+        )
     })
+}
+
+fn format_conformer_candidate_errors(errors: &[String]) -> String {
+    errors
+        .iter()
+        .take(6)
+        .map(|error| {
+            const LIMIT: usize = 500;
+            if error.chars().count() <= LIMIT {
+                error.clone()
+            } else {
+                format!("{}…", error.chars().take(LIMIT).collect::<String>())
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 #[derive(Debug, Deserialize)]

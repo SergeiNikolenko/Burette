@@ -1,4 +1,7 @@
-export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v16.html";
+// This URI is a persisted ChatGPT connector contract. Keep it stable across
+// asset-only deployments; changing it requires refreshing every connector.
+export const VIEWER_RESOURCE_URI = "ui://burrete/molecular-viewer-v21.html";
+export const KETCHER_RESOURCE_URI = "ui://burrete/ketcher-editor-v1.html";
 export const VIEWER_SHELL_SCRIPT_PATH =
   "/viewer-shell/assets/burrete-hosted-shell.js";
 export const VIEWER_SHELL_STYLES_PATH =
@@ -6,7 +9,7 @@ export const VIEWER_SHELL_STYLES_PATH =
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burrete-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burrete-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burrete-hosted-app.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-mobile-bootstrap-v2";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-v21";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
@@ -28,7 +31,6 @@ export function createViewerResourceMeta(appOrigin: string) {
       csp: {
         connectDomains: [appOrigin],
         resourceDomains: [appOrigin],
-        frameDomains: [appOrigin],
       },
     },
     "openai/widgetDescription":
@@ -37,13 +39,28 @@ export function createViewerResourceMeta(appOrigin: string) {
     "openai/widgetCSP": {
       connect_domains: [appOrigin],
       resource_domains: [appOrigin],
-      frame_domains: [appOrigin],
     },
     "openai/widgetDomain": appOrigin,
   } as const;
 }
 
+export function createKetcherResourceMeta(appOrigin: string) {
+  return {
+    ...createViewerResourceMeta(appOrigin),
+    "openai/widgetDescription":
+      "Focused Burrete Ketcher chemical editor with a revision-checked agent bridge.",
+  } as const;
+}
+
+export function createKetcherWidgetHtml(assetOrigin = ""): string {
+  return createWidgetHtml(assetOrigin, true);
+}
+
 export function createViewerWidgetHtml(assetOrigin = ""): string {
+  return createWidgetHtml(assetOrigin, false);
+}
+
+function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
   const shellScript = `${assetUrl(assetOrigin, VIEWER_SHELL_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const shellStyles = `${assetUrl(assetOrigin, VIEWER_SHELL_STYLES_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const viewerAssets = assetUrl(assetOrigin, VIEWER_RUNTIME_ASSETS_PATH);
@@ -52,6 +69,7 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
   const bootstrap = serializeForInlineScript({
     viewerAssets,
     analyticsOrigin: assetOrigin.replace(/\/$/u, ""),
+    ketcherWidget,
   });
 
   return `<!doctype html>
@@ -74,6 +92,8 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
       (() => {
         const config = ${bootstrap};
         window.__BURRETE_HOSTED_MCP_WIDGET__ = true;
+        window.__BURRETE_HOSTED_KETCHER_WIDGET__ = config.ketcherWidget === true;
+        window.__BURRETE_HOSTED_KETCHER_SEED__ = null;
         window.__BURRETE_WEB_ASSETS_BASE__ = config.viewerAssets;
         window.__BURRETE_HOSTED_ANALYTICS_ORIGIN__ = config.analyticsOrigin;
         window.__BURRETE_HOSTED_MCP_RESULTS__ = [];
@@ -81,6 +101,38 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
         const appQueue = [];
         const appReady = new Promise((resolve) => { window.__BURRETE_HOSTED_APP_READY__ = resolve; });
         window.__BURRETE_HOSTED_APP_QUEUE__ = appQueue;
+        const callServerTool = (name, arguments_) => appReady.then((ready) => {
+          if (!ready) throw new Error("Burrete Apps bridge is not ready for server tool calls.");
+          const bridge = window.BurreteHostedAppBridge;
+          if (!bridge?.callServerTool) throw new Error("Burrete Apps bridge does not expose server tool calls.");
+          return bridge.callServerTool(name, arguments_);
+        });
+        const acceptKetcherResult = (value) => {
+          if (!window.__BURRETE_HOSTED_KETCHER_WIDGET__) return;
+          const containers = [value, value?._meta, value?.meta, value?.structuredContent, value?.structuredContent?._meta];
+          const source = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherSeed"));
+          if (!source) return;
+          const meta = source.ketcherSeed;
+          if (meta == null) {
+            window.__BURRETE_HOSTED_KETCHER_SEED__ = {
+              surfaceId: undefined,
+              format: "smiles",
+              content: "",
+            };
+            window.dispatchEvent(new CustomEvent("burrete-ketcher-seed"));
+            return;
+          }
+          if (typeof meta !== "object" || typeof meta.content !== "string") return;
+          if (!["ket", "mol", "rxn", "smiles"].includes(meta.format)) return;
+          let content = meta.content.slice(0, 65536);
+          while (new TextEncoder().encode(content).byteLength > 65536) content = content.slice(0, -1);
+          window.__BURRETE_HOSTED_KETCHER_SEED__ = {
+            surfaceId: typeof meta.surfaceId === "string" ? meta.surfaceId : undefined,
+            format: meta.format,
+            content,
+          };
+          window.dispatchEvent(new CustomEvent("burrete-ketcher-seed"));
+        };
         window.BurreteHostedAppBridge = {
           ready: appReady,
           setSource: (...args) => { appQueue.push({ method: "setSource", args }); },
@@ -92,12 +144,14 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
             appQueue.push({ method: "updateScene", args });
             return appReady;
           },
+          callServerTool,
           sanitizeViewerActions: () => [],
         };
         window.addEventListener("message", (event) => {
           if (event.source !== window.parent) return;
           const message = event.data;
           if (message?.jsonrpc !== "2.0") return;
+          if (message.method === "ui/notifications/tool-result") acceptKetcherResult(message.params);
           if (
             message.method === "ui/notifications/tool-result"
             && !window.__BURRETE_HOSTED_MCP_BRIDGE_READY__
@@ -114,6 +168,10 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
           if (Object.hasOwn(globals, "toolResponseMetadata")) {
             window.__BURRETE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata = globals.toolResponseMetadata;
           }
+          acceptKetcherResult({
+            structuredContent: window.__BURRETE_HOSTED_OPENAI_GLOBALS__.toolOutput,
+            _meta: window.__BURRETE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
+          });
           window.__BURRETE_HOSTED_MCP_RESULTS__.push({
             structuredContent: window.__BURRETE_HOSTED_OPENAI_GLOBALS__.toolOutput,
             _meta: window.__BURRETE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
@@ -130,8 +188,8 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
         const mobile = window.matchMedia("(max-width: 600px)").matches
           || /iPhone|iPad|iPod/iu.test(navigator.userAgent);
         const script = document.createElement("script");
-        script.src = mobile ? ${serializeForInlineScript(mobileScript)} : ${serializeForInlineScript(shellScript)};
-        if (!mobile) script.type = "module";
+        script.src = mobile && !window.__BURRETE_HOSTED_KETCHER_WIDGET__ ? ${serializeForInlineScript(mobileScript)} : ${serializeForInlineScript(shellScript)};
+        if (!mobile || window.__BURRETE_HOSTED_KETCHER_WIDGET__) script.type = "module";
         script.crossOrigin = "anonymous";
         const timeout = window.setTimeout(() => {
           const root = document.getElementById("root");

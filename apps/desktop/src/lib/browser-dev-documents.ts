@@ -117,6 +117,13 @@ const WEB_ASSETS_BASE = String(
   || "",
 )
   || fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
+const WEB_DEMO_ENABLED = import.meta.env.VITE_BURRETE_WEB_DEMO === "1";
+const RDKIT_WASM_PATH = WEB_DEMO_ENABLED
+  ? `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/rdkit/RDKit_minimal.wasm`
+  : "/__burette/rdkit-wasm";
+const XYZRENDER_ENDPOINT = WEB_DEMO_ENABLED
+  ? "/api/xyzrender"
+  : "/__burette/xyzrender";
 const AMBER_NETCDF_EXTENSIONS = new Set(["nc", "ncdf", "netcdf", "ncrst"]);
 const TRAJECTORY_PAIR_EXTENSIONS = new Set([
   "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
@@ -389,9 +396,6 @@ export async function openBrowserDevMolstarContextDocument(
   preferences: ViewerPreferences,
 ): Promise<ViewerDocument> {
   const hostedMcpWidget = contextDocument.context?.hostedMcpWidget === true;
-  const contextPreferences = hostedMcpWidget
-    ? { ...preferences, canvasBackground: "black" as const }
-    : preferences;
   const entries = (contextDocument.entries ?? [])
     .filter((entry): entry is Required<Pick<BrowserDevMolstarContextEntry, "data">> & BrowserDevMolstarContextEntry => (
       typeof entry?.data === "string" && entry.data.length > 0
@@ -410,13 +414,13 @@ export async function openBrowserDevMolstarContextDocument(
         `${label}.sdf`,
         "sdf",
         decodeUtf8(entry.bytes),
-        { ...contextPreferences, rendererMode: "molstar" },
+        { ...preferences, rendererMode: "molstar" },
         {},
       );
       return { ...document, title: label };
     }
     const config = {
-      ...browserDevContextConfig(label, entry.format, entry.bytes.length, contextPreferences, id),
+      ...browserDevContextConfig(label, entry.format, entry.bytes.length, preferences, id),
       hostedMcpWidgetBootstrap: hostedMcpWidget,
       hostedMcpActions: hostedMcpWidget && Array.isArray(contextDocument.context?.hostedMcpActions)
         ? contextDocument.context.hostedMcpActions.slice(0, 8)
@@ -431,7 +435,7 @@ export async function openBrowserDevMolstarContextDocument(
       "molstar",
       entry.bytes,
       entry.bytes.length,
-      contextPreferences,
+      preferences,
       false,
       false,
       undefined,
@@ -459,9 +463,9 @@ export async function openBrowserDevMolstarContextDocument(
     label,
     entries: [contextDocument.entries?.[0] ?? {}],
     context: contextDocument.context,
-  }, contextPreferences);
+  }, preferences);
   const byteCount = receptor.bytes.length + ligands.reduce((total, ligand) => total + ligand.bytes.length, 0);
-  const visuals = resolvePreviewVisuals(contextPreferences);
+  const visuals = resolvePreviewVisuals(preferences);
   const config = {
     format: receptor.format.molstarFormat,
     molstarFormat: receptor.format.molstarFormat,
@@ -475,7 +479,7 @@ export async function openBrowserDevMolstarContextDocument(
     quickLookBuild: "burrete-browser-dev-context-docking",
     debug: false,
     theme: visuals.theme,
-    themeTokens: previewThemeTokens(contextPreferences),
+    themeTokens: previewThemeTokens(preferences),
     canvasBackground: visuals.canvasBackground,
     documentId: id,
     uiScale: 0.9,
@@ -486,7 +490,7 @@ export async function openBrowserDevMolstarContextDocument(
     appViewer: true,
     pubChemSearch: true,
     tauriViewer: false,
-    molstarStyle: contextPreferences.molstarStyle,
+    molstarStyle: preferences.molstarStyle,
     waterRepresentation: "line",
     xyzrenderViewer: false,
     xyzrenderAvailable: false,
@@ -511,7 +515,7 @@ export async function openBrowserDevMolstarContextDocument(
     "molstar",
     new Uint8Array([10]),
     byteCount,
-    contextPreferences,
+    preferences,
     false,
     false,
     undefined,
@@ -1212,7 +1216,7 @@ function viewerHtml(
     trajectoryControls: renderer === "molstar" && trajectoryFrameCount > 1,
     trajectoryFrameCount,
     ...(reloadOptions?.activeModel != null ? { activeModel: reloadOptions.activeModel } : {}),
-    rdkitWasmPath: "/__burette/rdkit-wasm",
+    rdkitWasmPath: RDKIT_WASM_PATH,
     ...(reloadOptions?.sdfPoseControlLabel ? { sdfPoseControlLabel: reloadOptions.sdfPoseControlLabel } : {}),
     ...(stagedEntries?.some((entry) => entry?.representation === "structure-scene-entry") ? { structureSceneMode: "structurePoses" } : {}),
     appViewer: true,
@@ -1223,7 +1227,7 @@ function viewerHtml(
     ...(stagedEntries?.length ? { stagedEntries } : {}),
     xyzrenderViewer: renderer === "xyzrender-external",
     xyzrenderAvailable,
-    xyzrenderEndpoint: "/__burette/xyzrender",
+    xyzrenderEndpoint: XYZRENDER_ENDPOINT,
     molstarAvailable: !format.externalOnly || externalMolstarAvailable,
     canOpenInVesta: format.canOpenInVesta,
     showPanelControls: true,
@@ -1232,7 +1236,7 @@ function viewerHtml(
     ...(externalArtifact ? { externalArtifact } : {}),
     ...(xyzrenderPresetOptions ? { xyzrenderPresetOptions } : {}),
     ...(xyzrenderControls ? { xyzrenderControls } : {}),
-    ...(renderer === "xyzrender-external" && browserDevVirtualTextDocuments.has(path)
+    ...((WEB_DEMO_ENABLED || (renderer === "xyzrender-external" && browserDevVirtualTextDocuments.has(path)))
       ? {
           xyzrenderInputDataBase64: bytesToBase64(bytes),
           xyzrenderInputExtension: extension,
@@ -1255,7 +1259,9 @@ function viewerHtml(
   <script id="burrete-runtime-data" type="application/json">${serializeInlineJson(bytesToBase64(embeddedBytes))}</script>
   <script src="${viewerAsset("viewer-bootstrap.js")}?v=${runtimeAssetVersion}"></script>`
     : `<script>${viewerBridgeJs()}</script>
-  <script>window.BurreteConfig = ${serializeInlineJson(config)};</script>
+  <script>
+    window.BurreteConfig = ${serializeInlineJson(config)};
+  </script>
   <script>window.BurreteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>`;
   return `<!doctype html>
 <html lang="en">
@@ -1360,7 +1366,7 @@ async function requestBrowserDevXyzrender(
   inputExtension = "xyz",
   activeModel: number | null = null,
 ) {
-  const url = new URL("/__burette/xyzrender", window.location.origin);
+  const url = new URL(XYZRENDER_ENDPOINT, window.location.origin);
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1422,12 +1428,12 @@ async function gridHtml(
     canvasBackground: visuals.canvasBackground,
     overlayOpacity: 0.9,
     transparentBackground: visuals.transparentBackground,
-    xyzrenderEndpoint: "/__burette/xyzrender",
+    xyzrenderEndpoint: XYZRENDER_ENDPOINT,
     recordsTotal: records.length,
     recordsIncluded: records.length,
     recordsTruncated: false,
     pageSize: 720,
-    rdkitWasmPath: "/__burette/rdkit-wasm",
+    rdkitWasmPath: RDKIT_WASM_PATH,
     xyzrenderPreset: "default",
     xyzrenderPresetOptions: [
       { value: "default", label: "Default" },
@@ -1491,7 +1497,9 @@ async function gridHtml(
 <body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
-  <script>window.BurreteConfig = ${serializeInlineJson(config)};</script>
+  <script>
+    window.BurreteConfig = ${serializeInlineJson(config)};
+  </script>
   <script>window.BurreteGridRecords = ${serializeInlineJson(records)};</script>
   ${format === "dwar" ? `<script src="openchemlib/openchemlib.js?v=${GRID_ASSET_VERSION}"></script>` : ""}
   <script src="rdkit/RDKit_minimal.js?v=${GRID_ASSET_VERSION}"></script>

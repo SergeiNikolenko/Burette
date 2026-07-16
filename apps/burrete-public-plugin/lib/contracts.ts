@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 import { ListToolsRequestSchema, type ListToolsResult } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { VIEWER_RESOURCE_URI } from "./widget";
+import { KETCHER_RESOURCE_URI, VIEWER_RESOURCE_URI } from "./widget";
 
 export const PUBLIC_OUTPUT_LIMITS = {
   scalarChars: 512,
@@ -142,27 +142,62 @@ export const viewerActionSchema = z.discriminatedUnion("type", [
 
 const sceneActionsSchema = z.array(viewerActionSchema).min(1).max(8);
 
-export const molecularSceneInputSchema = z.discriminatedUnion("source", [
-  z.object({
-    source: z.literal("pdb"),
-    pdbId: z.string().trim().regex(/^[0-9][A-Za-z0-9]{3}$/u),
-    actions: sceneActionsSchema,
-  }).strict(),
-  z.object({
-    source: z.literal("attachment"),
-    structureFile: fileReferenceSchema,
-    actions: sceneActionsSchema,
-  }).strict(),
-]);
+export const molecularSceneInputSchema = z.object({
+  source: z.enum(["pdb", "attachment"]),
+  pdbId: z.string().trim().regex(/^[0-9][A-Za-z0-9]{3}$/u).optional(),
+  structureFile: fileReferenceSchema.optional(),
+  actions: sceneActionsSchema,
+}).strict().superRefine((input, context) => {
+  if (input.source === "pdb" && !input.pdbId) {
+    context.addIssue({
+      code: "custom",
+      path: ["pdbId"],
+      message: "pdbId is required when source is pdb.",
+    });
+  }
+  if (input.source === "attachment" && !input.structureFile) {
+    context.addIssue({
+      code: "custom",
+      path: ["structureFile"],
+      message: "structureFile is required when source is attachment.",
+    });
+  }
+  if (input.source === "pdb" && input.structureFile) {
+    context.addIssue({
+      code: "custom",
+      path: ["structureFile"],
+      message: "structureFile is only valid when source is attachment.",
+    });
+  }
+  if (input.source === "attachment" && input.pdbId) {
+    context.addIssue({
+      code: "custom",
+      path: ["pdbId"],
+      message: "pdbId is only valid when source is pdb.",
+    });
+  }
+});
 
 export function viewerToolMeta(invoking: string, invoked: string) {
   return {
     securitySchemes: NOAUTH_SECURITY_SCHEMES,
-    ui: { resourceUri: VIEWER_RESOURCE_URI, visibility: ["model"] as const },
+    ui: { resourceUri: VIEWER_RESOURCE_URI },
     "openai/outputTemplate": VIEWER_RESOURCE_URI,
     "openai/toolInvocation/invoking": invoking,
     "openai/toolInvocation/invoked": invoked,
     "openai/widgetAccessible": false,
+    "openai/resultCanProduceWidget": true,
+  } as const;
+}
+
+export function ketcherToolMeta(invoking: string, invoked: string) {
+  return {
+    securitySchemes: NOAUTH_SECURITY_SCHEMES,
+    ui: { resourceUri: KETCHER_RESOURCE_URI },
+    "openai/outputTemplate": KETCHER_RESOURCE_URI,
+    "openai/toolInvocation/invoking": invoking,
+    "openai/toolInvocation/invoked": invoked,
+    "openai/widgetAccessible": true,
     "openai/resultCanProduceWidget": true,
   } as const;
 }

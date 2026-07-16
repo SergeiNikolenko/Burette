@@ -73,7 +73,7 @@ describe("submission tool contract", () => {
   test("links render tools to the versioned viewer resource", () => {
     const meta = viewerToolMeta("Loading…", "Loaded");
     expect(meta.ui.resourceUri).toBe(VIEWER_RESOURCE_URI);
-    expect(meta.ui.visibility).toEqual(["model"]);
+    expect(meta.ui).toEqual({ resourceUri: VIEWER_RESOURCE_URI });
     expect(meta["openai/outputTemplate"]).toBe(VIEWER_RESOURCE_URI);
     expect(meta["openai/widgetAccessible"]).toBe(false);
   });
@@ -99,6 +99,17 @@ describe("submission tool contract", () => {
       pdbId: "1CRN",
       actions: [{ type: "select_residues", selector: { arbitrary: "javascript" } }],
     })).toThrow();
+    expect(() => schema.parse({
+      source: "attachment",
+      pdbId: "1CRN",
+      actions: [{ type: "reset_camera" }],
+    })).toThrow();
+
+    const jsonSchema = z.toJSONSchema(schema, { io: "input" }) as {
+      properties?: Record<string, unknown>;
+    };
+    expect(jsonSchema.properties).toHaveProperty("pdbId");
+    expect(jsonSchema.properties).toHaveProperty("structureFile");
   });
 });
 
@@ -108,20 +119,18 @@ describe("viewer resource contract", () => {
     expect(meta.ui.domain).toBe("https://burrete.example");
     expect(meta.ui.csp.connectDomains).toEqual(["https://burrete.example"]);
     expect(meta.ui.csp.resourceDomains).toEqual(["https://burrete.example"]);
-    expect(meta.ui.csp.frameDomains).toEqual(["https://burrete.example"]);
+    expect(meta.ui.csp).not.toHaveProperty("frameDomains");
     expect(meta.ui.prefersBorder).toBe(false);
     expect(meta["openai/widgetPrefersBorder"]).toBe(false);
-    expect(meta["openai/widgetCSP"].frame_domains).toEqual([
-      "https://burrete.example",
-    ]);
+    expect(meta["openai/widgetCSP"]).not.toHaveProperty("frame_domains");
   });
 
   test("mounts the real Burrete shell directly and listens for MCP tool results", () => {
     const html = createViewerWidgetHtml("https://burrete.example");
-    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v16.html");
+    expect(VIEWER_RESOURCE_URI).toBe("ui://burrete/molecular-viewer-v21.html");
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_SHELL_STYLES_PATH}`);
-    expect(html).toContain("?v=viewer-mobile-bootstrap-v2");
+    expect(html).toContain("?v=viewer-v21");
     expect(html).toContain(`https://burrete.example${VIEWER_MOBILE_SCRIPT_PATH}`);
     expect(html).toContain(`https://burrete.example${VIEWER_APP_BRIDGE_SCRIPT_PATH}`);
     expect(html).toContain('window.matchMedia("(max-width: 600px)").matches');
@@ -135,6 +144,7 @@ describe("viewer resource contract", () => {
     expect(html).toContain("__BURRETE_HOSTED_ANALYTICS_ORIGIN__");
     expect(html).toContain("__BURRETE_HOSTED_MCP_BRIDGE_READY__");
     expect(html).toContain("__BURRETE_HOSTED_OPENAI_GLOBALS__");
+    expect(html).toContain("callServerTool");
     expect(html).toContain("Burrete viewer failed to load.");
     expect(html).toContain('<div id="root"></div>');
     expect(html).toContain("body .app-shell { width: 100%; height: 100%; }");
@@ -155,9 +165,10 @@ describe("viewer resource contract", () => {
     expect(source).toContain('quickLookBuild: "burrete-hosted-mobile-direct"');
     expect(source).toContain('document.body.className = "burette-opaque-background burette-mobile-host"');
     expect(source).toContain('molstarPowerPreference: "default"');
+    expect(source).toContain('window.BurreteMolstarURL = `${assetsBase}/molstar.js`');
     expect(source).toContain('molstarPreferWebgl1: true');
     expect(source).toContain('molstarDisableAntialiasing: true');
-    expect(source).toContain('molstarPixelScale: 0.75');
+    expect(source).toContain('molstarPixelScale: 2');
     expect(source).toContain('molstarPickScale: 0.75');
     expect(source).toContain('molstarResolutionMode: "scaled"');
     expect(source).toContain('layoutShowControls: false');
@@ -165,10 +176,95 @@ describe("viewer resource contract", () => {
     expect(source).toContain('layoutShowLog: false');
     expect(source).toContain('layoutShowLeftPanel: false');
     expect(source).toContain('await Promise.all([\n      addStylesheet("viewer-runtime.css"),\n      addStylesheet("molstar.css"),\n    ])');
-    expect(source).toContain('canvasBackground: "black"');
+    expect(source).not.toContain('link.rel = "preload"');
+    expect(source).not.toContain('preloadScript');
+    expect(source).toContain('canvasBackground: "auto"');
+    expect(source).not.toContain('canvasBackground: "black"');
     expect(source).toContain("BurreteHostedAppBridge");
     expect(source).not.toContain("<iframe");
     expect(source).not.toContain("srcdoc");
+  });
+
+  test("bootstraps inside a WKWebView with protected native WebKit globals", () => {
+    const source = readFileSync(path.resolve(
+      import.meta.dir,
+      "../../../PreviewExtension/Web/viewer-bootstrap.js",
+    ), "utf8");
+    const posted: unknown[] = [];
+    const parent = {
+      postMessage(message: unknown) {
+        posted.push(message);
+      },
+    };
+    const window = { parent } as {
+      parent: typeof parent;
+      webkit?: unknown;
+      BurreteConfig?: Record<string, unknown>;
+      BurreteDataBase64?: string;
+      __mqlPost?: (type: string, message: string, payload?: Record<string, unknown>) => void;
+    };
+    Object.defineProperty(window, "webkit", {
+      configurable: false,
+      value: Object.freeze({ messageHandlers: Object.freeze({}) }),
+      writable: false,
+    });
+    const runtimeElements = new Map([
+      ["burrete-runtime-config", { textContent: JSON.stringify({ documentId: "document-1" }) }],
+      ["burrete-runtime-data", { textContent: JSON.stringify("QUJD") }],
+    ]);
+    const document = {
+      getElementById(id: string) {
+        return runtimeElements.get(id) || null;
+      },
+    };
+
+    vm.runInNewContext(source, { document, window });
+
+    expect(window.BurreteConfig).toEqual({ documentId: "document-1" });
+    expect(window.BurreteDataBase64).toBe("QUJD");
+    window.__mqlPost?.("ready", "Ready");
+    expect(posted).toEqual([{
+      source: "burrete-viewer",
+      body: { type: "ready", message: "Ready", documentId: "document-1" },
+    }]);
+  });
+
+  test("preserves the native Quick Look message handler", () => {
+    const source = readFileSync(path.resolve(
+      import.meta.dir,
+      "../../../PreviewExtension/Web/viewer-bootstrap.js",
+    ), "utf8");
+    const posted: unknown[] = [];
+    const nativeHandler = Object.freeze({
+      postMessage(message: unknown) {
+        posted.push(message);
+      },
+    });
+    const window = {
+      parent: null,
+      webkit: Object.freeze({
+        messageHandlers: Object.freeze({ burrete: nativeHandler }),
+      }),
+    } as {
+      parent: null;
+      webkit: unknown;
+      __mqlAction?: (name: string) => void;
+    };
+    const document = { getElementById: () => null };
+
+    vm.runInNewContext(source, { document, window });
+    window.__mqlAction?.("resetCamera");
+
+    expect(posted).toEqual([{ type: "action", message: "resetCamera" }]);
+  });
+
+  test("does not expose local diagnostics inside the hosted widget", () => {
+    const source = readFileSync(path.resolve(
+      import.meta.dir,
+      "../../../PreviewExtension/Web/viewer.js",
+    ), "utf8");
+    expect(source).toContain("window.__BURRETE_HOSTED_MCP_WIDGET__ === true");
+    expect(source).toContain("? ''\n      : '\\n\\nCheck: ./scripts/tail-log.sh'");
   });
 
   test("starts the mobile viewer when tool output and metadata arrive separately", () => {
@@ -252,6 +348,7 @@ describe("viewer resource contract", () => {
     expect(source).toContain("await app.updateModelContext(params)");
     expect(source).toContain('from "@vercel/analytics"');
     expect(source).toContain("disableAutoTrack: true");
+    expect(source).toContain('viewEndpoint: `${analyticsOrigin}/api/analytics/view`');
     expect(source).toContain('route: "/mcp/widget", path: "/mcp/widget"');
     expect(source).not.toContain("pdbId");
     expect(source).not.toContain("fileName");

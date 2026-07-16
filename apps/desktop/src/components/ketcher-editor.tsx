@@ -24,6 +24,9 @@ export type KetcherEditorApi = {
   getSdf: Ketcher["getSdf"];
   getSequence: Ketcher["getSequence"];
   getSmiles: Ketcher["getSmiles"];
+  getSelectedAtomIndexes: () => number[];
+  subscribeSelection: (handler: () => void) => () => void;
+  setAgentHighlightedAtomIndexes: (indexes: number[]) => void;
   setMolfile: (molfile: string) => Promise<void>;
   getSmarts: Ketcher["getSmarts"];
   getSvg: () => string;
@@ -61,7 +64,11 @@ type KetcherDirectEditor = {
     zoomChanged?: {
       dispatch?: (zoom: number) => void;
     };
+    selectionChange?: KetcherSubscription;
   };
+  selectionChange?: KetcherSubscription;
+  selection?: unknown;
+  selectionState?: unknown;
   struct: (struct?: Struct, needToCenterStruct?: boolean, x?: number, y?: number) => KetcherStruct;
   structToAddFragment: (struct: Struct, x?: number, y?: number) => KetcherStruct;
   zoom: (value?: number) => number;
@@ -114,9 +121,11 @@ function createKetcherEditorApi(
   MolSerializer: KetcherCoreModule["MolSerializer"],
   getSvgFromDrawnStructures: KetcherCoreModule["getSvgFromDrawnStructures"],
   ZoomTool: KetcherZoomToolConstructor,
+  root: HTMLElement | null,
 ): KetcherEditorApi {
   const editorInstance = instance as KetcherWithEditorStruct;
   const currentZoomTool = () => editorInstance.editor.zoomTool ?? ZoomTool.instance;
+  const selectionSource = editorInstance.editor.selectionChange ?? editorInstance.editor.event?.selectionChange;
   const api: KetcherEditorApi = {
     addFragment: ((...args: Parameters<Ketcher["addFragment"]>) => (
       callKetcherWhenReady(() => instance.addFragment(...args))
@@ -175,6 +184,9 @@ function createKetcherEditorApi(
     getSmiles: ((...args: Parameters<Ketcher["getSmiles"]>) => (
       callKetcherWhenReady(() => instance.getSmiles(...args))
     )) as Ketcher["getSmiles"],
+    getSelectedAtomIndexes: () => readSelectedAtomIndexes(editorInstance.editor),
+    subscribeSelection: (handler) => subscribeKetcherEvent(selectionSource, handler),
+    setAgentHighlightedAtomIndexes: (indexes) => applyAgentHighlights(root, indexes),
     getSmarts: ((...args: Parameters<Ketcher["getSmarts"]>) => (
       callKetcherWhenReady(() => instance.getSmarts(...args))
     )) as Ketcher["getSmarts"],
@@ -282,6 +294,92 @@ function addMolfileFragmentDirectly(
   editor.zoomAccordingContent(editor.struct());
 }
 
+function subscribeKetcherEvent(source: KetcherSubscription | undefined, handler: () => void) {
+  if (!source?.add || !source.remove) return () => undefined;
+  source.add(handler);
+  return () => source.remove(handler);
+}
+
+function readSelectedAtomIndexes(editor: KetcherDirectEditor) {
+  const directSelection = readSelectionIndexes(editor.selection ?? editor.selectionState);
+  if (directSelection) return directSelection;
+
+  const struct = editor.struct();
+  const atoms = (struct as unknown as { atoms?: unknown }).atoms;
+  if (!atoms) return [];
+  const selected: number[] = [];
+  const collect = (atom: unknown, key?: unknown, fallbackIndex?: number) => {
+    if (!isSelectedAtom(atom)) return;
+    const candidate = toAtomIndex(key) ?? toAtomIndex((atom as Record<string, unknown> | null)?.index) ?? toAtomIndex((atom as Record<string, unknown> | null)?.id) ?? fallbackIndex;
+    if (candidate !== undefined) selected.push(candidate);
+  };
+
+  if (Array.isArray(atoms)) {
+    atoms.forEach((atom, index) => collect(atom, undefined, index));
+  } else if (isRecord(atoms) && typeof atoms.each === "function") {
+    (atoms.each as (callback: (atom: unknown, key?: unknown) => void) => void)((atom, key) => collect(atom, key));
+  } else if (isRecord(atoms) && typeof atoms.values === "function") {
+    const values = (atoms.values as () => Iterable<unknown>)();
+    let index = 0;
+    for (const atom of values) collect(atom, undefined, index++);
+  } else if (isRecord(atoms)) {
+    Object.entries(atoms).forEach(([key, atom]) => collect(atom, key));
+  }
+  return uniqueIndexes(selected);
+}
+
+function readSelectionIndexes(selection: unknown): number[] | null {
+  if (Array.isArray(selection)) {
+    const indexes = selection.flatMap((value) => {
+      if (typeof value === "number") return [value];
+      if (!isRecord(value)) return [];
+      return [value.atomIndex, value.atomId, value.index].map(toAtomIndex).filter((value): value is number => value !== undefined);
+    });
+    return uniqueIndexes(indexes);
+  }
+  if (selection instanceof Set) return uniqueIndexes(Array.from(selection).map(toAtomIndex).filter((value): value is number => value !== undefined));
+  if (!isRecord(selection)) return null;
+  const nested = selection.atoms ?? selection.selectedAtoms ?? selection.atomIndexes ?? selection.indexes;
+  if (nested === selection) return null;
+  return nested === undefined ? null : readSelectionIndexes(nested);
+}
+
+function isSelectedAtom(atom: unknown) {
+  if (!isRecord(atom)) return false;
+  return atom.selected === true || atom.isSelected === true || atom.highlighted === true;
+}
+
+function toAtomIndex(value: unknown) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return value;
+  if (typeof value === "string" && /^\d+$/u.test(value)) return Number(value);
+  return undefined;
+}
+
+function uniqueIndexes(indexes: number[]) {
+  return Array.from(new Set(indexes.filter((index) => Number.isSafeInteger(index) && index >= 0))).sort((left, right) => left - right);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function applyAgentHighlights(root: HTMLElement | null, indexes: number[]) {
+  if (!root) return;
+  const normalized = uniqueIndexes(indexes);
+  root.dataset.burreteAgentHighlightedAtoms = normalized.join(",");
+  const elements = root.querySelectorAll<SVGElement>("[data-atom-index], [data-atom-id], [data-atom], [id^='atom-'], [id^='atom']");
+  for (const element of elements) {
+    const candidates = [
+      element.getAttribute("data-atom-index"),
+      element.getAttribute("data-atom-id"),
+      element.getAttribute("data-atom"),
+      element.id.replace(/^atom[-_:]?/u, ""),
+    ].map(toAtomIndex).filter((value): value is number => value !== undefined);
+    const active = candidates.some((candidate) => normalized.includes(candidate) || normalized.includes(candidate - 1));
+    element.toggleAttribute("data-burrete-agent-highlighted", active);
+  }
+}
+
 export function KetcherEditor({
   onReady,
   onStatus,
@@ -349,9 +447,9 @@ export function KetcherEditor({
 
   const handleInit = useCallback((instance: KetcherReactInstance) => {
     if (!runtime) return;
-    // ketcher-react can resolve its own ketcher-core copy; both expose the same runtime API.
+    // Keep the React editor API typed against the shared, version-aligned Ketcher core contract.
     const compatibleInstance = instance as unknown as Ketcher;
-    onReady(createKetcherEditorApi(compatibleInstance, runtime.MolSerializer, runtime.getSvgFromDrawnStructures, runtime.ZoomTool));
+    onReady(createKetcherEditorApi(compatibleInstance, runtime.MolSerializer, runtime.getSvgFromDrawnStructures, runtime.ZoomTool, rootRef.current));
     onStatus("Ready");
   }, [onReady, onStatus, runtime]);
 
