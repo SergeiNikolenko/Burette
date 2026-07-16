@@ -23,6 +23,7 @@ mod representative_export;
     reason = "the coordinator will acquire compute-root ownership before runtime activation"
 )]
 mod root_lease;
+mod semiempirical_workflow;
 mod similarity_artifact;
 pub(crate) use root_lease::ComputeRootChildDirectory;
 mod similarity_search;

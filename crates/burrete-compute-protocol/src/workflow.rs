@@ -39,6 +39,8 @@ pub enum WorkflowTemplateId {
     ConformerV1,
     #[serde(rename = "similaritySearch.v1")]
     SimilaritySearchV1,
+    #[serde(rename = "semiempirical.v1")]
+    SemiempiricalV1,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -934,6 +936,15 @@ mod tests {
             serde_json::to_string(&WorkflowTemplateId::ConformerV1)
                 .expect("serialize conformer workflow ID"),
             "\"conformer.v1\""
+        );
+    }
+
+    #[test]
+    fn semiempirical_workflow_has_a_stable_wire_id() {
+        assert_eq!(
+            serde_json::to_string(&WorkflowTemplateId::SemiempiricalV1)
+                .expect("serialize semi-empirical workflow ID"),
+            "\"semiempirical.v1\""
         );
     }
 

@@ -62,6 +62,9 @@ use crate::compute::{
         StageStartEvidence,
     },
     representative_export::{export_cluster_representatives, ClusterRepresentativeExportResult},
+    semiempirical_workflow::{
+        execute_grid_semiempirical, GridSemiempiricalRequest, GridSemiempiricalResult,
+    },
     similarity_search::{
         execute_similarity_search, SimilaritySearchBackend, SimilaritySearchRequest,
         SimilaritySearchResult,
@@ -181,6 +184,24 @@ enum NativeMetalState {
 }
 
 impl ComputeCoordinator {
+    pub(crate) fn evaluate_grid_semiempirical(
+        &self,
+        owner: &str,
+        request: &GridSemiempiricalRequest,
+        source_lease: GridSnapshotLease,
+    ) -> ComputeResult<GridSemiempiricalResult> {
+        validate_owner_window_label(owner)?;
+        if request.document_id.trim().is_empty()
+            || source_lease.namespaced_document_id()
+                != runtime_document_id(owner, request.document_id.trim())
+        {
+            return Err(ComputeCoordinatorError::SourceSnapshotUnavailable(
+                "The Grid semi-empirical lease does not belong to the requested document".into(),
+            ));
+        }
+        execute_grid_semiempirical(source_lease.database_path_for_freeze(), request)
+    }
+
     pub(crate) fn align_grid_poses(
         &self,
         owner: &str,

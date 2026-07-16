@@ -42,6 +42,21 @@ type GridAlignmentResult = {
   gridApplied: boolean;
 };
 
+type GridSemiempiricalResult = {
+  runId: string;
+  method: "RM1";
+  rows: Array<{
+    sourceIndex: number;
+    name: string;
+    totalEnergyEv: number | null;
+    converged: boolean;
+    error: string | null;
+  }>;
+  hostTimeMs: number;
+  backend: "nativeCpuReference";
+  gridApplied: boolean;
+};
+
 function bodyString(value: unknown) {
   return typeof value === "string" ? value : "";
 }
@@ -61,6 +76,48 @@ export function useAppGridConformerMessages({
   rememberRecentStructures,
 }: UseAppGridConformerMessagesOptions) {
   const handleGridConformerMessage = useCallback((body: GridConformerMessageBody, source: MessageEventSource | null) => {
+    if (body?.type === "evaluateSemiempiricalGridSelection") {
+      const documentId = bodyString(body.documentId).trim();
+      const sourceIndexes = Array.isArray(body.sourceIndexes)
+        ? [...new Set(body.sourceIndexes.filter((value): value is number => (
+            Number.isSafeInteger(value) && value >= 0
+          )))]
+        : [];
+      const reply = (type: "gridSemiempiricalStarted" | "gridSemiempiricalFinished" | "gridSemiempiricalError", payload: Record<string, unknown> = {}) => {
+        postMessageToViewerSource(source, {
+          source: "burrete-grid-host",
+          body: { type, ...payload },
+        });
+      };
+      if (!isTauriRuntime() || !documentId || sourceIndexes.length < 1) {
+        const error = "Native RM1 evaluation requires at least one selected desktop Grid row.";
+        reply("gridSemiempiricalError", { error });
+        pushStatus(error, "error");
+        return true;
+      }
+      reply("gridSemiempiricalStarted");
+      void invoke<GridSemiempiricalResult>("compute_evaluate_grid_semiempirical", {
+        request: { documentId, sourceIndexes, method: "rm1" },
+      }).then((result) => {
+        const converged = result.rows.filter((row) => row.converged).length;
+        const failed = result.rows.length - converged;
+        pushStatus(
+          `Calculated native RM1 energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} on the CPU reference backend in ${result.hostTimeMs.toLocaleString()} ms${failed ? `; ${failed.toLocaleString()} failed` : ""}; results were written to Grid.`,
+          failed ? "error" : "success",
+        );
+        reply("gridSemiempiricalFinished", {
+          runId: result.runId,
+          moleculeCount: result.rows.length,
+          convergedCount: converged,
+          backend: result.backend,
+        });
+      }).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        reply("gridSemiempiricalError", { error: message });
+        pushErrorStatus(error, "Grid RM1 evaluation failed");
+      });
+      return true;
+    }
     if (body?.type === "alignGridPoses") {
       const documentId = bodyString(body.documentId).trim();
       const sourceIndexes = Array.isArray(body.sourceIndexes)

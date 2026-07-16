@@ -143,6 +143,7 @@
     conformerVariant: storedChoice(CONFORMER_VARIANT_STORAGE_KEY, CONFORMER_VARIANTS, 'ETKDGv3'),
     mmffVariant: storedChoice(MMFF_VARIANT_STORAGE_KEY, MMFF_VARIANTS, 'MMFF94s'),
     aligningPoses: false,
+    evaluatingSemiempirical: false,
     clustering: false,
     findingSimilar: false,
     exportingClusterRepresentatives: false,
@@ -384,6 +385,24 @@
         state.aligningPoses = false;
         refreshGridControls(config());
         setStatus(body.error || '[grid] Pose alignment failed.', 'error');
+        return;
+      }
+      if (body.type === 'gridSemiempiricalStarted') {
+        state.evaluatingSemiempirical = true;
+        refreshGridControls(config());
+        setStatus('[grid] Calculating RM1 energies and atomic charges on the native CPU reference backend.');
+        return;
+      }
+      if (body.type === 'gridSemiempiricalFinished') {
+        state.evaluatingSemiempirical = false;
+        refreshGridControls(config());
+        void refreshRemote(config());
+        return;
+      }
+      if (body.type === 'gridSemiempiricalError') {
+        state.evaluatingSemiempirical = false;
+        refreshGridControls(config());
+        setStatus(body.error || '[grid] RM1 evaluation failed.', 'error');
         return;
       }
       if (body.type === 'gridGenerate3DFinished') {
@@ -931,6 +950,8 @@
       conformerVariant: state.conformerVariant,
       mmffVariant: state.mmffVariant,
       aligningPoses: state.aligningPoses,
+      evaluatingSemiempirical: state.evaluatingSemiempirical,
+      semiempiricalEnabled: caps.cluster,
       clusterEnabled: caps.cluster,
       clustering: state.clustering,
       findingSimilar: state.findingSimilar,
@@ -978,6 +999,7 @@
       onXyzrenderPresetChange(value) { setXyzrenderPreset(value, cfg); },
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
       onAlignSelectedPoses() { requestSelectedPoseAlignment(cfg); },
+      onEvaluateSemiempirical() { requestSelectedSemiempiricalEvaluation(cfg); },
       onGenerate3D() { requestSelected3DGeneration(cfg); },
       onOptimizeGeometry() { requestSelectedGeometryOptimization(cfg); },
       onConformerVariantChange(value) {
@@ -1535,6 +1557,23 @@
       sourceIndexes: rows.map(row => Number(row.index))
     });
     setStatus(`[grid] Aligning ${rows.length.toLocaleString()} poses to the first selected row on Metal.`);
+  }
+
+  function requestSelectedSemiempiricalEvaluation(cfg) {
+    if (state.evaluatingSemiempirical) return;
+    const rows = selectedMolstarRows();
+    if (!rows.length) {
+      setStatus('[grid] Select at least one molecule with explicit coordinates before calculating RM1.', 'error');
+      return;
+    }
+    state.evaluatingSemiempirical = true;
+    refreshGridControls(cfg);
+    post('evaluateSemiempiricalGridSelection', '[grid] Calculate RM1 energies and charges.', {
+      documentId: cfg?.documentId || null,
+      sourceIndexes: rows.map(row => Number(row.index)),
+      method: 'rm1'
+    });
+    setStatus(`[grid] Calculating RM1 energies and charges for ${rows.length.toLocaleString()} selected molecule${rows.length === 1 ? '' : 's'} on the native CPU reference backend.`);
   }
 
   function requestSingle3DGeneration(row, cfg) {

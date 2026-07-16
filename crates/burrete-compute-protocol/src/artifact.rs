@@ -212,6 +212,11 @@ impl ArtifactManifest {
                     "similaritySearch.v1 derived analyses do not publish cluster artifacts",
                 )
             }
+            WorkflowTemplateId::SemiempiricalV1 => {
+                return validation_error(
+                    "semiempirical.v1 Grid analyses do not publish this artifact schema",
+                )
+            }
             WorkflowTemplateId::ConformerV1 => CONFORMER_STAGE_IDS.as_slice(),
         };
         if self.stages.len() != expected_stage_ids.len() {
