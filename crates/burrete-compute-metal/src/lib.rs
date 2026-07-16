@@ -12,4 +12,4 @@ pub use runtime::{
     MetalTanimotoRuntime,
 };
 
-pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v10";
+pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v11";
