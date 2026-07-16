@@ -39,8 +39,9 @@ particular input conformer's coordinates. `BMFX` is decoded and validated by
 Rust before any GPU dispatch; it is not folded into the conformer EnginePack.
 
 `generate-mmff-parity-fixtures.py` uses only pinned RDKit `2025.03.4` as a
-reference-oracle dependency and freezes unoptimized coordinates plus MMFF94 and
-MMFF94s total energies for twelve molecules. `attach-mmff-bmfx-fixtures.mjs`
+reference-oracle dependency and freezes unoptimized coordinates plus initial
+and converged MMFF94/MMFF94s energies for twelve molecules.
+`attach-mmff-bmfx-fixtures.mjs`
 then requires the packaged revision and BMFX v1 ABI before attaching the exact
 parameter payloads. The resulting 24-case fixture is consumed by CPU and real
 Metal corpus tests; neither generator nor Python is part of the application

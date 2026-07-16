@@ -1915,6 +1915,7 @@ mod tests {
         variant: String,
         positions: Vec<[f32; 4]>,
         expected_energy_kcal_mol: f64,
+        expected_optimized_energy_kcal_mol: f64,
         bmfx_base64: String,
     }
 
@@ -2024,6 +2025,31 @@ mod tests {
                 case.name,
                 case.variant,
                 case.expected_energy_kcal_mol
+            );
+            let optimized = runtime
+                .optimize_mmff_profiled(
+                    &case.positions,
+                    &native.parameters,
+                    DistanceGeometryOptimizationOptions::default(),
+                    MIN_COMPUTE_MEMORY_BYTES,
+                )
+                .unwrap_or_else(|error| {
+                    panic!("{} {} Metal optimizer: {error}", case.name, case.variant)
+                });
+            assert_eq!(optimized.energies.len(), 1);
+            assert!(matches!(
+                optimized.statuses[0],
+                DistanceGeometryOptimizationStatus::ConvergedGradient
+                    | DistanceGeometryOptimizationStatus::ConvergedStep
+            ));
+            assert!(
+                (f64::from(optimized.energies[0]) - case.expected_optimized_energy_kcal_mol).abs()
+                    <= 2.5e-1,
+                "{} {} Metal optimized={} RDKit optimized={}",
+                case.name,
+                case.variant,
+                optimized.energies[0],
+                case.expected_optimized_energy_kcal_mol
             );
         }
     }
