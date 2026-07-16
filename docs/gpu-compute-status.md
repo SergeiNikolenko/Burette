@@ -1,8 +1,8 @@
 # Native GPU Compute Layer Implementation Status
 
-Status: `cluster.v1` source workflow, immutable representative export, and
-packaged Apple Silicon development proof complete; production release and scale
-proof pending
+Status: `cluster.v1` source workflow and immutable representative export
+complete; exact GPU query runtime implemented; `Find similar` product wiring,
+current desktop packaging, production release, and scale proof pending
 
 Updated: 2026-07-16
 
@@ -48,8 +48,8 @@ source subject to the provenance gate.
 | --- | --- |
 | macOS desktop source build | `Cluster all`, `Cluster selected`, and immutable `Export diverse` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
-| Native Metal backend | Real command-buffer dispatch is implemented and passes startup parity against the CPU reference |
-| Packaged development Metal | A unique ad-hoc-signed desktop package contains a hash-bound offline-compiled `.metallib`; the packaged bytes load and dispatch on Apple M2 Pro |
+| Native Metal backend | Real graph and one-query command-buffer dispatches are implemented and pass startup parity against the CPU reference |
+| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v2 runtime generation independently passes package verification and real-GPU startup, while a refreshed v2 desktop package remains pending |
 | Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -97,7 +97,7 @@ be described as available UI operations yet.
 | Fixed request/job/artifact contracts | `crates/burrete-compute-protocol/` |
 | Exact fingerprint ABI, CPU Tanimoto/CSR, Butina | `crates/burrete-compute-core/` |
 | Metal runtime, tiling, dispatch, GPU timings | `crates/burrete-compute-metal/` |
-| Reviewed Metal kernels | `compute/metal/tanimoto-neighbors.v1.metal` |
+| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal` |
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
 | Artifact materialization and restart reconciliation | `apps/desktop/src-tauri/src/compute/artifact_publisher.rs` |
@@ -111,16 +111,23 @@ be described as available UI operations yet.
 - 66 focused desktop compute tests pass, including the real Grid-to-artifact
   workflow and representative export before and after coordinator restart.
 - 32 Grid store tests pass; the 50,000-row performance smoke remains opt-in.
-- Metal crate unit/parity tests pass, including a real test-only GPU dispatch
-  on the local 19-core Apple M2 Pro GPU reported with Metal 4 support.
-- The unique `com.local.BurreteV10.Dev.gpucompute9a97` package builds and passes
+- Metal crate unit/parity tests pass, including real graph and exact query-count
+  dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
+  support.
+- An isolated offline-compiled v2 runtime generation passes the hash-bound
+  package verifier and both startup known-answer tests on `Apple M2 Pro`
+  (`registryId=0x100000444`, unified memory); its test-generation metallib
+  SHA-256 is
+  `be3e1beea828532656aa1ac568afbe4e9cdc889556115127b5f4d7227dee8f43`.
+- The earlier unique `com.local.BurreteV10.Dev.gpucompute9a97` cluster-only v1
+  package builds and passes
   deep/strict ad-hoc signature verification at
   `build/Burrete-gpucompute9a97.app`.
-- Its packaged `generation.OFdUGZ` metadata SHA-256 is
+- That v1 package's `generation.OFdUGZ` metadata SHA-256 is
   `d2d89932677282987c8bfeb7092205b97f2bbad57342afe55a51967975eaf72b`;
   the pinned metallib SHA-256 is
   `fbbf5940ab1925a67ccb382d5cd229ce97086ac60535d30d20f8955c4df13af7`.
-- Loading those exact packaged bytes executes the startup known-answer graph on
+- Loading those exact v1 packaged bytes executes the startup known-answer graph on
   the real `Apple M2 Pro` Metal device (`registryId=0x100000444`, unified
   memory) and matches the CPU reference.
 - The real desktop process opened `samples/collections/smiles/multi.smi` as a
@@ -139,10 +146,11 @@ be described as available UI operations yet.
   reject unknown artifact entries, and disable compute after artifact
   corruption.
 
-These checks prove the source implementation and one unique ad-hoc development
-package, not a production release. They do not replace the scientific corpus,
-100k-scale benchmark, Developer ID hardened-runtime signature, notarization, or
-visual UI-triggered clustering evidence.
+These checks prove the source implementation, an isolated current v2 runtime
+generation, and the earlier unique v1 ad-hoc development package, not a current
+v2 desktop package or production release. They do not replace the scientific
+corpus, 100k-scale benchmark, Developer ID hardened-runtime signature,
+notarization, or visual UI-triggered clustering evidence.
 
 ## Remaining Cluster Release Gates
 

@@ -464,7 +464,7 @@ impl ComputeCoordinator {
             match &ready.native_metal {
                 NativeMetalState::Available(runtime) => StageStartEvidence {
                     device: Some(runtime.device_identity().name.clone()),
-                    kernel_id: Some("burrete.cluster.tanimoto-neighbors.v1".into()),
+                    kernel_id: Some("burrete.compute.tanimoto.v2:neighbor-graph.v1".into()),
                 },
                 NativeMetalState::Unavailable { message, .. } => {
                     return Err(ComputeCoordinatorError::Unavailable(format!(

@@ -1,6 +1,8 @@
 use std::{ffi::c_void, mem::size_of_val};
 
-use burrete_compute_core::{Fingerprint2048, GraphBuildOptions, SymmetricCsr};
+use burrete_compute_core::{
+    Fingerprint2048, GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+};
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use metal::{
     Buffer, BufferRef, CommandQueue, ComputeCommandEncoderRef, ComputePipelineState,
@@ -13,6 +15,7 @@ use objc::{runtime::Sel, Message};
 use crate::MetalRuntimeError;
 
 const MAX_TILE_RECORDS: usize = 1_024;
+const MAX_QUERY_BATCH_RECORDS: usize = 262_144;
 const MEMORY_HEADROOM_BYTES: u64 = 64 * 1024;
 
 #[repr(C)]
@@ -27,12 +30,28 @@ struct TanimotoTileV1 {
     cutoff_denominator: u64,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct TanimotoQueryBatchV1 {
+    record_count: u64,
+    row_start: u64,
+    row_count: u64,
+}
+
+#[repr(C, align(8))]
+#[derive(Clone, Copy, Default)]
+struct TanimotoQueryCountsV1 {
+    intersection: u32,
+    union: u32,
+}
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
     queue: CommandQueue,
     degree_pipeline: ComputePipelineState,
     fill_pipeline: ComputePipelineState,
+    query_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -63,11 +82,13 @@ impl MetalHost {
     fn from_library(device: Device, library: &LibraryRef) -> Result<Self, MetalRuntimeError> {
         let degree_pipeline = pipeline(&device, library, "burrete_tanimoto_degree_count_v1")?;
         let fill_pipeline = pipeline(&device, library, "burrete_tanimoto_csr_fill_v1")?;
+        let query_pipeline = pipeline(&device, library, "burrete_tanimoto_query_counts_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
             degree_pipeline,
             fill_pipeline,
+            query_pipeline,
         })
     }
 
@@ -167,6 +188,106 @@ impl MetalHost {
             .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))
     }
 
+    pub(crate) fn score_query(
+        &self,
+        query: &Fingerprint2048,
+        fingerprints: &[Fingerprint2048],
+        options: TanimotoQueryOptions,
+    ) -> Result<Vec<TanimotoCounts>, MetalRuntimeError> {
+        self.score_query_profiled(query, fingerprints, options)
+            .map(|(counts, _)| counts)
+    }
+
+    pub(crate) fn score_query_profiled(
+        &self,
+        query: &Fingerprint2048,
+        fingerprints: &[Fingerprint2048],
+        options: TanimotoQueryOptions,
+    ) -> Result<(Vec<TanimotoCounts>, f64), MetalRuntimeError> {
+        if fingerprints.is_empty() {
+            return Ok((Vec::new(), 0.0));
+        }
+        let record_count = fingerprints.len();
+        if record_count > u32::MAX as usize {
+            return resource_limit("fingerprint count exceeds the Metal uint32 row limit");
+        }
+        admit_query_memory(record_count, options.max_memory_bytes())?;
+        let fingerprints_buffer = buffer_with_slice(&self.device, fingerprints);
+        let output_buffer = buffer_with_slice(
+            &self.device,
+            &vec![TanimotoQueryCountsV1::default(); record_count],
+        );
+        let query_words = query.to_metal_words();
+        let thread_width = self
+            .query_pipeline
+            .thread_execution_width()
+            .min(self.query_pipeline.max_total_threads_per_threadgroup());
+        if thread_width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal query pipeline advertises a zero thread width".into(),
+            ));
+        }
+
+        let mut gpu_time_seconds = 0.0;
+        for row_start in (0..record_count).step_by(MAX_QUERY_BATCH_RECORDS) {
+            let row_count = MAX_QUERY_BATCH_RECORDS.min(record_count - row_start);
+            let batch = TanimotoQueryBatchV1 {
+                record_count: record_count as u64,
+                row_start: row_start as u64,
+                row_count: row_count as u64,
+            };
+            gpu_time_seconds += autoreleasepool(|| {
+                let command = self.queue.new_command_buffer();
+                let encoder = command.new_compute_command_encoder();
+                encoder.set_compute_pipeline_state(&self.query_pipeline);
+                encoder.set_buffer(0, Some(&fingerprints_buffer), 0);
+                encoder.set_bytes(
+                    1,
+                    size_of_val(&query_words) as u64,
+                    query_words.as_ptr().cast(),
+                );
+                encoder.set_buffer(2, Some(&output_buffer), 0);
+                encoder.set_bytes(
+                    3,
+                    size_of_val(&batch) as u64,
+                    (&batch as *const TanimotoQueryBatchV1).cast(),
+                );
+                encoder.dispatch_threads(
+                    MTLSize {
+                        width: row_count as u64,
+                        height: 1,
+                        depth: 1,
+                    },
+                    MTLSize {
+                        width: thread_width,
+                        height: 1,
+                        depth: 1,
+                    },
+                );
+                encoder.end_encoding();
+                command.commit();
+                command.wait_until_completed();
+                completed_gpu_time(command)
+            })?;
+        }
+
+        let raw_counts =
+            read_buffer::<TanimotoQueryCountsV1>(&output_buffer, record_count, "query count")?;
+        let mut counts = Vec::with_capacity(record_count);
+        for value in raw_counts {
+            if value.intersection > value.union || value.union > 2_048 {
+                return Err(MetalRuntimeError::Dispatch(
+                    "Metal query returned impossible Tanimoto counts".into(),
+                ));
+            }
+            counts.push(TanimotoCounts {
+                intersection: u64::from(value.intersection),
+                union: u64::from(value.union),
+            });
+        }
+        Ok((counts, gpu_time_seconds))
+    }
+
     fn dispatch_tiles(
         &self,
         record_count: usize,
@@ -222,29 +343,29 @@ impl MetalHost {
                     encoder.end_encoding();
                     command.commit();
                     command.wait_until_completed();
-                    if command.status() != MTLCommandBufferStatus::Completed {
-                        return Err(MetalRuntimeError::Dispatch(format!(
-                            "Metal command buffer ended with {:?}",
-                            command.status()
-                        )));
-                    }
-                    let gpu_start = command_gpu_timestamp(command, "GPUStartTime")?;
-                    let gpu_end = command_gpu_timestamp(command, "GPUEndTime")?;
-                    if !gpu_start.is_finite()
-                        || !gpu_end.is_finite()
-                        || gpu_start < 0.0
-                        || gpu_end < gpu_start
-                    {
-                        return Err(MetalRuntimeError::Dispatch(
-                            "Metal command buffer returned invalid GPU timing evidence".into(),
-                        ));
-                    }
-                    Ok(gpu_end - gpu_start)
+                    completed_gpu_time(command)
                 })?;
             }
         }
         Ok(gpu_time_seconds)
     }
+}
+
+fn completed_gpu_time(command: &metal::CommandBufferRef) -> Result<f64, MetalRuntimeError> {
+    if command.status() != MTLCommandBufferStatus::Completed {
+        return Err(MetalRuntimeError::Dispatch(format!(
+            "Metal command buffer ended with {:?}",
+            command.status()
+        )));
+    }
+    let gpu_start = command_gpu_timestamp(command, "GPUStartTime")?;
+    let gpu_end = command_gpu_timestamp(command, "GPUEndTime")?;
+    if !gpu_start.is_finite() || !gpu_end.is_finite() || gpu_start < 0.0 || gpu_end < gpu_start {
+        return Err(MetalRuntimeError::Dispatch(
+            "Metal command buffer returned invalid GPU timing evidence".into(),
+        ));
+    }
+    Ok(gpu_end - gpu_start)
 }
 
 fn command_gpu_timestamp(
@@ -360,6 +481,26 @@ fn admit_memory(
     Ok(())
 }
 
+fn admit_query_memory(record_count: usize, limit: u64) -> Result<(), MetalRuntimeError> {
+    let records = record_count as u64;
+    // Rust input + shared fingerprint buffer, shared/raw query outputs, final
+    // u64 CPU counts, the query value and one parameter block.
+    let required = MEMORY_HEADROOM_BYTES
+        .checked_add(
+            records
+                .checked_mul(256 * 2 + 8 * 2 + 16)
+                .ok_or_else(memory_overflow)?,
+        )
+        .and_then(|total| total.checked_add(256 + 24))
+        .ok_or_else(memory_overflow)?;
+    if required > limit {
+        return resource_limit(format!(
+            "Metal Tanimoto query requires {required} accounted bytes; limit is {limit}"
+        ));
+    }
+    Ok(())
+}
+
 fn memory_overflow() -> MetalRuntimeError {
     MetalRuntimeError::ResourceLimit("Metal working-set accounting overflowed".into())
 }
@@ -383,6 +524,11 @@ mod tests {
         assert_eq!(std::mem::size_of::<TanimotoTileV1>(), 56);
         assert_eq!(std::mem::align_of::<TanimotoTileV1>(), 8);
         assert_eq!(std::mem::offset_of!(TanimotoTileV1, cutoff_denominator), 48);
+        assert_eq!(std::mem::size_of::<TanimotoQueryBatchV1>(), 24);
+        assert_eq!(std::mem::align_of::<TanimotoQueryBatchV1>(), 8);
+        assert_eq!(std::mem::offset_of!(TanimotoQueryBatchV1, row_count), 16);
+        assert_eq!(std::mem::size_of::<TanimotoQueryCountsV1>(), 8);
+        assert_eq!(std::mem::align_of::<TanimotoQueryCountsV1>(), 8);
     }
 
     #[test]
@@ -393,13 +539,21 @@ mod tests {
     }
 
     #[test]
+    fn query_memory_admission_counts_all_resident_views() {
+        let base = MEMORY_HEADROOM_BYTES + 256 + 24;
+        let bytes_per_record = 256 * 2 + 8 * 2 + 16;
+        assert!(admit_query_memory(1, base + bytes_per_record).is_ok());
+        assert!(admit_query_memory(1, base + bytes_per_record - 1).is_err());
+    }
+
+    #[test]
     #[ignore = "manual real-GPU smoke; production loads only a verified precompiled metallib"]
     fn dispatches_the_known_answer_graph_on_the_real_gpu() {
         let device = Device::system_default().expect("Metal device");
         let compile_options = CompileOptions::new();
         let library = device
             .new_library_with_source(
-                include_str!("../../../../compute/metal/tanimoto-neighbors.v1.metal"),
+                include_str!("../../../../compute/metal/tanimoto.v2.metal"),
                 &compile_options,
             )
             .expect("test-only Metal compilation");
@@ -435,5 +589,27 @@ mod tests {
             .expect("real Metal graph");
         assert_eq!(graph.row_offsets(), &[0, 1, 2, 2]);
         assert_eq!(graph.column_indices(), &[1, 0]);
+        let query_options =
+            TanimotoQueryOptions::from_resource_limits(&limits).expect("query options");
+        let counts = host
+            .score_query(&fingerprints[0], &fingerprints, query_options)
+            .expect("real Metal query");
+        assert_eq!(
+            counts,
+            vec![
+                TanimotoCounts {
+                    intersection: 2,
+                    union: 2,
+                },
+                TanimotoCounts {
+                    intersection: 1,
+                    union: 2,
+                },
+                TanimotoCounts {
+                    intersection: 0,
+                    union: 2,
+                },
+            ]
+        );
     }
 }

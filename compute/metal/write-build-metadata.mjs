@@ -35,19 +35,19 @@ for (const name of requiredEnvironment.filter((name) => name.endsWith("_SHA256")
 const normalizedVersion = process.env.METAL_TOOL_VERSION.trim().replace(/\s+/g, " ");
 const metadata = {
   schemaVersion: "burrete.compute.metal-build-metadata.v1",
-  runtimeVersion: "burrete-native-metal-v1",
-  libraryId: "burrete.cluster.tanimoto-neighbors.v1",
+  runtimeVersion: "burrete-native-metal-v2",
+  libraryId: "burrete.compute.tanimoto.v2",
   source: {
-    path: "compute/metal/tanimoto-neighbors.v1.metal",
+    path: "compute/metal/tanimoto.v2.metal",
     sha256: process.env.SOURCE_SHA256,
   },
   contract: {
-    path: "compute/metal/kernel-contract.v1.json",
+    path: "compute/metal/tanimoto-kernel-contract.v2.json",
     sha256: process.env.CONTRACT_SHA256,
   },
-  air: { path: "tanimoto-neighbors.v1.air", sha256: process.env.AIR_SHA256 },
+  air: { path: "tanimoto.v2.air", sha256: process.env.AIR_SHA256 },
   metallib: {
-    path: "tanimoto-neighbors.v1.metallib",
+    path: "tanimoto.v2.metallib",
     sha256: process.env.METALLIB_SHA256,
   },
   compiler: {
@@ -70,6 +70,7 @@ const metadata = {
   entrypoints: [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
+    "burrete_tanimoto_query_counts_v1",
   ],
 };
 

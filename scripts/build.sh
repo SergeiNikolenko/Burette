@@ -442,7 +442,7 @@ generation = pointer.get("generation", "")
 if not re.fullmatch(r"generation\.[A-Za-z0-9]{6,64}", generation):
     fail("non-canonical generation name")
 metadata_path = runtime / generation / "build-metadata.v1.json"
-metallib_path = runtime / generation / "tanimoto-neighbors.v1.metallib"
+metallib_path = runtime / generation / "tanimoto.v2.metallib"
 for path in (metadata_path, metallib_path):
     if not path.is_file() or path.is_symlink() or path.stat().st_size == 0:
         fail(f"required regular file missing at {path}")
@@ -456,7 +456,7 @@ except ValueError as error:
     fail(f"build metadata cannot be decoded: {error}")
 if metadata.get("schemaVersion") != "burrete.compute.metal-build-metadata.v1":
     fail("build metadata schema mismatch")
-if metadata.get("runtimeVersion") != "burrete-native-metal-v1":
+if metadata.get("runtimeVersion") != "burrete-native-metal-v2":
     fail("runtime version mismatch")
 metallib_sha256 = hashlib.sha256(metallib_path.read_bytes()).hexdigest()
 if metallib_sha256 != metadata.get("metallib", {}).get("sha256"):

@@ -1,7 +1,8 @@
 use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
 use burrete_compute_core::{
-    build_tanimoto_graph, Fingerprint2048, GraphBuildOptions, SymmetricCsr, FINGERPRINT_WORDS,
+    build_tanimoto_graph, score_tanimoto_query, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
+    TanimotoCounts, TanimotoQueryOptions, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -27,6 +28,14 @@ pub struct MetalTanimotoRuntime {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MetalGraphExecution {
     pub graph: SymmetricCsr,
+    /// Sum of Metal's completed-command-buffer GPUStartTime/GPUEndTime
+    /// intervals. This excludes CPU encoding and synchronization time.
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalQueryExecution {
+    pub counts: Vec<TanimotoCounts>,
     /// Sum of Metal's completed-command-buffer GPUStartTime/GPUEndTime
     /// intervals. This excludes CPU encoding and synchronization time.
     pub gpu_time_ms: u64,
@@ -106,15 +115,33 @@ impl MetalTanimotoRuntime {
         let (graph, gpu_time_seconds) =
             self.host
                 .build_graph_profiled(fingerprints, cutoff, options)?;
-        let gpu_time_ms = (gpu_time_seconds * 1_000.0).ceil();
-        if !gpu_time_ms.is_finite() || gpu_time_ms < 0.0 || gpu_time_ms > u64::MAX as f64 {
-            return Err(MetalRuntimeError::Dispatch(
-                "Metal GPU timing is outside the supported range".into(),
-            ));
-        }
         Ok(MetalGraphExecution {
             graph,
-            gpu_time_ms: gpu_time_ms as u64,
+            gpu_time_ms: gpu_time_ms(gpu_time_seconds)?,
+        })
+    }
+
+    pub fn score_query(
+        &self,
+        query: &Fingerprint2048,
+        fingerprints: &[Fingerprint2048],
+        options: TanimotoQueryOptions,
+    ) -> Result<Vec<TanimotoCounts>, MetalRuntimeError> {
+        self.host.score_query(query, fingerprints, options)
+    }
+
+    pub fn score_query_profiled(
+        &self,
+        query: &Fingerprint2048,
+        fingerprints: &[Fingerprint2048],
+        options: TanimotoQueryOptions,
+    ) -> Result<MetalQueryExecution, MetalRuntimeError> {
+        let (counts, gpu_time_seconds) =
+            self.host
+                .score_query_profiled(query, fingerprints, options)?;
+        Ok(MetalQueryExecution {
+            counts,
+            gpu_time_ms: gpu_time_ms(gpu_time_seconds)?,
         })
     }
 
@@ -152,8 +179,30 @@ impl MetalTanimotoRuntime {
                 "Metal startup known-answer graph differs from the CPU reference".into(),
             ));
         }
+        let query_options = TanimotoQueryOptions::from_resource_limits(&limits)
+            .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let expected_counts = score_tanimoto_query(&fingerprints[0], &fingerprints, query_options)
+            .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let observed_counts =
+            self.host
+                .score_query(&fingerprints[0], &fingerprints, query_options)?;
+        if observed_counts != expected_counts {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup known-answer query differs from the CPU reference".into(),
+            ));
+        }
         Ok(())
     }
+}
+
+fn gpu_time_ms(gpu_time_seconds: f64) -> Result<u64, MetalRuntimeError> {
+    let gpu_time_ms = (gpu_time_seconds * 1_000.0).ceil();
+    if !gpu_time_ms.is_finite() || gpu_time_ms < 0.0 || gpu_time_ms > u64::MAX as f64 {
+        return Err(MetalRuntimeError::Dispatch(
+            "Metal GPU timing is outside the supported range".into(),
+        ));
+    }
+    Ok(gpu_time_ms as u64)
 }
 
 fn validate_sha256(value: &str) -> Result<(), MetalRuntimeError> {

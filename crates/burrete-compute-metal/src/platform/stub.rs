@@ -1,4 +1,6 @@
-use burrete_compute_core::{Fingerprint2048, GraphBuildOptions, SymmetricCsr};
+use burrete_compute_core::{
+    Fingerprint2048, GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+};
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 
 use crate::MetalRuntimeError;
@@ -38,6 +40,28 @@ impl MetalHost {
         _cutoff: SimilarityCutoff,
         _options: GraphBuildOptions,
     ) -> Result<(SymmetricCsr, f64), MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn score_query(
+        &self,
+        _query: &Fingerprint2048,
+        _fingerprints: &[Fingerprint2048],
+        _options: TanimotoQueryOptions,
+    ) -> Result<Vec<TanimotoCounts>, MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn score_query_profiled(
+        &self,
+        _query: &Fingerprint2048,
+        _fingerprints: &[Fingerprint2048],
+        _options: TanimotoQueryOptions,
+    ) -> Result<(Vec<TanimotoCounts>, f64), MetalRuntimeError> {
         Err(MetalRuntimeError::UnsupportedPlatform(
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))
