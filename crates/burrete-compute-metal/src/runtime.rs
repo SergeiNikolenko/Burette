@@ -2,16 +2,17 @@ use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
 use burrete_compute_core::{
     align_and_score, build_tanimoto_graph, contract_rm1_pair_fock, evaluate_distance_constraints,
-    evaluate_etk_geometry, evaluate_mmff, initialize_conformer_positions, optimize_distance_geometry,
-    score_tanimoto_query, validate_conformer_stereo, AlignmentAtom, AlignmentMode,
-    AlignmentScores, AtomMapping, ChiralVolumeConstraint, DistanceConstraint,
+    evaluate_etk_geometry, evaluate_mmff, initialize_conformer_positions,
+    optimize_distance_geometry, pm6_h4_energy, pm6_hh_repulsion_energy, rm1_fock_pairs,
+    score_tanimoto_query, symmetric_eigendecomposition, validate_conformer_stereo, AlignmentAtom,
+    AlignmentMode, AlignmentScores, AtomMapping, ChiralVolumeConstraint, DistanceConstraint,
     DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
     EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
     GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown,
     MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
     MmffVanDerWaalsTerm, MmffVariant, RigidTransform, Rm1FockPair, SemiempiricalAtom,
     SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
-    TetrahedralConstraint, FINGERPRINT_WORDS, rm1_fock_pairs, symmetric_eigendecomposition,
+    TetrahedralConstraint, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -165,6 +166,30 @@ pub struct MetalSymmetricEigen {
     pub gpu_time_ms: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Pm6CorrectionMoleculeDescriptor {
+    pub atom_start: usize,
+    pub atom_count: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MetalPm6CorrectionBatch<'a> {
+    pub atoms: &'a [SemiempiricalAtom],
+    pub molecules: &'a [Pm6CorrectionMoleculeDescriptor],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pm6H4HhCorrection {
+    pub h4_energy_ev: f64,
+    pub hh_repulsion_energy_ev: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalPm6H4HhExecution {
+    pub corrections: Vec<Pm6H4HhCorrection>,
+    pub gpu_time_ms: u64,
+}
+
 impl std::fmt::Debug for MetalComputeRuntime {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -274,10 +299,9 @@ impl MetalComputeRuntime {
         batch: MetalAlignmentBatch<'_>,
         max_memory_bytes: u64,
     ) -> Result<MetalAlignmentExecution, MetalRuntimeError> {
-        let dispatch = self.host.align_and_score_profiled(
-            batch,
-            max_memory_bytes.min(self.limits.max_memory_bytes),
-        )?;
+        let dispatch = self
+            .host
+            .align_and_score_profiled(batch, max_memory_bytes.min(self.limits.max_memory_bytes))?;
         if dispatch.transforms.len() != batch.pairs.len()
             || dispatch.primary_scores.len() != batch.pairs.len()
             || dispatch.secondary_scores.len() != batch.pairs.len()
@@ -312,9 +336,15 @@ impl MetalComputeRuntime {
             pairs.push(MetalAlignmentPairResult {
                 transform: RigidTransform {
                     rotation: [
-                        transform_rows[0][..3].try_into().expect("three rotation values"),
-                        transform_rows[1][..3].try_into().expect("three rotation values"),
-                        transform_rows[2][..3].try_into().expect("three rotation values"),
+                        transform_rows[0][..3]
+                            .try_into()
+                            .expect("three rotation values"),
+                        transform_rows[1][..3]
+                            .try_into()
+                            .expect("three rotation values"),
+                        transform_rows[2][..3]
+                            .try_into()
+                            .expect("three rotation values"),
                     ],
                     translation: transform_rows[3][..3]
                         .try_into()
@@ -348,7 +378,10 @@ impl MetalComputeRuntime {
     ) -> Result<MetalRm1FockContribution, MetalRuntimeError> {
         let expected = contract_rm1_pair_fock(orbital_count, density, pairs)
             .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
-        let density_f32 = density.iter().map(|value| *value as f32).collect::<Vec<_>>();
+        let density_f32 = density
+            .iter()
+            .map(|value| *value as f32)
+            .collect::<Vec<_>>();
         let dispatch = self.host.contract_rm1_pair_fock_profiled(
             u32::try_from(orbital_count).map_err(|_| {
                 MetalRuntimeError::ResourceLimit("RM1 orbital count exceeds uint32".into())
@@ -358,7 +391,10 @@ impl MetalComputeRuntime {
             max_memory_bytes.min(self.limits.max_memory_bytes),
         )?;
         if dispatch.contribution_ev.len() != expected.len()
-            || dispatch.contribution_ev.iter().any(|value| !value.is_finite())
+            || dispatch
+                .contribution_ev
+                .iter()
+                .any(|value| !value.is_finite())
             || dispatch
                 .contribution_ev
                 .iter()
@@ -371,6 +407,71 @@ impl MetalComputeRuntime {
         }
         Ok(MetalRm1FockContribution {
             contribution_ev: dispatch.contribution_ev,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
+    pub fn evaluate_pm6_h4_hh_profiled(
+        &self,
+        batch: MetalPm6CorrectionBatch<'_>,
+        max_memory_bytes: u64,
+    ) -> Result<MetalPm6H4HhExecution, MetalRuntimeError> {
+        if batch.molecules.is_empty() || batch.molecules.len() > 256 {
+            return Err(MetalRuntimeError::ResourceLimit(
+                "PM6 correction batch requires 1..=256 molecules".into(),
+            ));
+        }
+        let mut expected = Vec::with_capacity(batch.molecules.len());
+        for (index, molecule) in batch.molecules.iter().enumerate() {
+            let end = molecule
+                .atom_start
+                .checked_add(molecule.atom_count)
+                .ok_or_else(|| {
+                    MetalRuntimeError::ResourceLimit("PM6 correction atom span overflow".into())
+                })?;
+            if molecule.atom_count == 0 || molecule.atom_count > 128 || end > batch.atoms.len() {
+                return Err(MetalRuntimeError::Dispatch(format!(
+                    "PM6 correction molecule {index} has an invalid atom span"
+                )));
+            }
+            let atoms = &batch.atoms[molecule.atom_start..end];
+            expected.push(Pm6H4HhCorrection {
+                h4_energy_ev: pm6_h4_energy(atoms)
+                    .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?,
+                hh_repulsion_energy_ev: pm6_hh_repulsion_energy(atoms)
+                    .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?,
+            });
+        }
+        let dispatch = self.host.evaluate_pm6_h4_hh_profiled(
+            batch,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if dispatch.corrections_ev.len() != expected.len() {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal PM6 correction returned an invalid output shape".into(),
+            ));
+        }
+        for (index, (observed, expected)) in
+            dispatch.corrections_ev.iter().zip(&expected).enumerate()
+        {
+            if observed.iter().any(|value| !value.is_finite())
+                || (f64::from(observed[0]) - expected.h4_energy_ev).abs() > 2.0e-5
+                || (f64::from(observed[1]) - expected.hh_repulsion_energy_ev).abs() > 2.0e-5
+            {
+                return Err(MetalRuntimeError::KernelUnavailable(format!(
+                    "Metal PM6 H4/HH correction differs from the float64 CPU reference at molecule {index}"
+                )));
+            }
+        }
+        Ok(MetalPm6H4HhExecution {
+            corrections: dispatch
+                .corrections_ev
+                .into_iter()
+                .map(|value| Pm6H4HhCorrection {
+                    h4_energy_ev: f64::from(value[0]),
+                    hh_repulsion_energy_ev: f64::from(value[1]),
+                })
+                .collect(),
             gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
         })
     }
@@ -547,9 +648,7 @@ impl MetalComputeRuntime {
                     orthogonality_maximum.max((overlap - expected_overlap).abs());
             }
         }
-        if eigenvalue_drift > 2.0e-4
-            || residual_maximum > 5.0e-4
-            || orthogonality_maximum > 5.0e-4
+        if eigenvalue_drift > 2.0e-4 || residual_maximum > 5.0e-4 || orthogonality_maximum > 5.0e-4
         {
             return Err(MetalRuntimeError::KernelUnavailable(format!(
                 "Metal symmetric eigensolver parity failed: eigenvalue={eigenvalue_drift:e}, residual={residual_maximum:e}, orthogonality={orthogonality_maximum:e}"
@@ -1245,7 +1344,10 @@ impl MetalComputeRuntime {
         )?;
         if !float_slices_close(
             &observed_rm1.contribution_ev,
-            &expected_rm1.iter().map(|value| *value as f32).collect::<Vec<_>>(),
+            &expected_rm1
+                .iter()
+                .map(|value| *value as f32)
+                .collect::<Vec<_>>(),
             2.0e-5,
         ) {
             return Err(MetalRuntimeError::KernelUnavailable(
@@ -1297,13 +1399,47 @@ impl MetalComputeRuntime {
             0,
         )
         .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
-        let rotated_pairs = self.prepare_rm1_pairs_profiled(
-            &pair_probe,
-            MIN_COMPUTE_MEMORY_BYTES,
-        )?;
+        let rotated_pairs =
+            self.prepare_rm1_pairs_profiled(&pair_probe, MIN_COMPUTE_MEMORY_BYTES)?;
         if rotated_pairs.pairs.len() != 6 {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal startup RM1 pair rotation returned an invalid pair count".into(),
+            ));
+        }
+
+        let correction_atoms = [
+            semiempirical_atom(8, [0.0, 0.0, 0.0]),
+            semiempirical_atom(1, [-0.586, 0.756, 0.0]),
+            semiempirical_atom(1, [0.957, 0.0, 0.0]),
+            semiempirical_atom(8, [2.91, 0.0, 0.0]),
+            semiempirical_atom(1, [3.28, 0.756, 0.0]),
+            semiempirical_atom(1, [3.28, -0.756, 0.0]),
+            semiempirical_atom(6, [0.0, 0.0, 0.0]),
+            semiempirical_atom(1, [0.629, 0.629, 0.629]),
+            semiempirical_atom(1, [-0.629, -0.629, 0.629]),
+            semiempirical_atom(1, [-0.629, 0.629, -0.629]),
+            semiempirical_atom(1, [0.629, -0.629, -0.629]),
+        ];
+        let correction_descriptors = [
+            Pm6CorrectionMoleculeDescriptor {
+                atom_start: 0,
+                atom_count: 6,
+            },
+            Pm6CorrectionMoleculeDescriptor {
+                atom_start: 6,
+                atom_count: 5,
+            },
+        ];
+        let correction = self.evaluate_pm6_h4_hh_profiled(
+            MetalPm6CorrectionBatch {
+                atoms: &correction_atoms,
+                molecules: &correction_descriptors,
+            },
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        if correction.gpu_time_ms == 0 || correction.corrections.len() != 2 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup PM6 H4/HH correction returned invalid profiling output".into(),
             ));
         }
 
@@ -1389,6 +1525,13 @@ fn float_slices_close(left: &[f32], right: &[f32], tolerance: f32) -> bool {
         && left.iter().zip(right).all(|(left, right)| {
             left.is_finite() && right.is_finite() && (left - right).abs() <= tolerance
         })
+}
+
+fn semiempirical_atom(atomic_number: u8, position_angstrom: [f64; 3]) -> SemiempiricalAtom {
+    SemiempiricalAtom {
+        atomic_number,
+        position_angstrom,
+    }
 }
 
 fn alignment_atom(

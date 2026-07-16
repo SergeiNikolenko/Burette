@@ -44,6 +44,13 @@ One thread owns one atom pair, including the explicit heavy/H transpose path.
 The runtime compares every emitted tensor element with the float64 CPU oracle
 before the prepared pair pack is admitted to core-Hamiltonian and SCF use.
 
+`pm6-h4-hh.v1.metal` evaluates the Rezac-Hobza H4 hydrogen-bond and
+short-range H-H correction terms for molecule batches. One thread owns one
+molecule, so independent library molecules execute concurrently without
+cross-molecule atomics or intermediate triple tensors. Every two-component
+result must pass the bounded float64 CPU oracle before it is reported as GPU
+work. D3 dispersion is not part of this v1 correction kernel.
+
 The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
 256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical
 word. This is a byte-identical view on supported little-endian Apple Silicon;

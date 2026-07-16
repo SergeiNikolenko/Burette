@@ -9,7 +9,7 @@ mod two_center;
 
 pub use overlap::{rm1_sp_overlap, Rm1OverlapMatrix};
 pub use parameters::{rm1_parameters, semiempirical_parameters, SemiempiricalElementParameters};
-pub use pm6_d3h4::{pm6_h4_energy, pm6_hh_repulsion_energy};
+pub use pm6_d3h4::{pm6_h4_covalent_radius, pm6_h4_energy, pm6_hh_repulsion_energy};
 pub use rm1::{
     contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators,
     evaluate_rm1_with_pair_contractor, evaluate_rm1_with_prepared_pairs_and_accelerators,

@@ -37,6 +37,14 @@ const PM6_H4: H4Parameters = H4Parameters {
     carboxylate_multiplier: 1.41,
 };
 
+/// Rezac-Hobza covalent radius used by the PM6-D3H4 H4 term.
+pub fn pm6_h4_covalent_radius(atomic_number: u8) -> Option<f64> {
+    atomic_number
+        .checked_sub(1)
+        .and_then(|index| H4_COVALENT_RADII.get(usize::from(index)))
+        .copied()
+}
+
 /// PM6-D3H4 Rezac-Hobza hydrogen-bond correction in eV.
 pub fn pm6_h4_energy(atoms: &[SemiempiricalAtom]) -> Result<f64, SemiempiricalError> {
     validate_atoms(atoms)?;
