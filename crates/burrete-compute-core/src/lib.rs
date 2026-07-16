@@ -64,8 +64,8 @@ pub use mmff_extract::{decode_native_mmff_parameters, MmffExtractError, NativeMm
 pub use semiempirical::{
     contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators,
     evaluate_rm1_with_pair_contractor, evaluate_rm1_with_prepared_pairs_and_accelerators,
-    evaluate_semiempirical, pm6_h4_energy, pm6_hh_repulsion_energy, rm1_fock_pairs,
-    rm1_multipole_parameters, rm1_nuclear_repulsion_energy, rm1_parameters,
+    evaluate_semiempirical, pm6_h4_covalent_radius, pm6_h4_energy, pm6_hh_repulsion_energy,
+    rm1_fock_pairs, rm1_multipole_parameters, rm1_nuclear_repulsion_energy, rm1_parameters,
     rm1_rotated_pair_integrals, rm1_sp_overlap, rm1_two_center_integrals,
     semiempirical_nuclear_repulsion_energy, semiempirical_parameters, solve_closed_shell_scf,
     solve_closed_shell_scf_with_eigensolver, symmetric_eigendecomposition, Rm1Evaluation,

@@ -1,7 +1,7 @@
 use std::{collections::HashSet, ffi::c_void, mem::size_of_val};
 
 use burrete_compute_core::{
-    rm1_multipole_parameters, semiempirical_parameters,
+    pm6_h4_covalent_radius, rm1_multipole_parameters, semiempirical_parameters,
     validate_etk_geometry_constraints, validate_mmff_parameters, validate_stereo_constraints,
     AlignmentMode, ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
@@ -19,11 +19,11 @@ use objc::{runtime::Sel, Message};
 
 use crate::platform::{
     MetalAlignmentDispatch, MetalDistanceDispatch, MetalDistanceOptimizationDispatch,
-    MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch,
+    MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch, MetalPm6H4HhDispatch,
     MetalRm1FockDispatch, MetalRm1PairRotationDispatch, MetalStereoValidationDispatch,
     MetalSymmetricEigenDispatch,
 };
-use crate::runtime::MetalAlignmentBatch;
+use crate::runtime::{MetalAlignmentBatch, MetalPm6CorrectionBatch};
 use crate::MetalRuntimeError;
 
 const MAX_TILE_RECORDS: usize = 1_024;
@@ -219,6 +219,19 @@ struct Rm1PairParametersV1 {
     right1: [f32; 4],
 }
 
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+struct Pm6CorrectionAtomV1 {
+    position_radius: [f32; 4],
+    identity: [u32; 4],
+}
+
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+struct Pm6CorrectionMoleculeV1 {
+    span: [u32; 4],
+}
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
@@ -239,6 +252,7 @@ pub(crate) struct MetalHost {
     rm1_fock_pipeline: ComputePipelineState,
     rm1_eigen_pipeline: ComputePipelineState,
     rm1_pair_rotate_pipeline: ComputePipelineState,
+    pm6_h4_hh_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -289,6 +303,7 @@ impl MetalHost {
         let rm1_fock_pipeline = pipeline(&device, library, "burrete_rm1_pair_fock_v1")?;
         let rm1_eigen_pipeline = pipeline(&device, library, "burrete_rm1_symmetric_eigen_v1")?;
         let rm1_pair_rotate_pipeline = pipeline(&device, library, "burrete_rm1_pair_rotate_v1")?;
+        let pm6_h4_hh_pipeline = pipeline(&device, library, "burrete_pm6_h4_hh_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -308,6 +323,7 @@ impl MetalHost {
             rm1_fock_pipeline,
             rm1_eigen_pipeline,
             rm1_pair_rotate_pipeline,
+            pm6_h4_hh_pipeline,
         })
     }
 
@@ -1498,9 +1514,7 @@ impl MetalHost {
             }
             let mut probe_seen = HashSet::with_capacity(pair.mapping_count as usize);
             let mut reference_seen = HashSet::with_capacity(pair.mapping_count as usize);
-            for mapping in &batch.mappings
-                [pair.mapping_start as usize..mapping_end as usize]
-            {
+            for mapping in &batch.mappings[pair.mapping_start as usize..mapping_end as usize] {
                 if u64::from(mapping.probe_atom) >= pair.probe_atom_count
                     || u64::from(mapping.reference_atom) >= pair.reference_atom_count
                     || !mapping.weight.is_finite()
@@ -1603,10 +1617,8 @@ impl MetalHost {
             buffer_with_slice(&self.device, &packed_mappings),
             buffer_with_slice(&self.device, &packed_pairs),
         ];
-        let transform_buffer = buffer_with_slice(
-            &self.device,
-            &vec![[[0.0_f32; 4]; 4]; batch.pairs.len()],
-        );
+        let transform_buffer =
+            buffer_with_slice(&self.device, &vec![[[0.0_f32; 4]; 4]; batch.pairs.len()]);
         let primary_buffer =
             buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; batch.pairs.len()]);
         let secondary_buffer =
@@ -1658,11 +1670,7 @@ impl MetalHost {
             completed_gpu_time(command)
         })?;
         Ok(MetalAlignmentDispatch {
-            transforms: read_buffer(
-                &transform_buffer,
-                batch.pairs.len(),
-                "alignment transform",
-            )?,
+            transforms: read_buffer(&transform_buffer, batch.pairs.len(), "alignment transform")?,
             primary_scores: read_buffer(
                 &primary_buffer,
                 batch.pairs.len(),
@@ -1839,7 +1847,11 @@ impl MetalHost {
             repulsion.resize(256, 0.0);
         }
         let required_bytes = MEMORY_HEADROOM_BYTES
-            .checked_add((matrix_len as u64).checked_mul(12).ok_or_else(memory_overflow)?)
+            .checked_add(
+                (matrix_len as u64)
+                    .checked_mul(12)
+                    .ok_or_else(memory_overflow)?,
+            )
             .and_then(|bytes| bytes.checked_add((descriptors.len() as u64).checked_mul(24)?))
             .and_then(|bytes| bytes.checked_add((repulsion.len() as u64).checked_mul(4)?))
             .ok_or_else(memory_overflow)?;
@@ -1852,9 +1864,10 @@ impl MetalHost {
         let pair_buffer = buffer_with_slice(&self.device, &descriptors);
         let repulsion_buffer = buffer_with_slice(&self.device, &repulsion);
         let output_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; matrix_len]);
-        let thread_width = self.rm1_fock_pipeline.thread_execution_width().min(
-            self.rm1_fock_pipeline.max_total_threads_per_threadgroup(),
-        );
+        let thread_width = self
+            .rm1_fock_pipeline
+            .thread_execution_width()
+            .min(self.rm1_fock_pipeline.max_total_threads_per_threadgroup());
         if thread_width == 0 {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal RM1 Fock pipeline advertises zero thread width".into(),
@@ -1969,11 +1982,8 @@ impl MetalHost {
             command.wait_until_completed();
             completed_gpu_time(command)
         })?;
-        let padded_vectors = read_buffer::<f32>(
-            &eigenvector_buffer,
-            1024,
-            "RM1 symmetric eigenvector",
-        )?;
+        let padded_vectors =
+            read_buffer::<f32>(&eigenvector_buffer, 1024, "RM1 symmetric eigenvector")?;
         let mut eigenvectors = vec![0.0; matrix_len];
         for row in 0..order as usize {
             for column in 0..order as usize {
@@ -1986,6 +1996,109 @@ impl MetalHost {
             eigenvalues,
             eigenvectors,
             status: read_buffer::<u32>(&status_buffer, 1, "RM1 eigensolver status")?[0],
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
+    pub(crate) fn evaluate_pm6_h4_hh_profiled(
+        &self,
+        batch: MetalPm6CorrectionBatch<'_>,
+        max_memory_bytes: u64,
+    ) -> Result<MetalPm6H4HhDispatch, MetalRuntimeError> {
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(
+                u64::try_from(batch.atoms.len())
+                    .map_err(|_| memory_overflow())?
+                    .checked_mul(std::mem::size_of::<Pm6CorrectionAtomV1>() as u64)
+                    .ok_or_else(memory_overflow)?,
+            )
+            .and_then(|bytes| {
+                bytes.checked_add(u64::try_from(batch.molecules.len()).ok()?.checked_mul(
+                    (std::mem::size_of::<Pm6CorrectionMoleculeV1>()
+                        + std::mem::size_of::<[f32; 2]>()) as u64,
+                )?)
+            })
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "PM6 H4/HH correction requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+        let atoms = batch
+            .atoms
+            .iter()
+            .map(|atom| {
+                let radius = pm6_h4_covalent_radius(atom.atomic_number).ok_or_else(|| {
+                    MetalRuntimeError::Dispatch(format!(
+                        "PM6 H4/HH correction does not support atomic number {}",
+                        atom.atomic_number
+                    ))
+                })?;
+                Ok(Pm6CorrectionAtomV1 {
+                    position_radius: [
+                        atom.position_angstrom[0] as f32,
+                        atom.position_angstrom[1] as f32,
+                        atom.position_angstrom[2] as f32,
+                        radius as f32,
+                    ],
+                    identity: [u32::from(atom.atomic_number), 0, 0, 0],
+                })
+            })
+            .collect::<Result<Vec<_>, MetalRuntimeError>>()?;
+        let molecules = batch
+            .molecules
+            .iter()
+            .map(|molecule| {
+                Ok(Pm6CorrectionMoleculeV1 {
+                    span: [
+                        u32::try_from(molecule.atom_start).map_err(|_| memory_overflow())?,
+                        u32::try_from(molecule.atom_count).map_err(|_| memory_overflow())?,
+                        0,
+                        0,
+                    ],
+                })
+            })
+            .collect::<Result<Vec<_>, MetalRuntimeError>>()?;
+        let atom_buffer = buffer_with_slice(&self.device, &atoms);
+        let molecule_buffer = buffer_with_slice(&self.device, &molecules);
+        let output_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 2]; molecules.len()]);
+        let molecule_count = u32::try_from(molecules.len()).map_err(|_| memory_overflow())?;
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.pm6_h4_hh_pipeline);
+            encoder.set_buffer(0, Some(&atom_buffer), 0);
+            encoder.set_buffer(1, Some(&molecule_buffer), 0);
+            encoder.set_bytes(
+                2,
+                size_of_val(&molecule_count) as u64,
+                (&molecule_count as *const u32).cast(),
+            );
+            encoder.set_buffer(3, Some(&output_buffer), 0);
+            let thread_width = self
+                .pm6_h4_hh_pipeline
+                .thread_execution_width()
+                .min(u64::from(molecule_count))
+                .max(1);
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: u64::from(molecule_count),
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: thread_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        Ok(MetalPm6H4HhDispatch {
+            corrections_ev: read_buffer(&output_buffer, molecules.len(), "PM6 H4/HH correction")?,
             gpu_time_seconds: gpu_time,
         })
     }
@@ -2027,12 +2140,18 @@ impl MetalHost {
             for right_index in (left_index + 1)..molecule.atoms.len() {
                 let left_atom = &molecule.atoms[left_index];
                 let right_atom = &molecule.atoms[right_index];
-                let left = semiempirical_parameters(molecule.method, left_atom.atomic_number).ok_or_else(|| {
-                    MetalRuntimeError::Dispatch("RM1 pair has an unsupported left element".into())
-                })?;
-                let right = semiempirical_parameters(molecule.method, right_atom.atomic_number).ok_or_else(|| {
-                    MetalRuntimeError::Dispatch("RM1 pair has an unsupported right element".into())
-                })?;
+                let left = semiempirical_parameters(molecule.method, left_atom.atomic_number)
+                    .ok_or_else(|| {
+                        MetalRuntimeError::Dispatch(
+                            "RM1 pair has an unsupported left element".into(),
+                        )
+                    })?;
+                let right = semiempirical_parameters(molecule.method, right_atom.atomic_number)
+                    .ok_or_else(|| {
+                        MetalRuntimeError::Dispatch(
+                            "RM1 pair has an unsupported right element".into(),
+                        )
+                    })?;
                 let delta = [
                     right_atom.position_angstrom[0] - left_atom.position_angstrom[0],
                     right_atom.position_angstrom[1] - left_atom.position_angstrom[1],

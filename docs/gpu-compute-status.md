@@ -430,7 +430,7 @@ separate product increments.
   Each method writes to its own Grid columns so runs do not overwrite another
   method's electronic, nuclear, and total energies, SCF status/iterations, or
   JSON atomic charges. The frozen Grid lease is parsed without Python/MLX.
-  Runtime v14 contracts the dominant
+  Runtime v15 contracts the dominant
   two-center Coulomb/exchange Fock contribution on Metal for every SCF
   iteration and diagonalizes matrices through order 32 with a batched Metal
   Jacobi kernel. It also generates all compact H-H, heavy-H, and 22-term
@@ -441,24 +441,27 @@ separate product increments.
   reports `nativeMetalScfHybrid` only after at least one verified GPU dispatch.
   SCF orchestration and adaptive float64 polishing remain CPU. Unavailable
   Metal or all-invalid input remains `nativeCpuReference`.
-- The verified v14 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
+- The verified v15 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
   Fock-matrix element and accumulates pair tensors in deterministic order with
   no atomics. It adds `burrete_rm1_symmetric_eigen_v1`, with one threadgroup per
   admitted matrix. It adds `burrete_rm1_pair_rotate_v1`, with one thread per
-  H-H, heavy-H, or heavy-heavy atom pair. The package binds twelve sources,
-  twelve contracts, twelve AIR files, and sixteen entrypoints. Startup and end-to-end explicit-water
-  KATs passed on
+  H-H, heavy-H, or heavy-heavy atom pair. It also adds the batched
+  `burrete_pm6_h4_hh_v1` correction kernel, with one independent molecule per
+  GPU thread and mandatory float64 parity for both output terms. The package
+  binds thirteen sources, thirteen contracts, thirteen AIR files, and seventeen
+  entrypoints. Startup, two-molecule H4/HH, and end-to-end explicit-water KATs passed on
   `Apple M2 Pro` (`registryId=0x1000003c0`, unified memory); the tested
-  `native-compute.v14.metallib` SHA-256 is
-  `8ac75d3f5738856cffbee8f1ed32221eb3ed7a6d80821672de2128aab9323a3d`.
+  `native-compute.v15.metallib` SHA-256 is
+  `d4f2c96ea8ba510f3622174c479b4201e945f7e40ca428816353a3cd8abed723`.
 - The native closed-shell NDDO oracle now has separate AM1, PM3, PM6_SP, and
   AM1* CHNO parameter packs instead of method aliases. PM6-family nuclear
   repulsion uses its distinct PWCCT equation and frozen CHNO pair table. At the
   pinned mlxmolkit commit, explicit-water total energies and oxygen charges
   match all four upstream method paths within `1e-4 eV` and `1e-5 e`.
-  This is an experimental organic-domain slice only: PM6/PM6_D d orbitals,
-  broader element tables, D3/H4/HH corrections, and Grid method selection are
-  still gated.
+  This is an experimental organic-domain slice only. Grid method selection is
+  implemented for the five parity-gated methods, and H4/HH have CPU and Metal
+  reference paths. PM6/PM6_D d orbitals, broader element tables, D3 table
+  ingestion, and production PM6-D3H4 composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
