@@ -424,6 +424,13 @@ separate product increments.
   formal charges are the only charge source in this slice, so neutral inputs
   report electrostatic similarity as unavailable rather than inventing a GPU
   result.
+- The desktop Grid now also exposes `RM1 energy & charges` for 1--256 selected
+  molecules with explicit coordinates. The frozen Grid lease is parsed without
+  Python/MLX, evaluated by the native bounded RM1 reference implementation, and
+  written back as electronic, nuclear, and total energies, SCF status and
+  iterations, and JSON atomic charges. This stage is deliberately reported as
+  `nativeCpuReference`; it does not claim Metal execution before the integral,
+  Fock, and eigensolver kernels are ported and parity-gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
@@ -469,8 +476,8 @@ fixed order below:
    population-charge contract plus verified RM1 core-core energy and sp-basis
    multipole parameters plus complete 22-term pair integrals and molecular-frame
    rotation, first-/second-row overlap, and end-to-end H/C/N/O/F RM1 SCF energies
-   and charges plus complete qn1-5 sp overlap; next add Grid execution, Metal
-   contraction, and remaining parameter sets method by method behind independent
+   and charges plus complete qn1-5 sp overlap and native Grid execution/writeback;
+   next add Metal contraction and remaining parameter sets method by method behind independent
    known-answer and external parity gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.

@@ -4,6 +4,7 @@ description = "Allows trusted Burrete desktop windows to inspect and control dur
 commands.allow = [
   "compute_capabilities",
   "compute_align_grid_poses",
+  "compute_evaluate_grid_semiempirical",
   "compute_submit_job",
   "compute_begin_conformer_submission",
   "compute_submit_conformer_chunk",

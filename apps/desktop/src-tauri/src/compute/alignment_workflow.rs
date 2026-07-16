@@ -58,9 +58,9 @@ pub(crate) struct GridAlignmentResult {
 }
 
 #[derive(Clone, Debug)]
-struct ParsedMolfile {
-    atoms: Vec<AlignmentAtom>,
-    symbols: Vec<String>,
+pub(super) struct ParsedMolfile {
+    pub(super) atoms: Vec<AlignmentAtom>,
+    pub(super) symbols: Vec<String>,
     lines: Vec<String>,
     layout: MolfileLayout,
 }
@@ -223,7 +223,7 @@ fn parse_row(row: &GridAlignmentSourceRow) -> ComputeResult<ParsedMolfile> {
         .map_err(|message| ComputeCoordinatorError::Validation(format!("{}: {message}", row.name)))
 }
 
-fn parse_molfile(text: &str) -> Result<ParsedMolfile, String> {
+pub(super) fn parse_molfile(text: &str) -> Result<ParsedMolfile, String> {
     let lines = text.lines().map(str::to_owned).collect::<Vec<_>>();
     if lines.len() < 4 {
         return Err("molfile is truncated".into());

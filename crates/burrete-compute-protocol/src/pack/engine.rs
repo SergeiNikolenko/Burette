@@ -87,6 +87,11 @@ impl EnginePackManifest {
                     "derived similarity analyses do not own EnginePacks".into(),
                 ))
             }
+            WorkflowTemplateId::SemiempiricalV1 => {
+                return Err(ProtocolError::Validation(
+                    "semiempirical.v1 Grid analyses do not use this EnginePack schema".into(),
+                ))
+            }
         }
         self.layout.reject_file_path(
             &self.molecular_snapshot.manifest.relative_path,

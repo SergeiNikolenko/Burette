@@ -471,6 +471,7 @@ impl ExecutionPlan {
             WorkflowTemplateId::ClusterV1 => &[2],
             WorkflowTemplateId::ConformerV1 => &[2, 3],
             WorkflowTemplateId::SimilaritySearchV1 => &[],
+            WorkflowTemplateId::SemiempiricalV1 => &[],
         }
     }
 

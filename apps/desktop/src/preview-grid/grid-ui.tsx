@@ -27,6 +27,8 @@ type GridControlProps = {
   rendererSwitch: boolean;
   generating3d: boolean;
   aligningPoses: boolean;
+  evaluatingSemiempirical: boolean;
+  semiempiricalEnabled: boolean;
   conformerVariant: "DG" | "KDG" | "ETDG" | "ETDGv2" | "ETKDG" | "ETKDGv2" | "ETKDGv3" | "srETKDGv3";
   mmffVariant: "MMFF94" | "MMFF94s";
   clusterEnabled: boolean;
@@ -60,6 +62,7 @@ type GridControlProps = {
   onXyzrenderPresetChange: (value: string) => void;
   onOpenKetcher: () => void;
   onAlignSelectedPoses: () => void;
+  onEvaluateSemiempirical: () => void;
   onGenerate3D: () => void;
   onOptimizeGeometry: () => void;
   onConformerVariantChange: (value: GridControlProps["conformerVariant"]) => void;
@@ -329,6 +332,19 @@ function SelectedOpenActions(props: GridControlProps) {
         Open in Ketcher
         <ControlTooltip label="Open selected molecule in Ketcher" />
       </button>
+      {props.semiempiricalEnabled ? (
+        <button
+          id="calculate-rm1-selected"
+          className="buret-toggle-button"
+          type="button"
+          disabled={props.evaluatingSemiempirical}
+          aria-busy={props.evaluatingSemiempirical ? "true" : "false"}
+          onClick={props.onEvaluateSemiempirical}
+        >
+          {props.evaluatingSemiempirical ? "Calculating..." : "RM1 energy & charges"}
+          <ControlTooltip label="Calculate native RM1 energies and atomic charges and write them to Grid" />
+        </button>
+      ) : null}
       <button
         id="align-selected-poses"
         className="buret-toggle-button"
