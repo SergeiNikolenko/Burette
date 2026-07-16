@@ -43,7 +43,8 @@ pub use distance_optimizer::{
 };
 pub use etk_geometry::{
     evaluate_etk_geometry, validate_etk_geometry_constraints, EtkDistanceConstraint,
-    EtkGeometryError, EtkGeometryEvaluation, EtkImproperConstraint, EtkTorsionConstraint,
+    EtkGeometryError, EtkGeometryEvaluation, EtkGeometryTerms, EtkImproperConstraint,
+    EtkTorsionConstraint,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};

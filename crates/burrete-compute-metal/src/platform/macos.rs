@@ -3,8 +3,8 @@ use std::{ffi::c_void, mem::size_of_val};
 use burrete_compute_core::{
     validate_etk_geometry_constraints, validate_stereo_constraints, ChiralVolumeConstraint,
     DistanceConstraint, DistanceGeometryOptimizationOptions, EtkDistanceConstraint,
-    EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
-    TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
+    EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
+    GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use metal::{
@@ -108,6 +108,23 @@ struct ConformerEtkBatchV1 {
     reserved2: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ConformerEtkOptimizeConfigV1 {
+    atom_count: u32,
+    conformer_count: u32,
+    torsion_count: u32,
+    improper_count: u32,
+    distance_count: u32,
+    max_iterations: u32,
+    history_size: u32,
+    max_line_search_steps: u32,
+    gradient_tolerance: f32,
+    relative_step_tolerance: f32,
+    armijo_coefficient: f32,
+    max_step_factor: f32,
+}
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
@@ -120,6 +137,7 @@ pub(crate) struct MetalHost {
     conformer_optimize_pipeline: ComputePipelineState,
     conformer_stereo_pipeline: ComputePipelineState,
     conformer_etk_pipeline: ComputePipelineState,
+    conformer_etk_optimize_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -160,6 +178,8 @@ impl MetalHost {
         let conformer_stereo_pipeline =
             pipeline(&device, library, "burrete_conformer_stereo_validate_v1")?;
         let conformer_etk_pipeline = pipeline(&device, library, "burrete_conformer_etk_v1")?;
+        let conformer_etk_optimize_pipeline =
+            pipeline(&device, library, "burrete_conformer_etk_optimize_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -171,6 +191,7 @@ impl MetalHost {
             conformer_optimize_pipeline,
             conformer_stereo_pipeline,
             conformer_etk_pipeline,
+            conformer_etk_optimize_pipeline,
         })
     }
 
@@ -1102,6 +1123,212 @@ impl MetalHost {
         Ok(MetalEtkDispatch {
             atom_energies: read_buffer(&energy_buffer, positions.len(), "ETK atom energy")?,
             gradients: read_buffer(&gradient_buffer, positions.len(), "ETK gradient")?,
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
+    pub(crate) fn optimize_etk_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        terms: EtkGeometryTerms<'_>,
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalDistanceOptimizationDispatch, MetalRuntimeError> {
+        let EtkGeometryTerms {
+            torsions,
+            impropers,
+            distances,
+        } = terms;
+        let options = options
+            .validate()
+            .map_err(|error| MetalRuntimeError::ResourceLimit(error.to_string()))?;
+        if atom_count == 0
+            || positions.is_empty()
+            || !positions.len().is_multiple_of(atom_count as usize)
+        {
+            return resource_limit("ETK optimization requires complete non-empty conformers");
+        }
+        if positions.iter().flatten().any(|value| !value.is_finite()) {
+            return Err(MetalRuntimeError::Dispatch(
+                "ETK optimization positions must be finite".into(),
+            ));
+        }
+        validate_etk_geometry_constraints(atom_count as usize, torsions, impropers, distances)
+            .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
+        let conformer_count =
+            u32::try_from(positions.len() / atom_count as usize).map_err(|_| {
+                MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into())
+            })?;
+        let torsion_count = u32::try_from(torsions.len())
+            .map_err(|_| MetalRuntimeError::ResourceLimit("torsion count exceeds uint32".into()))?;
+        let improper_count = u32::try_from(impropers.len()).map_err(|_| {
+            MetalRuntimeError::ResourceLimit("improper count exceeds uint32".into())
+        })?;
+        let distance_count = u32::try_from(distances.len()).map_err(|_| {
+            MetalRuntimeError::ResourceLimit("ETK distance count exceeds uint32".into())
+        })?;
+        let item_count = u64::try_from(positions.len()).map_err(|_| memory_overflow())?;
+        let history_count = item_count
+            .checked_mul(u64::from(options.history_size))
+            .ok_or_else(memory_overflow)?;
+        let scalar_history_count = u64::from(conformer_count)
+            .checked_mul(u64::from(options.history_size))
+            .ok_or_else(memory_overflow)?;
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(48)
+            .and_then(|bytes| bytes.checked_add(u64::from(torsion_count).max(1).checked_mul(62)?))
+            .and_then(|bytes| bytes.checked_add(u64::from(improper_count).max(1).checked_mul(20)?))
+            .and_then(|bytes| bytes.checked_add(u64::from(distance_count).max(1).checked_mul(20)?))
+            .and_then(|bytes| bytes.checked_add(item_count.checked_mul(112)?))
+            .and_then(|bytes| bytes.checked_add(history_count.checked_mul(48)?))
+            .and_then(|bytes| bytes.checked_add(scalar_history_count.checked_mul(12)?))
+            .and_then(|bytes| bytes.checked_add(u64::from(conformer_count).checked_mul(32)?))
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "ETK optimization requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+        let item_len = usize::try_from(item_count).map_err(|_| memory_overflow())?;
+        let history_len = usize::try_from(history_count).map_err(|_| memory_overflow())?;
+        let scalar_history_len =
+            usize::try_from(scalar_history_count).map_err(|_| memory_overflow())?;
+        let conformer_len = conformer_count as usize;
+        let mut torsion_atoms = torsions.iter().map(|term| term.atoms).collect::<Vec<_>>();
+        let mut torsion_coefficients = torsions
+            .iter()
+            .map(|term| term.coefficients)
+            .collect::<Vec<_>>();
+        let mut torsion_signs = torsions.iter().map(|term| term.signs).collect::<Vec<_>>();
+        let mut improper_atoms = impropers.iter().map(|term| term.atoms).collect::<Vec<_>>();
+        let mut improper_weights = impropers.iter().map(|term| term.weight).collect::<Vec<_>>();
+        let mut distance_atoms = distances.iter().map(|term| term.atoms).collect::<Vec<_>>();
+        let mut distance_bounds = distances
+            .iter()
+            .map(|term| [term.lower, term.upper])
+            .collect::<Vec<_>>();
+        let mut distance_weights = distances.iter().map(|term| term.weight).collect::<Vec<_>>();
+        if torsion_atoms.is_empty() {
+            torsion_atoms.push([0; 4]);
+            torsion_coefficients.push([0.0; 6]);
+            torsion_signs.push([0; 6]);
+        }
+        if improper_atoms.is_empty() {
+            improper_atoms.push([0; 4]);
+            improper_weights.push(0.0);
+        }
+        if distance_atoms.is_empty() {
+            distance_atoms.push([0; 2]);
+            distance_bounds.push([0.0; 2]);
+            distance_weights.push(0.0);
+        }
+        let input_buffers = [
+            buffer_with_slice(&self.device, positions),
+            buffer_with_slice(&self.device, &torsion_atoms),
+            buffer_with_slice(&self.device, &torsion_coefficients),
+            buffer_with_slice(&self.device, &torsion_signs),
+            buffer_with_slice(&self.device, &improper_atoms),
+            buffer_with_slice(&self.device, &improper_weights),
+            buffer_with_slice(&self.device, &distance_atoms),
+            buffer_with_slice(&self.device, &distance_bounds),
+            buffer_with_slice(&self.device, &distance_weights),
+        ];
+        let gradient_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let direction_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let old_position_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let old_gradient_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let history_step_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; history_len]);
+        let history_gradient_buffer =
+            buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; history_len]);
+        let inverse_curvature_buffer =
+            buffer_with_slice(&self.device, &vec![0.0_f32; scalar_history_len]);
+        let alpha_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; scalar_history_len]);
+        let energy_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; conformer_len]);
+        let gradient_max_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; conformer_len]);
+        let iteration_buffer = buffer_with_slice(&self.device, &vec![0_u32; conformer_len]);
+        let status_buffer = buffer_with_slice(&self.device, &vec![3_u32; conformer_len]);
+        let config = ConformerEtkOptimizeConfigV1 {
+            atom_count,
+            conformer_count,
+            torsion_count,
+            improper_count,
+            distance_count,
+            max_iterations: options.max_iterations,
+            history_size: u32::from(options.history_size),
+            max_line_search_steps: u32::from(options.max_line_search_steps),
+            gradient_tolerance: options.gradient_tolerance,
+            relative_step_tolerance: options.relative_step_tolerance,
+            armijo_coefficient: options.armijo_coefficient,
+            max_step_factor: options.max_step_factor,
+        };
+        if self
+            .conformer_etk_optimize_pipeline
+            .max_total_threads_per_threadgroup()
+            < 32
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal ETK optimizer cannot dispatch the required 32-thread group".into(),
+            ));
+        }
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.conformer_etk_optimize_pipeline);
+            for (index, buffer) in input_buffers.iter().enumerate() {
+                encoder.set_buffer(index as u64, Some(buffer), 0);
+            }
+            encoder.set_bytes(
+                9,
+                size_of_val(&config) as u64,
+                (&config as *const ConformerEtkOptimizeConfigV1).cast(),
+            );
+            for (index, buffer) in [
+                &gradient_buffer,
+                &direction_buffer,
+                &old_position_buffer,
+                &old_gradient_buffer,
+                &history_step_buffer,
+                &history_gradient_buffer,
+                &inverse_curvature_buffer,
+                &alpha_buffer,
+                &energy_buffer,
+                &gradient_max_buffer,
+                &iteration_buffer,
+                &status_buffer,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                encoder.set_buffer((index + 10) as u64, Some(buffer), 0);
+            }
+            encoder.dispatch_thread_groups(
+                MTLSize {
+                    width: u64::from(conformer_count),
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: 32,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        Ok(MetalDistanceOptimizationDispatch {
+            positions: read_buffer(&input_buffers[0], item_len, "ETK optimized position")?,
+            energies: read_buffer(&energy_buffer, conformer_len, "ETK optimized energy")?,
+            scaled_gradient_maxima: read_buffer(
+                &gradient_max_buffer,
+                conformer_len,
+                "ETK optimized gradient maximum",
+            )?,
+            iterations: read_buffer(&iteration_buffer, conformer_len, "ETK optimizer iteration")?,
+            statuses: read_buffer(&status_buffer, conformer_len, "ETK optimizer status")?,
             gpu_time_seconds: gpu_time,
         })
     }
