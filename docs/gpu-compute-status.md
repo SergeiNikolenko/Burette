@@ -3,9 +3,9 @@
 Status: `cluster.v1`, immutable representative export, and derived exact
 `Find similar` Grid analysis complete at source level; deterministic conformer
 variant/seed/adaptive batching, packaged native RDKit extraction, raw job
-submission, and adaptive CPU/Metal distance-geometry execution implemented;
-ETK/stereo completion, ResultPack publication, UI, production release, and
-scale proof pending
+submission, adaptive CPU/Metal distance-geometry execution, Metal ETK
+refinement, and Metal stereo validation implemented; stereo-aware retry,
+ResultPack publication, UI, production release, and scale proof pending
 
 Updated: 2026-07-16
 
@@ -75,9 +75,8 @@ maps directly to the shared EnginePack arrays. It is separate from renderer
 MinimalLib and has no Python runtime. The worker-only ES module and WASM pair
 are now covered by the vendored asset lock, verified by the native engine
 catalog, and bound to the exact RDKit source revision and BCEX ABI. Broader
-RDKit/upstream fixtures, full DG/ETK energy kernels, durable publication, and UI
-remain incomplete. The paired `conformer.result-pack.v1`
-ABI is defined and
+RDKit/upstream fixtures, durable publication, and UI remain incomplete. The
+paired `conformer.result-pack.v1` ABI is defined and
 strictly validates ragged coordinate offsets, Cartesian positions, molecule and
 conformer identity, embedding status/objective/attempt counts, and the exact
 128-bit seed words used for every generated structure.
@@ -133,14 +132,20 @@ objective for one conformer. It has fixed memory history, capped directions,
 bounded Armijo backtracking, explicit gradient/step convergence, and distinct
 `lineSearchExhausted` and `maxIterations` outcomes. It preserves coordinates
 when line search cannot accept a step and produces identical results across
-repeated runs. This defines the reference behavior for the upcoming fused
-Metal optimizer. Runtime v5 now adds that fused optimizer: one fixed 32-thread
+repeated runs. This defines the reference behavior for the fused Metal
+optimizer. Runtime v5 added that optimizer: one fixed 32-thread
 threadgroup owns each conformer, reuses molecule constraints, evaluates the
 objective and gradient by atom gather without atomics or a pair matrix, and
 performs bounded L-BFGS plus Armijo backtracking entirely inside one Metal
 dispatch. Its public result records the same four explicit convergence outcomes
-as the CPU oracle. Runtime v5 binds all four sources, reviewed contracts, AIR
-files, six entrypoints, the compiler, linker, SDK, and final metallib by hash.
+as the CPU oracle. Runtime v8 additionally binds Metal stereo validation, ETK
+energy and analytic-gradient evaluation, and fused ETK L-BFGS refinement. The
+ETK objective contains CrystalFF Fourier torsions, improper-angle penalties,
+and flat-bottom distance terms. One threadgroup owns one conformer and keeps
+the iterative optimizer on the GPU. The CPU reference uses the same objective
+and bounded optimizer contract. Runtime v8 binds seven sources, seven reviewed
+contracts, AIR files, nine entrypoints, the compiler, linker, SDK, and final
+metallib by hash.
 The runtime now composes seed-based initialization and optimization into one
 verified per-molecule ensemble operation, keeping both numerical stages on
 Metal while sharing constraints across all requested conformers. Its admission
@@ -148,20 +153,21 @@ counts caller inputs, Metal buffers, returned host vectors, and transient
 history-buffer materialization as simultaneous Apple unified-memory residents;
 the adaptive scheduler uses the same seven position-sized buffers and
 three-way transient history peak.
-This proves the iterative DG distance-bound optimizer, not complete DG/ETK
-embedding or an end-to-end conformer capability.
+This proves the iterative DG distance-bound optimizer, ETK refinement, and
+stereo evaluation primitives. It does not yet prove stereo-aware retry,
+artifact publication, or the user-visible conformer capability.
 
 The durable executor now consumes the admitted EnginePack without an `N x N`
 allocation, rebuilds the exact adaptive `molecule x conformer` schedule, derives
 each seed from immutable job/molecule/variant/conformer/retry identity, and
-executes initialization plus distance L-BFGS on native Metal. Non-converged
-conformers are retried up to the request limit with a new deterministic retry
-seed. It records ragged offsets, positions, energy, attempt count, status, final
-seed, host time, and actual command-buffer GPU time. The same executor has a
-deterministic CPU oracle. `gpuPreferred` currently admits Metal for distance
-geometry and records an explicit CPU fallback for stereo; `gpuRequired` is
-rejected until the separate Metal stereo kernel is packaged, preventing a false
-all-GPU claim.
+executes initialization, distance L-BFGS, and ETK L-BFGS on native Metal.
+Non-converged distance or ETK results are retried up to the request limit with
+a new deterministic retry seed. It records ragged offsets, refined positions,
+both energies, attempt count, both statuses, final seed, and actual
+command-buffer GPU time. The same executor has a deterministic CPU oracle.
+Metal stereo validation is a subsequent durable job stage. `gpuRequired`
+remains rejected until failed stereo validation feeds the retry loop and the
+result is published, preventing a false completed-GPU claim.
 
 The durable `JobSnapshot` request is no longer cluster-only. An untagged typed
 union accepts normalized `cluster.v1` and `conformer.v1` requests while keeping
@@ -251,7 +257,7 @@ separate product increments.
 | Fixed request/job/artifact contracts | `crates/burrete-compute-protocol/` |
 | Exact fingerprint ABI, CPU Tanimoto/CSR, Butina | `crates/burrete-compute-core/` |
 | Metal runtime, tiling, dispatch, GPU timings | `crates/burrete-compute-metal/` |
-| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal`, `compute/metal/conformer-optimize.v1.metal` |
+| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal`, `compute/metal/conformer-optimize.v1.metal`, `compute/metal/conformer-stereo.v1.metal`, `compute/metal/conformer-etk.v1.metal`, `compute/metal/conformer-etk-optimize.v1.metal` |
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
 | Conformer preflight admission and queued snapshot | `apps/desktop/src-tauri/src/compute/conformer_plan.rs`, `job_factory.rs` |
@@ -334,6 +340,13 @@ separate product increments.
   (`registryId=0x1000003c0`, unified memory): two conformers completed through
   the verified v5 runtime with `gpuTimeMs=4` and metallib SHA-256
   `52e15c9544f0b33cbfd62379ac96d88f75983b1187cc570fd773aeff93c527aa`.
+- The verified v8 runtime passed all packaged startup known-answer tests and an
+  executor smoke on the same `Apple M2 Pro`. Two four-atom conformers with
+  non-empty torsion, improper, and ETK distance terms completed through Metal
+  initialization, DG L-BFGS, ETK L-BFGS, and stereo validation. The combined
+  DG/ETK GPU time was `6 ms`; stereo validation was `1 ms`. The tested
+  `native-compute.v8.metallib` SHA-256 is
+  `fd9c0d16d1cf2affc6020026e8f2718dbe1b5ac5a563c2a5f9bb4f0858d5d79a`.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.

@@ -1,10 +1,11 @@
 use std::num::NonZeroU32;
 
 use burrete_compute_core::{
-    initialize_conformer_positions, optimize_distance_geometry, plan_conformer_batches,
-    ConformerDistanceEngine, ConformerEnginePackArrays, ConformerMoleculeWork,
-    ConformerSchedulingOptions, ConformerWorkIdentity, DistanceConstraint,
-    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus,
+    initialize_conformer_positions, optimize_distance_geometry, optimize_etk_geometry,
+    plan_conformer_batches, ConformerDistanceEngine, ConformerEnginePackArrays,
+    ConformerMoleculeWork, ConformerSchedulingOptions, ConformerWorkIdentity, DistanceConstraint,
+    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
+    EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
 };
 use burrete_compute_metal::{MetalDistanceEmbedding, MetalTanimotoRuntime};
 use burrete_compute_protocol::{Backend, ConformerV1SubmitRequest};
@@ -29,6 +30,8 @@ pub(crate) struct ConformerDistanceComputation {
     pub(crate) embedding_attempt_counts: Vec<u16>,
     pub(crate) embedding_energies: Vec<f32>,
     pub(crate) embedding_statuses: Vec<u8>,
+    pub(crate) etk_energies: Vec<f32>,
+    pub(crate) etk_statuses: Vec<u8>,
     pub(crate) positions: Vec<[f32; 3]>,
     pub(crate) seed_words: Vec<[u32; 4]>,
     pub(crate) gpu_time_ms: Option<u64>,
@@ -199,11 +202,15 @@ pub(crate) fn execute_conformer_distance_geometry(
                 .map_err(|error| protocol(error.to_string()))?
                 .expect("scheduler contains only valid records");
             let constraints = molecule.local_distance_constraints();
+            let etk = local_etk_terms(&output.deferred, record_index as usize)?;
             let identity = work[work_index];
             let count = span.conformer_count.get() as usize;
             let mut final_attempts = vec![0_u16; count];
             let mut final_energies = vec![0.0_f32; count];
             let mut final_statuses = vec![DistanceGeometryOptimizationStatus::MaxIterations; count];
+            let mut final_etk_energies = vec![0.0_f32; count];
+            let mut final_etk_statuses =
+                vec![DistanceGeometryOptimizationStatus::MaxIterations; count];
             let mut final_positions = vec![Vec::<[f32; 4]>::new(); count];
             let mut final_seeds = vec![[0_u32; 4]; count];
             let mut pending = (0..count).collect::<Vec<_>>();
@@ -225,7 +232,7 @@ pub(crate) fn execute_conformer_distance_geometry(
                         .seed_words()
                     })
                     .collect::<Vec<_>>();
-                let attempt = embed(
+                let mut attempt = embed(
                     backend,
                     metal,
                     &seeds,
@@ -234,8 +241,26 @@ pub(crate) fn execute_conformer_distance_geometry(
                     options,
                     working_memory,
                 )?;
+                let refinement = refine_etk(
+                    backend,
+                    metal,
+                    &attempt.positions,
+                    molecule.atomic_numbers.len() as u32,
+                    etk.as_terms(),
+                    options,
+                    working_memory,
+                )?;
+                let expected_positions = pending.len() * molecule.atomic_numbers.len();
+                if refinement.positions.len() != expected_positions
+                    || refinement.energies.len() != pending.len()
+                    || refinement.statuses.len() != pending.len()
+                {
+                    return Err(protocol("conformer ETK result arrays are inconsistent"));
+                }
+                attempt.positions = refinement.positions;
                 total_gpu_time = total_gpu_time
                     .checked_add(attempt.gpu_time_ms.unwrap_or(0))
+                    .and_then(|time| time.checked_add(refinement.gpu_time_ms.unwrap_or(0)))
                     .ok_or_else(|| protocol("conformer GPU time overflowed"))?;
                 let mut retry = Vec::new();
                 for (attempt_index, local) in pending.into_iter().enumerate() {
@@ -245,9 +270,12 @@ pub(crate) fn execute_conformer_distance_geometry(
                     final_attempts[local] = retry_index + 1;
                     final_energies[local] = attempt.energies[attempt_index];
                     final_statuses[local] = attempt.statuses[attempt_index];
+                    final_etk_energies[local] = refinement.energies[attempt_index];
+                    final_etk_statuses[local] = refinement.statuses[attempt_index];
                     final_positions[local] = attempt.positions[start..end].to_vec();
                     final_seeds[local] = seeds[attempt_index];
-                    if !converged(attempt.statuses[attempt_index])
+                    if (!converged(attempt.statuses[attempt_index])
+                        || !converged(refinement.statuses[attempt_index]))
                         && retry_index + 1 < request.parameters.max_attempts_per_conformer
                     {
                         retry.push(local);
@@ -262,9 +290,13 @@ pub(crate) fn execute_conformer_distance_geometry(
                     .push(span.first_conformer + local as u32);
                 output.embedding_attempt_counts.push(final_attempts[local]);
                 output.embedding_energies.push(final_energies[local]);
+                output.etk_energies.push(final_etk_energies[local]);
                 output
                     .embedding_statuses
                     .push(status_tag(final_statuses[local]));
+                output
+                    .etk_statuses
+                    .push(status_tag(final_etk_statuses[local]));
                 output.seed_words.push(final_seeds[local]);
                 output.positions.extend(
                     final_positions[local]
@@ -283,6 +315,29 @@ pub(crate) fn execute_conformer_distance_geometry(
 }
 
 struct AttemptBatch {
+    positions: Vec<[f32; 4]>,
+    energies: Vec<f32>,
+    statuses: Vec<DistanceGeometryOptimizationStatus>,
+    gpu_time_ms: Option<u64>,
+}
+
+struct LocalEtkTerms {
+    torsions: Vec<EtkTorsionConstraint>,
+    impropers: Vec<EtkImproperConstraint>,
+    distances: Vec<EtkDistanceConstraint>,
+}
+
+impl LocalEtkTerms {
+    fn as_terms(&self) -> EtkGeometryTerms<'_> {
+        EtkGeometryTerms {
+            torsions: &self.torsions,
+            impropers: &self.impropers,
+            distances: &self.distances,
+        }
+    }
+}
+
+struct RefinementBatch {
     positions: Vec<[f32; 4]>,
     energies: Vec<f32>,
     statuses: Vec<DistanceGeometryOptimizationStatus>,
@@ -349,6 +404,132 @@ fn embed(
     }
 }
 
+fn refine_etk(
+    backend: Backend,
+    metal: Option<&MetalTanimotoRuntime>,
+    positions: &[[f32; 4]],
+    atom_count: u32,
+    terms: EtkGeometryTerms<'_>,
+    options: DistanceGeometryOptimizationOptions,
+    max_memory_bytes: u64,
+) -> ComputeResult<RefinementBatch> {
+    if terms.torsions.is_empty() && terms.impropers.is_empty() && terms.distances.is_empty() {
+        let conformer_count = positions.len() / atom_count as usize;
+        return Ok(RefinementBatch {
+            positions: positions.to_vec(),
+            energies: vec![0.0; conformer_count],
+            statuses: vec![DistanceGeometryOptimizationStatus::ConvergedGradient; conformer_count],
+            gpu_time_ms: (backend == Backend::NativeMetal).then_some(0),
+        });
+    }
+    match backend {
+        Backend::NativeMetal => {
+            let runtime =
+                metal.ok_or_else(|| unavailable("admitted Metal runtime is unavailable"))?;
+            let optimized = runtime
+                .optimize_etk_profiled(positions, atom_count, terms, options, max_memory_bytes)
+                .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+            Ok(RefinementBatch {
+                positions: optimized.positions,
+                energies: optimized.energies,
+                statuses: optimized.statuses,
+                gpu_time_ms: Some(optimized.gpu_time_ms),
+            })
+        }
+        Backend::ReferenceCpu => {
+            let atom_count = atom_count as usize;
+            let mut refined_positions = Vec::with_capacity(positions.len());
+            let mut energies = Vec::with_capacity(positions.len() / atom_count);
+            let mut statuses = Vec::with_capacity(positions.len() / atom_count);
+            for conformer in positions.chunks_exact(atom_count) {
+                let optimized = optimize_etk_geometry(conformer, terms, options)
+                    .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+                refined_positions.extend(optimized.positions);
+                energies.push(optimized.energy);
+                statuses.push(optimized.status);
+            }
+            Ok(RefinementBatch {
+                positions: refined_positions,
+                energies,
+                statuses,
+                gpu_time_ms: None,
+            })
+        }
+        other => Err(protocol(format!(
+            "unsupported conformer ETK backend: {other:?}"
+        ))),
+    }
+}
+
+fn local_etk_terms(
+    deferred: &ConformerDeferredConstraints,
+    record: usize,
+) -> ComputeResult<LocalEtkTerms> {
+    let atom_start = *deferred
+        .molecule_atom_starts
+        .get(record)
+        .ok_or_else(|| protocol("conformer molecule atom start is missing"))?;
+    let torsions = term_range(&deferred.torsion_term_starts, record, "torsion")?
+        .map(|term| {
+            Ok(EtkTorsionConstraint {
+                atoms: local_indices(deferred.torsion_atom_quads[term], atom_start)?,
+                coefficients: deferred.torsion_coefficients[term],
+                signs: deferred.torsion_signs[term],
+            })
+        })
+        .collect::<ComputeResult<Vec<_>>>()?;
+    let impropers = term_range(&deferred.improper_term_starts, record, "improper")?
+        .map(|term| {
+            Ok(EtkImproperConstraint {
+                atoms: local_indices(deferred.improper_atom_quads[term], atom_start)?,
+                weight: deferred.improper_weights[term],
+            })
+        })
+        .collect::<ComputeResult<Vec<_>>>()?;
+    let distances = term_range(&deferred.etk_distance_term_starts, record, "ETK distance")?
+        .map(|term| {
+            if deferred.etk_distance_kinds[term] == 0 {
+                return Err(protocol("conformer ETK distance kind is not canonical"));
+            }
+            Ok(EtkDistanceConstraint {
+                atoms: local_indices(deferred.etk_distance_atom_pairs[term], atom_start)?,
+                lower: deferred.etk_distance_bounds[term][0],
+                upper: deferred.etk_distance_bounds[term][1],
+                weight: deferred.etk_distance_weights[term],
+            })
+        })
+        .collect::<ComputeResult<Vec<_>>>()?;
+    Ok(LocalEtkTerms {
+        torsions,
+        impropers,
+        distances,
+    })
+}
+
+fn term_range(starts: &[u64], record: usize, label: &str) -> ComputeResult<std::ops::Range<usize>> {
+    let start = *starts
+        .get(record)
+        .ok_or_else(|| protocol(format!("conformer {label} term start is missing")))?;
+    let end = *starts
+        .get(record + 1)
+        .ok_or_else(|| protocol(format!("conformer {label} term end is missing")))?;
+    Ok(start as usize..end as usize)
+}
+
+fn local_indices<const N: usize>(indices: [u32; N], atom_start: u64) -> ComputeResult<[u32; N]> {
+    indices
+        .map(|index| {
+            u64::from(index)
+                .checked_sub(atom_start)
+                .and_then(|index| u32::try_from(index).ok())
+                .ok_or_else(|| protocol("conformer ETK atom index precedes its molecule"))
+        })
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?
+        .try_into()
+        .map_err(|_| protocol("conformer ETK atom index width changed"))
+}
+
 impl ConformerDistanceComputation {
     pub(crate) fn conformer_count(&self) -> usize {
         self.conformer_molecule_indices.len()
@@ -373,6 +554,8 @@ impl ConformerDistanceComputation {
             embedding_attempt_counts: Vec::new(),
             embedding_energies: Vec::new(),
             embedding_statuses: Vec::new(),
+            etk_energies: Vec::new(),
+            etk_statuses: Vec::new(),
             positions: Vec::new(),
             seed_words: Vec::new(),
             gpu_time_ms: None,
@@ -403,6 +586,14 @@ impl ConformerDistanceComputation {
             .try_reserve_exact(conformers)
             .map_err(|_| unavailable("cannot allocate conformer statuses"))?;
         result
+            .etk_energies
+            .try_reserve_exact(conformers)
+            .map_err(|_| unavailable("cannot allocate conformer ETK energies"))?;
+        result
+            .etk_statuses
+            .try_reserve_exact(conformers)
+            .map_err(|_| unavailable("cannot allocate conformer ETK statuses"))?;
+        result
             .seed_words
             .try_reserve_exact(conformers)
             .map_err(|_| unavailable("cannot allocate conformer seeds"))?;
@@ -421,6 +612,8 @@ impl ConformerDistanceComputation {
             || self.embedding_attempt_counts.len() != count
             || self.embedding_energies.len() != count
             || self.embedding_statuses.len() != count
+            || self.etk_energies.len() != count
+            || self.etk_statuses.len() != count
             || self.seed_words.len() != count
             || self.conformer_atom_starts.last().copied() != Some(self.positions.len() as u64)
             || self
@@ -432,6 +625,7 @@ impl ConformerDistanceComputation {
                 .embedding_energies
                 .iter()
                 .any(|value| !value.is_finite())
+            || self.etk_energies.iter().any(|value| !value.is_finite())
         {
             return Err(protocol(
                 "conformer distance result arrays are inconsistent",
@@ -539,6 +733,35 @@ mod tests {
     }
 
     #[test]
+    fn reference_executor_applies_etk_refinement_terms() {
+        let mut builder = ConformerEnginePackBuilder::new(
+            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            1024 * 1024,
+        );
+        builder
+            .append_valid(extracted_etk())
+            .expect("valid molecule");
+        let result = execute_conformer_distance_geometry(
+            Uuid::from_u128(9),
+            &request(),
+            builder.finish(1).expect("engine arrays"),
+            &[ConformerMoleculeIdentity {
+                source_record_id: 10,
+                molecule_content_sha256: "11".repeat(32),
+            }],
+            Backend::ReferenceCpu,
+            None,
+        )
+        .expect("reference ETK execution");
+
+        assert_eq!(result.conformer_atom_starts, [0, 4, 8]);
+        assert_eq!(result.etk_energies.len(), 2);
+        assert!(result.etk_energies.iter().all(|energy| energy.is_finite()));
+        assert!(result.etk_statuses.iter().all(|status| *status <= 3));
+        assert_eq!(result.gpu_time_ms, None);
+    }
+
+    #[test]
     #[ignore = "manual real-GPU smoke; set BURRETE_METAL_RUNTIME_ROOT"]
     fn native_executor_dispatches_adaptive_batches_on_the_real_gpu() {
         let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
@@ -550,7 +773,9 @@ mod tests {
             burrete_compute_protocol::ConformerVariant::EtkdgV3,
             1024 * 1024,
         );
-        builder.append_valid(extracted()).expect("valid molecule");
+        builder
+            .append_valid(extracted_etk())
+            .expect("valid molecule");
         let result = execute_conformer_distance_geometry(
             Uuid::from_u128(7),
             &request(),
@@ -567,6 +792,8 @@ mod tests {
         assert_eq!(result.conformer_count(), 2);
         assert!(result.gpu_time_ms.is_some());
         assert!(result.embedding_statuses.iter().all(|status| *status <= 3));
+        assert!(result.etk_statuses.iter().all(|status| *status <= 3));
+        assert!(result.etk_energies.iter().all(|energy| energy.is_finite()));
         let stereo =
             crate::compute::conformer_stereo_executor::execute_conformer_stereo_validation(
                 &result,
@@ -606,6 +833,36 @@ mod tests {
             etk_distance_bounds: Vec::new(),
             etk_distance_kinds: Vec::new(),
             etk_distance_weights: Vec::new(),
+            stereo_atom_quints: Vec::new(),
+            stereo_flags: Vec::new(),
+        }
+    }
+
+    fn extracted_etk() -> ExtractedConformerParameters {
+        ExtractedConformerParameters {
+            variant: burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            atomic_numbers: vec![6, 6, 6, 8],
+            formal_charges: vec![0, 0, 0, 0],
+            distance_atom_pairs: vec![[0, 1], [0, 2], [1, 2], [1, 3], [2, 3]],
+            distance_bounds_squared: vec![
+                [1.0, 2.25],
+                [2.25, 9.0],
+                [1.0, 2.25],
+                [2.25, 9.0],
+                [1.0, 2.25],
+            ],
+            distance_weights: vec![1.0; 5],
+            chiral_atom_quads: Vec::new(),
+            chiral_volume_bounds: Vec::new(),
+            torsion_atom_quads: vec![[0, 1, 2, 3]],
+            torsion_coefficients: vec![[0.8, 0.3, 0.1, 0.0, 0.0, 0.0]],
+            torsion_signs: vec![[1, -1, 1, 0, 0, 0]],
+            improper_atom_quads: vec![[3, 2, 1, 0]],
+            improper_weights: vec![0.2],
+            etk_distance_atom_pairs: vec![[0, 3]],
+            etk_distance_bounds: vec![[1.8, 3.5]],
+            etk_distance_kinds: vec![1],
+            etk_distance_weights: vec![0.5],
             stereo_atom_quints: Vec::new(),
             stereo_flags: Vec::new(),
         }
