@@ -1,9 +1,16 @@
-//! Deterministic CPU reference primitives for `cluster.v1`.
+//! Deterministic CPU reference primitives for native molecular compute.
 //!
 //! This implementation is derived independently from Burrete's published
 //! mathematical and behavioral contracts. It does not copy or adapt source
 //! code from `mlxmolkit` or another clustering package. The CPU path is the
 //! parity oracle for native Metal neighbor generation.
+
+mod conformer_schedule;
+
+pub use conformer_schedule::{
+    plan_conformer_batches, ConformerBatch, ConformerBatchPlan, ConformerMoleculeWork,
+    ConformerScheduleError, ConformerSchedulingOptions, ConformerSpan, ConformerWorkIdentity,
+};
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};
 

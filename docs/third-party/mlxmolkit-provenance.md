@@ -49,7 +49,7 @@ provenance and scientific behavior still require review.
 | `mlxmolkit/tanimoto_blockwise.py` | 100k+ tiling | reference-only; independent Burrete planner shipped | Checked request limits and bounded adaptive tiles; 100k benchmark remains gated |
 | `mlxmolkit/butina.py` | Butina semantics | reference-only; independent Burrete policy shipped | Versioned deterministic tie-breaking; upstream/RDKit corpus parity remains gated |
 | `mlxmolkit/morgan_cpu.py` | Morgan oracle | reference-only | Entire stage is RDKit CPU, not GPU |
-| `mlxmolkit/shared_batch.py` | Shared `N x K` constraints | pending-audit | Make chunks, seeds, retries, and checkpoints durable |
+| `mlxmolkit/shared_batch.py` | Shared `N x K` constraints | reference-only; independent Burrete scheduler shipped | Constraint packing remains pending; Burrete seeds are identity-derived and chunk-invariant |
 | `mlxmolkit/dg_extract.py` | DG bounds/parameters | pending-audit | nvMolKit/RDKit provenance and exception handling |
 | `mlxmolkit/etk_extract.py` | ETK torsions/constraints | pending-audit | Variant-specific activation and RDKit provenance |
 | `mlxmolkit/conformer_metal.py` | DG Metal logic | pending-audit | Seed currently depends on chunk schedule |
@@ -70,12 +70,26 @@ Duplicate or superseded pipelines, Python package/CLI code, examples, training
 experiments, learned models, caches, `.dylib`, `.metallib`, and benchmark output
 are excluded from the production source tree.
 
+The 2026-07-16 conformer audit re-opened the pinned commit and confirmed that
+`shared_batch.py` uses one process-wide NumPy RNG seed, while `dg_extract.py`
+advances a shared RNG as conformers are traversed. That behavior is not safe
+under adaptive rebatching. Burrete therefore implemented its seed identity and
+batch planner independently: the seed domain includes immutable job ID, source
+record ID, molecule-content hash, exact variant, conformer ordinal, and retry
+ordinal. No upstream conformer code was copied in that increment.
+
+The same audit confirmed that the pinned repository still has no root license
+or notice file, `dg_extract.py` names nvMolKit as its reference, and
+`etk_metal.py` describes helper code as unchanged from Shivam Patel's work.
+Those DG/ETK files remain blocked from adaptation until the exact secondary
+revisions and required Apache-2.0/MIT notices are recorded.
+
 ## Burrete adaptation ledger
 
 This table is mandatory for every adapted or translated file. It is currently
-empty because the existing compute protocol, CPU clustering reference, and
-initial Tanimoto Metal contract were independently implemented and explicitly
-do not copy `mlxmolkit` source.
+empty because the existing compute protocol, CPU clustering reference,
+Tanimoto Metal contract, and deterministic conformer scheduler were
+independently implemented and explicitly do not copy `mlxmolkit` source.
 
 | Burrete path | Upstream path | Commit | Contribution | Secondary source/license | Validation |
 | --- | --- | --- | --- | --- | --- |

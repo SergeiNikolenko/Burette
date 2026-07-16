@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 burrete-compute-protocol = { path = "../burrete-compute-protocol" }
+sha2 = "0.10"
 
 [dev-dependencies]
 base64 = "0.22"

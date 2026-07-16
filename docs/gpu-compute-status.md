@@ -1,8 +1,9 @@
 # Native GPU Compute Layer Implementation Status
 
 Status: `cluster.v1`, immutable representative export, and derived exact
-`Find similar` Grid analysis complete at source level; current desktop
-packaging, production release, and scale proof pending
+`Find similar` Grid analysis complete at source level; deterministic conformer
+variant/seed/adaptive-batching foundation started; current desktop packaging,
+production release, and scale proof pending
 
 Updated: 2026-07-16
 
@@ -52,6 +53,15 @@ been copied into this slice: the fingerprint ABI, exact Tanimoto contract,
 Metal kernels, CSR builder, and Butina policy were independently implemented.
 The upstream repository remains an attributed reference and future adaptation
 source subject to the provenance gate.
+
+The next conformer stage now has stable wire identities for all eight requested
+variants and an independent bounded `N x K` batch planner. Its 128-bit seed is
+derived from immutable job, molecule-content, variant, conformer, and retry
+identity, so changing memory pressure or batch size cannot change the random
+stream assigned to a conformer. The planner accounts for the resident
+EnginePack, 4D DG positions, work vectors, L-BFGS history, scalar outputs, and
+headroom before admitting a batch. This is runtime foundation only: native
+DG/ETK parameter extraction, kernels, artifacts, and UI are not yet complete.
 
 ## Product Truth By Surface
 
@@ -174,6 +184,10 @@ separate product increments.
   generated Grid controls. Repository-wide TypeScript checking is currently
   blocked by pre-existing duplicate CodeMirror dependency identities in the
   text-file viewer; the errors do not involve the compute files changed here.
+- All 68 protocol tests and 24 compute-core tests pass after adding the exact
+  eight-variant wire contract, identity-derived seed, adaptive batch coverage,
+  rebatching-invariance, and single-molecule memory rejection checks. Focused
+  protocol/core clippy also passes with warnings denied.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
