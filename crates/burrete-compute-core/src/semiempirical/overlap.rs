@@ -23,9 +23,9 @@ pub fn rm1_sp_overlap(
 ) -> Result<Rm1OverlapMatrix, SemiempiricalError> {
     let qn_left = principal_quantum_number(left.atomic_number);
     let qn_right = principal_quantum_number(right.atomic_number);
-    if qn_left > 2 || qn_right > 2 {
+    if qn_left > 3 || qn_right > 3 {
         return Err(SemiempiricalError::InvalidInput(
-            "RM1 overlap currently supports first- and second-row atoms".into(),
+            "RM1 overlap currently supports principal quantum numbers 1-3".into(),
         ));
     }
     if qn_left < qn_right {
@@ -60,8 +60,16 @@ pub fn rm1_sp_overlap(
         (1, 1) => 2,
         (2, 1) => 3,
         (2, 2) => 4,
+        (3, 1) => 431,
+        (3, 2) => 5,
+        (3, 3) => 6,
         _ => unreachable!(),
     };
+    if matches!(jcall, 5 | 6) {
+        return Err(SemiempiricalError::InvalidInput(
+            "RM1 overlap for two heavy atoms involving the third row is not implemented yet".into(),
+        ));
+    }
     let integrals = |zeta_left: f64, zeta_right: f64| {
         let alpha = 0.5 * distance * (zeta_left + zeta_right);
         let beta = 0.5 * distance * (zeta_left - zeta_right);
@@ -121,6 +129,23 @@ pub fn rm1_sp_overlap(
                     + b_pp[2] * a_pp[0]);
             (ss, ps, sp, sigma, pi)
         }
+        431 => {
+            let ss = right.zeta_s_bohr_inv.powf(1.5)
+                * left.zeta_s_bohr_inv.powf(3.5)
+                * distance.powi(5)
+                * (a_ss[4] * b_ss[0] + 2.0 * b_ss[1] * a_ss[3]
+                    - 2.0 * a_ss[1] * b_ss[3]
+                    - b_ss[4] * a_ss[0])
+                / (10.0_f64.sqrt() * 24.0);
+            let ps = right.zeta_s_bohr_inv.powf(1.5)
+                * left.zeta_p_bohr_inv.powf(3.5)
+                * distance.powi(5)
+                * (a_ps[3] * (b_ps[0] + b_ps[2]) - a_ps[1] * (b_ps[4] + b_ps[2])
+                    + b_ps[1] * (a_ps[2] + a_ps[4])
+                    - b_ps[3] * (a_ps[2] + a_ps[0]))
+                / (8.0 * 30.0_f64.sqrt());
+            (ss, ps, 0.0, 0.0, 0.0)
+        }
         _ => unreachable!(),
     };
 
@@ -135,11 +160,11 @@ pub fn rm1_sp_overlap(
     let columns = usize::from(right.orbital_count);
     let mut values = [0.0; 16];
     values[0] = s_ss;
-    if jcall == 3 {
+    if matches!(jcall, 3 | 431) {
         for k in 0..3 {
             values[(k + 1) * columns] = s_ps * r0[k];
         }
-    } else if jcall == 4 {
+    } else if matches!(jcall, 4..=6) {
         for k in 0..3 {
             values[(k + 1) * columns] = s_ps * r0[k];
             values[k + 1] = -s_sp * r0[k];
@@ -273,9 +298,25 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_period_is_explicit() {
-        assert!(rm1_sp_overlap(
+    fn third_row_hydrogen_matches_oracle_and_higher_period_is_explicit() {
+        let sulfur_hydrogen = rm1_sp_overlap(
             rm1_parameters(16).unwrap(),
+            rm1_parameters(1).unwrap(),
+            [0.0; 3],
+            [0.97, 0.0, 0.93],
+        )
+        .unwrap();
+        let expected = [
+            0.425_317_728_696_987,
+            0.345_070_299_767_074,
+            0.0,
+            0.330_840_596_683_895,
+        ];
+        for (actual, expected) in sulfur_hydrogen.values[..4].iter().zip(expected) {
+            assert!((*actual - expected).abs() < 1.0e-13);
+        }
+        assert!(rm1_sp_overlap(
+            rm1_parameters(35).unwrap(),
             rm1_parameters(1).unwrap(),
             [0.0; 3],
             [1.0, 0.0, 0.0]
