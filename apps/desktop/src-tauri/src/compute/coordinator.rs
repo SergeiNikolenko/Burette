@@ -499,7 +499,7 @@ impl ComputeCoordinator {
             source,
             preflight,
             pinned_runtime,
-            engines: ready.engines.identities().clone(),
+            engines: ready.engines.conformer_identities().clone(),
             distance_admission,
             stereo_admission,
             created_at_ms,

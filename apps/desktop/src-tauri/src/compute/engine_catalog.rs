@@ -19,6 +19,13 @@ const RDKIT_ASSET_PATHS: [&str; 2] = [
     "PreviewExtension/Web/rdkit/RDKit_minimal.js",
     "PreviewExtension/Web/rdkit/RDKit_minimal.wasm",
 ];
+const CONFORMER_EXTRACTOR_PACKAGE: &str = "burrete-rdkit-conformer";
+const CONFORMER_EXTRACTOR_VERSION: &str =
+    "Release_2025_03_4@276b5a662302c6a548ac4f1363c066f3258e3a20";
+const CONFORMER_EXTRACTOR_ASSET_PATHS: [&str; 2] = [
+    "PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.js",
+    "PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.wasm",
+];
 const VIEWER_PREFIX: &str = "PreviewExtension/Web/";
 const MAX_ENGINE_ASSET_BYTES: u64 = 16 * 1024 * 1024;
 const COORDINATOR_MANIFEST: &[u8] =
@@ -31,6 +38,7 @@ const REFERENCE_RUNTIME_MANIFEST: &[u8] =
 #[derive(Debug)]
 pub(crate) struct VerifiedEngineCatalog {
     identities: ClusterV1EngineIdentities,
+    conformer_identities: ClusterV1EngineIdentities,
     reference_runtime: RuntimeIdentity,
 }
 
@@ -38,6 +46,7 @@ impl VerifiedEngineCatalog {
     pub(crate) fn load(viewer_root: &Path, helper_sha256: &str) -> Result<Self, String> {
         validate_sha256("compute helper", helper_sha256)?;
         let rdkit = verify_rdkit(viewer_root)?;
+        let conformer_extractor = verify_conformer_extractor(viewer_root)?;
         let version = env!("CARGO_PKG_VERSION");
         let identities = ClusterV1EngineIdentities {
             coordinator: EngineIdentity {
@@ -52,8 +61,17 @@ impl VerifiedEngineCatalog {
                 manifest_sha256: sha256_hex(REFERENCE_CPU_MANIFEST),
             },
         };
+        let conformer_identities = ClusterV1EngineIdentities {
+            coordinator: identities.coordinator.clone(),
+            rdkit: conformer_extractor,
+            reference_cpu: identities.reference_cpu.clone(),
+        };
         identities
             .coordinator
+            .validate()
+            .map_err(|error| error.to_string())?;
+        conformer_identities
+            .rdkit
             .validate()
             .map_err(|error| error.to_string())?;
         identities
@@ -75,12 +93,17 @@ impl VerifiedEngineCatalog {
             .map_err(|error| error.to_string())?;
         Ok(Self {
             identities,
+            conformer_identities,
             reference_runtime,
         })
     }
 
     pub(crate) fn identities(&self) -> &ClusterV1EngineIdentities {
         &self.identities
+    }
+
+    pub(crate) fn conformer_identities(&self) -> &ClusterV1EngineIdentities {
+        &self.conformer_identities
     }
 
     pub(crate) fn reference_runtime(&self) -> &RuntimeIdentity {
@@ -120,6 +143,16 @@ struct RdkitEngineManifest<'a> {
     package_name: &'a str,
     version: &'a str,
     integrity: &'a str,
+    assets: &'a [VendorAsset],
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConformerExtractorManifest<'a> {
+    schema_version: u32,
+    engine_id: &'static str,
+    rdkit_source_revision: &'static str,
+    binary_abi_version: u16,
     assets: &'a [VendorAsset],
 }
 
@@ -168,6 +201,47 @@ fn verify_rdkit(viewer_root: &Path) -> Result<EngineIdentity, String> {
     Ok(EngineIdentity {
         engine_id: "rdkit".into(),
         version: package.version.clone(),
+        manifest_sha256: sha256_hex(&manifest_bytes),
+    })
+}
+
+fn verify_conformer_extractor(viewer_root: &Path) -> Result<EngineIdentity, String> {
+    require_real_directory(viewer_root)?;
+    let lock: VendorLock = serde_json::from_slice(VENDOR_ASSETS_LOCK)
+        .map_err(|error| format!("Cannot decode the embedded vendor asset lock: {error}"))?;
+    if lock.schema_version != 2 {
+        return Err("The embedded vendor asset lock has an unsupported schema".into());
+    }
+    let mut assets = Vec::with_capacity(CONFORMER_EXTRACTOR_ASSET_PATHS.len());
+    for expected_path in CONFORMER_EXTRACTOR_ASSET_PATHS {
+        let asset = lock
+            .assets
+            .iter()
+            .find(|asset| {
+                asset.path == expected_path && asset.package == CONFORMER_EXTRACTOR_PACKAGE
+            })
+            .ok_or_else(|| format!("The vendor asset lock is missing {expected_path}"))?
+            .clone();
+        let relative = expected_path
+            .strip_prefix(VIEWER_PREFIX)
+            .expect("conformer extractor assets use the ViewerWeb prefix");
+        verify_asset(&viewer_root.join(relative), &asset)?;
+        assets.push(asset);
+    }
+    assets.sort_by(|left, right| left.path.cmp(&right.path));
+    let manifest = ConformerExtractorManifest {
+        schema_version: 1,
+        engine_id: "rdkit",
+        rdkit_source_revision: CONFORMER_EXTRACTOR_VERSION,
+        binary_abi_version: 1,
+        assets: &assets,
+    };
+    let manifest_bytes = serde_json::to_vec(&manifest).map_err(|error| {
+        format!("Cannot encode the verified conformer extractor manifest: {error}")
+    })?;
+    Ok(EngineIdentity {
+        engine_id: "rdkit".into(),
+        version: CONFORMER_EXTRACTOR_VERSION.into(),
         manifest_sha256: sha256_hex(&manifest_bytes),
     })
 }
@@ -294,6 +368,11 @@ mod tests {
             .expect("verify checked-in RDKit assets");
         assert_eq!(catalog.identities().rdkit.engine_id, "rdkit");
         assert_eq!(catalog.identities().rdkit.version, RDKIT_BASELINE_VERSION);
+        assert_eq!(catalog.conformer_identities().rdkit.engine_id, "rdkit");
+        assert_eq!(
+            catalog.conformer_identities().rdkit.version,
+            CONFORMER_EXTRACTOR_VERSION
+        );
         assert_eq!(catalog.reference_runtime().metallib_sha256, None);
     }
 

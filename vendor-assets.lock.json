@@ -47,6 +47,18 @@
       "sha256": "sha256-4JZ9RP7VnkSi0Hv8CPOoaCHFShTJW7fm45L+hnMzuMg="
     },
     {
+      "path": "PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.js",
+      "package": "burrete-rdkit-conformer",
+      "bytes": 40797,
+      "sha256": "sha256-01nZpBpJbZyyj/ckFKEvkKK5dqMXFNq6SpUUgpRBP1U="
+    },
+    {
+      "path": "PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.wasm",
+      "package": "burrete-rdkit-conformer",
+      "bytes": 1909649,
+      "sha256": "sha256-adWMcz+p1AmBjL3MYjwKRdsyBAQmKYL8cIMAVsRIxQk="
+    },
+    {
       "path": "PreviewExtension/Web/openchemlib/openchemlib.js",
       "package": "openchemlib",
       "bytes": 1108967,
@@ -71,6 +83,10 @@
       "grid.css",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
+    ],
+    "desktop-native-compute": [
+      "rdkit-conformer/Burrete_rdkit_conformer.js",
+      "rdkit-conformer/Burrete_rdkit_conformer.wasm"
     ],
     "quicklook-molstar": [
       "molstar.js",
@@ -103,6 +119,7 @@
       "profiles": [
         "desktop-molstar",
         "desktop-grid",
+        "desktop-native-compute",
         "external-artifact"
       ],
       "resourceRoot": "apps/desktop/src-tauri/tauri.conf.json#/bundle/resources/../../../PreviewExtension/Web=ViewerWeb"
