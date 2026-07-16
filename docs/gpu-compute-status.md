@@ -5,8 +5,9 @@ Status: `cluster.v1`, immutable representative export, and derived exact
 variant/seed/adaptive batching, packaged native RDKit extraction, raw job
 submission, adaptive CPU/Metal distance-geometry execution, Metal ETK
 refinement, stereo-aware retry, and final Metal stereo validation implemented;
-conformer EnginePack/ResultPack publication implemented; Grid/3D UI,
-production release, and scale proof pending
+conformer EnginePack/ResultPack publication and Grid-to-Mol* workflow
+implemented; seven-term MMFF CPU/Metal evaluation implemented; production
+release, MMFF optimization workflow, and scale proof pending
 
 Updated: 2026-07-16
 
@@ -147,7 +148,11 @@ and flat-bottom distance terms. One threadgroup owns one conformer and keeps
 the iterative optimizer on the GPU. The CPU reference uses the same objective
 and bounded optimizer contract. Runtime v8 binds seven sources, seven reviewed
 contracts, AIR files, nine entrypoints, the compiler, linker, SDK, and final
-metallib by hash.
+metallib by hash. Runtime v9 adds an independently written batched seven-term
+MMFF94/MMFF94s evaluator and bounded central-difference reference-gradient
+entrypoint. Its package binds eight sources, eight contracts, eight AIR files,
+and eleven entrypoints by hash. A startup KAT compares every term and the full
+gradient against the float64 CPU oracle before the runtime becomes available.
 The runtime now composes seed-based initialization and optimization into one
 verified per-molecule ensemble operation, keeping both numerical stages on
 Metal while sharing constraints across all requested conformers. Its admission
@@ -156,8 +161,10 @@ history-buffer materialization as simultaneous Apple unified-memory residents;
 the adaptive scheduler uses the same seven position-sized buffers and
 three-way transient history peak.
 This proves the iterative DG distance-bound optimizer, ETK refinement, stereo
-evaluation primitives, and deterministic stereo-aware retries. It does not yet
-prove artifact publication or the user-visible conformer capability.
+evaluation primitives, deterministic stereo-aware retries, and MMFF
+single-point GPU evaluation. Conformer artifact publication and the
+Grid-to-Mol* workflow are implemented separately; MMFF optimization remains
+unfinished.
 
 The durable executor now consumes the admitted EnginePack without an `N x N`
 allocation, rebuilds the exact adaptive `molecule x conformer` schedule, derives
@@ -207,8 +214,8 @@ remain in progress.
 | --- | --- |
 | macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
-| Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, and final validation pass on Apple M2 Pro |
-| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v8 runtime generation passes package verification and real-GPU startup, while a refreshed v8 desktop package remains pending |
+| Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, and seven-term MMFF evaluation on Apple M2 Pro |
+| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v9 runtime generation passes package verification and real-GPU startup, while a refreshed v9 desktop package remains pending |
 | Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -268,7 +275,7 @@ separate product increments.
 | Fixed request/job/artifact contracts | `crates/burrete-compute-protocol/` |
 | Exact fingerprint ABI, CPU Tanimoto/CSR, Butina | `crates/burrete-compute-core/` |
 | Metal runtime, tiling, dispatch, GPU timings | `crates/burrete-compute-metal/` |
-| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal`, `compute/metal/conformer-optimize.v1.metal`, `compute/metal/conformer-stereo.v1.metal`, `compute/metal/conformer-etk.v1.metal`, `compute/metal/conformer-etk-optimize.v1.metal` |
+| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal`, `compute/metal/conformer-optimize.v1.metal`, `compute/metal/conformer-stereo.v1.metal`, `compute/metal/conformer-etk.v1.metal`, `compute/metal/conformer-etk-optimize.v1.metal`, `compute/metal/mmff-energy.v1.metal` |
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
 | Conformer preflight admission and queued snapshot | `apps/desktop/src-tauri/src/compute/conformer_plan.rs`, `job_factory.rs` |
@@ -360,6 +367,11 @@ separate product increments.
   validation was `1 ms`. The tested
   `native-compute.v8.metallib` SHA-256 is
   `fd9c0d16d1cf2affc6020026e8f2718dbe1b5ac5a563c2a5f9bb4f0858d5d79a`.
+- The verified v9 runtime adds all seven MMFF terms and its numerical reference
+  gradient to the startup CPU/Metal KAT. It loaded and dispatched on `Apple M2
+  Pro` (`registryId=0x1000003c0`, unified memory); the tested
+  `native-compute.v9.metallib` SHA-256 is
+  `cfa70ec563965f5e98df6d178fdb7e8e3172ba4b7e59965dfc495402315d2521`.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
@@ -395,8 +407,8 @@ fixed order below:
 
 1. complete conformer scientific-corpus and packaged UI release gates for the
    implemented Grid-to-Mol* native workflow;
-2. finish the staged MMFF94/MMFF94s parameter packs, all seven supported terms, gradients, and
-   per-molecule BFGS/L-BFGS policy;
+2. finish native MMFF94/MMFF94s parameter extraction, analytic gradients,
+   per-molecule BFGS/L-BFGS policy, retry, and the Grid/3D workflow;
 3. quaternion/Horn alignment, RMSD, shape, electrostatic, ensemble, and docking
    pose scoring;
 4. audited semiempirical methods method by method, starting with a native CPU

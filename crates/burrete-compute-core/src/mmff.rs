@@ -122,11 +122,18 @@ pub fn evaluate_mmff_energy(
     evaluate_unchecked(parameters, positions)
 }
 
+pub fn validate_mmff_parameters(parameters: &MmffParameters) -> Result<(), MmffError> {
+    if parameters.atom_count == 0 {
+        return Err(MmffError::new("MMFF parameter atom count must be positive"));
+    }
+    validate_terms(parameters)
+}
+
 /// Evaluates the bounded CPU reference gradient using central differences.
 ///
-/// Production optimization uses the analytic Metal kernel. Keeping this path
-/// mathematically independent makes it useful for startup known-answer tests
-/// and term-by-term parity fixtures.
+/// Keeping this path mathematically independent makes it useful for startup
+/// known-answer tests and term-by-term parity fixtures. It is not an analytic
+/// production optimizer gradient.
 pub fn evaluate_mmff(
     parameters: &MmffParameters,
     positions: &[[f32; 4]],
@@ -244,14 +251,18 @@ fn evaluate_unchecked(
 }
 
 fn validate(parameters: &MmffParameters, positions: &[[f32; 4]]) -> Result<(), MmffError> {
-    if parameters.atom_count == 0
-        || parameters.atom_count as usize != positions.len()
+    validate_mmff_parameters(parameters)?;
+    if parameters.atom_count as usize != positions.len()
         || positions.iter().flatten().any(|value| !value.is_finite())
     {
         return Err(MmffError::new(
             "MMFF positions must be finite and match the positive parameter atom count",
         ));
     }
+    Ok(())
+}
+
+fn validate_terms(parameters: &MmffParameters) -> Result<(), MmffError> {
     let atom_count = parameters.atom_count as usize;
     for term in &parameters.bonds {
         validate_atoms(atom_count, &term.atoms)?;

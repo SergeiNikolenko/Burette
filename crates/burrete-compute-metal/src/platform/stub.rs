@@ -1,13 +1,13 @@
 use burrete_compute_core::{
     ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
-    Fingerprint2048, GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
-    TetrahedralConstraint,
+    Fingerprint2048, GraphBuildOptions, MmffParameters, SymmetricCsr, TanimotoCounts,
+    TanimotoQueryOptions, TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 
 use crate::platform::{
-    MetalDistanceDispatch, MetalDistanceOptimizationDispatch, MetalEtkDispatch,
+    MetalDistanceDispatch, MetalDistanceOptimizationDispatch, MetalEtkDispatch, MetalMmffDispatch,
     MetalStereoValidationDispatch,
 };
 use crate::MetalRuntimeError;
@@ -145,6 +145,17 @@ impl MetalHost {
         _options: DistanceGeometryOptimizationOptions,
         _max_memory_bytes: u64,
     ) -> Result<MetalDistanceOptimizationDispatch, MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn evaluate_mmff_profiled(
+        &self,
+        _positions: &[[f32; 4]],
+        _parameters: &MmffParameters,
+        _max_memory_bytes: u64,
+    ) -> Result<MetalMmffDispatch, MetalRuntimeError> {
         Err(MetalRuntimeError::UnsupportedPlatform(
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))

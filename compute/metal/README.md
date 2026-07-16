@@ -1,4 +1,4 @@
-# Native Metal Tanimoto kernels
+# Native Metal compute kernels
 
 This directory contains Burrete-owned, reviewed Metal source. It is an
 independent implementation of the mathematical contract in the GPU compute
@@ -10,6 +10,12 @@ dispatches logical row/column tiles. Query scoring emits one `uint2` containing
 the integer `(intersection, union)` counts per source record in bounded row
 batches; ranking stays deterministic on the CPU and no floating-point score is
 part of the Metal ABI.
+
+`mmff-energy.v1.metal` evaluates all seven supported MMFF94/MMFF94s energy
+terms for conformer batches and exposes a bounded central-difference gradient
+used as an independent bring-up/parity path. Production optimization may reuse
+the energy evaluator but must not claim analytic gradients until a separately
+verified analytic kernel replaces this reference entrypoint.
 The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
 256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical
 word. This is a byte-identical view on supported little-endian Apple Silicon;

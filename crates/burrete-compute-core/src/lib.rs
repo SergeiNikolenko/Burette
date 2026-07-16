@@ -48,9 +48,9 @@ pub use etk_geometry::{
     EtkTorsionConstraint,
 };
 pub use mmff::{
-    evaluate_mmff, evaluate_mmff_energy, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm,
-    MmffEnergyBreakdown, MmffError, MmffEvaluation, MmffOutOfPlaneTerm, MmffParameters,
-    MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm, MmffVariant,
+    evaluate_mmff, evaluate_mmff_energy, validate_mmff_parameters, MmffAngleTerm, MmffBondTerm,
+    MmffElectrostaticTerm, MmffEnergyBreakdown, MmffError, MmffEvaluation, MmffOutOfPlaneTerm,
+    MmffParameters, MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm, MmffVariant,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};
