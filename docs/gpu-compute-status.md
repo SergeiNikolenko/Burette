@@ -86,10 +86,14 @@ turns each immutable 128-bit conformer seed into deterministic `float4` initial
 coordinates without schedule-dependent RNG state. Its independently written
 Rust oracle verifies bounded and prefix-stable output. Both a test-only source
 dispatch and the verified production metallib passed on the real Apple GPU with
-exact CPU parity. Runtime v3 binds both sources, both reviewed contracts, both
-AIR files, all four entrypoints, the compiler, linker, SDK, and final metallib
-by hash. This primitive is initialization only, not a claim of completed
-distance-geometry embedding or an end-to-end conformer capability.
+exact CPU parity. The next Metal primitive evaluates batched distance-bound
+energies and analytic `float4` gradients without atomics or a pair matrix. Its
+Rust oracle passes a central-difference gradient check, and the packaged Metal
+startup KAT matches the oracle within the fixed floating tolerance. Runtime v4
+binds all three sources, reviewed contracts, AIR files, five entrypoints, the
+compiler, linker, SDK, and final metallib by hash. These primitives are not a
+claim of completed distance-geometry optimization or an end-to-end conformer
+capability.
 
 ## Product Truth By Surface
 
@@ -97,8 +101,8 @@ distance-geometry embedding or an end-to-end conformer capability.
 | --- | --- |
 | macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
-| Native Metal backend | Real graph, exact query, and conformer-coordinate initialization command buffers pass startup parity against CPU references |
-| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v3 runtime generation passes package verification and real-GPU startup, while a refreshed v3 desktop package remains pending |
+| Native Metal backend | Real graph, exact query, conformer initialization, and DG distance objective/gradient command buffers pass startup parity against CPU references |
+| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v4 runtime generation passes package verification and real-GPU startup, while a refreshed v4 desktop package remains pending |
 | Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -158,7 +162,7 @@ separate product increments.
 | Fixed request/job/artifact contracts | `crates/burrete-compute-protocol/` |
 | Exact fingerprint ABI, CPU Tanimoto/CSR, Butina | `crates/burrete-compute-core/` |
 | Metal runtime, tiling, dispatch, GPU timings | `crates/burrete-compute-metal/` |
-| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal` |
+| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal` |
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
 | Artifact materialization and restart reconciliation | `apps/desktop/src-tauri/src/compute/artifact_publisher.rs` |
@@ -176,11 +180,11 @@ separate product increments.
 - Metal crate unit/parity tests pass, including real graph and exact query-count
   dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
   support.
-- An isolated offline-compiled v3 runtime generation passes the hash-bound
-  package verifier and all three startup known-answer paths on `Apple M2 Pro`
+- An isolated offline-compiled v4 runtime generation passes the hash-bound
+  package verifier and all four startup known-answer paths on `Apple M2 Pro`
   (`registryId=0x1000003c0`, unified memory). The tested
-  `native-compute.v3.metallib` SHA-256 is
-  `d33c559f970943b6890604255699181bf7c263f646ff208fcc105d882fb9188d`.
+  `native-compute.v4.metallib` SHA-256 is
+  `fd8e1eb6adc5338a539e1245a3a45e7ce3ba4a8af2d8a428a25d5513753fd33b`.
 - The earlier unique `com.local.BurreteV10.Dev.gpucompute9a97` cluster-only v1
   package builds and passes
   deep/strict ad-hoc signature verification at
@@ -212,18 +216,19 @@ separate product increments.
   generated Grid controls. Repository-wide TypeScript checking is currently
   blocked by pre-existing duplicate CodeMirror dependency identities in the
   text-file viewer; the errors do not involve the compute files changed here.
-- All 74 protocol tests and 25 compute-core tests pass after adding the fixed
+- All 74 protocol tests and 27 compute-core tests pass after adding the fixed
   conformer request/pack/plan contracts, identity-derived seed, adaptive batch
-  coverage, deterministic coordinate oracle, rebatching invariance, and memory
-  rejection checks. Focused protocol/core/Metal clippy also passes with
-  warnings denied.
+  coverage, deterministic coordinate oracle, DG objective/gradient oracle,
+  finite-difference gradient validation, rebatching invariance, and memory
+  rejection checks. Focused protocol/core/Metal clippy also passes with warnings
+  denied.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
 
-These checks prove the source implementation, an isolated current v3 runtime
+These checks prove the source implementation, an isolated current v4 runtime
 generation, and the earlier unique v1 ad-hoc development package, not a current
-v3 desktop package or production release. They do not replace the scientific
+v4 desktop package or production release. They do not replace the scientific
 corpus, 100k-scale benchmark, Developer ID hardened-runtime signature,
 notarization, or visual UI-triggered clustering evidence.
 
