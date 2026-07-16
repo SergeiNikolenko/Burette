@@ -97,7 +97,10 @@ features, but they must not be described as available UI operations yet.
   end-to-end workflow.
 - 32 Grid store tests pass; the 50,000-row performance smoke remains opt-in.
 - Metal crate unit/parity tests pass, including a real test-only GPU dispatch
-  on the local Apple GPU.
+  on the local 19-core Apple M2 Pro GPU reported with Metal 4 support.
+- The pinned RDKit 2025.03.4 runtime reproduces four frozen Morgan
+  known-answer vectors byte for byte, and Rust decodes the same vectors through
+  the canonical EnginePack ABI.
 - Desktop Rust clippy passes with warnings denied.
 - The production web bundle builds with the dedicated RDKit worker and pinned
   WASM asset.
