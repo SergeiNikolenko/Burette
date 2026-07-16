@@ -483,8 +483,10 @@ separate product increments.
   sulfur-hydrogen parity is pinned at `2e-10`. The 450-entry local YX tensor
   for a d-basis/sp-only pair is now mechanically generated from a SHA-pinned
   PYSEQM AST; sulfur-oxygen selected entries, sparsity, and aggregate parity
-  pass at `2e-10`. YX molecular rotation and core terms, the YY tensor, Metal W
-  generation, full PM6 SCF integration, broader D3 tables, and production
+  pass at `2e-10`. Its pair-basis transform now produces the dense molecular
+  `9x9x4x4` d extension and matches the full arbitrary-axis PYSEQM tensor after
+  excluding the separately owned sp block. YX core terms, the YY tensor, Metal
+  W generation, full PM6 SCF integration, broader D3 tables, and production
   PM6-D3H4 composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
