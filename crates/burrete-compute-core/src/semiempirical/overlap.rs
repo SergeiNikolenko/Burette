@@ -443,7 +443,7 @@ fn numerical_sp_overlap(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn reduced_sto_overlap(
+pub(super) fn reduced_sto_overlap(
     left_n: u8,
     left_l: u8,
     right_n: u8,
@@ -508,6 +508,9 @@ fn associated_legendre(l: u8, magnetic: u8, cosine: f64) -> f64 {
         (0, 0) => 1.0,
         (1, 0) => cosine,
         (1, 1) => -(1.0 - cosine * cosine).max(0.0).sqrt(),
+        (2, 0) => 0.5 * (3.0 * cosine * cosine - 1.0),
+        (2, 1) => -3.0 * cosine * (1.0 - cosine * cosine).max(0.0).sqrt(),
+        (2, 2) => 3.0 * (1.0 - cosine * cosine),
         _ => 0.0,
     }
 }

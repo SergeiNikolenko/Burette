@@ -121,6 +121,12 @@ adapted from the pinned `mlxmolkit/rm1/wigner_d.py` formulas, which cite Ivanic
 and Ruedenberg, J. Phys. Chem. 100, 6342 (1996). mlxmolkit MIT attribution
 applies.
 
+PM6 radial d-s, d-p, and d-d Slater overlap uses Burrete's independently
+structured bounded Gauss-Legendre prolate-spheroidal implementation for
+principal quantum numbers one through five. The mathematical behavior is
+checked against `mlxmolkit/rm1/slater_overlap_ref.py` and the d-channel layout
+in `mlxmolkit/rm1/overlap_d.py`; no Python or SciPy runtime is included.
+
 The PM6-D3H4 H4 hydrogen-bond equations, covalent-radius table, short-range
 H-H polynomial, and CHNO D3 C6/CN/r0 reference records are adapted from
 OpenMOPAC correction behavior through the pinned
