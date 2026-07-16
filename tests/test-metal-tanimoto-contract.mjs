@@ -276,7 +276,7 @@ if (metalLookup.status === 0 && metallibLookup.status === 0) {
     assert.ok(existsSync(resolve(generation, "conformer-distance.v1.air")));
     assert.ok(existsSync(resolve(generation, "conformer-optimize.v1.air")));
     assert.ok(existsSync(resolve(generation, "mmff-energy.v1.air")));
-    assert.ok(existsSync(resolve(generation, "native-compute.v9.metallib")));
+    assert.ok(existsSync(resolve(generation, "native-compute.v10.metallib")));
     const metadataHash = createHash("sha256").update(readFileSync(metadataPath)).digest("hex");
     assert.equal(metadataHash, pointer.metadataSha256);
   } finally {
@@ -396,7 +396,7 @@ try {
   );
   assert.equal(metadataRun.status, 0, metadataRun.stderr);
   const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
-  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v9");
+  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v10");
   assert.equal(metadata.sources[0].sha256, fakeHash);
   assert.equal(metadata.sources[1].sha256, fakeHash);
   assert.equal(metadata.sources[2].sha256, fakeHash);

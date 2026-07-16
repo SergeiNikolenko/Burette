@@ -150,9 +150,13 @@ and bounded optimizer contract. Runtime v8 binds seven sources, seven reviewed
 contracts, AIR files, nine entrypoints, the compiler, linker, SDK, and final
 metallib by hash. Runtime v9 adds an independently written batched seven-term
 MMFF94/MMFF94s evaluator and bounded central-difference reference-gradient
-entrypoint. Its package binds eight sources, eight contracts, eight AIR files,
-and eleven entrypoints by hash. A startup KAT compares every term and the full
-gradient against the float64 CPU oracle before the runtime becomes available.
+entrypoint. Runtime v10 adds a fused per-conformer optimizer that keeps
+central-difference gradient evaluation, full BFGS for molecules through 32
+atoms, bounded L-BFGS for larger molecules, and Armijo line search inside one
+Metal dispatch. Its package binds eight sources, eight contracts, eight AIR
+files, and twelve entrypoints by hash. Startup KATs compare every term and the
+full gradient against the float64 CPU oracle, then require the GPU optimizer to
+reduce a known MMFF bond objective before the runtime becomes available.
 The pinned native RDKit adapter source also exposes a separate `BMFX` v1 MMFF94/
 MMFF94s parameter boundary with partial charges and seven fixed-width term
 groups. Its C++ serializer and strict Rust decoder are tested; rebuilding and
@@ -163,7 +167,7 @@ bounded L-BFGS above that threshold. Both paths share Armijo line search,
 gradient/step convergence, and distinct line-search/max-iteration outcomes.
 The full BFGS update stores the dense inverse Hessian only inside the bounded
 small-molecule branch; the large-molecule branch remains linear in atom count.
-This is the CPU reference contract for the pending fused Metal optimizer.
+This is the CPU reference contract used to validate the fused Metal optimizer.
 The runtime now composes seed-based initialization and optimization into one
 verified per-molecule ensemble operation, keeping both numerical stages on
 Metal while sharing constraints across all requested conformers. Its admission
@@ -225,8 +229,8 @@ remain in progress.
 | --- | --- |
 | macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
-| Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, and seven-term MMFF evaluation on Apple M2 Pro |
-| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v9 runtime generation passes package verification and real-GPU startup, while a refreshed v9 desktop package remains pending |
+| Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, and fused automatic BFGS/L-BFGS MMFF optimization on Apple M2 Pro |
+| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v10 runtime generation passes package verification and real-GPU startup, while a refreshed v10 desktop package remains pending |
 | Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -383,6 +387,11 @@ separate product increments.
   Pro` (`registryId=0x1000003c0`, unified memory); the tested
   `native-compute.v9.metallib` SHA-256 is
   `cfa70ec563965f5e98df6d178fdb7e8e3172ba4b7e59965dfc495402315d2521`.
+- The verified v10 runtime adds fused MMFF optimization with automatic BFGS or
+  L-BFGS selection and an energy-reduction startup KAT. It loaded and dispatched
+  on `Apple M2 Pro` (`registryId=0x1000003c0`, unified memory); the tested
+  `native-compute.v10.metallib` SHA-256 is
+  `84d3d2cf0c31c09e87abe97d7455acd498b204b1bb27109a246be22b47c76a56`.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.

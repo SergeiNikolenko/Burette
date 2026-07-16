@@ -13,7 +13,7 @@ const POINTER_MAX_BYTES: u64 = 4 * 1024;
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 const METALLIB_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const METADATA_FILE: &str = "build-metadata.v2.json";
-const METALLIB_FILE: &str = "native-compute.v9.metallib";
+const METALLIB_FILE: &str = "native-compute.v10.metallib";
 const SOURCES: [(&str, &[u8]); 8] = [
     (
         "compute/metal/tanimoto.v2.metal",
@@ -92,7 +92,7 @@ const AIR_PATHS: [&str; 8] = [
     "conformer-etk-optimize.v1.air",
     "mmff-energy.v1.air",
 ];
-const ENTRYPOINTS: [&str; 11] = [
+const ENTRYPOINTS: [&str; 12] = [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
     "burrete_tanimoto_query_counts_v1",
@@ -104,6 +104,7 @@ const ENTRYPOINTS: [&str; 11] = [
     "burrete_conformer_etk_optimize_v1",
     "burrete_mmff_energy_v1",
     "burrete_mmff_reference_gradient_v1",
+    "burrete_mmff_optimize_v1",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -258,7 +259,7 @@ fn validate_metadata(metadata: &BuildMetadata) -> Result<(), MetalRuntimeError> 
     let expected_entrypoints: Vec<String> = ENTRYPOINTS.iter().map(ToString::to_string).collect();
     if metadata.schema_version != "burrete.compute.metal-build-metadata.v2"
         || metadata.runtime_version != NATIVE_METAL_RUNTIME_VERSION
-        || metadata.library_id != "burrete.compute.native.v9"
+        || metadata.library_id != "burrete.compute.native.v10"
         || !matches_hashed_inputs(&metadata.sources, &SOURCES)
         || !matches_hashed_inputs(&metadata.contracts, &CONTRACTS)
         || metadata.air.len() != AIR_PATHS.len()
@@ -491,7 +492,7 @@ mod tests {
             json!({
                 "schemaVersion": "burrete.compute.metal-build-metadata.v2",
                 "runtimeVersion": NATIVE_METAL_RUNTIME_VERSION,
-                "libraryId": "burrete.compute.native.v9",
+                "libraryId": "burrete.compute.native.v10",
                 "sources": SOURCES.map(|(path, bytes)| json!({
                     "path": path,
                     "sha256": sha256(bytes),
