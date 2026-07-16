@@ -2,6 +2,7 @@
 members = [
   "apps/desktop/src-tauri",
   "crates/burrete-compute-core",
+  "crates/burrete-compute-metal",
   "crates/burrete-compute-protocol",
   "crates/burrete-core",
 ]
