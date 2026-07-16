@@ -65,7 +65,10 @@ Polytechnic Institute and State University and licensed under Apache-2.0. The
 authoritative license is included at
 `compute/semiempirical/licenses/OPENMOPAC-APACHE-2.0.txt`.
 
-The PYSEQM BSD-3-Clause license is archived at
-`compute/semiempirical/licenses/PYSEQM-BSD-3-CLAUSE.txt` for the pending
-method-by-method integral audit. No PYSEQM-derived implementation is claimed
-by the current SCF and RM1 parameter increments.
+The RM1 core-core and Gaussian-correction equations were adapted against
+PYSEQM commit `6ced9ea66160428e06d37df18e9f565b8123f84a`, file
+`seqm/seqm_functions/energy.py`. PYSEQM is copyright 2020 Triad National
+Security, LLC and distributed under BSD-3-Clause; its authoritative license is
+included at `compute/semiempirical/licenses/PYSEQM-BSD-3-CLAUSE.txt`. The SCF,
+diagonalization, DIIS, molecule packing, and charge code remains independently
+written.

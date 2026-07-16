@@ -6,6 +6,8 @@ pub use parameters::{rm1_parameters, SemiempiricalElementParameters};
 
 const MAX_ATOMS: usize = 128;
 const MAX_ORBITALS: usize = 256;
+const HARTREE_TO_EV_MOPAC: f64 = 27.21;
+const ANGSTROM_TO_BOHR_MOPAC: f64 = 1.0 / 0.529_167;
 
 /// Semi-empirical methods exposed by the native compute contract.
 ///
@@ -203,6 +205,66 @@ impl SemiempiricalMolecule {
             })
             .collect())
     }
+}
+
+/// RM1 core-core energy, including the method's Gaussian corrections.
+pub fn rm1_nuclear_repulsion_energy(
+    molecule: &SemiempiricalMolecule,
+) -> Result<f64, SemiempiricalError> {
+    let mut energy = 0.0;
+    for left_index in 0..molecule.atoms.len() {
+        for right_index in (left_index + 1)..molecule.atoms.len() {
+            let left_atom = &molecule.atoms[left_index];
+            let right_atom = &molecule.atoms[right_index];
+            let left = rm1_parameters(left_atom.atomic_number).unwrap();
+            let right = rm1_parameters(right_atom.atomic_number).unwrap();
+            let displacement = [
+                left_atom.position_angstrom[0] - right_atom.position_angstrom[0],
+                left_atom.position_angstrom[1] - right_atom.position_angstrom[1],
+                left_atom.position_angstrom[2] - right_atom.position_angstrom[2],
+            ];
+            let distance = displacement
+                .iter()
+                .map(|value| value * value)
+                .sum::<f64>()
+                .sqrt();
+            if distance <= 1.0e-8 {
+                return Err(SemiempiricalError::InvalidInput(format!(
+                    "atoms {left_index} and {right_index} overlap"
+                )));
+            }
+            let distance_bohr = distance * ANGSTROM_TO_BOHR_MOPAC;
+            let rho_left = 0.5 * HARTREE_TO_EV_MOPAC / left.gss_ev;
+            let rho_right = 0.5 * HARTREE_TO_EV_MOPAC / right.gss_ev;
+            let ssss = HARTREE_TO_EV_MOPAC
+                / (distance_bohr.powi(2) + (rho_left + rho_right).powi(2)).sqrt();
+            let valence_product =
+                f64::from(left.valence_electrons) * f64::from(right.valence_electrons);
+
+            let left_decay = (-left.alpha_angstrom_inv * distance).exp()
+                * if matches!(left.atomic_number, 7 | 8) && right.atomic_number == 1 {
+                    distance
+                } else {
+                    1.0
+                };
+            let right_decay = (-right.alpha_angstrom_inv * distance).exp()
+                * if matches!(right.atomic_number, 7 | 8) && left.atomic_number == 1 {
+                    distance
+                } else {
+                    1.0
+                };
+            let gaussian = |parameters: &SemiempiricalElementParameters| {
+                parameters
+                    .gaussian
+                    .iter()
+                    .map(|term| term[0] * (-term[1] * (distance - term[2]).powi(2)).exp())
+                    .sum::<f64>()
+            };
+            energy += valence_product * ssss * (1.0 + left_decay + right_decay)
+                + valence_product / distance * (gaussian(left) + gaussian(right));
+        }
+    }
+    Ok(energy)
 }
 
 /// Runs a deterministic restricted, closed-shell SCF cycle.
@@ -611,5 +673,44 @@ mod tests {
             0,
         )
         .is_err());
+    }
+
+    #[test]
+    fn rm1_hydrogen_nuclear_energy_matches_the_pinned_reference() {
+        let hydrogen = SemiempiricalMolecule::rm1(
+            vec![
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [0.0, 0.0, 0.0],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [0.74, 0.0, 0.0],
+                },
+            ],
+            0,
+        )
+        .unwrap();
+        let energy = rm1_nuclear_repulsion_energy(&hydrogen).unwrap();
+        assert!((energy - 13.780_913_698_216_068).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn rm1_nuclear_energy_rejects_overlapping_atoms() {
+        let hydrogen = SemiempiricalMolecule::rm1(
+            vec![
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [0.0; 3],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [0.0; 3],
+                },
+            ],
+            0,
+        )
+        .unwrap();
+        assert!(rm1_nuclear_repulsion_energy(&hydrogen).is_err());
     }
 }
