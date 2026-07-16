@@ -53,7 +53,7 @@ impl MetalTanimotoRuntime {
                 version: package.runtime_version,
                 manifest_sha256: package.metadata_sha256,
                 helper_sha256: helper_sha256.into(),
-                metallib_sha256: package.metallib_sha256,
+                metallib_sha256: Some(package.metallib_sha256),
             },
             device_identity: host.device_identity(),
             limits: CapabilityLimits {

@@ -19,10 +19,6 @@ pub(crate) enum SnapshotIntentState {
 }
 
 impl SnapshotIntentState {
-    #[allow(
-        dead_code,
-        reason = "the snapshot publisher uses encoded states after submit wiring"
-    )]
     fn as_str(self) -> &'static str {
         match self {
             Self::Reserved => "reserved",
@@ -46,10 +42,6 @@ impl SnapshotIntentState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[allow(
-    dead_code,
-    reason = "the snapshot publisher constructs durable intents after submit wiring"
-)]
 pub(crate) struct SnapshotIntentDraft {
     pub(crate) snapshot_id: Uuid,
     pub(crate) job_id: Uuid,
@@ -72,10 +64,6 @@ pub(crate) struct SnapshotIntentRecord {
     pub(crate) updated_at_ms: u64,
 }
 
-#[allow(
-    dead_code,
-    reason = "the snapshot publisher consumes the intent lifecycle after submit wiring"
-)]
 impl ComputeStore {
     pub(crate) fn reserve_snapshot_intent(
         &self,
@@ -133,6 +121,7 @@ impl ComputeStore {
         load_snapshot_intent(&connection, snapshot_id)
     }
 
+    #[cfg(test)]
     pub(crate) fn outstanding_snapshot_reservation_bytes(&self) -> ComputeResult<u64> {
         let connection = self.open_connection()?;
         let mut statement = connection.prepare(
@@ -158,6 +147,7 @@ impl ComputeStore {
     /// More than this many simultaneous publication intents indicates corrupt
     /// or unsupported coordinator state, so startup must fail closed instead
     /// of silently leaving rows unreconciled.
+    #[cfg(test)]
     pub(crate) fn snapshot_intents_for_reconciliation(
         &self,
     ) -> ComputeResult<Vec<SnapshotIntentRecord>> {

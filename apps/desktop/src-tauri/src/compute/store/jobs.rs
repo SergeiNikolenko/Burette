@@ -14,10 +14,6 @@ use super::{
 const MAX_LIST_LIMIT: usize = 100;
 
 impl ComputeStore {
-    #[allow(
-        dead_code,
-        reason = "only the Stage 3 transactional Grid snapshot resolver may admit prepared jobs"
-    )]
     pub(crate) fn insert_prepared_job(
         &self,
         owner_window_label: &str,
