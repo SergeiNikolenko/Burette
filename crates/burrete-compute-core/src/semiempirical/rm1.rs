@@ -261,4 +261,19 @@ mod tests {
         assert!(result.total_energy_ev.is_finite());
         assert!(result.atomic_charges.iter().sum::<f64>().abs() < 1.0e-10);
     }
+
+    #[test]
+    fn methyl_iodide_converges_with_the_general_qn5_overlap() {
+        let methyl_iodide = molecule(&[
+            (6, [0.0, 0.0, 0.0]),
+            (53, [2.14, 0.0, 0.0]),
+            (1, [-0.63, 0.63, 0.63]),
+            (1, [-0.63, -0.63, 0.63]),
+            (1, [-0.63, 0.0, -0.89]),
+        ]);
+        let result = evaluate_rm1(&methyl_iodide, SemiempiricalScfOptions::default()).unwrap();
+        assert_eq!(result.scf.status, SemiempiricalScfStatus::Converged);
+        assert!(result.total_energy_ev.is_finite());
+        assert!(result.atomic_charges.iter().sum::<f64>().abs() < 1.0e-9);
+    }
 }
