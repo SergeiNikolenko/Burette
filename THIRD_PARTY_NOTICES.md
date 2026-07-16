@@ -98,10 +98,11 @@ The CHNO AM1, PM3, PM6_SP, and AM1* parameter slices are adapted against the
 pinned `mlxmolkit` method tables and the corresponding OpenMOPAC parameter
 modules. The complete 40-element parameterized PM6 CSV domain is retained as
 a byte-identical build-time reference and compiled into a typed Rust table,
-including the 18 elements with d-orbital fields. PM6 core-core PWCCT equations
-and the bundled CHNO pair values are adapted against pinned `mlxmolkit` and
-PYSEQM references. Importing the parameter table does not claim that the
-pending native d-integral evaluator is production-ready.
+including the 18 elements with d-orbital fields. The byte-identical upstream
+PM6 PWCCT pair table is SHA-gated and compiled into native sparse records.
+PM6 core-core PWCCT equations and the full variable-basis SCF assembly are
+adapted against pinned `mlxmolkit` and PYSEQM references. Production exposure
+remains gated on native Metal parity and the documented validation suite.
 
 The PM6 243-term one-center W lookup maps are retained from the pinned
 `mlxmolkit/rm1/w_integrals.py` implementation, whose comments identify the

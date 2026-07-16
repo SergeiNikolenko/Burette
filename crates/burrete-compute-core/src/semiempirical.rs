@@ -24,7 +24,7 @@ pub use pm6_fock_d::pm6_one_center_d_fock;
 pub use pm6_full_parameters::{pm6_full_parameters, Pm6FullElementParameters};
 pub use pm6_multipole_d::{pm6_d_multipole_parameters, Pm6DMultipoleParameters};
 pub use pm6_overlap_d::{pm6_local_d_overlap, Pm6LocalDOverlap};
-pub use pm6_scf::{contract_pm6_pair_fock, pm6_fock_pairs, Pm6FockPair};
+pub use pm6_scf::{contract_pm6_pair_fock, evaluate_pm6, pm6_fock_pairs, Pm6FockPair};
 pub use pm6_two_center_d::{
     pm6_d_d_local_pair_integrals, pm6_d_d_pair_integrals, pm6_d_hydrogen_pair_integrals,
     pm6_d_sp_local_pair_integrals, pm6_d_sp_pair_integrals, Pm6DDLocalPairIntegrals,
@@ -49,6 +49,8 @@ const MAX_ATOMS: usize = 128;
 const MAX_ORBITALS: usize = 256;
 const HARTREE_TO_EV_MOPAC: f64 = 27.21;
 const ANGSTROM_TO_BOHR_MOPAC: f64 = 1.0 / 0.529_167;
+
+include!("semiempirical/pm6_pwcct.generated.rs");
 
 /// Semi-empirical methods exposed by the native compute contract.
 ///
@@ -286,6 +288,12 @@ pub fn rm1_nuclear_repulsion_energy(
 pub fn semiempirical_nuclear_repulsion_energy(
     molecule: &SemiempiricalMolecule,
 ) -> Result<f64, SemiempiricalError> {
+    if matches!(
+        molecule.method,
+        SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D
+    ) {
+        return pm6_full_nuclear_repulsion_energy(molecule);
+    }
     let mut energy = 0.0;
     for left_index in 0..molecule.atoms.len() {
         for right_index in (left_index + 1)..molecule.atoms.len() {
@@ -378,25 +386,74 @@ pub fn semiempirical_nuclear_repulsion_energy(
     Ok(energy)
 }
 
+fn pm6_full_nuclear_repulsion_energy(
+    molecule: &SemiempiricalMolecule,
+) -> Result<f64, SemiempiricalError> {
+    let mut energy = 0.0;
+    for left_index in 0..molecule.atoms.len() {
+        for right_index in (left_index + 1)..molecule.atoms.len() {
+            let left_atom = &molecule.atoms[left_index];
+            let right_atom = &molecule.atoms[right_index];
+            let left = pm6_full_parameters(left_atom.atomic_number).unwrap();
+            let right = pm6_full_parameters(right_atom.atomic_number).unwrap();
+            let distance = (0..3)
+                .map(|axis| {
+                    (left_atom.position_angstrom[axis] - right_atom.position_angstrom[axis]).powi(2)
+                })
+                .sum::<f64>()
+                .sqrt();
+            if distance <= 1.0e-8 {
+                return Err(SemiempiricalError::InvalidInput(format!(
+                    "atoms {left_index} and {right_index} overlap"
+                )));
+            }
+            let distance_bohr = distance * ANGSTROM_TO_BOHR_MOPAC;
+            let rho_left = 0.5 * HARTREE_TO_EV_MOPAC / left.gss_ev;
+            let rho_right = 0.5 * HARTREE_TO_EV_MOPAC / right.gss_ev;
+            let ssss = HARTREE_TO_EV_MOPAC
+                / (distance_bohr.powi(2) + (rho_left + rho_right).powi(2)).sqrt();
+            let valence_product =
+                f64::from(left.valence_electrons) * f64::from(right.valence_electrons);
+            let (chi, pair_alpha) =
+                pm6_pwcct_parameters(left.atomic_number, right.atomic_number).unwrap_or((0.0, 0.0));
+            let atomic_radius_sum =
+                f64::from(left.atomic_number).cbrt() + f64::from(right.atomic_number).cbrt();
+            let unpolarized_core = 1.0e-8 * (atomic_radius_sum / distance).powi(12);
+            let special_xh = (matches!(left.atomic_number, 6..=8) && right.atomic_number == 1)
+                || (matches!(right.atomic_number, 6..=8) && left.atomic_number == 1);
+            let decay_distance = if special_xh {
+                distance.powi(2)
+            } else {
+                distance + 0.0003 * distance.powi(6)
+            };
+            let mut pair_energy = unpolarized_core
+                + valence_product * ssss * (1.0 + 2.0 * chi * (-pair_alpha * decay_distance).exp());
+            if left.atomic_number == 6 && right.atomic_number == 6 {
+                pair_energy += valence_product * ssss * 9.28 * (-5.98 * distance).exp();
+            }
+            let gaussian = |parameters: &Pm6FullElementParameters| {
+                parameters
+                    .gaussian
+                    .iter()
+                    .map(|term| term[0] * (-term[1] * (distance - term[2]).powi(2)).exp())
+                    .sum::<f64>()
+            };
+            energy += pair_energy + valence_product / distance * (gaussian(left) + gaussian(right));
+        }
+    }
+    Ok(energy)
+}
+
 fn pm6_pwcct_parameters(left: u8, right: u8) -> Option<(f64, f64)> {
     let pair = if left <= right {
         (left, right)
     } else {
         (right, left)
     };
-    Some(match pair {
-        (1, 1) => (2.24359, 3.54094),
-        (1, 6) => (0.21651, 1.02781),
-        (1, 7) => (0.17551, 0.96941),
-        (1, 8) => (0.19229, 1.26094),
-        (6, 6) => (0.81351, 2.61371),
-        (6, 7) => (0.85995, 2.68611),
-        (6, 8) => (0.99021, 2.88961),
-        (7, 7) => (0.67531, 2.5745),
-        (7, 8) => (0.76476, 2.78429),
-        (8, 8) => (0.535112, 2.623998),
-        _ => return None,
-    })
+    PM6_PWCCT
+        .binary_search_by_key(&pair, |entry| (entry.0, entry.1))
+        .ok()
+        .map(|index| (PM6_PWCCT[index].2, PM6_PWCCT[index].3))
 }
 
 /// Runs a deterministic restricted, closed-shell SCF cycle.
@@ -423,13 +480,49 @@ pub fn solve_closed_shell_scf_with_eigensolver(
     orbital_count: usize,
     electron_count: usize,
     options: SemiempiricalScfOptions,
+    build_fock: impl FnMut(&[f64]) -> Result<Vec<f64>, SemiempiricalError>,
+    diagonalize: impl FnMut(&[f64], usize) -> Result<(Vec<f64>, Vec<f64>), SemiempiricalError>,
+) -> Result<SemiempiricalScfResult, SemiempiricalError> {
+    solve_closed_shell_scf_from_density_with_eigensolver(
+        orbital_count,
+        electron_count,
+        options,
+        vec![0.0; orbital_count * orbital_count],
+        build_fock,
+        diagonalize,
+    )
+}
+
+pub fn solve_closed_shell_scf_with_initial_density(
+    orbital_count: usize,
+    electron_count: usize,
+    options: SemiempiricalScfOptions,
+    initial_density: Vec<f64>,
+    build_fock: impl FnMut(&[f64]) -> Result<Vec<f64>, SemiempiricalError>,
+) -> Result<SemiempiricalScfResult, SemiempiricalError> {
+    solve_closed_shell_scf_from_density_with_eigensolver(
+        orbital_count,
+        electron_count,
+        options,
+        initial_density,
+        build_fock,
+        symmetric_eigendecomposition,
+    )
+}
+
+fn solve_closed_shell_scf_from_density_with_eigensolver(
+    orbital_count: usize,
+    electron_count: usize,
+    options: SemiempiricalScfOptions,
+    initial_density: Vec<f64>,
     mut build_fock: impl FnMut(&[f64]) -> Result<Vec<f64>, SemiempiricalError>,
     mut diagonalize: impl FnMut(&[f64], usize) -> Result<(Vec<f64>, Vec<f64>), SemiempiricalError>,
 ) -> Result<SemiempiricalScfResult, SemiempiricalError> {
     validate_inputs(orbital_count, electron_count, options)?;
     let matrix_len = orbital_count * orbital_count;
+    validate_matrix(&initial_density, matrix_len, "initial density")?;
     let occupied = electron_count / 2;
-    let mut density = vec![0.0; matrix_len];
+    let mut density = initial_density;
     let mut orbital_energies = vec![0.0; orbital_count];
     let mut previous_error = f64::INFINITY;
     let mut damping = options.initial_damping;

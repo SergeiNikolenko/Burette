@@ -458,7 +458,9 @@ separate product increments.
   `973758404696232805913101f15f422b45556be558dfae3dc3298eb3eb47c7f6`.
 - The native closed-shell NDDO oracle now has separate AM1, PM3, PM6_SP, and
   AM1* CHNO parameter packs instead of method aliases. PM6-family nuclear
-  repulsion uses its distinct PWCCT equation and frozen CHNO pair table. At the
+  repulsion uses its distinct PWCCT equation. The complete pinned 83x83 CSV is
+  compiled into 674 nonzero symmetric native pair records with SHA-gated
+  generation; no runtime CSV parser is required. At the
   pinned mlxmolkit commit, explicit-water total energies and oxygen charges
   match all four upstream method paths within `1e-4 eV` and `1e-5 e`.
   This is an experimental organic-domain slice only. Grid method selection is
@@ -496,8 +498,11 @@ separate product increments.
   is now merged with the d extension in a variable-basis PM6 pair pack for
   1-, 4-, and 9-orbital atoms, with a general two-center Fock contraction.
   PM6 now truthfully selects the full d basis while PM6_SP remains sp-only.
-  Full SCF assembly, Metal W generation, broader D3 tables, and production
-  PM6-D3H4 composition remain gated.
+  Full variable-basis CPU SCF assembly now combines neutral-atom initialization,
+  adaptive damping/DIIS, sp+d overlap, one- and two-center Fock terms, and the
+  complete PWCCT nuclear energy. H2S electronic/nuclear energies and all atomic
+  charges match the pinned PM6_D oracle. Metal W/SCF generation, broader D3
+  tables, and production PM6-D3H4 composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.

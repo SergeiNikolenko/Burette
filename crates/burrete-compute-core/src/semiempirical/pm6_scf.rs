@@ -1,8 +1,13 @@
 use super::{
     pm6_d_d_pair_integrals, pm6_d_hydrogen_pair_integrals, pm6_d_sp_pair_integrals,
-    pm6_full_parameters, rm1_rotated_pair_integrals, Pm6FullElementParameters,
-    SemiempiricalElementParameters, SemiempiricalError, SemiempiricalMolecule,
+    pm6_full_parameters, pm6_local_d_overlap, pm6_one_center_d_fock, pm6_one_center_w_integrals,
+    pm6_two_center_d::pyseqm_orbital_rotation, rm1_rotated_pair_integrals, rm1_sp_overlap,
+    semiempirical_nuclear_repulsion_energy, solve_closed_shell_scf_with_initial_density,
+    Pm6FullElementParameters, Rm1Evaluation, SemiempiricalElementParameters, SemiempiricalError,
+    SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfOptions,
 };
+
+const ANGSTROM_TO_BOHR: f64 = 1.0 / 0.529_167;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Pm6FockPair {
@@ -43,8 +48,93 @@ fn as_sp_parameters(value: &Pm6FullElementParameters) -> SemiempiricalElementPar
     }
 }
 
-fn index4(a: usize, b: usize, c: usize, d: usize, right: usize) -> usize {
-    ((a * right + b) * right + c) * right + d
+fn index4(a: usize, b: usize, c: usize, d: usize, left: usize, right: usize) -> usize {
+    ((a * left + b) * right + c) * right + d
+}
+
+fn pm6_overlap(
+    left: &Pm6FullElementParameters,
+    right: &Pm6FullElementParameters,
+    left_position: [f64; 3],
+    right_position: [f64; 3],
+) -> Result<Vec<f64>, SemiempiricalError> {
+    let (nl, nr) = (
+        usize::from(left.orbital_count),
+        usize::from(right.orbital_count),
+    );
+    let mut values = vec![0.0; nl * nr];
+    let sp = rm1_sp_overlap(
+        &as_sp_parameters(left),
+        &as_sp_parameters(right),
+        left_position,
+        right_position,
+    )?;
+    for row in 0..sp.rows {
+        for column in 0..sp.columns {
+            values[row * nr + column] = sp.values[row * sp.columns + column];
+        }
+    }
+    let delta = std::array::from_fn::<_, 3, _>(|axis| right_position[axis] - left_position[axis]);
+    let distance = delta.iter().map(|value| value * value).sum::<f64>().sqrt();
+    let fill_d_rows = |output: &mut [f64],
+                       d_atom: &Pm6FullElementParameters,
+                       other: &Pm6FullElementParameters,
+                       direction: [f64; 3],
+                       transpose: bool|
+     -> Result<(), SemiempiricalError> {
+        let local = pm6_local_d_overlap(d_atom, other, distance * ANGSTROM_TO_BOHR)?;
+        let rotation = pyseqm_orbital_rotation(direction);
+        for d in 0..5 {
+            let ds = rotation[d + 4][4] * local.ds_sigma;
+            if transpose {
+                output[4 + d] = ds;
+            } else {
+                output[(4 + d) * nr] = ds;
+            }
+            if other.orbital_count > 1 {
+                for p in 0..3 {
+                    let dp = rotation[d + 4][4] * rotation[p + 1][1] * local.dp_sigma
+                        + (rotation[d + 4][5] * rotation[p + 1][2]
+                            + rotation[d + 4][6] * rotation[p + 1][3])
+                            * local.dp_pi;
+                    if transpose {
+                        output[(1 + p) * nr + 4 + d] = dp;
+                    } else {
+                        output[(4 + d) * nr + 1 + p] = dp;
+                    }
+                }
+            }
+        }
+        if d_atom.has_d_orbitals() && other.has_d_orbitals() && !transpose {
+            let diagonal = [
+                local.dd_sigma,
+                local.dd_pi,
+                local.dd_pi,
+                local.dd_delta,
+                local.dd_delta,
+            ];
+            for d_left in 0..5 {
+                for d_right in 0..5 {
+                    output[(4 + d_left) * nr + 4 + d_right] = (0..5)
+                        .map(|axis| {
+                            rotation[d_left + 4][axis + 4]
+                                * diagonal[axis]
+                                * rotation[d_right + 4][axis + 4]
+                        })
+                        .sum();
+                }
+            }
+        }
+        Ok(())
+    };
+    let unit = delta.map(|value| value / distance);
+    if left.has_d_orbitals() {
+        fill_d_rows(&mut values, left, right, unit, false)?;
+    }
+    if right.has_d_orbitals() {
+        fill_d_rows(&mut values, right, left, unit.map(|value| -value), true)?;
+    }
+    Ok(values)
 }
 
 fn build_pair(
@@ -72,7 +162,7 @@ fn build_pair(
             left_core[a * nl + b] = sp.left_core_attraction_ev[a * 4 + b];
             for c in 0..right_sp {
                 for d in 0..right_sp {
-                    repulsion[index4(a, b, c, d, nr)] =
+                    repulsion[index4(a, b, c, d, nl, nr)] =
                         sp.repulsion_ev[((a * 4 + b) * 4 + c) * 4 + d];
                 }
             }
@@ -96,7 +186,7 @@ fn build_pair(
             let value = pm6_d_hydrogen_pair_integrals(right, left, right_position, left_position)?;
             for c in 0..9 {
                 for d in 0..9 {
-                    repulsion[index4(0, 0, c, d, nr)] = value.repulsion_ev[c * 9 + d];
+                    repulsion[index4(0, 0, c, d, nl, nr)] = value.repulsion_ev[c * 9 + d];
                 }
             }
             left_core[0] = value.hydrogen_core_attraction_ev;
@@ -109,7 +199,7 @@ fn build_pair(
                     left_core[a * 9 + b] += value.d_core_attraction_ev[a * 9 + b];
                     for c in 0..nr {
                         for d in 0..nr {
-                            repulsion[index4(a, b, c, d, nr)] +=
+                            repulsion[index4(a, b, c, d, nl, nr)] +=
                                 value.repulsion_ev[((a * 9 + b) * 4 + c) * 4 + d];
                         }
                     }
@@ -122,7 +212,7 @@ fn build_pair(
                 for b in 0..nl {
                     for c in 0..9 {
                         for d in 0..9 {
-                            repulsion[index4(a, b, c, d, nr)] +=
+                            repulsion[index4(a, b, c, d, nl, nr)] +=
                                 value.repulsion_ev[((c * 9 + d) * 4 + a) * 4 + b];
                         }
                     }
@@ -204,7 +294,7 @@ pub fn contract_pm6_pair_fock(
             for b in 0..nl {
                 for c in 0..nr {
                     for d in 0..nr {
-                        let integral = pair.repulsion_ev[index4(a, b, c, d, nr)];
+                        let integral = pair.repulsion_ev[index4(a, b, c, d, nl, nr)];
                         let la = pair.left_orbital_start + a;
                         let lb = pair.left_orbital_start + b;
                         let rc = pair.right_orbital_start + c;
@@ -222,6 +312,207 @@ pub fn contract_pm6_pair_fock(
         }
     }
     Ok(contribution)
+}
+
+fn build_core(
+    molecule: &SemiempiricalMolecule,
+    pairs: &[Pm6FockPair],
+) -> Result<Vec<f64>, SemiempiricalError> {
+    let n = molecule.orbital_count;
+    let mut core = vec![0.0; n * n];
+    for (atom_index, atom) in molecule.atoms.iter().enumerate() {
+        let parameters = pm6_full_parameters(atom.atomic_number).unwrap();
+        let start = molecule.orbital_offsets[atom_index];
+        core[start * n + start] = parameters.uss_ev;
+        for orbital in 1..usize::from(parameters.orbital_count.min(4)) {
+            core[(start + orbital) * n + start + orbital] = parameters.upp_ev;
+        }
+        for orbital in 4..usize::from(parameters.orbital_count) {
+            core[(start + orbital) * n + start + orbital] = parameters.udd_ev;
+        }
+    }
+    for pair in pairs {
+        for row in 0..pair.left_orbital_count {
+            for column in 0..pair.left_orbital_count {
+                let target = (pair.left_orbital_start + row) * n + pair.left_orbital_start + column;
+                core[target] +=
+                    pair.left_core_attraction_ev[row * pair.left_orbital_count + column];
+            }
+        }
+        for row in 0..pair.right_orbital_count {
+            for column in 0..pair.right_orbital_count {
+                let target =
+                    (pair.right_orbital_start + row) * n + pair.right_orbital_start + column;
+                core[target] +=
+                    pair.right_core_attraction_ev[row * pair.right_orbital_count + column];
+            }
+        }
+    }
+    let mut pair_index = 0;
+    for left_index in 0..molecule.atoms.len() {
+        for right_index in (left_index + 1)..molecule.atoms.len() {
+            let left_atom = &molecule.atoms[left_index];
+            let right_atom = &molecule.atoms[right_index];
+            let left = pm6_full_parameters(left_atom.atomic_number).unwrap();
+            let right = pm6_full_parameters(right_atom.atomic_number).unwrap();
+            let overlap = pm6_overlap(
+                left,
+                right,
+                left_atom.position_angstrom,
+                right_atom.position_angstrom,
+            )?;
+            let pair = &pairs[pair_index];
+            pair_index += 1;
+            for a in 0..pair.left_orbital_count {
+                let beta_a = if a == 0 {
+                    left.beta_s_ev
+                } else if a < 4 {
+                    left.beta_p_ev
+                } else {
+                    left.beta_d_ev
+                };
+                for b in 0..pair.right_orbital_count {
+                    let beta_b = if b == 0 {
+                        right.beta_s_ev
+                    } else if b < 4 {
+                        right.beta_p_ev
+                    } else {
+                        right.beta_d_ev
+                    };
+                    let value = 0.5 * (beta_a + beta_b) * overlap[a * pair.right_orbital_count + b];
+                    let global_a = pair.left_orbital_start + a;
+                    let global_b = pair.right_orbital_start + b;
+                    core[global_a * n + global_b] = value;
+                    core[global_b * n + global_a] = value;
+                }
+            }
+        }
+    }
+    Ok(core)
+}
+
+fn build_fock(
+    molecule: &SemiempiricalMolecule,
+    core: &[f64],
+    density: &[f64],
+    pairs: &[Pm6FockPair],
+) -> Result<Vec<f64>, SemiempiricalError> {
+    let n = molecule.orbital_count;
+    let mut fock = core.to_vec();
+    for (atom_index, atom) in molecule.atoms.iter().enumerate() {
+        let parameters = pm6_full_parameters(atom.atomic_number).unwrap();
+        let start = molecule.orbital_offsets[atom_index];
+        let p_ss = density[start * n + start];
+        if parameters.orbital_count == 1 {
+            fock[start * n + start] += 0.5 * p_ss * parameters.gss_ev;
+            continue;
+        }
+        let p_total = (1..4)
+            .map(|orbital| density[(start + orbital) * n + start + orbital])
+            .sum::<f64>();
+        fock[start * n + start] += 0.5 * p_ss * parameters.gss_ev
+            + p_total * (parameters.gsp_ev - 0.5 * parameters.hsp_ev);
+        for orbital in 1..4 {
+            let index = start + orbital;
+            let p_diagonal = density[index * n + index];
+            fock[index * n + index] += p_ss * (parameters.gsp_ev - 0.5 * parameters.hsp_ev)
+                + 0.5 * p_diagonal * parameters.gpp_ev
+                + (p_total - p_diagonal) * (1.25 * parameters.gp2_ev - 0.25 * parameters.gpp_ev);
+            let sp =
+                density[start * n + index] * (1.5 * parameters.hsp_ev - 0.5 * parameters.gsp_ev);
+            fock[start * n + index] += sp;
+            fock[index * n + start] += sp;
+        }
+        for left in 1..4 {
+            for right in (left + 1)..4 {
+                let (a, b) = (start + left, start + right);
+                let value =
+                    density[a * n + b] * (0.75 * parameters.gpp_ev - 1.25 * parameters.gp2_ev);
+                fock[a * n + b] += value;
+                fock[b * n + a] += value;
+            }
+        }
+        if parameters.has_d_orbitals() {
+            let block = std::array::from_fn(|index| {
+                let row = index / 9;
+                let column = index % 9;
+                density[(start + row) * n + start + column]
+            });
+            let w = pm6_one_center_w_integrals(parameters)?;
+            let one_center = pm6_one_center_d_fock(&block, &w)?;
+            for row in 0..9 {
+                for column in 0..9 {
+                    fock[(start + row) * n + start + column] += one_center[row * 9 + column];
+                }
+            }
+        }
+    }
+    for (target, contribution) in fock
+        .iter_mut()
+        .zip(contract_pm6_pair_fock(n, density, pairs)?)
+    {
+        *target += contribution;
+    }
+    Ok(fock)
+}
+
+pub fn evaluate_pm6(
+    molecule: &SemiempiricalMolecule,
+    options: SemiempiricalScfOptions,
+) -> Result<Rm1Evaluation, SemiempiricalError> {
+    if !matches!(
+        molecule.method,
+        SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D
+    ) {
+        return Err(SemiempiricalError::InvalidInput(
+            "full PM6 evaluation requires PM6 or PM6_D".into(),
+        ));
+    }
+    let pairs = pm6_fock_pairs(molecule)?;
+    let core = build_core(molecule, &pairs)?;
+    let mut initial_density = vec![0.0; molecule.orbital_count * molecule.orbital_count];
+    for (atom_index, atom) in molecule.atoms.iter().enumerate() {
+        let parameters = pm6_full_parameters(atom.atomic_number).unwrap();
+        let start = molecule.orbital_offsets[atom_index];
+        if parameters.orbital_count == 1 {
+            initial_density[start * molecule.orbital_count + start] =
+                f64::from(parameters.valence_electrons);
+        } else {
+            let sp_population = f64::from(parameters.valence_electrons) / 4.0;
+            for orbital in 0..4 {
+                initial_density[(start + orbital) * molecule.orbital_count + start + orbital] =
+                    sp_population;
+            }
+        }
+    }
+    let pm6_options = SemiempiricalScfOptions {
+        initial_damping: options.initial_damping.max(0.7),
+        max_damping: options.max_damping.max(0.95),
+        ..options
+    };
+    let scf = solve_closed_shell_scf_with_initial_density(
+        molecule.orbital_count,
+        molecule.electron_count,
+        pm6_options,
+        initial_density,
+        |density| build_fock(molecule, &core, density, &pairs),
+    )?;
+    let final_fock = build_fock(molecule, &core, &scf.density, &pairs)?;
+    let electronic_energy_ev = 0.5
+        * scf
+            .density
+            .iter()
+            .zip(core.iter().zip(&final_fock))
+            .map(|(density, (core, fock))| density * (core + fock))
+            .sum::<f64>();
+    let nuclear_energy_ev = semiempirical_nuclear_repulsion_energy(molecule)?;
+    Ok(Rm1Evaluation {
+        electronic_energy_ev,
+        nuclear_energy_ev,
+        total_energy_ev: electronic_energy_ev + nuclear_energy_ev,
+        atomic_charges: molecule.atomic_charges(&scf.density)?,
+        scf,
+    })
 }
 
 #[cfg(test)]
@@ -251,5 +542,83 @@ mod tests {
         assert_eq!(pair.repulsion_ev.len(), 9 * 9 * 4 * 4);
         assert_eq!(pair.left_core_attraction_ev.len(), 81);
         assert_eq!(pair.right_core_attraction_ev.len(), 16);
+    }
+
+    #[test]
+    fn hydrogen_sulfide_matches_the_pinned_pm6_d_oracle() {
+        let molecule = SemiempiricalMolecule::new(
+            SemiempiricalMethod::Pm6,
+            vec![
+                SemiempiricalAtom {
+                    atomic_number: 16,
+                    position_angstrom: [0.0; 3],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [1.336, 0.0, 0.0],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [-0.445, 1.26, 0.0],
+                },
+            ],
+            0,
+        )
+        .unwrap();
+        let pairs = pm6_fock_pairs(&molecule).unwrap();
+        let core = build_core(&molecule, &pairs).unwrap();
+        for (row, column, expected) in [
+            (4, 9, -1.154_280_026_953_004),
+            (6, 9, 0.666_423_884_281_525_4),
+            (4, 10, 0.897_900_850_236_752_9),
+            (6, 10, 0.666_156_118_423_803_4),
+            (8, 10, 0.724_614_370_189_082_9),
+        ] {
+            assert!(
+                (core[row * 11 + column] - expected).abs() < 3.0e-8,
+                "core {row},{column}: {} != {expected}",
+                core[row * 11 + column]
+            );
+        }
+        let mut initial = vec![0.0; 121];
+        for orbital in 0..4 {
+            initial[orbital * 11 + orbital] = 1.5;
+        }
+        initial[9 * 11 + 9] = 1.0;
+        initial[10 * 11 + 10] = 1.0;
+        let initial_fock = build_fock(&molecule, &core, &initial, &pairs).unwrap();
+        for (index, expected) in [
+            (0, -25.165_770_500_000_008),
+            (4, 1.359_236_901_988_588),
+            (8, 1.359_236_901_988_602_1),
+            (9, -5.037_853_373_115_732),
+            (10, -5.037_103_774_601_833_5),
+        ] {
+            assert!(
+                (initial_fock[index * 11 + index] - expected).abs() < 3.0e-8,
+                "initial F {index}: {} != {expected}",
+                initial_fock[index * 11 + index]
+            );
+        }
+        let result = evaluate_pm6(&molecule, SemiempiricalScfOptions::default()).unwrap();
+        assert_eq!(
+            result.scf.status,
+            super::super::SemiempiricalScfStatus::Converged
+        );
+        assert!(
+            (result.electronic_energy_ev + 309.058_588_626_738_07).abs() < 2.0e-6,
+            "electronic {}, charges {:?}, eigen {:?}",
+            result.electronic_energy_ev,
+            result.atomic_charges,
+            result.scf.orbital_energies
+        );
+        assert!((result.nuclear_energy_ev - 107.464_533_271_339_69).abs() < 2.0e-8);
+        for (actual, expected) in result.atomic_charges.iter().zip([
+            -0.389_993_784_183_554_1,
+            0.194_971_735_613_984_73,
+            0.195_022_048_569_566_84,
+        ]) {
+            assert!((actual - expected).abs() < 2.0e-6, "{actual} != {expected}");
+        }
     }
 }

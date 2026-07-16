@@ -401,7 +401,7 @@ pub fn pm6_d_d_pair_integrals(
     })
 }
 
-fn pyseqm_orbital_rotation(unit_d_to_h: [f64; 3]) -> [[f64; 9]; 9] {
+pub(super) fn pyseqm_orbital_rotation(unit_d_to_h: [f64; 3]) -> [[f64; 9]; 9] {
     let [x, y, z] = unit_d_to_h.map(|value| -value);
     let xy = (x * x + y * y).sqrt();
     let sign_z = z.signum();

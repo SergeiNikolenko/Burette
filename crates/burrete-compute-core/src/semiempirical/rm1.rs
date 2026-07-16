@@ -6,8 +6,8 @@
 use super::{
     rm1_rotated_pair_integrals, rm1_sp_overlap, semiempirical_nuclear_repulsion_energy,
     semiempirical_parameters, solve_closed_shell_scf_with_eigensolver,
-    symmetric_eigendecomposition, SemiempiricalError, SemiempiricalMethod,
-    SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfResult,
+    symmetric_eigendecomposition, SemiempiricalError, SemiempiricalMethod, SemiempiricalMolecule,
+    SemiempiricalScfOptions, SemiempiricalScfResult,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -45,7 +45,8 @@ pub fn rm1_fock_pairs(
             let left_atom = &molecule.atoms[left_index];
             let right_atom = &molecule.atoms[right_index];
             let left = semiempirical_parameters(molecule.method, left_atom.atomic_number).unwrap();
-            let right = semiempirical_parameters(molecule.method, right_atom.atomic_number).unwrap();
+            let right =
+                semiempirical_parameters(molecule.method, right_atom.atomic_number).unwrap();
             let pair = rm1_rotated_pair_integrals(
                 left,
                 right,
@@ -142,17 +143,19 @@ pub fn evaluate_semiempirical(
     molecule: &SemiempiricalMolecule,
     options: SemiempiricalScfOptions,
 ) -> Result<Rm1Evaluation, SemiempiricalError> {
+    if matches!(
+        molecule.method,
+        SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D
+    ) {
+        return super::evaluate_pm6(molecule, options);
+    }
     evaluate_rm1_with_pair_contractor(molecule, options, contract_rm1_pair_fock)
 }
 
 pub fn evaluate_rm1_with_pair_contractor(
     molecule: &SemiempiricalMolecule,
     options: SemiempiricalScfOptions,
-    contract_pairs: impl FnMut(
-        usize,
-        &[f64],
-        &[Rm1FockPair],
-    ) -> Result<Vec<f64>, SemiempiricalError>,
+    contract_pairs: impl FnMut(usize, &[f64], &[Rm1FockPair]) -> Result<Vec<f64>, SemiempiricalError>,
 ) -> Result<Rm1Evaluation, SemiempiricalError> {
     evaluate_rm1_with_accelerators(
         molecule,
@@ -165,11 +168,7 @@ pub fn evaluate_rm1_with_pair_contractor(
 pub fn evaluate_rm1_with_accelerators(
     molecule: &SemiempiricalMolecule,
     options: SemiempiricalScfOptions,
-    contract_pairs: impl FnMut(
-        usize,
-        &[f64],
-        &[Rm1FockPair],
-    ) -> Result<Vec<f64>, SemiempiricalError>,
+    contract_pairs: impl FnMut(usize, &[f64], &[Rm1FockPair]) -> Result<Vec<f64>, SemiempiricalError>,
     diagonalize: impl FnMut(&[f64], usize) -> Result<(Vec<f64>, Vec<f64>), SemiempiricalError>,
 ) -> Result<Rm1Evaluation, SemiempiricalError> {
     let pairs = rm1_fock_pairs(molecule)?;
@@ -211,13 +210,7 @@ pub fn evaluate_rm1_with_prepared_pairs_and_accelerators(
         |density| build_fock(molecule, &core, density, pairs, &mut contract_pairs),
         diagonalize,
     )?;
-    let final_fock = build_fock(
-        molecule,
-        &core,
-        &scf.density,
-        pairs,
-        &mut contract_pairs,
-    )?;
+    let final_fock = build_fock(molecule, &core, &scf.density, pairs, &mut contract_pairs)?;
     let electronic_energy_ev = 0.5
         * scf
             .density
@@ -256,7 +249,8 @@ fn build_core_hamiltonian(
             let left_atom = &molecule.atoms[left_index];
             let right_atom = &molecule.atoms[right_index];
             let left = semiempirical_parameters(molecule.method, left_atom.atomic_number).unwrap();
-            let right = semiempirical_parameters(molecule.method, right_atom.atomic_number).unwrap();
+            let right =
+                semiempirical_parameters(molecule.method, right_atom.atomic_number).unwrap();
             let left_start = molecule.orbital_offsets[left_index];
             let right_start = molecule.orbital_offsets[right_index];
             let overlap = rm1_sp_overlap(
@@ -363,10 +357,7 @@ fn build_fock(
         }
     }
 
-    for (target, pair) in fock
-        .iter_mut()
-        .zip(contract_pairs(n, density, pairs)?)
-    {
+    for (target, pair) in fock.iter_mut().zip(contract_pairs(n, density, pairs)?) {
         *target += pair;
     }
     Ok(fock)
@@ -468,19 +459,41 @@ mod tests {
         ];
         let mut energies = Vec::new();
         for (method, expected_energy, expected_oxygen_charge) in [
-            (SemiempiricalMethod::Am1, -348.561_461_108_585_83, -0.385_115_229_735_707_66),
-            (SemiempiricalMethod::Pm3, -324.898_111_989_405, -0.350_735_485_739_786_4),
-            (SemiempiricalMethod::Pm6Sp, -319.072_734_328_042_5, -0.609_404_137_783_431_4),
-            (SemiempiricalMethod::Am1Star, -318.906_821_248_340_75, -0.444_617_462_025_478_36),
+            (
+                SemiempiricalMethod::Am1,
+                -348.561_461_108_585_83,
+                -0.385_115_229_735_707_66,
+            ),
+            (
+                SemiempiricalMethod::Pm3,
+                -324.898_111_989_405,
+                -0.350_735_485_739_786_4,
+            ),
+            (
+                SemiempiricalMethod::Pm6Sp,
+                -319.072_734_328_042_5,
+                -0.609_404_137_783_431_4,
+            ),
+            (
+                SemiempiricalMethod::Am1Star,
+                -318.906_821_248_340_75,
+                -0.444_617_462_025_478_36,
+            ),
         ] {
             let molecule = SemiempiricalMolecule::new(method, atoms.clone(), 0).unwrap();
-            let result = evaluate_semiempirical(&molecule, SemiempiricalScfOptions::default())
-                .unwrap();
+            let result =
+                evaluate_semiempirical(&molecule, SemiempiricalScfOptions::default()).unwrap();
             assert_eq!(result.scf.status, SemiempiricalScfStatus::Converged);
             assert!(result.total_energy_ev.is_finite());
             assert!(result.atomic_charges.iter().sum::<f64>().abs() < 1.0e-9);
-            assert!((result.total_energy_ev - expected_energy).abs() < 1.0e-4, "{method:?}: {result:?}");
-            assert!((result.atomic_charges[0] - expected_oxygen_charge).abs() < 1.0e-5, "{method:?}: {result:?}");
+            assert!(
+                (result.total_energy_ev - expected_energy).abs() < 1.0e-4,
+                "{method:?}: {result:?}"
+            );
+            assert!(
+                (result.atomic_charges[0] - expected_oxygen_charge).abs() < 1.0e-5,
+                "{method:?}: {result:?}"
+            );
             energies.push(result.total_energy_ev);
         }
         for left in 0..energies.len() {
