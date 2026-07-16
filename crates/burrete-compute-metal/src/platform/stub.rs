@@ -1,7 +1,8 @@
 use burrete_compute_core::{
     ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
-    EtkDistanceConstraint, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
-    GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
+    EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
+    Fingerprint2048, GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 
@@ -131,6 +132,19 @@ impl MetalHost {
         _distances: &[EtkDistanceConstraint],
         _max_memory_bytes: u64,
     ) -> Result<MetalEtkDispatch, MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn optimize_etk_profiled(
+        &self,
+        _positions: &[[f32; 4]],
+        _atom_count: u32,
+        _terms: EtkGeometryTerms<'_>,
+        _options: DistanceGeometryOptimizationOptions,
+        _max_memory_bytes: u64,
+    ) -> Result<MetalDistanceOptimizationDispatch, MetalRuntimeError> {
         Err(MetalRuntimeError::UnsupportedPlatform(
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))

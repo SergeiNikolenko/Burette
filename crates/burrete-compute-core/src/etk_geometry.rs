@@ -27,6 +27,13 @@ pub struct EtkGeometryEvaluation {
     pub gradients: Vec<[f32; 4]>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct EtkGeometryTerms<'a> {
+    pub torsions: &'a [EtkTorsionConstraint],
+    pub impropers: &'a [EtkImproperConstraint],
+    pub distances: &'a [EtkDistanceConstraint],
+}
+
 pub fn evaluate_etk_geometry(
     positions: &[[f32; 4]],
     torsions: &[EtkTorsionConstraint],

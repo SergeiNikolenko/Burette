@@ -5,8 +5,9 @@ use burrete_compute_core::{
     initialize_conformer_positions, optimize_distance_geometry, score_tanimoto_query,
     validate_conformer_stereo, ChiralVolumeConstraint, DistanceConstraint,
     DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
-    EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
-    TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint, FINGERPRINT_WORDS,
+    EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
+    GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
+    FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -374,6 +375,51 @@ impl MetalComputeRuntime {
         })
     }
 
+    pub fn optimize_etk_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        terms: EtkGeometryTerms<'_>,
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalDistanceOptimization, MetalRuntimeError> {
+        let dispatch = self.host.optimize_etk_profiled(
+            positions,
+            atom_count,
+            terms,
+            options,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if dispatch
+            .positions
+            .iter()
+            .flatten()
+            .any(|value| !value.is_finite())
+            || dispatch.energies.iter().any(|value| !value.is_finite())
+            || dispatch
+                .scaled_gradient_maxima
+                .iter()
+                .any(|value| !value.is_finite())
+        {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal ETK optimizer returned invalid numeric output".into(),
+            ));
+        }
+        let statuses = dispatch
+            .statuses
+            .into_iter()
+            .map(distance_optimization_status)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(MetalDistanceOptimization {
+            positions: dispatch.positions,
+            energies: dispatch.energies,
+            scaled_gradient_maxima: dispatch.scaled_gradient_maxima,
+            iterations: dispatch.iterations,
+            statuses,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
     fn run_startup_known_answer_test(&self) -> Result<(), MetalRuntimeError> {
         let mut left = [0_u64; FINGERPRINT_WORDS];
         left[0] = 0b11;
@@ -566,6 +612,32 @@ impl MetalComputeRuntime {
         {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal startup ETK energy/gradient differs from the CPU reference".into(),
+            ));
+        }
+        let optimized_etk = self.host.optimize_etk_profiled(
+            &etk_positions,
+            4,
+            EtkGeometryTerms {
+                torsions: &torsions,
+                impropers: &impropers,
+                distances: &distances,
+            },
+            DistanceGeometryOptimizationOptions::default(),
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        let optimized_reference =
+            evaluate_etk_geometry(&optimized_etk.positions, &torsions, &impropers, &distances)
+                .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        if optimized_etk.statuses[0] > 1
+            || optimized_etk.energies[0] > expected_etk.energy
+            || !float_slices_close(
+                &optimized_etk.energies,
+                &[optimized_reference.energy],
+                2.0e-4,
+            )
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup ETK optimization failed its CPU energy check".into(),
             ));
         }
         Ok(())
