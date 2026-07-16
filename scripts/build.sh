@@ -20,6 +20,9 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 export COPYFILE_DISABLE=1
 export COPY_EXTENDED_ATTRIBUTES_DISABLE=1
 export COPY_EXTENDED_ATTRIBUTES_DISABLE_RECURSIVE=1
+# Link-time stripping can produce unloadable proc-macro Mach-O files with the
+# current Apple linker. The completed app is still signed and verified below.
+export CARGO_PROFILE_RELEASE_STRIP=false
 
 APP_ID="com.local.BurreteV10"
 PREVIEW_ID="com.local.BurreteV10.Preview"
@@ -402,6 +405,64 @@ sign_quicklook_xyzrender_launcher() {
   codesign "${CODESIGN_ARGS[@]}" "$appex/Contents/Resources/xyzrender-python3" >/dev/null
 }
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2; exit 1; }; }
+build_compute_metal_runtime() {
+  local runtime="$SAFE_ROOT/compute/metal/runtime"
+  rm -f "$runtime/current.json"
+  find "$runtime" -maxdepth 1 -type d -name 'generation.*' -exec rm -rf {} +
+  "$SAFE_ROOT/compute/metal/build-metallib.sh" "$runtime"
+}
+assert_bundled_compute_metal_runtime() {
+  local app="$1"
+  local label="$2"
+  local runtime="$app/Contents/Resources/ComputeMetal"
+  /usr/bin/python3 - "$runtime" "$label" <<'PY'
+import hashlib
+import json
+import pathlib
+import re
+import sys
+
+runtime = pathlib.Path(sys.argv[1])
+label = sys.argv[2]
+
+def fail(message):
+    raise SystemExit(f"invalid packaged Metal runtime {label}: {message}")
+
+pointer_path = runtime / "current.json"
+if not pointer_path.is_file() or pointer_path.is_symlink():
+    fail(f"generation pointer missing at {pointer_path}")
+try:
+    pointer_bytes = pointer_path.read_bytes()
+    pointer = json.loads(pointer_bytes)
+except (OSError, ValueError) as error:
+    fail(f"generation pointer cannot be read: {error}")
+if pointer.get("schemaVersion") != "burrete.compute.metal-generation-pointer.v1":
+    fail("generation pointer schema mismatch")
+generation = pointer.get("generation", "")
+if not re.fullmatch(r"generation\.[A-Za-z0-9]{6,64}", generation):
+    fail("non-canonical generation name")
+metadata_path = runtime / generation / "build-metadata.v1.json"
+metallib_path = runtime / generation / "tanimoto-neighbors.v1.metallib"
+for path in (metadata_path, metallib_path):
+    if not path.is_file() or path.is_symlink() or path.stat().st_size == 0:
+        fail(f"required regular file missing at {path}")
+metadata_bytes = metadata_path.read_bytes()
+metadata_sha256 = hashlib.sha256(metadata_bytes).hexdigest()
+if metadata_sha256 != pointer.get("metadataSha256"):
+    fail("metadata SHA-256 differs from generation pointer")
+try:
+    metadata = json.loads(metadata_bytes)
+except ValueError as error:
+    fail(f"build metadata cannot be decoded: {error}")
+if metadata.get("schemaVersion") != "burrete.compute.metal-build-metadata.v1":
+    fail("build metadata schema mismatch")
+if metadata.get("runtimeVersion") != "burrete-native-metal-v1":
+    fail("runtime version mismatch")
+metallib_sha256 = hashlib.sha256(metallib_path.read_bytes()).hexdigest()
+if metallib_sha256 != metadata.get("metallib", {}).get("sha256"):
+    fail("metallib SHA-256 differs from build metadata")
+PY
+}
 
 require_tool bun "Install it with: brew install oven-sh/bun/bun"
 require_tool cargo "Install Rust from: https://www.rust-lang.org/tools/install"
@@ -458,6 +519,7 @@ fi
 if [[ "$BUILD_MODE" == "release" ]]; then
   enable_release_hardened_runtime
 fi
+build_compute_metal_runtime
 
 pushd "$SAFE_ROOT" >/dev/null
 rm -rf build
@@ -505,6 +567,7 @@ mark_regular_desktop_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
 bundle_xyzrender_runtime "$TAURI_BUILT_APP"
 bundle_quicklook_xyzrender_launcher "$TAURI_BUILT_APP"
+assert_bundled_compute_metal_runtime "$TAURI_BUILT_APP" "before signing"
 clean_detritus "$TAURI_BUILT_APP"
 CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
@@ -542,6 +605,7 @@ actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations
 [[ -x "$LOCAL_APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/burrete-core-bridge" ]] || { echo "error: embedded Quick Look extension is missing burrete-core bridge helper." >&2; exit 1; }
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex" ]] || { echo "error: embedded Quick Look thumbnail extension missing in Tauri app." >&2; exit 1; }
 assert_bundled_xyzrender_runtime "$LOCAL_APP" "in build output"
+assert_bundled_compute_metal_runtime "$LOCAL_APP" "in build output"
 thumbnail_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$thumbnail_point" == "com.apple.quicklook.thumbnail" ]] || { echo "error: embedded thumbnail extension has wrong extension point: ${thumbnail_point:-unknown}" >&2; exit 1; }
 BUILT_VIEWER_SHELL="$LOCAL_APP/Contents/Resources/ViewerWeb/viewer-shell.js"
@@ -563,6 +627,7 @@ mkdir -p "$SAFE_ROOT/verify"
 ditto --norsrc --noextattr "$BUILT_APP_SOURCE" "$VERIFY_APP"
 clean_detritus "$VERIFY_APP"
 assert_bundled_xyzrender_runtime "$VERIFY_APP" "before codesign verification"
+assert_bundled_compute_metal_runtime "$VERIFY_APP" "before codesign verification"
 codesign --verify --deep --strict "$VERIFY_APP"
 
 cat <<MSG

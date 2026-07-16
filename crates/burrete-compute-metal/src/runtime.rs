@@ -168,3 +168,32 @@ fn validate_sha256(value: &str) -> Result<(), MetalRuntimeError> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    #[test]
+    #[ignore = "manual packaged-runtime smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    fn loads_verified_packaged_runtime_and_dispatches_on_the_real_gpu() {
+        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+            .map(PathBuf::from)
+            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged ComputeMetal directory");
+        let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
+            .expect("verified packaged Metal runtime");
+        let device = runtime.device_identity();
+        eprintln!(
+            "packaged Metal runtime loaded: device={}, registryId={}, unifiedMemory={}, metallibSha256={}",
+            device.name,
+            device.registry_id.as_deref().unwrap_or("unavailable"),
+            device.unified_memory,
+            runtime
+                .runtime_identity()
+                .metallib_sha256
+                .as_deref()
+                .expect("packaged runtime must pin its metallib"),
+        );
+    }
+}

@@ -1,7 +1,7 @@
 # Native GPU Compute Layer Implementation Status
 
-Status: `cluster.v1` source implementation complete; packaged Apple Silicon
-release proof pending
+Status: `cluster.v1` source implementation and packaged Apple Silicon
+development proof complete; production release and scale proof pending
 
 Updated: 2026-07-16
 
@@ -44,17 +44,21 @@ source subject to the provenance gate.
 | --- | --- |
 | macOS desktop source build | `Cluster all` and `Cluster selected` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
-| Native Metal backend | Real command-buffer dispatch is implemented and passes the Metal known-answer test when a verified runtime is supplied |
-| Packaged production Metal | Not available until a reviewed precompiled `.metallib` is produced, bundled, signed, and verified on a real Apple Silicon package |
+| Native Metal backend | Real command-buffer dispatch is implemented and passes startup parity against the CPU reference |
+| Packaged development Metal | A unique ad-hoc-signed desktop package contains a hash-bound offline-compiled `.metallib`; the packaged bytes load and dispatch on Apple M2 Pro |
+| Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
 | iPhone source app | Rendering remains unchanged; no macOS Metal compute workflow is exposed |
 | Agent/plugin surface | Durable compute contracts exist internally, but no new public agent tool is released in this slice |
 
-The current Xcode installation on the implementation machine does not include
-the optional Metal Toolchain, so `xcrun metal` cannot produce the release
-library. Runtime source compilation is permitted only by the Metal crate's
-test harness and is not accepted as production availability.
+The implementation machine now has Metal Toolchain 27A5209h installed for
+Xcode 27 beta. Its default `xcode-select` still points to Command Line Tools, so
+package builds must either select full Xcode or pass
+`DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`. The package
+build regenerates the reviewed runtime inside its isolated build tree and fails
+closed if `metal` or `metallib` cannot execute. Runtime source compilation
+remains test-only and is not accepted as production availability.
 
 ## Implemented User Scenario
 
@@ -98,6 +102,20 @@ features, but they must not be described as available UI operations yet.
 - 32 Grid store tests pass; the 50,000-row performance smoke remains opt-in.
 - Metal crate unit/parity tests pass, including a real test-only GPU dispatch
   on the local 19-core Apple M2 Pro GPU reported with Metal 4 support.
+- The unique `com.local.BurreteV10.Dev.gpucompute9a97` package builds and passes
+  deep/strict ad-hoc signature verification at
+  `build/Burrete-gpucompute9a97.app`.
+- Its packaged `generation.OFdUGZ` metadata SHA-256 is
+  `d2d89932677282987c8bfeb7092205b97f2bbad57342afe55a51967975eaf72b`;
+  the pinned metallib SHA-256 is
+  `fbbf5940ab1925a67ccb382d5cd229ce97086ac60535d30d20f8955c4df13af7`.
+- Loading those exact packaged bytes executes the startup known-answer graph on
+  the real `Apple M2 Pro` Metal device (`registryId=0x100000444`, unified
+  memory) and matches the CPU reference.
+- The real desktop process opened `samples/collections/smiles/multi.smi` as a
+  ready `grid2d` document with no reported workspace errors. The Mac locked
+  before visual canvas inspection and UI-triggered clustering, so those two
+  checks remain explicitly pending.
 - The pinned RDKit 2025.03.4 runtime reproduces four frozen Morgan
   known-answer vectors byte for byte, and Rust decodes the same vectors through
   the canonical EnginePack ABI.
@@ -110,22 +128,23 @@ features, but they must not be described as available UI operations yet.
   reject unknown artifact entries, and disable compute after artifact
   corruption.
 
-These checks prove the source implementation, not the release package. They do
-not replace the scientific corpus, 100k-scale benchmark, hardened-runtime
-signature, notarization, or real packaged UI evidence.
+These checks prove the source implementation and one unique ad-hoc development
+package, not a production release. They do not replace the scientific corpus,
+100k-scale benchmark, Developer ID hardened-runtime signature, notarization, or
+visual UI-triggered clustering evidence.
 
 ## Remaining Cluster Release Gates
 
-1. Install the Xcode Metal Toolchain and generate the reviewed precompiled
-   `.metallib` through the repository build path.
-2. Bundle and attest the library in a unique development flavor, then verify
-   nested/outer signatures and runtime generation pinning.
+1. Build with Developer ID and hardened runtime, then notarize and verify the
+   nested and outer production signatures without changing the pinned runtime.
+2. Unlock the test Mac and exercise clustering through the actual packaged Grid
+   controls, including visible columns, backend label, restart, and artifacts.
 3. Run fingerprint parity against pinned native RDKit and upstream fixtures,
    plus exact CPU-versus-Metal CSR parity over the frozen scientific corpus.
 4. Run sparse, dense, invalid-record, cutoff-boundary, cancellation,
    memory-pressure, and 100k+ benchmarks on named Apple Silicon hardware.
-5. Exercise the actual installed desktop UI with real SDF/SMILES/CSV samples,
-   restart the app mid-workflow, and inspect Grid columns and artifact output.
+5. Install the unique package and repeat the desktop UI workflow with real
+   SDF/SMILES/CSV samples under memory pressure.
 6. Add representative subset export, artifact/report inspection, and
    cancellation polling between bounded Metal command buffers.
 7. Decide and document whether release execution remains in-process or moves

@@ -31,13 +31,17 @@ The cutoff comparison is integer-only. With 2,048 fingerprint bits and cutoff
 terms no larger than `2^53 - 1`, either cross product fits `uint64`. A zero union
 matches only when the cutoff numerator is zero.
 
-Build the reviewed source ahead of packaging:
+Build the reviewed source explicitly when inspecting or testing an individual
+runtime generation:
 
 ```bash
 compute/metal/build-metallib.sh /explicit/output/directory
 ```
 
-The script fails if the active Xcode SDK cannot provide `metal` and `metallib`.
+`scripts/build.sh` invokes this generator in its isolated build tree before
+Tauri packages resources, so a package cannot silently omit the GPU runtime.
+The generator fails if the active Xcode SDK cannot execute `metal` and
+`metallib`.
 It publishes one complete generation through an atomic `current.json`
 pointer. The generation contains AIR, metallib, and metadata with source,
 contract, compiler, linker, and SDK identities. Runtime compilation is not
