@@ -75,6 +75,312 @@ inline float out_of_plane_degrees(const device float4 *positions, uint base, uin
     return RAD_TO_DEG_F * asin(clamp(dot(normal, fourth), -1.0f, 1.0f));
 }
 
+struct MmffDualV1 {
+    float value;
+    float derivative;
+};
+
+struct MmffDual3V1 {
+    MmffDualV1 x;
+    MmffDualV1 y;
+    MmffDualV1 z;
+};
+
+inline MmffDualV1 dual(float value, float derivative = 0.0f) {
+    MmffDualV1 result = {value, derivative};
+    return result;
+}
+
+inline MmffDualV1 dual_add(MmffDualV1 left, MmffDualV1 right) {
+    return dual(left.value + right.value, left.derivative + right.derivative);
+}
+
+inline MmffDualV1 dual_sub(MmffDualV1 left, MmffDualV1 right) {
+    return dual(left.value - right.value, left.derivative - right.derivative);
+}
+
+inline MmffDualV1 dual_mul(MmffDualV1 left, MmffDualV1 right) {
+    return dual(left.value * right.value,
+        left.derivative * right.value + left.value * right.derivative);
+}
+
+inline MmffDualV1 dual_scale(MmffDualV1 value, float scale) {
+    return dual(value.value * scale, value.derivative * scale);
+}
+
+inline MmffDualV1 dual_div(MmffDualV1 numerator, MmffDualV1 denominator) {
+    float inverse = 1.0f / denominator.value;
+    return dual(numerator.value * inverse,
+        (numerator.derivative - numerator.value * inverse * denominator.derivative) * inverse);
+}
+
+inline MmffDualV1 dual_sqrt(MmffDualV1 value) {
+    float root = sqrt(max(value.value, 1.0e-20f));
+    return dual(root, value.derivative / (2.0f * root));
+}
+
+inline MmffDualV1 dual_acos(MmffDualV1 value) {
+    float bounded = clamp(value.value, -1.0f, 1.0f);
+    float denominator = sqrt(max(1.0f - bounded * bounded, 1.0e-20f));
+    return dual(acos(bounded), -value.derivative / denominator);
+}
+
+inline MmffDualV1 dual_asin(MmffDualV1 value) {
+    float bounded = clamp(value.value, -1.0f, 1.0f);
+    float denominator = sqrt(max(1.0f - bounded * bounded, 1.0e-20f));
+    return dual(asin(bounded), value.derivative / denominator);
+}
+
+inline MmffDualV1 dual_cos(MmffDualV1 value) {
+    return dual(cos(value.value), -sin(value.value) * value.derivative);
+}
+
+inline MmffDualV1 dual_pow7(MmffDualV1 value) {
+    float sixth = powr(value.value, 6.0f);
+    return dual(sixth * value.value, 7.0f * sixth * value.derivative);
+}
+
+inline MmffDual3V1 dual_position(
+    const device float4 *positions,
+    uint atom,
+    uint active_atom,
+    uint active_coordinate
+) {
+    float3 position = positions[atom].xyz;
+    MmffDual3V1 result = {
+        dual(position.x, atom == active_atom && active_coordinate == 0 ? 1.0f : 0.0f),
+        dual(position.y, atom == active_atom && active_coordinate == 1 ? 1.0f : 0.0f),
+        dual(position.z, atom == active_atom && active_coordinate == 2 ? 1.0f : 0.0f),
+    };
+    return result;
+}
+
+inline MmffDual3V1 dual3_sub(MmffDual3V1 left, MmffDual3V1 right) {
+    MmffDual3V1 result = {
+        dual_sub(left.x, right.x), dual_sub(left.y, right.y), dual_sub(left.z, right.z)
+    };
+    return result;
+}
+
+inline MmffDual3V1 dual3_scale(MmffDual3V1 value, float scale) {
+    MmffDual3V1 result = {
+        dual_scale(value.x, scale), dual_scale(value.y, scale), dual_scale(value.z, scale)
+    };
+    return result;
+}
+
+inline MmffDualV1 dual3_dot(MmffDual3V1 left, MmffDual3V1 right) {
+    return dual_add(dual_add(dual_mul(left.x, right.x), dual_mul(left.y, right.y)),
+        dual_mul(left.z, right.z));
+}
+
+inline MmffDual3V1 dual3_cross(MmffDual3V1 left, MmffDual3V1 right) {
+    MmffDual3V1 result = {
+        dual_sub(dual_mul(left.y, right.z), dual_mul(left.z, right.y)),
+        dual_sub(dual_mul(left.z, right.x), dual_mul(left.x, right.z)),
+        dual_sub(dual_mul(left.x, right.y), dual_mul(left.y, right.x)),
+    };
+    return result;
+}
+
+inline MmffDualV1 dual3_length(MmffDual3V1 value) {
+    return dual_sqrt(dual3_dot(value, value));
+}
+
+inline MmffDual3V1 dual3_normalize(MmffDual3V1 value) {
+    MmffDualV1 length = dual3_length(value);
+    MmffDual3V1 result = {
+        dual_div(value.x, length), dual_div(value.y, length), dual_div(value.z, length)
+    };
+    return result;
+}
+
+inline MmffDualV1 dual_distance(
+    const device float4 *positions, uint2 atoms, uint active_atom, uint active_coordinate
+) {
+    return dual3_length(dual3_sub(
+        dual_position(positions, atoms.x, active_atom, active_coordinate),
+        dual_position(positions, atoms.y, active_atom, active_coordinate)));
+}
+
+inline MmffDualV1 dual_angle(
+    const device float4 *positions, uint3 atoms, uint active_atom, uint active_coordinate
+) {
+    MmffDual3V1 center = dual_position(positions, atoms.y, active_atom, active_coordinate);
+    MmffDual3V1 first = dual3_sub(
+        dual_position(positions, atoms.x, active_atom, active_coordinate), center);
+    MmffDual3V1 second = dual3_sub(
+        dual_position(positions, atoms.z, active_atom, active_coordinate), center);
+    return dual_acos(dual_div(dual3_dot(first, second),
+        dual_mul(dual3_length(first), dual3_length(second))));
+}
+
+inline MmffDualV1 dual_dihedral_cosine(
+    const device float4 *positions, uint4 atoms, uint active_atom, uint active_coordinate
+) {
+    MmffDual3V1 first = dual3_sub(
+        dual_position(positions, atoms.y, active_atom, active_coordinate),
+        dual_position(positions, atoms.x, active_atom, active_coordinate));
+    MmffDual3V1 middle = dual3_sub(
+        dual_position(positions, atoms.z, active_atom, active_coordinate),
+        dual_position(positions, atoms.y, active_atom, active_coordinate));
+    MmffDual3V1 last = dual3_sub(
+        dual_position(positions, atoms.w, active_atom, active_coordinate),
+        dual_position(positions, atoms.z, active_atom, active_coordinate));
+    MmffDual3V1 normal_first = dual3_cross(first, middle);
+    MmffDual3V1 normal_last = dual3_cross(middle, last);
+    return dual_div(dual3_dot(normal_first, normal_last),
+        dual_mul(dual3_length(normal_first), dual3_length(normal_last)));
+}
+
+inline MmffDualV1 dual_out_of_plane(
+    const device float4 *positions, uint4 atoms, uint active_atom, uint active_coordinate
+) {
+    MmffDual3V1 center = dual_position(positions, atoms.y, active_atom, active_coordinate);
+    MmffDual3V1 first = dual3_normalize(dual3_sub(
+        dual_position(positions, atoms.x, active_atom, active_coordinate), center));
+    MmffDual3V1 third = dual3_normalize(dual3_sub(
+        dual_position(positions, atoms.z, active_atom, active_coordinate), center));
+    MmffDual3V1 fourth = dual3_normalize(dual3_sub(
+        dual_position(positions, atoms.w, active_atom, active_coordinate), center));
+    MmffDual3V1 normal = dual3_normalize(dual3_cross(dual3_scale(first, -1.0f), third));
+    return dual_asin(dual3_dot(normal, fourth));
+}
+
+inline MmffDualV1 dual_term_energy(
+    const device float4 *positions,
+    MmffTermV1 term,
+    uint kind,
+    uint active_atom,
+    uint active_coordinate
+) {
+    if (kind == 0) {
+        MmffDualV1 delta = dual_sub(
+            dual_distance(positions, term.atoms.xy, active_atom, active_coordinate),
+            dual(term.parameters0.y));
+        MmffDualV1 delta2 = dual_mul(delta, delta);
+        MmffDualV1 polynomial = dual_add(
+            dual_sub(dual(1.0f), dual_scale(delta, 2.0f)),
+            dual_scale(delta2, 7.0f / 3.0f));
+        return dual_scale(dual_mul(delta2, polynomial),
+            0.5f * MDYNE_TO_KCAL_F * term.parameters0.x);
+    }
+    if (kind == 1) {
+        MmffDualV1 angle = dual_angle(positions, term.atoms.xyz, active_atom, active_coordinate);
+        if (term.parameters0.z > 0.5f) {
+            return dual_scale(dual_add(dual(1.0f), dual_cos(angle)),
+                MDYNE_TO_KCAL_F * term.parameters0.x);
+        }
+        MmffDualV1 delta = dual_sub(dual_scale(angle, RAD_TO_DEG_F), dual(term.parameters0.y));
+        MmffDualV1 polynomial = dual_sub(dual(1.0f), dual_scale(delta, 0.4f * DEG_TO_RAD_F));
+        return dual_scale(dual_mul(dual_mul(delta, delta), polynomial),
+            0.5f * MDYNE_TO_KCAL_F * DEG_TO_RAD_F * DEG_TO_RAD_F * term.parameters0.x);
+    }
+    if (kind == 2) {
+        MmffDualV1 delta_angle = dual_sub(
+            dual_scale(dual_angle(positions, term.atoms.xyz, active_atom, active_coordinate), RAD_TO_DEG_F),
+            dual(term.parameters1.x));
+        MmffDualV1 distances = dual_add(
+            dual_scale(dual_sub(dual_distance(positions, term.atoms.xy, active_atom, active_coordinate),
+                dual(term.parameters0.z)), term.parameters0.x),
+            dual_scale(dual_sub(dual_distance(positions, uint2(term.atoms.z, term.atoms.y),
+                active_atom, active_coordinate), dual(term.parameters0.w)), term.parameters0.y));
+        return dual_scale(dual_mul(delta_angle, distances), 2.51210f);
+    }
+    if (kind == 3) {
+        MmffDualV1 angle = dual_out_of_plane(positions, term.atoms, active_atom, active_coordinate);
+        return dual_scale(dual_mul(angle, angle), 0.5f * MDYNE_TO_KCAL_F * term.parameters0.x);
+    }
+    if (kind == 4) {
+        MmffDualV1 cosine = dual_dihedral_cosine(
+            positions, term.atoms, active_atom, active_coordinate);
+        MmffDualV1 cosine2 = dual_sub(dual_scale(dual_mul(cosine, cosine), 2.0f), dual(1.0f));
+        MmffDualV1 cosine3 = dual_mul(cosine,
+            dual_sub(dual_scale(dual_mul(cosine, cosine), 4.0f), dual(3.0f)));
+        return dual_scale(dual_add(dual_add(
+            dual_scale(dual_add(dual(1.0f), cosine), term.parameters0.x),
+            dual_scale(dual_sub(dual(1.0f), cosine2), term.parameters0.y)),
+            dual_scale(dual_add(dual(1.0f), cosine3), term.parameters0.z)), 0.5f);
+    }
+    if (kind == 5) {
+        MmffDualV1 rho = dual_scale(
+            dual_distance(positions, term.atoms.xy, active_atom, active_coordinate),
+            1.0f / term.parameters0.x);
+        MmffDualV1 buffered = dual_div(dual(1.07f), dual_add(rho, dual(0.07f)));
+        MmffDualV1 attraction = dual_sub(
+            dual_div(dual(1.12f), dual_add(dual_pow7(rho), dual(0.12f))), dual(2.0f));
+        return dual_scale(dual_mul(dual_pow7(buffered), attraction), term.parameters0.y);
+    }
+    float scale = term.parameters0.y > 0.5f ? 0.75f : 1.0f;
+    return dual_scale(dual_div(dual(1.0f), dual_add(
+        dual_distance(positions, term.atoms.xy, active_atom, active_coordinate), dual(0.05f))),
+        scale * 332.0716f * term.parameters0.x);
+}
+
+inline void accumulate_dual_term(
+    const device float4 *positions,
+    device float4 *gradients,
+    MmffTermV1 term,
+    uint kind,
+    uint atom_slots
+) {
+    for (uint slot = 0; slot < atom_slots; ++slot) {
+        uint atom = term.atoms[slot];
+        bool duplicate = false;
+        for (uint prior = 0; prior < slot; ++prior) duplicate = duplicate || term.atoms[prior] == atom;
+        if (duplicate) continue;
+        for (uint coordinate = 0; coordinate < 3; ++coordinate) {
+            gradients[atom][coordinate] +=
+                dual_term_energy(positions, term, kind, atom, coordinate).derivative;
+        }
+    }
+}
+
+inline MmffEnergyV1 evaluate_terms(
+    const device float4 *positions,
+    uint base,
+    constant MmffBatchV1 &batch,
+    const device MmffTermV1 *bonds,
+    const device MmffTermV1 *angles,
+    const device MmffTermV1 *stretch_bends,
+    const device MmffTermV1 *out_of_planes,
+    const device MmffTermV1 *torsions,
+    const device MmffTermV1 *van_der_waals,
+    const device MmffTermV1 *electrostatics
+);
+
+inline float mmff_analytic_objective_gradient(
+    const device float4 *positions,
+    device float4 *gradients,
+    constant MmffBatchV1 &batch,
+    const device MmffTermV1 *bonds,
+    const device MmffTermV1 *angles,
+    const device MmffTermV1 *stretch_bends,
+    const device MmffTermV1 *out_of_planes,
+    const device MmffTermV1 *torsions,
+    const device MmffTermV1 *van_der_waals,
+    const device MmffTermV1 *electrostatics
+) {
+    for (uint atom = 0; atom < batch.atom_count; ++atom) gradients[atom] = float4(0.0f);
+    for (uint index = 0; index < batch.bond_count; ++index)
+        accumulate_dual_term(positions, gradients, bonds[index], 0, 2);
+    for (uint index = 0; index < batch.angle_count; ++index)
+        accumulate_dual_term(positions, gradients, angles[index], 1, 3);
+    for (uint index = 0; index < batch.stretch_bend_count; ++index)
+        accumulate_dual_term(positions, gradients, stretch_bends[index], 2, 3);
+    for (uint index = 0; index < batch.out_of_plane_count; ++index)
+        accumulate_dual_term(positions, gradients, out_of_planes[index], 3, 4);
+    for (uint index = 0; index < batch.torsion_count; ++index)
+        accumulate_dual_term(positions, gradients, torsions[index], 4, 4);
+    for (uint index = 0; index < batch.van_der_waals_count; ++index)
+        accumulate_dual_term(positions, gradients, van_der_waals[index], 5, 2);
+    for (uint index = 0; index < batch.electrostatic_count; ++index)
+        accumulate_dual_term(positions, gradients, electrostatics[index], 6, 2);
+    MmffEnergyV1 terms = evaluate_terms(positions, 0, batch, bonds, angles, stretch_bends,
+        out_of_planes, torsions, van_der_waals, electrostatics);
+    return dot(terms.first, float4(1.0f)) + dot(terms.second, float4(1.0f));
+}
+
 inline MmffEnergyV1 evaluate_terms(
     const device float4 *positions,
     uint base,
@@ -166,8 +472,8 @@ kernel void burrete_mmff_energy_v1(
     breakdowns[conformer * 2 + 1] = energy.second;
 }
 
-kernel void burrete_mmff_reference_gradient_v1(
-    device float4 *positions [[buffer(0)]],
+kernel void burrete_mmff_analytic_gradient_v1(
+    const device float4 *positions [[buffer(0)]],
     constant MmffBatchV1 &batch [[buffer(1)]],
     const device MmffTermV1 *bonds [[buffer(2)]],
     const device MmffTermV1 *angles [[buffer(3)]],
@@ -181,24 +487,8 @@ kernel void burrete_mmff_reference_gradient_v1(
 ) {
     if (conformer >= batch.conformer_count) return;
     uint base = conformer * batch.atom_count;
-    constexpr float step = 1.0e-3f;
-    for (uint atom = 0; atom < batch.atom_count; ++atom) {
-        uint atom_item = base + atom;
-        for (uint coordinate = 0; coordinate < 3; ++coordinate) {
-            float original = positions[atom_item][coordinate];
-            positions[atom_item][coordinate] = original + step;
-            MmffEnergyV1 plus_terms = evaluate_terms(positions, base, batch, bonds, angles, stretch_bends,
-                out_of_planes, torsions, van_der_waals, electrostatics);
-            float plus = dot(plus_terms.first, float4(1.0f)) + dot(plus_terms.second, float4(1.0f));
-            positions[atom_item][coordinate] = original - step;
-            MmffEnergyV1 minus_terms = evaluate_terms(positions, base, batch, bonds, angles, stretch_bends,
-                out_of_planes, torsions, van_der_waals, electrostatics);
-            float minus = dot(minus_terms.first, float4(1.0f)) + dot(minus_terms.second, float4(1.0f));
-            positions[atom_item][coordinate] = original;
-            gradients[atom_item][coordinate] = (plus - minus) / (2.0f * step);
-        }
-        gradients[atom_item].w = 0.0f;
-    }
+    mmff_analytic_objective_gradient(positions + base, gradients + base, batch,
+        bonds, angles, stretch_bends, out_of_planes, torsions, van_der_waals, electrostatics);
 }
 
 struct MmffOptimizeConfigV1 {
@@ -244,24 +534,8 @@ inline float mmff_objective_gradient(
     const device MmffTermV1 *van_der_waals,
     const device MmffTermV1 *electrostatics
 ) {
-    constexpr float step = 1.0e-3f;
-    float energy = mmff_objective(positions, batch, bonds, angles, stretch_bends,
-        out_of_planes, torsions, van_der_waals, electrostatics);
-    for (uint atom = 0; atom < batch.atom_count; ++atom) {
-        for (uint coordinate = 0; coordinate < 3; ++coordinate) {
-            float original = positions[atom][coordinate];
-            positions[atom][coordinate] = original + step;
-            float plus = mmff_objective(positions, batch, bonds, angles, stretch_bends,
-                out_of_planes, torsions, van_der_waals, electrostatics);
-            positions[atom][coordinate] = original - step;
-            float minus = mmff_objective(positions, batch, bonds, angles, stretch_bends,
-                out_of_planes, torsions, van_der_waals, electrostatics);
-            positions[atom][coordinate] = original;
-            gradients[atom][coordinate] = (plus - minus) / (2.0f * step);
-        }
-        gradients[atom].w = 0.0f;
-    }
-    return energy;
+    return mmff_analytic_objective_gradient(positions, gradients, batch,
+        bonds, angles, stretch_bends, out_of_planes, torsions, van_der_waals, electrostatics);
 }
 
 inline float coordinate(device const float4 *values, uint index) {
@@ -415,7 +689,7 @@ kernel void burrete_mmff_optimize_v1(
                 my_gradients[atom] = my_old_gradients[atom];
             }
             energy = old_energy;
-            status = 2;
+            status = relative_direction * line_step <= config.relative_step_tolerance ? 1 : 2;
             break;
         }
         completed_iterations = iteration + 1;

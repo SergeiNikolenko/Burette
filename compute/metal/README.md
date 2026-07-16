@@ -12,10 +12,10 @@ batches; ranking stays deterministic on the CPU and no floating-point score is
 part of the Metal ABI.
 
 `mmff-energy.v1.metal` evaluates all seven supported MMFF94/MMFF94s energy
-terms for conformer batches and exposes a bounded central-difference gradient
-used as an independent bring-up/parity path. Production optimization may reuse
-the energy evaluator but must not claim analytic gradients until a separately
-verified analytic kernel replaces this reference entrypoint.
+terms and their analytic gradients for conformer batches. The gradient uses
+forward-mode automatic differentiation over each local two-, three-, or
+four-atom term and is checked against the independent float64 central-difference
+CPU oracle. The same analytic path drives fused automatic BFGS/L-BFGS.
 
 `alignment-score.v1.metal` performs mapped Horn/quaternion alignment, weighted
 RMSD, analytic Gaussian shape overlap, and ESP-Sim Gaussian Coulomb scoring.
