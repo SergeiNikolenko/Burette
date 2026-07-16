@@ -78,3 +78,5 @@ from the same PYSEQM revision, file `seqm/seqm_functions/cal_par.py`, under the
 same BSD-3-Clause notice. The complete H-H, heavy-H, and heavy-heavy 22-term
 sp-basis local-frame two-center integral equations are adapted from
 `seqm/seqm_functions/two_elec_two_center_int_local_frame.py` at that revision.
+The quaternion molecular-frame rotation and sp pair-tensor contraction are
+adapted from `seqm/seqm_functions/two_elec_two_center_int.py` at that revision.

@@ -1,9 +1,11 @@
 use std::{error::Error, fmt};
 
 mod parameters;
+mod rotation;
 mod two_center;
 
 pub use parameters::{rm1_parameters, SemiempiricalElementParameters};
+pub use rotation::{rm1_rotated_pair_integrals, Rm1RotatedPairIntegrals};
 pub use two_center::{
     rm1_multipole_parameters, rm1_two_center_integrals, Rm1MultipoleParameters,
     Rm1TwoCenterIntegrals,
