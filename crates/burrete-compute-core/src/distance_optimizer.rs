@@ -35,7 +35,7 @@ impl Default for DistanceGeometryOptimizationOptions {
 }
 
 impl DistanceGeometryOptimizationOptions {
-    fn validate(self) -> Result<Self, DistanceGeometryError> {
+    pub fn validate(self) -> Result<Self, DistanceGeometryError> {
         if !(1..=MAX_OPTIMIZER_ITERATIONS).contains(&self.max_iterations) {
             return Err(invalid(format!(
                 "distance optimizer maxIterations must be in 1..={MAX_OPTIMIZER_ITERATIONS}"
@@ -409,8 +409,10 @@ mod tests {
 
     #[test]
     fn invalid_options_fail_before_optimization() {
-        let mut options = DistanceGeometryOptimizationOptions::default();
-        options.history_size = 0;
+        let options = DistanceGeometryOptimizationOptions {
+            history_size: 0,
+            ..DistanceGeometryOptimizationOptions::default()
+        };
         assert!(optimize_distance_geometry(&[[0.0; 4]], &[], options).is_err());
     }
 

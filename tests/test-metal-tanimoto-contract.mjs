@@ -12,6 +12,9 @@ const source = readFileSync(resolve(metalRoot, "tanimoto.v2.metal"), "utf8");
 const contract = JSON.parse(
   readFileSync(resolve(metalRoot, "tanimoto-kernel-contract.v2.json"), "utf8"),
 );
+const optimizerContract = JSON.parse(
+  readFileSync(resolve(metalRoot, "conformer-optimize-kernel-contract.v1.json"), "utf8"),
+);
 const MAX_SAFE_TERM = 2n ** 53n - 1n;
 const UINT64_MAX = 2n ** 64n - 1n;
 const UINT32_MAX = 2 ** 32 - 1;
@@ -253,7 +256,8 @@ if (metalLookup.status === 0 && metallibLookup.status === 0) {
     assert.ok(existsSync(resolve(generation, "tanimoto.v2.air")));
     assert.ok(existsSync(resolve(generation, "conformer-initialize.v1.air")));
     assert.ok(existsSync(resolve(generation, "conformer-distance.v1.air")));
-    assert.ok(existsSync(resolve(generation, "native-compute.v4.metallib")));
+    assert.ok(existsSync(resolve(generation, "conformer-optimize.v1.air")));
+    assert.ok(existsSync(resolve(generation, "native-compute.v5.metallib")));
     const metadataHash = createHash("sha256").update(readFileSync(metadataPath)).digest("hex");
     assert.equal(metadataHash, pointer.metadataSha256);
   } finally {
@@ -338,12 +342,15 @@ try {
         TANIMOTO_SOURCE_SHA256: fakeHash,
         CONFORMER_SOURCE_SHA256: fakeHash,
         DISTANCE_SOURCE_SHA256: fakeHash,
+        OPTIMIZER_SOURCE_SHA256: fakeHash,
         TANIMOTO_CONTRACT_SHA256: fakeHash,
         CONFORMER_CONTRACT_SHA256: fakeHash,
         DISTANCE_CONTRACT_SHA256: fakeHash,
+        OPTIMIZER_CONTRACT_SHA256: fakeHash,
         TANIMOTO_AIR_SHA256: fakeHash,
         CONFORMER_AIR_SHA256: fakeHash,
         DISTANCE_AIR_SHA256: fakeHash,
+        OPTIMIZER_AIR_SHA256: fakeHash,
         METALLIB_SHA256: fakeHash,
         METAL_TOOL_PATH: "/toolchain/metal",
         METAL_TOOL_SHA256: fakeHash,
@@ -358,16 +365,18 @@ try {
   );
   assert.equal(metadataRun.status, 0, metadataRun.stderr);
   const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
-  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v4");
+  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v5");
   assert.equal(metadata.sources[0].sha256, fakeHash);
   assert.equal(metadata.sources[1].sha256, fakeHash);
   assert.equal(metadata.sources[2].sha256, fakeHash);
+  assert.equal(metadata.sources[3].sha256, fakeHash);
   assert.equal(metadata.metallib.sha256, fakeHash);
   assert.equal(metadata.compiler.version, "Apple metal version test Target test");
   assert.deepEqual(metadata.entrypoints, [
     ...contract.entrypoints.map(({ name }) => name),
     "burrete_conformer_initialize_v1",
     "burrete_conformer_distance_v1",
+    optimizerContract.entrypoint.name,
   ]);
 } finally {
   rmSync(metadataDirectory, { recursive: true, force: true });

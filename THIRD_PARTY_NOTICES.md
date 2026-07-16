@@ -26,11 +26,12 @@ Compute Layer. Before an adapted file is added, Burrete must preserve the
 permission evidence and add a file-level provenance record mapping the Burrete
 path to the upstream path and commit.
 
-Burrete's independently written distance-geometry CPU oracle and Metal kernel
-use normalized upper-bound and rational lower-bound mathematical equations
-checked against the pinned `mlxmolkit` reference. No upstream source text is
-included. The exact formula-only mapping and remaining nvMolKit secondary-source
-release gate are recorded in `docs/third-party/mlxmolkit-provenance.md`.
+Burrete's independently written distance-geometry CPU oracle, Metal evaluation
+kernel, bounded L-BFGS CPU oracle, and fused Metal optimizer use mathematical
+equations and optimizer behavior checked against the pinned `mlxmolkit`
+reference. No upstream source text is included. The exact formula-only mapping
+and remaining nvMolKit secondary-source release gate are recorded in
+`docs/third-party/mlxmolkit-provenance.md`.
 
 Upstream identifies material derived from or compared with nvMolKit
 (Apache-2.0), Shivam Patel's `mlxmolkit` (MIT), PYSEQM (BSD-3-Clause), and

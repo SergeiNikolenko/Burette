@@ -1,8 +1,8 @@
 use std::{ffi::c_void, mem::size_of_val};
 
 use burrete_compute_core::{
-    DistanceConstraint, Fingerprint2048, GraphBuildOptions, SymmetricCsr, TanimotoCounts,
-    TanimotoQueryOptions,
+    DistanceConstraint, DistanceGeometryOptimizationOptions, Fingerprint2048, GraphBuildOptions,
+    SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use metal::{
@@ -14,7 +14,7 @@ use objc::rc::autoreleasepool;
 use objc::{runtime::Sel, Message};
 
 use crate::MetalRuntimeError;
-use crate::platform::MetalDistanceDispatch;
+use crate::platform::{MetalDistanceDispatch, MetalDistanceOptimizationDispatch};
 
 const MAX_TILE_RECORDS: usize = 1_024;
 const MAX_QUERY_BATCH_RECORDS: usize = 262_144;
@@ -64,6 +64,23 @@ struct ConformerDistanceBatchV1 {
     reserved: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ConformerOptimizeConfigV1 {
+    atom_count: u32,
+    conformer_count: u32,
+    constraint_count: u32,
+    max_iterations: u32,
+    history_size: u32,
+    max_line_search_steps: u32,
+    reserved0: u32,
+    reserved1: u32,
+    gradient_tolerance: f32,
+    relative_step_tolerance: f32,
+    armijo_coefficient: f32,
+    max_step_factor: f32,
+}
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
@@ -73,6 +90,7 @@ pub(crate) struct MetalHost {
     query_pipeline: ComputePipelineState,
     conformer_initialize_pipeline: ComputePipelineState,
     conformer_distance_pipeline: ComputePipelineState,
+    conformer_optimize_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -108,6 +126,8 @@ impl MetalHost {
             pipeline(&device, library, "burrete_conformer_initialize_v1")?;
         let conformer_distance_pipeline =
             pipeline(&device, library, "burrete_conformer_distance_v1")?;
+        let conformer_optimize_pipeline =
+            pipeline(&device, library, "burrete_conformer_optimize_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -116,6 +136,7 @@ impl MetalHost {
             query_pipeline,
             conformer_initialize_pipeline,
             conformer_distance_pipeline,
+            conformer_optimize_pipeline,
         })
     }
 
@@ -533,6 +554,208 @@ impl MetalHost {
         })
     }
 
+    pub(crate) fn optimize_distance_geometry_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        constraints: &[DistanceConstraint],
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalDistanceOptimizationDispatch, MetalRuntimeError> {
+        let options = options
+            .validate()
+            .map_err(|error| MetalRuntimeError::ResourceLimit(error.to_string()))?;
+        if atom_count == 0
+            || positions.is_empty()
+            || !positions.len().is_multiple_of(atom_count as usize)
+        {
+            return resource_limit(
+                "distance optimization positions must contain complete non-empty conformers",
+            );
+        }
+        if positions.iter().flatten().any(|value| !value.is_finite()) {
+            return Err(MetalRuntimeError::Dispatch(
+                "distance optimization positions must be finite".into(),
+            ));
+        }
+        let conformer_count = u32::try_from(positions.len() / atom_count as usize)
+            .map_err(|_| MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into()))?;
+        let constraint_count = u32::try_from(constraints.len())
+            .map_err(|_| MetalRuntimeError::ResourceLimit("constraint count exceeds uint32".into()))?;
+        for constraint in constraints {
+            if constraint.left_atom >= atom_count
+                || constraint.right_atom >= atom_count
+                || constraint.left_atom == constraint.right_atom
+                || !constraint.lower_squared.is_finite()
+                || !constraint.upper_squared.is_finite()
+                || constraint.lower_squared < 0.0
+                || constraint.upper_squared <= 0.0
+                || constraint.upper_squared < constraint.lower_squared
+                || !constraint.weight.is_finite()
+                || constraint.weight < 0.0
+            {
+                return Err(MetalRuntimeError::Dispatch(
+                    "distance constraint is outside the supported domain".into(),
+                ));
+            }
+        }
+
+        let item_count = u64::try_from(positions.len()).map_err(|_| memory_overflow())?;
+        let history_count = item_count
+            .checked_mul(u64::from(options.history_size))
+            .ok_or_else(memory_overflow)?;
+        let scalar_history_count = u64::from(conformer_count)
+            .checked_mul(u64::from(options.history_size))
+            .ok_or_else(memory_overflow)?;
+        let constraint_storage_count = u64::from(constraint_count).max(1);
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(48)
+            .and_then(|bytes| bytes.checked_add(constraint_storage_count.checked_mul(20)?))
+            .and_then(|bytes| bytes.checked_add(item_count.checked_mul(80)?))
+            .and_then(|bytes| bytes.checked_add(history_count.checked_mul(32)?))
+            .and_then(|bytes| bytes.checked_add(scalar_history_count.checked_mul(8)?))
+            .and_then(|bytes| bytes.checked_add(u64::from(conformer_count).checked_mul(16)?))
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "distance optimization requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+        let item_len = usize::try_from(item_count).map_err(|_| memory_overflow())?;
+        let history_len = usize::try_from(history_count).map_err(|_| memory_overflow())?;
+        let scalar_history_len =
+            usize::try_from(scalar_history_count).map_err(|_| memory_overflow())?;
+        let conformer_len = conformer_count as usize;
+
+        let mut pairs = constraints
+            .iter()
+            .map(|term| [term.left_atom, term.right_atom])
+            .collect::<Vec<_>>();
+        let mut bounds = constraints
+            .iter()
+            .map(|term| [term.lower_squared, term.upper_squared])
+            .collect::<Vec<_>>();
+        let mut weights = constraints.iter().map(|term| term.weight).collect::<Vec<_>>();
+        if constraints.is_empty() {
+            pairs.push([0, 0]);
+            bounds.push([0.0, 1.0]);
+            weights.push(0.0);
+        }
+        let position_buffer = buffer_with_slice(&self.device, positions);
+        let pair_buffer = buffer_with_slice(&self.device, &pairs);
+        let bounds_buffer = buffer_with_slice(&self.device, &bounds);
+        let weight_buffer = buffer_with_slice(&self.device, &weights);
+        let gradient_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let direction_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let old_position_buffer =
+            buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let old_gradient_buffer =
+            buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let history_step_buffer =
+            buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; history_len]);
+        let history_gradient_buffer =
+            buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; history_len]);
+        let inverse_curvature_buffer =
+            buffer_with_slice(&self.device, &vec![0.0_f32; scalar_history_len]);
+        let alpha_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; scalar_history_len]);
+        let energy_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; conformer_len]);
+        let gradient_max_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; conformer_len]);
+        let iteration_buffer = buffer_with_slice(&self.device, &vec![0_u32; conformer_len]);
+        let status_buffer = buffer_with_slice(&self.device, &vec![3_u32; conformer_len]);
+        let config = ConformerOptimizeConfigV1 {
+            atom_count,
+            conformer_count,
+            constraint_count,
+            max_iterations: options.max_iterations,
+            history_size: u32::from(options.history_size),
+            max_line_search_steps: u32::from(options.max_line_search_steps),
+            reserved0: 0,
+            reserved1: 0,
+            gradient_tolerance: options.gradient_tolerance,
+            relative_step_tolerance: options.relative_step_tolerance,
+            armijo_coefficient: options.armijo_coefficient,
+            max_step_factor: options.max_step_factor,
+        };
+        if self
+            .conformer_optimize_pipeline
+            .max_total_threads_per_threadgroup()
+            < 32
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal optimizer pipeline cannot dispatch the required 32-thread group".into(),
+            ));
+        }
+
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.conformer_optimize_pipeline);
+            for (index, buffer) in [
+                &position_buffer,
+                &pair_buffer,
+                &bounds_buffer,
+                &weight_buffer,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                encoder.set_buffer(index as u64, Some(buffer), 0);
+            }
+            encoder.set_bytes(
+                4,
+                size_of_val(&config) as u64,
+                (&config as *const ConformerOptimizeConfigV1).cast(),
+            );
+            for (index, buffer) in [
+                &gradient_buffer,
+                &direction_buffer,
+                &old_position_buffer,
+                &old_gradient_buffer,
+                &history_step_buffer,
+                &history_gradient_buffer,
+                &inverse_curvature_buffer,
+                &alpha_buffer,
+                &energy_buffer,
+                &gradient_max_buffer,
+                &iteration_buffer,
+                &status_buffer,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                encoder.set_buffer((index + 5) as u64, Some(buffer), 0);
+            }
+            encoder.dispatch_thread_groups(
+                MTLSize {
+                    width: u64::from(conformer_count),
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: 32,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        Ok(MetalDistanceOptimizationDispatch {
+            positions: read_buffer(&position_buffer, item_len, "optimized position")?,
+            energies: read_buffer(&energy_buffer, conformer_len, "optimized energy")?,
+            scaled_gradient_maxima: read_buffer(
+                &gradient_max_buffer,
+                conformer_len,
+                "optimized gradient maximum",
+            )?,
+            iterations: read_buffer(&iteration_buffer, conformer_len, "optimizer iteration")?,
+            statuses: read_buffer(&status_buffer, conformer_len, "optimizer status")?,
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
     fn dispatch_tiles(
         &self,
         record_count: usize,
@@ -759,8 +982,8 @@ mod tests {
     use std::num::NonZeroUsize;
 
     use burrete_compute_core::{
-        evaluate_distance_constraints, initialize_conformer_positions, DistanceConstraint,
-        FINGERPRINT_WORDS,
+        evaluate_distance_constraints, initialize_conformer_positions, optimize_distance_geometry,
+        DistanceConstraint, DistanceGeometryOptimizationOptions, FINGERPRINT_WORDS,
     };
     use burrete_compute_protocol::{ResourceLimits, MIN_COMPUTE_MEMORY_BYTES};
     use metal::CompileOptions;
@@ -789,6 +1012,16 @@ mod tests {
             std::mem::offset_of!(ConformerDistanceBatchV1, constraint_count),
             8
         );
+        assert_eq!(std::mem::size_of::<ConformerOptimizeConfigV1>(), 48);
+        assert_eq!(std::mem::align_of::<ConformerOptimizeConfigV1>(), 4);
+        assert_eq!(
+            std::mem::offset_of!(ConformerOptimizeConfigV1, gradient_tolerance),
+            32
+        );
+        assert_eq!(
+            std::mem::offset_of!(ConformerOptimizeConfigV1, max_step_factor),
+            44
+        );
     }
 
     #[test]
@@ -811,11 +1044,15 @@ mod tests {
     fn dispatches_the_known_answer_graph_on_the_real_gpu() {
         let device = Device::system_default().expect("Metal device");
         let compile_options = CompileOptions::new();
+        let source = [
+            include_str!("../../../../compute/metal/tanimoto.v2.metal"),
+            include_str!("../../../../compute/metal/conformer-initialize.v1.metal"),
+            include_str!("../../../../compute/metal/conformer-distance.v1.metal"),
+            include_str!("../../../../compute/metal/conformer-optimize.v1.metal"),
+        ]
+        .join("\n");
         let library = device
-            .new_library_with_source(
-                include_str!("../../../../compute/metal/tanimoto.v2.metal"),
-                &compile_options,
-            )
+            .new_library_with_source(&source, &compile_options)
             .expect("test-only Metal compilation");
         let host = MetalHost::from_library(device, &library).expect("test Metal host");
         let mut left = [0_u64; FINGERPRINT_WORDS];
@@ -941,6 +1178,7 @@ mod tests {
             include_str!("../../../../compute/metal/tanimoto.v2.metal"),
             include_str!("../../../../compute/metal/conformer-initialize.v1.metal"),
             include_str!("../../../../compute/metal/conformer-distance.v1.metal"),
+            include_str!("../../../../compute/metal/conformer-optimize.v1.metal"),
         ]
         .join("\n");
         let library = device
@@ -978,6 +1216,69 @@ mod tests {
             observed.gradients.as_flattened(),
             expected.gradients.as_flattened(),
         ));
+        assert!(observed.gpu_time_seconds >= 0.0);
+    }
+
+    #[test]
+    #[ignore = "manual source-compiled real-GPU L-BFGS parity smoke"]
+    fn optimizes_distance_geometry_on_the_real_gpu() {
+        let device = Device::system_default().expect("Metal device");
+        assert!(device.has_unified_memory(), "Apple unified memory required");
+        let source = [
+            include_str!("../../../../compute/metal/tanimoto.v2.metal"),
+            include_str!("../../../../compute/metal/conformer-initialize.v1.metal"),
+            include_str!("../../../../compute/metal/conformer-distance.v1.metal"),
+            include_str!("../../../../compute/metal/conformer-optimize.v1.metal"),
+        ]
+        .join("\n");
+        let library = device
+            .new_library_with_source(&source, &CompileOptions::new())
+            .expect("compile native compute kernels");
+        let host = MetalHost::from_library(device, &library).expect("load Metal pipelines");
+        let positions = [
+            [0.0; 4],
+            [4.0, 1.0, 0.5, 0.0],
+            [0.0; 4],
+            [3.0, -1.0, 0.25, 0.0],
+        ];
+        let constraints = [DistanceConstraint {
+            left_atom: 0,
+            right_atom: 1,
+            lower_squared: 1.0,
+            upper_squared: 2.0,
+            weight: 1.0,
+        }];
+        let options = DistanceGeometryOptimizationOptions::default();
+        let expected = positions
+            .chunks_exact(2)
+            .map(|conformer| {
+                optimize_distance_geometry(conformer, &constraints, options)
+                    .expect("CPU L-BFGS oracle")
+            })
+            .collect::<Vec<_>>();
+        let observed = host
+            .optimize_distance_geometry_profiled(
+                &positions,
+                2,
+                &constraints,
+                options,
+                MIN_COMPUTE_MEMORY_BYTES,
+            )
+            .expect("real Metal L-BFGS");
+
+        assert_eq!(observed.statuses, vec![0, 0]);
+        for (index, expected) in expected.iter().enumerate() {
+            assert!((observed.energies[index] - expected.energy).abs() <= 1.0e-5);
+            assert!(observed.scaled_gradient_maxima[index] <= 1.0e-4);
+            let start = index * 2;
+            for (actual, expected) in observed.positions[start..start + 2]
+                .iter()
+                .flatten()
+                .zip(expected.positions.iter().flatten())
+            {
+                assert!((actual - expected).abs() <= 1.0e-4);
+            }
+        }
         assert!(observed.gpu_time_seconds >= 0.0);
     }
 }

@@ -3,8 +3,8 @@
 Status: `cluster.v1`, immutable representative export, and derived exact
 `Find similar` Grid analysis complete at source level; deterministic conformer
 variant/seed/adaptive-batching foundation and strict conformer EnginePack ABI
-implemented; current desktop packaging, production release, and scale proof
-pending
+implemented; deterministic CPU and fused Metal distance-geometry optimization
+implemented; current desktop packaging, production release, and scale proof pending
 
 Updated: 2026-07-16
 
@@ -93,11 +93,7 @@ known answers and a central-difference gradient check, and the packaged Metal
 startup KAT matches the oracle within the fixed floating tolerance. This
 formula replaced an early unnormalized squared-bound penalty after parity
 inspection found that it did not match the pinned mlxmolkit/nvMolKit
-mathematical contract. Runtime v4
-binds all three sources, reviewed contracts, AIR files, five entrypoints, the
-compiler, linker, SDK, and final metallib by hash. These primitives are not a
-claim of completed distance-geometry optimization or an end-to-end conformer
-capability.
+mathematical contract.
 
 A deterministic bounded float32 L-BFGS CPU oracle now drives that distance
 objective for one conformer. It has fixed memory history, capped directions,
@@ -105,8 +101,15 @@ bounded Armijo backtracking, explicit gradient/step convergence, and distinct
 `lineSearchExhausted` and `maxIterations` outcomes. It preserves coordinates
 when line search cannot accept a step and produces identical results across
 repeated runs. This defines the reference behavior for the upcoming fused
-Metal optimizer; the current production metallib still exposes evaluation,
-not iterative embedding.
+Metal optimizer. Runtime v5 now adds that fused optimizer: one fixed 32-thread
+threadgroup owns each conformer, reuses molecule constraints, evaluates the
+objective and gradient by atom gather without atomics or a pair matrix, and
+performs bounded L-BFGS plus Armijo backtracking entirely inside one Metal
+dispatch. Its public result records the same four explicit convergence outcomes
+as the CPU oracle. Runtime v5 binds all four sources, reviewed contracts, AIR
+files, six entrypoints, the compiler, linker, SDK, and final metallib by hash.
+This proves the iterative DG distance-bound optimizer, not complete DG/ETK
+embedding or an end-to-end conformer capability.
 
 The durable `JobSnapshot` request is no longer cluster-only. An untagged typed
 union accepts normalized `cluster.v1` and `conformer.v1` requests while keeping
@@ -133,8 +136,8 @@ coordinator execution, recovery execution, and publication remain in progress.
 | --- | --- |
 | macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
-| Native Metal backend | Real graph, exact query, conformer initialization, and DG distance objective/gradient command buffers pass startup parity against CPU references |
-| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v4 runtime generation passes package verification and real-GPU startup, while a refreshed v4 desktop package remains pending |
+| Native Metal backend | Real graph, exact query, conformer initialization, DG distance objective/gradient, and fused DG L-BFGS command buffers pass startup parity against CPU references |
+| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v5 runtime generation passes package verification and real-GPU startup, while a refreshed v5 desktop package remains pending |
 | Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -194,7 +197,7 @@ separate product increments.
 | Fixed request/job/artifact contracts | `crates/burrete-compute-protocol/` |
 | Exact fingerprint ABI, CPU Tanimoto/CSR, Butina | `crates/burrete-compute-core/` |
 | Metal runtime, tiling, dispatch, GPU timings | `crates/burrete-compute-metal/` |
-| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal` |
+| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal`, `compute/metal/conformer-optimize.v1.metal` |
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
 | Conformer preflight admission and queued snapshot | `apps/desktop/src-tauri/src/compute/conformer_plan.rs`, `job_factory.rs` |
@@ -213,11 +216,12 @@ separate product increments.
 - Metal crate unit/parity tests pass, including real graph and exact query-count
   dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
   support.
-- An isolated offline-compiled v4 runtime generation passes the hash-bound
-  package verifier and all four startup known-answer paths on `Apple M2 Pro`
-  (`registryId=0x1000003c0`, unified memory). The tested
-  corrected-objective `native-compute.v4.metallib` SHA-256 is
-  `512c13db8daeff363494554c8d333815a0a6f882ed45278bd79ab8b964ded060`.
+- An isolated offline-compiled v5 runtime generation passes the hash-bound
+  package verifier and all five startup known-answer paths on `Apple M2 Pro`
+  (`registryId=0x1000003c0`, unified memory). The paths cover graph CSR, exact
+  query, conformer initialization, DG objective/gradient evaluation, and fused
+  DG L-BFGS optimization. The tested `native-compute.v5.metallib` SHA-256 is
+  `52e15c9544f0b33cbfd62379ac96d88f75983b1187cc570fd773aeff93c527aa`.
 - The earlier unique `com.local.BurreteV10.Dev.gpucompute9a97` cluster-only v1
   package builds and passes
   deep/strict ad-hoc signature verification at
@@ -263,9 +267,9 @@ separate product increments.
   reject unknown artifact entries, and disable compute after artifact
   corruption.
 
-These checks prove the source implementation, an isolated current v4 runtime
+These checks prove the source implementation, an isolated current v5 runtime
 generation, and the earlier unique v1 ad-hoc development package, not a current
-v4 desktop package or production release. They do not replace the scientific
+v5 desktop package or production release. They do not replace the scientific
 corpus, 100k-scale benchmark, Developer ID hardened-runtime signature,
 notarization, or visual UI-triggered clustering evidence.
 
