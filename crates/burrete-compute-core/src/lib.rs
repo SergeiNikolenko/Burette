@@ -19,6 +19,7 @@ pub const FINGERPRINT_BYTES: usize = FINGERPRINT_BITS / u8::BITS as usize;
 const MEMORY_ACCOUNTING_HEADROOM_BYTES: u64 = 64 * 1024;
 
 /// One fixed-width Morgan fingerprint in increasing bit/word order.
+#[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Fingerprint2048 {
     words: [u64; FINGERPRINT_WORDS],
