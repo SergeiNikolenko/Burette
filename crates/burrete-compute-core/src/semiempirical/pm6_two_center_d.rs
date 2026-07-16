@@ -6,12 +6,20 @@ use super::{
 const EV: f64 = 27.21;
 const ANGSTROM_TO_BOHR: f64 = 1.0 / 0.529_167;
 
+include!("pm6_yx_local.generated.rs");
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Pm6DHydrogenPairIntegrals {
     /// Dense `(mu nu | s s)` matrix in PYSEQM's nine-orbital order.
     pub repulsion_ev: [f64; 81],
     pub d_core_attraction_ev: [f64; 81],
     pub hydrogen_core_attraction_ev: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Pm6DSpLocalPairIntegrals {
+    /// Packed `45 x 10` local-frame extension in the pinned PYSEQM convention.
+    pub repulsion_ev: [f64; 450],
 }
 
 fn principal_quantum_number(atomic_number: u8) -> f64 {
@@ -90,6 +98,49 @@ fn sp_multipoles(parameters: &Pm6FullElementParameters) -> Rm1MultipoleParameter
         rho_dipole_bohr: 0.5 / d2,
         rho_quadrupole_bohr: 0.5 / q2,
     }
+}
+
+/// Computes the exact PYSEQM local YX branch for a d-basis and sp-basis pair.
+pub fn pm6_d_sp_local_pair_integrals(
+    d_atom: &Pm6FullElementParameters,
+    sp_atom: &Pm6FullElementParameters,
+    distance_bohr: f64,
+) -> Result<Pm6DSpLocalPairIntegrals, SemiempiricalError> {
+    if !d_atom.has_d_orbitals() || sp_atom.orbital_count != 4 || sp_atom.has_d_orbitals() {
+        return Err(SemiempiricalError::InvalidInput(
+            "PM6 YX integrals require a d-basis atom followed by an sp-only heavy atom".into(),
+        ));
+    }
+    if !distance_bohr.is_finite() || distance_bohr <= 1.0e-8 {
+        return Err(SemiempiricalError::InvalidInput(
+            "PM6 YX integrals require a positive finite distance".into(),
+        ));
+    }
+    let a = sp_multipoles(d_atom);
+    let b = sp_multipoles(sp_atom);
+    let d = pm6_d_multipole_parameters(d_atom)?;
+    Ok(Pm6DSpLocalPairIntegrals {
+        repulsion_ev: pm6_yx_local(Pm6YxLocalInput {
+            r0: distance_bohr,
+            da0: a.dipole_separation_bohr,
+            db0: b.dipole_separation_bohr,
+            qa0: a.quadrupole_separation_bohr,
+            qb0: b.quadrupole_separation_bohr,
+            dpa0: d.dp,
+            dsa0: d.ds,
+            dda0: d.d_orbital,
+            rho0a: a.rho_monopole_bohr,
+            rho0b: b.rho_monopole_bohr,
+            rho1a: a.rho_dipole_bohr,
+            rho1b: b.rho_dipole_bohr,
+            rho2a: a.rho_quadrupole_bohr,
+            rho2b: b.rho_quadrupole_bohr,
+            rho3a: d.rho3,
+            rho4a: d.rho4,
+            rho5a: d.rho5,
+            rho6a: d.rho6,
+        }),
+    })
 }
 
 fn pyseqm_orbital_rotation(unit_d_to_h: [f64; 3]) -> [[f64; 9]; 9] {
@@ -310,5 +361,42 @@ mod tests {
         assert!(pm6_d_hydrogen_pair_integrals(c, h, [0.0; 3], [1.0, 0.0, 0.0]).is_err());
         assert!(pm6_d_hydrogen_pair_integrals(s, c, [0.0; 3], [1.0, 0.0, 0.0]).is_err());
         assert!(pm6_d_hydrogen_pair_integrals(s, h, [0.0; 3], [0.0; 3]).is_err());
+    }
+
+    #[test]
+    fn sulfur_oxygen_local_yx_matches_the_pinned_pyseqm_port() {
+        let result = pm6_d_sp_local_pair_integrals(
+            pm6_full_parameters(16).unwrap(),
+            pm6_full_parameters(8).unwrap(),
+            3.4,
+        )
+        .unwrap();
+        for (index, expected) in [
+            (10, 0.044_359_772_787_406_916),
+            (17, -0.473_691_280_708_426_37),
+            (20, 7.280_047_176_274_072),
+            (44, 7.034_156_470_891_105),
+            (62, -0.054_156_960_094_592_366),
+            (125, 7.317_757_243_524_676),
+            (245, 7.100_976_308_876_957),
+            (304, 0.026_197_836_561_692_167),
+            (349, 0.032_829_309_458_778_044),
+            (449, 6.892_355_978_224_002_5),
+        ] {
+            let actual = result.repulsion_ev[index];
+            assert!(
+                (actual - expected).abs() < 2.0e-10,
+                "{index}: {actual} != {expected}"
+            );
+        }
+        assert_eq!(
+            result
+                .repulsion_ev
+                .iter()
+                .filter(|value| **value != 0.0)
+                .count(),
+            84
+        );
+        assert!((result.repulsion_ev.iter().sum::<f64>() - 140.633_643_038_500_96).abs() < 2.0e-10);
     }
 }

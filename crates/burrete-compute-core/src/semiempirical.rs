@@ -23,7 +23,10 @@ pub use pm6_fock_d::pm6_one_center_d_fock;
 pub use pm6_full_parameters::{pm6_full_parameters, Pm6FullElementParameters};
 pub use pm6_multipole_d::{pm6_d_multipole_parameters, Pm6DMultipoleParameters};
 pub use pm6_overlap_d::{pm6_local_d_overlap, Pm6LocalDOverlap};
-pub use pm6_two_center_d::{pm6_d_hydrogen_pair_integrals, Pm6DHydrogenPairIntegrals};
+pub use pm6_two_center_d::{
+    pm6_d_hydrogen_pair_integrals, pm6_d_sp_local_pair_integrals, Pm6DHydrogenPairIntegrals,
+    Pm6DSpLocalPairIntegrals,
+};
 pub use pm6_w_integrals::{pm6_one_center_w_integrals, pm6_slater_condon_parameter};
 pub use pm6_wigner_d::{
     pm6_rotate_dd_overlap, pm6_rotate_dp_overlap, pm6_rotate_ds_overlap, pm6_wigner_d_matrix,

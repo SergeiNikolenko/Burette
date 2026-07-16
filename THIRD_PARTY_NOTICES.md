@@ -138,6 +138,12 @@ Klopman-Ohno-Dewar multipole equations and nine-orbital rotation convention
 from PYSEQM `two_elec_two_center_int_local_frame_d_orbitals.py` and
 `RotationMatrixD.py`. PYSEQM BSD-3-Clause attribution applies.
 
+The byte-identical pinned NumPy representation of PYSEQM's d-orbital
+two-center equations is retained under `compute/semiempirical/reference/` as
+a development-time generation and parity source. The native YX local tensor is
+mechanically generated from its AST and does not execute Python in production.
+PYSEQM BSD-3-Clause attribution applies.
+
 The PM6-D3H4 H4 hydrogen-bond equations, covalent-radius table, short-range
 H-H polynomial, and CHNO D3 C6/CN/r0 reference records are adapted from
 OpenMOPAC correction behavior through the pinned
