@@ -1,9 +1,13 @@
+mod artifact_publisher;
+mod cluster_executor;
 mod cluster_plan;
 pub(crate) mod commands;
 pub(crate) mod coordinator;
 mod engine_catalog;
 pub(crate) mod error;
+mod fingerprint_session;
 mod job_factory;
+mod job_lifecycle;
 #[allow(
     dead_code,
     reason = "the coordinator will acquire compute-root ownership before runtime activation"
