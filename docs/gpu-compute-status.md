@@ -152,13 +152,16 @@ and bounded optimizer contract. Runtime v8 binds seven sources, seven reviewed
 contracts, AIR files, nine entrypoints, the compiler, linker, SDK, and final
 metallib by hash. Runtime v9 adds an independently written batched seven-term
 MMFF94/MMFF94s evaluator and bounded central-difference reference-gradient
-entrypoint. Runtime v10 adds a fused per-conformer optimizer that keeps
+entrypoint. Runtime v10 adds a fused per-conformer optimizer with
 central-difference gradient evaluation, full BFGS for molecules through 32
 atoms, bounded L-BFGS for larger molecules, and Armijo line search inside one
 Metal dispatch. Its package binds eight sources, eight contracts, eight AIR
 files, and twelve entrypoints by hash. Startup KATs compare every term and the
 full gradient against the float64 CPU oracle, then require the GPU optimizer to
 reduce a known MMFF bond objective before the runtime becomes available.
+Runtime v20 replaces the production numerical gradient with local forward-mode
+analytic differentiation for all seven terms while retaining the float64 CPU
+central difference only as an independent parity oracle.
 The pinned native RDKit adapter source also exposes a separate `BMFX` v1 MMFF94/
 MMFF94s parameter boundary with partial charges and seven fixed-width term
 groups. Its C++ serializer and strict Rust decoder are tested; rebuilding and
@@ -409,6 +412,12 @@ separate product increments.
   on `Apple M2 Pro` (`registryId=0x1000003c0`, unified memory); the tested
   `native-compute.v10.metallib` SHA-256 is
   `84d3d2cf0c31c09e87abe97d7455acd498b204b1bb27109a246be22b47c76a56`.
+- The verified v20 runtime replaces the production MMFF numerical gradient with
+  analytic forward-mode differentiation over local terms. The seven-term KAT
+  matches the float64 CPU central-difference oracle within
+  `0.005 kcal/(mol angstrom)`, and fused BFGS reaches the known bond minimum on
+  `Apple M2 Pro`. The tested `native-compute.v20.metallib` SHA-256 is
+  `341d858756cfd33438304e0d643d4ad647081df7678f88e407cc2734e87a2c84`.
 - The verified v11 runtime adds mapped Horn/quaternion alignment, weighted RMSD,
   analytic Gaussian shape Tanimoto/Carbo, and ESP-Sim Carbo/Tanimoto scoring.
   Its startup KAT recovers a known proper transform and matches the independent
@@ -426,13 +435,13 @@ separate product increments.
   result.
 - The desktop Grid now also exposes a persistent method selector and native
   `energy & charges` action for RM1, full variable-basis PM6/PM6_D,
-  PM6_D3H4, and
-  complete upstream-domain AM1, PM3, and PM6_SP plus CHNO AM1* over 1--256 selected
+  PM6_D3H4, complete upstream-domain AM1, PM3, and PM6_SP, plus CHNO AM1*
+  over 1--256 selected
   molecules with explicit coordinates.
   Each method writes to its own Grid columns so runs do not overwrite another
   method's electronic, nuclear, and total energies, SCF status/iterations, or
   JSON atomic charges. The frozen Grid lease is parsed without Python/MLX.
-  Runtime v19 contracts the dominant
+  Runtime v20 contracts the dominant
   two-center Coulomb/exchange Fock contribution on Metal for every SCF
   iteration and diagonalizes matrices through order 32 with a batched Metal
   Jacobi kernel. It also generates all compact H-H, heavy-H, and 22-term
@@ -443,7 +452,7 @@ separate product increments.
   reports `nativeMetalScfHybrid` only after at least one verified GPU dispatch.
   SCF orchestration and adaptive float64 polishing remain CPU. Unavailable
   Metal or all-invalid input remains `nativeCpuReference`.
-- The verified v19 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
+- The verified v20 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
   Fock-matrix element and accumulates pair tensors in deterministic order with
   no atomics. It adds `burrete_rm1_symmetric_eigen_v1`, with one threadgroup per
   admitted matrix. It adds `burrete_rm1_pair_rotate_v1`, with one thread per
@@ -458,8 +467,8 @@ separate product increments.
   Startup, one- and two-center PM6 Fock, two-molecule D3/H4/HH,
   explicit-water, and full-d H2S Grid KATs passed on
   `Apple M2 Pro` (`registryId=0x1000003c0`, unified memory); the tested
-  `native-compute.v19.metallib` SHA-256 is
-  `1735ef8c2b5314ae3e0384e32824a58d80f5de6289face21dd610e591dca86e1`.
+  `native-compute.v20.metallib` SHA-256 is
+  `341d858756cfd33438304e0d643d4ad647081df7678f88e407cc2734e87a2c84`.
 - The native closed-shell NDDO oracle now has separate AM1, PM3, PM6_SP, and
   AM1* parameter packs instead of method aliases. AM1, PM3, and PM6_SP cover
   their complete pinned 11-, 25-, and 10-element upstream domains; AM1* is the
@@ -511,7 +520,7 @@ separate product increments.
   complete PWCCT nuclear energy. H2S electronic/nuclear energies and all atomic
   charges match the pinned PM6_D oracle. Metal one- and two-center contraction
   plus the bounded eigensolver now run the same full-d H2S Grid path on M2 Pro
-  with per-dispatch CPU parity. The same v19 Grid path dispatches full
+  with per-dispatch CPU parity. The same v20 Grid path dispatches full
   PM6_D3H4 corrections on Metal and prevents double application by keeping the
   correction outside the density, charges, electronic, and nuclear terms.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
@@ -549,8 +558,7 @@ fixed order below:
 
 1. complete conformer scientific-corpus and packaged UI release gates for the
    implemented Grid-to-Mol* native workflow;
-2. finish MMFF94/MMFF94s scientific-corpus parity and replace the bounded numerical
-   gradient with an independently validated analytic Metal gradient;
+2. finish MMFF94/MMFF94s scientific-corpus parity against pinned RDKit;
 3. finish alignment corpus parity, chemistry-derived partial charges,
    non-identity atom maps, durable ResultPack/report publication, and packaged
    UI evidence for the implemented Grid/Mol* pose workflow;

@@ -103,7 +103,7 @@ air_files=(
   "$stage_dir/pm6-one-center-fock.v1.air"
   "$stage_dir/pm6-pair-fock.v1.air"
 )
-library_file="$stage_dir/native-compute.v19.metallib"
+library_file="$stage_dir/native-compute.v20.metallib"
 metadata_file="$stage_dir/build-metadata.v2.json"
 
 sha256() {
@@ -289,4 +289,4 @@ printf '{"schemaVersion":"burrete.compute.metal-generation-pointer.v1","generati
 keep_stage=1
 /bin/mv -f "$pointer_stage" "$output_dir/current.json"
 pointer_stage=''
-printf 'Built %s/%s\n' "$stage_dir" "native-compute.v19.metallib"
+printf 'Built %s/%s\n' "$stage_dir" "native-compute.v20.metallib"

@@ -318,7 +318,7 @@ impl MetalHost {
             pipeline(&device, library, "burrete_conformer_etk_optimize_v1")?;
         let mmff_energy_pipeline = pipeline(&device, library, "burrete_mmff_energy_v1")?;
         let mmff_gradient_pipeline =
-            pipeline(&device, library, "burrete_mmff_reference_gradient_v1")?;
+            pipeline(&device, library, "burrete_mmff_analytic_gradient_v1")?;
         let mmff_optimize_pipeline = pipeline(&device, library, "burrete_mmff_optimize_v1")?;
         let alignment_score_pipeline = pipeline(&device, library, "burrete_alignment_score_v1")?;
         let rm1_fock_pipeline = pipeline(&device, library, "burrete_rm1_pair_fock_v1")?;

@@ -1489,7 +1489,7 @@ impl MetalComputeRuntime {
             || !float_slices_close(
                 observed_mmff.gradients.as_flattened(),
                 expected_mmff.gradients.as_flattened(),
-                0.1,
+                0.005,
             )
         {
             return Err(MetalRuntimeError::KernelUnavailable(
@@ -1531,9 +1531,11 @@ impl MetalComputeRuntime {
             || optimized_mmff.energies[0] >= initial_energy
             || !float_slices_close(&optimized_mmff.energies, &[optimized_reference], 2.0e-3)
         {
-            return Err(MetalRuntimeError::KernelUnavailable(
-                "Metal startup MMFF optimization failed its CPU energy check".into(),
-            ));
+            return Err(MetalRuntimeError::KernelUnavailable(format!(
+                "Metal startup MMFF optimization failed its CPU energy check: status={:?}, optimizer={:?}, initial={initial_energy}, GPU={:?}, CPU={optimized_reference}, gradient={:?}, iterations={:?}",
+                optimized_mmff.statuses, optimized_mmff.optimizers, optimized_mmff.energies,
+                optimized_mmff.scaled_gradient_maxima, optimized_mmff.iterations
+            )));
         }
         let mut rm1_tensor = vec![0.0; 256];
         rm1_tensor[0] = 10.0;

@@ -80,8 +80,8 @@ for (const name of requiredEnvironment.filter((name) => name.endsWith("_SHA256")
 const normalizedVersion = process.env.METAL_TOOL_VERSION.trim().replace(/\s+/g, " ");
 const metadata = {
   schemaVersion: "burrete.compute.metal-build-metadata.v2",
-  runtimeVersion: "burrete-native-metal-v19",
-  libraryId: "burrete.compute.native.v19",
+  runtimeVersion: "burrete-native-metal-v20",
+  libraryId: "burrete.compute.native.v20",
   sources: [
     { path: "compute/metal/tanimoto.v2.metal", sha256: process.env.TANIMOTO_SOURCE_SHA256 },
     { path: "compute/metal/conformer-initialize.v1.metal", sha256: process.env.CONFORMER_SOURCE_SHA256 },
@@ -137,7 +137,7 @@ const metadata = {
     { path: "pm6-pair-fock.v1.air", sha256: process.env.PM6_PAIR_FOCK_AIR_SHA256 },
   ],
   metallib: {
-    path: "native-compute.v19.metallib",
+    path: "native-compute.v20.metallib",
     sha256: process.env.METALLIB_SHA256,
   },
   compiler: {
@@ -168,7 +168,7 @@ const metadata = {
     "burrete_conformer_etk_v1",
     "burrete_conformer_etk_optimize_v1",
     "burrete_mmff_energy_v1",
-    "burrete_mmff_reference_gradient_v1",
+    "burrete_mmff_analytic_gradient_v1",
     "burrete_mmff_optimize_v1",
     "burrete_alignment_score_v1",
     "burrete_rm1_pair_fock_v1",
