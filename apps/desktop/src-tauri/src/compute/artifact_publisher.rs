@@ -10,7 +10,7 @@ use burrete_compute_protocol::{
     ArtifactFile, ArtifactManifest, ArtifactManifestSchemaVersion, EnginePackManifest,
     EnginePackRef, EnginePackVersion, JobSnapshot, PackedArrayDescriptor, PackedByteOrder,
     PackedDType, PackedFileDescriptor, PackedLayout, ResultPackManifest, ResultPackRef,
-    ResultPackVersion, StageProvenance, CLUSTER_FINGERPRINT_ARRAY_NAME,
+    ResultPackVersion, StageProvenance, WorkflowTemplateId, CLUSTER_FINGERPRINT_ARRAY_NAME,
     CLUSTER_FINGERPRINT_SEMANTIC, CLUSTER_FINGERPRINT_WORDS,
 };
 use rustix::{
@@ -23,9 +23,12 @@ use uuid::Uuid;
 
 use super::{
     cluster_executor::ClusterComputation,
+    conformer_executor::ConformerDistanceComputation,
+    conformer_stereo_executor::ConformerStereoComputation,
     error::{ComputeCoordinatorError, ComputeResult},
     store::ComputeStore,
 };
+use burrete_compute_core::{ConformerEnginePackArrays, ConformerPackedArraySpan};
 
 const ARTIFACT_DIRECTORY_MODE: u32 = 0o700;
 const ARTIFACT_FILE_MODE: u32 = 0o600;
@@ -41,8 +44,16 @@ pub(crate) struct ClusterPublicationStep {
     pub(crate) grid_warning: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConformerPublicationStep {
+    pub(crate) job: JobSnapshot,
+    pub(crate) artifact_id: Uuid,
+    pub(crate) artifact_manifest_sha256: String,
+}
+
 #[derive(Debug)]
-pub(crate) struct MaterializedClusterArtifact {
+pub(crate) struct MaterializedComputeArtifact {
     pub(crate) artifact_id: Uuid,
     pub(crate) result_pack: ResultPackRef,
     pub(crate) files: Vec<ArtifactFile>,
@@ -52,7 +63,7 @@ pub(crate) struct MaterializedClusterArtifact {
     final_directory: PathBuf,
 }
 
-impl MaterializedClusterArtifact {
+impl MaterializedComputeArtifact {
     pub(crate) fn manifest_for_job(
         &self,
         successful_job: &JobSnapshot,
@@ -116,7 +127,7 @@ pub(crate) fn materialize_cluster_artifact(
     job: &JobSnapshot,
     computation: &ClusterComputation,
     created_at_ms: u64,
-) -> ComputeResult<MaterializedClusterArtifact> {
+) -> ComputeResult<MaterializedComputeArtifact> {
     job.validate()?;
     if created_at_ms == 0 {
         return Err(ComputeCoordinatorError::Validation(
@@ -412,7 +423,169 @@ pub(crate) fn materialize_cluster_artifact(
         })?;
         root_directory.sync_all()?;
         verify_materialized_files(&final_directory, &files_as_descriptors(&files))?;
-        Ok(MaterializedClusterArtifact {
+        Ok(MaterializedComputeArtifact {
+            artifact_id,
+            result_pack,
+            files,
+            relative_directory: format!("artifacts/{final_leaf}"),
+            created_at_ms,
+            byte_count,
+            final_directory: final_directory.clone(),
+        })
+    })();
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&staging);
+        let _ = fs::remove_dir_all(&final_directory);
+    }
+    result
+}
+
+pub(crate) fn materialize_conformer_artifact(
+    store: &ComputeStore,
+    job: &JobSnapshot,
+    engine_arrays: &ConformerEnginePackArrays,
+    distance: &ConformerDistanceComputation,
+    stereo: &ConformerStereoComputation,
+    created_at_ms: u64,
+) -> ComputeResult<MaterializedComputeArtifact> {
+    job.validate()?;
+    if job.workflow_template != WorkflowTemplateId::ConformerV1 || created_at_ms == 0 {
+        return Err(ComputeCoordinatorError::Validation(
+            "conformer artifact requires a conformer job and positive creation time".into(),
+        ));
+    }
+    if engine_arrays.record_count() as u64 != job.frozen_source.frozen_source.record_count
+        || stereo.failure_flags.len() != distance.conformer_count()
+    {
+        return Err(ComputeCoordinatorError::Protocol(
+            "conformer artifact inputs differ from the frozen job".into(),
+        ));
+    }
+    let root = store.artifact_root()?;
+    initialize_artifact_root(&root)?;
+    let artifact_id = Uuid::new_v4();
+    let staging_leaf = format!(".artifact-{artifact_id}.staging");
+    let final_leaf = format!("artifact-{artifact_id}");
+    let staging = root.join(&staging_leaf);
+    let final_directory = root.join(&final_leaf);
+    create_private_directory(&staging)?;
+    create_private_directory(&staging.join("engine"))?;
+    create_private_directory(&staging.join("result"))?;
+
+    let result = (|| {
+        let mut writer = ArtifactWriter::new(&staging);
+        let engine_payload_bytes = engine_arrays
+            .payload_bytes()
+            .map_err(|error| ComputeCoordinatorError::Protocol(error.to_string()))?;
+        let engine_binary = engine_arrays
+            .encode_le(engine_payload_bytes)
+            .map_err(|error| ComputeCoordinatorError::Protocol(error.to_string()))?;
+        let engine_data_file = writer.write(
+            "engine/conformer-engine.bin",
+            "application/octet-stream",
+            &engine_binary.bytes,
+        )?;
+        let engine_layout = conformer_engine_layout(
+            engine_arrays,
+            &engine_binary.arrays,
+            engine_data_file.clone(),
+        )?;
+        let engine_pack_id = Uuid::new_v4();
+        let engine_pack_sha256 = pack_identity_sha256(&PackIdentity {
+            kind: "conformer.engine-pack.v1",
+            pack_id: engine_pack_id,
+            job_id: job.job_id,
+            snapshot_sha256: &job.frozen_source.snapshot_sha256,
+            settings_sha256: &job.normalized_request_sha256,
+            layout: &engine_layout,
+        })?;
+        let extraction_stage = &job.stages[1];
+        let engine_manifest = EnginePackManifest {
+            schema_version: EnginePackVersion::ConformerV1,
+            engine_pack_id,
+            engine_pack_sha256,
+            workflow_template: job.workflow_template,
+            molecular_snapshot: job.frozen_source.clone(),
+            engine_id: extraction_stage.engine.engine_id.clone(),
+            engine_version: extraction_stage.engine.version.clone(),
+            normalized_settings_sha256: job.normalized_request_sha256.clone(),
+            layout: engine_layout,
+            created_at_ms,
+        };
+        engine_manifest.validate()?;
+        let engine_manifest_file = writer.write(
+            "engine/manifest.json",
+            "application/json",
+            &serde_json::to_vec(&engine_manifest)?,
+        )?;
+        let engine_ref =
+            EnginePackRef::from_manifest(&engine_manifest, engine_manifest_file.clone())?;
+
+        let result_layout = write_conformer_results(&mut writer, distance, stereo)?;
+        let result_pack_id = Uuid::new_v4();
+        let result_pack_sha256 = pack_identity_sha256(&PackIdentity {
+            kind: "conformer.result-pack.v1",
+            pack_id: result_pack_id,
+            job_id: job.job_id,
+            snapshot_sha256: &job.frozen_source.snapshot_sha256,
+            settings_sha256: &job.normalized_request_sha256,
+            layout: &result_layout,
+        })?;
+        let result_manifest = ResultPackManifest {
+            schema_version: ResultPackVersion::ConformerV1,
+            result_pack_id,
+            result_pack_sha256,
+            job_id: job.job_id,
+            workflow_template: job.workflow_template,
+            molecular_snapshot: job.frozen_source.clone(),
+            engine_packs: vec![engine_ref],
+            layout: result_layout,
+            created_at_ms,
+        };
+        result_manifest.validate()?;
+        let result_manifest_file = writer.write(
+            "result/manifest.json",
+            "application/json",
+            &serde_json::to_vec(&result_manifest)?,
+        )?;
+        let result_pack =
+            ResultPackRef::from_manifest(&result_manifest, result_manifest_file.clone())?;
+
+        writer.sync()?;
+        let mut all_files = writer.descriptors;
+        all_files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+        verify_materialized_files(&staging, &all_files)?;
+        let files = all_files
+            .into_iter()
+            .map(|file| ArtifactFile {
+                role: artifact_role(&file.relative_path).into(),
+                relative_path: file.relative_path,
+                sha256: file.sha256,
+                byte_count: file.byte_length,
+                media_type: file.media_type,
+            })
+            .collect::<Vec<_>>();
+        let byte_count = files.iter().try_fold(0_u64, |total, file| {
+            total.checked_add(file.byte_count).ok_or_else(|| {
+                ComputeCoordinatorError::Protocol("artifact byte count overflowed".into())
+            })
+        })?;
+        let root_directory = File::open(&root)?;
+        renameat_with(
+            &root_directory,
+            staging_leaf.as_str(),
+            &root_directory,
+            final_leaf.as_str(),
+            RenameFlags::NOREPLACE,
+        )
+        .map_err(|error| {
+            ComputeCoordinatorError::Filesystem(format!(
+                "cannot atomically publish conformer artifact: {error}"
+            ))
+        })?;
+        root_directory.sync_all()?;
+        verify_materialized_files(&final_directory, &files_as_descriptors(&files))?;
+        Ok(MaterializedComputeArtifact {
             artifact_id,
             result_pack,
             files,
@@ -632,10 +805,26 @@ fn packed_array(
     byte_order: PackedByteOrder,
     alignment: u32,
 ) -> ComputeResult<PackedArrayDescriptor> {
+    packed_array_with_unit(
+        name, semantic, None, file, dtype, shape, byte_order, alignment,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn packed_array_with_unit(
+    name: &str,
+    semantic: &str,
+    unit: Option<&str>,
+    file: &PackedFileDescriptor,
+    dtype: PackedDType,
+    shape: Vec<u64>,
+    byte_order: PackedByteOrder,
+    alignment: u32,
+) -> ComputeResult<PackedArrayDescriptor> {
     let array = PackedArrayDescriptor {
         name: name.into(),
         semantic: semantic.into(),
-        unit: None,
+        unit: unit.map(str::to_string),
         file_relative_path: file.relative_path.clone(),
         dtype,
         shape,
@@ -648,8 +837,388 @@ fn packed_array(
     Ok(array)
 }
 
+fn conformer_engine_layout(
+    arrays: &ConformerEnginePackArrays,
+    spans: &[ConformerPackedArraySpan],
+    file: PackedFileDescriptor,
+) -> ComputeResult<PackedLayout> {
+    let records = arrays.record_count() as u64;
+    let starts = records + 1;
+    let atoms = arrays.atomic_numbers.len() as u64;
+    let chiral = arrays.chiral_atom_quads.len() as u64;
+    let distance = arrays.distance_atom_pairs.len() as u64;
+    let etk_distance = arrays.etk_distance_atom_pairs.len() as u64;
+    let improper = arrays.improper_atom_quads.len() as u64;
+    let stereo = arrays.stereo_atom_quints.len() as u64;
+    let torsion = arrays.torsion_atom_quads.len() as u64;
+    let mut descriptors = Vec::with_capacity(spans.len());
+    for span in spans {
+        let (semantic, unit, dtype, shape) = match span.name {
+            "atomicNumbers" => ("atomic_number", None, PackedDType::U16, vec![atoms]),
+            "chiralAtomQuads" => ("chiral_atom_quad", None, PackedDType::U32, vec![chiral, 4]),
+            "chiralTermStarts" => ("chiral_term_offsets", None, PackedDType::U64, vec![starts]),
+            "chiralVolumeBounds" => (
+                "chiral_volume_bounds",
+                Some("angstrom^3"),
+                PackedDType::F32,
+                vec![chiral, 2],
+            ),
+            "distanceAtomPairs" => (
+                "distance_atom_pair",
+                None,
+                PackedDType::U32,
+                vec![distance, 2],
+            ),
+            "distanceBoundsSquared" => (
+                "distance_bounds_squared",
+                Some("angstrom^2"),
+                PackedDType::F32,
+                vec![distance, 2],
+            ),
+            "distanceTermStarts" => (
+                "distance_pair_offsets",
+                None,
+                PackedDType::U64,
+                vec![starts],
+            ),
+            "distanceWeights" => (
+                "distance_constraint_weight",
+                None,
+                PackedDType::F32,
+                vec![distance],
+            ),
+            "etkDistanceAtomPairs" => (
+                "etk_distance_atom_pair",
+                None,
+                PackedDType::U32,
+                vec![etk_distance, 2],
+            ),
+            "etkDistanceBounds" => (
+                "etk_distance_bounds",
+                Some("angstrom"),
+                PackedDType::F32,
+                vec![etk_distance, 2],
+            ),
+            "etkDistanceKinds" => ("bond_separation", None, PackedDType::U8, vec![etk_distance]),
+            "etkDistanceTermStarts" => (
+                "etk_distance_term_offsets",
+                None,
+                PackedDType::U64,
+                vec![starts],
+            ),
+            "etkDistanceWeights" => (
+                "etk_distance_constraint_weight",
+                None,
+                PackedDType::F32,
+                vec![etk_distance],
+            ),
+            "formalCharges" => (
+                "formal_charge",
+                Some("elementary_charge"),
+                PackedDType::I8,
+                vec![atoms],
+            ),
+            "improperAtomQuads" => (
+                "improper_atom_quad",
+                None,
+                PackedDType::U32,
+                vec![improper, 4],
+            ),
+            "improperTermStarts" => (
+                "improper_term_offsets",
+                None,
+                PackedDType::U64,
+                vec![starts],
+            ),
+            "improperWeights" => (
+                "improper_constraint_weight",
+                None,
+                PackedDType::F32,
+                vec![improper],
+            ),
+            "moleculeAtomStarts" => (
+                "molecule_atom_offsets",
+                None,
+                PackedDType::U64,
+                vec![starts],
+            ),
+            "recordValidity" => (
+                "conformer_input_valid",
+                None,
+                PackedDType::Bool8,
+                vec![records],
+            ),
+            "stereoAtomQuints" => ("stereo_atom_quint", None, PackedDType::U32, vec![stereo, 5]),
+            "stereoCenterStarts" => (
+                "stereo_center_offsets",
+                None,
+                PackedDType::U64,
+                vec![starts],
+            ),
+            "stereoFlags" => ("stereo_check_flags", None, PackedDType::U8, vec![stereo]),
+            "torsionAtomQuads" => (
+                "torsion_atom_quad",
+                None,
+                PackedDType::U32,
+                vec![torsion, 4],
+            ),
+            "torsionCoefficients" => (
+                "torsion_fourier_coefficients",
+                None,
+                PackedDType::F32,
+                vec![torsion, 6],
+            ),
+            "torsionSigns" => (
+                "torsion_fourier_signs",
+                None,
+                PackedDType::I8,
+                vec![torsion, 6],
+            ),
+            "torsionTermStarts" => ("torsion_term_offsets", None, PackedDType::U64, vec![starts]),
+            other => {
+                return Err(ComputeCoordinatorError::Protocol(format!(
+                    "unknown conformer EnginePack array: {other}"
+                )))
+            }
+        };
+        let byte_order = if dtype.byte_width() == 1 {
+            PackedByteOrder::NotApplicable
+        } else {
+            PackedByteOrder::LittleEndian
+        };
+        let descriptor = PackedArrayDescriptor {
+            name: span.name.into(),
+            semantic: semantic.into(),
+            unit: unit.map(str::to_string),
+            file_relative_path: file.relative_path.clone(),
+            dtype,
+            shape,
+            byte_order,
+            alignment: dtype.byte_width() as u32,
+            byte_offset: span.byte_offset,
+            byte_length: span.byte_length,
+        };
+        descriptor.validate()?;
+        descriptors.push(descriptor);
+    }
+    let layout = PackedLayout {
+        files: vec![file],
+        arrays: descriptors,
+    };
+    layout.validate()?;
+    Ok(layout)
+}
+
+fn write_conformer_results(
+    writer: &mut ArtifactWriter<'_>,
+    distance: &ConformerDistanceComputation,
+    stereo: &ConformerStereoComputation,
+) -> ComputeResult<PackedLayout> {
+    let conformers = distance.conformer_count() as u64;
+    let atoms = distance.positions.len() as u64;
+    let starts = writer.write(
+        "result/conformer-atom-starts.bin",
+        "application/octet-stream",
+        &encode_u64(&distance.conformer_atom_starts),
+    )?;
+    let molecules = writer.write(
+        "result/conformer-molecule-indices.bin",
+        "application/octet-stream",
+        &encode_u32(&distance.conformer_molecule_indices),
+    )?;
+    let ordinals = writer.write(
+        "result/conformer-ordinals.bin",
+        "application/octet-stream",
+        &encode_u32(&distance.conformer_ordinals),
+    )?;
+    let attempts = writer.write(
+        "result/embedding-attempt-counts.bin",
+        "application/octet-stream",
+        &encode_u16(&distance.embedding_attempt_counts),
+    )?;
+    let embedding_energies = writer.write(
+        "result/embedding-energies.bin",
+        "application/octet-stream",
+        &encode_f32(&distance.embedding_energies),
+    )?;
+    let embedding_statuses = writer.write(
+        "result/embedding-statuses.bin",
+        "application/octet-stream",
+        &distance.embedding_statuses,
+    )?;
+    let etk_energies = writer.write(
+        "result/etk-energies.bin",
+        "application/octet-stream",
+        &encode_f32(&distance.etk_energies),
+    )?;
+    let etk_statuses = writer.write(
+        "result/etk-statuses.bin",
+        "application/octet-stream",
+        &distance.etk_statuses,
+    )?;
+    let positions = writer.write(
+        "result/positions.bin",
+        "application/octet-stream",
+        &encode_f32(
+            &distance
+                .positions
+                .iter()
+                .flatten()
+                .copied()
+                .collect::<Vec<_>>(),
+        ),
+    )?;
+    let seeds = writer.write(
+        "result/seed-words.bin",
+        "application/octet-stream",
+        &encode_u32(
+            &distance
+                .seed_words
+                .iter()
+                .flatten()
+                .copied()
+                .collect::<Vec<_>>(),
+        ),
+    )?;
+    let stereo_flags = writer.write(
+        "result/stereo-failure-flags.bin",
+        "application/octet-stream",
+        &encode_u32(&stereo.failure_flags),
+    )?;
+    let files = vec![
+        starts.clone(),
+        molecules.clone(),
+        ordinals.clone(),
+        attempts.clone(),
+        embedding_energies.clone(),
+        embedding_statuses.clone(),
+        etk_energies.clone(),
+        etk_statuses.clone(),
+        positions.clone(),
+        seeds.clone(),
+        stereo_flags.clone(),
+    ];
+    let arrays = vec![
+        packed_array(
+            "conformerAtomStarts",
+            "conformer_atom_offsets",
+            &starts,
+            PackedDType::U64,
+            vec![conformers + 1],
+            PackedByteOrder::LittleEndian,
+            8,
+        )?,
+        packed_array(
+            "conformerMoleculeIndices",
+            "conformer_molecule_index",
+            &molecules,
+            PackedDType::U32,
+            vec![conformers],
+            PackedByteOrder::LittleEndian,
+            4,
+        )?,
+        packed_array(
+            "conformerOrdinals",
+            "conformer_ordinal",
+            &ordinals,
+            PackedDType::U32,
+            vec![conformers],
+            PackedByteOrder::LittleEndian,
+            4,
+        )?,
+        packed_array(
+            "embeddingAttemptCounts",
+            "embedding_attempt_count",
+            &attempts,
+            PackedDType::U16,
+            vec![conformers],
+            PackedByteOrder::LittleEndian,
+            2,
+        )?,
+        packed_array(
+            "embeddingEnergies",
+            "distance_geometry_objective",
+            &embedding_energies,
+            PackedDType::F32,
+            vec![conformers],
+            PackedByteOrder::LittleEndian,
+            4,
+        )?,
+        packed_array(
+            "embeddingStatuses",
+            "conformer_embedding_status",
+            &embedding_statuses,
+            PackedDType::U8,
+            vec![conformers],
+            PackedByteOrder::NotApplicable,
+            1,
+        )?,
+        packed_array(
+            "etkEnergies",
+            "etk_geometry_objective",
+            &etk_energies,
+            PackedDType::F32,
+            vec![conformers],
+            PackedByteOrder::LittleEndian,
+            4,
+        )?,
+        packed_array(
+            "etkStatuses",
+            "etk_optimization_status",
+            &etk_statuses,
+            PackedDType::U8,
+            vec![conformers],
+            PackedByteOrder::NotApplicable,
+            1,
+        )?,
+        packed_array_with_unit(
+            "positions",
+            "cartesian_position",
+            Some("angstrom"),
+            &positions,
+            PackedDType::F32,
+            vec![atoms, 3],
+            PackedByteOrder::LittleEndian,
+            4,
+        )?,
+        packed_array(
+            "seedWords",
+            "conformer_seed_words",
+            &seeds,
+            PackedDType::U32,
+            vec![conformers, 4],
+            PackedByteOrder::LittleEndian,
+            4,
+        )?,
+        packed_array(
+            "stereoFailureFlags",
+            "stereo_failure_flags",
+            &stereo_flags,
+            PackedDType::U32,
+            vec![conformers],
+            PackedByteOrder::LittleEndian,
+            4,
+        )?,
+    ];
+    let layout = PackedLayout { files, arrays };
+    layout.validate()?;
+    Ok(layout)
+}
+
 fn encode_u64(values: &[u64]) -> Vec<u8> {
     values.iter().copied().flat_map(u64::to_le_bytes).collect()
+}
+
+fn encode_u32(values: &[u32]) -> Vec<u8> {
+    values.iter().copied().flat_map(u32::to_le_bytes).collect()
+}
+
+fn encode_u16(values: &[u16]) -> Vec<u8> {
+    values.iter().copied().flat_map(u16::to_le_bytes).collect()
+}
+
+fn encode_f32(values: &[f32]) -> Vec<u8> {
+    values.iter().copied().flat_map(f32::to_le_bytes).collect()
 }
 
 fn initialize_artifact_root(root: &Path) -> ComputeResult<()> {
@@ -743,6 +1312,7 @@ fn artifact_role(path: &str) -> &'static str {
         "engine/fingerprints.bin" => "fingerprints",
         "engine/fingerprint-validity.bin" => "fingerprintValidity",
         "engine/fingerprint-errors.jsonl" => "fingerprintErrors",
+        "engine/conformer-engine.bin" => "conformerEngineData",
         "result/manifest.json" => "resultPackManifest",
         "result/cluster-ids.bin" => "clusterIds",
         "result/representatives.bin" => "representatives",
@@ -750,7 +1320,8 @@ fn artifact_role(path: &str) -> &'static str {
         "result/valid-ordinals.bin" => "validOrdinals",
         "result/csr-row-offsets.bin" => "csrRowOffsets",
         "result/csr-column-indices.bin" => "csrColumnIndices",
-        _ => "clusterData",
+        path if path.starts_with("result/") => "conformerResultData",
+        _ => "computeData",
     }
 }
 
