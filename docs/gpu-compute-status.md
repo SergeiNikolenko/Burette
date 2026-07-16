@@ -268,7 +268,7 @@ separate product increments.
   generated Grid controls. Repository-wide TypeScript checking is currently
   blocked by pre-existing duplicate CodeMirror dependency identities in the
   text-file viewer; the errors do not involve the compute files changed here.
-- All 75 protocol tests and 35 compute-core tests pass after adding the fixed
+- All 75 protocol tests and 36 compute-core tests pass after adding the fixed
   conformer request/pack/plan contracts, validated EnginePack distance view,
   identity-derived seed, adaptive batch
   coverage, deterministic coordinate oracle, DG objective/gradient oracle,

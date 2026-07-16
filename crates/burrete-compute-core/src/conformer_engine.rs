@@ -197,6 +197,11 @@ impl ConformerDistanceEngine {
                         "valid conformer record contains no atoms",
                     ));
                 }
+                if atom_end - atom_start > 1 && term_start == term_end {
+                    return Err(ConformerEngineError::new(
+                        "multi-atom conformer record contains no distance constraints",
+                    ));
+                }
             } else if atom_start != atom_end || term_start != term_end {
                 return Err(ConformerEngineError::new(
                     "invalid conformer record owns atom or distance payload",
@@ -350,5 +355,17 @@ mod tests {
         let mut bounds = engine();
         bounds.distance_bounds_squared[0][1] = f32::NAN;
         assert!(bounds.validate().is_err());
+
+        let unconstrained = ConformerDistanceEngine::new(
+            vec![true],
+            vec![0, 2],
+            vec![6, 6],
+            vec![0, 0],
+            vec![0, 0],
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        );
+        assert!(unconstrained.is_err());
     }
 }
