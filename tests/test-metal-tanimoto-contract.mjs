@@ -128,8 +128,11 @@ function simulateKernels(fingerprints, cutoff, rowTile, columnTile) {
 
 assert.equal(contract.schemaVersion, "burrete.compute.metal-kernel-contract.v1");
 assert.equal(contract.fingerprint.bits, 2048);
-assert.equal(contract.fingerprint.wordType, "uint32");
-assert.equal(contract.fingerprint.wordsPerRecord, WORDS);
+assert.equal(contract.fingerprint.canonicalWordType, "uint64");
+assert.equal(contract.fingerprint.canonicalWordsPerRecord, 32);
+assert.equal(contract.fingerprint.metalWordType, "uint32");
+assert.equal(contract.fingerprint.metalWordsPerRecord, WORDS);
+assert.equal(contract.fingerprint.metalWordMapping, "low32ThenHigh32ForEachCanonicalWord");
 assert.equal(contract.fingerprint.rowStrideBytes, 256);
 assert.equal(contract.fingerprint.bitOrderWithinWord, "leastSignificantBitFirst");
 assert.equal(contract.dispatch.fullPairMatrix, false);
@@ -226,6 +229,12 @@ assert.deepEqual(
   [wordBoundaries[0], wordBoundaries[1], wordBoundaries[2], wordBoundaries[63]],
   [0x80000000, 0x80000001, 1, 0x80000000],
 );
+const canonicalWords = [0x8000000180000000n, 1n, ...Array(29).fill(0n), 0x8000000000000000n];
+const canonicalMetalView = canonicalWords.flatMap((word) => [
+  Number(word & 0xffffffffn),
+  Number((word >> 32n) & 0xffffffffn),
+]);
+assert.deepEqual(canonicalMetalView, wordBoundaries);
 assert.equal(
   matches(wordBoundaries, fingerprint([31, 32, 63, 64]), { numerator: 4, denominator: 5 }),
   true,

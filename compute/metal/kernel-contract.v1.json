@@ -5,8 +5,11 @@
   "deploymentTarget": "14.0",
   "fingerprint": {
     "bits": 2048,
-    "wordType": "uint32",
-    "wordsPerRecord": 64,
+    "canonicalWordType": "uint64",
+    "canonicalWordsPerRecord": 32,
+    "metalWordType": "uint32",
+    "metalWordsPerRecord": 64,
+    "metalWordMapping": "low32ThenHigh32ForEachCanonicalWord",
     "rowStrideBytes": 256,
     "byteOrder": "littleEndian",
     "wordOrder": "increasingBitIndex",

@@ -6,6 +6,10 @@ design; it does not copy or adapt `mlxmolkit` source.
 
 `tanimoto-neighbors.v1.metal` implements only exact neighbor graph generation
 for fixed 2,048-bit fingerprints. The host dispatches logical row/column tiles.
+The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
+256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical
+word. This is a byte-identical view on supported little-endian Apple Silicon;
+it is not a second persisted fingerprint format.
 One thread owns one row for the entire dispatch, so degree accumulation and CSR
 fill need no atomics. The ordered logical rectangles must be a gapless,
 non-overlapping partition of `[0, N) x [0, N)`. Columns advance contiguously for

@@ -6,10 +6,14 @@ use super::{
         validate_json_safe, validate_label, validate_sha256, validate_uuid, EnginePackVersion,
         MAX_LABEL_BYTES,
     },
-    layout::{PackedFileDescriptor, PackedLayout},
+    layout::{PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout},
     molecular::MolecularSnapshotRef,
 };
 use crate::{ProtocolError, WorkflowTemplateId};
+
+pub const CLUSTER_FINGERPRINT_ARRAY_NAME: &str = "fingerprints";
+pub const CLUSTER_FINGERPRINT_SEMANTIC: &str = "morgan_fingerprint_bits";
+pub const CLUSTER_FINGERPRINT_WORDS: u64 = 32;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -40,10 +44,38 @@ impl EnginePackManifest {
         )?;
         validate_json_safe("engine pack creation time", self.created_at_ms)?;
         self.layout.validate()?;
+        self.validate_cluster_fingerprint_layout()?;
         self.layout.reject_file_path(
             &self.molecular_snapshot.manifest.relative_path,
             "molecular snapshot manifest",
         )
+    }
+
+    fn validate_cluster_fingerprint_layout(&self) -> Result<(), ProtocolError> {
+        let fingerprints = self
+            .layout
+            .array(CLUSTER_FINGERPRINT_ARRAY_NAME)
+            .ok_or_else(|| {
+                ProtocolError::Validation(
+                    "cluster engine pack requires a fingerprints array".into(),
+                )
+            })?;
+        let expected_shape = [
+            self.molecular_snapshot.frozen_source.record_count,
+            CLUSTER_FINGERPRINT_WORDS,
+        ];
+        if fingerprints.semantic != CLUSTER_FINGERPRINT_SEMANTIC
+            || fingerprints.unit.is_some()
+            || fingerprints.dtype != PackedDType::U64
+            || fingerprints.shape != expected_shape
+            || fingerprints.byte_order != PackedByteOrder::LittleEndian
+            || fingerprints.alignment < 8
+        {
+            return Err(ProtocolError::Validation(format!(
+                "fingerprints must be a unitless little-endian u64[recordCount,{CLUSTER_FINGERPRINT_WORDS}] {CLUSTER_FINGERPRINT_SEMANTIC} array aligned to at least 8 bytes"
+            )));
+        }
+        Ok(())
     }
 }
 

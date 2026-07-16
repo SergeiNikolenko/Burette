@@ -12,6 +12,21 @@ fn fingerprint(bits: &[usize]) -> Fingerprint2048 {
     Fingerprint2048::from_words(words)
 }
 
+#[test]
+fn canonical_fingerprint_bytes_and_metal_view_are_identical() {
+    let value = fingerprint(&[0, 31, 32, 63, 64, 2047]);
+    let bytes = value.to_le_bytes();
+    assert_eq!(Fingerprint2048::from_le_bytes(bytes), value);
+
+    let metal = value.to_metal_words();
+    assert_eq!(
+        [metal[0], metal[1], metal[2], metal[63]],
+        [0x8000_0001, 0x8000_0001, 1, 0x8000_0000]
+    );
+    let metal_bytes: Vec<u8> = metal.into_iter().flat_map(u32::to_le_bytes).collect();
+    assert_eq!(metal_bytes, bytes);
+}
+
 fn options(tile_size: usize, max_undirected_edges: u64) -> GraphBuildOptions {
     options_with_memory(tile_size, max_undirected_edges, 1024 * 1024)
 }

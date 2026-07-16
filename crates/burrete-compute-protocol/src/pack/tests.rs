@@ -109,14 +109,14 @@ fn engine_manifest() -> EnginePackManifest {
         engine_version: "2025.03.4".into(),
         normalized_settings_sha256: hash('f'),
         layout: PackedLayout {
-            files: vec![file("pack/data.bin", 64, "application/octet-stream")],
+            files: vec![file("pack/data.bin", 512, "application/octet-stream")],
             arrays: vec![array(
-                "fingerprints",
-                "morgan_fingerprint_bits",
+                CLUSTER_FINGERPRINT_ARRAY_NAME,
+                CLUSTER_FINGERPRINT_SEMANTIC,
                 PackedDType::U64,
-                vec![2, 4],
+                vec![2, CLUSTER_FINGERPRINT_WORDS],
                 0,
-                64,
+                512,
             )],
         },
         created_at_ms: 9,
@@ -347,6 +347,27 @@ fn rejects_noncanonical_storage_and_unknown_fields() {
     let mut value = serde_json::to_value(result_manifest()).expect("serialize manifest");
     value["unexpected"] = serde_json::json!(true);
     assert!(serde_json::from_value::<ResultPackManifest>(value).is_err());
+}
+
+#[test]
+fn cluster_engine_pack_requires_the_canonical_fingerprint_abi() {
+    let mut manifest = engine_manifest();
+    manifest.layout.arrays[0].shape = vec![2, CLUSTER_FINGERPRINT_WORDS - 1];
+    manifest.layout.arrays[0].byte_length = 2 * (CLUSTER_FINGERPRINT_WORDS - 1) * 8;
+    manifest.layout.files[0].byte_length = manifest.layout.arrays[0].byte_length;
+    assert!(manifest.validate().is_err());
+
+    let mut manifest = engine_manifest();
+    manifest.layout.arrays[0].dtype = PackedDType::U32;
+    manifest.layout.arrays[0].alignment = 4;
+    manifest.layout.arrays[0].byte_length = 2 * CLUSTER_FINGERPRINT_WORDS * 4;
+    manifest.layout.files[0].byte_length = manifest.layout.arrays[0].byte_length;
+    assert!(manifest.validate().is_err());
+
+    let mut manifest = engine_manifest();
+    manifest.layout.arrays[0].shape[0] = 1;
+    manifest.layout.arrays[0].byte_length = CLUSTER_FINGERPRINT_WORDS * 8;
+    assert!(manifest.validate().is_err());
 }
 
 #[test]

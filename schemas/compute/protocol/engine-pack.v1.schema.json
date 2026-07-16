@@ -42,7 +42,50 @@
       "$ref": "common.v1.schema.json#/$defs/sha256"
     },
     "layout": {
-      "$ref": "common.v1.schema.json#/$defs/packedLayout"
+      "allOf": [
+        {
+          "$ref": "common.v1.schema.json#/$defs/packedLayout"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "arrays": {
+              "type": "array",
+              "contains": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "semantic",
+                  "unit",
+                  "dtype",
+                  "shape",
+                  "byteOrder",
+                  "alignment"
+                ],
+                "properties": {
+                  "name": { "const": "fingerprints" },
+                  "semantic": { "const": "morgan_fingerprint_bits" },
+                  "unit": { "type": "null" },
+                  "dtype": { "const": "u64" },
+                  "shape": {
+                    "type": "array",
+                    "prefixItems": [
+                      { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+                      { "const": 32 }
+                    ],
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "byteOrder": { "const": "littleEndian" },
+                  "alignment": { "type": "integer", "minimum": 8 }
+                }
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          }
+        }
+      ]
     },
     "createdAtMs": {
       "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
