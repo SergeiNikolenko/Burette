@@ -480,9 +480,12 @@ separate product increments.
   parity against the pinned PYSEQM port. The first complete two-center d
   branch now produces the rotated 9x9 `(mu nu | ss)` YH matrix and both
   electron-core terms for a d-basis atom paired with hydrogen; arbitrary-axis
-  sulfur-hydrogen parity is pinned at `2e-10`. YX and YY two-center tensors,
-  Metal W generation, full PM6 SCF integration, broader D3 tables, and
-  production PM6-D3H4 composition remain gated.
+  sulfur-hydrogen parity is pinned at `2e-10`. The 450-entry local YX tensor
+  for a d-basis/sp-only pair is now mechanically generated from a SHA-pinned
+  PYSEQM AST; sulfur-oxygen selected entries, sparsity, and aggregate parity
+  pass at `2e-10`. YX molecular rotation and core terms, the YY tensor, Metal W
+  generation, full PM6 SCF integration, broader D3 tables, and production
+  PM6-D3H4 composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
