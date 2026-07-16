@@ -12,6 +12,7 @@ use crate::compute::{
     coordinator::ComputeCoordinator,
     error::{ComputeCoordinatorError, ComputeResult},
     fingerprint_session::{FingerprintChunkResult, FingerprintExecutionStep},
+    representative_export::ClusterRepresentativeExportResult,
     store::validate_owner_window_label,
 };
 use crate::{preview::grid_store::GridRuntimeRegistry, windows::runtime_document_id};
@@ -192,6 +193,29 @@ pub(crate) async fn compute_get_artifact_manifest<R: Runtime>(
     let artifact_id = parse_uuid("artifact ID", &artifact_id)?;
     let coordinator = coordinator.inner().clone();
     run_blocking(move || coordinator.get_artifact_manifest(&owner, artifact_id)).await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_export_cluster_representatives<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    job_id: String,
+    output_directory: String,
+    collection_name: String,
+) -> Result<ClusterRepresentativeExportResult, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let job_id = parse_uuid("job ID", &job_id)?;
+    let output_directory = std::path::PathBuf::from(output_directory);
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || {
+        coordinator.export_cluster_representatives(
+            &owner,
+            job_id,
+            output_directory,
+            &collection_name,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
