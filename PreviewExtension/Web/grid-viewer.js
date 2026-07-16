@@ -8,6 +8,7 @@
   const TABLE_HIDDEN_COLUMNS_STORAGE_KEY = 'buret.grid.tableHiddenColumns';
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
+  const CLUSTER_CUTOFF_STORAGE_KEY = 'buret.grid.clusterCutoff';
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
     { value: 'flat', label: 'Flat' },
@@ -80,6 +81,7 @@
     tableScrollLeft: 0,
     tableColumnScrollFrame: 0,
     remoteDescriptorIds: [],
+    remoteAnalysisColumns: [],
     tableFilterTimer: 0,
     cardRenderer: storedCardRenderer(),
     xyzrenderPreset: null,
@@ -134,6 +136,8 @@
     contextMenuOutsideHandler: null,
     contextMenuKeyHandler: null,
     generating3d: false,
+    clustering: false,
+    clusterCutoff: storedClusterCutoff(),
     tableMoleculePreview: null,
     railDragging: false,
     pendingGridScrollIndex: null,
@@ -288,7 +292,8 @@
       export: !!caps.export,
       substructureSearch: molecularGrid && !!caps.substructureSearch,
       ketcherOpen: cfg.appViewer === true && !!caps.rendererSwitch,
-      rendererSwitch: molecularGrid && (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch
+      rendererSwitch: molecularGrid && (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch,
+      cluster: molecularGrid && cfg.appViewer === true && cfg.gridDataMode === 'bridge'
     };
   }
 
@@ -363,6 +368,44 @@
         setStatus(body.error || '[grid] 3D generation failed.', 'error');
         return;
       }
+      if (body.type === 'gridClusterStarted') {
+        setGridClusteringPending(true);
+        setStatus('[grid] Preparing immutable clustering inputs.');
+        return;
+      }
+      if (body.type === 'gridClusterProgress') {
+        setGridClusteringPending(true);
+        const completed = Number(body.completedRecords || 0);
+        const total = Number(body.totalRecords || 0);
+        if (body.phase === 'fingerprints' && total > 0) {
+          setStatus(`[grid] Fingerprints ${completed.toLocaleString()} / ${total.toLocaleString()}.`);
+        } else if (body.phase === 'similarity') {
+          setStatus('[grid] Building blockwise Tanimoto neighbors and Butina clusters.');
+        } else if (body.phase === 'publishing') {
+          setStatus('[grid] Publishing verified cluster results.');
+        }
+        return;
+      }
+      if (body.type === 'gridClusterFinished') {
+        setGridClusteringPending(false);
+        const backend = body.backend === 'nativeMetal' ? 'Metal GPU' : 'reference CPU';
+        const clusterCount = Number(body.clusterCount || 0);
+        const failed = Number(body.failedRecords || 0);
+        const warning = String(body.gridWarning || '').trim();
+        setStatus(
+          warning
+            ? `[grid] Created ${clusterCount.toLocaleString()} clusters via ${backend}; Grid writeback warning: ${warning}`
+            : `[grid] Created ${clusterCount.toLocaleString()} clusters via ${backend}${failed ? `; ${failed.toLocaleString()} fingerprint failures` : ''}.`,
+          warning ? 'error' : 'info'
+        );
+        if (body.gridApplied === true) void refreshRemote(config());
+        return;
+      }
+      if (body.type === 'gridClusterError') {
+        setGridClusteringPending(false);
+        setStatus(body.error || '[grid] Clustering failed.', 'error');
+        return;
+      }
       if (body.type === 'poseReviewSelection') {
         selectPoseReviewRow(body.activePose, config());
         return;
@@ -435,6 +478,9 @@
     state.indexReady = result.indexReady !== false;
     state.indexing = result.indexing === true || !state.indexReady;
     state.remoteDescriptorIds = Array.isArray(result.descriptorIds) ? result.descriptorIds.map(String) : [];
+    state.remoteAnalysisColumns = Array.isArray(result.analysisColumns)
+      ? result.analysisColumns.filter(column => column && typeof column === 'object')
+      : [];
   }
 
   function scheduleIndexPoll(cfg) {
@@ -633,6 +679,23 @@
     }
   }
 
+  function storedClusterCutoff() {
+    try {
+      const value = Number(window.localStorage?.getItem(CLUSTER_CUTOFF_STORAGE_KEY));
+      return [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9].includes(value) ? value : 0.7;
+    } catch (_) {
+      return 0.7;
+    }
+  }
+
+  function setClusterCutoff(value) {
+    const cutoff = Number(value);
+    if (![0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9].includes(cutoff)) return;
+    state.clusterCutoff = cutoff;
+    store(CLUSTER_CUTOFF_STORAGE_KEY, cutoff);
+    syncGridClusterControls();
+  }
+
   function clampInteger(value, min, max, fallback) {
     const number = Number(value);
     if (!Number.isFinite(number)) return fallback;
@@ -778,6 +841,9 @@
       ketcherOpen: caps.ketcherOpen,
       rendererSwitch: caps.rendererSwitch,
       generating3d: state.generating3d,
+      clusterEnabled: caps.cluster,
+      clustering: state.clustering,
+      clusterCutoff: state.clusterCutoff,
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
         setUnifiedSearchQuery(value || '', cfg);
@@ -801,6 +867,8 @@
       },
       onSelectAll() { selectAllRows(cfg); },
       onClearSelection() { clearSelection(cfg); },
+      onCluster() { requestClustering(cfg); },
+      onClusterCutoffChange(value) { setClusterCutoff(value); },
       onCopySelected() { copySelected(); },
       onSaveGrid() { saveGrid(cfg); },
       onSaveGridAs() { saveGridAs(cfg); },
@@ -1082,6 +1150,7 @@
       ...fields,
       columnFilters: remoteTableColumnFilters(),
       descriptorFilters: mergedDescriptorFilters(),
+      analysisFilters: mergedAnalysisFilters(),
       descriptorSort: state.descriptorSort
     };
   }
@@ -1089,7 +1158,7 @@
   function remoteTableColumnFilters() {
     const filters = [];
     for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
-      if (!filter || columnId.startsWith('descriptor:')) continue;
+      if (!filter || columnId.startsWith('descriptor:') || columnId.startsWith('analysis:')) continue;
       const row = { id: columnId, filterType: filter.type === 'number' ? 'number' : 'text' };
       if (row.filterType === 'number') {
         const min = Number(filter.min);
@@ -1120,6 +1189,24 @@
       if (row.min !== undefined || row.max !== undefined) merged.push(row);
     }
     return merged;
+  }
+
+  function mergedAnalysisFilters() {
+    const filters = [];
+    for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
+      if (!columnId.startsWith('analysis:') || filter?.type !== 'number') continue;
+      const valueId = columnId.slice('analysis:'.length);
+      const column = (state.remoteAnalysisColumns || []).find(candidate => String(candidate.valueId || '') === valueId);
+      const runId = String(column?.runId || '');
+      if (!runId) continue;
+      const row = { runId, valueId };
+      const min = Number(filter.min);
+      const max = Number(filter.max);
+      if (Number.isFinite(min)) row.min = min;
+      if (Number.isFinite(max)) row.max = max;
+      if (row.min !== undefined || row.max !== undefined) filters.push(row);
+    }
+    return filters;
   }
 
   function syncCardRendererSwitch() {
@@ -1349,6 +1436,64 @@
   function setGridGenerate3DPending(pending) {
     state.generating3d = pending === true;
     syncGridGenerate3DControls();
+  }
+
+  function requestClustering(cfg) {
+    if (state.clustering) return;
+    if (!state.indexReady) {
+      setStatus('[grid] Wait for indexing to finish before clustering.', 'error');
+      return;
+    }
+    const sourceIndexes = [...state.selected]
+      .map(Number)
+      .filter(index => Number.isSafeInteger(index) && index >= 0)
+      .sort((left, right) => left - right);
+    setGridClusteringPending(true);
+    post('clusterMolecules', '[grid] Cluster molecules.', {
+      documentId: cfg?.documentId || null,
+      sourceIndexes,
+      cutoff: state.clusterCutoff,
+    });
+    setStatus(sourceIndexes.length
+      ? `[grid] Clustering ${sourceIndexes.length.toLocaleString()} selected molecules.`
+      : '[grid] Clustering the full collection.');
+  }
+
+  function setGridClusteringPending(pending) {
+    state.clustering = pending === true;
+    syncGridClusterControls();
+  }
+
+  function syncGridClusterControls() {
+    const button = document.getElementById('cluster-molecules');
+    const cutoff = document.getElementById('cluster-cutoff');
+    const total = state.remoteMode
+      ? (state.recordsTotalHint || state.recordsIndexed || state.totalRows)
+      : state.all.length;
+    const unavailable = state.clustering || state.indexing || total === 0;
+    if (button) {
+      button.disabled = unavailable;
+      button.setAttribute('aria-busy', state.clustering ? 'true' : 'false');
+      button.title = state.clustering
+        ? 'Clustering is running'
+        : state.indexing
+        ? 'Wait for indexing to finish'
+        : state.selected.size
+        ? `Cluster ${state.selected.size.toLocaleString()} selected molecules`
+        : 'Cluster the full collection';
+      const label = button.querySelector('[data-buret-grid-cluster-label]');
+      if (label) {
+        label.textContent = state.clustering
+          ? 'Clustering...'
+          : state.selected.size
+          ? `Cluster selected (${state.selected.size.toLocaleString()})`
+          : 'Cluster all';
+      }
+    }
+    if (cutoff) {
+      cutoff.disabled = state.clustering;
+      cutoff.value = Number(state.clusterCutoff).toFixed(2);
+    }
   }
 
   function syncGridGenerate3DControls() {
@@ -2324,6 +2469,7 @@
     if (openSelectedMolstar) openSelectedMolstar.disabled = state.selected.size === 0;
     const openSelectedKetcher = document.getElementById('open-selected-ketcher');
     if (openSelectedKetcher) openSelectedKetcher.disabled = state.selected.size === 0 || Date.now() < state.ketcherOpenPendingUntil;
+    syncGridClusterControls();
     syncRdkitCoordinatesControl();
     syncGridEditControls();
     let footerText;
@@ -2775,10 +2921,19 @@
       { id: 'smiles', label: 'SMILES', type: 'text', fixed: true, get: row => rowSmiles(row) }
     ];
     const descriptorColumns = new Map();
+    const analysisColumns = new Map();
     const propColumns = new Set();
     for (const row of rows) {
       for (const [id, value] of Object.entries(row.descriptors || {})) {
         if (!descriptorColumns.has(id)) descriptorColumns.set(id, value?.label || id);
+      }
+      for (const [id, value] of Object.entries(row.analyses || {})) {
+        if (!analysisColumns.has(id)) analysisColumns.set(id, {
+          runId: value?.runId || '',
+          valueId: value?.valueId || id,
+          label: id,
+          valueKind: value?.valueKind || 'text'
+        });
       }
       for (const key of Object.keys(row.props || {})) {
         propColumns.add(key);
@@ -2787,6 +2942,10 @@
     if (state.remoteMode) {
       for (const id of state.remoteDescriptorIds || []) {
         if (!descriptorColumns.has(id)) descriptorColumns.set(id, id);
+      }
+      for (const column of state.remoteAnalysisColumns || []) {
+        const valueId = String(column?.valueId || '');
+        if (valueId) analysisColumns.set(valueId, column);
       }
     }
     for (const key of propColumns) {
@@ -2806,6 +2965,17 @@
         kind: 'descriptor',
         title: descriptorHelpText(id, label),
         get: row => descriptorDisplayValue(row.descriptors?.[id])
+      });
+    }
+    for (const [id, analysis] of analysisColumns) {
+      const valueKind = String(analysis?.valueKind || 'text');
+      columns.push({
+        id: `analysis:${id}`,
+        label: String(analysis?.label || id),
+        type: valueKind === 'integer' || valueKind === 'real' ? 'number' : 'text',
+        kind: 'analysis',
+        title: `cluster.v1 result ${id} · run ${String(analysis?.runId || '')}`,
+        get: row => analysisDisplayValue(row.analyses?.[id])
       });
     }
     columns.forEach(column => {
@@ -2836,6 +3006,7 @@
       state.totalRows,
       state.recordsIndexed,
       state.remoteMode ? (state.remoteDescriptorIds || []).join('\u001f') : '',
+      state.remoteMode ? JSON.stringify(state.remoteAnalysisColumns || []) : '',
       firstKey,
       lastKey,
       state.rowPatches.size,
@@ -2846,7 +3017,7 @@
 
   function tableColumnCatalogRowKey(row) {
     if (!row) return 'empty';
-    return `${row.rowId ?? ''}:${row.index ?? ''}:${Object.keys(row.descriptors || {}).length}:${Object.keys(row.props || {}).length}`;
+    return `${row.rowId ?? ''}:${row.index ?? ''}:${Object.keys(row.descriptors || {}).length}:${Object.keys(row.analyses || {}).length}:${Object.keys(row.props || {}).length}`;
   }
 
   function tableVisibleColumns(catalog) {
@@ -3079,7 +3250,7 @@
       <label class="buret-table-column-item" data-column-search="${escapeAttr(tableColumnPickerSearchText(column))}">
         <input type="checkbox" ${visible.has(column.id) ? 'checked' : ''} data-buret-table-column="${escapeAttr(column.id)}">
         <span>${escapeHTML(column.label)}</span>
-        <small>${column.kind === 'descriptor' ? 'descriptor' : 'property'} / ${column.type}</small>
+        <small>${column.kind === 'descriptor' ? 'descriptor' : column.kind === 'analysis' ? 'analysis' : 'property'} / ${column.type}</small>
       </label>
     `).join('');
     const remaining = Math.max(0, matchCount - columns.length);
@@ -3233,12 +3404,17 @@
     if (columnId === 'smiles') return rowSmiles(row);
     if (columnId.startsWith('prop:')) return String(row.props?.[columnId.slice(5)] ?? '');
     if (columnId.startsWith('descriptor:')) return descriptorDisplayValue(row.descriptors?.[columnId.slice('descriptor:'.length)]);
+    if (columnId.startsWith('analysis:')) return analysisDisplayValue(row.analyses?.[columnId.slice('analysis:'.length)]);
     return '';
   }
 
   function tableColumnNumericValue(row, columnId) {
     if (columnId === 'index') return Number(row.index) + 1;
     if (columnId.startsWith('descriptor:')) return descriptorNumericValue(row.descriptors?.[columnId.slice('descriptor:'.length)]);
+    if (columnId.startsWith('analysis:')) {
+      const value = row.analyses?.[columnId.slice('analysis:'.length)]?.value;
+      return typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
+    }
     const value = Number(tableColumnDisplayValue(row, columnId));
     return Number.isFinite(value) ? value : Number.NaN;
   }
@@ -4976,6 +5152,7 @@
     state.smartsMatches = new Map();
     state.rows = [];
     state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
+    state.remoteAnalysisColumns = [];
     state.selected = new Set();
     state.hiddenRows = new Set();
     state.dirty = false;
@@ -5347,15 +5524,29 @@
 
   function metadata(row) {
     const entries = Object.entries(row.props || {}).filter(([, value]) => String(value || '').length).slice(0, 6);
+    const analyses = Object.entries(row.analyses || {})
+      .filter(([, value]) => analysisDisplayValue(value))
+      .slice(0, 6);
     const descriptors = Object.entries(row.descriptors || {})
       .filter(([, value]) => descriptorDisplayValue(value))
       .slice(0, 6);
-    if (!entries.length && !descriptors.length) return '<div class="buret-no-metadata">No metadata</div>';
+    if (!entries.length && !descriptors.length && !analyses.length) return '<div class="buret-no-metadata">No metadata</div>';
     const propItems = entries.map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(value)}</dd>`);
+    const analysisItems = analyses.map(([key, value]) => (
+      `<dt>${escapeHTML((state.remoteAnalysisColumns || []).find(column => column.valueId === key)?.label || key)}</dt><dd>${escapeHTML(analysisDisplayValue(value))}</dd>`
+    ));
     const descriptorItems = descriptors.map(([key, value]) => (
       `<dt>${escapeHTML(value.label || key)}</dt><dd>${escapeHTML(descriptorDisplayValue(value))}</dd>`
     ));
-    return `<dl class="buret-metadata">${[...descriptorItems, ...propItems].join('')}</dl>`;
+    return `<dl class="buret-metadata">${[...analysisItems, ...descriptorItems, ...propItems].join('')}</dl>`;
+  }
+
+  function analysisDisplayValue(cell) {
+    if (!cell || cell.value === null || cell.value === undefined) return '';
+    if (cell.valueKind === 'boolean') return cell.value === true ? 'true' : 'false';
+    if (cell.valueKind === 'integer') return String(Math.trunc(Number(cell.value)));
+    if (cell.valueKind === 'real' && typeof cell.value === 'number') return String(Number(cell.value.toPrecision(8)));
+    return String(cell.value);
   }
 
   function descriptorDisplayValue(value) {

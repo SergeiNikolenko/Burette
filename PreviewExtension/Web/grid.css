@@ -365,6 +365,36 @@ button:disabled {
   font: 400 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
+.buret-grid-cluster-group {
+  padding-left: 6px;
+  border-left: 1px solid color-mix(in srgb, var(--buret-border) 58%, transparent);
+}
+
+.buret-grid-cluster-cutoff {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--buret-control-height);
+  padding: 0 4px 0 8px;
+  color: var(--buret-muted);
+  font: 400 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  white-space: nowrap;
+}
+
+.buret-grid-cluster-cutoff select {
+  width: 62px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--buret-control-surface);
+  color: var(--buret-text);
+}
+
+.buret-cluster-button[aria-busy="true"] {
+  color: var(--buret-accent);
+}
+
 .buret-grid-toolbar .buret-rdkit-coords-control {
   box-sizing: border-box;
   display: inline-flex;
