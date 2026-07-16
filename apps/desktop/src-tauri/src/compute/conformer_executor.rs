@@ -82,6 +82,21 @@ pub(crate) fn execute_conformer_distance_geometry(
             "conformer identity count differs from the extracted EnginePack",
         ));
     }
+    let requested_mmff = match request.parameters.mmff_variant {
+        burrete_compute_protocol::MmffVariant::Mmff94 => burrete_compute_core::MmffVariant::Mmff94,
+        burrete_compute_protocol::MmffVariant::Mmff94s => {
+            burrete_compute_core::MmffVariant::Mmff94s
+        }
+    };
+    if mmff_parameters
+        .iter()
+        .flatten()
+        .any(|parameters| parameters.parameters.variant != requested_mmff)
+    {
+        return Err(protocol(
+            "extracted MMFF parameter variant differs from the admitted request",
+        ));
+    }
     let engine_pack_bytes = arrays
         .payload_bytes()
         .map_err(|error| protocol(error.to_string()))?;
@@ -1334,6 +1349,7 @@ mod tests {
             },
             parameters: ConformerV1Parameters {
                 variant: burrete_compute_protocol::ConformerVariant::EtkdgV3,
+                mmff_variant: burrete_compute_protocol::MmffVariant::Mmff94s,
                 conformers_per_molecule: 2,
                 max_attempts_per_conformer: 2,
             },

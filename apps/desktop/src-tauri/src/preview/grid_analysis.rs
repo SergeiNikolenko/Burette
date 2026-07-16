@@ -1,8 +1,8 @@
 use std::{collections::BTreeSet, path::Path};
 
 use burrete_compute_protocol::{
-    CapabilityMaturity, RepresentativePolicy, WorkflowTemplateId, MAX_JSON_SAFE_INTEGER,
-    MAX_PACK_FILES, MAX_PACK_RECORDS,
+    CapabilityMaturity, MmffVariant, RepresentativePolicy, WorkflowTemplateId,
+    MAX_JSON_SAFE_INTEGER, MAX_PACK_FILES, MAX_PACK_RECORDS,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::Serialize;
@@ -109,6 +109,7 @@ pub(crate) struct GridConformerAnalysisApplyInput {
     pub(crate) created_at_ms: u64,
     pub(crate) artifact_id: Uuid,
     pub(crate) artifact_manifest_sha256: String,
+    pub(crate) mmff_variant: MmffVariant,
     pub(crate) assignments: Vec<GridConformerAssignmentInput>,
 }
 
@@ -468,6 +469,10 @@ pub(crate) fn apply_conformer_analysis_run(
                 GridAnalysisValue::Integer(assignment.passed_count as i64),
             ),
             ("conformerStatus", GridAnalysisValue::Text(status.into())),
+            (
+                "mmffVariant",
+                GridAnalysisValue::Text(conformer.mmff_variant.wire_id().into()),
+            ),
         ] {
             values.push(GridAnalysisValueInput {
                 molecule_id,
@@ -491,7 +496,7 @@ pub(crate) fn apply_conformer_analysis_run(
                 molecule_id,
                 source_index: assignment.source_index,
                 molecule_content_sha256: assignment.molecule_content_sha256.clone(),
-                value_id: "bestMmff94sEnergy".into(),
+                value_id: "bestMmffEnergy".into(),
                 value: GridAnalysisValue::Real(energy),
             });
         }

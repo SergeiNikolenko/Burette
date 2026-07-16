@@ -27,6 +27,8 @@ type GridControlProps = {
   rendererSwitch: boolean;
   generating3d: boolean;
   aligningPoses: boolean;
+  conformerVariant: "DG" | "KDG" | "ETDG" | "ETDGv2" | "ETKDG" | "ETKDGv2" | "ETKDGv3" | "srETKDGv3";
+  mmffVariant: "MMFF94" | "MMFF94s";
   clusterEnabled: boolean;
   clustering: boolean;
   findingSimilar: boolean;
@@ -58,6 +60,9 @@ type GridControlProps = {
   onXyzrenderPresetChange: (value: string) => void;
   onOpenKetcher: () => void;
   onAlignSelectedPoses: () => void;
+  onGenerate3D: () => void;
+  onConformerVariantChange: (value: GridControlProps["conformerVariant"]) => void;
+  onMmffVariantChange: (value: GridControlProps["mmffVariant"]) => void;
   onRendererSwitch: (value: "molstar") => void;
   onRdkitUseInputCoordsChange: (checked: boolean) => void;
 };
@@ -288,6 +293,29 @@ function SelectedOpenActions(props: GridControlProps) {
   if (!props.selectionEnabled) return null;
   return (
     <div id="selected-open-actions" className="buret-selected-open-actions" hidden>
+      <select
+        aria-label="Conformer generation method"
+        value={props.conformerVariant}
+        disabled={props.generating3d}
+        onChange={(event) => props.onConformerVariantChange(event.currentTarget.value as GridControlProps["conformerVariant"])}
+      >
+        {["DG", "KDG", "ETDG", "ETDGv2", "ETKDG", "ETKDGv2", "ETKDGv3", "srETKDGv3"].map((variant) => (
+          <option key={variant} value={variant}>{variant}</option>
+        ))}
+      </select>
+      <select
+        aria-label="MMFF optimization variant"
+        value={props.mmffVariant}
+        disabled={props.generating3d}
+        onChange={(event) => props.onMmffVariantChange(event.currentTarget.value as GridControlProps["mmffVariant"])}
+      >
+        <option value="MMFF94">MMFF94</option>
+        <option value="MMFF94s">MMFF94s</option>
+      </select>
+      <button id="generate-3d-selected" className="buret-toggle-button" type="button" disabled={props.generating3d} onClick={props.onGenerate3D}>
+        <span data-buret-grid-generate-3d-label>{props.generating3d ? "Generating..." : "Generate 3D"}</span>
+        <ControlTooltip label="Generate and selected-MMFF-optimize conformers for selected molecules" />
+      </button>
       <button id="open-selected-molstar" className="buret-toggle-button" type="button" onClick={() => props.onRendererSwitch("molstar")}>
         Open in Molstar
         <ControlTooltip label="Open selected molecules in Molstar" />

@@ -32,7 +32,10 @@ assert.match(chemistryJobsHook, /cancelledConformerJobIdsRef\.current\.delete\(j
 assert.match(conformerCommand, /Primary output: \{\}/);
 assert.match(viteConfig, /Primary output: \$\{result\.primaryOpenPath \?\? "None"\}/);
 assert.match(gridViewer, /sourceIndexes: rows\.map\(row => Number\(row\.index\)\)/);
+assert.match(gridViewer, /CONFORMER_VARIANTS = \['DG', 'KDG', 'ETDG', 'ETDGv2', 'ETKDG', 'ETKDGv2', 'ETKDGv3', 'srETKDGv3'\]/);
+assert.match(gridViewer, /MMFF_VARIANTS = \['MMFF94', 'MMFF94s'\]/);
 assert.match(nativeConformerWorkflow, /workflowTemplate: "conformer\.v1"/);
+assert.match(nativeConformerWorkflow, /mmffVariant: options\.mmffVariant/);
 assert.match(nativeConformerWorkflow, /backendPolicy: "gpuPreferred"/);
 for (const command of [
   "compute_execute_conformer_distance",
@@ -49,6 +52,7 @@ assert.match(conformerWorker, /view\.setUint16\(4, 2, true\)/);
 assert.match(conformerExecutor, /optimize_mmff_profiled/);
 assert.match(conformerExecutor, /mmff_retry_options/);
 assert.match(artifactPublisher, /ResultPackVersion::ConformerV2/);
-assert.match(artifactPublisher, /bestMmff94sEnergy|mmff94sEnergy/);
+assert.match(artifactPublisher, /"mmff_energy"/);
+assert.match(artifactPublisher, /mmffVariant=\{\} mmffEnergy=\{\}/);
 
 console.log("conformer workflow contract tests passed");

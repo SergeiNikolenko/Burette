@@ -61,6 +61,23 @@ pub enum ConformerVariant {
     SrEtkdgV3,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum MmffVariant {
+    #[serde(rename = "MMFF94")]
+    Mmff94,
+    #[serde(rename = "MMFF94s")]
+    Mmff94s,
+}
+
+impl MmffVariant {
+    pub const fn wire_id(self) -> &'static str {
+        match self {
+            Self::Mmff94 => "MMFF94",
+            Self::Mmff94s => "MMFF94s",
+        }
+    }
+}
+
 impl ConformerVariant {
     pub const ALL: [Self; 8] = [
         Self::Dg,
@@ -552,6 +569,7 @@ pub struct ClusterV1Parameters {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConformerV1Parameters {
     pub variant: ConformerVariant,
+    pub mmff_variant: MmffVariant,
     pub conformers_per_molecule: u32,
     pub max_attempts_per_conformer: u16,
 }
@@ -929,6 +947,7 @@ mod tests {
             },
             parameters: ConformerV1Parameters {
                 variant: ConformerVariant::EtkdgV3,
+                mmff_variant: MmffVariant::Mmff94s,
                 conformers_per_molecule: 32,
                 max_attempts_per_conformer: 8,
             },

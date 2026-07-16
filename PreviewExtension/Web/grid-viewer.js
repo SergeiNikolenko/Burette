@@ -9,6 +9,10 @@
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
   const CLUSTER_CUTOFF_STORAGE_KEY = 'buret.grid.clusterCutoff';
+  const CONFORMER_VARIANT_STORAGE_KEY = 'buret.grid.conformerVariant';
+  const MMFF_VARIANT_STORAGE_KEY = 'buret.grid.mmffVariant';
+  const CONFORMER_VARIANTS = ['DG', 'KDG', 'ETDG', 'ETDGv2', 'ETKDG', 'ETKDGv2', 'ETKDGv3', 'srETKDGv3'];
+  const MMFF_VARIANTS = ['MMFF94', 'MMFF94s'];
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
     { value: 'flat', label: 'Flat' },
@@ -136,6 +140,8 @@
     contextMenuOutsideHandler: null,
     contextMenuKeyHandler: null,
     generating3d: false,
+    conformerVariant: storedChoice(CONFORMER_VARIANT_STORAGE_KEY, CONFORMER_VARIANTS, 'ETKDGv3'),
+    mmffVariant: storedChoice(MMFF_VARIANT_STORAGE_KEY, MMFF_VARIANTS, 'MMFF94s'),
     aligningPoses: false,
     clustering: false,
     findingSimilar: false,
@@ -702,6 +708,15 @@
     }
   }
 
+  function storedChoice(key, choices, fallback) {
+    try {
+      const value = window.localStorage?.getItem(key);
+      return choices.includes(value) ? value : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   function storedStringSet(key) {
     try {
       const raw = window.localStorage?.getItem(key);
@@ -913,6 +928,8 @@
       ketcherOpen: caps.ketcherOpen,
       rendererSwitch: caps.rendererSwitch,
       generating3d: state.generating3d,
+      conformerVariant: state.conformerVariant,
+      mmffVariant: state.mmffVariant,
       aligningPoses: state.aligningPoses,
       clusterEnabled: caps.cluster,
       clustering: state.clustering,
@@ -962,6 +979,16 @@
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
       onAlignSelectedPoses() { requestSelectedPoseAlignment(cfg); },
       onGenerate3D() { requestSelected3DGeneration(cfg); },
+      onConformerVariantChange(value) {
+        state.conformerVariant = CONFORMER_VARIANTS.includes(value) ? value : 'ETKDGv3';
+        store(CONFORMER_VARIANT_STORAGE_KEY, state.conformerVariant);
+        refreshGridControls(cfg);
+      },
+      onMmffVariantChange(value) {
+        state.mmffVariant = MMFF_VARIANTS.includes(value) ? value : 'MMFF94s';
+        store(MMFF_VARIANT_STORAGE_KEY, state.mmffVariant);
+        refreshGridControls(cfg);
+      },
       onCalculateSelectedDescriptors() { requestSelectedDescriptorCalculation(cfg); },
       onRendererSwitch(value) { requestRendererSwitch(value, cfg); },
       onRdkitUseInputCoordsChange(checked) {
@@ -1513,7 +1540,9 @@
       documentId: cfg?.documentId || null,
       title,
       sourceIndexes: rows.map(row => Number(row.index)),
-      molecules
+      molecules,
+      conformerVariant: state.conformerVariant,
+      mmffVariant: state.mmffVariant
     });
     setStatus(`[grid] Generating 3D for ${molecules.length.toLocaleString()} molecule${molecules.length === 1 ? '' : 's'}.`);
   }

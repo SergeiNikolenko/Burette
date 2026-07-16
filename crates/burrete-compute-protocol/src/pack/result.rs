@@ -162,13 +162,24 @@ impl ResultPackManifest {
             &[conformers],
         )?;
         if self.schema_version == ResultPackVersion::ConformerV2 {
-            require_array(
-                self.array("mmffEnergies")?,
-                "mmff94s_energy",
-                Some("kcal/mol"),
-                PackedDType::F32,
-                &[conformers],
-            )?;
+            let mmff_energies = self.array("mmffEnergies")?;
+            if mmff_energies.semantic == "mmff94s_energy" {
+                require_array(
+                    mmff_energies,
+                    "mmff94s_energy",
+                    Some("kcal/mol"),
+                    PackedDType::F32,
+                    &[conformers],
+                )?;
+            } else {
+                require_array(
+                    mmff_energies,
+                    "mmff_energy",
+                    Some("kcal/mol"),
+                    PackedDType::F32,
+                    &[conformers],
+                )?;
+            }
             require_array(
                 self.array("mmffOptimizerKinds")?,
                 "mmff_optimizer_kind",
