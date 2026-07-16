@@ -23,14 +23,16 @@ use super::{
     grid_database::open_grid_database_read_only,
     grid_identity,
     grid_predicate::plan_grid_predicate,
-    snapshot_fs::{PublishedSnapshotRoot, SnapshotByteReservation, SnapshotStaging},
+    snapshot_fs::{SnapshotByteReservation, SnapshotStaging},
 };
 
 const SNAPSHOT_DISK_HEADROOM_BYTES: u64 = 64 * 1024 * 1024;
 const SNAPSHOT_FILESYSTEM_OVERHEAD_BYTES: u64 = 1024 * 1024;
 const IDENTITY_BYTES_PER_RECORD: u64 = 8 + 32;
 
-pub(crate) use super::snapshot_fs::SnapshotPublicationRoot;
+pub(crate) use super::snapshot_fs::{
+    PublishedSnapshotRoot, SnapshotPublicationRoot, SnapshotRootEntry, VerifiedSnapshot,
+};
 
 #[derive(Debug)]
 pub(crate) struct FrozenGridSnapshot {

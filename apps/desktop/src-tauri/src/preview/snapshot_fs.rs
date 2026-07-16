@@ -17,24 +17,31 @@ mod platform {
         fs::File,
         io::{Read, Seek, SeekFrom},
         os::fd::{AsFd, OwnedFd},
-        path::{Component, Path, PathBuf},
+        path::{Path, PathBuf},
         sync::Mutex,
     };
+
+    #[cfg(test)]
+    use std::path::Component;
 
     use burrete_compute_protocol::{
         MolecularSnapshotManifest, MolecularSnapshotRef, PackedFileDescriptor,
         MAX_MOLECULAR_SNAPSHOT_MANIFEST_BYTES, MOLECULAR_RECORDS_FILE_NAME,
     };
+    #[cfg(test)]
+    use rustix::fs::open;
     use rustix::{
         fs::{
-            fstat, fstatvfs, fsync, mkdirat, open, openat, statat, unlinkat, AtFlags, Dir,
-            FileType, Mode, OFlags,
+            fstat, fstatvfs, fsync, mkdirat, openat, statat, unlinkat, AtFlags, Dir, FileType,
+            Mode, OFlags,
         },
-        io::Errno,
+        io::{fcntl_dupfd_cloexec, Errno},
         process::geteuid,
     };
     use sha2::{Digest, Sha256};
     use uuid::Uuid;
+
+    use crate::compute::ComputeRootChildDirectory;
 
     const DIRECTORY_FLAGS: OFlags = OFlags::RDONLY
         .union(OFlags::DIRECTORY)
@@ -79,14 +86,51 @@ mod platform {
     }
 
     #[derive(Debug)]
+    enum RootAttachment {
+        Compute(ComputeRootChildDirectory),
+        #[cfg(test)]
+        AbsolutePath,
+    }
+
+    #[derive(Debug)]
     pub(crate) struct SnapshotPublicationRoot {
         path: PathBuf,
         directory: OwnedFd,
         identity: DirectoryIdentity,
+        attachment: RootAttachment,
         reservations: ReservationPool,
     }
 
     impl SnapshotPublicationRoot {
+        pub(crate) fn from_compute_directory(
+            child: ComputeRootChildDirectory,
+        ) -> Result<Self, String> {
+            child
+                .verify()
+                .map_err(|error| format!("Cannot attach compute snapshots directory: {error}"))?;
+            let source_identity =
+                validate_private_directory(child.directory(), "compute snapshots directory")?;
+            let directory = fcntl_dupfd_cloexec(child.directory(), 0).map_err(|error| {
+                format!("Cannot retain compute snapshots directory capability: {error}")
+            })?;
+            let identity = validate_private_directory(&directory, "publication root")?;
+            if identity != source_identity {
+                return Err(
+                    "Duplicated snapshot publication capability changed filesystem identity".into(),
+                );
+            }
+            let root = Self {
+                path: child.path().to_path_buf(),
+                directory,
+                identity,
+                attachment: RootAttachment::Compute(child),
+                reservations: ReservationPool::default(),
+            };
+            root.health_check()?;
+            Ok(root)
+        }
+
+        #[cfg(test)]
         pub(crate) fn create(path: &Path) -> Result<Self, String> {
             if !path.is_absolute() {
                 return Err("Snapshot publication root must be an absolute path".into());
@@ -113,10 +157,12 @@ mod platform {
                 path: path.to_path_buf(),
                 directory,
                 identity,
+                attachment: RootAttachment::AbsolutePath,
                 reservations: ReservationPool::default(),
             })
         }
 
+        #[cfg(test)]
         pub(crate) fn open(path: &Path) -> Result<Self, String> {
             let directory = open_absolute_directory_nofollow(path)?;
             let identity = validate_private_directory(&directory, "publication root")?;
@@ -124,8 +170,13 @@ mod platform {
                 path: path.to_path_buf(),
                 directory,
                 identity,
+                attachment: RootAttachment::AbsolutePath,
                 reservations: ReservationPool::default(),
             })
+        }
+
+        pub(crate) fn health_check(&self) -> Result<(), String> {
+            self.verify_path_identity()
         }
 
         pub(crate) fn destination_path(&self, snapshot_id: Uuid) -> PathBuf {
@@ -133,13 +184,16 @@ mod platform {
         }
 
         pub(crate) fn available_bytes(&self) -> Result<u64, String> {
+            self.verify_path_identity()?;
             let statistics = fstatvfs(&self.directory).map_err(|error| {
                 format!("Cannot inspect snapshot publication filesystem: {error}")
             })?;
-            statistics
+            let available = statistics
                 .f_bavail
                 .checked_mul(statistics.f_frsize)
-                .ok_or_else(|| "Snapshot publication free-space count overflowed".into())
+                .ok_or_else(|| "Snapshot publication free-space count overflowed".to_string())?;
+            self.verify_path_identity()?;
+            Ok(available)
         }
 
         pub(crate) fn reserve_bytes(
@@ -199,6 +253,7 @@ mod platform {
             )
             .map_err(|error| format!("Cannot open published snapshot '{leaf}': {error}"))?;
             let identity = validate_private_directory(&directory, "published snapshot")?;
+            self.verify_path_identity()?;
             Ok(PublishedSnapshotRoot {
                 snapshot_id,
                 path: self.path.join(leaf),
@@ -234,7 +289,8 @@ mod platform {
             let tree = validate_partial_snapshot_tree(staging_directory, identity)?;
             remove_validated_tree(&self.directory, &leaf, tree)?;
             fsync(&self.directory)
-                .map_err(|error| format!("Cannot sync snapshot publication root: {error}"))
+                .map_err(|error| format!("Cannot sync snapshot publication root: {error}"))?;
+            self.verify_path_identity()
         }
 
         pub(crate) fn remove_verified(
@@ -271,25 +327,47 @@ mod platform {
         }
 
         fn verify_capability_identity(&self) -> Result<(), String> {
+            self.verify_attachment()?;
             let identity = validate_private_directory(&self.directory, "publication root")?;
             if identity != self.identity {
                 return Err("Snapshot publication root capability identity changed".into());
             }
-            Ok(())
+            self.verify_attachment()
         }
 
         fn verify_path_identity(&self) -> Result<(), String> {
             self.verify_capability_identity()?;
-            let reopened = open_absolute_directory_nofollow(&self.path).map_err(|error| {
-                format!("Snapshot publication root path is no longer trustworthy: {error}")
-            })?;
-            let reopened_identity = validate_private_directory(&reopened, "publication root")?;
-            if reopened_identity != self.identity {
-                return Err(
-                    "Snapshot publication root was replaced after capability creation".into(),
-                );
+            match &self.attachment {
+                RootAttachment::Compute(_) => Ok(()),
+                #[cfg(test)]
+                RootAttachment::AbsolutePath => {
+                    let reopened =
+                        open_absolute_directory_nofollow(&self.path).map_err(|error| {
+                            format!(
+                                "Snapshot publication root path is no longer trustworthy: {error}"
+                            )
+                        })?;
+                    let reopened_identity =
+                        validate_private_directory(&reopened, "publication root")?;
+                    if reopened_identity != self.identity {
+                        return Err(
+                            "Snapshot publication root was replaced after capability creation"
+                                .into(),
+                        );
+                    }
+                    Ok(())
+                }
             }
-            Ok(())
+        }
+
+        fn verify_attachment(&self) -> Result<(), String> {
+            match &self.attachment {
+                RootAttachment::Compute(child) => child.verify().map_err(|error| {
+                    format!("Compute snapshots directory attachment is no longer healthy: {error}")
+                }),
+                #[cfg(test)]
+                RootAttachment::AbsolutePath => Ok(()),
+            }
         }
     }
 
@@ -671,6 +749,8 @@ mod platform {
                 }
             };
 
+            root.verify_path_identity()?;
+
             Ok(Self {
                 root,
                 snapshot_id,
@@ -688,20 +768,28 @@ mod platform {
             if !PACK_FILES.contains(&name) {
                 return Err("Unrecognized snapshot pack file".into());
             }
-            create_file(&self.pack_directory, name)
+            self.root.verify_path_identity()?;
+            let file = create_file(&self.pack_directory, name)?;
+            self.root.verify_path_identity()?;
+            Ok(file)
         }
 
         pub(crate) fn create_manifest_file(&self) -> Result<File, String> {
-            create_file(&self.snapshot_directory, SNAPSHOT_FILES[0])
+            self.root.verify_path_identity()?;
+            let file = create_file(&self.snapshot_directory, SNAPSHOT_FILES[0])?;
+            self.root.verify_path_identity()?;
+            Ok(file)
         }
 
         pub(crate) fn sync_directories(&self) -> Result<(), String> {
+            self.root.verify_path_identity()?;
             fsync(&self.pack_directory)
                 .map_err(|error| format!("Cannot sync snapshot pack directory: {error}"))?;
             fsync(&self.snapshot_directory)
                 .map_err(|error| format!("Cannot sync snapshot manifest directory: {error}"))?;
             fsync(&self.staging_directory)
-                .map_err(|error| format!("Cannot sync snapshot staging directory: {error}"))
+                .map_err(|error| format!("Cannot sync snapshot staging directory: {error}"))?;
+            self.root.verify_path_identity()
         }
 
         pub(crate) fn publish(mut self) -> Result<PublishedSnapshotRoot, String> {
@@ -816,6 +904,7 @@ mod platform {
         Ok(())
     }
 
+    #[cfg(test)]
     fn open_absolute_directory_nofollow(path: &Path) -> Result<OwnedFd, String> {
         if !path.is_absolute() {
             return Err("Snapshot publication root must be an absolute path".into());
@@ -1516,6 +1605,8 @@ mod platform {
 
     use uuid::Uuid;
 
+    use crate::compute::ComputeRootChildDirectory;
+
     #[derive(Debug)]
     pub(crate) struct SnapshotPublicationRoot;
 
@@ -1531,7 +1622,18 @@ mod platform {
     }
 
     impl SnapshotPublicationRoot {
+        pub(crate) fn from_compute_directory(
+            _child: ComputeRootChildDirectory,
+        ) -> Result<Self, String> {
+            Err("Snapshot publication requires Unix directory capabilities".into())
+        }
+
+        #[cfg(test)]
         pub(crate) fn create(_path: &Path) -> Result<Self, String> {
+            Err("Snapshot publication requires Unix directory capabilities".into())
+        }
+
+        pub(crate) fn health_check(&self) -> Result<(), String> {
             Err("Snapshot publication requires Unix directory capabilities".into())
         }
 
@@ -1562,6 +1664,7 @@ mod platform {
             Err("Snapshot publication requires Unix directory capabilities".into())
         }
 
+        #[cfg(test)]
         pub(crate) fn open(_path: &Path) -> Result<Self, String> {
             Err("Snapshot publication requires Unix directory capabilities".into())
         }
@@ -1588,6 +1691,7 @@ mod platform {
             Path::new("")
         }
 
+        #[cfg(test)]
         pub(crate) fn open_file(&self, _relative_path: &str) -> Result<File, String> {
             Err("Snapshot publication requires Unix directory capabilities".into())
         }
