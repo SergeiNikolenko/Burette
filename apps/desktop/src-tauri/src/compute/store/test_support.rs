@@ -128,7 +128,7 @@ pub(super) fn create_renamed_intent(store: &ComputeStore, snapshot: &JobSnapshot
     attempt_id
 }
 
-pub(super) fn insert_prepared_fixture(store: &ComputeStore, owner: &str, snapshot: &JobSnapshot) {
+pub(crate) fn insert_prepared_fixture(store: &ComputeStore, owner: &str, snapshot: &JobSnapshot) {
     let attempt_id = create_renamed_intent(store, snapshot);
     store
         .insert_prepared_job(owner, snapshot, attempt_id)
@@ -182,7 +182,7 @@ pub(super) fn boundary_snapshot(
     snapshot
 }
 
-pub(super) fn queued_snapshot() -> JobSnapshot {
+pub(crate) fn queued_snapshot() -> JobSnapshot {
     queued_snapshot_with_policy(BackendPolicy::ReferenceCpu)
 }
 

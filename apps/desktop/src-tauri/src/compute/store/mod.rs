@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     compute::{
         error::{ComputeCoordinatorError, ComputeResult},
-        root_lease::ComputeRootLease,
+        root_lease::{ComputeRootChildDirectory, ComputeRootLease},
     },
     windows::{MAIN_WINDOW_LABEL, WORKSPACE_WINDOW_PREFIX},
 };
@@ -91,6 +91,10 @@ impl ComputeStore {
         self.root_lease.verify_path_identity()?;
         Ok(self.root_lease.compute_root().join("artifacts"))
     }
+
+    pub(crate) fn open_snapshot_directory(&self) -> ComputeResult<ComputeRootChildDirectory> {
+        self.root_lease.open_or_create_snapshots_directory()
+    }
 }
 
 fn decode_snapshot(encoded: &str) -> ComputeResult<JobSnapshot> {
@@ -172,6 +176,6 @@ mod recovery_tests;
 #[cfg(test)]
 mod snapshot_intents_tests;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 #[cfg(test)]
 mod tests;
