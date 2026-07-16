@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "libraryId": "burrete.compute.conformer-optimize.v1",
+  "source": "conformer-optimize.v1.metal",
+  "deploymentTarget": "14.0",
+  "algorithm": "one-threadgroup-per-conformer bounded float32 L-BFGS over the conformer-distance.v1 objective",
+  "threadgroupWidth": 32,
+  "statusCodes": {
+    "0": "convergedGradient",
+    "1": "convergedStep",
+    "2": "lineSearchExhausted",
+    "3": "maxIterations"
+  },
+  "parameterAbi": {
+    "name": "ConformerOptimizeConfigV1",
+    "sizeBytes": 48,
+    "alignmentBytes": 4,
+    "byteOrder": "littleEndian",
+    "fields": [
+      { "name": "atomCount", "type": "uint32", "offsetBytes": 0 },
+      { "name": "conformerCount", "type": "uint32", "offsetBytes": 4 },
+      { "name": "constraintCount", "type": "uint32", "offsetBytes": 8 },
+      { "name": "maxIterations", "type": "uint32", "offsetBytes": 12 },
+      { "name": "historySize", "type": "uint32", "offsetBytes": 16 },
+      { "name": "maxLineSearchSteps", "type": "uint32", "offsetBytes": 20 },
+      { "name": "reserved0", "type": "uint32", "offsetBytes": 24, "required": 0 },
+      { "name": "reserved1", "type": "uint32", "offsetBytes": 28, "required": 0 },
+      { "name": "gradientTolerance", "type": "float32", "offsetBytes": 32 },
+      { "name": "relativeStepTolerance", "type": "float32", "offsetBytes": 36 },
+      { "name": "armijoCoefficient", "type": "float32", "offsetBytes": 40 },
+      { "name": "maxStepFactor", "type": "float32", "offsetBytes": 44 }
+    ]
+  },
+  "entrypoint": {
+    "name": "burrete_conformer_optimize_v1",
+    "threadgroups": "conformerCount",
+    "threadsPerThreadgroup": 32,
+    "buffers": [
+      { "name": "positions", "index": 0, "type": "float4", "access": "readWrite", "elements": "atomCount * conformerCount" },
+      { "name": "atomPairs", "index": 1, "type": "uint2", "access": "read", "elements": "constraintCount" },
+      { "name": "boundsSquared", "index": 2, "type": "float2", "access": "read", "elements": "constraintCount" },
+      { "name": "weights", "index": 3, "type": "float", "access": "read", "elements": "constraintCount" },
+      { "name": "config", "index": 4, "type": "ConformerOptimizeConfigV1", "access": "constant", "elements": "1" },
+      { "name": "gradients", "index": 5, "type": "float4", "access": "readWrite", "elements": "atomCount * conformerCount" },
+      { "name": "directions", "index": 6, "type": "float4", "access": "readWrite", "elements": "atomCount * conformerCount" },
+      { "name": "oldPositions", "index": 7, "type": "float4", "access": "readWrite", "elements": "atomCount * conformerCount" },
+      { "name": "oldGradients", "index": 8, "type": "float4", "access": "readWrite", "elements": "atomCount * conformerCount" },
+      { "name": "historySteps", "index": 9, "type": "float4", "access": "readWrite", "elements": "atomCount * conformerCount * historySize" },
+      { "name": "historyGradientDeltas", "index": 10, "type": "float4", "access": "readWrite", "elements": "atomCount * conformerCount * historySize" },
+      { "name": "inverseCurvatures", "index": 11, "type": "float", "access": "readWrite", "elements": "conformerCount * historySize" },
+      { "name": "alphas", "index": 12, "type": "float", "access": "readWrite", "elements": "conformerCount * historySize" },
+      { "name": "outputEnergies", "index": 13, "type": "float", "access": "write", "elements": "conformerCount" },
+      { "name": "outputScaledGradientMax", "index": 14, "type": "float", "access": "write", "elements": "conformerCount" },
+      { "name": "outputIterations", "index": 15, "type": "uint32", "access": "write", "elements": "conformerCount" },
+      { "name": "outputStatuses", "index": 16, "type": "uint32", "access": "write", "elements": "conformerCount" }
+    ]
+  },
+  "claims": {
+    "distanceBoundOptimization": true,
+    "completeDistanceGeometryEmbedding": false,
+    "optimizer": "L-BFGS",
+    "adaptiveBatchCompatible": true,
+    "constraintsSharedAcrossConformers": true,
+    "boundedLineSearch": true,
+    "atomics": false,
+    "fullPairMatrix": false
+  }
+}
