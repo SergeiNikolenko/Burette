@@ -65,9 +65,17 @@ headroom before admitting a batch. A strict `conformer.engine-pack.v1` ABI now
 stores molecular topology and all shared DG, chiral, torsion, improper, ETK
 distance, and stereo constraints once per molecule in 26 typed canonical
 arrays. Manifest validation rejects missing, extra, reordered, misshaped, or
-unit-incompatible arrays before execution. This remains runtime foundation:
-native parameter extraction, DG/ETK kernels, durable publication, and UI are
-not yet complete. The paired `conformer.result-pack.v1` ABI is defined and
+unit-incompatible arrays before execution. The native parameter-extraction
+source is now staged as a dedicated, version-locked RDKit WASM adapter. It
+accepts a canonical MOL block, selects the exact official preset for all eight
+variants, uses RDKit bounds smoothing, CrystalFF torsion/improper data and
+embedding chirality helpers, and emits a bounded little-endian binary ABI that
+maps directly to the shared EnginePack arrays. It is separate from renderer
+MinimalLib and has no Python runtime. The adapter is not yet packaged: its
+reproducible WASM build, artifact hashes, RDKit/upstream fixtures, coordinator
+wiring, DG/ETK kernels beyond the current distance optimizer, durable
+publication, and UI remain incomplete. The paired `conformer.result-pack.v1`
+ABI is defined and
 strictly validates ragged coordinate offsets, Cartesian positions, molecule and
 conformer identity, embedding status/objective/attempt counts, and the exact
 128-bit seed words used for every generated structure.

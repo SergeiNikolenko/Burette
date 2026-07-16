@@ -12,6 +12,18 @@ This project follows the same broad product idea as QuickLookProtein: a host mac
 
 Burrete can call a user-installed `xyzrender` executable from the standalone app and Quick Look previews. The `xyzrender` Python package is MIT-licensed by Alister S. Goodfellow and contributors. `xyzrender` itself is not bundled with Burrete.
 
+## RDKit
+
+Burrete uses the official `@rdkit/rdkit` MinimalLib distribution and stages a
+dedicated conformer-parameter extractor built from official RDKit tag
+`Release_2025_03_4`, commit
+`276b5a662302c6a548ac4f1363c066f3258e3a20`. The extractor uses RDKit distance
+geometry, CrystalFF torsion, bounds-smoothing, and stereochemistry code. RDKit
+is BSD-3-Clause licensed by Rational Discovery LLC, Greg Landrum, Julie
+Penzotti, and other contributors. The authoritative license text copied from
+that revision is stored at `compute/rdkit-conformer/RDKIT_LICENSE.txt` and must
+ship with the extractor binary.
+
 ## mlxmolkit and native GPU Compute Layer provenance
 
 The Burrete project owner records that Guillaume, author of
@@ -21,8 +33,8 @@ Burrete native GPU Compute Layer. The pinned audit source is commit
 `9e7337f6f93c40a39ad0187991151944a4f1e274`.
 
 The pinned repository contains no top-level `LICENSE` file, although its
-package metadata declares MIT. No upstream source is currently shipped in the
-Compute Layer. Before an adapted file is added, Burrete must preserve the
+package metadata declares MIT. No `mlxmolkit` source is currently shipped in
+the Compute Layer. Before an adapted file is added, Burrete must preserve the
 permission evidence and add a file-level provenance record mapping the Burrete
 path to the upstream path and commit.
 
