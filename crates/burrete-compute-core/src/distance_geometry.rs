@@ -26,6 +26,12 @@ impl DistanceConstraintEvaluation {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DistanceGeometryError(String);
 
+impl DistanceGeometryError {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
+        Self(message.into())
+    }
+}
+
 impl fmt::Display for DistanceGeometryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.0)

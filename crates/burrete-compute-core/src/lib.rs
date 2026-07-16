@@ -8,6 +8,7 @@
 mod conformer_schedule;
 mod conformer_initialize;
 mod distance_geometry;
+mod distance_optimizer;
 
 pub use conformer_schedule::{
     plan_conformer_batches, ConformerBatch, ConformerBatchPlan, ConformerMoleculeWork,
@@ -17,6 +18,10 @@ pub use conformer_initialize::initialize_conformer_positions;
 pub use distance_geometry::{
     evaluate_distance_constraints, DistanceConstraint, DistanceConstraintEvaluation,
     DistanceGeometryError,
+};
+pub use distance_optimizer::{
+    optimize_distance_geometry, DistanceGeometryOptimization, DistanceGeometryOptimizationOptions,
+    DistanceGeometryOptimizationStatus,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};
