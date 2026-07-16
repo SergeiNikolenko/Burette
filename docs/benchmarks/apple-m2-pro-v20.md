@@ -23,11 +23,16 @@ timing are isolated from RDKit extraction time.
 | Exact cutoff-0.95 CSR count | 100,000 | 0 | 27,567 ms | 29,594 ms |
 | Dynamic-count Butina over the 100k CSR | 100,000 | 0 | CPU | 66 ms |
 | Exact cutoff-1.0 CSR count and fill | 10,000 | 5,000 | 526 ms | 590 ms |
+| Dense exact CSR count and fill | 512 | 130,816 | 3 ms | 55 ms |
 
 The 100k graph test uses a 512 MiB admission limit and never materializes an
 `N x N` matrix. The empty-edge corpus intentionally measures the complete
 quadratic exact-count path without output-density allocation. The paired 10k
 corpus separately exercises CSR fill and deterministic Butina membership.
+An exact `7/10` cutoff fixture passes CPU-versus-Metal boundary parity. A
+2,048-record identical-fingerprint fixture is admitted for the count pass but
+rejected before CSR fill because its accounted unified-memory requirement
+exceeds the 16 MiB test limit.
 
 The prior linear-scan Butina representative selection was `O(N^2)` for an
 isolated graph. The benchmark gate now uses a lazy deterministic priority queue

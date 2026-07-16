@@ -2139,8 +2139,58 @@ mod tests {
         )
         .expect("cluster paired exact graph");
         assert_eq!(paired_clusters.len(), 5_000);
+
+        let boundary = cutoff_boundary_fingerprints();
+        let boundary_cutoff = SimilarityCutoff {
+            numerator: 7,
+            denominator: 10,
+        };
+        let boundary_graph = runtime
+            .build_graph(&boundary, boundary_cutoff, graph_options)
+            .expect("build cutoff-boundary graph");
+        let expected_boundary = build_tanimoto_graph(&boundary, boundary_cutoff, graph_options)
+            .expect("build CPU cutoff-boundary graph");
+        assert_eq!(boundary_graph, expected_boundary);
+        assert_eq!(boundary_graph.undirected_edge_count(), 2);
+
+        let dense = vec![fingerprints[0]; 512];
+        let dense_start = std::time::Instant::now();
+        let dense_graph = runtime
+            .build_graph_profiled(
+                &dense,
+                SimilarityCutoff {
+                    numerator: 1,
+                    denominator: 1,
+                },
+                graph_options,
+            )
+            .expect("build dense exact graph");
+        let dense_host_ms = dense_start.elapsed().as_millis();
+        assert_eq!(dense_graph.graph.undirected_edge_count(), 130_816);
+
+        let pressure = vec![fingerprints[0]; 2_048];
+        let pressure_limits = ResourceLimits {
+            max_edges: 3_000_000,
+            max_memory_bytes: MIN_COMPUTE_MEMORY_BYTES,
+            max_dispatch_ms: MAX_DISPATCH_MS,
+        };
+        let pressure_error = runtime
+            .build_graph(
+                &pressure,
+                SimilarityCutoff {
+                    numerator: 1,
+                    denominator: 1,
+                },
+                GraphBuildOptions::from_resource_limits(
+                    NonZeroUsize::new(1_024).expect("nonzero tile"),
+                    &pressure_limits,
+                )
+                .expect("admit pressure count pass"),
+            )
+            .expect_err("dense CSR fill must be rejected by memory admission");
+        assert!(pressure_error.to_string().contains("Metal graph requires"));
         eprintln!(
-            "{{\"device\":\"{}\",\"queryRecords\":100000,\"queryGpuMs\":{},\"queryHostMs\":{},\"graphRecords\":{},\"graphGpuMs\":{},\"graphHostMs\":{},\"graphEdges\":0,\"butinaHostMs\":{},\"clusterCount\":{},\"fillRecords\":10000,\"fillGpuMs\":{},\"fillHostMs\":{},\"fillEdges\":5000,\"pairedClusters\":5000}}",
+            "{{\"device\":\"{}\",\"queryRecords\":100000,\"queryGpuMs\":{},\"queryHostMs\":{},\"graphRecords\":{},\"graphGpuMs\":{},\"graphHostMs\":{},\"graphEdges\":0,\"butinaHostMs\":{},\"clusterCount\":{},\"fillRecords\":10000,\"fillGpuMs\":{},\"fillHostMs\":{},\"fillEdges\":5000,\"pairedClusters\":5000,\"boundaryParity\":\"passed\",\"denseRecords\":512,\"denseGpuMs\":{},\"denseHostMs\":{},\"denseEdges\":130816,\"memoryPressure\":\"rejectedBeforeFill\"}}",
             runtime.device_identity().name,
             query.gpu_time_ms,
             query_host_ms,
@@ -2151,7 +2201,23 @@ mod tests {
             clusters.len(),
             fill_graph.gpu_time_ms,
             fill_host_ms,
+            dense_graph.gpu_time_ms,
+            dense_host_ms,
         );
+    }
+
+    fn cutoff_boundary_fingerprints() -> [Fingerprint2048; 3] {
+        let mut all = [0_u64; FINGERPRINT_WORDS];
+        let mut seven = [0_u64; FINGERPRINT_WORDS];
+        let mut six = [0_u64; FINGERPRINT_WORDS];
+        all[0] = (1_u64 << 10) - 1;
+        seven[0] = (1_u64 << 7) - 1;
+        six[0] = (1_u64 << 6) - 1;
+        [
+            Fingerprint2048::from_words(all),
+            Fingerprint2048::from_words(seven),
+            Fingerprint2048::from_words(six),
+        ]
     }
 
     fn deterministic_fingerprints(count: usize) -> Vec<Fingerprint2048> {

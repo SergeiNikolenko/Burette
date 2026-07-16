@@ -344,8 +344,10 @@ separate product increments.
   27.6 seconds GPU time on Apple M2 Pro without a dense matrix. Dynamic-count
   Butina over that CSR takes 66 ms after replacing the quadratic representative
   scan with a deterministic lazy priority queue. A separate 10,000-record,
-  5,000-edge case exercises count plus fill in 526 ms GPU time. Full evidence
-  and commands are in `docs/benchmarks/apple-m2-pro-v20.md`.
+  5,000-edge case exercises count plus fill in 526 ms GPU time. Exact cutoff
+  boundary parity, a dense 512-record/130,816-edge fill, and rejection before
+  fill under a 16 MiB unified-memory limit also pass. Full evidence and commands
+  are in `docs/benchmarks/apple-m2-pro-v20.md`.
 - Metal crate unit/parity tests pass, including real graph and exact query-count
   dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
   support.
@@ -566,8 +568,9 @@ notarization, or visual UI-triggered clustering evidence.
    restart, and artifacts.
 3. Run fingerprint parity against pinned native RDKit and upstream fixtures,
    plus exact CPU-versus-Metal CSR parity over the frozen scientific corpus.
-4. Extend the passing sparse 100k and paired-fill benchmarks with dense,
-   invalid-record, cutoff-boundary, cancellation, and memory-pressure runs.
+4. Extend the passing sparse, dense, cutoff-boundary, and memory-pressure
+   benchmarks with a real chemical-library density run; invalid-record and
+   cancellation behavior remains covered at the workflow contract layer.
 5. Install the unique package and repeat the desktop UI workflow with real
    SDF/SMILES/CSV samples under memory pressure.
 6. Add artifact/report inspection and cancellation polling between bounded
