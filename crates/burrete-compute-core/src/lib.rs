@@ -64,7 +64,8 @@ pub use mmff_extract::{
     decode_native_mmff_parameters, MmffExtractError, NativeMmffParameters,
 };
 pub use semiempirical::{
-    rm1_nuclear_repulsion_energy, rm1_parameters, solve_closed_shell_scf, SemiempiricalAtom,
+    rm1_multipole_parameters, rm1_nuclear_repulsion_energy, rm1_parameters,
+    solve_closed_shell_scf, Rm1MultipoleParameters, SemiempiricalAtom,
     SemiempiricalElementParameters, SemiempiricalError, SemiempiricalMethod,
     SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfResult,
     SemiempiricalScfStatus,
