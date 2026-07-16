@@ -46,3 +46,10 @@ then requires the packaged revision and BMFX v1 ABI before attaching the exact
 parameter payloads. The resulting 24-case fixture is consumed by CPU and real
 Metal corpus tests; neither generator nor Python is part of the application
 runtime.
+
+`generate-conformer-parity-fixtures.mjs` separately freezes BCEX v1 parameter
+payloads for four chemistry and stereochemistry cases across all eight DG,
+ETDG, and ETKDG variants. The real-Metal corpus test decodes and executes all
+32 cases with the production retry ceiling. The hardest pinned chiral case
+currently needs 23 deterministic attempts, so the desktop request uses a
+bounded ceiling of 32 rather than silently stopping at the former value of 8.

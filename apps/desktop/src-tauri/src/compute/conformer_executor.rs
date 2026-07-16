@@ -1115,6 +1115,7 @@ fn unavailable(message: impl Into<String>) -> ComputeCoordinatorError {
 
 #[cfg(test)]
 mod tests {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
     use burrete_compute_core::{
         ConformerEnginePackBuilder, ExtractedConformerParameters, MmffBondTerm, MmffParameters,
         MmffVariant,
@@ -1124,8 +1125,24 @@ mod tests {
         ConformerV1Parameters, ExecutionPolicy, GridScope, GridSourceReference, SchedulingPolicy,
         WorkflowTemplateId, MIN_COMPUTE_MEMORY_BYTES,
     };
+    use serde::Deserialize;
 
     use super::*;
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RdkitConformerFixture {
+        cases: Vec<RdkitConformerCase>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RdkitConformerCase {
+        name: String,
+        variant: String,
+        atom_count: usize,
+        bcex_base64: String,
+    }
 
     #[test]
     fn reference_executor_preserves_order_seeds_and_ragged_offsets() {
@@ -1411,6 +1428,76 @@ mod tests {
             input.gpu_time_ms,
             stereo.gpu_time_ms,
         );
+    }
+
+    #[test]
+    #[ignore = "manual RDKit conformer corpus smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    fn executes_all_pinned_rdkit_conformer_variants_on_the_real_gpu() {
+        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+            .map(std::path::PathBuf::from)
+            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged runtime");
+        let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
+            .expect("load verified Metal runtime");
+        let fixture: RdkitConformerFixture = serde_json::from_str(include_str!(
+            "../../../../../compute/rdkit-conformer/fixtures/conformer-rdkit-2025.03.4.json"
+        ))
+        .expect("decode pinned RDKit conformer corpus");
+        assert_eq!(fixture.cases.len(), 32);
+        let mut maximum_attempt_count = 0;
+        for (case_index, case) in fixture.cases.into_iter().enumerate() {
+            let variant: burrete_compute_protocol::ConformerVariant =
+                serde_json::from_value(serde_json::Value::String(case.variant.clone()))
+                    .expect("decode conformer variant");
+            let bytes = STANDARD
+                .decode(&case.bcex_base64)
+                .expect("decode BCEX fixture");
+            let extracted =
+                ExtractedConformerParameters::decode(&bytes, variant, bytes.len() as u64)
+                    .unwrap_or_else(|error| panic!("{} {} BCEX: {error}", case.name, case.variant));
+            assert_eq!(extracted.atomic_numbers.len(), case.atom_count);
+            let mut builder = ConformerEnginePackBuilder::new(variant, 4 * 1024 * 1024);
+            builder.append_valid(extracted).expect("append corpus case");
+            let mut request = request();
+            request.parameters.variant = variant;
+            request.parameters.conformers_per_molecule = 1;
+            request.parameters.max_attempts_per_conformer = 32;
+            let result = execute_conformer_distance_geometry(
+                Uuid::from_u128(10_000 + case_index as u128),
+                &request,
+                builder.finish(1).expect("build corpus EnginePack"),
+                &[ConformerMoleculeIdentity {
+                    source_record_id: case_index as u64 + 1,
+                    molecule_content_sha256: format!("{:064x}", case_index + 1),
+                }],
+                &[None],
+                &[None],
+                Backend::NativeMetal,
+                Backend::NativeMetal,
+                Some(&runtime),
+            )
+            .unwrap_or_else(|error| {
+                panic!("{} {} Metal conformer: {error}", case.name, case.variant)
+            });
+            assert_eq!(result.conformer_count(), 1);
+            maximum_attempt_count = maximum_attempt_count.max(result.embedding_attempt_counts[0]);
+            assert_eq!(
+                result.retry_stereo_failure_flags,
+                [0],
+                "{} {} retained a stereo failure",
+                case.name,
+                case.variant
+            );
+            assert!(result.embedding_statuses[0] <= 3);
+            assert!(result.etk_statuses[0] <= 3);
+            assert!(result
+                .positions
+                .iter()
+                .flatten()
+                .all(|value| value.is_finite()));
+            assert!(result.gpu_time_ms.is_some());
+        }
+        assert!(maximum_attempt_count <= 32);
+        eprintln!("32-case conformer corpus maximum attempt count: {maximum_attempt_count}");
     }
 
     fn extracted() -> ExtractedConformerParameters {
