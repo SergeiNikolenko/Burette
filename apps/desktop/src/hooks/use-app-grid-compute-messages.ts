@@ -1,5 +1,10 @@
 import { useCallback, useRef } from "react";
-import { computeErrorMessage, runClusterWorkflow } from "../lib/compute-cluster";
+import { open } from "@tauri-apps/plugin-dialog";
+import {
+  computeErrorMessage,
+  exportClusterRepresentatives,
+  runClusterWorkflow,
+} from "../lib/compute-cluster";
 import { isTauriRuntime } from "../lib/tauri";
 import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 
@@ -16,11 +21,73 @@ export function useAppGridComputeMessages({
   pushStatus,
 }: UseAppGridComputeMessagesOptions) {
   const runningDocumentsRef = useRef(new Set<string>());
+  const exportingDocumentsRef = useRef(new Set<string>());
 
   const handleGridComputeMessage = useCallback((
     body: GridComputeMessageBody,
     source: MessageEventSource | null,
   ) => {
+    if (body?.type === "exportClusterRepresentatives") {
+      const documentId = typeof body.documentId === "string" ? body.documentId.trim() : "";
+      const jobId = typeof body.jobId === "string" ? body.jobId.trim() : "";
+      if (!documentId || !jobId) return true;
+      if (!isTauriRuntime()) {
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridClusterRepresentativesExportError",
+          error: "Representative export is available only in the Burrete desktop runtime.",
+        });
+        return true;
+      }
+      if (exportingDocumentsRef.current.has(documentId)) {
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridClusterRepresentativesExportError",
+          error: "A representative export is already running for this Grid.",
+        });
+        return true;
+      }
+      exportingDocumentsRef.current.add(documentId);
+      postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+        type: "gridClusterRepresentativesExportStarted",
+        jobId,
+      });
+      pushStatus("Choose a folder for the immutable diverse-representative bundle...");
+      void (async () => {
+        const outputDirectory = await open({
+          directory: true,
+          multiple: false,
+          title: "Export diverse representatives",
+        });
+        if (typeof outputDirectory !== "string" || !outputDirectory) {
+          postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+            type: "gridClusterRepresentativesExportCancelled",
+          });
+          return;
+        }
+        const collectionName = typeof body.collectionName === "string" && body.collectionName.trim()
+          ? body.collectionName.trim()
+          : "molecules";
+        const result = await exportClusterRepresentatives(jobId, outputDirectory, collectionName);
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridClusterRepresentativesExportFinished",
+          ...result,
+        });
+        pushStatus(
+          `Exported ${result.representativeCount.toLocaleString()} diverse representatives with provenance.`,
+          "success",
+          [result.bundlePath],
+        );
+      })().catch((error) => {
+        const message = computeErrorMessage(error);
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridClusterRepresentativesExportError",
+          error: message,
+        });
+        pushStatus(`Representative export failed: ${message}`, "error");
+      }).finally(() => {
+        exportingDocumentsRef.current.delete(documentId);
+      });
+      return true;
+    }
     if (body?.type !== "clusterMolecules") return false;
     const documentId = typeof body.documentId === "string" ? body.documentId.trim() : "";
     if (!documentId) return true;

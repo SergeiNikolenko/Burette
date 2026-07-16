@@ -137,6 +137,7 @@
     contextMenuKeyHandler: null,
     generating3d: false,
     clustering: false,
+    exportingClusterRepresentatives: false,
     clusterCutoff: storedClusterCutoff(),
     tableMoleculePreview: null,
     railDragging: false,
@@ -404,6 +405,31 @@
       if (body.type === 'gridClusterError') {
         setGridClusteringPending(false);
         setStatus(body.error || '[grid] Clustering failed.', 'error');
+        return;
+      }
+      if (body.type === 'gridClusterRepresentativesExportStarted') {
+        setGridClusterRepresentativeExportPending(true);
+        setStatus('[grid] Preparing an immutable diverse-representative bundle.');
+        return;
+      }
+      if (body.type === 'gridClusterRepresentativesExportFinished') {
+        setGridClusterRepresentativeExportPending(false);
+        const count = Number(body.representativeCount || 0);
+        const bundlePath = String(body.bundlePath || '').trim();
+        setStatus(
+          `[grid] Exported ${count.toLocaleString()} diverse representative${count === 1 ? '' : 's'}${bundlePath ? ` to ${bundlePath}` : ''}.`,
+          'info'
+        );
+        return;
+      }
+      if (body.type === 'gridClusterRepresentativesExportCancelled') {
+        setGridClusterRepresentativeExportPending(false);
+        setStatus('[grid] Diverse-representative export cancelled.');
+        return;
+      }
+      if (body.type === 'gridClusterRepresentativesExportError') {
+        setGridClusterRepresentativeExportPending(false);
+        setStatus(body.error || '[grid] Diverse-representative export failed.', 'error');
         return;
       }
       if (body.type === 'poseReviewSelection') {
@@ -843,6 +869,8 @@
       generating3d: state.generating3d,
       clusterEnabled: caps.cluster,
       clustering: state.clustering,
+      exportingClusterRepresentatives: state.exportingClusterRepresentatives,
+      clusterRepresentativesAvailable: Boolean(latestRepresentativeAnalysisColumn()),
       clusterCutoff: state.clusterCutoff,
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
@@ -868,6 +896,7 @@
       onSelectAll() { selectAllRows(cfg); },
       onClearSelection() { clearSelection(cfg); },
       onCluster() { requestClustering(cfg); },
+      onExportClusterRepresentatives() { requestClusterRepresentativeExport(cfg); },
       onClusterCutoffChange(value) { setClusterCutoff(value); },
       onCopySelected() { copySelected(); },
       onSaveGrid() { saveGrid(cfg); },
@@ -1464,8 +1493,38 @@
     syncGridClusterControls();
   }
 
+  function latestRepresentativeAnalysisColumn() {
+    return (state.remoteAnalysisColumns || []).find(column => (
+      String(column?.valueId || '') === 'isRepresentative'
+      && String(column?.valueKind || '') === 'boolean'
+      && String(column?.runId || '').trim()
+    )) || null;
+  }
+
+  function requestClusterRepresentativeExport(cfg) {
+    if (state.clustering || state.exportingClusterRepresentatives) return;
+    const column = latestRepresentativeAnalysisColumn();
+    const jobId = String(column?.runId || '').trim();
+    if (!jobId) {
+      setStatus('[grid] Run clustering before exporting diverse representatives.', 'error');
+      return;
+    }
+    setGridClusterRepresentativeExportPending(true);
+    post('exportClusterRepresentatives', '[grid] Export diverse representatives.', {
+      documentId: cfg?.documentId || null,
+      jobId,
+      collectionName: baseName(cfg?.label || 'molecules')
+    });
+  }
+
+  function setGridClusterRepresentativeExportPending(pending) {
+    state.exportingClusterRepresentatives = pending === true;
+    syncGridClusterControls();
+  }
+
   function syncGridClusterControls() {
     const button = document.getElementById('cluster-molecules');
+    const exportButton = document.getElementById('export-cluster-representatives');
     const cutoff = document.getElementById('cluster-cutoff');
     const total = state.remoteMode
       ? (state.recordsTotalHint || state.recordsIndexed || state.totalRows)
@@ -1493,6 +1552,18 @@
     if (cutoff) {
       cutoff.disabled = state.clustering;
       cutoff.value = Number(state.clusterCutoff).toFixed(2);
+    }
+    if (exportButton) {
+      const available = Boolean(latestRepresentativeAnalysisColumn());
+      exportButton.disabled = state.clustering || state.exportingClusterRepresentatives || !available;
+      exportButton.setAttribute('aria-busy', state.exportingClusterRepresentatives ? 'true' : 'false');
+      exportButton.title = state.exportingClusterRepresentatives
+        ? 'Representative export is running'
+        : available
+        ? 'Export immutable diverse representatives with provenance'
+        : 'Run clustering before exporting diverse representatives';
+      const label = exportButton.querySelector('[data-buret-grid-representative-export-label]');
+      if (label) label.textContent = state.exportingClusterRepresentatives ? 'Exporting...' : 'Export diverse';
     }
   }
 
@@ -5155,6 +5226,7 @@
     state.remoteAnalysisColumns = [];
     state.selected = new Set();
     state.hiddenRows = new Set();
+    state.exportingClusterRepresentatives = false;
     state.dirty = false;
     state.dirtyReason = '';
     state.undoStack = [];

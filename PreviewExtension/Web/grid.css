@@ -391,7 +391,8 @@ button:disabled {
   color: var(--buret-text);
 }
 
-.buret-cluster-button[aria-busy="true"] {
+.buret-cluster-button[aria-busy="true"],
+.buret-cluster-export-button[aria-busy="true"] {
   color: var(--buret-accent);
 }
 

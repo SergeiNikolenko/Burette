@@ -1,7 +1,8 @@
 # Native GPU Compute Layer Implementation Status
 
-Status: `cluster.v1` source implementation and packaged Apple Silicon
-development proof complete; production release and scale proof pending
+Status: `cluster.v1` source workflow, immutable representative export, and
+packaged Apple Silicon development proof complete; production release and scale
+proof pending
 
 Updated: 2026-07-16
 
@@ -31,6 +32,9 @@ clustering:
    artifact manifest, and writes typed results back to Grid.
 7. Grid exposes `clusterId`, `isRepresentative`, and per-record status/error
    values with analysis filtering.
+8. `Export diverse` streams the frozen representative subset from the verified
+   MolecularSnapshot and ResultPack into an atomic `SDF/SMI + CSV + provenance`
+   bundle without routing molecular arrays through the WebView.
 
 The ordinary runtime does not require Python or MLX. No `mlxmolkit` source has
 been copied into this slice: the fingerprint ABI, exact Tanimoto contract,
@@ -42,7 +46,7 @@ source subject to the provenance gate.
 
 | Surface | Current truth |
 | --- | --- |
-| macOS desktop source build | `Cluster all` and `Cluster selected` are wired end to end in Grid |
+| macOS desktop source build | `Cluster all`, `Cluster selected`, and immutable `Export diverse` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
 | Native Metal backend | Real command-buffer dispatch is implemented and passes startup parity against the CPU reference |
 | Packaged development Metal | A unique ad-hoc-signed desktop package contains a hash-bound offline-compiled `.metallib`; the packaged bytes load and dispatch on Apple M2 Pro |
@@ -73,12 +77,18 @@ scope derived from the current selection:
   `nativeMetal`; every other completed execution reports `reference CPU`;
 - a completed run refreshes Grid and exposes typed analysis values;
 - individual fingerprint failures remain visible and are excluded from the
-  graph rather than silently converted into valid molecules.
+  graph rather than silently converted into valid molecules;
+- `Export diverse` resolves the latest successful clustering job, asks for a
+  destination folder, and publishes a unique immutable bundle containing every
+  representative in `representatives.csv`, structurally serializable records in
+  `representatives.sdf` and/or `representatives.smi`, and `provenance.json` with
+  the source snapshot, job, artifact manifest, payload hashes, and execution
+  trace. IDCode-only or whitespace-bearing SMILES records remain losslessly
+  represented in the table instead of making the whole export fail.
 
-`Find similar molecules`, diverse-representative export, filtered-scope
-clustering, and a public artifact/report inspector are still separate product
-increments. The ResultPack already contains the data required for those
-features, but they must not be described as available UI operations yet.
+`Find similar molecules`, filtered-scope clustering, and a public
+artifact/report inspector are still separate product increments. They must not
+be described as available UI operations yet.
 
 ## Owning Modules
 
@@ -91,6 +101,7 @@ features, but they must not be described as available UI operations yet.
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
 | Artifact materialization and restart reconciliation | `apps/desktop/src-tauri/src/compute/artifact_publisher.rs` |
+| Immutable representative export and provenance | `apps/desktop/src-tauri/src/compute/representative_export.rs` |
 | Grid analysis writeback/readback | `apps/desktop/src-tauri/src/preview/grid_analysis.rs`, `grid_store.rs` |
 | RDKit Web Worker and desktop workflow | `apps/desktop/src/workers/cluster-fingerprint.worker.ts`, `apps/desktop/src/lib/compute-cluster.ts` |
 | Grid bridge and controls | `apps/desktop/src/hooks/use-app-grid-compute-messages.ts`, `PreviewExtension/Web/grid-viewer.js` |
@@ -98,7 +109,7 @@ features, but they must not be described as available UI operations yet.
 ## Validation Completed In This Slice
 
 - 66 focused desktop compute tests pass, including the real Grid-to-artifact
-  end-to-end workflow.
+  workflow and representative export before and after coordinator restart.
 - 32 Grid store tests pass; the 50,000-row performance smoke remains opt-in.
 - Metal crate unit/parity tests pass, including a real test-only GPU dispatch
   on the local 19-core Apple M2 Pro GPU reported with Metal 4 support.
@@ -145,8 +156,8 @@ visual UI-triggered clustering evidence.
    memory-pressure, and 100k+ benchmarks on named Apple Silicon hardware.
 5. Install the unique package and repeat the desktop UI workflow with real
    SDF/SMILES/CSV samples under memory pressure.
-6. Add representative subset export, artifact/report inspection, and
-   cancellation polling between bounded Metal command buffers.
+6. Add artifact/report inspection and cancellation polling between bounded
+   Metal command buffers.
 7. Decide and document whether release execution remains in-process or moves
    to the separately signed helper described by the target architecture.
 
