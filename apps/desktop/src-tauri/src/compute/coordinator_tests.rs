@@ -1,10 +1,11 @@
 use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use burrete_compute_protocol::{
-    AllGridScope, ClusterV1Parameters, ComputeJobSchemaVersion, ExecutionPolicy,
+    AllGridScope, ClusterV1Parameters, ComputeJobSchemaVersion, ConformerResourceLimits,
+    ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant, ExecutionPolicy,
     FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
     GridSourceReference, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
-    SchedulingPolicy, SimilarityCutoff, SimilaritySettings,
+    SchedulingPolicy, SimilarityCutoff, SimilaritySettings, MIN_COMPUTE_MEMORY_BYTES,
 };
 
 use crate::compute::similarity_search::SimilaritySearchRequest;
@@ -30,6 +31,149 @@ fn helper_attestation_is_a_real_sha256_digest() {
     let hash = current_executable_sha256().expect("hash current test executable");
     assert_eq!(hash.len(), 64);
     assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
+}
+
+#[test]
+fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
+    let fixture_id = Uuid::new_v4();
+    let temp_root = std::fs::canonicalize(std::env::temp_dir()).expect("canonical temp root");
+    let compute_root = temp_root.join(format!("burrete-conformer-submit-{fixture_id}"));
+    let grid_root = temp_root.join(format!("burrete-conformer-grid-{fixture_id}"));
+    std::fs::create_dir_all(&grid_root).expect("create Grid fixture directory");
+    let handle = build_grid_store(&grid_root, "csv", b"smiles,name\nCC,Ethane\nCO,Methanol\n")
+        .expect("build Grid fixture")
+        .expect("Grid fixture is supported");
+    let registry = GridRuntimeRegistry::default();
+    registry
+        .register(
+            "main:conformer-submit",
+            handle.database_path,
+            "csv",
+            handle.cancel_token,
+        )
+        .expect("register Grid fixture");
+    let viewer_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../PreviewExtension/Web");
+    let coordinator = ComputeCoordinator::initialize(compute_root.clone(), None, Some(viewer_root));
+    let request = ConformerV1SubmitRequest {
+        schema_version: ComputeJobSchemaVersion::V1,
+        workflow_template: WorkflowTemplateId::ConformerV1,
+        source: GridSourceReference {
+            document_id: "conformer-submit".into(),
+            scope: GridScope::All(AllGridScope {}),
+        },
+        parameters: ConformerV1Parameters {
+            variant: ConformerVariant::EtkdgV3,
+            conformers_per_molecule: 3,
+            max_attempts_per_conformer: 2,
+        },
+        execution_policy: ExecutionPolicy {
+            backend_policy: BackendPolicy::ReferenceCpu,
+            scheduling_policy: SchedulingPolicy::Throughput,
+        },
+        limits: ConformerResourceLimits {
+            max_memory_bytes: MIN_COMPUTE_MEMORY_BYTES,
+            max_dispatch_ms: 250,
+            max_conformers_per_batch: 8,
+        },
+    };
+    let mut step = coordinator
+        .begin_conformer_v1_submission(
+            "main",
+            &request,
+            registry
+                .acquire_snapshot_lease("main:conformer-submit")
+                .expect("lease Grid source"),
+        )
+        .expect("begin conformer submission");
+    while let Some(chunk) = step.conformer_chunk.take() {
+        let envelope = conformer_result_envelope(&chunk);
+        step = coordinator
+            .submit_conformer_extraction_chunk("main", &envelope)
+            .expect("submit raw extraction result");
+    }
+    assert!(step.ready_for_execution);
+    let job = step.job.expect("durable conformer job");
+    assert_eq!(job.state, JobState::Queued);
+    assert_eq!(job.workflow_template, WorkflowTemplateId::ConformerV1);
+    assert_eq!(job.frozen_source.frozen_source.record_count, 2);
+    assert_eq!(coordinator.get_job("main", job.job_id).unwrap(), job);
+    let prepared = coordinator
+        .ready()
+        .unwrap()
+        .prepared_conformers
+        .lock()
+        .unwrap();
+    let batch = prepared
+        .get(&job.job_id)
+        .expect("prepared conformer arrays");
+    assert_eq!(batch.arrays.record_count(), 2);
+    assert_eq!(batch.identities.len(), 2);
+    assert!(batch.errors.iter().all(Option::is_none));
+    drop(prepared);
+    std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
+    std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
+}
+
+fn conformer_result_envelope(
+    chunk: &crate::compute::conformer_session::ConformerInputChunk,
+) -> Vec<u8> {
+    let mut bytes = vec![0_u8; 40];
+    bytes[..4].copy_from_slice(b"BCER");
+    bytes[4..6].copy_from_slice(&1_u16.to_le_bytes());
+    bytes[6..8].copy_from_slice(&40_u16.to_le_bytes());
+    bytes[8..24].copy_from_slice(chunk.session_id.as_bytes());
+    bytes[24..32].copy_from_slice(&chunk.start_ordinal.to_le_bytes());
+    bytes[32..36].copy_from_slice(&(chunk.records.len() as u32).to_le_bytes());
+    for record in &chunk.records {
+        let payload = minimal_conformer_extract_fixture();
+        bytes.extend(record.ordinal.to_le_bytes());
+        bytes.extend(record.source_record_id.to_le_bytes());
+        bytes.extend(decode_test_sha256(&record.molecule_content_sha256));
+        bytes.extend([0; 4]);
+        bytes.extend((payload.len() as u32).to_le_bytes());
+        bytes.extend(payload);
+        while bytes.len() % 4 != 0 {
+            bytes.push(0);
+        }
+    }
+    let total = bytes.len() as u32;
+    bytes[36..40].copy_from_slice(&total.to_le_bytes());
+    bytes
+}
+
+fn minimal_conformer_extract_fixture() -> Vec<u8> {
+    let mut bytes = vec![0_u8; 92];
+    bytes[..4].copy_from_slice(b"BCEX");
+    bytes[4..6].copy_from_slice(&1_u16.to_le_bytes());
+    bytes[6..8].copy_from_slice(&64_u16.to_le_bytes());
+    bytes[8] = 6;
+    bytes[12..16].copy_from_slice(&2_u32.to_le_bytes());
+    bytes[16..20].copy_from_slice(&1_u32.to_le_bytes());
+    bytes[40..44].copy_from_slice(&28_u32.to_le_bytes());
+    bytes[44..48].copy_from_slice(&92_u32.to_le_bytes());
+    bytes[48..52].copy_from_slice(&20_250_304_u32.to_le_bytes());
+    bytes[64..66].copy_from_slice(&6_u16.to_le_bytes());
+    bytes[66..68].copy_from_slice(&1_u16.to_le_bytes());
+    bytes[72..76].copy_from_slice(&0_u32.to_le_bytes());
+    bytes[76..80].copy_from_slice(&1_u32.to_le_bytes());
+    bytes[80..84].copy_from_slice(&1.0_f32.to_le_bytes());
+    bytes[84..88].copy_from_slice(&2.0_f32.to_le_bytes());
+    bytes[88..92].copy_from_slice(&1.0_f32.to_le_bytes());
+    bytes
+}
+
+fn decode_test_sha256(value: &str) -> [u8; 32] {
+    let mut bytes = [0_u8; 32];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        let nibble = |value: u8| match value {
+            b'0'..=b'9' => value - b'0',
+            b'a'..=b'f' => value - b'a' + 10,
+            _ => panic!("invalid fixture SHA-256"),
+        };
+        bytes[index] = (nibble(pair[0]) << 4) | nibble(pair[1]);
+    }
+    bytes
 }
 
 #[test]
