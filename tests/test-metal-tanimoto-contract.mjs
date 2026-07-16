@@ -249,9 +249,10 @@ if (metalLookup.status === 0 && metallibLookup.status === 0) {
     assert.equal(build.status, 0, build.stderr);
     const pointer = JSON.parse(readFileSync(resolve(buildDirectory, "current.json"), "utf8"));
     const generation = resolve(buildDirectory, pointer.generation);
-    const metadataPath = resolve(generation, "build-metadata.v1.json");
+    const metadataPath = resolve(generation, "build-metadata.v2.json");
     assert.ok(existsSync(resolve(generation, "tanimoto.v2.air")));
-    assert.ok(existsSync(resolve(generation, "tanimoto.v2.metallib")));
+    assert.ok(existsSync(resolve(generation, "conformer-initialize.v1.air")));
+    assert.ok(existsSync(resolve(generation, "native-compute.v3.metallib")));
     const metadataHash = createHash("sha256").update(readFileSync(metadataPath)).digest("hex");
     assert.equal(metadataHash, pointer.metadataSha256);
   } finally {
@@ -333,9 +334,12 @@ try {
       encoding: "utf8",
       env: {
         ...process.env,
-        SOURCE_SHA256: fakeHash,
-        CONTRACT_SHA256: fakeHash,
-        AIR_SHA256: fakeHash,
+        TANIMOTO_SOURCE_SHA256: fakeHash,
+        CONFORMER_SOURCE_SHA256: fakeHash,
+        TANIMOTO_CONTRACT_SHA256: fakeHash,
+        CONFORMER_CONTRACT_SHA256: fakeHash,
+        TANIMOTO_AIR_SHA256: fakeHash,
+        CONFORMER_AIR_SHA256: fakeHash,
         METALLIB_SHA256: fakeHash,
         METAL_TOOL_PATH: "/toolchain/metal",
         METAL_TOOL_SHA256: fakeHash,
@@ -350,11 +354,15 @@ try {
   );
   assert.equal(metadataRun.status, 0, metadataRun.stderr);
   const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
-  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v2");
-  assert.equal(metadata.source.sha256, fakeHash);
+  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v3");
+  assert.equal(metadata.sources[0].sha256, fakeHash);
+  assert.equal(metadata.sources[1].sha256, fakeHash);
   assert.equal(metadata.metallib.sha256, fakeHash);
   assert.equal(metadata.compiler.version, "Apple metal version test Target test");
-  assert.deepEqual(metadata.entrypoints, contract.entrypoints.map(({ name }) => name));
+  assert.deepEqual(metadata.entrypoints, [
+    ...contract.entrypoints.map(({ name }) => name),
+    "burrete_conformer_initialize_v1",
+  ]);
 } finally {
   rmSync(metadataDirectory, { recursive: true, force: true });
 }

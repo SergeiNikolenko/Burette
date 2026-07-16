@@ -66,4 +66,15 @@ impl MetalHost {
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))
     }
+
+    pub(crate) fn initialize_conformers_profiled(
+        &self,
+        _seed_words: &[[u32; 4]],
+        _atom_count: u32,
+        _max_memory_bytes: u64,
+    ) -> Result<(Vec<[f32; 4]>, f64), MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
 }

@@ -12,15 +12,34 @@ use crate::NATIVE_METAL_RUNTIME_VERSION;
 const POINTER_MAX_BYTES: u64 = 4 * 1024;
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 const METALLIB_MAX_BYTES: u64 = 64 * 1024 * 1024;
-const METADATA_FILE: &str = "build-metadata.v1.json";
-const METALLIB_FILE: &str = "tanimoto.v2.metallib";
-const SOURCE_BYTES: &[u8] = include_bytes!("../../../compute/metal/tanimoto.v2.metal");
-const CONTRACT_BYTES: &[u8] =
-    include_bytes!("../../../compute/metal/tanimoto-kernel-contract.v2.json");
-const ENTRYPOINTS: [&str; 3] = [
+const METADATA_FILE: &str = "build-metadata.v2.json";
+const METALLIB_FILE: &str = "native-compute.v3.metallib";
+const SOURCES: [(&str, &[u8]); 2] = [
+    (
+        "compute/metal/tanimoto.v2.metal",
+        include_bytes!("../../../compute/metal/tanimoto.v2.metal"),
+    ),
+    (
+        "compute/metal/conformer-initialize.v1.metal",
+        include_bytes!("../../../compute/metal/conformer-initialize.v1.metal"),
+    ),
+];
+const CONTRACTS: [(&str, &[u8]); 2] = [
+    (
+        "compute/metal/tanimoto-kernel-contract.v2.json",
+        include_bytes!("../../../compute/metal/tanimoto-kernel-contract.v2.json"),
+    ),
+    (
+        "compute/metal/conformer-initialize-kernel-contract.v1.json",
+        include_bytes!("../../../compute/metal/conformer-initialize-kernel-contract.v1.json"),
+    ),
+];
+const AIR_PATHS: [&str; 2] = ["tanimoto.v2.air", "conformer-initialize.v1.air"];
+const ENTRYPOINTS: [&str; 4] = [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
     "burrete_tanimoto_query_counts_v1",
+    "burrete_conformer_initialize_v1",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -72,9 +91,9 @@ struct BuildMetadata {
     schema_version: String,
     runtime_version: String,
     library_id: String,
-    source: HashedPath,
-    contract: HashedPath,
-    air: HashedPath,
+    sources: Vec<HashedPath>,
+    contracts: Vec<HashedPath>,
+    air: Vec<HashedPath>,
     metallib: HashedPath,
     compiler: CompilerIdentity,
     linker: HashedPath,
@@ -153,25 +172,32 @@ pub fn verify_runtime_package(root: &Path) -> Result<VerifiedMetalPackage, Metal
 }
 
 fn validate_metadata(metadata: &BuildMetadata) -> Result<(), MetalRuntimeError> {
-    for (label, hash) in [
-        ("source", &metadata.source.sha256),
-        ("contract", &metadata.contract.sha256),
-        ("AIR", &metadata.air.sha256),
-        ("metallib", &metadata.metallib.sha256),
-        ("compiler", &metadata.compiler.sha256),
-        ("linker", &metadata.linker.sha256),
-    ] {
+    for (label, hash) in metadata
+        .sources
+        .iter()
+        .map(|item| ("source", &item.sha256))
+        .chain(metadata.contracts.iter().map(|item| ("contract", &item.sha256)))
+        .chain(metadata.air.iter().map(|item| ("AIR", &item.sha256)))
+        .chain([
+            ("metallib", &metadata.metallib.sha256),
+            ("compiler", &metadata.compiler.sha256),
+            ("linker", &metadata.linker.sha256),
+        ])
+    {
         validate_sha256(hash, label)?;
     }
     let expected_entrypoints: Vec<String> = ENTRYPOINTS.iter().map(ToString::to_string).collect();
-    if metadata.schema_version != "burrete.compute.metal-build-metadata.v1"
+    if metadata.schema_version != "burrete.compute.metal-build-metadata.v2"
         || metadata.runtime_version != NATIVE_METAL_RUNTIME_VERSION
-        || metadata.library_id != "burrete.compute.tanimoto.v2"
-        || metadata.source.path != "compute/metal/tanimoto.v2.metal"
-        || metadata.source.sha256 != sha256(SOURCE_BYTES)
-        || metadata.contract.path != "compute/metal/tanimoto-kernel-contract.v2.json"
-        || metadata.contract.sha256 != sha256(CONTRACT_BYTES)
-        || metadata.air.path != "tanimoto.v2.air"
+        || metadata.library_id != "burrete.compute.native.v3"
+        || !matches_hashed_inputs(&metadata.sources, &SOURCES)
+        || !matches_hashed_inputs(&metadata.contracts, &CONTRACTS)
+        || metadata.air.len() != AIR_PATHS.len()
+        || metadata
+            .air
+            .iter()
+            .zip(AIR_PATHS)
+            .any(|(actual, expected)| actual.path != expected)
         || metadata.metallib.path != METALLIB_FILE
         || metadata.deployment_target != "14.0"
         || metadata.compile_arguments != ["-std=metal3.1", "-mmacosx-version-min=14.0"]
@@ -193,6 +219,14 @@ fn validate_metadata(metadata: &BuildMetadata) -> Result<(), MetalRuntimeError> 
         return integrity("Metal build metadata names an unexpected SDK");
     }
     Ok(())
+}
+
+fn matches_hashed_inputs(actual: &[HashedPath], expected: &[(&str, &[u8])]) -> bool {
+    actual.len() == expected.len()
+        && actual
+            .iter()
+            .zip(expected)
+            .all(|(actual, (path, bytes))| actual.path == *path && actual.sha256 == sha256(bytes))
 }
 
 fn validate_directory(path: &Path, label: &str) -> Result<(), MetalRuntimeError> {
@@ -386,18 +420,18 @@ mod tests {
         fn metadata(&self, metallib: &[u8]) -> serde_json::Value {
             let hash = "0".repeat(64);
             json!({
-                "schemaVersion": "burrete.compute.metal-build-metadata.v1",
+                "schemaVersion": "burrete.compute.metal-build-metadata.v2",
                 "runtimeVersion": NATIVE_METAL_RUNTIME_VERSION,
-                "libraryId": "burrete.compute.tanimoto.v2",
-                "source": {
-                    "path": "compute/metal/tanimoto.v2.metal",
-                    "sha256": sha256(SOURCE_BYTES),
-                },
-                "contract": {
-                    "path": "compute/metal/tanimoto-kernel-contract.v2.json",
-                    "sha256": sha256(CONTRACT_BYTES),
-                },
-                "air": { "path": "tanimoto.v2.air", "sha256": hash },
+                "libraryId": "burrete.compute.native.v3",
+                "sources": SOURCES.map(|(path, bytes)| json!({
+                    "path": path,
+                    "sha256": sha256(bytes),
+                })),
+                "contracts": CONTRACTS.map(|(path, bytes)| json!({
+                    "path": path,
+                    "sha256": sha256(bytes),
+                })),
+                "air": AIR_PATHS.map(|path| json!({ "path": path, "sha256": hash.clone() })),
                 "metallib": { "path": METALLIB_FILE, "sha256": sha256(metallib) },
                 "compiler": { "path": "/toolchain/metal", "sha256": hash, "version": "test" },
                 "linker": { "path": "/toolchain/metallib", "sha256": hash },

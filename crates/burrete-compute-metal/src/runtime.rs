@@ -1,8 +1,8 @@
 use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
 use burrete_compute_core::{
-    build_tanimoto_graph, score_tanimoto_query, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
-    TanimotoCounts, TanimotoQueryOptions, FINGERPRINT_WORDS,
+    build_tanimoto_graph, initialize_conformer_positions, score_tanimoto_query, Fingerprint2048,
+    GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -18,7 +18,7 @@ use crate::{
 const MAX_DISPATCH_MS: u32 = 2_000;
 
 #[derive(Clone)]
-pub struct MetalTanimotoRuntime {
+pub struct MetalComputeRuntime {
     host: Arc<MetalHost>,
     runtime_identity: RuntimeIdentity,
     device_identity: GpuDeviceIdentity,
@@ -41,10 +41,16 @@ pub struct MetalQueryExecution {
     pub gpu_time_ms: u64,
 }
 
-impl std::fmt::Debug for MetalTanimotoRuntime {
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalConformerInitialization {
+    pub positions: Vec<[f32; 4]>,
+    pub gpu_time_ms: u64,
+}
+
+impl std::fmt::Debug for MetalComputeRuntime {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("MetalTanimotoRuntime")
+            .debug_struct("MetalComputeRuntime")
             .field("runtime_identity", &self.runtime_identity)
             .field("device_identity", &self.device_identity)
             .field("limits", &self.limits)
@@ -52,7 +58,7 @@ impl std::fmt::Debug for MetalTanimotoRuntime {
     }
 }
 
-impl MetalTanimotoRuntime {
+impl MetalComputeRuntime {
     pub fn load(runtime_root: &Path, helper_sha256: &str) -> Result<Self, MetalRuntimeError> {
         validate_sha256(helper_sha256)?;
         let package = verify_runtime_package(runtime_root)?;
@@ -145,6 +151,23 @@ impl MetalTanimotoRuntime {
         })
     }
 
+    pub fn initialize_conformers_profiled(
+        &self,
+        seed_words: &[[u32; 4]],
+        atom_count: u32,
+        max_memory_bytes: u64,
+    ) -> Result<MetalConformerInitialization, MetalRuntimeError> {
+        let (positions, gpu_time_seconds) = self.host.initialize_conformers_profiled(
+            seed_words,
+            atom_count,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        Ok(MetalConformerInitialization {
+            positions,
+            gpu_time_ms: gpu_time_ms(gpu_time_seconds)?,
+        })
+    }
+
     fn run_startup_known_answer_test(&self) -> Result<(), MetalRuntimeError> {
         let mut left = [0_u64; FINGERPRINT_WORDS];
         left[0] = 0b11;
@@ -191,9 +214,26 @@ impl MetalTanimotoRuntime {
                 "Metal startup known-answer query differs from the CPU reference".into(),
             ));
         }
+        let seeds = [[1, 2, 3, 4], [5, 6, 7, 8]];
+        let atom_count = 3;
+        let expected_positions = seeds
+            .into_iter()
+            .flat_map(|seed| initialize_conformer_positions(seed, atom_count))
+            .collect::<Vec<_>>();
+        let observed_positions = self
+            .host
+            .initialize_conformers_profiled(&seeds, atom_count, MIN_COMPUTE_MEMORY_BYTES)?
+            .0;
+        if observed_positions != expected_positions {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup conformer initialization differs from the CPU reference".into(),
+            ));
+        }
         Ok(())
     }
 }
+
+pub type MetalTanimotoRuntime = MetalComputeRuntime;
 
 fn gpu_time_ms(gpu_time_seconds: f64) -> Result<u64, MetalRuntimeError> {
     let gpu_time_ms = (gpu_time_seconds * 1_000.0).ceil();
@@ -230,7 +270,7 @@ mod tests {
         let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
             .map(PathBuf::from)
             .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged ComputeMetal directory");
-        let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
+        let runtime = MetalComputeRuntime::load(&root, &"0".repeat(64))
             .expect("verified packaged Metal runtime");
         let device = runtime.device_identity();
         eprintln!(

@@ -45,6 +45,14 @@ struct TanimotoQueryCountsV1 {
     union: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ConformerInitializeBatchV1 {
+    atom_count: u32,
+    conformer_count: u32,
+    output_atom_offset: u64,
+}
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
@@ -52,6 +60,7 @@ pub(crate) struct MetalHost {
     degree_pipeline: ComputePipelineState,
     fill_pipeline: ComputePipelineState,
     query_pipeline: ComputePipelineState,
+    conformer_initialize_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -83,12 +92,15 @@ impl MetalHost {
         let degree_pipeline = pipeline(&device, library, "burrete_tanimoto_degree_count_v1")?;
         let fill_pipeline = pipeline(&device, library, "burrete_tanimoto_csr_fill_v1")?;
         let query_pipeline = pipeline(&device, library, "burrete_tanimoto_query_counts_v1")?;
+        let conformer_initialize_pipeline =
+            pipeline(&device, library, "burrete_conformer_initialize_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
             degree_pipeline,
             fill_pipeline,
             query_pipeline,
+            conformer_initialize_pipeline,
         })
     }
 
@@ -286,6 +298,86 @@ impl MetalHost {
             });
         }
         Ok((counts, gpu_time_seconds))
+    }
+
+    pub(crate) fn initialize_conformers_profiled(
+        &self,
+        seed_words: &[[u32; 4]],
+        atom_count: u32,
+        max_memory_bytes: u64,
+    ) -> Result<(Vec<[f32; 4]>, f64), MetalRuntimeError> {
+        if seed_words.is_empty() || atom_count == 0 {
+            return resource_limit("conformer initialization requires seeds and atoms");
+        }
+        let conformer_count = u32::try_from(seed_words.len())
+            .map_err(|_| MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into()))?;
+        let item_count = u64::from(atom_count)
+            .checked_mul(u64::from(conformer_count))
+            .ok_or_else(memory_overflow)?;
+        if item_count > u64::from(u32::MAX) {
+            return resource_limit("conformer initialization grid exceeds uint32");
+        }
+        let seed_bytes = u64::try_from(seed_words.len())
+            .ok()
+            .and_then(|count| count.checked_mul(size_of_val(&seed_words[0]) as u64))
+            .ok_or_else(memory_overflow)?;
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(seed_bytes)
+            .and_then(|bytes| bytes.checked_add(item_count.checked_mul(16)?))
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "conformer initialization requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+        let output_len = usize::try_from(item_count)
+            .map_err(|_| MetalRuntimeError::ResourceLimit("conformer output exceeds address space".into()))?;
+        let seeds_buffer = buffer_with_slice(&self.device, seed_words);
+        let output_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; output_len]);
+        let batch = ConformerInitializeBatchV1 {
+            atom_count,
+            conformer_count,
+            output_atom_offset: 0,
+        };
+        let thread_width = self
+            .conformer_initialize_pipeline
+            .thread_execution_width()
+            .min(self.conformer_initialize_pipeline.max_total_threads_per_threadgroup());
+        if thread_width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal conformer initializer advertises zero thread width".into(),
+            ));
+        }
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.conformer_initialize_pipeline);
+            encoder.set_buffer(0, Some(&seeds_buffer), 0);
+            encoder.set_bytes(
+                1,
+                size_of_val(&batch) as u64,
+                (&batch as *const ConformerInitializeBatchV1).cast(),
+            );
+            encoder.set_buffer(2, Some(&output_buffer), 0);
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: item_count,
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: thread_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        let positions = read_buffer::<[f32; 4]>(&output_buffer, output_len, "conformer position")?;
+        Ok((positions, gpu_time))
     }
 
     fn dispatch_tiles(
@@ -619,15 +711,8 @@ mod tests {
         );
     }
 
-    #[repr(C)]
-    struct ConformerInitializeBatchV1 {
-        atom_count: u32,
-        conformer_count: u32,
-        output_atom_offset: u64,
-    }
-
     #[test]
-    #[ignore = "manual real-GPU smoke; production packaging is wired in the next runtime generation"]
+    #[ignore = "manual source-compiled real-GPU parity smoke"]
     fn dispatches_conformer_initialization_on_the_real_gpu() {
         let device = Device::system_default().expect("Metal device");
         assert!(device.has_unified_memory(), "Apple unified memory required");

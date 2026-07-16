@@ -84,11 +84,12 @@ only this exact stage order.
 The first conformer Metal primitive, `burrete_conformer_initialize_v1`, now
 turns each immutable 128-bit conformer seed into deterministic `float4` initial
 coordinates without schedule-dependent RNG state. Its independently written
-Rust oracle verifies bounded and prefix-stable output. A test-only source
-compile and command-buffer dispatch passed on the real Apple GPU with exact CPU
-parity. This primitive is initialization only, not a claim of completed
-distance-geometry embedding. It is not yet included in the verified production
-metallib generation, so product capability reporting remains unchanged.
+Rust oracle verifies bounded and prefix-stable output. Both a test-only source
+dispatch and the verified production metallib passed on the real Apple GPU with
+exact CPU parity. Runtime v3 binds both sources, both reviewed contracts, both
+AIR files, all four entrypoints, the compiler, linker, SDK, and final metallib
+by hash. This primitive is initialization only, not a claim of completed
+distance-geometry embedding or an end-to-end conformer capability.
 
 ## Product Truth By Surface
 
@@ -96,8 +97,8 @@ metallib generation, so product capability reporting remains unchanged.
 | --- | --- |
 | macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
-| Native Metal backend | Real graph and one-query command-buffer dispatches are implemented and pass startup parity against the CPU reference |
-| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v2 runtime generation independently passes package verification and real-GPU startup, while a refreshed v2 desktop package remains pending |
+| Native Metal backend | Real graph, exact query, and conformer-coordinate initialization command buffers pass startup parity against CPU references |
+| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v3 runtime generation passes package verification and real-GPU startup, while a refreshed v3 desktop package remains pending |
 | Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -157,7 +158,7 @@ separate product increments.
 | Fixed request/job/artifact contracts | `crates/burrete-compute-protocol/` |
 | Exact fingerprint ABI, CPU Tanimoto/CSR, Butina | `crates/burrete-compute-core/` |
 | Metal runtime, tiling, dispatch, GPU timings | `crates/burrete-compute-metal/` |
-| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal` |
+| Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal` |
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
 | Artifact materialization and restart reconciliation | `apps/desktop/src-tauri/src/compute/artifact_publisher.rs` |
@@ -175,11 +176,11 @@ separate product increments.
 - Metal crate unit/parity tests pass, including real graph and exact query-count
   dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
   support.
-- An isolated offline-compiled v2 runtime generation passes the hash-bound
-  package verifier and both startup known-answer tests on `Apple M2 Pro`
-  (`registryId=0x100000444`, unified memory); its test-generation metallib
-  SHA-256 is
-  `be3e1beea828532656aa1ac568afbe4e9cdc889556115127b5f4d7227dee8f43`.
+- An isolated offline-compiled v3 runtime generation passes the hash-bound
+  package verifier and all three startup known-answer paths on `Apple M2 Pro`
+  (`registryId=0x1000003c0`, unified memory). The tested
+  `native-compute.v3.metallib` SHA-256 is
+  `d33c559f970943b6890604255699181bf7c263f646ff208fcc105d882fb9188d`.
 - The earlier unique `com.local.BurreteV10.Dev.gpucompute9a97` cluster-only v1
   package builds and passes
   deep/strict ad-hoc signature verification at
@@ -211,17 +212,18 @@ separate product increments.
   generated Grid controls. Repository-wide TypeScript checking is currently
   blocked by pre-existing duplicate CodeMirror dependency identities in the
   text-file viewer; the errors do not involve the compute files changed here.
-- All 68 protocol tests and 24 compute-core tests pass after adding the exact
-  eight-variant wire contract, identity-derived seed, adaptive batch coverage,
-  rebatching-invariance, and single-molecule memory rejection checks. Focused
-  protocol/core clippy also passes with warnings denied.
+- All 74 protocol tests and 25 compute-core tests pass after adding the fixed
+  conformer request/pack/plan contracts, identity-derived seed, adaptive batch
+  coverage, deterministic coordinate oracle, rebatching invariance, and memory
+  rejection checks. Focused protocol/core/Metal clippy also passes with
+  warnings denied.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
 
-These checks prove the source implementation, an isolated current v2 runtime
+These checks prove the source implementation, an isolated current v3 runtime
 generation, and the earlier unique v1 ad-hoc development package, not a current
-v2 desktop package or production release. They do not replace the scientific
+v3 desktop package or production release. They do not replace the scientific
 corpus, 100k-scale benchmark, Developer ID hardened-runtime signature,
 notarization, or visual UI-triggered clustering evidence.
 
