@@ -3,20 +3,8 @@ mod artifact_reader;
 mod cluster_executor;
 mod cluster_plan;
 pub(crate) mod commands;
-#[allow(
-    dead_code,
-    reason = "raw conformer extraction transport is activated with the coordinator commands"
-)]
 mod conformer_ipc;
-#[allow(
-    dead_code,
-    reason = "conformer admission is staged before coordinator activation"
-)]
 mod conformer_plan;
-#[allow(
-    dead_code,
-    reason = "conformer extraction sessions are activated with the coordinator commands"
-)]
 mod conformer_session;
 pub(crate) mod coordinator;
 mod engine_catalog;

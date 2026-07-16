@@ -8,15 +8,16 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use burrete_compute_core::{build_tanimoto_graph, SymmetricCsr};
+use burrete_compute_core::{build_tanimoto_graph, ConformerEnginePackArrays, SymmetricCsr};
 use burrete_compute_metal::{MetalRuntimeError, MetalTanimotoRuntime};
 use burrete_compute_protocol::{
     Backend, BackendPolicy, CapabilityEntry, CapabilityLimits, CapabilityMaturity,
     CapabilityReason, CapabilityReasonCode, CapabilityReportSchemaVersion, ClusterV1SubmitRequest,
-    ComputeAvailability, ComputeCapabilityReport, ComputeErrorCode, ComputeFailure, EngineIdentity,
-    FallbackDecision, FallbackReasonCode, JobOutcomeSummary, JobRevisionEvent, JobSnapshot,
-    JobState, OwnerSurface, PlatformIdentity, Precision, ProtocolRange, RuntimeIdentity,
-    WorkflowTemplateId, MAX_CONTROL_FRAME_BYTES, PROTOCOL_VERSION,
+    ComputeAvailability, ComputeCapabilityReport, ComputeErrorCode, ComputeFailure,
+    ConformerV1SubmitRequest, EngineIdentity, FallbackDecision, FallbackReasonCode,
+    JobOutcomeSummary, JobRevisionEvent, JobSnapshot, JobState, OwnerSurface, PlatformIdentity,
+    Precision, ProtocolRange, RuntimeIdentity, WorkflowTemplateId, MAX_CONTROL_FRAME_BYTES,
+    PROTOCOL_VERSION,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -31,13 +32,25 @@ use crate::compute::{
         ClusterComputation, ClusterExecutionStep,
     },
     cluster_plan::{ClusterV1AdmissionError, SimilarityBackendAdmission},
+    conformer_ipc::{decode_conformer_chunk_result, ConformerChunkResult},
+    conformer_plan::{
+        derive_conformer_v1_preflight, ConformerBackendAdmission, ConformerMoleculeIdentity,
+        ConformerV1AdmissionError,
+    },
+    conformer_session::{
+        CompletedConformerExtraction, ConformerExtractionSession, ConformerSubmissionStep,
+        MAX_CONFORMER_RESULT_ENVELOPE_BYTES,
+    },
     engine_catalog::VerifiedEngineCatalog,
     error::{ComputeCoordinatorError, ComputeResult},
     fingerprint_session::{
         CompletedFingerprintBatch, FingerprintChunkResult, FingerprintExecutionStep,
         FingerprintSession,
     },
-    job_factory::{build_queued_cluster_v1_job, QueuedClusterV1JobInput},
+    job_factory::{
+        build_queued_cluster_v1_job, build_queued_conformer_v1_job, QueuedClusterV1JobInput,
+        QueuedConformerV1JobInput,
+    },
     job_lifecycle::{
         fail_stage, finish_publish_stage, finish_stage, start_stage, StageFinishMetrics,
         StageStartEvidence,
@@ -54,6 +67,7 @@ use crate::preview::{
     grid_analysis::{
         apply_cluster_analysis_run, GridClusterAnalysisApplyInput, GridClusterAssignmentInput,
     },
+    grid_snapshot::FrozenGridSnapshot,
     grid_store::GridSnapshotLease,
 };
 use crate::windows::runtime_document_id;
@@ -76,8 +90,34 @@ struct ReadyCoordinator {
     engines: VerifiedEngineCatalog,
     native_metal: NativeMetalState,
     fingerprint_sessions: Mutex<BTreeMap<Uuid, FingerprintSession>>,
+    conformer_submissions: Mutex<BTreeMap<Uuid, PendingConformerSubmission>>,
     prepared_clusters: Mutex<BTreeMap<Uuid, CompletedFingerprintBatch>>,
+    prepared_conformers: Mutex<BTreeMap<Uuid, PreparedConformerBatch>>,
     computed_clusters: Mutex<BTreeMap<Uuid, ClusterComputation>>,
+}
+
+#[derive(Debug)]
+struct PendingConformerSubmission {
+    request: ConformerV1SubmitRequest,
+    frozen: FrozenGridSnapshot,
+    publication_attempt_id: Uuid,
+    job_id: Uuid,
+    pinned_runtime: RuntimeIdentity,
+    distance_admission: ConformerBackendAdmission,
+    stereo_admission: ConformerBackendAdmission,
+    created_at_ms: u64,
+    session: ConformerExtractionSession,
+}
+
+#[derive(Debug)]
+#[allow(
+    dead_code,
+    reason = "prepared conformer arrays are consumed by the staged adaptive executor"
+)]
+struct PreparedConformerBatch {
+    arrays: ConformerEnginePackArrays,
+    identities: Vec<ConformerMoleculeIdentity>,
+    errors: Vec<Option<String>>,
 }
 
 #[derive(Debug)]
@@ -111,7 +151,9 @@ impl ComputeCoordinator {
                                     &helper_sha256,
                                 ),
                                 fingerprint_sessions: Mutex::new(BTreeMap::new()),
+                                conformer_submissions: Mutex::new(BTreeMap::new()),
                                 prepared_clusters: Mutex::new(BTreeMap::new()),
+                                prepared_conformers: Mutex::new(BTreeMap::new()),
                                 computed_clusters: Mutex::new(BTreeMap::new()),
                             }))
                         }
@@ -226,6 +268,264 @@ impl ComputeCoordinator {
                 Err(error)
             }
         }
+    }
+
+    pub(crate) fn begin_conformer_v1_submission(
+        &self,
+        owner: &str,
+        request: &ConformerV1SubmitRequest,
+        source_lease: GridSnapshotLease,
+    ) -> ComputeResult<ConformerSubmissionStep> {
+        validate_owner_window_label(owner)?;
+        let request = request.clone().normalized()?;
+        if source_lease.namespaced_document_id()
+            != runtime_document_id(owner, &request.source.document_id)
+        {
+            return Err(ComputeCoordinatorError::SourceSnapshotUnavailable(
+                "The Grid snapshot lease does not belong to the conformer source".into(),
+            ));
+        }
+        let ready = self.ready()?;
+        let (distance_admission, stereo_admission, pinned_runtime) =
+            ready.native_metal.conformer_submission_binding(
+                request.execution_policy.backend_policy,
+                ready.engines.reference_runtime(),
+            )?;
+        let snapshot_id = Uuid::new_v4();
+        let job_id = Uuid::new_v4();
+        let publication_attempt_id = Uuid::new_v4();
+        let publication_created_at_ms = now_ms();
+        let job_created_at_ms = publication_created_at_ms.checked_add(4).ok_or_else(|| {
+            ComputeCoordinatorError::Validation("compute submission timestamp overflowed".into())
+        })?;
+        let frozen = ready.snapshots.publish_grid_source(
+            &ready.store,
+            source_lease.database_path_for_freeze(),
+            &request.source.scope,
+            snapshot_id,
+            job_id,
+            publication_attempt_id,
+            publication_created_at_ms,
+        )?;
+        let started = (|| {
+            let verified = ready.snapshots.open_verified_source(&frozen.reference)?;
+            let (session, first_chunk) =
+                ConformerExtractionSession::start(owner, &request, verified)?;
+            let session_id = session.session_id();
+            let pending = PendingConformerSubmission {
+                request,
+                frozen,
+                publication_attempt_id,
+                job_id,
+                pinned_runtime,
+                distance_admission,
+                stereo_admission,
+                created_at_ms: job_created_at_ms,
+                session,
+            };
+            let mut submissions = ready
+                .conformer_submissions
+                .lock()
+                .map_err(|_| poisoned("conformer submission registry"))?;
+            if submissions.insert(session_id, pending).is_some() {
+                return Err(ComputeCoordinatorError::Protocol(
+                    "duplicate conformer extraction session ID".into(),
+                ));
+            }
+            Ok(ConformerSubmissionStep {
+                session_id,
+                conformer_chunk: Some(first_chunk),
+                job: None,
+                ready_for_execution: false,
+            })
+        })();
+        if started.is_err() {
+            ready.snapshots.rollback_uncommitted_publication(
+                &ready.store,
+                snapshot_id,
+                job_id,
+                publication_attempt_id,
+            )?;
+        }
+        started
+    }
+
+    pub(crate) fn submit_conformer_extraction_chunk(
+        &self,
+        owner: &str,
+        envelope: &[u8],
+    ) -> ComputeResult<ConformerSubmissionStep> {
+        validate_owner_window_label(owner)?;
+        let result = decode_conformer_chunk_result(envelope, MAX_CONFORMER_RESULT_ENVELOPE_BYTES)?;
+        self.accept_conformer_extraction_chunk(owner, result)
+    }
+
+    fn accept_conformer_extraction_chunk(
+        &self,
+        owner: &str,
+        result: ConformerChunkResult,
+    ) -> ComputeResult<ConformerSubmissionStep> {
+        let ready = self.ready()?;
+        let session_id = result.session_id;
+        let mut pending = {
+            let mut submissions = ready
+                .conformer_submissions
+                .lock()
+                .map_err(|_| poisoned("conformer submission registry"))?;
+            let submission =
+                submissions
+                    .get(&session_id)
+                    .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                        entity: "conformer extraction session",
+                        id: session_id.to_string(),
+                    })?;
+            if submission.session.owner() != owner {
+                return Err(ComputeCoordinatorError::Forbidden(
+                    "conformer extraction session belongs to another window".into(),
+                ));
+            }
+            submissions
+                .remove(&session_id)
+                .expect("submission was checked while holding the registry lock")
+        };
+        let next = match pending.session.accept_chunk(result) {
+            Ok(next) => next,
+            Err(error) => {
+                ready
+                    .conformer_submissions
+                    .lock()
+                    .map_err(|_| poisoned("conformer submission registry"))?
+                    .insert(session_id, pending);
+                return Err(error);
+            }
+        };
+        if let Some(chunk) = next {
+            ready
+                .conformer_submissions
+                .lock()
+                .map_err(|_| poisoned("conformer submission registry"))?
+                .insert(session_id, pending);
+            return Ok(ConformerSubmissionStep {
+                session_id,
+                conformer_chunk: Some(chunk),
+                job: None,
+                ready_for_execution: false,
+            });
+        }
+
+        let PendingConformerSubmission {
+            request,
+            frozen,
+            publication_attempt_id,
+            job_id,
+            pinned_runtime,
+            distance_admission,
+            stereo_admission,
+            created_at_ms,
+            session,
+        } = pending;
+        let completed = session.finish()?;
+        let snapshot_id = frozen.reference.snapshot_id;
+        let result = self.finish_conformer_submission(
+            ready,
+            owner,
+            request,
+            frozen,
+            publication_attempt_id,
+            job_id,
+            pinned_runtime,
+            distance_admission,
+            stereo_admission,
+            created_at_ms,
+            completed,
+        );
+        if result.is_err() {
+            ready.snapshots.rollback_uncommitted_publication(
+                &ready.store,
+                snapshot_id,
+                job_id,
+                publication_attempt_id,
+            )?;
+        }
+        result.map(|job| ConformerSubmissionStep {
+            session_id,
+            conformer_chunk: None,
+            job: Some(job),
+            ready_for_execution: true,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn finish_conformer_submission(
+        &self,
+        ready: &ReadyCoordinator,
+        owner: &str,
+        request: ConformerV1SubmitRequest,
+        frozen: FrozenGridSnapshot,
+        publication_attempt_id: Uuid,
+        job_id: Uuid,
+        pinned_runtime: RuntimeIdentity,
+        distance_admission: ConformerBackendAdmission,
+        stereo_admission: ConformerBackendAdmission,
+        created_at_ms: u64,
+        completed: CompletedConformerExtraction,
+    ) -> ComputeResult<JobSnapshot> {
+        let CompletedConformerExtraction {
+            arrays,
+            identities,
+            errors,
+            verified,
+        } = completed;
+        if verified.reference() != &frozen.reference {
+            return Err(ComputeCoordinatorError::Protocol(
+                "conformer extraction source differs from its frozen snapshot".into(),
+            ));
+        }
+        let preflight = derive_conformer_v1_preflight(
+            &request,
+            &arrays,
+            &identities,
+            frozen
+                .reference
+                .frozen_source
+                .ordered_record_molecule_identity_sha256
+                .clone(),
+        )
+        .map_err(conformer_admission_error)?;
+        let source = ready.snapshots.bind_conformer_source(request, frozen)?;
+        let snapshot = build_queued_conformer_v1_job(QueuedConformerV1JobInput {
+            job_id,
+            owner_surface: OwnerSurface::Desktop,
+            source,
+            preflight,
+            pinned_runtime,
+            engines: ready.engines.identities().clone(),
+            distance_admission,
+            stereo_admission,
+            created_at_ms,
+        })
+        .map_err(conformer_admission_error)?;
+        let mut prepared = ready
+            .prepared_conformers
+            .lock()
+            .map_err(|_| poisoned("prepared conformer registry"))?;
+        if prepared.contains_key(&job_id) {
+            return Err(ComputeCoordinatorError::Protocol(
+                "duplicate prepared conformer job ID".into(),
+            ));
+        }
+        ready
+            .store
+            .insert_prepared_job(owner, &snapshot, publication_attempt_id)?;
+        prepared.insert(
+            job_id,
+            PreparedConformerBatch {
+                arrays,
+                identities,
+                errors,
+            },
+        );
+        Ok(snapshot)
     }
 
     pub(crate) fn get_job(&self, owner: &str, job_id: Uuid) -> ComputeResult<JobSnapshot> {
@@ -1138,6 +1438,55 @@ impl NativeMetalState {
             )),
         }
     }
+
+    fn conformer_submission_binding(
+        &self,
+        policy: BackendPolicy,
+        reference_runtime: &RuntimeIdentity,
+    ) -> ComputeResult<(
+        ConformerBackendAdmission,
+        ConformerBackendAdmission,
+        RuntimeIdentity,
+    )> {
+        let unavailable = |code: CapabilityReasonCode, message: &str| {
+            ConformerBackendAdmission::GpuUnavailable(FallbackDecision {
+                code: fallback_code(code),
+                reason: message.to_string(),
+            })
+        };
+        match (policy, self) {
+            (BackendPolicy::ReferenceCpu, _) => Ok((
+                ConformerBackendAdmission::ReferenceCpu,
+                ConformerBackendAdmission::ReferenceCpu,
+                reference_runtime.clone(),
+            )),
+            (
+                BackendPolicy::GpuRequired | BackendPolicy::GpuPreferred,
+                Self::Available(runtime),
+            ) => {
+                let engine = EngineIdentity {
+                    engine_id: "burrete-native-metal".into(),
+                    version: runtime.runtime_identity().version.clone(),
+                    manifest_sha256: runtime.runtime_identity().manifest_sha256.clone(),
+                };
+                Ok((
+                    ConformerBackendAdmission::NativeMetal(engine.clone()),
+                    ConformerBackendAdmission::NativeMetal(engine),
+                    runtime.runtime_identity().clone(),
+                ))
+            }
+            (BackendPolicy::GpuRequired, Self::Unavailable { message, .. }) => {
+                Err(ComputeCoordinatorError::Unavailable(format!(
+                    "gpuRequired conformer.v1 admission failed: {message}"
+                )))
+            }
+            (BackendPolicy::GpuPreferred, Self::Unavailable { code, message }) => Ok((
+                unavailable(*code, message),
+                unavailable(*code, message),
+                reference_runtime.clone(),
+            )),
+        }
+    }
 }
 
 fn initialize_runtime_catalog(
@@ -1234,6 +1583,15 @@ fn admission_error(error: ClusterV1AdmissionError) -> ComputeCoordinatorError {
     match error {
         ClusterV1AdmissionError::GpuRequiredUnavailable(message) => {
             ComputeCoordinatorError::Unavailable(message)
+        }
+        other => ComputeCoordinatorError::Validation(other.to_string()),
+    }
+}
+
+fn conformer_admission_error(error: ConformerV1AdmissionError) -> ComputeCoordinatorError {
+    match error {
+        ConformerV1AdmissionError::GpuRequiredUnavailable { reason, .. } => {
+            ComputeCoordinatorError::Unavailable(reason)
         }
         other => ComputeCoordinatorError::Validation(other.to_string()),
     }
