@@ -117,7 +117,7 @@ pub fn rm1_rotated_pair_integrals(
     Ok(result)
 }
 
-fn rotation_matrix(vector: [f64; 3]) -> [[f64; 3]; 3] {
+pub(super) fn rotation_matrix(vector: [f64; 3]) -> [[f64; 3]; 3] {
     let [vx, vy, vz] = vector;
     let w = 1.0 + vx;
     if w.abs() < 1.0e-7 {

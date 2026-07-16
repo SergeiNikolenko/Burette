@@ -80,3 +80,5 @@ sp-basis local-frame two-center integral equations are adapted from
 `seqm/seqm_functions/two_elec_two_center_int_local_frame.py` at that revision.
 The quaternion molecular-frame rotation and sp pair-tensor contraction are
 adapted from `seqm/seqm_functions/two_elec_two_center_int.py` at that revision.
+The first- and second-row sp overlap equations are adapted from
+`seqm/seqm_functions/diat_overlap_PM6_SP.py` at that revision.

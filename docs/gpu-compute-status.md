@@ -468,8 +468,8 @@ fixed order below:
    scaffold, audited RM1 parameter table, bounded molecule/basis pack, and
    population-charge contract plus verified RM1 core-core energy and sp-basis
    multipole parameters plus complete 22-term pair integrals and molecular-frame
-   rotation with electronic NDDO contraction and remaining parameter sets method
-   by method, adding Metal only after independent known-answer and external
-   parity gates;
+   rotation plus verified first-/second-row sp overlap with higher-period overlap,
+   electronic NDDO contraction, and remaining parameter sets method by method,
+   adding Metal only after independent known-answer and external parity gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.
