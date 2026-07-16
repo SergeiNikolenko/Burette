@@ -190,21 +190,102 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
         2
     );
 
+    let export_root = temp_root.join(format!("burrete-cluster-export-e2e-{fixture_id}"));
+    std::fs::create_dir(&export_root).expect("create representative export root");
+    let export = coordinator
+        .export_cluster_representatives(
+            "main",
+            publication.job.job_id,
+            export_root.clone(),
+            "cluster/e2e",
+        )
+        .expect("export immutable cluster representatives");
+    assert_eq!(export.representative_count, 2);
+    assert_eq!(export.sdf_record_count, 0);
+    assert_eq!(export.smiles_record_count, 2);
+    assert_eq!(export.table_only_record_count, 0);
+    assert_eq!(export.structure_paths.len(), 1);
+    let table = std::fs::read_to_string(&export.table_path).expect("read representative table");
+    assert!(table.contains("Ethanol"));
+    assert!(table.contains("Benzene"));
+    assert!(!table.contains("Ethylamine"));
+    let smiles =
+        std::fs::read_to_string(&export.structure_paths[0]).expect("read representative SMILES");
+    let structure_lines = smiles
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect::<Vec<_>>();
+    assert_eq!(structure_lines.len(), 2);
+    assert!(structure_lines.iter().any(|line| line.starts_with("CCO\t")));
+    assert!(structure_lines
+        .iter()
+        .any(|line| line.starts_with("c1ccccc1\t")));
+    let report: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&export.report_path).expect("read representative provenance report"),
+    )
+    .expect("decode representative provenance report");
+    assert_eq!(
+        report["schemaVersion"],
+        "burrete.cluster-representative-export.v1"
+    );
+    assert_eq!(report["representativeCount"], 2);
+    assert_eq!(report["job"]["jobId"], publication.job.job_id.to_string());
+    assert_eq!(
+        report["artifact"]["artifactId"],
+        publication.artifact_id.to_string()
+    );
+    assert_eq!(
+        report["artifactManifestSha256"]
+            .as_str()
+            .expect("artifact manifest digest")
+            .len(),
+        64
+    );
+    assert_eq!(
+        report["payloadFiles"]
+            .as_array()
+            .expect("payload file manifest")
+            .len(),
+        2
+    );
+    assert_eq!(export.report_sha256.len(), 64);
+
     drop(coordinator);
     let restarted =
         ComputeCoordinator::initialize(compute_root.clone(), None, Some(viewer_root.clone()));
     restarted
         .get_artifact_manifest("main", publication.artifact_id)
         .expect("recover the published artifact after restart");
+    let restarted_export = restarted
+        .export_cluster_representatives(
+            "main",
+            publication.job.job_id,
+            export_root.clone(),
+            "cluster/e2e",
+        )
+        .expect("export representatives after coordinator restart");
+    assert_ne!(restarted_export.bundle_path, export.bundle_path);
+    assert_eq!(
+        std::fs::read(&restarted_export.table_path).expect("read restarted representative table"),
+        std::fs::read(&export.table_path).expect("reread representative table")
+    );
+    let cluster_ids_path = compute_root
+        .join("artifacts")
+        .join(format!("artifact-{}", publication.artifact_id))
+        .join("result/cluster-ids.bin");
+    std::fs::write(&cluster_ids_path, b"corrupt").expect("corrupt one published artifact file");
+    let export_error = restarted
+        .export_cluster_representatives(
+            "main",
+            publication.job.job_id,
+            export_root.clone(),
+            "cluster/e2e",
+        )
+        .expect_err("representative export must reject corrupt ResultPack bytes");
+    assert!(export_error
+        .to_string()
+        .contains("artifact file identity changed"));
     drop(restarted);
-    std::fs::write(
-        compute_root
-            .join("artifacts")
-            .join(format!("artifact-{}", publication.artifact_id))
-            .join("result/cluster-ids.bin"),
-        b"corrupt",
-    )
-    .expect("corrupt one published artifact file");
     let corrupt = ComputeCoordinator::initialize(compute_root.clone(), None, Some(viewer_root));
     assert_eq!(
         corrupt
@@ -217,4 +298,5 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
     drop(registry);
     let _ = std::fs::remove_dir_all(compute_root);
     let _ = std::fs::remove_dir_all(grid_root);
+    let _ = std::fs::remove_dir_all(export_root);
 }

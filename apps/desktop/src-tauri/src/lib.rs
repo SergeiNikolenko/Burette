@@ -134,6 +134,7 @@ pub fn run() {
             compute::commands::compute_list_jobs,
             compute::commands::compute_cancel_job,
             compute::commands::compute_get_artifact_manifest,
+            compute::commands::compute_export_cluster_representatives,
             compute::commands::compute_purge_job,
             commands::agent_integration::agent_integration_status,
             commands::chemical_editors::finder_icon_path,

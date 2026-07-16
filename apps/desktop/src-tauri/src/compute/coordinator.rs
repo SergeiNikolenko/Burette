@@ -42,6 +42,7 @@ use crate::compute::{
         fail_stage, finish_publish_stage, finish_stage, start_stage, StageFinishMetrics,
         StageStartEvidence,
     },
+    representative_export::{export_cluster_representatives, ClusterRepresentativeExportResult},
     snapshot_repository::SnapshotRepository,
     store::{validate_owner_window_label, ComputeStore},
 };
@@ -916,6 +917,56 @@ impl ComputeCoordinator {
         artifact_id: Uuid,
     ) -> ComputeResult<burrete_compute_protocol::ArtifactManifest> {
         self.store()?.get_artifact_manifest(owner, artifact_id)
+    }
+
+    pub(crate) fn export_cluster_representatives(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        output_directory: PathBuf,
+        collection_name: &str,
+    ) -> ComputeResult<ClusterRepresentativeExportResult> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let job = ready.store.get_job(owner, job_id)?;
+        if job.workflow_template != WorkflowTemplateId::ClusterV1
+            || !matches!(
+                job.state,
+                JobState::Succeeded | JobState::SucceededWithFailures
+            )
+        {
+            return Err(ComputeCoordinatorError::Validation(
+                "representative export requires a successful cluster.v1 job".into(),
+            ));
+        }
+        let result_pack = job.result_pack.as_ref().ok_or_else(|| {
+            ComputeCoordinatorError::Protocol(
+                "successful clustering job lacks its ResultPack reference".into(),
+            )
+        })?;
+        let mut artifact = None;
+        for artifact_id in &job.artifact_ids {
+            let candidate = ready.store.get_artifact_manifest(owner, *artifact_id)?;
+            if &candidate.result_pack == result_pack && artifact.replace(candidate).is_some() {
+                return Err(ComputeCoordinatorError::Protocol(
+                    "clustering job has multiple artifacts for the same ResultPack".into(),
+                ));
+            }
+        }
+        let artifact = artifact.ok_or_else(|| {
+            ComputeCoordinatorError::Protocol(
+                "clustering job has no published artifact for its ResultPack".into(),
+            )
+        })?;
+        export_cluster_representatives(
+            &ready.store,
+            &ready.snapshots,
+            &job,
+            &artifact,
+            &output_directory,
+            collection_name,
+            now_ms(),
+        )
     }
 
     pub(crate) fn purge_job(&self, owner: &str, job_id: Uuid) -> ComputeResult<()> {
