@@ -52,8 +52,38 @@ export type ConformerDistanceExecutionStep = {
   readyForStereo: boolean;
 };
 
+export type ConformerStereoExecutionStep = {
+  job: ConformerComputeJob;
+  conformerCount: number;
+  passedCount: number;
+  failedCount: number;
+  readyForValidation: boolean;
+};
+
+export type ConformerReferenceValidationStep = {
+  job: ConformerComputeJob;
+  conformerCount: number;
+  passedCount: number;
+  failedCount: number;
+  readyForPublication: boolean;
+};
+
 export function executeConformerDistance(job: ConformerComputeJob) {
   return invoke<ConformerDistanceExecutionStep>("compute_execute_conformer_distance", {
+    jobId: job.jobId,
+    expectedRevision: job.revision,
+  });
+}
+
+export function executeConformerStereo(job: ConformerComputeJob) {
+  return invoke<ConformerStereoExecutionStep>("compute_execute_conformer_stereo", {
+    jobId: job.jobId,
+    expectedRevision: job.revision,
+  });
+}
+
+export function validateConformerReference(job: ConformerComputeJob) {
+  return invoke<ConformerReferenceValidationStep>("compute_validate_conformer_reference", {
     jobId: job.jobId,
     expectedRevision: job.revision,
   });
