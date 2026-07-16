@@ -80,6 +80,11 @@ export VITE_BURRETE_BUILD_FLAVOR
 export VITE_BURRETE_BUILD_CHANNEL
 
 cleanup_safe_root() {
+  local status=$?
+  if [[ "$status" -ne 0 && "${BURRETE_KEEP_FAILED_BUILD:-0}" == "1" ]]; then
+    echo "Preserving failed isolated build tree: $SAFE_ROOT" >&2
+    return
+  fi
   rm -rf "$SAFE_ROOT" 2>/dev/null || true
 }
 trap cleanup_safe_root EXIT
@@ -442,10 +447,8 @@ generation = pointer.get("generation", "")
 if not re.fullmatch(r"generation\.[A-Za-z0-9]{6,64}", generation):
     fail("non-canonical generation name")
 metadata_path = runtime / generation / "build-metadata.v2.json"
-metallib_path = runtime / generation / "native-compute.v5.metallib"
-for path in (metadata_path, metallib_path):
-    if not path.is_file() or path.is_symlink() or path.stat().st_size == 0:
-        fail(f"required regular file missing at {path}")
+if not metadata_path.is_file() or metadata_path.is_symlink() or metadata_path.stat().st_size == 0:
+    fail(f"required regular file missing at {metadata_path}")
 metadata_bytes = metadata_path.read_bytes()
 metadata_sha256 = hashlib.sha256(metadata_bytes).hexdigest()
 if metadata_sha256 != pointer.get("metadataSha256"):
@@ -456,10 +459,17 @@ except ValueError as error:
     fail(f"build metadata cannot be decoded: {error}")
 if metadata.get("schemaVersion") != "burrete.compute.metal-build-metadata.v2":
     fail("build metadata schema mismatch")
-if metadata.get("runtimeVersion") != "burrete-native-metal-v5":
+if metadata.get("runtimeVersion") != "burrete-native-metal-v20":
     fail("runtime version mismatch")
+metallib = metadata.get("metallib", {})
+metallib_name = metallib.get("path", "")
+if not re.fullmatch(r"native-compute\.v[0-9]+\.metallib", metallib_name):
+    fail("build metadata contains a non-canonical metallib path")
+metallib_path = runtime / generation / metallib_name
+if not metallib_path.is_file() or metallib_path.is_symlink() or metallib_path.stat().st_size == 0:
+    fail(f"required regular file missing at {metallib_path}")
 metallib_sha256 = hashlib.sha256(metallib_path.read_bytes()).hexdigest()
-if metallib_sha256 != metadata.get("metallib", {}).get("sha256"):
+if metallib_sha256 != metallib.get("sha256"):
     fail("metallib SHA-256 differs from build metadata")
 PY
 }
