@@ -19,12 +19,12 @@ mod mmff;
 mod mmff_extract;
 mod semiempirical;
 
-pub use conformer_engine::{
-    ConformerDistanceEngine, ConformerDistanceMolecule, ConformerEngineError,
-};
 pub use alignment::{
     align_and_score, AlignmentAtom, AlignmentError, AlignmentMode, AlignmentResult,
     AlignmentScores, AtomMapping, RigidTransform,
+};
+pub use conformer_engine::{
+    ConformerDistanceEngine, ConformerDistanceMolecule, ConformerEngineError,
 };
 pub use conformer_extract::{ConformerExtractError, ExtractedConformerParameters};
 pub use conformer_initialize::initialize_conformer_positions;
@@ -46,9 +46,9 @@ pub use distance_geometry::{
     DistanceGeometryError,
 };
 pub use distance_optimizer::{
-    optimize_distance_geometry, optimize_etk_geometry, optimize_mmff,
-    DistanceGeometryOptimization, DistanceGeometryOptimizationOptions,
-    DistanceGeometryOptimizationStatus, MmffOptimization, MmffOptimizerKind,
+    optimize_distance_geometry, optimize_etk_geometry, optimize_mmff, DistanceGeometryOptimization,
+    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, MmffOptimization,
+    MmffOptimizerKind,
 };
 pub use etk_geometry::{
     evaluate_etk_geometry, validate_etk_geometry_constraints, EtkDistanceConstraint,
@@ -60,20 +60,18 @@ pub use mmff::{
     MmffElectrostaticTerm, MmffEnergyBreakdown, MmffError, MmffEvaluation, MmffOutOfPlaneTerm,
     MmffParameters, MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm, MmffVariant,
 };
-pub use mmff_extract::{
-    decode_native_mmff_parameters, MmffExtractError, NativeMmffParameters,
-};
+pub use mmff_extract::{decode_native_mmff_parameters, MmffExtractError, NativeMmffParameters};
 pub use semiempirical::{
-    contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators, evaluate_semiempirical,
+    contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators,
     evaluate_rm1_with_pair_contractor, evaluate_rm1_with_prepared_pairs_and_accelerators,
-    rm1_fock_pairs, rm1_multipole_parameters, rm1_nuclear_repulsion_energy, rm1_parameters,
+    evaluate_semiempirical, pm6_h4_energy, pm6_hh_repulsion_energy, rm1_fock_pairs,
+    rm1_multipole_parameters, rm1_nuclear_repulsion_energy, rm1_parameters,
     rm1_rotated_pair_integrals, rm1_sp_overlap, rm1_two_center_integrals,
-    semiempirical_nuclear_repulsion_energy, semiempirical_parameters,
-    solve_closed_shell_scf, solve_closed_shell_scf_with_eigensolver,
-    symmetric_eigendecomposition, Rm1MultipoleParameters, Rm1OverlapMatrix,
-    Rm1Evaluation, Rm1FockPair, Rm1RotatedPairIntegrals, Rm1TwoCenterIntegrals, SemiempiricalAtom,
-    SemiempiricalElementParameters, SemiempiricalError, SemiempiricalMethod,
-    SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfResult,
+    semiempirical_nuclear_repulsion_energy, semiempirical_parameters, solve_closed_shell_scf,
+    solve_closed_shell_scf_with_eigensolver, symmetric_eigendecomposition, Rm1Evaluation,
+    Rm1FockPair, Rm1MultipoleParameters, Rm1OverlapMatrix, Rm1RotatedPairIntegrals,
+    Rm1TwoCenterIntegrals, SemiempiricalAtom, SemiempiricalElementParameters, SemiempiricalError,
+    SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfResult,
     SemiempiricalScfStatus,
 };
 

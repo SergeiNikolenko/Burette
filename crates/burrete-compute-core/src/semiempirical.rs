@@ -2,16 +2,18 @@ use std::{error::Error, fmt};
 
 mod overlap;
 mod parameters;
+mod pm6_d3h4;
 mod rm1;
 mod rotation;
 mod two_center;
 
 pub use overlap::{rm1_sp_overlap, Rm1OverlapMatrix};
 pub use parameters::{rm1_parameters, semiempirical_parameters, SemiempiricalElementParameters};
+pub use pm6_d3h4::{pm6_h4_energy, pm6_hh_repulsion_energy};
 pub use rm1::{
-    contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators, evaluate_semiempirical,
+    contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators,
     evaluate_rm1_with_pair_contractor, evaluate_rm1_with_prepared_pairs_and_accelerators,
-    rm1_fock_pairs, Rm1Evaluation, Rm1FockPair,
+    evaluate_semiempirical, rm1_fock_pairs, Rm1Evaluation, Rm1FockPair,
 };
 pub use rotation::{rm1_rotated_pair_integrals, Rm1RotatedPairIntegrals};
 pub use two_center::{
@@ -172,13 +174,14 @@ impl SemiempiricalMolecule {
                     "atom coordinates must be finite".into(),
                 ));
             }
-            let parameters = semiempirical_parameters(method, atom.atomic_number).ok_or_else(|| {
-                SemiempiricalError::InvalidInput(format!(
-                    "atomic number {} is not parameterized for {}",
-                    atom.atomic_number,
-                    method.wire_id()
-                ))
-            })?;
+            let parameters =
+                semiempirical_parameters(method, atom.atomic_number).ok_or_else(|| {
+                    SemiempiricalError::InvalidInput(format!(
+                        "atomic number {} is not parameterized for {}",
+                        atom.atomic_number,
+                        method.wire_id()
+                    ))
+                })?;
             valence_electrons += usize::from(parameters.valence_electrons);
             orbital_offsets.push(
                 orbital_offsets.last().copied().unwrap() + usize::from(parameters.orbital_count),
@@ -190,12 +193,10 @@ impl SemiempiricalMolecule {
             || electron_count & 1 != 0
             || usize::try_from(electron_count).unwrap() > orbital_count * 2
         {
-            return Err(SemiempiricalError::InvalidInput(
-                format!(
-                    "{} currently requires a non-empty closed-shell electron configuration",
-                    method.wire_id()
-                ),
-            ));
+            return Err(SemiempiricalError::InvalidInput(format!(
+                "{} currently requires a non-empty closed-shell electron configuration",
+                method.wire_id()
+            )));
         }
         if orbital_count > MAX_ORBITALS {
             return Err(SemiempiricalError::InvalidInput(format!(
@@ -253,7 +254,8 @@ pub fn semiempirical_nuclear_repulsion_energy(
             let left_atom = &molecule.atoms[left_index];
             let right_atom = &molecule.atoms[right_index];
             let left = semiempirical_parameters(molecule.method, left_atom.atomic_number).unwrap();
-            let right = semiempirical_parameters(molecule.method, right_atom.atomic_number).unwrap();
+            let right =
+                semiempirical_parameters(molecule.method, right_atom.atomic_number).unwrap();
             let displacement = [
                 left_atom.position_angstrom[0] - right_atom.position_angstrom[0],
                 left_atom.position_angstrom[1] - right_atom.position_angstrom[1],
@@ -288,21 +290,19 @@ pub fn semiempirical_nuclear_repulsion_energy(
                 molecule.method,
                 SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6Sp | SemiempiricalMethod::Pm6D
             ) {
-                let (chi, pair_alpha) = pm6_pwcct_parameters(
-                    left.atomic_number,
-                    right.atomic_number,
-                )
-                .ok_or_else(|| {
-                    SemiempiricalError::InvalidInput(format!(
-                        "PM6 PWCCT parameters are unavailable for atomic numbers {} and {}",
-                        left.atomic_number, right.atomic_number
-                    ))
-                })?;
-                let atomic_radius_sum = f64::from(left.atomic_number).cbrt()
-                    + f64::from(right.atomic_number).cbrt();
+                let (chi, pair_alpha) =
+                    pm6_pwcct_parameters(left.atomic_number, right.atomic_number).ok_or_else(
+                        || {
+                            SemiempiricalError::InvalidInput(format!(
+                                "PM6 PWCCT parameters are unavailable for atomic numbers {} and {}",
+                                left.atomic_number, right.atomic_number
+                            ))
+                        },
+                    )?;
+                let atomic_radius_sum =
+                    f64::from(left.atomic_number).cbrt() + f64::from(right.atomic_number).cbrt();
                 let unpolarized_core = 1.0e-8 * (atomic_radius_sum / distance).powi(12);
-                let special_xh = (matches!(left.atomic_number, 6..=8)
-                    && right.atomic_number == 1)
+                let special_xh = (matches!(left.atomic_number, 6..=8) && right.atomic_number == 1)
                     || (matches!(right.atomic_number, 6..=8) && left.atomic_number == 1);
                 let decay_distance = if special_xh {
                     distance.powi(2)
@@ -316,8 +316,8 @@ pub fn semiempirical_nuclear_repulsion_energy(
                 if left.atomic_number == 6 && right.atomic_number == 6 {
                     pair_energy += valence_product * ssss * 9.28 * (-5.98 * distance).exp();
                 }
-                energy += pair_energy
-                    + valence_product / distance * (gaussian(left) + gaussian(right));
+                energy +=
+                    pair_energy + valence_product / distance * (gaussian(left) + gaussian(right));
                 continue;
             }
 
@@ -341,7 +341,11 @@ pub fn semiempirical_nuclear_repulsion_energy(
 }
 
 fn pm6_pwcct_parameters(left: u8, right: u8) -> Option<(f64, f64)> {
-    let pair = if left <= right { (left, right) } else { (right, left) };
+    let pair = if left <= right {
+        (left, right)
+    } else {
+        (right, left)
+    };
     Some(match pair {
         (1, 1) => (2.24359, 3.54094),
         (1, 6) => (0.21651, 1.02781),

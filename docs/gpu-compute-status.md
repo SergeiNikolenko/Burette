@@ -502,6 +502,8 @@ fixed order below:
 4. extend the parity-gated CHNO AM1, PM3, PM6_SP, and AM1* Grid paths to their
    documented element domains, then implement PM6/PM6_D, d orbitals, D3, H4,
    and HH corrections behind independent known-answer and external parity
-   gates;
+   gates. The bounded H4 and HH float64 reference terms are implemented and
+   pinned; D3 table ingestion, Metal batching, and production composition are
+   the next correction-layer gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.
