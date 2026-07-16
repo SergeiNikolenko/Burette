@@ -34,6 +34,52 @@ pub enum WorkflowTemplateId {
     SimilaritySearchV1,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub enum ConformerVariant {
+    #[serde(rename = "DG")]
+    Dg,
+    #[serde(rename = "KDG")]
+    Kdg,
+    #[serde(rename = "ETDG")]
+    Etdg,
+    #[serde(rename = "ETDGv2")]
+    EtdgV2,
+    #[serde(rename = "ETKDG")]
+    Etkdg,
+    #[serde(rename = "ETKDGv2")]
+    EtkdgV2,
+    #[serde(rename = "ETKDGv3")]
+    EtkdgV3,
+    #[serde(rename = "srETKDGv3")]
+    SrEtkdgV3,
+}
+
+impl ConformerVariant {
+    pub const ALL: [Self; 8] = [
+        Self::Dg,
+        Self::Kdg,
+        Self::Etdg,
+        Self::EtdgV2,
+        Self::Etkdg,
+        Self::EtkdgV2,
+        Self::EtkdgV3,
+        Self::SrEtkdgV3,
+    ];
+
+    pub const fn wire_id(self) -> &'static str {
+        match self {
+            Self::Dg => "DG",
+            Self::Kdg => "KDG",
+            Self::Etdg => "ETDG",
+            Self::EtdgV2 => "ETDGv2",
+            Self::Etkdg => "ETKDG",
+            Self::EtkdgV2 => "ETKDGv2",
+            Self::EtkdgV3 => "ETKDGv3",
+            Self::SrEtkdgV3 => "srETKDGv3",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClusterV1SubmitRequest {
@@ -643,6 +689,19 @@ mod tests {
                 .expect("serialize similarity workflow ID"),
             "\"similaritySearch.v1\""
         );
+    }
+
+    #[test]
+    fn all_conformer_variants_have_stable_unique_wire_ids() {
+        let encoded = ConformerVariant::ALL
+            .into_iter()
+            .map(|variant| {
+                let json = serde_json::to_string(&variant).expect("serialize conformer variant");
+                assert_eq!(json, format!("\"{}\"", variant.wire_id()));
+                json
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(encoded.len(), ConformerVariant::ALL.len());
     }
 
     fn valid_request() -> ClusterV1SubmitRequest {
