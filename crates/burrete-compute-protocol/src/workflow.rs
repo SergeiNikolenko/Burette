@@ -30,6 +30,8 @@ pub enum ComputeJobSchemaVersion {
 pub enum WorkflowTemplateId {
     #[serde(rename = "cluster.v1")]
     ClusterV1,
+    #[serde(rename = "similaritySearch.v1")]
+    SimilaritySearchV1,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -633,6 +635,15 @@ fn minimum_bound(left: Option<f64>, right: Option<f64>) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn similarity_search_analysis_workflow_has_a_stable_wire_id() {
+        assert_eq!(
+            serde_json::to_string(&WorkflowTemplateId::SimilaritySearchV1)
+                .expect("serialize similarity workflow ID"),
+            "\"similaritySearch.v1\""
+        );
+    }
 
     fn valid_request() -> ClusterV1SubmitRequest {
         ClusterV1SubmitRequest {

@@ -163,5 +163,8 @@ fn validate_compatibility(
 ) -> Result<(), ProtocolError> {
     match (workflow, version) {
         (WorkflowTemplateId::ClusterV1, EnginePackVersion::ClusterV1) => Ok(()),
+        _ => Err(ProtocolError::Validation(
+            "cluster engine packs are compatible only with cluster.v1".into(),
+        )),
     }
 }

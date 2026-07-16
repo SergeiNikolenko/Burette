@@ -151,5 +151,8 @@ fn validate_compatibility(
 ) -> Result<(), ProtocolError> {
     match (workflow, version) {
         (WorkflowTemplateId::ClusterV1, ResultPackVersion::ClusterV1) => Ok(()),
+        _ => Err(ProtocolError::Validation(
+            "cluster result packs are compatible only with cluster.v1".into(),
+        )),
     }
 }
