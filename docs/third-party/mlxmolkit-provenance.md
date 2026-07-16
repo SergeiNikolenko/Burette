@@ -44,10 +44,10 @@ provenance and scientific behavior still require review.
 
 | Upstream path | Candidate use | Status | Known issue to correct |
 | --- | --- | --- | --- |
-| `mlxmolkit/fp_uint32.py` | Fingerprint packing | pending-audit | Define one canonical persisted ABI and separate Metal view |
-| `mlxmolkit/fused_tanimoto_nlist.py` | Fused Tanimoto and CSR | pending-audit | Validate empty input, shape/dtype/cutoff, edge overflow, integer width |
-| `mlxmolkit/tanimoto_blockwise.py` | 100k+ tiling | pending-audit | Replace heuristic memory probing with checked Burrete planner |
-| `mlxmolkit/butina.py` | Butina semantics | reference-only | Tie-breaking differs from current RDKit; upstream tests do not prove RDKit parity |
+| `mlxmolkit/fp_uint32.py` | Fingerprint packing | reference-only; independent Burrete ABI shipped | Canonical little-endian `u64[32]` persistence and explicit `u32[64]` Metal view |
+| `mlxmolkit/fused_tanimoto_nlist.py` | Fused Tanimoto and CSR | reference-only; independent Burrete implementation shipped | Exact rational cutoff, checked edge/offset widths, no full pair matrix |
+| `mlxmolkit/tanimoto_blockwise.py` | 100k+ tiling | reference-only; independent Burrete planner shipped | Checked request limits and bounded adaptive tiles; 100k benchmark remains gated |
+| `mlxmolkit/butina.py` | Butina semantics | reference-only; independent Burrete policy shipped | Versioned deterministic tie-breaking; upstream/RDKit corpus parity remains gated |
 | `mlxmolkit/morgan_cpu.py` | Morgan oracle | reference-only | Entire stage is RDKit CPU, not GPU |
 | `mlxmolkit/shared_batch.py` | Shared `N x K` constraints | pending-audit | Make chunks, seeds, retries, and checkpoints durable |
 | `mlxmolkit/dg_extract.py` | DG bounds/parameters | pending-audit | nvMolKit/RDKit provenance and exception handling |

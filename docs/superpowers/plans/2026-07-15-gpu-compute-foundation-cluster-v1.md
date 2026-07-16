@@ -1,8 +1,26 @@
 # GPU Compute Foundation And `cluster.v1` Implementation Plan
 
-Status: active implementation plan
+Status: source vertical slice implemented; scientific and packaged release
+gates active
 
 Date: 2026-07-15
+
+Implementation snapshot: 2026-07-16
+
+The source tree now completes immutable Grid snapshotting, bounded RDKit worker
+fingerprinting, checked CPU/native-Metal Tanimoto CSR construction,
+deterministic Butina, immutable artifact publication and restart validation,
+typed Grid writeback/readback, and `Cluster all`/`Cluster selected` controls.
+The production capability remains unavailable when a reviewed precompiled
+Metal library is absent, and the UI reports the durable per-stage backend
+rather than inferring GPU use. See
+[Native GPU Compute Layer Implementation Status](../../gpu-compute-status.md)
+for the exact proof surface and remaining gates.
+
+The following planned deliverables are intentionally still open: the packaged
+helper decision, signed/notarized `.metallib`, filtered-scope UI, representative
+export, browser-development CPU adapter, mid-stage cancellation polling,
+scientific parity corpus, 100k+ benchmark, and installed-app proof.
 
 Design:
 [GPU Compute Platform](../specs/2026-07-15-gpu-compute-platform-design.md)
