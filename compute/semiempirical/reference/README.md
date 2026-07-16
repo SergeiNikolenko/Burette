@@ -15,3 +15,10 @@ precise authoritative OpenMOPAC values before Rust generation.
 The upstream mlxmolkit MIT license and attribution apply. The values originate
 from the OpenMOPAC PM6 parameterization; its Apache-2.0 attribution is recorded
 in `THIRD_PARTY_NOTICES.md` and the provenance ledger.
+
+`w_integrals.py` is a byte-identical reference copy from the same mlxmolkit
+commit, SHA-256
+`4ba88f9befacb88593f522fc2de937dfd34c8d667b4d04b88b1a3a593f315b9f`.
+Only its three verified 243-entry integer lookup maps are mechanically
+generated into Rust. Production uses the independent typed Rust equations and
+does not load or execute this Python file.

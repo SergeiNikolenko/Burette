@@ -103,6 +103,13 @@ and the bundled CHNO pair values are adapted against pinned `mlxmolkit` and
 PYSEQM references. Importing the parameter table does not claim that the
 pending native d-integral evaluator is production-ready.
 
+The PM6 243-term one-center W lookup maps are retained from the pinned
+`mlxmolkit/rm1/w_integrals.py` implementation, whose comments identify the
+PYSEQM `build_two_elec_one_center_int_D.py` map source. The Slater-Condon and
+52-intermediate equations are implemented in native Rust and checked against
+the pinned upstream oracle for main-group and transition-metal d elements.
+mlxmolkit MIT and PYSEQM BSD-3-Clause attribution apply.
+
 The PM6-D3H4 H4 hydrogen-bond equations, covalent-radius table, short-range
 H-H polynomial, and CHNO D3 C6/CN/r0 reference records are adapted from
 OpenMOPAC correction behavior through the pinned
