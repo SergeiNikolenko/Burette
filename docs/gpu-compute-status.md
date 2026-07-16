@@ -7,7 +7,8 @@ submission, adaptive CPU/Metal distance-geometry execution, Metal ETK
 refinement, stereo-aware retry, and final Metal stereo validation implemented;
 conformer EnginePack/ResultPack publication and Grid-to-Mol* workflow
 implemented; selectable MMFF94/MMFF94s extraction, CPU/Metal optimization, retry,
-energy-ranked ResultPack v2/XYZ publication, and Grid writeback implemented;
+energy-ranked ResultPack v2/XYZ publication, Grid writeback, and standalone
+input-coordinate geometry optimization implemented;
 production release, scientific-corpus parity, and scale proof pending
 
 Updated: 2026-07-16
@@ -186,6 +187,13 @@ validates stereochemistry after optimization, publishes explicit unavailable
 or non-converged states without false GPU claims, ranks converged structures by
 the selected MMFF energy, records the exact variant in XYZ and Grid provenance,
 and writes the best converged energy back to Grid.
+
+`Optimize geometry` uses the selected V2000/V3000 coordinates directly, requires
+one input geometry per molecule, and never substitutes a generated conformer.
+The same bounded BMFX extraction, automatic BFGS/L-BFGS selection, retry, Metal
+dispatch, CPU reference validation, ResultPack/XYZ publication, Mol* opening,
+and typed Grid writeback are reused. The immutable request, XYZ header, and Grid
+analysis record distinguish `inputGeometry` from `generated` execution.
 
 The durable executor now consumes the admitted EnginePack without an `N x N`
 allocation, rebuilds the exact adaptive `molecule x conformer` schedule, derives
@@ -451,8 +459,7 @@ fixed order below:
 
 1. complete conformer scientific-corpus and packaged UI release gates for the
    implemented Grid-to-Mol* native workflow;
-2. finish MMFF94/MMFF94s scientific-corpus parity, add a standalone
-   geometry-optimization action, and replace the bounded numerical
+2. finish MMFF94/MMFF94s scientific-corpus parity and replace the bounded numerical
    gradient with an independently validated analytic Metal gradient;
 3. finish alignment corpus parity, chemistry-derived partial charges,
    non-identity atom maps, durable ResultPack/report publication, and packaged

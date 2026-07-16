@@ -54,7 +54,7 @@ pub use wire::{
 pub use workflow::{
     AllGridScope, AnalysisFilter, BackendPolicy, ClusterV1Parameters, ClusterV1SubmitRequest,
     ColumnFilter, ColumnFilterKind, ComputeJobSchemaVersion, ComputeSubmitRequest,
-    ConformerResourceLimits,
+    ConformerInitialization, ConformerResourceLimits,
     ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant, DescriptorFilter,
     ExecutionPolicy, FilteredGridScope, FingerprintAlgorithm, FingerprintInputOrder,
     FingerprintSettings, GridScope, GridSourceReference, GridTextQuery, MmffVariant,

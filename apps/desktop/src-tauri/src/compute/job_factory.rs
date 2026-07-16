@@ -510,6 +510,7 @@ mod tests {
             },
             parameters: ConformerV1Parameters {
                 variant: ConformerVariant::EtkdgV3,
+                initialization: burrete_compute_protocol::ConformerInitialization::Generated,
                 mmff_variant: burrete_compute_protocol::MmffVariant::Mmff94s,
                 conformers_per_molecule: 4,
                 max_attempts_per_conformer: 8,

@@ -69,6 +69,13 @@ pub enum MmffVariant {
     Mmff94s,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ConformerInitialization {
+    Generated,
+    InputGeometry,
+}
+
 impl MmffVariant {
     pub const fn wire_id(self) -> &'static str {
         match self {
@@ -569,6 +576,7 @@ pub struct ClusterV1Parameters {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConformerV1Parameters {
     pub variant: ConformerVariant,
+    pub initialization: ConformerInitialization,
     pub mmff_variant: MmffVariant,
     pub conformers_per_molecule: u32,
     pub max_attempts_per_conformer: u16,
@@ -582,6 +590,13 @@ impl ConformerV1Parameters {
             return Err(ProtocolError::Validation(format!(
                 "conformersPerMolecule must be in 1..={MAX_CONFORMERS_PER_MOLECULE}"
             )));
+        }
+        if self.initialization == ConformerInitialization::InputGeometry
+            && self.conformers_per_molecule != 1
+        {
+            return Err(ProtocolError::Validation(
+                "inputGeometry initialization requires exactly one conformer per molecule".into(),
+            ));
         }
         if self.max_attempts_per_conformer == 0
             || self.max_attempts_per_conformer > MAX_CONFORMER_ATTEMPTS
@@ -947,6 +962,7 @@ mod tests {
             },
             parameters: ConformerV1Parameters {
                 variant: ConformerVariant::EtkdgV3,
+                initialization: ConformerInitialization::Generated,
                 mmff_variant: MmffVariant::Mmff94s,
                 conformers_per_molecule: 32,
                 max_attempts_per_conformer: 8,

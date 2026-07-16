@@ -10,7 +10,7 @@ use burrete_compute_core::{
     NativeMmffParameters, TetrahedralConstraint,
 };
 use burrete_compute_metal::{MetalDistanceEmbedding, MetalTanimotoRuntime};
-use burrete_compute_protocol::{Backend, ConformerV1SubmitRequest};
+use burrete_compute_protocol::{Backend, ConformerInitialization, ConformerV1SubmitRequest};
 use uuid::Uuid;
 
 use super::{
@@ -73,11 +73,15 @@ pub(crate) fn execute_conformer_distance_geometry(
     arrays: ConformerEnginePackArrays,
     identities: &[ConformerMoleculeIdentity],
     mmff_parameters: &[Option<NativeMmffParameters>],
+    input_positions: &[Option<Vec<[f32; 4]>>],
     distance_backend: Backend,
     stereo_backend: Backend,
     metal: Option<&MetalTanimotoRuntime>,
 ) -> ComputeResult<ConformerDistanceComputation> {
-    if identities.len() != arrays.record_count() || mmff_parameters.len() != identities.len() {
+    if identities.len() != arrays.record_count()
+        || mmff_parameters.len() != identities.len()
+        || input_positions.len() != identities.len()
+    {
         return Err(protocol(
             "conformer identity count differs from the extracted EnginePack",
         ));
@@ -160,6 +164,17 @@ pub(crate) fn execute_conformer_distance_geometry(
         distance_weights,
     )
     .map_err(|error| protocol(error.to_string()))?;
+    if request.parameters.initialization == ConformerInitialization::InputGeometry {
+        return optimize_input_geometries(
+            request,
+            engine,
+            deferred,
+            mmff_parameters,
+            input_positions,
+            distance_backend,
+            metal,
+        );
+    }
     let conformer_count = NonZeroU32::new(request.parameters.conformers_per_molecule)
         .expect("validated conformer count is nonzero");
     let mut work = Vec::new();
@@ -388,6 +403,79 @@ pub(crate) fn execute_conformer_distance_geometry(
         || stereo_backend == Backend::NativeMetal)
         .then_some(total_gpu_time);
     output.validate(schedule.conformer_count)?;
+    Ok(output)
+}
+
+fn optimize_input_geometries(
+    request: &ConformerV1SubmitRequest,
+    engine: ConformerDistanceEngine,
+    deferred: ConformerDeferredConstraints,
+    mmff_parameters: &[Option<NativeMmffParameters>],
+    input_positions: &[Option<Vec<[f32; 4]>>],
+    backend: Backend,
+    metal: Option<&MetalTanimotoRuntime>,
+) -> ComputeResult<ConformerDistanceComputation> {
+    let expected = input_positions
+        .iter()
+        .filter(|positions| positions.is_some())
+        .count() as u64;
+    let atom_count = input_positions
+        .iter()
+        .flatten()
+        .map(|positions| positions.len() as u64)
+        .sum();
+    let mut output =
+        ConformerDistanceComputation::with_capacity(engine, deferred, expected, atom_count)?;
+    let options = DistanceGeometryOptimizationOptions::default();
+    let mut gpu_time_ms = 0_u64;
+    for (record, positions) in input_positions.iter().enumerate() {
+        let Some(positions) = positions else { continue };
+        let Some(molecule) = output
+            .distance_engine
+            .molecule(record as u64)
+            .map_err(|error| protocol(error.to_string()))?
+        else {
+            continue;
+        };
+        if positions.len() != molecule.atomic_numbers.len() {
+            return Err(protocol(
+                "input geometry atom count differs from the extracted MMFF topology",
+            ));
+        }
+        let optimized = refine_mmff(
+            backend,
+            metal,
+            positions,
+            positions.len() as u32,
+            mmff_parameters[record].as_ref(),
+            options,
+            request.limits.max_memory_bytes,
+        )?;
+        gpu_time_ms = gpu_time_ms.saturating_add(optimized.gpu_time_ms.unwrap_or(0));
+        output.conformer_molecule_indices.push(record as u32);
+        output.conformer_ordinals.push(0);
+        output.embedding_attempt_counts.push(0);
+        output.embedding_energies.push(0.0);
+        output.embedding_statuses.push(4);
+        output.etk_energies.push(0.0);
+        output.etk_statuses.push(4);
+        output.mmff_energies.push(optimized.energies[0]);
+        output.mmff_statuses.push(optimized.statuses[0]);
+        output.mmff_optimizer_kinds.push(optimized.optimizers[0]);
+        output.retry_stereo_failure_flags.push(0);
+        output.seed_words.push([0; 4]);
+        output.positions.extend(
+            optimized
+                .positions
+                .iter()
+                .map(|position| [position[0], position[1], position[2]]),
+        );
+        output
+            .conformer_atom_starts
+            .push(output.positions.len() as u64);
+    }
+    output.gpu_time_ms = (backend == Backend::NativeMetal).then_some(gpu_time_ms);
+    output.validate(output.conformer_count() as u64)?;
     Ok(output)
 }
 
@@ -1066,6 +1154,7 @@ mod tests {
             arrays.clone(),
             &identities,
             &[None, None],
+            &[None, None],
             Backend::ReferenceCpu,
             Backend::ReferenceCpu,
             None,
@@ -1076,6 +1165,7 @@ mod tests {
             &request,
             arrays,
             &identities,
+            &[None, None],
             &[None, None],
             Backend::ReferenceCpu,
             Backend::ReferenceCpu,
@@ -1110,6 +1200,7 @@ mod tests {
                 molecule_content_sha256: "11".repeat(32),
             }],
             &[None],
+            &[None],
             Backend::ReferenceCpu,
             Backend::ReferenceCpu,
             None,
@@ -1139,6 +1230,7 @@ mod tests {
                 molecule_content_sha256: "11".repeat(32),
             }],
             &[Some(mmff_parameters(2))],
+            &[None],
             Backend::ReferenceCpu,
             Backend::ReferenceCpu,
             None,
@@ -1169,6 +1261,7 @@ mod tests {
                 molecule_content_sha256: "11".repeat(32),
             }],
             &[None],
+            &[None],
             Backend::ReferenceCpu,
             Backend::ReferenceCpu,
             None,
@@ -1179,6 +1272,45 @@ mod tests {
         assert_eq!(result.retry_stereo_failure_flags, [1, 1]);
         assert!(result.embedding_statuses.iter().all(|status| *status <= 1));
         assert!(result.etk_statuses.iter().all(|status| *status <= 1));
+    }
+
+    #[test]
+    fn reference_executor_optimizes_the_supplied_input_geometry() {
+        let mut builder = ConformerEnginePackBuilder::new(
+            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            1024 * 1024,
+        );
+        builder.append_valid(extracted()).expect("valid molecule");
+        let mut request = request();
+        request.parameters.initialization =
+            burrete_compute_protocol::ConformerInitialization::InputGeometry;
+        request.parameters.conformers_per_molecule = 1;
+        let initial = vec![[0.0, 0.0, 0.0, 0.0], [3.0, 0.0, 0.0, 0.0]];
+        let result = execute_conformer_distance_geometry(
+            Uuid::from_u128(12),
+            &request,
+            builder.finish(1).expect("engine arrays"),
+            &[ConformerMoleculeIdentity {
+                source_record_id: 10,
+                molecule_content_sha256: "11".repeat(32),
+            }],
+            &[Some(mmff_parameters(2))],
+            &[Some(initial)],
+            Backend::ReferenceCpu,
+            Backend::ReferenceCpu,
+            None,
+        )
+        .expect("input geometry optimization");
+
+        assert_eq!(result.conformer_count(), 1);
+        assert_eq!(result.embedding_attempt_counts, [0]);
+        assert_eq!(result.embedding_statuses, [4]);
+        assert!(result.mmff_statuses[0] <= 1);
+        let distance = (result.positions[1][0] - result.positions[0][0]).abs();
+        assert!(
+            (distance - 1.5).abs() < 1.0e-3,
+            "optimized distance={distance}"
+        );
     }
 
     #[test]
@@ -1205,6 +1337,7 @@ mod tests {
                 molecule_content_sha256: "11".repeat(32),
             }],
             &[Some(mmff_parameters(4))],
+            &[None],
             Backend::NativeMetal,
             Backend::NativeMetal,
             Some(&runtime),
@@ -1218,6 +1351,47 @@ mod tests {
         assert!(result.etk_energies.iter().all(|energy| energy.is_finite()));
         assert!(result.mmff_energies.iter().all(|energy| energy.is_finite()));
         assert!(result.mmff_statuses.iter().all(|status| *status <= 1));
+        let mut input_request = request();
+        input_request.parameters.initialization =
+            burrete_compute_protocol::ConformerInitialization::InputGeometry;
+        input_request.parameters.conformers_per_molecule = 1;
+        let input = execute_conformer_distance_geometry(
+            Uuid::from_u128(8),
+            &input_request,
+            {
+                let mut builder = ConformerEnginePackBuilder::new(
+                    burrete_compute_protocol::ConformerVariant::EtkdgV3,
+                    1024 * 1024,
+                );
+                builder
+                    .append_valid(extracted_etk())
+                    .expect("valid molecule");
+                builder.finish(1).expect("engine arrays")
+            },
+            &[ConformerMoleculeIdentity {
+                source_record_id: 10,
+                molecule_content_sha256: "11".repeat(32),
+            }],
+            &[Some(mmff_parameters(4))],
+            &[Some(vec![
+                [0.0, 0.0, 0.0, 0.0],
+                [1.45, 0.0, 0.0, 0.0],
+                [2.90, 0.0, 0.0, 0.0],
+                [4.35, 0.0, 0.0, 0.0],
+            ])],
+            Backend::NativeMetal,
+            Backend::NativeMetal,
+            Some(&runtime),
+        )
+        .expect("native Metal input geometry optimization");
+        assert_eq!(input.conformer_count(), 1);
+        assert!(input.gpu_time_ms.is_some());
+        assert!(
+            input.mmff_statuses[0] <= 1,
+            "input MMFF status={}, energy={}",
+            input.mmff_statuses[0],
+            input.mmff_energies[0]
+        );
         let stereo =
             crate::compute::conformer_stereo_executor::execute_conformer_stereo_validation(
                 &result,
@@ -1230,10 +1404,11 @@ mod tests {
         assert_eq!(stereo.passed_count, 2);
         assert!(stereo.gpu_time_ms.is_some());
         eprintln!(
-            "conformer executor Metal smoke: device={}, conformers={}, distanceGpuTimeMs={:?}, stereoGpuTimeMs={:?}",
+            "conformer executor Metal smoke: device={}, conformers={}, distanceGpuTimeMs={:?}, inputGeometryGpuTimeMs={:?}, stereoGpuTimeMs={:?}",
             runtime.device_identity().name,
             result.conformer_count(),
             result.gpu_time_ms,
+            input.gpu_time_ms,
             stereo.gpu_time_ms,
         );
     }
@@ -1349,6 +1524,7 @@ mod tests {
             },
             parameters: ConformerV1Parameters {
                 variant: burrete_compute_protocol::ConformerVariant::EtkdgV3,
+                initialization: burrete_compute_protocol::ConformerInitialization::Generated,
                 mmff_variant: burrete_compute_protocol::MmffVariant::Mmff94s,
                 conformers_per_molecule: 2,
                 max_attempts_per_conformer: 2,

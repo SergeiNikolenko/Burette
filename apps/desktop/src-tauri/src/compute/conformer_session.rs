@@ -9,7 +9,7 @@ use burrete_compute_core::{
     ExtractedConformerParameters, NativeMmffParameters,
 };
 use burrete_compute_protocol::{
-    ConformerV1SubmitRequest, ConformerVariant, JobSnapshot, MmffVariant,
+    ConformerInitialization, ConformerV1SubmitRequest, ConformerVariant, JobSnapshot, MmffVariant,
     MolecularSnapshotRecordV1, OrderedRecordMoleculeIdentityHasher, PackedFileDescriptor,
     MAX_PACK_BYTES, MOLECULAR_RECORDS_FILE_PATH,
 };
@@ -22,6 +22,7 @@ use super::{
     conformer_ipc::{ConformerChunkResult, ConformerRecordResult},
     conformer_plan::ConformerMoleculeIdentity,
     error::{ComputeCoordinatorError, ComputeResult},
+    molfile_coordinates::parse_molfile_positions,
 };
 
 pub(crate) const MAX_CONFORMER_RESULT_ENVELOPE_BYTES: usize = 8 * 1024 * 1024;
@@ -76,6 +77,7 @@ pub(crate) struct CompletedConformerExtraction {
     pub(crate) errors: Vec<Option<String>>,
     pub(crate) mmff_parameters: Vec<Option<NativeMmffParameters>>,
     pub(crate) mmff_errors: Vec<Option<String>>,
+    pub(crate) input_positions: Vec<Option<Vec<[f32; 4]>>>,
     pub(crate) verified: VerifiedSnapshot,
 }
 
@@ -84,6 +86,7 @@ pub(crate) struct ConformerExtractionSession {
     owner: String,
     variant: ConformerVariant,
     mmff_variant: MmffVariant,
+    initialization: ConformerInitialization,
     expected_records: u64,
     next_ordinal: u64,
     reader: BufReader<File>,
@@ -96,6 +99,7 @@ pub(crate) struct ConformerExtractionSession {
     errors: Vec<Option<String>>,
     mmff_parameters: Vec<Option<NativeMmffParameters>>,
     mmff_errors: Vec<Option<String>>,
+    input_positions: Vec<Option<Vec<[f32; 4]>>>,
     reached_eof: bool,
 }
 
@@ -147,6 +151,7 @@ impl ConformerExtractionSession {
             owner: owner.into(),
             variant: request.parameters.variant,
             mmff_variant: request.parameters.mmff_variant,
+            initialization: request.parameters.initialization,
             expected_records,
             next_ordinal: 0,
             reader: BufReader::new(file),
@@ -159,6 +164,7 @@ impl ConformerExtractionSession {
             errors: reserve(capacity, "conformer error buffer")?,
             mmff_parameters: reserve(capacity, "MMFF parameter buffer")?,
             mmff_errors: reserve(capacity, "MMFF error buffer")?,
+            input_positions: reserve(capacity, "input coordinate buffer")?,
             reached_eof: false,
         };
         let chunk = session
@@ -231,6 +237,18 @@ impl ConformerExtractionSession {
         let mut chunk_errors = Vec::new();
         let mut chunk_mmff_parameters = Vec::new();
         let mut chunk_mmff_errors = Vec::new();
+        let chunk_input_positions = expected
+            .records
+            .iter()
+            .map(|record| match self.initialization {
+                ConformerInitialization::Generated => None,
+                ConformerInitialization::InputGeometry => record
+                    .input
+                    .as_deref()
+                    .filter(|_| record.format == ConformerInputFormat::Molblock)
+                    .and_then(|input| parse_molfile_positions(input).ok()),
+            })
+            .collect::<Vec<_>>();
         pack_records
             .try_reserve_exact(decoded.len())
             .map_err(|_| unavailable("cannot allocate conformer pack chunk"))?;
@@ -261,6 +279,16 @@ impl ConformerExtractionSession {
                 }
             }
         }
+        if self.initialization == ConformerInitialization::InputGeometry {
+            for (error, positions) in chunk_errors.iter_mut().zip(&chunk_input_positions) {
+                if error.is_none() && positions.is_none() {
+                    *error = Some(
+                        "Geometry optimization requires finite V2000 or V3000 input coordinates"
+                            .into(),
+                    );
+                }
+            }
+        }
         self.builder
             .append_batch(pack_records)
             .map_err(|error| protocol(format!("cannot assemble EnginePack: {error}")))?;
@@ -276,6 +304,7 @@ impl ConformerExtractionSession {
         self.errors.extend(chunk_errors);
         self.mmff_parameters.extend(chunk_mmff_parameters);
         self.mmff_errors.extend(chunk_mmff_errors);
+        self.input_positions.extend(chunk_input_positions);
         self.pending = None;
         let next = self.read_next_chunk()?;
         self.pending = next.clone();
@@ -290,6 +319,7 @@ impl ConformerExtractionSession {
         if self.identities.len() != self.errors.len()
             || self.identities.len() != self.mmff_parameters.len()
             || self.identities.len() != self.mmff_errors.len()
+            || self.identities.len() != self.input_positions.len()
             || self.identities.len() as u64 != self.expected_records
         {
             return Err(protocol(
@@ -320,6 +350,7 @@ impl ConformerExtractionSession {
             errors: self.errors,
             mmff_parameters: self.mmff_parameters,
             mmff_errors: self.mmff_errors,
+            input_positions: self.input_positions,
             verified: self.verified,
         })
     }

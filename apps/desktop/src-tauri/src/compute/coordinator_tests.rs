@@ -65,6 +65,7 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
         },
         parameters: ConformerV1Parameters {
             variant: ConformerVariant::EtkdgV3,
+            initialization: burrete_compute_protocol::ConformerInitialization::Generated,
             mmff_variant: burrete_compute_protocol::MmffVariant::Mmff94s,
             conformers_per_molecule: 3,
             max_attempts_per_conformer: 2,
@@ -206,6 +207,7 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
         .expect("read published conformer XYZ");
     assert_eq!(xyz.matches("Burrete conformer molecule=").count(), 6);
     assert!(xyz.contains("etkEnergy="));
+    assert!(xyz.contains("initialization=generated etkEnergy="));
     assert!(xyz.contains("mmffVariant=MMFF94s mmffEnergy="));
     assert!(xyz.contains("stereo=passed"));
     let page = registry
@@ -223,7 +225,7 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             },
         )
         .expect("fetch conformer Grid result columns");
-    assert_eq!(page.analysis_columns.len(), 7);
+    assert_eq!(page.analysis_columns.len(), 8);
     assert!(page.analysis_columns.iter().any(|column| {
         column.run_id == publication.job.job_id.to_string()
             && column.value_id == "bestEtkEnergy"
@@ -245,6 +247,11 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             && row.analyses.contains_key("bestMmffEnergy")
             && row.analyses.get("mmffVariant").map(|cell| &cell.value)
                 == Some(&serde_json::json!("MMFF94s"))
+            && row
+                .analyses
+                .get("geometryInitialization")
+                .map(|cell| &cell.value)
+                == Some(&serde_json::json!("generated"))
             && row
                 .analyses
                 .get("mmffOptimizationStatus")
