@@ -2,8 +2,9 @@ use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
 use burrete_compute_core::{
     build_tanimoto_graph, evaluate_distance_constraints, initialize_conformer_positions,
-    score_tanimoto_query, DistanceConstraint, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
-    TanimotoCounts, TanimotoQueryOptions, FINGERPRINT_WORDS,
+    optimize_distance_geometry, score_tanimoto_query, DistanceConstraint,
+    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, Fingerprint2048,
+    GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -52,6 +53,16 @@ pub struct MetalConformerInitialization {
 pub struct MetalDistanceEvaluation {
     pub atom_energies: Vec<f32>,
     pub gradients: Vec<[f32; 4]>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalDistanceOptimization {
+    pub positions: Vec<[f32; 4]>,
+    pub energies: Vec<f32>,
+    pub scaled_gradient_maxima: Vec<f32>,
+    pub iterations: Vec<u32>,
+    pub statuses: Vec<DistanceGeometryOptimizationStatus>,
     pub gpu_time_ms: u64,
 }
 
@@ -196,6 +207,51 @@ impl MetalComputeRuntime {
         })
     }
 
+    pub fn optimize_distance_geometry_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        constraints: &[DistanceConstraint],
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalDistanceOptimization, MetalRuntimeError> {
+        let dispatch = self.host.optimize_distance_geometry_profiled(
+            positions,
+            atom_count,
+            constraints,
+            options,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if dispatch.positions.iter().flatten().any(|value| !value.is_finite())
+            || dispatch.energies.iter().any(|value| !value.is_finite())
+            || dispatch
+                .scaled_gradient_maxima
+                .iter()
+                .any(|value| !value.is_finite())
+            || dispatch
+                .iterations
+                .iter()
+                .any(|iterations| *iterations > options.max_iterations)
+        {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal distance optimizer returned invalid numeric output".into(),
+            ));
+        }
+        let statuses = dispatch
+            .statuses
+            .into_iter()
+            .map(distance_optimization_status)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(MetalDistanceOptimization {
+            positions: dispatch.positions,
+            energies: dispatch.energies,
+            scaled_gradient_maxima: dispatch.scaled_gradient_maxima,
+            iterations: dispatch.iterations,
+            statuses,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
     fn run_startup_known_answer_test(&self) -> Result<(), MetalRuntimeError> {
         let mut left = [0_u64; FINGERPRINT_WORDS];
         left[0] = 0b11;
@@ -290,6 +346,39 @@ impl MetalComputeRuntime {
                 "Metal startup distance objective differs from the CPU reference".into(),
             ));
         }
+        let optimization_positions = [[0.0; 4], [4.0, 1.0, 0.5, 0.0]];
+        let optimization_options = DistanceGeometryOptimizationOptions::default();
+        let expected_optimization = optimize_distance_geometry(
+            &optimization_positions,
+            &constraints,
+            optimization_options,
+        )
+        .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let observed_optimization = self.host.optimize_distance_geometry_profiled(
+            &optimization_positions,
+            2,
+            &constraints,
+            optimization_options,
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        if observed_optimization.statuses != [distance_optimization_status_code(
+            expected_optimization.status,
+        )]
+            || !float_slices_close(
+                observed_optimization.positions.as_flattened(),
+                expected_optimization.positions.as_flattened(),
+                1.0e-4,
+            )
+            || !float_slices_close(
+                &observed_optimization.energies,
+                &[expected_optimization.energy],
+                1.0e-5,
+            )
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup distance optimization differs from the CPU reference".into(),
+            ));
+        }
         Ok(())
     }
 }
@@ -311,6 +400,29 @@ fn gpu_time_ms(gpu_time_seconds: f64) -> Result<u64, MetalRuntimeError> {
         ));
     }
     Ok(gpu_time_ms as u64)
+}
+
+fn distance_optimization_status(
+    status: u32,
+) -> Result<DistanceGeometryOptimizationStatus, MetalRuntimeError> {
+    match status {
+        0 => Ok(DistanceGeometryOptimizationStatus::ConvergedGradient),
+        1 => Ok(DistanceGeometryOptimizationStatus::ConvergedStep),
+        2 => Ok(DistanceGeometryOptimizationStatus::LineSearchExhausted),
+        3 => Ok(DistanceGeometryOptimizationStatus::MaxIterations),
+        _ => Err(MetalRuntimeError::Dispatch(format!(
+            "Metal distance optimizer returned unknown status {status}"
+        ))),
+    }
+}
+
+fn distance_optimization_status_code(status: DistanceGeometryOptimizationStatus) -> u32 {
+    match status {
+        DistanceGeometryOptimizationStatus::ConvergedGradient => 0,
+        DistanceGeometryOptimizationStatus::ConvergedStep => 1,
+        DistanceGeometryOptimizationStatus::LineSearchExhausted => 2,
+        DistanceGeometryOptimizationStatus::MaxIterations => 3,
+    }
 }
 
 fn validate_sha256(value: &str) -> Result<(), MetalRuntimeError> {

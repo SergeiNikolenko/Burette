@@ -11,12 +11,15 @@ const requiredEnvironment = [
   "TANIMOTO_SOURCE_SHA256",
   "CONFORMER_SOURCE_SHA256",
   "DISTANCE_SOURCE_SHA256",
+  "OPTIMIZER_SOURCE_SHA256",
   "TANIMOTO_CONTRACT_SHA256",
   "CONFORMER_CONTRACT_SHA256",
   "DISTANCE_CONTRACT_SHA256",
+  "OPTIMIZER_CONTRACT_SHA256",
   "TANIMOTO_AIR_SHA256",
   "CONFORMER_AIR_SHA256",
   "DISTANCE_AIR_SHA256",
+  "OPTIMIZER_AIR_SHA256",
   "METALLIB_SHA256",
   "METAL_TOOL_PATH",
   "METAL_TOOL_SHA256",
@@ -41,25 +44,28 @@ for (const name of requiredEnvironment.filter((name) => name.endsWith("_SHA256")
 const normalizedVersion = process.env.METAL_TOOL_VERSION.trim().replace(/\s+/g, " ");
 const metadata = {
   schemaVersion: "burrete.compute.metal-build-metadata.v2",
-  runtimeVersion: "burrete-native-metal-v4",
-  libraryId: "burrete.compute.native.v4",
+  runtimeVersion: "burrete-native-metal-v5",
+  libraryId: "burrete.compute.native.v5",
   sources: [
     { path: "compute/metal/tanimoto.v2.metal", sha256: process.env.TANIMOTO_SOURCE_SHA256 },
     { path: "compute/metal/conformer-initialize.v1.metal", sha256: process.env.CONFORMER_SOURCE_SHA256 },
     { path: "compute/metal/conformer-distance.v1.metal", sha256: process.env.DISTANCE_SOURCE_SHA256 },
+    { path: "compute/metal/conformer-optimize.v1.metal", sha256: process.env.OPTIMIZER_SOURCE_SHA256 },
   ],
   contracts: [
     { path: "compute/metal/tanimoto-kernel-contract.v2.json", sha256: process.env.TANIMOTO_CONTRACT_SHA256 },
     { path: "compute/metal/conformer-initialize-kernel-contract.v1.json", sha256: process.env.CONFORMER_CONTRACT_SHA256 },
     { path: "compute/metal/conformer-distance-kernel-contract.v1.json", sha256: process.env.DISTANCE_CONTRACT_SHA256 },
+    { path: "compute/metal/conformer-optimize-kernel-contract.v1.json", sha256: process.env.OPTIMIZER_CONTRACT_SHA256 },
   ],
   air: [
     { path: "tanimoto.v2.air", sha256: process.env.TANIMOTO_AIR_SHA256 },
     { path: "conformer-initialize.v1.air", sha256: process.env.CONFORMER_AIR_SHA256 },
     { path: "conformer-distance.v1.air", sha256: process.env.DISTANCE_AIR_SHA256 },
+    { path: "conformer-optimize.v1.air", sha256: process.env.OPTIMIZER_AIR_SHA256 },
   ],
   metallib: {
-    path: "native-compute.v4.metallib",
+    path: "native-compute.v5.metallib",
     sha256: process.env.METALLIB_SHA256,
   },
   compiler: {
@@ -85,6 +91,7 @@ const metadata = {
     "burrete_tanimoto_query_counts_v1",
     "burrete_conformer_initialize_v1",
     "burrete_conformer_distance_v1",
+    "burrete_conformer_optimize_v1",
   ],
 };
 

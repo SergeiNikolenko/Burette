@@ -97,6 +97,11 @@ reference, with an independently structured gather implementation, explicit
 known answers, finite-difference validation, and CPU/Metal parity. This is a
 formula-only reference: upstream source text is not present in Burrete, and the
 named nvMolKit secondary revision remains a release gate before DG adaptation.
+The paired bounded L-BFGS CPU oracle and fused Metal optimizer were also written
+independently against that formula-only behavioral reference. The Metal kernel
+uses a Burrete-owned fixed threadgroup ABI, atom-gather reduction, bounded
+history, and explicit convergence statuses; no upstream optimizer source text
+was copied or mechanically translated.
 
 The conformer admission and queued-job increment was also independently
 implemented. It adds a frozen-molecule-identity-bound chemistry-preflight
@@ -124,6 +129,7 @@ copy `mlxmolkit` source.
 | `crates/burrete-compute-core/src/distance_geometry.rs` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only objective reference; independently implemented CPU oracle | nvMolKit named upstream; exact secondary revision still release-blocking | upper/lower known answers and finite-difference gradient |
 | `compute/metal/conformer-distance.v1.metal` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only objective reference; independent atom-gather Metal kernel | nvMolKit named upstream; exact secondary revision still release-blocking | CPU/Metal parity and packaged startup KAT on Apple M2 Pro |
 | `crates/burrete-compute-core/src/distance_optimizer.rs` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only L-BFGS behavioral reference; independently structured bounded CPU oracle | nvMolKit named upstream; exact secondary revision still release-blocking | deterministic convergence, no-op satisfied case, bounded line-search exhaustion |
+| `compute/metal/conformer-optimize.v1.metal` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only L-BFGS behavioral reference; independent fused atom-gather Metal optimizer | nvMolKit named upstream; exact secondary revision still release-blocking | CPU/Metal startup parity and packaged KAT on Apple M2 Pro |
 
 ## Acceptance procedure
 

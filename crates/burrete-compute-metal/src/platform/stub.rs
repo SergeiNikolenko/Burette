@@ -1,11 +1,11 @@
 use burrete_compute_core::{
-    DistanceConstraint, Fingerprint2048, GraphBuildOptions, SymmetricCsr, TanimotoCounts,
-    TanimotoQueryOptions,
+    DistanceConstraint, DistanceGeometryOptimizationOptions, Fingerprint2048, GraphBuildOptions,
+    SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 
 use crate::MetalRuntimeError;
-use crate::platform::MetalDistanceDispatch;
+use crate::platform::{MetalDistanceDispatch, MetalDistanceOptimizationDispatch};
 
 #[derive(Debug)]
 pub(crate) struct MetalHost;
@@ -87,6 +87,19 @@ impl MetalHost {
         _constraints: &[DistanceConstraint],
         _max_memory_bytes: u64,
     ) -> Result<MetalDistanceDispatch, MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn optimize_distance_geometry_profiled(
+        &self,
+        _positions: &[[f32; 4]],
+        _atom_count: u32,
+        _constraints: &[DistanceConstraint],
+        _options: DistanceGeometryOptimizationOptions,
+        _max_memory_bytes: u64,
+    ) -> Result<MetalDistanceOptimizationDispatch, MetalRuntimeError> {
         Err(MetalRuntimeError::UnsupportedPlatform(
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))
