@@ -1,4 +1,5 @@
 mod artifact_publisher;
+mod artifact_reader;
 mod cluster_executor;
 mod cluster_plan;
 pub(crate) mod commands;
