@@ -3,14 +3,15 @@
 use std::collections::VecDeque;
 
 use crate::{
-    evaluate_distance_constraints, evaluate_etk_geometry, DistanceConstraint,
-    DistanceGeometryError, EtkGeometryTerms,
+    evaluate_distance_constraints, evaluate_etk_geometry, evaluate_mmff, DistanceConstraint,
+    DistanceGeometryError, EtkGeometryTerms, MmffParameters,
 };
 
 const MAX_OPTIMIZER_ITERATIONS: u32 = 10_000;
 const MAX_LINE_SEARCH_STEPS: u8 = 64;
 const MAX_HISTORY_SIZE: u8 = 64;
 const MIN_CURVATURE: f32 = 1.0e-10;
+const MMFF_BFGS_MAX_ATOMS: u32 = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DistanceGeometryOptimizationOptions {
@@ -88,6 +89,22 @@ pub struct DistanceGeometryOptimization {
     pub status: DistanceGeometryOptimizationStatus,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MmffOptimizerKind {
+    Bfgs,
+    Lbfgs,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MmffOptimization {
+    pub positions: Vec<[f32; 4]>,
+    pub energy: f32,
+    pub scaled_gradient_max: f32,
+    pub iterations: u32,
+    pub status: DistanceGeometryOptimizationStatus,
+    pub optimizer: MmffOptimizerKind,
+}
+
 #[derive(Clone, Debug)]
 struct HistoryEntry {
     step: Vec<f32>,
@@ -100,13 +117,18 @@ pub fn optimize_distance_geometry(
     constraints: &[DistanceConstraint],
     options: DistanceGeometryOptimizationOptions,
 ) -> Result<DistanceGeometryOptimization, DistanceGeometryError> {
-    optimize_geometry(initial_positions, options, |positions| {
-        let evaluation = evaluate_distance_constraints(positions, constraints)?;
-        Ok(ObjectiveEvaluation {
-            energy: evaluation.total_energy(),
-            gradients: evaluation.gradients,
-        })
-    })
+    optimize_geometry(
+        initial_positions,
+        options,
+        |positions| {
+            let evaluation = evaluate_distance_constraints(positions, constraints)?;
+            Ok(ObjectiveEvaluation {
+                energy: evaluation.total_energy(),
+                gradients: evaluation.gradients,
+            })
+        },
+        OptimizerAlgorithm::Lbfgs,
+    )
 }
 
 pub fn optimize_etk_geometry(
@@ -114,14 +136,58 @@ pub fn optimize_etk_geometry(
     terms: EtkGeometryTerms<'_>,
     options: DistanceGeometryOptimizationOptions,
 ) -> Result<DistanceGeometryOptimization, DistanceGeometryError> {
-    optimize_geometry(initial_positions, options, |positions| {
-        let evaluation =
-            evaluate_etk_geometry(positions, terms.torsions, terms.impropers, terms.distances)
-                .map_err(|error| invalid(format!("ETK optimizer objective is invalid: {error}")))?;
-        Ok(ObjectiveEvaluation {
-            energy: evaluation.energy,
-            gradients: evaluation.gradients,
-        })
+    optimize_geometry(
+        initial_positions,
+        options,
+        |positions| {
+            let evaluation =
+                evaluate_etk_geometry(positions, terms.torsions, terms.impropers, terms.distances)
+                    .map_err(|error| {
+                        invalid(format!("ETK optimizer objective is invalid: {error}"))
+                    })?;
+            Ok(ObjectiveEvaluation {
+                energy: evaluation.energy,
+                gradients: evaluation.gradients,
+            })
+        },
+        OptimizerAlgorithm::Lbfgs,
+    )
+}
+
+pub fn optimize_mmff(
+    initial_positions: &[[f32; 4]],
+    parameters: &MmffParameters,
+    options: DistanceGeometryOptimizationOptions,
+) -> Result<MmffOptimization, DistanceGeometryError> {
+    let optimizer = if parameters.atom_count <= MMFF_BFGS_MAX_ATOMS {
+        MmffOptimizerKind::Bfgs
+    } else {
+        MmffOptimizerKind::Lbfgs
+    };
+    let result = optimize_geometry(
+        initial_positions,
+        options,
+        |positions| {
+            let evaluation = evaluate_mmff(parameters, positions).map_err(|error| {
+                invalid(format!("MMFF optimizer objective is invalid: {error}"))
+            })?;
+            Ok(ObjectiveEvaluation {
+                energy: evaluation.energy.total() as f32,
+                gradients: evaluation.gradients,
+            })
+        },
+        match optimizer {
+            MmffOptimizerKind::Bfgs => OptimizerAlgorithm::Bfgs,
+            MmffOptimizerKind::Lbfgs => OptimizerAlgorithm::Lbfgs,
+        },
+    )?;
+    Ok(MmffOptimization {
+        positions: result.positions,
+        energy: result.energy,
+        scaled_gradient_max: result.scaled_gradient_max,
+        iterations: result.iterations,
+        status: result.status,
+        optimizer,
     })
 }
 
@@ -130,10 +196,17 @@ struct ObjectiveEvaluation {
     gradients: Vec<[f32; 4]>,
 }
 
+#[derive(Clone, Copy)]
+enum OptimizerAlgorithm {
+    Bfgs,
+    Lbfgs,
+}
+
 fn optimize_geometry(
     initial_positions: &[[f32; 4]],
     options: DistanceGeometryOptimizationOptions,
     evaluate: impl Fn(&[[f32; 4]]) -> Result<ObjectiveEvaluation, DistanceGeometryError>,
+    algorithm: OptimizerAlgorithm,
 ) -> Result<DistanceGeometryOptimization, DistanceGeometryError> {
     let options = options.validate()?;
     let mut positions = initial_positions.to_vec();
@@ -152,6 +225,8 @@ fn optimize_geometry(
     }
 
     let mut history = VecDeque::<HistoryEntry>::with_capacity(options.history_size as usize);
+    let mut inverse_hessian =
+        matches!(algorithm, OptimizerAlgorithm::Bfgs).then(|| identity_matrix(gradient.len()));
     let mut direction = gradient.iter().map(|value| -*value).collect::<Vec<_>>();
     let coordinate_norm = l2_norm(&flatten(&positions));
     let max_step = options.max_step_factor * coordinate_norm.max(gradient.len() as f32);
@@ -161,6 +236,9 @@ fn optimize_geometry(
         let mut slope = dot(&direction, &gradient);
         if !slope.is_finite() || slope >= 0.0 {
             history.clear();
+            if let Some(hessian) = &mut inverse_hessian {
+                *hessian = identity_matrix(gradient.len());
+            }
             direction.clone_from(&gradient);
             for value in &mut direction {
                 *value = -*value;
@@ -250,16 +328,24 @@ fn optimize_geometry(
         let gradient_delta = difference(&gradient, &old_gradient);
         let curvature = dot(&gradient_delta, &step);
         if curvature.is_finite() && curvature > MIN_CURVATURE {
-            if history.len() == options.history_size as usize {
-                history.pop_front();
+            if let Some(hessian) = &mut inverse_hessian {
+                update_inverse_hessian(hessian, &step, &gradient_delta, curvature);
+            } else {
+                if history.len() == options.history_size as usize {
+                    history.pop_front();
+                }
+                history.push_back(HistoryEntry {
+                    step,
+                    gradient_delta,
+                    inverse_curvature: 1.0 / curvature,
+                });
             }
-            history.push_back(HistoryEntry {
-                step,
-                gradient_delta,
-                inverse_curvature: 1.0 / curvature,
-            });
         }
-        direction = lbfgs_direction(&gradient, &history);
+        direction = if let Some(hessian) = &inverse_hessian {
+            matrix_direction(hessian, &gradient)
+        } else {
+            lbfgs_direction(&gradient, &history)
+        };
     }
 
     Ok(result(
@@ -269,6 +355,48 @@ fn optimize_geometry(
         options.max_iterations,
         DistanceGeometryOptimizationStatus::MaxIterations,
     ))
+}
+
+fn identity_matrix(size: usize) -> Vec<f32> {
+    let mut matrix = vec![0.0; size * size];
+    for index in 0..size {
+        matrix[index * size + index] = 1.0;
+    }
+    matrix
+}
+
+fn update_inverse_hessian(hessian: &mut [f32], step: &[f32], delta: &[f32], curvature: f32) {
+    let size = step.len();
+    let mut hessian_delta = vec![0.0; size];
+    for row in 0..size {
+        hessian_delta[row] = hessian[row * size..(row + 1) * size]
+            .iter()
+            .zip(delta)
+            .map(|(value, delta)| value * delta)
+            .sum();
+    }
+    let inverse_curvature = curvature.recip();
+    let coefficient = (1.0 + dot(delta, &hessian_delta) * inverse_curvature) * inverse_curvature;
+    for row in 0..size {
+        for column in 0..size {
+            hessian[row * size + column] += coefficient * step[row] * step[column]
+                - inverse_curvature
+                    * (hessian_delta[row] * step[column] + step[row] * hessian_delta[column]);
+        }
+    }
+}
+
+fn matrix_direction(hessian: &[f32], gradient: &[f32]) -> Vec<f32> {
+    let size = gradient.len();
+    (0..size)
+        .map(|row| {
+            -hessian[row * size..(row + 1) * size]
+                .iter()
+                .zip(gradient)
+                .map(|(value, gradient)| value * gradient)
+                .sum::<f32>()
+        })
+        .collect()
 }
 
 fn lbfgs_direction(gradient: &[f32], history: &VecDeque<HistoryEntry>) -> Vec<f32> {
@@ -384,6 +512,20 @@ fn invalid(message: impl Into<String>) -> DistanceGeometryError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn mmff_parameters(atom_count: u32) -> MmffParameters {
+        MmffParameters {
+            variant: crate::MmffVariant::Mmff94,
+            atom_count,
+            bonds: Vec::new(),
+            angles: Vec::new(),
+            stretch_bends: Vec::new(),
+            out_of_planes: Vec::new(),
+            torsions: Vec::new(),
+            van_der_waals: Vec::new(),
+            electrostatics: Vec::new(),
+        }
+    }
 
     #[test]
     fn lbfgs_converges_into_distance_bounds_deterministically() {
@@ -529,5 +671,50 @@ mod tests {
             DistanceGeometryOptimizationStatus::ConvergedGradient
                 | DistanceGeometryOptimizationStatus::ConvergedStep
         ));
+    }
+
+    #[test]
+    fn mmff_uses_full_bfgs_for_small_molecules_and_reduces_energy() {
+        let mut parameters = mmff_parameters(2);
+        parameters.bonds.push(crate::MmffBondTerm {
+            atoms: [0, 1],
+            force_constant: 4.0,
+            equilibrium_distance: 1.5,
+        });
+        let positions = [[0.0; 4], [1.7, 0.0, 0.0, 0.0]];
+        let initial = evaluate_mmff(&parameters, &positions)
+            .expect("initial MMFF energy")
+            .energy
+            .total();
+        let optimized = optimize_mmff(
+            &positions,
+            &parameters,
+            DistanceGeometryOptimizationOptions::default(),
+        )
+        .expect("small-molecule MMFF optimization");
+        assert_eq!(optimized.optimizer, MmffOptimizerKind::Bfgs);
+        assert!(f64::from(optimized.energy) < initial);
+        assert!(matches!(
+            optimized.status,
+            DistanceGeometryOptimizationStatus::ConvergedGradient
+                | DistanceGeometryOptimizationStatus::ConvergedStep
+        ));
+    }
+
+    #[test]
+    fn mmff_uses_lbfgs_above_the_dense_hessian_threshold() {
+        let parameters = mmff_parameters(MMFF_BFGS_MAX_ATOMS + 1);
+        let positions = vec![[0.0; 4]; parameters.atom_count as usize];
+        let optimized = optimize_mmff(
+            &positions,
+            &parameters,
+            DistanceGeometryOptimizationOptions::default(),
+        )
+        .expect("large-molecule MMFF optimization");
+        assert_eq!(optimized.optimizer, MmffOptimizerKind::Lbfgs);
+        assert_eq!(
+            optimized.status,
+            DistanceGeometryOptimizationStatus::ConvergedGradient
+        );
     }
 }
