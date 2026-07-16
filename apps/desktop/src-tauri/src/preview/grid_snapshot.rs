@@ -41,6 +41,44 @@ pub(crate) struct FrozenGridSnapshot {
     pub(crate) root: PublishedSnapshotRoot,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct GridSnapshotPlan {
+    pub(crate) record_count: u64,
+    pub(crate) reservation_bytes: u64,
+}
+
+pub(crate) struct PreparedGridSnapshot<'a> {
+    manifest: MolecularSnapshotManifest,
+    reference: MolecularSnapshotRef,
+    staging: SnapshotStaging<'a>,
+    _reservation: SnapshotByteReservation<'a>,
+    reservation_bytes: u64,
+    payload_bytes: u64,
+}
+
+impl PreparedGridSnapshot<'_> {
+    pub(crate) fn reference(&self) -> &MolecularSnapshotRef {
+        &self.reference
+    }
+
+    pub(crate) fn reservation_bytes(&self) -> u64 {
+        self.reservation_bytes
+    }
+
+    pub(crate) fn payload_bytes(&self) -> u64 {
+        self.payload_bytes
+    }
+
+    pub(crate) fn publish(self) -> Result<FrozenGridSnapshot, String> {
+        let root = self.staging.publish()?;
+        Ok(FrozenGridSnapshot {
+            manifest: self.manifest,
+            reference: self.reference,
+            root,
+        })
+    }
+}
+
 pub(crate) fn freeze_grid_scope(
     database_path: &Path,
     scope: &GridScope,
@@ -49,6 +87,56 @@ pub(crate) fn freeze_grid_scope(
     attempt_id: Uuid,
     created_at_ms: u64,
 ) -> Result<FrozenGridSnapshot, String> {
+    prepare_grid_scope(
+        database_path,
+        scope,
+        publication_root,
+        snapshot_id,
+        attempt_id,
+        created_at_ms,
+    )?
+    .publish()
+}
+
+pub(crate) fn plan_grid_scope_snapshot(
+    database_path: &Path,
+    scope: &GridScope,
+) -> Result<GridSnapshotPlan, String> {
+    let normalized_scope = scope
+        .clone()
+        .normalized()
+        .map_err(|error| error.to_string())?;
+    let mut connection = open_grid_database_read_only(database_path)?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    require_complete_index(&transaction)?;
+    let source_identity = grid_identity::read_source_identity(&transaction)?;
+    require_persisted_source(&source_identity)?;
+    let scope_sql = resolve_scope_sql(&normalized_scope)?;
+    let record_count = count_scope_rows(&transaction, &scope_sql)?;
+    validate_scope_record_count(&scope_sql, record_count)?;
+    let select_sql = scope_select_sql(&scope_sql);
+    let mut statement = transaction
+        .prepare(&select_sql)
+        .map_err(|error| error.to_string())?;
+    let pack_bytes = measure_scope_pack(&mut statement, &scope_sql.params, record_count)?;
+    drop(statement);
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(GridSnapshotPlan {
+        record_count,
+        reservation_bytes: publication_reservation_bytes(pack_bytes)?,
+    })
+}
+
+pub(crate) fn prepare_grid_scope<'a>(
+    database_path: &Path,
+    scope: &GridScope,
+    publication_root: &'a SnapshotPublicationRoot,
+    snapshot_id: Uuid,
+    attempt_id: Uuid,
+    created_at_ms: u64,
+) -> Result<PreparedGridSnapshot<'a>, String> {
     if snapshot_id.is_nil() {
         return Err("Frozen Grid snapshot ID cannot be nil".into());
     }
@@ -65,41 +153,19 @@ pub(crate) fn freeze_grid_scope(
         .map_err(|error| error.to_string())?;
     require_complete_index(&transaction)?;
     let source_identity = grid_identity::read_source_identity(&transaction)?;
-    if source_identity.virtual_edit_generation != 0 {
-        return Err(format!(
-            "Grid source has {} frontend-only edit generation(s); save/reload before compute",
-            source_identity.virtual_edit_generation
-        ));
-    }
+    require_persisted_source(&source_identity)?;
 
     let scope_sql = resolve_scope_sql(&normalized_scope)?;
     let record_count = count_scope_rows(&transaction, &scope_sql)?;
-    if record_count == 0 || record_count > MAX_PACK_RECORDS {
-        return Err(format!(
-            "Frozen Grid scope requires 1..={MAX_PACK_RECORDS} records; resolved {record_count}"
-        ));
-    }
-    if let Some(expected) = scope_sql.expected_record_count {
-        if record_count != expected {
-            return Err(format!(
-                "Selected Grid scope resolved {record_count} of {expected} requested source records"
-            ));
-        }
-    }
+    validate_scope_record_count(&scope_sql, record_count)?;
 
-    let select_sql = format!(
-        "select source_index, name, smiles, molblock, idcode, idcoordinates,
-                props_json, molecule_content_sha256
-         from molecules
-         {where_sql}
-         order by source_index asc",
-        where_sql = scope_sql.where_sql()
-    );
+    let select_sql = scope_select_sql(&scope_sql);
     let mut statement = transaction
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?;
     let expected_pack_bytes = measure_scope_pack(&mut statement, &scope_sql.params, record_count)?;
-    let _reservation = reserve_publication_capacity(publication_root, expected_pack_bytes)?;
+    let reservation_bytes = publication_reservation_bytes(expected_pack_bytes)?;
+    let reservation = reserve_publication_capacity(publication_root, expected_pack_bytes)?;
 
     let staging = SnapshotStaging::create(publication_root, snapshot_id, attempt_id)?;
     let mut source_ids = HashedFile::new(staging.create_pack_file("source-record-ids.bin")?);
@@ -193,13 +259,19 @@ pub(crate) fn freeze_grid_scope(
     let manifest_descriptor = manifest_file.finish("snapshot/manifest.json", "application/json")?;
     let reference = MolecularSnapshotRef::from_manifest(&manifest, manifest_descriptor)
         .map_err(|error| error.to_string())?;
+    let payload_bytes = pack_budget
+        .used
+        .checked_add(reference.manifest.byte_length)
+        .ok_or_else(|| "Frozen Grid payload byte count overflowed".to_string())?;
 
     staging.sync_directories()?;
-    let root = staging.publish()?;
-    Ok(FrozenGridSnapshot {
+    Ok(PreparedGridSnapshot {
         manifest,
         reference,
-        root,
+        staging,
+        _reservation: reservation,
+        reservation_bytes,
+        payload_bytes,
     })
 }
 
@@ -217,6 +289,43 @@ impl ScopeSql {
             format!("where {}", self.predicate_sql)
         }
     }
+}
+
+fn validate_scope_record_count(scope: &ScopeSql, record_count: u64) -> Result<(), String> {
+    if record_count == 0 || record_count > MAX_PACK_RECORDS {
+        return Err(format!(
+            "Frozen Grid scope requires 1..={MAX_PACK_RECORDS} records; resolved {record_count}"
+        ));
+    }
+    if let Some(expected) = scope.expected_record_count {
+        if record_count != expected {
+            return Err(format!(
+                "Selected Grid scope resolved {record_count} of {expected} requested source records"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn require_persisted_source(identity: &grid_identity::GridSourceIdentity) -> Result<(), String> {
+    if identity.virtual_edit_generation != 0 {
+        return Err(format!(
+            "Grid source has {} frontend-only edit generation(s); save/reload before compute",
+            identity.virtual_edit_generation
+        ));
+    }
+    Ok(())
+}
+
+fn scope_select_sql(scope: &ScopeSql) -> String {
+    format!(
+        "select source_index, name, smiles, molblock, idcode, idcoordinates,
+                props_json, molecule_content_sha256
+         from molecules
+         {where_sql}
+         order by source_index asc",
+        where_sql = scope.where_sql()
+    )
 }
 
 fn resolve_scope_sql(scope: &GridScope) -> Result<ScopeSql, String> {
@@ -330,11 +439,15 @@ fn reserve_publication_capacity(
     publication_root: &SnapshotPublicationRoot,
     pack_bytes: u64,
 ) -> Result<SnapshotByteReservation<'_>, String> {
-    let publication_bytes = pack_bytes
+    let publication_bytes = publication_reservation_bytes(pack_bytes)?;
+    publication_root.reserve_bytes(publication_bytes, SNAPSHOT_DISK_HEADROOM_BYTES)
+}
+
+fn publication_reservation_bytes(pack_bytes: u64) -> Result<u64, String> {
+    pack_bytes
         .checked_add(MAX_MOLECULAR_SNAPSHOT_MANIFEST_BYTES as u64)
         .and_then(|bytes| bytes.checked_add(SNAPSHOT_FILESYSTEM_OVERHEAD_BYTES))
-        .ok_or_else(|| "Frozen Grid disk reservation overflowed".to_string())?;
-    publication_root.reserve_bytes(publication_bytes, SNAPSHOT_DISK_HEADROOM_BYTES)
+        .ok_or_else(|| "Frozen Grid disk reservation overflowed".to_string())
 }
 
 struct PreparedSnapshotRecord {

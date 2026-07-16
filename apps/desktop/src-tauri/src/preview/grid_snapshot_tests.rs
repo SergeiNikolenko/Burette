@@ -20,7 +20,9 @@ use super::{
     },
     grid_database::open_grid_database_read_only,
     grid_identity,
-    grid_snapshot::{freeze_grid_scope, FrozenGridSnapshot},
+    grid_snapshot::{
+        freeze_grid_scope, plan_grid_scope_snapshot, prepare_grid_scope, FrozenGridSnapshot,
+    },
     grid_store::{
         build_grid_store, replace_descriptor_values_in_database, GridDescriptorValueInput,
     },
@@ -197,6 +199,47 @@ fn freezes_selected_filtered_and_all_scopes_independently_of_grid_lifetime() {
         assert!(snapshot.open_file("snapshot/manifest.json").is_ok());
         assert!(snapshot.path().join("snapshot/manifest.json").is_file());
     }
+    let _ = fs::remove_dir_all(output_root);
+}
+
+#[test]
+fn prepared_snapshot_exposes_the_synced_boundary_before_atomic_publish() {
+    let runtime_root = temporary_root("grid-snapshot-prepared-runtime");
+    let output_root = temporary_root("grid-snapshot-prepared-output");
+    let database_path = build_fixture(&runtime_root);
+    let publication_root = publication_root(&output_root);
+    let scope = GridScope::All(AllGridScope {});
+    let snapshot_id = Uuid::new_v4();
+    let attempt_id = Uuid::new_v4();
+    let plan = plan_grid_scope_snapshot(&database_path, &scope).expect("plan snapshot");
+    let prepared = prepare_grid_scope(
+        &database_path,
+        &scope,
+        &publication_root,
+        snapshot_id,
+        attempt_id,
+        150,
+    )
+    .expect("prepare snapshot");
+    assert_eq!(prepared.reference().snapshot_id, snapshot_id);
+    assert_eq!(prepared.reservation_bytes(), plan.reservation_bytes);
+    assert!(prepared.payload_bytes() <= prepared.reservation_bytes());
+    assert_eq!(
+        publication_root.inventory().expect("staging inventory"),
+        vec![SnapshotRootEntry::Staging {
+            snapshot_id,
+            attempt_id,
+        }]
+    );
+    let reference = prepared.reference().clone();
+    let frozen = prepared.publish().expect("publish prepared snapshot");
+    assert_eq!(frozen.reference, reference);
+    assert_eq!(
+        publication_root.inventory().expect("published inventory"),
+        vec![SnapshotRootEntry::Published { snapshot_id }]
+    );
+    assert_snapshot_integrity(&frozen);
+    let _ = fs::remove_dir_all(runtime_root);
     let _ = fs::remove_dir_all(output_root);
 }
 
