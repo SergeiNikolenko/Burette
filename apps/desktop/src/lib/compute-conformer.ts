@@ -45,6 +45,20 @@ export type ConformerSubmissionStep = {
   readyForExecution: boolean;
 };
 
+export type ConformerDistanceExecutionStep = {
+  job: ConformerComputeJob;
+  conformerCount: number;
+  failedSourceRecords: number;
+  readyForStereo: boolean;
+};
+
+export function executeConformerDistance(job: ConformerComputeJob) {
+  return invoke<ConformerDistanceExecutionStep>("compute_execute_conformer_distance", {
+    jobId: job.jobId,
+    expectedRevision: job.revision,
+  });
+}
+
 export async function prepareConformerJob(
   request: Record<string, unknown>,
   onProgress: (step: ConformerSubmissionStep) => void,

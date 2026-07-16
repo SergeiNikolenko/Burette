@@ -5,7 +5,7 @@ use burrete_compute_protocol::{
     ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant, ExecutionPolicy,
     FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
     GridSourceReference, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
-    SchedulingPolicy, SimilarityCutoff, SimilaritySettings, MIN_COMPUTE_MEMORY_BYTES,
+    SchedulingPolicy, SimilarityCutoff, SimilaritySettings, StageState, MIN_COMPUTE_MEMORY_BYTES,
 };
 
 use crate::compute::similarity_search::SimilaritySearchRequest;
@@ -111,6 +111,18 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
     assert_eq!(batch.identities.len(), 2);
     assert!(batch.errors.iter().all(Option::is_none));
     drop(prepared);
+    let execution = coordinator
+        .execute_conformer_distance_v1("main", job.job_id, job.revision)
+        .expect("execute reference distance geometry");
+    assert_eq!(execution.conformer_count, 6);
+    assert_eq!(execution.failed_source_records, 0);
+    assert!(execution.ready_for_stereo);
+    assert_eq!(execution.job.stages[2].state, StageState::Succeeded);
+    assert_eq!(
+        execution.job.stages[2].effective_backend,
+        Backend::ReferenceCpu
+    );
+    assert_eq!(execution.job.stages[3].state, StageState::Queued);
     std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
     std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
 }
