@@ -31,6 +31,8 @@ pub enum ComputeJobSchemaVersion {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum WorkflowTemplateId {
+    #[serde(rename = "alignment.v1")]
+    AlignmentV1,
     #[serde(rename = "cluster.v1")]
     ClusterV1,
     #[serde(rename = "conformer.v1")]

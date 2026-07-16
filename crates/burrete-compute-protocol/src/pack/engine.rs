@@ -75,6 +75,11 @@ impl EnginePackManifest {
         validate_json_safe("engine pack creation time", self.created_at_ms)?;
         self.layout.validate()?;
         match self.workflow_template {
+            WorkflowTemplateId::AlignmentV1 => {
+                return Err(ProtocolError::Validation(
+                    "alignment.v1 does not use this EnginePack schema".into(),
+                ))
+            }
             WorkflowTemplateId::ClusterV1 => self.validate_cluster_fingerprint_layout()?,
             WorkflowTemplateId::ConformerV1 => self.validate_conformer_layout()?,
             WorkflowTemplateId::SimilaritySearchV1 => {

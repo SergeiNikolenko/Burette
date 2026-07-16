@@ -196,6 +196,15 @@ pub(crate) struct GridDescriptorSourceRow {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct GridAlignmentSourceRow {
+    pub(crate) row_id: i64,
+    pub(crate) source_index: u64,
+    pub(crate) molecule_content_sha256: String,
+    pub(crate) name: String,
+    pub(crate) molblock: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct GridDescriptorValueInput {
     pub(crate) id: String,
     pub(crate) label: String,
@@ -1172,6 +1181,50 @@ pub(crate) fn descriptor_source_rows_by_indices(
         });
     }
     Ok(source_rows)
+}
+
+pub(crate) fn alignment_source_rows_by_indices(
+    database_path: &Path,
+    indexes: &[usize],
+) -> Result<Vec<GridAlignmentSourceRow>, String> {
+    if indexes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let connection = open_grid_database(database_path)?;
+    initialize_schema(&connection)?;
+    let placeholders = std::iter::repeat_n("?", indexes.len())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "select id, source_index, molecule_content_sha256, name, molblock
+         from molecules
+         where source_index in ({placeholders})
+         order by source_index asc"
+    );
+    let params = indexes
+        .iter()
+        .map(|index| SqlValue::Integer(i64::try_from(*index).unwrap_or(i64::MAX)));
+    let mut statement = connection
+        .prepare(&sql)
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params_from_iter(params), |row| {
+            let source_index = row.get::<_, i64>(1)?;
+            Ok(GridAlignmentSourceRow {
+                row_id: row.get(0)?,
+                source_index: u64::try_from(source_index).unwrap_or(u64::MAX),
+                molecule_content_sha256: row.get(2)?,
+                name: row.get(3)?,
+                molblock: row.get(4)?,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    if rows.iter().any(|row| row.source_index == u64::MAX) {
+        return Err("Grid alignment source contains an invalid source index".into());
+    }
+    Ok(rows)
 }
 
 pub(crate) fn replace_descriptor_values_in_database(

@@ -201,6 +201,11 @@ impl ArtifactManifest {
 
     fn validate_stages(&self) -> Result<(), ProtocolError> {
         let expected_stage_ids = match self.workflow_template {
+            WorkflowTemplateId::AlignmentV1 => {
+                return validation_error(
+                    "alignment.v1 Grid analyses do not publish this artifact schema",
+                )
+            }
             WorkflowTemplateId::ClusterV1 => CLUSTER_STAGE_IDS.as_slice(),
             WorkflowTemplateId::SimilaritySearchV1 => {
                 return validation_error(
