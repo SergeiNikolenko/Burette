@@ -5,8 +5,8 @@
 
 use super::{
     rm1_nuclear_repulsion_energy, rm1_parameters, rm1_rotated_pair_integrals, rm1_sp_overlap,
-    solve_closed_shell_scf, SemiempiricalError, SemiempiricalMolecule, SemiempiricalScfOptions,
-    SemiempiricalScfResult,
+    solve_closed_shell_scf_with_eigensolver, symmetric_eigendecomposition, SemiempiricalError,
+    SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfResult,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -131,19 +131,38 @@ pub fn evaluate_rm1(
 pub fn evaluate_rm1_with_pair_contractor(
     molecule: &SemiempiricalMolecule,
     options: SemiempiricalScfOptions,
-    mut contract_pairs: impl FnMut(
+    contract_pairs: impl FnMut(
         usize,
         &[f64],
         &[Rm1FockPair],
     ) -> Result<Vec<f64>, SemiempiricalError>,
 ) -> Result<Rm1Evaluation, SemiempiricalError> {
+    evaluate_rm1_with_accelerators(
+        molecule,
+        options,
+        contract_pairs,
+        symmetric_eigendecomposition,
+    )
+}
+
+pub fn evaluate_rm1_with_accelerators(
+    molecule: &SemiempiricalMolecule,
+    options: SemiempiricalScfOptions,
+    mut contract_pairs: impl FnMut(
+        usize,
+        &[f64],
+        &[Rm1FockPair],
+    ) -> Result<Vec<f64>, SemiempiricalError>,
+    diagonalize: impl FnMut(&[f64], usize) -> Result<(Vec<f64>, Vec<f64>), SemiempiricalError>,
+) -> Result<Rm1Evaluation, SemiempiricalError> {
     let core = build_core_hamiltonian(molecule)?;
     let pairs = rm1_fock_pairs(molecule)?;
-    let scf = solve_closed_shell_scf(
+    let scf = solve_closed_shell_scf_with_eigensolver(
         molecule.orbital_count,
         molecule.electron_count,
         options,
         |density| build_fock(molecule, &core, density, &pairs, &mut contract_pairs),
+        diagonalize,
     )?;
     let final_fock = build_fock(
         molecule,
