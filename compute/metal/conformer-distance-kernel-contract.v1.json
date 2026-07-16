@@ -3,7 +3,13 @@
   "libraryId": "burrete.compute.conformer-distance.v1",
   "source": "conformer-distance.v1.metal",
   "deploymentTarget": "14.0",
-  "algorithm": "distance-bound objective and analytic float4 gradient",
+  "algorithm": "normalized upper-bound and rational lower-bound distance objective with analytic float4 gradient",
+  "objective": {
+    "upperViolation": "weight * (distanceSquared / upperSquared - 1)^2",
+    "lowerViolation": "weight * (2 * lowerSquared / (lowerSquared + distanceSquared) - 1)^2",
+    "insideBounds": "0",
+    "energyAccounting": "each endpoint stores half of the term energy; summing atomEnergies yields the objective"
+  },
   "parameterAbi": {
     "name": "ConformerDistanceBatchV1",
     "sizeBytes": 16,

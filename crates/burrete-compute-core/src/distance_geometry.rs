@@ -52,6 +52,7 @@ pub fn evaluate_distance_constraints(
             || !constraint.lower_squared.is_finite()
             || !constraint.upper_squared.is_finite()
             || constraint.lower_squared < 0.0
+            || constraint.upper_squared <= 0.0
             || constraint.upper_squared < constraint.lower_squared
             || !constraint.weight.is_finite()
             || constraint.weight < 0.0
@@ -76,20 +77,34 @@ pub fn evaluate_distance_constraints(
             let delta =
                 std::array::from_fn::<_, 4, _>(|dimension| left[dimension] - right[dimension]);
             let distance_squared = delta.iter().map(|value| value * value).sum::<f32>();
-            let violation = if distance_squared < constraint.lower_squared {
-                distance_squared - constraint.lower_squared
-            } else if distance_squared > constraint.upper_squared {
-                distance_squared - constraint.upper_squared
+            let (term_energy, derivative_scale) = if distance_squared > constraint.upper_squared {
+                let normalized = distance_squared / constraint.upper_squared - 1.0;
+                (
+                    constraint.weight * normalized * normalized,
+                    4.0 * constraint.weight * normalized / constraint.upper_squared,
+                )
+            } else if distance_squared < constraint.lower_squared {
+                let denominator = constraint.lower_squared + distance_squared;
+                let normalized = 2.0 * constraint.lower_squared / denominator - 1.0;
+                (
+                    constraint.weight * normalized * normalized,
+                    8.0
+                        * constraint.weight
+                        * constraint.lower_squared
+                        * (1.0 - 2.0 * constraint.lower_squared / denominator)
+                        / (denominator * denominator),
+                )
             } else {
-                0.0
+                (0.0, 0.0)
             };
-            if violation == 0.0 {
+            if term_energy == 0.0 {
                 continue;
             }
-            atom_energies[atom as usize] +=
-                0.5 * constraint.weight * violation * violation;
+            // Each term is gathered once by each endpoint. Splitting its
+            // energy evenly preserves an exact total without atomics.
+            atom_energies[atom as usize] += 0.5 * term_energy;
             let direction = if is_left { 1.0 } else { -1.0 };
-            let scale = 4.0 * constraint.weight * violation * direction;
+            let scale = derivative_scale * direction;
             for dimension in 0..4 {
                 gradients[atom as usize][dimension] += scale * delta[dimension];
             }
@@ -164,5 +179,37 @@ mod tests {
             }]
         )
         .is_err());
+    }
+
+    #[test]
+    fn normalized_upper_and_rational_lower_penalties_match_known_answers() {
+        let upper = evaluate_distance_constraints(
+            &[[0.0; 4], [2.0, 0.5, 0.0, 0.0]],
+            &[DistanceConstraint {
+                left_atom: 0,
+                right_atom: 1,
+                lower_squared: 1.0,
+                upper_squared: 4.0,
+                weight: 0.75,
+            }],
+        )
+        .expect("upper-bound penalty");
+        assert!((upper.total_energy() - 0.002_929_687_5).abs() < 1e-8);
+        assert!((upper.gradients[0][0] + 0.093_75).abs() < 1e-7);
+        assert!((upper.gradients[0][1] + 0.023_437_5).abs() < 1e-7);
+
+        let lower = evaluate_distance_constraints(
+            &[[0.0; 4], [0.5, 0.0, 0.0, 0.0]],
+            &[DistanceConstraint {
+                left_atom: 0,
+                right_atom: 1,
+                lower_squared: 1.0,
+                upper_squared: 4.0,
+                weight: 2.0,
+            }],
+        )
+        .expect("lower-bound penalty");
+        assert!((lower.total_energy() - 0.72).abs() < 1e-7);
+        assert!((lower.gradients[0][0] - 3.072).abs() < 1e-6);
     }
 }

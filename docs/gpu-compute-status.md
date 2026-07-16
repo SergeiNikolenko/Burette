@@ -86,10 +86,14 @@ turns each immutable 128-bit conformer seed into deterministic `float4` initial
 coordinates without schedule-dependent RNG state. Its independently written
 Rust oracle verifies bounded and prefix-stable output. Both a test-only source
 dispatch and the verified production metallib passed on the real Apple GPU with
-exact CPU parity. The next Metal primitive evaluates batched distance-bound
-energies and analytic `float4` gradients without atomics or a pair matrix. Its
-Rust oracle passes a central-difference gradient check, and the packaged Metal
-startup KAT matches the oracle within the fixed floating tolerance. Runtime v4
+exact CPU parity. The next Metal primitive evaluates batched normalized
+upper-bound and rational lower-bound distance penalties plus analytic `float4`
+gradients without atomics or a pair matrix. Its Rust oracle passes upper/lower
+known answers and a central-difference gradient check, and the packaged Metal
+startup KAT matches the oracle within the fixed floating tolerance. This
+formula replaced an early unnormalized squared-bound penalty after parity
+inspection found that it did not match the pinned mlxmolkit/nvMolKit
+mathematical contract. Runtime v4
 binds all three sources, reviewed contracts, AIR files, five entrypoints, the
 compiler, linker, SDK, and final metallib by hash. These primitives are not a
 claim of completed distance-geometry optimization or an end-to-end conformer
@@ -203,8 +207,8 @@ separate product increments.
 - An isolated offline-compiled v4 runtime generation passes the hash-bound
   package verifier and all four startup known-answer paths on `Apple M2 Pro`
   (`registryId=0x1000003c0`, unified memory). The tested
-  `native-compute.v4.metallib` SHA-256 is
-  `fd8e1eb6adc5338a539e1245a3a45e7ce3ba4a8af2d8a428a25d5513753fd33b`.
+  corrected-objective `native-compute.v4.metallib` SHA-256 is
+  `512c13db8daeff363494554c8d333815a0a6f882ed45278bd79ab8b964ded060`.
 - The earlier unique `com.local.BurreteV10.Dev.gpucompute9a97` cluster-only v1
   package builds and passes
   deep/strict ad-hoc signature verification at
@@ -236,7 +240,7 @@ separate product increments.
   generated Grid controls. Repository-wide TypeScript checking is currently
   blocked by pre-existing duplicate CodeMirror dependency identities in the
   text-file viewer; the errors do not involve the compute files changed here.
-- All 75 protocol tests and 27 compute-core tests pass after adding the fixed
+- All 75 protocol tests and 28 compute-core tests pass after adding the fixed
   conformer request/pack/plan contracts, identity-derived seed, adaptive batch
   coverage, deterministic coordinate oracle, DG objective/gradient oracle,
   finite-difference gradient validation, rebatching invariance, and memory
