@@ -2,9 +2,10 @@
 
 Status: `cluster.v1`, immutable representative export, and derived exact
 `Find similar` Grid analysis complete at source level; deterministic conformer
-variant/seed/adaptive-batching foundation and strict conformer EnginePack ABI
-implemented; deterministic CPU and fused Metal distance-geometry optimization
-implemented; current desktop packaging, production release, and scale proof pending
+variant/seed/adaptive batching, packaged native RDKit extraction, raw job
+submission, and adaptive CPU/Metal distance-geometry execution implemented;
+ETK/stereo completion, ResultPack publication, UI, production release, and
+scale proof pending
 
 Updated: 2026-07-16
 
@@ -66,28 +67,35 @@ stores molecular topology and all shared DG, chiral, torsion, improper, ETK
 distance, and stereo constraints once per molecule in 26 typed canonical
 arrays. Manifest validation rejects missing, extra, reordered, misshaped, or
 unit-incompatible arrays before execution. The native parameter-extraction
-source is now staged as a dedicated, version-locked RDKit WASM adapter. It
+source is packaged as a dedicated, version-locked RDKit WASM adapter. It
 accepts a canonical MOL block, selects the exact official preset for all eight
 variants, uses RDKit bounds smoothing, CrystalFF torsion/improper data and
 embedding chirality helpers, and emits a bounded little-endian binary ABI that
 maps directly to the shared EnginePack arrays. It is separate from renderer
-MinimalLib and has no Python runtime. The adapter is not yet packaged: its
-reproducible WASM build, artifact hashes, RDKit/upstream fixtures, coordinator
-wiring, DG/ETK kernels beyond the current distance optimizer, durable
-publication, and UI remain incomplete. The paired `conformer.result-pack.v1`
+MinimalLib and has no Python runtime. The worker-only ES module and WASM pair
+are now covered by the vendored asset lock, verified by the native engine
+catalog, and bound to the exact RDKit source revision and BCEX ABI. Broader
+RDKit/upstream fixtures, full DG/ETK energy kernels, durable publication, and UI
+remain incomplete. The paired `conformer.result-pack.v1`
 ABI is defined and
 strictly validates ragged coordinate offsets, Cartesian positions, molecule and
 conformer identity, embedding status/objective/attempt counts, and the exact
 128-bit seed words used for every generated structure.
 
-The extractor ABI now has matching zero-copy TypeScript validation and a
-bounded Rust decoder. The Rust path validates every header, count, alignment,
+The extractor ABI now has a bounded binary Web Worker and Rust decoder. The
+worker verifies the exported RDKit revision and BCEX version, emits raw BCER
+envelopes through transferable buffers, and never serializes chemistry arrays
+as JSON. The Rust path validates every header, count, alignment,
 index, numeric domain, and parallel-array length before assembly. A canonical
 EnginePack builder then globalizes molecule-local atom indices, preserves
 invalid source records with empty offset spans, constructs all seven ragged
 offset arrays, and rejects variant, frozen-record-count, `u32` index-range, and
-payload-budget mismatches before publication. Raw binary session transport,
-artifact writing, and packaged extractor activation are still pending.
+payload-budget mismatches before publication. Chunk application is
+transactional, so a rejected or retried chunk cannot duplicate earlier records.
+The coordinator freezes the real Grid source, streams bounded MOL-block or
+SMILES chunks, accepts raw BCER results, derives exact admission from the
+assembled arrays, and creates the durable conformer job. Artifact writing is
+still pending.
 
 The canonical EnginePack distance payload now also has a validated in-memory
 core representation. It rejects malformed or non-monotonic offsets,
@@ -143,6 +151,18 @@ three-way transient history peak.
 This proves the iterative DG distance-bound optimizer, not complete DG/ETK
 embedding or an end-to-end conformer capability.
 
+The durable executor now consumes the admitted EnginePack without an `N x N`
+allocation, rebuilds the exact adaptive `molecule x conformer` schedule, derives
+each seed from immutable job/molecule/variant/conformer/retry identity, and
+executes initialization plus distance L-BFGS on native Metal. Non-converged
+conformers are retried up to the request limit with a new deterministic retry
+seed. It records ragged offsets, positions, energy, attempt count, status, final
+seed, host time, and actual command-buffer GPU time. The same executor has a
+deterministic CPU oracle. `gpuPreferred` currently admits Metal for distance
+geometry and records an explicit CPU fallback for stereo; `gpuRequired` is
+rejected until the separate Metal stereo kernel is packaged, preventing a false
+all-GPU claim.
+
 The durable `JobSnapshot` request is no longer cluster-only. An untagged typed
 union accepts normalized `cluster.v1` and `conformer.v1` requests while keeping
 the existing on-disk JSON shape unchanged. Snapshot validation dispatches to
@@ -159,8 +179,10 @@ so `gpuRequired` fails if either verified Metal capability is absent and
 `gpuPreferred` persists a stage-specific CPU fallback reason. The queued
 factory emits canonical request/plan hashes, a revision-one durable conformer
 snapshot, and evidence-empty queued stages; the snapshot repository has the
-matching capability-rooted conformer source binding. Chemistry extraction,
-coordinator execution, recovery execution, and publication remain in progress.
+matching capability-rooted conformer source binding. Chemistry extraction and
+the first distance-geometry execution stage are wired; ETK/stereo execution,
+restart recovery for in-flight prepared arrays, and publication remain in
+progress.
 
 ## Product Truth By Surface
 
@@ -168,7 +190,7 @@ coordinator execution, recovery execution, and publication remain in progress.
 | --- | --- |
 | macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
-| Native Metal backend | Real graph, exact query, conformer initialization, DG distance objective/gradient, and fused DG L-BFGS command buffers pass startup parity against CPU references |
+| Native Metal backend | Real graph, exact query, conformer initialization, DG distance objective/gradient, fused DG L-BFGS, and the adaptive conformer executor pass on Apple M2 Pro; ETK/stereo remain pending |
 | Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v5 runtime generation passes package verification and real-GPU startup, while a refreshed v5 desktop package remains pending |
 | Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
@@ -234,6 +256,8 @@ separate product increments.
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
 | Conformer preflight admission and queued snapshot | `apps/desktop/src-tauri/src/compute/conformer_plan.rs`, `job_factory.rs` |
 | Conformer extractor validation and canonical array assembly | `apps/desktop/src/lib/conformer-extractor.ts`, `crates/burrete-compute-core/src/conformer_extract.rs`, `conformer_pack.rs` |
+| Packaged conformer extraction and raw submission | `compute/rdkit-conformer/`, `apps/desktop/src/workers/conformer-extract.worker.ts`, `apps/desktop/src/lib/compute-conformer.ts`, `apps/desktop/src-tauri/src/compute/conformer_session.rs` |
+| Adaptive CPU/Metal conformer distance execution | `apps/desktop/src-tauri/src/compute/conformer_executor.rs`, `coordinator.rs` |
 | Artifact materialization and restart reconciliation | `apps/desktop/src-tauri/src/compute/artifact_publisher.rs` |
 | Immutable representative export and provenance | `apps/desktop/src-tauri/src/compute/representative_export.rs` |
 | Verified fingerprint reuse and exact similarity ranking | `apps/desktop/src-tauri/src/compute/similarity_artifact.rs`, `similarity_search.rs` |
@@ -297,6 +321,19 @@ separate product increments.
   admission for both numeric stages, honest mixed-backend fallback, bounded
   preflight/result memory rejection, canonical queued snapshot construction,
   and the existing process-boundary conformer safeguards.
+- The pinned RDKit extractor was built with Emscripten 3.1.74 from exact RDKit
+  commit `276b5a662302c6a548ac4f1363c066f3258e3a20`. Its exported revision and
+  BCEX ABI were executed for all eight variants. The packaged JS SHA-256 is
+  `d359d9a41a496d9cb28ff72414a12f90a2b976a31714daba4a95148294413f55`; the
+  WASM SHA-256 is
+  `69d58c733fa9d409818cbdcc623c0a45db320404262982fc70830056c448c509`.
+- The raw Grid submission integration test continues through deterministic
+  reference distance execution, covering six conformers and durable stage
+  transitions.
+- The adaptive executor passed a manual real-GPU smoke on `Apple M2 Pro`
+  (`registryId=0x1000003c0`, unified memory): two conformers completed through
+  the verified v5 runtime with `gpuTimeMs=4` and metallib SHA-256
+  `52e15c9544f0b33cbfd62379ac96d88f75983b1187cc570fd773aeff93c527aa`.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
