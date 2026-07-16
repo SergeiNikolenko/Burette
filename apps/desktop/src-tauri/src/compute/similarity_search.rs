@@ -120,13 +120,13 @@ pub(crate) fn execute_similarity_search(
     if created_at_ms == 0 {
         return Err(validation("similarity search time must be positive"));
     }
+    let source_request = job.request.as_cluster()?;
     let memory_limit = match backend {
-        SimilaritySearchBackend::NativeMetal(runtime) => job
-            .request
+        SimilaritySearchBackend::NativeMetal(runtime) => source_request
             .limits
             .max_memory_bytes
             .min(runtime.limits().max_memory_bytes),
-        SimilaritySearchBackend::ReferenceCpu { .. } => job.request.limits.max_memory_bytes,
+        SimilaritySearchBackend::ReferenceCpu { .. } => source_request.limits.max_memory_bytes,
     };
     let gpu_backend = matches!(backend, SimilaritySearchBackend::NativeMetal(_));
     let library = load_similarity_library(
@@ -229,7 +229,7 @@ pub(crate) fn execute_similarity_search(
         query_source_index: request.query_source_index,
         top_k: request.top_k,
         minimum_similarity: request.minimum_similarity,
-        requested_backend: job.request.execution_policy.backend_policy,
+        requested_backend: source_request.execution_policy.backend_policy,
         effective_backend,
     };
     let normalized_settings_sha256 = sha256_json(&settings)?;
@@ -243,7 +243,7 @@ pub(crate) fn execute_similarity_search(
         "querySourceIndex": request.query_source_index,
         "topK": request.top_k,
         "minimumSimilarity": request.minimum_similarity,
-        "requestedBackend": job.request.execution_policy.backend_policy,
+        "requestedBackend": source_request.execution_policy.backend_policy,
         "effectiveBackend": effective_backend,
         "fallbackReason": fallback_reason.clone(),
         "gpuTimeMs": gpu_time_ms,
@@ -281,7 +281,7 @@ pub(crate) fn execute_similarity_search(
         snapshot_id: job.frozen_source.snapshot_id,
         snapshot_sha256: job.frozen_source.snapshot_sha256.clone(),
         normalized_settings_sha256,
-        representative_policy: job.request.parameters.representative_policy,
+        representative_policy: source_request.parameters.representative_policy,
         provenance,
         created_at_ms,
         artifact_id: artifact.artifact_id,

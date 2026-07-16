@@ -1,7 +1,9 @@
 use super::*;
 use crate::{
-    ClusterV1Parameters, ComputeJobSchemaVersion, ExecutionPartition, ExecutionPlanVersion,
-    ExecutionPolicy, FallbackReasonCode, FingerprintAlgorithm, FingerprintInputOrder,
+    ClusterV1Parameters, ClusterV1SubmitRequest, ComputeJobSchemaVersion, ComputeSubmitRequest,
+    ConformerResourceLimits, ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant,
+    ExecutionPartition, ExecutionPlanVersion, ExecutionPolicy, FallbackReasonCode,
+    FingerprintAlgorithm, FingerprintInputOrder,
     FingerprintSettings, FrozenSourceIdentity, GridSourceReference, MolecularSnapshotVersion,
     PackedFileDescriptor, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
     ResultPackVersion, SchedulingPolicy, SelectedGridScope, SimilarityCutoff, SimilaritySettings,
@@ -17,6 +19,55 @@ fn validates_a_fully_queued_snapshot() {
     let mut snapshot = queued_snapshot(BackendPolicy::ReferenceCpu);
     snapshot.pinned_runtime.metallib_sha256 = None;
     assert_eq!(snapshot.validate(), Ok(()));
+}
+
+#[test]
+fn conformer_snapshot_round_trips_without_a_request_wrapper() {
+    let request: ComputeSubmitRequest = ConformerV1SubmitRequest {
+        schema_version: ComputeJobSchemaVersion::V1,
+        workflow_template: WorkflowTemplateId::ConformerV1,
+        source: GridSourceReference {
+            document_id: "grid-document".into(),
+            scope: GridScope::Selected(SelectedGridScope {
+                source_indexes: vec![0, 1],
+            }),
+        },
+        parameters: ConformerV1Parameters {
+            variant: ConformerVariant::EtkdgV3,
+            conformers_per_molecule: 8,
+            max_attempts_per_conformer: 4,
+        },
+        execution_policy: ExecutionPolicy {
+            backend_policy: BackendPolicy::GpuRequired,
+            scheduling_policy: SchedulingPolicy::Interactive,
+        },
+        limits: ConformerResourceLimits {
+            max_memory_bytes: 16 * 1024 * 1024,
+            max_dispatch_ms: 100,
+            max_conformers_per_batch: 128,
+        },
+    }
+    .into();
+    let plan = conformer_plan();
+    let mut snapshot = queued_snapshot(BackendPolicy::GpuRequired);
+    snapshot.workflow_template = WorkflowTemplateId::ConformerV1;
+    snapshot.normalized_request_sha256 = request.canonical_sha256().expect("request hash");
+    snapshot.request = request;
+    snapshot.accepted_plan_sha256 = plan.canonical_sha256().expect("plan hash");
+    snapshot.stages = plan
+        .stages
+        .iter()
+        .enumerate()
+        .map(|(ordinal, stage)| queued_stage(stage, ordinal))
+        .collect();
+    snapshot.plan = plan;
+    assert_eq!(snapshot.validate(), Ok(()));
+
+    let value = serde_json::to_value(&snapshot).expect("serialize conformer snapshot");
+    assert_eq!(value["request"]["workflowTemplate"], "conformer.v1");
+    assert!(value["request"].get("ConformerV1").is_none());
+    let decoded: JobSnapshot = serde_json::from_value(value).expect("decode conformer snapshot");
+    assert_eq!(decoded, snapshot);
 }
 
 #[test]
@@ -490,7 +541,7 @@ fn boundary_snapshot(
     snapshot
 }
 
-fn request(policy: BackendPolicy) -> ClusterV1SubmitRequest {
+fn request(policy: BackendPolicy) -> ComputeSubmitRequest {
     ClusterV1SubmitRequest {
         schema_version: ComputeJobSchemaVersion::V1,
         workflow_template: WorkflowTemplateId::ClusterV1,
@@ -529,6 +580,7 @@ fn request(policy: BackendPolicy) -> ClusterV1SubmitRequest {
             max_dispatch_ms: 100,
         },
     }
+    .into()
 }
 
 fn plan(policy: BackendPolicy) -> ExecutionPlan {
@@ -558,6 +610,54 @@ fn plan(policy: BackendPolicy) -> ExecutionPlan {
                 StageKind::Validation,
                 Backend::ReferenceCpu,
             ),
+            planned_stage(
+                "publishResults",
+                StageKind::ArtifactIo,
+                Backend::Coordinator,
+            ),
+        ],
+    }
+}
+
+fn conformer_plan() -> ExecutionPlan {
+    let mut constraints = planned_stage(
+        "conformerConstraints",
+        StageKind::ChemistrySemantics,
+        Backend::Rdkit,
+    );
+    constraints.precision = Precision::Float64;
+    let mut distance = planned_stage(
+        "distanceGeometry",
+        StageKind::NumericCompute,
+        Backend::NativeMetal,
+    );
+    distance.precision = Precision::Float32;
+    let mut stereo = planned_stage(
+        "stereoValidation",
+        StageKind::NumericCompute,
+        Backend::NativeMetal,
+    );
+    stereo.precision = Precision::Float32;
+    let mut validation = planned_stage(
+        "validateResults",
+        StageKind::Validation,
+        Backend::ReferenceCpu,
+    );
+    validation.precision = Precision::Float64;
+    ExecutionPlan {
+        workflow_template: WorkflowTemplateId::ConformerV1,
+        plan_version: ExecutionPlanVersion::ConformerV1,
+        backend_policy: BackendPolicy::GpuRequired,
+        stages: vec![
+            planned_stage(
+                "freezeScope",
+                StageKind::Materialize,
+                Backend::Coordinator,
+            ),
+            constraints,
+            distance,
+            stereo,
+            validation,
             planned_stage(
                 "publishResults",
                 StageKind::ArtifactIo,

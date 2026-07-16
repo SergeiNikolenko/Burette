@@ -5,10 +5,9 @@ use uuid::Uuid;
 
 use crate::{
     validation::{validate_bounded_text, validate_json_safe_u64, validate_lower_sha256},
-    Backend, BackendPolicy, ClusterV1SubmitRequest, ComputeErrorCode, ComputeFailure,
-    EngineIdentity, ExecutionPlan, FallbackDecision, GridScope, JobState, MolecularSnapshotRef,
-    OwnerSurface, Precision, ProtocolError, ResultPackRef, RuntimeIdentity, StageKind,
-    WorkflowTemplateId,
+    Backend, BackendPolicy, ComputeErrorCode, ComputeFailure, ComputeSubmitRequest, EngineIdentity,
+    ExecutionPlan, FallbackDecision, GridScope, JobState, MolecularSnapshotRef, OwnerSurface,
+    Precision, ProtocolError, ResultPackRef, RuntimeIdentity, StageKind, WorkflowTemplateId,
 };
 
 const MAX_STAGES: usize = 32;
@@ -61,7 +60,7 @@ pub struct JobSnapshot {
     pub owner_surface: OwnerSurface,
     pub workflow_template: WorkflowTemplateId,
     pub state: JobState,
-    pub request: ClusterV1SubmitRequest,
+    pub request: ComputeSubmitRequest,
     pub normalized_request_sha256: String,
     pub frozen_source: MolecularSnapshotRef,
     pub progress: JobProgress,
@@ -98,9 +97,9 @@ impl JobSnapshot {
         if self.request.clone().normalized()? != self.request {
             return validation_error("job request is not in canonical hash form");
         }
-        if self.workflow_template != self.request.workflow_template
+        if self.workflow_template != self.request.workflow_template()
             || self.workflow_template != self.plan.workflow_template
-            || self.request.execution_policy.backend_policy != self.plan.backend_policy
+            || self.request.backend_policy() != self.plan.backend_policy
         {
             return validation_error("job request differs from its accepted workflow or policy");
         }
@@ -118,7 +117,7 @@ impl JobSnapshot {
         self.frozen_source.validate()?;
         let record_count = self.frozen_source.frozen_source.record_count;
         self.plan
-            .validate_against_request(&self.request, record_count)?;
+            .validate_against_compute_request(&self.request, record_count)?;
         if self
             .plan
             .stages
@@ -128,7 +127,7 @@ impl JobSnapshot {
         {
             return validation_error("native Metal stages require a pinned Metal library");
         }
-        if let GridScope::Selected(selected) = &self.request.source.scope {
+        if let GridScope::Selected(selected) = &self.request.source().scope {
             if selected.source_indexes.len() as u64 != record_count {
                 return validation_error("selected request count differs from the frozen source");
             }
