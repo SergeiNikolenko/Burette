@@ -17,6 +17,7 @@ mod distance_optimizer;
 mod etk_geometry;
 mod mmff;
 mod mmff_extract;
+mod semiempirical;
 
 pub use conformer_engine::{
     ConformerDistanceEngine, ConformerDistanceMolecule, ConformerEngineError,
@@ -61,6 +62,10 @@ pub use mmff::{
 };
 pub use mmff_extract::{
     decode_native_mmff_parameters, MmffExtractError, NativeMmffParameters,
+};
+pub use semiempirical::{
+    solve_closed_shell_scf, SemiempiricalError, SemiempiricalMethod, SemiempiricalScfOptions,
+    SemiempiricalScfResult, SemiempiricalScfStatus,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};
