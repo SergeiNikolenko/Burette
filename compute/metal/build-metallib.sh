@@ -13,8 +13,14 @@ if [[ $# -ne 1 || -z "$1" ]]; then
 fi
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
-source_file="$script_dir/tanimoto.v2.metal"
-contract_file="$script_dir/tanimoto-kernel-contract.v2.json"
+source_files=(
+  "$script_dir/tanimoto.v2.metal"
+  "$script_dir/conformer-initialize.v1.metal"
+)
+contract_files=(
+  "$script_dir/tanimoto-kernel-contract.v2.json"
+  "$script_dir/conformer-initialize-kernel-contract.v1.json"
+)
 metadata_writer="$script_dir/write-build-metadata.mjs"
 mkdir -p -- "$1"
 output_dir="$(CDPATH= cd -- "$1" && pwd -P)"
@@ -51,38 +57,50 @@ cleanup() {
   [[ "$keep_stage" -eq 1 ]] || rm -rf "$stage_dir"
 }
 trap cleanup EXIT
-air_file="$stage_dir/tanimoto.v2.air"
-library_file="$stage_dir/tanimoto.v2.metallib"
-metadata_file="$stage_dir/build-metadata.v1.json"
+air_files=(
+  "$stage_dir/tanimoto.v2.air"
+  "$stage_dir/conformer-initialize.v1.air"
+)
+library_file="$stage_dir/native-compute.v3.metallib"
+metadata_file="$stage_dir/build-metadata.v2.json"
 
 sha256() {
   /usr/bin/shasum -a 256 "$1" | /usr/bin/awk '{print $1}'
 }
 
-source_sha256="$(sha256 "$source_file")"
-contract_sha256="$(sha256 "$contract_file")"
+source_sha256_0="$(sha256 "${source_files[0]}")"
+source_sha256_1="$(sha256 "${source_files[1]}")"
+contract_sha256_0="$(sha256 "${contract_files[0]}")"
+contract_sha256_1="$(sha256 "${contract_files[1]}")"
 metal_tool_sha256="$(sha256 "$metal_tool")"
 metallib_tool_sha256="$(sha256 "$metallib_tool")"
 
-"$metal_tool" \
-  -std=metal3.1 \
-  -mmacosx-version-min=14.0 \
-  -c "$source_file" \
-  -o "$air_file"
-"$metallib_tool" "$air_file" -o "$library_file"
+for index in 0 1; do
+  "$metal_tool" \
+    -std=metal3.1 \
+    -mmacosx-version-min=14.0 \
+    -c "${source_files[$index]}" \
+    -o "${air_files[$index]}"
+done
+"$metallib_tool" "${air_files[@]}" -o "$library_file"
 
-[[ "$(sha256 "$source_file")" == "$source_sha256" ]] ||
+[[ "$(sha256 "${source_files[0]}")" == "$source_sha256_0" &&
+   "$(sha256 "${source_files[1]}")" == "$source_sha256_1" ]] ||
   fail 'Metal source changed during compilation'
-[[ "$(sha256 "$contract_file")" == "$contract_sha256" ]] ||
+[[ "$(sha256 "${contract_files[0]}")" == "$contract_sha256_0" &&
+   "$(sha256 "${contract_files[1]}")" == "$contract_sha256_1" ]] ||
   fail 'Metal kernel contract changed during compilation'
 [[ "$(sha256 "$metal_tool")" == "$metal_tool_sha256" ]] ||
   fail 'Metal compiler changed during compilation'
 [[ "$(sha256 "$metallib_tool")" == "$metallib_tool_sha256" ]] ||
   fail 'metallib linker changed during compilation'
 
-SOURCE_SHA256="$source_sha256" \
-CONTRACT_SHA256="$contract_sha256" \
-AIR_SHA256="$(sha256 "$air_file")" \
+TANIMOTO_SOURCE_SHA256="$source_sha256_0" \
+CONFORMER_SOURCE_SHA256="$source_sha256_1" \
+TANIMOTO_CONTRACT_SHA256="$contract_sha256_0" \
+CONFORMER_CONTRACT_SHA256="$contract_sha256_1" \
+TANIMOTO_AIR_SHA256="$(sha256 "${air_files[0]}")" \
+CONFORMER_AIR_SHA256="$(sha256 "${air_files[1]}")" \
 METALLIB_SHA256="$(sha256 "$library_file")" \
 METAL_TOOL_PATH="$metal_tool" \
 METAL_TOOL_SHA256="$metal_tool_sha256" \
@@ -105,4 +123,4 @@ printf '{"schemaVersion":"burrete.compute.metal-generation-pointer.v1","generati
 keep_stage=1
 /bin/mv -f "$pointer_stage" "$output_dir/current.json"
 pointer_stage=''
-printf 'Built %s/%s\n' "$stage_dir" "tanimoto.v2.metallib"
+printf 'Built %s/%s\n' "$stage_dir" "native-compute.v3.metallib"

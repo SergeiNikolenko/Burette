@@ -8,9 +8,12 @@ if (!outputPath) {
 }
 
 const requiredEnvironment = [
-  "SOURCE_SHA256",
-  "CONTRACT_SHA256",
-  "AIR_SHA256",
+  "TANIMOTO_SOURCE_SHA256",
+  "CONFORMER_SOURCE_SHA256",
+  "TANIMOTO_CONTRACT_SHA256",
+  "CONFORMER_CONTRACT_SHA256",
+  "TANIMOTO_AIR_SHA256",
+  "CONFORMER_AIR_SHA256",
   "METALLIB_SHA256",
   "METAL_TOOL_PATH",
   "METAL_TOOL_SHA256",
@@ -34,20 +37,23 @@ for (const name of requiredEnvironment.filter((name) => name.endsWith("_SHA256")
 
 const normalizedVersion = process.env.METAL_TOOL_VERSION.trim().replace(/\s+/g, " ");
 const metadata = {
-  schemaVersion: "burrete.compute.metal-build-metadata.v1",
-  runtimeVersion: "burrete-native-metal-v2",
-  libraryId: "burrete.compute.tanimoto.v2",
-  source: {
-    path: "compute/metal/tanimoto.v2.metal",
-    sha256: process.env.SOURCE_SHA256,
-  },
-  contract: {
-    path: "compute/metal/tanimoto-kernel-contract.v2.json",
-    sha256: process.env.CONTRACT_SHA256,
-  },
-  air: { path: "tanimoto.v2.air", sha256: process.env.AIR_SHA256 },
+  schemaVersion: "burrete.compute.metal-build-metadata.v2",
+  runtimeVersion: "burrete-native-metal-v3",
+  libraryId: "burrete.compute.native.v3",
+  sources: [
+    { path: "compute/metal/tanimoto.v2.metal", sha256: process.env.TANIMOTO_SOURCE_SHA256 },
+    { path: "compute/metal/conformer-initialize.v1.metal", sha256: process.env.CONFORMER_SOURCE_SHA256 },
+  ],
+  contracts: [
+    { path: "compute/metal/tanimoto-kernel-contract.v2.json", sha256: process.env.TANIMOTO_CONTRACT_SHA256 },
+    { path: "compute/metal/conformer-initialize-kernel-contract.v1.json", sha256: process.env.CONFORMER_CONTRACT_SHA256 },
+  ],
+  air: [
+    { path: "tanimoto.v2.air", sha256: process.env.TANIMOTO_AIR_SHA256 },
+    { path: "conformer-initialize.v1.air", sha256: process.env.CONFORMER_AIR_SHA256 },
+  ],
   metallib: {
-    path: "tanimoto.v2.metallib",
+    path: "native-compute.v3.metallib",
     sha256: process.env.METALLIB_SHA256,
   },
   compiler: {
@@ -71,6 +77,7 @@ const metadata = {
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
     "burrete_tanimoto_query_counts_v1",
+    "burrete_conformer_initialize_v1",
   ],
 };
 
