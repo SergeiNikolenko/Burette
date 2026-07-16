@@ -40,8 +40,9 @@ pub use distance_geometry::{
     DistanceGeometryError,
 };
 pub use distance_optimizer::{
-    optimize_distance_geometry, optimize_etk_geometry, DistanceGeometryOptimization,
-    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus,
+    optimize_distance_geometry, optimize_etk_geometry, optimize_mmff,
+    DistanceGeometryOptimization, DistanceGeometryOptimizationOptions,
+    DistanceGeometryOptimizationStatus, MmffOptimization, MmffOptimizerKind,
 };
 pub use etk_geometry::{
     evaluate_etk_geometry, validate_etk_geometry_constraints, EtkDistanceConstraint,

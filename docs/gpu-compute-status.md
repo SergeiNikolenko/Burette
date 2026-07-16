@@ -158,6 +158,12 @@ MMFF94s parameter boundary with partial charges and seven fixed-width term
 groups. Its C++ serializer and strict Rust decoder are tested; rebuilding and
 vendoring the augmented WASM artifact is the next packaging gate, so the
 installed extractor must not yet claim this operation.
+A deterministic optimization oracle now selects full BFGS through 32 atoms and
+bounded L-BFGS above that threshold. Both paths share Armijo line search,
+gradient/step convergence, and distinct line-search/max-iteration outcomes.
+The full BFGS update stores the dense inverse Hessian only inside the bounded
+small-molecule branch; the large-molecule branch remains linear in atom count.
+This is the CPU reference contract for the pending fused Metal optimizer.
 The runtime now composes seed-based initialization and optimization into one
 verified per-molecule ensemble operation, keeping both numerical stages on
 Metal while sharing constraints across all requested conformers. Its admission
