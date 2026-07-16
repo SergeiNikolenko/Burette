@@ -29,6 +29,8 @@ pub enum ArtifactManifestSchemaVersion {
 pub enum ResultPackVersion {
     #[serde(rename = "cluster.result-pack.v1")]
     ClusterV1,
+    #[serde(rename = "conformer.result-pack.v1")]
+    ConformerV1,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
