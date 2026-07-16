@@ -126,6 +126,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             compute::commands::compute_capabilities,
             compute::commands::compute_submit_job,
+            compute::commands::compute_begin_conformer_submission,
+            compute::commands::compute_submit_conformer_chunk,
             compute::commands::compute_begin_cluster_execution,
             compute::commands::compute_submit_fingerprint_chunk,
             compute::commands::compute_execute_cluster,

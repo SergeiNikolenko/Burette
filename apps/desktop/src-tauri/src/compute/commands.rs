@@ -1,6 +1,6 @@
 use burrete_compute_protocol::{
-    ArtifactManifest, ClusterV1SubmitRequest, ComputeCapabilityReport, JobRevisionEvent,
-    JobSnapshot, MAX_JSON_SAFE_INTEGER,
+    ArtifactManifest, ClusterV1SubmitRequest, ComputeCapabilityReport, ConformerV1SubmitRequest,
+    JobRevisionEvent, JobSnapshot, MAX_JSON_SAFE_INTEGER,
 };
 use serde::Serialize;
 use tauri::{Runtime, State, WebviewWindow};
@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::compute::{
     artifact_publisher::ClusterPublicationStep,
     cluster_executor::ClusterExecutionStep,
+    conformer_session::ConformerSubmissionStep,
     coordinator::ComputeCoordinator,
     error::{ComputeCoordinatorError, ComputeResult},
     fingerprint_session::{FingerprintChunkResult, FingerprintExecutionStep},
@@ -74,6 +75,51 @@ pub(crate) async fn compute_submit_job<R: Runtime>(
         })?;
     let coordinator = coordinator.inner().clone();
     run_blocking(move || coordinator.submit_cluster_v1(&owner, &request, source_lease)).await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_begin_conformer_submission<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    registry: State<'_, GridRuntimeRegistry>,
+    request: ConformerV1SubmitRequest,
+) -> Result<ConformerSubmissionStep, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let request = request
+        .normalized()
+        .map_err(ComputeCoordinatorError::from)
+        .map_err(ComputeCommandError::from)?;
+    let namespaced_document_id = runtime_document_id(&owner, &request.source.document_id);
+    let source_lease = registry
+        .acquire_snapshot_lease(&namespaced_document_id)
+        .map_err(|error| {
+            ComputeCommandError::from(ComputeCoordinatorError::SourceSnapshotUnavailable(format!(
+                "The conformer Grid source cannot be frozen: {error}"
+            )))
+        })?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || coordinator.begin_conformer_v1_submission(&owner, &request, source_lease))
+        .await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_submit_conformer_chunk<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<ConformerSubmissionStep, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let envelope = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => bytes.clone(),
+        _ => {
+            return Err(ComputeCoordinatorError::Validation(
+                "conformer extraction results require a raw binary IPC body".into(),
+            )
+            .into())
+        }
+    };
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || coordinator.submit_conformer_extraction_chunk(&owner, &envelope)).await
 }
 
 #[tauri::command]

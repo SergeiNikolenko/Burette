@@ -8,7 +8,7 @@ use burrete_compute_core::{
     ConformerEnginePackArrays, ConformerEnginePackBuilder, ExtractedConformerParameters,
 };
 use burrete_compute_protocol::{
-    ConformerV1SubmitRequest, ConformerVariant, MolecularSnapshotRecordV1,
+    ConformerV1SubmitRequest, ConformerVariant, JobSnapshot, MolecularSnapshotRecordV1,
     OrderedRecordMoleculeIdentityHasher, PackedFileDescriptor, MAX_PACK_BYTES,
     MOLECULAR_RECORDS_FILE_PATH,
 };
@@ -56,6 +56,15 @@ pub(crate) struct ConformerInputChunk {
     pub(crate) variant: ConformerVariant,
     pub(crate) maximum_result_bytes: usize,
     pub(crate) records: Vec<ConformerInputRecord>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConformerSubmissionStep {
+    pub(crate) session_id: Uuid,
+    pub(crate) conformer_chunk: Option<ConformerInputChunk>,
+    pub(crate) job: Option<JobSnapshot>,
+    pub(crate) ready_for_execution: bool,
 }
 
 #[derive(Debug)]
