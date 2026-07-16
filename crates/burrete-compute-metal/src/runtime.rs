@@ -11,6 +11,7 @@ use burrete_compute_core::{
     MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
     MmffVanDerWaalsTerm, MmffVariant, RigidTransform, Rm1FockPair, SymmetricCsr, TanimotoCounts,
     TanimotoQueryOptions, TetrahedralConstraint, FINGERPRINT_WORDS,
+    symmetric_eigendecomposition,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -148,6 +149,13 @@ pub struct MetalAlignmentExecution {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetalRm1FockContribution {
     pub contribution_ev: Vec<f32>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalSymmetricEigen {
+    pub eigenvalues: Vec<f64>,
+    pub eigenvectors: Vec<f64>,
     pub gpu_time_ms: u64,
 }
 
@@ -357,6 +365,120 @@ impl MetalComputeRuntime {
         }
         Ok(MetalRm1FockContribution {
             contribution_ev: dispatch.contribution_ev,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
+    pub fn symmetric_eigen_profiled(
+        &self,
+        matrix: &[f64],
+        order: usize,
+        max_memory_bytes: u64,
+    ) -> Result<MetalSymmetricEigen, MetalRuntimeError> {
+        let (expected_values, _) = symmetric_eigendecomposition(matrix, order)
+            .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
+        let diagonal_shift = (0..order)
+            .map(|index| matrix[index * order + index])
+            .sum::<f64>()
+            / order as f64;
+        let matrix_scale = matrix
+            .iter()
+            .enumerate()
+            .map(|(index, value)| {
+                let row = index / order;
+                let column = index - row * order;
+                let shifted = if row == column {
+                    *value - diagonal_shift
+                } else {
+                    *value
+                };
+                shifted.abs()
+            })
+            .fold(0.0_f64, f64::max)
+            .max(f64::MIN_POSITIVE);
+        let matrix_f32 = matrix
+            .iter()
+            .enumerate()
+            .map(|(index, value)| {
+                let row = index / order;
+                let column = index - row * order;
+                let shifted = if row == column {
+                    *value - diagonal_shift
+                } else {
+                    *value
+                };
+                (shifted / matrix_scale) as f32
+            })
+            .collect::<Vec<_>>();
+        let dispatch = self.host.symmetric_eigen_profiled(
+            &matrix_f32,
+            u32::try_from(order).map_err(|_| {
+                MetalRuntimeError::ResourceLimit("symmetric matrix order exceeds uint32".into())
+            })?,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if dispatch.status != 0
+            || dispatch.eigenvalues.len() != order
+            || dispatch.eigenvectors.len() != order * order
+            || dispatch
+                .eigenvalues
+                .iter()
+                .chain(&dispatch.eigenvectors)
+                .any(|value| !value.is_finite())
+        {
+            return Err(MetalRuntimeError::Dispatch(format!(
+                "Metal symmetric eigensolver returned invalid status {} or output shape",
+                dispatch.status
+            )));
+        }
+        let eigenvalues = dispatch
+            .eigenvalues
+            .iter()
+            .map(|value| f64::from(*value) * matrix_scale + diagonal_shift)
+            .collect::<Vec<_>>();
+        let eigenvectors = dispatch
+            .eigenvectors
+            .iter()
+            .map(|value| f64::from(*value))
+            .collect::<Vec<_>>();
+        let eigenvalue_drift = eigenvalues
+            .iter()
+            .zip(&expected_values)
+            .map(|(observed, expected)| (observed - expected).abs())
+            .fold(0.0_f64, f64::max);
+        let mut residual_maximum = 0.0_f64;
+        let mut orthogonality_maximum = 0.0_f64;
+        for column in 0..order {
+            for row in 0..order {
+                let projected = (0..order)
+                    .map(|inner| matrix[row * order + inner] * eigenvectors[inner * order + column])
+                    .sum::<f64>();
+                residual_maximum = residual_maximum.max(
+                    (projected - eigenvalues[column] * eigenvectors[row * order + column]).abs(),
+                );
+            }
+            for other in 0..order {
+                let overlap = (0..order)
+                    .map(|row| {
+                        eigenvectors[row * order + column] * eigenvectors[row * order + other]
+                    })
+                    .sum::<f64>();
+                let expected_overlap = if column == other { 1.0 } else { 0.0 };
+                orthogonality_maximum =
+                    orthogonality_maximum.max((overlap - expected_overlap).abs());
+            }
+        }
+        if eigenvalue_drift > 2.0e-4
+            || residual_maximum > 5.0e-4
+            || orthogonality_maximum > 5.0e-4
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(format!(
+                "Metal symmetric eigensolver parity failed: eigenvalue={eigenvalue_drift:e}, residual={residual_maximum:e}, orthogonality={orthogonality_maximum:e}"
+            )));
+        }
+        Ok(MetalSymmetricEigen {
+            eigenvalues,
+            eigenvectors,
             gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
         })
     }
@@ -1047,6 +1169,29 @@ impl MetalComputeRuntime {
         ) {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal startup RM1 pair Fock contraction differs from the CPU reference".into(),
+            ));
+        }
+        let eigen_matrix = [-1.0, 0.2, 0.2, 0.5];
+        let expected_eigen = symmetric_eigendecomposition(&eigen_matrix, 2)
+            .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let observed_eigen = self.host.symmetric_eigen_profiled(
+            &[-1.0, 0.2, 0.2, 0.5],
+            2,
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        if observed_eigen.status != 0
+            || !float_slices_close(
+                &observed_eigen.eigenvalues,
+                &expected_eigen
+                    .0
+                    .iter()
+                    .map(|value| *value as f32)
+                    .collect::<Vec<_>>(),
+                2.0e-5,
+            )
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup symmetric eigensolver differs from the CPU reference".into(),
             ));
         }
 
