@@ -160,32 +160,188 @@ fn engine_ref() -> EnginePackRef {
 
 fn conformer_engine_manifest() -> EnginePackManifest {
     let mut arrays = vec![
-        conformer_array("atomicNumbers", "atomic_number", None, PackedDType::U16, vec![5]),
-        conformer_array("chiralAtomQuads", "chiral_atom_quad", None, PackedDType::U32, vec![1, 4]),
-        conformer_array("chiralTermStarts", "chiral_term_offsets", None, PackedDType::U64, vec![3]),
-        conformer_array("chiralVolumeBounds", "chiral_volume_bounds", Some("angstrom^3"), PackedDType::F32, vec![1, 2]),
-        conformer_array("distanceAtomPairs", "distance_atom_pair", None, PackedDType::U32, vec![4, 2]),
-        conformer_array("distanceBoundsSquared", "distance_bounds_squared", Some("angstrom^2"), PackedDType::F32, vec![4, 2]),
-        conformer_array("distanceTermStarts", "distance_pair_offsets", None, PackedDType::U64, vec![3]),
-        conformer_array("distanceWeights", "distance_constraint_weight", None, PackedDType::F32, vec![4]),
-        conformer_array("etkDistanceAtomPairs", "etk_distance_atom_pair", None, PackedDType::U32, vec![3, 2]),
-        conformer_array("etkDistanceBounds", "etk_distance_bounds", Some("angstrom"), PackedDType::F32, vec![3, 2]),
-        conformer_array("etkDistanceKinds", "bond_separation", None, PackedDType::U8, vec![3]),
-        conformer_array("etkDistanceTermStarts", "etk_distance_term_offsets", None, PackedDType::U64, vec![3]),
-        conformer_array("etkDistanceWeights", "etk_distance_constraint_weight", None, PackedDType::F32, vec![3]),
-        conformer_array("formalCharges", "formal_charge", Some("elementary_charge"), PackedDType::I8, vec![5]),
-        conformer_array("improperAtomQuads", "improper_atom_quad", None, PackedDType::U32, vec![1, 4]),
-        conformer_array("improperTermStarts", "improper_term_offsets", None, PackedDType::U64, vec![3]),
-        conformer_array("improperWeights", "improper_constraint_weight", None, PackedDType::F32, vec![1]),
-        conformer_array("moleculeAtomStarts", "molecule_atom_offsets", None, PackedDType::U64, vec![3]),
-        conformer_array("recordValidity", "conformer_input_valid", None, PackedDType::Bool8, vec![2]),
-        conformer_array("stereoAtomQuints", "stereo_atom_quint", None, PackedDType::U32, vec![1, 5]),
-        conformer_array("stereoCenterStarts", "stereo_center_offsets", None, PackedDType::U64, vec![3]),
-        conformer_array("stereoFlags", "stereo_check_flags", None, PackedDType::U8, vec![1]),
-        conformer_array("torsionAtomQuads", "torsion_atom_quad", None, PackedDType::U32, vec![2, 4]),
-        conformer_array("torsionCoefficients", "torsion_fourier_coefficients", None, PackedDType::F32, vec![2, 6]),
-        conformer_array("torsionSigns", "torsion_fourier_signs", None, PackedDType::I8, vec![2, 6]),
-        conformer_array("torsionTermStarts", "torsion_term_offsets", None, PackedDType::U64, vec![3]),
+        conformer_array(
+            "atomicNumbers",
+            "atomic_number",
+            None,
+            PackedDType::U16,
+            vec![5],
+        ),
+        conformer_array(
+            "chiralAtomQuads",
+            "chiral_atom_quad",
+            None,
+            PackedDType::U32,
+            vec![1, 4],
+        ),
+        conformer_array(
+            "chiralTermStarts",
+            "chiral_term_offsets",
+            None,
+            PackedDType::U64,
+            vec![3],
+        ),
+        conformer_array(
+            "chiralVolumeBounds",
+            "chiral_volume_bounds",
+            Some("angstrom^3"),
+            PackedDType::F32,
+            vec![1, 2],
+        ),
+        conformer_array(
+            "distanceAtomPairs",
+            "distance_atom_pair",
+            None,
+            PackedDType::U32,
+            vec![4, 2],
+        ),
+        conformer_array(
+            "distanceBoundsSquared",
+            "distance_bounds_squared",
+            Some("angstrom^2"),
+            PackedDType::F32,
+            vec![4, 2],
+        ),
+        conformer_array(
+            "distanceTermStarts",
+            "distance_pair_offsets",
+            None,
+            PackedDType::U64,
+            vec![3],
+        ),
+        conformer_array(
+            "distanceWeights",
+            "distance_constraint_weight",
+            None,
+            PackedDType::F32,
+            vec![4],
+        ),
+        conformer_array(
+            "etkDistanceAtomPairs",
+            "etk_distance_atom_pair",
+            None,
+            PackedDType::U32,
+            vec![3, 2],
+        ),
+        conformer_array(
+            "etkDistanceBounds",
+            "etk_distance_bounds",
+            Some("angstrom"),
+            PackedDType::F32,
+            vec![3, 2],
+        ),
+        conformer_array(
+            "etkDistanceKinds",
+            "bond_separation",
+            None,
+            PackedDType::U8,
+            vec![3],
+        ),
+        conformer_array(
+            "etkDistanceTermStarts",
+            "etk_distance_term_offsets",
+            None,
+            PackedDType::U64,
+            vec![3],
+        ),
+        conformer_array(
+            "etkDistanceWeights",
+            "etk_distance_constraint_weight",
+            None,
+            PackedDType::F32,
+            vec![3],
+        ),
+        conformer_array(
+            "formalCharges",
+            "formal_charge",
+            Some("elementary_charge"),
+            PackedDType::I8,
+            vec![5],
+        ),
+        conformer_array(
+            "improperAtomQuads",
+            "improper_atom_quad",
+            None,
+            PackedDType::U32,
+            vec![1, 4],
+        ),
+        conformer_array(
+            "improperTermStarts",
+            "improper_term_offsets",
+            None,
+            PackedDType::U64,
+            vec![3],
+        ),
+        conformer_array(
+            "improperWeights",
+            "improper_constraint_weight",
+            None,
+            PackedDType::F32,
+            vec![1],
+        ),
+        conformer_array(
+            "moleculeAtomStarts",
+            "molecule_atom_offsets",
+            None,
+            PackedDType::U64,
+            vec![3],
+        ),
+        conformer_array(
+            "recordValidity",
+            "conformer_input_valid",
+            None,
+            PackedDType::Bool8,
+            vec![2],
+        ),
+        conformer_array(
+            "stereoAtomQuints",
+            "stereo_atom_quint",
+            None,
+            PackedDType::U32,
+            vec![1, 5],
+        ),
+        conformer_array(
+            "stereoCenterStarts",
+            "stereo_center_offsets",
+            None,
+            PackedDType::U64,
+            vec![3],
+        ),
+        conformer_array(
+            "stereoFlags",
+            "stereo_check_flags",
+            None,
+            PackedDType::U8,
+            vec![1],
+        ),
+        conformer_array(
+            "torsionAtomQuads",
+            "torsion_atom_quad",
+            None,
+            PackedDType::U32,
+            vec![2, 4],
+        ),
+        conformer_array(
+            "torsionCoefficients",
+            "torsion_fourier_coefficients",
+            None,
+            PackedDType::F32,
+            vec![2, 6],
+        ),
+        conformer_array(
+            "torsionSigns",
+            "torsion_fourier_signs",
+            None,
+            PackedDType::I8,
+            vec![2, 6],
+        ),
+        conformer_array(
+            "torsionTermStarts",
+            "torsion_term_offsets",
+            None,
+            PackedDType::U64,
+            vec![3],
+        ),
     ];
     arrays.sort_by(|left, right| left.name.cmp(&right.name));
     let files = arrays
@@ -222,19 +378,94 @@ fn conformer_engine_ref() -> EnginePackRef {
 
 fn conformer_result_manifest() -> ResultPackManifest {
     let mut arrays = vec![
-        conformer_array("conformerAtomStarts", "conformer_atom_offsets", None, PackedDType::U64, vec![5]),
-        conformer_array("conformerMoleculeIndices", "conformer_molecule_index", None, PackedDType::U32, vec![4]),
-        conformer_array("conformerOrdinals", "conformer_ordinal", None, PackedDType::U32, vec![4]),
-        conformer_array("embeddingAttemptCounts", "embedding_attempt_count", None, PackedDType::U16, vec![4]),
-        conformer_array("embeddingEnergies", "distance_geometry_objective", None, PackedDType::F32, vec![4]),
-        conformer_array("embeddingStatuses", "conformer_embedding_status", None, PackedDType::U8, vec![4]),
-        conformer_array("positions", "cartesian_position", Some("angstrom"), PackedDType::F32, vec![10, 3]),
-        conformer_array("seedWords", "conformer_seed_words", None, PackedDType::U32, vec![4, 4]),
+        conformer_array(
+            "conformerAtomStarts",
+            "conformer_atom_offsets",
+            None,
+            PackedDType::U64,
+            vec![5],
+        ),
+        conformer_array(
+            "conformerMoleculeIndices",
+            "conformer_molecule_index",
+            None,
+            PackedDType::U32,
+            vec![4],
+        ),
+        conformer_array(
+            "conformerOrdinals",
+            "conformer_ordinal",
+            None,
+            PackedDType::U32,
+            vec![4],
+        ),
+        conformer_array(
+            "embeddingAttemptCounts",
+            "embedding_attempt_count",
+            None,
+            PackedDType::U16,
+            vec![4],
+        ),
+        conformer_array(
+            "embeddingEnergies",
+            "distance_geometry_objective",
+            None,
+            PackedDType::F32,
+            vec![4],
+        ),
+        conformer_array(
+            "embeddingStatuses",
+            "conformer_embedding_status",
+            None,
+            PackedDType::U8,
+            vec![4],
+        ),
+        conformer_array(
+            "etkEnergies",
+            "etk_geometry_objective",
+            None,
+            PackedDType::F32,
+            vec![4],
+        ),
+        conformer_array(
+            "etkStatuses",
+            "etk_optimization_status",
+            None,
+            PackedDType::U8,
+            vec![4],
+        ),
+        conformer_array(
+            "positions",
+            "cartesian_position",
+            Some("angstrom"),
+            PackedDType::F32,
+            vec![10, 3],
+        ),
+        conformer_array(
+            "seedWords",
+            "conformer_seed_words",
+            None,
+            PackedDType::U32,
+            vec![4, 4],
+        ),
+        conformer_array(
+            "stereoFailureFlags",
+            "stereo_failure_flags",
+            None,
+            PackedDType::U32,
+            vec![4],
+        ),
     ];
     arrays.sort_by(|left, right| left.name.cmp(&right.name));
     let files = arrays
         .iter()
-        .map(|array| file(&array.file_relative_path, array.byte_length, "application/octet-stream"))
+        .map(|array| {
+            file(
+                &array.file_relative_path,
+                array.byte_length,
+                "application/octet-stream",
+            )
+        })
         .collect();
     ResultPackManifest {
         schema_version: ResultPackVersion::ConformerV1,
@@ -332,7 +563,10 @@ fn conformer_result_pack_binds_coordinates_status_energy_and_seed_provenance() {
 #[test]
 fn conformer_engine_pack_binds_the_exact_shared_constraint_abi() {
     let manifest = conformer_engine_manifest();
-    assert_eq!(manifest.layout.arrays.len(), CONFORMER_ENGINE_ARRAY_NAMES.len());
+    assert_eq!(
+        manifest.layout.arrays.len(),
+        CONFORMER_ENGINE_ARRAY_NAMES.len()
+    );
     assert_eq!(manifest.validate(), Ok(()));
     let reference = EnginePackRef::from_manifest(
         &manifest,

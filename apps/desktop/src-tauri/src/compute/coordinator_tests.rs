@@ -136,6 +136,16 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
         Backend::ReferenceCpu
     );
     assert_eq!(stereo.job.stages[4].state, StageState::Queued);
+    let validation = coordinator
+        .validate_conformer_reference_v1("main", job.job_id, stereo.job.revision)
+        .expect("validate conformers against CPU reference");
+    assert_eq!(validation.conformer_count, 6);
+    assert_eq!(validation.passed_count, 6);
+    assert_eq!(validation.failed_count, 0);
+    assert!(validation.ready_for_publication);
+    assert_eq!(validation.job.state, JobState::Publishing);
+    assert_eq!(validation.job.stages[4].state, StageState::Succeeded);
+    assert_eq!(validation.job.stages[5].state, StageState::Queued);
     std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
     std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
 }

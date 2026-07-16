@@ -38,6 +38,7 @@ use crate::compute::{
         derive_conformer_v1_preflight, ConformerBackendAdmission, ConformerMoleculeIdentity,
         ConformerV1AdmissionError,
     },
+    conformer_reference_validator::validate_conformer_reference,
     conformer_session::{
         CompletedConformerExtraction, ConformerExtractionSession, ConformerSubmissionStep,
         MAX_CONFORMER_RESULT_ENVELOPE_BYTES,
@@ -149,6 +150,16 @@ pub(crate) struct ConformerStereoExecutionStep {
     pub(crate) passed_count: usize,
     pub(crate) failed_count: usize,
     pub(crate) ready_for_validation: bool,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConformerReferenceValidationStep {
+    pub(crate) job: JobSnapshot,
+    pub(crate) conformer_count: usize,
+    pub(crate) passed_count: usize,
+    pub(crate) failed_count: usize,
+    pub(crate) ready_for_publication: bool,
 }
 
 #[derive(Debug)]
@@ -896,6 +907,95 @@ impl ComputeCoordinator {
             passed_count,
             failed_count: conformer_count - passed_count,
             ready_for_validation: true,
+        })
+    }
+
+    pub(crate) fn validate_conformer_reference_v1(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        expected_revision: u64,
+    ) -> ComputeResult<ConformerReferenceValidationStep> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let stereo_succeeded = ready.store.get_job(owner, job_id)?;
+        if stereo_succeeded.revision != expected_revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: stereo_succeeded.revision,
+            });
+        }
+        let validation_running = start_stage(
+            &stereo_succeeded,
+            4,
+            JobState::Validating,
+            now_ms(),
+            "Comparing conformers with the CPU numerical reference",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, stereo_succeeded.revision, &validation_running)?;
+        let computed = ready
+            .computed_conformers
+            .lock()
+            .map_err(|_| poisoned("computed conformer registry"))?
+            .remove(&job_id)
+            .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                entity: "computed conformer",
+                id: job_id.to_string(),
+            })?;
+        let stereo = computed.stereo.as_ref().ok_or_else(|| {
+            ComputeCoordinatorError::Protocol(
+                "conformer reference validation requires stereo results".into(),
+            )
+        })?;
+        let started = Instant::now();
+        let validation = validate_conformer_reference(&computed.distance, stereo);
+        let host_time_ms = started.elapsed().as_secs_f64() * 1_000.0;
+        let validation = match validation {
+            Ok(validation) => validation,
+            Err(error) => {
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &validation_running,
+                    4,
+                    ComputeErrorCode::ValidationMismatch,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
+            }
+        };
+        let validation_succeeded = finish_stage(
+            &validation_running,
+            4,
+            JobState::Publishing,
+            now_ms(),
+            "Conformer CPU reference validation passed",
+            StageFinishMetrics {
+                host_time_ms,
+                ..StageFinishMetrics::default()
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, validation_running.revision, &validation_succeeded)?;
+        ready
+            .computed_conformers
+            .lock()
+            .map_err(|_| poisoned("computed conformer registry"))?
+            .insert(job_id, computed);
+        Ok(ConformerReferenceValidationStep {
+            job: validation_succeeded,
+            conformer_count: validation.conformer_count,
+            passed_count: validation.passed_count,
+            failed_count: validation.failed_count,
+            ready_for_publication: true,
         })
     }
 

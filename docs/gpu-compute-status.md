@@ -78,8 +78,9 @@ catalog, and bound to the exact RDKit source revision and BCEX ABI. Broader
 RDKit/upstream fixtures, durable publication, and UI remain incomplete. The
 paired `conformer.result-pack.v1` ABI is defined and
 strictly validates ragged coordinate offsets, Cartesian positions, molecule and
-conformer identity, embedding status/objective/attempt counts, and the exact
-128-bit seed words used for every generated structure.
+conformer identity, DG and ETK status/objective values, stereo failure flags,
+embedding attempt counts, and the exact 128-bit seed words used for every
+generated structure.
 
 The extractor ABI now has a bounded binary Web Worker and Rust decoder. The
 worker verifies the exported RDKit revision and BCEX version, emits raw BCER
@@ -171,6 +172,12 @@ validation is then repeated as a subsequent durable job stage, and its final
 flags must exactly match those produced by the retry loop. Runtime v8 therefore
 admits `gpuRequired` for both numeric stages. Publication remains a separate
 unfinished stage, so no completed user-facing conformer claim is made yet.
+
+The durable reference-validation stage recomputes every final ETK energy with
+the CPU evaluator and requires it to match the recorded Metal/CPU result within
+the fixed mixed tolerance. It also requires the retry-loop and final stereo
+flags to be identical. A mismatch terminates the job with
+`ValidationMismatch`; only validated computations advance to `Publishing`.
 
 The durable `JobSnapshot` request is no longer cluster-only. An untagged typed
 union accepts normalized `cluster.v1` and `conformer.v1` requests while keeping

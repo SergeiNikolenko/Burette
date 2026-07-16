@@ -6,6 +6,7 @@ pub(crate) mod commands;
 mod conformer_executor;
 mod conformer_ipc;
 mod conformer_plan;
+mod conformer_reference_validator;
 mod conformer_session;
 mod conformer_stereo_executor;
 pub(crate) mod coordinator;
