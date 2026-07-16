@@ -26,6 +26,7 @@ type GridControlProps = {
   ketcherOpen: boolean;
   rendererSwitch: boolean;
   generating3d: boolean;
+  aligningPoses: boolean;
   clusterEnabled: boolean;
   clustering: boolean;
   findingSimilar: boolean;
@@ -56,6 +57,7 @@ type GridControlProps = {
   onSetCardRenderer: (value: "rdkit" | "xyzrender") => void;
   onXyzrenderPresetChange: (value: string) => void;
   onOpenKetcher: () => void;
+  onAlignSelectedPoses: () => void;
   onRendererSwitch: (value: "molstar") => void;
   onRdkitUseInputCoordsChange: (checked: boolean) => void;
 };
@@ -293,6 +295,17 @@ function SelectedOpenActions(props: GridControlProps) {
       <button id="open-selected-ketcher" className="buret-toggle-button" type="button" onClick={props.onOpenKetcher}>
         Open in Ketcher
         <ControlTooltip label="Open selected molecule in Ketcher" />
+      </button>
+      <button
+        id="align-selected-poses"
+        className="buret-toggle-button"
+        type="button"
+        disabled={props.aligningPoses}
+        aria-busy={props.aligningPoses ? "true" : "false"}
+        onClick={props.onAlignSelectedPoses}
+      >
+        {props.aligningPoses ? "Aligning..." : "Align & compare"}
+        <ControlTooltip label="Align selected 3D poses to the first selected row on Metal and write scores to Grid" />
       </button>
     </div>
   );

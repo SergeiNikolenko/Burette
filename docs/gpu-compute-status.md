@@ -405,6 +405,15 @@ separate product increments.
   float64 CPU oracle on `Apple M2 Pro` (`registryId=0x1000003c0`, unified
   memory). The tested `native-compute.v11.metallib` SHA-256 is
   `e38da4f671a12a0d31bf8f68b55c77716dad646ca8c987a0fc24d4b2fca09c85`.
+- The desktop Grid now exposes `Align & compare` for 2--256 selected 3D poses.
+  The lowest selected source index is the reference; every probe must have the
+  same explicit atom order and element sequence. The command dispatches the
+  bounded v11 Metal batch, rejects CPU/Metal parity drift, writes RMSD, shape
+  Tanimoto, optional electrostatic Carbo, and combined similarity back to the
+  current Grid identity, then opens an aligned SDF ensemble in Mol*. Molfile
+  formal charges are the only charge source in this slice, so neutral inputs
+  report electrostatic similarity as unavailable rather than inventing a GPU
+  result.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
@@ -443,8 +452,9 @@ fixed order below:
 2. finish MMFF94/MMFF94s scientific-corpus parity, expose both variants and a
    standalone geometry-optimization action, and replace the bounded numerical
    gradient with an independently validated analytic Metal gradient;
-3. quaternion/Horn alignment, RMSD, shape, electrostatic, ensemble, and docking
-   pose scoring;
+3. finish alignment corpus parity, chemistry-derived partial charges,
+   non-identity atom maps, durable ResultPack/report publication, and packaged
+   UI evidence for the implemented Grid/Mol* pose workflow;
 4. audited semiempirical methods method by method, starting with a native CPU
    oracle and adding Metal only after independent parity gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and

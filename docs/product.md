@@ -39,8 +39,8 @@ installed-app evidence.
 | Similarity and clustering | `Cluster all`/`Cluster selected` source workflow and ad-hoc packaged Metal dispatch proven; production release/scale gates pending |
 | Similarity search and diverse selection | `Find similar` reuses a verified cluster EnginePack for exact CPU/Metal top-50 ranking and Grid writeback; immutable diverse export includes structures, table, and provenance |
 | Conformer generation | Native Grid selection now runs RDKit parameter extraction, adaptive `N x K` Metal DG/ETK/stereo execution, CPU reference validation, durable EnginePack/ResultPack publication, typed Grid writeback, and path-based Mol* ensemble opening; broader RDKit/upstream corpus and production-package gates remain |
-| MMFF94/MMFF94s optimization | Seven-term CPU/Metal evaluation, BMFX RDKit parameter ABI, and deterministic CPU full-BFGS/L-BFGS oracle with size-based selection are implemented; rebuilt extractor WASM, fused Metal optimization, Grid workflow, and parity corpus remain in progress |
-| Alignment, RMSD, shape/electrostatic scoring | Planned after MMFF |
+| MMFF94/MMFF94s optimization | Seven-term CPU/Metal evaluation, BMFX RDKit parameter ABI, fused Metal BFGS/L-BFGS selection, MMFF94s conformer ranking, and Grid workflow are implemented; standalone variant selection and broad parity corpus remain in progress |
+| Alignment, RMSD, shape/electrostatic scoring | Grid `Align & compare` performs bounded Metal Horn alignment, CPU parity validation, typed Grid score writeback, and aligned Mol* ensemble opening for same-order pose sets; non-identity mappings, chemistry-derived partial charges, durable reports, and production-package evidence remain |
 | Semiempirical energies and charges | Planned method by method after independent parity gates |
 
 Production compute is native Metal plus native CPU/reference chemistry. Python
