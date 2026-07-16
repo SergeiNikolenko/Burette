@@ -281,7 +281,7 @@ fn validate_terms(parameters: &MmffParameters) -> Result<(), MmffError> {
     }
     for term in &parameters.out_of_planes {
         validate_atoms(atom_count, &term.atoms)?;
-        validate_positive(&[term.force_constant])?;
+        validate_finite(&[term.force_constant])?;
     }
     for term in &parameters.torsions {
         validate_atoms(atom_count, &term.atoms)?;
@@ -433,6 +433,26 @@ impl std::error::Error for MmffError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RdkitMmffFixture {
+        rdkit_version: String,
+        rdkit_commit: String,
+        cases: Vec<RdkitMmffCase>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RdkitMmffCase {
+        name: String,
+        variant: String,
+        positions: Vec<[f32; 4]>,
+        expected_energy_kcal_mol: f64,
+        bmfx_base64: String,
+    }
 
     fn empty(atom_count: u32) -> MmffParameters {
         MmffParameters {
@@ -553,5 +573,36 @@ mod tests {
             evaluate_mmff_energy(&parameters, &[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]],)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn matches_pinned_rdkit_energy_corpus() {
+        let fixture: RdkitMmffFixture = serde_json::from_str(include_str!(
+            "../../../compute/rdkit-conformer/fixtures/mmff-rdkit-2025.03.4.json"
+        ))
+        .expect("decode pinned RDKit MMFF corpus");
+        assert_eq!(fixture.rdkit_version, "2025.03.4");
+        assert_eq!(
+            fixture.rdkit_commit,
+            "276b5a662302c6a548ac4f1363c066f3258e3a20"
+        );
+        assert_eq!(fixture.cases.len(), 24);
+        for case in fixture.cases {
+            let bytes = STANDARD
+                .decode(&case.bmfx_base64)
+                .expect("decode BMFX fixture");
+            let native = crate::decode_native_mmff_parameters(&bytes, bytes.len())
+                .unwrap_or_else(|error| panic!("{} {} BMFX: {error}", case.name, case.variant));
+            let observed = evaluate_mmff_energy(&native.parameters, &case.positions)
+                .expect("evaluate native MMFF corpus case")
+                .total();
+            assert!(
+                (observed - case.expected_energy_kcal_mol).abs() <= 2.0e-3,
+                "{} {} native={observed} RDKit={}",
+                case.name,
+                case.variant,
+                case.expected_energy_kcal_mol
+            );
+        }
     }
 }

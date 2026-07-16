@@ -1897,7 +1897,26 @@ fn validate_sha256(value: &str) -> Result<(), MetalRuntimeError> {
 mod tests {
     use std::path::PathBuf;
 
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use serde::Deserialize;
+
     use super::*;
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RdkitMmffFixture {
+        cases: Vec<RdkitMmffCase>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RdkitMmffCase {
+        name: String,
+        variant: String,
+        positions: Vec<[f32; 4]>,
+        expected_energy_kcal_mol: f64,
+        bmfx_base64: String,
+    }
 
     #[test]
     #[ignore = "manual packaged-runtime smoke; set BURRETE_METAL_RUNTIME_ROOT"]
@@ -1967,5 +1986,45 @@ mod tests {
                 .as_deref()
                 .expect("packaged runtime must pin its metallib"),
         );
+    }
+
+    #[test]
+    #[ignore = "manual RDKit corpus smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    fn matches_pinned_rdkit_mmff_corpus_on_the_real_gpu() {
+        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+            .map(PathBuf::from)
+            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged ComputeMetal directory");
+        let runtime = MetalComputeRuntime::load(&root, &"0".repeat(64))
+            .expect("verified packaged Metal runtime");
+        let fixture: RdkitMmffFixture = serde_json::from_str(include_str!(
+            "../../../compute/rdkit-conformer/fixtures/mmff-rdkit-2025.03.4.json"
+        ))
+        .expect("decode pinned RDKit MMFF corpus");
+        assert_eq!(fixture.cases.len(), 24);
+        for case in fixture.cases {
+            let bytes = STANDARD
+                .decode(&case.bmfx_base64)
+                .expect("decode BMFX fixture");
+            let native = burrete_compute_core::decode_native_mmff_parameters(&bytes, bytes.len())
+                .unwrap_or_else(|error| panic!("{} {} BMFX: {error}", case.name, case.variant));
+            let result = runtime
+                .evaluate_mmff_profiled(
+                    &case.positions,
+                    &native.parameters,
+                    MIN_COMPUTE_MEMORY_BYTES,
+                )
+                .unwrap_or_else(|error| {
+                    panic!("{} {} Metal dispatch: {error}", case.name, case.variant)
+                });
+            assert_eq!(result.breakdowns.len(), 1);
+            let observed = result.breakdowns[0].total();
+            assert!(
+                (observed - case.expected_energy_kcal_mol).abs() <= 2.0e-2,
+                "{} {} Metal={observed} RDKit={}",
+                case.name,
+                case.variant,
+                case.expected_energy_kcal_mol
+            );
+        }
     }
 }
