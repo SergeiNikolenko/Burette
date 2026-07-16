@@ -485,9 +485,14 @@ separate product increments.
   PYSEQM AST; sulfur-oxygen selected entries, sparsity, and aggregate parity
   pass at `2e-10`. Its pair-basis transform now produces the dense molecular
   `9x9x4x4` d extension and matches the full arbitrary-axis PYSEQM tensor after
-  excluding the separately owned sp block. YX core terms, the YY tensor, Metal
-  W generation, full PM6 SCF integration, broader D3 tables, and production
-  PM6-D3H4 composition remain gated.
+  excluding the separately owned sp block. The same SHA-gated generator now
+  produces the 2025-entry local YY tensor for two d-basis atoms. Native packed
+  pair rotation expands it into the dense molecular `9x9x9x9` d extension;
+  sulfur-sulfur local parity covers 398 nonzero entries, while an arbitrary-axis
+  tensor covers 6305 nonzero entries and matches the complete pinned oracle
+  aggregate. YX/YY electron-core terms, Metal W generation, full PM6 SCF
+  integration, broader D3 tables, and production PM6-D3H4 composition remain
+  gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
