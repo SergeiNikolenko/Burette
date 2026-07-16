@@ -3,7 +3,9 @@ use std::{
     path::Path,
 };
 
-use burrete_compute_protocol::{ClusterV1SubmitRequest, GridScope, MolecularSnapshotRef};
+use burrete_compute_protocol::{
+    ClusterV1SubmitRequest, ConformerV1SubmitRequest, GridScope, MolecularSnapshotRef,
+};
 use uuid::Uuid;
 
 use crate::preview::grid_snapshot::{
@@ -13,7 +15,7 @@ use crate::preview::grid_snapshot::{
 
 use super::{
     error::{ComputeCoordinatorError, ComputeResult},
-    job_factory::VerifiedClusterV1Source,
+    job_factory::{VerifiedClusterV1Source, VerifiedConformerV1Source},
     store::{
         ComputeStore, SnapshotIntentDraft, SnapshotIntentRecord, SnapshotIntentState,
         SnapshotReconciliationState,
@@ -108,19 +110,23 @@ impl SnapshotRepository {
         request: ClusterV1SubmitRequest,
         frozen: FrozenGridSnapshot,
     ) -> ComputeResult<VerifiedClusterV1Source> {
-        let FrozenGridSnapshot {
-            manifest,
-            reference,
-            root,
-        } = frozen;
-        let mut verified = filesystem(root.verify(&reference))?;
-        if verified.manifest() != &manifest || verified.reference() != &reference {
-            return Err(protocol(
-                "published Grid snapshot differs from the materialized source",
-            ));
-        }
-        filesystem(verified.reverify())?;
+        let reference = verify_frozen_source(frozen)?;
         Ok(VerifiedClusterV1Source::from_verified_repository(
+            request, reference,
+        ))
+    }
+
+    #[allow(
+        dead_code,
+        reason = "called by conformer coordinator activation in the next staged increment"
+    )]
+    pub(crate) fn bind_conformer_source(
+        &self,
+        request: ConformerV1SubmitRequest,
+        frozen: FrozenGridSnapshot,
+    ) -> ComputeResult<VerifiedConformerV1Source> {
+        let reference = verify_frozen_source(frozen)?;
+        Ok(VerifiedConformerV1Source::from_verified_repository(
             request, reference,
         ))
     }
@@ -322,6 +328,22 @@ impl SnapshotRepository {
         }
         self.health_check()
     }
+}
+
+fn verify_frozen_source(frozen: FrozenGridSnapshot) -> ComputeResult<MolecularSnapshotRef> {
+    let FrozenGridSnapshot {
+        manifest,
+        reference,
+        root,
+    } = frozen;
+    let mut verified = filesystem(root.verify(&reference))?;
+    if verified.manifest() != &manifest || verified.reference() != &reference {
+        return Err(protocol(
+            "published Grid snapshot differs from the materialized source",
+        ));
+    }
+    filesystem(verified.reverify())?;
+    Ok(reference)
 }
 
 #[derive(Debug)]

@@ -91,6 +91,12 @@ The paired distance-bound objective and analytic-gradient Rust/Metal primitive
 was likewise derived independently from its documented mathematical contract;
 no upstream DG implementation was copied or translated.
 
+The conformer admission and queued-job increment was also independently
+implemented. It adds a typed chemistry-preflight memory envelope, independent
+backend decisions for distance geometry and stereo validation, canonical
+durable snapshot construction, and capability-rooted frozen-source binding.
+It does not copy upstream planning, packaging, or execution code.
+
 The same audit confirmed that the pinned repository still has no root license
 or notice file, `dg_extract.py` names nvMolKit as its reference, and
 `etk_metal.py` describes helper code as unchanged from Shivam Patel's work.

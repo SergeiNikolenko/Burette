@@ -1,13 +1,18 @@
 use burrete_compute_protocol::{
-    ClusterV1SubmitRequest, ComputeJobSnapshotSchemaVersion, JobProgress, JobSnapshot, JobState,
-    MolecularSnapshotRef, OwnerSurface, RuntimeIdentity, StageSnapshot, StageState,
-    WorkflowTemplateId, CLUSTER_STAGE_IDS,
+    ClusterV1SubmitRequest, ComputeJobSnapshotSchemaVersion, ConformerV1SubmitRequest,
+    ExecutionPlan, JobProgress, JobSnapshot, JobState, MolecularSnapshotRef, OwnerSurface,
+    RuntimeIdentity, StageSnapshot, StageState, WorkflowTemplateId, CLUSTER_STAGE_IDS,
+    CONFORMER_STAGE_IDS,
 };
 use uuid::Uuid;
 
 use super::cluster_plan::{
     admit_cluster_v1_plan, ClusterV1AdmissionError, ClusterV1EngineIdentities,
     SimilarityBackendAdmission,
+};
+use super::conformer_plan::{
+    admit_conformer_v1_plan, ConformerBackendAdmission, ConformerV1AdmissionError,
+    ConformerV1Preflight,
 };
 
 /// Opaque proof that the snapshot repository bound a normalized request to
@@ -21,6 +26,32 @@ use super::cluster_plan::{
 pub(crate) struct VerifiedClusterV1Source {
     request: ClusterV1SubmitRequest,
     frozen_source: MolecularSnapshotRef,
+}
+
+#[derive(Clone, Debug)]
+#[allow(
+    dead_code,
+    reason = "constructed by conformer coordinator activation in the next staged increment"
+)]
+pub(crate) struct VerifiedConformerV1Source {
+    request: ConformerV1SubmitRequest,
+    frozen_source: MolecularSnapshotRef,
+}
+
+impl VerifiedConformerV1Source {
+    #[allow(
+        dead_code,
+        reason = "called by conformer snapshot binding before coordinator activation"
+    )]
+    pub(super) fn from_verified_repository(
+        request: ConformerV1SubmitRequest,
+        frozen_source: MolecularSnapshotRef,
+    ) -> Self {
+        Self {
+            request,
+            frozen_source,
+        }
+    }
 }
 
 impl VerifiedClusterV1Source {
@@ -67,38 +98,7 @@ pub(crate) fn build_queued_cluster_v1_job(
     )?;
     let normalized_request_sha256 = request.canonical_sha256()?;
     let accepted_plan_sha256 = admitted.plan.canonical_sha256()?;
-    let stages = admitted
-        .plan
-        .stages
-        .iter()
-        .enumerate()
-        .map(|(ordinal, stage)| StageSnapshot {
-            stage_id: stage.stage_id.clone(),
-            ordinal: ordinal as u16,
-            kind: stage.kind,
-            idempotent: stage.idempotent,
-            state: StageState::Queued,
-            progress: JobProgress {
-                completed_units: 0,
-                total_units: 1,
-                message: "Queued".into(),
-            },
-            requested_backend: stage.requested_backend,
-            effective_backend: stage.effective_backend,
-            engine: stage.engine.clone(),
-            device: None,
-            precision: stage.precision,
-            kernel_id: None,
-            gpu_time_ms: None,
-            host_time_ms: None,
-            transferred_bytes: 0,
-            fallback: stage.fallback.clone(),
-            error: None,
-            started_at_ms: None,
-            updated_at_ms: None,
-            finished_at_ms: None,
-        })
-        .collect();
+    let stages = queued_stages(&admitted.plan);
     let snapshot = JobSnapshot {
         schema_version: ComputeJobSnapshotSchemaVersion::V1,
         job_id: input.job_id,
@@ -131,17 +131,126 @@ pub(crate) fn build_queued_cluster_v1_job(
     Ok(snapshot)
 }
 
+#[derive(Clone, Debug)]
+#[allow(
+    dead_code,
+    reason = "constructed by conformer coordinator activation in the next staged increment"
+)]
+pub(crate) struct QueuedConformerV1JobInput {
+    pub(crate) job_id: Uuid,
+    pub(crate) owner_surface: OwnerSurface,
+    pub(crate) source: VerifiedConformerV1Source,
+    pub(crate) preflight: ConformerV1Preflight,
+    pub(crate) pinned_runtime: RuntimeIdentity,
+    pub(crate) engines: ClusterV1EngineIdentities,
+    pub(crate) distance_admission: ConformerBackendAdmission,
+    pub(crate) stereo_admission: ConformerBackendAdmission,
+    pub(crate) created_at_ms: u64,
+}
+
+#[allow(
+    dead_code,
+    reason = "called by conformer coordinator activation in the next staged increment"
+)]
+pub(crate) fn build_queued_conformer_v1_job(
+    input: QueuedConformerV1JobInput,
+) -> Result<JobSnapshot, ConformerV1AdmissionError> {
+    let VerifiedConformerV1Source {
+        request,
+        frozen_source,
+    } = input.source;
+    let request = request.normalized()?;
+    frozen_source.validate()?;
+    input.pinned_runtime.validate()?;
+
+    let admitted = admit_conformer_v1_plan(
+        &request,
+        frozen_source.frozen_source.record_count,
+        input.preflight,
+        &input.engines,
+        input.distance_admission,
+        input.stereo_admission,
+    )?;
+    let normalized_request_sha256 = request.canonical_sha256()?;
+    let accepted_plan_sha256 = admitted.plan.canonical_sha256()?;
+    let stages = queued_stages(&admitted.plan);
+    let snapshot = JobSnapshot {
+        schema_version: ComputeJobSnapshotSchemaVersion::V1,
+        job_id: input.job_id,
+        revision: 1,
+        owner_surface: input.owner_surface,
+        workflow_template: WorkflowTemplateId::ConformerV1,
+        state: JobState::Queued,
+        request: request.into(),
+        normalized_request_sha256,
+        frozen_source,
+        progress: JobProgress {
+            completed_units: 0,
+            total_units: CONFORMER_STAGE_IDS.len() as u64,
+            message: "Queued".into(),
+        },
+        plan: admitted.plan,
+        accepted_plan_sha256,
+        stages,
+        attempts: Vec::new(),
+        artifact_ids: Vec::new(),
+        result_pack: None,
+        outcome: None,
+        pinned_runtime: input.pinned_runtime,
+        error: None,
+        created_at_ms: input.created_at_ms,
+        updated_at_ms: input.created_at_ms,
+        finished_at_ms: None,
+    };
+    snapshot.validate()?;
+    Ok(snapshot)
+}
+
+fn queued_stages(plan: &ExecutionPlan) -> Vec<StageSnapshot> {
+    plan.stages
+        .iter()
+        .enumerate()
+        .map(|(ordinal, stage)| StageSnapshot {
+            stage_id: stage.stage_id.clone(),
+            ordinal: ordinal as u16,
+            kind: stage.kind,
+            idempotent: stage.idempotent,
+            state: StageState::Queued,
+            progress: JobProgress {
+                completed_units: 0,
+                total_units: 1,
+                message: "Queued".into(),
+            },
+            requested_backend: stage.requested_backend,
+            effective_backend: stage.effective_backend,
+            engine: stage.engine.clone(),
+            device: None,
+            precision: stage.precision,
+            kernel_id: None,
+            gpu_time_ms: None,
+            host_time_ms: None,
+            transferred_bytes: 0,
+            fallback: stage.fallback.clone(),
+            error: None,
+            started_at_ms: None,
+            updated_at_ms: None,
+            finished_at_ms: None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::compute::cluster_plan::{ClusterV1EngineIdentities, SimilarityBackendAdmission};
     use burrete_compute_protocol::{
-        Backend, BackendPolicy, ClusterV1Parameters, ComputeJobSchemaVersion, EngineIdentity,
-        ExecutionPolicy, FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings,
-        FrozenSourceIdentity, GridScope, GridSourceReference, MolecularSnapshotVersion,
-        PackedFileDescriptor, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
-        RuntimeIdentity, SchedulingPolicy, SelectedGridScope, SimilarityCutoff, SimilaritySettings,
-        MIN_COMPUTE_MEMORY_BYTES,
+        Backend, BackendPolicy, ClusterV1Parameters, ComputeJobSchemaVersion,
+        ConformerResourceLimits, ConformerV1Parameters, ConformerVariant, EngineIdentity,
+        ExecutionPolicy, FallbackDecision, FallbackReasonCode, FingerprintAlgorithm,
+        FingerprintInputOrder, FingerprintSettings, FrozenSourceIdentity, GridScope,
+        GridSourceReference, MolecularSnapshotVersion, PackedFileDescriptor, RdkitBaselineVersion,
+        RepresentativePolicy, ResourceLimits, RuntimeIdentity, SchedulingPolicy, SelectedGridScope,
+        SimilarityCutoff, SimilaritySettings, MIN_COMPUTE_MEMORY_BYTES,
     };
 
     #[test]
@@ -247,6 +356,71 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn builds_durable_conformer_snapshot_with_honest_mixed_backends() {
+        let fallback = FallbackDecision {
+            code: FallbackReasonCode::CapabilityUnavailable,
+            reason: "Verified stereo-validation Metal kernel is not installed.".into(),
+        };
+        let snapshot = build_queued_conformer_v1_job(QueuedConformerV1JobInput {
+            job_id: Uuid::from_u128(0x300),
+            owner_surface: OwnerSurface::Desktop,
+            source: VerifiedConformerV1Source {
+                request: conformer_request(BackendPolicy::GpuPreferred),
+                frozen_source: frozen_source(),
+            },
+            preflight: ConformerV1Preflight {
+                record_count: 3,
+                valid_record_count: 3,
+                total_atom_count: 12,
+                total_distance_constraint_count: 24,
+                engine_pack_bytes: 4_096,
+                result_pack_bytes: 4_096,
+                numeric_peak_bytes: 1024 * 1024,
+            },
+            pinned_runtime: RuntimeIdentity {
+                version: "test-only-runtime-1.0.0".into(),
+                manifest_sha256: test_only_hash('a'),
+                helper_sha256: test_only_hash('b'),
+                metallib_sha256: Some(test_only_hash('c')),
+            },
+            engines: ClusterV1EngineIdentities {
+                coordinator: test_engine("burrete-coordinator", '1'),
+                rdkit: test_engine("rdkit", '2'),
+                reference_cpu: test_engine("burrete-reference-cpu", '3'),
+            },
+            distance_admission: ConformerBackendAdmission::NativeMetal(test_engine(
+                "burrete-native-metal",
+                '4',
+            )),
+            stereo_admission: ConformerBackendAdmission::GpuUnavailable(fallback.clone()),
+            created_at_ms: 100,
+        })
+        .expect("build queued conformer job");
+
+        assert_eq!(snapshot.workflow_template, WorkflowTemplateId::ConformerV1);
+        assert_eq!(snapshot.stages.len(), CONFORMER_STAGE_IDS.len());
+        assert_eq!(
+            snapshot.plan.stages[2].effective_backend,
+            Backend::NativeMetal
+        );
+        assert_eq!(
+            snapshot.plan.stages[3].effective_backend,
+            Backend::ReferenceCpu
+        );
+        assert_eq!(snapshot.plan.stages[3].fallback, Some(fallback));
+        assert_eq!(snapshot.validate(), Ok(()));
+        assert_eq!(
+            snapshot.normalized_request_sha256,
+            snapshot.request.canonical_sha256().expect("request hash")
+        );
+        let encoded = serde_json::to_string(&snapshot).expect("encode durable conformer snapshot");
+        let decoded: JobSnapshot =
+            serde_json::from_str(&encoded).expect("decode durable conformer snapshot");
+        assert_eq!(decoded, snapshot);
+        assert_eq!(decoded.validate(), Ok(()));
+    }
+
     fn input(policy: BackendPolicy) -> QueuedClusterV1JobInput {
         QueuedClusterV1JobInput {
             job_id: Uuid::from_u128(0x100),
@@ -316,6 +490,33 @@ mod tests {
                 max_edges: 1_000,
                 max_memory_bytes: MIN_COMPUTE_MEMORY_BYTES,
                 max_dispatch_ms: 100,
+            },
+        }
+    }
+
+    fn conformer_request(policy: BackendPolicy) -> ConformerV1SubmitRequest {
+        ConformerV1SubmitRequest {
+            schema_version: ComputeJobSchemaVersion::V1,
+            workflow_template: WorkflowTemplateId::ConformerV1,
+            source: GridSourceReference {
+                document_id: "test-grid-document".into(),
+                scope: GridScope::Selected(SelectedGridScope {
+                    source_indexes: vec![2, 0, 1],
+                }),
+            },
+            parameters: ConformerV1Parameters {
+                variant: ConformerVariant::EtkdgV3,
+                conformers_per_molecule: 4,
+                max_attempts_per_conformer: 8,
+            },
+            execution_policy: ExecutionPolicy {
+                backend_policy: policy,
+                scheduling_policy: SchedulingPolicy::Balanced,
+            },
+            limits: ConformerResourceLimits {
+                max_memory_bytes: MIN_COMPUTE_MEMORY_BYTES,
+                max_dispatch_ms: 100,
+                max_conformers_per_batch: 64,
             },
         }
     }
