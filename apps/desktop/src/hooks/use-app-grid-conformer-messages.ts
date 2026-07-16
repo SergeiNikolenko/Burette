@@ -118,7 +118,7 @@ export function useAppGridConformerMessages({
       });
       return true;
     }
-    if (body?.type !== "generate3dGridSelection") return false;
+    if (body?.type !== "generate3dGridSelection" && body?.type !== "optimizeGeometryGridSelection") return false;
 
     const molecules = Array.isArray(body.molecules) ? body.molecules : [];
     const title = bodyString(body.title).trim() || "selected-3d-molecules.sdf";
@@ -135,6 +135,7 @@ export function useAppGridConformerMessages({
     }
     reply("gridGenerate3DStarted");
     void (async () => {
+      const optimizeInputGeometry = body.type === "optimizeGeometryGridSelection";
       const documentId = bodyString(body.documentId).trim();
       const sourceIndexes = Array.isArray(body.sourceIndexes)
         ? [...new Set(body.sourceIndexes.filter((value): value is number => (
@@ -151,14 +152,19 @@ export function useAppGridConformerMessages({
         const mmffVariant: MmffVariant = requestedMmffVariant === "MMFF94" ? "MMFF94" : "MMFF94s";
         const result = await runConformerWorkflow(documentId, sourceIndexes, (phase) => {
           const labels = {
-            extracting: "Extracting ETKDG constraints...",
-            embedding: `Generating ${conformerVariant} and ${mmffVariant}-optimizing conformers...`,
+            extracting: optimizeInputGeometry ? "Extracting input geometry and MMFF parameters..." : "Extracting conformer constraints...",
+            embedding: optimizeInputGeometry ? `${mmffVariant}-optimizing input geometry...` : `Generating ${conformerVariant} and ${mmffVariant}-optimizing conformers...`,
             stereo: "Validating stereochemistry on Metal...",
             validation: "Checking CPU reference parity...",
             publishing: "Publishing conformers and updating Grid...",
           } as const;
           pushStatus(labels[phase]);
-        }, { variant: conformerVariant, mmffVariant, conformersPerMolecule: 16 });
+        }, {
+          variant: conformerVariant,
+          initialization: optimizeInputGeometry ? "inputGeometry" : "generated",
+          mmffVariant,
+          conformersPerMolecule: optimizeInputGeometry ? 1 : 16,
+        });
         await openDocuments(
           [result.primaryOpenPath],
           {},
@@ -166,11 +172,16 @@ export function useAppGridConformerMessages({
         );
         const backend = result.backend === "nativeMetal" ? "Metal GPU" : "reference CPU";
         pushStatus(
-          `Generated ${conformerVariant} and ${mmffVariant}-ranked ${result.passedCount.toLocaleString()} valid conformers via ${backend} and opened the ensemble in Molstar.`,
+          optimizeInputGeometry
+            ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via ${backend}; per-row convergence status and energy were written to Grid and the results opened in Molstar.`
+            : `Generated ${conformerVariant} and ${mmffVariant}-ranked ${result.passedCount.toLocaleString()} valid conformers via ${backend} and opened the ensemble in Molstar.`,
           result.gridApplied ? "success" : "error",
           result.gridWarning ? [result.gridWarning] : undefined,
         );
         return;
+      }
+      if (optimizeInputGeometry) {
+        throw new Error("Input geometry optimization requires the native desktop Metal runtime.");
       }
       const generatedTexts: string[] = [];
       const errors: string[] = [];

@@ -979,6 +979,7 @@
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
       onAlignSelectedPoses() { requestSelectedPoseAlignment(cfg); },
       onGenerate3D() { requestSelected3DGeneration(cfg); },
+      onOptimizeGeometry() { requestSelectedGeometryOptimization(cfg); },
       onConformerVariantChange(value) {
         state.conformerVariant = CONFORMER_VARIANTS.includes(value) ? value : 'ETKDGv3';
         store(CONFORMER_VARIANT_STORAGE_KEY, state.conformerVariant);
@@ -1498,6 +1499,26 @@
       return;
     }
     request3DGenerationForRows(rows, cfg);
+  }
+
+  function requestSelectedGeometryOptimization(cfg) {
+    const rows = selectedMolstarRows();
+    if (!rows.length) {
+      setStatus('[grid] Select one or more molecules with input 3D coordinates first.');
+      return;
+    }
+    const molecules = rows.map(row => gridConformerGenerationInput(row)).filter(Boolean);
+    const title = `${cfg?.label || 'Molecules'} — optimized geometry`;
+    setGridGenerate3DPending(true);
+    post('optimizeGeometryGridSelection', '[grid] Optimize selected input geometry.', {
+      documentId: cfg?.documentId || null,
+      title,
+      sourceIndexes: rows.map(row => Number(row.index)),
+      molecules,
+      conformerVariant: state.conformerVariant,
+      mmffVariant: state.mmffVariant
+    });
+    setStatus(`[grid] Optimizing ${molecules.length.toLocaleString()} input geometr${molecules.length === 1 ? 'y' : 'ies'}.`);
   }
 
   function requestSelectedPoseAlignment(cfg) {

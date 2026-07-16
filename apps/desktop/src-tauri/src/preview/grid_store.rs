@@ -814,6 +814,7 @@ fn analysis_label(value_id: &str) -> &str {
         "conformerCount" => "Conformers",
         "conformerPassedCount" => "Valid conformers",
         "conformerStatus" => "Conformer status",
+        "geometryInitialization" => "Geometry source",
         "bestEtkEnergy" => "Best ETK energy",
         "mmffVariant" => "MMFF variant",
         "bestMmffEnergy" => "Best MMFF energy",

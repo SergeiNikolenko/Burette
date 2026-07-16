@@ -1,8 +1,8 @@
 use std::{collections::BTreeSet, path::Path};
 
 use burrete_compute_protocol::{
-    CapabilityMaturity, MmffVariant, RepresentativePolicy, WorkflowTemplateId,
-    MAX_JSON_SAFE_INTEGER, MAX_PACK_FILES, MAX_PACK_RECORDS,
+    CapabilityMaturity, ConformerInitialization, MmffVariant, RepresentativePolicy,
+    WorkflowTemplateId, MAX_JSON_SAFE_INTEGER, MAX_PACK_FILES, MAX_PACK_RECORDS,
 };
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::Serialize;
@@ -109,6 +109,7 @@ pub(crate) struct GridConformerAnalysisApplyInput {
     pub(crate) created_at_ms: u64,
     pub(crate) artifact_id: Uuid,
     pub(crate) artifact_manifest_sha256: String,
+    pub(crate) initialization: ConformerInitialization,
     pub(crate) mmff_variant: MmffVariant,
     pub(crate) assignments: Vec<GridConformerAssignmentInput>,
 }
@@ -469,6 +470,16 @@ pub(crate) fn apply_conformer_analysis_run(
                 GridAnalysisValue::Integer(assignment.passed_count as i64),
             ),
             ("conformerStatus", GridAnalysisValue::Text(status.into())),
+            (
+                "geometryInitialization",
+                GridAnalysisValue::Text(
+                    match conformer.initialization {
+                        ConformerInitialization::Generated => "generated",
+                        ConformerInitialization::InputGeometry => "inputGeometry",
+                    }
+                    .into(),
+                ),
+            ),
             (
                 "mmffVariant",
                 GridAnalysisValue::Text(conformer.mmff_variant.wire_id().into()),

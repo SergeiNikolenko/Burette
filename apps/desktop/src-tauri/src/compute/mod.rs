@@ -16,6 +16,7 @@ pub(crate) mod error;
 mod fingerprint_session;
 mod job_factory;
 mod job_lifecycle;
+mod molfile_coordinates;
 mod representative_export;
 #[allow(
     dead_code,

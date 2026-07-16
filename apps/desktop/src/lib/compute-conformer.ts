@@ -1,5 +1,6 @@
 export type ConformerVariant = "DG" | "KDG" | "ETDG" | "ETDGv2" | "ETKDG" | "ETKDGv2" | "ETKDGv3" | "srETKDGv3";
 export type MmffVariant = "MMFF94" | "MMFF94s";
+export type ConformerInitialization = "generated" | "inputGeometry";
 export type ConformerInputFormat = "molblock" | "smiles" | "unsupportedIdcode";
 
 export type ConformerInputRecord = {
@@ -91,6 +92,7 @@ export type ConformerWorkflowResult = ConformerPublicationStep & {
 
 export type ConformerWorkflowOptions = {
   variant: ConformerVariant;
+  initialization: ConformerInitialization;
   mmffVariant: MmffVariant;
   conformersPerMolecule: number;
 };
@@ -129,6 +131,7 @@ export async function runConformerWorkflow(
   onProgress: (phase: ConformerWorkflowPhase, job: ConformerComputeJob) => void,
   options: ConformerWorkflowOptions = {
     variant: "ETKDGv3",
+    initialization: "generated",
     mmffVariant: "MMFF94s",
     conformersPerMolecule: 16,
   },
@@ -148,6 +151,7 @@ export async function runConformerWorkflow(
     },
     parameters: {
       variant: options.variant,
+      initialization: options.initialization,
       mmffVariant: options.mmffVariant,
       conformersPerMolecule: options.conformersPerMolecule,
       maxAttemptsPerConformer: 8,

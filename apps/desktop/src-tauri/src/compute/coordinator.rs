@@ -128,6 +128,7 @@ struct PreparedConformerBatch {
     errors: Vec<Option<String>>,
     mmff_parameters: Vec<Option<NativeMmffParameters>>,
     mmff_errors: Vec<Option<String>>,
+    input_positions: Vec<Option<Vec<[f32; 4]>>>,
 }
 
 #[derive(Debug)]
@@ -555,6 +556,7 @@ impl ComputeCoordinator {
             errors,
             mmff_parameters,
             mmff_errors,
+            input_positions,
             verified,
         } = completed;
         if verified.reference() != &frozen.reference {
@@ -606,6 +608,7 @@ impl ComputeCoordinator {
                 errors,
                 mmff_parameters,
                 mmff_errors,
+                input_positions,
             },
         );
         Ok(snapshot)
@@ -666,12 +669,22 @@ impl ComputeCoordinator {
         ready
             .store
             .apply_successor(owner, freeze_running.revision, &freeze_succeeded)?;
+        let input_geometry = freeze_succeeded
+            .request
+            .as_conformer()?
+            .parameters
+            .initialization
+            == burrete_compute_protocol::ConformerInitialization::InputGeometry;
         let constraints_running = start_stage(
             &freeze_succeeded,
             1,
             JobState::Preparing,
             now_ms(),
-            "Binding verified RDKit conformer constraints",
+            if input_geometry {
+                "Binding verified RDKit MMFF parameters and input coordinates"
+            } else {
+                "Binding verified RDKit conformer constraints"
+            },
             StageStartEvidence::default(),
         )?;
         ready
@@ -699,7 +712,11 @@ impl ComputeCoordinator {
             1,
             numeric_state,
             now_ms(),
-            "RDKit conformer constraints ready",
+            if input_geometry {
+                "RDKit MMFF parameters and input coordinates ready"
+            } else {
+                "RDKit conformer constraints ready"
+            },
             StageFinishMetrics {
                 transferred_bytes: engine_pack_bytes,
                 ..StageFinishMetrics::default()
@@ -713,10 +730,12 @@ impl ComputeCoordinator {
             match &ready.native_metal {
                 NativeMetalState::Available(runtime) => StageStartEvidence {
                     device: Some(runtime.device_identity().name.clone()),
-                    kernel_id: Some(
+                    kernel_id: Some(if input_geometry {
+                        "burrete.compute.mmff-input-geometry.v1:bfgs+lbfgs+retry.v1".into()
+                    } else {
                         "burrete.compute.conformer.v1:initialize+dg-lbfgs+etk-lbfgs+stereo-retry.v1"
-                            .into(),
-                    ),
+                            .into()
+                    }),
                 },
                 NativeMetalState::Unavailable { message, .. } => {
                     return Err(ComputeCoordinatorError::Unavailable(format!(
@@ -732,7 +751,11 @@ impl ComputeCoordinator {
             2,
             JobState::Running,
             now_ms(),
-            "Generating adaptive conformer batches",
+            if input_geometry {
+                "Optimizing supplied input geometries"
+            } else {
+                "Generating adaptive conformer batches"
+            },
             start_evidence,
         )?;
         ready
@@ -753,6 +776,7 @@ impl ComputeCoordinator {
             prepared.arrays,
             &prepared.identities,
             &prepared.mmff_parameters,
+            &prepared.input_positions,
             distance_running.stages[2].effective_backend,
             distance_running.stages[3].effective_backend,
             match &ready.native_metal {
@@ -794,7 +818,11 @@ impl ComputeCoordinator {
             2,
             JobState::Running,
             now_ms(),
-            "Stereo-retried conformer candidates ready for final validation",
+            if input_geometry {
+                "MMFF-optimized input geometries ready for final validation"
+            } else {
+                "Stereo-retried conformer candidates ready for final validation"
+            },
             StageFinishMetrics {
                 host_time_ms,
                 gpu_time_ms: distance.gpu_time_ms.map(|value| value as f64),
@@ -1256,11 +1284,17 @@ impl ComputeCoordinator {
                 "stereoStage": successful_job.stages[3],
                 "referenceStage": successful_job.stages[4],
                 "conformerVariant": successful_job.request.as_conformer()?.parameters.variant,
+                "initialization": successful_job.request.as_conformer()?.parameters.initialization,
                 "mmffVariant": successful_job.request.as_conformer()?.parameters.mmff_variant,
             }),
             created_at_ms: materialized.created_at_ms,
             artifact_id: materialized.artifact_id,
             artifact_manifest_sha256: manifest_sha256.clone(),
+            initialization: successful_job
+                .request
+                .as_conformer()?
+                .parameters
+                .initialization,
             mmff_variant: successful_job
                 .request
                 .as_conformer()?

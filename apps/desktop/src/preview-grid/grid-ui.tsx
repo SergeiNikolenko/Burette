@@ -61,6 +61,7 @@ type GridControlProps = {
   onOpenKetcher: () => void;
   onAlignSelectedPoses: () => void;
   onGenerate3D: () => void;
+  onOptimizeGeometry: () => void;
   onConformerVariantChange: (value: GridControlProps["conformerVariant"]) => void;
   onMmffVariantChange: (value: GridControlProps["mmffVariant"]) => void;
   onRendererSwitch: (value: "molstar") => void;
@@ -315,6 +316,10 @@ function SelectedOpenActions(props: GridControlProps) {
       <button id="generate-3d-selected" className="buret-toggle-button" type="button" disabled={props.generating3d} onClick={props.onGenerate3D}>
         <span data-buret-grid-generate-3d-label>{props.generating3d ? "Generating..." : "Generate 3D"}</span>
         <ControlTooltip label="Generate and selected-MMFF-optimize conformers for selected molecules" />
+      </button>
+      <button id="optimize-geometry-selected" className="buret-toggle-button" type="button" disabled={props.generating3d} onClick={props.onOptimizeGeometry}>
+        <span data-buret-grid-optimize-geometry-label>{props.generating3d ? "Working..." : "Optimize geometry"}</span>
+        <ControlTooltip label="Optimize selected input 3D coordinates with the chosen MMFF variant on Metal" />
       </button>
       <button id="open-selected-molstar" className="buret-toggle-button" type="button" onClick={() => props.onRendererSwitch("molstar")}>
         Open in Molstar
