@@ -30,6 +30,8 @@ pub enum ComputeJobSchemaVersion {
 pub enum WorkflowTemplateId {
     #[serde(rename = "cluster.v1")]
     ClusterV1,
+    #[serde(rename = "conformer.v1")]
+    ConformerV1,
     #[serde(rename = "similaritySearch.v1")]
     SimilaritySearchV1,
 }
@@ -688,6 +690,15 @@ mod tests {
             serde_json::to_string(&WorkflowTemplateId::SimilaritySearchV1)
                 .expect("serialize similarity workflow ID"),
             "\"similaritySearch.v1\""
+        );
+    }
+
+    #[test]
+    fn conformer_workflow_has_a_stable_wire_id() {
+        assert_eq!(
+            serde_json::to_string(&WorkflowTemplateId::ConformerV1)
+                .expect("serialize conformer workflow ID"),
+            "\"conformer.v1\""
         );
     }
 

@@ -43,6 +43,33 @@ fn array(
     }
 }
 
+fn conformer_array(
+    name: &str,
+    semantic: &str,
+    unit: Option<&str>,
+    dtype: PackedDType,
+    shape: Vec<u64>,
+) -> PackedArrayDescriptor {
+    let width = dtype.byte_width() as u32;
+    let byte_length = shape.iter().product::<u64>() * u64::from(width);
+    PackedArrayDescriptor {
+        name: name.into(),
+        semantic: semantic.into(),
+        unit: unit.map(str::to_string),
+        file_relative_path: format!("pack/{name}.bin"),
+        dtype,
+        shape,
+        byte_order: if width == 1 {
+            PackedByteOrder::NotApplicable
+        } else {
+            PackedByteOrder::LittleEndian
+        },
+        alignment: width,
+        byte_offset: 0,
+        byte_length,
+    }
+}
+
 fn frozen_source() -> FrozenSourceIdentity {
     FrozenSourceIdentity {
         document_fingerprint_sha256: hash('c'),
@@ -131,6 +158,60 @@ fn engine_ref() -> EnginePackRef {
     .expect("derive engine pack reference")
 }
 
+fn conformer_engine_manifest() -> EnginePackManifest {
+    let mut arrays = vec![
+        conformer_array("atomicNumbers", "atomic_number", None, PackedDType::U16, vec![5]),
+        conformer_array("chiralAtomQuads", "chiral_atom_quad", None, PackedDType::U32, vec![1, 4]),
+        conformer_array("chiralTermStarts", "chiral_term_offsets", None, PackedDType::U64, vec![3]),
+        conformer_array("chiralVolumeBounds", "chiral_volume_bounds", Some("angstrom^3"), PackedDType::F32, vec![1, 2]),
+        conformer_array("distanceAtomPairs", "distance_atom_pair", None, PackedDType::U32, vec![4, 2]),
+        conformer_array("distanceBoundsSquared", "distance_bounds_squared", Some("angstrom^2"), PackedDType::F32, vec![4, 2]),
+        conformer_array("distanceTermStarts", "distance_pair_offsets", None, PackedDType::U64, vec![3]),
+        conformer_array("distanceWeights", "distance_constraint_weight", None, PackedDType::F32, vec![4]),
+        conformer_array("etkDistanceAtomPairs", "etk_distance_atom_pair", None, PackedDType::U32, vec![3, 2]),
+        conformer_array("etkDistanceBounds", "etk_distance_bounds", Some("angstrom"), PackedDType::F32, vec![3, 2]),
+        conformer_array("etkDistanceKinds", "bond_separation", None, PackedDType::U8, vec![3]),
+        conformer_array("etkDistanceTermStarts", "etk_distance_term_offsets", None, PackedDType::U64, vec![3]),
+        conformer_array("etkDistanceWeights", "etk_distance_constraint_weight", None, PackedDType::F32, vec![3]),
+        conformer_array("formalCharges", "formal_charge", Some("elementary_charge"), PackedDType::I8, vec![5]),
+        conformer_array("improperAtomQuads", "improper_atom_quad", None, PackedDType::U32, vec![1, 4]),
+        conformer_array("improperTermStarts", "improper_term_offsets", None, PackedDType::U64, vec![3]),
+        conformer_array("improperWeights", "improper_constraint_weight", None, PackedDType::F32, vec![1]),
+        conformer_array("moleculeAtomStarts", "molecule_atom_offsets", None, PackedDType::U64, vec![3]),
+        conformer_array("recordValidity", "conformer_input_valid", None, PackedDType::Bool8, vec![2]),
+        conformer_array("stereoAtomQuints", "stereo_atom_quint", None, PackedDType::U32, vec![1, 5]),
+        conformer_array("stereoCenterStarts", "stereo_center_offsets", None, PackedDType::U64, vec![3]),
+        conformer_array("stereoFlags", "stereo_check_flags", None, PackedDType::U8, vec![1]),
+        conformer_array("torsionAtomQuads", "torsion_atom_quad", None, PackedDType::U32, vec![2, 4]),
+        conformer_array("torsionCoefficients", "torsion_fourier_coefficients", None, PackedDType::F32, vec![2, 6]),
+        conformer_array("torsionSigns", "torsion_fourier_signs", None, PackedDType::I8, vec![2, 6]),
+        conformer_array("torsionTermStarts", "torsion_term_offsets", None, PackedDType::U64, vec![3]),
+    ];
+    arrays.sort_by(|left, right| left.name.cmp(&right.name));
+    let files = arrays
+        .iter()
+        .map(|array| {
+            file(
+                &array.file_relative_path,
+                array.byte_length,
+                "application/octet-stream",
+            )
+        })
+        .collect();
+    EnginePackManifest {
+        schema_version: EnginePackVersion::ConformerV1,
+        engine_pack_id: Uuid::from_u128(20),
+        engine_pack_sha256: hash('7'),
+        workflow_template: WorkflowTemplateId::ConformerV1,
+        molecular_snapshot: snapshot_ref(),
+        engine_id: "burreteConformerConstraints".into(),
+        engine_version: "1".into(),
+        normalized_settings_sha256: hash('8'),
+        layout: PackedLayout { files, arrays },
+        created_at_ms: 11,
+    }
+}
+
 fn result_manifest() -> ResultPackManifest {
     ResultPackManifest {
         schema_version: ResultPackVersion::ClusterV1,
@@ -180,6 +261,37 @@ fn round_trips_and_binds_all_pack_contracts() {
     let decoded: ResultPackManifest =
         serde_json::from_slice(&encoded).expect("decode result pack manifest");
     assert_eq!(decoded, result);
+}
+
+#[test]
+fn conformer_engine_pack_binds_the_exact_shared_constraint_abi() {
+    let manifest = conformer_engine_manifest();
+    assert_eq!(manifest.layout.arrays.len(), CONFORMER_ENGINE_ARRAY_NAMES.len());
+    assert_eq!(manifest.validate(), Ok(()));
+    let reference = EnginePackRef::from_manifest(
+        &manifest,
+        file("engine/conformer-manifest.json", 256, "application/json"),
+    )
+    .expect("derive conformer EnginePack reference");
+    assert_eq!(reference.validate_against_manifest(&manifest), Ok(()));
+
+    let mut wrong_unit = manifest.clone();
+    wrong_unit
+        .layout
+        .arrays
+        .iter_mut()
+        .find(|array| array.name == "distanceBoundsSquared")
+        .expect("distance bounds")
+        .unit = Some("angstrom".into());
+    assert!(wrong_unit.validate().is_err());
+
+    let mut missing_array = manifest.clone();
+    missing_array.layout.arrays.remove(0);
+    assert!(missing_array.validate().is_err());
+
+    let mut wrong_version = manifest;
+    wrong_version.schema_version = EnginePackVersion::ClusterV1;
+    assert!(wrong_version.validate().is_err());
 }
 
 #[test]

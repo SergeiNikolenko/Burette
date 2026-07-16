@@ -11,7 +11,7 @@ pub use common::{
 };
 pub use engine::{
     EnginePackManifest, EnginePackRef, CLUSTER_FINGERPRINT_ARRAY_NAME,
-    CLUSTER_FINGERPRINT_SEMANTIC, CLUSTER_FINGERPRINT_WORDS,
+    CLUSTER_FINGERPRINT_SEMANTIC, CLUSTER_FINGERPRINT_WORDS, CONFORMER_ENGINE_ARRAY_NAMES,
 };
 pub use layout::{
     PackedArrayDescriptor, PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout,
