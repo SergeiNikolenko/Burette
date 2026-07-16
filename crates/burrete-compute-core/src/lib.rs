@@ -23,7 +23,8 @@ pub use conformer_engine::{
 };
 pub use conformer_extract::{ConformerExtractError, ExtractedConformerParameters};
 pub use conformer_pack::{
-    ConformerEnginePackArrays, ConformerEnginePackBuilder, ConformerPackError,
+    ConformerEnginePackArrays, ConformerEnginePackBinary, ConformerEnginePackBuilder,
+    ConformerPackError, ConformerPackedArraySpan,
 };
 pub use distance_geometry::{
     evaluate_distance_constraints, DistanceConstraint, DistanceConstraintEvaluation,

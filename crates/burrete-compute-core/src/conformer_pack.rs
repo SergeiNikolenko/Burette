@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use burrete_compute_protocol::ConformerVariant;
+use burrete_compute_protocol::{ConformerVariant, CONFORMER_ENGINE_ARRAY_NAMES};
 
 use crate::ExtractedConformerParameters;
 
@@ -36,6 +36,19 @@ pub struct ConformerEnginePackArrays {
     pub torsion_term_starts: Vec<u64>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConformerPackedArraySpan {
+    pub name: &'static str,
+    pub byte_offset: u64,
+    pub byte_length: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConformerEnginePackBinary {
+    pub bytes: Vec<u8>,
+    pub arrays: Vec<ConformerPackedArraySpan>,
+}
+
 impl ConformerEnginePackArrays {
     pub fn record_count(&self) -> usize {
         self.record_validity.len()
@@ -43,6 +56,46 @@ impl ConformerEnginePackArrays {
 
     pub fn payload_bytes(&self) -> Result<u64, ConformerPackError> {
         payload_bytes(Counts::from_arrays(self))
+    }
+
+    pub fn encode_le(
+        &self,
+        maximum_bytes: u64,
+    ) -> Result<ConformerEnginePackBinary, ConformerPackError> {
+        let expected_bytes = self.payload_bytes()?;
+        if expected_bytes > maximum_bytes {
+            return Err(ConformerPackError::new(
+                "conformer EnginePack exceeds its encoded byte budget",
+            ));
+        }
+        let mut writer = BinaryWriter::new(maximum_bytes);
+        writer.u16s("atomicNumbers", &self.atomic_numbers)?;
+        writer.u32_arrays("chiralAtomQuads", &self.chiral_atom_quads)?;
+        writer.u64s("chiralTermStarts", &self.chiral_term_starts)?;
+        writer.f32_arrays("chiralVolumeBounds", &self.chiral_volume_bounds)?;
+        writer.u32_arrays("distanceAtomPairs", &self.distance_atom_pairs)?;
+        writer.f32_arrays("distanceBoundsSquared", &self.distance_bounds_squared)?;
+        writer.u64s("distanceTermStarts", &self.distance_term_starts)?;
+        writer.f32s("distanceWeights", &self.distance_weights)?;
+        writer.u32_arrays("etkDistanceAtomPairs", &self.etk_distance_atom_pairs)?;
+        writer.f32_arrays("etkDistanceBounds", &self.etk_distance_bounds)?;
+        writer.u8s("etkDistanceKinds", &self.etk_distance_kinds)?;
+        writer.u64s("etkDistanceTermStarts", &self.etk_distance_term_starts)?;
+        writer.f32s("etkDistanceWeights", &self.etk_distance_weights)?;
+        writer.i8s("formalCharges", &self.formal_charges)?;
+        writer.u32_arrays("improperAtomQuads", &self.improper_atom_quads)?;
+        writer.u64s("improperTermStarts", &self.improper_term_starts)?;
+        writer.f32s("improperWeights", &self.improper_weights)?;
+        writer.u64s("moleculeAtomStarts", &self.molecule_atom_starts)?;
+        writer.bools("recordValidity", &self.record_validity)?;
+        writer.u32_arrays("stereoAtomQuints", &self.stereo_atom_quints)?;
+        writer.u64s("stereoCenterStarts", &self.stereo_center_starts)?;
+        writer.u8s("stereoFlags", &self.stereo_flags)?;
+        writer.u32_arrays("torsionAtomQuads", &self.torsion_atom_quads)?;
+        writer.f32_arrays("torsionCoefficients", &self.torsion_coefficients)?;
+        writer.i8_arrays("torsionSigns", &self.torsion_signs)?;
+        writer.u64s("torsionTermStarts", &self.torsion_term_starts)?;
+        writer.finish(expected_bytes)
     }
 }
 
@@ -312,27 +365,223 @@ fn append_indices<const N: usize>(
 fn payload_bytes(counts: Counts) -> Result<u64, ConformerPackError> {
     let starts = add(counts.records, 1)?;
     let terms = [
-        (counts.atoms, 3),
-        (counts.distances, 20),
-        (counts.chiral, 24),
-        (counts.torsions, 46),
-        (counts.impropers, 20),
-        (counts.etk_distances, 21),
-        (counts.stereo, 21),
-        (starts, 56),
-        (counts.records, 1),
+        (counts.atoms, 2, 2),
+        (counts.chiral, 16, 4),
+        (starts, 8, 8),
+        (counts.chiral, 8, 4),
+        (counts.distances, 8, 4),
+        (counts.distances, 8, 4),
+        (starts, 8, 8),
+        (counts.distances, 4, 4),
+        (counts.etk_distances, 8, 4),
+        (counts.etk_distances, 8, 4),
+        (counts.etk_distances, 1, 1),
+        (starts, 8, 8),
+        (counts.etk_distances, 4, 4),
+        (counts.atoms, 1, 1),
+        (counts.impropers, 16, 4),
+        (starts, 8, 8),
+        (counts.impropers, 4, 4),
+        (starts, 8, 8),
+        (counts.records, 1, 1),
+        (counts.stereo, 20, 4),
+        (starts, 8, 8),
+        (counts.stereo, 1, 1),
+        (counts.torsions, 16, 4),
+        (counts.torsions, 24, 4),
+        (counts.torsions, 6, 1),
+        (starts, 8, 8),
     ];
-    terms.into_iter().try_fold(0_u64, |total, (count, width)| {
-        let bytes = count
-            .checked_mul(width)
-            .ok_or_else(|| ConformerPackError::new("EnginePack payload size overflowed"))?;
-        add(total, bytes)
-    })
+    terms
+        .into_iter()
+        .try_fold(0_u64, |total, (count, width, alignment)| {
+            let aligned = align(total, alignment)?;
+            let bytes = count
+                .checked_mul(width)
+                .ok_or_else(|| ConformerPackError::new("EnginePack payload size overflowed"))?;
+            add(aligned, bytes)
+        })
+}
+
+fn align(value: u64, alignment: u64) -> Result<u64, ConformerPackError> {
+    let remainder = value % alignment;
+    if remainder == 0 {
+        Ok(value)
+    } else {
+        add(value, alignment - remainder)
+    }
 }
 
 fn add(left: u64, right: u64) -> Result<u64, ConformerPackError> {
     left.checked_add(right)
         .ok_or_else(|| ConformerPackError::new("EnginePack count overflowed"))
+}
+
+struct BinaryWriter {
+    bytes: Vec<u8>,
+    arrays: Vec<ConformerPackedArraySpan>,
+    maximum_bytes: u64,
+}
+
+impl BinaryWriter {
+    fn new(maximum_bytes: u64) -> Self {
+        Self {
+            bytes: Vec::new(),
+            arrays: Vec::with_capacity(CONFORMER_ENGINE_ARRAY_NAMES.len()),
+            maximum_bytes,
+        }
+    }
+
+    fn section(
+        &mut self,
+        name: &'static str,
+        alignment: usize,
+        byte_length: usize,
+        write: impl FnOnce(&mut Vec<u8>),
+    ) -> Result<(), ConformerPackError> {
+        let padding = (alignment - self.bytes.len() % alignment) % alignment;
+        let required = padding
+            .checked_add(byte_length)
+            .and_then(|additional| self.bytes.len().checked_add(additional))
+            .ok_or_else(|| ConformerPackError::new("EnginePack encoding size overflowed"))?;
+        if required as u64 > self.maximum_bytes {
+            return Err(ConformerPackError::new(
+                "conformer EnginePack exceeds its encoded byte budget",
+            ));
+        }
+        self.bytes
+            .try_reserve_exact(padding + byte_length)
+            .map_err(|_| ConformerPackError::new("cannot allocate conformer EnginePack bytes"))?;
+        self.bytes.resize(self.bytes.len() + padding, 0);
+        let start = self.bytes.len();
+        write(&mut self.bytes);
+        if self.bytes.len() != start + byte_length {
+            return Err(ConformerPackError::new(
+                "EnginePack encoder wrote an inconsistent array length",
+            ));
+        }
+        self.arrays.push(ConformerPackedArraySpan {
+            name,
+            byte_offset: start as u64,
+            byte_length: byte_length as u64,
+        });
+        Ok(())
+    }
+
+    fn u8s(&mut self, name: &'static str, values: &[u8]) -> Result<(), ConformerPackError> {
+        self.section(name, 1, values.len(), |bytes| bytes.extend(values))
+    }
+
+    fn i8s(&mut self, name: &'static str, values: &[i8]) -> Result<(), ConformerPackError> {
+        self.section(name, 1, values.len(), |bytes| {
+            bytes.extend(values.iter().map(|value| *value as u8));
+        })
+    }
+
+    fn bools(&mut self, name: &'static str, values: &[bool]) -> Result<(), ConformerPackError> {
+        self.section(name, 1, values.len(), |bytes| {
+            bytes.extend(values.iter().map(|value| u8::from(*value)));
+        })
+    }
+
+    fn u16s(&mut self, name: &'static str, values: &[u16]) -> Result<(), ConformerPackError> {
+        self.fixed(name, 2, values.len(), |bytes| {
+            for value in values {
+                bytes.extend(value.to_le_bytes());
+            }
+        })
+    }
+
+    fn u64s(&mut self, name: &'static str, values: &[u64]) -> Result<(), ConformerPackError> {
+        self.fixed(name, 8, values.len(), |bytes| {
+            for value in values {
+                bytes.extend(value.to_le_bytes());
+            }
+        })
+    }
+
+    fn f32s(&mut self, name: &'static str, values: &[f32]) -> Result<(), ConformerPackError> {
+        self.fixed(name, 4, values.len(), |bytes| {
+            for value in values {
+                bytes.extend(value.to_le_bytes());
+            }
+        })
+    }
+
+    fn u32_arrays<const WIDTH: usize>(
+        &mut self,
+        name: &'static str,
+        values: &[[u32; WIDTH]],
+    ) -> Result<(), ConformerPackError> {
+        let count = array_element_count::<WIDTH>(values.len())?;
+        self.fixed(name, 4, count, |bytes| {
+            for value in values.iter().flatten() {
+                bytes.extend(value.to_le_bytes());
+            }
+        })
+    }
+
+    fn f32_arrays<const WIDTH: usize>(
+        &mut self,
+        name: &'static str,
+        values: &[[f32; WIDTH]],
+    ) -> Result<(), ConformerPackError> {
+        let count = array_element_count::<WIDTH>(values.len())?;
+        self.fixed(name, 4, count, |bytes| {
+            for value in values.iter().flatten() {
+                bytes.extend(value.to_le_bytes());
+            }
+        })
+    }
+
+    fn i8_arrays<const WIDTH: usize>(
+        &mut self,
+        name: &'static str,
+        values: &[[i8; WIDTH]],
+    ) -> Result<(), ConformerPackError> {
+        let count = array_element_count::<WIDTH>(values.len())?;
+        self.section(name, 1, count, |bytes| {
+            bytes.extend(values.iter().flatten().map(|value| *value as u8));
+        })
+    }
+
+    fn fixed(
+        &mut self,
+        name: &'static str,
+        width: usize,
+        count: usize,
+        write: impl FnOnce(&mut Vec<u8>),
+    ) -> Result<(), ConformerPackError> {
+        let byte_length = count
+            .checked_mul(width)
+            .ok_or_else(|| ConformerPackError::new("EnginePack array size overflowed"))?;
+        self.section(name, width, byte_length, write)
+    }
+
+    fn finish(self, expected_bytes: u64) -> Result<ConformerEnginePackBinary, ConformerPackError> {
+        if self.bytes.len() as u64 != expected_bytes
+            || self.arrays.len() != CONFORMER_ENGINE_ARRAY_NAMES.len()
+            || self
+                .arrays
+                .iter()
+                .map(|array| array.name)
+                .ne(CONFORMER_ENGINE_ARRAY_NAMES)
+        {
+            return Err(ConformerPackError::new(
+                "EnginePack encoding differs from the canonical v1 layout",
+            ));
+        }
+        Ok(ConformerEnginePackBinary {
+            bytes: self.bytes,
+            arrays: self.arrays,
+        })
+    }
+}
+
+fn array_element_count<const WIDTH: usize>(count: usize) -> Result<usize, ConformerPackError> {
+    count
+        .checked_mul(WIDTH)
+        .ok_or_else(|| ConformerPackError::new("EnginePack array element count overflowed"))
 }
 
 #[cfg(test)]
@@ -376,7 +625,14 @@ mod tests {
         assert_eq!(arrays.distance_term_starts, [0, 1, 1, 2]);
         assert_eq!(arrays.distance_atom_pairs, [[0, 1], [2, 3]]);
         assert_eq!(arrays.atomic_numbers, [6, 1, 8, 1]);
-        assert_eq!(arrays.payload_bytes().expect("payload bytes"), 279);
+        assert_eq!(arrays.payload_bytes().expect("payload bytes"), 288);
+        let encoded = arrays.encode_le(288).expect("encoded pack");
+        assert_eq!(encoded.bytes.len(), 288);
+        assert_eq!(encoded.arrays[0].byte_offset, 0);
+        assert_eq!(encoded.arrays[2].byte_offset, 8);
+        assert_eq!(encoded.arrays[18].byte_offset, 216);
+        assert_eq!(&encoded.bytes[216..219], &[1, 0, 1]);
+        assert!(arrays.encode_le(287).is_err());
     }
 
     #[test]
