@@ -427,7 +427,7 @@ separate product increments.
 - The desktop Grid now also exposes a persistent method selector and native
   `energy & charges` action for RM1, full variable-basis PM6/PM6_D,
   PM6_D3H4, and
-  parity-gated CHNO slices of AM1, PM3, PM6_SP, and AM1* over 1--256 selected
+  complete upstream-domain AM1, PM3, and PM6_SP plus CHNO AM1* over 1--256 selected
   molecules with explicit coordinates.
   Each method writes to its own Grid columns so runs do not overwrite another
   method's electronic, nuclear, and total energies, SCF status/iterations, or
@@ -461,13 +461,14 @@ separate product increments.
   `native-compute.v19.metallib` SHA-256 is
   `1735ef8c2b5314ae3e0384e32824a58d80f5de6289face21dd610e591dca86e1`.
 - The native closed-shell NDDO oracle now has separate AM1, PM3, PM6_SP, and
-  AM1* CHNO parameter packs instead of method aliases. PM6-family nuclear
+  AM1* parameter packs instead of method aliases. AM1, PM3, and PM6_SP cover
+  their complete pinned 11-, 25-, and 10-element upstream domains; AM1* is the
+  published CHNO model. PM6-family nuclear
   repulsion uses its distinct PWCCT equation. The complete pinned 83x83 CSV is
   compiled into 674 nonzero symmetric native pair records with SHA-gated
   generation; no runtime CSV parser is required. At the
   pinned mlxmolkit commit, explicit-water total energies and oxygen charges
   match all four upstream method paths within `1e-4 eV` and `1e-5 e`.
-  The AM1/PM3/PM6_SP/AM1* subset remains an experimental organic-domain slice.
   Grid method selection is implemented for all eight method identities. H4/HH
   have CPU and Metal reference paths, and the complete pinned Z=1--94 D3 table
   is compiled into 8,836 ordered pairs and 64,516 reference records for native
@@ -553,8 +554,5 @@ fixed order below:
 3. finish alignment corpus parity, chemistry-derived partial charges,
    non-identity atom maps, durable ResultPack/report publication, and packaged
    UI evidence for the implemented Grid/Mol* pose workflow;
-4. extend the parity-gated CHNO AM1, PM3, PM6_SP, and AM1* Grid paths to their
-   documented element domains. Full variable-basis PM6/PM6_D and PM6_D3H4 are
-   implemented on CPU and Metal with complete D3 tables and bounded H4/HH;
-5. combined Apple GPU profiling, memory-pressure testing, package proof, and
+4. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.
