@@ -16,6 +16,14 @@ terms for conformer batches and exposes a bounded central-difference gradient
 used as an independent bring-up/parity path. Production optimization may reuse
 the energy evaluator but must not claim analytic gradients until a separately
 verified analytic kernel replaces this reference entrypoint.
+
+`alignment-score.v1.metal` performs mapped Horn/quaternion alignment, weighted
+RMSD, analytic Gaussian shape overlap, and ESP-Sim Gaussian Coulomb scoring.
+One thread owns one admitted pair and emits only a rigid transform plus scalar
+scores. Probe/reference atom arrays and mappings are shared across descriptors,
+so ensemble and docking-pose comparisons do not materialize a
+`poses x references x atoms x 3` tensor. Fixed-pose scoring is an explicit mode;
+mapped alignment never assumes equal atom order implicitly.
 The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
 256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical
 word. This is a byte-identical view on supported little-endian Apple Silicon;

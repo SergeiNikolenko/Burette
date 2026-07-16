@@ -13,8 +13,8 @@ const POINTER_MAX_BYTES: u64 = 4 * 1024;
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 const METALLIB_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const METADATA_FILE: &str = "build-metadata.v2.json";
-const METALLIB_FILE: &str = "native-compute.v10.metallib";
-const SOURCES: [(&str, &[u8]); 8] = [
+const METALLIB_FILE: &str = "native-compute.v11.metallib";
+const SOURCES: [(&str, &[u8]); 9] = [
     (
         "compute/metal/tanimoto.v2.metal",
         include_bytes!("../../../compute/metal/tanimoto.v2.metal"),
@@ -47,8 +47,12 @@ const SOURCES: [(&str, &[u8]); 8] = [
         "compute/metal/mmff-energy.v1.metal",
         include_bytes!("../../../compute/metal/mmff-energy.v1.metal"),
     ),
+    (
+        "compute/metal/alignment-score.v1.metal",
+        include_bytes!("../../../compute/metal/alignment-score.v1.metal"),
+    ),
 ];
-const CONTRACTS: [(&str, &[u8]); 8] = [
+const CONTRACTS: [(&str, &[u8]); 9] = [
     (
         "compute/metal/tanimoto-kernel-contract.v2.json",
         include_bytes!("../../../compute/metal/tanimoto-kernel-contract.v2.json"),
@@ -81,8 +85,12 @@ const CONTRACTS: [(&str, &[u8]); 8] = [
         "compute/metal/mmff-energy-kernel-contract.v1.json",
         include_bytes!("../../../compute/metal/mmff-energy-kernel-contract.v1.json"),
     ),
+    (
+        "compute/metal/alignment-score-kernel-contract.v1.json",
+        include_bytes!("../../../compute/metal/alignment-score-kernel-contract.v1.json"),
+    ),
 ];
-const AIR_PATHS: [&str; 8] = [
+const AIR_PATHS: [&str; 9] = [
     "tanimoto.v2.air",
     "conformer-initialize.v1.air",
     "conformer-distance.v1.air",
@@ -91,8 +99,9 @@ const AIR_PATHS: [&str; 8] = [
     "conformer-etk.v1.air",
     "conformer-etk-optimize.v1.air",
     "mmff-energy.v1.air",
+    "alignment-score.v1.air",
 ];
-const ENTRYPOINTS: [&str; 12] = [
+const ENTRYPOINTS: [&str; 13] = [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
     "burrete_tanimoto_query_counts_v1",
@@ -105,6 +114,7 @@ const ENTRYPOINTS: [&str; 12] = [
     "burrete_mmff_energy_v1",
     "burrete_mmff_reference_gradient_v1",
     "burrete_mmff_optimize_v1",
+    "burrete_alignment_score_v1",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -259,7 +269,7 @@ fn validate_metadata(metadata: &BuildMetadata) -> Result<(), MetalRuntimeError> 
     let expected_entrypoints: Vec<String> = ENTRYPOINTS.iter().map(ToString::to_string).collect();
     if metadata.schema_version != "burrete.compute.metal-build-metadata.v2"
         || metadata.runtime_version != NATIVE_METAL_RUNTIME_VERSION
-        || metadata.library_id != "burrete.compute.native.v10"
+        || metadata.library_id != "burrete.compute.native.v11"
         || !matches_hashed_inputs(&metadata.sources, &SOURCES)
         || !matches_hashed_inputs(&metadata.contracts, &CONTRACTS)
         || metadata.air.len() != AIR_PATHS.len()
@@ -492,7 +502,7 @@ mod tests {
             json!({
                 "schemaVersion": "burrete.compute.metal-build-metadata.v2",
                 "runtimeVersion": NATIVE_METAL_RUNTIME_VERSION,
-                "libraryId": "burrete.compute.native.v10",
+                "libraryId": "burrete.compute.native.v11",
                 "sources": SOURCES.map(|(path, bytes)| json!({
                     "path": path,
                     "sha256": sha256(bytes),
