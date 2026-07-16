@@ -1,5 +1,9 @@
 use std::{error::Error, fmt};
 
+mod parameters;
+
+pub use parameters::{rm1_parameters, SemiempiricalElementParameters};
+
 const MAX_ORBITALS: usize = 256;
 
 /// Semi-empirical methods exposed by the native compute contract.

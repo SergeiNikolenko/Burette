@@ -55,3 +55,17 @@ Upstream identifies material derived from or compared with nvMolKit
 OpenMOPAC (Apache-2.0). Permission from the primary author does not replace
 notices or license obligations for those secondary sources. Their applicable
 copyright and license texts must be included when such material is adapted.
+
+## OpenMOPAC semiempirical parameters
+
+The native semiempirical layer adapts the RM1 numeric parameter table from
+OpenMOPAC commit `052691223d19935a89f0fe18cd12301bd83e4201`, file
+`src/models/parameters_for_RM1_C.F90`. That file is copyright 2021 Virginia
+Polytechnic Institute and State University and licensed under Apache-2.0. The
+authoritative license is included at
+`compute/semiempirical/licenses/OPENMOPAC-APACHE-2.0.txt`.
+
+The PYSEQM BSD-3-Clause license is archived at
+`compute/semiempirical/licenses/PYSEQM-BSD-3-CLAUSE.txt` for the pending
+method-by-method integral audit. No PYSEQM-derived implementation is claimed
+by the current SCF and RM1 parameter increments.

@@ -30,7 +30,7 @@ the primary author's permission does not replace these obligations.
 | NVIDIA nvMolKit | Apache-2.0 | DG/ETK workflow and gradients, MMFF energy/minimizers, clustering architecture |
 | Shivam Patel `mlxmolkit` | MIT, copyright notice required | In-kernel MMFF/BFGS paths |
 | LANL/Triad PYSEQM | BSD-3-Clause | `rm1/_pyseqm_port/**`, SCF/integrals, d-orbital and parameter logic |
-| OpenMOPAC | Apache-2.0 | RM1/AM1/PM3/PM6 parameter tables and conventions |
+| OpenMOPAC `052691223d19935a89f0fe18cd12301bd83e4201` | Apache-2.0; authoritative license archived | RM1 parameter table accepted; AM1/PM3/PM6 tables and conventions remain pending adaptation |
 
 No source or data from these areas may be adapted until the authoritative
 license text, copyright notice, exact source revision, and file mapping are
@@ -66,7 +66,7 @@ provenance and scientific behavior still require review.
 | selected `mlxmolkit/cheese.py` functions | Horn/RMSD/shape/ESP formulas | reference-only | Equal atom-order assumption and unsafe full pair tensor |
 | `mlxmolkit/rm1/**` | Semiempirical oracle and formulas | reference-only | Mixed provenance; incomplete d-orbital GPU; method registry conflicts |
 | `mlxmolkit/rm1/_pyseqm_port/**` | PYSEQM numerical oracle | reference-only | BSD-3 mechanical translation; do not treat as Guillaume-only code |
-| `mlxmolkit/rm1/data/**` | Parameter/reference data | reference-only | Exact PYSEQM/OpenMOPAC source and redistribution terms required |
+| `mlxmolkit/rm1/data/**` | Parameter/reference data | reference-only | Exact PYSEQM/OpenMOPAC source and redistribution terms required; do not use as the production data source |
 
 Duplicate or superseded pipelines, Python package/CLI code, examples, training
 experiments, learned models, caches, `.dylib`, `.metallib`, and benchmark output
@@ -170,7 +170,8 @@ copy `mlxmolkit` source.
 | `crates/burrete-compute-core/src/alignment.rs` | selected Horn, Gaussian shape, and ESP functions in `mlxmolkit/cheese.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only behavioral reference; independently implemented float64 mapped alignment and fixed-pose scoring oracle | Horn quaternion method and published ESP-Sim Gaussian coefficients; no upstream source copied | known proper-transform recovery, self-score, symmetry, inverted-charge, and mapping-domain tests |
 | `compute/metal/alignment-score.v1.metal` | selected Horn, Gaussian shape, and ESP functions in `mlxmolkit/cheese.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only behavioral reference; independent bounded pair kernel with shared atoms/mappings and transform-only output | Horn quaternion method and published ESP-Sim Gaussian coefficients; no upstream source copied | package-bound float64 CPU/Metal startup KAT on Apple M2 Pro; broad corpus parity pending |
 | `apps/desktop/src-tauri/src/compute/alignment_workflow.rs` | selected pose comparison behavior in `mlxmolkit/cheese.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | independently implemented Grid orchestration, molfile parsing, explicit identity mapping, CPU parity gate, score writeback, and aligned SDF publication | no upstream source copied; molfile formal charges are explicitly not MMFF or semiempirical partial charges | V2000/V3000 parser known answers, focused Rust tests, desktop production build, and v11 real-GPU KAT on Apple M2 Pro; broad pose corpus pending |
-| `crates/burrete-compute-core/src/semiempirical.rs` | `mlxmolkit/rm1/scf.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | behavioral inventory only; independently implemented bounded closed-shell SCF, Jacobi diagonalization, DIIS, adaptive damping, and method identities; no chemistry method is claimed yet | no upstream/PYSEQM/OpenMOPAC source, formulas, or parameter data copied | deterministic two-orbital known answer, method-domain and invalid-input tests; NDDO and external parity pending |
+| `crates/burrete-compute-core/src/semiempirical.rs` | `mlxmolkit/rm1/scf.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | behavioral inventory only; independently implemented bounded closed-shell SCF, Jacobi diagonalization, DIIS, adaptive damping, and method identities; no chemistry method is claimed yet | no upstream/PYSEQM source or formulas copied | deterministic two-orbital known answer, method-domain and invalid-input tests; NDDO and external parity pending |
+| `crates/burrete-compute-core/src/semiempirical/parameters.rs` | authoritative `openmopac/mopac/src/models/parameters_for_RM1_C.F90`; `mlxmolkit/rm1/params.py` is parity-only | OpenMOPAC `052691223d19935a89f0fe18cd12301bd83e4201`; mlxmolkit `9e7337f6f93c40a39ad0187991151944a4f1e274` | adapted RM1 numeric parameter table for the ten-element upstream method domain; Burrete-owned typed layout | OpenMOPAC Apache-2.0, copyright 2021 Virginia Polytechnic Institute and State University; license archived at `compute/semiempirical/licenses/OPENMOPAC-APACHE-2.0.txt` | exact atomic-domain and H/C/I pinned-value known answers; full evaluator parity pending |
 
 ## Acceptance procedure
 

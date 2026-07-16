@@ -64,8 +64,9 @@ pub use mmff_extract::{
     decode_native_mmff_parameters, MmffExtractError, NativeMmffParameters,
 };
 pub use semiempirical::{
-    solve_closed_shell_scf, SemiempiricalError, SemiempiricalMethod, SemiempiricalScfOptions,
-    SemiempiricalScfResult, SemiempiricalScfStatus,
+    rm1_parameters, solve_closed_shell_scf, SemiempiricalElementParameters, SemiempiricalError,
+    SemiempiricalMethod, SemiempiricalScfOptions, SemiempiricalScfResult,
+    SemiempiricalScfStatus,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};
