@@ -1,5 +1,9 @@
-use std::fmt;
+use std::{fmt, num::NonZeroU32};
 
+use burrete_compute_core::{
+    plan_conformer_batches, ConformerEnginePackArrays, ConformerMoleculeWork,
+    ConformerSchedulingOptions,
+};
 use burrete_compute_protocol::{
     Backend, BackendPolicy, ConformerV1SubmitRequest, EngineIdentity, ExecutionPartition,
     ExecutionPlan, ExecutionPlanVersion, FallbackDecision, GridScope, PlannedStage, Precision,
@@ -26,6 +30,7 @@ const ENERGY_BYTES: u64 = 4;
 const STATUS_BYTES: u64 = 1;
 const SEED_BYTES: u64 = 16;
 const MAX_FALLBACK_REASON_BYTES: usize = 2_048;
+const LBFGS_HISTORY_SIZE: u32 = 8;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ConformerV1AdmissionError {
@@ -92,6 +97,109 @@ pub(crate) struct ConformerV1Preflight {
     pub(crate) engine_pack_bytes: u64,
     pub(crate) result_pack_bytes: u64,
     pub(crate) numeric_peak_bytes: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ConformerMoleculeIdentity {
+    pub(crate) source_record_id: u64,
+    pub(crate) molecule_content_sha256: String,
+}
+
+pub(crate) fn derive_conformer_v1_preflight(
+    request: &ConformerV1SubmitRequest,
+    arrays: &ConformerEnginePackArrays,
+    identities: &[ConformerMoleculeIdentity],
+    ordered_record_molecule_identity_sha256: String,
+) -> Result<ConformerV1Preflight, ConformerV1AdmissionError> {
+    request.validate()?;
+    let record_count = arrays.record_count() as u64;
+    if identities.len() != arrays.record_count()
+        || arrays.molecule_atom_starts.len() != arrays.record_count() + 1
+        || arrays.distance_term_starts.len() != arrays.record_count() + 1
+    {
+        return Err(ConformerV1AdmissionError::Contract(
+            "conformer extraction identity or offset count differs from its records".into(),
+        ));
+    }
+    let engine_pack_bytes = arrays
+        .payload_bytes()
+        .map_err(|error| ConformerV1AdmissionError::Contract(error.to_string()))?;
+    let conformers_per_molecule = NonZeroU32::new(request.parameters.conformers_per_molecule)
+        .ok_or_else(|| {
+            ConformerV1AdmissionError::Contract("conformer count must be nonzero".into())
+        })?;
+    let mut molecules = Vec::new();
+    molecules
+        .try_reserve_exact(arrays.record_count())
+        .map_err(|_| {
+            ConformerV1AdmissionError::Contract("cannot allocate conformer plan".into())
+        })?;
+    for (record, identity) in identities.iter().enumerate() {
+        let atom_start = arrays.molecule_atom_starts[record];
+        let atom_end = arrays.molecule_atom_starts[record + 1];
+        if atom_end < atom_start {
+            return Err(ConformerV1AdmissionError::Contract(
+                "conformer molecule atom offsets are not monotonic".into(),
+            ));
+        }
+        if !arrays.record_validity[record] {
+            if atom_start != atom_end {
+                return Err(ConformerV1AdmissionError::Contract(
+                    "invalid conformer record owns atom payload".into(),
+                ));
+            }
+            continue;
+        }
+        let atom_count = u32::try_from(atom_end - atom_start)
+            .ok()
+            .and_then(NonZeroU32::new)
+            .ok_or_else(|| {
+                ConformerV1AdmissionError::Contract(
+                    "valid conformer molecule has an invalid atom count".into(),
+                )
+            })?;
+        molecules.push(ConformerMoleculeWork {
+            source_record_id: identity.source_record_id,
+            molecule_content_sha256: decode_sha256(&identity.molecule_content_sha256)?,
+            atom_count,
+            conformer_count: conformers_per_molecule,
+        });
+    }
+    let valid_record_count = molecules.len() as u64;
+    let total_atom_count = arrays.atomic_numbers.len() as u64;
+    let total_distance_constraint_count = arrays.distance_atom_pairs.len() as u64;
+    let conformer_count = multiply(
+        valid_record_count,
+        u64::from(conformers_per_molecule.get()),
+        "conformer count",
+    )?;
+    let positioned_atoms = multiply(
+        total_atom_count,
+        u64::from(conformers_per_molecule.get()),
+        "positioned atom count",
+    )?;
+    let result_pack_bytes = result_pack_payload_bytes(positioned_atoms, conformer_count)?;
+    let schedule = plan_conformer_batches(
+        &molecules,
+        ConformerSchedulingOptions {
+            max_memory_bytes: request.limits.max_memory_bytes,
+            resident_engine_bytes: engine_pack_bytes,
+            max_conformers_per_batch: NonZeroU32::new(request.limits.max_conformers_per_batch)
+                .expect("validated nonzero batch limit"),
+            lbfgs_history: NonZeroU32::new(LBFGS_HISTORY_SIZE).expect("nonzero history"),
+        },
+    )
+    .map_err(|error| ConformerV1AdmissionError::Contract(error.to_string()))?;
+    Ok(ConformerV1Preflight {
+        record_count,
+        ordered_record_molecule_identity_sha256,
+        valid_record_count,
+        total_atom_count,
+        total_distance_constraint_count,
+        engine_pack_bytes,
+        result_pack_bytes,
+        numeric_peak_bytes: schedule.planned_peak_bytes,
+    })
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -515,6 +623,75 @@ fn minimum_result_pack_payload(
     ])
 }
 
+fn result_pack_payload_bytes(
+    positioned_atom_count: u64,
+    conformer_count: u64,
+) -> Result<u64, ConformerV1AdmissionError> {
+    let starts =
+        conformer_count
+            .checked_add(1)
+            .ok_or(ConformerV1AdmissionError::ArithmeticOverflow(
+                "conformer atom starts",
+            ))?;
+    let arrays = [
+        (starts, CONFORMER_ATOM_START_BYTES, 8),
+        (conformer_count, MOLECULE_INDEX_BYTES, 4),
+        (conformer_count, CONFORMER_ORDINAL_BYTES, 4),
+        (conformer_count, ATTEMPT_COUNT_BYTES, 2),
+        (conformer_count, ENERGY_BYTES, 4),
+        (conformer_count, STATUS_BYTES, 1),
+        (positioned_atom_count, POSITION_COMPONENTS * F32_BYTES, 4),
+        (conformer_count, SEED_BYTES, 4),
+    ];
+    arrays
+        .into_iter()
+        .try_fold(0_u64, |offset, (count, width, alignment)| {
+            let aligned = align_bytes(offset, alignment)?;
+            let bytes = multiply(count, width, "conformer ResultPack array")?;
+            aligned
+                .checked_add(bytes)
+                .ok_or(ConformerV1AdmissionError::ArithmeticOverflow(
+                    "conformer ResultPack payload",
+                ))
+        })
+}
+
+fn align_bytes(value: u64, alignment: u64) -> Result<u64, ConformerV1AdmissionError> {
+    let remainder = value % alignment;
+    value
+        .checked_add(if remainder == 0 {
+            0
+        } else {
+            alignment - remainder
+        })
+        .ok_or(ConformerV1AdmissionError::ArithmeticOverflow(
+            "packed array alignment",
+        ))
+}
+
+fn decode_sha256(value: &str) -> Result<[u8; 32], ConformerV1AdmissionError> {
+    if value.len() != 64 {
+        return Err(ConformerV1AdmissionError::Contract(
+            "conformer molecule identity is not SHA-256".into(),
+        ));
+    }
+    let mut decoded = [0_u8; 32];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        decoded[index] = (hex_nibble(pair[0])? << 4) | hex_nibble(pair[1])?;
+    }
+    Ok(decoded)
+}
+
+fn hex_nibble(value: u8) -> Result<u8, ConformerV1AdmissionError> {
+    match value {
+        b'0'..=b'9' => Ok(value - b'0'),
+        b'a'..=b'f' => Ok(value - b'a' + 10),
+        _ => Err(ConformerV1AdmissionError::Contract(
+            "conformer molecule identity is not lowercase SHA-256".into(),
+        )),
+    }
+}
+
 fn multiply(
     count: u64,
     width: u64,
@@ -538,6 +715,7 @@ fn sum_buffers(buffers: &[u64]) -> Result<u64, ConformerV1AdmissionError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use burrete_compute_core::{ConformerEnginePackBuilder, ExtractedConformerParameters};
     use burrete_compute_protocol::{
         AllGridScope, ComputeJobSchemaVersion, ConformerResourceLimits, ConformerV1Parameters,
         ConformerVariant, ExecutionPolicy, FallbackReasonCode, GridSourceReference,
@@ -703,6 +881,57 @@ mod tests {
             result_pack_bytes: 8_192,
             numeric_peak_bytes: 1024 * 1024,
         }
+    }
+
+    #[test]
+    fn derives_exact_pack_sizes_and_scheduler_peak_from_extraction() {
+        let request = request(BackendPolicy::ReferenceCpu);
+        let mut builder = ConformerEnginePackBuilder::new(
+            request.parameters.variant,
+            request.limits.max_memory_bytes,
+        );
+        builder
+            .append_valid(ExtractedConformerParameters {
+                variant: request.parameters.variant,
+                atomic_numbers: vec![6, 1],
+                formal_charges: vec![0, 0],
+                distance_atom_pairs: vec![[0, 1]],
+                distance_bounds_squared: vec![[1.0, 2.0]],
+                distance_weights: vec![1.0],
+                chiral_atom_quads: Vec::new(),
+                chiral_volume_bounds: Vec::new(),
+                torsion_atom_quads: Vec::new(),
+                torsion_coefficients: Vec::new(),
+                torsion_signs: Vec::new(),
+                improper_atom_quads: Vec::new(),
+                improper_weights: Vec::new(),
+                etk_distance_atom_pairs: Vec::new(),
+                etk_distance_bounds: Vec::new(),
+                etk_distance_kinds: Vec::new(),
+                etk_distance_weights: Vec::new(),
+                stereo_atom_quints: Vec::new(),
+                stereo_flags: Vec::new(),
+            })
+            .expect("valid extraction");
+        let arrays = builder.finish(1).expect("complete arrays");
+        let derived = derive_conformer_v1_preflight(
+            &request,
+            &arrays,
+            &[ConformerMoleculeIdentity {
+                source_record_id: 4,
+                molecule_content_sha256: "c".repeat(64),
+            }],
+            frozen_identity(),
+        )
+        .expect("derive preflight");
+
+        assert_eq!(derived.record_count, 1);
+        assert_eq!(derived.valid_record_count, 1);
+        assert_eq!(derived.total_atom_count, 2);
+        assert_eq!(derived.total_distance_constraint_count, 1);
+        assert_eq!(derived.engine_pack_bytes, arrays.payload_bytes().unwrap());
+        assert!(derived.numeric_peak_bytes >= derived.engine_pack_bytes);
+        assert!(derived.numeric_peak_bytes <= request.limits.max_memory_bytes);
     }
 
     fn frozen_identity() -> String {

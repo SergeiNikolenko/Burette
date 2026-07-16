@@ -19,6 +19,7 @@ use crate::preview::grid_snapshot::VerifiedSnapshot;
 
 use super::{
     conformer_ipc::{ConformerChunkResult, ConformerRecordResult},
+    conformer_plan::ConformerMoleculeIdentity,
     error::{ComputeCoordinatorError, ComputeResult},
 };
 
@@ -57,16 +58,10 @@ pub(crate) struct ConformerInputChunk {
     pub(crate) records: Vec<ConformerInputRecord>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ConformerRecordIdentity {
-    pub(crate) source_record_id: u64,
-    pub(crate) molecule_content_sha256: String,
-}
-
 #[derive(Debug)]
 pub(crate) struct CompletedConformerExtraction {
     pub(crate) arrays: ConformerEnginePackArrays,
-    pub(crate) identities: Vec<ConformerRecordIdentity>,
+    pub(crate) identities: Vec<ConformerMoleculeIdentity>,
     pub(crate) errors: Vec<Option<String>>,
     pub(crate) verified: VerifiedSnapshot,
 }
@@ -83,7 +78,7 @@ pub(crate) struct ConformerExtractionSession {
     identity: OrderedRecordMoleculeIdentityHasher,
     pending: Option<ConformerInputChunk>,
     builder: ConformerEnginePackBuilder,
-    identities: Vec<ConformerRecordIdentity>,
+    identities: Vec<ConformerMoleculeIdentity>,
     errors: Vec<Option<String>>,
     reached_eof: bool,
 }
@@ -201,7 +196,7 @@ impl ConformerExtractionSession {
             decoded.push(value);
         }
         for (source, value) in expected.records.iter().zip(decoded) {
-            self.identities.push(ConformerRecordIdentity {
+            self.identities.push(ConformerMoleculeIdentity {
                 source_record_id: source.source_record_id,
                 molecule_content_sha256: source.molecule_content_sha256.clone(),
             });
