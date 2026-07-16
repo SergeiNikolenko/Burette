@@ -1,0 +1,624 @@
+use std::num::NonZeroU32;
+
+use burrete_compute_core::{
+    initialize_conformer_positions, optimize_distance_geometry, plan_conformer_batches,
+    ConformerDistanceEngine, ConformerEnginePackArrays, ConformerMoleculeWork,
+    ConformerSchedulingOptions, ConformerWorkIdentity, DistanceConstraint,
+    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus,
+};
+use burrete_compute_metal::{MetalDistanceEmbedding, MetalTanimotoRuntime};
+use burrete_compute_protocol::{Backend, ConformerV1SubmitRequest};
+use uuid::Uuid;
+
+use super::{
+    conformer_plan::ConformerMoleculeIdentity,
+    error::{ComputeCoordinatorError, ComputeResult},
+};
+
+const LBFGS_HISTORY: u32 = 8;
+const MEMORY_HEADROOM_BYTES: u64 = 64 * 1024;
+
+#[derive(Debug)]
+pub(crate) struct ConformerDistanceComputation {
+    pub(crate) distance_engine: ConformerDistanceEngine,
+    #[allow(dead_code, reason = "consumed by the next ETK/stereo execution stage")]
+    pub(crate) deferred: ConformerDeferredConstraints,
+    pub(crate) conformer_atom_starts: Vec<u64>,
+    pub(crate) conformer_molecule_indices: Vec<u32>,
+    pub(crate) conformer_ordinals: Vec<u32>,
+    pub(crate) embedding_attempt_counts: Vec<u16>,
+    pub(crate) embedding_energies: Vec<f32>,
+    pub(crate) embedding_statuses: Vec<u8>,
+    pub(crate) positions: Vec<[f32; 3]>,
+    pub(crate) seed_words: Vec<[u32; 4]>,
+    pub(crate) gpu_time_ms: Option<u64>,
+}
+
+#[derive(Debug)]
+#[allow(dead_code, reason = "consumed by the next ETK/stereo execution stage")]
+pub(crate) struct ConformerDeferredConstraints {
+    pub(crate) chiral_atom_quads: Vec<[u32; 4]>,
+    pub(crate) chiral_term_starts: Vec<u64>,
+    pub(crate) chiral_volume_bounds: Vec<[f32; 2]>,
+    pub(crate) etk_distance_atom_pairs: Vec<[u32; 2]>,
+    pub(crate) etk_distance_bounds: Vec<[f32; 2]>,
+    pub(crate) etk_distance_kinds: Vec<u8>,
+    pub(crate) etk_distance_term_starts: Vec<u64>,
+    pub(crate) etk_distance_weights: Vec<f32>,
+    pub(crate) improper_atom_quads: Vec<[u32; 4]>,
+    pub(crate) improper_term_starts: Vec<u64>,
+    pub(crate) improper_weights: Vec<f32>,
+    pub(crate) stereo_atom_quints: Vec<[u32; 5]>,
+    pub(crate) stereo_center_starts: Vec<u64>,
+    pub(crate) stereo_flags: Vec<u8>,
+    pub(crate) torsion_atom_quads: Vec<[u32; 4]>,
+    pub(crate) torsion_coefficients: Vec<[f32; 6]>,
+    pub(crate) torsion_signs: Vec<[i8; 6]>,
+    pub(crate) torsion_term_starts: Vec<u64>,
+}
+
+pub(crate) fn execute_conformer_distance_geometry(
+    job_id: Uuid,
+    request: &ConformerV1SubmitRequest,
+    arrays: ConformerEnginePackArrays,
+    identities: &[ConformerMoleculeIdentity],
+    backend: Backend,
+    metal: Option<&MetalTanimotoRuntime>,
+) -> ComputeResult<ConformerDistanceComputation> {
+    if identities.len() != arrays.record_count() {
+        return Err(protocol(
+            "conformer identity count differs from the extracted EnginePack",
+        ));
+    }
+    let engine_pack_bytes = arrays
+        .payload_bytes()
+        .map_err(|error| protocol(error.to_string()))?;
+    let ConformerEnginePackArrays {
+        atomic_numbers,
+        chiral_atom_quads,
+        chiral_term_starts,
+        chiral_volume_bounds,
+        distance_atom_pairs,
+        distance_bounds_squared,
+        distance_term_starts,
+        distance_weights,
+        etk_distance_atom_pairs,
+        etk_distance_bounds,
+        etk_distance_kinds,
+        etk_distance_term_starts,
+        etk_distance_weights,
+        formal_charges,
+        improper_atom_quads,
+        improper_term_starts,
+        improper_weights,
+        molecule_atom_starts,
+        record_validity,
+        stereo_atom_quints,
+        stereo_center_starts,
+        stereo_flags,
+        torsion_atom_quads,
+        torsion_coefficients,
+        torsion_signs,
+        torsion_term_starts,
+    } = arrays;
+    let deferred = ConformerDeferredConstraints {
+        chiral_atom_quads,
+        chiral_term_starts,
+        chiral_volume_bounds,
+        etk_distance_atom_pairs,
+        etk_distance_bounds,
+        etk_distance_kinds,
+        etk_distance_term_starts,
+        etk_distance_weights,
+        improper_atom_quads,
+        improper_term_starts,
+        improper_weights,
+        stereo_atom_quints,
+        stereo_center_starts,
+        stereo_flags,
+        torsion_atom_quads,
+        torsion_coefficients,
+        torsion_signs,
+        torsion_term_starts,
+    };
+    let engine = ConformerDistanceEngine::new(
+        record_validity,
+        molecule_atom_starts,
+        atomic_numbers,
+        formal_charges,
+        distance_term_starts,
+        distance_atom_pairs,
+        distance_bounds_squared,
+        distance_weights,
+    )
+    .map_err(|error| protocol(error.to_string()))?;
+    let conformer_count = NonZeroU32::new(request.parameters.conformers_per_molecule)
+        .expect("validated conformer count is nonzero");
+    let mut work = Vec::new();
+    let mut valid_records = Vec::new();
+    work.try_reserve_exact(engine.valid_record_count() as usize)
+        .map_err(|_| unavailable("cannot allocate conformer work plan"))?;
+    valid_records
+        .try_reserve_exact(engine.valid_record_count() as usize)
+        .map_err(|_| unavailable("cannot allocate conformer record map"))?;
+    for (record_index, identity) in identities.iter().enumerate() {
+        let Some(molecule) = engine
+            .molecule(record_index as u64)
+            .map_err(|error| protocol(error.to_string()))?
+        else {
+            continue;
+        };
+        work.push(ConformerMoleculeWork {
+            source_record_id: identity.source_record_id,
+            molecule_content_sha256: decode_sha256(&identity.molecule_content_sha256)?,
+            atom_count: NonZeroU32::new(molecule.atomic_numbers.len() as u32)
+                .expect("validated molecule has atoms"),
+            conformer_count,
+        });
+        valid_records.push(record_index as u32);
+    }
+    let schedule = plan_conformer_batches(
+        &work,
+        ConformerSchedulingOptions {
+            max_memory_bytes: request.limits.max_memory_bytes,
+            resident_engine_bytes: engine_pack_bytes,
+            max_conformers_per_batch: NonZeroU32::new(request.limits.max_conformers_per_batch)
+                .expect("validated batch limit is nonzero"),
+            lbfgs_history: NonZeroU32::new(LBFGS_HISTORY).expect("nonzero history"),
+        },
+    )
+    .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+    let working_memory = request
+        .limits
+        .max_memory_bytes
+        .checked_sub(engine_pack_bytes)
+        .and_then(|bytes| bytes.checked_sub(MEMORY_HEADROOM_BYTES))
+        .ok_or_else(|| unavailable("conformer EnginePack leaves no numeric working memory"))?;
+    let mut output = ConformerDistanceComputation::with_capacity(
+        engine,
+        deferred,
+        schedule.conformer_count,
+        work.iter()
+            .map(|molecule| {
+                u64::from(molecule.atom_count.get()) * u64::from(molecule.conformer_count.get())
+            })
+            .sum(),
+    )?;
+    let options = DistanceGeometryOptimizationOptions::default();
+    let mut total_gpu_time = 0_u64;
+
+    for batch in schedule.batches {
+        for span in batch.spans {
+            let work_index = span.molecule_index as usize;
+            let record_index = valid_records[work_index];
+            let molecule = output
+                .distance_engine
+                .molecule(u64::from(record_index))
+                .map_err(|error| protocol(error.to_string()))?
+                .expect("scheduler contains only valid records");
+            let constraints = molecule.local_distance_constraints();
+            let identity = work[work_index];
+            let count = span.conformer_count.get() as usize;
+            let mut final_attempts = vec![0_u16; count];
+            let mut final_energies = vec![0.0_f32; count];
+            let mut final_statuses = vec![DistanceGeometryOptimizationStatus::MaxIterations; count];
+            let mut final_positions = vec![Vec::<[f32; 4]>::new(); count];
+            let mut final_seeds = vec![[0_u32; 4]; count];
+            let mut pending = (0..count).collect::<Vec<_>>();
+            for retry_index in 0..request.parameters.max_attempts_per_conformer {
+                if pending.is_empty() {
+                    break;
+                }
+                let seeds = pending
+                    .iter()
+                    .map(|local| {
+                        ConformerWorkIdentity {
+                            job_id: *job_id.as_bytes(),
+                            source_record_id: identity.source_record_id,
+                            molecule_content_sha256: identity.molecule_content_sha256,
+                            variant: request.parameters.variant,
+                            conformer_index: span.first_conformer + *local as u32,
+                            retry_index,
+                        }
+                        .seed_words()
+                    })
+                    .collect::<Vec<_>>();
+                let attempt = embed(
+                    backend,
+                    metal,
+                    &seeds,
+                    molecule.atomic_numbers.len() as u32,
+                    &constraints,
+                    options,
+                    working_memory,
+                )?;
+                total_gpu_time = total_gpu_time
+                    .checked_add(attempt.gpu_time_ms.unwrap_or(0))
+                    .ok_or_else(|| protocol("conformer GPU time overflowed"))?;
+                let mut retry = Vec::new();
+                for (attempt_index, local) in pending.into_iter().enumerate() {
+                    let atom_count = molecule.atomic_numbers.len();
+                    let start = attempt_index * atom_count;
+                    let end = start + atom_count;
+                    final_attempts[local] = retry_index + 1;
+                    final_energies[local] = attempt.energies[attempt_index];
+                    final_statuses[local] = attempt.statuses[attempt_index];
+                    final_positions[local] = attempt.positions[start..end].to_vec();
+                    final_seeds[local] = seeds[attempt_index];
+                    if !converged(attempt.statuses[attempt_index])
+                        && retry_index + 1 < request.parameters.max_attempts_per_conformer
+                    {
+                        retry.push(local);
+                    }
+                }
+                pending = retry;
+            }
+            for local in 0..count {
+                output.conformer_molecule_indices.push(record_index);
+                output
+                    .conformer_ordinals
+                    .push(span.first_conformer + local as u32);
+                output.embedding_attempt_counts.push(final_attempts[local]);
+                output.embedding_energies.push(final_energies[local]);
+                output
+                    .embedding_statuses
+                    .push(status_tag(final_statuses[local]));
+                output.seed_words.push(final_seeds[local]);
+                output.positions.extend(
+                    final_positions[local]
+                        .iter()
+                        .map(|position| [position[0], position[1], position[2]]),
+                );
+                output
+                    .conformer_atom_starts
+                    .push(output.positions.len() as u64);
+            }
+        }
+    }
+    output.gpu_time_ms = (backend == Backend::NativeMetal).then_some(total_gpu_time);
+    output.validate(schedule.conformer_count)?;
+    Ok(output)
+}
+
+struct AttemptBatch {
+    positions: Vec<[f32; 4]>,
+    energies: Vec<f32>,
+    statuses: Vec<DistanceGeometryOptimizationStatus>,
+    gpu_time_ms: Option<u64>,
+}
+
+fn embed(
+    backend: Backend,
+    metal: Option<&MetalTanimotoRuntime>,
+    seeds: &[[u32; 4]],
+    atom_count: u32,
+    constraints: &[DistanceConstraint],
+    options: DistanceGeometryOptimizationOptions,
+    max_memory_bytes: u64,
+) -> ComputeResult<AttemptBatch> {
+    match backend {
+        Backend::NativeMetal => {
+            let runtime =
+                metal.ok_or_else(|| unavailable("admitted Metal runtime is unavailable"))?;
+            let MetalDistanceEmbedding {
+                positions,
+                energies,
+                statuses,
+                gpu_time_ms,
+                ..
+            } = runtime
+                .embed_distance_bounds_profiled(
+                    seeds,
+                    atom_count,
+                    constraints,
+                    options,
+                    max_memory_bytes,
+                )
+                .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+            Ok(AttemptBatch {
+                positions,
+                energies,
+                statuses,
+                gpu_time_ms: Some(gpu_time_ms),
+            })
+        }
+        Backend::ReferenceCpu => {
+            let mut positions = Vec::new();
+            let mut energies = Vec::new();
+            let mut statuses = Vec::new();
+            for seed in seeds {
+                let initial = initialize_conformer_positions(*seed, atom_count);
+                let optimized = optimize_distance_geometry(&initial, constraints, options)
+                    .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+                positions.extend(optimized.positions);
+                energies.push(optimized.energy);
+                statuses.push(optimized.status);
+            }
+            Ok(AttemptBatch {
+                positions,
+                energies,
+                statuses,
+                gpu_time_ms: None,
+            })
+        }
+        other => Err(protocol(format!(
+            "unsupported conformer distance backend: {other:?}"
+        ))),
+    }
+}
+
+impl ConformerDistanceComputation {
+    pub(crate) fn conformer_count(&self) -> usize {
+        self.conformer_molecule_indices.len()
+    }
+
+    fn with_capacity(
+        distance_engine: ConformerDistanceEngine,
+        deferred: ConformerDeferredConstraints,
+        conformers: u64,
+        atoms: u64,
+    ) -> ComputeResult<Self> {
+        let conformers = usize::try_from(conformers)
+            .map_err(|_| unavailable("conformer result count exceeds address space"))?;
+        let atoms = usize::try_from(atoms)
+            .map_err(|_| unavailable("conformer position count exceeds address space"))?;
+        let mut result = Self {
+            distance_engine,
+            deferred,
+            conformer_atom_starts: Vec::new(),
+            conformer_molecule_indices: Vec::new(),
+            conformer_ordinals: Vec::new(),
+            embedding_attempt_counts: Vec::new(),
+            embedding_energies: Vec::new(),
+            embedding_statuses: Vec::new(),
+            positions: Vec::new(),
+            seed_words: Vec::new(),
+            gpu_time_ms: None,
+        };
+        result
+            .conformer_atom_starts
+            .try_reserve_exact(conformers + 1)
+            .map_err(|_| unavailable("cannot allocate conformer offsets"))?;
+        result.conformer_atom_starts.push(0);
+        for vector in [
+            &mut result.conformer_molecule_indices,
+            &mut result.conformer_ordinals,
+        ] {
+            vector
+                .try_reserve_exact(conformers)
+                .map_err(|_| unavailable("cannot allocate conformer identity arrays"))?;
+        }
+        result
+            .embedding_attempt_counts
+            .try_reserve_exact(conformers)
+            .map_err(|_| unavailable("cannot allocate conformer attempt counts"))?;
+        result
+            .embedding_energies
+            .try_reserve_exact(conformers)
+            .map_err(|_| unavailable("cannot allocate conformer energies"))?;
+        result
+            .embedding_statuses
+            .try_reserve_exact(conformers)
+            .map_err(|_| unavailable("cannot allocate conformer statuses"))?;
+        result
+            .seed_words
+            .try_reserve_exact(conformers)
+            .map_err(|_| unavailable("cannot allocate conformer seeds"))?;
+        result
+            .positions
+            .try_reserve_exact(atoms)
+            .map_err(|_| unavailable("cannot allocate conformer positions"))?;
+        Ok(result)
+    }
+
+    fn validate(&self, expected_conformers: u64) -> ComputeResult<()> {
+        let count = self.conformer_molecule_indices.len();
+        if count as u64 != expected_conformers
+            || self.conformer_atom_starts.len() != count + 1
+            || self.conformer_ordinals.len() != count
+            || self.embedding_attempt_counts.len() != count
+            || self.embedding_energies.len() != count
+            || self.embedding_statuses.len() != count
+            || self.seed_words.len() != count
+            || self.conformer_atom_starts.last().copied() != Some(self.positions.len() as u64)
+            || self
+                .positions
+                .iter()
+                .flatten()
+                .any(|value| !value.is_finite())
+            || self
+                .embedding_energies
+                .iter()
+                .any(|value| !value.is_finite())
+        {
+            return Err(protocol(
+                "conformer distance result arrays are inconsistent",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn converged(status: DistanceGeometryOptimizationStatus) -> bool {
+    matches!(
+        status,
+        DistanceGeometryOptimizationStatus::ConvergedGradient
+            | DistanceGeometryOptimizationStatus::ConvergedStep
+    )
+}
+
+fn status_tag(status: DistanceGeometryOptimizationStatus) -> u8 {
+    match status {
+        DistanceGeometryOptimizationStatus::ConvergedGradient => 0,
+        DistanceGeometryOptimizationStatus::ConvergedStep => 1,
+        DistanceGeometryOptimizationStatus::LineSearchExhausted => 2,
+        DistanceGeometryOptimizationStatus::MaxIterations => 3,
+    }
+}
+
+fn decode_sha256(value: &str) -> ComputeResult<[u8; 32]> {
+    if value.len() != 64 {
+        return Err(protocol("conformer molecule identity is not SHA-256"));
+    }
+    let mut bytes = [0_u8; 32];
+    for (index, byte) in bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)
+            .map_err(|_| protocol("conformer molecule identity is not lowercase hexadecimal"))?;
+    }
+    Ok(bytes)
+}
+
+fn protocol(message: impl Into<String>) -> ComputeCoordinatorError {
+    ComputeCoordinatorError::Protocol(message.into())
+}
+
+fn unavailable(message: impl Into<String>) -> ComputeCoordinatorError {
+    ComputeCoordinatorError::Unavailable(message.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use burrete_compute_core::{ConformerEnginePackBuilder, ExtractedConformerParameters};
+    use burrete_compute_protocol::{
+        AllGridScope, BackendPolicy, ComputeJobSchemaVersion, ConformerResourceLimits,
+        ConformerV1Parameters, ExecutionPolicy, GridScope, GridSourceReference, SchedulingPolicy,
+        WorkflowTemplateId, MIN_COMPUTE_MEMORY_BYTES,
+    };
+
+    use super::*;
+
+    #[test]
+    fn reference_executor_preserves_order_seeds_and_ragged_offsets() {
+        let mut builder = ConformerEnginePackBuilder::new(
+            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            1024 * 1024,
+        );
+        builder.append_valid(extracted()).expect("valid molecule");
+        builder.append_invalid().expect("invalid molecule");
+        let arrays = builder.finish(2).expect("engine arrays");
+        let request = request();
+        let identities = vec![
+            ConformerMoleculeIdentity {
+                source_record_id: 10,
+                molecule_content_sha256: "11".repeat(32),
+            },
+            ConformerMoleculeIdentity {
+                source_record_id: 20,
+                molecule_content_sha256: "22".repeat(32),
+            },
+        ];
+
+        let first = execute_conformer_distance_geometry(
+            Uuid::from_u128(7),
+            &request,
+            arrays.clone(),
+            &identities,
+            Backend::ReferenceCpu,
+            None,
+        )
+        .expect("reference execution");
+        let second = execute_conformer_distance_geometry(
+            Uuid::from_u128(7),
+            &request,
+            arrays,
+            &identities,
+            Backend::ReferenceCpu,
+            None,
+        )
+        .expect("repeated execution");
+
+        assert_eq!(first.conformer_molecule_indices, [0, 0]);
+        assert_eq!(first.conformer_ordinals, [0, 1]);
+        assert_eq!(first.conformer_atom_starts, [0, 2, 4]);
+        assert_eq!(first.positions, second.positions);
+        assert_eq!(first.seed_words, second.seed_words);
+        assert_ne!(first.seed_words[0], first.seed_words[1]);
+        assert_eq!(first.gpu_time_ms, None);
+    }
+
+    #[test]
+    #[ignore = "manual real-GPU smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    fn native_executor_dispatches_adaptive_batches_on_the_real_gpu() {
+        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+            .map(std::path::PathBuf::from)
+            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged runtime");
+        let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
+            .expect("load verified Metal runtime");
+        let mut builder = ConformerEnginePackBuilder::new(
+            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            1024 * 1024,
+        );
+        builder.append_valid(extracted()).expect("valid molecule");
+        let result = execute_conformer_distance_geometry(
+            Uuid::from_u128(7),
+            &request(),
+            builder.finish(1).expect("engine arrays"),
+            &[ConformerMoleculeIdentity {
+                source_record_id: 10,
+                molecule_content_sha256: "11".repeat(32),
+            }],
+            Backend::NativeMetal,
+            Some(&runtime),
+        )
+        .expect("native Metal conformer execution");
+
+        assert_eq!(result.conformer_count(), 2);
+        assert!(result.gpu_time_ms.is_some());
+        assert!(result.embedding_statuses.iter().all(|status| *status <= 3));
+        eprintln!(
+            "conformer executor Metal smoke: device={}, conformers={}, gpuTimeMs={:?}",
+            runtime.device_identity().name,
+            result.conformer_count(),
+            result.gpu_time_ms
+        );
+    }
+
+    fn extracted() -> ExtractedConformerParameters {
+        ExtractedConformerParameters {
+            variant: burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            atomic_numbers: vec![6, 8],
+            formal_charges: vec![0, 0],
+            distance_atom_pairs: vec![[0, 1]],
+            distance_bounds_squared: vec![[1.0, 2.25]],
+            distance_weights: vec![1.0],
+            chiral_atom_quads: Vec::new(),
+            chiral_volume_bounds: Vec::new(),
+            torsion_atom_quads: Vec::new(),
+            torsion_coefficients: Vec::new(),
+            torsion_signs: Vec::new(),
+            improper_atom_quads: Vec::new(),
+            improper_weights: Vec::new(),
+            etk_distance_atom_pairs: Vec::new(),
+            etk_distance_bounds: Vec::new(),
+            etk_distance_kinds: Vec::new(),
+            etk_distance_weights: Vec::new(),
+            stereo_atom_quints: Vec::new(),
+            stereo_flags: Vec::new(),
+        }
+    }
+
+    fn request() -> ConformerV1SubmitRequest {
+        ConformerV1SubmitRequest {
+            schema_version: ComputeJobSchemaVersion::V1,
+            workflow_template: WorkflowTemplateId::ConformerV1,
+            source: GridSourceReference {
+                document_id: "grid".into(),
+                scope: GridScope::All(AllGridScope::default()),
+            },
+            parameters: ConformerV1Parameters {
+                variant: burrete_compute_protocol::ConformerVariant::EtkdgV3,
+                conformers_per_molecule: 2,
+                max_attempts_per_conformer: 2,
+            },
+            execution_policy: ExecutionPolicy {
+                backend_policy: BackendPolicy::ReferenceCpu,
+                scheduling_policy: SchedulingPolicy::Throughput,
+            },
+            limits: ConformerResourceLimits {
+                max_memory_bytes: MIN_COMPUTE_MEMORY_BYTES,
+                max_dispatch_ms: 250,
+                max_conformers_per_batch: 1,
+            },
+        }
+    }
+}

@@ -3,6 +3,11 @@ mod artifact_reader;
 mod cluster_executor;
 mod cluster_plan;
 pub(crate) mod commands;
+#[allow(
+    dead_code,
+    reason = "wired into the coordinator in the next focused stage"
+)]
+mod conformer_executor;
 mod conformer_ipc;
 mod conformer_plan;
 mod conformer_session;
