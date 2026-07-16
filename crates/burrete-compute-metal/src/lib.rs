@@ -8,7 +8,7 @@ pub use package::{verify_runtime_package, MetalRuntimeError, VerifiedMetalPackag
 pub use runtime::{
     MetalComputeRuntime, MetalConformerInitialization, MetalDistanceEmbedding,
     MetalDistanceEvaluation, MetalDistanceOptimization, MetalEtkEvaluation, MetalGraphExecution,
-    MetalQueryExecution, MetalStereoValidation, MetalTanimotoRuntime,
+    MetalMmffEvaluation, MetalQueryExecution, MetalStereoValidation, MetalTanimotoRuntime,
 };
 
-pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v8";
+pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v9";

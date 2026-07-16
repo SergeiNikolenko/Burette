@@ -24,6 +24,12 @@ pub(crate) struct MetalEtkDispatch {
     pub(crate) gpu_time_seconds: f64,
 }
 
+pub(crate) struct MetalMmffDispatch {
+    pub(crate) breakdown_vectors: Vec<[f32; 4]>,
+    pub(crate) gradients: Vec<[f32; 4]>,
+    pub(crate) gpu_time_seconds: f64,
+}
+
 #[cfg(target_os = "macos")]
 #[path = "platform/macos.rs"]
 mod implementation;

@@ -1,12 +1,14 @@
 use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
 use burrete_compute_core::{
-    build_tanimoto_graph, evaluate_distance_constraints, evaluate_etk_geometry,
+    build_tanimoto_graph, evaluate_distance_constraints, evaluate_etk_geometry, evaluate_mmff,
     initialize_conformer_positions, optimize_distance_geometry, score_tanimoto_query,
     validate_conformer_stereo, ChiralVolumeConstraint, DistanceConstraint,
     DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
     EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
-    GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
+    GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown,
+    MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm,
+    MmffVariant, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
     FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
@@ -89,6 +91,13 @@ pub struct MetalStereoValidation {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetalEtkEvaluation {
     pub atom_energies: Vec<f32>,
+    pub gradients: Vec<[f32; 4]>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalMmffEvaluation {
+    pub breakdowns: Vec<MmffEnergyBreakdown>,
     pub gradients: Vec<[f32; 4]>,
     pub gpu_time_ms: u64,
 }
@@ -420,6 +429,53 @@ impl MetalComputeRuntime {
         })
     }
 
+    pub fn evaluate_mmff_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        parameters: &MmffParameters,
+        max_memory_bytes: u64,
+    ) -> Result<MetalMmffEvaluation, MetalRuntimeError> {
+        let dispatch = self.host.evaluate_mmff_profiled(
+            positions,
+            parameters,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if !dispatch.breakdown_vectors.len().is_multiple_of(2)
+            || dispatch
+                .breakdown_vectors
+                .iter()
+                .flatten()
+                .any(|value| !value.is_finite())
+            || dispatch
+                .gradients
+                .iter()
+                .flatten()
+                .any(|value| !value.is_finite())
+        {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal MMFF evaluator returned invalid numeric output".into(),
+            ));
+        }
+        let breakdowns = dispatch
+            .breakdown_vectors
+            .chunks_exact(2)
+            .map(|vectors| MmffEnergyBreakdown {
+                bond_stretch: f64::from(vectors[0][0]),
+                angle_bend: f64::from(vectors[0][1]),
+                stretch_bend: f64::from(vectors[0][2]),
+                out_of_plane: f64::from(vectors[0][3]),
+                torsion: f64::from(vectors[1][0]),
+                van_der_waals: f64::from(vectors[1][1]),
+                electrostatic: f64::from(vectors[1][2]),
+            })
+            .collect();
+        Ok(MetalMmffEvaluation {
+            breakdowns,
+            gradients: dispatch.gradients,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
     fn run_startup_known_answer_test(&self) -> Result<(), MetalRuntimeError> {
         let mut left = [0_u64; FINGERPRINT_WORDS];
         left[0] = 0b11;
@@ -638,6 +694,89 @@ impl MetalComputeRuntime {
         {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal startup ETK optimization failed its CPU energy check".into(),
+            ));
+        }
+        let mmff_parameters = MmffParameters {
+            variant: MmffVariant::Mmff94,
+            atom_count: 4,
+            bonds: vec![MmffBondTerm {
+                atoms: [0, 1],
+                force_constant: 4.0,
+                equilibrium_distance: 1.2,
+            }],
+            angles: vec![MmffAngleTerm {
+                atoms: [0, 1, 2],
+                force_constant: 0.8,
+                equilibrium_degrees: 109.5,
+                linear: false,
+            }],
+            stretch_bends: vec![MmffStretchBendTerm {
+                atoms: [0, 1, 2],
+                force_ij: 0.2,
+                force_kj: 0.3,
+                equilibrium_ij: 1.2,
+                equilibrium_kj: 1.3,
+                equilibrium_degrees: 109.5,
+            }],
+            out_of_planes: vec![MmffOutOfPlaneTerm {
+                atoms: [0, 1, 2, 3],
+                force_constant: 0.5,
+            }],
+            torsions: vec![MmffTorsionTerm {
+                atoms: [0, 1, 2, 3],
+                v1: 0.2,
+                v2: 0.4,
+                v3: 0.6,
+            }],
+            van_der_waals: vec![MmffVanDerWaalsTerm {
+                atoms: [0, 3],
+                r_star: 3.5,
+                epsilon: 0.08,
+            }],
+            electrostatics: vec![MmffElectrostaticTerm {
+                atoms: [0, 3],
+                charge_product: -0.12,
+                is_one_four: true,
+            }],
+        };
+        let mmff_positions = [
+            [0.0, 0.0, 0.0, 0.0],
+            [1.4, 0.0, 0.0, 0.0],
+            [1.8, 1.1, 0.0, 0.0],
+            [2.4, 1.1, 0.7, 0.0],
+        ];
+        let expected_mmff = evaluate_mmff(&mmff_parameters, &mmff_positions)
+            .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let observed_mmff = self.host.evaluate_mmff_profiled(
+            &mmff_positions,
+            &mmff_parameters,
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        let observed_energy = observed_mmff
+            .breakdown_vectors
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>();
+        let expected_energy = [
+            expected_mmff.energy.bond_stretch as f32,
+            expected_mmff.energy.angle_bend as f32,
+            expected_mmff.energy.stretch_bend as f32,
+            expected_mmff.energy.out_of_plane as f32,
+            expected_mmff.energy.torsion as f32,
+            expected_mmff.energy.van_der_waals as f32,
+            expected_mmff.energy.electrostatic as f32,
+            0.0,
+        ];
+        if !float_slices_close(&observed_energy, &expected_energy, 2.0e-3)
+            || !float_slices_close(
+                observed_mmff.gradients.as_flattened(),
+                expected_mmff.gradients.as_flattened(),
+                0.1,
+            )
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup MMFF energy/gradient differs from the CPU reference".into(),
             ));
         }
         Ok(())
