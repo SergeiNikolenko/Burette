@@ -87,6 +87,9 @@ oracles without making Python or MLX part of the application runtime.
 The counter-based `conformer_initialize.v1` Rust/Metal primitive was written
 independently from the immutable Burrete seed contract. No RNG, coordinate
 initialization, DG, or Metal source was copied or translated from `mlxmolkit`.
+The paired distance-bound objective and analytic-gradient Rust/Metal primitive
+was likewise derived independently from its documented mathematical contract;
+no upstream DG implementation was copied or translated.
 
 The same audit confirmed that the pinned repository still has no root license
 or notice file, `dg_extract.py` names nvMolKit as its reference, and

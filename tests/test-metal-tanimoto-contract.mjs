@@ -252,7 +252,8 @@ if (metalLookup.status === 0 && metallibLookup.status === 0) {
     const metadataPath = resolve(generation, "build-metadata.v2.json");
     assert.ok(existsSync(resolve(generation, "tanimoto.v2.air")));
     assert.ok(existsSync(resolve(generation, "conformer-initialize.v1.air")));
-    assert.ok(existsSync(resolve(generation, "native-compute.v3.metallib")));
+    assert.ok(existsSync(resolve(generation, "conformer-distance.v1.air")));
+    assert.ok(existsSync(resolve(generation, "native-compute.v4.metallib")));
     const metadataHash = createHash("sha256").update(readFileSync(metadataPath)).digest("hex");
     assert.equal(metadataHash, pointer.metadataSha256);
   } finally {
@@ -336,10 +337,13 @@ try {
         ...process.env,
         TANIMOTO_SOURCE_SHA256: fakeHash,
         CONFORMER_SOURCE_SHA256: fakeHash,
+        DISTANCE_SOURCE_SHA256: fakeHash,
         TANIMOTO_CONTRACT_SHA256: fakeHash,
         CONFORMER_CONTRACT_SHA256: fakeHash,
+        DISTANCE_CONTRACT_SHA256: fakeHash,
         TANIMOTO_AIR_SHA256: fakeHash,
         CONFORMER_AIR_SHA256: fakeHash,
+        DISTANCE_AIR_SHA256: fakeHash,
         METALLIB_SHA256: fakeHash,
         METAL_TOOL_PATH: "/toolchain/metal",
         METAL_TOOL_SHA256: fakeHash,
@@ -354,14 +358,16 @@ try {
   );
   assert.equal(metadataRun.status, 0, metadataRun.stderr);
   const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
-  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v3");
+  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v4");
   assert.equal(metadata.sources[0].sha256, fakeHash);
   assert.equal(metadata.sources[1].sha256, fakeHash);
+  assert.equal(metadata.sources[2].sha256, fakeHash);
   assert.equal(metadata.metallib.sha256, fakeHash);
   assert.equal(metadata.compiler.version, "Apple metal version test Target test");
   assert.deepEqual(metadata.entrypoints, [
     ...contract.entrypoints.map(({ name }) => name),
     "burrete_conformer_initialize_v1",
+    "burrete_conformer_distance_v1",
   ]);
 } finally {
   rmSync(metadataDirectory, { recursive: true, force: true });

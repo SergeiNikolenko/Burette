@@ -1,8 +1,9 @@
 use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
 use burrete_compute_core::{
-    build_tanimoto_graph, initialize_conformer_positions, score_tanimoto_query, Fingerprint2048,
-    GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, FINGERPRINT_WORDS,
+    build_tanimoto_graph, evaluate_distance_constraints, initialize_conformer_positions,
+    score_tanimoto_query, DistanceConstraint, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
+    TanimotoCounts, TanimotoQueryOptions, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -44,6 +45,13 @@ pub struct MetalQueryExecution {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetalConformerInitialization {
     pub positions: Vec<[f32; 4]>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalDistanceEvaluation {
+    pub atom_energies: Vec<f32>,
+    pub gradients: Vec<[f32; 4]>,
     pub gpu_time_ms: u64,
 }
 
@@ -168,6 +176,26 @@ impl MetalComputeRuntime {
         })
     }
 
+    pub fn evaluate_distance_constraints_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        constraints: &[DistanceConstraint],
+        max_memory_bytes: u64,
+    ) -> Result<MetalDistanceEvaluation, MetalRuntimeError> {
+        let dispatch = self.host.evaluate_distance_constraints_profiled(
+                positions,
+                atom_count,
+                constraints,
+                max_memory_bytes.min(self.limits.max_memory_bytes),
+            )?;
+        Ok(MetalDistanceEvaluation {
+            atom_energies: dispatch.atom_energies,
+            gradients: dispatch.gradients,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
     fn run_startup_known_answer_test(&self) -> Result<(), MetalRuntimeError> {
         let mut left = [0_u64; FINGERPRINT_WORDS];
         left[0] = 0b11;
@@ -229,11 +257,51 @@ impl MetalComputeRuntime {
                 "Metal startup conformer initialization differs from the CPU reference".into(),
             ));
         }
+        let constraints = [DistanceConstraint {
+            left_atom: 0,
+            right_atom: 1,
+            lower_squared: 0.5,
+            upper_squared: 1.0,
+            weight: 0.75,
+        }];
+        let distance_positions = [[0.0; 4], [2.0, 0.5, 0.0, 0.0]];
+        let expected_distance = evaluate_distance_constraints(&distance_positions, &constraints)
+            .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let observed_distance = self
+            .host
+            .evaluate_distance_constraints_profiled(
+                &distance_positions,
+                2,
+                &constraints,
+                MIN_COMPUTE_MEMORY_BYTES,
+            )?;
+        if !float_slices_close(
+            &observed_distance.atom_energies,
+            &expected_distance.atom_energies,
+            1.0e-5,
+        )
+            || !float_slices_close(
+                observed_distance.gradients.as_flattened(),
+                expected_distance.gradients.as_flattened(),
+                1.0e-5,
+            )
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup distance objective differs from the CPU reference".into(),
+            ));
+        }
         Ok(())
     }
 }
 
 pub type MetalTanimotoRuntime = MetalComputeRuntime;
+
+fn float_slices_close(left: &[f32], right: &[f32], tolerance: f32) -> bool {
+    left.len() == right.len()
+        && left.iter().zip(right).all(|(left, right)| {
+            left.is_finite() && right.is_finite() && (left - right).abs() <= tolerance
+        })
+}
 
 fn gpu_time_ms(gpu_time_seconds: f64) -> Result<u64, MetalRuntimeError> {
     let gpu_time_ms = (gpu_time_seconds * 1_000.0).ceil();

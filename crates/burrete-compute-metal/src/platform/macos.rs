@@ -1,7 +1,8 @@
 use std::{ffi::c_void, mem::size_of_val};
 
 use burrete_compute_core::{
-    Fingerprint2048, GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    DistanceConstraint, Fingerprint2048, GraphBuildOptions, SymmetricCsr, TanimotoCounts,
+    TanimotoQueryOptions,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use metal::{
@@ -13,6 +14,7 @@ use objc::rc::autoreleasepool;
 use objc::{runtime::Sel, Message};
 
 use crate::MetalRuntimeError;
+use crate::platform::MetalDistanceDispatch;
 
 const MAX_TILE_RECORDS: usize = 1_024;
 const MAX_QUERY_BATCH_RECORDS: usize = 262_144;
@@ -53,6 +55,15 @@ struct ConformerInitializeBatchV1 {
     output_atom_offset: u64,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ConformerDistanceBatchV1 {
+    atom_count: u32,
+    conformer_count: u32,
+    constraint_count: u32,
+    reserved: u32,
+}
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
@@ -61,6 +72,7 @@ pub(crate) struct MetalHost {
     fill_pipeline: ComputePipelineState,
     query_pipeline: ComputePipelineState,
     conformer_initialize_pipeline: ComputePipelineState,
+    conformer_distance_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -94,6 +106,8 @@ impl MetalHost {
         let query_pipeline = pipeline(&device, library, "burrete_tanimoto_query_counts_v1")?;
         let conformer_initialize_pipeline =
             pipeline(&device, library, "burrete_conformer_initialize_v1")?;
+        let conformer_distance_pipeline =
+            pipeline(&device, library, "burrete_conformer_distance_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -101,6 +115,7 @@ impl MetalHost {
             fill_pipeline,
             query_pipeline,
             conformer_initialize_pipeline,
+            conformer_distance_pipeline,
         })
     }
 
@@ -380,6 +395,143 @@ impl MetalHost {
         Ok((positions, gpu_time))
     }
 
+    pub(crate) fn evaluate_distance_constraints_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        constraints: &[DistanceConstraint],
+        max_memory_bytes: u64,
+    ) -> Result<MetalDistanceDispatch, MetalRuntimeError> {
+        if atom_count == 0
+            || positions.is_empty()
+            || !positions.len().is_multiple_of(atom_count as usize)
+        {
+            return resource_limit(
+                "distance evaluation positions must contain complete non-empty conformers",
+            );
+        }
+        if positions.iter().flatten().any(|value| !value.is_finite()) {
+            return Err(MetalRuntimeError::Dispatch(
+                "distance evaluation positions must be finite".into(),
+            ));
+        }
+        let conformer_count = u32::try_from(positions.len() / atom_count as usize)
+            .map_err(|_| MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into()))?;
+        let constraint_count = u32::try_from(constraints.len())
+            .map_err(|_| MetalRuntimeError::ResourceLimit("constraint count exceeds uint32".into()))?;
+        for constraint in constraints {
+            if constraint.left_atom >= atom_count
+                || constraint.right_atom >= atom_count
+                || constraint.left_atom == constraint.right_atom
+                || !constraint.lower_squared.is_finite()
+                || !constraint.upper_squared.is_finite()
+                || constraint.lower_squared < 0.0
+                || constraint.upper_squared < constraint.lower_squared
+                || !constraint.weight.is_finite()
+                || constraint.weight < 0.0
+            {
+                return Err(MetalRuntimeError::Dispatch(
+                    "distance constraint is outside the supported domain".into(),
+                ));
+            }
+        }
+        let item_count = u64::try_from(positions.len()).map_err(|_| memory_overflow())?;
+        if item_count > u64::from(u32::MAX) {
+            return resource_limit("distance evaluation grid exceeds uint32");
+        }
+        let constraint_storage_count = u64::from(constraint_count).max(1);
+        let constraint_bytes = constraint_storage_count
+            .checked_mul(20)
+            .ok_or_else(memory_overflow)?;
+        let item_bytes = item_count.checked_mul(36).ok_or_else(memory_overflow)?;
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(16)
+            .and_then(|bytes| bytes.checked_add(constraint_bytes))
+            .and_then(|bytes| bytes.checked_add(item_bytes))
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "distance evaluation requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+
+        let mut pairs = constraints
+            .iter()
+            .map(|term| [term.left_atom, term.right_atom])
+            .collect::<Vec<_>>();
+        let mut bounds = constraints
+            .iter()
+            .map(|term| [term.lower_squared, term.upper_squared])
+            .collect::<Vec<_>>();
+        let mut weights = constraints.iter().map(|term| term.weight).collect::<Vec<_>>();
+        if constraints.is_empty() {
+            pairs.push([0, 0]);
+            bounds.push([0.0, 0.0]);
+            weights.push(0.0);
+        }
+        let position_buffer = buffer_with_slice(&self.device, positions);
+        let pair_buffer = buffer_with_slice(&self.device, &pairs);
+        let bounds_buffer = buffer_with_slice(&self.device, &bounds);
+        let weight_buffer = buffer_with_slice(&self.device, &weights);
+        let energy_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; positions.len()]);
+        let gradient_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; positions.len()]);
+        let batch = ConformerDistanceBatchV1 {
+            atom_count,
+            conformer_count,
+            constraint_count,
+            reserved: 0,
+        };
+        let thread_width = self
+            .conformer_distance_pipeline
+            .thread_execution_width()
+            .min(self.conformer_distance_pipeline.max_total_threads_per_threadgroup());
+        if thread_width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal distance pipeline advertises zero thread width".into(),
+            ));
+        }
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.conformer_distance_pipeline);
+            encoder.set_buffer(0, Some(&position_buffer), 0);
+            encoder.set_buffer(1, Some(&pair_buffer), 0);
+            encoder.set_buffer(2, Some(&bounds_buffer), 0);
+            encoder.set_buffer(3, Some(&weight_buffer), 0);
+            encoder.set_bytes(
+                4,
+                size_of_val(&batch) as u64,
+                (&batch as *const ConformerDistanceBatchV1).cast(),
+            );
+            encoder.set_buffer(5, Some(&energy_buffer), 0);
+            encoder.set_buffer(6, Some(&gradient_buffer), 0);
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: item_count,
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: thread_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        let energies = read_buffer::<f32>(&energy_buffer, positions.len(), "atom energy")?;
+        let gradients =
+            read_buffer::<[f32; 4]>(&gradient_buffer, positions.len(), "distance gradient")?;
+        Ok(MetalDistanceDispatch {
+            atom_energies: energies,
+            gradients,
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
     fn dispatch_tiles(
         &self,
         record_count: usize,
@@ -625,6 +777,12 @@ mod tests {
         assert_eq!(std::mem::align_of::<ConformerInitializeBatchV1>(), 8);
         assert_eq!(
             std::mem::offset_of!(ConformerInitializeBatchV1, output_atom_offset),
+            8
+        );
+        assert_eq!(std::mem::size_of::<ConformerDistanceBatchV1>(), 16);
+        assert_eq!(std::mem::align_of::<ConformerDistanceBatchV1>(), 4);
+        assert_eq!(
+            std::mem::offset_of!(ConformerDistanceBatchV1, constraint_count),
             8
         );
     }

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "libraryId": "burrete.compute.conformer-distance.v1",
+  "source": "conformer-distance.v1.metal",
+  "deploymentTarget": "14.0",
+  "algorithm": "distance-bound objective and analytic float4 gradient",
+  "parameterAbi": {
+    "name": "ConformerDistanceBatchV1",
+    "sizeBytes": 16,
+    "alignmentBytes": 4,
+    "byteOrder": "littleEndian",
+    "fields": [
+      { "name": "atomCount", "type": "uint32", "offsetBytes": 0 },
+      { "name": "conformerCount", "type": "uint32", "offsetBytes": 4 },
+      { "name": "constraintCount", "type": "uint32", "offsetBytes": 8 },
+      { "name": "reserved", "type": "uint32", "offsetBytes": 12, "required": 0 }
+    ]
+  },
+  "entrypoint": {
+    "name": "burrete_conformer_distance_v1",
+    "threads": "atomCount * conformerCount",
+    "buffers": [
+      { "name": "positions", "index": 0, "type": "float4", "access": "read", "elements": "atomCount * conformerCount" },
+      { "name": "atomPairs", "index": 1, "type": "uint2", "access": "read", "elements": "constraintCount" },
+      { "name": "boundsSquared", "index": 2, "type": "float2", "access": "read", "elements": "constraintCount" },
+      { "name": "weights", "index": 3, "type": "float", "access": "read", "elements": "constraintCount" },
+      { "name": "batch", "index": 4, "type": "ConformerDistanceBatchV1", "access": "constant", "elements": "1" },
+      { "name": "atomEnergies", "index": 5, "type": "float", "access": "write", "elements": "atomCount * conformerCount" },
+      { "name": "gradients", "index": 6, "type": "float4", "access": "write", "elements": "atomCount * conformerCount" }
+    ]
+  },
+  "claims": {
+    "distanceGeometryEmbedding": false,
+    "analyticGradient": true,
+    "atomics": false,
+    "fullPairMatrix": false
+  }
+}
