@@ -1475,6 +1475,7 @@
     post('generate3dGridSelection', '[grid] Generate 3D for selected molecules.', {
       documentId: cfg?.documentId || null,
       title,
+      sourceIndexes: rows.map(row => Number(row.index)),
       molecules
     });
     setStatus(`[grid] Generating 3D for ${molecules.length.toLocaleString()} molecule${molecules.length === 1 ? '' : 's'}.`);

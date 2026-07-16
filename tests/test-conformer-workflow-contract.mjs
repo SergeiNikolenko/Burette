@@ -9,6 +9,9 @@ const chemistryTypes = source("apps/desktop/src/types.ts");
 const chemistryJobsHook = source("apps/desktop/src/hooks/use-app-chemistry-jobs.ts");
 const conformerWorkflow = source("apps/desktop/src/hooks/use-app-conformer-workflows.ts");
 const structureInfoPanel = source("apps/desktop/src/components/structure-info-panel.tsx");
+const nativeConformerWorkflow = source("apps/desktop/src/lib/compute-conformer.ts");
+const gridConformerMessages = source("apps/desktop/src/hooks/use-app-grid-conformer-messages.ts");
+const gridViewer = source("PreviewExtension/Web/grid-viewer.js");
 
 assert.match(structureInfoPanel, /document\.renderer !== "grid2d" && canUseConformerWorkflow/);
 assert.match(conformerWorkflow, /Open a specific molecule from the collection in Mol\* before running CREST/);
@@ -25,5 +28,17 @@ assert.match(viteConfig, /browserDevJobWasCancelled\(jobKey\)[\s\S]*status: 130/
 assert.match(chemistryJobsHook, /cancelledConformerJobIdsRef\.current\.delete\(jobId\)[\s\S]*status: "running"/);
 assert.match(conformerCommand, /Primary output: \{\}/);
 assert.match(viteConfig, /Primary output: \$\{result\.primaryOpenPath \?\? "None"\}/);
+assert.match(gridViewer, /sourceIndexes: rows\.map\(row => Number\(row\.index\)\)/);
+assert.match(nativeConformerWorkflow, /workflowTemplate: "conformer\.v1"/);
+assert.match(nativeConformerWorkflow, /backendPolicy: "gpuPreferred"/);
+for (const command of [
+  "compute_execute_conformer_distance",
+  "compute_execute_conformer_stereo",
+  "compute_validate_conformer_reference",
+  "compute_publish_conformer",
+]) {
+  assert.match(nativeConformerWorkflow, new RegExp(command));
+}
+assert.match(gridConformerMessages, /openDocuments\([\s\S]*result\.primaryOpenPath[\s\S]*rendererMode: "molstar"/);
 
 console.log("conformer workflow contract tests passed");

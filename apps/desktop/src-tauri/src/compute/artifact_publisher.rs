@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeSet,
+    fmt::Write as _,
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
@@ -52,6 +53,7 @@ pub(crate) struct ConformerPublicationStep {
     pub(crate) artifact_manifest_sha256: String,
     pub(crate) grid_applied: bool,
     pub(crate) grid_warning: Option<String>,
+    pub(crate) primary_open_path: String,
 }
 
 #[derive(Debug)]
@@ -66,6 +68,10 @@ pub(crate) struct MaterializedComputeArtifact {
 }
 
 impl MaterializedComputeArtifact {
+    pub(crate) fn conformer_xyz_path(&self) -> PathBuf {
+        self.final_directory.join("result/conformers.xyz")
+    }
+
     pub(crate) fn manifest_for_job(
         &self,
         successful_job: &JobSnapshot,
@@ -524,6 +530,8 @@ pub(crate) fn materialize_conformer_artifact(
             EnginePackRef::from_manifest(&engine_manifest, engine_manifest_file.clone())?;
 
         let result_layout = write_conformer_results(&mut writer, distance, stereo)?;
+        let xyz = encode_conformer_xyz(engine_arrays, distance, stereo)?;
+        writer.write("result/conformers.xyz", "chemical/x-xyz", &xyz)?;
         let result_pack_id = Uuid::new_v4();
         let result_pack_sha256 = pack_identity_sha256(&PackIdentity {
             kind: "conformer.result-pack.v1",
@@ -1205,6 +1213,117 @@ fn write_conformer_results(
     let layout = PackedLayout { files, arrays };
     layout.validate()?;
     Ok(layout)
+}
+
+fn encode_conformer_xyz(
+    engine: &ConformerEnginePackArrays,
+    distance: &ConformerDistanceComputation,
+    stereo: &ConformerStereoComputation,
+) -> ComputeResult<Vec<u8>> {
+    if distance.conformer_atom_starts.len() != distance.conformer_count() + 1
+        || distance.conformer_atom_starts.last().copied() != Some(distance.positions.len() as u64)
+        || stereo.failure_flags.len() != distance.conformer_count()
+    {
+        return Err(ComputeCoordinatorError::Protocol(
+            "conformer XYZ inputs have inconsistent offsets".into(),
+        ));
+    }
+    let capacity = distance
+        .positions
+        .len()
+        .checked_mul(64)
+        .and_then(|bytes| bytes.checked_add(distance.conformer_count().saturating_mul(128)))
+        .ok_or_else(|| {
+            ComputeCoordinatorError::Unavailable("conformer XYZ size overflowed".into())
+        })?;
+    let mut xyz = String::new();
+    xyz.try_reserve(capacity).map_err(|_| {
+        ComputeCoordinatorError::Unavailable("cannot allocate conformer XYZ".into())
+    })?;
+    for conformer in 0..distance.conformer_count() {
+        let molecule = distance.conformer_molecule_indices[conformer] as usize;
+        let atom_start =
+            usize::try_from(distance.conformer_atom_starts[conformer]).map_err(|_| {
+                ComputeCoordinatorError::Protocol("conformer atom offset exceeds host range".into())
+            })?;
+        let atom_end =
+            usize::try_from(distance.conformer_atom_starts[conformer + 1]).map_err(|_| {
+                ComputeCoordinatorError::Protocol("conformer atom offset exceeds host range".into())
+            })?;
+        let molecule_start = engine
+            .molecule_atom_starts
+            .get(molecule)
+            .copied()
+            .ok_or_else(|| {
+                ComputeCoordinatorError::Protocol("conformer molecule index is out of range".into())
+            })? as usize;
+        let molecule_end = engine
+            .molecule_atom_starts
+            .get(molecule + 1)
+            .copied()
+            .ok_or_else(|| {
+                ComputeCoordinatorError::Protocol("conformer molecule span is incomplete".into())
+            })? as usize;
+        if atom_end < atom_start
+            || molecule_end < molecule_start
+            || atom_end - atom_start != molecule_end - molecule_start
+            || atom_end > distance.positions.len()
+            || molecule_end > engine.atomic_numbers.len()
+        {
+            return Err(ComputeCoordinatorError::Protocol(
+                "conformer XYZ atom spans are inconsistent".into(),
+            ));
+        }
+        writeln!(xyz, "{}", atom_end - atom_start).map_err(formatting_error)?;
+        writeln!(
+            xyz,
+            "Burrete conformer molecule={} ordinal={} etkEnergy={:.8} stereo={}",
+            molecule,
+            distance.conformer_ordinals[conformer],
+            distance.etk_energies[conformer],
+            if stereo.failure_flags[conformer] == 0 {
+                "passed"
+            } else {
+                "failed"
+            }
+        )
+        .map_err(formatting_error)?;
+        for (atomic_number, position) in engine.atomic_numbers[molecule_start..molecule_end]
+            .iter()
+            .zip(&distance.positions[atom_start..atom_end])
+        {
+            let symbol = element_symbol(*atomic_number).ok_or_else(|| {
+                ComputeCoordinatorError::Protocol(
+                    "conformer contains an invalid atomic number".into(),
+                )
+            })?;
+            writeln!(
+                xyz,
+                "{symbol:<2} {:>15.8} {:>15.8} {:>15.8}",
+                position[0], position[1], position[2]
+            )
+            .map_err(formatting_error)?;
+        }
+    }
+    Ok(xyz.into_bytes())
+}
+
+fn formatting_error(_: std::fmt::Error) -> ComputeCoordinatorError {
+    ComputeCoordinatorError::Unavailable("cannot format conformer XYZ".into())
+}
+
+fn element_symbol(atomic_number: u16) -> Option<&'static str> {
+    const SYMBOLS: [&str; 119] = [
+        "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S",
+        "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga",
+        "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd",
+        "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm",
+        "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W", "Re", "Os",
+        "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa",
+        "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg",
+        "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
+    ];
+    SYMBOLS.get(atomic_number as usize).copied()
 }
 
 fn encode_u64(values: &[u64]) -> Vec<u8> {

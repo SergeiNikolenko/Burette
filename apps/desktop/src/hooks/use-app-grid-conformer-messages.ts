@@ -4,8 +4,9 @@ import { generateBrowserDev3DConformer, openBrowserDevTextDocument } from "../li
 import { conformerGenerationPreferences, generated3DPoseSetText, type ConformerGenerationResult } from "../lib/conformer-generation";
 import { pathExtension } from "../lib/file-routing";
 import { isTauriRuntime } from "../lib/tauri";
+import { runConformerWorkflow } from "../lib/compute-conformer";
 import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
-import type { ViewerDocument, ViewerPreferences } from "../types";
+import type { ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
 type GridConformerMessageBody = Record<string, unknown> | null | undefined;
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
@@ -13,6 +14,7 @@ type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => 
 
 type UseAppGridConformerMessagesOptions = {
   openDocumentsInActiveTab: (documents: ViewerDocument[]) => void;
+  openDocuments: (paths: string[], reloadOptions?: ViewerReloadOptions, preferencesOverride?: Partial<ViewerPreferences>) => Promise<unknown> | void;
   postMessageToViewerSource: PostMessageToViewerSource;
   preferences: ViewerPreferences;
   pushErrorStatus: PushErrorStatus;
@@ -31,6 +33,7 @@ function decodeBase64Text(textBase64: string) {
 
 export function useAppGridConformerMessages({
   openDocumentsInActiveTab,
+  openDocuments,
   postMessageToViewerSource,
   preferences,
   pushErrorStatus,
@@ -55,6 +58,36 @@ export function useAppGridConformerMessages({
     }
     reply("gridGenerate3DStarted");
     void (async () => {
+      const documentId = bodyString(body.documentId).trim();
+      const sourceIndexes = Array.isArray(body.sourceIndexes)
+        ? [...new Set(body.sourceIndexes.filter((value): value is number => (
+            Number.isSafeInteger(value) && value >= 0
+          )))]
+        : [];
+      if (isTauriRuntime() && documentId && sourceIndexes.length > 0) {
+        const result = await runConformerWorkflow(documentId, sourceIndexes, (phase) => {
+          const labels = {
+            extracting: "Extracting ETKDG constraints...",
+            embedding: "Generating conformers on Metal...",
+            stereo: "Validating stereochemistry on Metal...",
+            validation: "Checking CPU reference parity...",
+            publishing: "Publishing conformers and updating Grid...",
+          } as const;
+          pushStatus(labels[phase]);
+        });
+        await openDocuments(
+          [result.primaryOpenPath],
+          {},
+          { rendererMode: "molstar" },
+        );
+        const backend = result.backend === "nativeMetal" ? "Metal GPU" : "reference CPU";
+        pushStatus(
+          `Generated ${result.passedCount.toLocaleString()} valid conformers via ${backend} and opened the ensemble in Molstar.`,
+          result.gridApplied ? "success" : "error",
+          result.gridWarning ? [result.gridWarning] : undefined,
+        );
+        return;
+      }
       const generatedTexts: string[] = [];
       const errors: string[] = [];
       for (const molecule of molecules) {
@@ -113,7 +146,7 @@ export function useAppGridConformerMessages({
       })
       .finally(() => reply("gridGenerate3DFinished"));
     return true;
-  }, [openDocumentsInActiveTab, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [openDocuments, openDocumentsInActiveTab, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   return { handleGridConformerMessage };
 }

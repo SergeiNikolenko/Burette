@@ -1224,6 +1224,10 @@ impl ComputeCoordinator {
             artifact_manifest_sha256: manifest_sha256,
             grid_applied,
             grid_warning,
+            primary_open_path: materialized
+                .conformer_xyz_path()
+                .to_string_lossy()
+                .into_owned(),
         })
     }
 
