@@ -2,7 +2,7 @@
 use std::{
     os::fd::OwnedFd,
     path::{Component, Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -33,6 +33,8 @@ const SNAPSHOTS_DIRECTORY_NAME: &str = "snapshots";
 const SNAPSHOTS_TEMP_PREFIX: &str = ".snapshots.create-";
 #[cfg(unix)]
 const MAX_SNAPSHOTS_TEMP_ATTEMPTS: usize = 8;
+#[cfg(unix)]
+const MAX_COMPUTE_ROOT_ENTRIES: usize = 4_096;
 #[cfg(unix)]
 const LOCK_DIAGNOSTIC_SCHEMA: &str = "burrete.compute-owner.v1";
 #[cfg(unix)]
@@ -67,6 +69,7 @@ pub(crate) struct ComputeRootLease {
     lock_identity: FileIdentity,
     root_directory: OwnedFd,
     lock_file: OwnedFd,
+    snapshots_initialization: Mutex<()>,
 }
 
 /// A private child directory structurally bound to the retained compute root.
@@ -129,6 +132,7 @@ impl ComputeRootLease {
             lock_identity,
             root_directory,
             lock_file,
+            snapshots_initialization: Mutex::new(()),
         };
         lease.verify_path_identity()?;
         Ok(lease)
@@ -141,7 +145,13 @@ impl ComputeRootLease {
     pub(crate) fn open_or_create_snapshots_directory(
         self: &Arc<Self>,
     ) -> ComputeResult<ComputeRootChildDirectory> {
+        let _initialization = self.snapshots_initialization.lock().map_err(|_| {
+            ComputeCoordinatorError::Unavailable(
+                "compute snapshots initialization state is poisoned".into(),
+            )
+        })?;
         self.verify_path_identity()?;
+        cleanup_abandoned_snapshots_directories(&self.root_directory)?;
         match statat(
             &self.root_directory,
             SNAPSHOTS_DIRECTORY_NAME,
@@ -592,6 +602,70 @@ fn create_temporary_snapshots_directory(
 }
 
 #[cfg(unix)]
+fn cleanup_abandoned_snapshots_directories(root_directory: &OwnedFd) -> ComputeResult<()> {
+    let mut directory = Dir::read_from(root_directory)
+        .map_err(|error| filesystem(format!("cannot enumerate the compute root: {error}")))?;
+    let mut temporary_leaves = Vec::new();
+    let mut entry_count = 0_usize;
+    for entry in &mut directory {
+        let entry =
+            entry.map_err(|error| filesystem(format!("cannot read the compute root: {error}")))?;
+        let name = entry
+            .file_name()
+            .to_str()
+            .map_err(|_| filesystem("compute root contains a non-UTF-8 entry"))?;
+        if name == "." || name == ".." {
+            continue;
+        }
+        if entry_count >= MAX_COMPUTE_ROOT_ENTRIES {
+            return Err(filesystem(format!(
+                "compute root exceeds the {MAX_COMPUTE_ROOT_ENTRIES}-entry startup bound"
+            )));
+        }
+        entry_count += 1;
+        if name.starts_with(SNAPSHOTS_TEMP_PREFIX) {
+            temporary_leaves.push(name.to_owned());
+        }
+    }
+    drop(directory);
+
+    for leaf in temporary_leaves {
+        let encoded_id = leaf
+            .strip_prefix(SNAPSHOTS_TEMP_PREFIX)
+            .expect("temporary snapshots prefix was checked");
+        let identifier = Uuid::parse_str(encoded_id).map_err(|_| {
+            filesystem("compute root contains a malformed temporary snapshots directory")
+        })?;
+        if identifier.is_nil() || identifier.to_string() != encoded_id {
+            return Err(filesystem(
+                "compute root contains a non-canonical temporary snapshots directory",
+            ));
+        }
+        let abandoned = openat(
+            root_directory,
+            leaf.as_str(),
+            DIRECTORY_FLAGS,
+            Mode::empty(),
+        )
+        .map_err(|error| {
+            filesystem(format!(
+                "cannot open an abandoned temporary snapshots directory: {error}"
+            ))
+        })?;
+        let identity =
+            validate_private_directory(&abandoned, "abandoned temporary snapshots directory")?;
+        remove_owned_empty_directory(
+            root_directory,
+            &leaf,
+            "abandoned temporary snapshots directory",
+            &abandoned,
+            identity,
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
 fn validate_directory_entry(
     root_directory: &OwnedFd,
     name: &str,
@@ -940,6 +1014,33 @@ mod tests {
         reopened
             .verify()
             .expect("verify reopened snapshots capability");
+    }
+
+    #[test]
+    fn restart_removes_only_canonical_empty_snapshots_creation_orphans() {
+        let test = TestRoot::new();
+        let lease =
+            Arc::new(ComputeRootLease::acquire(&test.compute_root).expect("acquire compute root"));
+        let orphan = test
+            .compute_root
+            .join(format!("{SNAPSHOTS_TEMP_PREFIX}{}", Uuid::new_v4()));
+        fs::create_dir(&orphan).expect("create abandoned snapshots directory");
+        fs::set_permissions(&orphan, fs::Permissions::from_mode(0o700))
+            .expect("make abandoned snapshots directory private");
+
+        lease
+            .open_or_create_snapshots_directory()
+            .expect("reconcile abandoned snapshots directory");
+        assert!(!orphan.exists());
+
+        let malformed = test
+            .compute_root
+            .join(format!("{SNAPSHOTS_TEMP_PREFIX}not-a-uuid"));
+        fs::create_dir(&malformed).expect("create malformed snapshots directory");
+        fs::set_permissions(&malformed, fs::Permissions::from_mode(0o700))
+            .expect("make malformed snapshots directory private");
+        assert!(lease.open_or_create_snapshots_directory().is_err());
+        assert!(malformed.is_dir());
     }
 
     #[test]

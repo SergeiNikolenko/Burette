@@ -16,4 +16,5 @@ mod job_factory;
     reason = "the coordinator will acquire compute-root ownership before runtime activation"
 )]
 mod root_lease;
+pub(crate) use root_lease::ComputeRootChildDirectory;
 pub(crate) mod store;
