@@ -150,8 +150,25 @@ impl ExtractedConformerParameters {
         Ok(result)
     }
 
-    fn validate(&self) -> Result<(), ConformerExtractError> {
+    pub fn validate(&self) -> Result<(), ConformerExtractError> {
         let atoms = self.atomic_numbers.len();
+        if atoms == 0
+            || self.formal_charges.len() != atoms
+            || self.distance_bounds_squared.len() != self.distance_atom_pairs.len()
+            || self.distance_weights.len() != self.distance_atom_pairs.len()
+            || self.chiral_volume_bounds.len() != self.chiral_atom_quads.len()
+            || self.torsion_coefficients.len() != self.torsion_atom_quads.len()
+            || self.torsion_signs.len() != self.torsion_atom_quads.len()
+            || self.improper_weights.len() != self.improper_atom_quads.len()
+            || self.etk_distance_bounds.len() != self.etk_distance_atom_pairs.len()
+            || self.etk_distance_kinds.len() != self.etk_distance_atom_pairs.len()
+            || self.etk_distance_weights.len() != self.etk_distance_atom_pairs.len()
+            || self.stereo_flags.len() != self.stereo_atom_quints.len()
+        {
+            return Err(invalid(
+                "extractor arrays differ from their canonical term counts",
+            ));
+        }
         if self
             .atomic_numbers
             .iter()
@@ -426,6 +443,12 @@ mod tests {
             bytes.len() as u64
         )
         .is_err());
+
+        let mut decoded =
+            ExtractedConformerParameters::decode(&minimal_fixture(), ConformerVariant::EtkdgV3, 92)
+                .expect("valid fixture");
+        decoded.distance_weights.clear();
+        assert!(decoded.validate().is_err());
         let mut invalid = bytes;
         invalid[80..84].copy_from_slice(&f32::NAN.to_le_bytes());
         assert!(ExtractedConformerParameters::decode(
