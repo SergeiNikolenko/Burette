@@ -606,7 +606,7 @@ fn fetch_predicate_page(
         .map_err(|err| err.to_string())?;
     let mut page_rows = collect_page_rows(rows)?;
     attach_descriptor_cells(connection, &mut page_rows)?;
-    let analysis_columns = attach_latest_cluster_analysis(connection, &mut page_rows)?;
+    let analysis_columns = attach_latest_analysis_runs(connection, &mut page_rows)?;
     Ok(GridPageResult {
         rows: page_rows,
         total_rows,
@@ -669,21 +669,37 @@ fn collect_page_rows(mut rows: rusqlite::Rows<'_>) -> Result<Vec<GridPageRow>, S
     Ok(page_rows)
 }
 
-fn attach_latest_cluster_analysis(
+fn attach_latest_analysis_runs(
     connection: &Connection,
     page_rows: &mut [GridPageRow],
+) -> Result<Vec<GridAnalysisColumn>, String> {
+    let mut columns = Vec::new();
+    for workflow_template in ["cluster.v1", "similaritySearch.v1"] {
+        columns.extend(attach_latest_analysis_run(
+            connection,
+            page_rows,
+            workflow_template,
+        )?);
+    }
+    Ok(columns)
+}
+
+fn attach_latest_analysis_run(
+    connection: &Connection,
+    page_rows: &mut [GridPageRow],
+    workflow_template: &str,
 ) -> Result<Vec<GridAnalysisColumn>, String> {
     let run_id = connection
         .query_row(
             "select analysis_run.run_id
              from analysis_runs analysis_run
              join grid_metadata metadata on metadata.id = 1
-             where analysis_run.workflow_template = 'cluster.v1'
+             where analysis_run.workflow_template = ?1
                and analysis_run.document_fingerprint_sha256 = metadata.document_fingerprint_sha256
                and analysis_run.source_revision = metadata.source_revision
              order by analysis_run.created_at_ms desc, analysis_run.run_id desc
              limit 1",
-            [],
+            [workflow_template],
             |row| row.get::<_, String>(0),
         )
         .optional()
@@ -705,7 +721,7 @@ fn attach_latest_cluster_analysis(
         .query_map([&run_id], |row| {
             let value_id = row.get::<_, String>(0)?;
             Ok(GridAnalysisColumn {
-                label: cluster_analysis_label(&value_id).into(),
+                label: analysis_label(&value_id).into(),
                 run_id: run_id.clone(),
                 value_id,
                 value_kind: row.get(1)?,
@@ -766,19 +782,26 @@ fn attach_latest_cluster_analysis(
         );
     }
     for page_row in page_rows {
-        page_row.analyses = values_by_molecule
-            .remove(&page_row.row_id)
-            .unwrap_or_default();
+        page_row.analyses.extend(
+            values_by_molecule
+                .remove(&page_row.row_id)
+                .unwrap_or_default(),
+        );
     }
     Ok(columns)
 }
 
-fn cluster_analysis_label(value_id: &str) -> &str {
+fn analysis_label(value_id: &str) -> &str {
     match value_id {
         "clusterId" => "Cluster ID",
         "isRepresentative" => "Representative",
         "clusterStatus" => "Cluster status",
         "clusterError" => "Cluster error",
+        "isSimilarityQuery" => "Similarity query",
+        "similarityRank" => "Similarity rank",
+        "similarityToQuery" => "Tanimoto to query",
+        "tanimotoIntersection" => "Tanimoto intersection",
+        "tanimotoUnion" => "Tanimoto union",
         _ => value_id,
     }
 }

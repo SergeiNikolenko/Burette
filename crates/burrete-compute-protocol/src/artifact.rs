@@ -198,6 +198,11 @@ impl ArtifactManifest {
     fn validate_stages(&self) -> Result<(), ProtocolError> {
         let expected_stage_ids = match self.workflow_template {
             WorkflowTemplateId::ClusterV1 => CLUSTER_STAGE_IDS.as_slice(),
+            WorkflowTemplateId::SimilaritySearchV1 => {
+                return validation_error(
+                    "similaritySearch.v1 derived analyses do not publish cluster artifacts",
+                )
+            }
         };
         if self.stages.len() != expected_stage_ids.len() {
             return validation_error(
