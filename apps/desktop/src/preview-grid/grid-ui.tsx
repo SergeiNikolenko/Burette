@@ -26,6 +26,9 @@ type GridControlProps = {
   ketcherOpen: boolean;
   rendererSwitch: boolean;
   generating3d: boolean;
+  clusterEnabled: boolean;
+  clustering: boolean;
+  clusterCutoff: number;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
   onSortChange: (value: string) => void;
@@ -33,6 +36,8 @@ type GridControlProps = {
   onClearSmarts: () => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
+  onCluster: () => void;
+  onClusterCutoffChange: (value: number) => void;
   onCopySelected: () => void;
   onSaveGrid: () => void;
   onSaveGridAs: () => void;
@@ -207,6 +212,39 @@ function SelectionControls(props: GridControlProps) {
   );
 }
 
+function ClusterControls(props: GridControlProps) {
+  if (!props.clusterEnabled) return null;
+  return (
+    <div className="buret-grid-control-group buret-grid-cluster-group" aria-label="Molecular clustering">
+      <label className="buret-grid-cluster-cutoff">
+        Similarity
+        <select
+          id="cluster-cutoff"
+          aria-label="Tanimoto similarity cutoff"
+          value={props.clusterCutoff.toFixed(2)}
+          disabled={props.clustering}
+          onChange={(event) => props.onClusterCutoffChange(Number(event.currentTarget.value))}
+        >
+          {[0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9].map((cutoff) => (
+            <option key={cutoff} value={cutoff.toFixed(2)}>{cutoff.toFixed(2)}</option>
+          ))}
+        </select>
+      </label>
+      <button
+        id="cluster-molecules"
+        className="buret-toggle-button buret-cluster-button"
+        type="button"
+        disabled={props.clustering}
+        aria-busy={props.clustering ? "true" : "false"}
+        onClick={props.onCluster}
+      >
+        <span data-buret-grid-cluster-label>{props.clustering ? "Clustering..." : "Cluster all"}</span>
+        <ControlTooltip label="Cluster selected molecules, or the full collection when nothing is selected" />
+      </button>
+    </div>
+  );
+}
+
 function SelectedOpenActions(props: GridControlProps) {
   if (!props.selectionEnabled) return null;
   return (
@@ -308,6 +346,7 @@ function GridControls(props: GridControlProps) {
           </button>
           <GridRenderControls {...props} />
           <XyzrenderStyleControl {...props} />
+          <ClusterControls {...props} />
           <div className="buret-toolbar-spacer" aria-hidden="true" />
           <SelectedOpenActions {...props} />
           <SelectionControls {...props} />

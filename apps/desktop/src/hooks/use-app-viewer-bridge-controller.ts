@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useAppDockingPoseMessages } from "./use-app-docking-pose-messages";
 import { useAppGridConformerMessages } from "./use-app-grid-conformer-messages";
+import { useAppGridComputeMessages } from "./use-app-grid-compute-messages";
 import { useAppGridControlMessages } from "./use-app-grid-control-messages";
 import { useAppGridFileActions } from "./use-app-grid-file-actions";
 import { useAppGridRuntimeMessages } from "./use-app-grid-runtime-messages";
@@ -182,6 +183,10 @@ export function useAppViewerBridgeController({
     pushStatus,
     rememberRecentStructures,
   });
+  const { handleGridComputeMessage } = useAppGridComputeMessages({
+    postMessageToViewerSource,
+    pushStatus,
+  });
   const { handleKetcherViewerMessage } = useAppKetcherViewerMessages({
     activeDocument,
     documents,
@@ -277,6 +282,7 @@ export function useAppViewerBridgeController({
   useAppViewerBridgeMessages({
     handleDockingPoseMessage,
     handleGridConformerMessage,
+    handleGridComputeMessage,
     handleGridControlMessage,
     handleGridFileMessage,
     handleGridRuntimeMessage,
