@@ -38,7 +38,7 @@ installed-app evidence.
 | --- | --- |
 | Similarity and clustering | `Cluster all`/`Cluster selected` source workflow and ad-hoc packaged Metal dispatch proven; production release/scale gates pending |
 | Similarity search and diverse selection | `Find similar` reuses a verified cluster EnginePack for exact CPU/Metal top-50 ranking and Grid writeback; immutable diverse export includes structures, table, and provenance |
-| Conformer generation | Eight-variant IDs, chunk-invariant seeds, adaptive `N x K` planning, strict pack/stage contracts, verified preflight/memory admission, honest per-stage GPU fallback, queued durable snapshots, packaged Metal initialization, normalized DG energy/gradient, and matching bounded CPU/fused Metal L-BFGS optimization implemented; coordinator execution/publication, parameter extraction, full DG/ETK embedding, and UI remain in progress |
+| Conformer generation | Eight-variant IDs, chunk-invariant seeds, adaptive `N x K` planning, strict pack/stage contracts, validated EnginePack distance data, unified-memory-aware admission, honest per-stage GPU fallback, queued durable snapshots, and a packaged Metal initialization plus bounded L-BFGS ensemble operation implemented; coordinator execution/publication, native parameter extraction, full DG/ETK embedding, and UI remain in progress |
 | MMFF94/MMFF94s optimization | Planned after conformer generation |
 | Alignment, RMSD, shape/electrostatic scoring | Planned after MMFF |
 | Semiempirical energies and charges | Planned method by method after independent parity gates |
