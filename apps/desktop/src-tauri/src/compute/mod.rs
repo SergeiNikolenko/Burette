@@ -7,6 +7,7 @@ mod conformer_executor;
 mod conformer_ipc;
 mod conformer_plan;
 mod conformer_session;
+mod conformer_stereo_executor;
 pub(crate) mod coordinator;
 mod engine_catalog;
 pub(crate) mod error;

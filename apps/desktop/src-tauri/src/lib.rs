@@ -129,6 +129,7 @@ pub fn run() {
             compute::commands::compute_begin_conformer_submission,
             compute::commands::compute_submit_conformer_chunk,
             compute::commands::compute_execute_conformer_distance,
+            compute::commands::compute_execute_conformer_stereo,
             compute::commands::compute_begin_cluster_execution,
             compute::commands::compute_submit_fingerprint_chunk,
             compute::commands::compute_execute_cluster,
