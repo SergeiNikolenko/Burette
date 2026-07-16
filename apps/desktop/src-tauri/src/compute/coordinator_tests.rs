@@ -2,10 +2,11 @@ use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use burrete_compute_protocol::{
     AllGridScope, ClusterV1Parameters, ComputeJobSchemaVersion, ConformerResourceLimits,
-    ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant, ExecutionPolicy,
-    FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
+    ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant, EnginePackManifest,
+    ExecutionPolicy, FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
     GridSourceReference, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
-    SchedulingPolicy, SimilarityCutoff, SimilaritySettings, StageState, MIN_COMPUTE_MEMORY_BYTES,
+    ResultPackManifest, SchedulingPolicy, SimilarityCutoff, SimilaritySettings, StageState,
+    CONFORMER_RESULT_ARRAY_NAMES, MIN_COMPUTE_MEMORY_BYTES,
 };
 
 use crate::compute::similarity_search::SimilaritySearchRequest;
@@ -146,6 +147,46 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
     assert_eq!(validation.job.state, JobState::Publishing);
     assert_eq!(validation.job.stages[4].state, StageState::Succeeded);
     assert_eq!(validation.job.stages[5].state, StageState::Queued);
+    let publication = coordinator
+        .publish_conformer_v1("main", job.job_id, validation.job.revision)
+        .expect("publish conformer packs");
+    assert_eq!(publication.job.state, JobState::Succeeded);
+    assert_eq!(publication.job.stages[5].state, StageState::Succeeded);
+    assert_eq!(publication.job.artifact_ids, [publication.artifact_id]);
+    assert!(publication.job.result_pack.is_some());
+    assert_eq!(publication.artifact_manifest_sha256.len(), 64);
+    assert_eq!(
+        coordinator.get_job("main", job.job_id).unwrap(),
+        publication.job
+    );
+    let artifact_root = compute_root
+        .join("artifacts")
+        .join(format!("artifact-{}", publication.artifact_id));
+    let engine_manifest: EnginePackManifest = serde_json::from_slice(
+        &std::fs::read(artifact_root.join("engine/manifest.json"))
+            .expect("read conformer EnginePack manifest"),
+    )
+    .expect("decode conformer EnginePack manifest");
+    engine_manifest
+        .validate()
+        .expect("validate conformer EnginePack manifest");
+    let result_manifest: ResultPackManifest = serde_json::from_slice(
+        &std::fs::read(artifact_root.join("result/manifest.json"))
+            .expect("read conformer ResultPack manifest"),
+    )
+    .expect("decode conformer ResultPack manifest");
+    result_manifest
+        .validate()
+        .expect("validate conformer ResultPack manifest");
+    assert_eq!(
+        result_manifest
+            .layout
+            .arrays
+            .iter()
+            .map(|array| array.name.as_str())
+            .collect::<Vec<_>>(),
+        CONFORMER_RESULT_ARRAY_NAMES
+    );
     std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
     std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
 }
