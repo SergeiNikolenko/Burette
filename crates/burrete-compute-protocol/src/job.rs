@@ -7,7 +7,8 @@ use crate::{
         canonical_json_bytes as serialize_canonical_json, sha256_hex, validate_bounded_text,
         validate_json_safe_u64, validate_lower_sha256,
     },
-    BackendPolicy, ClusterV1SubmitRequest, ProtocolError, WorkflowTemplateId,
+    BackendPolicy, ClusterV1SubmitRequest, ConformerV1SubmitRequest, ProtocolError,
+    WorkflowTemplateId,
 };
 
 const MAX_STAGE_ID_BYTES: usize = 96;
@@ -21,6 +22,14 @@ pub const CLUSTER_STAGE_IDS: [&str; 6] = [
     "fingerprints",
     "tanimotoNeighbors",
     "butinaClusters",
+    "validateResults",
+    "publishResults",
+];
+pub const CONFORMER_STAGE_IDS: [&str; 6] = [
+    "freezeScope",
+    "conformerConstraints",
+    "distanceGeometry",
+    "stereoValidation",
     "validateResults",
     "publishResults",
 ];
@@ -134,6 +143,8 @@ pub enum Precision {
 pub enum ExecutionPlanVersion {
     #[serde(rename = "cluster.execution-plan.v1")]
     ClusterV1,
+    #[serde(rename = "conformer.execution-plan.v1")]
+    ConformerV1,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -311,59 +322,13 @@ pub struct ExecutionPlan {
 
 impl ExecutionPlan {
     pub fn validate(&self) -> Result<(), ProtocolError> {
-        if self.workflow_template != WorkflowTemplateId::ClusterV1
-            || self.plan_version != ExecutionPlanVersion::ClusterV1
-        {
-            return Err(ProtocolError::Validation(
-                "execution plan is not compatible with cluster.v1".into(),
-            ));
-        }
-        if self.stages.len() != CLUSTER_STAGE_IDS.len() {
+        let expected = self.expected_stages()?;
+        if self.stages.len() != expected.len() {
             return Err(ProtocolError::Validation(format!(
-                "cluster.v1 execution plan requires exactly {} stages",
-                CLUSTER_STAGE_IDS.len()
+                "workflow execution plan requires exactly {} stages",
+                expected.len()
             )));
         }
-
-        let expected = [
-            (
-                CLUSTER_STAGE_IDS[0],
-                StageKind::Materialize,
-                Backend::Coordinator,
-                Precision::NotApplicable,
-            ),
-            (
-                CLUSTER_STAGE_IDS[1],
-                StageKind::ChemistrySemantics,
-                Backend::Rdkit,
-                Precision::IntegerExact,
-            ),
-            (
-                CLUSTER_STAGE_IDS[2],
-                StageKind::NumericCompute,
-                self.expected_similarity_request_backend(),
-                Precision::IntegerExact,
-            ),
-            (
-                CLUSTER_STAGE_IDS[3],
-                StageKind::WorkflowSemantics,
-                Backend::ReferenceCpu,
-                Precision::IntegerExact,
-            ),
-            (
-                CLUSTER_STAGE_IDS[4],
-                StageKind::Validation,
-                Backend::ReferenceCpu,
-                Precision::IntegerExact,
-            ),
-            (
-                CLUSTER_STAGE_IDS[5],
-                StageKind::ArtifactIo,
-                Backend::Coordinator,
-                Precision::NotApplicable,
-            ),
-        ];
-
         let mut record_count = None;
         for (stage, (stage_id, kind, requested_backend, precision)) in
             self.stages.iter().zip(expected)
@@ -375,7 +340,7 @@ impl ExecutionPlan {
                 || stage.precision != precision
             {
                 return Err(ProtocolError::Validation(format!(
-                    "stage {} does not match the fixed cluster.v1 plan registry",
+                    "stage {} does not match the fixed workflow plan registry",
                     stage.stage_id
                 )));
             }
@@ -385,37 +350,12 @@ impl ExecutionPlan {
                 .is_some_and(|value| value != stage_record_count)
             {
                 return Err(ProtocolError::Validation(
-                    "cluster.v1 stages do not cover the same frozen record count".into(),
+                    "workflow stages do not cover the same frozen record count".into(),
                 ));
             }
         }
-
-        let similarity = &self.stages[2];
-        match self.backend_policy {
-            BackendPolicy::GpuRequired => {
-                if similarity.effective_backend != Backend::NativeMetal {
-                    return Err(ProtocolError::Validation(
-                        "gpuRequired cluster.v1 similarity must use nativeMetal".into(),
-                    ));
-                }
-            }
-            BackendPolicy::GpuPreferred => {
-                if !matches!(
-                    similarity.effective_backend,
-                    Backend::NativeMetal | Backend::ReferenceCpu
-                ) {
-                    return Err(ProtocolError::Validation(
-                        "gpuPreferred cluster.v1 similarity has an unsupported backend".into(),
-                    ));
-                }
-            }
-            BackendPolicy::ReferenceCpu => {
-                if similarity.effective_backend != Backend::ReferenceCpu {
-                    return Err(ProtocolError::Validation(
-                        "referenceCpu cluster.v1 similarity must use referenceCpu".into(),
-                    ));
-                }
-            }
+        for &index in self.numeric_stage_indices() {
+            self.validate_numeric_backend(&self.stages[index])?;
         }
         Ok(())
     }
@@ -445,23 +385,24 @@ impl ExecutionPlan {
                 "execution plan differs from the requested workflow or backend policy".into(),
             ));
         }
-        for stage in &self.stages {
-            for partition in &stage.partitions {
-                if partition.estimated_memory_bytes > request.limits.max_memory_bytes {
-                    return Err(ProtocolError::Validation(format!(
-                        "partition {} exceeds the request maxMemoryBytes limit",
-                        partition.partition_id
-                    )));
-                }
-            }
-            if stage.estimated_memory_bytes > request.limits.max_memory_bytes {
-                return Err(ProtocolError::Validation(format!(
-                    "stage {} exceeds the request maxMemoryBytes limit",
-                    stage.stage_id
-                )));
-            }
+        self.validate_memory_limit(request.limits.max_memory_bytes)
+    }
+
+    pub fn validate_against_conformer_request(
+        &self,
+        request: &ConformerV1SubmitRequest,
+        record_count: u64,
+    ) -> Result<(), ProtocolError> {
+        request.validate()?;
+        self.validate_for_record_count(record_count)?;
+        if self.workflow_template != request.workflow_template
+            || self.backend_policy != request.execution_policy.backend_policy
+        {
+            return Err(ProtocolError::Validation(
+                "execution plan differs from the requested workflow or backend policy".into(),
+            ));
         }
-        Ok(())
+        self.validate_memory_limit(request.limits.max_memory_bytes)
     }
 
     /// Serializes a validated execution plan using RFC 8785 JSON Canonicalization Scheme.
@@ -480,6 +421,74 @@ impl ExecutionPlan {
             BackendPolicy::GpuRequired | BackendPolicy::GpuPreferred => Backend::NativeMetal,
             BackendPolicy::ReferenceCpu => Backend::ReferenceCpu,
         }
+    }
+
+    fn expected_stages(
+        &self,
+    ) -> Result<Vec<(&'static str, StageKind, Backend, Precision)>, ProtocolError> {
+        let gpu = self.expected_similarity_request_backend();
+        match (self.workflow_template, self.plan_version) {
+            (WorkflowTemplateId::ClusterV1, ExecutionPlanVersion::ClusterV1) => Ok(vec![
+                (CLUSTER_STAGE_IDS[0], StageKind::Materialize, Backend::Coordinator, Precision::NotApplicable),
+                (CLUSTER_STAGE_IDS[1], StageKind::ChemistrySemantics, Backend::Rdkit, Precision::IntegerExact),
+                (CLUSTER_STAGE_IDS[2], StageKind::NumericCompute, gpu, Precision::IntegerExact),
+                (CLUSTER_STAGE_IDS[3], StageKind::WorkflowSemantics, Backend::ReferenceCpu, Precision::IntegerExact),
+                (CLUSTER_STAGE_IDS[4], StageKind::Validation, Backend::ReferenceCpu, Precision::IntegerExact),
+                (CLUSTER_STAGE_IDS[5], StageKind::ArtifactIo, Backend::Coordinator, Precision::NotApplicable),
+            ]),
+            (WorkflowTemplateId::ConformerV1, ExecutionPlanVersion::ConformerV1) => Ok(vec![
+                (CONFORMER_STAGE_IDS[0], StageKind::Materialize, Backend::Coordinator, Precision::NotApplicable),
+                (CONFORMER_STAGE_IDS[1], StageKind::ChemistrySemantics, Backend::Rdkit, Precision::Float64),
+                (CONFORMER_STAGE_IDS[2], StageKind::NumericCompute, gpu, Precision::Float32),
+                (CONFORMER_STAGE_IDS[3], StageKind::NumericCompute, gpu, Precision::Float32),
+                (CONFORMER_STAGE_IDS[4], StageKind::Validation, Backend::ReferenceCpu, Precision::Float64),
+                (CONFORMER_STAGE_IDS[5], StageKind::ArtifactIo, Backend::Coordinator, Precision::NotApplicable),
+            ]),
+            _ => Err(ProtocolError::Validation(
+                "execution plan version is incompatible with its workflow".into(),
+            )),
+        }
+    }
+
+    fn numeric_stage_indices(&self) -> &'static [usize] {
+        match self.workflow_template {
+            WorkflowTemplateId::ClusterV1 => &[2],
+            WorkflowTemplateId::ConformerV1 => &[2, 3],
+            WorkflowTemplateId::SimilaritySearchV1 => &[],
+        }
+    }
+
+    fn validate_numeric_backend(&self, stage: &PlannedStage) -> Result<(), ProtocolError> {
+        let valid = match self.backend_policy {
+            BackendPolicy::GpuRequired => stage.effective_backend == Backend::NativeMetal,
+            BackendPolicy::GpuPreferred => matches!(stage.effective_backend, Backend::NativeMetal | Backend::ReferenceCpu),
+            BackendPolicy::ReferenceCpu => stage.effective_backend == Backend::ReferenceCpu,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(ProtocolError::Validation(format!(
+                "stage {} effective backend violates the workflow backend policy",
+                stage.stage_id
+            )))
+        }
+    }
+
+    fn validate_memory_limit(&self, max_memory_bytes: u64) -> Result<(), ProtocolError> {
+        for stage in &self.stages {
+            if stage.estimated_memory_bytes > max_memory_bytes
+                || stage
+                    .partitions
+                    .iter()
+                    .any(|partition| partition.estimated_memory_bytes > max_memory_bytes)
+            {
+                return Err(ProtocolError::Validation(format!(
+                    "stage {} exceeds the request maxMemoryBytes limit",
+                    stage.stage_id
+                )));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -520,10 +529,11 @@ fn validate_engine_backend(engine: &EngineIdentity, backend: Backend) -> Result<
 mod tests {
     use super::*;
     use crate::{
-        AllGridScope, ClusterV1Parameters, ComputeJobSchemaVersion, ExecutionPolicy,
-        FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
-        GridSourceReference, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
-        SchedulingPolicy, SimilarityCutoff, SimilaritySettings,
+        AllGridScope, ClusterV1Parameters, ComputeJobSchemaVersion, ConformerResourceLimits,
+        ConformerV1Parameters, ConformerVariant, ExecutionPolicy, FingerprintAlgorithm,
+        FingerprintInputOrder, FingerprintSettings, GridScope, GridSourceReference,
+        RdkitBaselineVersion, RepresentativePolicy, ResourceLimits, SchedulingPolicy,
+        SimilarityCutoff, SimilaritySettings,
     };
 
     fn engine(backend: Backend) -> EngineIdentity {
@@ -668,6 +678,51 @@ mod tests {
         }
     }
 
+    fn conformer_plan(policy: BackendPolicy, numeric: Backend) -> ExecutionPlan {
+        let requested = match policy {
+            BackendPolicy::GpuRequired | BackendPolicy::GpuPreferred => Backend::NativeMetal,
+            BackendPolicy::ReferenceCpu => Backend::ReferenceCpu,
+        };
+        ExecutionPlan {
+            workflow_template: WorkflowTemplateId::ConformerV1,
+            plan_version: ExecutionPlanVersion::ConformerV1,
+            backend_policy: policy,
+            stages: vec![
+                stage("freezeScope", StageKind::Materialize, Backend::Coordinator, Backend::Coordinator, Precision::NotApplicable),
+                stage("conformerConstraints", StageKind::ChemistrySemantics, Backend::Rdkit, Backend::Rdkit, Precision::Float64),
+                stage("distanceGeometry", StageKind::NumericCompute, requested, numeric, Precision::Float32),
+                stage("stereoValidation", StageKind::NumericCompute, requested, numeric, Precision::Float32),
+                stage("validateResults", StageKind::Validation, Backend::ReferenceCpu, Backend::ReferenceCpu, Precision::Float64),
+                stage("publishResults", StageKind::ArtifactIo, Backend::Coordinator, Backend::Coordinator, Precision::NotApplicable),
+            ],
+        }
+    }
+
+    fn conformer_request(policy: BackendPolicy) -> ConformerV1SubmitRequest {
+        ConformerV1SubmitRequest {
+            schema_version: ComputeJobSchemaVersion::V1,
+            workflow_template: WorkflowTemplateId::ConformerV1,
+            source: GridSourceReference {
+                document_id: "document-1".into(),
+                scope: GridScope::All(AllGridScope {}),
+            },
+            parameters: ConformerV1Parameters {
+                variant: ConformerVariant::EtkdgV3,
+                conformers_per_molecule: 16,
+                max_attempts_per_conformer: 8,
+            },
+            execution_policy: ExecutionPolicy {
+                backend_policy: policy,
+                scheduling_policy: SchedulingPolicy::Balanced,
+            },
+            limits: ConformerResourceLimits {
+                max_memory_bytes: 16 * 1024 * 1024,
+                max_dispatch_ms: 250,
+                max_conformers_per_batch: 1024,
+            },
+        }
+    }
+
     #[test]
     fn preserves_cancel_requested_as_a_distinct_state() {
         assert!(JobState::Running.can_transition_to(JobState::CancelRequested));
@@ -694,6 +749,34 @@ mod tests {
         assert!(rejected.validate().is_err());
         let fallback = plan(BackendPolicy::GpuPreferred, Backend::ReferenceCpu);
         assert_eq!(fallback.validate(), Ok(()));
+    }
+
+    #[test]
+    fn conformer_plan_requires_both_numeric_stages_to_honor_gpu_policy() {
+        let request = conformer_request(BackendPolicy::GpuRequired);
+        let plan = conformer_plan(BackendPolicy::GpuRequired, Backend::NativeMetal);
+        assert_eq!(plan.validate_against_conformer_request(&request, 10), Ok(()));
+
+        let mut cpu_stereo = plan.clone();
+        cpu_stereo.stages[3] = stage(
+            "stereoValidation",
+            StageKind::NumericCompute,
+            Backend::NativeMetal,
+            Backend::ReferenceCpu,
+            Precision::Float32,
+        );
+        assert!(cpu_stereo
+            .validate_against_conformer_request(&request, 10)
+            .is_err());
+
+        let fallback = conformer_plan(BackendPolicy::GpuPreferred, Backend::ReferenceCpu);
+        assert_eq!(
+            fallback.validate_against_conformer_request(
+                &conformer_request(BackendPolicy::GpuPreferred),
+                10
+            ),
+            Ok(())
+        );
     }
 
     #[test]
