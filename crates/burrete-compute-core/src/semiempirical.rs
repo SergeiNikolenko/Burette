@@ -2,11 +2,13 @@ use std::{error::Error, fmt};
 
 mod overlap;
 mod parameters;
+mod rm1;
 mod rotation;
 mod two_center;
 
 pub use overlap::{rm1_sp_overlap, Rm1OverlapMatrix};
 pub use parameters::{rm1_parameters, SemiempiricalElementParameters};
+pub use rm1::{evaluate_rm1, Rm1Evaluation};
 pub use rotation::{rm1_rotated_pair_integrals, Rm1RotatedPairIntegrals};
 pub use two_center::{
     rm1_multipole_parameters, rm1_two_center_integrals, Rm1MultipoleParameters,
@@ -300,9 +302,11 @@ pub fn solve_closed_shell_scf(
         let mut fock = build_fock(&density)?;
         validate_matrix(&fock, matrix_len, "Fock")?;
         let residual = commutator(&fock, &density, orbital_count);
-        diis.push(fock.clone(), residual);
-        if let Some(extrapolated) = diis.extrapolate() {
-            fock = extrapolated;
+        if dot(&residual, &residual) > 1.0e-28 {
+            diis.push(fock.clone(), residual);
+            if let Some(extrapolated) = diis.extrapolate() {
+                fock = extrapolated;
+            }
         }
 
         let (energies, coefficients) = symmetric_eigen(&fock, orbital_count)?;
