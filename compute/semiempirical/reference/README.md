@@ -22,3 +22,9 @@ commit, SHA-256
 Only its three verified 243-entry integer lookup maps are mechanically
 generated into Rust. Production uses the independent typed Rust equations and
 does not load or execute this Python file.
+
+`fock_d.py` is another byte-identical reference copy, SHA-256
+`e4308bcd2e7c9e3abbb569b7e897fdfed012a1b02bd1a22f77915f512e821fd0`.
+Its 45-output/243-term integer contraction map is mechanically converted into
+bounded Rust arrays. The production contraction and symmetry validation are
+native Rust.

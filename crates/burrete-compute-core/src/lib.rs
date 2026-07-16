@@ -65,7 +65,7 @@ pub use semiempirical::{
     contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators,
     evaluate_rm1_with_pair_contractor, evaluate_rm1_with_prepared_pairs_and_accelerators,
     evaluate_semiempirical, pm6_d3_dispersion_energy, pm6_full_parameters, pm6_h4_covalent_radius,
-    pm6_h4_energy, pm6_hh_repulsion_energy, pm6_one_center_w_integrals,
+    pm6_h4_energy, pm6_hh_repulsion_energy, pm6_one_center_d_fock, pm6_one_center_w_integrals,
     pm6_slater_condon_parameter, rm1_fock_pairs, rm1_multipole_parameters,
     rm1_nuclear_repulsion_energy, rm1_parameters, rm1_rotated_pair_integrals, rm1_sp_overlap,
     rm1_two_center_integrals, semiempirical_nuclear_repulsion_energy, semiempirical_parameters,
