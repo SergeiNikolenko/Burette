@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "libraryId": "burrete.compute.conformer-etk.v1",
+  "source": "conformer-etk.v1.metal",
+  "deploymentTarget": "14.0",
+  "algorithm": "batched ETK torsion, improper-planarity, and flat-bottom distance energy with analytic float3 gradients",
+  "parameterAbi": {
+    "name": "ConformerEtkBatchV1",
+    "sizeBytes": 32,
+    "alignmentBytes": 4,
+    "byteOrder": "littleEndian"
+  },
+  "entrypoint": {
+    "name": "burrete_conformer_etk_v1",
+    "threads": "atomCount * conformerCount",
+    "buffers": [
+      { "name": "positions", "index": 0, "type": "float4", "access": "read" },
+      { "name": "torsionAtoms", "index": 1, "type": "uint4", "access": "read" },
+      { "name": "torsionCoefficients", "index": 2, "type": "float[6]", "access": "read" },
+      { "name": "torsionSigns", "index": 3, "type": "int8[6]", "access": "read" },
+      { "name": "improperAtoms", "index": 4, "type": "uint4", "access": "read" },
+      { "name": "improperWeights", "index": 5, "type": "float", "access": "read" },
+      { "name": "distanceAtoms", "index": 6, "type": "uint2", "access": "read" },
+      { "name": "distanceBounds", "index": 7, "type": "float2", "access": "read" },
+      { "name": "distanceWeights", "index": 8, "type": "float", "access": "read" },
+      { "name": "batch", "index": 9, "type": "ConformerEtkBatchV1", "access": "constant" },
+      { "name": "atomEnergies", "index": 10, "type": "float", "access": "write" },
+      { "name": "gradients", "index": 11, "type": "float4", "access": "write" }
+    ]
+  },
+  "claims": {
+    "etkEnergy": true,
+    "analyticGradient": true,
+    "etkMinimization": false,
+    "atomics": false,
+    "fullPairMatrix": false
+  }
+}
