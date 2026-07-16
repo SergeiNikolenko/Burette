@@ -120,6 +120,31 @@ export type ClusterRepresentativeExportResult = {
   reportSha256: string;
 };
 
+export type SimilaritySearchMatch = {
+  rank: number;
+  sourceRecordId: number;
+  intersection: number;
+  union: number;
+  similarity: number;
+};
+
+export type SimilaritySearchResult = {
+  runId: string;
+  sourceJobId: string;
+  sourceArtifactId: string;
+  querySourceIndex: number;
+  libraryRecordCount: number;
+  validRecordCount: number;
+  qualifiedMatchCount: number;
+  matches: SimilaritySearchMatch[];
+  backend: "nativeMetal" | "referenceCpu";
+  fallbackReason: string | null;
+  gpuTimeMs: number | null;
+  hostTimeMs: number;
+  gridApplied: boolean;
+  gridWarning: string | null;
+};
+
 export async function exportClusterRepresentatives(
   jobId: string,
   outputDirectory: string,
@@ -129,6 +154,22 @@ export async function exportClusterRepresentatives(
     jobId,
     outputDirectory,
     collectionName,
+  });
+}
+
+export async function findSimilarMolecules(
+  jobId: string,
+  querySourceIndex: number,
+  cutoff: number,
+  topK = 50,
+): Promise<SimilaritySearchResult> {
+  return invoke<SimilaritySearchResult>("compute_find_similar", {
+    jobId,
+    request: {
+      querySourceIndex,
+      topK,
+      minimumSimilarity: similarityCutoff(cutoff),
+    },
   });
 }
 

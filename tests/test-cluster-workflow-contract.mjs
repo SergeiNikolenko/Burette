@@ -12,6 +12,7 @@ const gridCss = source("PreviewExtension/Web/grid.css");
 const computePermission = source("apps/desktop/src-tauri/permissions/compute.toml");
 const computeCommands = source("apps/desktop/src-tauri/src/compute/commands.rs");
 const representativeExport = source("apps/desktop/src-tauri/src/compute/representative_export.rs");
+const artifactReader = source("apps/desktop/src-tauri/src/compute/artifact_reader.rs");
 
 for (const command of [
   "compute_submit_job",
@@ -20,6 +21,7 @@ for (const command of [
   "compute_execute_cluster",
   "compute_publish_cluster",
   "compute_export_cluster_representatives",
+  "compute_find_similar",
 ]) {
   assert.match(workflow, new RegExp(`invoke<[^>]+>\\(\"${command}\"`));
   assert.match(computePermission, new RegExp(`\"${command}\"`));
@@ -60,11 +62,24 @@ assert.match(gridViewer, /latestRepresentativeAnalysisColumn\(\)/);
 assert.match(gridViewer, /post\('exportClusterRepresentatives'/);
 assert.match(gridCss, /\.buret-cluster-export-button\[aria-busy="true"\]/);
 
+assert.match(computeCommands, /fn compute_find_similar/);
+assert.match(bridge, /body\?\.type === "findSimilarMolecules"/);
+assert.match(bridge, /gridSimilaritySearchFinished/);
+assert.match(bridge, /result\.backend === "nativeMetal" \? "Metal GPU" : "reference CPU"/);
+assert.match(gridUi, /id="find-similar-molecules"/);
+assert.match(gridUi, /Find similar/);
+assert.match(gridViewer, /state\.selected\.size !== 1/);
+assert.match(gridViewer, /topK: 50/);
+assert.match(gridViewer, /post\('findSimilarMolecules'/);
+assert.match(gridViewer, /gridSimilaritySearchFinished/);
+assert.match(gridCss, /\.buret-similarity-button\[aria-busy="true"\]/);
+
 assert.match(representativeExport, /MOLECULAR_RECORDS_FILE_PATH/);
 assert.match(representativeExport, /result\/representatives\.bin/);
 assert.match(representativeExport, /result\/cluster-ids\.bin/);
 assert.match(representativeExport, /OrderedRecordMoleculeIdentityHasher/);
-assert.match(representativeExport, /OFlags::NOFOLLOW/);
+assert.match(artifactReader, /OFlags::NOFOLLOW/);
+assert.match(representativeExport, /open_verified_artifact_file/);
 assert.match(representativeExport, /artifact_manifest_sha256/);
 assert.match(representativeExport, /representatives\.csv/);
 assert.match(representativeExport, /representatives\.sdf/);

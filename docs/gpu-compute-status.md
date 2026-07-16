@@ -1,8 +1,8 @@
 # Native GPU Compute Layer Implementation Status
 
-Status: `cluster.v1` source workflow and immutable representative export
-complete; exact GPU query runtime implemented; `Find similar` product wiring,
-current desktop packaging, production release, and scale proof pending
+Status: `cluster.v1`, immutable representative export, and derived exact
+`Find similar` Grid analysis complete at source level; current desktop
+packaging, production release, and scale proof pending
 
 Updated: 2026-07-16
 
@@ -35,6 +35,17 @@ clustering:
 8. `Export diverse` streams the frozen representative subset from the verified
    MolecularSnapshot and ResultPack into an atomic `SDF/SMI + CSV + provenance`
    bundle without routing molecular arrays through the WebView.
+9. Selecting exactly one molecule enables `Find similar` against the latest
+   successful clustering snapshot. The coordinator re-verifies the job,
+   artifact manifest, ResultPack, EnginePack, packed fingerprints, validity
+   map, and frozen record identities before scoring.
+10. The exact one-query Tanimoto path runs on native Metal when available under
+    the source job policy, or on the deterministic CPU reference with an
+    explicit fallback reason. Ranking compares integer intersection/union
+    ratios, excludes the query, and uses source record ID as its stable tie
+    break.
+11. The top 50 matches are written back to Grid as a derived analysis with
+    query flag, rank, display similarity, intersection, and union columns.
 
 The ordinary runtime does not require Python or MLX. No `mlxmolkit` source has
 been copied into this slice: the fingerprint ABI, exact Tanimoto contract,
@@ -46,7 +57,7 @@ source subject to the provenance gate.
 
 | Surface | Current truth |
 | --- | --- |
-| macOS desktop source build | `Cluster all`, `Cluster selected`, and immutable `Export diverse` are wired end to end in Grid |
+| macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
 | Native Metal backend | Real graph and one-query command-buffer dispatches are implemented and pass startup parity against the CPU reference |
 | Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v2 runtime generation independently passes package verification and real-GPU startup, while a refreshed v2 desktop package remains pending |
@@ -85,10 +96,22 @@ scope derived from the current selection:
   the source snapshot, job, artifact manifest, payload hashes, and execution
   trace. IDCode-only or whitespace-bearing SMILES records remain losslessly
   represented in the table instead of making the whole export fail.
+- `Find similar` requires exactly one selected query and a successful cluster
+  analysis for the current Grid. It searches that frozen clustering scope at
+  the selected cutoff, returns at most 50 exact matches, excludes the query,
+  reports `Metal GPU` only for a native Metal execution, and refreshes Grid with
+  `isSimilarityQuery`, `similarityRank`, `similarityToQuery`,
+  `tanimotoIntersection`, and `tanimotoUnion`.
 
-`Find similar molecules`, filtered-scope clustering, and a public
-artifact/report inspector are still separate product increments. They must not
-be described as available UI operations yet.
+The similarity operation is deliberately a derived immutable Grid analysis
+over the successful `cluster.v1` EnginePack. It references that artifact as
+`fingerprintSource`; it does not emit a second standalone JobSnapshot,
+ResultPack, or duplicate fingerprint payload. Consequently it searches the
+frozen scope of that clustering job, which may be a selected subset rather than
+the entire current collection.
+
+Filtered-scope clustering and a public artifact/report inspector remain
+separate product increments.
 
 ## Owning Modules
 
@@ -102,6 +125,7 @@ be described as available UI operations yet.
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
 | Artifact materialization and restart reconciliation | `apps/desktop/src-tauri/src/compute/artifact_publisher.rs` |
 | Immutable representative export and provenance | `apps/desktop/src-tauri/src/compute/representative_export.rs` |
+| Verified fingerprint reuse and exact similarity ranking | `apps/desktop/src-tauri/src/compute/similarity_artifact.rs`, `similarity_search.rs` |
 | Grid analysis writeback/readback | `apps/desktop/src-tauri/src/preview/grid_analysis.rs`, `grid_store.rs` |
 | RDKit Web Worker and desktop workflow | `apps/desktop/src/workers/cluster-fingerprint.worker.ts`, `apps/desktop/src/lib/compute-cluster.ts` |
 | Grid bridge and controls | `apps/desktop/src/hooks/use-app-grid-compute-messages.ts`, `PreviewExtension/Web/grid-viewer.js` |
@@ -141,7 +165,15 @@ be described as available UI operations yet.
 - The production web bundle builds with the dedicated RDKit worker and pinned
   WASM asset.
 - Tauri ACL, shell bridge, generated Grid UI, JavaScript syntax, and clustering
-  workflow contract checks pass.
+  and similarity workflow contract checks pass.
+- The real Grid-to-artifact coordinator test executes similarity search through
+  the CPU fallback, verifies exact ranking and all five Grid columns, repeats
+  after coordinator restart, preserves clustering results, and rejects a
+  corrupted fingerprint payload.
+- The desktop production web bundle builds with the `Find similar` bridge and
+  generated Grid controls. Repository-wide TypeScript checking is currently
+  blocked by pre-existing duplicate CodeMirror dependency identities in the
+  text-file viewer; the errors do not involve the compute files changed here.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
@@ -156,8 +188,9 @@ notarization, or visual UI-triggered clustering evidence.
 
 1. Build with Developer ID and hardened runtime, then notarize and verify the
    nested and outer production signatures without changing the pinned runtime.
-2. Unlock the test Mac and exercise clustering through the actual packaged Grid
-   controls, including visible columns, backend label, restart, and artifacts.
+2. Unlock the test Mac and exercise clustering and `Find similar` through the
+   actual packaged Grid controls, including visible columns, backend labels,
+   restart, and artifacts.
 3. Run fingerprint parity against pinned native RDKit and upstream fixtures,
    plus exact CPU-versus-Metal CSR parity over the frozen scientific corpus.
 4. Run sparse, dense, invalid-record, cutoff-boundary, cancellation,

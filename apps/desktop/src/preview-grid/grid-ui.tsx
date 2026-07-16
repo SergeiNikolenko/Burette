@@ -28,8 +28,10 @@ type GridControlProps = {
   generating3d: boolean;
   clusterEnabled: boolean;
   clustering: boolean;
+  findingSimilar: boolean;
   exportingClusterRepresentatives: boolean;
   clusterRepresentativesAvailable: boolean;
+  similarityQuerySelected: boolean;
   clusterCutoff: number;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
@@ -39,6 +41,7 @@ type GridControlProps = {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onCluster: () => void;
+  onFindSimilar: () => void;
   onExportClusterRepresentatives: () => void;
   onClusterCutoffChange: (value: number) => void;
   onCopySelected: () => void;
@@ -243,6 +246,24 @@ function ClusterControls(props: GridControlProps) {
       >
         <span data-buret-grid-cluster-label>{props.clustering ? "Clustering..." : "Cluster all"}</span>
         <ControlTooltip label="Cluster selected molecules, or the full collection when nothing is selected" />
+      </button>
+      <button
+        id="find-similar-molecules"
+        className="buret-toggle-button buret-similarity-button"
+        type="button"
+        disabled={
+          props.clustering
+          || props.findingSimilar
+          || !props.clusterRepresentativesAvailable
+          || !props.similarityQuerySelected
+        }
+        aria-busy={props.findingSimilar ? "true" : "false"}
+        onClick={props.onFindSimilar}
+      >
+        <span data-buret-grid-similarity-label>
+          {props.findingSimilar ? "Searching..." : "Find similar"}
+        </span>
+        <ControlTooltip label="Find the top 50 matches to the single selected molecule in the latest clustered snapshot" />
       </button>
       <button
         id="export-cluster-representatives"
