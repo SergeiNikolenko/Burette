@@ -431,7 +431,8 @@ separate product increments.
   iterations, and JSON atomic charges. Runtime v14 contracts the dominant
   two-center Coulomb/exchange Fock contribution on Metal for every SCF
   iteration and diagonalizes matrices through order 32 with a batched Metal
-  Jacobi kernel. It also rotates compact local pair integrals and materializes
+  Jacobi kernel. It also generates all compact H-H, heavy-H, and 22-term
+  heavy-heavy local pair integrals, rotates them, and materializes
   complete repulsion/core-attraction tensors on Metal. Every GPU result is checked against the float64 CPU reference;
   trace-shift/spectral preconditioning controls float32 error, and the SCF tail
   switches adaptively to float64 polishing at the precision floor. The Grid
@@ -447,7 +448,7 @@ separate product increments.
   KATs passed on
   `Apple M2 Pro` (`registryId=0x1000003c0`, unified memory); the tested
   `native-compute.v14.metallib` SHA-256 is
-  `381abe1fc2ca5757e8c3bda0eedef7fe6d8eefa5fdc48ab19154f03169b35239`.
+  `8ac75d3f5738856cffbee8f1ed32221eb3ed7a6d80821672de2128aab9323a3d`.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
@@ -494,8 +495,8 @@ fixed order below:
    multipole parameters plus complete 22-term pair integrals and molecular-frame
    rotation, first-/second-row overlap, and end-to-end H/C/N/O/F RM1 SCF energies
    and charges plus complete qn1-5 sp overlap and native Grid execution/writeback;
-   with Metal pair rotation/materialization, two-center Fock contraction, and
-   symmetric eigensolver; next move compact local-integral equations to GPU plus
+   with Metal local-integral generation, pair rotation/materialization,
+   two-center Fock contraction, and symmetric eigensolver; next add the
    remaining parameter sets method by method behind independent
    known-answer and external parity gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
