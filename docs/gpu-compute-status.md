@@ -247,7 +247,7 @@ remain in progress.
 | macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
 | Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, fused automatic BFGS/L-BFGS MMFF optimization, and mapped Horn/RMSD/shape/ESP scoring on Apple M2 Pro |
-| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v11 runtime generation passes package verification and real-GPU startup, while a refreshed v11 desktop package remains pending |
+| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v20 runtime generation passes package verification and real-GPU startup, while a refreshed v20 desktop package remains pending |
 | Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -424,15 +424,19 @@ separate product increments.
   float64 CPU oracle on `Apple M2 Pro` (`registryId=0x1000003c0`, unified
   memory). The tested `native-compute.v11.metallib` SHA-256 is
   `e38da4f671a12a0d31bf8f68b55c77716dad646ca8c987a0fc24d4b2fca09c85`.
-- The desktop Grid now exposes `Align & compare` for 2--256 selected 3D poses.
-  The lowest selected source index is the reference; every probe must have the
-  same explicit atom order and element sequence. The command dispatches the
-  bounded v11 Metal batch, rejects CPU/Metal parity drift, writes RMSD, shape
+- The desktop Grid exposes `Align & compare` for 2--256 selected 3D poses.
+  The lowest selected source index is the reference. V2000 and V3000 probes are
+  deterministically remapped by exact element, formal-charge, bond-order, and
+  adjacency isomorphism, so identical molecules may use different atom orders;
+  non-isomorphic structures are rejected. The command dispatches the bounded
+  Metal batch, rejects CPU/Metal parity drift, writes RMSD, shape
   Tanimoto, optional electrostatic Carbo, and combined similarity back to the
-  current Grid identity, then opens an aligned SDF ensemble in Mol*. Molfile
-  formal charges are the only charge source in this slice, so neutral inputs
-  report electrostatic similarity as unavailable rather than inventing a GPU
-  result.
+  current Grid identity, then opens an aligned SDF ensemble in Mol*. It selects
+  the highest-priority newest semiempirical charge run that covers every pose
+  (`PM6_D3H4`, `PM6_D`, `PM6`, `RM1`, `PM6_SP`, `AM1*`, `PM3`, then `AM1`),
+  with exact atom-count validation. If no complete run exists, it uses molfile
+  formal charges; all-zero inputs report electrostatics as unavailable. A real
+  Grid-to-Metal smoke on Apple M2 Pro passes with a non-identity atom order.
 - The desktop Grid now also exposes a persistent method selector and native
   `energy & charges` action for RM1, full variable-basis PM6/PM6_D,
   PM6_D3H4, complete upstream-domain AM1, PM3, and PM6_SP, plus CHNO AM1*
@@ -559,8 +563,7 @@ fixed order below:
 1. complete conformer scientific-corpus and packaged UI release gates for the
    implemented Grid-to-Mol* native workflow;
 2. finish MMFF94/MMFF94s scientific-corpus parity against pinned RDKit;
-3. finish alignment corpus parity, chemistry-derived partial charges,
-   non-identity atom maps, durable ResultPack/report publication, and packaged
-   UI evidence for the implemented Grid/Mol* pose workflow;
+3. finish alignment corpus parity, durable ResultPack/report publication, and
+   packaged UI evidence for the implemented Grid/Mol* pose workflow;
 4. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.
