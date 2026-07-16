@@ -2,7 +2,7 @@ use std::{error::Error, fmt};
 
 mod overlap;
 mod parameters;
-mod pm6_d3_chno;
+mod pm6_d3_full;
 mod pm6_d3h4;
 mod pm6_fock_d;
 mod pm6_full_parameters;
@@ -18,7 +18,7 @@ mod two_center;
 
 pub use overlap::{rm1_sp_overlap, Rm1OverlapMatrix};
 pub use parameters::{rm1_parameters, semiempirical_parameters, SemiempiricalElementParameters};
-pub use pm6_d3_chno::pm6_d3_dispersion_energy;
+pub use pm6_d3_full::pm6_d3_dispersion_energy;
 pub use pm6_d3h4::{pm6_h4_covalent_radius, pm6_h4_energy, pm6_hh_repulsion_energy};
 pub use pm6_fock_d::pm6_one_center_d_fock;
 pub use pm6_full_parameters::{pm6_full_parameters, Pm6FullElementParameters};
@@ -67,17 +67,19 @@ pub enum SemiempiricalMethod {
     Pm6,
     Pm6Sp,
     Pm6D,
+    Pm6D3H4,
     Am1Star,
 }
 
 impl SemiempiricalMethod {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Rm1,
         Self::Am1,
         Self::Pm3,
         Self::Pm6,
         Self::Pm6Sp,
         Self::Pm6D,
+        Self::Pm6D3H4,
         Self::Am1Star,
     ];
 
@@ -89,24 +91,31 @@ impl SemiempiricalMethod {
             Self::Pm6 => "pm6",
             Self::Pm6Sp => "pm6_sp",
             Self::Pm6D => "pm6_d",
+            Self::Pm6D3H4 => "pm6_d3h4",
             Self::Am1Star => "am1_star",
         }
     }
 
     pub const fn uses_d_orbitals(self) -> bool {
-        matches!(self, Self::Pm6 | Self::Pm6D | Self::Am1Star)
+        matches!(self, Self::Pm6 | Self::Pm6D | Self::Pm6D3H4)
     }
 }
 
 fn method_orbital_count(method: SemiempiricalMethod, atomic_number: u8) -> Option<u8> {
-    if matches!(method, SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D) {
+    if matches!(
+        method,
+        SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D | SemiempiricalMethod::Pm6D3H4
+    ) {
         return pm6_full_parameters(atomic_number).map(|parameters| parameters.orbital_count);
     }
     semiempirical_parameters(method, atomic_number).map(|parameters| parameters.orbital_count)
 }
 
 fn method_valence_electrons(method: SemiempiricalMethod, atomic_number: u8) -> Option<u8> {
-    if matches!(method, SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D) {
+    if matches!(
+        method,
+        SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D | SemiempiricalMethod::Pm6D3H4
+    ) {
         return pm6_full_parameters(atomic_number).map(|parameters| parameters.valence_electrons);
     }
     semiempirical_parameters(method, atomic_number).map(|parameters| parameters.valence_electrons)
@@ -293,7 +302,7 @@ pub fn semiempirical_nuclear_repulsion_energy(
 ) -> Result<f64, SemiempiricalError> {
     if matches!(
         molecule.method,
-        SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D
+        SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D | SemiempiricalMethod::Pm6D3H4
     ) {
         return pm6_full_nuclear_repulsion_energy(molecule);
     }
@@ -337,7 +346,10 @@ pub fn semiempirical_nuclear_repulsion_energy(
             };
             if matches!(
                 molecule.method,
-                SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6Sp | SemiempiricalMethod::Pm6D
+                SemiempiricalMethod::Pm6
+                    | SemiempiricalMethod::Pm6Sp
+                    | SemiempiricalMethod::Pm6D
+                    | SemiempiricalMethod::Pm6D3H4
             ) {
                 let (chi, pair_alpha) =
                     pm6_pwcct_parameters(left.atomic_number, right.atomic_number).ok_or_else(
@@ -856,7 +868,8 @@ mod tests {
         assert_eq!(ids.len(), SemiempiricalMethod::ALL.len());
         assert!(SemiempiricalMethod::Pm6.uses_d_orbitals());
         assert!(SemiempiricalMethod::Pm6D.uses_d_orbitals());
-        assert!(SemiempiricalMethod::Am1Star.uses_d_orbitals());
+        assert!(SemiempiricalMethod::Pm6D3H4.uses_d_orbitals());
+        assert!(!SemiempiricalMethod::Am1Star.uses_d_orbitals());
         assert!(!SemiempiricalMethod::Pm6Sp.uses_d_orbitals());
     }
 

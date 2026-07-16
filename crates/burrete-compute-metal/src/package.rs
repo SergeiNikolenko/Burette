@@ -13,7 +13,7 @@ const POINTER_MAX_BYTES: u64 = 4 * 1024;
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 const METALLIB_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const METADATA_FILE: &str = "build-metadata.v2.json";
-const METALLIB_FILE: &str = "native-compute.v18.metallib";
+const METALLIB_FILE: &str = "native-compute.v19.metallib";
 const SOURCES: [(&str, &[u8]); 16] = [
     (
         "compute/metal/tanimoto.v2.metal",
@@ -68,8 +68,8 @@ const SOURCES: [(&str, &[u8]); 16] = [
         include_bytes!("../../../compute/metal/pm6-h4-hh.v1.metal"),
     ),
     (
-        "compute/metal/pm6-d3-chno.v1.metal",
-        include_bytes!("../../../compute/metal/pm6-d3-chno.v1.metal"),
+        "compute/metal/pm6-d3.v2.metal",
+        include_bytes!("../../../compute/metal/pm6-d3.v2.metal"),
     ),
     (
         "compute/metal/pm6-one-center-fock.v1.metal",
@@ -134,8 +134,8 @@ const CONTRACTS: [(&str, &[u8]); 16] = [
         include_bytes!("../../../compute/metal/pm6-h4-hh-kernel-contract.v1.json"),
     ),
     (
-        "compute/metal/pm6-d3-chno-kernel-contract.v1.json",
-        include_bytes!("../../../compute/metal/pm6-d3-chno-kernel-contract.v1.json"),
+        "compute/metal/pm6-d3-kernel-contract.v2.json",
+        include_bytes!("../../../compute/metal/pm6-d3-kernel-contract.v2.json"),
     ),
     (
         "compute/metal/pm6-one-center-fock-kernel-contract.v1.json",
@@ -160,7 +160,7 @@ const AIR_PATHS: [&str; 16] = [
     "rm1-eigen.v1.air",
     "rm1-pair-rotate.v1.air",
     "pm6-h4-hh.v1.air",
-    "pm6-d3-chno.v1.air",
+    "pm6-d3.v2.air",
     "pm6-one-center-fock.v1.air",
     "pm6-pair-fock.v1.air",
 ];
@@ -182,7 +182,7 @@ const ENTRYPOINTS: [&str; 20] = [
     "burrete_rm1_symmetric_eigen_v1",
     "burrete_rm1_pair_rotate_v1",
     "burrete_pm6_h4_hh_v1",
-    "burrete_pm6_d3_chno_v1",
+    "burrete_pm6_d3_v2",
     "burrete_pm6_one_center_fock_v1",
     "burrete_pm6_pair_fock_v1",
 ];
@@ -339,7 +339,7 @@ fn validate_metadata(metadata: &BuildMetadata) -> Result<(), MetalRuntimeError> 
     let expected_entrypoints: Vec<String> = ENTRYPOINTS.iter().map(ToString::to_string).collect();
     if metadata.schema_version != "burrete.compute.metal-build-metadata.v2"
         || metadata.runtime_version != NATIVE_METAL_RUNTIME_VERSION
-        || metadata.library_id != "burrete.compute.native.v18"
+        || metadata.library_id != "burrete.compute.native.v19"
         || !matches_hashed_inputs(&metadata.sources, &SOURCES)
         || !matches_hashed_inputs(&metadata.contracts, &CONTRACTS)
         || metadata.air.len() != AIR_PATHS.len()
@@ -572,7 +572,7 @@ mod tests {
             json!({
                 "schemaVersion": "burrete.compute.metal-build-metadata.v2",
                 "runtimeVersion": NATIVE_METAL_RUNTIME_VERSION,
-                "libraryId": "burrete.compute.native.v18",
+                "libraryId": "burrete.compute.native.v19",
                 "sources": SOURCES.map(|(path, bytes)| json!({
                     "path": path,
                     "sha256": sha256(bytes),

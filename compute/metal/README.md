@@ -51,10 +51,10 @@ cross-molecule atomics or intermediate triple tensors. Every two-component
 result must pass the bounded float64 CPU oracle before it is reported as GPU
 work.
 
-`pm6-d3-chno.v1.metal` evaluates zero-damping D3 dispersion for the current
-CHNO method domain using checked-in compact C6/CN interpolation records and r0
-pair radii. It shares the one-thread-per-molecule batch shape and is composed
-with H4/HH only after both GPU outputs pass their float64 CPU references.
+`pm6-d3.v2.metal` evaluates zero-damping D3 dispersion over the complete pinned
+Z=1--94 table using checked-in compact C6/CN interpolation records and r0 pair
+radii. It shares the one-thread-per-molecule batch shape and is composed with
+H4/HH only after both GPU outputs pass their float64 CPU references.
 
 `pm6-one-center-fock.v1.metal` contracts batched 243-term PM6 W tables with
 symmetric 9x9 density blocks. One GPU thread owns one of the 45 packed output

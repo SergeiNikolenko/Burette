@@ -27,7 +27,7 @@ source_files=(
   "$script_dir/rm1-eigen.v1.metal"
   "$script_dir/rm1-pair-rotate.v1.metal"
   "$script_dir/pm6-h4-hh.v1.metal"
-  "$script_dir/pm6-d3-chno.v1.metal"
+  "$script_dir/pm6-d3.v2.metal"
   "$script_dir/pm6-one-center-fock.v1.metal"
   "$script_dir/pm6-pair-fock.v1.metal"
 )
@@ -45,7 +45,7 @@ contract_files=(
   "$script_dir/rm1-eigen-kernel-contract.v1.json"
   "$script_dir/rm1-pair-rotate-kernel-contract.v1.json"
   "$script_dir/pm6-h4-hh-kernel-contract.v1.json"
-  "$script_dir/pm6-d3-chno-kernel-contract.v1.json"
+  "$script_dir/pm6-d3-kernel-contract.v2.json"
   "$script_dir/pm6-one-center-fock-kernel-contract.v1.json"
   "$script_dir/pm6-pair-fock-kernel-contract.v1.json"
 )
@@ -99,11 +99,11 @@ air_files=(
   "$stage_dir/rm1-eigen.v1.air"
   "$stage_dir/rm1-pair-rotate.v1.air"
   "$stage_dir/pm6-h4-hh.v1.air"
-  "$stage_dir/pm6-d3-chno.v1.air"
+  "$stage_dir/pm6-d3.v2.air"
   "$stage_dir/pm6-one-center-fock.v1.air"
   "$stage_dir/pm6-pair-fock.v1.air"
 )
-library_file="$stage_dir/native-compute.v18.metallib"
+library_file="$stage_dir/native-compute.v19.metallib"
 metadata_file="$stage_dir/build-metadata.v2.json"
 
 sha256() {
@@ -289,4 +289,4 @@ printf '{"schemaVersion":"burrete.compute.metal-generation-pointer.v1","generati
 keep_stage=1
 /bin/mv -f "$pointer_stage" "$output_dir/current.json"
 pointer_stage=''
-printf 'Built %s/%s\n' "$stage_dir" "native-compute.v18.metallib"
+printf 'Built %s/%s\n' "$stage_dir" "native-compute.v19.metallib"

@@ -549,7 +549,8 @@ pub fn semiempirical_parameters(
         super::SemiempiricalMethod::Pm3 => &PM3,
         super::SemiempiricalMethod::Pm6
         | super::SemiempiricalMethod::Pm6Sp
-        | super::SemiempiricalMethod::Pm6D => &PM6_SP,
+        | super::SemiempiricalMethod::Pm6D
+        | super::SemiempiricalMethod::Pm6D3H4 => &PM6_SP,
         super::SemiempiricalMethod::Am1Star => &AM1_STAR,
     };
     table
