@@ -24,6 +24,13 @@ scores. Probe/reference atom arrays and mappings are shared across descriptors,
 so ensemble and docking-pose comparisons do not materialize a
 `poses x references x atoms x 3` tensor. Fixed-pose scoring is an explicit mode;
 mapped alignment never assumes equal atom order implicitly.
+
+`rm1-fock.v1.metal` contracts pre-rotated RM1/NDDO two-center repulsion
+tensors into Coulomb and exchange Fock contributions. One thread owns one
+matrix element, loops pairs and local orbitals in canonical order, and writes
+without atomics. The runtime compares every SCF contraction with the float64
+CPU reference before accepting the GPU result.
+
 The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
 256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical
 word. This is a byte-identical view on supported little-endian Apple Silicon;

@@ -1,7 +1,7 @@
 use burrete_compute_core::{
     ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
-    Fingerprint2048, GraphBuildOptions, MmffParameters, SymmetricCsr, TanimotoCounts,
+    Fingerprint2048, GraphBuildOptions, MmffParameters, Rm1FockPair, SymmetricCsr, TanimotoCounts,
     TanimotoQueryOptions, TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
@@ -9,7 +9,7 @@ use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use crate::platform::{
     MetalAlignmentDispatch, MetalDistanceDispatch, MetalDistanceOptimizationDispatch,
     MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch,
-    MetalStereoValidationDispatch,
+    MetalRm1FockDispatch, MetalStereoValidationDispatch,
 };
 use crate::runtime::MetalAlignmentBatch;
 use crate::MetalRuntimeError;
@@ -158,6 +158,18 @@ impl MetalHost {
         _parameters: &MmffParameters,
         _max_memory_bytes: u64,
     ) -> Result<MetalMmffDispatch, MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn contract_rm1_pair_fock_profiled(
+        &self,
+        _orbital_count: u32,
+        _density: &[f32],
+        _pairs: &[Rm1FockPair],
+        _max_memory_bytes: u64,
+    ) -> Result<MetalRm1FockDispatch, MetalRuntimeError> {
         Err(MetalRuntimeError::UnsupportedPlatform(
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))

@@ -199,7 +199,12 @@ impl ComputeCoordinator {
                 "The Grid semi-empirical lease does not belong to the requested document".into(),
             ));
         }
-        execute_grid_semiempirical(source_lease.database_path_for_freeze(), request)
+        let ready = self.ready()?;
+        let runtime = match &ready.native_metal {
+            NativeMetalState::Available(runtime) => Some(runtime),
+            NativeMetalState::Unavailable { .. } => None,
+        };
+        execute_grid_semiempirical(runtime, source_lease.database_path_for_freeze(), request)
     }
 
     pub(crate) fn align_grid_poses(

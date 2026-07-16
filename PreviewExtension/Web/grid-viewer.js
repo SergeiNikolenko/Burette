@@ -390,7 +390,7 @@
       if (body.type === 'gridSemiempiricalStarted') {
         state.evaluatingSemiempirical = true;
         refreshGridControls(config());
-        setStatus('[grid] Calculating RM1 energies and atomic charges on the native CPU reference backend.');
+        setStatus('[grid] Calculating RM1 energies and atomic charges; execution provenance will identify Metal or CPU fallback.');
         return;
       }
       if (body.type === 'gridSemiempiricalFinished') {
@@ -1573,7 +1573,7 @@
       sourceIndexes: rows.map(row => Number(row.index)),
       method: 'rm1'
     });
-    setStatus(`[grid] Calculating RM1 energies and charges for ${rows.length.toLocaleString()} selected molecule${rows.length === 1 ? '' : 's'} on the native CPU reference backend.`);
+    setStatus(`[grid] Calculating RM1 energies and charges for ${rows.length.toLocaleString()} selected molecule${rows.length === 1 ? '' : 's'}; execution provenance will identify Metal or CPU fallback.`);
   }
 
   function requestSingle3DGeneration(row, cfg) {
