@@ -12,10 +12,12 @@ presets, CrystalFF torsion extraction, bounds construction, triangle-smoothing
 fallback, and internal embedding chirality helpers. Use with another RDKit
 revision is unsupported and the build must fail closed on a source mismatch.
 
-The module accepts one canonical sanitized V2000 or V3000 MOL block and keeps
-explicit hydrogens. Format detection and record splitting stay outside this
-chemistry boundary, so the extractor does not carry the renderer's full
-MinimalLib surface.
+The module accepts one canonical sanitized V2000/V3000 MOL block or canonical
+SMILES. MOL blocks preserve their explicit-hydrogen representation; SMILES are
+sanitized and expanded with explicit hydrogens before extraction. Format
+detection and record splitting stay outside this chemistry boundary, so the
+extractor does not carry the renderer's full MinimalLib surface. DataWarrior
+IDCode remains an explicit unsupported-record outcome.
 
 The adapter is Burrete-owned code. `mlxmolkit/dg_extract.py` and
 `mlxmolkit/etk_extract.py` at commit
