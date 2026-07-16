@@ -40,6 +40,9 @@ type LayoutShellViewState = Pick<
   | "status"
   | "dropActive"
   | "buildInfo"
+  | "quickLookDocument"
+  | "quickLookError"
+  | "quickLookStandalone"
 >;
 
 type DockShellViewState = Pick<
@@ -151,6 +154,9 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
       status: state.status,
       dropActive: state.dropActive,
       buildInfo: state.buildInfo,
+      quickLookDocument: state.quickLookDocument,
+      quickLookError: state.quickLookError,
+      quickLookStandalone: state.quickLookStandalone,
     },
     dock: {
       rightDockOpen: state.rightDockOpen,
