@@ -80,6 +80,15 @@ strictly validates ragged coordinate offsets, Cartesian positions, molecule and
 conformer identity, embedding status/objective/attempt counts, and the exact
 128-bit seed words used for every generated structure.
 
+The extractor ABI now has matching zero-copy TypeScript validation and a
+bounded Rust decoder. The Rust path validates every header, count, alignment,
+index, numeric domain, and parallel-array length before assembly. A canonical
+EnginePack builder then globalizes molecule-local atom indices, preserves
+invalid source records with empty offset spans, constructs all seven ragged
+offset arrays, and rejects variant, frozen-record-count, `u32` index-range, and
+payload-budget mismatches before publication. Raw binary session transport,
+artifact writing, and packaged extractor activation are still pending.
+
 The canonical EnginePack distance payload now also has a validated in-memory
 core representation. It rejects malformed or non-monotonic offsets,
 cross-molecule and non-canonical atom pairs, payload attached to invalid
@@ -224,6 +233,7 @@ separate product increments.
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
 | Conformer preflight admission and queued snapshot | `apps/desktop/src-tauri/src/compute/conformer_plan.rs`, `job_factory.rs` |
+| Conformer extractor validation and canonical array assembly | `apps/desktop/src/lib/conformer-extractor.ts`, `crates/burrete-compute-core/src/conformer_extract.rs`, `conformer_pack.rs` |
 | Artifact materialization and restart reconciliation | `apps/desktop/src-tauri/src/compute/artifact_publisher.rs` |
 | Immutable representative export and provenance | `apps/desktop/src-tauri/src/compute/representative_export.rs` |
 | Verified fingerprint reuse and exact similarity ranking | `apps/desktop/src-tauri/src/compute/similarity_artifact.rs`, `similarity_search.rs` |
@@ -276,7 +286,7 @@ separate product increments.
   generated Grid controls. Repository-wide TypeScript checking is currently
   blocked by pre-existing duplicate CodeMirror dependency identities in the
   text-file viewer; the errors do not involve the compute files changed here.
-- All 75 protocol tests and 36 compute-core tests pass after adding the fixed
+- All 75 protocol tests and 40 compute-core tests pass after adding the fixed
   conformer request/pack/plan contracts, validated EnginePack distance view,
   identity-derived seed, adaptive batch
   coverage, deterministic coordinate oracle, DG objective/gradient oracle,

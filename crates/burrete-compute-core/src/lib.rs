@@ -9,6 +9,7 @@ mod conformer_schedule;
 mod conformer_initialize;
 mod conformer_engine;
 mod conformer_extract;
+mod conformer_pack;
 mod distance_geometry;
 mod distance_optimizer;
 
@@ -21,6 +22,9 @@ pub use conformer_engine::{
     ConformerDistanceEngine, ConformerDistanceMolecule, ConformerEngineError,
 };
 pub use conformer_extract::{ConformerExtractError, ExtractedConformerParameters};
+pub use conformer_pack::{
+    ConformerEnginePackArrays, ConformerEnginePackBuilder, ConformerPackError,
+};
 pub use distance_geometry::{
     evaluate_distance_constraints, DistanceConstraint, DistanceConstraintEvaluation,
     DistanceGeometryError,
