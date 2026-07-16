@@ -50,6 +50,8 @@ pub(crate) struct ConformerPublicationStep {
     pub(crate) job: JobSnapshot,
     pub(crate) artifact_id: Uuid,
     pub(crate) artifact_manifest_sha256: String,
+    pub(crate) grid_applied: bool,
+    pub(crate) grid_warning: Option<String>,
 }
 
 #[derive(Debug)]

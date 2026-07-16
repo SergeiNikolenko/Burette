@@ -674,7 +674,7 @@ fn attach_latest_analysis_runs(
     page_rows: &mut [GridPageRow],
 ) -> Result<Vec<GridAnalysisColumn>, String> {
     let mut columns = Vec::new();
-    for workflow_template in ["cluster.v1", "similaritySearch.v1"] {
+    for workflow_template in ["cluster.v1", "similaritySearch.v1", "conformer.v1"] {
         columns.extend(attach_latest_analysis_run(
             connection,
             page_rows,
@@ -802,6 +802,11 @@ fn analysis_label(value_id: &str) -> &str {
         "similarityToQuery" => "Tanimoto to query",
         "tanimotoIntersection" => "Tanimoto intersection",
         "tanimotoUnion" => "Tanimoto union",
+        "conformerCount" => "Conformers",
+        "conformerPassedCount" => "Valid conformers",
+        "conformerStatus" => "Conformer status",
+        "bestEtkEnergy" => "Best ETK energy",
+        "conformerError" => "Conformer error",
         _ => value_id,
     }
 }

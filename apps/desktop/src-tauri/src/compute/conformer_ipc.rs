@@ -258,7 +258,7 @@ mod tests {
         bytes.extend([0; 3]);
         bytes.extend((payload.len() as u32).to_le_bytes());
         bytes.extend(payload);
-        while bytes.len() % 4 != 0 {
+        while !bytes.len().is_multiple_of(4) {
             bytes.push(0);
         }
     }

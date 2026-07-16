@@ -68,7 +68,8 @@ use crate::compute::{
 };
 use crate::preview::{
     grid_analysis::{
-        apply_cluster_analysis_run, GridClusterAnalysisApplyInput, GridClusterAssignmentInput,
+        apply_cluster_analysis_run, apply_conformer_analysis_run, GridClusterAnalysisApplyInput,
+        GridClusterAssignmentInput, GridConformerAnalysisApplyInput, GridConformerAssignmentInput,
     },
     grid_snapshot::FrozenGridSnapshot,
     grid_store::GridSnapshotLease,
@@ -1007,6 +1008,7 @@ impl ComputeCoordinator {
         owner: &str,
         job_id: Uuid,
         expected_revision: u64,
+        grid_lease: GridSnapshotLease,
     ) -> ComputeResult<ConformerPublicationStep> {
         validate_owner_window_label(owner)?;
         let ready = self.ready()?;
@@ -1016,6 +1018,13 @@ impl ComputeCoordinator {
                 expected_revision,
                 actual_revision: validated.revision,
             });
+        }
+        if grid_lease.namespaced_document_id()
+            != runtime_document_id(owner, &validated.request.source().document_id)
+        {
+            return Err(ComputeCoordinatorError::SourceSnapshotUnavailable(
+                "The Grid lease does not belong to the conformer job".into(),
+            ));
         }
         let publish_running = start_stage(
             &validated,
@@ -1151,10 +1160,70 @@ impl ComputeCoordinator {
             cleanup?;
             return Err(error);
         }
+        let mut assignments = computed
+            .identities
+            .iter()
+            .enumerate()
+            .map(|(record, identity)| GridConformerAssignmentInput {
+                source_index: identity.source_record_id,
+                molecule_content_sha256: identity.molecule_content_sha256.clone(),
+                conformer_count: 0,
+                passed_count: 0,
+                best_etk_energy: None,
+                error: computed.errors[record].clone(),
+            })
+            .collect::<Vec<_>>();
+        for conformer in 0..computed.distance.conformer_count() {
+            let record = computed.distance.conformer_molecule_indices[conformer] as usize;
+            assignments[record].conformer_count += 1;
+            if stereo.failure_flags[conformer] == 0 {
+                assignments[record].passed_count += 1;
+                let energy = f64::from(computed.distance.etk_energies[conformer]);
+                assignments[record].best_etk_energy = Some(
+                    assignments[record]
+                        .best_etk_energy
+                        .map_or(energy, |current| current.min(energy)),
+                );
+            }
+        }
+        let grid_input = GridConformerAnalysisApplyInput {
+            run_id: successful_job.job_id,
+            document_fingerprint_sha256: successful_job
+                .frozen_source
+                .frozen_source
+                .document_fingerprint_sha256
+                .clone(),
+            source_revision: successful_job.frozen_source.frozen_source.source_revision,
+            snapshot_id: successful_job.frozen_source.snapshot_id,
+            snapshot_sha256: successful_job.frozen_source.snapshot_sha256.clone(),
+            normalized_settings_sha256: successful_job.normalized_request_sha256.clone(),
+            provenance: serde_json::json!({
+                "jobId": successful_job.job_id,
+                "artifactId": materialized.artifact_id,
+                "artifactManifestSha256": manifest_sha256,
+                "runtime": successful_job.pinned_runtime,
+                "distanceStage": successful_job.stages[2],
+                "stereoStage": successful_job.stages[3],
+                "referenceStage": successful_job.stages[4],
+            }),
+            created_at_ms: materialized.created_at_ms,
+            artifact_id: materialized.artifact_id,
+            artifact_manifest_sha256: manifest_sha256.clone(),
+            assignments,
+        };
+        let (grid_applied, grid_warning) = match apply_conformer_analysis_run(
+            grid_lease.database_path_for_freeze(),
+            &grid_input,
+        ) {
+            Ok(()) => (true, None),
+            Err(error) => (false, Some(error.chars().take(1_900).collect())),
+        };
         Ok(ConformerPublicationStep {
             job: successful_job,
             artifact_id: materialized.artifact_id,
             artifact_manifest_sha256: manifest_sha256,
+            grid_applied,
+            grid_warning,
         })
     }
 

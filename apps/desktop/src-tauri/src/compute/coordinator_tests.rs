@@ -148,13 +148,21 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
     assert_eq!(validation.job.stages[4].state, StageState::Succeeded);
     assert_eq!(validation.job.stages[5].state, StageState::Queued);
     let publication = coordinator
-        .publish_conformer_v1("main", job.job_id, validation.job.revision)
+        .publish_conformer_v1(
+            "main",
+            job.job_id,
+            validation.job.revision,
+            registry
+                .acquire_snapshot_lease("main:conformer-submit")
+                .expect("lease conformer Grid for writeback"),
+        )
         .expect("publish conformer packs");
     assert_eq!(publication.job.state, JobState::Succeeded);
     assert_eq!(publication.job.stages[5].state, StageState::Succeeded);
     assert_eq!(publication.job.artifact_ids, [publication.artifact_id]);
     assert!(publication.job.result_pack.is_some());
     assert_eq!(publication.artifact_manifest_sha256.len(), 64);
+    assert!(publication.grid_applied, "{:?}", publication.grid_warning);
     assert_eq!(
         coordinator.get_job("main", job.job_id).unwrap(),
         publication.job
@@ -187,6 +195,38 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             .collect::<Vec<_>>(),
         CONFORMER_RESULT_ARRAY_NAMES
     );
+    let page = registry
+        .fetch_page(
+            "main:conformer-submit",
+            &GridQuery {
+                query: String::new(),
+                sort: "index".into(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                analysis_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch conformer Grid result columns");
+    assert_eq!(page.analysis_columns.len(), 4);
+    assert!(page.analysis_columns.iter().any(|column| {
+        column.run_id == publication.job.job_id.to_string()
+            && column.value_id == "bestEtkEnergy"
+            && column.label == "Best ETK energy"
+    }));
+    assert!(page.rows.iter().all(|row| {
+        row.analyses.get("conformerCount").map(|cell| &cell.value) == Some(&serde_json::json!(3))
+            && row
+                .analyses
+                .get("conformerPassedCount")
+                .map(|cell| &cell.value)
+                == Some(&serde_json::json!(3))
+            && row.analyses.get("conformerStatus").map(|cell| &cell.value)
+                == Some(&serde_json::json!("ok"))
+            && row.analyses.contains_key("bestEtkEnergy")
+    }));
     std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
     std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
 }
@@ -209,7 +249,7 @@ fn conformer_result_envelope(
         bytes.extend([0; 4]);
         bytes.extend((payload.len() as u32).to_le_bytes());
         bytes.extend(payload);
-        while bytes.len() % 4 != 0 {
+        while !bytes.len().is_multiple_of(4) {
             bytes.push(0);
         }
     }
