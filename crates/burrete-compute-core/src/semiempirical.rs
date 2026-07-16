@@ -8,6 +8,7 @@ mod pm6_fock_d;
 mod pm6_full_parameters;
 mod pm6_multipole_d;
 mod pm6_overlap_d;
+mod pm6_scf;
 mod pm6_two_center_d;
 mod pm6_w_integrals;
 mod pm6_wigner_d;
@@ -23,6 +24,7 @@ pub use pm6_fock_d::pm6_one_center_d_fock;
 pub use pm6_full_parameters::{pm6_full_parameters, Pm6FullElementParameters};
 pub use pm6_multipole_d::{pm6_d_multipole_parameters, Pm6DMultipoleParameters};
 pub use pm6_overlap_d::{pm6_local_d_overlap, Pm6LocalDOverlap};
+pub use pm6_scf::{contract_pm6_pair_fock, pm6_fock_pairs, Pm6FockPair};
 pub use pm6_two_center_d::{
     pm6_d_d_local_pair_integrals, pm6_d_d_pair_integrals, pm6_d_hydrogen_pair_integrals,
     pm6_d_sp_local_pair_integrals, pm6_d_sp_pair_integrals, Pm6DDLocalPairIntegrals,
@@ -87,8 +89,22 @@ impl SemiempiricalMethod {
     }
 
     pub const fn uses_d_orbitals(self) -> bool {
-        matches!(self, Self::Pm6D | Self::Am1Star)
+        matches!(self, Self::Pm6 | Self::Pm6D | Self::Am1Star)
     }
+}
+
+fn method_orbital_count(method: SemiempiricalMethod, atomic_number: u8) -> Option<u8> {
+    if matches!(method, SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D) {
+        return pm6_full_parameters(atomic_number).map(|parameters| parameters.orbital_count);
+    }
+    semiempirical_parameters(method, atomic_number).map(|parameters| parameters.orbital_count)
+}
+
+fn method_valence_electrons(method: SemiempiricalMethod, atomic_number: u8) -> Option<u8> {
+    if matches!(method, SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D) {
+        return pm6_full_parameters(atomic_number).map(|parameters| parameters.valence_electrons);
+    }
+    semiempirical_parameters(method, atomic_number).map(|parameters| parameters.valence_electrons)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -196,18 +212,18 @@ impl SemiempiricalMolecule {
                     "atom coordinates must be finite".into(),
                 ));
             }
-            let parameters =
-                semiempirical_parameters(method, atom.atomic_number).ok_or_else(|| {
+            let orbital_count =
+                method_orbital_count(method, atom.atomic_number).ok_or_else(|| {
                     SemiempiricalError::InvalidInput(format!(
                         "atomic number {} is not parameterized for {}",
                         atom.atomic_number,
                         method.wire_id()
                     ))
                 })?;
-            valence_electrons += usize::from(parameters.valence_electrons);
-            orbital_offsets.push(
-                orbital_offsets.last().copied().unwrap() + usize::from(parameters.orbital_count),
-            );
+            valence_electrons +=
+                usize::from(method_valence_electrons(method, atom.atomic_number).unwrap());
+            orbital_offsets
+                .push(orbital_offsets.last().copied().unwrap() + usize::from(orbital_count));
         }
         let electron_count = i64::try_from(valence_electrons).unwrap() - i64::from(charge);
         let orbital_count = *orbital_offsets.last().unwrap();
@@ -249,12 +265,12 @@ impl SemiempiricalMolecule {
             .iter()
             .enumerate()
             .map(|(atom_index, atom)| {
-                let parameters = semiempirical_parameters(self.method, atom.atomic_number).unwrap();
                 let population: f64 = (self.orbital_offsets[atom_index]
                     ..self.orbital_offsets[atom_index + 1])
                     .map(|orbital| density[orbital * self.orbital_count + orbital])
                     .sum();
-                f64::from(parameters.valence_electrons) - population
+                f64::from(method_valence_electrons(self.method, atom.atomic_number).unwrap())
+                    - population
             })
             .collect())
     }
@@ -724,9 +740,10 @@ mod tests {
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), SemiempiricalMethod::ALL.len());
+        assert!(SemiempiricalMethod::Pm6.uses_d_orbitals());
         assert!(SemiempiricalMethod::Pm6D.uses_d_orbitals());
         assert!(SemiempiricalMethod::Am1Star.uses_d_orbitals());
-        assert!(!SemiempiricalMethod::Pm6.uses_d_orbitals());
+        assert!(!SemiempiricalMethod::Pm6Sp.uses_d_orbitals());
     }
 
     #[test]

@@ -493,7 +493,10 @@ separate product increments.
   aggregate. Native YX/YY d-extension electron-core contractions now include
   the PM6 transition-metal `rho_core` override and match arbitrary-axis S-O,
   S-S, and Fe-Fe PYSEQM values. The separately owned sp core block, Metal W
-  generation, full PM6 SCF integration, broader D3 tables, and production
+  is now merged with the d extension in a variable-basis PM6 pair pack for
+  1-, 4-, and 9-orbital atoms, with a general two-center Fock contraction.
+  PM6 now truthfully selects the full d basis while PM6_SP remains sp-only.
+  Full SCF assembly, Metal W generation, broader D3 tables, and production
   PM6-D3H4 composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
