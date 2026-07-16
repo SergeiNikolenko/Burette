@@ -1,13 +1,12 @@
 use std::{collections::HashSet, ffi::c_void, mem::size_of_val};
 
 use burrete_compute_core::{
-    rm1_parameters, rm1_two_center_integrals,
+    rm1_multipole_parameters, rm1_parameters,
     validate_etk_geometry_constraints, validate_mmff_parameters, validate_stereo_constraints,
     AlignmentMode, ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
-    Fingerprint2048, GraphBuildOptions, MmffParameters, Rm1FockPair, Rm1TwoCenterIntegrals,
-    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
-    TetrahedralConstraint,
+    Fingerprint2048, GraphBuildOptions, MmffParameters, Rm1FockPair, SemiempiricalMolecule,
+    SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use metal::{
@@ -209,6 +208,15 @@ struct Rm1PairRotationV1 {
     spans: [u32; 4],
     model: [u32; 4],
     delta: [f32; 4],
+}
+
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+struct Rm1PairParametersV1 {
+    left0: [f32; 4],
+    left1: [f32; 4],
+    right0: [f32; 4],
+    right1: [f32; 4],
 }
 
 #[derive(Debug)]
@@ -2004,7 +2012,7 @@ impl MetalHost {
             .checked_add(
                 u64::try_from(pair_count)
                     .map_err(|_| memory_overflow())?
-                    .checked_mul(48 + 22 * 4 + 256 * 4 + 2 * 16 * 4)
+                    .checked_mul(48 + 64 + 256 * 4 + 2 * 16 * 4)
                     .ok_or_else(memory_overflow)?,
             )
             .ok_or_else(memory_overflow)?;
@@ -2014,8 +2022,7 @@ impl MetalHost {
             ));
         }
         let mut descriptors = Vec::with_capacity(pair_count);
-        let mut local_integrals = vec![0.0_f32; pair_count * 22];
-        let mut pair_index = 0;
+        let mut pair_parameters = Vec::with_capacity(pair_count);
         for left_index in 0..molecule.atoms.len() {
             for right_index in (left_index + 1)..molecule.atoms.len() {
                 let left_atom = &molecule.atoms[left_index];
@@ -2031,28 +2038,30 @@ impl MetalHost {
                     right_atom.position_angstrom[1] - left_atom.position_angstrom[1],
                     right_atom.position_angstrom[2] - left_atom.position_angstrom[2],
                 ];
-                let distance = delta.iter().map(|value| value * value).sum::<f64>().sqrt();
-                let local = rm1_two_center_integrals(left, right, distance)
-                    .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
-                let (model, heavy_is_left, values): (u32, bool, &[f64]) = match &local {
-                    Rm1TwoCenterIntegrals::HydrogenHydrogen { repulsion_ev, .. } => {
-                        (0, true, repulsion_ev)
-                    }
-                    Rm1TwoCenterIntegrals::HeavyHydrogen {
-                        heavy_is_left,
-                        repulsion_ev,
-                        ..
-                    } => (1, *heavy_is_left, repulsion_ev),
-                    Rm1TwoCenterIntegrals::HeavyHeavy { repulsion_ev, .. } => {
-                        (2, true, repulsion_ev)
-                    }
+                let left_multipole = rm1_multipole_parameters(left);
+                let right_multipole = rm1_multipole_parameters(right);
+                let model = match (left.orbital_count == 1, right.orbital_count == 1) {
+                    (true, true) => 0,
+                    (false, false) => 2,
+                    _ => 1,
                 };
-                for (target, value) in local_integrals[pair_index * 22..][..values.len()]
-                    .iter_mut()
-                    .zip(values)
-                {
-                    *target = *value as f32;
-                }
+                let heavy_is_left = left.orbital_count > 1;
+                pair_parameters.push(Rm1PairParametersV1 {
+                    left0: [
+                        left_multipole.dipole_separation_bohr as f32,
+                        left_multipole.quadrupole_separation_bohr as f32,
+                        left_multipole.rho_monopole_bohr as f32,
+                        left_multipole.rho_dipole_bohr as f32,
+                    ],
+                    left1: [left_multipole.rho_quadrupole_bohr as f32, 0.0, 0.0, 0.0],
+                    right0: [
+                        right_multipole.dipole_separation_bohr as f32,
+                        right_multipole.quadrupole_separation_bohr as f32,
+                        right_multipole.rho_monopole_bohr as f32,
+                        right_multipole.rho_dipole_bohr as f32,
+                    ],
+                    right1: [right_multipole.rho_quadrupole_bohr as f32, 0.0, 0.0, 0.0],
+                });
                 descriptors.push(Rm1PairRotationV1 {
                     spans: [
                         u32::try_from(molecule.orbital_offsets[left_index])
@@ -2070,11 +2079,10 @@ impl MetalHost {
                     ],
                     delta: [delta[0] as f32, delta[1] as f32, delta[2] as f32, 0.0],
                 });
-                pair_index += 1;
             }
         }
         let descriptor_buffer = buffer_with_slice(&self.device, &descriptors);
-        let local_buffer = buffer_with_slice(&self.device, &local_integrals);
+        let parameter_buffer = buffer_with_slice(&self.device, &pair_parameters);
         let repulsion_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; pair_count * 256]);
         let left_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; pair_count * 16]);
         let right_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; pair_count * 16]);
@@ -2084,7 +2092,7 @@ impl MetalHost {
             let encoder = command.new_compute_command_encoder();
             encoder.set_compute_pipeline_state(&self.rm1_pair_rotate_pipeline);
             encoder.set_buffer(0, Some(&descriptor_buffer), 0);
-            encoder.set_buffer(1, Some(&local_buffer), 0);
+            encoder.set_buffer(1, Some(&parameter_buffer), 0);
             encoder.set_bytes(
                 2,
                 size_of_val(&pair_count_u32) as u64,

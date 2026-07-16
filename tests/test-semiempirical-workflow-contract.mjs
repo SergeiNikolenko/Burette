@@ -15,7 +15,7 @@ assert.match(commands, /compute_evaluate_grid_semiempirical/);
 assert.match(permissions, /"compute_evaluate_grid_semiempirical"/);
 assert.match(workflow, /"nativeMetalScfHybrid"[\s\S]*"nativeCpuReference"/);
 assert.match(workflow, /"cpuParity"/);
-assert.match(workflow, /"cpuLocalIntegralsMetalRotation"/);
+assert.match(workflow, /"metalLocalIntegralsAndRotation"/);
 assert.match(workflow, /WorkflowTemplateId::SemiempiricalV1/);
 assert.match(workflow, /"rm1TotalEnergyEv"/);
 assert.match(workflow, /"rm1AtomicCharges"/);

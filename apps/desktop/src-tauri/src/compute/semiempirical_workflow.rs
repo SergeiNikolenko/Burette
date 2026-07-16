@@ -380,7 +380,7 @@ fn apply_grid_results(
                 "gpuTimeMs": gpu_time_ms,
                 "cpuParity": if backend == "nativeMetalScfHybrid" { "passedPerScfKernel" } else { "notApplicable" },
                 "precisionPolicy": if backend == "nativeMetalScfHybrid" { "float32MetalWithAdaptiveFloat64Polish" } else { "float64Cpu" },
-                "pairPreparation": if backend == "nativeMetalScfHybrid" { "cpuLocalIntegralsMetalRotation" } else { "float64Cpu" },
+                "pairPreparation": if backend == "nativeMetalScfHybrid" { "metalLocalIntegralsAndRotation" } else { "float64Cpu" },
                 "pythonRuntimeRequired": false,
                 "method": "RM1",
                 "chargeModel": "molfile formal charge; valence population analysis",
