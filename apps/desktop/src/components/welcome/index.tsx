@@ -33,15 +33,15 @@ export function WelcomeScreen({ actions, buildInfo }: { actions: ShellActions; b
         ) : null}
       </div>
       <div className="new-tab-actions">
-        <button type="button" className="welcome-primary" onClick={() => void actions.chooseFiles()}>
+        <button type="button" className="welcome-primary" data-analytics-control="open_structure" onClick={() => void actions.chooseFiles()}>
           Open Structure <kbd>⌘O</kbd>
           <ShortcutTooltip label="Open Structure" shortcut="⌘O" />
         </button>
-        <button type="button" onClick={actions.openCommandPalette}>
+        <button type="button" data-analytics-control="open_command_palette" onClick={actions.openCommandPalette}>
           Command Palette <kbd>⌘P</kbd> <kbd>/</kbd>
           <ShortcutTooltip label="Command Palette" shortcut="⌘P /" />
         </button>
-        <button type="button" onClick={actions.openSettings}>
+        <button type="button" data-analytics-control="open_settings" onClick={actions.openSettings}>
           Settings <kbd>⌘,</kbd>
           <ShortcutTooltip label="Settings" shortcut="⌘," />
         </button>

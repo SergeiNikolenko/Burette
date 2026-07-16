@@ -45,6 +45,15 @@ Analytics pageview for the fixed path `/mcp/widget`. Automatic URL tracking is
 disabled. Burrete does not include a PDB ID, filename, molecular content,
 viewer selection, or chat/session identifier in that analytics event.
 
+The public browser demo at `/web-demo/index.html` uses Vercel Web Analytics and
+Speed Insights. It records an anonymized pageview, coarse device and viewport
+information supplied by Vercel, Core Web Vitals, engagement-duration buckets,
+and privacy-safe product events such as the interface area and stable control
+used, structure format and renderer, command category, input method, and error
+category. Search text, settings text, PDB IDs, SMILES, filenames, local paths,
+molecular content, raw error messages, stack traces, and persistent user or
+session identifiers are not included.
+
 Burrete does not intentionally configure application logs to record raw
 molecular content or temporary signed download URLs. Technical logs and
 security metadata are retained according to the applicable OpenAI and Vercel
