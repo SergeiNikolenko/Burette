@@ -211,7 +211,7 @@ fn query_scoring_preserves_exact_counts_order_and_zero_semantics() {
         fingerprint(&[0, 4]),
         Fingerprint2048::ZERO,
     ];
-    let options = TanimotoQueryOptions::try_new(1024 * 1024).expect("query options");
+    let options = TanimotoQueryOptions::new(1024 * 1024).expect("query options");
     let counts = score_tanimoto_query(&query, &library, options).expect("query scores");
     assert_eq!(
         counts,
@@ -255,14 +255,14 @@ fn query_scoring_preserves_exact_counts_order_and_zero_semantics() {
 fn query_scoring_enforces_the_exact_output_memory_boundary() {
     let library = [Fingerprint2048::ZERO; 4];
     let required = accounted_tanimoto_query_bytes(library.len()).expect("query memory account");
-    let exact = TanimotoQueryOptions::try_new(required).expect("exact query options");
+    let exact = TanimotoQueryOptions::new(required).expect("exact query options");
     assert_eq!(
         score_tanimoto_query(&Fingerprint2048::ZERO, &library, exact)
             .expect("score at exact query memory boundary")
             .len(),
         library.len()
     );
-    let below = TanimotoQueryOptions::try_new(required - 1).expect("below-boundary options");
+    let below = TanimotoQueryOptions::new(required - 1).expect("below-boundary options");
     assert_eq!(
         score_tanimoto_query(&Fingerprint2048::ZERO, &library, below)
             .expect_err("query memory must fail one byte below the account"),

@@ -131,7 +131,7 @@ pub struct TanimotoQueryOptions {
 }
 
 impl TanimotoQueryOptions {
-    fn try_new(max_memory_bytes: u64) -> Result<Self, ClusterCoreError> {
+    pub fn new(max_memory_bytes: u64) -> Result<Self, ClusterCoreError> {
         if !(1..=MAX_COMPUTE_MEMORY_BYTES).contains(&max_memory_bytes) {
             return Err(ClusterCoreError::InvalidOptions(format!(
                 "max_memory_bytes must be in 1..={MAX_COMPUTE_MEMORY_BYTES}"
@@ -144,7 +144,7 @@ impl TanimotoQueryOptions {
         limits
             .validate()
             .map_err(|error| ClusterCoreError::InvalidOptions(error.to_string()))?;
-        Self::try_new(limits.max_memory_bytes)
+        Self::new(limits.max_memory_bytes)
     }
 
     pub const fn max_memory_bytes(self) -> u64 {
