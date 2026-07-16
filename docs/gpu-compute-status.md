@@ -81,6 +81,15 @@ reference fallback. Every stage and partition must cover the same frozen record
 count and remain within the request memory limit. Artifact provenance accepts
 only this exact stage order.
 
+The first conformer Metal primitive, `burrete_conformer_initialize_v1`, now
+turns each immutable 128-bit conformer seed into deterministic `float4` initial
+coordinates without schedule-dependent RNG state. Its independently written
+Rust oracle verifies bounded and prefix-stable output. A test-only source
+compile and command-buffer dispatch passed on the real Apple GPU with exact CPU
+parity. This primitive is initialization only, not a claim of completed
+distance-geometry embedding. It is not yet included in the verified production
+metallib generation, so product capability reporting remains unchanged.
+
 ## Product Truth By Surface
 
 | Surface | Current truth |

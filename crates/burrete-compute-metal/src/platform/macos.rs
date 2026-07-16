@@ -513,7 +513,7 @@ fn resource_limit<T>(message: impl Into<String>) -> Result<T, MetalRuntimeError>
 mod tests {
     use std::num::NonZeroUsize;
 
-    use burrete_compute_core::FINGERPRINT_WORDS;
+    use burrete_compute_core::{initialize_conformer_positions, FINGERPRINT_WORDS};
     use burrete_compute_protocol::{ResourceLimits, MIN_COMPUTE_MEMORY_BYTES};
     use metal::CompileOptions;
 
@@ -529,6 +529,12 @@ mod tests {
         assert_eq!(std::mem::offset_of!(TanimotoQueryBatchV1, row_count), 16);
         assert_eq!(std::mem::size_of::<TanimotoQueryCountsV1>(), 8);
         assert_eq!(std::mem::align_of::<TanimotoQueryCountsV1>(), 8);
+        assert_eq!(std::mem::size_of::<ConformerInitializeBatchV1>(), 16);
+        assert_eq!(std::mem::align_of::<ConformerInitializeBatchV1>(), 8);
+        assert_eq!(
+            std::mem::offset_of!(ConformerInitializeBatchV1, output_atom_offset),
+            8
+        );
     }
 
     #[test]
@@ -611,5 +617,71 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[repr(C)]
+    struct ConformerInitializeBatchV1 {
+        atom_count: u32,
+        conformer_count: u32,
+        output_atom_offset: u64,
+    }
+
+    #[test]
+    #[ignore = "manual real-GPU smoke; production packaging is wired in the next runtime generation"]
+    fn dispatches_conformer_initialization_on_the_real_gpu() {
+        let device = Device::system_default().expect("Metal device");
+        assert!(device.has_unified_memory(), "Apple unified memory required");
+        let library = device
+            .new_library_with_source(
+                include_str!("../../../../compute/metal/conformer-initialize.v1.metal"),
+                &CompileOptions::new(),
+            )
+            .expect("compile conformer initializer");
+        let pipeline = pipeline(&device, &library, "burrete_conformer_initialize_v1")
+            .expect("conformer initializer pipeline");
+        let seeds = [[1_u32, 2, 3, 4], [5_u32, 6, 7, 8]];
+        let atom_count = 3_u32;
+        let batch = ConformerInitializeBatchV1 {
+            atom_count,
+            conformer_count: seeds.len() as u32,
+            output_atom_offset: 0,
+        };
+        let seed_buffer = buffer_with_slice(&device, &seeds);
+        let output_buffer = buffer_with_slice(&device, &[[0.0_f32; 4]; 6]);
+        let queue = device.new_command_queue();
+        let command = queue.new_command_buffer();
+        let encoder = command.new_compute_command_encoder();
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_buffer(0, Some(&seed_buffer), 0);
+        encoder.set_bytes(
+            1,
+            size_of_val(&batch) as u64,
+            (&batch as *const ConformerInitializeBatchV1).cast(),
+        );
+        encoder.set_buffer(2, Some(&output_buffer), 0);
+        encoder.dispatch_threads(
+            MTLSize {
+                width: 6,
+                height: 1,
+                depth: 1,
+            },
+            MTLSize {
+                width: pipeline.thread_execution_width(),
+                height: 1,
+                depth: 1,
+            },
+        );
+        encoder.end_encoding();
+        command.commit();
+        command.wait_until_completed();
+        completed_gpu_time(command).expect("real GPU completion evidence");
+
+        let observed = read_buffer::<[f32; 4]>(&output_buffer, 6, "conformer position")
+            .expect("read conformer positions");
+        let expected = seeds
+            .into_iter()
+            .flat_map(|seed| initialize_conformer_positions(seed, atom_count))
+            .collect::<Vec<_>>();
+        assert_eq!(observed, expected);
     }
 }

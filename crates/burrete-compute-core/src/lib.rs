@@ -6,11 +6,13 @@
 //! parity oracle for native Metal neighbor generation.
 
 mod conformer_schedule;
+mod conformer_initialize;
 
 pub use conformer_schedule::{
     plan_conformer_batches, ConformerBatch, ConformerBatchPlan, ConformerMoleculeWork,
     ConformerScheduleError, ConformerSchedulingOptions, ConformerSpan, ConformerWorkIdentity,
 };
+pub use conformer_initialize::initialize_conformer_positions;
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};
 

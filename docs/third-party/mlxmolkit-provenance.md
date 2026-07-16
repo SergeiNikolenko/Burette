@@ -84,6 +84,10 @@ sources. The ABI is a Burrete-owned production boundary that can be populated
 by an audited native extractor and compared with separately executed reference
 oracles without making Python or MLX part of the application runtime.
 
+The counter-based `conformer_initialize.v1` Rust/Metal primitive was written
+independently from the immutable Burrete seed contract. No RNG, coordinate
+initialization, DG, or Metal source was copied or translated from `mlxmolkit`.
+
 The same audit confirmed that the pinned repository still has no root license
 or notice file, `dg_extract.py` names nvMolKit as its reference, and
 `etk_metal.py` describes helper code as unchanged from Shivam Patel's work.
