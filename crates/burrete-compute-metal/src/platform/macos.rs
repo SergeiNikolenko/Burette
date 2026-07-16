@@ -426,6 +426,7 @@ impl MetalHost {
                 || !constraint.lower_squared.is_finite()
                 || !constraint.upper_squared.is_finite()
                 || constraint.lower_squared < 0.0
+                || constraint.upper_squared <= 0.0
                 || constraint.upper_squared < constraint.lower_squared
                 || !constraint.weight.is_finite()
                 || constraint.weight < 0.0
@@ -757,7 +758,10 @@ fn resource_limit<T>(message: impl Into<String>) -> Result<T, MetalRuntimeError>
 mod tests {
     use std::num::NonZeroUsize;
 
-    use burrete_compute_core::{initialize_conformer_positions, FINGERPRINT_WORDS};
+    use burrete_compute_core::{
+        evaluate_distance_constraints, initialize_conformer_positions, DistanceConstraint,
+        FINGERPRINT_WORDS,
+    };
     use burrete_compute_protocol::{ResourceLimits, MIN_COMPUTE_MEMORY_BYTES};
     use metal::CompileOptions;
 
@@ -926,5 +930,54 @@ mod tests {
             .flat_map(|seed| initialize_conformer_positions(seed, atom_count))
             .collect::<Vec<_>>();
         assert_eq!(observed, expected);
+    }
+
+    #[test]
+    #[ignore = "manual source-compiled real-GPU distance parity smoke"]
+    fn dispatches_distance_objective_on_the_real_gpu() {
+        let device = Device::system_default().expect("Metal device");
+        assert!(device.has_unified_memory(), "Apple unified memory required");
+        let source = [
+            include_str!("../../../../compute/metal/tanimoto.v2.metal"),
+            include_str!("../../../../compute/metal/conformer-initialize.v1.metal"),
+            include_str!("../../../../compute/metal/conformer-distance.v1.metal"),
+        ]
+        .join("\n");
+        let library = device
+            .new_library_with_source(&source, &CompileOptions::new())
+            .expect("compile native compute kernels");
+        let host = MetalHost::from_library(device, &library).expect("load Metal pipelines");
+        let positions = [[0.0; 4], [2.0, 0.5, 0.0, 0.0]];
+        let constraints = [DistanceConstraint {
+            left_atom: 0,
+            right_atom: 1,
+            lower_squared: 1.0,
+            upper_squared: 4.0,
+            weight: 0.75,
+        }];
+        let expected =
+            evaluate_distance_constraints(&positions, &constraints).expect("CPU distance oracle");
+        let observed = host
+            .evaluate_distance_constraints_profiled(
+                &positions,
+                2,
+                &constraints,
+                MIN_COMPUTE_MEMORY_BYTES,
+            )
+            .expect("real Metal distance objective");
+
+        let close = |left: &[f32], right: &[f32]| {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|(left, right)| (left - right).abs() <= 1.0e-6)
+        };
+        assert!(close(&observed.atom_energies, &expected.atom_energies));
+        assert!(close(
+            observed.gradients.as_flattened(),
+            expected.gradients.as_flattened(),
+        ));
+        assert!(observed.gpu_time_seconds >= 0.0);
     }
 }

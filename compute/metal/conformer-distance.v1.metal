@@ -39,19 +39,29 @@ kernel void burrete_conformer_distance_v1(
         const float4 delta = positions[base + pair.x] - positions[base + pair.y];
         const float distanceSquared = dot(delta, delta);
         const float2 bounds = boundsSquared[term];
-        float violation = 0.0f;
-        if (distanceSquared < bounds.x) {
-            violation = distanceSquared - bounds.x;
-        } else if (distanceSquared > bounds.y) {
-            violation = distanceSquared - bounds.y;
+        float termEnergy = 0.0f;
+        float derivativeScale = 0.0f;
+        const float weight = weights[term];
+        if (distanceSquared > bounds.y) {
+            const float normalized = distanceSquared / bounds.y - 1.0f;
+            termEnergy = weight * normalized * normalized;
+            derivativeScale = 4.0f * weight * normalized / bounds.y;
+        } else if (distanceSquared < bounds.x) {
+            const float denominator = bounds.x + distanceSquared;
+            const float normalized = 2.0f * bounds.x / denominator - 1.0f;
+            termEnergy = weight * normalized * normalized;
+            derivativeScale = 8.0f * weight * bounds.x
+                * (1.0f - 2.0f * bounds.x / denominator)
+                / (denominator * denominator);
         }
-        if (violation == 0.0f) {
+        if (termEnergy == 0.0f) {
             continue;
         }
-        const float weight = weights[term];
-        energy += 0.5f * weight * violation * violation;
+        // Each endpoint gathers the term. Split energy evenly so the host sum
+        // is the exact objective while gradients remain endpoint-specific.
+        energy += 0.5f * termEnergy;
         const float direction = isLeft ? 1.0f : -1.0f;
-        gradient += (4.0f * weight * violation * direction) * delta;
+        gradient += (derivativeScale * direction) * delta;
     }
     atomEnergies[item] = energy;
     gradients[item] = gradient;

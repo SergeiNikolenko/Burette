@@ -88,8 +88,15 @@ The counter-based `conformer_initialize.v1` Rust/Metal primitive was written
 independently from the immutable Burrete seed contract. No RNG, coordinate
 initialization, DG, or Metal source was copied or translated from `mlxmolkit`.
 The paired distance-bound objective and analytic-gradient Rust/Metal primitive
-was likewise derived independently from its documented mathematical contract;
-no upstream DG implementation was copied or translated.
+was likewise implemented independently from a mathematical contract; no
+upstream DG implementation was copied or translated. A 2026-07-16 parity audit
+against pinned `mlxmolkit/conformer_metal.py` found that Burrete's first simple
+quadratic squared-bound penalty was scientifically incompatible. Burrete now
+uses the same normalized upper-bound and rational lower-bound equations as the
+reference, with an independently structured gather implementation, explicit
+known answers, finite-difference validation, and CPU/Metal parity. This is a
+formula-only reference: upstream source text is not present in Burrete, and the
+named nvMolKit secondary revision remains a release gate before DG adaptation.
 
 The conformer admission and queued-job increment was also independently
 implemented. It adds a frozen-molecule-identity-bound chemistry-preflight
@@ -106,14 +113,16 @@ revisions and required Apache-2.0/MIT notices are recorded.
 
 ## Burrete adaptation ledger
 
-This table is mandatory for every adapted or translated file. It is currently
-empty because the existing compute protocol, CPU clustering reference,
-Tanimoto Metal contract, and deterministic conformer scheduler were
-independently implemented and explicitly do not copy `mlxmolkit` source.
+This table is mandatory for every adapted, translated, or formula-referenced
+file. The entries below record mathematical parity references; the existing
+compute protocol, CPU clustering reference, Tanimoto Metal contract, and
+deterministic conformer scheduler remain independently implemented and do not
+copy `mlxmolkit` source.
 
 | Burrete path | Upstream path | Commit | Contribution | Secondary source/license | Validation |
 | --- | --- | --- | --- | --- | --- |
-| _None yet_ | | | | | |
+| `crates/burrete-compute-core/src/distance_geometry.rs` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only objective reference; independently implemented CPU oracle | nvMolKit named upstream; exact secondary revision still release-blocking | upper/lower known answers and finite-difference gradient |
+| `compute/metal/conformer-distance.v1.metal` | `mlxmolkit/conformer_metal.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only objective reference; independent atom-gather Metal kernel | nvMolKit named upstream; exact secondary revision still release-blocking | CPU/Metal parity and packaged startup KAT on Apple M2 Pro |
 
 ## Acceptance procedure
 
