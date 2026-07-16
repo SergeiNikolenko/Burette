@@ -163,13 +163,19 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
     assert!(publication.job.result_pack.is_some());
     assert_eq!(publication.artifact_manifest_sha256.len(), 64);
     assert!(publication.grid_applied, "{:?}", publication.grid_warning);
+    let artifact_root = compute_root
+        .join("artifacts")
+        .join(format!("artifact-{}", publication.artifact_id));
+    assert_eq!(
+        publication.primary_open_path,
+        artifact_root
+            .join("result/conformers.xyz")
+            .to_string_lossy()
+    );
     assert_eq!(
         coordinator.get_job("main", job.job_id).unwrap(),
         publication.job
     );
-    let artifact_root = compute_root
-        .join("artifacts")
-        .join(format!("artifact-{}", publication.artifact_id));
     let engine_manifest: EnginePackManifest = serde_json::from_slice(
         &std::fs::read(artifact_root.join("engine/manifest.json"))
             .expect("read conformer EnginePack manifest"),
@@ -195,6 +201,11 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             .collect::<Vec<_>>(),
         CONFORMER_RESULT_ARRAY_NAMES
     );
+    let xyz = std::fs::read_to_string(&publication.primary_open_path)
+        .expect("read published conformer XYZ");
+    assert_eq!(xyz.matches("Burrete conformer molecule=").count(), 6);
+    assert!(xyz.contains("etkEnergy="));
+    assert!(xyz.contains("stereo=passed"));
     let page = registry
         .fetch_page(
             "main:conformer-submit",

@@ -36,6 +36,7 @@ export type ConformerComputeJob = {
   jobId: string;
   revision: number;
   state: string;
+  stages?: Array<{ effectiveBackend?: string }>;
 };
 
 export type ConformerSubmissionStep = {
@@ -74,6 +75,16 @@ export type ConformerPublicationStep = {
   artifactManifestSha256: string;
   gridApplied: boolean;
   gridWarning: string | null;
+  primaryOpenPath: string;
+};
+
+export type ConformerWorkflowPhase = "extracting" | "embedding" | "stereo" | "validation" | "publishing";
+
+export type ConformerWorkflowResult = ConformerPublicationStep & {
+  conformerCount: number;
+  passedCount: number;
+  failedCount: number;
+  backend: "nativeMetal" | "referenceCpu";
 };
 
 export function executeConformerDistance(job: ConformerComputeJob) {
@@ -102,6 +113,77 @@ export function publishConformer(job: ConformerComputeJob) {
     jobId: job.jobId,
     expectedRevision: job.revision,
   });
+}
+
+export async function runConformerWorkflow(
+  documentId: string,
+  sourceIndexes: number[],
+  onProgress: (phase: ConformerWorkflowPhase, job: ConformerComputeJob) => void,
+): Promise<ConformerWorkflowResult> {
+  const normalizedIndexes = [...new Set(sourceIndexes)]
+    .filter((index) => Number.isSafeInteger(index) && index >= 0)
+    .sort((left, right) => left - right);
+  if (!documentId.trim() || normalizedIndexes.length === 0) {
+    throw new Error("Native conformer generation requires a Grid document and selected molecules.");
+  }
+  const request = {
+    schemaVersion: "burrete.compute-job.v1",
+    workflowTemplate: "conformer.v1",
+    source: {
+      documentId,
+      scope: { kind: "selected", sourceIndexes: normalizedIndexes },
+    },
+    parameters: {
+      variant: "ETKDGv3",
+      conformersPerMolecule: 16,
+      maxAttemptsPerConformer: 8,
+    },
+    executionPolicy: {
+      backendPolicy: "gpuPreferred",
+      schedulingPolicy: "throughput",
+    },
+    limits: {
+      maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+      maxDispatchMs: 250,
+      maxConformersPerBatch: 2_048,
+    },
+  };
+  let job: ConformerComputeJob | null = null;
+  try {
+    job = await prepareConformerJob(request, (step) => {
+      if (step.job) job = step.job;
+      if (job) onProgress("extracting", job);
+    });
+    onProgress("embedding", job);
+    const distance = await executeConformerDistance(job);
+    job = distance.job;
+    onProgress("stereo", job);
+    const stereo = await executeConformerStereo(job);
+    job = stereo.job;
+    onProgress("validation", job);
+    const validation = await validateConformerReference(job);
+    job = validation.job;
+    onProgress("publishing", job);
+    const publication = await publishConformer(job);
+    const numericStages = publication.job.stages ?? [];
+    return {
+      ...publication,
+      conformerCount: stereo.conformerCount,
+      passedCount: validation.passedCount,
+      failedCount: validation.failedCount,
+      backend: numericStages.some((stage) => stage.effectiveBackend === "nativeMetal")
+        ? "nativeMetal"
+        : "referenceCpu",
+    };
+  } catch (error) {
+    if (job && !["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(job.state)) {
+      await invoke("compute_cancel_job", {
+        jobId: job.jobId,
+        expectedRevision: job.revision,
+      }).catch(() => undefined);
+    }
+    throw error;
+  }
 }
 
 export async function prepareConformerJob(
