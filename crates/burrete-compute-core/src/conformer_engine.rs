@@ -173,7 +173,11 @@ impl ConformerDistanceEngine {
                 "atomicNumbers and formalCharges lengths differ",
             ));
         }
-        if self.atomic_numbers.iter().any(|number| !(1..=118).contains(number)) {
+        if self
+            .atomic_numbers
+            .iter()
+            .any(|number| !(1..=118).contains(number))
+        {
             return Err(ConformerEngineError::new(
                 "atomicNumbers contains an unsupported element",
             ));

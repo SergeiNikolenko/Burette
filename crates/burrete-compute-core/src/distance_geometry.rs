@@ -94,8 +94,7 @@ pub fn evaluate_distance_constraints(
                 let normalized = 2.0 * constraint.lower_squared / denominator - 1.0;
                 (
                     constraint.weight * normalized * normalized,
-                    8.0
-                        * constraint.weight
+                    8.0 * constraint.weight
                         * constraint.lower_squared
                         * (1.0 - 2.0 * constraint.lower_squared / denominator)
                         / (denominator * denominator),

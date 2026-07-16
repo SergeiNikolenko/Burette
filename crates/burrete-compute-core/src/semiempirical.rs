@@ -24,7 +24,10 @@ pub use pm6_fock_d::pm6_one_center_d_fock;
 pub use pm6_full_parameters::{pm6_full_parameters, Pm6FullElementParameters};
 pub use pm6_multipole_d::{pm6_d_multipole_parameters, Pm6DMultipoleParameters};
 pub use pm6_overlap_d::{pm6_local_d_overlap, Pm6LocalDOverlap};
-pub use pm6_scf::{contract_pm6_pair_fock, evaluate_pm6, pm6_fock_pairs, Pm6FockPair};
+pub use pm6_scf::{
+    contract_pm6_pair_fock, evaluate_pm6, evaluate_pm6_with_accelerators, pm6_fock_pairs,
+    Pm6FockPair,
+};
 pub use pm6_two_center_d::{
     pm6_d_d_local_pair_integrals, pm6_d_d_pair_integrals, pm6_d_hydrogen_pair_integrals,
     pm6_d_sp_local_pair_integrals, pm6_d_sp_pair_integrals, Pm6DDLocalPairIntegrals,
@@ -507,6 +510,24 @@ pub fn solve_closed_shell_scf_with_initial_density(
         initial_density,
         build_fock,
         symmetric_eigendecomposition,
+    )
+}
+
+pub fn solve_closed_shell_scf_with_initial_density_and_eigensolver(
+    orbital_count: usize,
+    electron_count: usize,
+    options: SemiempiricalScfOptions,
+    initial_density: Vec<f64>,
+    build_fock: impl FnMut(&[f64]) -> Result<Vec<f64>, SemiempiricalError>,
+    diagonalize: impl FnMut(&[f64], usize) -> Result<(Vec<f64>, Vec<f64>), SemiempiricalError>,
+) -> Result<SemiempiricalScfResult, SemiempiricalError> {
+    solve_closed_shell_scf_from_density_with_eigensolver(
+        orbital_count,
+        electron_count,
+        options,
+        initial_density,
+        build_fock,
+        diagonalize,
     )
 }
 

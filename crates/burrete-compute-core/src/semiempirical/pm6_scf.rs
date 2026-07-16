@@ -2,7 +2,8 @@ use super::{
     pm6_d_d_pair_integrals, pm6_d_hydrogen_pair_integrals, pm6_d_sp_pair_integrals,
     pm6_full_parameters, pm6_local_d_overlap, pm6_one_center_d_fock, pm6_one_center_w_integrals,
     pm6_two_center_d::pyseqm_orbital_rotation, rm1_rotated_pair_integrals, rm1_sp_overlap,
-    semiempirical_nuclear_repulsion_energy, solve_closed_shell_scf_with_initial_density,
+    semiempirical_nuclear_repulsion_energy,
+    solve_closed_shell_scf_with_initial_density_and_eigensolver, symmetric_eigendecomposition,
     Pm6FullElementParameters, Rm1Evaluation, SemiempiricalElementParameters, SemiempiricalError,
     SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfOptions,
 };
@@ -277,17 +278,26 @@ pub fn contract_pm6_pair_fock(
     density: &[f64],
     pairs: &[Pm6FockPair],
 ) -> Result<Vec<f64>, SemiempiricalError> {
-    if density.len() != orbital_count * orbital_count {
+    if orbital_count == 0
+        || density.len() != orbital_count * orbital_count
+        || density.iter().any(|value| !value.is_finite())
+    {
         return Err(SemiempiricalError::InvalidInput(
-            "PM6 pair contraction requires a square density matrix".into(),
+            "PM6 pair contraction requires a finite square non-empty density matrix".into(),
         ));
     }
     let mut contribution = vec![0.0; density.len()];
     for pair in pairs {
         let (nl, nr) = (pair.left_orbital_count, pair.right_orbital_count);
-        if pair.repulsion_ev.len() != nl * nl * nr * nr {
+        if !matches!(nl, 1 | 4 | 9)
+            || !matches!(nr, 1 | 4 | 9)
+            || pair.left_orbital_start + nl > orbital_count
+            || pair.right_orbital_start + nr > orbital_count
+            || pair.repulsion_ev.len() != nl * nl * nr * nr
+            || pair.repulsion_ev.iter().any(|value| !value.is_finite())
+        {
             return Err(SemiempiricalError::InvalidInput(
-                "PM6 pair tensor has an invalid shape".into(),
+                "PM6 pair contraction received an invalid orbital span or tensor".into(),
             ));
         }
         for a in 0..nl {
@@ -396,6 +406,15 @@ fn build_fock(
     core: &[f64],
     density: &[f64],
     pairs: &[Pm6FockPair],
+    contract_pairs: &mut impl FnMut(
+        usize,
+        &[f64],
+        &[Pm6FockPair],
+    ) -> Result<Vec<f64>, SemiempiricalError>,
+    contract_one_center: &mut impl FnMut(
+        &[f64; 81],
+        &[f64; 243],
+    ) -> Result<[f64; 81], SemiempiricalError>,
 ) -> Result<Vec<f64>, SemiempiricalError> {
     let n = molecule.orbital_count;
     let mut fock = core.to_vec();
@@ -439,7 +458,7 @@ fn build_fock(
                 density[(start + row) * n + start + column]
             });
             let w = pm6_one_center_w_integrals(parameters)?;
-            let one_center = pm6_one_center_d_fock(&block, &w)?;
+            let one_center = contract_one_center(&block, &w)?;
             for row in 0..9 {
                 for column in 0..9 {
                     fock[(start + row) * n + start + column] += one_center[row * 9 + column];
@@ -447,10 +466,7 @@ fn build_fock(
             }
         }
     }
-    for (target, contribution) in fock
-        .iter_mut()
-        .zip(contract_pm6_pair_fock(n, density, pairs)?)
-    {
+    for (target, contribution) in fock.iter_mut().zip(contract_pairs(n, density, pairs)?) {
         *target += contribution;
     }
     Ok(fock)
@@ -459,6 +475,29 @@ fn build_fock(
 pub fn evaluate_pm6(
     molecule: &SemiempiricalMolecule,
     options: SemiempiricalScfOptions,
+) -> Result<Rm1Evaluation, SemiempiricalError> {
+    evaluate_pm6_with_accelerators(
+        molecule,
+        options,
+        contract_pm6_pair_fock,
+        pm6_one_center_d_fock,
+        symmetric_eigendecomposition,
+    )
+}
+
+pub fn evaluate_pm6_with_accelerators(
+    molecule: &SemiempiricalMolecule,
+    options: SemiempiricalScfOptions,
+    mut contract_pairs: impl FnMut(
+        usize,
+        &[f64],
+        &[Pm6FockPair],
+    ) -> Result<Vec<f64>, SemiempiricalError>,
+    mut contract_one_center: impl FnMut(
+        &[f64; 81],
+        &[f64; 243],
+    ) -> Result<[f64; 81], SemiempiricalError>,
+    diagonalize: impl FnMut(&[f64], usize) -> Result<(Vec<f64>, Vec<f64>), SemiempiricalError>,
 ) -> Result<Rm1Evaluation, SemiempiricalError> {
     if !matches!(
         molecule.method,
@@ -490,14 +529,31 @@ pub fn evaluate_pm6(
         max_damping: options.max_damping.max(0.95),
         ..options
     };
-    let scf = solve_closed_shell_scf_with_initial_density(
+    let scf = solve_closed_shell_scf_with_initial_density_and_eigensolver(
         molecule.orbital_count,
         molecule.electron_count,
         pm6_options,
         initial_density,
-        |density| build_fock(molecule, &core, density, &pairs),
+        |density| {
+            build_fock(
+                molecule,
+                &core,
+                density,
+                &pairs,
+                &mut contract_pairs,
+                &mut contract_one_center,
+            )
+        },
+        diagonalize,
     )?;
-    let final_fock = build_fock(molecule, &core, &scf.density, &pairs)?;
+    let final_fock = build_fock(
+        molecule,
+        &core,
+        &scf.density,
+        &pairs,
+        &mut contract_pairs,
+        &mut contract_one_center,
+    )?;
     let electronic_energy_ev = 0.5
         * scf
             .density
@@ -545,6 +601,24 @@ mod tests {
     }
 
     #[test]
+    fn pair_contraction_rejects_invalid_variable_basis_descriptors() {
+        let pair = Pm6FockPair {
+            left_orbital_start: 0,
+            left_orbital_count: 9,
+            right_orbital_start: 9,
+            right_orbital_count: 1,
+            repulsion_ev: vec![0.0; 81],
+            left_core_attraction_ev: vec![0.0; 81],
+            right_core_attraction_ev: vec![0.0],
+        };
+        assert!(contract_pm6_pair_fock(9, &[0.0; 81], &[pair.clone()]).is_err());
+        let mut invalid_shape = pair;
+        invalid_shape.repulsion_ev.pop();
+        assert!(contract_pm6_pair_fock(10, &[0.0; 100], &[invalid_shape]).is_err());
+        assert!(contract_pm6_pair_fock(1, &[f64::NAN], &[]).is_err());
+    }
+
+    #[test]
     fn hydrogen_sulfide_matches_the_pinned_pm6_d_oracle() {
         let molecule = SemiempiricalMolecule::new(
             SemiempiricalMethod::Pm6,
@@ -586,7 +660,15 @@ mod tests {
         }
         initial[9 * 11 + 9] = 1.0;
         initial[10 * 11 + 10] = 1.0;
-        let initial_fock = build_fock(&molecule, &core, &initial, &pairs).unwrap();
+        let initial_fock = build_fock(
+            &molecule,
+            &core,
+            &initial,
+            &pairs,
+            &mut contract_pm6_pair_fock,
+            &mut pm6_one_center_d_fock,
+        )
+        .unwrap();
         for (index, expected) in [
             (0, -25.165_770_500_000_008),
             (4, 1.359_236_901_988_588),

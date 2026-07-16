@@ -195,9 +195,7 @@ fn conformer_work_bytes(
         .checked_mul(DG_DIMENSIONS)
         .ok_or(ConformerScheduleError::Overflow)?;
     let position_buffers = POSITION_SIZED_BUFFERS
-        .checked_add(
-            HISTORY_POSITION_SIZED_BUFFERS * u64::from(lbfgs_history.get()),
-        )
+        .checked_add(HISTORY_POSITION_SIZED_BUFFERS * u64::from(lbfgs_history.get()))
         .ok_or(ConformerScheduleError::Overflow)?;
     let coordinate_bytes = coordinates
         .checked_mul(size_of::<f32>() as u64)
@@ -234,11 +232,7 @@ impl PendingBatch {
         })
     }
 
-    fn push(
-        &mut self,
-        span: ConformerSpan,
-        item_bytes: u64,
-    ) -> Result<(), ConformerScheduleError> {
+    fn push(&mut self, span: ConformerSpan, item_bytes: u64) -> Result<(), ConformerScheduleError> {
         self.conformer_count = self
             .conformer_count
             .checked_add(span.conformer_count.get())
@@ -329,10 +323,7 @@ mod tests {
             .expect("plan conformers");
         assert_eq!(plan.molecule_count, 2);
         assert_eq!(plan.conformer_count, 12);
-        assert!(plan
-            .batches
-            .iter()
-            .all(|batch| batch.conformer_count <= 4));
+        assert!(plan.batches.iter().all(|batch| batch.conformer_count <= 4));
         let covered = plan
             .batches
             .iter()
@@ -364,8 +355,8 @@ mod tests {
     #[test]
     fn identity_seed_is_invariant_under_adaptive_rebatching() {
         let molecules = [molecule(10, 40, 6), molecule(20, 80, 5)];
-        let small = plan_conformer_batches(&molecules, options(512 * 1024, 2))
-            .expect("small batches");
+        let small =
+            plan_conformer_batches(&molecules, options(512 * 1024, 2)).expect("small batches");
         let large = plan_conformer_batches(&molecules, options(8 * 1024 * 1024, 16))
             .expect("large batches");
         assert_ne!(small.batches.len(), large.batches.len());

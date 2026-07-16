@@ -62,8 +62,8 @@ pub use mmff::{
 };
 pub use mmff_extract::{decode_native_mmff_parameters, MmffExtractError, NativeMmffParameters};
 pub use semiempirical::{
-    contract_pm6_pair_fock, contract_rm1_pair_fock, evaluate_pm6, evaluate_rm1,
-    evaluate_rm1_with_accelerators, evaluate_rm1_with_pair_contractor,
+    contract_pm6_pair_fock, contract_rm1_pair_fock, evaluate_pm6, evaluate_pm6_with_accelerators,
+    evaluate_rm1, evaluate_rm1_with_accelerators, evaluate_rm1_with_pair_contractor,
     evaluate_rm1_with_prepared_pairs_and_accelerators, evaluate_semiempirical,
     pm6_d3_dispersion_energy, pm6_d_d_local_pair_integrals, pm6_d_d_pair_integrals,
     pm6_d_hydrogen_pair_integrals, pm6_d_multipole_parameters, pm6_d_sp_local_pair_integrals,
@@ -75,13 +75,13 @@ pub use semiempirical::{
     rm1_rotated_pair_integrals, rm1_sp_overlap, rm1_two_center_integrals,
     semiempirical_nuclear_repulsion_energy, semiempirical_parameters, solve_closed_shell_scf,
     solve_closed_shell_scf_with_eigensolver, solve_closed_shell_scf_with_initial_density,
-    symmetric_eigendecomposition, Pm6DDLocalPairIntegrals, Pm6DDPairIntegrals,
-    Pm6DHydrogenPairIntegrals, Pm6DMultipoleParameters, Pm6DSpLocalPairIntegrals,
-    Pm6DSpPairIntegrals, Pm6FockPair, Pm6FullElementParameters, Pm6LocalDOverlap, Rm1Evaluation,
-    Rm1FockPair, Rm1MultipoleParameters, Rm1OverlapMatrix, Rm1RotatedPairIntegrals,
-    Rm1TwoCenterIntegrals, SemiempiricalAtom, SemiempiricalElementParameters, SemiempiricalError,
-    SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfResult,
-    SemiempiricalScfStatus,
+    solve_closed_shell_scf_with_initial_density_and_eigensolver, symmetric_eigendecomposition,
+    Pm6DDLocalPairIntegrals, Pm6DDPairIntegrals, Pm6DHydrogenPairIntegrals,
+    Pm6DMultipoleParameters, Pm6DSpLocalPairIntegrals, Pm6DSpPairIntegrals, Pm6FockPair,
+    Pm6FullElementParameters, Pm6LocalDOverlap, Rm1Evaluation, Rm1FockPair, Rm1MultipoleParameters,
+    Rm1OverlapMatrix, Rm1RotatedPairIntegrals, Rm1TwoCenterIntegrals, SemiempiricalAtom,
+    SemiempiricalElementParameters, SemiempiricalError, SemiempiricalMethod, SemiempiricalMolecule,
+    SemiempiricalScfOptions, SemiempiricalScfResult, SemiempiricalScfStatus,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};

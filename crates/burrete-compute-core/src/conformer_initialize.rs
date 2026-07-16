@@ -46,9 +46,6 @@ mod tests {
             .flatten()
             .all(|coordinate| (-1.0..1.0).contains(coordinate)));
         assert_ne!(long[0], long[1]);
-        assert_ne!(
-            long,
-            initialize_conformer_positions([1, 2, 3, 5], 5)
-        );
+        assert_ne!(long, initialize_conformer_positions([1, 2, 3, 5], 5));
     }
 }
