@@ -6,6 +6,7 @@ mod pm6_d3_chno;
 mod pm6_d3h4;
 mod pm6_fock_d;
 mod pm6_full_parameters;
+mod pm6_overlap_d;
 mod pm6_w_integrals;
 mod pm6_wigner_d;
 mod rm1;
@@ -18,6 +19,7 @@ pub use pm6_d3_chno::pm6_d3_dispersion_energy;
 pub use pm6_d3h4::{pm6_h4_covalent_radius, pm6_h4_energy, pm6_hh_repulsion_energy};
 pub use pm6_fock_d::pm6_one_center_d_fock;
 pub use pm6_full_parameters::{pm6_full_parameters, Pm6FullElementParameters};
+pub use pm6_overlap_d::{pm6_local_d_overlap, Pm6LocalDOverlap};
 pub use pm6_w_integrals::{pm6_one_center_w_integrals, pm6_slater_condon_parameter};
 pub use pm6_wigner_d::{
     pm6_rotate_dd_overlap, pm6_rotate_dp_overlap, pm6_rotate_ds_overlap, pm6_wigner_d_matrix,

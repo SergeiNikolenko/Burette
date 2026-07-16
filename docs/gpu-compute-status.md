@@ -471,9 +471,12 @@ separate product increments.
   and iron oracles. Its 45-output packed-density Fock contraction now produces
   a complete symmetric 9x9 native CPU block with pinned matrix parity.
   Proper 3x3 bond-frame rotations now produce parity-checked real-harmonic
-  5x5 Wigner matrices and d-d/d-p/d-s overlap blocks. Radial d overlap,
-  two-center d integrals, Metal W generation, full PM6 SCF integration,
-  broader D3 tables, and production PM6-D3H4 composition remain gated.
+  5x5 Wigner matrices and d-d/d-p/d-s overlap blocks. A bounded 48-point
+  prolate-spheroidal STO oracle now supplies d-s, d-p, and d-d radial overlap
+  for principal quantum numbers one through five, including iodine and the
+  hydrogen s-only boundary. Two-center d electron-repulsion integrals, Metal W
+  generation, full PM6 SCF integration, broader D3 tables, and production
+  PM6-D3H4 composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
