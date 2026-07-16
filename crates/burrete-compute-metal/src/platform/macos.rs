@@ -18,7 +18,7 @@ use objc::{runtime::Sel, Message};
 
 use crate::platform::{
     MetalDistanceDispatch, MetalDistanceOptimizationDispatch, MetalEtkDispatch, MetalMmffDispatch,
-    MetalStereoValidationDispatch,
+    MetalMmffOptimizationDispatch, MetalStereoValidationDispatch,
 };
 use crate::MetalRuntimeError;
 
@@ -151,6 +151,20 @@ struct MmffTermV1 {
     parameters1: [f32; 4],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MmffOptimizeConfigV1 {
+    batch: MmffBatchV1,
+    max_iterations: u32,
+    history_size: u32,
+    max_line_search_steps: u32,
+    bfgs_max_atoms: u32,
+    gradient_tolerance: f32,
+    relative_step_tolerance: f32,
+    armijo_coefficient: f32,
+    max_step_factor: f32,
+}
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
@@ -166,6 +180,7 @@ pub(crate) struct MetalHost {
     conformer_etk_optimize_pipeline: ComputePipelineState,
     mmff_energy_pipeline: ComputePipelineState,
     mmff_gradient_pipeline: ComputePipelineState,
+    mmff_optimize_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -211,6 +226,7 @@ impl MetalHost {
         let mmff_energy_pipeline = pipeline(&device, library, "burrete_mmff_energy_v1")?;
         let mmff_gradient_pipeline =
             pipeline(&device, library, "burrete_mmff_reference_gradient_v1")?;
+        let mmff_optimize_pipeline = pipeline(&device, library, "burrete_mmff_optimize_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -225,6 +241,7 @@ impl MetalHost {
             conformer_etk_optimize_pipeline,
             mmff_energy_pipeline,
             mmff_gradient_pipeline,
+            mmff_optimize_pipeline,
         })
     }
 
@@ -1387,33 +1404,8 @@ impl MetalHost {
             u32::try_from(positions.len() / atom_count as usize).map_err(|_| {
                 MetalRuntimeError::ResourceLimit("MMFF conformer count exceeds uint32".into())
             })?;
-        let term_count_u32 = |count: usize| {
-            u32::try_from(count).map_err(|_| {
-                MetalRuntimeError::ResourceLimit("MMFF term count exceeds uint32".into())
-            })
-        };
-        let bond_count = term_count_u32(parameters.bonds.len())?;
-        let angle_count = term_count_u32(parameters.angles.len())?;
-        let stretch_bend_count = term_count_u32(parameters.stretch_bends.len())?;
-        let out_of_plane_count = term_count_u32(parameters.out_of_planes.len())?;
-        let torsion_count = term_count_u32(parameters.torsions.len())?;
-        let van_der_waals_count = term_count_u32(parameters.van_der_waals.len())?;
-        let electrostatic_count = term_count_u32(parameters.electrostatics.len())?;
+        let (batch, packed_terms, term_count) = pack_mmff_terms(parameters, conformer_count)?;
         let item_count = u64::try_from(positions.len()).map_err(|_| memory_overflow())?;
-        let term_count = [
-            bond_count,
-            angle_count,
-            stretch_bend_count,
-            out_of_plane_count,
-            torsion_count,
-            van_der_waals_count,
-            electrostatic_count,
-        ]
-        .into_iter()
-        .try_fold(0_u64, |total, count| {
-            total.checked_add(u64::from(count).max(1))
-        })
-        .ok_or_else(memory_overflow)?;
         // Unified-memory peak includes the caller coordinates, mutable Metal
         // coordinates, gradient buffer plus returned gradient Vec, both
         // breakdown views, and caller/packed/Metal representations of terms.
@@ -1428,126 +1420,15 @@ impl MetalHost {
             ));
         }
 
-        let mut bonds = parameters
-            .bonds
-            .iter()
-            .map(|term| MmffTermV1 {
-                atoms: [term.atoms[0], term.atoms[1], 0, 0],
-                parameters0: [term.force_constant, term.equilibrium_distance, 0.0, 0.0],
-                parameters1: [0.0; 4],
-            })
-            .collect::<Vec<_>>();
-        let mut angles = parameters
-            .angles
-            .iter()
-            .map(|term| MmffTermV1 {
-                atoms: [term.atoms[0], term.atoms[1], term.atoms[2], 0],
-                parameters0: [
-                    term.force_constant,
-                    term.equilibrium_degrees,
-                    u8::from(term.linear) as f32,
-                    0.0,
-                ],
-                parameters1: [0.0; 4],
-            })
-            .collect::<Vec<_>>();
-        let mut stretch_bends = parameters
-            .stretch_bends
-            .iter()
-            .map(|term| MmffTermV1 {
-                atoms: [term.atoms[0], term.atoms[1], term.atoms[2], 0],
-                parameters0: [
-                    term.force_ij,
-                    term.force_kj,
-                    term.equilibrium_ij,
-                    term.equilibrium_kj,
-                ],
-                parameters1: [term.equilibrium_degrees, 0.0, 0.0, 0.0],
-            })
-            .collect::<Vec<_>>();
-        let mut out_of_planes = parameters
-            .out_of_planes
-            .iter()
-            .map(|term| MmffTermV1 {
-                atoms: term.atoms,
-                parameters0: [term.force_constant, 0.0, 0.0, 0.0],
-                parameters1: [0.0; 4],
-            })
-            .collect::<Vec<_>>();
-        let mut torsions = parameters
-            .torsions
-            .iter()
-            .map(|term| MmffTermV1 {
-                atoms: term.atoms,
-                parameters0: [term.v1, term.v2, term.v3, 0.0],
-                parameters1: [0.0; 4],
-            })
-            .collect::<Vec<_>>();
-        let mut van_der_waals = parameters
-            .van_der_waals
-            .iter()
-            .map(|term| MmffTermV1 {
-                atoms: [term.atoms[0], term.atoms[1], 0, 0],
-                parameters0: [term.r_star, term.epsilon, 0.0, 0.0],
-                parameters1: [0.0; 4],
-            })
-            .collect::<Vec<_>>();
-        let mut electrostatics = parameters
-            .electrostatics
-            .iter()
-            .map(|term| MmffTermV1 {
-                atoms: [term.atoms[0], term.atoms[1], 0, 0],
-                parameters0: [
-                    term.charge_product,
-                    u8::from(term.is_one_four) as f32,
-                    0.0,
-                    0.0,
-                ],
-                parameters1: [0.0; 4],
-            })
-            .collect::<Vec<_>>();
-        for terms in [
-            &mut bonds,
-            &mut angles,
-            &mut stretch_bends,
-            &mut out_of_planes,
-            &mut torsions,
-            &mut van_der_waals,
-            &mut electrostatics,
-        ] {
-            if terms.is_empty() {
-                terms.push(MmffTermV1::default());
-            }
-        }
         let position_buffer = buffer_with_slice(&self.device, positions);
-        let term_buffers = [
-            buffer_with_slice(&self.device, &bonds),
-            buffer_with_slice(&self.device, &angles),
-            buffer_with_slice(&self.device, &stretch_bends),
-            buffer_with_slice(&self.device, &out_of_planes),
-            buffer_with_slice(&self.device, &torsions),
-            buffer_with_slice(&self.device, &van_der_waals),
-            buffer_with_slice(&self.device, &electrostatics),
-        ];
+        let term_buffers = packed_terms
+            .each_ref()
+            .map(|terms| buffer_with_slice(&self.device, terms));
         let breakdown_buffer = buffer_with_slice(
             &self.device,
             &vec![[0.0_f32; 4]; conformer_count as usize * 2],
         );
         let gradient_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; positions.len()]);
-        let batch = MmffBatchV1 {
-            atom_count,
-            conformer_count,
-            bond_count,
-            angle_count,
-            stretch_bend_count,
-            out_of_plane_count,
-            torsion_count,
-            van_der_waals_count,
-            electrostatic_count,
-            reserved0: 0,
-            reserved1: 0,
-            reserved2: 0,
-        };
         let mut gpu_time_seconds = 0.0;
         for (pipeline, output) in [
             (&self.mmff_energy_pipeline, &breakdown_buffer),
@@ -1601,6 +1482,184 @@ impl MetalHost {
             )?,
             gradients: read_buffer(&gradient_buffer, positions.len(), "MMFF gradient")?,
             gpu_time_seconds,
+        })
+    }
+
+    pub(crate) fn optimize_mmff_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        parameters: &MmffParameters,
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalMmffOptimizationDispatch, MetalRuntimeError> {
+        validate_mmff_parameters(parameters)
+            .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
+        let options = options
+            .validate()
+            .map_err(|error| MetalRuntimeError::ResourceLimit(error.to_string()))?;
+        let atom_count = parameters.atom_count;
+        if positions.is_empty() || !positions.len().is_multiple_of(atom_count as usize) {
+            return resource_limit("MMFF optimization requires complete non-empty conformers");
+        }
+        if positions.iter().flatten().any(|value| !value.is_finite()) {
+            return Err(MetalRuntimeError::Dispatch(
+                "MMFF optimization positions must be finite".into(),
+            ));
+        }
+        let conformer_count =
+            u32::try_from(positions.len() / atom_count as usize).map_err(|_| {
+                MetalRuntimeError::ResourceLimit("MMFF conformer count exceeds uint32".into())
+            })?;
+        let (batch, packed_terms, term_count) = pack_mmff_terms(parameters, conformer_count)?;
+        let item_count = u64::try_from(positions.len()).map_err(|_| memory_overflow())?;
+        let use_bfgs = atom_count <= 32;
+        let history_items = if use_bfgs {
+            1
+        } else {
+            item_count
+                .checked_mul(u64::from(options.history_size))
+                .ok_or_else(memory_overflow)?
+        };
+        let scalar_history_items = if use_bfgs {
+            1
+        } else {
+            u64::from(conformer_count)
+                .checked_mul(u64::from(options.history_size))
+                .ok_or_else(memory_overflow)?
+        };
+        let coordinate_count = u64::from(atom_count)
+            .checked_mul(3)
+            .ok_or_else(memory_overflow)?;
+        let hessian_items = if use_bfgs {
+            u64::from(conformer_count)
+                .checked_mul(coordinate_count)
+                .and_then(|value| value.checked_mul(coordinate_count))
+                .ok_or_else(memory_overflow)?
+        } else {
+            1
+        };
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(item_count.checked_mul(112).ok_or_else(memory_overflow)?)
+            .and_then(|bytes| bytes.checked_add(history_items.checked_mul(32)?))
+            .and_then(|bytes| bytes.checked_add(scalar_history_items.checked_mul(8)?))
+            .and_then(|bytes| bytes.checked_add(hessian_items.checked_mul(8)?))
+            .and_then(|bytes| bytes.checked_add(u64::from(conformer_count).checked_mul(48)?))
+            .and_then(|bytes| bytes.checked_add(term_count.checked_mul(144)?))
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "MMFF optimization requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+        let item_len = usize::try_from(item_count).map_err(|_| memory_overflow())?;
+        let history_len = usize::try_from(history_items).map_err(|_| memory_overflow())?;
+        let scalar_history_len =
+            usize::try_from(scalar_history_items).map_err(|_| memory_overflow())?;
+        let hessian_len = usize::try_from(hessian_items).map_err(|_| memory_overflow())?;
+        let conformer_len = conformer_count as usize;
+        let position_buffer = buffer_with_slice(&self.device, positions);
+        let term_buffers = packed_terms
+            .each_ref()
+            .map(|terms| buffer_with_slice(&self.device, terms));
+        let gradient_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let direction_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let old_position_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let old_gradient_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let history_step_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; history_len]);
+        let history_delta_buffer =
+            buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; history_len]);
+        let inverse_curvature_buffer =
+            buffer_with_slice(&self.device, &vec![0.0_f32; scalar_history_len]);
+        let alpha_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; scalar_history_len]);
+        let hessian_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; hessian_len]);
+        let energy_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; conformer_len]);
+        let gradient_max_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; conformer_len]);
+        let iteration_buffer = buffer_with_slice(&self.device, &vec![0_u32; conformer_len]);
+        let status_buffer = buffer_with_slice(&self.device, &vec![3_u32; conformer_len]);
+        let optimizer_buffer = buffer_with_slice(&self.device, &vec![2_u32; conformer_len]);
+        let config = MmffOptimizeConfigV1 {
+            batch,
+            max_iterations: options.max_iterations,
+            history_size: u32::from(options.history_size),
+            max_line_search_steps: u32::from(options.max_line_search_steps),
+            bfgs_max_atoms: 32,
+            gradient_tolerance: options.gradient_tolerance,
+            relative_step_tolerance: options.relative_step_tolerance,
+            armijo_coefficient: options.armijo_coefficient,
+            max_step_factor: options.max_step_factor,
+        };
+        let thread_width = self.mmff_optimize_pipeline.thread_execution_width().min(
+            self.mmff_optimize_pipeline
+                .max_total_threads_per_threadgroup(),
+        );
+        if thread_width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal MMFF optimizer advertises zero thread width".into(),
+            ));
+        }
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.mmff_optimize_pipeline);
+            encoder.set_buffer(0, Some(&position_buffer), 0);
+            encoder.set_bytes(
+                1,
+                size_of_val(&config) as u64,
+                (&config as *const MmffOptimizeConfigV1).cast(),
+            );
+            for (index, buffer) in term_buffers.iter().enumerate() {
+                encoder.set_buffer((index + 2) as u64, Some(buffer), 0);
+            }
+            for (index, buffer) in [
+                &gradient_buffer,
+                &direction_buffer,
+                &old_position_buffer,
+                &old_gradient_buffer,
+                &history_step_buffer,
+                &history_delta_buffer,
+                &inverse_curvature_buffer,
+                &alpha_buffer,
+                &hessian_buffer,
+                &energy_buffer,
+                &gradient_max_buffer,
+                &iteration_buffer,
+                &status_buffer,
+                &optimizer_buffer,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                encoder.set_buffer((index + 9) as u64, Some(buffer), 0);
+            }
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: u64::from(conformer_count),
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: thread_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        Ok(MetalMmffOptimizationDispatch {
+            positions: read_buffer(&position_buffer, item_len, "MMFF optimized position")?,
+            energies: read_buffer(&energy_buffer, conformer_len, "MMFF optimized energy")?,
+            scaled_gradient_maxima: read_buffer(
+                &gradient_max_buffer,
+                conformer_len,
+                "MMFF optimized gradient maximum",
+            )?,
+            iterations: read_buffer(&iteration_buffer, conformer_len, "MMFF optimizer iteration")?,
+            statuses: read_buffer(&status_buffer, conformer_len, "MMFF optimizer status")?,
+            optimizers: read_buffer(&optimizer_buffer, conformer_len, "MMFF optimizer kind")?,
+            gpu_time_seconds: gpu_time,
         })
     }
 
@@ -1665,6 +1724,134 @@ impl MetalHost {
         }
         Ok(gpu_time_seconds)
     }
+}
+
+fn pack_mmff_terms(
+    parameters: &MmffParameters,
+    conformer_count: u32,
+) -> Result<(MmffBatchV1, [Vec<MmffTermV1>; 7], u64), MetalRuntimeError> {
+    let count = |value: usize| {
+        u32::try_from(value)
+            .map_err(|_| MetalRuntimeError::ResourceLimit("MMFF term count exceeds uint32".into()))
+    };
+    let counts = [
+        count(parameters.bonds.len())?,
+        count(parameters.angles.len())?,
+        count(parameters.stretch_bends.len())?,
+        count(parameters.out_of_planes.len())?,
+        count(parameters.torsions.len())?,
+        count(parameters.van_der_waals.len())?,
+        count(parameters.electrostatics.len())?,
+    ];
+    let term_count = counts
+        .iter()
+        .try_fold(0_u64, |total, count| {
+            total.checked_add(u64::from(*count).max(1))
+        })
+        .ok_or_else(memory_overflow)?;
+    let mut groups = [
+        parameters
+            .bonds
+            .iter()
+            .map(|term| MmffTermV1 {
+                atoms: [term.atoms[0], term.atoms[1], 0, 0],
+                parameters0: [term.force_constant, term.equilibrium_distance, 0.0, 0.0],
+                parameters1: [0.0; 4],
+            })
+            .collect::<Vec<_>>(),
+        parameters
+            .angles
+            .iter()
+            .map(|term| MmffTermV1 {
+                atoms: [term.atoms[0], term.atoms[1], term.atoms[2], 0],
+                parameters0: [
+                    term.force_constant,
+                    term.equilibrium_degrees,
+                    u8::from(term.linear) as f32,
+                    0.0,
+                ],
+                parameters1: [0.0; 4],
+            })
+            .collect::<Vec<_>>(),
+        parameters
+            .stretch_bends
+            .iter()
+            .map(|term| MmffTermV1 {
+                atoms: [term.atoms[0], term.atoms[1], term.atoms[2], 0],
+                parameters0: [
+                    term.force_ij,
+                    term.force_kj,
+                    term.equilibrium_ij,
+                    term.equilibrium_kj,
+                ],
+                parameters1: [term.equilibrium_degrees, 0.0, 0.0, 0.0],
+            })
+            .collect::<Vec<_>>(),
+        parameters
+            .out_of_planes
+            .iter()
+            .map(|term| MmffTermV1 {
+                atoms: term.atoms,
+                parameters0: [term.force_constant, 0.0, 0.0, 0.0],
+                parameters1: [0.0; 4],
+            })
+            .collect::<Vec<_>>(),
+        parameters
+            .torsions
+            .iter()
+            .map(|term| MmffTermV1 {
+                atoms: term.atoms,
+                parameters0: [term.v1, term.v2, term.v3, 0.0],
+                parameters1: [0.0; 4],
+            })
+            .collect::<Vec<_>>(),
+        parameters
+            .van_der_waals
+            .iter()
+            .map(|term| MmffTermV1 {
+                atoms: [term.atoms[0], term.atoms[1], 0, 0],
+                parameters0: [term.r_star, term.epsilon, 0.0, 0.0],
+                parameters1: [0.0; 4],
+            })
+            .collect::<Vec<_>>(),
+        parameters
+            .electrostatics
+            .iter()
+            .map(|term| MmffTermV1 {
+                atoms: [term.atoms[0], term.atoms[1], 0, 0],
+                parameters0: [
+                    term.charge_product,
+                    u8::from(term.is_one_four) as f32,
+                    0.0,
+                    0.0,
+                ],
+                parameters1: [0.0; 4],
+            })
+            .collect::<Vec<_>>(),
+    ];
+    for group in &mut groups {
+        if group.is_empty() {
+            group.push(MmffTermV1::default());
+        }
+    }
+    Ok((
+        MmffBatchV1 {
+            atom_count: parameters.atom_count,
+            conformer_count,
+            bond_count: counts[0],
+            angle_count: counts[1],
+            stretch_bend_count: counts[2],
+            out_of_plane_count: counts[3],
+            torsion_count: counts[4],
+            van_der_waals_count: counts[5],
+            electrostatic_count: counts[6],
+            reserved0: 0,
+            reserved1: 0,
+            reserved2: 0,
+        },
+        groups,
+        term_count,
+    ))
 }
 
 fn completed_gpu_time(command: &metal::CommandBufferRef) -> Result<f64, MetalRuntimeError> {

@@ -30,6 +30,16 @@ pub(crate) struct MetalMmffDispatch {
     pub(crate) gpu_time_seconds: f64,
 }
 
+pub(crate) struct MetalMmffOptimizationDispatch {
+    pub(crate) positions: Vec<[f32; 4]>,
+    pub(crate) energies: Vec<f32>,
+    pub(crate) scaled_gradient_maxima: Vec<f32>,
+    pub(crate) iterations: Vec<u32>,
+    pub(crate) statuses: Vec<u32>,
+    pub(crate) optimizers: Vec<u32>,
+    pub(crate) gpu_time_seconds: f64,
+}
+
 #[cfg(target_os = "macos")]
 #[path = "platform/macos.rs"]
 mod implementation;
