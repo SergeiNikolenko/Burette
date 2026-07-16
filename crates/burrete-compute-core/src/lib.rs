@@ -5,6 +5,7 @@
 //! code from `mlxmolkit` or another clustering package. The CPU path is the
 //! parity oracle for native Metal neighbor generation.
 
+mod alignment;
 mod conformer_engine;
 mod conformer_extract;
 mod conformer_initialize;
@@ -19,6 +20,10 @@ mod mmff_extract;
 
 pub use conformer_engine::{
     ConformerDistanceEngine, ConformerDistanceMolecule, ConformerEngineError,
+};
+pub use alignment::{
+    align_and_score, AlignmentAtom, AlignmentError, AlignmentMode, AlignmentResult,
+    AlignmentScores, AtomMapping, RigidTransform,
 };
 pub use conformer_extract::{ConformerExtractError, ExtractedConformerParameters};
 pub use conformer_initialize::initialize_conformer_positions;
