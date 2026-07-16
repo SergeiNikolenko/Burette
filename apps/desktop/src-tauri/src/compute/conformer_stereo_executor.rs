@@ -97,6 +97,11 @@ pub(crate) fn execute_conformer_stereo_validation(
     if failure_flags.len() != distance.conformer_count() {
         return Err(protocol("conformer stereo result count is inconsistent"));
     }
+    if failure_flags != distance.retry_stereo_failure_flags {
+        return Err(protocol(
+            "final conformer stereo validation differs from retry validation",
+        ));
+    }
     let passed_count = failure_flags.iter().filter(|flags| **flags == 0).count();
     Ok(ConformerStereoComputation {
         failure_flags,

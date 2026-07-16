@@ -4,7 +4,7 @@ Status: `cluster.v1`, immutable representative export, and derived exact
 `Find similar` Grid analysis complete at source level; deterministic conformer
 variant/seed/adaptive batching, packaged native RDKit extraction, raw job
 submission, adaptive CPU/Metal distance-geometry execution, Metal ETK
-refinement, and Metal stereo validation implemented; stereo-aware retry,
+refinement, stereo-aware retry, and final Metal stereo validation implemented;
 ResultPack publication, UI, production release, and scale proof pending
 
 Updated: 2026-07-16
@@ -153,9 +153,9 @@ counts caller inputs, Metal buffers, returned host vectors, and transient
 history-buffer materialization as simultaneous Apple unified-memory residents;
 the adaptive scheduler uses the same seven position-sized buffers and
 three-way transient history peak.
-This proves the iterative DG distance-bound optimizer, ETK refinement, and
-stereo evaluation primitives. It does not yet prove stereo-aware retry,
-artifact publication, or the user-visible conformer capability.
+This proves the iterative DG distance-bound optimizer, ETK refinement, stereo
+evaluation primitives, and deterministic stereo-aware retries. It does not yet
+prove artifact publication or the user-visible conformer capability.
 
 The durable executor now consumes the admitted EnginePack without an `N x N`
 allocation, rebuilds the exact adaptive `molecule x conformer` schedule, derives
@@ -165,9 +165,12 @@ Non-converged distance or ETK results are retried up to the request limit with
 a new deterministic retry seed. It records ragged offsets, refined positions,
 both energies, attempt count, both statuses, final seed, and actual
 command-buffer GPU time. The same executor has a deterministic CPU oracle.
-Metal stereo validation is a subsequent durable job stage. `gpuRequired`
-remains rejected until failed stereo validation feeds the retry loop and the
-result is published, preventing a false completed-GPU claim.
+Failed stereochemistry now also triggers a new identity-derived seed and the
+full generation/refinement loop up to the request attempt limit. Metal stereo
+validation is then repeated as a subsequent durable job stage, and its final
+flags must exactly match those produced by the retry loop. Runtime v8 therefore
+admits `gpuRequired` for both numeric stages. Publication remains a separate
+unfinished stage, so no completed user-facing conformer claim is made yet.
 
 The durable `JobSnapshot` request is no longer cluster-only. An untagged typed
 union accepts normalized `cluster.v1` and `conformer.v1` requests while keeping
@@ -344,7 +347,8 @@ separate product increments.
   executor smoke on the same `Apple M2 Pro`. Two four-atom conformers with
   non-empty torsion, improper, and ETK distance terms completed through Metal
   initialization, DG L-BFGS, ETK L-BFGS, and stereo validation. The combined
-  DG/ETK GPU time was `6 ms`; stereo validation was `1 ms`. The tested
+  generation/DG/ETK/retry-validation GPU time was `8 ms`; final stereo
+  validation was `1 ms`. The tested
   `native-compute.v8.metallib` SHA-256 is
   `fd9c0d16d1cf2affc6020026e8f2718dbe1b5ac5a563c2a5f9bb4f0858d5d79a`.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
