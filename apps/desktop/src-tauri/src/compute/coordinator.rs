@@ -663,7 +663,8 @@ impl ComputeCoordinator {
                 NativeMetalState::Available(runtime) => StageStartEvidence {
                     device: Some(runtime.device_identity().name.clone()),
                     kernel_id: Some(
-                        "burrete.compute.conformer.v1:initialize+distance-lbfgs.v1".into(),
+                        "burrete.compute.conformer.v1:initialize+dg-lbfgs+etk-lbfgs+stereo-retry.v1"
+                            .into(),
                     ),
                 },
                 NativeMetalState::Unavailable { message, .. } => {
@@ -700,6 +701,7 @@ impl ComputeCoordinator {
             prepared.arrays,
             &prepared.identities,
             distance_running.stages[2].effective_backend,
+            distance_running.stages[3].effective_backend,
             match &ready.native_metal {
                 NativeMetalState::Available(runtime) => Some(runtime),
                 NativeMetalState::Unavailable { .. } => None,
@@ -739,7 +741,7 @@ impl ComputeCoordinator {
             2,
             JobState::Running,
             now_ms(),
-            "Distance-geometry conformers ready for stereo validation",
+            "Stereo-retried conformer candidates ready for final validation",
             StageFinishMetrics {
                 host_time_ms,
                 gpu_time_ms: distance.gpu_time_ms.map(|value| value as f64),
@@ -1825,7 +1827,10 @@ impl NativeMetalState {
                 ConformerBackendAdmission::ReferenceCpu,
                 reference_runtime.clone(),
             )),
-            (BackendPolicy::GpuPreferred, Self::Available(runtime)) => {
+            (
+                BackendPolicy::GpuPreferred | BackendPolicy::GpuRequired,
+                Self::Available(runtime),
+            ) => {
                 let engine = EngineIdentity {
                     engine_id: "burrete-native-metal".into(),
                     version: runtime.runtime_identity().version.clone(),
@@ -1835,11 +1840,6 @@ impl NativeMetalState {
                     ConformerBackendAdmission::NativeMetal(engine.clone()),
                     ConformerBackendAdmission::NativeMetal(engine),
                     runtime.runtime_identity().clone(),
-                ))
-            }
-            (BackendPolicy::GpuRequired, Self::Available(_)) => {
-                Err(ComputeCoordinatorError::Unavailable(
-                    "gpuRequired conformer.v1 admission failed: native Metal ETK refinement is not packaged yet".into(),
                 ))
             }
             (BackendPolicy::GpuRequired, Self::Unavailable { message, .. }) => {

@@ -2,10 +2,11 @@ use std::num::NonZeroU32;
 
 use burrete_compute_core::{
     initialize_conformer_positions, optimize_distance_geometry, optimize_etk_geometry,
-    plan_conformer_batches, ConformerDistanceEngine, ConformerEnginePackArrays,
-    ConformerMoleculeWork, ConformerSchedulingOptions, ConformerWorkIdentity, DistanceConstraint,
+    plan_conformer_batches, validate_conformer_stereo, ChiralVolumeConstraint,
+    ConformerDistanceEngine, ConformerEnginePackArrays, ConformerMoleculeWork,
+    ConformerSchedulingOptions, ConformerWorkIdentity, DistanceConstraint,
     DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
-    EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
+    EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, TetrahedralConstraint,
 };
 use burrete_compute_metal::{MetalDistanceEmbedding, MetalTanimotoRuntime};
 use burrete_compute_protocol::{Backend, ConformerV1SubmitRequest};
@@ -32,6 +33,7 @@ pub(crate) struct ConformerDistanceComputation {
     pub(crate) embedding_statuses: Vec<u8>,
     pub(crate) etk_energies: Vec<f32>,
     pub(crate) etk_statuses: Vec<u8>,
+    pub(crate) retry_stereo_failure_flags: Vec<u32>,
     pub(crate) positions: Vec<[f32; 3]>,
     pub(crate) seed_words: Vec<[u32; 4]>,
     pub(crate) gpu_time_ms: Option<u64>,
@@ -66,7 +68,8 @@ pub(crate) fn execute_conformer_distance_geometry(
     request: &ConformerV1SubmitRequest,
     arrays: ConformerEnginePackArrays,
     identities: &[ConformerMoleculeIdentity],
-    backend: Backend,
+    distance_backend: Backend,
+    stereo_backend: Backend,
     metal: Option<&MetalTanimotoRuntime>,
 ) -> ComputeResult<ConformerDistanceComputation> {
     if identities.len() != arrays.record_count() {
@@ -203,6 +206,7 @@ pub(crate) fn execute_conformer_distance_geometry(
                 .expect("scheduler contains only valid records");
             let constraints = molecule.local_distance_constraints();
             let etk = local_etk_terms(&output.deferred, record_index as usize)?;
+            let stereo = local_stereo_terms(&output.deferred, record_index as usize)?;
             let identity = work[work_index];
             let count = span.conformer_count.get() as usize;
             let mut final_attempts = vec![0_u16; count];
@@ -211,6 +215,7 @@ pub(crate) fn execute_conformer_distance_geometry(
             let mut final_etk_energies = vec![0.0_f32; count];
             let mut final_etk_statuses =
                 vec![DistanceGeometryOptimizationStatus::MaxIterations; count];
+            let mut final_stereo_flags = vec![u32::MAX; count];
             let mut final_positions = vec![Vec::<[f32; 4]>::new(); count];
             let mut final_seeds = vec![[0_u32; 4]; count];
             let mut pending = (0..count).collect::<Vec<_>>();
@@ -233,7 +238,7 @@ pub(crate) fn execute_conformer_distance_geometry(
                     })
                     .collect::<Vec<_>>();
                 let mut attempt = embed(
-                    backend,
+                    distance_backend,
                     metal,
                     &seeds,
                     molecule.atomic_numbers.len() as u32,
@@ -242,7 +247,7 @@ pub(crate) fn execute_conformer_distance_geometry(
                     working_memory,
                 )?;
                 let refinement = refine_etk(
-                    backend,
+                    distance_backend,
                     metal,
                     &attempt.positions,
                     molecule.atomic_numbers.len() as u32,
@@ -257,10 +262,25 @@ pub(crate) fn execute_conformer_distance_geometry(
                 {
                     return Err(protocol("conformer ETK result arrays are inconsistent"));
                 }
+                let stereo_validation = validate_stereo_attempts(
+                    stereo_backend,
+                    metal,
+                    &refinement.positions,
+                    molecule.atomic_numbers.len() as u32,
+                    &stereo.chiral,
+                    &stereo.tetrahedral,
+                    working_memory,
+                )?;
+                if stereo_validation.failure_flags.len() != pending.len() {
+                    return Err(protocol(
+                        "conformer stereo retry result count is inconsistent",
+                    ));
+                }
                 attempt.positions = refinement.positions;
                 total_gpu_time = total_gpu_time
                     .checked_add(attempt.gpu_time_ms.unwrap_or(0))
                     .and_then(|time| time.checked_add(refinement.gpu_time_ms.unwrap_or(0)))
+                    .and_then(|time| time.checked_add(stereo_validation.gpu_time_ms.unwrap_or(0)))
                     .ok_or_else(|| protocol("conformer GPU time overflowed"))?;
                 let mut retry = Vec::new();
                 for (attempt_index, local) in pending.into_iter().enumerate() {
@@ -272,10 +292,12 @@ pub(crate) fn execute_conformer_distance_geometry(
                     final_statuses[local] = attempt.statuses[attempt_index];
                     final_etk_energies[local] = refinement.energies[attempt_index];
                     final_etk_statuses[local] = refinement.statuses[attempt_index];
+                    final_stereo_flags[local] = stereo_validation.failure_flags[attempt_index];
                     final_positions[local] = attempt.positions[start..end].to_vec();
                     final_seeds[local] = seeds[attempt_index];
                     if (!converged(attempt.statuses[attempt_index])
-                        || !converged(refinement.statuses[attempt_index]))
+                        || !converged(refinement.statuses[attempt_index])
+                        || stereo_validation.failure_flags[attempt_index] != 0)
                         && retry_index + 1 < request.parameters.max_attempts_per_conformer
                     {
                         retry.push(local);
@@ -297,6 +319,9 @@ pub(crate) fn execute_conformer_distance_geometry(
                 output
                     .etk_statuses
                     .push(status_tag(final_etk_statuses[local]));
+                output
+                    .retry_stereo_failure_flags
+                    .push(final_stereo_flags[local]);
                 output.seed_words.push(final_seeds[local]);
                 output.positions.extend(
                     final_positions[local]
@@ -309,7 +334,9 @@ pub(crate) fn execute_conformer_distance_geometry(
             }
         }
     }
-    output.gpu_time_ms = (backend == Backend::NativeMetal).then_some(total_gpu_time);
+    output.gpu_time_ms = (distance_backend == Backend::NativeMetal
+        || stereo_backend == Backend::NativeMetal)
+        .then_some(total_gpu_time);
     output.validate(schedule.conformer_count)?;
     Ok(output)
 }
@@ -327,6 +354,11 @@ struct LocalEtkTerms {
     distances: Vec<EtkDistanceConstraint>,
 }
 
+struct LocalStereoTerms {
+    chiral: Vec<ChiralVolumeConstraint>,
+    tetrahedral: Vec<TetrahedralConstraint>,
+}
+
 impl LocalEtkTerms {
     fn as_terms(&self) -> EtkGeometryTerms<'_> {
         EtkGeometryTerms {
@@ -341,6 +373,11 @@ struct RefinementBatch {
     positions: Vec<[f32; 4]>,
     energies: Vec<f32>,
     statuses: Vec<DistanceGeometryOptimizationStatus>,
+    gpu_time_ms: Option<u64>,
+}
+
+struct StereoValidationBatch {
+    failure_flags: Vec<u32>,
     gpu_time_ms: Option<u64>,
 }
 
@@ -506,6 +543,94 @@ fn local_etk_terms(
     })
 }
 
+fn local_stereo_terms(
+    deferred: &ConformerDeferredConstraints,
+    record: usize,
+) -> ComputeResult<LocalStereoTerms> {
+    let atom_start = *deferred
+        .molecule_atom_starts
+        .get(record)
+        .ok_or_else(|| protocol("conformer molecule atom start is missing"))?;
+    let chiral = term_range(&deferred.chiral_term_starts, record, "chiral")?
+        .map(|term| {
+            Ok(ChiralVolumeConstraint {
+                atoms: local_indices(deferred.chiral_atom_quads[term], atom_start)?,
+                lower: deferred.chiral_volume_bounds[term][0],
+                upper: deferred.chiral_volume_bounds[term][1],
+            })
+        })
+        .collect::<ComputeResult<Vec<_>>>()?;
+    let tetrahedral = term_range(&deferred.stereo_center_starts, record, "tetrahedral")?
+        .map(|term| {
+            Ok(TetrahedralConstraint {
+                atoms: local_indices(deferred.stereo_atom_quints[term], atom_start)?,
+                in_fused_small_ring: match deferred.stereo_flags[term] {
+                    0 => false,
+                    1 => true,
+                    _ => return Err(protocol("conformer stereo flag is not canonical")),
+                },
+            })
+        })
+        .collect::<ComputeResult<Vec<_>>>()?;
+    Ok(LocalStereoTerms {
+        chiral,
+        tetrahedral,
+    })
+}
+
+fn validate_stereo_attempts(
+    backend: Backend,
+    metal: Option<&MetalTanimotoRuntime>,
+    positions: &[[f32; 4]],
+    atom_count: u32,
+    chiral: &[ChiralVolumeConstraint],
+    tetrahedral: &[TetrahedralConstraint],
+    max_memory_bytes: u64,
+) -> ComputeResult<StereoValidationBatch> {
+    let conformer_count = positions.len() / atom_count as usize;
+    if chiral.is_empty() && tetrahedral.is_empty() {
+        return Ok(StereoValidationBatch {
+            failure_flags: vec![0; conformer_count],
+            gpu_time_ms: (backend == Backend::NativeMetal).then_some(0),
+        });
+    }
+    match backend {
+        Backend::NativeMetal => {
+            let runtime =
+                metal.ok_or_else(|| unavailable("admitted Metal stereo runtime is unavailable"))?;
+            let validated = runtime
+                .validate_stereo_profiled(
+                    positions,
+                    atom_count,
+                    chiral,
+                    tetrahedral,
+                    max_memory_bytes,
+                )
+                .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+            Ok(StereoValidationBatch {
+                failure_flags: validated.failure_flags,
+                gpu_time_ms: Some(validated.gpu_time_ms),
+            })
+        }
+        Backend::ReferenceCpu => {
+            let failure_flags = positions
+                .chunks_exact(atom_count as usize)
+                .map(|conformer| {
+                    validate_conformer_stereo(conformer, chiral, tetrahedral)
+                        .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))
+                })
+                .collect::<ComputeResult<Vec<_>>>()?;
+            Ok(StereoValidationBatch {
+                failure_flags,
+                gpu_time_ms: None,
+            })
+        }
+        other => Err(protocol(format!(
+            "unsupported conformer stereo retry backend: {other:?}"
+        ))),
+    }
+}
+
 fn term_range(starts: &[u64], record: usize, label: &str) -> ComputeResult<std::ops::Range<usize>> {
     let start = *starts
         .get(record)
@@ -556,6 +681,7 @@ impl ConformerDistanceComputation {
             embedding_statuses: Vec::new(),
             etk_energies: Vec::new(),
             etk_statuses: Vec::new(),
+            retry_stereo_failure_flags: Vec::new(),
             positions: Vec::new(),
             seed_words: Vec::new(),
             gpu_time_ms: None,
@@ -594,6 +720,10 @@ impl ConformerDistanceComputation {
             .try_reserve_exact(conformers)
             .map_err(|_| unavailable("cannot allocate conformer ETK statuses"))?;
         result
+            .retry_stereo_failure_flags
+            .try_reserve_exact(conformers)
+            .map_err(|_| unavailable("cannot allocate conformer stereo retry flags"))?;
+        result
             .seed_words
             .try_reserve_exact(conformers)
             .map_err(|_| unavailable("cannot allocate conformer seeds"))?;
@@ -614,6 +744,7 @@ impl ConformerDistanceComputation {
             || self.embedding_statuses.len() != count
             || self.etk_energies.len() != count
             || self.etk_statuses.len() != count
+            || self.retry_stereo_failure_flags.len() != count
             || self.seed_words.len() != count
             || self.conformer_atom_starts.last().copied() != Some(self.positions.len() as u64)
             || self
@@ -710,6 +841,7 @@ mod tests {
             arrays.clone(),
             &identities,
             Backend::ReferenceCpu,
+            Backend::ReferenceCpu,
             None,
         )
         .expect("reference execution");
@@ -718,6 +850,7 @@ mod tests {
             &request,
             arrays,
             &identities,
+            Backend::ReferenceCpu,
             Backend::ReferenceCpu,
             None,
         )
@@ -750,6 +883,7 @@ mod tests {
                 molecule_content_sha256: "11".repeat(32),
             }],
             Backend::ReferenceCpu,
+            Backend::ReferenceCpu,
             None,
         )
         .expect("reference ETK execution");
@@ -759,6 +893,35 @@ mod tests {
         assert!(result.etk_energies.iter().all(|energy| energy.is_finite()));
         assert!(result.etk_statuses.iter().all(|status| *status <= 3));
         assert_eq!(result.gpu_time_ms, None);
+    }
+
+    #[test]
+    fn reference_executor_retries_rejected_stereochemistry_to_the_limit() {
+        let mut builder = ConformerEnginePackBuilder::new(
+            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            1024 * 1024,
+        );
+        builder
+            .append_valid(extracted_impossible_stereo())
+            .expect("valid molecule");
+        let result = execute_conformer_distance_geometry(
+            Uuid::from_u128(11),
+            &request(),
+            builder.finish(1).expect("engine arrays"),
+            &[ConformerMoleculeIdentity {
+                source_record_id: 10,
+                molecule_content_sha256: "11".repeat(32),
+            }],
+            Backend::ReferenceCpu,
+            Backend::ReferenceCpu,
+            None,
+        )
+        .expect("reference stereo retry execution");
+
+        assert_eq!(result.embedding_attempt_counts, [2, 2]);
+        assert_eq!(result.retry_stereo_failure_flags, [1, 1]);
+        assert!(result.embedding_statuses.iter().all(|status| *status <= 1));
+        assert!(result.etk_statuses.iter().all(|status| *status <= 1));
     }
 
     #[test]
@@ -784,6 +947,7 @@ mod tests {
                 source_record_id: 10,
                 molecule_content_sha256: "11".repeat(32),
             }],
+            Backend::NativeMetal,
             Backend::NativeMetal,
             Some(&runtime),
         )
@@ -852,8 +1016,8 @@ mod tests {
                 [1.0, 2.25],
             ],
             distance_weights: vec![1.0; 5],
-            chiral_atom_quads: Vec::new(),
-            chiral_volume_bounds: Vec::new(),
+            chiral_atom_quads: vec![[0, 1, 2, 3]],
+            chiral_volume_bounds: vec![[-1_000_000.0, 1_000_000.0]],
             torsion_atom_quads: vec![[0, 1, 2, 3]],
             torsion_coefficients: vec![[0.8, 0.3, 0.1, 0.0, 0.0, 0.0]],
             torsion_signs: vec![[1, -1, 1, 0, 0, 0]],
@@ -863,6 +1027,30 @@ mod tests {
             etk_distance_bounds: vec![[1.8, 3.5]],
             etk_distance_kinds: vec![1],
             etk_distance_weights: vec![0.5],
+            stereo_atom_quints: Vec::new(),
+            stereo_flags: Vec::new(),
+        }
+    }
+
+    fn extracted_impossible_stereo() -> ExtractedConformerParameters {
+        ExtractedConformerParameters {
+            variant: burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            atomic_numbers: vec![6, 6, 6, 6],
+            formal_charges: vec![0; 4],
+            distance_atom_pairs: vec![[0, 1]],
+            distance_bounds_squared: vec![[0.0, 100.0]],
+            distance_weights: vec![1.0],
+            chiral_atom_quads: vec![[0, 1, 2, 3]],
+            chiral_volume_bounds: vec![[10_000.0, 10_001.0]],
+            torsion_atom_quads: Vec::new(),
+            torsion_coefficients: Vec::new(),
+            torsion_signs: Vec::new(),
+            improper_atom_quads: Vec::new(),
+            improper_weights: Vec::new(),
+            etk_distance_atom_pairs: Vec::new(),
+            etk_distance_bounds: Vec::new(),
+            etk_distance_kinds: Vec::new(),
+            etk_distance_weights: Vec::new(),
             stereo_atom_quints: Vec::new(),
             stereo_flags: Vec::new(),
         }
