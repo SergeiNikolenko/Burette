@@ -577,7 +577,13 @@ impl ConformerV1Parameters {
 impl ClusterV1Parameters {
     fn validate(&self) -> Result<(), ProtocolError> {
         self.fingerprint.validate()?;
-        self.similarity.cutoff.validate()
+        self.similarity.cutoff.validate()?;
+        if self.representative_policy != RepresentativePolicy::ButinaMaxNeighborsV1 {
+            return Err(ProtocolError::Validation(
+                "cluster.v1 requires the Butina representative policy".into(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -688,6 +694,8 @@ impl SimilarityCutoff {
 pub enum RepresentativePolicy {
     #[serde(rename = "butinaMaxNeighbors.v1")]
     ButinaMaxNeighborsV1,
+    #[serde(rename = "notApplicable")]
+    NotApplicable,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -946,7 +954,9 @@ mod tests {
         );
         assert_eq!(
             request.canonical_sha256().expect("hash request"),
-            normalized.canonical_sha256().expect("hash normalized request")
+            normalized
+                .canonical_sha256()
+                .expect("hash normalized request")
         );
 
         let mut invalid = normalized.clone();

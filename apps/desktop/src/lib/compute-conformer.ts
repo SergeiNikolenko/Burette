@@ -72,6 +72,8 @@ export type ConformerPublicationStep = {
   job: ConformerComputeJob;
   artifactId: string;
   artifactManifestSha256: string;
+  gridApplied: boolean;
+  gridWarning: string | null;
 };
 
 export function executeConformerDistance(job: ConformerComputeJob) {

@@ -178,6 +178,7 @@ pub(crate) async fn compute_validate_conformer_reference<R: Runtime>(
 pub(crate) async fn compute_publish_conformer<R: Runtime>(
     window: WebviewWindow<R>,
     coordinator: State<'_, ComputeCoordinator>,
+    registry: State<'_, GridRuntimeRegistry>,
     job_id: String,
     expected_revision: u64,
 ) -> Result<ConformerPublicationStep, ComputeCommandError> {
@@ -185,7 +186,19 @@ pub(crate) async fn compute_publish_conformer<R: Runtime>(
     let job_id = parse_uuid("job ID", &job_id)?;
     validate_revision(expected_revision)?;
     let coordinator = coordinator.inner().clone();
-    run_blocking(move || coordinator.publish_conformer_v1(&owner, job_id, expected_revision)).await
+    let job = coordinator.get_job(&owner, job_id)?;
+    let namespaced_document_id = runtime_document_id(&owner, &job.request.source().document_id);
+    let grid_lease = registry
+        .acquire_snapshot_lease(&namespaced_document_id)
+        .map_err(|error| {
+            ComputeCommandError::from(ComputeCoordinatorError::SourceSnapshotUnavailable(format!(
+                "The conformer Grid result cannot be applied: {error}"
+            )))
+        })?;
+    run_blocking(move || {
+        coordinator.publish_conformer_v1(&owner, job_id, expected_revision, grid_lease)
+    })
+    .await
 }
 
 #[tauri::command]

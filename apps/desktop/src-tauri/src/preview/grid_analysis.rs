@@ -86,6 +86,31 @@ pub(crate) struct GridClusterAnalysisApplyInput {
 }
 
 #[derive(Clone, Debug)]
+pub(crate) struct GridConformerAssignmentInput {
+    pub(crate) source_index: u64,
+    pub(crate) molecule_content_sha256: String,
+    pub(crate) conformer_count: u64,
+    pub(crate) passed_count: u64,
+    pub(crate) best_etk_energy: Option<f64>,
+    pub(crate) error: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct GridConformerAnalysisApplyInput {
+    pub(crate) run_id: Uuid,
+    pub(crate) document_fingerprint_sha256: String,
+    pub(crate) source_revision: u64,
+    pub(crate) snapshot_id: Uuid,
+    pub(crate) snapshot_sha256: String,
+    pub(crate) normalized_settings_sha256: String,
+    pub(crate) provenance: serde_json::Value,
+    pub(crate) created_at_ms: u64,
+    pub(crate) artifact_id: Uuid,
+    pub(crate) artifact_manifest_sha256: String,
+    pub(crate) assignments: Vec<GridConformerAssignmentInput>,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct GridSimilarityMatchInput {
     pub(crate) source_index: u64,
     pub(crate) molecule_content_sha256: String,
@@ -351,6 +376,114 @@ pub(crate) fn apply_similarity_analysis_run(
             artifact_id: similarity.artifact_id,
             role: "fingerprintSource".into(),
             manifest_sha256: similarity.artifact_manifest_sha256.clone(),
+        }],
+    };
+    let validated = ValidatedApply::new(&input)?;
+    insert_run(&transaction, &input, &validated)?;
+    insert_values(&transaction, &input)?;
+    insert_artifacts(&transaction, &input)?;
+    transaction.commit().map_err(|error| error.to_string())
+}
+
+pub(crate) fn apply_conformer_analysis_run(
+    database_path: &Path,
+    conformer: &GridConformerAnalysisApplyInput,
+) -> Result<(), String> {
+    if conformer.assignments.is_empty() || conformer.assignments.len() as u64 > MAX_PACK_RECORDS {
+        return Err(format!(
+            "Conformer analysis requires 1..={MAX_PACK_RECORDS} assignments"
+        ));
+    }
+    let mut connection = open_grid_database(database_path)?;
+    initialize(&connection)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let mut resolver = transaction
+        .prepare(
+            "select id from molecules
+             where source_index = ?1 and molecule_content_sha256 = ?2",
+        )
+        .map_err(|error| error.to_string())?;
+    let mut values = Vec::new();
+    for assignment in &conformer.assignments {
+        if assignment.passed_count > assignment.conformer_count
+            || assignment
+                .best_etk_energy
+                .is_some_and(|value| !value.is_finite())
+        {
+            return Err("Conformer assignment contains inconsistent counts or energy".into());
+        }
+        let molecule_id = resolve_analysis_molecule(
+            &mut resolver,
+            assignment.source_index,
+            &assignment.molecule_content_sha256,
+        )?;
+        let status = if assignment.error.is_some() {
+            "inputError"
+        } else if assignment.passed_count == assignment.conformer_count {
+            "ok"
+        } else if assignment.passed_count > 0 {
+            "partial"
+        } else {
+            "failed"
+        };
+        for (value_id, value) in [
+            (
+                "conformerCount",
+                GridAnalysisValue::Integer(assignment.conformer_count as i64),
+            ),
+            (
+                "conformerPassedCount",
+                GridAnalysisValue::Integer(assignment.passed_count as i64),
+            ),
+            ("conformerStatus", GridAnalysisValue::Text(status.into())),
+        ] {
+            values.push(GridAnalysisValueInput {
+                molecule_id,
+                source_index: assignment.source_index,
+                molecule_content_sha256: assignment.molecule_content_sha256.clone(),
+                value_id: value_id.into(),
+                value,
+            });
+        }
+        if let Some(energy) = assignment.best_etk_energy {
+            values.push(GridAnalysisValueInput {
+                molecule_id,
+                source_index: assignment.source_index,
+                molecule_content_sha256: assignment.molecule_content_sha256.clone(),
+                value_id: "bestEtkEnergy".into(),
+                value: GridAnalysisValue::Real(energy),
+            });
+        }
+        if let Some(error) = &assignment.error {
+            values.push(GridAnalysisValueInput {
+                molecule_id,
+                source_index: assignment.source_index,
+                molecule_content_sha256: assignment.molecule_content_sha256.clone(),
+                value_id: "conformerError".into(),
+                value: GridAnalysisValue::Text(error.clone()),
+            });
+        }
+    }
+    drop(resolver);
+    let input = GridAnalysisApplyInput {
+        run_id: conformer.run_id,
+        workflow_template: WorkflowTemplateId::ConformerV1,
+        document_fingerprint_sha256: conformer.document_fingerprint_sha256.clone(),
+        source_revision: conformer.source_revision,
+        snapshot_id: conformer.snapshot_id,
+        snapshot_sha256: conformer.snapshot_sha256.clone(),
+        normalized_settings_sha256: conformer.normalized_settings_sha256.clone(),
+        maturity: CapabilityMaturity::Experimental,
+        representative_policy: RepresentativePolicy::NotApplicable,
+        provenance: conformer.provenance.clone(),
+        created_at_ms: conformer.created_at_ms,
+        values,
+        artifacts: vec![GridAnalysisArtifactInput {
+            artifact_id: conformer.artifact_id,
+            role: "conformerResult".into(),
+            manifest_sha256: conformer.artifact_manifest_sha256.clone(),
         }],
     };
     let validated = ValidatedApply::new(&input)?;
