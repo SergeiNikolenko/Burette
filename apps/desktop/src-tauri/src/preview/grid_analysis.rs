@@ -17,6 +17,7 @@ const MAX_PROVENANCE_BYTES: usize = 64 * 1024;
 const MAX_VALUE_ID_BYTES: usize = 160;
 const MAX_VALUE_TEXT_BYTES: usize = 4_096;
 const MAX_ARTIFACT_ROLE_BYTES: usize = 160;
+const MAX_SIMILARITY_MATCHES: usize = 500;
 
 #[derive(Clone, Debug)]
 pub(crate) enum GridAnalysisValue {
@@ -82,6 +83,33 @@ pub(crate) struct GridClusterAnalysisApplyInput {
     pub(crate) artifact_id: Uuid,
     pub(crate) artifact_manifest_sha256: String,
     pub(crate) assignments: Vec<GridClusterAssignmentInput>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct GridSimilarityMatchInput {
+    pub(crate) source_index: u64,
+    pub(crate) molecule_content_sha256: String,
+    pub(crate) rank: u64,
+    pub(crate) intersection: u64,
+    pub(crate) union: u64,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct GridSimilarityAnalysisApplyInput {
+    pub(crate) run_id: Uuid,
+    pub(crate) document_fingerprint_sha256: String,
+    pub(crate) source_revision: u64,
+    pub(crate) snapshot_id: Uuid,
+    pub(crate) snapshot_sha256: String,
+    pub(crate) normalized_settings_sha256: String,
+    pub(crate) representative_policy: RepresentativePolicy,
+    pub(crate) provenance: serde_json::Value,
+    pub(crate) created_at_ms: u64,
+    pub(crate) artifact_id: Uuid,
+    pub(crate) artifact_manifest_sha256: String,
+    pub(crate) query_source_index: u64,
+    pub(crate) query_molecule_content_sha256: String,
+    pub(crate) matches: Vec<GridSimilarityMatchInput>,
 }
 
 pub(crate) fn initialize(connection: &Connection) -> Result<(), String> {
@@ -216,6 +244,135 @@ pub(crate) fn apply_cluster_analysis_run(
     insert_values(&transaction, &input)?;
     insert_artifacts(&transaction, &input)?;
     transaction.commit().map_err(|error| error.to_string())
+}
+
+pub(crate) fn apply_similarity_analysis_run(
+    database_path: &Path,
+    similarity: &GridSimilarityAnalysisApplyInput,
+) -> Result<(), String> {
+    if similarity.matches.len() > MAX_SIMILARITY_MATCHES {
+        return Err(format!(
+            "Similarity analysis exceeds the {MAX_SIMILARITY_MATCHES}-match limit"
+        ));
+    }
+    if similarity.query_source_index > MAX_JSON_SAFE_INTEGER {
+        return Err("Similarity query source index exceeds the JSON-safe integer limit".into());
+    }
+    let mut connection = open_grid_database(database_path)?;
+    initialize(&connection)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let mut resolver = transaction
+        .prepare(
+            "select id from molecules
+             where source_index = ?1 and molecule_content_sha256 = ?2",
+        )
+        .map_err(|error| error.to_string())?;
+    let query_molecule_id = resolve_analysis_molecule(
+        &mut resolver,
+        similarity.query_source_index,
+        &similarity.query_molecule_content_sha256,
+    )?;
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(1 + similarity.matches.len().saturating_mul(4))
+        .map_err(|_| "Cannot allocate Grid similarity analysis values".to_string())?;
+    values.push(GridAnalysisValueInput {
+        molecule_id: query_molecule_id,
+        source_index: similarity.query_source_index,
+        molecule_content_sha256: similarity.query_molecule_content_sha256.clone(),
+        value_id: "isSimilarityQuery".into(),
+        value: GridAnalysisValue::Boolean(true),
+    });
+    let mut source_indexes = BTreeSet::new();
+    for (position, matched) in similarity.matches.iter().enumerate() {
+        let expected_rank = position as u64 + 1;
+        if matched.rank != expected_rank
+            || matched.source_index == similarity.query_source_index
+            || matched.source_index > MAX_JSON_SAFE_INTEGER
+            || !source_indexes.insert(matched.source_index)
+            || matched.intersection > matched.union
+            || matched.union > 2_048
+        {
+            return Err(format!(
+                "Similarity match at rank {expected_rank} has inconsistent identity, order, or counts"
+            ));
+        }
+        let molecule_id = resolve_analysis_molecule(
+            &mut resolver,
+            matched.source_index,
+            &matched.molecule_content_sha256,
+        )?;
+        let score = if matched.union == 0 {
+            0.0
+        } else {
+            matched.intersection as f64 / matched.union as f64
+        };
+        for (value_id, value) in [
+            (
+                "similarityRank",
+                GridAnalysisValue::Integer(matched.rank as i64),
+            ),
+            ("similarityToQuery", GridAnalysisValue::Real(score)),
+            (
+                "tanimotoIntersection",
+                GridAnalysisValue::Integer(matched.intersection as i64),
+            ),
+            (
+                "tanimotoUnion",
+                GridAnalysisValue::Integer(matched.union as i64),
+            ),
+        ] {
+            values.push(GridAnalysisValueInput {
+                molecule_id,
+                source_index: matched.source_index,
+                molecule_content_sha256: matched.molecule_content_sha256.clone(),
+                value_id: value_id.into(),
+                value,
+            });
+        }
+    }
+    drop(resolver);
+    let input = GridAnalysisApplyInput {
+        run_id: similarity.run_id,
+        workflow_template: WorkflowTemplateId::SimilaritySearchV1,
+        document_fingerprint_sha256: similarity.document_fingerprint_sha256.clone(),
+        source_revision: similarity.source_revision,
+        snapshot_id: similarity.snapshot_id,
+        snapshot_sha256: similarity.snapshot_sha256.clone(),
+        normalized_settings_sha256: similarity.normalized_settings_sha256.clone(),
+        maturity: CapabilityMaturity::Experimental,
+        representative_policy: similarity.representative_policy,
+        provenance: similarity.provenance.clone(),
+        created_at_ms: similarity.created_at_ms,
+        values,
+        artifacts: vec![GridAnalysisArtifactInput {
+            artifact_id: similarity.artifact_id,
+            role: "fingerprintSource".into(),
+            manifest_sha256: similarity.artifact_manifest_sha256.clone(),
+        }],
+    };
+    let validated = ValidatedApply::new(&input)?;
+    insert_run(&transaction, &input, &validated)?;
+    insert_values(&transaction, &input)?;
+    insert_artifacts(&transaction, &input)?;
+    transaction.commit().map_err(|error| error.to_string())
+}
+
+fn resolve_analysis_molecule(
+    resolver: &mut rusqlite::Statement<'_>,
+    source_index: u64,
+    molecule_content_sha256: &str,
+) -> Result<i64, String> {
+    resolver
+        .query_row(
+            params![source_index as i64, molecule_content_sha256],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("Grid molecule identity changed at source index {source_index}"))
 }
 
 fn cluster_value(
