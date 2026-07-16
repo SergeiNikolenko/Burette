@@ -1,11 +1,13 @@
 use std::{collections::HashSet, ffi::c_void, mem::size_of_val};
 
 use burrete_compute_core::{
+    rm1_parameters, rm1_two_center_integrals,
     validate_etk_geometry_constraints, validate_mmff_parameters, validate_stereo_constraints,
     AlignmentMode, ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
-    Fingerprint2048, GraphBuildOptions, MmffParameters, Rm1FockPair, SymmetricCsr, TanimotoCounts,
-    TanimotoQueryOptions, TetrahedralConstraint,
+    Fingerprint2048, GraphBuildOptions, MmffParameters, Rm1FockPair, Rm1TwoCenterIntegrals,
+    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use metal::{
@@ -19,7 +21,8 @@ use objc::{runtime::Sel, Message};
 use crate::platform::{
     MetalAlignmentDispatch, MetalDistanceDispatch, MetalDistanceOptimizationDispatch,
     MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch,
-    MetalRm1FockDispatch, MetalStereoValidationDispatch, MetalSymmetricEigenDispatch,
+    MetalRm1FockDispatch, MetalRm1PairRotationDispatch, MetalStereoValidationDispatch,
+    MetalSymmetricEigenDispatch,
 };
 use crate::runtime::MetalAlignmentBatch;
 use crate::MetalRuntimeError;
@@ -200,6 +203,14 @@ struct Rm1FockPairV1 {
     reserved: u32,
 }
 
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+struct Rm1PairRotationV1 {
+    spans: [u32; 4],
+    model: [u32; 4],
+    delta: [f32; 4],
+}
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
@@ -219,6 +230,7 @@ pub(crate) struct MetalHost {
     alignment_score_pipeline: ComputePipelineState,
     rm1_fock_pipeline: ComputePipelineState,
     rm1_eigen_pipeline: ComputePipelineState,
+    rm1_pair_rotate_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -268,6 +280,7 @@ impl MetalHost {
         let alignment_score_pipeline = pipeline(&device, library, "burrete_alignment_score_v1")?;
         let rm1_fock_pipeline = pipeline(&device, library, "burrete_rm1_pair_fock_v1")?;
         let rm1_eigen_pipeline = pipeline(&device, library, "burrete_rm1_symmetric_eigen_v1")?;
+        let rm1_pair_rotate_pipeline = pipeline(&device, library, "burrete_rm1_pair_rotate_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -286,6 +299,7 @@ impl MetalHost {
             alignment_score_pipeline,
             rm1_fock_pipeline,
             rm1_eigen_pipeline,
+            rm1_pair_rotate_pipeline,
         })
     }
 
@@ -1964,6 +1978,155 @@ impl MetalHost {
             eigenvalues,
             eigenvectors,
             status: read_buffer::<u32>(&status_buffer, 1, "RM1 eigensolver status")?[0],
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
+    pub(crate) fn prepare_rm1_pairs_profiled(
+        &self,
+        molecule: &SemiempiricalMolecule,
+        max_memory_bytes: u64,
+    ) -> Result<MetalRm1PairRotationDispatch, MetalRuntimeError> {
+        let pair_count = molecule
+            .atoms
+            .len()
+            .saturating_mul(molecule.atoms.len().saturating_sub(1))
+            / 2;
+        if pair_count == 0 {
+            return Ok(MetalRm1PairRotationDispatch {
+                repulsion_ev: Vec::new(),
+                left_core_attraction_ev: Vec::new(),
+                right_core_attraction_ev: Vec::new(),
+                gpu_time_seconds: 0.0,
+            });
+        }
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(
+                u64::try_from(pair_count)
+                    .map_err(|_| memory_overflow())?
+                    .checked_mul(48 + 22 * 4 + 256 * 4 + 2 * 16 * 4)
+                    .ok_or_else(memory_overflow)?,
+            )
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "RM1 pair rotation requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+        let mut descriptors = Vec::with_capacity(pair_count);
+        let mut local_integrals = vec![0.0_f32; pair_count * 22];
+        let mut pair_index = 0;
+        for left_index in 0..molecule.atoms.len() {
+            for right_index in (left_index + 1)..molecule.atoms.len() {
+                let left_atom = &molecule.atoms[left_index];
+                let right_atom = &molecule.atoms[right_index];
+                let left = rm1_parameters(left_atom.atomic_number).ok_or_else(|| {
+                    MetalRuntimeError::Dispatch("RM1 pair has an unsupported left element".into())
+                })?;
+                let right = rm1_parameters(right_atom.atomic_number).ok_or_else(|| {
+                    MetalRuntimeError::Dispatch("RM1 pair has an unsupported right element".into())
+                })?;
+                let delta = [
+                    right_atom.position_angstrom[0] - left_atom.position_angstrom[0],
+                    right_atom.position_angstrom[1] - left_atom.position_angstrom[1],
+                    right_atom.position_angstrom[2] - left_atom.position_angstrom[2],
+                ];
+                let distance = delta.iter().map(|value| value * value).sum::<f64>().sqrt();
+                let local = rm1_two_center_integrals(left, right, distance)
+                    .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
+                let (model, heavy_is_left, values): (u32, bool, &[f64]) = match &local {
+                    Rm1TwoCenterIntegrals::HydrogenHydrogen { repulsion_ev, .. } => {
+                        (0, true, repulsion_ev)
+                    }
+                    Rm1TwoCenterIntegrals::HeavyHydrogen {
+                        heavy_is_left,
+                        repulsion_ev,
+                        ..
+                    } => (1, *heavy_is_left, repulsion_ev),
+                    Rm1TwoCenterIntegrals::HeavyHeavy { repulsion_ev, .. } => {
+                        (2, true, repulsion_ev)
+                    }
+                };
+                for (target, value) in local_integrals[pair_index * 22..][..values.len()]
+                    .iter_mut()
+                    .zip(values)
+                {
+                    *target = *value as f32;
+                }
+                descriptors.push(Rm1PairRotationV1 {
+                    spans: [
+                        u32::try_from(molecule.orbital_offsets[left_index])
+                            .map_err(|_| memory_overflow())?,
+                        u32::from(left.orbital_count),
+                        u32::try_from(molecule.orbital_offsets[right_index])
+                            .map_err(|_| memory_overflow())?,
+                        u32::from(right.orbital_count),
+                    ],
+                    model: [
+                        model,
+                        u32::from(heavy_is_left),
+                        u32::from(left.valence_electrons),
+                        u32::from(right.valence_electrons),
+                    ],
+                    delta: [delta[0] as f32, delta[1] as f32, delta[2] as f32, 0.0],
+                });
+                pair_index += 1;
+            }
+        }
+        let descriptor_buffer = buffer_with_slice(&self.device, &descriptors);
+        let local_buffer = buffer_with_slice(&self.device, &local_integrals);
+        let repulsion_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; pair_count * 256]);
+        let left_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; pair_count * 16]);
+        let right_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; pair_count * 16]);
+        let pair_count_u32 = u32::try_from(pair_count).map_err(|_| memory_overflow())?;
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.rm1_pair_rotate_pipeline);
+            encoder.set_buffer(0, Some(&descriptor_buffer), 0);
+            encoder.set_buffer(1, Some(&local_buffer), 0);
+            encoder.set_bytes(
+                2,
+                size_of_val(&pair_count_u32) as u64,
+                (&pair_count_u32 as *const u32).cast(),
+            );
+            encoder.set_buffer(3, Some(&repulsion_buffer), 0);
+            encoder.set_buffer(4, Some(&left_buffer), 0);
+            encoder.set_buffer(5, Some(&right_buffer), 0);
+            let thread_width = self
+                .rm1_pair_rotate_pipeline
+                .thread_execution_width()
+                .min(pair_count as u64)
+                .max(1);
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: pair_count as u64,
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: thread_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        Ok(MetalRm1PairRotationDispatch {
+            repulsion_ev: read_buffer(&repulsion_buffer, pair_count * 256, "RM1 pair tensor")?,
+            left_core_attraction_ev: read_buffer(
+                &left_buffer,
+                pair_count * 16,
+                "RM1 left core attraction",
+            )?,
+            right_core_attraction_ev: read_buffer(
+                &right_buffer,
+                pair_count * 16,
+                "RM1 right core attraction",
+            )?,
             gpu_time_seconds: gpu_time,
         })
     }

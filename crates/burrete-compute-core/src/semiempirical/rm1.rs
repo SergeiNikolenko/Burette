@@ -195,14 +195,14 @@ pub fn evaluate_rm1_with_prepared_pairs_and_accelerators(
         molecule.orbital_count,
         molecule.electron_count,
         options,
-        |density| build_fock(molecule, &core, density, &pairs, &mut contract_pairs),
+        |density| build_fock(molecule, &core, density, pairs, &mut contract_pairs),
         diagonalize,
     )?;
     let final_fock = build_fock(
         molecule,
         &core,
         &scf.density,
-        &pairs,
+        pairs,
         &mut contract_pairs,
     )?;
     let electronic_energy_ev = 0.5

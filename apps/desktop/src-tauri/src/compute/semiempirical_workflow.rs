@@ -5,8 +5,9 @@ use std::{
 };
 
 use burrete_compute_core::{
-    evaluate_rm1, evaluate_rm1_with_accelerators, symmetric_eigendecomposition, SemiempiricalAtom,
-    SemiempiricalError, SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfStatus,
+    evaluate_rm1, evaluate_rm1_with_prepared_pairs_and_accelerators, symmetric_eigendecomposition,
+    SemiempiricalAtom, SemiempiricalError, SemiempiricalMolecule, SemiempiricalScfOptions,
+    SemiempiricalScfStatus,
 };
 use burrete_compute_metal::MetalTanimotoRuntime;
 use burrete_compute_protocol::{CapabilityMaturity, RepresentativePolicy, WorkflowTemplateId};
@@ -193,9 +194,14 @@ fn evaluate_row_inner(
     let previous_fock = RefCell::new(None::<Vec<f64>>);
     let cpu_polishing = Cell::new(false);
     let evaluation = if let Some(runtime) = runtime {
-        evaluate_rm1_with_accelerators(
+        let prepared = runtime
+            .prepare_rm1_pairs_profiled(&molecule, DEFAULT_MAX_MEMORY_BYTES)
+            .map_err(|error| error.to_string())?;
+        gpu_time_ms.set(gpu_time_ms.get() + prepared.gpu_time_ms);
+        evaluate_rm1_with_prepared_pairs_and_accelerators(
             &molecule,
             SemiempiricalScfOptions::default(),
+            &prepared.pairs,
             |orbital_count, density, pairs| {
                 let dispatch = runtime
                     .contract_rm1_pair_fock_profiled(
@@ -374,6 +380,7 @@ fn apply_grid_results(
                 "gpuTimeMs": gpu_time_ms,
                 "cpuParity": if backend == "nativeMetalScfHybrid" { "passedPerScfKernel" } else { "notApplicable" },
                 "precisionPolicy": if backend == "nativeMetalScfHybrid" { "float32MetalWithAdaptiveFloat64Polish" } else { "float64Cpu" },
+                "pairPreparation": if backend == "nativeMetalScfHybrid" { "cpuLocalIntegralsMetalRotation" } else { "float64Cpu" },
                 "pythonRuntimeRequired": false,
                 "method": "RM1",
                 "chargeModel": "molfile formal charge; valence population analysis",

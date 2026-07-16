@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "kernel": "burrete_rm1_pair_rotate_v1",
+  "source": "rm1-pair-rotate.v1.metal",
+  "dispatch": {
+    "threads": "pairCount",
+    "ownership": "one thread owns one atom-pair tensor and both attraction matrices",
+    "maximumOrbitalsPerAtom": 4,
+    "materialization": "fixed 22-value local input, 256-value rotated tensor, and two 16-value core matrices per pair"
+  },
+  "buffers": [
+    { "index": 0, "name": "pairs", "type": "Rm1PairRotationV1[pairCount]", "access": "read" },
+    { "index": 1, "name": "localIntegrals", "type": "float[pairCount*22]", "access": "read" },
+    { "index": 2, "name": "pairCount", "type": "uint", "access": "constant" },
+    { "index": 3, "name": "repulsion", "type": "float[pairCount*256]", "access": "write" },
+    { "index": 4, "name": "leftAttraction", "type": "float[pairCount*16]", "access": "write" },
+    { "index": 5, "name": "rightAttraction", "type": "float[pairCount*16]", "access": "write" }
+  ],
+  "numerics": {
+    "model": "RM1/NDDO molecular-frame rotation for H-H, heavy-H, and heavy-heavy pairs",
+    "precision": "float32 Metal with complete float64 CPU tensor parity before SCF admission"
+  }
+}

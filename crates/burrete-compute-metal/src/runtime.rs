@@ -9,9 +9,9 @@ use burrete_compute_core::{
     EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
     GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown,
     MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
-    MmffVanDerWaalsTerm, MmffVariant, RigidTransform, Rm1FockPair, SymmetricCsr, TanimotoCounts,
-    TanimotoQueryOptions, TetrahedralConstraint, FINGERPRINT_WORDS,
-    symmetric_eigendecomposition,
+    MmffVanDerWaalsTerm, MmffVariant, RigidTransform, Rm1FockPair, SemiempiricalAtom,
+    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    TetrahedralConstraint, FINGERPRINT_WORDS, rm1_fock_pairs, symmetric_eigendecomposition,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -149,6 +149,12 @@ pub struct MetalAlignmentExecution {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetalRm1FockContribution {
     pub contribution_ev: Vec<f32>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalRm1PreparedPairs {
+    pub pairs: Vec<Rm1FockPair>,
     pub gpu_time_ms: u64,
 }
 
@@ -365,6 +371,79 @@ impl MetalComputeRuntime {
         }
         Ok(MetalRm1FockContribution {
             contribution_ev: dispatch.contribution_ev,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
+    pub fn prepare_rm1_pairs_profiled(
+        &self,
+        molecule: &SemiempiricalMolecule,
+        max_memory_bytes: u64,
+    ) -> Result<MetalRm1PreparedPairs, MetalRuntimeError> {
+        let expected = rm1_fock_pairs(molecule)
+            .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
+        let dispatch = self.host.prepare_rm1_pairs_profiled(
+            molecule,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if dispatch.repulsion_ev.len() != expected.len() * 256
+            || dispatch.left_core_attraction_ev.len() != expected.len() * 16
+            || dispatch.right_core_attraction_ev.len() != expected.len() * 16
+            || dispatch
+                .repulsion_ev
+                .iter()
+                .chain(&dispatch.left_core_attraction_ev)
+                .chain(&dispatch.right_core_attraction_ev)
+                .any(|value| !value.is_finite())
+        {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal RM1 pair rotation returned an invalid output shape".into(),
+            ));
+        }
+        let mut pairs = Vec::with_capacity(expected.len());
+        for (index, reference) in expected.iter().enumerate() {
+            let repulsion = &dispatch.repulsion_ev[index * 256..(index + 1) * 256];
+            let left = &dispatch.left_core_attraction_ev[index * 16..(index + 1) * 16];
+            let right = &dispatch.right_core_attraction_ev[index * 16..(index + 1) * 16];
+            let parity_failed = repulsion
+                .iter()
+                .zip(&reference.repulsion_ev)
+                .any(|(observed, expected)| (*observed as f64 - expected).abs() > 5.0e-4)
+                || left
+                    .iter()
+                    .zip(reference.left_core_attraction_ev)
+                    .any(|(observed, expected)| (*observed as f64 - expected).abs() > 5.0e-4)
+                || right
+                    .iter()
+                    .zip(reference.right_core_attraction_ev)
+                    .any(|(observed, expected)| (*observed as f64 - expected).abs() > 5.0e-4);
+            if parity_failed {
+                return Err(MetalRuntimeError::KernelUnavailable(format!(
+                    "Metal RM1 pair rotation differs from the float64 CPU reference at pair {index}"
+                )));
+            }
+            pairs.push(Rm1FockPair {
+                left_orbital_start: reference.left_orbital_start,
+                left_orbital_count: reference.left_orbital_count,
+                right_orbital_start: reference.right_orbital_start,
+                right_orbital_count: reference.right_orbital_count,
+                repulsion_ev: repulsion.iter().map(|value| f64::from(*value)).collect(),
+                left_core_attraction_ev: left
+                    .iter()
+                    .map(|value| f64::from(*value))
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .expect("validated 16-value RM1 left attraction"),
+                right_core_attraction_ev: right
+                    .iter()
+                    .map(|value| f64::from(*value))
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .expect("validated 16-value RM1 right attraction"),
+            });
+        }
+        Ok(MetalRm1PreparedPairs {
+            pairs,
             gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
         })
     }
@@ -1194,6 +1273,37 @@ impl MetalComputeRuntime {
         {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal startup symmetric eigensolver differs from the CPU reference".into(),
+            ));
+        }
+        let pair_probe = SemiempiricalMolecule::rm1(
+            vec![
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [0.0, 0.0, 0.0],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [0.7, 0.2, 0.0],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 6,
+                    position_angstrom: [1.4, -0.3, 0.4],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 8,
+                    position_angstrom: [2.2, 0.5, -0.2],
+                },
+            ],
+            0,
+        )
+        .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let rotated_pairs = self.prepare_rm1_pairs_profiled(
+            &pair_probe,
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        if rotated_pairs.pairs.len() != 6 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup RM1 pair rotation returned an invalid pair count".into(),
             ));
         }
 
