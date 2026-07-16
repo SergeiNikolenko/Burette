@@ -46,9 +46,12 @@ formula-only mappings and remaining nvMolKit/Shivam Patel secondary-source
 release gates are recorded in `docs/third-party/mlxmolkit-provenance.md`.
 
 The bounded closed-shell SCF, symmetric diagonalization, DIIS, adaptive
-damping, and semiempirical method-identity scaffold is also independently
-written. It includes no upstream, PYSEQM, or OpenMOPAC source or parameter
-data and does not yet constitute an implementation of RM1, AM1, PM3, or PM6.
+damping, molecule packing, and population-charge driver is independently
+written. The native evaluator adapts numeric parameter data and selected NDDO
+equations under the notices below. RM1 is implemented for its ten-element
+upstream domain; parity-gated CHNO slices of AM1, PM3, PM6_SP, and AM1* are
+also available. PM6, PM6_D, broader element domains, and d-orbital support are
+not yet production capabilities.
 
 Upstream identifies material derived from or compared with nvMolKit
 (Apache-2.0), Shivam Patel's `mlxmolkit` (MIT), PYSEQM (BSD-3-Clause), and
@@ -90,3 +93,9 @@ The RM1 NDDO core-Hamiltonian, one-/two-center Fock contractions, and electronic
 energy equation are adapted from `seqm/seqm_functions/fock.py` and `energy.py`
 at that revision. Burrete's bounded SCF/DIIS driver and eigensolver remain
 independently written.
+
+The CHNO AM1, PM3, PM6_SP, and AM1* parameter slices are adapted against the
+pinned `mlxmolkit` method tables and the corresponding OpenMOPAC parameter
+modules. PM6 core-core PWCCT equations and the bundled CHNO pair values are
+adapted against pinned `mlxmolkit` and PYSEQM references. These slices remain
+separate from unimplemented PM6_D corrections and d-orbital support.

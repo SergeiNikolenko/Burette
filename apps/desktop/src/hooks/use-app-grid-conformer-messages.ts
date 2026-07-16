@@ -44,7 +44,7 @@ type GridAlignmentResult = {
 
 type GridSemiempiricalResult = {
   runId: string;
-  method: "RM1";
+  method: "RM1" | "AM1" | "PM3" | "PM6_SP" | "AM1*";
   rows: Array<{
     sourceIndex: number;
     name: string;
@@ -79,6 +79,9 @@ export function useAppGridConformerMessages({
   const handleGridConformerMessage = useCallback((body: GridConformerMessageBody, source: MessageEventSource | null) => {
     if (body?.type === "evaluateSemiempiricalGridSelection") {
       const documentId = bodyString(body.documentId).trim();
+      const supportedMethods = ["RM1", "AM1", "PM3", "PM6_SP", "AM1_STAR"] as const;
+      const requestedMethod = bodyString(body.method).trim().toUpperCase();
+      const method = supportedMethods.find((candidate) => candidate === requestedMethod);
       const sourceIndexes = Array.isArray(body.sourceIndexes)
         ? [...new Set(body.sourceIndexes.filter((value): value is number => (
             Number.isSafeInteger(value) && value >= 0
@@ -90,15 +93,15 @@ export function useAppGridConformerMessages({
           body: { type, ...payload },
         });
       };
-      if (!isTauriRuntime() || !documentId || sourceIndexes.length < 1) {
-        const error = "Native RM1 evaluation requires at least one selected desktop Grid row.";
+      if (!isTauriRuntime() || !documentId || sourceIndexes.length < 1 || !method) {
+        const error = "Native semi-empirical evaluation requires a supported method and at least one selected desktop Grid row.";
         reply("gridSemiempiricalError", { error });
         pushStatus(error, "error");
         return true;
       }
       reply("gridSemiempiricalStarted");
       void invoke<GridSemiempiricalResult>("compute_evaluate_grid_semiempirical", {
-        request: { documentId, sourceIndexes, method: "rm1" },
+        request: { documentId, sourceIndexes, method },
       }).then((result) => {
         const converged = result.rows.filter((row) => row.converged).length;
         const failed = result.rows.length - converged;
@@ -106,19 +109,20 @@ export function useAppGridConformerMessages({
           ? `with Metal SCF kernels (${result.gpuTimeMs.toLocaleString()} ms GPU, ${result.hostTimeMs.toLocaleString()} ms host)`
           : `on the CPU reference backend in ${result.hostTimeMs.toLocaleString()} ms`;
         pushStatus(
-          `Calculated native RM1 energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} ${execution}${failed ? `; ${failed.toLocaleString()} failed` : ""}; results were written to Grid.`,
+          `Calculated native ${result.method} energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} ${execution}${failed ? `; ${failed.toLocaleString()} failed` : ""}; results were written to Grid.`,
           failed ? "error" : "success",
         );
         reply("gridSemiempiricalFinished", {
           runId: result.runId,
           moleculeCount: result.rows.length,
           convergedCount: converged,
+          method: result.method,
           backend: result.backend,
         });
       }).catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         reply("gridSemiempiricalError", { error: message });
-        pushErrorStatus(error, "Grid RM1 evaluation failed");
+        pushErrorStatus(error, `Grid ${method.replace("_STAR", "*")} evaluation failed`);
       });
       return true;
     }

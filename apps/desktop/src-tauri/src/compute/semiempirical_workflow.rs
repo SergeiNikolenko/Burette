@@ -5,9 +5,9 @@ use std::{
 };
 
 use burrete_compute_core::{
-    evaluate_rm1, evaluate_rm1_with_prepared_pairs_and_accelerators, symmetric_eigendecomposition,
-    SemiempiricalAtom, SemiempiricalError, SemiempiricalMolecule, SemiempiricalScfOptions,
-    SemiempiricalScfStatus,
+    evaluate_rm1_with_prepared_pairs_and_accelerators, evaluate_semiempirical,
+    symmetric_eigendecomposition, SemiempiricalAtom, SemiempiricalError, SemiempiricalMethod,
+    SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfStatus,
 };
 use burrete_compute_metal::MetalTanimotoRuntime;
 use burrete_compute_protocol::{CapabilityMaturity, RepresentativePolicy, WorkflowTemplateId};
@@ -32,6 +32,50 @@ use super::{
 
 const MAX_SEMIEMPIRICAL_MOLECULES: usize = 256;
 const DEFAULT_MAX_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct GridSemiempiricalMethod {
+    method: SemiempiricalMethod,
+    display_name: &'static str,
+    column_prefix: &'static str,
+}
+
+impl GridSemiempiricalMethod {
+    fn parse(value: &str) -> ComputeResult<Self> {
+        let normalized = value.trim().to_ascii_lowercase().replace(['-', '*'], "_");
+        let method =
+            match normalized.as_str() {
+                "rm1" => Self::new(SemiempiricalMethod::Rm1, "RM1", "rm1"),
+                "am1" => Self::new(SemiempiricalMethod::Am1, "AM1", "am1"),
+                "pm3" => Self::new(SemiempiricalMethod::Pm3, "PM3", "pm3"),
+                "pm6_sp" | "pm6sp" => Self::new(SemiempiricalMethod::Pm6Sp, "PM6_SP", "pm6Sp"),
+                "am1_star" | "am1star" | "am1_" => {
+                    Self::new(SemiempiricalMethod::Am1Star, "AM1*", "am1Star")
+                }
+                _ => return Err(ComputeCoordinatorError::Validation(
+                    "Supported native semi-empirical methods are RM1, AM1, PM3, PM6_SP, and AM1*"
+                        .into(),
+                )),
+            };
+        Ok(method)
+    }
+
+    const fn new(
+        method: SemiempiricalMethod,
+        display_name: &'static str,
+        column_prefix: &'static str,
+    ) -> Self {
+        Self {
+            method,
+            display_name,
+            column_prefix,
+        }
+    }
+
+    fn column(self, suffix: &str) -> String {
+        format!("{}{suffix}", self.column_prefix)
+    }
+}
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -72,11 +116,7 @@ pub(crate) fn execute_grid_semiempirical(
     database_path: &Path,
     request: &GridSemiempiricalRequest,
 ) -> ComputeResult<GridSemiempiricalResult> {
-    if !request.method.trim().eq_ignore_ascii_case("rm1") {
-        return Err(ComputeCoordinatorError::Validation(
-            "Only RM1 is available in the current native semi-empirical evaluator".into(),
-        ));
-    }
+    let method = GridSemiempiricalMethod::parse(&request.method)?;
     let indexes = normalized_indexes(&request.source_indexes)?;
     let source_rows = alignment_source_rows_by_indices(database_path, &indexes)
         .map_err(ComputeCoordinatorError::Validation)?;
@@ -89,7 +129,7 @@ pub(crate) fn execute_grid_semiempirical(
     let started = Instant::now();
     let evaluated = source_rows
         .iter()
-        .map(|row| evaluate_row(row, runtime))
+        .map(|row| evaluate_row(row, method, runtime))
         .collect::<Vec<_>>();
     let gpu_time_ms = evaluated.iter().map(|(_, gpu_time)| gpu_time).sum();
     let rows = evaluated
@@ -108,13 +148,14 @@ pub(crate) fn execute_grid_semiempirical(
         run_id,
         &source_rows,
         &rows,
+        method,
         backend,
         host_time_ms,
         gpu_time_ms,
     )?;
     Ok(GridSemiempiricalResult {
         run_id,
-        method: "RM1",
+        method: method.display_name,
         rows,
         host_time_ms,
         gpu_time_ms,
@@ -137,9 +178,10 @@ fn normalized_indexes(indexes: &[usize]) -> ComputeResult<Vec<usize>> {
 
 fn evaluate_row(
     row: &GridAlignmentSourceRow,
+    method: GridSemiempiricalMethod,
     runtime: Option<&MetalTanimotoRuntime>,
 ) -> (GridSemiempiricalRow, u64) {
-    match evaluate_row_inner(row, runtime) {
+    match evaluate_row_inner(row, method, runtime) {
         Ok(result) => result,
         Err(error) => (
             GridSemiempiricalRow {
@@ -160,6 +202,7 @@ fn evaluate_row(
 
 fn evaluate_row_inner(
     row: &GridAlignmentSourceRow,
+    method: GridSemiempiricalMethod,
     runtime: Option<&MetalTanimotoRuntime>,
 ) -> Result<(GridSemiempiricalRow, u64), String> {
     let molblock = row
@@ -173,8 +216,9 @@ fn evaluate_row_inner(
         .zip(&parsed.atoms)
         .map(|(symbol, atom)| {
             Ok(SemiempiricalAtom {
-                atomic_number: atomic_number(symbol)
-                    .ok_or_else(|| format!("element {symbol} is not parameterized for RM1"))?,
+                atomic_number: atomic_number(symbol).ok_or_else(|| {
+                    format!("element {symbol} is not supported by the native evaluator")
+                })?,
                 position_angstrom: [
                     f64::from(atom.position[0]),
                     f64::from(atom.position[1]),
@@ -188,7 +232,8 @@ fn evaluate_row_inner(
         .iter()
         .map(|atom| atom.partial_charge.round() as i32)
         .sum();
-    let molecule = SemiempiricalMolecule::rm1(atoms, charge).map_err(|error| error.to_string())?;
+    let molecule = SemiempiricalMolecule::new(method.method, atoms, charge)
+        .map_err(|error| error.to_string())?;
     let gpu_time_ms = Cell::new(0_u64);
     let gpu_eigensolves = Cell::new(0_usize);
     let previous_fock = RefCell::new(None::<Vec<f64>>);
@@ -247,7 +292,7 @@ fn evaluate_row_inner(
             },
         )
     } else {
-        evaluate_rm1(&molecule, SemiempiricalScfOptions::default())
+        evaluate_semiempirical(&molecule, SemiempiricalScfOptions::default())
     }
     .map_err(|error| error.to_string())?;
     let converged = evaluation.scf.status == SemiempiricalScfStatus::Converged;
@@ -288,6 +333,7 @@ fn apply_grid_results(
     run_id: Uuid,
     source_rows: &[GridAlignmentSourceRow],
     results: &[GridSemiempiricalRow],
+    method: GridSemiempiricalMethod,
     backend: &'static str,
     host_time_ms: u64,
     gpu_time_ms: u64,
@@ -297,7 +343,7 @@ fn apply_grid_results(
     let identity = grid_identity::read_source_identity(&connection)
         .map_err(ComputeCoordinatorError::Validation)?;
     let settings = serde_json::json!({
-        "method": "RM1",
+        "method": method.display_name,
         "scf": {
             "maxIterations": SemiempiricalScfOptions::default().max_iterations,
             "densityTolerance": SemiempiricalScfOptions::default().density_tolerance,
@@ -327,7 +373,7 @@ fn apply_grid_results(
             });
         };
         push(
-            "rm1Status",
+            &method.column("Status"),
             GridAnalysisValue::Text(
                 if result.converged {
                     "converged"
@@ -338,20 +384,32 @@ fn apply_grid_results(
             ),
         );
         if let Some(value) = result.electronic_energy_ev {
-            push("rm1ElectronicEnergyEv", GridAnalysisValue::Real(value));
+            push(
+                &method.column("ElectronicEnergyEv"),
+                GridAnalysisValue::Real(value),
+            );
         }
         if let Some(value) = result.nuclear_energy_ev {
-            push("rm1NuclearEnergyEv", GridAnalysisValue::Real(value));
+            push(
+                &method.column("NuclearEnergyEv"),
+                GridAnalysisValue::Real(value),
+            );
         }
         if let Some(value) = result.total_energy_ev {
-            push("rm1TotalEnergyEv", GridAnalysisValue::Real(value));
+            push(
+                &method.column("TotalEnergyEv"),
+                GridAnalysisValue::Real(value),
+            );
         }
         if let Some(value) = result.iterations {
-            push("rm1ScfIterations", GridAnalysisValue::Integer(value as i64));
+            push(
+                &method.column("ScfIterations"),
+                GridAnalysisValue::Integer(value as i64),
+            );
         }
         if let Some(charges) = &result.atomic_charges {
             push(
-                "rm1AtomicCharges",
+                &method.column("AtomicCharges"),
                 GridAnalysisValue::Text(
                     serde_json::to_string(charges)
                         .map_err(|error| ComputeCoordinatorError::Protocol(error.to_string()))?,
@@ -359,7 +417,10 @@ fn apply_grid_results(
             );
         }
         if let Some(error) = &result.error {
-            push("rm1Error", GridAnalysisValue::Text(error.clone()));
+            push(
+                &method.column("Error"),
+                GridAnalysisValue::Text(error.clone()),
+            );
         }
     }
     apply_analysis_run(
@@ -382,7 +443,7 @@ fn apply_grid_results(
                 "precisionPolicy": if backend == "nativeMetalScfHybrid" { "float32MetalWithAdaptiveFloat64Polish" } else { "float64Cpu" },
                 "pairPreparation": if backend == "nativeMetalScfHybrid" { "metalLocalIntegralsAndRotation" } else { "float64Cpu" },
                 "pythonRuntimeRequired": false,
-                "method": "RM1",
+                "method": method.display_name,
                 "chargeModel": "molfile formal charge; valence population analysis",
                 "upstream": "https://github.com/guillaume-osmo/mlxmolkit",
             }),
@@ -413,21 +474,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn normalizes_selection_and_maps_the_rm1_domain() {
+    fn normalizes_selection_and_maps_the_supported_domain() {
         assert_eq!(normalized_indexes(&[2, 1, 2]).unwrap(), [1, 2]);
         assert_eq!(atomic_number("Br"), Some(35));
         assert_eq!(atomic_number("Si"), None);
         assert!(normalized_indexes(&[]).is_err());
+        assert_eq!(
+            GridSemiempiricalMethod::parse("PM6_SP").unwrap().method,
+            SemiempiricalMethod::Pm6Sp
+        );
+        assert_eq!(
+            GridSemiempiricalMethod::parse("AM1*")
+                .unwrap()
+                .column_prefix,
+            "am1Star"
+        );
+        assert!(GridSemiempiricalMethod::parse("PM6_D").is_err());
     }
 
     #[test]
     fn evaluates_explicit_water_from_a_grid_molfile() {
         let row = water_row();
-        let (result, gpu_time_ms) = evaluate_row_inner(&row, None).expect("evaluate water");
-        assert_eq!(gpu_time_ms, 0);
-        assert!(result.converged);
-        assert!(result.total_energy_ev.unwrap().is_finite());
-        assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-8);
+        for method in ["RM1", "AM1", "PM3", "PM6_SP", "AM1*"] {
+            let method = GridSemiempiricalMethod::parse(method).unwrap();
+            let (result, gpu_time_ms) =
+                evaluate_row_inner(&row, method, None).expect("evaluate water");
+            assert_eq!(gpu_time_ms, 0);
+            assert!(result.converged, "{} did not converge", method.display_name);
+            assert!(result.total_energy_ev.unwrap().is_finite());
+            assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-8);
+        }
     }
 
     #[test]
@@ -438,11 +514,14 @@ mod tests {
             .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged runtime");
         let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
             .expect("load verified Metal runtime");
-        let (result, gpu_time_ms) =
-            evaluate_row_inner(&water_row(), Some(&runtime)).expect("evaluate water on Metal");
-        assert!(result.converged);
-        assert!(gpu_time_ms > 0);
-        assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-6);
+        for method in ["RM1", "AM1", "PM3", "PM6_SP", "AM1*"] {
+            let method = GridSemiempiricalMethod::parse(method).unwrap();
+            let (result, gpu_time_ms) = evaluate_row_inner(&water_row(), method, Some(&runtime))
+                .expect("evaluate water on Metal");
+            assert!(result.converged, "{} did not converge", method.display_name);
+            assert!(gpu_time_ms > 0);
+            assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-6);
+        }
     }
 
     fn water_row() -> GridAlignmentSourceRow {

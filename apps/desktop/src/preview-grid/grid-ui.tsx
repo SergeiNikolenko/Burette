@@ -12,6 +12,8 @@ type XyzrenderPresetOption = {
   label: string;
 };
 
+type SemiempiricalMethod = "RM1" | "AM1" | "PM3" | "PM6_SP" | "AM1_STAR";
+
 type GridControlProps = {
   format: "csv" | "sdf" | "smiles" | "tsv";
   label: string;
@@ -29,6 +31,7 @@ type GridControlProps = {
   aligningPoses: boolean;
   evaluatingSemiempirical: boolean;
   semiempiricalEnabled: boolean;
+  semiempiricalMethod: SemiempiricalMethod;
   conformerVariant: "DG" | "KDG" | "ETDG" | "ETDGv2" | "ETKDG" | "ETKDGv2" | "ETKDGv3" | "srETKDGv3";
   mmffVariant: "MMFF94" | "MMFF94s";
   clusterEnabled: boolean;
@@ -63,6 +66,7 @@ type GridControlProps = {
   onOpenKetcher: () => void;
   onAlignSelectedPoses: () => void;
   onEvaluateSemiempirical: () => void;
+  onSemiempiricalMethodChange: (value: SemiempiricalMethod) => void;
   onGenerate3D: () => void;
   onOptimizeGeometry: () => void;
   onConformerVariantChange: (value: GridControlProps["conformerVariant"]) => void;
@@ -333,17 +337,33 @@ function SelectedOpenActions(props: GridControlProps) {
         <ControlTooltip label="Open selected molecule in Ketcher" />
       </button>
       {props.semiempiricalEnabled ? (
-        <button
-          id="calculate-rm1-selected"
-          className="buret-toggle-button"
-          type="button"
-          disabled={props.evaluatingSemiempirical}
-          aria-busy={props.evaluatingSemiempirical ? "true" : "false"}
-          onClick={props.onEvaluateSemiempirical}
-        >
-          {props.evaluatingSemiempirical ? "Calculating..." : "RM1 energy & charges"}
-          <ControlTooltip label="Calculate native RM1 energies and atomic charges and write them to Grid" />
-        </button>
+        <>
+          <select
+            aria-label="Semi-empirical method"
+            value={props.semiempiricalMethod}
+            disabled={props.evaluatingSemiempirical}
+            onChange={(event) => props.onSemiempiricalMethodChange(event.currentTarget.value as SemiempiricalMethod)}
+          >
+            <option value="RM1">RM1</option>
+            <option value="AM1">AM1</option>
+            <option value="PM3">PM3</option>
+            <option value="PM6_SP">PM6_SP</option>
+            <option value="AM1_STAR">AM1*</option>
+          </select>
+          <button
+            id="calculate-semiempirical-selected"
+            className="buret-toggle-button"
+            type="button"
+            disabled={props.evaluatingSemiempirical}
+            aria-busy={props.evaluatingSemiempirical ? "true" : "false"}
+            onClick={props.onEvaluateSemiempirical}
+          >
+            {props.evaluatingSemiempirical
+              ? "Calculating..."
+              : `${props.semiempiricalMethod === "AM1_STAR" ? "AM1*" : props.semiempiricalMethod} energy & charges`}
+            <ControlTooltip label="Calculate native semi-empirical energies and atomic charges and write them to Grid" />
+          </button>
+        </>
       ) : null}
       <button
         id="align-selected-poses"
