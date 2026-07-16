@@ -7,9 +7,9 @@ use burrete_compute_core::{
     DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
     EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
     GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown,
-    MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm,
-    MmffVariant, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
-    FINGERPRINT_WORDS,
+    MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
+    MmffVanDerWaalsTerm, MmffVariant, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    TetrahedralConstraint, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -99,6 +99,17 @@ pub struct MetalEtkEvaluation {
 pub struct MetalMmffEvaluation {
     pub breakdowns: Vec<MmffEnergyBreakdown>,
     pub gradients: Vec<[f32; 4]>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalMmffOptimization {
+    pub positions: Vec<[f32; 4]>,
+    pub energies: Vec<f32>,
+    pub scaled_gradient_maxima: Vec<f32>,
+    pub iterations: Vec<u32>,
+    pub statuses: Vec<DistanceGeometryOptimizationStatus>,
+    pub optimizers: Vec<MmffOptimizerKind>,
     pub gpu_time_ms: u64,
 }
 
@@ -476,6 +487,55 @@ impl MetalComputeRuntime {
         })
     }
 
+    pub fn optimize_mmff_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        parameters: &MmffParameters,
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalMmffOptimization, MetalRuntimeError> {
+        let dispatch = self.host.optimize_mmff_profiled(
+            positions,
+            parameters,
+            options,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if dispatch
+            .positions
+            .iter()
+            .flatten()
+            .any(|value| !value.is_finite())
+            || dispatch.energies.iter().any(|value| !value.is_finite())
+            || dispatch
+                .scaled_gradient_maxima
+                .iter()
+                .any(|value| !value.is_finite())
+        {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal MMFF optimizer returned invalid numeric output".into(),
+            ));
+        }
+        let statuses = dispatch
+            .statuses
+            .into_iter()
+            .map(distance_optimization_status)
+            .collect::<Result<Vec<_>, _>>()?;
+        let optimizers = dispatch
+            .optimizers
+            .into_iter()
+            .map(mmff_optimizer_kind)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(MetalMmffOptimization {
+            positions: dispatch.positions,
+            energies: dispatch.energies,
+            scaled_gradient_maxima: dispatch.scaled_gradient_maxima,
+            iterations: dispatch.iterations,
+            statuses,
+            optimizers,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
     fn run_startup_known_answer_test(&self) -> Result<(), MetalRuntimeError> {
         let mut left = [0_u64; FINGERPRINT_WORDS];
         left[0] = 0b11;
@@ -779,6 +839,45 @@ impl MetalComputeRuntime {
                 "Metal startup MMFF energy/gradient differs from the CPU reference".into(),
             ));
         }
+        let optimization_parameters = MmffParameters {
+            variant: MmffVariant::Mmff94,
+            atom_count: 2,
+            bonds: vec![MmffBondTerm {
+                atoms: [0, 1],
+                force_constant: 4.0,
+                equilibrium_distance: 1.5,
+            }],
+            angles: Vec::new(),
+            stretch_bends: Vec::new(),
+            out_of_planes: Vec::new(),
+            torsions: Vec::new(),
+            van_der_waals: Vec::new(),
+            electrostatics: Vec::new(),
+        };
+        let optimization_positions = [[0.0, 0.0, 0.0, 0.0], [1.8, 0.0, 0.0, 0.0]];
+        let initial_energy = evaluate_mmff(&optimization_parameters, &optimization_positions)
+            .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?
+            .energy
+            .total() as f32;
+        let optimized_mmff = self.host.optimize_mmff_profiled(
+            &optimization_positions,
+            &optimization_parameters,
+            DistanceGeometryOptimizationOptions::default(),
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        let optimized_reference = evaluate_mmff(&optimization_parameters, &optimized_mmff.positions)
+            .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?
+            .energy
+            .total() as f32;
+        if optimized_mmff.statuses[0] > 1
+            || optimized_mmff.optimizers != [0]
+            || optimized_mmff.energies[0] >= initial_energy
+            || !float_slices_close(&optimized_mmff.energies, &[optimized_reference], 2.0e-3)
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup MMFF optimization failed its CPU energy check".into(),
+            ));
+        }
         Ok(())
     }
 }
@@ -812,6 +911,16 @@ fn distance_optimization_status(
         3 => Ok(DistanceGeometryOptimizationStatus::MaxIterations),
         _ => Err(MetalRuntimeError::Dispatch(format!(
             "Metal distance optimizer returned unknown status {status}"
+        ))),
+    }
+}
+
+fn mmff_optimizer_kind(optimizer: u32) -> Result<MmffOptimizerKind, MetalRuntimeError> {
+    match optimizer {
+        0 => Ok(MmffOptimizerKind::Bfgs),
+        1 => Ok(MmffOptimizerKind::Lbfgs),
+        _ => Err(MetalRuntimeError::Dispatch(format!(
+            "Metal MMFF optimizer returned unknown optimizer kind {optimizer}"
         ))),
     }
 }
