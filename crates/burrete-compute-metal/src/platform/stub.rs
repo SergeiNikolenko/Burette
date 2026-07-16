@@ -1,0 +1,34 @@
+use burrete_compute_core::{Fingerprint2048, GraphBuildOptions, SymmetricCsr};
+use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
+
+use crate::MetalRuntimeError;
+
+#[derive(Debug)]
+pub(crate) struct MetalHost;
+
+impl MetalHost {
+    pub(crate) fn load(_library: &[u8]) -> Result<Self, MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn device_identity(&self) -> GpuDeviceIdentity {
+        unreachable!("unavailable Metal host has no device")
+    }
+
+    pub(crate) fn recommended_max_working_set_size(&self) -> u64 {
+        0
+    }
+
+    pub(crate) fn build_graph(
+        &self,
+        _fingerprints: &[Fingerprint2048],
+        _cutoff: SimilarityCutoff,
+        _options: GraphBuildOptions,
+    ) -> Result<SymmetricCsr, MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+}

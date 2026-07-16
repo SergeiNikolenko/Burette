@@ -14,6 +14,8 @@ fn fingerprint(bits: &[usize]) -> Fingerprint2048 {
 
 #[test]
 fn canonical_fingerprint_bytes_and_metal_view_are_identical() {
+    assert_eq!(std::mem::size_of::<Fingerprint2048>(), FINGERPRINT_BYTES);
+    assert_eq!(std::mem::align_of::<Fingerprint2048>(), 8);
     let value = fingerprint(&[0, 31, 32, 63, 64, 2047]);
     let bytes = value.to_le_bytes();
     assert_eq!(Fingerprint2048::from_le_bytes(bytes), value);
