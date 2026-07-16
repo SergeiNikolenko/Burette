@@ -17,4 +17,5 @@ mod job_factory;
 )]
 mod root_lease;
 pub(crate) use root_lease::ComputeRootChildDirectory;
+mod snapshot_repository;
 pub(crate) mod store;

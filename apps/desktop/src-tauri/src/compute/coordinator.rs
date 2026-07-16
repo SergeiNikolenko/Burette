@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::compute::{
     error::{ComputeCoordinatorError, ComputeResult},
+    snapshot_repository::SnapshotRepository,
     store::{validate_owner_window_label, ComputeStore},
 };
 
@@ -25,15 +26,24 @@ pub(crate) struct ComputeCoordinator {
 
 #[derive(Debug)]
 enum CoordinatorState {
-    Ready(ComputeStore),
+    Ready(ReadyCoordinator),
     Unavailable(String),
+}
+
+#[derive(Debug)]
+struct ReadyCoordinator {
+    store: ComputeStore,
+    snapshots: SnapshotRepository,
 }
 
 impl ComputeCoordinator {
     pub(crate) fn initialize(compute_root: PathBuf) -> Self {
         let state = match ComputeStore::initialize(compute_root) {
-            Ok(store) => match store.recover_active_jobs(now_ms()) {
-                Ok(_) => CoordinatorState::Ready(store),
+            Ok(store) => match SnapshotRepository::initialize(&store) {
+                Ok(snapshots) => match store.recover_active_jobs(now_ms()) {
+                    Ok(_) => CoordinatorState::Ready(ReadyCoordinator { store, snapshots }),
+                    Err(error) => CoordinatorState::Unavailable(error.to_string()),
+                },
                 Err(error) => CoordinatorState::Unavailable(error.to_string()),
             },
             Err(error) => CoordinatorState::Unavailable(error.to_string()),
@@ -51,10 +61,16 @@ impl ComputeCoordinator {
 
     pub(crate) fn capability_report(&self) -> ComputeResult<ComputeCapabilityReport> {
         let (reason_code, reason_message) = match self.state.as_ref() {
-            CoordinatorState::Ready(_) => (
-                CapabilityReasonCode::RuntimeMissing,
-                "The versioned Burrete GPU runtime has not been installed yet.".to_string(),
-            ),
+            CoordinatorState::Ready(ready) => match ready.snapshots.health_check() {
+                Ok(()) => (
+                    CapabilityReasonCode::RuntimeMissing,
+                    "The versioned Burrete GPU runtime has not been installed yet.".to_string(),
+                ),
+                Err(error) => (
+                    CapabilityReasonCode::RuntimeIntegrityError,
+                    format!("The durable compute snapshot repository is unavailable: {error}"),
+                ),
+            },
             CoordinatorState::Unavailable(message) => (
                 CapabilityReasonCode::RuntimeIntegrityError,
                 format!("The durable compute coordinator is unavailable: {message}"),
@@ -146,7 +162,7 @@ impl ComputeCoordinator {
 
     fn store(&self) -> ComputeResult<ComputeStore> {
         match self.state.as_ref() {
-            CoordinatorState::Ready(store) => Ok(store.clone()),
+            CoordinatorState::Ready(ready) => Ok(ready.store.clone()),
             CoordinatorState::Unavailable(message) => {
                 Err(ComputeCoordinatorError::Unavailable(message.clone()))
             }
