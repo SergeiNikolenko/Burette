@@ -82,9 +82,10 @@ impl From<ProtocolError> for ConformerV1AdmissionError {
 /// These values must come from the same verified extraction that will publish
 /// the EnginePack, and `numeric_peak_bytes` must include every simultaneously
 /// resident input, output, and scratch buffer for one adaptive batch.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ConformerV1Preflight {
     pub(crate) record_count: u64,
+    pub(crate) ordered_record_molecule_identity_sha256: String,
     pub(crate) valid_record_count: u64,
     pub(crate) total_atom_count: u64,
     pub(crate) total_distance_constraint_count: u64,
@@ -142,13 +143,19 @@ pub(crate) struct AdmittedConformerV1Plan {
 pub(crate) fn admit_conformer_v1_plan(
     request: &ConformerV1SubmitRequest,
     frozen_record_count: u64,
-    preflight: ConformerV1Preflight,
+    frozen_molecule_identity_sha256: &str,
+    preflight: &ConformerV1Preflight,
     engines: &ClusterV1EngineIdentities,
     distance_admission: ConformerBackendAdmission,
     stereo_admission: ConformerBackendAdmission,
 ) -> Result<AdmittedConformerV1Plan, ConformerV1AdmissionError> {
     request.validate()?;
-    validate_preflight(request, frozen_record_count, preflight)?;
+    validate_preflight(
+        request,
+        frozen_record_count,
+        frozen_molecule_identity_sha256,
+        preflight,
+    )?;
     engines.coordinator.validate()?;
     engines.rdkit.validate()?;
     engines.reference_cpu.validate()?;
@@ -257,13 +264,19 @@ pub(crate) fn admit_conformer_v1_plan(
 fn validate_preflight(
     request: &ConformerV1SubmitRequest,
     frozen_record_count: u64,
-    preflight: ConformerV1Preflight,
+    frozen_molecule_identity_sha256: &str,
+    preflight: &ConformerV1Preflight,
 ) -> Result<(), ConformerV1AdmissionError> {
     if !(1..=MAX_PACK_RECORDS).contains(&frozen_record_count)
         || preflight.record_count != frozen_record_count
     {
         return Err(ConformerV1AdmissionError::Contract(
             "conformer.v1 preflight record count differs from the frozen source".into(),
+        ));
+    }
+    if preflight.ordered_record_molecule_identity_sha256 != frozen_molecule_identity_sha256 {
+        return Err(ConformerV1AdmissionError::Contract(
+            "conformer.v1 preflight molecular identity differs from the frozen source".into(),
         ));
     }
     if let GridScope::Selected(selected) = &request.source.scope {
@@ -344,7 +357,7 @@ fn validate_preflight(
 }
 
 fn estimate_memory(
-    preflight: ConformerV1Preflight,
+    preflight: &ConformerV1Preflight,
 ) -> Result<ConformerV1MemoryEstimate, ConformerV1AdmissionError> {
     let freeze_scope_bytes = sum_buffers(&[
         MEMORY_HEADROOM_BYTES,
@@ -536,7 +549,8 @@ mod tests {
         let plan = admit_conformer_v1_plan(
             &request(BackendPolicy::GpuRequired),
             10,
-            preflight(),
+            &frozen_identity(),
+            &preflight(),
             &engines(),
             ConformerBackendAdmission::NativeMetal(engine("burrete-native-metal", '4')),
             ConformerBackendAdmission::NativeMetal(engine("burrete-native-metal", '4')),
@@ -559,7 +573,8 @@ mod tests {
         let plan = admit_conformer_v1_plan(
             &request(BackendPolicy::GpuPreferred),
             10,
-            preflight(),
+            &frozen_identity(),
+            &preflight(),
             &engines(),
             ConformerBackendAdmission::NativeMetal(engine("burrete-native-metal", '4')),
             ConformerBackendAdmission::GpuUnavailable(fallback.clone()),
@@ -577,7 +592,8 @@ mod tests {
         let error = admit_conformer_v1_plan(
             &request(BackendPolicy::GpuRequired),
             10,
-            preflight(),
+            &frozen_identity(),
+            &preflight(),
             &engines(),
             ConformerBackendAdmission::NativeMetal(engine("burrete-native-metal", '4')),
             ConformerBackendAdmission::GpuUnavailable(FallbackDecision {
@@ -604,7 +620,8 @@ mod tests {
             admit_conformer_v1_plan(
                 &request(BackendPolicy::ReferenceCpu),
                 10,
-                too_small,
+                &frozen_identity(),
+                &too_small,
                 &engines(),
                 ConformerBackendAdmission::ReferenceCpu,
                 ConformerBackendAdmission::ReferenceCpu,
@@ -618,7 +635,8 @@ mod tests {
             admit_conformer_v1_plan(
                 &request(BackendPolicy::ReferenceCpu),
                 10,
-                too_large,
+                &frozen_identity(),
+                &too_large,
                 &engines(),
                 ConformerBackendAdmission::ReferenceCpu,
                 ConformerBackendAdmission::ReferenceCpu,
@@ -627,6 +645,25 @@ mod tests {
                 stage_id: "distanceGeometry",
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn rejects_preflight_from_a_different_frozen_library() {
+        let mut swapped = preflight();
+        swapped.ordered_record_molecule_identity_sha256 = "b".repeat(64);
+        assert!(matches!(
+            admit_conformer_v1_plan(
+                &request(BackendPolicy::ReferenceCpu),
+                10,
+                &frozen_identity(),
+                &swapped,
+                &engines(),
+                ConformerBackendAdmission::ReferenceCpu,
+                ConformerBackendAdmission::ReferenceCpu,
+            ),
+            Err(ConformerV1AdmissionError::Contract(message))
+                if message.contains("molecular identity")
         ));
     }
 
@@ -658,6 +695,7 @@ mod tests {
     fn preflight() -> ConformerV1Preflight {
         ConformerV1Preflight {
             record_count: 10,
+            ordered_record_molecule_identity_sha256: frozen_identity(),
             valid_record_count: 8,
             total_atom_count: 40,
             total_distance_constraint_count: 80,
@@ -665,6 +703,10 @@ mod tests {
             result_pack_bytes: 8_192,
             numeric_peak_bytes: 1024 * 1024,
         }
+    }
+
+    fn frozen_identity() -> String {
+        "a".repeat(64)
     }
 
     fn engines() -> ClusterV1EngineIdentities {
