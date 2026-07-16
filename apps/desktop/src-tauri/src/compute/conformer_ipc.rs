@@ -4,9 +4,9 @@ use uuid::Uuid;
 use super::error::{ComputeCoordinatorError, ComputeResult};
 
 const MAGIC: &[u8; 4] = b"BCER";
-const VERSION: u16 = 1;
+const VERSION: u16 = 2;
 const HEADER_BYTES: usize = 40;
-const RECORD_HEADER_BYTES: usize = 56;
+const RECORD_HEADER_BYTES: usize = 64;
 const MAX_RECORD_ERROR_BYTES: usize = 2_048;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -22,6 +22,7 @@ pub(crate) struct ConformerRecordResult {
     pub(crate) source_record_id: u64,
     pub(crate) molecule_content_sha256: String,
     pub(crate) output: Result<Vec<u8>, String>,
+    pub(crate) mmff_output: Option<Result<Vec<u8>, String>>,
 }
 
 pub(crate) fn decode_conformer_chunk_result(
@@ -85,30 +86,39 @@ pub(crate) fn decode_conformer_chunk_result(
         }
         let molecule_content_sha256 = encode_hex(&header[16..48]);
         let status = header[48];
-        if header[49..52].iter().any(|byte| *byte != 0) {
+        let mmff_status = header[49];
+        if header[50..52]
+            .iter()
+            .chain(&header[60..64])
+            .any(|byte| *byte != 0)
+        {
             return Err(protocol(
                 "conformer result record reserved bytes are not zero",
             ));
         }
-        let payload_bytes = read_u32(header, 52)? as usize;
+        let conformer_bytes = read_u32(header, 52)? as usize;
+        let mmff_bytes = read_u32(header, 56)? as usize;
         offset = end;
-        let payload_end = offset
-            .checked_add(payload_bytes)
+        let conformer_end = offset
+            .checked_add(conformer_bytes)
             .ok_or_else(|| protocol("conformer result record payload overflowed"))?;
-        let payload = bytes
-            .get(offset..payload_end)
+        let conformer_payload = bytes
+            .get(offset..conformer_end)
             .ok_or_else(|| protocol("conformer result record payload is truncated"))?;
+        let mmff_end = conformer_end
+            .checked_add(mmff_bytes)
+            .ok_or_else(|| protocol("MMFF result record payload overflowed"))?;
+        let mmff_payload = bytes
+            .get(conformer_end..mmff_end)
+            .ok_or_else(|| protocol("MMFF result record payload is truncated"))?;
         let output = match status {
-            0 if !payload.is_empty() => Ok(payload.to_vec()),
-            1 if !payload.is_empty() && payload.len() <= MAX_RECORD_ERROR_BYTES => {
-                let error = std::str::from_utf8(payload)
-                    .map_err(|_| protocol("conformer result error is not UTF-8"))?;
-                if error.chars().any(char::is_control) {
-                    return Err(protocol(
-                        "conformer result error contains control characters",
-                    ));
-                }
-                Err(error.to_string())
+            0 if !conformer_payload.is_empty() => Ok(conformer_payload.to_vec()),
+            1 if !conformer_payload.is_empty()
+                && conformer_payload.len() <= MAX_RECORD_ERROR_BYTES
+                && mmff_status == 2
+                && mmff_payload.is_empty() =>
+            {
+                Err(decode_error(conformer_payload, "conformer result error")?)
             }
             _ => {
                 return Err(protocol(
@@ -116,15 +126,32 @@ pub(crate) fn decode_conformer_chunk_result(
                 ))
             }
         };
+        let mmff_output = if status == 0 {
+            Some(match mmff_status {
+                0 if !mmff_payload.is_empty() => Ok(mmff_payload.to_vec()),
+                1 if !mmff_payload.is_empty() && mmff_payload.len() <= MAX_RECORD_ERROR_BYTES => {
+                    let error = decode_error(mmff_payload, "MMFF result error")?;
+                    Err(error)
+                }
+                _ => {
+                    return Err(protocol(
+                        "conformer result requires one BMFX payload or bounded MMFF error",
+                    ))
+                }
+            })
+        } else {
+            None
+        };
         records.push(ConformerRecordResult {
             ordinal,
             source_record_id,
             molecule_content_sha256,
             output,
+            mmff_output,
         });
-        offset = align4(payload_end)?;
+        offset = align4(mmff_end)?;
         if bytes
-            .get(payload_end..offset)
+            .get(mmff_end..offset)
             .ok_or_else(|| protocol("conformer result record padding is truncated"))?
             .iter()
             .any(|byte| *byte != 0)
@@ -142,6 +169,15 @@ pub(crate) fn decode_conformer_chunk_result(
         start_ordinal,
         records,
     })
+}
+
+fn decode_error(bytes: &[u8], label: &str) -> ComputeResult<String> {
+    let error =
+        std::str::from_utf8(bytes).map_err(|_| protocol(format!("{label} is not UTF-8")))?;
+    if error.chars().any(char::is_control) {
+        return Err(protocol(format!("{label} contains control characters")));
+    }
+    Ok(error.to_string())
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> ComputeResult<u16> {
@@ -206,10 +242,11 @@ mod tests {
     fn decodes_raw_success_and_error_records() {
         let session = Uuid::from_u128(7);
         let success = vec![0x42, 0x43, 0x45, 0x58];
+        let mmff = vec![0x42, 0x4d, 0x46, 0x58];
         let error = b"unsupported IDCode";
         let mut bytes = envelope_header(session, 3, 2);
-        push_record(&mut bytes, 3, 10, 0xaa, 0, &success);
-        push_record(&mut bytes, 4, 11, 0xbb, 1, error);
+        push_record(&mut bytes, 3, 10, 0xaa, 0, 0, &success, &mmff);
+        push_record(&mut bytes, 4, 11, 0xbb, 1, 2, error, &[]);
         let total = bytes.len() as u32;
         bytes[36..40].copy_from_slice(&total.to_le_bytes());
 
@@ -217,6 +254,7 @@ mod tests {
         assert_eq!(decoded.session_id, session);
         assert_eq!(decoded.start_ordinal, 3);
         assert_eq!(decoded.records[0].output, Ok(success));
+        assert_eq!(decoded.records[0].mmff_output, Some(Ok(mmff)));
         assert_eq!(decoded.records[1].output, Err("unsupported IDCode".into()));
         assert_eq!(decoded.records[1].molecule_content_sha256, "bb".repeat(32));
     }
@@ -224,7 +262,7 @@ mod tests {
     #[test]
     fn rejects_nonzero_padding_and_oversized_envelopes() {
         let mut bytes = envelope_header(Uuid::from_u128(7), 0, 1);
-        push_record(&mut bytes, 0, 1, 0xaa, 0, &[1]);
+        push_record(&mut bytes, 0, 1, 0xaa, 0, 1, &[1], b"not typed");
         let total = bytes.len() as u32;
         bytes[36..40].copy_from_slice(&total.to_le_bytes());
         *bytes.last_mut().expect("padding") = 1;
@@ -249,15 +287,21 @@ mod tests {
         source_id: u64,
         hash_byte: u8,
         status: u8,
-        payload: &[u8],
+        mmff_status: u8,
+        conformer_payload: &[u8],
+        mmff_payload: &[u8],
     ) {
         bytes.extend(ordinal.to_le_bytes());
         bytes.extend(source_id.to_le_bytes());
         bytes.extend([hash_byte; 32]);
         bytes.push(status);
-        bytes.extend([0; 3]);
-        bytes.extend((payload.len() as u32).to_le_bytes());
-        bytes.extend(payload);
+        bytes.push(mmff_status);
+        bytes.extend([0; 2]);
+        bytes.extend((conformer_payload.len() as u32).to_le_bytes());
+        bytes.extend((mmff_payload.len() as u32).to_le_bytes());
+        bytes.extend([0; 4]);
+        bytes.extend(conformer_payload);
+        bytes.extend(mmff_payload);
         while !bytes.len().is_multiple_of(4) {
             bytes.push(0);
         }

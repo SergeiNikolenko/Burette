@@ -31,6 +31,8 @@ pub enum ResultPackVersion {
     ClusterV1,
     #[serde(rename = "conformer.result-pack.v1")]
     ConformerV1,
+    #[serde(rename = "conformer.result-pack.v2")]
+    ConformerV2,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

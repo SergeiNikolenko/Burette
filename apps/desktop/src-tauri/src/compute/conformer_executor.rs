@@ -2,11 +2,12 @@ use std::num::NonZeroU32;
 
 use burrete_compute_core::{
     initialize_conformer_positions, optimize_distance_geometry, optimize_etk_geometry,
-    plan_conformer_batches, validate_conformer_stereo, ChiralVolumeConstraint,
+    optimize_mmff, plan_conformer_batches, validate_conformer_stereo, ChiralVolumeConstraint,
     ConformerDistanceEngine, ConformerEnginePackArrays, ConformerMoleculeWork,
     ConformerSchedulingOptions, ConformerWorkIdentity, DistanceConstraint,
     DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
-    EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, TetrahedralConstraint,
+    EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, MmffOptimizerKind,
+    NativeMmffParameters, TetrahedralConstraint,
 };
 use burrete_compute_metal::{MetalDistanceEmbedding, MetalTanimotoRuntime};
 use burrete_compute_protocol::{Backend, ConformerV1SubmitRequest};
@@ -33,6 +34,9 @@ pub(crate) struct ConformerDistanceComputation {
     pub(crate) embedding_statuses: Vec<u8>,
     pub(crate) etk_energies: Vec<f32>,
     pub(crate) etk_statuses: Vec<u8>,
+    pub(crate) mmff_energies: Vec<f32>,
+    pub(crate) mmff_statuses: Vec<u8>,
+    pub(crate) mmff_optimizer_kinds: Vec<u8>,
     pub(crate) retry_stereo_failure_flags: Vec<u32>,
     pub(crate) positions: Vec<[f32; 3]>,
     pub(crate) seed_words: Vec<[u32; 4]>,
@@ -68,11 +72,12 @@ pub(crate) fn execute_conformer_distance_geometry(
     request: &ConformerV1SubmitRequest,
     arrays: ConformerEnginePackArrays,
     identities: &[ConformerMoleculeIdentity],
+    mmff_parameters: &[Option<NativeMmffParameters>],
     distance_backend: Backend,
     stereo_backend: Backend,
     metal: Option<&MetalTanimotoRuntime>,
 ) -> ComputeResult<ConformerDistanceComputation> {
-    if identities.len() != arrays.record_count() {
+    if identities.len() != arrays.record_count() || mmff_parameters.len() != identities.len() {
         return Err(protocol(
             "conformer identity count differs from the extracted EnginePack",
         ));
@@ -207,6 +212,7 @@ pub(crate) fn execute_conformer_distance_geometry(
             let constraints = molecule.local_distance_constraints();
             let etk = local_etk_terms(&output.deferred, record_index as usize)?;
             let stereo = local_stereo_terms(&output.deferred, record_index as usize)?;
+            let mmff = mmff_parameters[record_index as usize].as_ref();
             let identity = work[work_index];
             let count = span.conformer_count.get() as usize;
             let mut final_attempts = vec![0_u16; count];
@@ -215,6 +221,9 @@ pub(crate) fn execute_conformer_distance_geometry(
             let mut final_etk_energies = vec![0.0_f32; count];
             let mut final_etk_statuses =
                 vec![DistanceGeometryOptimizationStatus::MaxIterations; count];
+            let mut final_mmff_energies = vec![0.0_f32; count];
+            let mut final_mmff_statuses = vec![4_u8; count];
+            let mut final_mmff_optimizers = vec![2_u8; count];
             let mut final_stereo_flags = vec![u32::MAX; count];
             let mut final_positions = vec![Vec::<[f32; 4]>::new(); count];
             let mut final_seeds = vec![[0_u32; 4]; count];
@@ -262,10 +271,26 @@ pub(crate) fn execute_conformer_distance_geometry(
                 {
                     return Err(protocol("conformer ETK result arrays are inconsistent"));
                 }
+                let mmff_refinement = refine_mmff(
+                    distance_backend,
+                    metal,
+                    &refinement.positions,
+                    molecule.atomic_numbers.len() as u32,
+                    mmff,
+                    options,
+                    working_memory,
+                )?;
+                if mmff_refinement.positions.len() != expected_positions
+                    || mmff_refinement.energies.len() != pending.len()
+                    || mmff_refinement.statuses.len() != pending.len()
+                    || mmff_refinement.optimizers.len() != pending.len()
+                {
+                    return Err(protocol("conformer MMFF result arrays are inconsistent"));
+                }
                 let stereo_validation = validate_stereo_attempts(
                     stereo_backend,
                     metal,
-                    &refinement.positions,
+                    &mmff_refinement.positions,
                     molecule.atomic_numbers.len() as u32,
                     &stereo.chiral,
                     &stereo.tetrahedral,
@@ -276,10 +301,11 @@ pub(crate) fn execute_conformer_distance_geometry(
                         "conformer stereo retry result count is inconsistent",
                     ));
                 }
-                attempt.positions = refinement.positions;
+                attempt.positions = mmff_refinement.positions;
                 total_gpu_time = total_gpu_time
                     .checked_add(attempt.gpu_time_ms.unwrap_or(0))
                     .and_then(|time| time.checked_add(refinement.gpu_time_ms.unwrap_or(0)))
+                    .and_then(|time| time.checked_add(mmff_refinement.gpu_time_ms.unwrap_or(0)))
                     .and_then(|time| time.checked_add(stereo_validation.gpu_time_ms.unwrap_or(0)))
                     .ok_or_else(|| protocol("conformer GPU time overflowed"))?;
                 let mut retry = Vec::new();
@@ -292,11 +318,15 @@ pub(crate) fn execute_conformer_distance_geometry(
                     final_statuses[local] = attempt.statuses[attempt_index];
                     final_etk_energies[local] = refinement.energies[attempt_index];
                     final_etk_statuses[local] = refinement.statuses[attempt_index];
+                    final_mmff_energies[local] = mmff_refinement.energies[attempt_index];
+                    final_mmff_statuses[local] = mmff_refinement.statuses[attempt_index];
+                    final_mmff_optimizers[local] = mmff_refinement.optimizers[attempt_index];
                     final_stereo_flags[local] = stereo_validation.failure_flags[attempt_index];
                     final_positions[local] = attempt.positions[start..end].to_vec();
                     final_seeds[local] = seeds[attempt_index];
                     if (!converged(attempt.statuses[attempt_index])
                         || !converged(refinement.statuses[attempt_index])
+                        || !matches!(mmff_refinement.statuses[attempt_index], 0 | 1 | 4)
                         || stereo_validation.failure_flags[attempt_index] != 0)
                         && retry_index + 1 < request.parameters.max_attempts_per_conformer
                     {
@@ -313,6 +343,11 @@ pub(crate) fn execute_conformer_distance_geometry(
                 output.embedding_attempt_counts.push(final_attempts[local]);
                 output.embedding_energies.push(final_energies[local]);
                 output.etk_energies.push(final_etk_energies[local]);
+                output.mmff_energies.push(final_mmff_energies[local]);
+                output.mmff_statuses.push(final_mmff_statuses[local]);
+                output
+                    .mmff_optimizer_kinds
+                    .push(final_mmff_optimizers[local]);
                 output
                     .embedding_statuses
                     .push(status_tag(final_statuses[local]));
@@ -374,6 +409,150 @@ struct RefinementBatch {
     energies: Vec<f32>,
     statuses: Vec<DistanceGeometryOptimizationStatus>,
     gpu_time_ms: Option<u64>,
+}
+
+struct MmffRefinementBatch {
+    positions: Vec<[f32; 4]>,
+    energies: Vec<f32>,
+    statuses: Vec<u8>,
+    optimizers: Vec<u8>,
+    gpu_time_ms: Option<u64>,
+}
+
+fn refine_mmff(
+    backend: Backend,
+    metal: Option<&MetalTanimotoRuntime>,
+    positions: &[[f32; 4]],
+    atom_count: u32,
+    parameters: Option<&NativeMmffParameters>,
+    options: DistanceGeometryOptimizationOptions,
+    max_memory_bytes: u64,
+) -> ComputeResult<MmffRefinementBatch> {
+    let atom_count = atom_count as usize;
+    let conformer_count = positions.len() / atom_count;
+    let Some(parameters) = parameters else {
+        return Ok(MmffRefinementBatch {
+            positions: positions.to_vec(),
+            energies: vec![0.0; conformer_count],
+            statuses: vec![4; conformer_count],
+            optimizers: vec![2; conformer_count],
+            gpu_time_ms: (backend == Backend::NativeMetal).then_some(0),
+        });
+    };
+    if parameters.parameters.atom_count as usize != atom_count {
+        return Err(protocol(
+            "MMFF atom count differs from the conformer EnginePack",
+        ));
+    }
+    match backend {
+        Backend::NativeMetal => {
+            let runtime =
+                metal.ok_or_else(|| unavailable("admitted Metal MMFF runtime is unavailable"))?;
+            let mut optimized = runtime
+                .optimize_mmff_profiled(
+                    positions,
+                    &parameters.parameters,
+                    options,
+                    max_memory_bytes,
+                )
+                .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+            let retry_indices = optimized
+                .statuses
+                .iter()
+                .enumerate()
+                .filter_map(|(index, status)| (!converged(*status)).then_some(index))
+                .collect::<Vec<_>>();
+            if !retry_indices.is_empty() {
+                let retry_positions = retry_indices
+                    .iter()
+                    .flat_map(|index| {
+                        let start = index * atom_count;
+                        optimized.positions[start..start + atom_count]
+                            .iter()
+                            .copied()
+                    })
+                    .collect::<Vec<_>>();
+                let retry = runtime
+                    .optimize_mmff_profiled(
+                        &retry_positions,
+                        &parameters.parameters,
+                        mmff_retry_options(options),
+                        max_memory_bytes,
+                    )
+                    .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+                for (retry_index, original_index) in retry_indices.into_iter().enumerate() {
+                    let source = retry_index * atom_count..(retry_index + 1) * atom_count;
+                    let target = original_index * atom_count..(original_index + 1) * atom_count;
+                    optimized.positions[target].copy_from_slice(&retry.positions[source]);
+                    optimized.energies[original_index] = retry.energies[retry_index];
+                    optimized.scaled_gradient_maxima[original_index] =
+                        retry.scaled_gradient_maxima[retry_index];
+                    optimized.iterations[original_index] = optimized.iterations[original_index]
+                        .saturating_add(retry.iterations[retry_index]);
+                    optimized.statuses[original_index] = retry.statuses[retry_index];
+                    optimized.optimizers[original_index] = retry.optimizers[retry_index];
+                }
+                optimized.gpu_time_ms = optimized.gpu_time_ms.saturating_add(retry.gpu_time_ms);
+            }
+            Ok(MmffRefinementBatch {
+                positions: optimized.positions,
+                energies: optimized.energies,
+                statuses: optimized.statuses.into_iter().map(status_tag).collect(),
+                optimizers: optimized
+                    .optimizers
+                    .into_iter()
+                    .map(mmff_optimizer_tag)
+                    .collect(),
+                gpu_time_ms: Some(optimized.gpu_time_ms),
+            })
+        }
+        Backend::ReferenceCpu => {
+            let mut refined_positions = Vec::with_capacity(positions.len());
+            let mut energies = Vec::with_capacity(conformer_count);
+            let mut statuses = Vec::with_capacity(conformer_count);
+            let mut optimizers = Vec::with_capacity(conformer_count);
+            for conformer in positions.chunks_exact(atom_count) {
+                let mut optimized = optimize_mmff(conformer, &parameters.parameters, options)
+                    .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+                if !converged(optimized.status) {
+                    let retry = optimize_mmff(
+                        &optimized.positions,
+                        &parameters.parameters,
+                        mmff_retry_options(options),
+                    )
+                    .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+                    optimized = retry;
+                }
+                refined_positions.extend(optimized.positions);
+                energies.push(optimized.energy);
+                statuses.push(status_tag(optimized.status));
+                optimizers.push(mmff_optimizer_tag(optimized.optimizer));
+            }
+            Ok(MmffRefinementBatch {
+                positions: refined_positions,
+                energies,
+                statuses,
+                optimizers,
+                gpu_time_ms: None,
+            })
+        }
+        other => Err(protocol(format!(
+            "unsupported conformer MMFF backend: {other:?}"
+        ))),
+    }
+}
+
+fn mmff_retry_options(
+    options: DistanceGeometryOptimizationOptions,
+) -> DistanceGeometryOptimizationOptions {
+    DistanceGeometryOptimizationOptions {
+        gradient_tolerance: options.gradient_tolerance.max(1.0e-3),
+        relative_step_tolerance: options.relative_step_tolerance.max(1.0e-5),
+        armijo_coefficient: options.armijo_coefficient.min(1.0e-5),
+        max_line_search_steps: options.max_line_search_steps.max(64),
+        max_step_factor: options.max_step_factor.min(1.0),
+        ..options
+    }
 }
 
 struct StereoValidationBatch {
@@ -681,6 +860,9 @@ impl ConformerDistanceComputation {
             embedding_statuses: Vec::new(),
             etk_energies: Vec::new(),
             etk_statuses: Vec::new(),
+            mmff_energies: Vec::new(),
+            mmff_statuses: Vec::new(),
+            mmff_optimizer_kinds: Vec::new(),
             retry_stereo_failure_flags: Vec::new(),
             positions: Vec::new(),
             seed_words: Vec::new(),
@@ -720,6 +902,18 @@ impl ConformerDistanceComputation {
             .try_reserve_exact(conformers)
             .map_err(|_| unavailable("cannot allocate conformer ETK statuses"))?;
         result
+            .mmff_energies
+            .try_reserve_exact(conformers)
+            .map_err(|_| unavailable("cannot allocate conformer MMFF energies"))?;
+        result
+            .mmff_statuses
+            .try_reserve_exact(conformers)
+            .map_err(|_| unavailable("cannot allocate conformer MMFF statuses"))?;
+        result
+            .mmff_optimizer_kinds
+            .try_reserve_exact(conformers)
+            .map_err(|_| unavailable("cannot allocate conformer MMFF optimizer kinds"))?;
+        result
             .retry_stereo_failure_flags
             .try_reserve_exact(conformers)
             .map_err(|_| unavailable("cannot allocate conformer stereo retry flags"))?;
@@ -744,6 +938,9 @@ impl ConformerDistanceComputation {
             || self.embedding_statuses.len() != count
             || self.etk_energies.len() != count
             || self.etk_statuses.len() != count
+            || self.mmff_energies.len() != count
+            || self.mmff_statuses.len() != count
+            || self.mmff_optimizer_kinds.len() != count
             || self.retry_stereo_failure_flags.len() != count
             || self.seed_words.len() != count
             || self.conformer_atom_starts.last().copied() != Some(self.positions.len() as u64)
@@ -757,6 +954,9 @@ impl ConformerDistanceComputation {
                 .iter()
                 .any(|value| !value.is_finite())
             || self.etk_energies.iter().any(|value| !value.is_finite())
+            || self.mmff_energies.iter().any(|value| !value.is_finite())
+            || self.mmff_statuses.iter().any(|status| *status > 4)
+            || self.mmff_optimizer_kinds.iter().any(|kind| *kind > 2)
         {
             return Err(protocol(
                 "conformer distance result arrays are inconsistent",
@@ -783,6 +983,13 @@ fn status_tag(status: DistanceGeometryOptimizationStatus) -> u8 {
     }
 }
 
+fn mmff_optimizer_tag(optimizer: MmffOptimizerKind) -> u8 {
+    match optimizer {
+        MmffOptimizerKind::Bfgs => 0,
+        MmffOptimizerKind::Lbfgs => 1,
+    }
+}
+
 fn decode_sha256(value: &str) -> ComputeResult<[u8; 32]> {
     if value.len() != 64 {
         return Err(protocol("conformer molecule identity is not SHA-256"));
@@ -805,7 +1012,10 @@ fn unavailable(message: impl Into<String>) -> ComputeCoordinatorError {
 
 #[cfg(test)]
 mod tests {
-    use burrete_compute_core::{ConformerEnginePackBuilder, ExtractedConformerParameters};
+    use burrete_compute_core::{
+        ConformerEnginePackBuilder, ExtractedConformerParameters, MmffBondTerm, MmffParameters,
+        MmffVariant,
+    };
     use burrete_compute_protocol::{
         AllGridScope, BackendPolicy, ComputeJobSchemaVersion, ConformerResourceLimits,
         ConformerV1Parameters, ExecutionPolicy, GridScope, GridSourceReference, SchedulingPolicy,
@@ -840,6 +1050,7 @@ mod tests {
             &request,
             arrays.clone(),
             &identities,
+            &[None, None],
             Backend::ReferenceCpu,
             Backend::ReferenceCpu,
             None,
@@ -850,6 +1061,7 @@ mod tests {
             &request,
             arrays,
             &identities,
+            &[None, None],
             Backend::ReferenceCpu,
             Backend::ReferenceCpu,
             None,
@@ -882,6 +1094,7 @@ mod tests {
                 source_record_id: 10,
                 molecule_content_sha256: "11".repeat(32),
             }],
+            &[None],
             Backend::ReferenceCpu,
             Backend::ReferenceCpu,
             None,
@@ -893,6 +1106,34 @@ mod tests {
         assert!(result.etk_energies.iter().all(|energy| energy.is_finite()));
         assert!(result.etk_statuses.iter().all(|status| *status <= 3));
         assert_eq!(result.gpu_time_ms, None);
+    }
+
+    #[test]
+    fn reference_executor_applies_mmff94s_and_records_optimizer_provenance() {
+        let mut builder = ConformerEnginePackBuilder::new(
+            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            1024 * 1024,
+        );
+        builder.append_valid(extracted()).expect("valid molecule");
+        let result = execute_conformer_distance_geometry(
+            Uuid::from_u128(10),
+            &request(),
+            builder.finish(1).expect("engine arrays"),
+            &[ConformerMoleculeIdentity {
+                source_record_id: 10,
+                molecule_content_sha256: "11".repeat(32),
+            }],
+            &[Some(mmff_parameters(2))],
+            Backend::ReferenceCpu,
+            Backend::ReferenceCpu,
+            None,
+        )
+        .expect("reference MMFF execution");
+
+        assert_eq!(result.mmff_energies.len(), 2);
+        assert!(result.mmff_statuses.iter().all(|status| *status <= 1));
+        assert_eq!(result.mmff_optimizer_kinds, [0, 0]);
+        assert!(result.mmff_energies.iter().all(|energy| energy.is_finite()));
     }
 
     #[test]
@@ -912,6 +1153,7 @@ mod tests {
                 source_record_id: 10,
                 molecule_content_sha256: "11".repeat(32),
             }],
+            &[None],
             Backend::ReferenceCpu,
             Backend::ReferenceCpu,
             None,
@@ -947,6 +1189,7 @@ mod tests {
                 source_record_id: 10,
                 molecule_content_sha256: "11".repeat(32),
             }],
+            &[Some(mmff_parameters(4))],
             Backend::NativeMetal,
             Backend::NativeMetal,
             Some(&runtime),
@@ -958,6 +1201,8 @@ mod tests {
         assert!(result.embedding_statuses.iter().all(|status| *status <= 3));
         assert!(result.etk_statuses.iter().all(|status| *status <= 3));
         assert!(result.etk_energies.iter().all(|energy| energy.is_finite()));
+        assert!(result.mmff_energies.iter().all(|energy| energy.is_finite()));
+        assert!(result.mmff_statuses.iter().all(|status| *status <= 1));
         let stereo =
             crate::compute::conformer_stereo_executor::execute_conformer_stereo_validation(
                 &result,
@@ -999,6 +1244,29 @@ mod tests {
             etk_distance_weights: Vec::new(),
             stereo_atom_quints: Vec::new(),
             stereo_flags: Vec::new(),
+        }
+    }
+
+    fn mmff_parameters(atom_count: u32) -> NativeMmffParameters {
+        NativeMmffParameters {
+            parameters: MmffParameters {
+                variant: MmffVariant::Mmff94s,
+                atom_count,
+                bonds: (1..atom_count)
+                    .map(|atom| MmffBondTerm {
+                        atoms: [atom - 1, atom],
+                        force_constant: 4.0,
+                        equilibrium_distance: 1.5,
+                    })
+                    .collect(),
+                angles: Vec::new(),
+                stretch_bends: Vec::new(),
+                out_of_planes: Vec::new(),
+                torsions: Vec::new(),
+                van_der_waals: Vec::new(),
+                electrostatics: Vec::new(),
+            },
+            partial_charges: vec![0.0; atom_count as usize],
         }
     }
 

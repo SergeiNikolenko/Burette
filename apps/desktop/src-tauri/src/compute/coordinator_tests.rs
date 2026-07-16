@@ -6,7 +6,7 @@ use burrete_compute_protocol::{
     ExecutionPolicy, FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
     GridSourceReference, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
     ResultPackManifest, SchedulingPolicy, SimilarityCutoff, SimilaritySettings, StageState,
-    CONFORMER_RESULT_ARRAY_NAMES, MIN_COMPUTE_MEMORY_BYTES,
+    CONFORMER_RESULT_V2_ARRAY_NAMES, MIN_COMPUTE_MEMORY_BYTES,
 };
 
 use crate::compute::similarity_search::SimilaritySearchRequest;
@@ -199,12 +199,13 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             .iter()
             .map(|array| array.name.as_str())
             .collect::<Vec<_>>(),
-        CONFORMER_RESULT_ARRAY_NAMES
+        CONFORMER_RESULT_V2_ARRAY_NAMES
     );
     let xyz = std::fs::read_to_string(&publication.primary_open_path)
         .expect("read published conformer XYZ");
     assert_eq!(xyz.matches("Burrete conformer molecule=").count(), 6);
     assert!(xyz.contains("etkEnergy="));
+    assert!(xyz.contains("mmff94sEnergy="));
     assert!(xyz.contains("stereo=passed"));
     let page = registry
         .fetch_page(
@@ -221,11 +222,15 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             },
         )
         .expect("fetch conformer Grid result columns");
-    assert_eq!(page.analysis_columns.len(), 4);
+    assert_eq!(page.analysis_columns.len(), 6);
     assert!(page.analysis_columns.iter().any(|column| {
         column.run_id == publication.job.job_id.to_string()
             && column.value_id == "bestEtkEnergy"
             && column.label == "Best ETK energy"
+    }));
+    assert!(page.analysis_columns.iter().any(|column| {
+        column.run_id == publication.job.job_id.to_string()
+            && column.value_id == "bestMmff94sEnergy"
     }));
     assert!(page.rows.iter().all(|row| {
         row.analyses.get("conformerCount").map(|cell| &cell.value) == Some(&serde_json::json!(3))
@@ -237,6 +242,12 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             && row.analyses.get("conformerStatus").map(|cell| &cell.value)
                 == Some(&serde_json::json!("ok"))
             && row.analyses.contains_key("bestEtkEnergy")
+            && row.analyses.contains_key("bestMmff94sEnergy")
+            && row
+                .analyses
+                .get("mmffOptimizationStatus")
+                .map(|cell| &cell.value)
+                == Some(&serde_json::json!("optimized"))
     }));
     std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
     std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
@@ -247,25 +258,49 @@ fn conformer_result_envelope(
 ) -> Vec<u8> {
     let mut bytes = vec![0_u8; 40];
     bytes[..4].copy_from_slice(b"BCER");
-    bytes[4..6].copy_from_slice(&1_u16.to_le_bytes());
+    bytes[4..6].copy_from_slice(&2_u16.to_le_bytes());
     bytes[6..8].copy_from_slice(&40_u16.to_le_bytes());
     bytes[8..24].copy_from_slice(chunk.session_id.as_bytes());
     bytes[24..32].copy_from_slice(&chunk.start_ordinal.to_le_bytes());
     bytes[32..36].copy_from_slice(&(chunk.records.len() as u32).to_le_bytes());
     for record in &chunk.records {
         let payload = minimal_conformer_extract_fixture();
+        let mmff = minimal_mmff_extract_fixture();
         bytes.extend(record.ordinal.to_le_bytes());
         bytes.extend(record.source_record_id.to_le_bytes());
         bytes.extend(decode_test_sha256(&record.molecule_content_sha256));
-        bytes.extend([0; 4]);
+        bytes.extend([0, 0, 0, 0]);
         bytes.extend((payload.len() as u32).to_le_bytes());
+        bytes.extend((mmff.len() as u32).to_le_bytes());
+        bytes.extend([0; 4]);
         bytes.extend(payload);
+        bytes.extend(mmff);
         while !bytes.len().is_multiple_of(4) {
             bytes.push(0);
         }
     }
     let total = bytes.len() as u32;
     bytes[36..40].copy_from_slice(&total.to_le_bytes());
+    bytes
+}
+
+fn minimal_mmff_extract_fixture() -> Vec<u8> {
+    let mut bytes = vec![0_u8; 128];
+    bytes[..4].copy_from_slice(b"BMFX");
+    bytes[4..6].copy_from_slice(&1_u16.to_le_bytes());
+    bytes[6..8].copy_from_slice(&64_u16.to_le_bytes());
+    bytes[8] = 1;
+    bytes[12..16].copy_from_slice(&2_u32.to_le_bytes());
+    bytes[16..20].copy_from_slice(&1_u32.to_le_bytes());
+    bytes[44..48].copy_from_slice(&64_u32.to_le_bytes());
+    bytes[48..52].copy_from_slice(&128_u32.to_le_bytes());
+    bytes[52..56].copy_from_slice(&20_250_304_u32.to_le_bytes());
+    bytes[64..68].copy_from_slice(&0.1_f32.to_le_bytes());
+    bytes[68..72].copy_from_slice(&(-0.1_f32).to_le_bytes());
+    bytes[80..84].copy_from_slice(&0_u32.to_le_bytes());
+    bytes[84..88].copy_from_slice(&1_u32.to_le_bytes());
+    bytes[96..100].copy_from_slice(&4.0_f32.to_le_bytes());
+    bytes[100..104].copy_from_slice(&1.5_f32.to_le_bytes());
     bytes
 }
 

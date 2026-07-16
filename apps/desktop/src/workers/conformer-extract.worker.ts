@@ -21,6 +21,8 @@ const wasmUrl = new URL(
 type ExtractorModule = {
   conformer_extractor_abi_version(): number;
   extract_conformer_parameters(input: string, inputFormat: number, variant: number): Uint8Array;
+  extract_mmff_parameters(input: string, inputFormat: number, variant: number): Uint8Array;
+  mmff_extractor_abi_version(): number;
   rdkit_source_revision(): string;
 };
 
@@ -50,24 +52,53 @@ async function extractChunk(chunk: ConformerInputChunk) {
 
 function extractRecord(extractor: ExtractorModule, record: ConformerInputRecord, variant: ConformerVariant) {
   if (record.format === "unsupportedIdcode") {
-    return { record, status: 1, payload: new TextEncoder().encode("RDKit conformer extraction does not support DataWarrior IDCode records.") };
+    return failedRecord(record, "RDKit conformer extraction does not support DataWarrior IDCode records.");
   }
   if (typeof record.input !== "string" || !record.input.trim()) {
-    return { record, status: 1, payload: new TextEncoder().encode("Conformer input is empty.") };
+    return failedRecord(record, "Conformer input is empty.");
   }
   try {
-    const payload = extractor.extract_conformer_parameters(
+    const inputFormat = record.format === "molblock" ? 0 : 1;
+    const conformerPayload = extractor.extract_conformer_parameters(
       record.input,
-      record.format === "molblock" ? 0 : 1,
+      inputFormat,
       variantTag(variant),
     );
-    if (!(payload instanceof Uint8Array) || payload.byteLength < 64 || payload.byteLength > 0xffff_ffff) {
+    if (!(conformerPayload instanceof Uint8Array)
+      || conformerPayload.byteLength < 64
+      || conformerPayload.byteLength > 0xffff_ffff) {
       throw new Error("RDKit conformer extractor returned an invalid BCEX payload.");
     }
-    return { record, status: 0, payload };
+    try {
+      const mmffPayload = extractor.extract_mmff_parameters(record.input, inputFormat, 1);
+      if (!(mmffPayload instanceof Uint8Array)
+        || mmffPayload.byteLength < 64
+        || mmffPayload.byteLength > 0xffff_ffff) {
+        throw new Error("RDKit MMFF extractor returned an invalid BMFX payload.");
+      }
+      return { record, status: 0, conformerPayload, mmffStatus: 0, mmffPayload };
+    } catch (error) {
+      return {
+        record,
+        status: 0,
+        conformerPayload,
+        mmffStatus: 1,
+        mmffPayload: new TextEncoder().encode(boundedError(error)),
+      };
+    }
   } catch (error) {
-    return { record, status: 1, payload: new TextEncoder().encode(boundedError(error)) };
+    return failedRecord(record, boundedError(error));
   }
+}
+
+function failedRecord(record: ConformerInputRecord, message: string) {
+  return {
+    record,
+    status: 1,
+    conformerPayload: new TextEncoder().encode(message),
+    mmffStatus: 2,
+    mmffPayload: new Uint8Array(),
+  };
 }
 
 async function loadExtractor(): Promise<ExtractorModule> {
@@ -82,6 +113,10 @@ async function loadExtractor(): Promise<ExtractorModule> {
       if (module.conformer_extractor_abi_version() !== EXPECTED_ABI_VERSION) {
         throw new Error("Conformer extractor ABI differs from BCEX v1.");
       }
+      if (typeof module.extract_mmff_parameters !== "function"
+        || module.mmff_extractor_abi_version() !== EXPECTED_ABI_VERSION) {
+        throw new Error("MMFF extractor ABI differs from BMFX v1.");
+      }
       if (module.rdkit_source_revision() !== EXPECTED_RDKIT_REVISION) {
         throw new Error("Conformer extractor RDKit revision differs from the pinned source.");
       }
@@ -93,16 +128,24 @@ async function loadExtractor(): Promise<ExtractorModule> {
 
 function encodeEnvelope(
   chunk: ConformerInputChunk,
-  records: Array<{ record: ConformerInputRecord; status: number; payload: Uint8Array }>,
+  records: Array<{
+    record: ConformerInputRecord;
+    status: number;
+    conformerPayload: Uint8Array;
+    mmffStatus: number;
+    mmffPayload: Uint8Array;
+  }>,
 ) {
-  const totalBytes = records.reduce((total, item) => align4(total + 56 + item.payload.byteLength), 40);
+  const totalBytes = records.reduce((total, item) => (
+    align4(total + 64 + item.conformerPayload.byteLength + item.mmffPayload.byteLength)
+  ), 40);
   if (totalBytes > chunk.maximumResultBytes) {
     throw new Error(`Conformer result requires ${totalBytes} bytes; the admitted envelope limit is ${chunk.maximumResultBytes}.`);
   }
   const bytes = new Uint8Array(totalBytes);
   const view = new DataView(bytes.buffer);
   bytes.set([0x42, 0x43, 0x45, 0x52]);
-  view.setUint16(4, 1, true);
+  view.setUint16(4, 2, true);
   view.setUint16(6, 40, true);
   bytes.set(uuidBytes(chunk.sessionId), 8);
   setSafeUint64(view, 24, chunk.startOrdinal, "start ordinal");
@@ -114,10 +157,14 @@ function encodeEnvelope(
     setSafeUint64(view, offset + 8, item.record.sourceRecordId, "source record ID");
     bytes.set(sha256Bytes(item.record.moleculeContentSha256), offset + 16);
     bytes[offset + 48] = item.status;
-    view.setUint32(offset + 52, item.payload.byteLength, true);
-    offset += 56;
-    bytes.set(item.payload, offset);
-    offset = align4(offset + item.payload.byteLength);
+    bytes[offset + 49] = item.mmffStatus;
+    view.setUint32(offset + 52, item.conformerPayload.byteLength, true);
+    view.setUint32(offset + 56, item.mmffPayload.byteLength, true);
+    offset += 64;
+    bytes.set(item.conformerPayload, offset);
+    offset += item.conformerPayload.byteLength;
+    bytes.set(item.mmffPayload, offset);
+    offset = align4(offset + item.mmffPayload.byteLength);
   }
   return bytes;
 }

@@ -49,14 +49,14 @@
     {
       "path": "PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.js",
       "package": "burrete-rdkit-conformer",
-      "bytes": 40797,
-      "sha256": "sha256-01nZpBpJbZyyj/ckFKEvkKK5dqMXFNq6SpUUgpRBP1U="
+      "bytes": 36992,
+      "sha256": "sha256-zPNi/bH4B31wFaT4UaOsLLIwEyq5YaKHbUMVLXB6SII="
     },
     {
       "path": "PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.wasm",
       "package": "burrete-rdkit-conformer",
-      "bytes": 1909649,
-      "sha256": "sha256-adWMcz+p1AmBjL3MYjwKRdsyBAQmKYL8cIMAVsRIxQk="
+      "bytes": 2218771,
+      "sha256": "sha256-i6irdqmqMcDuAvnlD9zUB4UguILWqYyyVKFld1NIpYk="
     },
     {
       "path": "PreviewExtension/Web/openchemlib/openchemlib.js",
