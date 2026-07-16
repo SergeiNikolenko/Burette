@@ -469,8 +469,8 @@ fixed order below:
    population-charge contract plus verified RM1 core-core energy and sp-basis
    multipole parameters plus complete 22-term pair integrals and molecular-frame
    rotation, first-/second-row overlap, and end-to-end H/C/N/O/F RM1 SCF energies
-   and charges; next add qn 3-5 overlap, Grid execution, Metal contraction, and
-   remaining parameter sets method by method behind independent known-answer
-   and external parity gates;
+   and charges plus qn3-H support; next add heavy-heavy qn3 and qn4-5 overlap,
+   Grid execution, Metal contraction, and remaining parameter sets method by
+   method behind independent known-answer and external parity gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.

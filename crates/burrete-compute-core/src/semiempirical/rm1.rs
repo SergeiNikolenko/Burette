@@ -248,4 +248,17 @@ mod tests {
         assert!((result.nuclear_energy_ev - 143.380_852).abs() < 1.0e-4);
         assert!(result.atomic_charges.iter().sum::<f64>().abs() < 1.0e-10);
     }
+
+    #[test]
+    fn sulfur_hydride_uses_the_third_row_hydrogen_overlap() {
+        let hydrogen_sulfide = molecule(&[
+            (16, [0.0, 0.0, 0.0]),
+            (1, [0.97, 0.0, 0.93]),
+            (1, [-0.97, 0.0, 0.93]),
+        ]);
+        let result = evaluate_rm1(&hydrogen_sulfide, SemiempiricalScfOptions::default()).unwrap();
+        assert_eq!(result.scf.status, SemiempiricalScfStatus::Converged);
+        assert!(result.total_energy_ev.is_finite());
+        assert!(result.atomic_charges.iter().sum::<f64>().abs() < 1.0e-10);
+    }
 }
