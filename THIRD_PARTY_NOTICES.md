@@ -45,6 +45,11 @@ mathematical equations and optimizer behavior checked against the pinned
 formula-only mappings and remaining nvMolKit/Shivam Patel secondary-source
 release gates are recorded in `docs/third-party/mlxmolkit-provenance.md`.
 
+The bounded closed-shell SCF, symmetric diagonalization, DIIS, adaptive
+damping, and semiempirical method-identity scaffold is also independently
+written. It includes no upstream, PYSEQM, or OpenMOPAC source or parameter
+data and does not yet constitute an implementation of RM1, AM1, PM3, or PM6.
+
 Upstream identifies material derived from or compared with nvMolKit
 (Apache-2.0), Shivam Patel's `mlxmolkit` (MIT), PYSEQM (BSD-3-Clause), and
 OpenMOPAC (Apache-2.0). Permission from the primary author does not replace

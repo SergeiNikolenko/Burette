@@ -137,6 +137,15 @@ for CPU and Metal refinement; no upstream Python or Metal source text was
 copied. The pinned `mlxmolkit/etk_energy_metal.py` and
 `mlxmolkit/etk_minimize_metal.py` files are numerical behavior references only.
 
+The initial semiempirical numerical scaffold is independently implemented. It
+defines the seven requested method identities and a bounded restricted
+closed-shell SCF driver with deterministic symmetric diagonalization, DIIS,
+and adaptive density damping. It contains no NDDO formulas, method parameters,
+or upstream source/data, and therefore does not yet claim to evaluate any of
+the named methods. `mlxmolkit/rm1/scf.py` is a behavioral inventory reference
+only; chemistry evaluators remain blocked on method-by-method provenance,
+independent known answers, and secondary notices.
+
 ## Burrete adaptation ledger
 
 This table is mandatory for every adapted, translated, or formula-referenced
@@ -161,6 +170,7 @@ copy `mlxmolkit` source.
 | `crates/burrete-compute-core/src/alignment.rs` | selected Horn, Gaussian shape, and ESP functions in `mlxmolkit/cheese.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only behavioral reference; independently implemented float64 mapped alignment and fixed-pose scoring oracle | Horn quaternion method and published ESP-Sim Gaussian coefficients; no upstream source copied | known proper-transform recovery, self-score, symmetry, inverted-charge, and mapping-domain tests |
 | `compute/metal/alignment-score.v1.metal` | selected Horn, Gaussian shape, and ESP functions in `mlxmolkit/cheese.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | formula-only behavioral reference; independent bounded pair kernel with shared atoms/mappings and transform-only output | Horn quaternion method and published ESP-Sim Gaussian coefficients; no upstream source copied | package-bound float64 CPU/Metal startup KAT on Apple M2 Pro; broad corpus parity pending |
 | `apps/desktop/src-tauri/src/compute/alignment_workflow.rs` | selected pose comparison behavior in `mlxmolkit/cheese.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | independently implemented Grid orchestration, molfile parsing, explicit identity mapping, CPU parity gate, score writeback, and aligned SDF publication | no upstream source copied; molfile formal charges are explicitly not MMFF or semiempirical partial charges | V2000/V3000 parser known answers, focused Rust tests, desktop production build, and v11 real-GPU KAT on Apple M2 Pro; broad pose corpus pending |
+| `crates/burrete-compute-core/src/semiempirical.rs` | `mlxmolkit/rm1/scf.py` | `9e7337f6f93c40a39ad0187991151944a4f1e274` | behavioral inventory only; independently implemented bounded closed-shell SCF, Jacobi diagonalization, DIIS, adaptive damping, and method identities; no chemistry method is claimed yet | no upstream/PYSEQM/OpenMOPAC source, formulas, or parameter data copied | deterministic two-orbital known answer, method-domain and invalid-input tests; NDDO and external parity pending |
 
 ## Acceptance procedure
 

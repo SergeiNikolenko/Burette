@@ -464,7 +464,8 @@ fixed order below:
 3. finish alignment corpus parity, chemistry-derived partial charges,
    non-identity atom maps, durable ResultPack/report publication, and packaged
    UI evidence for the implemented Grid/Mol* pose workflow;
-4. audited semiempirical methods method by method, starting with a native CPU
-   oracle and adding Metal only after independent parity gates;
+4. extend the implemented native closed-shell SCF/DIIS/adaptive-damping CPU
+   scaffold with audited NDDO integrals and parameter sets method by method,
+   adding Metal only after independent known-answer and external parity gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.
