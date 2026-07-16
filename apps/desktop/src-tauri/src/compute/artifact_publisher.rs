@@ -195,7 +195,12 @@ pub(crate) fn materialize_cluster_artifact(
             arrays: engine_arrays,
         };
         let fingerprint_stage = &job.stages[1];
-        let settings_sha256 = job.request.parameters.fingerprint.canonical_sha256()?;
+        let settings_sha256 = job
+            .request
+            .as_cluster()?
+            .parameters
+            .fingerprint
+            .canonical_sha256()?;
         let engine_pack_id = Uuid::new_v4();
         let engine_pack_sha256 = pack_identity_sha256(&PackIdentity {
             kind: "cluster.engine-pack.v1",

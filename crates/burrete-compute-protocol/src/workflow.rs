@@ -180,6 +180,91 @@ impl ConformerV1SubmitRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum ComputeSubmitRequest {
+    ClusterV1(ClusterV1SubmitRequest),
+    ConformerV1(ConformerV1SubmitRequest),
+}
+
+impl ComputeSubmitRequest {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        match self {
+            Self::ClusterV1(request) => request.validate(),
+            Self::ConformerV1(request) => request.validate(),
+        }
+    }
+
+    pub fn normalized(self) -> Result<Self, ProtocolError> {
+        match self {
+            Self::ClusterV1(request) => request.normalized().map(Self::ClusterV1),
+            Self::ConformerV1(request) => request.normalized().map(Self::ConformerV1),
+        }
+    }
+
+    pub fn canonical_json_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
+        match self {
+            Self::ClusterV1(request) => request.canonical_json_bytes(),
+            Self::ConformerV1(request) => request.canonical_json_bytes(),
+        }
+    }
+
+    pub fn canonical_sha256(&self) -> Result<String, ProtocolError> {
+        self.canonical_json_bytes().map(|bytes| sha256_hex(&bytes))
+    }
+
+    pub const fn workflow_template(&self) -> WorkflowTemplateId {
+        match self {
+            Self::ClusterV1(request) => request.workflow_template,
+            Self::ConformerV1(request) => request.workflow_template,
+        }
+    }
+
+    pub const fn backend_policy(&self) -> BackendPolicy {
+        match self {
+            Self::ClusterV1(request) => request.execution_policy.backend_policy,
+            Self::ConformerV1(request) => request.execution_policy.backend_policy,
+        }
+    }
+
+    pub const fn source(&self) -> &GridSourceReference {
+        match self {
+            Self::ClusterV1(request) => &request.source,
+            Self::ConformerV1(request) => &request.source,
+        }
+    }
+
+    pub fn as_cluster(&self) -> Result<&ClusterV1SubmitRequest, ProtocolError> {
+        match self {
+            Self::ClusterV1(request) => Ok(request),
+            Self::ConformerV1(_) => Err(ProtocolError::Validation(
+                "cluster operation received a conformer request".into(),
+            )),
+        }
+    }
+
+    pub fn as_conformer(&self) -> Result<&ConformerV1SubmitRequest, ProtocolError> {
+        match self {
+            Self::ConformerV1(request) => Ok(request),
+            Self::ClusterV1(_) => Err(ProtocolError::Validation(
+                "conformer operation received a cluster request".into(),
+            )),
+        }
+    }
+}
+
+impl From<ClusterV1SubmitRequest> for ComputeSubmitRequest {
+    fn from(request: ClusterV1SubmitRequest) -> Self {
+        Self::ClusterV1(request)
+    }
+}
+
+impl From<ConformerV1SubmitRequest> for ComputeSubmitRequest {
+    fn from(request: ConformerV1SubmitRequest) -> Self {
+        Self::ConformerV1(request)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GridSourceReference {
     pub document_id: String,

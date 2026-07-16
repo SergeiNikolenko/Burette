@@ -43,7 +43,8 @@ pub(crate) struct ClusterExecutionStep {
 }
 
 pub(crate) fn graph_options(job: &JobSnapshot) -> ComputeResult<GraphBuildOptions> {
-    let requested_tile = match job.request.execution_policy.scheduling_policy {
+    let request = job.request.as_cluster()?;
+    let requested_tile = match request.execution_policy.scheduling_policy {
         SchedulingPolicy::Interactive => 256,
         SchedulingPolicy::Balanced => 512,
         SchedulingPolicy::Throughput => 1_024,
@@ -56,7 +57,7 @@ pub(crate) fn graph_options(job: &JobSnapshot) -> ComputeResult<GraphBuildOption
         })?;
     let tile_size = NonZeroUsize::new(requested_tile.min(record_count.max(1)))
         .expect("positive adaptive tile size");
-    GraphBuildOptions::from_resource_limits(tile_size, &job.request.limits).map_err(core_error)
+    GraphBuildOptions::from_resource_limits(tile_size, &request.limits).map_err(core_error)
 }
 
 pub(crate) fn valid_fingerprints(
@@ -109,7 +110,8 @@ pub(crate) fn finish_clustering(
             "similarity graph vertex count differs from valid fingerprints".into(),
         ));
     }
-    let options = ButinaOptions::from_resource_limits(&job.request.limits).map_err(core_error)?;
+    let request = job.request.as_cluster()?;
+    let options = ButinaOptions::from_resource_limits(&request.limits).map_err(core_error)?;
     let local_clusters = butina_clusters(&graph, options).map_err(core_error)?;
     let mut clusters = Vec::new();
     clusters
@@ -254,7 +256,12 @@ mod tests {
         let valid = vec![Fingerprint2048::ZERO];
         let graph = build_tanimoto_graph(
             &valid,
-            job.request.parameters.similarity.cutoff,
+            job.request
+                .as_cluster()
+                .expect("cluster test job")
+                .parameters
+                .similarity
+                .cutoff,
             graph_options(&job).expect("options"),
         )
         .expect("reference graph");

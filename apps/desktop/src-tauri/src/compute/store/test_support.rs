@@ -301,7 +301,7 @@ fn queued_snapshot_with_policy(backend_policy: BackendPolicy) -> JobSnapshot {
         workflow_template: WorkflowTemplateId::ClusterV1,
         state: JobState::Queued,
         normalized_request_sha256: request.canonical_sha256().expect("request hash"),
-        request,
+        request: request.into(),
         frozen_source: MolecularSnapshotRef {
             schema_version: MolecularSnapshotVersion::V1,
             snapshot_id: Uuid::new_v4(),

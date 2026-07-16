@@ -106,7 +106,7 @@ pub(crate) fn build_queued_cluster_v1_job(
         owner_surface: input.owner_surface,
         workflow_template: WorkflowTemplateId::ClusterV1,
         state: JobState::Queued,
-        request,
+        request: request.into(),
         normalized_request_sha256,
         frozen_source,
         progress: JobProgress {
@@ -179,7 +179,7 @@ mod tests {
 
         let snapshot = build_queued_cluster_v1_job(input).expect("normalize queued request");
         assert_eq!(
-            snapshot.request.source.scope,
+            snapshot.request.source().scope,
             GridScope::Selected(SelectedGridScope {
                 source_indexes: vec![0, 1, 2]
             })

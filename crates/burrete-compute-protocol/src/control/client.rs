@@ -7,7 +7,8 @@ use super::auth::{
 };
 use crate::wire::{sealed::Sealed, WireMessage};
 use crate::{
-    ClusterV1SubmitRequest, ComputeCapabilityReport, JobState, ProtocolError, PROTOCOL_VERSION,
+    ClusterV1SubmitRequest, ComputeCapabilityReport, ConformerV1SubmitRequest, JobState,
+    ProtocolError, PROTOCOL_VERSION,
 };
 
 /// Strict public client-to-coordinator control envelope.
@@ -64,6 +65,10 @@ pub enum ControlCommand {
         session_token: SessionToken,
         request: ClusterV1SubmitRequest,
     },
+    SubmitConformerV1 {
+        session_token: SessionToken,
+        request: ConformerV1SubmitRequest,
+    },
     JobStatus {
         session_token: SessionToken,
         job_id: Uuid,
@@ -80,6 +85,13 @@ impl ControlCommand {
             Self::Handshake { client_nonce } => validate_nonce("client nonce", client_nonce),
             Self::Capabilities { session_token } => session_token.validate(),
             Self::SubmitClusterV1 {
+                session_token,
+                request,
+            } => {
+                session_token.validate()?;
+                request.clone().normalized().map(|_| ())
+            }
+            Self::SubmitConformerV1 {
                 session_token,
                 request,
             } => {

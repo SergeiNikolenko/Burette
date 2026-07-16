@@ -249,7 +249,7 @@ impl ComputeCoordinator {
             });
         }
         if source_lease.namespaced_document_id()
-            != runtime_document_id(owner, &queued.request.source.document_id)
+            != runtime_document_id(owner, &queued.request.source().document_id)
         {
             return Err(ComputeCoordinatorError::SourceSnapshotUnavailable(
                 "The Grid lease does not belong to the queued compute job".into(),
@@ -455,7 +455,7 @@ impl ComputeCoordinator {
                     id: job_id.to_string(),
                 })?;
             if batch.grid_lease.namespaced_document_id()
-                != runtime_document_id(owner, &before_numeric.request.source.document_id)
+                != runtime_document_id(owner, &before_numeric.request.source().document_id)
             {
                 return Err(ComputeCoordinatorError::Forbidden(
                     "prepared cluster does not belong to this Grid window".into(),
@@ -504,7 +504,12 @@ impl ComputeCoordinator {
         let numeric_result = (|| {
             let (valid, valid_ordinals) = valid_fingerprints(&batch)?;
             let options = graph_options(&numeric_running)?;
-            let cutoff = numeric_running.request.parameters.similarity.cutoff;
+            let cutoff = numeric_running
+                .request
+                .as_cluster()?
+                .parameters
+                .similarity
+                .cutoff;
             let (graph, gpu_time_ms) = match numeric_running.stages[2].effective_backend {
                 Backend::NativeMetal => match &ready.native_metal {
                     NativeMetalState::Available(runtime) => {
@@ -710,7 +715,7 @@ impl ComputeCoordinator {
                         id: job_id.to_string(),
                     })?;
             if computation.grid_lease.namespaced_document_id()
-                != runtime_document_id(owner, &before_publish.request.source.document_id)
+                != runtime_document_id(owner, &before_publish.request.source().document_id)
             {
                 return Err(ComputeCoordinatorError::Forbidden(
                     "computed cluster does not belong to this Grid window".into(),
@@ -863,6 +868,7 @@ impl ComputeCoordinator {
                 error: computation.errors[ordinal].clone(),
             })
             .collect();
+        let cluster_request = successful_job.request.as_cluster()?;
         let grid_input = GridClusterAnalysisApplyInput {
             run_id: successful_job.job_id,
             document_fingerprint_sha256: successful_job
@@ -874,14 +880,14 @@ impl ComputeCoordinator {
             snapshot_id: successful_job.frozen_source.snapshot_id,
             snapshot_sha256: successful_job.frozen_source.snapshot_sha256.clone(),
             normalized_settings_sha256: successful_job.normalized_request_sha256.clone(),
-            representative_policy: successful_job.request.parameters.representative_policy,
+            representative_policy: cluster_request.parameters.representative_policy,
             provenance: serde_json::json!({
                 "jobId": successful_job.job_id,
                 "artifactId": materialized.artifact_id,
                 "artifactManifestSha256": manifest_sha256,
                 "runtime": successful_job.pinned_runtime,
                 "numericStage": successful_job.stages[2],
-                "cutoff": successful_job.request.parameters.similarity.cutoff,
+                "cutoff": cluster_request.parameters.similarity.cutoff,
             }),
             created_at_ms: materialized.created_at_ms,
             artifact_id: materialized.artifact_id,
@@ -984,7 +990,7 @@ impl ComputeCoordinator {
         let ready = self.ready()?;
         let job = ready.store.get_job(owner, source_job_id)?;
         if grid_lease.namespaced_document_id()
-            != runtime_document_id(owner, &job.request.source.document_id)
+            != runtime_document_id(owner, &job.request.source().document_id)
         {
             return Err(ComputeCoordinatorError::SourceSnapshotUnavailable(
                 "The Grid lease does not belong to the similarity source job".into(),
@@ -1009,10 +1015,7 @@ impl ComputeCoordinator {
                 "similarity source job has no published artifact for its ResultPack".into(),
             )
         })?;
-        let backend = match (
-            job.request.execution_policy.backend_policy,
-            &ready.native_metal,
-        ) {
+        let backend = match (job.request.backend_policy(), &ready.native_metal) {
             (BackendPolicy::ReferenceCpu, _) => SimilaritySearchBackend::ReferenceCpu {
                 engine: &ready.engines.identities().reference_cpu,
                 fallback_reason: None,

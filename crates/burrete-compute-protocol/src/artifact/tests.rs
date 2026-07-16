@@ -1,8 +1,9 @@
 use super::*;
 use crate::{
     AttemptSnapshot, AttemptState, ClusterV1Parameters, ClusterV1SubmitRequest,
-    ComputeJobSchemaVersion, ComputeJobSnapshotSchemaVersion, ExecutionPartition, ExecutionPlan,
-    ExecutionPlanVersion, ExecutionPolicy, FingerprintAlgorithm, FingerprintInputOrder,
+    ComputeJobSchemaVersion, ComputeJobSnapshotSchemaVersion, ComputeSubmitRequest,
+    ExecutionPartition, ExecutionPlan, ExecutionPlanVersion, ExecutionPolicy,
+    FingerprintAlgorithm, FingerprintInputOrder,
     FingerprintSettings, FrozenSourceIdentity, GridScope, GridSourceReference, JobOutcomeSummary,
     JobProgress, MolecularSnapshotVersion, OwnerSurface, PackedFileDescriptor, PlannedStage,
     RdkitBaselineVersion, RepresentativePolicy, ResourceLimits, SchedulingPolicy,
@@ -229,7 +230,7 @@ fn successful_job(policy: BackendPolicy) -> JobSnapshot {
     }
 }
 
-fn request(policy: BackendPolicy) -> ClusterV1SubmitRequest {
+fn request(policy: BackendPolicy) -> ComputeSubmitRequest {
     ClusterV1SubmitRequest {
         schema_version: ComputeJobSchemaVersion::V1,
         workflow_template: WorkflowTemplateId::ClusterV1,
@@ -268,6 +269,7 @@ fn request(policy: BackendPolicy) -> ClusterV1SubmitRequest {
             max_dispatch_ms: 100,
         },
     }
+    .into()
 }
 
 fn execution_plan(policy: BackendPolicy) -> ExecutionPlan {

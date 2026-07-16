@@ -105,7 +105,7 @@ pub(crate) async fn compute_begin_cluster_execution<R: Runtime>(
         let owner = owner.clone();
         run_blocking(move || coordinator.get_job(&owner, job_id)).await?
     };
-    let namespaced_document_id = runtime_document_id(&owner, &job.request.source.document_id);
+    let namespaced_document_id = runtime_document_id(&owner, &job.request.source().document_id);
     let source_lease = registry
         .acquire_snapshot_lease(&namespaced_document_id)
         .map_err(|error| {
@@ -235,7 +235,7 @@ pub(crate) async fn compute_find_similar<R: Runtime>(
         let owner = owner.clone();
         run_blocking(move || coordinator.get_job(&owner, job_id)).await?
     };
-    let namespaced_document_id = runtime_document_id(&owner, &job.request.source.document_id);
+    let namespaced_document_id = runtime_document_id(&owner, &job.request.source().document_id);
     let grid_lease = registry
         .acquire_snapshot_lease(&namespaced_document_id)
         .map_err(|error| {

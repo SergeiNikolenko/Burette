@@ -158,7 +158,7 @@ impl FingerprintSession {
             session_id: Uuid::new_v4(),
             owner: owner.into(),
             job_id: job.job_id,
-            settings: job.request.parameters.fingerprint.clone(),
+            settings: job.request.as_cluster()?.parameters.fingerprint.clone(),
             expected_records,
             next_ordinal: 0,
             reader: BufReader::new(file),

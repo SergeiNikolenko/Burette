@@ -95,6 +95,14 @@ compiler, linker, SDK, and final metallib by hash. These primitives are not a
 claim of completed distance-geometry optimization or an end-to-end conformer
 capability.
 
+The durable `JobSnapshot` request is no longer cluster-only. An untagged typed
+union accepts normalized `cluster.v1` and `conformer.v1` requests while keeping
+the existing on-disk JSON shape unchanged. Snapshot validation dispatches to
+the matching fixed execution-plan contract, and a conformer snapshot now
+round-trips through JSON with its canonical request and plan hashes. The wire
+protocol also has a strict `submitConformerV1` command. Coordinator admission,
+execution, and publication for that command remain in progress.
+
 ## Product Truth By Surface
 
 | Surface | Current truth |

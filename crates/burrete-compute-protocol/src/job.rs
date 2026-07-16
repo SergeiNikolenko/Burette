@@ -7,8 +7,8 @@ use crate::{
         canonical_json_bytes as serialize_canonical_json, sha256_hex, validate_bounded_text,
         validate_json_safe_u64, validate_lower_sha256,
     },
-    BackendPolicy, ClusterV1SubmitRequest, ConformerV1SubmitRequest, ProtocolError,
-    WorkflowTemplateId,
+    BackendPolicy, ClusterV1SubmitRequest, ComputeSubmitRequest, ConformerV1SubmitRequest,
+    ProtocolError, WorkflowTemplateId,
 };
 
 const MAX_STAGE_ID_BYTES: usize = 96;
@@ -403,6 +403,21 @@ impl ExecutionPlan {
             ));
         }
         self.validate_memory_limit(request.limits.max_memory_bytes)
+    }
+
+    pub fn validate_against_compute_request(
+        &self,
+        request: &ComputeSubmitRequest,
+        record_count: u64,
+    ) -> Result<(), ProtocolError> {
+        match request {
+            ComputeSubmitRequest::ClusterV1(request) => {
+                self.validate_against_request(request, record_count)
+            }
+            ComputeSubmitRequest::ConformerV1(request) => {
+                self.validate_against_conformer_request(request, record_count)
+            }
+        }
     }
 
     /// Serializes a validated execution plan using RFC 8785 JSON Canonicalization Scheme.
