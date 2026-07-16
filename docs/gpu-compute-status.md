@@ -449,6 +449,14 @@ separate product increments.
   `Apple M2 Pro` (`registryId=0x1000003c0`, unified memory); the tested
   `native-compute.v14.metallib` SHA-256 is
   `8ac75d3f5738856cffbee8f1ed32221eb3ed7a6d80821672de2128aab9323a3d`.
+- The native closed-shell NDDO oracle now has separate AM1, PM3, PM6_SP, and
+  AM1* CHNO parameter packs instead of method aliases. PM6-family nuclear
+  repulsion uses its distinct PWCCT equation and frozen CHNO pair table. At the
+  pinned mlxmolkit commit, explicit-water total energies and oxygen charges
+  match all four upstream method paths within `1e-4 eV` and `1e-5 e`.
+  This is an experimental organic-domain slice only: PM6/PM6_D d orbitals,
+  broader element tables, D3/H4/HH corrections, and Grid method selection are
+  still gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.

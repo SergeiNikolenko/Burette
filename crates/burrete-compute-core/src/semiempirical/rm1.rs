@@ -4,8 +4,9 @@
 // License: compute/semiempirical/licenses/PYSEQM-BSD-3-CLAUSE.txt.
 
 use super::{
-    rm1_nuclear_repulsion_energy, rm1_parameters, rm1_rotated_pair_integrals, rm1_sp_overlap,
-    solve_closed_shell_scf_with_eigensolver, symmetric_eigendecomposition, SemiempiricalError,
+    rm1_rotated_pair_integrals, rm1_sp_overlap, semiempirical_nuclear_repulsion_energy,
+    semiempirical_parameters, solve_closed_shell_scf_with_eigensolver,
+    symmetric_eigendecomposition, SemiempiricalError, SemiempiricalMethod,
     SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfResult,
 };
 
@@ -43,8 +44,8 @@ pub fn rm1_fock_pairs(
         for right_index in (left_index + 1)..molecule.atoms.len() {
             let left_atom = &molecule.atoms[left_index];
             let right_atom = &molecule.atoms[right_index];
-            let left = rm1_parameters(left_atom.atomic_number).unwrap();
-            let right = rm1_parameters(right_atom.atomic_number).unwrap();
+            let left = semiempirical_parameters(molecule.method, left_atom.atomic_number).unwrap();
+            let right = semiempirical_parameters(molecule.method, right_atom.atomic_number).unwrap();
             let pair = rm1_rotated_pair_integrals(
                 left,
                 right,
@@ -126,6 +127,18 @@ pub fn contract_rm1_pair_fock(
 }
 
 pub fn evaluate_rm1(
+    molecule: &SemiempiricalMolecule,
+    options: SemiempiricalScfOptions,
+) -> Result<Rm1Evaluation, SemiempiricalError> {
+    if molecule.method != SemiempiricalMethod::Rm1 {
+        return Err(SemiempiricalError::InvalidInput(
+            "evaluate_rm1 requires an RM1 molecule".into(),
+        ));
+    }
+    evaluate_semiempirical(molecule, options)
+}
+
+pub fn evaluate_semiempirical(
     molecule: &SemiempiricalMolecule,
     options: SemiempiricalScfOptions,
 ) -> Result<Rm1Evaluation, SemiempiricalError> {
@@ -212,7 +225,7 @@ pub fn evaluate_rm1_with_prepared_pairs_and_accelerators(
             .zip(core.iter().zip(&final_fock))
             .map(|(density, (core, fock))| density * (core + fock))
             .sum::<f64>();
-    let nuclear_energy_ev = rm1_nuclear_repulsion_energy(molecule)?;
+    let nuclear_energy_ev = semiempirical_nuclear_repulsion_energy(molecule)?;
     Ok(Rm1Evaluation {
         electronic_energy_ev,
         nuclear_energy_ev,
@@ -229,7 +242,7 @@ fn build_core_hamiltonian(
     let n = molecule.orbital_count;
     let mut core = vec![0.0; n * n];
     for (atom_index, atom) in molecule.atoms.iter().enumerate() {
-        let parameters = rm1_parameters(atom.atomic_number).unwrap();
+        let parameters = semiempirical_parameters(molecule.method, atom.atomic_number).unwrap();
         let start = molecule.orbital_offsets[atom_index];
         core[start * n + start] = parameters.uss_ev;
         for orbital in 1..usize::from(parameters.orbital_count) {
@@ -242,8 +255,8 @@ fn build_core_hamiltonian(
         for right_index in (left_index + 1)..molecule.atoms.len() {
             let left_atom = &molecule.atoms[left_index];
             let right_atom = &molecule.atoms[right_index];
-            let left = rm1_parameters(left_atom.atomic_number).unwrap();
-            let right = rm1_parameters(right_atom.atomic_number).unwrap();
+            let left = semiempirical_parameters(molecule.method, left_atom.atomic_number).unwrap();
+            let right = semiempirical_parameters(molecule.method, right_atom.atomic_number).unwrap();
             let left_start = molecule.orbital_offsets[left_index];
             let right_start = molecule.orbital_offsets[right_index];
             let overlap = rm1_sp_overlap(
@@ -315,7 +328,7 @@ fn build_fock(
     let n = molecule.orbital_count;
     let mut fock = core.to_vec();
     for (atom_index, atom) in molecule.atoms.iter().enumerate() {
-        let parameters = rm1_parameters(atom.atomic_number).unwrap();
+        let parameters = semiempirical_parameters(molecule.method, atom.atomic_number).unwrap();
         let start = molecule.orbital_offsets[atom_index];
         let p_ss = density[start * n + start];
         if parameters.orbital_count == 1 {
@@ -435,5 +448,45 @@ mod tests {
         assert_eq!(result.scf.status, SemiempiricalScfStatus::Converged);
         assert!(result.total_energy_ev.is_finite());
         assert!(result.atomic_charges.iter().sum::<f64>().abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn organic_sp_methods_converge_with_distinct_parameterizations() {
+        let atoms = vec![
+            SemiempiricalAtom {
+                atomic_number: 8,
+                position_angstrom: [0.0, 0.0, 0.0],
+            },
+            SemiempiricalAtom {
+                atomic_number: 1,
+                position_angstrom: [0.9584, 0.0, 0.0],
+            },
+            SemiempiricalAtom {
+                atomic_number: 1,
+                position_angstrom: [-0.2396, 0.9275, 0.0],
+            },
+        ];
+        let mut energies = Vec::new();
+        for (method, expected_energy, expected_oxygen_charge) in [
+            (SemiempiricalMethod::Am1, -348.561_461_108_585_83, -0.385_115_229_735_707_66),
+            (SemiempiricalMethod::Pm3, -324.898_111_989_405, -0.350_735_485_739_786_4),
+            (SemiempiricalMethod::Pm6Sp, -319.072_734_328_042_5, -0.609_404_137_783_431_4),
+            (SemiempiricalMethod::Am1Star, -318.906_821_248_340_75, -0.444_617_462_025_478_36),
+        ] {
+            let molecule = SemiempiricalMolecule::new(method, atoms.clone(), 0).unwrap();
+            let result = evaluate_semiempirical(&molecule, SemiempiricalScfOptions::default())
+                .unwrap();
+            assert_eq!(result.scf.status, SemiempiricalScfStatus::Converged);
+            assert!(result.total_energy_ev.is_finite());
+            assert!(result.atomic_charges.iter().sum::<f64>().abs() < 1.0e-9);
+            assert!((result.total_energy_ev - expected_energy).abs() < 1.0e-4, "{method:?}: {result:?}");
+            assert!((result.atomic_charges[0] - expected_oxygen_charge).abs() < 1.0e-5, "{method:?}: {result:?}");
+            energies.push(result.total_energy_ev);
+        }
+        for left in 0..energies.len() {
+            for right in (left + 1)..energies.len() {
+                assert!((energies[left] - energies[right]).abs() > 1.0e-3);
+            }
+        }
     }
 }
