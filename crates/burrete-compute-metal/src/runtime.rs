@@ -24,6 +24,14 @@ pub struct MetalTanimotoRuntime {
     limits: CapabilityLimits,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MetalGraphExecution {
+    pub graph: SymmetricCsr,
+    /// Sum of Metal's completed-command-buffer GPUStartTime/GPUEndTime
+    /// intervals. This excludes CPU encoding and synchronization time.
+    pub gpu_time_ms: u64,
+}
+
 impl std::fmt::Debug for MetalTanimotoRuntime {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -87,6 +95,27 @@ impl MetalTanimotoRuntime {
         options: GraphBuildOptions,
     ) -> Result<SymmetricCsr, MetalRuntimeError> {
         self.host.build_graph(fingerprints, cutoff, options)
+    }
+
+    pub fn build_graph_profiled(
+        &self,
+        fingerprints: &[Fingerprint2048],
+        cutoff: SimilarityCutoff,
+        options: GraphBuildOptions,
+    ) -> Result<MetalGraphExecution, MetalRuntimeError> {
+        let (graph, gpu_time_seconds) =
+            self.host
+                .build_graph_profiled(fingerprints, cutoff, options)?;
+        let gpu_time_ms = (gpu_time_seconds * 1_000.0).ceil();
+        if !gpu_time_ms.is_finite() || gpu_time_ms < 0.0 || gpu_time_ms > u64::MAX as f64 {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal GPU timing is outside the supported range".into(),
+            ));
+        }
+        Ok(MetalGraphExecution {
+            graph,
+            gpu_time_ms: gpu_time_ms as u64,
+        })
     }
 
     fn run_startup_known_answer_test(&self) -> Result<(), MetalRuntimeError> {
