@@ -37,6 +37,7 @@ pub(crate) struct ConformerDistanceComputation {
 #[derive(Debug)]
 #[allow(dead_code, reason = "consumed by the next ETK/stereo execution stage")]
 pub(crate) struct ConformerDeferredConstraints {
+    pub(crate) molecule_atom_starts: Vec<u64>,
     pub(crate) chiral_atom_quads: Vec<[u32; 4]>,
     pub(crate) chiral_term_starts: Vec<u64>,
     pub(crate) chiral_volume_bounds: Vec<[f32; 2]>,
@@ -102,6 +103,7 @@ pub(crate) fn execute_conformer_distance_geometry(
         torsion_term_starts,
     } = arrays;
     let deferred = ConformerDeferredConstraints {
+        molecule_atom_starts: molecule_atom_starts.clone(),
         chiral_atom_quads,
         chiral_term_starts,
         chiral_volume_bounds,
@@ -565,11 +567,23 @@ mod tests {
         assert_eq!(result.conformer_count(), 2);
         assert!(result.gpu_time_ms.is_some());
         assert!(result.embedding_statuses.iter().all(|status| *status <= 3));
+        let stereo =
+            crate::compute::conformer_stereo_executor::execute_conformer_stereo_validation(
+                &result,
+                Backend::NativeMetal,
+                Some(&runtime),
+                MIN_COMPUTE_MEMORY_BYTES,
+            )
+            .expect("native Metal conformer stereo validation");
+        assert_eq!(stereo.failure_flags, [0, 0]);
+        assert_eq!(stereo.passed_count, 2);
+        assert!(stereo.gpu_time_ms.is_some());
         eprintln!(
-            "conformer executor Metal smoke: device={}, conformers={}, gpuTimeMs={:?}",
+            "conformer executor Metal smoke: device={}, conformers={}, distanceGpuTimeMs={:?}, stereoGpuTimeMs={:?}",
             runtime.device_identity().name,
             result.conformer_count(),
-            result.gpu_time_ms
+            result.gpu_time_ms,
+            stereo.gpu_time_ms,
         );
     }
 

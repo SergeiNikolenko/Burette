@@ -123,6 +123,19 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
         Backend::ReferenceCpu
     );
     assert_eq!(execution.job.stages[3].state, StageState::Queued);
+    let stereo = coordinator
+        .execute_conformer_stereo_v1("main", job.job_id, execution.job.revision)
+        .expect("execute reference stereo validation");
+    assert_eq!(stereo.conformer_count, 6);
+    assert_eq!(stereo.passed_count, 6);
+    assert_eq!(stereo.failed_count, 0);
+    assert!(stereo.ready_for_validation);
+    assert_eq!(stereo.job.stages[3].state, StageState::Succeeded);
+    assert_eq!(
+        stereo.job.stages[3].effective_backend,
+        Backend::ReferenceCpu
+    );
+    assert_eq!(stereo.job.stages[4].state, StageState::Queued);
     std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
     std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
 }

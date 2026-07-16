@@ -42,6 +42,7 @@ use crate::compute::{
         CompletedConformerExtraction, ConformerExtractionSession, ConformerSubmissionStep,
         MAX_CONFORMER_RESULT_ENVELOPE_BYTES,
     },
+    conformer_stereo_executor::{execute_conformer_stereo_validation, ConformerStereoComputation},
     engine_catalog::VerifiedEngineCatalog,
     error::{ComputeCoordinatorError, ComputeResult},
     fingerprint_session::{
@@ -126,6 +127,7 @@ struct PreparedConformerBatch {
 #[allow(dead_code, reason = "consumed by the next ETK/stereo execution stage")]
 struct ComputedConformerBatch {
     distance: ConformerDistanceComputation,
+    stereo: Option<ConformerStereoComputation>,
     identities: Vec<ConformerMoleculeIdentity>,
     errors: Vec<Option<String>>,
 }
@@ -137,6 +139,16 @@ pub(crate) struct ConformerDistanceExecutionStep {
     pub(crate) conformer_count: usize,
     pub(crate) failed_source_records: usize,
     pub(crate) ready_for_stereo: bool,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConformerStereoExecutionStep {
+    pub(crate) job: JobSnapshot,
+    pub(crate) conformer_count: usize,
+    pub(crate) passed_count: usize,
+    pub(crate) failed_count: usize,
+    pub(crate) ready_for_validation: bool,
 }
 
 #[derive(Debug)]
@@ -739,6 +751,7 @@ impl ComputeCoordinator {
             .apply_successor(owner, distance_running.revision, &distance_succeeded)?;
         let computed = ComputedConformerBatch {
             distance,
+            stereo: None,
             identities: prepared.identities,
             errors: prepared.errors,
         };
@@ -758,6 +771,129 @@ impl ComputeCoordinator {
             conformer_count,
             failed_source_records,
             ready_for_stereo: true,
+        })
+    }
+
+    pub(crate) fn execute_conformer_stereo_v1(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        expected_revision: u64,
+    ) -> ComputeResult<ConformerStereoExecutionStep> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let distance_succeeded = ready.store.get_job(owner, job_id)?;
+        if distance_succeeded.revision != expected_revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: distance_succeeded.revision,
+            });
+        }
+        let request = distance_succeeded.request.as_conformer()?;
+        let backend = distance_succeeded.stages[3].effective_backend;
+        let gpu_stage = backend == Backend::NativeMetal;
+        let start_evidence = if gpu_stage {
+            match &ready.native_metal {
+                NativeMetalState::Available(runtime) => StageStartEvidence {
+                    device: Some(runtime.device_identity().name.clone()),
+                    kernel_id: Some("burrete.compute.conformer-stereo.v1".into()),
+                },
+                NativeMetalState::Unavailable { message, .. } => {
+                    return Err(ComputeCoordinatorError::Unavailable(format!(
+                        "the admitted Metal runtime became unavailable: {message}"
+                    )))
+                }
+            }
+        } else {
+            StageStartEvidence::default()
+        };
+        let stereo_running = start_stage(
+            &distance_succeeded,
+            3,
+            JobState::Running,
+            now_ms(),
+            "Validating conformer stereochemistry",
+            start_evidence,
+        )?;
+        ready
+            .store
+            .apply_successor(owner, distance_succeeded.revision, &stereo_running)?;
+        let mut computed = ready
+            .computed_conformers
+            .lock()
+            .map_err(|_| poisoned("computed conformer registry"))?
+            .remove(&job_id)
+            .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                entity: "computed conformer",
+                id: job_id.to_string(),
+            })?;
+        if computed.stereo.is_some() {
+            return Err(ComputeCoordinatorError::Protocol(
+                "conformer stereo validation already exists for this job".into(),
+            ));
+        }
+        let started = Instant::now();
+        let result = execute_conformer_stereo_validation(
+            &computed.distance,
+            backend,
+            match &ready.native_metal {
+                NativeMetalState::Available(runtime) => Some(runtime),
+                NativeMetalState::Unavailable { .. } => None,
+            },
+            request.limits.max_memory_bytes,
+        );
+        let host_time_ms = started.elapsed().as_secs_f64() * 1_000.0;
+        let stereo = match result {
+            Ok(stereo) => stereo,
+            Err(error) => {
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &stereo_running,
+                    3,
+                    if gpu_stage {
+                        ComputeErrorCode::GpuExecutionFailed
+                    } else {
+                        ComputeErrorCode::NumericalFailure
+                    },
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
+            }
+        };
+        let conformer_count = stereo.failure_flags.len();
+        let passed_count = stereo.passed_count;
+        let stereo_succeeded = finish_stage(
+            &stereo_running,
+            3,
+            JobState::Validating,
+            now_ms(),
+            "Conformer stereochemistry validated",
+            StageFinishMetrics {
+                host_time_ms,
+                gpu_time_ms: stereo.gpu_time_ms.map(|value| value as f64),
+                transferred_bytes: conformer_count as u64 * 4,
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, stereo_running.revision, &stereo_succeeded)?;
+        computed.stereo = Some(stereo);
+        ready
+            .computed_conformers
+            .lock()
+            .map_err(|_| poisoned("computed conformer registry"))?
+            .insert(job_id, computed);
+        Ok(ConformerStereoExecutionStep {
+            job: stereo_succeeded,
+            conformer_count,
+            passed_count,
+            failed_count: conformer_count - passed_count,
+            ready_for_validation: true,
         })
     }
 
@@ -1689,27 +1825,21 @@ impl NativeMetalState {
                 ConformerBackendAdmission::ReferenceCpu,
                 reference_runtime.clone(),
             )),
-            (
-                BackendPolicy::GpuPreferred,
-                Self::Available(runtime),
-            ) => {
+            (BackendPolicy::GpuPreferred, Self::Available(runtime)) => {
                 let engine = EngineIdentity {
                     engine_id: "burrete-native-metal".into(),
                     version: runtime.runtime_identity().version.clone(),
                     manifest_sha256: runtime.runtime_identity().manifest_sha256.clone(),
                 };
                 Ok((
+                    ConformerBackendAdmission::NativeMetal(engine.clone()),
                     ConformerBackendAdmission::NativeMetal(engine),
-                    unavailable(
-                        CapabilityReasonCode::KernelUnavailable,
-                        "native Metal stereo validation is not packaged yet",
-                    ),
                     runtime.runtime_identity().clone(),
                 ))
             }
             (BackendPolicy::GpuRequired, Self::Available(_)) => {
                 Err(ComputeCoordinatorError::Unavailable(
-                    "gpuRequired conformer.v1 admission failed: native Metal stereo validation is not packaged yet".into(),
+                    "gpuRequired conformer.v1 admission failed: native Metal ETK refinement is not packaged yet".into(),
                 ))
             }
             (BackendPolicy::GpuRequired, Self::Unavailable { message, .. }) => {

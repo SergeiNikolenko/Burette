@@ -10,7 +10,9 @@ use crate::compute::{
     artifact_publisher::ClusterPublicationStep,
     cluster_executor::ClusterExecutionStep,
     conformer_session::ConformerSubmissionStep,
-    coordinator::{ComputeCoordinator, ConformerDistanceExecutionStep},
+    coordinator::{
+        ComputeCoordinator, ConformerDistanceExecutionStep, ConformerStereoExecutionStep,
+    },
     error::{ComputeCoordinatorError, ComputeResult},
     fingerprint_session::{FingerprintChunkResult, FingerprintExecutionStep},
     representative_export::ClusterRepresentativeExportResult,
@@ -137,6 +139,21 @@ pub(crate) async fn compute_execute_conformer_distance<R: Runtime>(
         coordinator.execute_conformer_distance_v1(&owner, job_id, expected_revision)
     })
     .await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_execute_conformer_stereo<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    job_id: String,
+    expected_revision: u64,
+) -> Result<ConformerStereoExecutionStep, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let job_id = parse_uuid("job ID", &job_id)?;
+    validate_revision(expected_revision)?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || coordinator.execute_conformer_stereo_v1(&owner, job_id, expected_revision))
+        .await
 }
 
 #[tauri::command]
