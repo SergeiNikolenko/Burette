@@ -153,6 +153,11 @@ MMFF94/MMFF94s evaluator and bounded central-difference reference-gradient
 entrypoint. Its package binds eight sources, eight contracts, eight AIR files,
 and eleven entrypoints by hash. A startup KAT compares every term and the full
 gradient against the float64 CPU oracle before the runtime becomes available.
+The pinned native RDKit adapter source also exposes a separate `BMFX` v1 MMFF94/
+MMFF94s parameter boundary with partial charges and seven fixed-width term
+groups. Its C++ serializer and strict Rust decoder are tested; rebuilding and
+vendoring the augmented WASM artifact is the next packaging gate, so the
+installed extractor must not yet claim this operation.
 The runtime now composes seed-based initialization and optimization into one
 verified per-molecule ensemble operation, keeping both numerical stages on
 Metal while sharing constraints across all requested conformers. Its admission

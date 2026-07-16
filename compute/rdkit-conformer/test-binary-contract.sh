@@ -11,3 +11,10 @@ trap 'rm -rf "$build_dir"' EXIT
   "$root/conformer_binary_test.cpp" \
   -o "$build_dir/conformer-binary-test"
 "$build_dir/conformer-binary-test"
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+  -I"$root" \
+  "$root/mmff_binary.cpp" \
+  "$root/mmff_binary_test.cpp" \
+  -o "$build_dir/mmff-binary-test"
+"$build_dir/mmff-binary-test"

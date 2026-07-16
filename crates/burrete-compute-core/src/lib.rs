@@ -15,6 +15,7 @@ mod distance_geometry;
 mod distance_optimizer;
 mod etk_geometry;
 mod mmff;
+mod mmff_extract;
 
 pub use conformer_engine::{
     ConformerDistanceEngine, ConformerDistanceMolecule, ConformerEngineError,
@@ -51,6 +52,9 @@ pub use mmff::{
     evaluate_mmff, evaluate_mmff_energy, validate_mmff_parameters, MmffAngleTerm, MmffBondTerm,
     MmffElectrostaticTerm, MmffEnergyBreakdown, MmffError, MmffEvaluation, MmffOutOfPlaneTerm,
     MmffParameters, MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm, MmffVariant,
+};
+pub use mmff_extract::{
+    decode_native_mmff_parameters, MmffExtractError, NativeMmffParameters,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};

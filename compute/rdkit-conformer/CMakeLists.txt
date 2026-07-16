@@ -5,7 +5,9 @@ endif()
 add_executable(Burrete_rdkit_conformer
     "${BURRETE_CONFORMER_SOURCE_DIR}/jswrapper.cpp"
     "${BURRETE_CONFORMER_SOURCE_DIR}/conformer_binary.cpp"
-    "${BURRETE_CONFORMER_SOURCE_DIR}/conformer_extractor.cpp")
+    "${BURRETE_CONFORMER_SOURCE_DIR}/conformer_extractor.cpp"
+    "${BURRETE_CONFORMER_SOURCE_DIR}/mmff_binary.cpp"
+    "${BURRETE_CONFORMER_SOURCE_DIR}/mmff_extractor.cpp")
 target_include_directories(Burrete_rdkit_conformer PRIVATE
     "${BURRETE_CONFORMER_SOURCE_DIR}")
 target_link_libraries(Burrete_rdkit_conformer
