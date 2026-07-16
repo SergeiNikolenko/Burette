@@ -65,8 +65,8 @@ pub use mmff_extract::{
 };
 pub use semiempirical::{
     rm1_parameters, solve_closed_shell_scf, SemiempiricalElementParameters, SemiempiricalError,
-    SemiempiricalMethod, SemiempiricalScfOptions, SemiempiricalScfResult,
-    SemiempiricalScfStatus,
+    SemiempiricalAtom, SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfOptions,
+    SemiempiricalScfResult, SemiempiricalScfStatus,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};

@@ -465,7 +465,9 @@ fixed order below:
    non-identity atom maps, durable ResultPack/report publication, and packaged
    UI evidence for the implemented Grid/Mol* pose workflow;
 4. extend the implemented native closed-shell SCF/DIIS/adaptive-damping CPU
-   scaffold with audited NDDO integrals and parameter sets method by method,
-   adding Metal only after independent known-answer and external parity gates;
+   scaffold, audited RM1 parameter table, bounded molecule/basis pack, and
+   population-charge contract with NDDO integrals and remaining parameter sets
+   method by method, adding Metal only after independent known-answer and
+   external parity gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.
