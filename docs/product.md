@@ -37,7 +37,7 @@ installed-app evidence.
 | Workflow family | Product status |
 | --- | --- |
 | Similarity and clustering | `Cluster all`/`Cluster selected` source workflow and ad-hoc packaged Metal dispatch proven; production release/scale gates pending |
-| Similarity search and diverse selection | Immutable diverse-representative export is wired from Grid with structures, table, and provenance; similarity search remains pending |
+| Similarity search and diverse selection | `Find similar` reuses a verified cluster EnginePack for exact CPU/Metal top-50 ranking and Grid writeback; immutable diverse export includes structures, table, and provenance |
 | Conformer generation | Planned after the clustering vertical slice |
 | MMFF94/MMFF94s optimization | Planned after conformer generation |
 | Alignment, RMSD, shape/electrostatic scoring | Planned after MMFF |

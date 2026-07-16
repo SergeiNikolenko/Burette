@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   computeErrorMessage,
   exportClusterRepresentatives,
+  findSimilarMolecules,
   runClusterWorkflow,
 } from "../lib/compute-cluster";
 import { isTauriRuntime } from "../lib/tauri";
@@ -22,11 +23,90 @@ export function useAppGridComputeMessages({
 }: UseAppGridComputeMessagesOptions) {
   const runningDocumentsRef = useRef(new Set<string>());
   const exportingDocumentsRef = useRef(new Set<string>());
+  const searchingDocumentsRef = useRef(new Set<string>());
 
   const handleGridComputeMessage = useCallback((
     body: GridComputeMessageBody,
     source: MessageEventSource | null,
   ) => {
+    if (body?.type === "findSimilarMolecules") {
+      const documentId = typeof body.documentId === "string" ? body.documentId.trim() : "";
+      const jobId = typeof body.jobId === "string" ? body.jobId.trim() : "";
+      const querySourceIndex = typeof body.querySourceIndex === "number" ? body.querySourceIndex : -1;
+      if (!documentId || !jobId || !Number.isSafeInteger(querySourceIndex) || querySourceIndex < 0) {
+        if (documentId) {
+          postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+            type: "gridSimilaritySearchError",
+            error: "Similarity search requires one valid query molecule and a successful clustering run.",
+          });
+        }
+        return true;
+      }
+      if (!isTauriRuntime()) {
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridSimilaritySearchError",
+          error: "Native similarity search is available only in the Burrete desktop runtime.",
+        });
+        pushStatus("Native similarity search is unavailable outside the desktop runtime.", "error");
+        return true;
+      }
+      if (
+        runningDocumentsRef.current.has(documentId)
+        || searchingDocumentsRef.current.has(documentId)
+      ) {
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridSimilaritySearchError",
+          error: "Another molecular analysis is already running for this Grid.",
+        });
+        return true;
+      }
+
+      const cutoff = typeof body.cutoff === "number" ? body.cutoff : 0.7;
+      const topK = typeof body.topK === "number" && Number.isSafeInteger(body.topK)
+        ? Math.max(1, Math.min(500, body.topK))
+        : 50;
+      searchingDocumentsRef.current.add(documentId);
+      postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+        type: "gridSimilaritySearchStarted",
+        jobId,
+        querySourceIndex,
+        cutoff,
+        topK,
+      });
+      pushStatus(
+        `Searching the verified fingerprint library for up to ${topK.toLocaleString()} matches...`,
+      );
+
+      void findSimilarMolecules(jobId, querySourceIndex, cutoff, topK).then((result) => {
+        const backendLabel = result.backend === "nativeMetal" ? "Metal GPU" : "reference CPU";
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridSimilaritySearchFinished",
+          ...result,
+        });
+        const displayed = result.matches.length;
+        const message = `Similarity search found ${displayed.toLocaleString()} displayed match${
+          displayed === 1 ? "" : "es"
+        } via ${backendLabel}.`;
+        const warnings = [result.gridWarning, result.fallbackReason].filter(
+          (value): value is string => typeof value === "string" && Boolean(value.trim()),
+        );
+        pushStatus(
+          message,
+          result.gridApplied ? "success" : "error",
+          warnings.length ? warnings : undefined,
+        );
+      }).catch((error) => {
+        const message = computeErrorMessage(error);
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridSimilaritySearchError",
+          error: message,
+        });
+        pushStatus(`Similarity search failed: ${message}`, "error");
+      }).finally(() => {
+        searchingDocumentsRef.current.delete(documentId);
+      });
+      return true;
+    }
     if (body?.type === "exportClusterRepresentatives") {
       const documentId = typeof body.documentId === "string" ? body.documentId.trim() : "";
       const jobId = typeof body.jobId === "string" ? body.jobId.trim() : "";
@@ -99,10 +179,13 @@ export function useAppGridComputeMessages({
       pushStatus("Native clustering is unavailable outside the desktop runtime.", "error");
       return true;
     }
-    if (runningDocumentsRef.current.has(documentId)) {
+    if (
+      runningDocumentsRef.current.has(documentId)
+      || searchingDocumentsRef.current.has(documentId)
+    ) {
       postGridComputeMessage(postMessageToViewerSource, source, documentId, {
         type: "gridClusterError",
-        error: "A clustering job is already running for this Grid.",
+        error: "Another molecular analysis is already running for this Grid.",
       });
       return true;
     }

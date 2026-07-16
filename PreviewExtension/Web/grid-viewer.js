@@ -137,6 +137,7 @@
     contextMenuKeyHandler: null,
     generating3d: false,
     clustering: false,
+    findingSimilar: false,
     exportingClusterRepresentatives: false,
     clusterCutoff: storedClusterCutoff(),
     tableMoleculePreview: null,
@@ -405,6 +406,32 @@
       if (body.type === 'gridClusterError') {
         setGridClusteringPending(false);
         setStatus(body.error || '[grid] Clustering failed.', 'error');
+        return;
+      }
+      if (body.type === 'gridSimilaritySearchStarted') {
+        setGridSimilaritySearchPending(true);
+        setStatus('[grid] Scoring the verified fingerprint library against the selected query.');
+        return;
+      }
+      if (body.type === 'gridSimilaritySearchFinished') {
+        setGridSimilaritySearchPending(false);
+        const backend = body.backend === 'nativeMetal' ? 'Metal GPU' : 'reference CPU';
+        const displayed = Array.isArray(body.matches) ? body.matches.length : 0;
+        const qualified = Number(body.qualifiedMatchCount || displayed);
+        const library = Number(body.validRecordCount || body.libraryRecordCount || 0);
+        const warning = String(body.gridWarning || '').trim();
+        setStatus(
+          warning
+            ? `[grid] Found ${displayed.toLocaleString()} displayed matches via ${backend}; Grid writeback warning: ${warning}`
+            : `[grid] Found ${displayed.toLocaleString()} displayed match${displayed === 1 ? '' : 'es'} via ${backend} from ${library.toLocaleString()} valid molecules${qualified > displayed ? `; ${qualified.toLocaleString()} passed the cutoff` : ''}.`,
+          warning ? 'error' : 'info'
+        );
+        if (body.gridApplied === true) void refreshRemote(config());
+        return;
+      }
+      if (body.type === 'gridSimilaritySearchError') {
+        setGridSimilaritySearchPending(false);
+        setStatus(body.error || '[grid] Similarity search failed.', 'error');
         return;
       }
       if (body.type === 'gridClusterRepresentativesExportStarted') {
@@ -869,8 +896,10 @@
       generating3d: state.generating3d,
       clusterEnabled: caps.cluster,
       clustering: state.clustering,
+      findingSimilar: state.findingSimilar,
       exportingClusterRepresentatives: state.exportingClusterRepresentatives,
       clusterRepresentativesAvailable: Boolean(latestRepresentativeAnalysisColumn()),
+      similarityQuerySelected: state.selected.size === 1,
       clusterCutoff: state.clusterCutoff,
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
@@ -896,6 +925,7 @@
       onSelectAll() { selectAllRows(cfg); },
       onClearSelection() { clearSelection(cfg); },
       onCluster() { requestClustering(cfg); },
+      onFindSimilar() { requestSimilaritySearch(cfg); },
       onExportClusterRepresentatives() { requestClusterRepresentativeExport(cfg); },
       onClusterCutoffChange(value) { setClusterCutoff(value); },
       onCopySelected() { copySelected(); },
@@ -1468,7 +1498,7 @@
   }
 
   function requestClustering(cfg) {
-    if (state.clustering) return;
+    if (state.clustering || state.findingSimilar) return;
     if (!state.indexReady) {
       setStatus('[grid] Wait for indexing to finish before clustering.', 'error');
       return;
@@ -1490,6 +1520,42 @@
 
   function setGridClusteringPending(pending) {
     state.clustering = pending === true;
+    syncGridClusterControls();
+  }
+
+  function requestSimilaritySearch(cfg) {
+    if (state.clustering || state.findingSimilar) return;
+    if (!state.indexReady) {
+      setStatus('[grid] Wait for indexing to finish before searching for similar molecules.', 'error');
+      return;
+    }
+    if (state.selected.size !== 1) {
+      setStatus('[grid] Select exactly one query molecule before similarity search.', 'error');
+      return;
+    }
+    const jobId = String(latestRepresentativeAnalysisColumn()?.runId || '').trim();
+    if (!jobId) {
+      setStatus('[grid] Run clustering before searching its verified fingerprint snapshot.', 'error');
+      return;
+    }
+    const querySourceIndex = Number([...state.selected][0]);
+    if (!Number.isSafeInteger(querySourceIndex) || querySourceIndex < 0) {
+      setStatus('[grid] The selected query molecule has no valid source index.', 'error');
+      return;
+    }
+    setGridSimilaritySearchPending(true);
+    post('findSimilarMolecules', '[grid] Find similar molecules.', {
+      documentId: cfg?.documentId || null,
+      jobId,
+      querySourceIndex,
+      cutoff: state.clusterCutoff,
+      topK: 50
+    });
+    setStatus(`[grid] Finding up to 50 molecules with Tanimoto similarity at least ${Number(state.clusterCutoff).toFixed(2)}.`);
+  }
+
+  function setGridSimilaritySearchPending(pending) {
+    state.findingSimilar = pending === true;
     syncGridClusterControls();
   }
 
@@ -1524,12 +1590,13 @@
 
   function syncGridClusterControls() {
     const button = document.getElementById('cluster-molecules');
+    const similarityButton = document.getElementById('find-similar-molecules');
     const exportButton = document.getElementById('export-cluster-representatives');
     const cutoff = document.getElementById('cluster-cutoff');
     const total = state.remoteMode
       ? (state.recordsTotalHint || state.recordsIndexed || state.totalRows)
       : state.all.length;
-    const unavailable = state.clustering || state.indexing || total === 0;
+    const unavailable = state.clustering || state.findingSimilar || state.indexing || total === 0;
     if (button) {
       button.disabled = unavailable;
       button.setAttribute('aria-busy', state.clustering ? 'true' : 'false');
@@ -1550,8 +1617,23 @@
       }
     }
     if (cutoff) {
-      cutoff.disabled = state.clustering;
+      cutoff.disabled = state.clustering || state.findingSimilar;
       cutoff.value = Number(state.clusterCutoff).toFixed(2);
+    }
+    if (similarityButton) {
+      const available = Boolean(latestRepresentativeAnalysisColumn());
+      const querySelected = state.selected.size === 1;
+      similarityButton.disabled = unavailable || !available || !querySelected;
+      similarityButton.setAttribute('aria-busy', state.findingSimilar ? 'true' : 'false');
+      similarityButton.title = state.findingSimilar
+        ? 'Similarity search is running'
+        : !available
+        ? 'Run clustering before searching its verified fingerprint snapshot'
+        : !querySelected
+        ? 'Select exactly one query molecule'
+        : `Find the top 50 matches at Tanimoto ≥ ${Number(state.clusterCutoff).toFixed(2)}`;
+      const label = similarityButton.querySelector('[data-buret-grid-similarity-label]');
+      if (label) label.textContent = state.findingSimilar ? 'Searching...' : 'Find similar';
     }
     if (exportButton) {
       const available = Boolean(latestRepresentativeAnalysisColumn());
@@ -3045,7 +3127,7 @@
         label: String(analysis?.label || id),
         type: valueKind === 'integer' || valueKind === 'real' ? 'number' : 'text',
         kind: 'analysis',
-        title: `cluster.v1 result ${id} · run ${String(analysis?.runId || '')}`,
+        title: `Analysis result ${id} · run ${String(analysis?.runId || '')}`,
         get: row => analysisDisplayValue(row.analyses?.[id])
       });
     }
@@ -5225,6 +5307,7 @@
     state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
     state.remoteAnalysisColumns = [];
     state.selected = new Set();
+    state.findingSimilar = false;
     state.hiddenRows = new Set();
     state.exportingClusterRepresentatives = false;
     state.dirty = false;
