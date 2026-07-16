@@ -100,8 +100,18 @@ union accepts normalized `cluster.v1` and `conformer.v1` requests while keeping
 the existing on-disk JSON shape unchanged. Snapshot validation dispatches to
 the matching fixed execution-plan contract, and a conformer snapshot now
 round-trips through JSON with its canonical request and plan hashes. The wire
-protocol also has a strict `submitConformerV1` command. Coordinator admission,
-execution, and publication for that command remain in progress.
+protocol also has a strict `submitConformerV1` command. Desktop admission now
+requires a verified chemistry preflight with exact record, valid-molecule,
+atom, distance-constraint, EnginePack, ResultPack, and accounted numeric peak
+sizes. It rejects inconsistent frozen-source counts, undersized ResultPack
+payloads, and any stage above `maxMemoryBytes` before queueing. Distance
+geometry and stereo validation receive independent probed backend decisions,
+so `gpuRequired` fails if either verified Metal capability is absent and
+`gpuPreferred` persists a stage-specific CPU fallback reason. The queued
+factory emits canonical request/plan hashes, a revision-one durable conformer
+snapshot, and evidence-empty queued stages; the snapshot repository has the
+matching capability-rooted conformer source binding. Chemistry extraction,
+coordinator execution, recovery execution, and publication remain in progress.
 
 ## Product Truth By Surface
 
@@ -173,6 +183,7 @@ separate product increments.
 | Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal` |
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
+| Conformer preflight admission and queued snapshot | `apps/desktop/src-tauri/src/compute/conformer_plan.rs`, `job_factory.rs` |
 | Artifact materialization and restart reconciliation | `apps/desktop/src-tauri/src/compute/artifact_publisher.rs` |
 | Immutable representative export and provenance | `apps/desktop/src-tauri/src/compute/representative_export.rs` |
 | Verified fingerprint reuse and exact similarity ranking | `apps/desktop/src-tauri/src/compute/similarity_artifact.rs`, `similarity_search.rs` |
@@ -224,12 +235,16 @@ separate product increments.
   generated Grid controls. Repository-wide TypeScript checking is currently
   blocked by pre-existing duplicate CodeMirror dependency identities in the
   text-file viewer; the errors do not involve the compute files changed here.
-- All 74 protocol tests and 27 compute-core tests pass after adding the fixed
+- All 75 protocol tests and 27 compute-core tests pass after adding the fixed
   conformer request/pack/plan contracts, identity-derived seed, adaptive batch
   coverage, deterministic coordinate oracle, DG objective/gradient oracle,
   finite-difference gradient validation, rebatching invariance, and memory
   rejection checks. Focused protocol/core/Metal clippy also passes with warnings
   denied.
+- Thirteen focused desktop conformer tests pass, including independent GPU
+  admission for both numeric stages, honest mixed-backend fallback, bounded
+  preflight/result memory rejection, canonical queued snapshot construction,
+  and the existing process-boundary conformer safeguards.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
