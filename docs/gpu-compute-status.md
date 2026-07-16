@@ -5,7 +5,8 @@ Status: `cluster.v1`, immutable representative export, and derived exact
 variant/seed/adaptive batching, packaged native RDKit extraction, raw job
 submission, adaptive CPU/Metal distance-geometry execution, Metal ETK
 refinement, stereo-aware retry, and final Metal stereo validation implemented;
-ResultPack publication, UI, production release, and scale proof pending
+conformer EnginePack/ResultPack publication implemented; Grid/3D UI,
+production release, and scale proof pending
 
 Updated: 2026-07-16
 
@@ -94,8 +95,8 @@ payload-budget mismatches before publication. Chunk application is
 transactional, so a rejected or retried chunk cannot duplicate earlier records.
 The coordinator freezes the real Grid source, streams bounded MOL-block or
 SMILES chunks, accepts raw BCER results, derives exact admission from the
-assembled arrays, and creates the durable conformer job. Artifact writing is
-still pending.
+assembled arrays, creates the durable conformer job, and atomically publishes
+the validated EnginePack and ResultPack after CPU-reference validation.
 
 The canonical EnginePack distance payload now also has a validated in-memory
 core representation. It rejects malformed or non-monotonic offsets,
@@ -195,10 +196,10 @@ so `gpuRequired` fails if either verified Metal capability is absent and
 `gpuPreferred` persists a stage-specific CPU fallback reason. The queued
 factory emits canonical request/plan hashes, a revision-one durable conformer
 snapshot, and evidence-empty queued stages; the snapshot repository has the
-matching capability-rooted conformer source binding. Chemistry extraction and
-the first distance-geometry execution stage are wired; ETK/stereo execution,
-restart recovery for in-flight prepared arrays, and publication remain in
-progress.
+matching capability-rooted conformer source binding. Chemistry extraction,
+DG/ETK/stereo execution, reference validation, and artifact publication are
+wired; restart recovery for in-flight prepared arrays and Grid/3D presentation
+remain in progress.
 
 ## Product Truth By Surface
 
@@ -206,8 +207,8 @@ progress.
 | --- | --- |
 | macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
-| Native Metal backend | Real graph, exact query, conformer initialization, DG distance objective/gradient, fused DG L-BFGS, and the adaptive conformer executor pass on Apple M2 Pro; ETK/stereo remain pending |
-| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v5 runtime generation passes package verification and real-GPU startup, while a refreshed v5 desktop package remains pending |
+| Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, and final validation pass on Apple M2 Pro |
+| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v8 runtime generation passes package verification and real-GPU startup, while a refreshed v8 desktop package remains pending |
 | Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -344,8 +345,9 @@ separate product increments.
   WASM SHA-256 is
   `69d58c733fa9d409818cbdcc623c0a45db320404262982fc70830056c448c509`.
 - The raw Grid submission integration test continues through deterministic
-  reference distance execution, covering six conformers and durable stage
-  transitions.
+  reference execution, covering six conformers, CPU-reference validation,
+  atomic EnginePack/ResultPack publication, manifest readback, and durable job
+  completion.
 - The adaptive executor passed a manual real-GPU smoke on `Apple M2 Pro`
   (`registryId=0x1000003c0`, unified memory): two conformers completed through
   the verified v5 runtime with `gpuTimeMs=4` and metallib SHA-256
