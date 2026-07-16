@@ -19,9 +19,9 @@ use objc::{runtime::Sel, Message};
 
 use crate::platform::{
     MetalAlignmentDispatch, MetalDistanceDispatch, MetalDistanceOptimizationDispatch,
-    MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch, MetalPm6H4HhDispatch,
-    MetalRm1FockDispatch, MetalRm1PairRotationDispatch, MetalStereoValidationDispatch,
-    MetalSymmetricEigenDispatch,
+    MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch, MetalPm6D3Dispatch,
+    MetalPm6H4HhDispatch, MetalRm1FockDispatch, MetalRm1PairRotationDispatch,
+    MetalStereoValidationDispatch, MetalSymmetricEigenDispatch,
 };
 use crate::runtime::{MetalAlignmentBatch, MetalPm6CorrectionBatch};
 use crate::MetalRuntimeError;
@@ -253,6 +253,7 @@ pub(crate) struct MetalHost {
     rm1_eigen_pipeline: ComputePipelineState,
     rm1_pair_rotate_pipeline: ComputePipelineState,
     pm6_h4_hh_pipeline: ComputePipelineState,
+    pm6_d3_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -304,6 +305,7 @@ impl MetalHost {
         let rm1_eigen_pipeline = pipeline(&device, library, "burrete_rm1_symmetric_eigen_v1")?;
         let rm1_pair_rotate_pipeline = pipeline(&device, library, "burrete_rm1_pair_rotate_v1")?;
         let pm6_h4_hh_pipeline = pipeline(&device, library, "burrete_pm6_h4_hh_v1")?;
+        let pm6_d3_pipeline = pipeline(&device, library, "burrete_pm6_d3_chno_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -324,6 +326,7 @@ impl MetalHost {
             rm1_eigen_pipeline,
             rm1_pair_rotate_pipeline,
             pm6_h4_hh_pipeline,
+            pm6_d3_pipeline,
         })
     }
 
@@ -2099,6 +2102,101 @@ impl MetalHost {
         })?;
         Ok(MetalPm6H4HhDispatch {
             corrections_ev: read_buffer(&output_buffer, molecules.len(), "PM6 H4/HH correction")?,
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
+    pub(crate) fn evaluate_pm6_d3_profiled(
+        &self,
+        batch: MetalPm6CorrectionBatch<'_>,
+        max_memory_bytes: u64,
+    ) -> Result<MetalPm6D3Dispatch, MetalRuntimeError> {
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(
+                u64::try_from(batch.atoms.len())
+                    .map_err(|_| memory_overflow())?
+                    .checked_mul(std::mem::size_of::<Pm6CorrectionAtomV1>() as u64)
+                    .ok_or_else(memory_overflow)?,
+            )
+            .and_then(|bytes| {
+                bytes.checked_add(u64::try_from(batch.molecules.len()).ok()?.checked_mul(
+                    (std::mem::size_of::<Pm6CorrectionMoleculeV1>() + std::mem::size_of::<f32>())
+                        as u64,
+                )?)
+            })
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "PM6 D3 correction requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+        let atoms = batch
+            .atoms
+            .iter()
+            .map(|atom| Pm6CorrectionAtomV1 {
+                position_radius: [
+                    atom.position_angstrom[0] as f32,
+                    atom.position_angstrom[1] as f32,
+                    atom.position_angstrom[2] as f32,
+                    0.0,
+                ],
+                identity: [u32::from(atom.atomic_number), 0, 0, 0],
+            })
+            .collect::<Vec<_>>();
+        let molecules = batch
+            .molecules
+            .iter()
+            .map(|molecule| {
+                Ok(Pm6CorrectionMoleculeV1 {
+                    span: [
+                        u32::try_from(molecule.atom_start).map_err(|_| memory_overflow())?,
+                        u32::try_from(molecule.atom_count).map_err(|_| memory_overflow())?,
+                        0,
+                        0,
+                    ],
+                })
+            })
+            .collect::<Result<Vec<_>, MetalRuntimeError>>()?;
+        let atom_buffer = buffer_with_slice(&self.device, &atoms);
+        let molecule_buffer = buffer_with_slice(&self.device, &molecules);
+        let output_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; molecules.len()]);
+        let molecule_count = u32::try_from(molecules.len()).map_err(|_| memory_overflow())?;
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.pm6_d3_pipeline);
+            encoder.set_buffer(0, Some(&atom_buffer), 0);
+            encoder.set_buffer(1, Some(&molecule_buffer), 0);
+            encoder.set_bytes(
+                2,
+                size_of_val(&molecule_count) as u64,
+                (&molecule_count as *const u32).cast(),
+            );
+            encoder.set_buffer(3, Some(&output_buffer), 0);
+            let thread_width = self
+                .pm6_d3_pipeline
+                .thread_execution_width()
+                .min(u64::from(molecule_count))
+                .max(1);
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: u64::from(molecule_count),
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: thread_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        Ok(MetalPm6D3Dispatch {
+            dispersion_ev: read_buffer(&output_buffer, molecules.len(), "PM6 D3 correction")?,
             gpu_time_seconds: gpu_time,
         })
     }

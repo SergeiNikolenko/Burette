@@ -3,16 +3,16 @@ use std::{num::NonZeroUsize, path::Path, sync::Arc};
 use burrete_compute_core::{
     align_and_score, build_tanimoto_graph, contract_rm1_pair_fock, evaluate_distance_constraints,
     evaluate_etk_geometry, evaluate_mmff, initialize_conformer_positions,
-    optimize_distance_geometry, pm6_h4_energy, pm6_hh_repulsion_energy, rm1_fock_pairs,
-    score_tanimoto_query, symmetric_eigendecomposition, validate_conformer_stereo, AlignmentAtom,
-    AlignmentMode, AlignmentScores, AtomMapping, ChiralVolumeConstraint, DistanceConstraint,
-    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
-    EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
-    GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown,
-    MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
-    MmffVanDerWaalsTerm, MmffVariant, RigidTransform, Rm1FockPair, SemiempiricalAtom,
-    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
-    TetrahedralConstraint, FINGERPRINT_WORDS,
+    optimize_distance_geometry, pm6_d3_dispersion_energy, pm6_h4_energy, pm6_hh_repulsion_energy,
+    rm1_fock_pairs, score_tanimoto_query, symmetric_eigendecomposition, validate_conformer_stereo,
+    AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping, ChiralVolumeConstraint,
+    DistanceConstraint, DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus,
+    EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
+    Fingerprint2048, GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm,
+    MmffEnergyBreakdown, MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters,
+    MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm, MmffVariant, RigidTransform,
+    Rm1FockPair, SemiempiricalAtom, SemiempiricalMolecule, SymmetricCsr, TanimotoCounts,
+    TanimotoQueryOptions, TetrahedralConstraint, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -187,6 +187,31 @@ pub struct Pm6H4HhCorrection {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetalPm6H4HhExecution {
     pub corrections: Vec<Pm6H4HhCorrection>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalPm6D3Execution {
+    pub dispersion_energy_ev: Vec<f64>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pm6D3H4Correction {
+    pub dispersion_energy_ev: f64,
+    pub h4_energy_ev: f64,
+    pub hh_repulsion_energy_ev: f64,
+}
+
+impl Pm6D3H4Correction {
+    pub fn total_energy_ev(self) -> f64 {
+        self.dispersion_energy_ev + self.h4_energy_ev + self.hh_repulsion_energy_ev
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalPm6D3H4Execution {
+    pub corrections: Vec<Pm6D3H4Correction>,
     pub gpu_time_ms: u64,
 }
 
@@ -473,6 +498,82 @@ impl MetalComputeRuntime {
                 })
                 .collect(),
             gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
+    pub fn evaluate_pm6_d3_profiled(
+        &self,
+        batch: MetalPm6CorrectionBatch<'_>,
+        max_memory_bytes: u64,
+    ) -> Result<MetalPm6D3Execution, MetalRuntimeError> {
+        let expected = batch
+            .molecules
+            .iter()
+            .enumerate()
+            .map(|(index, molecule)| {
+                let end = molecule
+                    .atom_start
+                    .checked_add(molecule.atom_count)
+                    .ok_or_else(|| {
+                        MetalRuntimeError::ResourceLimit("PM6 D3 atom span overflow".into())
+                    })?;
+                if molecule.atom_count == 0 || molecule.atom_count > 128 || end > batch.atoms.len()
+                {
+                    return Err(MetalRuntimeError::Dispatch(format!(
+                        "PM6 D3 molecule {index} has an invalid atom span"
+                    )));
+                }
+                pm6_d3_dispersion_energy(&batch.atoms[molecule.atom_start..end])
+                    .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))
+            })
+            .collect::<Result<Vec<_>, MetalRuntimeError>>()?;
+        if expected.is_empty() || expected.len() > 256 {
+            return Err(MetalRuntimeError::ResourceLimit(
+                "PM6 D3 batch requires 1..=256 molecules".into(),
+            ));
+        }
+        let dispatch = self
+            .host
+            .evaluate_pm6_d3_profiled(batch, max_memory_bytes.min(self.limits.max_memory_bytes))?;
+        if dispatch.dispersion_ev.len() != expected.len()
+            || dispatch
+                .dispersion_ev
+                .iter()
+                .zip(&expected)
+                .any(|(observed, expected)| {
+                    !observed.is_finite() || (f64::from(*observed) - expected).abs() > 2.0e-5
+                })
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal PM6 D3 dispersion differs from the float64 CPU reference".into(),
+            ));
+        }
+        Ok(MetalPm6D3Execution {
+            dispersion_energy_ev: dispatch.dispersion_ev.into_iter().map(f64::from).collect(),
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
+    pub fn evaluate_pm6_d3h4_profiled(
+        &self,
+        batch: MetalPm6CorrectionBatch<'_>,
+        max_memory_bytes: u64,
+    ) -> Result<MetalPm6D3H4Execution, MetalRuntimeError> {
+        let d3 = self.evaluate_pm6_d3_profiled(batch, max_memory_bytes)?;
+        let h4_hh = self.evaluate_pm6_h4_hh_profiled(batch, max_memory_bytes)?;
+        let corrections = d3
+            .dispersion_energy_ev
+            .into_iter()
+            .zip(h4_hh.corrections)
+            .map(|(dispersion_energy_ev, correction)| Pm6D3H4Correction {
+                dispersion_energy_ev,
+                h4_energy_ev: correction.h4_energy_ev,
+                hh_repulsion_energy_ev: correction.hh_repulsion_energy_ev,
+            })
+            .collect();
+        Ok(MetalPm6D3H4Execution {
+            corrections,
+            gpu_time_ms: d3.gpu_time_ms.saturating_add(h4_hh.gpu_time_ms),
         })
     }
 
@@ -1430,7 +1531,7 @@ impl MetalComputeRuntime {
                 atom_count: 5,
             },
         ];
-        let correction = self.evaluate_pm6_h4_hh_profiled(
+        let correction = self.evaluate_pm6_d3h4_profiled(
             MetalPm6CorrectionBatch {
                 atoms: &correction_atoms,
                 molecules: &correction_descriptors,
@@ -1439,7 +1540,7 @@ impl MetalComputeRuntime {
         )?;
         if correction.gpu_time_ms == 0 || correction.corrections.len() != 2 {
             return Err(MetalRuntimeError::KernelUnavailable(
-                "Metal startup PM6 H4/HH correction returned invalid profiling output".into(),
+                "Metal startup PM6-D3H4 correction returned invalid profiling output".into(),
             ));
         }
 

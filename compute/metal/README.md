@@ -49,7 +49,12 @@ short-range H-H correction terms for molecule batches. One thread owns one
 molecule, so independent library molecules execute concurrently without
 cross-molecule atomics or intermediate triple tensors. Every two-component
 result must pass the bounded float64 CPU oracle before it is reported as GPU
-work. D3 dispersion is not part of this v1 correction kernel.
+work.
+
+`pm6-d3-chno.v1.metal` evaluates zero-damping D3 dispersion for the current
+CHNO method domain using checked-in compact C6/CN interpolation records and r0
+pair radii. It shares the one-thread-per-molecule batch shape and is composed
+with H4/HH only after both GPU outputs pass their float64 CPU references.
 
 The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
 256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical

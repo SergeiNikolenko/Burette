@@ -13,8 +13,8 @@ const POINTER_MAX_BYTES: u64 = 4 * 1024;
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 const METALLIB_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const METADATA_FILE: &str = "build-metadata.v2.json";
-const METALLIB_FILE: &str = "native-compute.v15.metallib";
-const SOURCES: [(&str, &[u8]); 13] = [
+const METALLIB_FILE: &str = "native-compute.v16.metallib";
+const SOURCES: [(&str, &[u8]); 14] = [
     (
         "compute/metal/tanimoto.v2.metal",
         include_bytes!("../../../compute/metal/tanimoto.v2.metal"),
@@ -67,8 +67,12 @@ const SOURCES: [(&str, &[u8]); 13] = [
         "compute/metal/pm6-h4-hh.v1.metal",
         include_bytes!("../../../compute/metal/pm6-h4-hh.v1.metal"),
     ),
+    (
+        "compute/metal/pm6-d3-chno.v1.metal",
+        include_bytes!("../../../compute/metal/pm6-d3-chno.v1.metal"),
+    ),
 ];
-const CONTRACTS: [(&str, &[u8]); 13] = [
+const CONTRACTS: [(&str, &[u8]); 14] = [
     (
         "compute/metal/tanimoto-kernel-contract.v2.json",
         include_bytes!("../../../compute/metal/tanimoto-kernel-contract.v2.json"),
@@ -121,8 +125,12 @@ const CONTRACTS: [(&str, &[u8]); 13] = [
         "compute/metal/pm6-h4-hh-kernel-contract.v1.json",
         include_bytes!("../../../compute/metal/pm6-h4-hh-kernel-contract.v1.json"),
     ),
+    (
+        "compute/metal/pm6-d3-chno-kernel-contract.v1.json",
+        include_bytes!("../../../compute/metal/pm6-d3-chno-kernel-contract.v1.json"),
+    ),
 ];
-const AIR_PATHS: [&str; 13] = [
+const AIR_PATHS: [&str; 14] = [
     "tanimoto.v2.air",
     "conformer-initialize.v1.air",
     "conformer-distance.v1.air",
@@ -136,8 +144,9 @@ const AIR_PATHS: [&str; 13] = [
     "rm1-eigen.v1.air",
     "rm1-pair-rotate.v1.air",
     "pm6-h4-hh.v1.air",
+    "pm6-d3-chno.v1.air",
 ];
-const ENTRYPOINTS: [&str; 17] = [
+const ENTRYPOINTS: [&str; 18] = [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
     "burrete_tanimoto_query_counts_v1",
@@ -155,6 +164,7 @@ const ENTRYPOINTS: [&str; 17] = [
     "burrete_rm1_symmetric_eigen_v1",
     "burrete_rm1_pair_rotate_v1",
     "burrete_pm6_h4_hh_v1",
+    "burrete_pm6_d3_chno_v1",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -309,7 +319,7 @@ fn validate_metadata(metadata: &BuildMetadata) -> Result<(), MetalRuntimeError> 
     let expected_entrypoints: Vec<String> = ENTRYPOINTS.iter().map(ToString::to_string).collect();
     if metadata.schema_version != "burrete.compute.metal-build-metadata.v2"
         || metadata.runtime_version != NATIVE_METAL_RUNTIME_VERSION
-        || metadata.library_id != "burrete.compute.native.v15"
+        || metadata.library_id != "burrete.compute.native.v16"
         || !matches_hashed_inputs(&metadata.sources, &SOURCES)
         || !matches_hashed_inputs(&metadata.contracts, &CONTRACTS)
         || metadata.air.len() != AIR_PATHS.len()
@@ -542,7 +552,7 @@ mod tests {
             json!({
                 "schemaVersion": "burrete.compute.metal-build-metadata.v2",
                 "runtimeVersion": NATIVE_METAL_RUNTIME_VERSION,
-                "libraryId": "burrete.compute.native.v15",
+                "libraryId": "burrete.compute.native.v16",
                 "sources": SOURCES.map(|(path, bytes)| json!({
                     "path": path,
                     "sha256": sha256(bytes),

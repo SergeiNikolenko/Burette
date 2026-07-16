@@ -100,8 +100,10 @@ modules. PM6 core-core PWCCT equations and the bundled CHNO pair values are
 adapted against pinned `mlxmolkit` and PYSEQM references. These slices remain
 separate from unimplemented PM6_D corrections and d-orbital support.
 
-The PM6-D3H4 H4 hydrogen-bond equations, covalent-radius table, and short-range
-H-H polynomial are adapted from OpenMOPAC's `H_bonds4.F90` behavior through
-the pinned `mlxmolkit/rm1/pm6_d3h4.py` reference. OpenMOPAC's Apache-2.0 and
-mlxmolkit's MIT attribution apply. D3 dispersion tables and production PM6-D3H4
-composition are not included in this initial H4/HH reference slice.
+The PM6-D3H4 H4 hydrogen-bond equations, covalent-radius table, short-range
+H-H polynomial, and CHNO D3 C6/CN/r0 reference records are adapted from
+OpenMOPAC correction behavior through the pinned
+`mlxmolkit/rm1/pm6_d3h4.py` reference and its bundled tables. OpenMOPAC's
+Apache-2.0 and mlxmolkit's MIT attribution apply. The current D3 table is
+explicitly limited to the parity-gated CHNO domain; full-element D3 and
+production PM6-D3H4 SCF composition remain pending.
