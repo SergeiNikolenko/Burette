@@ -33,6 +33,8 @@ pub enum MolecularSnapshotVersion {
 pub enum EnginePackVersion {
     #[serde(rename = "cluster.engine-pack.v1")]
     ClusterV1,
+    #[serde(rename = "conformer.engine-pack.v1")]
+    ConformerV1,
 }
 
 pub(crate) fn validate_uuid(label: &str, value: Uuid) -> Result<(), ProtocolError> {

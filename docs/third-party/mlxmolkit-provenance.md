@@ -49,7 +49,7 @@ provenance and scientific behavior still require review.
 | `mlxmolkit/tanimoto_blockwise.py` | 100k+ tiling | reference-only; independent Burrete planner shipped | Checked request limits and bounded adaptive tiles; 100k benchmark remains gated |
 | `mlxmolkit/butina.py` | Butina semantics | reference-only; independent Burrete policy shipped | Versioned deterministic tie-breaking; upstream/RDKit corpus parity remains gated |
 | `mlxmolkit/morgan_cpu.py` | Morgan oracle | reference-only | Entire stage is RDKit CPU, not GPU |
-| `mlxmolkit/shared_batch.py` | Shared `N x K` constraints | reference-only; independent Burrete scheduler shipped | Constraint packing remains pending; Burrete seeds are identity-derived and chunk-invariant |
+| `mlxmolkit/shared_batch.py` | Shared `N x K` constraints | reference-only; independent Burrete scheduler and EnginePack ABI shipped | Burrete constraints are stored once per molecule; seeds are identity-derived and chunk-invariant |
 | `mlxmolkit/dg_extract.py` | DG bounds/parameters | pending-audit | nvMolKit/RDKit provenance and exception handling |
 | `mlxmolkit/etk_extract.py` | ETK torsions/constraints | pending-audit | Variant-specific activation and RDKit provenance |
 | `mlxmolkit/conformer_metal.py` | DG Metal logic | pending-audit | Seed currently depends on chunk schedule |
@@ -77,6 +77,12 @@ under adaptive rebatching. Burrete therefore implemented its seed identity and
 batch planner independently: the seed domain includes immutable job ID, source
 record ID, molecule-content hash, exact variant, conformer ordinal, and retry
 ordinal. No upstream conformer code was copied in that increment.
+
+The `conformer.engine-pack.v1` topology and constraint ABI was also designed
+independently. It does not translate the blocked DG/ETK extractor or Metal
+sources. The ABI is a Burrete-owned production boundary that can be populated
+by an audited native extractor and compared with separately executed reference
+oracles without making Python or MLX part of the application runtime.
 
 The same audit confirmed that the pinned repository still has no root license
 or notice file, `dg_extract.py` names nvMolKit as its reference, and

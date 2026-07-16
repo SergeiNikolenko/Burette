@@ -2,8 +2,9 @@
 
 Status: `cluster.v1`, immutable representative export, and derived exact
 `Find similar` Grid analysis complete at source level; deterministic conformer
-variant/seed/adaptive-batching foundation started; current desktop packaging,
-production release, and scale proof pending
+variant/seed/adaptive-batching foundation and strict conformer EnginePack ABI
+implemented; current desktop packaging, production release, and scale proof
+pending
 
 Updated: 2026-07-16
 
@@ -60,8 +61,13 @@ derived from immutable job, molecule-content, variant, conformer, and retry
 identity, so changing memory pressure or batch size cannot change the random
 stream assigned to a conformer. The planner accounts for the resident
 EnginePack, 4D DG positions, work vectors, L-BFGS history, scalar outputs, and
-headroom before admitting a batch. This is runtime foundation only: native
-DG/ETK parameter extraction, kernels, artifacts, and UI are not yet complete.
+headroom before admitting a batch. A strict `conformer.engine-pack.v1` ABI now
+stores molecular topology and all shared DG, chiral, torsion, improper, ETK
+distance, and stereo constraints once per molecule in 26 typed canonical
+arrays. Manifest validation rejects missing, extra, reordered, misshaped, or
+unit-incompatible arrays before execution. This remains runtime foundation:
+native parameter extraction, DG/ETK kernels, durable ResultPacks, and UI are not
+yet complete.
 
 ## Product Truth By Surface
 

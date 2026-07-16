@@ -6,7 +6,9 @@ use super::{
         validate_json_safe, validate_label, validate_sha256, validate_uuid, EnginePackVersion,
         MAX_LABEL_BYTES,
     },
-    layout::{PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout},
+    layout::{
+        PackedArrayDescriptor, PackedByteOrder, PackedDType, PackedFileDescriptor, PackedLayout,
+    },
     molecular::MolecularSnapshotRef,
 };
 use crate::{ProtocolError, WorkflowTemplateId};
@@ -14,6 +16,34 @@ use crate::{ProtocolError, WorkflowTemplateId};
 pub const CLUSTER_FINGERPRINT_ARRAY_NAME: &str = "fingerprints";
 pub const CLUSTER_FINGERPRINT_SEMANTIC: &str = "morgan_fingerprint_bits";
 pub const CLUSTER_FINGERPRINT_WORDS: u64 = 32;
+pub const CONFORMER_ENGINE_ARRAY_NAMES: [&str; 26] = [
+    "atomicNumbers",
+    "chiralAtomQuads",
+    "chiralTermStarts",
+    "chiralVolumeBounds",
+    "distanceAtomPairs",
+    "distanceBoundsSquared",
+    "distanceTermStarts",
+    "distanceWeights",
+    "etkDistanceAtomPairs",
+    "etkDistanceBounds",
+    "etkDistanceKinds",
+    "etkDistanceTermStarts",
+    "etkDistanceWeights",
+    "formalCharges",
+    "improperAtomQuads",
+    "improperTermStarts",
+    "improperWeights",
+    "moleculeAtomStarts",
+    "recordValidity",
+    "stereoAtomQuints",
+    "stereoCenterStarts",
+    "stereoFlags",
+    "torsionAtomQuads",
+    "torsionCoefficients",
+    "torsionSigns",
+    "torsionTermStarts",
+];
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -44,7 +74,15 @@ impl EnginePackManifest {
         )?;
         validate_json_safe("engine pack creation time", self.created_at_ms)?;
         self.layout.validate()?;
-        self.validate_cluster_fingerprint_layout()?;
+        match self.workflow_template {
+            WorkflowTemplateId::ClusterV1 => self.validate_cluster_fingerprint_layout()?,
+            WorkflowTemplateId::ConformerV1 => self.validate_conformer_layout()?,
+            WorkflowTemplateId::SimilaritySearchV1 => {
+                return Err(ProtocolError::Validation(
+                    "derived similarity analyses do not own EnginePacks".into(),
+                ))
+            }
+        }
         self.layout.reject_file_path(
             &self.molecular_snapshot.manifest.relative_path,
             "molecular snapshot manifest",
@@ -77,6 +115,250 @@ impl EnginePackManifest {
         }
         Ok(())
     }
+
+    fn validate_conformer_layout(&self) -> Result<(), ProtocolError> {
+        if self.layout.arrays.len() != CONFORMER_ENGINE_ARRAY_NAMES.len()
+            || self
+                .layout
+                .arrays
+                .iter()
+                .map(|array| array.name.as_str())
+                .ne(CONFORMER_ENGINE_ARRAY_NAMES)
+        {
+            return Err(ProtocolError::Validation(
+                "conformer EnginePack requires the exact canonical v1 array set".into(),
+            ));
+        }
+        let records = self.molecular_snapshot.frozen_source.record_count;
+        let starts_shape = [records.checked_add(1).ok_or_else(|| {
+            ProtocolError::Validation("conformer record count overflowed".into())
+        })?];
+        let atoms = first_dimension(self.array("atomicNumbers")?)?;
+        require_array(
+            self.array("atomicNumbers")?,
+            "atomic_number",
+            None,
+            PackedDType::U16,
+            &[atoms],
+        )?;
+        require_array(
+            self.array("formalCharges")?,
+            "formal_charge",
+            Some("elementary_charge"),
+            PackedDType::I8,
+            &[atoms],
+        )?;
+        require_array(
+            self.array("moleculeAtomStarts")?,
+            "molecule_atom_offsets",
+            None,
+            PackedDType::U64,
+            &starts_shape,
+        )?;
+        require_array(
+            self.array("recordValidity")?,
+            "conformer_input_valid",
+            None,
+            PackedDType::Bool8,
+            &[records],
+        )?;
+
+        self.validate_indexed_terms(
+            "distanceTermStarts",
+            "distanceAtomPairs",
+            "distance_pair_offsets",
+            "distance_atom_pair",
+            2,
+            &starts_shape,
+        )?;
+        let distance_count = first_dimension(self.array("distanceAtomPairs")?)?;
+        require_array(
+            self.array("distanceBoundsSquared")?,
+            "distance_bounds_squared",
+            Some("angstrom^2"),
+            PackedDType::F32,
+            &[distance_count, 2],
+        )?;
+        require_array(
+            self.array("distanceWeights")?,
+            "distance_constraint_weight",
+            None,
+            PackedDType::F32,
+            &[distance_count],
+        )?;
+
+        self.validate_indexed_terms(
+            "chiralTermStarts",
+            "chiralAtomQuads",
+            "chiral_term_offsets",
+            "chiral_atom_quad",
+            4,
+            &starts_shape,
+        )?;
+        let chiral_count = first_dimension(self.array("chiralAtomQuads")?)?;
+        require_array(
+            self.array("chiralVolumeBounds")?,
+            "chiral_volume_bounds",
+            Some("angstrom^3"),
+            PackedDType::F32,
+            &[chiral_count, 2],
+        )?;
+
+        self.validate_indexed_terms(
+            "torsionTermStarts",
+            "torsionAtomQuads",
+            "torsion_term_offsets",
+            "torsion_atom_quad",
+            4,
+            &starts_shape,
+        )?;
+        let torsion_count = first_dimension(self.array("torsionAtomQuads")?)?;
+        require_array(
+            self.array("torsionCoefficients")?,
+            "torsion_fourier_coefficients",
+            None,
+            PackedDType::F32,
+            &[torsion_count, 6],
+        )?;
+        require_array(
+            self.array("torsionSigns")?,
+            "torsion_fourier_signs",
+            None,
+            PackedDType::I8,
+            &[torsion_count, 6],
+        )?;
+
+        self.validate_indexed_terms(
+            "improperTermStarts",
+            "improperAtomQuads",
+            "improper_term_offsets",
+            "improper_atom_quad",
+            4,
+            &starts_shape,
+        )?;
+        let improper_count = first_dimension(self.array("improperAtomQuads")?)?;
+        require_array(
+            self.array("improperWeights")?,
+            "improper_constraint_weight",
+            None,
+            PackedDType::F32,
+            &[improper_count],
+        )?;
+
+        self.validate_indexed_terms(
+            "etkDistanceTermStarts",
+            "etkDistanceAtomPairs",
+            "etk_distance_term_offsets",
+            "etk_distance_atom_pair",
+            2,
+            &starts_shape,
+        )?;
+        let etk_distance_count = first_dimension(self.array("etkDistanceAtomPairs")?)?;
+        require_array(
+            self.array("etkDistanceBounds")?,
+            "etk_distance_bounds",
+            Some("angstrom"),
+            PackedDType::F32,
+            &[etk_distance_count, 2],
+        )?;
+        require_array(
+            self.array("etkDistanceKinds")?,
+            "bond_separation",
+            None,
+            PackedDType::U8,
+            &[etk_distance_count],
+        )?;
+        require_array(
+            self.array("etkDistanceWeights")?,
+            "etk_distance_constraint_weight",
+            None,
+            PackedDType::F32,
+            &[etk_distance_count],
+        )?;
+
+        self.validate_indexed_terms(
+            "stereoCenterStarts",
+            "stereoAtomQuints",
+            "stereo_center_offsets",
+            "stereo_atom_quint",
+            5,
+            &starts_shape,
+        )?;
+        let stereo_count = first_dimension(self.array("stereoAtomQuints")?)?;
+        require_array(
+            self.array("stereoFlags")?,
+            "stereo_check_flags",
+            None,
+            PackedDType::U8,
+            &[stereo_count],
+        )
+    }
+
+    fn array(&self, name: &str) -> Result<&PackedArrayDescriptor, ProtocolError> {
+        self.layout.array(name).ok_or_else(|| {
+            ProtocolError::Validation(format!("conformer EnginePack lacks {name}"))
+        })
+    }
+
+    fn validate_indexed_terms(
+        &self,
+        starts_name: &str,
+        indices_name: &str,
+        starts_semantic: &str,
+        indices_semantic: &str,
+        index_width: u64,
+        starts_shape: &[u64],
+    ) -> Result<(), ProtocolError> {
+        require_array(
+            self.array(starts_name)?,
+            starts_semantic,
+            None,
+            PackedDType::U64,
+            starts_shape,
+        )?;
+        let count = first_dimension(self.array(indices_name)?)?;
+        require_array(
+            self.array(indices_name)?,
+            indices_semantic,
+            None,
+            PackedDType::U32,
+            &[count, index_width],
+        )
+    }
+}
+
+fn first_dimension(array: &PackedArrayDescriptor) -> Result<u64, ProtocolError> {
+    array.shape.first().copied().ok_or_else(|| {
+        ProtocolError::Validation(format!("packed array {} has no dimensions", array.name))
+    })
+}
+
+fn require_array(
+    array: &PackedArrayDescriptor,
+    semantic: &str,
+    unit: Option<&str>,
+    dtype: PackedDType,
+    shape: &[u64],
+) -> Result<(), ProtocolError> {
+    let minimum_alignment = dtype.byte_width() as u32;
+    if array.semantic != semantic
+        || array.unit.as_deref() != unit
+        || array.dtype != dtype
+        || array.shape != shape
+        || array.byte_order
+            != if dtype.byte_width() == 1 {
+                PackedByteOrder::NotApplicable
+            } else {
+                PackedByteOrder::LittleEndian
+            }
+        || array.alignment < minimum_alignment
+    {
+        return Err(ProtocolError::Validation(format!(
+            "conformer array {} violates its v1 semantic, unit, dtype, shape, byte-order, or alignment contract",
+            array.name
+        )));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -163,8 +445,9 @@ fn validate_compatibility(
 ) -> Result<(), ProtocolError> {
     match (workflow, version) {
         (WorkflowTemplateId::ClusterV1, EnginePackVersion::ClusterV1) => Ok(()),
+        (WorkflowTemplateId::ConformerV1, EnginePackVersion::ConformerV1) => Ok(()),
         _ => Err(ProtocolError::Validation(
-            "cluster engine packs are compatible only with cluster.v1".into(),
+            "engine pack version is incompatible with its workflow".into(),
         )),
     }
 }

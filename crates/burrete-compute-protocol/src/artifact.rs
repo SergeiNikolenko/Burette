@@ -203,6 +203,11 @@ impl ArtifactManifest {
                     "similaritySearch.v1 derived analyses do not publish cluster artifacts",
                 )
             }
+            WorkflowTemplateId::ConformerV1 => {
+                return validation_error(
+                    "conformer.v1 artifact publication requires its fixed stage contract",
+                )
+            }
         };
         if self.stages.len() != expected_stage_ids.len() {
             return validation_error(
