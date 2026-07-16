@@ -35,6 +35,7 @@ for (const name of requiredEnvironment.filter((name) => name.endsWith("_SHA256")
 const normalizedVersion = process.env.METAL_TOOL_VERSION.trim().replace(/\s+/g, " ");
 const metadata = {
   schemaVersion: "burrete.compute.metal-build-metadata.v1",
+  runtimeVersion: "burrete-native-metal-v1",
   libraryId: "burrete.cluster.tanimoto-neighbors.v1",
   source: {
     path: "compute/metal/tanimoto-neighbors.v1.metal",

@@ -299,6 +299,7 @@ try {
   );
   assert.equal(metadataRun.status, 0, metadataRun.stderr);
   const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
+  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v1");
   assert.equal(metadata.source.sha256, fakeHash);
   assert.equal(metadata.metallib.sha256, fakeHash);
   assert.equal(metadata.compiler.version, "Apple metal version test Target test");
