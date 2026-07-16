@@ -24,15 +24,19 @@ molecular-modeling suite.
 
 ## Native Compute Layer Status
 
-The Apple Silicon Compute Layer is under active implementation. The durable
-protocol, coordinator store, immutable Grid snapshots, CPU clustering reference,
-and initial Metal kernel contract exist. The packaged helper, real Metal
-dispatch, and end-user workflows remain unavailable and must not be presented
-as released functionality yet.
+The Apple Silicon Compute Layer is under active implementation. The first
+desktop source workflow now runs from immutable Grid scope through a pinned
+RDKit worker, checked CPU/Metal Tanimoto neighbor construction, deterministic
+Butina, immutable artifacts, and typed Grid results. Real Metal command-buffer
+dispatch exists and is testable with a verified runtime. Packaged production
+Metal is still unavailable until the precompiled library, signing,
+notarization, scientific corpus, and installed-app evidence pass their release
+gates.
 
 | Workflow family | Product status |
 | --- | --- |
-| Similarity, clustering, diverse selection | Foundation implemented; Grid-to-Metal-to-result flow not yet available |
+| Similarity and clustering | `Cluster all`/`Cluster selected` source workflow implemented; packaged Metal release proof pending |
+| Similarity search and diverse selection | Result data contract exists; dedicated UI and representative export remain pending |
 | Conformer generation | Planned after the clustering vertical slice |
 | MMFF94/MMFF94s optimization | Planned after conformer generation |
 | Alignment, RMSD, shape/electrostatic scoring | Planned after MMFF |

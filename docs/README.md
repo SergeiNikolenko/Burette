@@ -35,7 +35,10 @@ contains only documents that describe the active project.
   [foundation and `cluster.v1` implementation plan](superpowers/plans/2026-07-15-gpu-compute-foundation-cluster-v1.md)
   gives the file-by-file delivery sequence for the first packaged Metal slice.
   The [mlxmolkit provenance ledger](third-party/mlxmolkit-provenance.md) is the
-  mandatory source/license mapping gate for every adapted file.
+  mandatory source/license mapping gate for every adapted file. The
+  [implementation status](gpu-compute-status.md) records what is working in
+  source today and keeps packaged Metal, browser, Quick Look, and iPhone claims
+  separate.
 - [Stability program](stability.md): preview trace, runtime manifest, nightly
   smoke, and staged stability guardrails.
 - [Installing and building](installing-building.md): source build, local
