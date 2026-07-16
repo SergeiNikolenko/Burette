@@ -14,6 +14,7 @@ mod conformer_stereo;
 mod distance_geometry;
 mod distance_optimizer;
 mod etk_geometry;
+mod mmff;
 
 pub use conformer_engine::{
     ConformerDistanceEngine, ConformerDistanceMolecule, ConformerEngineError,
@@ -45,6 +46,11 @@ pub use etk_geometry::{
     evaluate_etk_geometry, validate_etk_geometry_constraints, EtkDistanceConstraint,
     EtkGeometryError, EtkGeometryEvaluation, EtkGeometryTerms, EtkImproperConstraint,
     EtkTorsionConstraint,
+};
+pub use mmff::{
+    evaluate_mmff, evaluate_mmff_energy, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm,
+    MmffEnergyBreakdown, MmffError, MmffEvaluation, MmffOutOfPlaneTerm, MmffParameters,
+    MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm, MmffVariant,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};
