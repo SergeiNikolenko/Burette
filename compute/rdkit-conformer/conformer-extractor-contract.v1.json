@@ -4,7 +4,10 @@
   "byteOrder": "little-endian",
   "headerBytes": 64,
   "maximumTotalBytes": 4294967295,
-  "input": "One sanitized canonical V2000 or V3000 MOL block. Explicit hydrogens are preserved.",
+  "inputs": [
+    {"tag": 0, "format": "molblock", "contract": "One sanitized canonical V2000 or V3000 MOL block; explicit hydrogens are preserved."},
+    {"tag": 1, "format": "smiles", "contract": "One canonical SMILES; RDKit sanitizes it and adds explicit hydrogens before extraction."}
+  ],
   "rdkit": {
     "tag": "Release_2025_03_4",
     "commit": "276b5a662302c6a548ac4f1363c066f3258e3a20",

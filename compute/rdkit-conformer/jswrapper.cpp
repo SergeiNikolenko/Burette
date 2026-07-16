@@ -9,7 +9,9 @@
 #include <string>
 
 #include <GraphMol/FileParsers/FileParsers.h>
+#include <GraphMol/MolOps.h>
 #include <GraphMol/RWMol.h>
+#include <GraphMol/SmilesParse/SmilesParse.h>
 
 #include "conformer_binary.h"
 
@@ -22,13 +24,29 @@ burrete::conformer::Variant parse_variant(unsigned int raw) {
   return static_cast<burrete::conformer::Variant>(raw);
 }
 
-emscripten::val extract_conformer_parameters(const std::string &mol_block,
-                                             unsigned int raw_variant) {
-  std::unique_ptr<RDKit::RWMol> molecule(
-      RDKit::MolBlockToMol(mol_block, true, false, true));
-  if (!molecule) {
-    throw std::invalid_argument("RDKit could not parse the canonical MOL block");
+std::unique_ptr<RDKit::RWMol> parse_molecule(const std::string &input,
+                                            unsigned int input_format) {
+  std::unique_ptr<RDKit::RWMol> molecule;
+  if (input_format == 0) {
+    molecule.reset(RDKit::MolBlockToMol(input, true, false, true));
+  } else if (input_format == 1) {
+    molecule.reset(RDKit::SmilesToMol(input, 0, true));
+    if (molecule) {
+      RDKit::MolOps::addHs(*molecule, false, false);
+    }
+  } else {
+    throw std::invalid_argument("conformer input format is outside ABI v1");
   }
+  if (!molecule) {
+    throw std::invalid_argument("RDKit could not parse the conformer input");
+  }
+  return molecule;
+}
+
+emscripten::val extract_conformer_parameters(const std::string &input,
+                                             unsigned int input_format,
+                                             unsigned int raw_variant) {
+  auto molecule = parse_molecule(input, input_format);
   const auto variant = parse_variant(raw_variant);
   const auto parameters =
       burrete::conformer::extract_parameters(*molecule, variant);
