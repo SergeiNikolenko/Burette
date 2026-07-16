@@ -53,12 +53,14 @@ pub use wire::{
 };
 pub use workflow::{
     AllGridScope, AnalysisFilter, BackendPolicy, ClusterV1Parameters, ClusterV1SubmitRequest,
-    ColumnFilter, ColumnFilterKind, ComputeJobSchemaVersion, ConformerVariant, DescriptorFilter,
+    ColumnFilter, ColumnFilterKind, ComputeJobSchemaVersion, ConformerResourceLimits,
+    ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant, DescriptorFilter,
     ExecutionPolicy, FilteredGridScope, FingerprintAlgorithm, FingerprintInputOrder,
     FingerprintSettings, GridScope, GridSourceReference, GridTextQuery, RdkitBaselineVersion,
     RepresentativePolicy, ResourceLimits, SchedulingPolicy, SelectedGridScope, SimilarityCutoff,
-    SimilaritySettings, WorkflowTemplateId, MAX_COMPUTE_MEMORY_BYTES,
-    MAX_UNDIRECTED_SIMILARITY_EDGES, MIN_COMPUTE_MEMORY_BYTES,
+    SimilaritySettings, WorkflowTemplateId, MAX_COMPUTE_MEMORY_BYTES, MAX_CONFORMERS_PER_BATCH,
+    MAX_CONFORMERS_PER_MOLECULE, MAX_CONFORMER_ATTEMPTS, MAX_UNDIRECTED_SIMILARITY_EDGES,
+    MIN_COMPUTE_MEMORY_BYTES,
 };
 
 pub const COMPUTE_JOB_SCHEMA_V1: &str = "burrete.compute-job.v1";
