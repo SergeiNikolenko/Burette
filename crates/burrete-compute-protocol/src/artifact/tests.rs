@@ -92,6 +92,38 @@ fn artifact_creation_is_bound_to_the_publish_boundary() {
     assert!(manifest.validate_against_job(&job).is_err());
 }
 
+#[test]
+fn conformer_artifact_accepts_only_the_fixed_stage_provenance_order() {
+    let job = successful_job(BackendPolicy::GpuRequired);
+    let cluster = manifest_for(&job);
+    let mut manifest = cluster.clone();
+    manifest.workflow_template = WorkflowTemplateId::ConformerV1;
+    manifest.result_pack.workflow_template = WorkflowTemplateId::ConformerV1;
+    manifest.result_pack.schema_version = ResultPackVersion::ConformerV1;
+    let mut constraints = cluster.stages[1].clone();
+    constraints.stage_id = "conformerConstraints".into();
+    constraints.precision = Precision::Float64;
+    let mut geometry = cluster.stages[2].clone();
+    geometry.stage_id = "distanceGeometry".into();
+    geometry.precision = Precision::Float32;
+    let mut stereo = geometry.clone();
+    stereo.stage_id = "stereoValidation".into();
+    let mut validation = cluster.stages[4].clone();
+    validation.precision = Precision::Float64;
+    manifest.stages = vec![
+        cluster.stages[0].clone(),
+        constraints,
+        geometry,
+        stereo,
+        validation,
+        cluster.stages[5].clone(),
+    ];
+    assert_eq!(manifest.validate(), Ok(()));
+
+    manifest.stages.swap(2, 3);
+    assert!(manifest.validate().is_err());
+}
+
 fn manifest_for(job: &JobSnapshot) -> ArtifactManifest {
     let result_pack = job.result_pack.clone().expect("successful result pack");
     ArtifactManifest {

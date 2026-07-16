@@ -23,7 +23,7 @@ pub use event::{ComputeJobEventSchemaVersion, JobRevisionEvent};
 pub use job::{
     Backend, EngineIdentity, ExecutionPartition, ExecutionPlan, ExecutionPlanVersion,
     FallbackDecision, FallbackReasonCode, JobState, OwnerSurface, PlannedStage, Precision,
-    StageKind, CLUSTER_STAGE_IDS,
+    StageKind, CLUSTER_STAGE_IDS, CONFORMER_STAGE_IDS,
 };
 pub use pack::{
     EnginePackManifest, EnginePackRef, EnginePackVersion, FrozenSourceIdentity,

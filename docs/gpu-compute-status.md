@@ -72,6 +72,15 @@ strictly validates ragged coordinate offsets, Cartesian positions, molecule and
 conformer identity, embedding status/objective/attempt counts, and the exact
 128-bit seed words used for every generated structure.
 
+`conformer.execution-plan.v1` fixes the durable stage sequence to scope freeze,
+constraint extraction boundary, distance-geometry embedding, stereo
+validation, reference validation, and atomic publication. Distance geometry
+and stereo validation are both numeric stages: `gpuRequired` rejects either
+CPU resolution, while `gpuPreferred` permits only an explicit, reason-bearing
+reference fallback. Every stage and partition must cover the same frozen record
+count and remain within the request memory limit. Artifact provenance accepts
+only this exact stage order.
+
 ## Product Truth By Surface
 
 | Surface | Current truth |
