@@ -65,7 +65,8 @@ pub use mmff_extract::{
 };
 pub use semiempirical::{
     rm1_multipole_parameters, rm1_nuclear_repulsion_energy, rm1_parameters,
-    solve_closed_shell_scf, Rm1MultipoleParameters, SemiempiricalAtom,
+    rm1_two_center_integrals, solve_closed_shell_scf, Rm1MultipoleParameters,
+    Rm1TwoCenterIntegrals, SemiempiricalAtom,
     SemiempiricalElementParameters, SemiempiricalError, SemiempiricalMethod,
     SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfResult,
     SemiempiricalScfStatus,
