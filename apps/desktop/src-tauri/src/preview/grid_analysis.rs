@@ -4,7 +4,7 @@ use burrete_compute_protocol::{
     CapabilityMaturity, RepresentativePolicy, WorkflowTemplateId, MAX_JSON_SAFE_INTEGER,
     MAX_PACK_FILES, MAX_PACK_RECORDS,
 };
-use rusqlite::{params, Connection, TransactionBehavior};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -59,6 +59,31 @@ pub(crate) struct GridAnalysisApplyInput {
     pub(crate) artifacts: Vec<GridAnalysisArtifactInput>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct GridClusterAssignmentInput {
+    pub(crate) source_index: u64,
+    pub(crate) molecule_content_sha256: String,
+    pub(crate) cluster_id: Option<u64>,
+    pub(crate) representative: bool,
+    pub(crate) error: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct GridClusterAnalysisApplyInput {
+    pub(crate) run_id: Uuid,
+    pub(crate) document_fingerprint_sha256: String,
+    pub(crate) source_revision: u64,
+    pub(crate) snapshot_id: Uuid,
+    pub(crate) snapshot_sha256: String,
+    pub(crate) normalized_settings_sha256: String,
+    pub(crate) representative_policy: RepresentativePolicy,
+    pub(crate) provenance: serde_json::Value,
+    pub(crate) created_at_ms: u64,
+    pub(crate) artifact_id: Uuid,
+    pub(crate) artifact_manifest_sha256: String,
+    pub(crate) assignments: Vec<GridClusterAssignmentInput>,
+}
+
 pub(crate) fn initialize(connection: &Connection) -> Result<(), String> {
     schema::initialize(connection)
 }
@@ -77,6 +102,135 @@ pub(crate) fn apply_analysis_run(
     insert_values(&transaction, input)?;
     insert_artifacts(&transaction, input)?;
     transaction.commit().map_err(|error| error.to_string())
+}
+
+pub(crate) fn apply_cluster_analysis_run(
+    database_path: &Path,
+    cluster: &GridClusterAnalysisApplyInput,
+) -> Result<(), String> {
+    if cluster.assignments.is_empty() || cluster.assignments.len() as u64 > MAX_PACK_RECORDS {
+        return Err(format!(
+            "Cluster analysis requires 1..={MAX_PACK_RECORDS} assignments"
+        ));
+    }
+    let mut connection = open_grid_database(database_path)?;
+    initialize(&connection)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(cluster.assignments.len().saturating_mul(3))
+        .map_err(|_| "Cannot allocate Grid cluster analysis values".to_string())?;
+    {
+        let mut resolver = transaction
+            .prepare(
+                "select id from molecules
+                 where source_index = ?1 and molecule_content_sha256 = ?2",
+            )
+            .map_err(|error| error.to_string())?;
+        for assignment in &cluster.assignments {
+            let molecule_id = resolver
+                .query_row(
+                    params![
+                        assignment.source_index as i64,
+                        assignment.molecule_content_sha256
+                    ],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| {
+                    format!(
+                        "Grid molecule identity changed at source index {}",
+                        assignment.source_index
+                    )
+                })?;
+            match (assignment.cluster_id, &assignment.error) {
+                (Some(cluster_id), None) => {
+                    let cluster_id = i64::try_from(cluster_id)
+                        .map_err(|_| "Cluster ID exceeds the Grid integer range".to_string())?;
+                    values.push(cluster_value(
+                        molecule_id,
+                        assignment,
+                        "clusterId",
+                        GridAnalysisValue::Integer(cluster_id),
+                    ));
+                    values.push(cluster_value(
+                        molecule_id,
+                        assignment,
+                        "isRepresentative",
+                        GridAnalysisValue::Boolean(assignment.representative),
+                    ));
+                    values.push(cluster_value(
+                        molecule_id,
+                        assignment,
+                        "clusterStatus",
+                        GridAnalysisValue::Text("ok".into()),
+                    ));
+                }
+                (None, Some(error)) if !assignment.representative => {
+                    values.push(cluster_value(
+                        molecule_id,
+                        assignment,
+                        "clusterStatus",
+                        GridAnalysisValue::Text("fingerprintError".into()),
+                    ));
+                    values.push(cluster_value(
+                        molecule_id,
+                        assignment,
+                        "clusterError",
+                        GridAnalysisValue::Text(error.clone()),
+                    ));
+                }
+                _ => {
+                    return Err(format!(
+                        "Cluster assignment at source index {} has inconsistent validity",
+                        assignment.source_index
+                    ));
+                }
+            }
+        }
+    }
+    let input = GridAnalysisApplyInput {
+        run_id: cluster.run_id,
+        workflow_template: WorkflowTemplateId::ClusterV1,
+        document_fingerprint_sha256: cluster.document_fingerprint_sha256.clone(),
+        source_revision: cluster.source_revision,
+        snapshot_id: cluster.snapshot_id,
+        snapshot_sha256: cluster.snapshot_sha256.clone(),
+        normalized_settings_sha256: cluster.normalized_settings_sha256.clone(),
+        maturity: CapabilityMaturity::Experimental,
+        representative_policy: cluster.representative_policy,
+        provenance: cluster.provenance.clone(),
+        created_at_ms: cluster.created_at_ms,
+        values,
+        artifacts: vec![GridAnalysisArtifactInput {
+            artifact_id: cluster.artifact_id,
+            role: "clusterResult".into(),
+            manifest_sha256: cluster.artifact_manifest_sha256.clone(),
+        }],
+    };
+    let validated = ValidatedApply::new(&input)?;
+    insert_run(&transaction, &input, &validated)?;
+    insert_values(&transaction, &input)?;
+    insert_artifacts(&transaction, &input)?;
+    transaction.commit().map_err(|error| error.to_string())
+}
+
+fn cluster_value(
+    molecule_id: i64,
+    assignment: &GridClusterAssignmentInput,
+    value_id: &str,
+    value: GridAnalysisValue,
+) -> GridAnalysisValueInput {
+    GridAnalysisValueInput {
+        molecule_id,
+        source_index: assignment.source_index,
+        molecule_content_sha256: assignment.molecule_content_sha256.clone(),
+        value_id: value_id.into(),
+        value,
+    }
 }
 
 struct ValidatedApply {

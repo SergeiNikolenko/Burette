@@ -1,5 +1,6 @@
 use rusqlite::{
-    params, params_from_iter, types::Value as SqlValue, Connection, TransactionBehavior,
+    params, params_from_iter, types::Value as SqlValue, Connection, OptionalExtension,
+    TransactionBehavior,
 };
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -88,6 +89,7 @@ pub(crate) struct GridPageResult {
     pub(crate) records_total_hint: Option<usize>,
     pub(crate) index_ready: bool,
     pub(crate) descriptor_ids: Vec<String>,
+    pub(crate) analysis_columns: Vec<GridAnalysisColumn>,
 }
 
 #[derive(Debug, Serialize)]
@@ -122,6 +124,7 @@ pub(crate) struct GridPageRow {
     pub(crate) idcoordinates: Option<String>,
     pub(crate) props: BTreeMap<String, String>,
     pub(crate) descriptors: BTreeMap<String, GridDescriptorCell>,
+    pub(crate) analyses: BTreeMap<String, GridAnalysisCell>,
 }
 
 #[derive(Debug, Serialize)]
@@ -131,6 +134,24 @@ pub(crate) struct GridDescriptorCell {
     pub(crate) value: Option<serde_json::Value>,
     pub(crate) missing_kind: Option<String>,
     pub(crate) error_text: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridAnalysisColumn {
+    pub(crate) run_id: String,
+    pub(crate) value_id: String,
+    pub(crate) label: String,
+    pub(crate) value_kind: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GridAnalysisCell {
+    pub(crate) run_id: String,
+    pub(crate) value_id: String,
+    pub(crate) value_kind: String,
+    pub(crate) value: serde_json::Value,
 }
 
 #[derive(Debug, Clone)]
@@ -583,12 +604,11 @@ fn fetch_predicate_page(
     let rows = statement
         .query(params_from_iter(page_params.iter()))
         .map_err(|err| err.to_string())?;
+    let mut page_rows = collect_page_rows(rows)?;
+    attach_descriptor_cells(connection, &mut page_rows)?;
+    let analysis_columns = attach_latest_cluster_analysis(connection, &mut page_rows)?;
     Ok(GridPageResult {
-        rows: {
-            let mut page_rows = collect_page_rows(rows)?;
-            attach_descriptor_cells(connection, &mut page_rows)?;
-            page_rows
-        },
+        rows: page_rows,
         total_rows,
         offset,
         limit,
@@ -597,6 +617,7 @@ fn fetch_predicate_page(
         records_total_hint: index_state.records_total,
         index_ready: index_state.index_ready,
         descriptor_ids: descriptor_ids_in_connection(connection)?,
+        analysis_columns,
     })
 }
 
@@ -642,9 +663,124 @@ fn collect_page_rows(mut rows: rusqlite::Rows<'_>) -> Result<Vec<GridPageRow>, S
             idcoordinates: row.get(6).map_err(|err| err.to_string())?,
             props: serde_json::from_str(&props_json).map_err(|err| err.to_string())?,
             descriptors: BTreeMap::new(),
+            analyses: BTreeMap::new(),
         });
     }
     Ok(page_rows)
+}
+
+fn attach_latest_cluster_analysis(
+    connection: &Connection,
+    page_rows: &mut [GridPageRow],
+) -> Result<Vec<GridAnalysisColumn>, String> {
+    let run_id = connection
+        .query_row(
+            "select analysis_run.run_id
+             from analysis_runs analysis_run
+             join grid_metadata metadata on metadata.id = 1
+             where analysis_run.workflow_template = 'cluster.v1'
+               and analysis_run.document_fingerprint_sha256 = metadata.document_fingerprint_sha256
+               and analysis_run.source_revision = metadata.source_revision
+             order by analysis_run.created_at_ms desc, analysis_run.run_id desc
+             limit 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some(run_id) = run_id else {
+        return Ok(Vec::new());
+    };
+
+    let mut columns_statement = connection
+        .prepare(
+            "select value_id, value_kind
+             from analysis_values
+             where run_id = ?1
+             group by value_id, value_kind
+             order by value_id collate nocase",
+        )
+        .map_err(|error| error.to_string())?;
+    let columns = columns_statement
+        .query_map([&run_id], |row| {
+            let value_id = row.get::<_, String>(0)?;
+            Ok(GridAnalysisColumn {
+                label: cluster_analysis_label(&value_id).into(),
+                run_id: run_id.clone(),
+                value_id,
+                value_kind: row.get(1)?,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    if page_rows.is_empty() {
+        return Ok(columns);
+    }
+
+    let row_ids = page_rows.iter().map(|row| row.row_id).collect::<Vec<_>>();
+    let placeholders = vec!["?"; row_ids.len()].join(", ");
+    let sql = format!(
+        "select molecule_id, value_id, value_kind, value_integer, value_real, value_text
+         from analysis_values
+         where run_id = ? and molecule_id in ({placeholders})
+         order by molecule_id, value_id collate nocase"
+    );
+    let mut values_statement = connection
+        .prepare(&sql)
+        .map_err(|error| error.to_string())?;
+    let mut parameters = Vec::with_capacity(row_ids.len() + 1);
+    parameters.push(SqlValue::Text(run_id.clone()));
+    parameters.extend(row_ids.iter().copied().map(SqlValue::Integer));
+    let mut rows = values_statement
+        .query(params_from_iter(parameters.iter()))
+        .map_err(|error| error.to_string())?;
+    let mut values_by_molecule: HashMap<i64, BTreeMap<String, GridAnalysisCell>> = HashMap::new();
+    while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+        let molecule_id = row.get::<_, i64>(0).map_err(|error| error.to_string())?;
+        let value_id = row.get::<_, String>(1).map_err(|error| error.to_string())?;
+        let value_kind = row.get::<_, String>(2).map_err(|error| error.to_string())?;
+        let value = match value_kind.as_str() {
+            "integer" => {
+                serde_json::Value::from(row.get::<_, i64>(3).map_err(|error| error.to_string())?)
+            }
+            "real" => {
+                serde_json::Value::from(row.get::<_, f64>(4).map_err(|error| error.to_string())?)
+            }
+            "boolean" => serde_json::Value::from(
+                row.get::<_, i64>(3).map_err(|error| error.to_string())? != 0,
+            ),
+            "text" => {
+                serde_json::Value::from(row.get::<_, String>(5).map_err(|error| error.to_string())?)
+            }
+            other => return Err(format!("Unsupported Grid analysis value kind: {other}")),
+        };
+        values_by_molecule.entry(molecule_id).or_default().insert(
+            value_id.clone(),
+            GridAnalysisCell {
+                run_id: run_id.clone(),
+                value_id,
+                value_kind,
+                value,
+            },
+        );
+    }
+    for page_row in page_rows {
+        page_row.analyses = values_by_molecule
+            .remove(&page_row.row_id)
+            .unwrap_or_default();
+    }
+    Ok(columns)
+}
+
+fn cluster_analysis_label(value_id: &str) -> &str {
+    match value_id {
+        "clusterId" => "Cluster ID",
+        "isRepresentative" => "Representative",
+        "clusterStatus" => "Cluster status",
+        "clusterError" => "Cluster error",
+        _ => value_id,
+    }
 }
 
 fn attach_descriptor_cells(
@@ -2665,6 +2801,18 @@ mod tests {
             direct_indexes
         );
         assert_eq!(direct_indexes, vec![1]);
+        assert_eq!(page.analysis_columns.len(), 1);
+        assert_eq!(page.analysis_columns[0].run_id, run_id.to_string());
+        assert_eq!(page.analysis_columns[0].value_id, "clusterId");
+        assert_eq!(page.analysis_columns[0].label, "Cluster ID");
+        assert_eq!(page.analysis_columns[0].value_kind, "integer");
+        assert_eq!(
+            page.rows[0]
+                .analyses
+                .get("clusterId")
+                .map(|cell| &cell.value),
+            Some(&serde_json::json!(20))
+        );
         let _ = std::fs::remove_dir_all(&runtime_dir);
     }
 
