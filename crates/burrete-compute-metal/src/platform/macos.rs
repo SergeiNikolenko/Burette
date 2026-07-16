@@ -1,8 +1,8 @@
-use std::{ffi::c_void, mem::size_of_val};
+use std::{collections::HashSet, ffi::c_void, mem::size_of_val};
 
 use burrete_compute_core::{
     validate_etk_geometry_constraints, validate_mmff_parameters, validate_stereo_constraints,
-    ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
+    AlignmentMode, ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
     Fingerprint2048, GraphBuildOptions, MmffParameters, SymmetricCsr, TanimotoCounts,
     TanimotoQueryOptions, TetrahedralConstraint,
@@ -17,9 +17,11 @@ use objc::rc::autoreleasepool;
 use objc::{runtime::Sel, Message};
 
 use crate::platform::{
-    MetalDistanceDispatch, MetalDistanceOptimizationDispatch, MetalEtkDispatch, MetalMmffDispatch,
-    MetalMmffOptimizationDispatch, MetalStereoValidationDispatch,
+    MetalAlignmentDispatch, MetalDistanceDispatch, MetalDistanceOptimizationDispatch,
+    MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch,
+    MetalStereoValidationDispatch,
 };
+use crate::runtime::MetalAlignmentBatch;
 use crate::MetalRuntimeError;
 
 const MAX_TILE_RECORDS: usize = 1_024;
@@ -165,6 +167,28 @@ struct MmffOptimizeConfigV1 {
     max_step_factor: f32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct AlignmentPairV1 {
+    probe_atom_start: u64,
+    probe_atom_count: u64,
+    reference_atom_start: u64,
+    reference_atom_count: u64,
+    mapping_start: u64,
+    mapping_count: u64,
+    flags: u64,
+    reserved: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+struct AtomMappingV1 {
+    probe_atom: u32,
+    reference_atom: u32,
+    weight: f32,
+    reserved: u32,
+}
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
@@ -181,6 +205,7 @@ pub(crate) struct MetalHost {
     mmff_energy_pipeline: ComputePipelineState,
     mmff_gradient_pipeline: ComputePipelineState,
     mmff_optimize_pipeline: ComputePipelineState,
+    alignment_score_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -227,6 +252,7 @@ impl MetalHost {
         let mmff_gradient_pipeline =
             pipeline(&device, library, "burrete_mmff_reference_gradient_v1")?;
         let mmff_optimize_pipeline = pipeline(&device, library, "burrete_mmff_optimize_v1")?;
+        let alignment_score_pipeline = pipeline(&device, library, "burrete_alignment_score_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -242,6 +268,7 @@ impl MetalHost {
             mmff_energy_pipeline,
             mmff_gradient_pipeline,
             mmff_optimize_pipeline,
+            alignment_score_pipeline,
         })
     }
 
@@ -1383,6 +1410,235 @@ impl MetalHost {
         })
     }
 
+    pub(crate) fn align_and_score_profiled(
+        &self,
+        batch: MetalAlignmentBatch<'_>,
+        max_memory_bytes: u64,
+    ) -> Result<MetalAlignmentDispatch, MetalRuntimeError> {
+        if batch.pairs.is_empty() {
+            return resource_limit("alignment batch must contain at least one pair");
+        }
+        validate_alignment_atoms("probe", batch.probe_atoms)?;
+        validate_alignment_atoms("reference", batch.reference_atoms)?;
+        let mut packed_pairs = Vec::with_capacity(batch.pairs.len());
+        for (pair_index, pair) in batch.pairs.iter().enumerate() {
+            let probe_end = pair
+                .probe_atom_start
+                .checked_add(pair.probe_atom_count)
+                .ok_or_else(memory_overflow)?;
+            let reference_end = pair
+                .reference_atom_start
+                .checked_add(pair.reference_atom_count)
+                .ok_or_else(memory_overflow)?;
+            let mapping_end = pair
+                .mapping_start
+                .checked_add(pair.mapping_count)
+                .ok_or_else(memory_overflow)?;
+            if pair.probe_atom_count == 0
+                || pair.reference_atom_count == 0
+                || probe_end > batch.probe_atoms.len() as u64
+                || reference_end > batch.reference_atoms.len() as u64
+                || mapping_end > batch.mappings.len() as u64
+            {
+                return resource_limit(format!(
+                    "alignment pair {pair_index} has an out-of-range atom or mapping span"
+                ));
+            }
+            match pair.mode {
+                AlignmentMode::FixedPose if pair.mapping_count != 0 => {
+                    return resource_limit(format!(
+                        "fixed-pose alignment pair {pair_index} must not contain a mapping"
+                    ));
+                }
+                AlignmentMode::MappedHorn if pair.mapping_count == 0 => {
+                    return resource_limit(format!(
+                        "mapped alignment pair {pair_index} requires an atom mapping"
+                    ));
+                }
+                _ => {}
+            }
+            let mut probe_seen = HashSet::with_capacity(pair.mapping_count as usize);
+            let mut reference_seen = HashSet::with_capacity(pair.mapping_count as usize);
+            for mapping in &batch.mappings
+                [pair.mapping_start as usize..mapping_end as usize]
+            {
+                if u64::from(mapping.probe_atom) >= pair.probe_atom_count
+                    || u64::from(mapping.reference_atom) >= pair.reference_atom_count
+                    || !mapping.weight.is_finite()
+                    || mapping.weight <= 0.0
+                    || !probe_seen.insert(mapping.probe_atom)
+                    || !reference_seen.insert(mapping.reference_atom)
+                {
+                    return resource_limit(format!(
+                        "alignment pair {pair_index} has an invalid or duplicate mapping"
+                    ));
+                }
+            }
+            packed_pairs.push(AlignmentPairV1 {
+                probe_atom_start: pair.probe_atom_start,
+                probe_atom_count: pair.probe_atom_count,
+                reference_atom_start: pair.reference_atom_start,
+                reference_atom_count: pair.reference_atom_count,
+                mapping_start: pair.mapping_start,
+                mapping_count: pair.mapping_count,
+                flags: u64::from(pair.mode == AlignmentMode::MappedHorn),
+                reserved: 0,
+            });
+        }
+        let probe_count = u64::try_from(batch.probe_atoms.len()).map_err(|_| memory_overflow())?;
+        let reference_count =
+            u64::try_from(batch.reference_atoms.len()).map_err(|_| memory_overflow())?;
+        let mapping_count = u64::try_from(batch.mappings.len()).map_err(|_| memory_overflow())?;
+        let pair_count = u64::try_from(batch.pairs.len()).map_err(|_| memory_overflow())?;
+        if pair_count > u64::from(u32::MAX) {
+            return resource_limit("alignment pair count exceeds uint32");
+        }
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(
+                probe_count
+                    .checked_add(reference_count)
+                    .and_then(|count| count.checked_mul(60))
+                    .ok_or_else(memory_overflow)?,
+            )
+            .and_then(|bytes| bytes.checked_add(mapping_count.max(1).checked_mul(32)?))
+            .and_then(|bytes| bytes.checked_add(pair_count.checked_mul(228)?))
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "alignment batch requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+
+        let probe_positions = batch
+            .probe_atoms
+            .iter()
+            .map(|atom| atom.position)
+            .collect::<Vec<_>>();
+        let probe_parameters = batch
+            .probe_atoms
+            .iter()
+            .map(|atom| {
+                [
+                    atom.gaussian_exponent,
+                    atom.gaussian_amplitude,
+                    atom.partial_charge,
+                    0.0,
+                ]
+            })
+            .collect::<Vec<_>>();
+        let reference_positions = batch
+            .reference_atoms
+            .iter()
+            .map(|atom| atom.position)
+            .collect::<Vec<_>>();
+        let reference_parameters = batch
+            .reference_atoms
+            .iter()
+            .map(|atom| {
+                [
+                    atom.gaussian_exponent,
+                    atom.gaussian_amplitude,
+                    atom.partial_charge,
+                    0.0,
+                ]
+            })
+            .collect::<Vec<_>>();
+        let mut packed_mappings = batch
+            .mappings
+            .iter()
+            .map(|mapping| AtomMappingV1 {
+                probe_atom: mapping.probe_atom,
+                reference_atom: mapping.reference_atom,
+                weight: mapping.weight,
+                reserved: 0,
+            })
+            .collect::<Vec<_>>();
+        if packed_mappings.is_empty() {
+            packed_mappings.push(AtomMappingV1::default());
+        }
+        let input_buffers = [
+            buffer_with_slice(&self.device, &probe_positions),
+            buffer_with_slice(&self.device, &probe_parameters),
+            buffer_with_slice(&self.device, &reference_positions),
+            buffer_with_slice(&self.device, &reference_parameters),
+            buffer_with_slice(&self.device, &packed_mappings),
+            buffer_with_slice(&self.device, &packed_pairs),
+        ];
+        let transform_buffer = buffer_with_slice(
+            &self.device,
+            &vec![[[0.0_f32; 4]; 4]; batch.pairs.len()],
+        );
+        let primary_buffer =
+            buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; batch.pairs.len()]);
+        let secondary_buffer =
+            buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; batch.pairs.len()]);
+        let status_buffer =
+            buffer_with_slice(&self.device, &vec![0x8000_0000_u32; batch.pairs.len()]);
+        let thread_width = self.alignment_score_pipeline.thread_execution_width().min(
+            self.alignment_score_pipeline
+                .max_total_threads_per_threadgroup(),
+        );
+        if thread_width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal alignment pipeline advertises zero thread width".into(),
+            ));
+        }
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.alignment_score_pipeline);
+            for (index, buffer) in input_buffers.iter().enumerate() {
+                encoder.set_buffer(index as u64, Some(buffer), 0);
+            }
+            for (index, buffer) in [
+                &transform_buffer,
+                &primary_buffer,
+                &secondary_buffer,
+                &status_buffer,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                encoder.set_buffer((index + 6) as u64, Some(buffer), 0);
+            }
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: pair_count,
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: thread_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        Ok(MetalAlignmentDispatch {
+            transforms: read_buffer(
+                &transform_buffer,
+                batch.pairs.len(),
+                "alignment transform",
+            )?,
+            primary_scores: read_buffer(
+                &primary_buffer,
+                batch.pairs.len(),
+                "alignment primary score",
+            )?,
+            secondary_scores: read_buffer(
+                &secondary_buffer,
+                batch.pairs.len(),
+                "alignment secondary score",
+            )?,
+            statuses: read_buffer(&status_buffer, batch.pairs.len(), "alignment status")?,
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
     pub(crate) fn evaluate_mmff_profiled(
         &self,
         positions: &[[f32; 4]],
@@ -1724,6 +1980,28 @@ impl MetalHost {
         }
         Ok(gpu_time_seconds)
     }
+}
+
+fn validate_alignment_atoms(
+    label: &str,
+    atoms: &[burrete_compute_core::AlignmentAtom],
+) -> Result<(), MetalRuntimeError> {
+    if atoms.is_empty() {
+        return resource_limit(format!("alignment {label} atom list must not be empty"));
+    }
+    if atoms.iter().any(|atom| {
+        atom.position[..3].iter().any(|value| !value.is_finite())
+            || !atom.gaussian_exponent.is_finite()
+            || atom.gaussian_exponent <= 0.0
+            || !atom.gaussian_amplitude.is_finite()
+            || atom.gaussian_amplitude <= 0.0
+            || !atom.partial_charge.is_finite()
+    }) {
+        return resource_limit(format!(
+            "alignment {label} atoms require finite coordinates, positive Gaussian parameters, and finite charges"
+        ));
+    }
+    Ok(())
 }
 
 fn pack_mmff_terms(
