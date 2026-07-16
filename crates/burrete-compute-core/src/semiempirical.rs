@@ -9,8 +9,8 @@ mod two_center;
 pub use overlap::{rm1_sp_overlap, Rm1OverlapMatrix};
 pub use parameters::{rm1_parameters, SemiempiricalElementParameters};
 pub use rm1::{
-    contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_pair_contractor, rm1_fock_pairs,
-    Rm1Evaluation, Rm1FockPair,
+    contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators,
+    evaluate_rm1_with_pair_contractor, rm1_fock_pairs, Rm1Evaluation, Rm1FockPair,
 };
 pub use rotation::{rm1_rotated_pair_integrals, Rm1RotatedPairIntegrals};
 pub use two_center::{
@@ -290,7 +290,23 @@ pub fn solve_closed_shell_scf(
     orbital_count: usize,
     electron_count: usize,
     options: SemiempiricalScfOptions,
+    build_fock: impl FnMut(&[f64]) -> Result<Vec<f64>, SemiempiricalError>,
+) -> Result<SemiempiricalScfResult, SemiempiricalError> {
+    solve_closed_shell_scf_with_eigensolver(
+        orbital_count,
+        electron_count,
+        options,
+        build_fock,
+        symmetric_eigendecomposition,
+    )
+}
+
+pub fn solve_closed_shell_scf_with_eigensolver(
+    orbital_count: usize,
+    electron_count: usize,
+    options: SemiempiricalScfOptions,
     mut build_fock: impl FnMut(&[f64]) -> Result<Vec<f64>, SemiempiricalError>,
+    mut diagonalize: impl FnMut(&[f64], usize) -> Result<(Vec<f64>, Vec<f64>), SemiempiricalError>,
 ) -> Result<SemiempiricalScfResult, SemiempiricalError> {
     validate_inputs(orbital_count, electron_count, options)?;
     let matrix_len = orbital_count * orbital_count;
@@ -312,7 +328,9 @@ pub fn solve_closed_shell_scf(
             }
         }
 
-        let (energies, coefficients) = symmetric_eigen(&fock, orbital_count)?;
+        let (energies, coefficients) = diagonalize(&fock, orbital_count)?;
+        validate_matrix(&energies, orbital_count, "eigenvalue")?;
+        validate_matrix(&coefficients, matrix_len, "eigenvector")?;
         orbital_energies = energies;
         let target = closed_shell_density(&coefficients, orbital_count, occupied);
         let error = root_mean_square_difference(&target, &density);
@@ -431,7 +449,11 @@ fn root_mean_square_difference(left: &[f64], right: &[f64]) -> f64 {
         .sqrt()
 }
 
-fn symmetric_eigen(matrix: &[f64], n: usize) -> Result<(Vec<f64>, Vec<f64>), SemiempiricalError> {
+pub fn symmetric_eigendecomposition(
+    matrix: &[f64],
+    n: usize,
+) -> Result<(Vec<f64>, Vec<f64>), SemiempiricalError> {
+    validate_matrix(matrix, n.saturating_mul(n), "symmetric eigensolver input")?;
     let mut values = matrix.to_vec();
     let mut vectors = vec![0.0; n * n];
     for diagonal in 0..n {
