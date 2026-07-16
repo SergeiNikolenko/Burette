@@ -428,9 +428,20 @@ separate product increments.
   molecules with explicit coordinates. The frozen Grid lease is parsed without
   Python/MLX, evaluated by the native bounded RM1 reference implementation, and
   written back as electronic, nuclear, and total energies, SCF status and
-  iterations, and JSON atomic charges. This stage is deliberately reported as
-  `nativeCpuReference`; it does not claim Metal execution before the integral,
-  Fock, and eigensolver kernels are ported and parity-gated.
+  iterations, and JSON atomic charges. Runtime v12 contracts the dominant
+  two-center Coulomb/exchange Fock contribution on Metal for every SCF
+  iteration and checks every returned matrix against the float64 CPU reference.
+  The Grid reports the deliberately narrow `nativeMetalFockHybrid` only after
+  at least one verified GPU dispatch; integral generation, diagonalization, and
+  control remain CPU. Unavailable Metal or all-invalid input remains
+  `nativeCpuReference`.
+- The verified v12 runtime adds `burrete_rm1_pair_fock_v1`. One thread owns one
+  Fock-matrix element and accumulates pair tensors in deterministic order with
+  no atomics. The package binds ten sources, ten contracts, ten AIR files, and
+  fourteen entrypoints. Startup and end-to-end explicit-water KATs passed on
+  `Apple M2 Pro` (`registryId=0x1000003c0`, unified memory); the tested
+  `native-compute.v12.metallib` SHA-256 is
+  `aafb9d55c7994114f85e83329bf1ded8c2a9004ff4fb9d3531603a98bd07942e`.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
@@ -477,7 +488,8 @@ fixed order below:
    multipole parameters plus complete 22-term pair integrals and molecular-frame
    rotation, first-/second-row overlap, and end-to-end H/C/N/O/F RM1 SCF energies
    and charges plus complete qn1-5 sp overlap and native Grid execution/writeback;
-   next add Metal contraction and remaining parameter sets method by method behind independent
+   with Metal two-center Fock contraction; next add GPU integral generation and
+   eigensolver plus remaining parameter sets method by method behind independent
    known-answer and external parity gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.

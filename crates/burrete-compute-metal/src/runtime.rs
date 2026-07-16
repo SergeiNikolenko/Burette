@@ -1,15 +1,15 @@
 use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
 use burrete_compute_core::{
-    align_and_score, build_tanimoto_graph, evaluate_distance_constraints, evaluate_etk_geometry,
-    evaluate_mmff, initialize_conformer_positions, optimize_distance_geometry,
+    align_and_score, build_tanimoto_graph, contract_rm1_pair_fock, evaluate_distance_constraints,
+    evaluate_etk_geometry, evaluate_mmff, initialize_conformer_positions, optimize_distance_geometry,
     score_tanimoto_query, validate_conformer_stereo, AlignmentAtom, AlignmentMode,
     AlignmentScores, AtomMapping, ChiralVolumeConstraint, DistanceConstraint,
     DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
     EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
     GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown,
     MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
-    MmffVanDerWaalsTerm, MmffVariant, RigidTransform, SymmetricCsr, TanimotoCounts,
+    MmffVanDerWaalsTerm, MmffVariant, RigidTransform, Rm1FockPair, SymmetricCsr, TanimotoCounts,
     TanimotoQueryOptions, TetrahedralConstraint, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
@@ -142,6 +142,12 @@ pub struct MetalAlignmentPairResult {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetalAlignmentExecution {
     pub pairs: Vec<MetalAlignmentPairResult>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalRm1FockContribution {
+    pub contribution_ev: Vec<f32>,
     pub gpu_time_ms: u64,
 }
 
@@ -315,6 +321,42 @@ impl MetalComputeRuntime {
         }
         Ok(MetalAlignmentExecution {
             pairs,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
+    pub fn contract_rm1_pair_fock_profiled(
+        &self,
+        orbital_count: usize,
+        density: &[f64],
+        pairs: &[Rm1FockPair],
+        max_memory_bytes: u64,
+    ) -> Result<MetalRm1FockContribution, MetalRuntimeError> {
+        let expected = contract_rm1_pair_fock(orbital_count, density, pairs)
+            .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
+        let density_f32 = density.iter().map(|value| *value as f32).collect::<Vec<_>>();
+        let dispatch = self.host.contract_rm1_pair_fock_profiled(
+            u32::try_from(orbital_count).map_err(|_| {
+                MetalRuntimeError::ResourceLimit("RM1 orbital count exceeds uint32".into())
+            })?,
+            &density_f32,
+            pairs,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if dispatch.contribution_ev.len() != expected.len()
+            || dispatch.contribution_ev.iter().any(|value| !value.is_finite())
+            || dispatch
+                .contribution_ev
+                .iter()
+                .zip(&expected)
+                .any(|(observed, expected)| (*observed - *expected as f32).abs() > 2.0e-4)
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal RM1 pair Fock contraction differs from the float64 CPU reference".into(),
+            ));
+        }
+        Ok(MetalRm1FockContribution {
+            contribution_ev: dispatch.contribution_ev,
             gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
         })
     }
@@ -980,6 +1022,34 @@ impl MetalComputeRuntime {
                 "Metal startup MMFF optimization failed its CPU energy check".into(),
             ));
         }
+        let mut rm1_tensor = vec![0.0; 256];
+        rm1_tensor[0] = 10.0;
+        let rm1_pairs = [Rm1FockPair {
+            left_orbital_start: 0,
+            left_orbital_count: 1,
+            right_orbital_start: 1,
+            right_orbital_count: 1,
+            repulsion_ev: rm1_tensor,
+        }];
+        let rm1_density = [1.0, 0.2, 0.2, 1.0];
+        let expected_rm1 = contract_rm1_pair_fock(2, &rm1_density, &rm1_pairs)
+            .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let observed_rm1 = self.host.contract_rm1_pair_fock_profiled(
+            2,
+            &[1.0, 0.2, 0.2, 1.0],
+            &rm1_pairs,
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        if !float_slices_close(
+            &observed_rm1.contribution_ev,
+            &expected_rm1.iter().map(|value| *value as f32).collect::<Vec<_>>(),
+            2.0e-5,
+        ) {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup RM1 pair Fock contraction differs from the CPU reference".into(),
+            ));
+        }
+
         let probe_atoms = [
             alignment_atom([0.0, 0.0, 0.0, 0.0], 0.8, 1.2, 0.3),
             alignment_atom([1.0, 0.0, 0.0, 0.0], 0.9, 1.4, -0.2),

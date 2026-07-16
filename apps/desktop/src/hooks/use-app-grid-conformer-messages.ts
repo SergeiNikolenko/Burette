@@ -53,7 +53,8 @@ type GridSemiempiricalResult = {
     error: string | null;
   }>;
   hostTimeMs: number;
-  backend: "nativeCpuReference";
+  gpuTimeMs: number;
+  backend: "nativeMetalFockHybrid" | "nativeCpuReference";
   gridApplied: boolean;
 };
 
@@ -101,8 +102,11 @@ export function useAppGridConformerMessages({
       }).then((result) => {
         const converged = result.rows.filter((row) => row.converged).length;
         const failed = result.rows.length - converged;
+        const execution = result.backend === "nativeMetalFockHybrid"
+          ? `with Metal Fock contractions (${result.gpuTimeMs.toLocaleString()} ms GPU, ${result.hostTimeMs.toLocaleString()} ms host)`
+          : `on the CPU reference backend in ${result.hostTimeMs.toLocaleString()} ms`;
         pushStatus(
-          `Calculated native RM1 energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} on the CPU reference backend in ${result.hostTimeMs.toLocaleString()} ms${failed ? `; ${failed.toLocaleString()} failed` : ""}; results were written to Grid.`,
+          `Calculated native RM1 energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} ${execution}${failed ? `; ${failed.toLocaleString()} failed` : ""}; results were written to Grid.`,
           failed ? "error" : "success",
         );
         reply("gridSemiempiricalFinished", {

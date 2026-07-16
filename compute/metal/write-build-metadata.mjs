@@ -17,6 +17,7 @@ const requiredEnvironment = [
   "ETK_OPTIMIZER_SOURCE_SHA256",
   "MMFF_SOURCE_SHA256",
   "ALIGNMENT_SOURCE_SHA256",
+  "RM1_FOCK_SOURCE_SHA256",
   "TANIMOTO_CONTRACT_SHA256",
   "CONFORMER_CONTRACT_SHA256",
   "DISTANCE_CONTRACT_SHA256",
@@ -26,6 +27,7 @@ const requiredEnvironment = [
   "ETK_OPTIMIZER_CONTRACT_SHA256",
   "MMFF_CONTRACT_SHA256",
   "ALIGNMENT_CONTRACT_SHA256",
+  "RM1_FOCK_CONTRACT_SHA256",
   "TANIMOTO_AIR_SHA256",
   "CONFORMER_AIR_SHA256",
   "DISTANCE_AIR_SHA256",
@@ -35,6 +37,7 @@ const requiredEnvironment = [
   "ETK_OPTIMIZER_AIR_SHA256",
   "MMFF_AIR_SHA256",
   "ALIGNMENT_AIR_SHA256",
+  "RM1_FOCK_AIR_SHA256",
   "METALLIB_SHA256",
   "METAL_TOOL_PATH",
   "METAL_TOOL_SHA256",
@@ -59,8 +62,8 @@ for (const name of requiredEnvironment.filter((name) => name.endsWith("_SHA256")
 const normalizedVersion = process.env.METAL_TOOL_VERSION.trim().replace(/\s+/g, " ");
 const metadata = {
   schemaVersion: "burrete.compute.metal-build-metadata.v2",
-  runtimeVersion: "burrete-native-metal-v11",
-  libraryId: "burrete.compute.native.v11",
+  runtimeVersion: "burrete-native-metal-v12",
+  libraryId: "burrete.compute.native.v12",
   sources: [
     { path: "compute/metal/tanimoto.v2.metal", sha256: process.env.TANIMOTO_SOURCE_SHA256 },
     { path: "compute/metal/conformer-initialize.v1.metal", sha256: process.env.CONFORMER_SOURCE_SHA256 },
@@ -71,6 +74,7 @@ const metadata = {
     { path: "compute/metal/conformer-etk-optimize.v1.metal", sha256: process.env.ETK_OPTIMIZER_SOURCE_SHA256 },
     { path: "compute/metal/mmff-energy.v1.metal", sha256: process.env.MMFF_SOURCE_SHA256 },
     { path: "compute/metal/alignment-score.v1.metal", sha256: process.env.ALIGNMENT_SOURCE_SHA256 },
+    { path: "compute/metal/rm1-fock.v1.metal", sha256: process.env.RM1_FOCK_SOURCE_SHA256 },
   ],
   contracts: [
     { path: "compute/metal/tanimoto-kernel-contract.v2.json", sha256: process.env.TANIMOTO_CONTRACT_SHA256 },
@@ -82,6 +86,7 @@ const metadata = {
     { path: "compute/metal/conformer-etk-optimize-kernel-contract.v1.json", sha256: process.env.ETK_OPTIMIZER_CONTRACT_SHA256 },
     { path: "compute/metal/mmff-energy-kernel-contract.v1.json", sha256: process.env.MMFF_CONTRACT_SHA256 },
     { path: "compute/metal/alignment-score-kernel-contract.v1.json", sha256: process.env.ALIGNMENT_CONTRACT_SHA256 },
+    { path: "compute/metal/rm1-fock-kernel-contract.v1.json", sha256: process.env.RM1_FOCK_CONTRACT_SHA256 },
   ],
   air: [
     { path: "tanimoto.v2.air", sha256: process.env.TANIMOTO_AIR_SHA256 },
@@ -93,9 +98,10 @@ const metadata = {
     { path: "conformer-etk-optimize.v1.air", sha256: process.env.ETK_OPTIMIZER_AIR_SHA256 },
     { path: "mmff-energy.v1.air", sha256: process.env.MMFF_AIR_SHA256 },
     { path: "alignment-score.v1.air", sha256: process.env.ALIGNMENT_AIR_SHA256 },
+    { path: "rm1-fock.v1.air", sha256: process.env.RM1_FOCK_AIR_SHA256 },
   ],
   metallib: {
-    path: "native-compute.v11.metallib",
+    path: "native-compute.v12.metallib",
     sha256: process.env.METALLIB_SHA256,
   },
   compiler: {
@@ -129,6 +135,7 @@ const metadata = {
     "burrete_mmff_reference_gradient_v1",
     "burrete_mmff_optimize_v1",
     "burrete_alignment_score_v1",
+    "burrete_rm1_pair_fock_v1",
   ],
 };
 
