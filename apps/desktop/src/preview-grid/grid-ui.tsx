@@ -28,6 +28,8 @@ type GridControlProps = {
   generating3d: boolean;
   clusterEnabled: boolean;
   clustering: boolean;
+  exportingClusterRepresentatives: boolean;
+  clusterRepresentativesAvailable: boolean;
   clusterCutoff: number;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
@@ -37,6 +39,7 @@ type GridControlProps = {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onCluster: () => void;
+  onExportClusterRepresentatives: () => void;
   onClusterCutoffChange: (value: number) => void;
   onCopySelected: () => void;
   onSaveGrid: () => void;
@@ -240,6 +243,19 @@ function ClusterControls(props: GridControlProps) {
       >
         <span data-buret-grid-cluster-label>{props.clustering ? "Clustering..." : "Cluster all"}</span>
         <ControlTooltip label="Cluster selected molecules, or the full collection when nothing is selected" />
+      </button>
+      <button
+        id="export-cluster-representatives"
+        className="buret-toggle-button buret-cluster-export-button"
+        type="button"
+        disabled={props.clustering || props.exportingClusterRepresentatives || !props.clusterRepresentativesAvailable}
+        aria-busy={props.exportingClusterRepresentatives ? "true" : "false"}
+        onClick={props.onExportClusterRepresentatives}
+      >
+        <span data-buret-grid-representative-export-label>
+          {props.exportingClusterRepresentatives ? "Exporting..." : "Export diverse"}
+        </span>
+        <ControlTooltip label="Export the immutable representative subset, structures, table, and provenance report" />
       </button>
     </div>
   );

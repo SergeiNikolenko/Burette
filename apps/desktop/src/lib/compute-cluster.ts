@@ -108,6 +108,30 @@ export type ClusterWorkflowResult = ClusterPublicationStep & {
   failedRecords: number;
 };
 
+export type ClusterRepresentativeExportResult = {
+  bundlePath: string;
+  reportPath: string;
+  tablePath: string;
+  structurePaths: string[];
+  representativeCount: number;
+  sdfRecordCount: number;
+  smilesRecordCount: number;
+  tableOnlyRecordCount: number;
+  reportSha256: string;
+};
+
+export async function exportClusterRepresentatives(
+  jobId: string,
+  outputDirectory: string,
+  collectionName: string,
+): Promise<ClusterRepresentativeExportResult> {
+  return invoke<ClusterRepresentativeExportResult>("compute_export_cluster_representatives", {
+    jobId,
+    outputDirectory,
+    collectionName,
+  });
+}
+
 export async function runClusterWorkflow(
   documentId: string,
   sourceIndexes: number[],
