@@ -430,7 +430,7 @@ separate product increments.
   Each method writes to its own Grid columns so runs do not overwrite another
   method's electronic, nuclear, and total energies, SCF status/iterations, or
   JSON atomic charges. The frozen Grid lease is parsed without Python/MLX.
-  Runtime v16 contracts the dominant
+  Runtime v17 contracts the dominant
   two-center Coulomb/exchange Fock contribution on Metal for every SCF
   iteration and diagonalizes matrices through order 32 with a batched Metal
   Jacobi kernel. It also generates all compact H-H, heavy-H, and 22-term
@@ -441,19 +441,21 @@ separate product increments.
   reports `nativeMetalScfHybrid` only after at least one verified GPU dispatch.
   SCF orchestration and adaptive float64 polishing remain CPU. Unavailable
   Metal or all-invalid input remains `nativeCpuReference`.
-- The verified v16 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
+- The verified v17 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
   Fock-matrix element and accumulates pair tensors in deterministic order with
   no atomics. It adds `burrete_rm1_symmetric_eigen_v1`, with one threadgroup per
   admitted matrix. It adds `burrete_rm1_pair_rotate_v1`, with one thread per
   H-H, heavy-H, or heavy-heavy atom pair. It also adds the batched
   `burrete_pm6_h4_hh_v1` and CHNO `burrete_pm6_d3_chno_v1` correction kernels,
   with one independent molecule per GPU thread and mandatory float64 parity
-  for all three output terms. The package binds fourteen sources, fourteen
-  contracts, fourteen AIR files, and eighteen entrypoints. Startup,
+  for all three output terms. Runtime v17 also adds the 45-thread-per-block
+  `burrete_pm6_one_center_fock_v1` kernel with mandatory full-matrix CPU
+  parity. The package binds fifteen sources, fifteen contracts, fifteen AIR
+  files, and nineteen entrypoints. Startup, one-center PM6 Fock,
   two-molecule D3/H4/HH, and end-to-end explicit-water KATs passed on
   `Apple M2 Pro` (`registryId=0x1000003c0`, unified memory); the tested
-  `native-compute.v16.metallib` SHA-256 is
-  `db507e02b8becc6164b776406f617a31bfaeae1b58df6978786beb43bb592383`.
+  `native-compute.v17.metallib` SHA-256 is
+  `973758404696232805913101f15f422b45556be558dfae3dc3298eb3eb47c7f6`.
 - The native closed-shell NDDO oracle now has separate AM1, PM3, PM6_SP, and
   AM1* CHNO parameter packs instead of method aliases. PM6-family nuclear
   repulsion uses its distinct PWCCT equation and frozen CHNO pair table. At the
@@ -468,8 +470,8 @@ separate product increments.
   natively from 11 Slater-Condon radial parameters and matches pinned sulfur
   and iron oracles. Its 45-output packed-density Fock contraction now produces
   a complete symmetric 9x9 native CPU block with pinned matrix parity.
-  Two-center d integrals, Metal W/Fock contraction, broader D3 tables, and
-  production PM6-D3H4 SCF composition remain gated.
+  Two-center d integrals, Metal W generation, full PM6 SCF integration,
+  broader D3 tables, and production PM6-D3H4 composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.

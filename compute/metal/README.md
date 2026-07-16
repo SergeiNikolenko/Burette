@@ -1,8 +1,8 @@
 # Native Metal compute kernels
 
-This directory contains Burrete-owned, reviewed Metal source. It is an
-independent implementation of the mathematical contract in the GPU compute
-design; it does not copy or adapt `mlxmolkit` source.
+This directory contains reviewed Metal source owned or adapted by Burrete.
+Each adapted numeric map is tied to its pinned upstream path and commit in the
+provenance ledger; production kernels do not load Python or MLX.
 
 `tanimoto.v2.metal` implements exact neighbor graph generation and exact
 one-query-to-library scoring for fixed 2,048-bit fingerprints. Graph generation
@@ -55,6 +55,12 @@ work.
 CHNO method domain using checked-in compact C6/CN interpolation records and r0
 pair radii. It shares the one-thread-per-molecule batch shape and is composed
 with H4/HH only after both GPU outputs pass their float64 CPU references.
+
+`pm6-one-center-fock.v1.metal` contracts batched 243-term PM6 W tables with
+symmetric 9x9 density blocks. One GPU thread owns one of the 45 packed output
+elements and writes its symmetric pair without atomics. The integer map is
+generated from the pinned upstream/PYSEQM reference; every output element must
+pass the native float64 CPU contraction before the block is admitted.
 
 The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
 256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical

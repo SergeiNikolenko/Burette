@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "kernel": "burrete_pm6_one_center_fock_v1",
+  "model": "PM6 one-center 9x9 d-basis Fock contraction",
+  "dispatch": "one GPU thread per packed symmetric output element, 45 threads per block",
+  "inputs": {
+    "density": "contiguous row-major float32 9x9 symmetric blocks",
+    "wIntegrals": "contiguous float32 243-term W tables per block",
+    "blockCount": "number of admitted density/W block pairs"
+  },
+  "outputs": {
+    "fock": "contiguous row-major float32 symmetric 9x9 contribution blocks"
+  },
+  "precision": "float32 Metal with mandatory float64 CPU parity gate",
+  "bounds": {
+    "maximumBlocks": 256,
+    "densityValuesPerBlock": 81,
+    "wValuesPerBlock": 243,
+    "outputValuesPerBlock": 81
+  }
+}

@@ -20,10 +20,10 @@ use objc::{runtime::Sel, Message};
 use crate::platform::{
     MetalAlignmentDispatch, MetalDistanceDispatch, MetalDistanceOptimizationDispatch,
     MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch, MetalPm6D3Dispatch,
-    MetalPm6H4HhDispatch, MetalRm1FockDispatch, MetalRm1PairRotationDispatch,
-    MetalStereoValidationDispatch, MetalSymmetricEigenDispatch,
+    MetalPm6H4HhDispatch, MetalPm6OneCenterFockDispatch, MetalRm1FockDispatch,
+    MetalRm1PairRotationDispatch, MetalStereoValidationDispatch, MetalSymmetricEigenDispatch,
 };
-use crate::runtime::{MetalAlignmentBatch, MetalPm6CorrectionBatch};
+use crate::runtime::{MetalAlignmentBatch, MetalPm6CorrectionBatch, MetalPm6OneCenterFockBatch};
 use crate::MetalRuntimeError;
 
 const MAX_TILE_RECORDS: usize = 1_024;
@@ -254,6 +254,7 @@ pub(crate) struct MetalHost {
     rm1_pair_rotate_pipeline: ComputePipelineState,
     pm6_h4_hh_pipeline: ComputePipelineState,
     pm6_d3_pipeline: ComputePipelineState,
+    pm6_one_center_fock_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -306,6 +307,8 @@ impl MetalHost {
         let rm1_pair_rotate_pipeline = pipeline(&device, library, "burrete_rm1_pair_rotate_v1")?;
         let pm6_h4_hh_pipeline = pipeline(&device, library, "burrete_pm6_h4_hh_v1")?;
         let pm6_d3_pipeline = pipeline(&device, library, "burrete_pm6_d3_chno_v1")?;
+        let pm6_one_center_fock_pipeline =
+            pipeline(&device, library, "burrete_pm6_one_center_fock_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -327,6 +330,7 @@ impl MetalHost {
             rm1_pair_rotate_pipeline,
             pm6_h4_hh_pipeline,
             pm6_d3_pipeline,
+            pm6_one_center_fock_pipeline,
         })
     }
 
@@ -2197,6 +2201,80 @@ impl MetalHost {
         })?;
         Ok(MetalPm6D3Dispatch {
             dispersion_ev: read_buffer(&output_buffer, molecules.len(), "PM6 D3 correction")?,
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
+    pub(crate) fn evaluate_pm6_one_center_fock_profiled(
+        &self,
+        batch: MetalPm6OneCenterFockBatch<'_>,
+        max_memory_bytes: u64,
+    ) -> Result<MetalPm6OneCenterFockDispatch, MetalRuntimeError> {
+        let block_count = batch.densities.len();
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(
+                u64::try_from(block_count)
+                    .map_err(|_| memory_overflow())?
+                    .checked_mul((81 + 243 + 81) * std::mem::size_of::<f32>() as u64)
+                    .ok_or_else(memory_overflow)?,
+            )
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "PM6 one-center Fock requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+        let densities = batch
+            .densities
+            .iter()
+            .flat_map(|block| block.iter().map(|value| *value as f32))
+            .collect::<Vec<_>>();
+        let w_integrals = batch
+            .w_integrals
+            .iter()
+            .flat_map(|block| block.iter().map(|value| *value as f32))
+            .collect::<Vec<_>>();
+        let density_buffer = buffer_with_slice(&self.device, &densities);
+        let w_buffer = buffer_with_slice(&self.device, &w_integrals);
+        let output_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; block_count * 81]);
+        let block_count_u32 = u32::try_from(block_count).map_err(|_| memory_overflow())?;
+        let thread_count = u64::from(block_count_u32) * 45;
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.pm6_one_center_fock_pipeline);
+            encoder.set_buffer(0, Some(&density_buffer), 0);
+            encoder.set_buffer(1, Some(&w_buffer), 0);
+            encoder.set_bytes(
+                2,
+                size_of_val(&block_count_u32) as u64,
+                (&block_count_u32 as *const u32).cast(),
+            );
+            encoder.set_buffer(3, Some(&output_buffer), 0);
+            let thread_width = self
+                .pm6_one_center_fock_pipeline
+                .thread_execution_width()
+                .min(thread_count)
+                .max(1);
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: thread_count,
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: thread_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        Ok(MetalPm6OneCenterFockDispatch {
+            contributions_ev: read_buffer(&output_buffer, block_count * 81, "PM6 one-center Fock")?,
             gpu_time_seconds: gpu_time,
         })
     }
