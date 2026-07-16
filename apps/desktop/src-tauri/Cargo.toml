@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 base64 = "0.22"
 burrete-compute-metal = { path = "../../../crates/burrete-compute-metal" }
+burrete-compute-core = { path = "../../../crates/burrete-compute-core" }
 burrete-compute-protocol = { path = "../../../crates/burrete-compute-protocol" }
 burrete-core = { path = "../../../crates/burrete-core" }
 ed25519-dalek = "2"

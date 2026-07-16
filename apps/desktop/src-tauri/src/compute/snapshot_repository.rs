@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use burrete_compute_protocol::{ClusterV1SubmitRequest, GridScope};
+use burrete_compute_protocol::{ClusterV1SubmitRequest, GridScope, MolecularSnapshotRef};
 use uuid::Uuid;
 
 use crate::preview::grid_snapshot::{
@@ -123,6 +123,16 @@ impl SnapshotRepository {
         Ok(VerifiedClusterV1Source::from_verified_repository(
             request, reference,
         ))
+    }
+
+    pub(crate) fn open_verified_source(
+        &self,
+        reference: &MolecularSnapshotRef,
+    ) -> ComputeResult<VerifiedSnapshot> {
+        let published = filesystem(self.root.open_published(reference.snapshot_id))?;
+        let mut verified = filesystem(published.verify(reference))?;
+        filesystem(verified.reverify())?;
+        Ok(verified)
     }
 
     pub(crate) fn rollback_uncommitted_publication(

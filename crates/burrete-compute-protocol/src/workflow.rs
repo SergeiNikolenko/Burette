@@ -406,6 +406,11 @@ impl FingerprintSettings {
         }
         Ok(())
     }
+
+    pub fn canonical_sha256(&self) -> Result<String, ProtocolError> {
+        self.validate()?;
+        canonical_json_bytes(self).map(|bytes| sha256_hex(&bytes))
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
