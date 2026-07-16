@@ -399,6 +399,7 @@ dependencies = [
 name = "burrete-compute-metal"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "burrete-compute-core",
  "burrete-compute-protocol",
  "metal",

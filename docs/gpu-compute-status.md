@@ -168,6 +168,12 @@ groups. Its C++ serializer and strict Rust decoder are tested; rebuilding and
 vendoring the augmented WASM artifact is complete. The hash-locked packaged
 module was executed against `CCO` and returned both `BCEX` and `BMFX` payloads
 from the pinned RDKit revision.
+The frozen MMFF corpus now covers twelve chemically varied molecules under
+both MMFF94 and MMFF94s (24 cases). Pinned RDKit energies, the packaged BMFX
+payloads, the float64 CPU evaluator, and the v20 Metal evaluator agree within
+`0.002` kcal/mol on CPU and `0.02` kcal/mol on Apple M2 Pro. This corpus also
+exposed and fixed an invalid positivity restriction on signed RDKit
+out-of-plane coefficients.
 A deterministic optimization oracle now selects full BFGS through 32 atoms and
 bounded L-BFGS above that threshold. Both paths share Armijo line search,
 gradient/step convergence, and distinct line-search/max-iteration outcomes.
@@ -562,7 +568,8 @@ fixed order below:
 
 1. complete conformer scientific-corpus and packaged UI release gates for the
    implemented Grid-to-Mol* native workflow;
-2. finish MMFF94/MMFF94s scientific-corpus parity against pinned RDKit;
+2. extend the passing 24-case MMFF94/MMFF94s RDKit corpus with optimizer
+   endpoint and failure-retry fixtures;
 3. finish alignment corpus parity, durable ResultPack/report publication, and
    packaged UI evidence for the implemented Grid/Mol* pose workflow;
 4. combined Apple GPU profiling, memory-pressure testing, package proof, and
