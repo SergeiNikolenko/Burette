@@ -22,6 +22,26 @@ type UseAppGridConformerMessagesOptions = {
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
 };
 
+type GridAlignmentResult = {
+  runId: string;
+  title: string;
+  alignedSdf: string;
+  scores: Array<{
+    sourceIndex: number;
+    name: string;
+    isReference: boolean;
+    rmsd: number;
+    shapeTanimoto: number;
+    electrostaticCarbo: number | null;
+    combinedSimilarity: number;
+  }>;
+  gpuTimeMs: number;
+  backend: "nativeMetal";
+  mapping: string;
+  chargeModel: string;
+  gridApplied: boolean;
+};
+
 function bodyString(value: unknown) {
   return typeof value === "string" ? value : "";
 }
@@ -41,6 +61,63 @@ export function useAppGridConformerMessages({
   rememberRecentStructures,
 }: UseAppGridConformerMessagesOptions) {
   const handleGridConformerMessage = useCallback((body: GridConformerMessageBody, source: MessageEventSource | null) => {
+    if (body?.type === "alignGridPoses") {
+      const documentId = bodyString(body.documentId).trim();
+      const sourceIndexes = Array.isArray(body.sourceIndexes)
+        ? [...new Set(body.sourceIndexes.filter((value): value is number => (
+            Number.isSafeInteger(value) && value >= 0
+          )))]
+        : [];
+      const reply = (type: "gridAlignmentStarted" | "gridAlignmentFinished" | "gridAlignmentError", payload: Record<string, unknown> = {}) => {
+        postMessageToViewerSource(source, {
+          source: "burrete-grid-host",
+          body: { type, ...payload },
+        });
+      };
+      if (!isTauriRuntime() || !documentId || sourceIndexes.length < 2) {
+        const error = "Native Metal pose alignment requires at least two selected rows in the desktop Grid.";
+        reply("gridAlignmentError", { error });
+        pushStatus(error, "error");
+        return true;
+      }
+      reply("gridAlignmentStarted");
+      void (async () => {
+        const result = await invoke<GridAlignmentResult>("compute_align_grid_poses", {
+          request: {
+            documentId,
+            sourceIndexes,
+            maxMemoryBytes: 2 * 1_024 * 1_024 * 1_024,
+          },
+        });
+        const document = await invoke<ViewerDocument>("open_text_structure", {
+          request: {
+            title: result.title,
+            extension: "sdf",
+            text: result.alignedSdf,
+          },
+          preferences: { ...preferences, rendererMode: "molstar" },
+          reloadOptions: {},
+        });
+        openDocumentsInActiveTab([document]);
+        rememberRecentStructures([document]);
+        const compared = Math.max(0, result.scores.length - 1);
+        pushStatus(
+          `Aligned and scored ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"} against the first selected row on Metal in ${result.gpuTimeMs.toLocaleString()} ms; scores were written to Grid.`,
+          result.gridApplied ? "success" : "error",
+        );
+        reply("gridAlignmentFinished", {
+          runId: result.runId,
+          poseCount: result.scores.length,
+          gpuTimeMs: result.gpuTimeMs,
+          backend: result.backend,
+        });
+      })().catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        reply("gridAlignmentError", { error: message });
+        pushErrorStatus(error, "Grid pose alignment failed");
+      });
+      return true;
+    }
     if (body?.type !== "generate3dGridSelection") return false;
 
     const molecules = Array.isArray(body.molecules) ? body.molecules : [];

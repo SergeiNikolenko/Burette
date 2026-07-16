@@ -136,6 +136,7 @@
     contextMenuOutsideHandler: null,
     contextMenuKeyHandler: null,
     generating3d: false,
+    aligningPoses: false,
     clustering: false,
     findingSimilar: false,
     exportingClusterRepresentatives: false,
@@ -359,6 +360,24 @@
       if (body.type === 'gridGenerate3DStarted') {
         setGridGenerate3DPending(true);
         setStatus('[grid] Generating 3D conformers.');
+        return;
+      }
+      if (body.type === 'gridAlignmentStarted') {
+        state.aligningPoses = true;
+        refreshGridControls(config());
+        setStatus('[grid] Aligning and scoring selected poses on Metal.');
+        return;
+      }
+      if (body.type === 'gridAlignmentFinished') {
+        state.aligningPoses = false;
+        refreshGridControls(config());
+        void refreshRemote(config());
+        return;
+      }
+      if (body.type === 'gridAlignmentError') {
+        state.aligningPoses = false;
+        refreshGridControls(config());
+        setStatus(body.error || '[grid] Pose alignment failed.', 'error');
         return;
       }
       if (body.type === 'gridGenerate3DFinished') {
@@ -894,6 +913,7 @@
       ketcherOpen: caps.ketcherOpen,
       rendererSwitch: caps.rendererSwitch,
       generating3d: state.generating3d,
+      aligningPoses: state.aligningPoses,
       clusterEnabled: caps.cluster,
       clustering: state.clustering,
       findingSimilar: state.findingSimilar,
@@ -940,6 +960,7 @@
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
       onXyzrenderPresetChange(value) { setXyzrenderPreset(value, cfg); },
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
+      onAlignSelectedPoses() { requestSelectedPoseAlignment(cfg); },
       onGenerate3D() { requestSelected3DGeneration(cfg); },
       onCalculateSelectedDescriptors() { requestSelectedDescriptorCalculation(cfg); },
       onRendererSwitch(value) { requestRendererSwitch(value, cfg); },
@@ -1450,6 +1471,22 @@
       return;
     }
     request3DGenerationForRows(rows, cfg);
+  }
+
+  function requestSelectedPoseAlignment(cfg) {
+    if (state.aligningPoses) return;
+    const rows = selectedMolstarRows();
+    if (rows.length < 2) {
+      setStatus('[grid] Select at least two 3D poses. The first selected row is the reference.', 'error');
+      return;
+    }
+    state.aligningPoses = true;
+    refreshGridControls(cfg);
+    post('alignGridPoses', '[grid] Align and compare selected poses.', {
+      documentId: cfg?.documentId || null,
+      sourceIndexes: rows.map(row => Number(row.index))
+    });
+    setStatus(`[grid] Aligning ${rows.length.toLocaleString()} poses to the first selected row on Metal.`);
   }
 
   function requestSingle3DGeneration(row, cfg) {
