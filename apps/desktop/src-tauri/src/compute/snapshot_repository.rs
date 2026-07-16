@@ -1,12 +1,23 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
+use burrete_compute_protocol::{ClusterV1SubmitRequest, GridScope};
 use uuid::Uuid;
 
-use crate::preview::grid_snapshot::{SnapshotPublicationRoot, SnapshotRootEntry, VerifiedSnapshot};
+use crate::preview::grid_snapshot::{
+    plan_grid_scope_snapshot, prepare_grid_scope, FrozenGridSnapshot, SnapshotPublicationRoot,
+    SnapshotRootEntry, VerifiedSnapshot,
+};
 
 use super::{
     error::{ComputeCoordinatorError, ComputeResult},
-    store::{ComputeStore, SnapshotIntentRecord, SnapshotIntentState, SnapshotReconciliationState},
+    job_factory::VerifiedClusterV1Source,
+    store::{
+        ComputeStore, SnapshotIntentDraft, SnapshotIntentRecord, SnapshotIntentState,
+        SnapshotReconciliationState,
+    },
 };
 
 #[derive(Debug)]
@@ -25,6 +36,120 @@ impl SnapshotRepository {
 
     pub(crate) fn health_check(&self) -> ComputeResult<()> {
         filesystem(self.root.health_check())
+    }
+
+    pub(crate) fn publish_grid_source(
+        &self,
+        store: &ComputeStore,
+        database_path: &Path,
+        scope: &GridScope,
+        snapshot_id: Uuid,
+        job_id: Uuid,
+        attempt_id: Uuid,
+        created_at_ms: u64,
+    ) -> ComputeResult<FrozenGridSnapshot> {
+        self.health_check()?;
+        let plan = filesystem(plan_grid_scope_snapshot(database_path, scope))?;
+        let draft = SnapshotIntentDraft {
+            snapshot_id,
+            job_id,
+            attempt_id,
+            reservation_bytes: plan.reservation_bytes,
+            created_at_ms,
+        };
+        store.reserve_snapshot_intent(&draft)?;
+        let result = (|| {
+            store.mark_snapshot_intent_writing(
+                snapshot_id,
+                attempt_id,
+                next_timestamp(created_at_ms, 1)?,
+            )?;
+            let prepared = filesystem(prepare_grid_scope(
+                database_path,
+                scope,
+                &self.root,
+                snapshot_id,
+                attempt_id,
+                created_at_ms,
+            ))?;
+            if prepared.reservation_bytes() != plan.reservation_bytes
+                || prepared.reference().frozen_source.record_count != plan.record_count
+            {
+                return Err(protocol(
+                    "Grid snapshot changed between reservation and materialization",
+                ));
+            }
+            store.mark_snapshot_intent_synced(
+                snapshot_id,
+                attempt_id,
+                prepared.payload_bytes(),
+                prepared.reference(),
+                next_timestamp(created_at_ms, 2)?,
+            )?;
+            let frozen = filesystem(prepared.publish())?;
+            store.mark_snapshot_intent_renamed(
+                snapshot_id,
+                attempt_id,
+                next_timestamp(created_at_ms, 3)?,
+            )?;
+            Ok(frozen)
+        })();
+        match result {
+            Ok(frozen) => Ok(frozen),
+            Err(error) => {
+                self.cleanup_failed_publication(store, snapshot_id, job_id, attempt_id)?;
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) fn bind_cluster_source(
+        &self,
+        request: ClusterV1SubmitRequest,
+        frozen: FrozenGridSnapshot,
+    ) -> ComputeResult<VerifiedClusterV1Source> {
+        let FrozenGridSnapshot {
+            manifest,
+            reference,
+            root,
+        } = frozen;
+        let mut verified = filesystem(root.verify(&reference))?;
+        if verified.manifest() != &manifest || verified.reference() != &reference {
+            return Err(protocol(
+                "published Grid snapshot differs from the materialized source",
+            ));
+        }
+        filesystem(verified.reverify())?;
+        Ok(VerifiedClusterV1Source::from_verified_repository(
+            request, reference,
+        ))
+    }
+
+    pub(crate) fn rollback_uncommitted_publication(
+        &self,
+        store: &ComputeStore,
+        snapshot_id: Uuid,
+        job_id: Uuid,
+        attempt_id: Uuid,
+    ) -> ComputeResult<()> {
+        self.cleanup_failed_publication(store, snapshot_id, job_id, attempt_id)
+    }
+
+    fn cleanup_failed_publication(
+        &self,
+        store: &ComputeStore,
+        snapshot_id: Uuid,
+        job_id: Uuid,
+        attempt_id: Uuid,
+    ) -> ComputeResult<()> {
+        let intent = store.get_snapshot_intent(snapshot_id)?;
+        if intent.job_id != job_id || intent.attempt_id != attempt_id {
+            return Err(protocol(
+                "snapshot cleanup identity differs from its publication intent",
+            ));
+        }
+        let inventory = InventoryIndex::decode(filesystem(self.root.inventory())?)?;
+        self.reconcile_intent(store, &intent, &inventory)
     }
 
     pub(crate) fn reconcile_startup(&self, store: &ComputeStore) -> ComputeResult<()> {
@@ -232,6 +357,12 @@ fn protocol(message: impl Into<String>) -> ComputeCoordinatorError {
     ComputeCoordinatorError::Protocol(message.into())
 }
 
+fn next_timestamp(created_at_ms: u64, increment: u64) -> ComputeResult<u64> {
+    created_at_ms.checked_add(increment).ok_or_else(|| {
+        ComputeCoordinatorError::Validation("snapshot publication timestamp overflowed".into())
+    })
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf};
@@ -349,6 +480,47 @@ mod tests {
             .root
             .destination_path(intent.snapshot_id)
             .exists());
+    }
+
+    #[test]
+    fn publishes_grid_source_through_every_durable_intent_boundary() {
+        let test = TestStore::new();
+        let repository =
+            SnapshotRepository::initialize(&test.store).expect("initialize snapshot repository");
+        let grid_root = test.root.join(format!("grid-publish-{}", Uuid::new_v4()));
+        fs::create_dir_all(&grid_root).expect("create Grid fixture root");
+        let database = build_grid_store(&grid_root, "smi", b"CC Ethane\nO Water\n")
+            .expect("build Grid fixture")
+            .expect("create Grid fixture")
+            .database_path;
+        let snapshot_id = Uuid::new_v4();
+        let job_id = Uuid::new_v4();
+        let attempt_id = Uuid::new_v4();
+        let frozen = repository
+            .publish_grid_source(
+                &test.store,
+                &database,
+                &GridScope::Selected(SelectedGridScope {
+                    source_indexes: vec![0, 1],
+                }),
+                snapshot_id,
+                job_id,
+                attempt_id,
+                100,
+            )
+            .expect("publish durable Grid source");
+        let intent = test
+            .store
+            .get_snapshot_intent(snapshot_id)
+            .expect("load renamed snapshot intent");
+        assert_eq!(intent.state, SnapshotIntentState::Renamed);
+        assert_eq!(intent.snapshot_ref.as_ref(), Some(&frozen.reference));
+        assert_eq!(intent.remaining_reservation_bytes, 0);
+        assert!(intent.actual_payload_bytes.is_some_and(|bytes| bytes > 0));
+        assert_eq!(
+            repository.root.inventory().expect("published inventory"),
+            vec![SnapshotRootEntry::Published { snapshot_id }]
+        );
     }
 
     #[test]

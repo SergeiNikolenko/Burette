@@ -356,7 +356,7 @@ fn runtime() -> RuntimeIdentity {
         version: RUNTIME_VERSION.into(),
         manifest_sha256: hash('5'),
         helper_sha256: hash('6'),
-        metallib_sha256: hash('7'),
+        metallib_sha256: Some(hash('7')),
     }
 }
 

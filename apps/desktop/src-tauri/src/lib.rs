@@ -37,14 +37,15 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .map(|app_data| {
-                    let metal_runtime_root = app
-                        .path()
-                        .resource_dir()
-                        .ok()
-                        .map(|resources| resources.join("ComputeMetal"));
+                    let resource_root = app.path().resource_dir().ok();
+                    let metal_runtime_root =
+                        resource_root.as_ref().map(|root| root.join("ComputeMetal"));
+                    let viewer_runtime_root =
+                        resource_root.as_ref().map(|root| root.join("ViewerWeb"));
                     compute::coordinator::ComputeCoordinator::initialize(
                         app_data.join("compute"),
                         metal_runtime_root,
+                        viewer_runtime_root,
                     )
                 })
                 .unwrap_or_else(|error| {

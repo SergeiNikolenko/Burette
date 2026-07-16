@@ -14,10 +14,16 @@ const RECORD_COUNT: u64 = 2;
 
 #[test]
 fn validates_a_fully_queued_snapshot() {
-    assert_eq!(
-        queued_snapshot(BackendPolicy::ReferenceCpu).validate(),
-        Ok(())
-    );
+    let mut snapshot = queued_snapshot(BackendPolicy::ReferenceCpu);
+    snapshot.pinned_runtime.metallib_sha256 = None;
+    assert_eq!(snapshot.validate(), Ok(()));
+}
+
+#[test]
+fn native_metal_plan_requires_a_pinned_metallib() {
+    let mut snapshot = queued_snapshot(BackendPolicy::GpuRequired);
+    snapshot.pinned_runtime.metallib_sha256 = None;
+    assert!(snapshot.validate().is_err());
 }
 
 #[test]
@@ -742,7 +748,7 @@ fn runtime_identity() -> RuntimeIdentity {
         version: RUNTIME.into(),
         manifest_sha256: hash('6'),
         helper_sha256: hash('7'),
-        metallib_sha256: hash('8'),
+        metallib_sha256: Some(hash('8')),
     }
 }
 

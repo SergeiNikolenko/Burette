@@ -103,6 +103,19 @@ impl ComputeCapabilityReport {
         if let Some(runtime) = &self.runtime {
             runtime.validate()?;
         }
+        if self
+            .capabilities
+            .iter()
+            .any(|capability| capability.available && capability.backend == Backend::NativeMetal)
+            && self
+                .runtime
+                .as_ref()
+                .is_none_or(|runtime| runtime.metallib_sha256.is_none())
+        {
+            return Err(ProtocolError::Validation(
+                "available native Metal capabilities require a pinned Metal library".into(),
+            ));
+        }
         if let Some(device) = &self.device {
             device.validate()?;
         }
@@ -263,7 +276,8 @@ pub struct RuntimeIdentity {
     pub version: String,
     pub manifest_sha256: String,
     pub helper_sha256: String,
-    pub metallib_sha256: String,
+    /// Present only when this runtime identity pins a Metal library.
+    pub metallib_sha256: Option<String>,
 }
 
 impl RuntimeIdentity {
@@ -272,9 +286,11 @@ impl RuntimeIdentity {
         for (label, hash) in [
             ("runtime manifest", &self.manifest_sha256),
             ("compute helper", &self.helper_sha256),
-            ("Metal library", &self.metallib_sha256),
         ] {
             validate_lower_sha256(label, hash)?;
+        }
+        if let Some(hash) = &self.metallib_sha256 {
+            validate_lower_sha256("Metal library", hash)?;
         }
         Ok(())
     }

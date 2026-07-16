@@ -46,19 +46,16 @@ impl Drop for RegisteredGridRuntime {
 /// Removing or replacing the registry entry cancels ingestion immediately, but
 /// the runtime directory remains available until this lease is dropped.
 #[derive(Debug)]
-#[allow(
-    dead_code,
-    reason = "the compute snapshot submission path consumes this lease"
-)]
 pub(crate) struct GridSnapshotLease {
+    namespaced_document_id: String,
     runtime: Arc<RegisteredGridRuntime>,
 }
 
-#[allow(
-    dead_code,
-    reason = "the compute snapshot submission path consumes this lease"
-)]
 impl GridSnapshotLease {
+    pub(crate) fn namespaced_document_id(&self) -> &str {
+        &self.namespaced_document_id
+    }
+
     pub(crate) fn database_path_for_freeze(&self) -> &Path {
         &self.runtime.database_path
     }
@@ -276,15 +273,12 @@ impl GridRuntimeRegistry {
         Ok(())
     }
 
-    #[allow(
-        dead_code,
-        reason = "the compute snapshot submission path acquires this lease"
-    )]
     pub(crate) fn acquire_snapshot_lease(
         &self,
         namespaced_document_id: &str,
     ) -> Result<GridSnapshotLease, String> {
         Ok(GridSnapshotLease {
+            namespaced_document_id: namespaced_document_id.to_owned(),
             runtime: self.runtime_entry(namespaced_document_id)?,
         })
     }

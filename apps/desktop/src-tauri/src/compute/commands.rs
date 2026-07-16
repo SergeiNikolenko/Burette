@@ -11,6 +11,7 @@ use crate::compute::{
     error::{ComputeCoordinatorError, ComputeResult},
     store::validate_owner_window_label,
 };
+use crate::{preview::grid_store::GridRuntimeRegistry, windows::runtime_document_id};
 
 const DEFAULT_JOB_LIST_LIMIT: usize = 50;
 
@@ -50,11 +51,24 @@ pub(crate) async fn compute_capabilities<R: Runtime>(
 pub(crate) async fn compute_submit_job<R: Runtime>(
     window: WebviewWindow<R>,
     coordinator: State<'_, ComputeCoordinator>,
+    registry: State<'_, GridRuntimeRegistry>,
     request: ClusterV1SubmitRequest,
 ) -> Result<JobSnapshot, ComputeCommandError> {
     let owner = trusted_owner(&window)?;
+    let request = request
+        .normalized()
+        .map_err(ComputeCoordinatorError::from)
+        .map_err(ComputeCommandError::from)?;
+    let namespaced_document_id = runtime_document_id(&owner, &request.source.document_id);
+    let source_lease = registry
+        .acquire_snapshot_lease(&namespaced_document_id)
+        .map_err(|error| {
+            ComputeCommandError::from(ComputeCoordinatorError::SourceSnapshotUnavailable(format!(
+                "The selected Grid source cannot be frozen: {error}"
+            )))
+        })?;
     let coordinator = coordinator.inner().clone();
-    run_blocking(move || coordinator.submit_cluster_v1(&owner, &request)).await
+    run_blocking(move || coordinator.submit_cluster_v1(&owner, &request, source_lease)).await
 }
 
 #[tauri::command]

@@ -335,7 +335,7 @@ fn queued_snapshot_with_policy(backend_policy: BackendPolicy) -> JobSnapshot {
             version: "compute-runtime-1.0.0".into(),
             manifest_sha256: hash('f'),
             helper_sha256: hash('1'),
-            metallib_sha256: hash('2'),
+            metallib_sha256: Some(hash('2')),
         },
         error: None,
         created_at_ms: 100,

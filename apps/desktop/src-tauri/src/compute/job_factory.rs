@@ -13,14 +13,26 @@ use super::cluster_plan::{
 /// Opaque proof that the snapshot repository bound a normalized request to
 /// the published manifest and its capability-rooted files.
 ///
-/// There is intentionally no production constructor in this module. The
-/// repository wiring must add one at the boundary that can verify the Grid
-/// document, scope, manifest, and files together; accepting a bare
-/// `MolecularSnapshotRef` here would permit same-count provenance swaps.
+/// The only production constructor is called by the snapshot repository after
+/// it has verified the published capability and rebound the exact request.
+/// Accepting a bare `MolecularSnapshotRef` at submission would permit
+/// same-count provenance swaps.
 #[derive(Clone, Debug)]
 pub(crate) struct VerifiedClusterV1Source {
     request: ClusterV1SubmitRequest,
     frozen_source: MolecularSnapshotRef,
+}
+
+impl VerifiedClusterV1Source {
+    pub(super) fn from_verified_repository(
+        request: ClusterV1SubmitRequest,
+        frozen_source: MolecularSnapshotRef,
+    ) -> Self {
+        Self {
+            request,
+            frozen_source,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -211,7 +223,7 @@ mod tests {
     #[test]
     fn rejects_invalid_runtime_identity_instead_of_synthesizing_one() {
         let mut input = input(BackendPolicy::GpuRequired);
-        input.pinned_runtime.metallib_sha256 = "not-a-hash".into();
+        input.pinned_runtime.metallib_sha256 = Some("not-a-hash".into());
         assert!(matches!(
             build_queued_cluster_v1_job(input),
             Err(ClusterV1AdmissionError::Contract(_))
@@ -247,7 +259,7 @@ mod tests {
                 version: "test-only-runtime-1.0.0".into(),
                 manifest_sha256: test_only_hash('a'),
                 helper_sha256: test_only_hash('b'),
-                metallib_sha256: test_only_hash('c'),
+                metallib_sha256: Some(test_only_hash('c')),
             },
             engines: ClusterV1EngineIdentities {
                 coordinator: test_engine("burrete-coordinator", '1'),

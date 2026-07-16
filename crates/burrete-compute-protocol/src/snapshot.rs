@@ -119,6 +119,15 @@ impl JobSnapshot {
         let record_count = self.frozen_source.frozen_source.record_count;
         self.plan
             .validate_against_request(&self.request, record_count)?;
+        if self
+            .plan
+            .stages
+            .iter()
+            .any(|stage| stage.effective_backend == Backend::NativeMetal)
+            && self.pinned_runtime.metallib_sha256.is_none()
+        {
+            return validation_error("native Metal stages require a pinned Metal library");
+        }
         if let GridScope::Selected(selected) = &self.request.source.scope {
             if selected.source_indexes.len() as u64 != record_count {
                 return validation_error("selected request count differs from the frozen source");
