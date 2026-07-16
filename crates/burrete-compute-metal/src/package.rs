@@ -13,12 +13,14 @@ const POINTER_MAX_BYTES: u64 = 4 * 1024;
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 const METALLIB_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const METADATA_FILE: &str = "build-metadata.v1.json";
-const METALLIB_FILE: &str = "tanimoto-neighbors.v1.metallib";
-const SOURCE_BYTES: &[u8] = include_bytes!("../../../compute/metal/tanimoto-neighbors.v1.metal");
-const CONTRACT_BYTES: &[u8] = include_bytes!("../../../compute/metal/kernel-contract.v1.json");
-const ENTRYPOINTS: [&str; 2] = [
+const METALLIB_FILE: &str = "tanimoto.v2.metallib";
+const SOURCE_BYTES: &[u8] = include_bytes!("../../../compute/metal/tanimoto.v2.metal");
+const CONTRACT_BYTES: &[u8] =
+    include_bytes!("../../../compute/metal/tanimoto-kernel-contract.v2.json");
+const ENTRYPOINTS: [&str; 3] = [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
+    "burrete_tanimoto_query_counts_v1",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -164,12 +166,12 @@ fn validate_metadata(metadata: &BuildMetadata) -> Result<(), MetalRuntimeError> 
     let expected_entrypoints: Vec<String> = ENTRYPOINTS.iter().map(ToString::to_string).collect();
     if metadata.schema_version != "burrete.compute.metal-build-metadata.v1"
         || metadata.runtime_version != NATIVE_METAL_RUNTIME_VERSION
-        || metadata.library_id != "burrete.cluster.tanimoto-neighbors.v1"
-        || metadata.source.path != "compute/metal/tanimoto-neighbors.v1.metal"
+        || metadata.library_id != "burrete.compute.tanimoto.v2"
+        || metadata.source.path != "compute/metal/tanimoto.v2.metal"
         || metadata.source.sha256 != sha256(SOURCE_BYTES)
-        || metadata.contract.path != "compute/metal/kernel-contract.v1.json"
+        || metadata.contract.path != "compute/metal/tanimoto-kernel-contract.v2.json"
         || metadata.contract.sha256 != sha256(CONTRACT_BYTES)
-        || metadata.air.path != "tanimoto-neighbors.v1.air"
+        || metadata.air.path != "tanimoto.v2.air"
         || metadata.metallib.path != METALLIB_FILE
         || metadata.deployment_target != "14.0"
         || metadata.compile_arguments != ["-std=metal3.1", "-mmacosx-version-min=14.0"]
@@ -386,16 +388,16 @@ mod tests {
             json!({
                 "schemaVersion": "burrete.compute.metal-build-metadata.v1",
                 "runtimeVersion": NATIVE_METAL_RUNTIME_VERSION,
-                "libraryId": "burrete.cluster.tanimoto-neighbors.v1",
+                "libraryId": "burrete.compute.tanimoto.v2",
                 "source": {
-                    "path": "compute/metal/tanimoto-neighbors.v1.metal",
+                    "path": "compute/metal/tanimoto.v2.metal",
                     "sha256": sha256(SOURCE_BYTES),
                 },
                 "contract": {
-                    "path": "compute/metal/kernel-contract.v1.json",
+                    "path": "compute/metal/tanimoto-kernel-contract.v2.json",
                     "sha256": sha256(CONTRACT_BYTES),
                 },
-                "air": { "path": "tanimoto-neighbors.v1.air", "sha256": hash },
+                "air": { "path": "tanimoto.v2.air", "sha256": hash },
                 "metallib": { "path": METALLIB_FILE, "sha256": sha256(metallib) },
                 "compiler": { "path": "/toolchain/metal", "sha256": hash, "version": "test" },
                 "linker": { "path": "/toolchain/metallib", "sha256": hash },

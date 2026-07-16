@@ -21,6 +21,14 @@ struct TanimotoTileV1 {
     ulong cutoffDenominator;
 };
 
+// Query batches partition [0, recordCount) into bounded command buffers. Each
+// output uint2 stores exact (intersection, union) counts for one source row.
+struct TanimotoQueryBatchV1 {
+    ulong recordCount;
+    ulong rowStart;
+    ulong rowCount;
+};
+
 inline bool tanimoto_matches_v1(
     device const uint* left,
     device const uint* right,
@@ -121,4 +129,33 @@ kernel void burrete_tanimoto_csr_fill_v1(
         ++cursor;
     }
     rowCursors[row] = cursor;
+}
+
+kernel void burrete_tanimoto_query_counts_v1(
+    device const uint* fingerprints [[buffer(0)]],
+    constant const uint* query [[buffer(1)]],
+    device uint2* counts [[buffer(2)]],
+    constant TanimotoQueryBatchV1& batch [[buffer(3)]],
+    uint localRow [[thread_position_in_grid]]
+) {
+    if (static_cast<ulong>(localRow) >= batch.rowCount ||
+        batch.rowStart >= batch.recordCount) {
+        return;
+    }
+
+    const ulong row = batch.rowStart + static_cast<ulong>(localRow);
+    if (row >= batch.recordCount) {
+        return;
+    }
+    device const uint* fingerprint =
+        fingerprints + row * kFingerprintWordCount;
+    uint intersection = 0;
+    uint unionCount = 0;
+    for (ulong word = 0; word < kFingerprintWordCount; ++word) {
+        const uint queryWord = query[word];
+        const uint fingerprintWord = fingerprint[word];
+        intersection += popcount(queryWord & fingerprintWord);
+        unionCount += popcount(queryWord | fingerprintWord);
+    }
+    counts[row] = uint2(intersection, unionCount);
 }

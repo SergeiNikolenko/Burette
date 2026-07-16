@@ -1,11 +1,15 @@
-# Native Metal clustering kernels
+# Native Metal Tanimoto kernels
 
 This directory contains Burrete-owned, reviewed Metal source. It is an
 independent implementation of the mathematical contract in the GPU compute
 design; it does not copy or adapt `mlxmolkit` source.
 
-`tanimoto-neighbors.v1.metal` implements only exact neighbor graph generation
-for fixed 2,048-bit fingerprints. The host dispatches logical row/column tiles.
+`tanimoto.v2.metal` implements exact neighbor graph generation and exact
+one-query-to-library scoring for fixed 2,048-bit fingerprints. Graph generation
+dispatches logical row/column tiles. Query scoring emits one `uint2` containing
+the integer `(intersection, union)` counts per source record in bounded row
+batches; ranking stays deterministic on the CPU and no floating-point score is
+part of the Metal ABI.
 The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
 256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical
 word. This is a byte-identical view on supported little-endian Apple Silicon;

@@ -8,8 +8,10 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const metalRoot = resolve(root, "compute/metal");
-const source = readFileSync(resolve(metalRoot, "tanimoto-neighbors.v1.metal"), "utf8");
-const contract = JSON.parse(readFileSync(resolve(metalRoot, "kernel-contract.v1.json"), "utf8"));
+const source = readFileSync(resolve(metalRoot, "tanimoto.v2.metal"), "utf8");
+const contract = JSON.parse(
+  readFileSync(resolve(metalRoot, "tanimoto-kernel-contract.v2.json"), "utf8"),
+);
 const MAX_SAFE_TERM = 2n ** 53n - 1n;
 const UINT64_MAX = 2n ** 64n - 1n;
 const UINT32_MAX = 2 ** 32 - 1;
@@ -126,7 +128,34 @@ function simulateKernels(fingerprints, cutoff, rowTile, columnTile) {
   return { degrees, offsets, columns };
 }
 
-assert.equal(contract.schemaVersion, "burrete.compute.metal-kernel-contract.v1");
+function exactCounts(left, right) {
+  let intersection = 0;
+  let union = 0;
+  for (let word = 0; word < WORDS; word += 1) {
+    intersection += popcount32(left[word] & right[word]);
+    union += popcount32(left[word] | right[word]);
+  }
+  return [intersection, union];
+}
+
+function simulateQuery(fingerprints, query, batchSize) {
+  assert.ok(batchSize > 0 && batchSize <= contract.dispatch.maximumQueryBatchRecords);
+  const counts = Array(fingerprints.length).fill(null);
+  let nextRow = 0;
+  for (let rowStart = 0; rowStart < fingerprints.length; rowStart += batchSize) {
+    assert.equal(rowStart, nextRow);
+    const rowCount = Math.min(batchSize, fingerprints.length - rowStart);
+    for (let row = rowStart; row < rowStart + rowCount; row += 1) {
+      counts[row] = exactCounts(query, fingerprints[row]);
+    }
+    nextRow += rowCount;
+  }
+  assert.equal(nextRow, fingerprints.length);
+  return counts;
+}
+
+assert.equal(contract.schemaVersion, "burrete.compute.metal-kernel-contract.v2");
+assert.equal(contract.libraryId, "burrete.compute.tanimoto.v2");
 assert.equal(contract.fingerprint.bits, 2048);
 assert.equal(contract.fingerprint.canonicalWordType, "uint64");
 assert.equal(contract.fingerprint.canonicalWordsPerRecord, 32);
@@ -138,20 +167,34 @@ assert.equal(contract.fingerprint.bitOrderWithinWord, "leastSignificantBitFirst"
 assert.equal(contract.dispatch.fullPairMatrix, false);
 assert.equal(contract.dispatch.atomics, false);
 assert.equal(contract.dispatch.maximumPairsPerTile, 1024 * 1024);
+assert.equal(contract.dispatch.maximumQueryBatchRecords, 262144);
 assert.equal(contract.dispatch.logicalTilesPartitionPairDomainExactlyOnce, true);
+assert.equal(contract.dispatch.queryBatchesPartitionLibraryExactlyOnce, true);
 assert.equal(contract.dispatch.sameRowDispatchesCompleteSeriallyOnOneCommandQueue, true);
 assert.equal(contract.dispatch.countAndFillUseIdenticalTileSequence, true);
-assert.equal(contract.dispatch.threadsPerGrid, "tile.rowCount");
-assert.equal(contract.parameterAbi.sizeBytes, 56);
-assert.equal(contract.parameterAbi.alignmentBytes, 8);
-assert.deepEqual(contract.parameterAbi.fields.map(({ offsetBytes }) => offsetBytes), [0, 8, 16, 24, 32, 40, 48]);
-const abiBody = source.match(/struct\s+TanimotoTileV1\s*\{([^}]*)\}/u)?.[1] ?? "";
-let previousField = -1;
-for (const field of contract.parameterAbi.fields) {
-  const fieldPosition = abiBody.search(new RegExp(`ulong\\s+${field.name}\\s*;`, "u"));
-  assert.ok(fieldPosition > previousField, `${field.name} must preserve ABI order`);
-  previousField = fieldPosition;
+assert.equal(contract.dispatch.threadsPerGraphGrid, "tile.rowCount");
+assert.equal(contract.dispatch.threadsPerQueryGrid, "batch.rowCount");
+for (const abi of Object.values(contract.parameterAbis)) {
+  const abiBody = source.match(new RegExp(`struct\\s+${abi.name}\\s*\\{([^}]*)\\}`, "u"))?.[1] ?? "";
+  let previousField = -1;
+  for (const field of abi.fields) {
+    const fieldPosition = abiBody.search(new RegExp(`ulong\\s+${field.name}\\s*;`, "u"));
+    assert.ok(fieldPosition > previousField, `${abi.name}.${field.name} must preserve ABI order`);
+    previousField = fieldPosition;
+  }
 }
+assert.equal(contract.parameterAbis.graphTile.sizeBytes, 56);
+assert.equal(contract.parameterAbis.graphTile.alignmentBytes, 8);
+assert.deepEqual(
+  contract.parameterAbis.graphTile.fields.map(({ offsetBytes }) => offsetBytes),
+  [0, 8, 16, 24, 32, 40, 48],
+);
+assert.equal(contract.parameterAbis.queryBatch.sizeBytes, 24);
+assert.equal(contract.parameterAbis.queryBatch.alignmentBytes, 8);
+assert.deepEqual(
+  contract.parameterAbis.queryBatch.fields.map(({ offsetBytes }) => offsetBytes),
+  [0, 8, 16],
+);
 const expectedBuffers = {
   burrete_tanimoto_degree_count_v1: ["fingerprints", "tile", "rowDegrees"],
   burrete_tanimoto_csr_fill_v1: [
@@ -162,6 +205,7 @@ const expectedBuffers = {
     "columnIndices",
     "rowStatus",
   ],
+  burrete_tanimoto_query_counts_v1: ["fingerprints", "query", "counts", "batch"],
 };
 for (const entrypoint of contract.entrypoints) {
   assert.match(source, new RegExp(`kernel\\s+void\\s+${entrypoint.name}\\s*\\(`, "u"));
@@ -187,6 +231,7 @@ assert.deepEqual(
 assert.doesNotMatch(source, /atomic_/u);
 assert.match(source, /unionCount\s*==\s*0[\s\S]*cutoffNumerator\s*==\s*0/u);
 assert.match(source, /intersection\s*\*\s*tile\.cutoffDenominator\s*>=/u);
+assert.match(source, /counts\[row\]\s*=\s*uint2\(intersection,\s*unionCount\)/u);
 
 const syntax = spawnSync("bash", ["-n", resolve(metalRoot, "build-metallib.sh")], {
   encoding: "utf8",
@@ -205,8 +250,8 @@ if (metalLookup.status === 0 && metallibLookup.status === 0) {
     const pointer = JSON.parse(readFileSync(resolve(buildDirectory, "current.json"), "utf8"));
     const generation = resolve(buildDirectory, pointer.generation);
     const metadataPath = resolve(generation, "build-metadata.v1.json");
-    assert.ok(existsSync(resolve(generation, "tanimoto-neighbors.v1.air")));
-    assert.ok(existsSync(resolve(generation, "tanimoto-neighbors.v1.metallib")));
+    assert.ok(existsSync(resolve(generation, "tanimoto.v2.air")));
+    assert.ok(existsSync(resolve(generation, "tanimoto.v2.metallib")));
     const metadataHash = createHash("sha256").update(readFileSync(metadataPath)).digest("hex");
     assert.equal(metadataHash, pointer.metadataSha256);
   } finally {
@@ -258,6 +303,12 @@ for (const [rowTile, columnTile] of [[1, 1], [2, 3], [3, 2], [4, 8], [8, 4]]) {
     expected,
   );
 }
+const expectedQuery = [[3, 3], [2, 3], [1, 4], [3, 3], [0, 3]];
+for (const batchSize of [1, 2, 3, 5, 16]) {
+  assert.deepEqual(simulateQuery(records, records[0], batchSize), expectedQuery);
+}
+assert.deepEqual(simulateQuery([zero], zero, 1), [[0, 0]]);
+assert.throws(() => simulateQuery(records, records[0], 262145));
 const tile = (rowStart, rowCount, columnStart, columnCount) => ({
   rowStart, rowCount, columnStart, columnCount,
 });
@@ -299,7 +350,7 @@ try {
   );
   assert.equal(metadataRun.status, 0, metadataRun.stderr);
   const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
-  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v1");
+  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v2");
   assert.equal(metadata.source.sha256, fakeHash);
   assert.equal(metadata.metallib.sha256, fakeHash);
   assert.equal(metadata.compiler.version, "Apple metal version test Target test");

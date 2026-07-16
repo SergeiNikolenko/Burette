@@ -13,8 +13,8 @@ if [[ $# -ne 1 || -z "$1" ]]; then
 fi
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
-source_file="$script_dir/tanimoto-neighbors.v1.metal"
-contract_file="$script_dir/kernel-contract.v1.json"
+source_file="$script_dir/tanimoto.v2.metal"
+contract_file="$script_dir/tanimoto-kernel-contract.v2.json"
 metadata_writer="$script_dir/write-build-metadata.mjs"
 mkdir -p -- "$1"
 output_dir="$(CDPATH= cd -- "$1" && pwd -P)"
@@ -51,8 +51,8 @@ cleanup() {
   [[ "$keep_stage" -eq 1 ]] || rm -rf "$stage_dir"
 }
 trap cleanup EXIT
-air_file="$stage_dir/tanimoto-neighbors.v1.air"
-library_file="$stage_dir/tanimoto-neighbors.v1.metallib"
+air_file="$stage_dir/tanimoto.v2.air"
+library_file="$stage_dir/tanimoto.v2.metallib"
 metadata_file="$stage_dir/build-metadata.v1.json"
 
 sha256() {
@@ -105,4 +105,4 @@ printf '{"schemaVersion":"burrete.compute.metal-generation-pointer.v1","generati
 keep_stage=1
 /bin/mv -f "$pointer_stage" "$output_dir/current.json"
 pointer_stage=''
-printf 'Built %s/%s\n' "$stage_dir" "tanimoto-neighbors.v1.metallib"
+printf 'Built %s/%s\n' "$stage_dir" "tanimoto.v2.metallib"
