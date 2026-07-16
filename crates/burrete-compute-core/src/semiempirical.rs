@@ -7,6 +7,7 @@ mod pm6_d3h4;
 mod pm6_fock_d;
 mod pm6_full_parameters;
 mod pm6_w_integrals;
+mod pm6_wigner_d;
 mod rm1;
 mod rotation;
 mod two_center;
@@ -18,6 +19,9 @@ pub use pm6_d3h4::{pm6_h4_covalent_radius, pm6_h4_energy, pm6_hh_repulsion_energ
 pub use pm6_fock_d::pm6_one_center_d_fock;
 pub use pm6_full_parameters::{pm6_full_parameters, Pm6FullElementParameters};
 pub use pm6_w_integrals::{pm6_one_center_w_integrals, pm6_slater_condon_parameter};
+pub use pm6_wigner_d::{
+    pm6_rotate_dd_overlap, pm6_rotate_dp_overlap, pm6_rotate_ds_overlap, pm6_wigner_d_matrix,
+};
 pub use rm1::{
     contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators,
     evaluate_rm1_with_pair_contractor, evaluate_rm1_with_prepared_pairs_and_accelerators,

@@ -28,3 +28,8 @@ does not load or execute this Python file.
 Its 45-output/243-term integer contraction map is mechanically converted into
 bounded Rust arrays. The production contraction and symmetry validation are
 native Rust.
+
+`wigner_d.py` is a byte-identical reference copy, SHA-256
+`c914f197030f8ef40a6763c8ce3b79124ceb269bbfaf870c18be78c17ffc0a18`.
+The production Rust implementation validates proper 3x3 rotations and emits
+the real-harmonic 5x5 d rotation plus d-d, d-p, and d-s overlap blocks.

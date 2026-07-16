@@ -116,6 +116,11 @@ production implementation performs the packed-density weighting, contraction,
 and symmetric 9x9 unpacking in native Rust. mlxmolkit MIT and PYSEQM
 BSD-3-Clause attribution apply.
 
+The PM6 real-harmonic Wigner d rotation and d-d/d-p/d-s overlap transforms are
+adapted from the pinned `mlxmolkit/rm1/wigner_d.py` formulas, which cite Ivanic
+and Ruedenberg, J. Phys. Chem. 100, 6342 (1996). mlxmolkit MIT attribution
+applies.
+
 The PM6-D3H4 H4 hydrogen-bond equations, covalent-radius table, short-range
 H-H polynomial, and CHNO D3 C6/CN/r0 reference records are adapted from
 OpenMOPAC correction behavior through the pinned
