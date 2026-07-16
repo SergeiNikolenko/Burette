@@ -6,8 +6,8 @@ mod runtime;
 
 pub use package::{verify_runtime_package, MetalRuntimeError, VerifiedMetalPackage};
 pub use runtime::{
-    MetalComputeRuntime, MetalConformerInitialization, MetalDistanceEvaluation,
-    MetalDistanceOptimization,
+    MetalComputeRuntime, MetalConformerInitialization, MetalDistanceEmbedding,
+    MetalDistanceEvaluation, MetalDistanceOptimization,
     MetalGraphExecution, MetalQueryExecution, MetalTanimotoRuntime,
 };
 

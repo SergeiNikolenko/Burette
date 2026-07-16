@@ -12,6 +12,10 @@ const SEED_DOMAIN: &[u8] = b"burrete.conformer-seed.v1\0";
 const MEMORY_HEADROOM_BYTES: u64 = 64 * 1024;
 const DG_DIMENSIONS: u64 = 4;
 const POSITION_SIZED_BUFFERS: u64 = 7;
+// Two resident Metal history buffers plus the temporary unified-memory source
+// allocation used while each no-copy-compatible buffer is materialized.
+const HISTORY_POSITION_SIZED_BUFFERS: u64 = 3;
+const HISTORY_SCALAR_SIZED_BUFFERS: u64 = 3;
 const SCALAR_OUTPUT_BYTES: u64 = 16;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -190,13 +194,15 @@ fn conformer_work_bytes(
         .checked_mul(DG_DIMENSIONS)
         .ok_or(ConformerScheduleError::Overflow)?;
     let position_buffers = POSITION_SIZED_BUFFERS
-        .checked_add(2 * u64::from(lbfgs_history.get()))
+        .checked_add(
+            HISTORY_POSITION_SIZED_BUFFERS * u64::from(lbfgs_history.get()),
+        )
         .ok_or(ConformerScheduleError::Overflow)?;
     let coordinate_bytes = coordinates
         .checked_mul(size_of::<f32>() as u64)
         .and_then(|bytes| bytes.checked_mul(position_buffers))
         .ok_or(ConformerScheduleError::Overflow)?;
-    let history_scalars = 2_u64
+    let history_scalars = HISTORY_SCALAR_SIZED_BUFFERS
         .checked_mul(u64::from(lbfgs_history.get()))
         .and_then(|count| count.checked_mul(size_of::<f32>() as u64))
         .ok_or(ConformerScheduleError::Overflow)?;

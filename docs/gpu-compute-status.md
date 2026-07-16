@@ -72,6 +72,14 @@ strictly validates ragged coordinate offsets, Cartesian positions, molecule and
 conformer identity, embedding status/objective/attempt counts, and the exact
 128-bit seed words used for every generated structure.
 
+The canonical EnginePack distance payload now also has a validated in-memory
+core representation. It rejects malformed or non-monotonic offsets,
+cross-molecule and non-canonical atom pairs, payload attached to invalid
+records, unsupported atomic numbers, inconsistent array lengths, and non-finite
+or inverted bounds before a GPU dispatch can be constructed. Valid records are
+exposed as molecule-local distance constraints without changing their frozen
+global atom identity.
+
 `conformer.execution-plan.v1` fixes the durable stage sequence to scope freeze,
 constraint extraction boundary, distance-geometry embedding, stereo
 validation, reference validation, and atomic publication. Distance geometry
@@ -108,6 +116,13 @@ performs bounded L-BFGS plus Armijo backtracking entirely inside one Metal
 dispatch. Its public result records the same four explicit convergence outcomes
 as the CPU oracle. Runtime v5 binds all four sources, reviewed contracts, AIR
 files, six entrypoints, the compiler, linker, SDK, and final metallib by hash.
+The runtime now composes seed-based initialization and optimization into one
+verified per-molecule ensemble operation, keeping both numerical stages on
+Metal while sharing constraints across all requested conformers. Its admission
+counts caller inputs, Metal buffers, returned host vectors, and transient
+history-buffer materialization as simultaneous Apple unified-memory residents;
+the adaptive scheduler uses the same seven position-sized buffers and
+three-way transient history peak.
 This proves the iterative DG distance-bound optimizer, not complete DG/ETK
 embedding or an end-to-end conformer capability.
 
@@ -253,8 +268,9 @@ separate product increments.
   generated Grid controls. Repository-wide TypeScript checking is currently
   blocked by pre-existing duplicate CodeMirror dependency identities in the
   text-file viewer; the errors do not involve the compute files changed here.
-- All 75 protocol tests and 32 compute-core tests pass after adding the fixed
-  conformer request/pack/plan contracts, identity-derived seed, adaptive batch
+- All 75 protocol tests and 35 compute-core tests pass after adding the fixed
+  conformer request/pack/plan contracts, validated EnginePack distance view,
+  identity-derived seed, adaptive batch
   coverage, deterministic coordinate oracle, DG objective/gradient oracle,
   finite-difference gradient validation, rebatching invariance, and memory
   rejection checks. Focused protocol/core/Metal clippy also passes with warnings

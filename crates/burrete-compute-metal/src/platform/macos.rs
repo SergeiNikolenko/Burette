@@ -357,9 +357,11 @@ impl MetalHost {
             .ok()
             .and_then(|count| count.checked_mul(size_of_val(&seed_words[0]) as u64))
             .ok_or_else(memory_overflow)?;
+        // Apple Silicon uses unified memory: count caller input, Metal storage,
+        // and the returned host Vec while it is copied from the completed buffer.
         let required_bytes = MEMORY_HEADROOM_BYTES
-            .checked_add(seed_bytes)
-            .and_then(|bytes| bytes.checked_add(item_count.checked_mul(16)?))
+            .checked_add(seed_bytes.checked_mul(2).ok_or_else(memory_overflow)?)
+            .and_then(|bytes| bytes.checked_add(item_count.checked_mul(32)?))
             .ok_or_else(memory_overflow)?;
         if required_bytes > max_memory_bytes {
             return resource_limit(format!(
@@ -463,11 +465,11 @@ impl MetalHost {
         }
         let constraint_storage_count = u64::from(constraint_count).max(1);
         let constraint_bytes = constraint_storage_count
-            .checked_mul(20)
+            .checked_mul(60)
             .ok_or_else(memory_overflow)?;
-        let item_bytes = item_count.checked_mul(36).ok_or_else(memory_overflow)?;
+        let item_bytes = item_count.checked_mul(72).ok_or_else(memory_overflow)?;
         let required_bytes = MEMORY_HEADROOM_BYTES
-            .checked_add(16)
+            .checked_add(32)
             .and_then(|bytes| bytes.checked_add(constraint_bytes))
             .and_then(|bytes| bytes.checked_add(item_bytes))
             .ok_or_else(memory_overflow)?;
@@ -610,11 +612,11 @@ impl MetalHost {
         let constraint_storage_count = u64::from(constraint_count).max(1);
         let required_bytes = MEMORY_HEADROOM_BYTES
             .checked_add(48)
-            .and_then(|bytes| bytes.checked_add(constraint_storage_count.checked_mul(20)?))
-            .and_then(|bytes| bytes.checked_add(item_count.checked_mul(80)?))
-            .and_then(|bytes| bytes.checked_add(history_count.checked_mul(32)?))
-            .and_then(|bytes| bytes.checked_add(scalar_history_count.checked_mul(8)?))
-            .and_then(|bytes| bytes.checked_add(u64::from(conformer_count).checked_mul(16)?))
+            .and_then(|bytes| bytes.checked_add(constraint_storage_count.checked_mul(60)?))
+            .and_then(|bytes| bytes.checked_add(item_count.checked_mul(112)?))
+            .and_then(|bytes| bytes.checked_add(history_count.checked_mul(48)?))
+            .and_then(|bytes| bytes.checked_add(scalar_history_count.checked_mul(12)?))
+            .and_then(|bytes| bytes.checked_add(u64::from(conformer_count).checked_mul(32)?))
             .ok_or_else(memory_overflow)?;
         if required_bytes > max_memory_bytes {
             return resource_limit(format!(

@@ -66,6 +66,17 @@ pub struct MetalDistanceOptimization {
     pub gpu_time_ms: u64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalDistanceEmbedding {
+    pub positions: Vec<[f32; 4]>,
+    pub energies: Vec<f32>,
+    pub scaled_gradient_maxima: Vec<f32>,
+    pub iterations: Vec<u32>,
+    pub statuses: Vec<DistanceGeometryOptimizationStatus>,
+    /// Sum of initialization and optimization command-buffer GPU intervals.
+    pub gpu_time_ms: u64,
+}
+
 impl std::fmt::Debug for MetalComputeRuntime {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -249,6 +260,39 @@ impl MetalComputeRuntime {
             iterations: dispatch.iterations,
             statuses,
             gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
+    /// Initializes and optimizes one molecule's conformer ensemble entirely on
+    /// the verified Metal runtime. Constraints remain shared across conformers.
+    pub fn embed_distance_bounds_profiled(
+        &self,
+        seed_words: &[[u32; 4]],
+        atom_count: u32,
+        constraints: &[DistanceConstraint],
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalDistanceEmbedding, MetalRuntimeError> {
+        let initialized =
+            self.initialize_conformers_profiled(seed_words, atom_count, max_memory_bytes)?;
+        let optimized = self.optimize_distance_geometry_profiled(
+            &initialized.positions,
+            atom_count,
+            constraints,
+            options,
+            max_memory_bytes,
+        )?;
+        let gpu_time_ms = initialized
+            .gpu_time_ms
+            .checked_add(optimized.gpu_time_ms)
+            .ok_or_else(|| MetalRuntimeError::Dispatch("Metal GPU time overflowed u64".into()))?;
+        Ok(MetalDistanceEmbedding {
+            positions: optimized.positions,
+            energies: optimized.energies,
+            scaled_gradient_maxima: optimized.scaled_gradient_maxima,
+            iterations: optimized.iterations,
+            statuses: optimized.statuses,
+            gpu_time_ms,
         })
     }
 
@@ -452,6 +496,28 @@ mod tests {
             .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged ComputeMetal directory");
         let runtime = MetalComputeRuntime::load(&root, &"0".repeat(64))
             .expect("verified packaged Metal runtime");
+        let embedded = runtime
+            .embed_distance_bounds_profiled(
+                &[[1, 2, 3, 4], [5, 6, 7, 8]],
+                2,
+                &[DistanceConstraint {
+                    left_atom: 0,
+                    right_atom: 1,
+                    lower_squared: 1.0,
+                    upper_squared: 2.0,
+                    weight: 1.0,
+                }],
+                DistanceGeometryOptimizationOptions::default(),
+                MIN_COMPUTE_MEMORY_BYTES,
+            )
+            .expect("packaged Metal ensemble embedding");
+        assert_eq!(embedded.positions.len(), 4);
+        assert_eq!(embedded.energies.len(), 2);
+        assert!(embedded.statuses.iter().all(|status| matches!(
+            status,
+            DistanceGeometryOptimizationStatus::ConvergedGradient
+                | DistanceGeometryOptimizationStatus::ConvergedStep
+        )));
         let device = runtime.device_identity();
         eprintln!(
             "packaged Metal runtime loaded: device={}, registryId={}, unifiedMemory={}, metallibSha256={}",
