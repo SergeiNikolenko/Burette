@@ -5,7 +5,7 @@
 //! code from `mlxmolkit` or another clustering package. The CPU path is the
 //! parity oracle for native Metal neighbor generation.
 
-use std::{fmt, mem::size_of, num::NonZeroUsize};
+use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};
 
 use burrete_compute_protocol::{
     ProtocolError, ResourceLimits, SimilarityCutoff, MAX_COMPUTE_MEMORY_BYTES,
@@ -99,6 +99,56 @@ pub struct TanimotoCounts {
 impl TanimotoCounts {
     pub fn matches_cutoff(self, cutoff: SimilarityCutoff) -> Result<bool, ProtocolError> {
         cutoff.matches_counts(self.intersection, self.union)
+    }
+
+    /// Exact ordering of Tanimoto ratios without floating-point conversion.
+    /// A zero-union pair follows the existing Burrete/upstream convention and
+    /// has similarity zero.
+    pub fn compare_similarity(self, other: Self) -> Ordering {
+        let (left_numerator, left_denominator) = self.ratio_terms();
+        let (right_numerator, right_denominator) = other.ratio_terms();
+        (u128::from(left_numerator) * u128::from(right_denominator))
+            .cmp(&(u128::from(right_numerator) * u128::from(left_denominator)))
+    }
+
+    pub fn similarity(self) -> f64 {
+        let (numerator, denominator) = self.ratio_terms();
+        numerator as f64 / denominator as f64
+    }
+
+    fn ratio_terms(self) -> (u64, u64) {
+        if self.union == 0 {
+            (0, 1)
+        } else {
+            (self.intersection, self.union)
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TanimotoQueryOptions {
+    max_memory_bytes: u64,
+}
+
+impl TanimotoQueryOptions {
+    fn try_new(max_memory_bytes: u64) -> Result<Self, ClusterCoreError> {
+        if !(1..=MAX_COMPUTE_MEMORY_BYTES).contains(&max_memory_bytes) {
+            return Err(ClusterCoreError::InvalidOptions(format!(
+                "max_memory_bytes must be in 1..={MAX_COMPUTE_MEMORY_BYTES}"
+            )));
+        }
+        Ok(Self { max_memory_bytes })
+    }
+
+    pub fn from_resource_limits(limits: &ResourceLimits) -> Result<Self, ClusterCoreError> {
+        limits
+            .validate()
+            .map_err(|error| ClusterCoreError::InvalidOptions(error.to_string()))?;
+        Self::try_new(limits.max_memory_bytes)
+    }
+
+    pub const fn max_memory_bytes(self) -> u64 {
+        self.max_memory_bytes
     }
 }
 
@@ -236,7 +286,7 @@ impl fmt::Display for ClusterCoreError {
                 limit_bytes,
             } => write!(
                 formatter,
-                "clustering requires {required_bytes} accounted working-set bytes; limit is {limit_bytes}"
+                "compute operation requires {required_bytes} accounted working-set bytes; limit is {limit_bytes}"
             ),
             Self::AllocationFailed {
                 buffer,
@@ -324,6 +374,41 @@ pub fn build_tanimoto_graph(
     }
     let pairs = collect_matching_pairs(fingerprints, cutoff, options.tile_size, edge_count)?;
     csr_from_pairs(fingerprints.len(), &pairs)
+}
+
+/// Scores one query against a fingerprint library in source order using the
+/// exact integer counts that also define the Metal ABI. No dense pair matrix is
+/// materialized; output memory is `O(N)`.
+pub fn score_tanimoto_query(
+    query: &Fingerprint2048,
+    fingerprints: &[Fingerprint2048],
+    options: TanimotoQueryOptions,
+) -> Result<Vec<TanimotoCounts>, ClusterCoreError> {
+    let required_bytes = accounted_tanimoto_query_bytes(fingerprints.len())?;
+    if required_bytes > options.max_memory_bytes {
+        return Err(ClusterCoreError::MemoryBudgetExceeded {
+            required_bytes,
+            limit_bytes: options.max_memory_bytes,
+        });
+    }
+    let mut counts = Vec::new();
+    try_reserve_exact(
+        &mut counts,
+        fingerprints.len(),
+        "Tanimoto query-count output",
+    )?;
+    counts.extend(
+        fingerprints
+            .iter()
+            .map(|fingerprint| query.tanimoto_counts(fingerprint)),
+    );
+    Ok(counts)
+}
+
+pub fn accounted_tanimoto_query_bytes(record_count: usize) -> Result<u64, ClusterCoreError> {
+    MEMORY_ACCOUNTING_HEADROOM_BYTES
+        .checked_add(checked_buffer_bytes::<TanimotoCounts>(record_count as u64)?)
+        .ok_or(ClusterCoreError::CsrOverflow)
 }
 
 /// Dynamic-count Butina clustering. Every cluster stores its representative

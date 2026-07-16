@@ -63,7 +63,10 @@ fn pinned_rdkit_fixture_decodes_into_the_canonical_fingerprint_abi() {
         "../../../schemas/compute/fixtures/rdkit-morgan-known-answer.v1.json"
     ))
     .expect("parse pinned RDKit fixture");
-    assert_eq!(fixture.schema_version, "burrete.rdkit-morgan-known-answer.v1");
+    assert_eq!(
+        fixture.schema_version,
+        "burrete.rdkit-morgan-known-answer.v1"
+    );
     assert_eq!(fixture.rdkit_version, "2025.03.4");
     assert_eq!(fixture.settings.radius, 2);
     assert_eq!(fixture.settings.bit_count, FINGERPRINT_BITS);
@@ -197,6 +200,77 @@ fn duplicates_and_exact_rational_boundary_are_included() {
     )
     .expect("above-boundary graph");
     assert_eq!(above.undirected_edge_count(), 0);
+}
+
+#[test]
+fn query_scoring_preserves_exact_counts_order_and_zero_semantics() {
+    let query = fingerprint(&[0, 1, 2, 3]);
+    let library = [
+        fingerprint(&[0, 1, 2, 3]),
+        fingerprint(&[0, 1]),
+        fingerprint(&[0, 4]),
+        Fingerprint2048::ZERO,
+    ];
+    let options = TanimotoQueryOptions::try_new(1024 * 1024).expect("query options");
+    let counts = score_tanimoto_query(&query, &library, options).expect("query scores");
+    assert_eq!(
+        counts,
+        vec![
+            TanimotoCounts {
+                intersection: 4,
+                union: 4,
+            },
+            TanimotoCounts {
+                intersection: 2,
+                union: 4,
+            },
+            TanimotoCounts {
+                intersection: 1,
+                union: 5,
+            },
+            TanimotoCounts {
+                intersection: 0,
+                union: 4,
+            },
+        ]
+    );
+    assert_eq!(counts[0].similarity(), 1.0);
+    assert_eq!(counts[1].similarity(), 0.5);
+    assert_eq!(counts[3].similarity(), 0.0);
+    assert_eq!(
+        TanimotoCounts {
+            intersection: 0,
+            union: 0,
+        }
+        .compare_similarity(counts[3]),
+        std::cmp::Ordering::Equal
+    );
+    assert_eq!(
+        counts[2].compare_similarity(counts[1]),
+        std::cmp::Ordering::Less
+    );
+}
+
+#[test]
+fn query_scoring_enforces_the_exact_output_memory_boundary() {
+    let library = [Fingerprint2048::ZERO; 4];
+    let required = accounted_tanimoto_query_bytes(library.len()).expect("query memory account");
+    let exact = TanimotoQueryOptions::try_new(required).expect("exact query options");
+    assert_eq!(
+        score_tanimoto_query(&Fingerprint2048::ZERO, &library, exact)
+            .expect("score at exact query memory boundary")
+            .len(),
+        library.len()
+    );
+    let below = TanimotoQueryOptions::try_new(required - 1).expect("below-boundary options");
+    assert_eq!(
+        score_tanimoto_query(&Fingerprint2048::ZERO, &library, below)
+            .expect_err("query memory must fail one byte below the account"),
+        ClusterCoreError::MemoryBudgetExceeded {
+            required_bytes: required,
+            limit_bytes: required - 1,
+        }
+    );
 }
 
 #[test]
@@ -344,6 +418,12 @@ fn resource_limits_map_max_edges_to_undirected_graph_options() {
             .expect("resource-backed Butina options")
             .max_undirected_edges(),
         42
+    );
+    assert_eq!(
+        TanimotoQueryOptions::from_resource_limits(&limits)
+            .expect("resource-backed query options")
+            .max_memory_bytes(),
+        16 * 1024 * 1024
     );
 }
 
