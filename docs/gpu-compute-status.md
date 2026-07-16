@@ -477,9 +477,12 @@ separate product increments.
   hydrogen s-only boundary. The transition-metal/main-group AIJL,
   Slater-Condon, and POIJ derivation now supplies d-basis charge separations
   and `rho3` through `rho6` for all 18 parameterized d elements, with S/Fe/I
-  parity against the pinned PYSEQM port. Two-center d electron-repulsion
-  integrals, Metal W generation, full PM6 SCF integration, broader D3 tables,
-  and production PM6-D3H4 composition remain gated.
+  parity against the pinned PYSEQM port. The first complete two-center d
+  branch now produces the rotated 9x9 `(mu nu | ss)` YH matrix and both
+  electron-core terms for a d-basis atom paired with hydrogen; arbitrary-axis
+  sulfur-hydrogen parity is pinned at `2e-10`. YX and YY two-center tensors,
+  Metal W generation, full PM6 SCF integration, broader D3 tables, and
+  production PM6-D3H4 composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.

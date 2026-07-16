@@ -133,6 +133,11 @@ adapt the AIJL, Slater-Condon, and POIJ derivation from PYSEQM
 transition-metal and main-group branches. PYSEQM BSD-3-Clause attribution
 applies.
 
+The PM6 d-basis atom--hydrogen two-center integral matrix adapts the YH
+Klopman-Ohno-Dewar multipole equations and nine-orbital rotation convention
+from PYSEQM `two_elec_two_center_int_local_frame_d_orbitals.py` and
+`RotationMatrixD.py`. PYSEQM BSD-3-Clause attribution applies.
+
 The PM6-D3H4 H4 hydrogen-bond equations, covalent-radius table, short-range
 H-H polynomial, and CHNO D3 C6/CN/r0 reference records are adapted from
 OpenMOPAC correction behavior through the pinned
