@@ -24,6 +24,7 @@ source_files=(
   "$script_dir/mmff-energy.v1.metal"
   "$script_dir/alignment-score.v1.metal"
   "$script_dir/rm1-fock.v1.metal"
+  "$script_dir/rm1-eigen.v1.metal"
 )
 contract_files=(
   "$script_dir/tanimoto-kernel-contract.v2.json"
@@ -36,6 +37,7 @@ contract_files=(
   "$script_dir/mmff-energy-kernel-contract.v1.json"
   "$script_dir/alignment-score-kernel-contract.v1.json"
   "$script_dir/rm1-fock-kernel-contract.v1.json"
+  "$script_dir/rm1-eigen-kernel-contract.v1.json"
 )
 metadata_writer="$script_dir/write-build-metadata.mjs"
 mkdir -p -- "$1"
@@ -84,8 +86,9 @@ air_files=(
   "$stage_dir/mmff-energy.v1.air"
   "$stage_dir/alignment-score.v1.air"
   "$stage_dir/rm1-fock.v1.air"
+  "$stage_dir/rm1-eigen.v1.air"
 )
-library_file="$stage_dir/native-compute.v12.metallib"
+library_file="$stage_dir/native-compute.v13.metallib"
 metadata_file="$stage_dir/build-metadata.v2.json"
 
 sha256() {
@@ -102,6 +105,7 @@ source_sha256_6="$(sha256 "${source_files[6]}")"
 source_sha256_7="$(sha256 "${source_files[7]}")"
 source_sha256_8="$(sha256 "${source_files[8]}")"
 source_sha256_9="$(sha256 "${source_files[9]}")"
+source_sha256_10="$(sha256 "${source_files[10]}")"
 contract_sha256_0="$(sha256 "${contract_files[0]}")"
 contract_sha256_1="$(sha256 "${contract_files[1]}")"
 contract_sha256_2="$(sha256 "${contract_files[2]}")"
@@ -112,10 +116,11 @@ contract_sha256_6="$(sha256 "${contract_files[6]}")"
 contract_sha256_7="$(sha256 "${contract_files[7]}")"
 contract_sha256_8="$(sha256 "${contract_files[8]}")"
 contract_sha256_9="$(sha256 "${contract_files[9]}")"
+contract_sha256_10="$(sha256 "${contract_files[10]}")"
 metal_tool_sha256="$(sha256 "$metal_tool")"
 metallib_tool_sha256="$(sha256 "$metallib_tool")"
 
-for index in 0 1 2 3 4 5 6 7 8 9; do
+for index in 0 1 2 3 4 5 6 7 8 9 10; do
   "$metal_tool" \
     -std=metal3.1 \
     -mmacosx-version-min=14.0 \
@@ -142,6 +147,8 @@ done
   fail 'Metal source changed during compilation'
 [[ "$(sha256 "${source_files[9]}")" == "$source_sha256_9" ]] ||
   fail 'Metal source changed during compilation'
+[[ "$(sha256 "${source_files[10]}")" == "$source_sha256_10" ]] ||
+  fail 'Metal source changed during compilation'
 [[ "$(sha256 "${contract_files[0]}")" == "$contract_sha256_0" &&
    "$(sha256 "${contract_files[1]}")" == "$contract_sha256_1" &&
    "$(sha256 "${contract_files[2]}")" == "$contract_sha256_2" ]] ||
@@ -160,6 +167,8 @@ done
   fail 'Metal kernel contract changed during compilation'
 [[ "$(sha256 "${contract_files[9]}")" == "$contract_sha256_9" ]] ||
   fail 'Metal kernel contract changed during compilation'
+[[ "$(sha256 "${contract_files[10]}")" == "$contract_sha256_10" ]] ||
+  fail 'Metal kernel contract changed during compilation'
 [[ "$(sha256 "$metal_tool")" == "$metal_tool_sha256" ]] ||
   fail 'Metal compiler changed during compilation'
 [[ "$(sha256 "$metallib_tool")" == "$metallib_tool_sha256" ]] ||
@@ -175,6 +184,7 @@ ETK_OPTIMIZER_SOURCE_SHA256="$source_sha256_6" \
 MMFF_SOURCE_SHA256="$source_sha256_7" \
 ALIGNMENT_SOURCE_SHA256="$source_sha256_8" \
 RM1_FOCK_SOURCE_SHA256="$source_sha256_9" \
+RM1_EIGEN_SOURCE_SHA256="$source_sha256_10" \
 TANIMOTO_CONTRACT_SHA256="$contract_sha256_0" \
 CONFORMER_CONTRACT_SHA256="$contract_sha256_1" \
 DISTANCE_CONTRACT_SHA256="$contract_sha256_2" \
@@ -185,6 +195,7 @@ ETK_OPTIMIZER_CONTRACT_SHA256="$contract_sha256_6" \
 MMFF_CONTRACT_SHA256="$contract_sha256_7" \
 ALIGNMENT_CONTRACT_SHA256="$contract_sha256_8" \
 RM1_FOCK_CONTRACT_SHA256="$contract_sha256_9" \
+RM1_EIGEN_CONTRACT_SHA256="$contract_sha256_10" \
 TANIMOTO_AIR_SHA256="$(sha256 "${air_files[0]}")" \
 CONFORMER_AIR_SHA256="$(sha256 "${air_files[1]}")" \
 DISTANCE_AIR_SHA256="$(sha256 "${air_files[2]}")" \
@@ -195,6 +206,7 @@ ETK_OPTIMIZER_AIR_SHA256="$(sha256 "${air_files[6]}")" \
 MMFF_AIR_SHA256="$(sha256 "${air_files[7]}")" \
 ALIGNMENT_AIR_SHA256="$(sha256 "${air_files[8]}")" \
 RM1_FOCK_AIR_SHA256="$(sha256 "${air_files[9]}")" \
+RM1_EIGEN_AIR_SHA256="$(sha256 "${air_files[10]}")" \
 METALLIB_SHA256="$(sha256 "$library_file")" \
 METAL_TOOL_PATH="$metal_tool" \
 METAL_TOOL_SHA256="$metal_tool_sha256" \
@@ -217,4 +229,4 @@ printf '{"schemaVersion":"burrete.compute.metal-generation-pointer.v1","generati
 keep_stage=1
 /bin/mv -f "$pointer_stage" "$output_dir/current.json"
 pointer_stage=''
-printf 'Built %s/%s\n' "$stage_dir" "native-compute.v12.metallib"
+printf 'Built %s/%s\n' "$stage_dir" "native-compute.v13.metallib"

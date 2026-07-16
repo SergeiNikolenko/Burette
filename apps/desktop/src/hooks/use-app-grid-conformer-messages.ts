@@ -54,7 +54,7 @@ type GridSemiempiricalResult = {
   }>;
   hostTimeMs: number;
   gpuTimeMs: number;
-  backend: "nativeMetalFockHybrid" | "nativeCpuReference";
+  backend: "nativeMetalScfHybrid" | "nativeCpuReference";
   gridApplied: boolean;
 };
 
@@ -102,8 +102,8 @@ export function useAppGridConformerMessages({
       }).then((result) => {
         const converged = result.rows.filter((row) => row.converged).length;
         const failed = result.rows.length - converged;
-        const execution = result.backend === "nativeMetalFockHybrid"
-          ? `with Metal Fock contractions (${result.gpuTimeMs.toLocaleString()} ms GPU, ${result.hostTimeMs.toLocaleString()} ms host)`
+        const execution = result.backend === "nativeMetalScfHybrid"
+          ? `with Metal SCF kernels (${result.gpuTimeMs.toLocaleString()} ms GPU, ${result.hostTimeMs.toLocaleString()} ms host)`
           : `on the CPU reference backend in ${result.hostTimeMs.toLocaleString()} ms`;
         pushStatus(
           `Calculated native RM1 energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} ${execution}${failed ? `; ${failed.toLocaleString()} failed` : ""}; results were written to Grid.`,

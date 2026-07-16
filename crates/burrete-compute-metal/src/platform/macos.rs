@@ -19,7 +19,7 @@ use objc::{runtime::Sel, Message};
 use crate::platform::{
     MetalAlignmentDispatch, MetalDistanceDispatch, MetalDistanceOptimizationDispatch,
     MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch,
-    MetalRm1FockDispatch, MetalStereoValidationDispatch,
+    MetalRm1FockDispatch, MetalStereoValidationDispatch, MetalSymmetricEigenDispatch,
 };
 use crate::runtime::MetalAlignmentBatch;
 use crate::MetalRuntimeError;
@@ -218,6 +218,7 @@ pub(crate) struct MetalHost {
     mmff_optimize_pipeline: ComputePipelineState,
     alignment_score_pipeline: ComputePipelineState,
     rm1_fock_pipeline: ComputePipelineState,
+    rm1_eigen_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -266,6 +267,7 @@ impl MetalHost {
         let mmff_optimize_pipeline = pipeline(&device, library, "burrete_mmff_optimize_v1")?;
         let alignment_score_pipeline = pipeline(&device, library, "burrete_alignment_score_v1")?;
         let rm1_fock_pipeline = pipeline(&device, library, "burrete_rm1_pair_fock_v1")?;
+        let rm1_eigen_pipeline = pipeline(&device, library, "burrete_rm1_symmetric_eigen_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -283,6 +285,7 @@ impl MetalHost {
             mmff_optimize_pipeline,
             alignment_score_pipeline,
             rm1_fock_pipeline,
+            rm1_eigen_pipeline,
         })
     }
 
@@ -1872,6 +1875,95 @@ impl MetalHost {
         })?;
         Ok(MetalRm1FockDispatch {
             contribution_ev: read_buffer(&output_buffer, matrix_len, "RM1 Fock contribution")?,
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
+    pub(crate) fn symmetric_eigen_profiled(
+        &self,
+        matrix: &[f32],
+        order: u32,
+        max_memory_bytes: u64,
+    ) -> Result<MetalSymmetricEigenDispatch, MetalRuntimeError> {
+        let matrix_len = usize::try_from(order)
+            .ok()
+            .and_then(|value| value.checked_mul(value))
+            .ok_or_else(memory_overflow)?;
+        if order == 0
+            || order > 32
+            || matrix.len() != matrix_len
+            || matrix.iter().any(|value| !value.is_finite())
+        {
+            return resource_limit(
+                "Metal symmetric eigensolver requires a finite square matrix through order 32",
+            );
+        }
+        let required_bytes = MEMORY_HEADROOM_BYTES + 1024 * 4 * 3 + 32 * 4 + 8;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "Metal symmetric eigensolver requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+        let mut padded = vec![0.0_f32; 1024];
+        for row in 0..order as usize {
+            for column in 0..order as usize {
+                padded[row * 32 + column] = matrix[row * order as usize + column];
+            }
+        }
+        let matrix_buffer = buffer_with_slice(&self.device, &padded);
+        let order_buffer = buffer_with_slice(&self.device, &[order]);
+        let eigenvalue_buffer = buffer_with_slice(&self.device, &[0.0_f32; 32]);
+        let eigenvector_buffer = buffer_with_slice(&self.device, &[0.0_f32; 1024]);
+        let status_buffer = buffer_with_slice(&self.device, &[u32::MAX]);
+        let matrix_count = 1_u32;
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.rm1_eigen_pipeline);
+            encoder.set_buffer(0, Some(&matrix_buffer), 0);
+            encoder.set_buffer(1, Some(&order_buffer), 0);
+            encoder.set_bytes(
+                2,
+                size_of_val(&matrix_count) as u64,
+                (&matrix_count as *const u32).cast(),
+            );
+            encoder.set_buffer(3, Some(&eigenvalue_buffer), 0);
+            encoder.set_buffer(4, Some(&eigenvector_buffer), 0);
+            encoder.set_buffer(5, Some(&status_buffer), 0);
+            encoder.dispatch_thread_groups(
+                MTLSize {
+                    width: 1,
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: 32,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        let padded_vectors = read_buffer::<f32>(
+            &eigenvector_buffer,
+            1024,
+            "RM1 symmetric eigenvector",
+        )?;
+        let mut eigenvectors = vec![0.0; matrix_len];
+        for row in 0..order as usize {
+            for column in 0..order as usize {
+                eigenvectors[row * order as usize + column] = padded_vectors[row * 32 + column];
+            }
+        }
+        let mut eigenvalues = read_buffer(&eigenvalue_buffer, 32, "RM1 eigenvalue")?;
+        eigenvalues.truncate(order as usize);
+        Ok(MetalSymmetricEigenDispatch {
+            eigenvalues,
+            eigenvectors,
+            status: read_buffer::<u32>(&status_buffer, 1, "RM1 eigensolver status")?[0],
             gpu_time_seconds: gpu_time,
         })
     }

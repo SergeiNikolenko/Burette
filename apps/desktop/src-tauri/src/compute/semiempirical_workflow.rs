@@ -1,8 +1,12 @@
-use std::{path::Path, time::Instant};
+use std::{
+    cell::{Cell, RefCell},
+    path::Path,
+    time::Instant,
+};
 
 use burrete_compute_core::{
-    evaluate_rm1, evaluate_rm1_with_pair_contractor, SemiempiricalAtom, SemiempiricalError,
-    SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfStatus,
+    evaluate_rm1, evaluate_rm1_with_accelerators, symmetric_eigendecomposition, SemiempiricalAtom,
+    SemiempiricalError, SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfStatus,
 };
 use burrete_compute_metal::MetalTanimotoRuntime;
 use burrete_compute_protocol::{CapabilityMaturity, RepresentativePolicy, WorkflowTemplateId};
@@ -93,7 +97,7 @@ pub(crate) fn execute_grid_semiempirical(
         .collect::<Vec<_>>();
     let host_time_ms = started.elapsed().as_millis() as u64;
     let backend = if gpu_time_ms > 0 {
-        "nativeMetalFockHybrid"
+        "nativeMetalScfHybrid"
     } else {
         "nativeCpuReference"
     };
@@ -184,9 +188,12 @@ fn evaluate_row_inner(
         .map(|atom| atom.partial_charge.round() as i32)
         .sum();
     let molecule = SemiempiricalMolecule::rm1(atoms, charge).map_err(|error| error.to_string())?;
-    let mut gpu_time_ms = 0;
+    let gpu_time_ms = Cell::new(0_u64);
+    let gpu_eigensolves = Cell::new(0_usize);
+    let previous_fock = RefCell::new(None::<Vec<f64>>);
+    let cpu_polishing = Cell::new(false);
     let evaluation = if let Some(runtime) = runtime {
-        evaluate_rm1_with_pair_contractor(
+        evaluate_rm1_with_accelerators(
             &molecule,
             SemiempiricalScfOptions::default(),
             |orbital_count, density, pairs| {
@@ -198,12 +205,39 @@ fn evaluate_row_inner(
                         DEFAULT_MAX_MEMORY_BYTES,
                     )
                     .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
-                gpu_time_ms += dispatch.gpu_time_ms;
+                gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
                 Ok(dispatch
                     .contribution_ev
                     .into_iter()
                     .map(f64::from)
                     .collect())
+            },
+            |matrix, order| {
+                if order > 32 {
+                    return symmetric_eigendecomposition(matrix, order);
+                }
+                let fock_change = previous_fock
+                    .borrow()
+                    .as_ref()
+                    .map(|previous| {
+                        matrix
+                            .iter()
+                            .zip(previous)
+                            .map(|(current, previous)| (current - previous).abs())
+                            .fold(0.0_f64, f64::max)
+                    })
+                    .unwrap_or(f64::INFINITY);
+                previous_fock.replace(Some(matrix.to_vec()));
+                if cpu_polishing.get() || fock_change <= 1.0e-5 || gpu_eigensolves.get() >= 32 {
+                    cpu_polishing.set(true);
+                    return symmetric_eigendecomposition(matrix, order);
+                }
+                let dispatch = runtime
+                    .symmetric_eigen_profiled(matrix, order, DEFAULT_MAX_MEMORY_BYTES)
+                    .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
+                gpu_eigensolves.set(gpu_eigensolves.get() + 1);
+                gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
+                Ok((dispatch.eigenvalues, dispatch.eigenvectors))
             },
         )
     } else {
@@ -223,7 +257,7 @@ fn evaluate_row_inner(
             iterations: Some(evaluation.scf.iterations),
             error: (!converged).then(|| "SCF reached the iteration limit".into()),
         },
-        gpu_time_ms,
+        gpu_time_ms.get(),
     ))
 }
 
@@ -338,7 +372,8 @@ fn apply_grid_results(
                 "backend": backend,
                 "hostTimeMs": host_time_ms,
                 "gpuTimeMs": gpu_time_ms,
-                "cpuParity": if backend == "nativeMetalFockHybrid" { "passedPerScfContraction" } else { "notApplicable" },
+                "cpuParity": if backend == "nativeMetalScfHybrid" { "passedPerScfKernel" } else { "notApplicable" },
+                "precisionPolicy": if backend == "nativeMetalScfHybrid" { "float32MetalWithAdaptiveFloat64Polish" } else { "float64Cpu" },
                 "pythonRuntimeRequired": false,
                 "method": "RM1",
                 "chargeModel": "molfile formal charge; valence population analysis",
@@ -390,7 +425,7 @@ mod tests {
 
     #[test]
     #[ignore = "manual real-GPU smoke; set BURRETE_METAL_RUNTIME_ROOT"]
-    fn evaluates_explicit_water_with_metal_fock_contractions() {
+    fn evaluates_explicit_water_with_metal_scf_kernels() {
         let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
             .map(PathBuf::from)
             .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged runtime");

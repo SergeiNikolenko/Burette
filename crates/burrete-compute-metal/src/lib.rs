@@ -10,7 +10,8 @@ pub use runtime::{
     MetalAlignmentPairResult, MetalComputeRuntime, MetalConformerInitialization,
     MetalDistanceEmbedding, MetalDistanceEvaluation, MetalDistanceOptimization,
     MetalEtkEvaluation, MetalGraphExecution, MetalMmffEvaluation, MetalMmffOptimization,
-    MetalQueryExecution, MetalRm1FockContribution, MetalStereoValidation, MetalTanimotoRuntime,
+    MetalQueryExecution, MetalRm1FockContribution, MetalStereoValidation, MetalSymmetricEigen,
+    MetalTanimotoRuntime,
 };
 
-pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v12";
+pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v13";

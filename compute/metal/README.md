@@ -31,6 +31,13 @@ matrix element, loops pairs and local orbitals in canonical order, and writes
 without atomics. The runtime compares every SCF contraction with the float64
 CPU reference before accepting the GPU result.
 
+`rm1-eigen.v1.metal` diagonalizes batches of symmetric matrices through order
+32 with one 32-thread threadgroup per matrix. A maximum-pivot Jacobi sweep
+emits sorted eigenpairs from fixed padded slots. The host applies a trace shift
+and spectral scaling, verifies eigenvalues, residuals, and orthogonality against
+the float64 oracle, then switches only the converged tail of SCF to float64 when
+the changing Fock matrix reaches the float32 accuracy floor.
+
 The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
 256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical
 word. This is a byte-identical view on supported little-endian Apple Silicon;
