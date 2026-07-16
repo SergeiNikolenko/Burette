@@ -116,9 +116,10 @@ version-locked to official RDKit `Release_2025_03_4` commit
 `276b5a662302c6a548ac4f1363c066f3258e3a20`, calls RDKit's own variant presets,
 bounds construction and smoothing, CrystalFF terms, and embedding chirality
 helpers, and emits a bounded little-endian binary ABI. The separately cloned
-`mlxmolkit` files remain parity oracles. The adapter build is not yet a shipped
-artifact; package inclusion remains gated on a reproducible WASM build, hashes,
-fixtures, and the recorded permission evidence identifier.
+`mlxmolkit` files remain parity oracles. The independently written adapter is
+now a hash-locked runtime artifact built from that exact official RDKit commit;
+it contains no `mlxmolkit` source. Scientific fixture breadth and the recorded
+permission evidence identifier remain release gates.
 
 The same audit confirmed that the pinned repository still has no root license
 or notice file, `dg_extract.py` names nvMolKit as its reference, and
