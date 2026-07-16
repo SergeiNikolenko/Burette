@@ -16,7 +16,8 @@ const POSITION_SIZED_BUFFERS: u64 = 7;
 // allocation used while each no-copy-compatible buffer is materialized.
 const HISTORY_POSITION_SIZED_BUFFERS: u64 = 3;
 const HISTORY_SCALAR_SIZED_BUFFERS: u64 = 3;
-const SCALAR_OUTPUT_BYTES: u64 = 16;
+// Four scalar Metal outputs and their simultaneously resident host copies.
+const SCALAR_OUTPUT_BYTES: u64 = 32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ConformerMoleculeWork {
@@ -429,5 +430,16 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn per_conformer_peak_counts_unified_memory_copies() {
+        assert_eq!(
+            conformer_work_bytes(
+                NonZeroU32::new(1).expect("one atom"),
+                NonZeroU32::new(1).expect("one history slot"),
+            ),
+            Ok(204)
+        );
     }
 }
