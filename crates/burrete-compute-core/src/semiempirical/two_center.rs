@@ -29,6 +29,11 @@ pub enum Rm1TwoCenterIntegrals {
         /// Four heavy-orbital attractions followed by the hydrogen attraction.
         core_attraction_ev: [f64; 5],
     },
+    HeavyHeavy {
+        repulsion_ev: [f64; 22],
+        /// Four left-orbital attractions followed by four right-orbital attractions.
+        core_attraction_ev: [f64; 8],
+    },
 }
 
 pub fn rm1_two_center_integrals(
@@ -43,12 +48,6 @@ pub fn rm1_two_center_integrals(
     }
     let left_is_hydrogen = left.orbital_count == 1;
     let right_is_hydrogen = right.orbital_count == 1;
-    if !left_is_hydrogen && !right_is_hydrogen {
-        return Err(SemiempiricalError::InvalidInput(
-            "heavy-heavy RM1 two-center integrals are not implemented yet".into(),
-        ));
-    }
-
     let distance = distance_angstrom * ANGSTROM_TO_BOHR_MOPAC;
     let left_multipole = rm1_multipole_parameters(left);
     let right_multipole = rm1_multipole_parameters(right);
@@ -64,6 +63,16 @@ pub fn rm1_two_center_integrals(
                 f64::from(left.valence_electrons) * ss_ss,
             ],
         });
+    }
+    if !left_is_hydrogen && !right_is_hydrogen {
+        return Ok(heavy_heavy_integrals(
+            left,
+            right,
+            left_multipole,
+            right_multipole,
+            distance,
+            ss_ss,
+        ));
     }
 
     let (heavy, hydrogen, heavy_multipole, hydrogen_multipole, heavy_is_left) = if left_is_hydrogen
@@ -103,6 +112,188 @@ pub fn rm1_two_center_integrals(
             f64::from(heavy.valence_electrons) * ss_ss,
         ],
     })
+}
+
+fn heavy_heavy_integrals(
+    left: &SemiempiricalElementParameters,
+    right: &SemiempiricalElementParameters,
+    left_multipole: Rm1MultipoleParameters,
+    right_multipole: Rm1MultipoleParameters,
+    distance: f64,
+    ee: f64,
+) -> Rm1TwoCenterIntegrals {
+    let da = left_multipole.dipole_separation_bohr;
+    let db = right_multipole.dipole_separation_bohr;
+    let qa1 = left_multipole.quadrupole_separation_bohr;
+    let qb1 = right_multipole.quadrupole_separation_bohr;
+    let qa = 2.0 * qa1;
+    let qb = 2.0 * qb1;
+    let square_sum = |a: f64, b: f64| (a + b).powi(2);
+    let ade = square_sum(
+        left_multipole.rho_dipole_bohr,
+        right_multipole.rho_monopole_bohr,
+    );
+    let aqe = square_sum(
+        left_multipole.rho_quadrupole_bohr,
+        right_multipole.rho_monopole_bohr,
+    );
+    let aed = square_sum(
+        left_multipole.rho_monopole_bohr,
+        right_multipole.rho_dipole_bohr,
+    );
+    let aeq = square_sum(
+        left_multipole.rho_monopole_bohr,
+        right_multipole.rho_quadrupole_bohr,
+    );
+    let axx = square_sum(
+        left_multipole.rho_dipole_bohr,
+        right_multipole.rho_dipole_bohr,
+    );
+    let adq = square_sum(
+        left_multipole.rho_dipole_bohr,
+        right_multipole.rho_quadrupole_bohr,
+    );
+    let aqd = square_sum(
+        left_multipole.rho_quadrupole_bohr,
+        right_multipole.rho_dipole_bohr,
+    );
+    let aqq = square_sum(
+        left_multipole.rho_quadrupole_bohr,
+        right_multipole.rho_quadrupole_bohr,
+    );
+    let inv = |value: f64| value.sqrt().recip();
+    let half = HARTREE_TO_EV_MOPAC / 2.0;
+    let quarter = HARTREE_TO_EV_MOPAC / 4.0;
+    let eighth = HARTREE_TO_EV_MOPAC / 8.0;
+    let sixteenth = HARTREE_TO_EV_MOPAC / 16.0;
+
+    let dze =
+        -half * inv((distance + da).powi(2) + ade) + half * inv((distance - da).powi(2) + ade);
+    let half_aqe = half * inv(distance.powi(2) + aqe);
+    let qzze = quarter * inv((distance - qa).powi(2) + aqe)
+        + quarter * inv((distance + qa).powi(2) + aqe)
+        - half_aqe;
+    let qxxe = half * inv(distance.powi(2) + qa.powi(2) + aqe) - half_aqe;
+    let edz =
+        -half * inv((distance - db).powi(2) + aed) + half * inv((distance + db).powi(2) + aed);
+    let half_aeq = half * inv(distance.powi(2) + aeq);
+    let eqzz = quarter * inv((distance - qb).powi(2) + aeq)
+        + quarter * inv((distance + qb).powi(2) + aeq)
+        - half_aeq;
+    let eqxx = half * inv(distance.powi(2) + qb.powi(2) + aeq) - half_aeq;
+    let q20 = quarter * inv((distance + da).powi(2) + adq);
+    let q22 = quarter * inv((distance - da).powi(2) + adq);
+    let q24 = quarter * inv((distance - db).powi(2) + aqd);
+    let q26 = quarter * inv((distance + db).powi(2) + aqd);
+    let q36 = quarter * inv(distance.powi(2) + aqq);
+    let q39 = quarter * inv(distance.powi(2) + qa.powi(2) + aqq);
+    let q40 = quarter * inv(distance.powi(2) + qb.powi(2) + aqq);
+    let e42 = eighth * inv((distance - qb).powi(2) + aqq);
+    let e44 = eighth * inv((distance + qb).powi(2) + aqq);
+    let e46 = eighth * inv((distance + qa).powi(2) + aqq);
+    let e48 = eighth * inv((distance - qa).powi(2) + aqq);
+
+    let mut ri = [0.0; 22];
+    ri[0] = ee;
+    ri[1] = -dze;
+    ri[2] = ee + qzze;
+    ri[3] = ee + qxxe;
+    ri[4] = -edz;
+    ri[5] = quarter * inv((distance + da - db).powi(2) + axx)
+        + quarter * inv((distance - da + db).powi(2) + axx)
+        - quarter * inv((distance - da - db).powi(2) + axx)
+        - quarter * inv((distance + da + db).powi(2) + axx);
+    ri[6] = half * inv(distance.powi(2) + (da - db).powi(2) + axx)
+        - half * inv(distance.powi(2) + (da + db).powi(2) + axx);
+    ri[7] = -edz + eighth * inv((distance + qa - db).powi(2) + aqd)
+        - eighth * inv((distance + qa + db).powi(2) + aqd)
+        + eighth * inv((distance - qa - db).powi(2) + aqd)
+        - eighth * inv((distance - qa + db).powi(2) + aqd)
+        - q24
+        + q26;
+    ri[8] = -edz - q24 + quarter * inv((distance - db).powi(2) + qa.powi(2) + aqd) + q26
+        - quarter * inv((distance + db).powi(2) + qa.powi(2) + aqd);
+    ri[9] = quarter * inv((qa1 - db).powi(2) + (distance + qa1).powi(2) + aqd)
+        - quarter * inv((qa1 - db).powi(2) + (distance - qa1).powi(2) + aqd)
+        - quarter * inv((qa1 + db).powi(2) + (distance + qa1).powi(2) + aqd)
+        + quarter * inv((qa1 + db).powi(2) + (distance - qa1).powi(2) + aqd);
+    ri[10] = ee + eqzz;
+    ri[11] = ee + eqxx;
+    ri[12] = -dze + eighth * inv((distance + da - qb).powi(2) + adq)
+        - eighth * inv((distance - da - qb).powi(2) + adq)
+        + eighth * inv((distance + da + qb).powi(2) + adq)
+        - eighth * inv((distance - da + qb).powi(2) + adq)
+        + q22
+        - q20;
+    ri[13] = -dze - q20 + quarter * inv((distance + da).powi(2) + qb.powi(2) + adq) + q22
+        - quarter * inv((distance - da).powi(2) + qb.powi(2) + adq);
+    ri[14] = quarter * inv((da - qb1).powi(2) + (distance - qb1).powi(2) + adq)
+        - quarter * inv((da - qb1).powi(2) + (distance + qb1).powi(2) + adq)
+        - quarter * inv((da + qb1).powi(2) + (distance - qb1).powi(2) + adq)
+        + quarter * inv((da + qb1).powi(2) + (distance + qb1).powi(2) + adq);
+    ri[15] = ee
+        + eqzz
+        + qzze
+        + sixteenth * inv((distance + qa - qb).powi(2) + aqq)
+        + sixteenth * inv((distance + qa + qb).powi(2) + aqq)
+        + sixteenth * inv((distance - qa - qb).powi(2) + aqq)
+        + sixteenth * inv((distance - qa + qb).powi(2) + aqq)
+        - e48
+        - e46
+        - e42
+        - e44
+        + q36;
+    ri[16] = ee
+        + eqzz
+        + qxxe
+        + eighth * inv((distance - qb).powi(2) + qa.powi(2) + aqq)
+        + eighth * inv((distance + qb).powi(2) + qa.powi(2) + aqq)
+        - e42
+        - e44
+        - q39
+        + q36;
+    ri[17] = ee
+        + eqxx
+        + qzze
+        + eighth * inv((distance + qa).powi(2) + qb.powi(2) + aqq)
+        + eighth * inv((distance - qa).powi(2) + qb.powi(2) + aqq)
+        - e46
+        - e48
+        - q40
+        + q36;
+    let qxxqxx = eighth * inv(distance.powi(2) + (qa - qb).powi(2) + aqq)
+        + eighth * inv(distance.powi(2) + (qa + qb).powi(2) + aqq)
+        - q39
+        - q40
+        + q36;
+    ri[18] = ee + eqxx + qxxe + qxxqxx;
+    ri[19] = eighth * inv((distance + qa1 - qb1).powi(2) + (qa1 - qb1).powi(2) + aqq)
+        - eighth * inv((distance + qa1 + qb1).powi(2) + (qa1 - qb1).powi(2) + aqq)
+        - eighth * inv((distance - qa1 - qb1).powi(2) + (qa1 - qb1).powi(2) + aqq)
+        + eighth * inv((distance - qa1 + qb1).powi(2) + (qa1 - qb1).powi(2) + aqq)
+        - eighth * inv((distance + qa1 - qb1).powi(2) + (qa1 + qb1).powi(2) + aqq)
+        + eighth * inv((distance + qa1 + qb1).powi(2) + (qa1 + qb1).powi(2) + aqq)
+        + eighth * inv((distance - qa1 - qb1).powi(2) + (qa1 + qb1).powi(2) + aqq)
+        - eighth * inv((distance - qa1 + qb1).powi(2) + (qa1 + qb1).powi(2) + aqq);
+    let qxxqyy = quarter * inv(distance.powi(2) + qa.powi(2) + qb.powi(2) + aqq) - q39 - q40 + q36;
+    ri[20] = ee + eqxx + qxxe + qxxqyy;
+    ri[21] = 0.5 * (qxxqxx - qxxqyy);
+
+    let left_valence = f64::from(left.valence_electrons);
+    let right_valence = f64::from(right.valence_electrons);
+    Rm1TwoCenterIntegrals::HeavyHeavy {
+        repulsion_ev: ri,
+        core_attraction_ev: [
+            right_valence * ri[0],
+            right_valence * ri[1],
+            right_valence * ri[2],
+            right_valence * ri[3],
+            left_valence * ri[0],
+            left_valence * ri[4],
+            left_valence * ri[10],
+            left_valence * ri[11],
+        ],
+    }
 }
 
 pub fn rm1_multipole_parameters(
@@ -311,5 +502,62 @@ mod tests {
             }
         ));
         assert!(rm1_two_center_integrals(hydrogen, carbon, 0.0).is_err());
+    }
+
+    #[test]
+    fn carbon_oxygen_full_integrals_match_pinned_oracle() {
+        let value =
+            rm1_two_center_integrals(rm1_parameters(6).unwrap(), rm1_parameters(8).unwrap(), 1.43)
+                .unwrap();
+        let Rm1TwoCenterIntegrals::HeavyHeavy {
+            repulsion_ev,
+            core_attraction_ev,
+        } = value
+        else {
+            panic!()
+        };
+        let expected = [
+            8.073_604_245_734_183,
+            -1.591_341_879_859_574,
+            8.496_083_856_859_135,
+            7.725_932_327_213_06,
+            1.205_956_758_961_548,
+            -0.476_138_014_801_99,
+            0.318_851_814_935_434,
+            1.408_711_105_842_015,
+            1.024_755_056_940_269,
+            -0.201_627_467_995_895,
+            8.318_613_868_475_58,
+            7.884_716_559_663_723,
+            -1.655_690_723_923_976,
+            -1.453_679_192_052_651,
+            0.116_958_298_784_844,
+            8.675_175_561_462_972,
+            7.885_720_512_259_801,
+            8.192_157_139_597_658,
+            7.601_488_748_399_309,
+            -0.097_987_357_308_476,
+            7.562_954_834_502_668,
+            0.019_266_956_948_32,
+        ];
+        for (index, (actual, expected)) in repulsion_ev.into_iter().zip(expected).enumerate() {
+            assert!(
+                (actual - expected).abs() < 1.0e-12,
+                "integral {index}: {actual} != {expected}"
+            );
+        }
+        let expected_core = [
+            48.441_625_474_405_1,
+            -9.548_051_279_157_445,
+            50.976_503_141_154_81,
+            46.355_593_963_278_366,
+            32.294_416_982_936_73,
+            4.823_827_035_846_193,
+            33.274_455_473_902_32,
+            31.538_866_238_654_894,
+        ];
+        for (actual, expected) in core_attraction_ev.into_iter().zip(expected_core) {
+            assert!((actual - expected).abs() < 1.0e-12);
+        }
     }
 }
