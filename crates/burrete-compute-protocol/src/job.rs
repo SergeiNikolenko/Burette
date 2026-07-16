@@ -467,6 +467,7 @@ impl ExecutionPlan {
 
     fn numeric_stage_indices(&self) -> &'static [usize] {
         match self.workflow_template {
+            WorkflowTemplateId::AlignmentV1 => &[],
             WorkflowTemplateId::ClusterV1 => &[2],
             WorkflowTemplateId::ConformerV1 => &[2, 3],
             WorkflowTemplateId::SimilaritySearchV1 => &[],

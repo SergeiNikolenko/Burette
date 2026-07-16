@@ -7,6 +7,7 @@ use tauri::{Runtime, State, WebviewWindow};
 use uuid::Uuid;
 
 use crate::compute::{
+    alignment_workflow::{GridAlignmentRequest, GridAlignmentResult},
     artifact_publisher::{ClusterPublicationStep, ConformerPublicationStep},
     cluster_executor::ClusterExecutionStep,
     conformer_session::ConformerSubmissionStep,
@@ -23,6 +24,26 @@ use crate::compute::{
 use crate::{preview::grid_store::GridRuntimeRegistry, windows::runtime_document_id};
 
 const DEFAULT_JOB_LIST_LIMIT: usize = 50;
+
+#[tauri::command]
+pub(crate) async fn compute_align_grid_poses<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    registry: State<'_, GridRuntimeRegistry>,
+    request: GridAlignmentRequest,
+) -> Result<GridAlignmentResult, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let namespaced_document_id = runtime_document_id(&owner, request.document_id.trim());
+    let source_lease = registry
+        .acquire_snapshot_lease(&namespaced_document_id)
+        .map_err(|error| {
+            ComputeCommandError::from(ComputeCoordinatorError::SourceSnapshotUnavailable(format!(
+                "The alignment Grid source is unavailable: {error}"
+            )))
+        })?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || coordinator.align_grid_poses(&owner, &request, source_lease)).await
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

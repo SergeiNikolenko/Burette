@@ -113,6 +113,31 @@ pub(crate) struct GridConformerAnalysisApplyInput {
 }
 
 #[derive(Clone, Debug)]
+pub(crate) struct GridAlignmentAssignmentInput {
+    pub(crate) molecule_id: i64,
+    pub(crate) source_index: u64,
+    pub(crate) molecule_content_sha256: String,
+    pub(crate) is_reference: bool,
+    pub(crate) rmsd: f64,
+    pub(crate) shape_tanimoto: f64,
+    pub(crate) electrostatic_carbo: Option<f64>,
+    pub(crate) combined_similarity: f64,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct GridAlignmentAnalysisApplyInput {
+    pub(crate) run_id: Uuid,
+    pub(crate) document_fingerprint_sha256: String,
+    pub(crate) source_revision: u64,
+    pub(crate) snapshot_id: Uuid,
+    pub(crate) snapshot_sha256: String,
+    pub(crate) normalized_settings_sha256: String,
+    pub(crate) provenance: serde_json::Value,
+    pub(crate) created_at_ms: u64,
+    pub(crate) assignments: Vec<GridAlignmentAssignmentInput>,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct GridSimilarityMatchInput {
     pub(crate) source_index: u64,
     pub(crate) molecule_content_sha256: String,
@@ -528,6 +553,76 @@ pub(crate) fn apply_conformer_analysis_run(
     insert_values(&transaction, &input)?;
     insert_artifacts(&transaction, &input)?;
     transaction.commit().map_err(|error| error.to_string())
+}
+
+pub(crate) fn apply_alignment_analysis_run(
+    database_path: &Path,
+    alignment: &GridAlignmentAnalysisApplyInput,
+) -> Result<(), String> {
+    if alignment.assignments.len() < 2 || alignment.assignments.len() as u64 > MAX_PACK_RECORDS {
+        return Err(format!(
+            "Alignment analysis requires 2..={MAX_PACK_RECORDS} assignments"
+        ));
+    }
+    let mut values = Vec::with_capacity(alignment.assignments.len().saturating_mul(5));
+    for assignment in &alignment.assignments {
+        if [
+            assignment.rmsd,
+            assignment.shape_tanimoto,
+            assignment.combined_similarity,
+        ]
+        .iter()
+        .any(|value| !value.is_finite())
+            || assignment
+                .electrostatic_carbo
+                .is_some_and(|value| !value.is_finite())
+        {
+            return Err("Alignment assignment contains a non-finite score".into());
+        }
+        let mut push = |value_id: &str, value: GridAnalysisValue| {
+            values.push(GridAnalysisValueInput {
+                molecule_id: assignment.molecule_id,
+                source_index: assignment.source_index,
+                molecule_content_sha256: assignment.molecule_content_sha256.clone(),
+                value_id: value_id.into(),
+                value,
+            });
+        };
+        push(
+            "alignmentReference",
+            GridAnalysisValue::Boolean(assignment.is_reference),
+        );
+        push("alignedRmsd", GridAnalysisValue::Real(assignment.rmsd));
+        push(
+            "shapeTanimoto",
+            GridAnalysisValue::Real(assignment.shape_tanimoto),
+        );
+        push(
+            "combinedPoseSimilarity",
+            GridAnalysisValue::Real(assignment.combined_similarity),
+        );
+        if let Some(score) = assignment.electrostatic_carbo {
+            push("electrostaticCarbo", GridAnalysisValue::Real(score));
+        }
+    }
+    apply_analysis_run(
+        database_path,
+        &GridAnalysisApplyInput {
+            run_id: alignment.run_id,
+            workflow_template: WorkflowTemplateId::AlignmentV1,
+            document_fingerprint_sha256: alignment.document_fingerprint_sha256.clone(),
+            source_revision: alignment.source_revision,
+            snapshot_id: alignment.snapshot_id,
+            snapshot_sha256: alignment.snapshot_sha256.clone(),
+            normalized_settings_sha256: alignment.normalized_settings_sha256.clone(),
+            maturity: CapabilityMaturity::Experimental,
+            representative_policy: RepresentativePolicy::NotApplicable,
+            provenance: alignment.provenance.clone(),
+            created_at_ms: alignment.created_at_ms,
+            values,
+            artifacts: Vec::new(),
+        },
+    )
 }
 
 fn resolve_analysis_molecule(

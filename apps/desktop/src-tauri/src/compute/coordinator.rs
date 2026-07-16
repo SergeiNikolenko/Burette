@@ -25,6 +25,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::compute::{
+    alignment_workflow::{execute_grid_alignment, GridAlignmentRequest, GridAlignmentResult},
     artifact_publisher::{
         artifact_manifest_sha256, materialize_cluster_artifact, materialize_conformer_artifact,
         reconcile_artifact_root, ClusterPublicationStep, ConformerPublicationStep,
@@ -179,6 +180,34 @@ enum NativeMetalState {
 }
 
 impl ComputeCoordinator {
+    pub(crate) fn align_grid_poses(
+        &self,
+        owner: &str,
+        request: &GridAlignmentRequest,
+        source_lease: GridSnapshotLease,
+    ) -> ComputeResult<GridAlignmentResult> {
+        validate_owner_window_label(owner)?;
+        if request.document_id.trim().is_empty()
+            || source_lease.namespaced_document_id()
+                != runtime_document_id(owner, request.document_id.trim())
+        {
+            return Err(ComputeCoordinatorError::SourceSnapshotUnavailable(
+                "The Grid alignment lease does not belong to the requested document".into(),
+            ));
+        }
+        let ready = self.ready()?;
+        match &ready.native_metal {
+            NativeMetalState::Available(runtime) => {
+                execute_grid_alignment(runtime, source_lease.database_path_for_freeze(), request)
+            }
+            NativeMetalState::Unavailable { message, .. } => {
+                Err(ComputeCoordinatorError::Unavailable(format!(
+                    "Native Metal alignment is unavailable: {message}"
+                )))
+            }
+        }
+    }
+
     pub(crate) fn initialize(
         compute_root: PathBuf,
         metal_runtime_root: Option<PathBuf>,
