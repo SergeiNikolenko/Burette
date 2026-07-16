@@ -72,3 +72,7 @@ Security, LLC and distributed under BSD-3-Clause; its authoritative license is
 included at `compute/semiempirical/licenses/PYSEQM-BSD-3-CLAUSE.txt`. The SCF,
 diagonalization, DIIS, molecule packing, and charge code remains independently
 written.
+
+The RM1 sp-basis multipole separation and additive-term equations are adapted
+from the same PYSEQM revision, file `seqm/seqm_functions/cal_par.py`, under the
+same BSD-3-Clause notice.

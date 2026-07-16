@@ -1,8 +1,10 @@
 use std::{error::Error, fmt};
 
 mod parameters;
+mod two_center;
 
 pub use parameters::{rm1_parameters, SemiempiricalElementParameters};
+pub use two_center::{rm1_multipole_parameters, Rm1MultipoleParameters};
 
 const MAX_ATOMS: usize = 128;
 const MAX_ORBITALS: usize = 256;
