@@ -1,6 +1,8 @@
 use std::num::NonZeroUsize;
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use burrete_compute_protocol::{ResourceLimits, SimilarityCutoff};
+use serde::Deserialize;
 
 use super::*;
 
@@ -27,6 +29,64 @@ fn canonical_fingerprint_bytes_and_metal_view_are_identical() {
     );
     let metal_bytes: Vec<u8> = metal.into_iter().flat_map(u32::to_le_bytes).collect();
     assert_eq!(metal_bytes, bytes);
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MorganFixture {
+    schema_version: String,
+    rdkit_version: String,
+    settings: MorganFixtureSettings,
+    records: Vec<MorganFixtureRecord>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MorganFixtureSettings {
+    radius: u32,
+    bit_count: usize,
+    use_chirality: bool,
+    use_features: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MorganFixtureRecord {
+    smiles: String,
+    popcount: u32,
+    fingerprint_base64: String,
+}
+
+#[test]
+fn pinned_rdkit_fixture_decodes_into_the_canonical_fingerprint_abi() {
+    let fixture: MorganFixture = serde_json::from_str(include_str!(
+        "../../../schemas/compute/fixtures/rdkit-morgan-known-answer.v1.json"
+    ))
+    .expect("parse pinned RDKit fixture");
+    assert_eq!(fixture.schema_version, "burrete.rdkit-morgan-known-answer.v1");
+    assert_eq!(fixture.rdkit_version, "2025.03.4");
+    assert_eq!(fixture.settings.radius, 2);
+    assert_eq!(fixture.settings.bit_count, FINGERPRINT_BITS);
+    assert!(fixture.settings.use_chirality);
+    assert!(!fixture.settings.use_features);
+    assert_eq!(fixture.records.len(), 4);
+
+    for record in fixture.records {
+        let bytes = STANDARD
+            .decode(record.fingerprint_base64)
+            .expect("decode fixture fingerprint");
+        let bytes: [u8; FINGERPRINT_BYTES] = bytes
+            .try_into()
+            .expect("fixture fingerprint has the canonical byte width");
+        let fingerprint = Fingerprint2048::from_le_bytes(bytes);
+        let observed = fingerprint
+            .words()
+            .iter()
+            .map(|word| word.count_ones())
+            .sum::<u32>();
+        assert_eq!(observed, record.popcount, "{}", record.smiles);
+        assert_eq!(fingerprint.to_le_bytes(), bytes, "{}", record.smiles);
+    }
 }
 
 fn options(tile_size: usize, max_undirected_edges: u64) -> GraphBuildOptions {
