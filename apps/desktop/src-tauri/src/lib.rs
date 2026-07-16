@@ -37,7 +37,15 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .map(|app_data| {
-                    compute::coordinator::ComputeCoordinator::initialize(app_data.join("compute"))
+                    let metal_runtime_root = app
+                        .path()
+                        .resource_dir()
+                        .ok()
+                        .map(|resources| resources.join("ComputeMetal"));
+                    compute::coordinator::ComputeCoordinator::initialize(
+                        app_data.join("compute"),
+                        metal_runtime_root,
+                    )
                 })
                 .unwrap_or_else(|error| {
                     compute::coordinator::ComputeCoordinator::unavailable(format!(

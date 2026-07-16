@@ -208,6 +208,7 @@ assert.equal(desktopPackageConfig.scripts['build:tauri'], 'bun run build && node
 assert.equal(mainWindowConfig.visible, true);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
 assert.equal(tauriConfig.bundle.resources['../../../plugins/burette-agent'], 'plugins/burette-agent');
+assert.equal(tauriConfig.bundle.resources['../../../compute/metal/runtime'], 'ComputeMetal');
 assert.match(tauriConfig.app.security.csp, /'unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /'wasm-unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /style-src[^;]*'unsafe-inline'/);
