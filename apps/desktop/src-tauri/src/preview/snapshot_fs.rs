@@ -614,6 +614,31 @@ mod platform {
             &self.manifest
         }
 
+        /// Reopens one already-verified file through the retained directory
+        /// capabilities and requires the exact inode identity observed during
+        /// verification. The returned descriptor has an independent cursor.
+        pub(crate) fn reopen_file(
+            &self,
+            relative_path: &str,
+        ) -> Result<(File, PackedFileDescriptor), String> {
+            self.recheck_structure()?;
+            let expected = self
+                .files
+                .get(relative_path)
+                .ok_or_else(|| "Requested file is not part of the verified snapshot".to_string())?;
+            let file = open_snapshot_file(
+                &self.pack_directory,
+                &self.snapshot_directory,
+                relative_path,
+            )?;
+            if file_identity(file.as_fd())? != expected.identity {
+                return Err(format!(
+                    "Verified snapshot file changed before handoff: {relative_path}"
+                ));
+            }
+            Ok((file, expected.descriptor.clone()))
+        }
+
         /// Re-hashes the same read-only file descriptors and re-checks the
         /// directory capabilities immediately before an eventual handoff.
         pub(crate) fn reverify(&mut self) -> Result<(), String> {
@@ -1615,6 +1640,15 @@ mod platform {
 
     #[derive(Debug)]
     pub(crate) struct VerifiedSnapshot;
+
+    impl VerifiedSnapshot {
+        pub(crate) fn reopen_file(
+            &self,
+            _relative_path: &str,
+        ) -> Result<(File, burrete_compute_protocol::PackedFileDescriptor), String> {
+            Err("Snapshot publication requires Unix directory capabilities".into())
+        }
+    }
 
     #[derive(Debug)]
     pub(crate) struct SnapshotByteReservation<'a> {

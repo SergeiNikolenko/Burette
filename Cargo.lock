@@ -360,6 +360,7 @@ name = "burrete"
 version = "1.0.26"
 dependencies = [
  "base64 0.22.1",
+ "burrete-compute-core",
  "burrete-compute-metal",
  "burrete-compute-protocol",
  "burrete-core",
