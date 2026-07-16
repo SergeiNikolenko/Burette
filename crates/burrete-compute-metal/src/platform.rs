@@ -60,6 +60,13 @@ pub(crate) struct MetalSymmetricEigenDispatch {
     pub(crate) gpu_time_seconds: f64,
 }
 
+pub(crate) struct MetalRm1PairRotationDispatch {
+    pub(crate) repulsion_ev: Vec<f32>,
+    pub(crate) left_core_attraction_ev: Vec<f32>,
+    pub(crate) right_core_attraction_ev: Vec<f32>,
+    pub(crate) gpu_time_seconds: f64,
+}
+
 #[cfg(target_os = "macos")]
 #[path = "platform/macos.rs"]
 mod implementation;

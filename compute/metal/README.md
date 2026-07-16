@@ -38,6 +38,12 @@ and spectral scaling, verifies eigenvalues, residuals, and orthogonality against
 the float64 oracle, then switches only the converged tail of SCF to float64 when
 the changing Fock matrix reaches the float32 accuracy floor.
 
+`rm1-pair-rotate.v1.metal` transforms compact local RM1 two-center integrals
+into complete molecular-frame pair tensors and both core-attraction matrices.
+One thread owns one atom pair, including the explicit heavy/H transpose path.
+The runtime compares every emitted tensor element with the float64 CPU oracle
+before the prepared pair pack is admitted to core-Hamiltonian and SCF use.
+
 The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
 256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical
 word. This is a byte-identical view on supported little-endian Apple Silicon;

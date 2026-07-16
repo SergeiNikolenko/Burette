@@ -428,24 +428,26 @@ separate product increments.
   molecules with explicit coordinates. The frozen Grid lease is parsed without
   Python/MLX, evaluated by the native bounded RM1 reference implementation, and
   written back as electronic, nuclear, and total energies, SCF status and
-  iterations, and JSON atomic charges. Runtime v13 contracts the dominant
+  iterations, and JSON atomic charges. Runtime v14 contracts the dominant
   two-center Coulomb/exchange Fock contribution on Metal for every SCF
   iteration and diagonalizes matrices through order 32 with a batched Metal
-  Jacobi kernel. Every GPU result is checked against the float64 CPU reference;
+  Jacobi kernel. It also rotates compact local pair integrals and materializes
+  complete repulsion/core-attraction tensors on Metal. Every GPU result is checked against the float64 CPU reference;
   trace-shift/spectral preconditioning controls float32 error, and the SCF tail
   switches adaptively to float64 polishing at the precision floor. The Grid
   reports `nativeMetalScfHybrid` only after at least one verified GPU dispatch.
   Integral generation and SCF control remain CPU. Unavailable Metal or
   all-invalid input remains `nativeCpuReference`.
-- The verified v13 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
+- The verified v14 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
   Fock-matrix element and accumulates pair tensors in deterministic order with
   no atomics. It adds `burrete_rm1_symmetric_eigen_v1`, with one threadgroup per
-  admitted matrix. The package binds eleven sources, eleven contracts, eleven
-  AIR files, and fifteen entrypoints. Startup and end-to-end explicit-water
+  admitted matrix. It adds `burrete_rm1_pair_rotate_v1`, with one thread per
+  H-H, heavy-H, or heavy-heavy atom pair. The package binds twelve sources,
+  twelve contracts, twelve AIR files, and sixteen entrypoints. Startup and end-to-end explicit-water
   KATs passed on
   `Apple M2 Pro` (`registryId=0x1000003c0`, unified memory); the tested
-  `native-compute.v13.metallib` SHA-256 is
-  `1a0400adaa1433728e7fb519d13d9c74c978eb2543f5d0dab8ebee638e825249`.
+  `native-compute.v14.metallib` SHA-256 is
+  `381abe1fc2ca5757e8c3bda0eedef7fe6d8eefa5fdc48ab19154f03169b35239`.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
@@ -492,8 +494,9 @@ fixed order below:
    multipole parameters plus complete 22-term pair integrals and molecular-frame
    rotation, first-/second-row overlap, and end-to-end H/C/N/O/F RM1 SCF energies
    and charges plus complete qn1-5 sp overlap and native Grid execution/writeback;
-   with Metal two-center Fock contraction and symmetric eigensolver; next add
-   GPU integral generation plus remaining parameter sets method by method behind independent
+   with Metal pair rotation/materialization, two-center Fock contraction, and
+   symmetric eigensolver; next move compact local-integral equations to GPU plus
+   remaining parameter sets method by method behind independent
    known-answer and external parity gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.
