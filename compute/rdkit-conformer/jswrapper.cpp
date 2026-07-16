@@ -64,13 +64,16 @@ std::string rdkit_source_revision() {
   return "Release_2025_03_4@276b5a662302c6a548ac4f1363c066f3258e3a20";
 }
 
+unsigned int conformer_extractor_abi_version() {
+  return burrete::conformer::kBinaryAbiVersion;
+}
+
 }  // namespace
 
 EMSCRIPTEN_BINDINGS(Burrete_rdkit_conformer) {
   emscripten::function("extract_conformer_parameters",
                        &extract_conformer_parameters);
-  emscripten::function("conformer_extractor_abi_version", []() {
-    return burrete::conformer::kBinaryAbiVersion;
-  });
+  emscripten::function("conformer_extractor_abi_version",
+                       &conformer_extractor_abi_version);
   emscripten::function("rdkit_source_revision", &rdkit_source_revision);
 }
