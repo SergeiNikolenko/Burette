@@ -5,26 +5,32 @@
 //! code from `mlxmolkit` or another clustering package. The CPU path is the
 //! parity oracle for native Metal neighbor generation.
 
-mod conformer_schedule;
-mod conformer_initialize;
 mod conformer_engine;
 mod conformer_extract;
+mod conformer_initialize;
 mod conformer_pack;
+mod conformer_schedule;
+mod conformer_stereo;
 mod distance_geometry;
 mod distance_optimizer;
 
-pub use conformer_schedule::{
-    plan_conformer_batches, ConformerBatch, ConformerBatchPlan, ConformerMoleculeWork,
-    ConformerScheduleError, ConformerSchedulingOptions, ConformerSpan, ConformerWorkIdentity,
-};
-pub use conformer_initialize::initialize_conformer_positions;
 pub use conformer_engine::{
     ConformerDistanceEngine, ConformerDistanceMolecule, ConformerEngineError,
 };
 pub use conformer_extract::{ConformerExtractError, ExtractedConformerParameters};
+pub use conformer_initialize::initialize_conformer_positions;
 pub use conformer_pack::{
     ConformerEnginePackArrays, ConformerEnginePackBinary, ConformerEnginePackBuilder,
     ConformerPackError, ConformerPackedArraySpan,
+};
+pub use conformer_schedule::{
+    plan_conformer_batches, ConformerBatch, ConformerBatchPlan, ConformerMoleculeWork,
+    ConformerScheduleError, ConformerSchedulingOptions, ConformerSpan, ConformerWorkIdentity,
+};
+pub use conformer_stereo::{
+    validate_conformer_stereo, validate_stereo_constraints, ChiralVolumeConstraint,
+    ConformerStereoError, TetrahedralConstraint, STEREO_FAILURE_CHIRAL_VOLUME,
+    STEREO_FAILURE_NONFINITE_POSITION, STEREO_FAILURE_TETRAHEDRAL_GEOMETRY,
 };
 pub use distance_geometry::{
     evaluate_distance_constraints, DistanceConstraint, DistanceConstraintEvaluation,

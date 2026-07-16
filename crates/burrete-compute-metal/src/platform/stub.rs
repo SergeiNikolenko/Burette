@@ -1,11 +1,14 @@
 use burrete_compute_core::{
-    DistanceConstraint, DistanceGeometryOptimizationOptions, Fingerprint2048, GraphBuildOptions,
-    SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
+    Fingerprint2048, GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 
+use crate::platform::{
+    MetalDistanceDispatch, MetalDistanceOptimizationDispatch, MetalStereoValidationDispatch,
+};
 use crate::MetalRuntimeError;
-use crate::platform::{MetalDistanceDispatch, MetalDistanceOptimizationDispatch};
 
 #[derive(Debug)]
 pub(crate) struct MetalHost;
@@ -100,6 +103,19 @@ impl MetalHost {
         _options: DistanceGeometryOptimizationOptions,
         _max_memory_bytes: u64,
     ) -> Result<MetalDistanceOptimizationDispatch, MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn validate_stereo_profiled(
+        &self,
+        _positions: &[[f32; 4]],
+        _atom_count: u32,
+        _chiral: &[ChiralVolumeConstraint],
+        _tetrahedral: &[TetrahedralConstraint],
+        _max_memory_bytes: u64,
+    ) -> Result<MetalStereoValidationDispatch, MetalRuntimeError> {
         Err(MetalRuntimeError::UnsupportedPlatform(
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))

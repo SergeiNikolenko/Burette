@@ -1,8 +1,9 @@
 use std::{ffi::c_void, mem::size_of_val};
 
 use burrete_compute_core::{
-    DistanceConstraint, DistanceGeometryOptimizationOptions, Fingerprint2048, GraphBuildOptions,
-    SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    validate_stereo_constraints, ChiralVolumeConstraint, DistanceConstraint,
+    DistanceGeometryOptimizationOptions, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
+    TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use metal::{
@@ -13,8 +14,10 @@ use metal::{
 use objc::rc::autoreleasepool;
 use objc::{runtime::Sel, Message};
 
+use crate::platform::{
+    MetalDistanceDispatch, MetalDistanceOptimizationDispatch, MetalStereoValidationDispatch,
+};
 use crate::MetalRuntimeError;
-use crate::platform::{MetalDistanceDispatch, MetalDistanceOptimizationDispatch};
 
 const MAX_TILE_RECORDS: usize = 1_024;
 const MAX_QUERY_BATCH_RECORDS: usize = 262_144;
@@ -81,6 +84,15 @@ struct ConformerOptimizeConfigV1 {
     max_step_factor: f32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ConformerStereoBatchV1 {
+    atom_count: u32,
+    conformer_count: u32,
+    chiral_count: u32,
+    tetrahedral_count: u32,
+}
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
@@ -91,6 +103,7 @@ pub(crate) struct MetalHost {
     conformer_initialize_pipeline: ComputePipelineState,
     conformer_distance_pipeline: ComputePipelineState,
     conformer_optimize_pipeline: ComputePipelineState,
+    conformer_stereo_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -128,6 +141,8 @@ impl MetalHost {
             pipeline(&device, library, "burrete_conformer_distance_v1")?;
         let conformer_optimize_pipeline =
             pipeline(&device, library, "burrete_conformer_optimize_v1")?;
+        let conformer_stereo_pipeline =
+            pipeline(&device, library, "burrete_conformer_stereo_validate_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -137,6 +152,7 @@ impl MetalHost {
             conformer_initialize_pipeline,
             conformer_distance_pipeline,
             conformer_optimize_pipeline,
+            conformer_stereo_pipeline,
         })
     }
 
@@ -345,8 +361,9 @@ impl MetalHost {
         if seed_words.is_empty() || atom_count == 0 {
             return resource_limit("conformer initialization requires seeds and atoms");
         }
-        let conformer_count = u32::try_from(seed_words.len())
-            .map_err(|_| MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into()))?;
+        let conformer_count = u32::try_from(seed_words.len()).map_err(|_| {
+            MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into())
+        })?;
         let item_count = u64::from(atom_count)
             .checked_mul(u64::from(conformer_count))
             .ok_or_else(memory_overflow)?;
@@ -368,8 +385,9 @@ impl MetalHost {
                 "conformer initialization requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
             ));
         }
-        let output_len = usize::try_from(item_count)
-            .map_err(|_| MetalRuntimeError::ResourceLimit("conformer output exceeds address space".into()))?;
+        let output_len = usize::try_from(item_count).map_err(|_| {
+            MetalRuntimeError::ResourceLimit("conformer output exceeds address space".into())
+        })?;
         let seeds_buffer = buffer_with_slice(&self.device, seed_words);
         let output_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; output_len]);
         let batch = ConformerInitializeBatchV1 {
@@ -380,7 +398,10 @@ impl MetalHost {
         let thread_width = self
             .conformer_initialize_pipeline
             .thread_execution_width()
-            .min(self.conformer_initialize_pipeline.max_total_threads_per_threadgroup());
+            .min(
+                self.conformer_initialize_pipeline
+                    .max_total_threads_per_threadgroup(),
+            );
         if thread_width == 0 {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal conformer initializer advertises zero thread width".into(),
@@ -438,10 +459,13 @@ impl MetalHost {
                 "distance evaluation positions must be finite".into(),
             ));
         }
-        let conformer_count = u32::try_from(positions.len() / atom_count as usize)
-            .map_err(|_| MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into()))?;
-        let constraint_count = u32::try_from(constraints.len())
-            .map_err(|_| MetalRuntimeError::ResourceLimit("constraint count exceeds uint32".into()))?;
+        let conformer_count =
+            u32::try_from(positions.len() / atom_count as usize).map_err(|_| {
+                MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into())
+            })?;
+        let constraint_count = u32::try_from(constraints.len()).map_err(|_| {
+            MetalRuntimeError::ResourceLimit("constraint count exceeds uint32".into())
+        })?;
         for constraint in constraints {
             if constraint.left_atom >= atom_count
                 || constraint.right_atom >= atom_count
@@ -487,7 +511,10 @@ impl MetalHost {
             .iter()
             .map(|term| [term.lower_squared, term.upper_squared])
             .collect::<Vec<_>>();
-        let mut weights = constraints.iter().map(|term| term.weight).collect::<Vec<_>>();
+        let mut weights = constraints
+            .iter()
+            .map(|term| term.weight)
+            .collect::<Vec<_>>();
         if constraints.is_empty() {
             pairs.push([0, 0]);
             bounds.push([0.0, 0.0]);
@@ -508,7 +535,10 @@ impl MetalHost {
         let thread_width = self
             .conformer_distance_pipeline
             .thread_execution_width()
-            .min(self.conformer_distance_pipeline.max_total_threads_per_threadgroup());
+            .min(
+                self.conformer_distance_pipeline
+                    .max_total_threads_per_threadgroup(),
+            );
         if thread_width == 0 {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal distance pipeline advertises zero thread width".into(),
@@ -580,10 +610,13 @@ impl MetalHost {
                 "distance optimization positions must be finite".into(),
             ));
         }
-        let conformer_count = u32::try_from(positions.len() / atom_count as usize)
-            .map_err(|_| MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into()))?;
-        let constraint_count = u32::try_from(constraints.len())
-            .map_err(|_| MetalRuntimeError::ResourceLimit("constraint count exceeds uint32".into()))?;
+        let conformer_count =
+            u32::try_from(positions.len() / atom_count as usize).map_err(|_| {
+                MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into())
+            })?;
+        let constraint_count = u32::try_from(constraints.len()).map_err(|_| {
+            MetalRuntimeError::ResourceLimit("constraint count exceeds uint32".into())
+        })?;
         for constraint in constraints {
             if constraint.left_atom >= atom_count
                 || constraint.right_atom >= atom_count
@@ -637,7 +670,10 @@ impl MetalHost {
             .iter()
             .map(|term| [term.lower_squared, term.upper_squared])
             .collect::<Vec<_>>();
-        let mut weights = constraints.iter().map(|term| term.weight).collect::<Vec<_>>();
+        let mut weights = constraints
+            .iter()
+            .map(|term| term.weight)
+            .collect::<Vec<_>>();
         if constraints.is_empty() {
             pairs.push([0, 0]);
             bounds.push([0.0, 1.0]);
@@ -649,12 +685,9 @@ impl MetalHost {
         let weight_buffer = buffer_with_slice(&self.device, &weights);
         let gradient_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
         let direction_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
-        let old_position_buffer =
-            buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
-        let old_gradient_buffer =
-            buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
-        let history_step_buffer =
-            buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; history_len]);
+        let old_position_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let old_gradient_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; item_len]);
+        let history_step_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; history_len]);
         let history_gradient_buffer =
             buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; history_len]);
         let inverse_curvature_buffer =
@@ -754,6 +787,156 @@ impl MetalHost {
             )?,
             iterations: read_buffer(&iteration_buffer, conformer_len, "optimizer iteration")?,
             statuses: read_buffer(&status_buffer, conformer_len, "optimizer status")?,
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
+    pub(crate) fn validate_stereo_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        chiral: &[ChiralVolumeConstraint],
+        tetrahedral: &[TetrahedralConstraint],
+        max_memory_bytes: u64,
+    ) -> Result<MetalStereoValidationDispatch, MetalRuntimeError> {
+        if atom_count == 0
+            || positions.is_empty()
+            || !positions.len().is_multiple_of(atom_count as usize)
+        {
+            return resource_limit(
+                "stereo validation positions must contain complete non-empty conformers",
+            );
+        }
+        validate_stereo_constraints(atom_count as usize, chiral, tetrahedral)
+            .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
+        if tetrahedral
+            .iter()
+            .any(|constraint| constraint.in_fused_small_ring && constraint.atoms[0] >= atom_count)
+        {
+            return Err(MetalRuntimeError::Dispatch(
+                "tetrahedral center is outside the supported atom range".into(),
+            ));
+        }
+        let conformer_count =
+            u32::try_from(positions.len() / atom_count as usize).map_err(|_| {
+                MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into())
+            })?;
+        let chiral_count = u32::try_from(chiral.len()).map_err(|_| {
+            MetalRuntimeError::ResourceLimit("chiral term count exceeds uint32".into())
+        })?;
+        let tetrahedral_count = u32::try_from(tetrahedral.len()).map_err(|_| {
+            MetalRuntimeError::ResourceLimit("tetrahedral term count exceeds uint32".into())
+        })?;
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(
+                u64::try_from(positions.len())
+                    .map_err(|_| memory_overflow())?
+                    .checked_mul(32)
+                    .ok_or_else(memory_overflow)?,
+            )
+            .and_then(|bytes| bytes.checked_add(u64::from(chiral_count).max(1).checked_mul(48)?))
+            .and_then(|bytes| {
+                bytes.checked_add(u64::from(tetrahedral_count).max(1).checked_mul(44)?)
+            })
+            .and_then(|bytes| bytes.checked_add(u64::from(conformer_count).checked_mul(8)?))
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "stereo validation requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+
+        let mut chiral_atoms = chiral.iter().map(|term| term.atoms).collect::<Vec<_>>();
+        let mut chiral_bounds = chiral
+            .iter()
+            .map(|term| [term.lower, term.upper])
+            .collect::<Vec<_>>();
+        if chiral_atoms.is_empty() {
+            chiral_atoms.push([0; 4]);
+            chiral_bounds.push([0.0; 2]);
+        }
+        let mut tetrahedral_atoms = tetrahedral
+            .iter()
+            .flat_map(|term| term.atoms)
+            .collect::<Vec<_>>();
+        let mut tetrahedral_flags = tetrahedral
+            .iter()
+            .map(|term| u32::from(term.in_fused_small_ring))
+            .collect::<Vec<_>>();
+        if tetrahedral_atoms.is_empty() {
+            tetrahedral_atoms.extend([0; 5]);
+            tetrahedral_flags.push(0);
+        }
+        let position_buffer = buffer_with_slice(&self.device, positions);
+        let chiral_atom_buffer = buffer_with_slice(&self.device, &chiral_atoms);
+        let chiral_bounds_buffer = buffer_with_slice(&self.device, &chiral_bounds);
+        let tetrahedral_atom_buffer = buffer_with_slice(&self.device, &tetrahedral_atoms);
+        let tetrahedral_flags_buffer = buffer_with_slice(&self.device, &tetrahedral_flags);
+        let failure_buffer =
+            buffer_with_slice(&self.device, &vec![0_u32; conformer_count as usize]);
+        let batch = ConformerStereoBatchV1 {
+            atom_count,
+            conformer_count,
+            chiral_count,
+            tetrahedral_count,
+        };
+        let thread_width = self.conformer_stereo_pipeline.thread_execution_width().min(
+            self.conformer_stereo_pipeline
+                .max_total_threads_per_threadgroup(),
+        );
+        if thread_width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal stereo pipeline advertises zero thread width".into(),
+            ));
+        }
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.conformer_stereo_pipeline);
+            for (index, buffer) in [
+                &position_buffer,
+                &chiral_atom_buffer,
+                &chiral_bounds_buffer,
+                &tetrahedral_atom_buffer,
+                &tetrahedral_flags_buffer,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                encoder.set_buffer(index as u64, Some(buffer), 0);
+            }
+            encoder.set_bytes(
+                5,
+                size_of_val(&batch) as u64,
+                (&batch as *const ConformerStereoBatchV1).cast(),
+            );
+            encoder.set_buffer(6, Some(&failure_buffer), 0);
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: u64::from(conformer_count),
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: thread_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        let failure_flags =
+            read_buffer(&failure_buffer, conformer_count as usize, "stereo failure")?;
+        if failure_flags.iter().any(|flags| flags & !0b111 != 0) {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal stereo validator returned unknown failure bits".into(),
+            ));
+        }
+        Ok(MetalStereoValidationDispatch {
+            failure_flags,
             gpu_time_seconds: gpu_time,
         })
     }

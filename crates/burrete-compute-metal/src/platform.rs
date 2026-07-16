@@ -13,6 +13,11 @@ pub(crate) struct MetalDistanceOptimizationDispatch {
     pub(crate) gpu_time_seconds: f64,
 }
 
+pub(crate) struct MetalStereoValidationDispatch {
+    pub(crate) failure_flags: Vec<u32>,
+    pub(crate) gpu_time_seconds: f64,
+}
+
 #[cfg(target_os = "macos")]
 #[path = "platform/macos.rs"]
 mod implementation;
