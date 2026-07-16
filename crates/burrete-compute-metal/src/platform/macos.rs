@@ -1,7 +1,7 @@
 use std::{collections::HashSet, ffi::c_void, mem::size_of_val};
 
 use burrete_compute_core::{
-    rm1_multipole_parameters, rm1_parameters,
+    rm1_multipole_parameters, semiempirical_parameters,
     validate_etk_geometry_constraints, validate_mmff_parameters, validate_stereo_constraints,
     AlignmentMode, ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
@@ -2027,10 +2027,10 @@ impl MetalHost {
             for right_index in (left_index + 1)..molecule.atoms.len() {
                 let left_atom = &molecule.atoms[left_index];
                 let right_atom = &molecule.atoms[right_index];
-                let left = rm1_parameters(left_atom.atomic_number).ok_or_else(|| {
+                let left = semiempirical_parameters(molecule.method, left_atom.atomic_number).ok_or_else(|| {
                     MetalRuntimeError::Dispatch("RM1 pair has an unsupported left element".into())
                 })?;
-                let right = rm1_parameters(right_atom.atomic_number).ok_or_else(|| {
+                let right = semiempirical_parameters(molecule.method, right_atom.atomic_number).ok_or_else(|| {
                     MetalRuntimeError::Dispatch("RM1 pair has an unsupported right element".into())
                 })?;
                 let delta = [

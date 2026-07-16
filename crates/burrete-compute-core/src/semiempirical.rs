@@ -7,9 +7,9 @@ mod rotation;
 mod two_center;
 
 pub use overlap::{rm1_sp_overlap, Rm1OverlapMatrix};
-pub use parameters::{rm1_parameters, SemiempiricalElementParameters};
+pub use parameters::{rm1_parameters, semiempirical_parameters, SemiempiricalElementParameters};
 pub use rm1::{
-    contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators,
+    contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators, evaluate_semiempirical,
     evaluate_rm1_with_pair_contractor, evaluate_rm1_with_prepared_pairs_and_accelerators,
     rm1_fock_pairs, Rm1Evaluation, Rm1FockPair,
 };
@@ -134,6 +134,7 @@ pub struct SemiempiricalAtom {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SemiempiricalMolecule {
+    pub method: SemiempiricalMethod,
     pub atoms: Vec<SemiempiricalAtom>,
     pub charge: i32,
     pub orbital_offsets: Vec<usize>,
@@ -143,9 +144,18 @@ pub struct SemiempiricalMolecule {
 
 impl SemiempiricalMolecule {
     pub fn rm1(atoms: Vec<SemiempiricalAtom>, charge: i32) -> Result<Self, SemiempiricalError> {
+        Self::new(SemiempiricalMethod::Rm1, atoms, charge)
+    }
+
+    pub fn new(
+        method: SemiempiricalMethod,
+        atoms: Vec<SemiempiricalAtom>,
+        charge: i32,
+    ) -> Result<Self, SemiempiricalError> {
         if atoms.is_empty() || atoms.len() > MAX_ATOMS {
             return Err(SemiempiricalError::InvalidInput(format!(
-                "RM1 molecule must contain 1..={MAX_ATOMS} atoms"
+                "{} molecule must contain 1..={MAX_ATOMS} atoms",
+                method.wire_id()
             )));
         }
 
@@ -162,10 +172,11 @@ impl SemiempiricalMolecule {
                     "atom coordinates must be finite".into(),
                 ));
             }
-            let parameters = rm1_parameters(atom.atomic_number).ok_or_else(|| {
+            let parameters = semiempirical_parameters(method, atom.atomic_number).ok_or_else(|| {
                 SemiempiricalError::InvalidInput(format!(
-                    "atomic number {} is not parameterized for RM1",
-                    atom.atomic_number
+                    "atomic number {} is not parameterized for {}",
+                    atom.atomic_number,
+                    method.wire_id()
                 ))
             })?;
             valence_electrons += usize::from(parameters.valence_electrons);
@@ -180,7 +191,10 @@ impl SemiempiricalMolecule {
             || usize::try_from(electron_count).unwrap() > orbital_count * 2
         {
             return Err(SemiempiricalError::InvalidInput(
-                "RM1 currently requires a non-empty closed-shell electron configuration".into(),
+                format!(
+                    "{} currently requires a non-empty closed-shell electron configuration",
+                    method.wire_id()
+                ),
             ));
         }
         if orbital_count > MAX_ORBITALS {
@@ -190,6 +204,7 @@ impl SemiempiricalMolecule {
         }
 
         Ok(Self {
+            method,
             atoms,
             charge,
             orbital_offsets,
@@ -211,7 +226,7 @@ impl SemiempiricalMolecule {
             .iter()
             .enumerate()
             .map(|(atom_index, atom)| {
-                let parameters = rm1_parameters(atom.atomic_number).unwrap();
+                let parameters = semiempirical_parameters(self.method, atom.atomic_number).unwrap();
                 let population: f64 = (self.orbital_offsets[atom_index]
                     ..self.orbital_offsets[atom_index + 1])
                     .map(|orbital| density[orbital * self.orbital_count + orbital])
@@ -226,13 +241,19 @@ impl SemiempiricalMolecule {
 pub fn rm1_nuclear_repulsion_energy(
     molecule: &SemiempiricalMolecule,
 ) -> Result<f64, SemiempiricalError> {
+    semiempirical_nuclear_repulsion_energy(molecule)
+}
+
+pub fn semiempirical_nuclear_repulsion_energy(
+    molecule: &SemiempiricalMolecule,
+) -> Result<f64, SemiempiricalError> {
     let mut energy = 0.0;
     for left_index in 0..molecule.atoms.len() {
         for right_index in (left_index + 1)..molecule.atoms.len() {
             let left_atom = &molecule.atoms[left_index];
             let right_atom = &molecule.atoms[right_index];
-            let left = rm1_parameters(left_atom.atomic_number).unwrap();
-            let right = rm1_parameters(right_atom.atomic_number).unwrap();
+            let left = semiempirical_parameters(molecule.method, left_atom.atomic_number).unwrap();
+            let right = semiempirical_parameters(molecule.method, right_atom.atomic_number).unwrap();
             let displacement = [
                 left_atom.position_angstrom[0] - right_atom.position_angstrom[0],
                 left_atom.position_angstrom[1] - right_atom.position_angstrom[1],
@@ -256,6 +277,50 @@ pub fn rm1_nuclear_repulsion_energy(
             let valence_product =
                 f64::from(left.valence_electrons) * f64::from(right.valence_electrons);
 
+            let gaussian = |parameters: &SemiempiricalElementParameters| {
+                parameters
+                    .gaussian
+                    .iter()
+                    .map(|term| term[0] * (-term[1] * (distance - term[2]).powi(2)).exp())
+                    .sum::<f64>()
+            };
+            if matches!(
+                molecule.method,
+                SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6Sp | SemiempiricalMethod::Pm6D
+            ) {
+                let (chi, pair_alpha) = pm6_pwcct_parameters(
+                    left.atomic_number,
+                    right.atomic_number,
+                )
+                .ok_or_else(|| {
+                    SemiempiricalError::InvalidInput(format!(
+                        "PM6 PWCCT parameters are unavailable for atomic numbers {} and {}",
+                        left.atomic_number, right.atomic_number
+                    ))
+                })?;
+                let atomic_radius_sum = f64::from(left.atomic_number).cbrt()
+                    + f64::from(right.atomic_number).cbrt();
+                let unpolarized_core = 1.0e-8 * (atomic_radius_sum / distance).powi(12);
+                let special_xh = (matches!(left.atomic_number, 6..=8)
+                    && right.atomic_number == 1)
+                    || (matches!(right.atomic_number, 6..=8) && left.atomic_number == 1);
+                let decay_distance = if special_xh {
+                    distance.powi(2)
+                } else {
+                    distance + 0.0003 * distance.powi(6)
+                };
+                let mut pair_energy = unpolarized_core
+                    + valence_product
+                        * ssss
+                        * (1.0 + 2.0 * chi * (-pair_alpha * decay_distance).exp());
+                if left.atomic_number == 6 && right.atomic_number == 6 {
+                    pair_energy += valence_product * ssss * 9.28 * (-5.98 * distance).exp();
+                }
+                energy += pair_energy
+                    + valence_product / distance * (gaussian(left) + gaussian(right));
+                continue;
+            }
+
             let left_decay = (-left.alpha_angstrom_inv * distance).exp()
                 * if matches!(left.atomic_number, 7 | 8) && right.atomic_number == 1 {
                     distance
@@ -268,18 +333,28 @@ pub fn rm1_nuclear_repulsion_energy(
                 } else {
                     1.0
                 };
-            let gaussian = |parameters: &SemiempiricalElementParameters| {
-                parameters
-                    .gaussian
-                    .iter()
-                    .map(|term| term[0] * (-term[1] * (distance - term[2]).powi(2)).exp())
-                    .sum::<f64>()
-            };
             energy += valence_product * ssss * (1.0 + left_decay + right_decay)
                 + valence_product / distance * (gaussian(left) + gaussian(right));
         }
     }
     Ok(energy)
+}
+
+fn pm6_pwcct_parameters(left: u8, right: u8) -> Option<(f64, f64)> {
+    let pair = if left <= right { (left, right) } else { (right, left) };
+    Some(match pair {
+        (1, 1) => (2.24359, 3.54094),
+        (1, 6) => (0.21651, 1.02781),
+        (1, 7) => (0.17551, 0.96941),
+        (1, 8) => (0.19229, 1.26094),
+        (6, 6) => (0.81351, 2.61371),
+        (6, 7) => (0.85995, 2.68611),
+        (6, 8) => (0.99021, 2.88961),
+        (7, 7) => (0.67531, 2.5745),
+        (7, 8) => (0.76476, 2.78429),
+        (8, 8) => (0.535112, 2.623998),
+        _ => return None,
+    })
 }
 
 /// Runs a deterministic restricted, closed-shell SCF cycle.
