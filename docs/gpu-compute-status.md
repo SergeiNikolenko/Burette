@@ -393,9 +393,9 @@ notarization, or visual UI-triggered clustering evidence.
 After the cluster release gates are evidenced, implementation proceeds in the
 fixed order below:
 
-1. conformer EnginePack plus DG/KDG/ETDG/ETKDG variants and deterministic
-   `molecule x conformer` scheduling;
-2. MMFF94/MMFF94s parameter packs, all supported terms, gradients, and
+1. complete conformer scientific-corpus and packaged UI release gates for the
+   implemented Grid-to-Mol* native workflow;
+2. finish the staged MMFF94/MMFF94s parameter packs, all seven supported terms, gradients, and
    per-molecule BFGS/L-BFGS policy;
 3. quaternion/Horn alignment, RMSD, shape, electrostatic, ensemble, and docking
    pose scoring;
