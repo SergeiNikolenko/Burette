@@ -1,18 +1,19 @@
 use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
 use burrete_compute_core::{
-    align_and_score, build_tanimoto_graph, contract_rm1_pair_fock, evaluate_distance_constraints,
-    evaluate_etk_geometry, evaluate_mmff, initialize_conformer_positions,
-    optimize_distance_geometry, pm6_d3_dispersion_energy, pm6_h4_energy, pm6_hh_repulsion_energy,
-    pm6_one_center_d_fock, rm1_fock_pairs, score_tanimoto_query, symmetric_eigendecomposition,
-    validate_conformer_stereo, AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping,
-    ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
-    DistanceGeometryOptimizationStatus, EtkDistanceConstraint, EtkGeometryTerms,
-    EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048, GraphBuildOptions, MmffAngleTerm,
-    MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown, MmffOptimizerKind,
-    MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm, MmffVanDerWaalsTerm,
-    MmffVariant, RigidTransform, Rm1FockPair, SemiempiricalAtom, SemiempiricalMolecule,
-    SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint, FINGERPRINT_WORDS,
+    align_and_score, build_tanimoto_graph, contract_pm6_pair_fock, contract_rm1_pair_fock,
+    evaluate_distance_constraints, evaluate_etk_geometry, evaluate_mmff,
+    initialize_conformer_positions, optimize_distance_geometry, pm6_d3_dispersion_energy,
+    pm6_h4_energy, pm6_hh_repulsion_energy, pm6_one_center_d_fock, rm1_fock_pairs,
+    score_tanimoto_query, symmetric_eigendecomposition, validate_conformer_stereo, AlignmentAtom,
+    AlignmentMode, AlignmentScores, AtomMapping, ChiralVolumeConstraint, DistanceConstraint,
+    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
+    EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
+    GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown,
+    MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
+    MmffVanDerWaalsTerm, MmffVariant, Pm6FockPair, RigidTransform, Rm1FockPair, SemiempiricalAtom,
+    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    TetrahedralConstraint, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -149,6 +150,12 @@ pub struct MetalAlignmentExecution {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetalRm1FockContribution {
+    pub contribution_ev: Vec<f32>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalPm6PairFockContribution {
     pub contribution_ev: Vec<f32>,
     pub gpu_time_ms: u64,
 }
@@ -443,6 +450,46 @@ impl MetalComputeRuntime {
             ));
         }
         Ok(MetalRm1FockContribution {
+            contribution_ev: dispatch.contribution_ev,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
+    pub fn contract_pm6_pair_fock_profiled(
+        &self,
+        orbital_count: usize,
+        density: &[f64],
+        pairs: &[Pm6FockPair],
+        max_memory_bytes: u64,
+    ) -> Result<MetalPm6PairFockContribution, MetalRuntimeError> {
+        let expected = contract_pm6_pair_fock(orbital_count, density, pairs)
+            .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
+        let density_f32 = density
+            .iter()
+            .map(|value| *value as f32)
+            .collect::<Vec<_>>();
+        let dispatch = self.host.contract_pm6_pair_fock_profiled(
+            u32::try_from(orbital_count).map_err(|_| {
+                MetalRuntimeError::ResourceLimit("PM6 orbital count exceeds uint32".into())
+            })?,
+            &density_f32,
+            pairs,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if dispatch.contribution_ev.len() != expected.len()
+            || dispatch
+                .contribution_ev
+                .iter()
+                .zip(&expected)
+                .any(|(observed, expected)| {
+                    !observed.is_finite() || (*observed - *expected as f32).abs() > 5.0e-4
+                })
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal PM6 pair Fock contraction differs from the float64 CPU reference".into(),
+            ));
+        }
+        Ok(MetalPm6PairFockContribution {
             contribution_ev: dispatch.contribution_ev,
             gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
         })
@@ -1518,6 +1565,46 @@ impl MetalComputeRuntime {
         ) {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal startup RM1 pair Fock contraction differs from the CPU reference".into(),
+            ));
+        }
+        let pm6_pair = Pm6FockPair {
+            left_orbital_start: 0,
+            left_orbital_count: 9,
+            right_orbital_start: 9,
+            right_orbital_count: 1,
+            repulsion_ev: (0..81).map(|index| (index + 1) as f64 * 0.03125).collect(),
+            left_core_attraction_ev: vec![0.0; 81],
+            right_core_attraction_ev: vec![0.0],
+        };
+        let mut pm6_pair_density = vec![0.0; 100];
+        for orbital in 0..10 {
+            pm6_pair_density[orbital * 10 + orbital] = 0.5 + orbital as f64 * 0.1;
+        }
+        pm6_pair_density[2 * 10 + 9] = 0.2;
+        pm6_pair_density[9 * 10 + 2] = 0.2;
+        let expected_pm6_pair =
+            contract_pm6_pair_fock(10, &pm6_pair_density, std::slice::from_ref(&pm6_pair))
+                .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let observed_pm6_pair = self.host.contract_pm6_pair_fock_profiled(
+            10,
+            &pm6_pair_density
+                .iter()
+                .map(|value| *value as f32)
+                .collect::<Vec<_>>(),
+            &[pm6_pair],
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        if !float_slices_close(
+            &observed_pm6_pair.contribution_ev,
+            &expected_pm6_pair
+                .iter()
+                .map(|value| *value as f32)
+                .collect::<Vec<_>>(),
+            5.0e-5,
+        ) {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup PM6 variable-basis pair Fock contraction differs from the CPU reference"
+                    .into(),
             ));
         }
         let eigen_matrix = [-1.0, 0.2, 0.2, 0.5];

@@ -20,6 +20,7 @@ assert.match(workflow, /WorkflowTemplateId::SemiempiricalV1/);
 assert.match(workflow, /column\("TotalEnergyEv"\)/);
 assert.match(workflow, /column\("AtomicCharges"\)/);
 assert.match(workflow, /"PM6_SP"/);
+assert.match(workflow, /SemiempiricalMethod::Pm6, "PM6", "pm6"/);
 assert.match(workflow, /"AM1\*"/);
 assert.match(gridMessages, /invoke<GridSemiempiricalResult>\("compute_evaluate_grid_semiempirical"/);
 assert.match(gridMessages, /Metal SCF kernels/);
@@ -28,5 +29,6 @@ assert.match(gridViewer, /semiempiricalEnabled: caps\.cluster/);
 assert.match(gridViewer, /SEMIEMPIRICAL_METHOD_STORAGE_KEY/);
 assert.match(gridUi, /id="calculate-semiempirical-selected"/);
 assert.match(gridUi, /aria-label="Semi-empirical method"/);
+assert.match(gridUi, /<option value="PM6">PM6<\/option>/);
 
 console.log("semi-empirical Grid workflow contract tests passed");

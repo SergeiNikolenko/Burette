@@ -14,7 +14,7 @@
   const SEMIEMPIRICAL_METHOD_STORAGE_KEY = 'buret.grid.semiempiricalMethod';
   const CONFORMER_VARIANTS = ['DG', 'KDG', 'ETDG', 'ETDGv2', 'ETKDG', 'ETKDGv2', 'ETKDGv3', 'srETKDGv3'];
   const MMFF_VARIANTS = ['MMFF94', 'MMFF94s'];
-  const SEMIEMPIRICAL_METHODS = ['RM1', 'AM1', 'PM3', 'PM6_SP', 'AM1_STAR'];
+  const SEMIEMPIRICAL_METHODS = ['RM1', 'AM1', 'PM3', 'PM6', 'PM6_SP', 'AM1_STAR'];
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
     { value: 'flat', label: 'Flat' },

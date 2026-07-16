@@ -5,8 +5,9 @@ use burrete_compute_core::{
     validate_etk_geometry_constraints, validate_mmff_parameters, validate_stereo_constraints,
     AlignmentMode, ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
-    Fingerprint2048, GraphBuildOptions, MmffParameters, Rm1FockPair, SemiempiricalMolecule,
-    SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
+    Fingerprint2048, GraphBuildOptions, MmffParameters, Pm6FockPair, Rm1FockPair,
+    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use metal::{
@@ -20,8 +21,9 @@ use objc::{runtime::Sel, Message};
 use crate::platform::{
     MetalAlignmentDispatch, MetalDistanceDispatch, MetalDistanceOptimizationDispatch,
     MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch, MetalPm6D3Dispatch,
-    MetalPm6H4HhDispatch, MetalPm6OneCenterFockDispatch, MetalRm1FockDispatch,
-    MetalRm1PairRotationDispatch, MetalStereoValidationDispatch, MetalSymmetricEigenDispatch,
+    MetalPm6H4HhDispatch, MetalPm6OneCenterFockDispatch, MetalPm6PairFockDispatch,
+    MetalRm1FockDispatch, MetalRm1PairRotationDispatch, MetalStereoValidationDispatch,
+    MetalSymmetricEigenDispatch,
 };
 use crate::runtime::{MetalAlignmentBatch, MetalPm6CorrectionBatch, MetalPm6OneCenterFockBatch};
 use crate::MetalRuntimeError;
@@ -202,6 +204,8 @@ struct Rm1FockPairV1 {
     reserved: u32,
 }
 
+type Pm6FockPairV1 = Rm1FockPairV1;
+
 #[repr(C, align(16))]
 #[derive(Clone, Copy)]
 struct Rm1PairRotationV1 {
@@ -250,6 +254,7 @@ pub(crate) struct MetalHost {
     mmff_optimize_pipeline: ComputePipelineState,
     alignment_score_pipeline: ComputePipelineState,
     rm1_fock_pipeline: ComputePipelineState,
+    pm6_pair_fock_pipeline: ComputePipelineState,
     rm1_eigen_pipeline: ComputePipelineState,
     rm1_pair_rotate_pipeline: ComputePipelineState,
     pm6_h4_hh_pipeline: ComputePipelineState,
@@ -303,6 +308,7 @@ impl MetalHost {
         let mmff_optimize_pipeline = pipeline(&device, library, "burrete_mmff_optimize_v1")?;
         let alignment_score_pipeline = pipeline(&device, library, "burrete_alignment_score_v1")?;
         let rm1_fock_pipeline = pipeline(&device, library, "burrete_rm1_pair_fock_v1")?;
+        let pm6_pair_fock_pipeline = pipeline(&device, library, "burrete_pm6_pair_fock_v1")?;
         let rm1_eigen_pipeline = pipeline(&device, library, "burrete_rm1_symmetric_eigen_v1")?;
         let rm1_pair_rotate_pipeline = pipeline(&device, library, "burrete_rm1_pair_rotate_v1")?;
         let pm6_h4_hh_pipeline = pipeline(&device, library, "burrete_pm6_h4_hh_v1")?;
@@ -326,6 +332,7 @@ impl MetalHost {
             mmff_optimize_pipeline,
             alignment_score_pipeline,
             rm1_fock_pipeline,
+            pm6_pair_fock_pipeline,
             rm1_eigen_pipeline,
             rm1_pair_rotate_pipeline,
             pm6_h4_hh_pipeline,
@@ -1917,6 +1924,137 @@ impl MetalHost {
         })?;
         Ok(MetalRm1FockDispatch {
             contribution_ev: read_buffer(&output_buffer, matrix_len, "RM1 Fock contribution")?,
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
+    pub(crate) fn contract_pm6_pair_fock_profiled(
+        &self,
+        orbital_count: u32,
+        density: &[f32],
+        pairs: &[Pm6FockPair],
+        max_memory_bytes: u64,
+    ) -> Result<MetalPm6PairFockDispatch, MetalRuntimeError> {
+        let matrix_len = usize::try_from(orbital_count)
+            .ok()
+            .and_then(|count| count.checked_mul(count))
+            .ok_or_else(memory_overflow)?;
+        if orbital_count == 0
+            || orbital_count > 256
+            || density.len() != matrix_len
+            || density.iter().any(|value| !value.is_finite())
+        {
+            return resource_limit(
+                "PM6 Fock contraction requires a finite square density matrix through 256 orbitals",
+            );
+        }
+        let mut descriptors = Vec::with_capacity(pairs.len().max(1));
+        let mut repulsion = Vec::new();
+        for (pair_index, pair) in pairs.iter().enumerate() {
+            let expected = pair
+                .left_orbital_count
+                .checked_mul(pair.left_orbital_count)
+                .and_then(|value| value.checked_mul(pair.right_orbital_count))
+                .and_then(|value| value.checked_mul(pair.right_orbital_count));
+            if expected != Some(pair.repulsion_ev.len())
+                || !matches!(pair.left_orbital_count, 1 | 4 | 9)
+                || !matches!(pair.right_orbital_count, 1 | 4 | 9)
+                || pair.left_orbital_start + pair.left_orbital_count > orbital_count as usize
+                || pair.right_orbital_start + pair.right_orbital_count > orbital_count as usize
+                || pair.repulsion_ev.iter().any(|value| !value.is_finite())
+            {
+                return resource_limit(format!(
+                    "PM6 Fock pair {pair_index} has an invalid orbital span or tensor"
+                ));
+            }
+            descriptors.push(Pm6FockPairV1 {
+                left_start: u32::try_from(pair.left_orbital_start)
+                    .map_err(|_| memory_overflow())?,
+                left_count: pair.left_orbital_count as u32,
+                right_start: u32::try_from(pair.right_orbital_start)
+                    .map_err(|_| memory_overflow())?,
+                right_count: pair.right_orbital_count as u32,
+                tensor_start: u32::try_from(repulsion.len()).map_err(|_| memory_overflow())?,
+                reserved: 0,
+            });
+            repulsion.extend(pair.repulsion_ev.iter().map(|value| *value as f32));
+        }
+        let pair_count = u32::try_from(pairs.len()).map_err(|_| memory_overflow())?;
+        if descriptors.is_empty() {
+            descriptors.push(Pm6FockPairV1 {
+                left_start: 0,
+                left_count: 1,
+                right_start: 0,
+                right_count: 1,
+                tensor_start: 0,
+                reserved: 0,
+            });
+            repulsion.push(0.0);
+        }
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(
+                (matrix_len as u64)
+                    .checked_mul(12)
+                    .ok_or_else(memory_overflow)?,
+            )
+            .and_then(|bytes| bytes.checked_add((descriptors.len() as u64).checked_mul(24)?))
+            .and_then(|bytes| bytes.checked_add((repulsion.len() as u64).checked_mul(4)?))
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "PM6 Fock contraction requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+        let density_buffer = buffer_with_slice(&self.device, density);
+        let pair_buffer = buffer_with_slice(&self.device, &descriptors);
+        let repulsion_buffer = buffer_with_slice(&self.device, &repulsion);
+        let output_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; matrix_len]);
+        let thread_width = self.pm6_pair_fock_pipeline.thread_execution_width().min(
+            self.pm6_pair_fock_pipeline
+                .max_total_threads_per_threadgroup(),
+        );
+        if thread_width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal PM6 Fock pipeline advertises zero thread width".into(),
+            ));
+        }
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.pm6_pair_fock_pipeline);
+            encoder.set_buffer(0, Some(&density_buffer), 0);
+            encoder.set_buffer(1, Some(&pair_buffer), 0);
+            encoder.set_buffer(2, Some(&repulsion_buffer), 0);
+            encoder.set_bytes(
+                3,
+                size_of_val(&orbital_count) as u64,
+                (&orbital_count as *const u32).cast(),
+            );
+            encoder.set_bytes(
+                4,
+                size_of_val(&pair_count) as u64,
+                (&pair_count as *const u32).cast(),
+            );
+            encoder.set_buffer(5, Some(&output_buffer), 0);
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: matrix_len as u64,
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: thread_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        Ok(MetalPm6PairFockDispatch {
+            contribution_ev: read_buffer(&output_buffer, matrix_len, "PM6 Fock contribution")?,
             gpu_time_seconds: gpu_time,
         })
     }

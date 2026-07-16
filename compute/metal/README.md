@@ -62,6 +62,12 @@ elements and writes its symmetric pair without atomics. The integer map is
 generated from the pinned upstream/PYSEQM reference; every output element must
 pass the native float64 CPU contraction before the block is admitted.
 
+`pm6-pair-fock.v1.metal` contracts complete variable-basis PM6 pair tensors
+for 1-, 4-, and 9-orbital atoms. Descriptors carry the exact tensor stride, so
+unequal 9x1 and 9x4 pairs never use the fixed RM1 4x4 layout. One thread owns
+one molecular Fock element, accumulation order is deterministic, and every
+dispatch is compared elementwise with the float64 CPU contraction.
+
 The canonical EnginePack row is little-endian `u64[32]`. Metal reads the same
 256 bytes as `uint32[64]`, low 32 bits then high 32 bits for each canonical
 word. This is a byte-identical view on supported little-endian Apple Silicon;
