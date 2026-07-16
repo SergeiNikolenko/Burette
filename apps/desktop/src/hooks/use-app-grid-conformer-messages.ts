@@ -44,7 +44,7 @@ type GridAlignmentResult = {
 
 type GridSemiempiricalResult = {
   runId: string;
-  method: "RM1" | "AM1" | "PM3" | "PM6_SP" | "AM1*";
+  method: "RM1" | "AM1" | "PM3" | "PM6" | "PM6_SP" | "AM1*";
   rows: Array<{
     sourceIndex: number;
     name: string;
@@ -79,7 +79,7 @@ export function useAppGridConformerMessages({
   const handleGridConformerMessage = useCallback((body: GridConformerMessageBody, source: MessageEventSource | null) => {
     if (body?.type === "evaluateSemiempiricalGridSelection") {
       const documentId = bodyString(body.documentId).trim();
-      const supportedMethods = ["RM1", "AM1", "PM3", "PM6_SP", "AM1_STAR"] as const;
+      const supportedMethods = ["RM1", "AM1", "PM3", "PM6", "PM6_SP", "AM1_STAR"] as const;
       const requestedMethod = bodyString(body.method).trim().toUpperCase();
       const method = supportedMethods.find((candidate) => candidate === requestedMethod);
       const sourceIndexes = Array.isArray(body.sourceIndexes)

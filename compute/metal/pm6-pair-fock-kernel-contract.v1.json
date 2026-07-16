@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "kernel": "burrete_pm6_pair_fock_v1",
+  "source": "pm6-pair-fock.v1.metal",
+  "dispatch": {
+    "threads": "orbitalCount * orbitalCount",
+    "ownership": "one thread owns one Fock matrix element",
+    "materialization": "one matrix per molecule; no molecule-pair matrix"
+  },
+  "pairDescriptor": {
+    "name": "Pm6FockPairV1",
+    "byteLength": 24,
+    "alignmentBytes": 4,
+    "maximumOrbitalsPerAtom": 9,
+    "tensorElements": "leftCount^2 * rightCount^2",
+    "reservedMustBeZero": true
+  },
+  "buffers": [
+    { "index": 0, "name": "density", "type": "float[orbitalCount^2]", "access": "read" },
+    { "index": 1, "name": "pairs", "type": "Pm6FockPairV1[pairCount]", "access": "read" },
+    { "index": 2, "name": "repulsion", "type": "float[sum(pair tensorElements)]", "access": "read" },
+    { "index": 3, "name": "orbitalCount", "type": "uint", "access": "constant" },
+    { "index": 4, "name": "pairCount", "type": "uint", "access": "constant" },
+    { "index": 5, "name": "contribution", "type": "float[orbitalCount^2]", "access": "write" }
+  ],
+  "numerics": {
+    "model": "PM6 variable-basis NDDO two-center Coulomb and exchange contraction",
+    "precision": "float32 Metal, compared elementwise with float64 CPU reference",
+    "accumulation": "deterministic pair and local-orbital order per output element"
+  }
+}

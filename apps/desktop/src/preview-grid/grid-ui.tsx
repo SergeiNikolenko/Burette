@@ -12,7 +12,7 @@ type XyzrenderPresetOption = {
   label: string;
 };
 
-type SemiempiricalMethod = "RM1" | "AM1" | "PM3" | "PM6_SP" | "AM1_STAR";
+type SemiempiricalMethod = "RM1" | "AM1" | "PM3" | "PM6" | "PM6_SP" | "AM1_STAR";
 
 type GridControlProps = {
   format: "csv" | "sdf" | "smiles" | "tsv";
@@ -347,6 +347,7 @@ function SelectedOpenActions(props: GridControlProps) {
             <option value="RM1">RM1</option>
             <option value="AM1">AM1</option>
             <option value="PM3">PM3</option>
+            <option value="PM6">PM6</option>
             <option value="PM6_SP">PM6_SP</option>
             <option value="AM1_STAR">AM1*</option>
           </select>

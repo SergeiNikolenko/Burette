@@ -5,11 +5,11 @@ use std::{
 };
 
 use burrete_compute_core::{
-    evaluate_rm1_with_prepared_pairs_and_accelerators, evaluate_semiempirical,
-    symmetric_eigendecomposition, SemiempiricalAtom, SemiempiricalError, SemiempiricalMethod,
-    SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfStatus,
+    evaluate_pm6_with_accelerators, evaluate_rm1_with_prepared_pairs_and_accelerators,
+    evaluate_semiempirical, symmetric_eigendecomposition, SemiempiricalAtom, SemiempiricalError,
+    SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfStatus,
 };
-use burrete_compute_metal::MetalTanimotoRuntime;
+use burrete_compute_metal::{MetalPm6OneCenterFockBatch, MetalTanimotoRuntime};
 use burrete_compute_protocol::{CapabilityMaturity, RepresentativePolicy, WorkflowTemplateId};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -43,20 +43,20 @@ struct GridSemiempiricalMethod {
 impl GridSemiempiricalMethod {
     fn parse(value: &str) -> ComputeResult<Self> {
         let normalized = value.trim().to_ascii_lowercase().replace(['-', '*'], "_");
-        let method =
-            match normalized.as_str() {
-                "rm1" => Self::new(SemiempiricalMethod::Rm1, "RM1", "rm1"),
-                "am1" => Self::new(SemiempiricalMethod::Am1, "AM1", "am1"),
-                "pm3" => Self::new(SemiempiricalMethod::Pm3, "PM3", "pm3"),
-                "pm6_sp" | "pm6sp" => Self::new(SemiempiricalMethod::Pm6Sp, "PM6_SP", "pm6Sp"),
-                "am1_star" | "am1star" | "am1_" => {
-                    Self::new(SemiempiricalMethod::Am1Star, "AM1*", "am1Star")
-                }
-                _ => return Err(ComputeCoordinatorError::Validation(
-                    "Supported native semi-empirical methods are RM1, AM1, PM3, PM6_SP, and AM1*"
-                        .into(),
-                )),
-            };
+        let method = match normalized.as_str() {
+            "rm1" => Self::new(SemiempiricalMethod::Rm1, "RM1", "rm1"),
+            "am1" => Self::new(SemiempiricalMethod::Am1, "AM1", "am1"),
+            "pm3" => Self::new(SemiempiricalMethod::Pm3, "PM3", "pm3"),
+            "pm6" => Self::new(SemiempiricalMethod::Pm6, "PM6", "pm6"),
+            "pm6_sp" | "pm6sp" => Self::new(SemiempiricalMethod::Pm6Sp, "PM6_SP", "pm6Sp"),
+            "am1_star" | "am1star" | "am1_" => {
+                Self::new(SemiempiricalMethod::Am1Star, "AM1*", "am1Star")
+            }
+            _ => return Err(ComputeCoordinatorError::Validation(
+                "Supported native semi-empirical methods are RM1, AM1, PM3, PM6, PM6_SP, and AM1*"
+                    .into(),
+            )),
+        };
         Ok(method)
     }
 
@@ -239,58 +239,96 @@ fn evaluate_row_inner(
     let previous_fock = RefCell::new(None::<Vec<f64>>);
     let cpu_polishing = Cell::new(false);
     let evaluation = if let Some(runtime) = runtime {
-        let prepared = runtime
-            .prepare_rm1_pairs_profiled(&molecule, DEFAULT_MAX_MEMORY_BYTES)
-            .map_err(|error| error.to_string())?;
-        gpu_time_ms.set(gpu_time_ms.get() + prepared.gpu_time_ms);
-        evaluate_rm1_with_prepared_pairs_and_accelerators(
-            &molecule,
-            SemiempiricalScfOptions::default(),
-            &prepared.pairs,
-            |orbital_count, density, pairs| {
-                let dispatch = runtime
-                    .contract_rm1_pair_fock_profiled(
-                        orbital_count,
-                        density,
-                        pairs,
-                        DEFAULT_MAX_MEMORY_BYTES,
-                    )
-                    .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
-                gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
-                Ok(dispatch
-                    .contribution_ev
-                    .into_iter()
-                    .map(f64::from)
-                    .collect())
-            },
-            |matrix, order| {
-                if order > 32 {
-                    return symmetric_eigendecomposition(matrix, order);
-                }
-                let fock_change = previous_fock
-                    .borrow()
-                    .as_ref()
-                    .map(|previous| {
-                        matrix
-                            .iter()
-                            .zip(previous)
-                            .map(|(current, previous)| (current - previous).abs())
-                            .fold(0.0_f64, f64::max)
-                    })
-                    .unwrap_or(f64::INFINITY);
-                previous_fock.replace(Some(matrix.to_vec()));
-                if cpu_polishing.get() || fock_change <= 1.0e-5 || gpu_eigensolves.get() >= 32 {
-                    cpu_polishing.set(true);
-                    return symmetric_eigendecomposition(matrix, order);
-                }
-                let dispatch = runtime
-                    .symmetric_eigen_profiled(matrix, order, DEFAULT_MAX_MEMORY_BYTES)
-                    .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
-                gpu_eigensolves.set(gpu_eigensolves.get() + 1);
-                gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
-                Ok((dispatch.eigenvalues, dispatch.eigenvectors))
-            },
-        )
+        let diagonalize = |matrix: &[f64], order: usize| {
+            if order > 32 {
+                return symmetric_eigendecomposition(matrix, order);
+            }
+            let fock_change = previous_fock
+                .borrow()
+                .as_ref()
+                .map(|previous| {
+                    matrix
+                        .iter()
+                        .zip(previous)
+                        .map(|(current, previous)| (current - previous).abs())
+                        .fold(0.0_f64, f64::max)
+                })
+                .unwrap_or(f64::INFINITY);
+            previous_fock.replace(Some(matrix.to_vec()));
+            if cpu_polishing.get() || fock_change <= 1.0e-5 || gpu_eigensolves.get() >= 32 {
+                cpu_polishing.set(true);
+                return symmetric_eigendecomposition(matrix, order);
+            }
+            let dispatch = runtime
+                .symmetric_eigen_profiled(matrix, order, DEFAULT_MAX_MEMORY_BYTES)
+                .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
+            gpu_eigensolves.set(gpu_eigensolves.get() + 1);
+            gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
+            Ok((dispatch.eigenvalues, dispatch.eigenvectors))
+        };
+        if method.method == SemiempiricalMethod::Pm6 {
+            evaluate_pm6_with_accelerators(
+                &molecule,
+                SemiempiricalScfOptions::default(),
+                |orbital_count, density, pairs| {
+                    let dispatch = runtime
+                        .contract_pm6_pair_fock_profiled(
+                            orbital_count,
+                            density,
+                            pairs,
+                            DEFAULT_MAX_MEMORY_BYTES,
+                        )
+                        .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
+                    gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
+                    Ok(dispatch
+                        .contribution_ev
+                        .into_iter()
+                        .map(f64::from)
+                        .collect())
+                },
+                |density, w_integrals| {
+                    let dispatch = runtime
+                        .evaluate_pm6_one_center_fock_profiled(
+                            MetalPm6OneCenterFockBatch {
+                                densities: std::slice::from_ref(density),
+                                w_integrals: std::slice::from_ref(w_integrals),
+                            },
+                            DEFAULT_MAX_MEMORY_BYTES,
+                        )
+                        .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
+                    gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
+                    Ok(dispatch.contributions_ev[0])
+                },
+                diagonalize,
+            )
+        } else {
+            let prepared = runtime
+                .prepare_rm1_pairs_profiled(&molecule, DEFAULT_MAX_MEMORY_BYTES)
+                .map_err(|error| error.to_string())?;
+            gpu_time_ms.set(gpu_time_ms.get() + prepared.gpu_time_ms);
+            evaluate_rm1_with_prepared_pairs_and_accelerators(
+                &molecule,
+                SemiempiricalScfOptions::default(),
+                &prepared.pairs,
+                |orbital_count, density, pairs| {
+                    let dispatch = runtime
+                        .contract_rm1_pair_fock_profiled(
+                            orbital_count,
+                            density,
+                            pairs,
+                            DEFAULT_MAX_MEMORY_BYTES,
+                        )
+                        .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
+                    gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
+                    Ok(dispatch
+                        .contribution_ev
+                        .into_iter()
+                        .map(f64::from)
+                        .collect())
+                },
+                diagonalize,
+            )
+        }
     } else {
         evaluate_semiempirical(&molecule, SemiempiricalScfOptions::default())
     }
@@ -495,7 +533,7 @@ mod tests {
     #[test]
     fn evaluates_explicit_water_from_a_grid_molfile() {
         let row = water_row();
-        for method in ["RM1", "AM1", "PM3", "PM6_SP", "AM1*"] {
+        for method in ["RM1", "AM1", "PM3", "PM6", "PM6_SP", "AM1*"] {
             let method = GridSemiempiricalMethod::parse(method).unwrap();
             let (result, gpu_time_ms) =
                 evaluate_row_inner(&row, method, None).expect("evaluate water");
@@ -514,7 +552,7 @@ mod tests {
             .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged runtime");
         let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
             .expect("load verified Metal runtime");
-        for method in ["RM1", "AM1", "PM3", "PM6_SP", "AM1*"] {
+        for method in ["RM1", "AM1", "PM3", "PM6", "PM6_SP", "AM1*"] {
             let method = GridSemiempiricalMethod::parse(method).unwrap();
             let (result, gpu_time_ms) = evaluate_row_inner(&water_row(), method, Some(&runtime))
                 .expect("evaluate water on Metal");
@@ -522,6 +560,13 @@ mod tests {
             assert!(gpu_time_ms > 0);
             assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-6);
         }
+        let method = GridSemiempiricalMethod::parse("PM6").unwrap();
+        let (result, gpu_time_ms) =
+            evaluate_row_inner(&hydrogen_sulfide_row(), method, Some(&runtime))
+                .expect("evaluate full-d hydrogen sulfide on Metal");
+        assert!(result.converged);
+        assert!(gpu_time_ms > 0);
+        assert!((result.total_energy_ev.unwrap() + 201.594_055_355_398_38).abs() < 3.0e-4);
     }
 
     fn water_row() -> GridAlignmentSourceRow {
@@ -532,6 +577,19 @@ mod tests {
             name: "water".into(),
             molblock: Some(
                 "water\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9584    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2396    0.9275    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END"
+                    .into(),
+            ),
+        }
+    }
+
+    fn hydrogen_sulfide_row() -> GridAlignmentSourceRow {
+        GridAlignmentSourceRow {
+            row_id: 2,
+            source_index: 1,
+            molecule_content_sha256: "1".repeat(64),
+            name: "hydrogen sulfide".into(),
+            molblock: Some(
+                "hydrogen sulfide\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 S   0  0  0  0  0  0  0  0  0  0  0  0\n    1.3360    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.4450    1.2600    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END"
                     .into(),
             ),
         }

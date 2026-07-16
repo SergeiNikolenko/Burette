@@ -1,16 +1,18 @@
 use burrete_compute_core::{
     ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
-    Fingerprint2048, GraphBuildOptions, MmffParameters, Rm1FockPair, SemiempiricalMolecule,
-    SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
+    Fingerprint2048, GraphBuildOptions, MmffParameters, Pm6FockPair, Rm1FockPair,
+    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 
 use crate::platform::{
     MetalAlignmentDispatch, MetalDistanceDispatch, MetalDistanceOptimizationDispatch,
     MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch, MetalPm6D3Dispatch,
-    MetalPm6H4HhDispatch, MetalPm6OneCenterFockDispatch, MetalRm1FockDispatch,
-    MetalRm1PairRotationDispatch, MetalStereoValidationDispatch, MetalSymmetricEigenDispatch,
+    MetalPm6H4HhDispatch, MetalPm6OneCenterFockDispatch, MetalPm6PairFockDispatch,
+    MetalRm1FockDispatch, MetalRm1PairRotationDispatch, MetalStereoValidationDispatch,
+    MetalSymmetricEigenDispatch,
 };
 use crate::runtime::{MetalAlignmentBatch, MetalPm6CorrectionBatch, MetalPm6OneCenterFockBatch};
 use crate::MetalRuntimeError;
@@ -171,6 +173,18 @@ impl MetalHost {
         _pairs: &[Rm1FockPair],
         _max_memory_bytes: u64,
     ) -> Result<MetalRm1FockDispatch, MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn contract_pm6_pair_fock_profiled(
+        &self,
+        _orbital_count: u32,
+        _density: &[f32],
+        _pairs: &[Pm6FockPair],
+        _max_memory_bytes: u64,
+    ) -> Result<MetalPm6PairFockDispatch, MetalRuntimeError> {
         Err(MetalRuntimeError::UnsupportedPlatform(
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))

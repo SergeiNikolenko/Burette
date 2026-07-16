@@ -53,6 +53,11 @@ pub(crate) struct MetalRm1FockDispatch {
     pub(crate) gpu_time_seconds: f64,
 }
 
+pub(crate) struct MetalPm6PairFockDispatch {
+    pub(crate) contribution_ev: Vec<f32>,
+    pub(crate) gpu_time_seconds: f64,
+}
+
 pub(crate) struct MetalSymmetricEigenDispatch {
     pub(crate) eigenvalues: Vec<f32>,
     pub(crate) eigenvectors: Vec<f32>,

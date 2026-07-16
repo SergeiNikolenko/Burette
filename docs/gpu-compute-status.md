@@ -425,12 +425,13 @@ separate product increments.
   report electrostatic similarity as unavailable rather than inventing a GPU
   result.
 - The desktop Grid now also exposes a persistent method selector and native
-  `energy & charges` action for RM1 plus parity-gated CHNO slices of AM1, PM3,
-  PM6_SP, and AM1* over 1--256 selected molecules with explicit coordinates.
+  `energy & charges` action for RM1, full variable-basis PM6, and
+  parity-gated CHNO slices of AM1, PM3, PM6_SP, and AM1* over 1--256 selected
+  molecules with explicit coordinates.
   Each method writes to its own Grid columns so runs do not overwrite another
   method's electronic, nuclear, and total energies, SCF status/iterations, or
   JSON atomic charges. The frozen Grid lease is parsed without Python/MLX.
-  Runtime v17 contracts the dominant
+  Runtime v18 contracts the dominant
   two-center Coulomb/exchange Fock contribution on Metal for every SCF
   iteration and diagonalizes matrices through order 32 with a batched Metal
   Jacobi kernel. It also generates all compact H-H, heavy-H, and 22-term
@@ -441,7 +442,7 @@ separate product increments.
   reports `nativeMetalScfHybrid` only after at least one verified GPU dispatch.
   SCF orchestration and adaptive float64 polishing remain CPU. Unavailable
   Metal or all-invalid input remains `nativeCpuReference`.
-- The verified v17 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
+- The verified v18 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
   Fock-matrix element and accumulates pair tensors in deterministic order with
   no atomics. It adds `burrete_rm1_symmetric_eigen_v1`, with one threadgroup per
   admitted matrix. It adds `burrete_rm1_pair_rotate_v1`, with one thread per
@@ -450,12 +451,14 @@ separate product increments.
   with one independent molecule per GPU thread and mandatory float64 parity
   for all three output terms. Runtime v17 also adds the 45-thread-per-block
   `burrete_pm6_one_center_fock_v1` kernel with mandatory full-matrix CPU
-  parity. The package binds fifteen sources, fifteen contracts, fifteen AIR
-  files, and nineteen entrypoints. Startup, one-center PM6 Fock,
-  two-molecule D3/H4/HH, and end-to-end explicit-water KATs passed on
+  parity. Runtime v18 adds `burrete_pm6_pair_fock_v1` for exact 1/4/9-orbital
+  tensor strides and full variable-basis SCF. The package binds sixteen
+  sources, sixteen contracts, sixteen AIR files, and twenty entrypoints.
+  Startup, one- and two-center PM6 Fock, two-molecule D3/H4/HH,
+  explicit-water, and full-d H2S Grid KATs passed on
   `Apple M2 Pro` (`registryId=0x1000003c0`, unified memory); the tested
-  `native-compute.v17.metallib` SHA-256 is
-  `973758404696232805913101f15f422b45556be558dfae3dc3298eb3eb47c7f6`.
+  `native-compute.v18.metallib` SHA-256 is
+  `1cacd20e1c4dd95e93c7b3222b4ac993bd64d50ccfe2d3561a1cbf95f91607f7`.
 - The native closed-shell NDDO oracle now has separate AM1, PM3, PM6_SP, and
   AM1* CHNO parameter packs instead of method aliases. PM6-family nuclear
   repulsion uses its distinct PWCCT equation. The complete pinned 83x83 CSV is
@@ -464,7 +467,7 @@ separate product increments.
   pinned mlxmolkit commit, explicit-water total energies and oxygen charges
   match all four upstream method paths within `1e-4 eV` and `1e-5 e`.
   This is an experimental organic-domain slice only. Grid method selection is
-  implemented for the five parity-gated methods, H4/HH have CPU and Metal
+  implemented for the six parity-gated methods, H4/HH have CPU and Metal
   reference paths, and CHNO D3 has compact native CPU and Metal tables. The
   complete pinned 40-element PM6 parameter domain is compiled into a typed
   native table, including 18 d-basis elements and all tail/Slater-Condon
@@ -501,8 +504,10 @@ separate product increments.
   Full variable-basis CPU SCF assembly now combines neutral-atom initialization,
   adaptive damping/DIIS, sp+d overlap, one- and two-center Fock terms, and the
   complete PWCCT nuclear energy. H2S electronic/nuclear energies and all atomic
-  charges match the pinned PM6_D oracle. Metal W/SCF generation, broader D3
-  tables, and production PM6-D3H4 composition remain gated.
+  charges match the pinned PM6_D oracle. Metal one- and two-center contraction
+  plus the bounded eigensolver now run the same full-d H2S Grid path on M2 Pro
+  with per-dispatch CPU parity. Broader D3 tables and production PM6-D3H4
+  composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
@@ -544,10 +549,10 @@ fixed order below:
    non-identity atom maps, durable ResultPack/report publication, and packaged
    UI evidence for the implemented Grid/Mol* pose workflow;
 4. extend the parity-gated CHNO AM1, PM3, PM6_SP, and AM1* Grid paths to their
-   documented element domains, then implement PM6/PM6_D, d orbitals, D3, H4,
-   and HH corrections behind independent known-answer and external parity
-   gates. The bounded H4 and HH float64 reference terms are implemented and
-   pinned and batched on Metal together with the CHNO D3 slice; full D3 tables
-   and production PM6-D3H4 SCF composition are the next correction-layer gates;
+   documented element domains. Full variable-basis PM6 and d-orbital SCF are
+   implemented on CPU and Metal; PM6_D exposure remains gated on full D3
+   tables and production D3/H4/HH composition. The bounded H4 and HH float64
+   reference terms are pinned and batched on Metal together with the CHNO D3
+   slice;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.
