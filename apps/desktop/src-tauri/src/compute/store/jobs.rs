@@ -328,7 +328,7 @@ pub(super) fn replace_child_rows(
     Ok(())
 }
 
-fn load_snapshot(
+pub(super) fn load_snapshot(
     transaction: &Transaction<'_>,
     owner_principal: &str,
     job_id: Uuid,
@@ -412,7 +412,7 @@ fn resolve_existing_prepared_job(
     Ok(Some(event))
 }
 
-fn load_revision(
+pub(super) fn load_revision(
     transaction: &Transaction<'_>,
     owner_principal: &str,
     job_id: Uuid,

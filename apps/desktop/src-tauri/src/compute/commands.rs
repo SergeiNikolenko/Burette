@@ -7,8 +7,11 @@ use tauri::{Runtime, State, WebviewWindow};
 use uuid::Uuid;
 
 use crate::compute::{
+    artifact_publisher::ClusterPublicationStep,
+    cluster_executor::ClusterExecutionStep,
     coordinator::ComputeCoordinator,
     error::{ComputeCoordinatorError, ComputeResult},
+    fingerprint_session::{FingerprintChunkResult, FingerprintExecutionStep},
     store::validate_owner_window_label,
 };
 use crate::{preview::grid_store::GridRuntimeRegistry, windows::runtime_document_id};
@@ -81,6 +84,76 @@ pub(crate) async fn compute_get_job<R: Runtime>(
     let job_id = parse_uuid("job ID", &job_id)?;
     let coordinator = coordinator.inner().clone();
     run_blocking(move || coordinator.get_job(&owner, job_id)).await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_begin_cluster_execution<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    registry: State<'_, GridRuntimeRegistry>,
+    job_id: String,
+    expected_revision: u64,
+) -> Result<FingerprintExecutionStep, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let job_id = parse_uuid("job ID", &job_id)?;
+    validate_revision(expected_revision)?;
+    let coordinator = coordinator.inner().clone();
+    let job = {
+        let coordinator = coordinator.clone();
+        let owner = owner.clone();
+        run_blocking(move || coordinator.get_job(&owner, job_id)).await?
+    };
+    let namespaced_document_id = runtime_document_id(&owner, &job.request.source.document_id);
+    let source_lease = registry
+        .acquire_snapshot_lease(&namespaced_document_id)
+        .map_err(|error| {
+            ComputeCommandError::from(ComputeCoordinatorError::SourceSnapshotUnavailable(format!(
+                "The queued Grid source is no longer available for result writeback: {error}"
+            )))
+        })?;
+    run_blocking(move || {
+        coordinator.begin_cluster_v1_execution(&owner, job_id, expected_revision, source_lease)
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_submit_fingerprint_chunk<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    result: FingerprintChunkResult,
+) -> Result<FingerprintExecutionStep, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || coordinator.submit_fingerprint_chunk(&owner, result)).await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_execute_cluster<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    job_id: String,
+    expected_revision: u64,
+) -> Result<ClusterExecutionStep, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let job_id = parse_uuid("job ID", &job_id)?;
+    validate_revision(expected_revision)?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || coordinator.execute_cluster_v1(&owner, job_id, expected_revision)).await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_publish_cluster<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    job_id: String,
+    expected_revision: u64,
+) -> Result<ClusterPublicationStep, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let job_id = parse_uuid("job ID", &job_id)?;
+    validate_revision(expected_revision)?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || coordinator.publish_cluster_v1(&owner, job_id, expected_revision)).await
 }
 
 #[tauri::command]

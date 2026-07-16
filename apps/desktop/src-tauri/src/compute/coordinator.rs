@@ -1,32 +1,55 @@
 use std::{
+    collections::BTreeMap,
     fs::File,
     io::Read,
     path::PathBuf,
     process::Command,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    sync::{Arc, Mutex},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
+use burrete_compute_core::{build_tanimoto_graph, SymmetricCsr};
 use burrete_compute_metal::{MetalRuntimeError, MetalTanimotoRuntime};
 use burrete_compute_protocol::{
     Backend, BackendPolicy, CapabilityEntry, CapabilityLimits, CapabilityMaturity,
     CapabilityReason, CapabilityReasonCode, CapabilityReportSchemaVersion, ClusterV1SubmitRequest,
-    ComputeAvailability, ComputeCapabilityReport, EngineIdentity, FallbackDecision,
-    FallbackReasonCode, JobRevisionEvent, JobSnapshot, OwnerSurface, PlatformIdentity, Precision,
-    ProtocolRange, RuntimeIdentity, WorkflowTemplateId, MAX_CONTROL_FRAME_BYTES, PROTOCOL_VERSION,
+    ComputeAvailability, ComputeCapabilityReport, ComputeErrorCode, ComputeFailure, EngineIdentity,
+    FallbackDecision, FallbackReasonCode, JobOutcomeSummary, JobRevisionEvent, JobSnapshot,
+    JobState, OwnerSurface, PlatformIdentity, Precision, ProtocolRange, RuntimeIdentity,
+    WorkflowTemplateId, MAX_CONTROL_FRAME_BYTES, PROTOCOL_VERSION,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::compute::{
+    artifact_publisher::{
+        artifact_manifest_sha256, materialize_cluster_artifact, ClusterPublicationStep,
+    },
+    cluster_executor::{
+        finish_clustering, graph_options, valid_fingerprints, validate_computation,
+        ClusterComputation, ClusterExecutionStep,
+    },
     cluster_plan::{ClusterV1AdmissionError, SimilarityBackendAdmission},
     engine_catalog::VerifiedEngineCatalog,
     error::{ComputeCoordinatorError, ComputeResult},
+    fingerprint_session::{
+        CompletedFingerprintBatch, FingerprintChunkResult, FingerprintExecutionStep,
+        FingerprintSession,
+    },
     job_factory::{build_queued_cluster_v1_job, QueuedClusterV1JobInput},
+    job_lifecycle::{
+        fail_stage, finish_publish_stage, finish_stage, start_stage, StageFinishMetrics,
+        StageStartEvidence,
+    },
     snapshot_repository::SnapshotRepository,
     store::{validate_owner_window_label, ComputeStore},
 };
-use crate::preview::grid_store::GridSnapshotLease;
+use crate::preview::{
+    grid_analysis::{
+        apply_cluster_analysis_run, GridClusterAnalysisApplyInput, GridClusterAssignmentInput,
+    },
+    grid_store::GridSnapshotLease,
+};
 use crate::windows::runtime_document_id;
 
 #[derive(Clone, Debug)]
@@ -46,6 +69,9 @@ struct ReadyCoordinator {
     snapshots: SnapshotRepository,
     engines: VerifiedEngineCatalog,
     native_metal: NativeMetalState,
+    fingerprint_sessions: Mutex<BTreeMap<Uuid, FingerprintSession>>,
+    prepared_clusters: Mutex<BTreeMap<Uuid, CompletedFingerprintBatch>>,
+    computed_clusters: Mutex<BTreeMap<Uuid, ClusterComputation>>,
 }
 
 #[derive(Debug)]
@@ -76,6 +102,9 @@ impl ComputeCoordinator {
                                     metal_runtime_root,
                                     &helper_sha256,
                                 ),
+                                fingerprint_sessions: Mutex::new(BTreeMap::new()),
+                                prepared_clusters: Mutex::new(BTreeMap::new()),
+                                computed_clusters: Mutex::new(BTreeMap::new()),
                             }))
                         }
                         Err(error) => CoordinatorState::Unavailable(error),
@@ -195,8 +224,677 @@ impl ComputeCoordinator {
         self.store()?.get_job(owner, job_id)
     }
 
+    pub(crate) fn begin_cluster_v1_execution(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        expected_revision: u64,
+        source_lease: GridSnapshotLease,
+    ) -> ComputeResult<FingerprintExecutionStep> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let queued = ready.store.get_job(owner, job_id)?;
+        if queued.revision != expected_revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: queued.revision,
+            });
+        }
+        if source_lease.namespaced_document_id()
+            != runtime_document_id(owner, &queued.request.source.document_id)
+        {
+            return Err(ComputeCoordinatorError::SourceSnapshotUnavailable(
+                "The Grid lease does not belong to the queued compute job".into(),
+            ));
+        }
+        let verified = ready
+            .snapshots
+            .open_verified_source(&queued.frozen_source)?;
+        let (session, first_chunk) =
+            FingerprintSession::start(owner, &queued, source_lease, verified)?;
+        let at_ms = now_ms();
+        let freeze_running = start_stage(
+            &queued,
+            0,
+            JobState::Preparing,
+            at_ms,
+            "Verifying frozen Grid source",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, queued.revision, &freeze_running)?;
+        let freeze_succeeded = finish_stage(
+            &freeze_running,
+            0,
+            JobState::Preparing,
+            at_ms,
+            "Frozen Grid source verified",
+            StageFinishMetrics {
+                host_time_ms: 0.0,
+                transferred_bytes: queued.frozen_source.manifest.byte_length,
+                ..StageFinishMetrics::default()
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, freeze_running.revision, &freeze_succeeded)?;
+        let fingerprints_running = start_stage(
+            &freeze_succeeded,
+            1,
+            JobState::Preparing,
+            at_ms,
+            "Calculating RDKit Morgan fingerprints",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, freeze_succeeded.revision, &fingerprints_running)?;
+        let mut sessions = ready
+            .fingerprint_sessions
+            .lock()
+            .map_err(|_| poisoned("fingerprint session registry"))?;
+        if sessions.insert(job_id, session).is_some() {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: fingerprints_running.revision,
+            });
+        }
+        Ok(FingerprintExecutionStep {
+            job: fingerprints_running,
+            fingerprint_chunk: Some(first_chunk),
+            ready_for_compute: false,
+        })
+    }
+
+    pub(crate) fn submit_fingerprint_chunk(
+        &self,
+        owner: &str,
+        result: FingerprintChunkResult,
+    ) -> ComputeResult<FingerprintExecutionStep> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let job_id = result.job_id;
+        let mut session = {
+            let mut sessions = ready
+                .fingerprint_sessions
+                .lock()
+                .map_err(|_| poisoned("fingerprint session registry"))?;
+            let session =
+                sessions
+                    .get(&job_id)
+                    .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                        entity: "fingerprint session",
+                        id: job_id.to_string(),
+                    })?;
+            if session.owner() != owner || session.session_id() != result.session_id {
+                return Err(ComputeCoordinatorError::Forbidden(
+                    "fingerprint result does not belong to this window session".into(),
+                ));
+            }
+            sessions
+                .remove(&job_id)
+                .expect("session was checked while holding the registry lock")
+        };
+        let next = match session.accept_chunk(result) {
+            Ok(next) => next,
+            Err(error) => {
+                ready
+                    .fingerprint_sessions
+                    .lock()
+                    .map_err(|_| poisoned("fingerprint session registry"))?
+                    .insert(job_id, session);
+                return Err(error);
+            }
+        };
+        if let Some(chunk) = next {
+            ready
+                .fingerprint_sessions
+                .lock()
+                .map_err(|_| poisoned("fingerprint session registry"))?
+                .insert(job_id, session);
+            let job = ready.store.get_job(owner, job_id)?;
+            return Ok(FingerprintExecutionStep {
+                job,
+                fingerprint_chunk: Some(chunk),
+                ready_for_compute: false,
+            });
+        }
+
+        let batch = session.finish()?;
+        let running = ready.store.get_job(owner, job_id)?;
+        let fingerprint_stage = &running.stages[1];
+        let started_at_ms = fingerprint_stage.started_at_ms.ok_or_else(|| {
+            ComputeCoordinatorError::Protocol("fingerprint stage has no start time".into())
+        })?;
+        let at_ms = now_ms().max(running.updated_at_ms);
+        let failed = batch.errors.iter().filter(|error| error.is_some()).count();
+        let message = if failed == 0 {
+            "RDKit Morgan fingerprints ready".to_string()
+        } else {
+            format!("RDKit Morgan fingerprints ready ({failed} records failed)")
+        };
+        let next_state = if running.stages[2].effective_backend.is_gpu() {
+            JobState::WaitingGpu
+        } else {
+            JobState::Running
+        };
+        let fingerprint_bytes = u64::try_from(batch.fingerprints.len())
+            .ok()
+            .and_then(|count| count.checked_mul(burrete_compute_core::FINGERPRINT_BYTES as u64))
+            .ok_or_else(|| {
+                ComputeCoordinatorError::Protocol("fingerprint byte count overflowed".into())
+            })?;
+        let succeeded = finish_stage(
+            &running,
+            1,
+            next_state,
+            at_ms,
+            &message,
+            StageFinishMetrics {
+                host_time_ms: (at_ms - started_at_ms) as f64,
+                transferred_bytes: fingerprint_bytes,
+                ..StageFinishMetrics::default()
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, running.revision, &succeeded)?;
+        let mut prepared = ready
+            .prepared_clusters
+            .lock()
+            .map_err(|_| poisoned("prepared cluster registry"))?;
+        if prepared.insert(job_id, batch).is_some() {
+            return Err(ComputeCoordinatorError::Protocol(
+                "prepared cluster result already exists for this job".into(),
+            ));
+        }
+        Ok(FingerprintExecutionStep {
+            job: succeeded,
+            fingerprint_chunk: None,
+            ready_for_compute: true,
+        })
+    }
+
     pub(crate) fn list_jobs(&self, owner: &str, limit: usize) -> ComputeResult<Vec<JobSnapshot>> {
         self.store()?.list_jobs(owner, limit)
+    }
+
+    pub(crate) fn execute_cluster_v1(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        expected_revision: u64,
+    ) -> ComputeResult<ClusterExecutionStep> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let before_numeric = ready.store.get_job(owner, job_id)?;
+        if before_numeric.revision != expected_revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: before_numeric.revision,
+            });
+        }
+        {
+            let prepared = ready
+                .prepared_clusters
+                .lock()
+                .map_err(|_| poisoned("prepared cluster registry"))?;
+            let batch = prepared
+                .get(&job_id)
+                .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                    entity: "prepared cluster",
+                    id: job_id.to_string(),
+                })?;
+            if batch.grid_lease.namespaced_document_id()
+                != runtime_document_id(owner, &before_numeric.request.source.document_id)
+            {
+                return Err(ComputeCoordinatorError::Forbidden(
+                    "prepared cluster does not belong to this Grid window".into(),
+                ));
+            }
+        }
+
+        let gpu_stage = before_numeric.stages[2].effective_backend == Backend::NativeMetal;
+        let start_evidence = if gpu_stage {
+            match &ready.native_metal {
+                NativeMetalState::Available(runtime) => StageStartEvidence {
+                    device: Some(runtime.device_identity().name.clone()),
+                    kernel_id: Some("burrete.cluster.tanimoto-neighbors.v1".into()),
+                },
+                NativeMetalState::Unavailable { message, .. } => {
+                    return Err(ComputeCoordinatorError::Unavailable(format!(
+                        "the admitted Metal runtime became unavailable: {message}"
+                    )))
+                }
+            }
+        } else {
+            StageStartEvidence::default()
+        };
+        let numeric_running = start_stage(
+            &before_numeric,
+            2,
+            JobState::Running,
+            now_ms(),
+            "Building the blockwise Tanimoto neighbor graph",
+            start_evidence,
+        )?;
+        ready
+            .store
+            .apply_successor(owner, before_numeric.revision, &numeric_running)?;
+        let batch = ready
+            .prepared_clusters
+            .lock()
+            .map_err(|_| poisoned("prepared cluster registry"))?
+            .remove(&job_id)
+            .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                entity: "prepared cluster",
+                id: job_id.to_string(),
+            })?;
+
+        let numeric_started = Instant::now();
+        let numeric_result = (|| {
+            let (valid, valid_ordinals) = valid_fingerprints(&batch)?;
+            let options = graph_options(&numeric_running)?;
+            let cutoff = numeric_running.request.parameters.similarity.cutoff;
+            let (graph, gpu_time_ms) = match numeric_running.stages[2].effective_backend {
+                Backend::NativeMetal => match &ready.native_metal {
+                    NativeMetalState::Available(runtime) => {
+                        let execution = runtime
+                            .build_graph_profiled(&valid, cutoff, options)
+                            .map_err(metal_execution_error)?;
+                        (execution.graph, Some(execution.gpu_time_ms as f64))
+                    }
+                    NativeMetalState::Unavailable { message, .. } => {
+                        return Err(ComputeCoordinatorError::Unavailable(message.clone()))
+                    }
+                },
+                Backend::ReferenceCpu => (
+                    build_tanimoto_graph(&valid, cutoff, options)
+                        .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?,
+                    None,
+                ),
+                backend => {
+                    return Err(ComputeCoordinatorError::Protocol(format!(
+                        "unsupported numeric backend in an admitted cluster job: {backend:?}"
+                    )))
+                }
+            };
+            Ok((graph, valid_ordinals, gpu_time_ms))
+        })();
+        let numeric_host_ms = numeric_started.elapsed().as_secs_f64() * 1_000.0;
+        let (graph, valid_ordinals, gpu_time_ms) = match numeric_result {
+            Ok(result) => result,
+            Err(error) => {
+                let code = if gpu_stage {
+                    ComputeErrorCode::GpuExecutionFailed
+                } else {
+                    ComputeErrorCode::NumericalFailure
+                };
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &numeric_running,
+                    2,
+                    code,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms: numeric_host_ms,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
+            }
+        };
+        let numeric_bytes = graph_bytes(&graph, batch.fingerprints.len())?;
+        let numeric_succeeded = finish_stage(
+            &numeric_running,
+            2,
+            JobState::Running,
+            now_ms(),
+            "Tanimoto neighbor graph ready",
+            StageFinishMetrics {
+                host_time_ms: numeric_host_ms,
+                gpu_time_ms,
+                transferred_bytes: numeric_bytes,
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, numeric_running.revision, &numeric_succeeded)?;
+
+        let butina_running = start_stage(
+            &numeric_succeeded,
+            3,
+            JobState::Running,
+            now_ms(),
+            "Selecting deterministic Butina clusters",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, numeric_succeeded.revision, &butina_running)?;
+        let butina_started = Instant::now();
+        let clustered = finish_clustering(batch, valid_ordinals, graph, &butina_running);
+        let butina_host_ms = butina_started.elapsed().as_secs_f64() * 1_000.0;
+        let (computation, counts) = match clustered {
+            Ok(result) => result,
+            Err(error) => {
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &butina_running,
+                    3,
+                    ComputeErrorCode::NumericalFailure,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms: butina_host_ms,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
+            }
+        };
+        let butina_succeeded = finish_stage(
+            &butina_running,
+            3,
+            JobState::Validating,
+            now_ms(),
+            "Deterministic Butina clusters ready",
+            StageFinishMetrics {
+                host_time_ms: butina_host_ms,
+                ..StageFinishMetrics::default()
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, butina_running.revision, &butina_succeeded)?;
+
+        let validation_running = start_stage(
+            &butina_succeeded,
+            4,
+            JobState::Validating,
+            now_ms(),
+            "Validating cluster identities and assignments",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, butina_succeeded.revision, &validation_running)?;
+        let validation_started = Instant::now();
+        let validation = validate_computation(
+            &computation,
+            validation_running.frozen_source.frozen_source.record_count,
+        );
+        let validation_host_ms = validation_started.elapsed().as_secs_f64() * 1_000.0;
+        if let Err(error) = validation {
+            persist_failed_stage(
+                &ready.store,
+                owner,
+                &validation_running,
+                4,
+                ComputeErrorCode::ValidationMismatch,
+                &error,
+                StageFinishMetrics {
+                    host_time_ms: validation_host_ms,
+                    ..StageFinishMetrics::default()
+                },
+            )?;
+            return Err(error);
+        }
+        let validation_succeeded = finish_stage(
+            &validation_running,
+            4,
+            JobState::Publishing,
+            now_ms(),
+            "Cluster result validation passed",
+            StageFinishMetrics {
+                host_time_ms: validation_host_ms,
+                ..StageFinishMetrics::default()
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, validation_running.revision, &validation_succeeded)?;
+        let mut computed = ready
+            .computed_clusters
+            .lock()
+            .map_err(|_| poisoned("computed cluster registry"))?;
+        if computed.insert(job_id, computation).is_some() {
+            return Err(ComputeCoordinatorError::Protocol(
+                "computed cluster result already exists for this job".into(),
+            ));
+        }
+        Ok(ClusterExecutionStep {
+            job: validation_succeeded,
+            successful_records: counts.successful_records,
+            failed_records: counts.failed_records,
+            cluster_count: counts.cluster_count,
+            ready_for_publish: true,
+        })
+    }
+
+    pub(crate) fn publish_cluster_v1(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        expected_revision: u64,
+    ) -> ComputeResult<ClusterPublicationStep> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let before_publish = ready.store.get_job(owner, job_id)?;
+        if before_publish.revision != expected_revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: before_publish.revision,
+            });
+        }
+        {
+            let computed = ready
+                .computed_clusters
+                .lock()
+                .map_err(|_| poisoned("computed cluster registry"))?;
+            let computation =
+                computed
+                    .get(&job_id)
+                    .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                        entity: "computed cluster",
+                        id: job_id.to_string(),
+                    })?;
+            if computation.grid_lease.namespaced_document_id()
+                != runtime_document_id(owner, &before_publish.request.source.document_id)
+            {
+                return Err(ComputeCoordinatorError::Forbidden(
+                    "computed cluster does not belong to this Grid window".into(),
+                ));
+            }
+        }
+        let publish_running = start_stage(
+            &before_publish,
+            5,
+            JobState::Publishing,
+            now_ms(),
+            "Publishing verified cluster result packs",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, before_publish.revision, &publish_running)?;
+        let computation = ready
+            .computed_clusters
+            .lock()
+            .map_err(|_| poisoned("computed cluster registry"))?
+            .remove(&job_id)
+            .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                entity: "computed cluster",
+                id: job_id.to_string(),
+            })?;
+
+        let publish_started = Instant::now();
+        let created_at_ms = now_ms().max(publish_running.updated_at_ms);
+        let materialized = match materialize_cluster_artifact(
+            &ready.store,
+            &publish_running,
+            &computation,
+            created_at_ms,
+        ) {
+            Ok(artifact) => artifact,
+            Err(error) => {
+                let host_time_ms = publish_started.elapsed().as_secs_f64() * 1_000.0;
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &publish_running,
+                    5,
+                    ComputeErrorCode::ArtifactCorrupt,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
+            }
+        };
+        let publication = (|| {
+            let failed_records = computation
+                .errors
+                .iter()
+                .filter(|error| error.is_some())
+                .count() as u64;
+            let total_records = before_publish.frozen_source.frozen_source.record_count;
+            let successful_records =
+                total_records.checked_sub(failed_records).ok_or_else(|| {
+                    ComputeCoordinatorError::Protocol(
+                        "published outcome record count underflowed".into(),
+                    )
+                })?;
+            let publish_host_ms = publish_started.elapsed().as_secs_f64() * 1_000.0;
+            let successful_job = finish_publish_stage(
+                &publish_running,
+                materialized.created_at_ms,
+                materialized.artifact_id,
+                materialized.result_pack.clone(),
+                JobOutcomeSummary {
+                    successful_records,
+                    failed_records,
+                },
+                StageFinishMetrics {
+                    host_time_ms: publish_host_ms,
+                    transferred_bytes: materialized.byte_count,
+                    ..StageFinishMetrics::default()
+                },
+            )?;
+            let manifest = materialized.manifest_for_job(&successful_job)?;
+            let manifest_sha256 = artifact_manifest_sha256(&manifest)?;
+            Ok((successful_job, manifest, manifest_sha256))
+        })();
+        let (successful_job, manifest, manifest_sha256) = match publication {
+            Ok(publication) => publication,
+            Err(error) => {
+                let cleanup = materialized.cleanup();
+                let host_time_ms = publish_started.elapsed().as_secs_f64() * 1_000.0;
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &publish_running,
+                    5,
+                    ComputeErrorCode::ArtifactCorrupt,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                if let Err(cleanup_error) = cleanup {
+                    return Err(ComputeCoordinatorError::Filesystem(format!(
+                        "artifact publication failed ({error}) and cleanup failed ({cleanup_error})"
+                    )));
+                }
+                return Err(error);
+            }
+        };
+        if let Err(error) = ready.store.commit_published_artifact(
+            owner,
+            publish_running.revision,
+            &successful_job,
+            &manifest,
+            &materialized.relative_directory,
+        ) {
+            let cleanup = materialized.cleanup();
+            if let Err(cleanup_error) = cleanup {
+                return Err(ComputeCoordinatorError::Filesystem(format!(
+                    "artifact commit failed ({error}) and cleanup failed ({cleanup_error})"
+                )));
+            }
+            let host_time_ms = publish_started.elapsed().as_secs_f64() * 1_000.0;
+            persist_failed_stage(
+                &ready.store,
+                owner,
+                &publish_running,
+                5,
+                ComputeErrorCode::ArtifactCorrupt,
+                &error,
+                StageFinishMetrics {
+                    host_time_ms,
+                    ..StageFinishMetrics::default()
+                },
+            )?;
+            return Err(error);
+        }
+
+        let assignments = computation
+            .identities
+            .iter()
+            .enumerate()
+            .map(|(ordinal, identity)| GridClusterAssignmentInput {
+                source_index: identity.source_record_id,
+                molecule_content_sha256: identity.molecule_content_sha256.clone(),
+                cluster_id: computation.cluster_ids[ordinal],
+                representative: computation.representatives[ordinal],
+                error: computation.errors[ordinal].clone(),
+            })
+            .collect();
+        let grid_input = GridClusterAnalysisApplyInput {
+            run_id: successful_job.job_id,
+            document_fingerprint_sha256: successful_job
+                .frozen_source
+                .frozen_source
+                .document_fingerprint_sha256
+                .clone(),
+            source_revision: successful_job.frozen_source.frozen_source.source_revision,
+            snapshot_id: successful_job.frozen_source.snapshot_id,
+            snapshot_sha256: successful_job.frozen_source.snapshot_sha256.clone(),
+            normalized_settings_sha256: successful_job.normalized_request_sha256.clone(),
+            representative_policy: successful_job.request.parameters.representative_policy,
+            provenance: serde_json::json!({
+                "jobId": successful_job.job_id,
+                "artifactId": materialized.artifact_id,
+                "artifactManifestSha256": manifest_sha256,
+                "runtime": successful_job.pinned_runtime,
+                "numericStage": successful_job.stages[2],
+                "cutoff": successful_job.request.parameters.similarity.cutoff,
+            }),
+            created_at_ms: materialized.created_at_ms,
+            artifact_id: materialized.artifact_id,
+            artifact_manifest_sha256: manifest_sha256.clone(),
+            assignments,
+        };
+        let grid_result = apply_cluster_analysis_run(
+            computation.grid_lease.database_path_for_freeze(),
+            &grid_input,
+        );
+        let (grid_applied, grid_warning) = match grid_result {
+            Ok(()) => (true, None),
+            Err(error) => (false, Some(error.chars().take(1_900).collect::<String>())),
+        };
+        Ok(ClusterPublicationStep {
+            job: successful_job,
+            artifact_id: materialized.artifact_id,
+            artifact_manifest_sha256: manifest_sha256,
+            grid_applied,
+            grid_warning,
+        })
     }
 
     pub(crate) fn cancel_job(
@@ -318,6 +1016,71 @@ fn initialize_runtime_catalog(
     let helper_sha256 = current_executable_sha256()?;
     let engines = VerifiedEngineCatalog::load(&viewer_runtime_root, &helper_sha256)?;
     Ok((helper_sha256, engines))
+}
+
+fn poisoned(label: &str) -> ComputeCoordinatorError {
+    ComputeCoordinatorError::Unavailable(format!("{label} is poisoned"))
+}
+
+fn metal_execution_error(error: MetalRuntimeError) -> ComputeCoordinatorError {
+    ComputeCoordinatorError::Unavailable(format!("native Metal execution failed: {error}"))
+}
+
+fn graph_bytes(graph: &SymmetricCsr, fingerprint_count: usize) -> ComputeResult<u64> {
+    let fingerprints = u64::try_from(fingerprint_count)
+        .ok()
+        .and_then(|count| count.checked_mul(burrete_compute_core::FINGERPRINT_BYTES as u64));
+    let offsets = u64::try_from(graph.row_offsets().len())
+        .ok()
+        .and_then(|count| count.checked_mul(8));
+    let columns = u64::try_from(graph.column_indices().len())
+        .ok()
+        .and_then(|count| count.checked_mul(8));
+    fingerprints
+        .and_then(|value| value.checked_add(offsets?))
+        .and_then(|value| value.checked_add(columns?))
+        .ok_or_else(|| ComputeCoordinatorError::Protocol("numeric byte count overflowed".into()))
+}
+
+fn persist_failed_stage(
+    store: &ComputeStore,
+    owner: &str,
+    running: &JobSnapshot,
+    stage_index: usize,
+    code: ComputeErrorCode,
+    error: &ComputeCoordinatorError,
+    metrics: StageFinishMetrics,
+) -> ComputeResult<()> {
+    let stage_id = running
+        .stages
+        .get(stage_index)
+        .ok_or_else(|| ComputeCoordinatorError::Protocol("failed stage index is invalid".into()))?
+        .stage_id
+        .clone();
+    let failed = fail_stage(
+        running,
+        stage_index,
+        now_ms(),
+        ComputeFailure {
+            code,
+            message: bounded_failure_message(error),
+            stage_id: Some(stage_id),
+            molecule_stable_id: None,
+            retryable: false,
+        },
+        metrics,
+    )?;
+    store.apply_successor(owner, running.revision, &failed)?;
+    Ok(())
+}
+
+fn bounded_failure_message(error: &ComputeCoordinatorError) -> String {
+    let message = error.to_string().replace(char::is_control, " ");
+    let mut bounded = message.chars().take(1_900).collect::<String>();
+    if bounded.is_empty() {
+        bounded = "Compute stage failed".into();
+    }
+    bounded
 }
 
 fn fallback_code(code: CapabilityReasonCode) -> FallbackReasonCode {
@@ -467,32 +1230,8 @@ fn current_executable_sha256() -> Result<String, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn missing_runtime_never_advertises_gpu_execution() {
-        let missing =
-            std::env::temp_dir().join(format!("burrete-missing-metal-{}", Uuid::new_v4()));
-        let state = NativeMetalState::probe(Some(missing), &"a".repeat(64));
-        let NativeMetalState::Unavailable { code, message } = state else {
-            panic!("missing runtime cannot become available");
-        };
-        assert_eq!(code, CapabilityReasonCode::RuntimeMissing);
-        let report = unavailable_report(code, message);
-        assert_eq!(report.availability, ComputeAvailability::Unavailable);
-        assert_eq!(report.limits.max_edges, 0);
-        assert!(!report.capabilities[0].available);
-        assert_eq!(report.validate(), Ok(()));
-    }
-
-    #[test]
-    fn helper_attestation_is_a_real_sha256_digest() {
-        let hash = current_executable_sha256().expect("hash current test executable");
-        assert_eq!(hash.len(), 64);
-        assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
-    }
-}
+#[path = "coordinator_tests.rs"]
+mod tests;
 
 fn now_ms() -> u64 {
     SystemTime::now()
