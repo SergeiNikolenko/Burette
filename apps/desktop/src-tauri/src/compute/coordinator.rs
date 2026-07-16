@@ -32,6 +32,7 @@ use crate::compute::{
         ClusterComputation, ClusterExecutionStep,
     },
     cluster_plan::{ClusterV1AdmissionError, SimilarityBackendAdmission},
+    conformer_executor::{execute_conformer_distance_geometry, ConformerDistanceComputation},
     conformer_ipc::{decode_conformer_chunk_result, ConformerChunkResult},
     conformer_plan::{
         derive_conformer_v1_preflight, ConformerBackendAdmission, ConformerMoleculeIdentity,
@@ -93,6 +94,7 @@ struct ReadyCoordinator {
     conformer_submissions: Mutex<BTreeMap<Uuid, PendingConformerSubmission>>,
     prepared_clusters: Mutex<BTreeMap<Uuid, CompletedFingerprintBatch>>,
     prepared_conformers: Mutex<BTreeMap<Uuid, PreparedConformerBatch>>,
+    computed_conformers: Mutex<BTreeMap<Uuid, ComputedConformerBatch>>,
     computed_clusters: Mutex<BTreeMap<Uuid, ClusterComputation>>,
 }
 
@@ -118,6 +120,23 @@ struct PreparedConformerBatch {
     arrays: ConformerEnginePackArrays,
     identities: Vec<ConformerMoleculeIdentity>,
     errors: Vec<Option<String>>,
+}
+
+#[derive(Debug)]
+#[allow(dead_code, reason = "consumed by the next ETK/stereo execution stage")]
+struct ComputedConformerBatch {
+    distance: ConformerDistanceComputation,
+    identities: Vec<ConformerMoleculeIdentity>,
+    errors: Vec<Option<String>>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConformerDistanceExecutionStep {
+    pub(crate) job: JobSnapshot,
+    pub(crate) conformer_count: usize,
+    pub(crate) failed_source_records: usize,
+    pub(crate) ready_for_stereo: bool,
 }
 
 #[derive(Debug)]
@@ -154,6 +173,7 @@ impl ComputeCoordinator {
                                 conformer_submissions: Mutex::new(BTreeMap::new()),
                                 prepared_clusters: Mutex::new(BTreeMap::new()),
                                 prepared_conformers: Mutex::new(BTreeMap::new()),
+                                computed_conformers: Mutex::new(BTreeMap::new()),
                                 computed_clusters: Mutex::new(BTreeMap::new()),
                             }))
                         }
@@ -530,6 +550,215 @@ impl ComputeCoordinator {
 
     pub(crate) fn get_job(&self, owner: &str, job_id: Uuid) -> ComputeResult<JobSnapshot> {
         self.store()?.get_job(owner, job_id)
+    }
+
+    pub(crate) fn execute_conformer_distance_v1(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        expected_revision: u64,
+    ) -> ComputeResult<ConformerDistanceExecutionStep> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let queued = ready.store.get_job(owner, job_id)?;
+        if queued.revision != expected_revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: queued.revision,
+            });
+        }
+        queued.request.as_conformer()?;
+        {
+            let prepared = ready
+                .prepared_conformers
+                .lock()
+                .map_err(|_| poisoned("prepared conformer registry"))?;
+            if !prepared.contains_key(&job_id) {
+                return Err(ComputeCoordinatorError::NotFound {
+                    entity: "prepared conformer",
+                    id: job_id.to_string(),
+                });
+            }
+        }
+
+        let freeze_running = start_stage(
+            &queued,
+            0,
+            JobState::Preparing,
+            now_ms(),
+            "Verifying frozen conformer source",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, queued.revision, &freeze_running)?;
+        let freeze_succeeded = finish_stage(
+            &freeze_running,
+            0,
+            JobState::Preparing,
+            now_ms(),
+            "Frozen conformer source verified",
+            StageFinishMetrics::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, freeze_running.revision, &freeze_succeeded)?;
+        let constraints_running = start_stage(
+            &freeze_succeeded,
+            1,
+            JobState::Preparing,
+            now_ms(),
+            "Binding verified RDKit conformer constraints",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, freeze_succeeded.revision, &constraints_running)?;
+        let engine_pack_bytes = {
+            let prepared = ready
+                .prepared_conformers
+                .lock()
+                .map_err(|_| poisoned("prepared conformer registry"))?;
+            prepared
+                .get(&job_id)
+                .expect("prepared conformer checked above")
+                .arrays
+                .payload_bytes()
+                .map_err(|error| ComputeCoordinatorError::Protocol(error.to_string()))?
+        };
+        let numeric_state = if constraints_running.stages[2].effective_backend.is_gpu() {
+            JobState::WaitingGpu
+        } else {
+            JobState::Running
+        };
+        let constraints_succeeded = finish_stage(
+            &constraints_running,
+            1,
+            numeric_state,
+            now_ms(),
+            "RDKit conformer constraints ready",
+            StageFinishMetrics {
+                transferred_bytes: engine_pack_bytes,
+                ..StageFinishMetrics::default()
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, constraints_running.revision, &constraints_succeeded)?;
+        let gpu_stage = constraints_succeeded.stages[2].effective_backend == Backend::NativeMetal;
+        let start_evidence = if gpu_stage {
+            match &ready.native_metal {
+                NativeMetalState::Available(runtime) => StageStartEvidence {
+                    device: Some(runtime.device_identity().name.clone()),
+                    kernel_id: Some(
+                        "burrete.compute.conformer.v1:initialize+distance-lbfgs.v1".into(),
+                    ),
+                },
+                NativeMetalState::Unavailable { message, .. } => {
+                    return Err(ComputeCoordinatorError::Unavailable(format!(
+                        "the admitted Metal runtime became unavailable: {message}"
+                    )))
+                }
+            }
+        } else {
+            StageStartEvidence::default()
+        };
+        let distance_running = start_stage(
+            &constraints_succeeded,
+            2,
+            JobState::Running,
+            now_ms(),
+            "Generating adaptive conformer batches",
+            start_evidence,
+        )?;
+        ready
+            .store
+            .apply_successor(owner, constraints_succeeded.revision, &distance_running)?;
+        let prepared = ready
+            .prepared_conformers
+            .lock()
+            .map_err(|_| poisoned("prepared conformer registry"))?
+            .remove(&job_id)
+            .expect("prepared conformer checked above");
+        let request = distance_running.request.as_conformer()?;
+        let started = Instant::now();
+        let result = execute_conformer_distance_geometry(
+            job_id,
+            request,
+            prepared.arrays,
+            &prepared.identities,
+            distance_running.stages[2].effective_backend,
+            match &ready.native_metal {
+                NativeMetalState::Available(runtime) => Some(runtime),
+                NativeMetalState::Unavailable { .. } => None,
+            },
+        );
+        let host_time_ms = started.elapsed().as_secs_f64() * 1_000.0;
+        let distance = match result {
+            Ok(distance) => distance,
+            Err(error) => {
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &distance_running,
+                    2,
+                    if gpu_stage {
+                        ComputeErrorCode::GpuExecutionFailed
+                    } else {
+                        ComputeErrorCode::NumericalFailure
+                    },
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
+            }
+        };
+        let conformer_count = distance.conformer_count();
+        let failed_source_records = prepared
+            .errors
+            .iter()
+            .filter(|error| error.is_some())
+            .count();
+        let distance_succeeded = finish_stage(
+            &distance_running,
+            2,
+            JobState::Running,
+            now_ms(),
+            "Distance-geometry conformers ready for stereo validation",
+            StageFinishMetrics {
+                host_time_ms,
+                gpu_time_ms: distance.gpu_time_ms.map(|value| value as f64),
+                transferred_bytes: distance.positions.len() as u64 * 3 * 4,
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, distance_running.revision, &distance_succeeded)?;
+        let computed = ComputedConformerBatch {
+            distance,
+            identities: prepared.identities,
+            errors: prepared.errors,
+        };
+        if ready
+            .computed_conformers
+            .lock()
+            .map_err(|_| poisoned("computed conformer registry"))?
+            .insert(job_id, computed)
+            .is_some()
+        {
+            return Err(ComputeCoordinatorError::Protocol(
+                "computed conformer result already exists for this job".into(),
+            ));
+        }
+        Ok(ConformerDistanceExecutionStep {
+            job: distance_succeeded,
+            conformer_count,
+            failed_source_records,
+            ready_for_stereo: true,
+        })
     }
 
     pub(crate) fn begin_cluster_v1_execution(
@@ -1461,7 +1690,7 @@ impl NativeMetalState {
                 reference_runtime.clone(),
             )),
             (
-                BackendPolicy::GpuRequired | BackendPolicy::GpuPreferred,
+                BackendPolicy::GpuPreferred,
                 Self::Available(runtime),
             ) => {
                 let engine = EngineIdentity {
@@ -1470,9 +1699,17 @@ impl NativeMetalState {
                     manifest_sha256: runtime.runtime_identity().manifest_sha256.clone(),
                 };
                 Ok((
-                    ConformerBackendAdmission::NativeMetal(engine.clone()),
                     ConformerBackendAdmission::NativeMetal(engine),
+                    unavailable(
+                        CapabilityReasonCode::KernelUnavailable,
+                        "native Metal stereo validation is not packaged yet",
+                    ),
                     runtime.runtime_identity().clone(),
+                ))
+            }
+            (BackendPolicy::GpuRequired, Self::Available(_)) => {
+                Err(ComputeCoordinatorError::Unavailable(
+                    "gpuRequired conformer.v1 admission failed: native Metal stereo validation is not packaged yet".into(),
                 ))
             }
             (BackendPolicy::GpuRequired, Self::Unavailable { message, .. }) => {
