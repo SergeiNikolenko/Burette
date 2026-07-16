@@ -1,8 +1,9 @@
 use std::{ffi::c_void, mem::size_of_val};
 
 use burrete_compute_core::{
-    validate_stereo_constraints, ChiralVolumeConstraint, DistanceConstraint,
-    DistanceGeometryOptimizationOptions, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
+    validate_etk_geometry_constraints, validate_stereo_constraints, ChiralVolumeConstraint,
+    DistanceConstraint, DistanceGeometryOptimizationOptions, EtkDistanceConstraint,
+    EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
     TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
@@ -15,7 +16,8 @@ use objc::rc::autoreleasepool;
 use objc::{runtime::Sel, Message};
 
 use crate::platform::{
-    MetalDistanceDispatch, MetalDistanceOptimizationDispatch, MetalStereoValidationDispatch,
+    MetalDistanceDispatch, MetalDistanceOptimizationDispatch, MetalEtkDispatch,
+    MetalStereoValidationDispatch,
 };
 use crate::MetalRuntimeError;
 
@@ -93,6 +95,19 @@ struct ConformerStereoBatchV1 {
     tetrahedral_count: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ConformerEtkBatchV1 {
+    atom_count: u32,
+    conformer_count: u32,
+    torsion_count: u32,
+    improper_count: u32,
+    distance_count: u32,
+    reserved0: u32,
+    reserved1: u32,
+    reserved2: u32,
+}
+
 #[derive(Debug)]
 pub(crate) struct MetalHost {
     device: Device,
@@ -104,6 +119,7 @@ pub(crate) struct MetalHost {
     conformer_distance_pipeline: ComputePipelineState,
     conformer_optimize_pipeline: ComputePipelineState,
     conformer_stereo_pipeline: ComputePipelineState,
+    conformer_etk_pipeline: ComputePipelineState,
 }
 
 impl MetalHost {
@@ -143,6 +159,7 @@ impl MetalHost {
             pipeline(&device, library, "burrete_conformer_optimize_v1")?;
         let conformer_stereo_pipeline =
             pipeline(&device, library, "burrete_conformer_stereo_validate_v1")?;
+        let conformer_etk_pipeline = pipeline(&device, library, "burrete_conformer_etk_v1")?;
         Ok(Self {
             queue: device.new_command_queue(),
             device,
@@ -153,6 +170,7 @@ impl MetalHost {
             conformer_distance_pipeline,
             conformer_optimize_pipeline,
             conformer_stereo_pipeline,
+            conformer_etk_pipeline,
         })
     }
 
@@ -937,6 +955,153 @@ impl MetalHost {
         }
         Ok(MetalStereoValidationDispatch {
             failure_flags,
+            gpu_time_seconds: gpu_time,
+        })
+    }
+
+    pub(crate) fn evaluate_etk_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        torsions: &[EtkTorsionConstraint],
+        impropers: &[EtkImproperConstraint],
+        distances: &[EtkDistanceConstraint],
+        max_memory_bytes: u64,
+    ) -> Result<MetalEtkDispatch, MetalRuntimeError> {
+        if atom_count == 0
+            || positions.is_empty()
+            || !positions.len().is_multiple_of(atom_count as usize)
+        {
+            return resource_limit("ETK positions must contain complete non-empty conformers");
+        }
+        if positions.iter().flatten().any(|value| !value.is_finite()) {
+            return Err(MetalRuntimeError::Dispatch(
+                "ETK positions must be finite".into(),
+            ));
+        }
+        validate_etk_geometry_constraints(atom_count as usize, torsions, impropers, distances)
+            .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
+        let conformer_count =
+            u32::try_from(positions.len() / atom_count as usize).map_err(|_| {
+                MetalRuntimeError::ResourceLimit("conformer count exceeds uint32".into())
+            })?;
+        let torsion_count = u32::try_from(torsions.len())
+            .map_err(|_| MetalRuntimeError::ResourceLimit("torsion count exceeds uint32".into()))?;
+        let improper_count = u32::try_from(impropers.len()).map_err(|_| {
+            MetalRuntimeError::ResourceLimit("improper count exceeds uint32".into())
+        })?;
+        let distance_count = u32::try_from(distances.len()).map_err(|_| {
+            MetalRuntimeError::ResourceLimit("ETK distance count exceeds uint32".into())
+        })?;
+        let item_count = u64::try_from(positions.len()).map_err(|_| memory_overflow())?;
+        if item_count > u64::from(u32::MAX) {
+            return resource_limit("ETK evaluation grid exceeds uint32");
+        }
+        let required_bytes = MEMORY_HEADROOM_BYTES
+            .checked_add(item_count.checked_mul(52).ok_or_else(memory_overflow)?)
+            .and_then(|bytes| bytes.checked_add(u64::from(torsion_count).max(1).checked_mul(62)?))
+            .and_then(|bytes| bytes.checked_add(u64::from(improper_count).max(1).checked_mul(20)?))
+            .and_then(|bytes| bytes.checked_add(u64::from(distance_count).max(1).checked_mul(20)?))
+            .ok_or_else(memory_overflow)?;
+        if required_bytes > max_memory_bytes {
+            return resource_limit(format!(
+                "ETK evaluation requires {required_bytes} accounted bytes; limit is {max_memory_bytes}"
+            ));
+        }
+        let mut torsion_atoms = torsions.iter().map(|term| term.atoms).collect::<Vec<_>>();
+        let mut torsion_coefficients = torsions
+            .iter()
+            .map(|term| term.coefficients)
+            .collect::<Vec<_>>();
+        let mut torsion_signs = torsions.iter().map(|term| term.signs).collect::<Vec<_>>();
+        let mut improper_atoms = impropers.iter().map(|term| term.atoms).collect::<Vec<_>>();
+        let mut improper_weights = impropers.iter().map(|term| term.weight).collect::<Vec<_>>();
+        let mut distance_atoms = distances.iter().map(|term| term.atoms).collect::<Vec<_>>();
+        let mut distance_bounds = distances
+            .iter()
+            .map(|term| [term.lower, term.upper])
+            .collect::<Vec<_>>();
+        let mut distance_weights = distances.iter().map(|term| term.weight).collect::<Vec<_>>();
+        if torsion_atoms.is_empty() {
+            torsion_atoms.push([0; 4]);
+            torsion_coefficients.push([0.0; 6]);
+            torsion_signs.push([0; 6]);
+        }
+        if improper_atoms.is_empty() {
+            improper_atoms.push([0; 4]);
+            improper_weights.push(0.0);
+        }
+        if distance_atoms.is_empty() {
+            distance_atoms.push([0; 2]);
+            distance_bounds.push([0.0; 2]);
+            distance_weights.push(0.0);
+        }
+        let input_buffers = [
+            buffer_with_slice(&self.device, positions),
+            buffer_with_slice(&self.device, &torsion_atoms),
+            buffer_with_slice(&self.device, &torsion_coefficients),
+            buffer_with_slice(&self.device, &torsion_signs),
+            buffer_with_slice(&self.device, &improper_atoms),
+            buffer_with_slice(&self.device, &improper_weights),
+            buffer_with_slice(&self.device, &distance_atoms),
+            buffer_with_slice(&self.device, &distance_bounds),
+            buffer_with_slice(&self.device, &distance_weights),
+        ];
+        let energy_buffer = buffer_with_slice(&self.device, &vec![0.0_f32; positions.len()]);
+        let gradient_buffer = buffer_with_slice(&self.device, &vec![[0.0_f32; 4]; positions.len()]);
+        let batch = ConformerEtkBatchV1 {
+            atom_count,
+            conformer_count,
+            torsion_count,
+            improper_count,
+            distance_count,
+            reserved0: 0,
+            reserved1: 0,
+            reserved2: 0,
+        };
+        let thread_width = self.conformer_etk_pipeline.thread_execution_width().min(
+            self.conformer_etk_pipeline
+                .max_total_threads_per_threadgroup(),
+        );
+        if thread_width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal ETK pipeline advertises zero thread width".into(),
+            ));
+        }
+        let gpu_time = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.conformer_etk_pipeline);
+            for (index, buffer) in input_buffers.iter().enumerate() {
+                encoder.set_buffer(index as u64, Some(buffer), 0);
+            }
+            encoder.set_bytes(
+                9,
+                size_of_val(&batch) as u64,
+                (&batch as *const ConformerEtkBatchV1).cast(),
+            );
+            encoder.set_buffer(10, Some(&energy_buffer), 0);
+            encoder.set_buffer(11, Some(&gradient_buffer), 0);
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: item_count,
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: thread_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+        Ok(MetalEtkDispatch {
+            atom_energies: read_buffer(&energy_buffer, positions.len(), "ETK atom energy")?,
+            gradients: read_buffer(&gradient_buffer, positions.len(), "ETK gradient")?,
             gpu_time_seconds: gpu_time,
         })
     }

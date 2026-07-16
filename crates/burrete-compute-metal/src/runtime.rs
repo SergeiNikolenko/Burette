@@ -1,10 +1,11 @@
 use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
 use burrete_compute_core::{
-    build_tanimoto_graph, evaluate_distance_constraints, initialize_conformer_positions,
-    optimize_distance_geometry, score_tanimoto_query, validate_conformer_stereo,
-    ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
-    DistanceGeometryOptimizationStatus, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
+    build_tanimoto_graph, evaluate_distance_constraints, evaluate_etk_geometry,
+    initialize_conformer_positions, optimize_distance_geometry, score_tanimoto_query,
+    validate_conformer_stereo, ChiralVolumeConstraint, DistanceConstraint,
+    DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
+    EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048, GraphBuildOptions, SymmetricCsr,
     TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
@@ -81,6 +82,13 @@ pub struct MetalDistanceEmbedding {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MetalStereoValidation {
     pub failure_flags: Vec<u32>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalEtkEvaluation {
+    pub atom_energies: Vec<f32>,
+    pub gradients: Vec<[f32; 4]>,
     pub gpu_time_ms: u64,
 }
 
@@ -328,6 +336,44 @@ impl MetalComputeRuntime {
         })
     }
 
+    pub fn evaluate_etk_profiled(
+        &self,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        torsions: &[EtkTorsionConstraint],
+        impropers: &[EtkImproperConstraint],
+        distances: &[EtkDistanceConstraint],
+        max_memory_bytes: u64,
+    ) -> Result<MetalEtkEvaluation, MetalRuntimeError> {
+        let dispatch = self.host.evaluate_etk_profiled(
+            positions,
+            atom_count,
+            torsions,
+            impropers,
+            distances,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if dispatch
+            .atom_energies
+            .iter()
+            .any(|value| !value.is_finite())
+            || dispatch
+                .gradients
+                .iter()
+                .flatten()
+                .any(|value| !value.is_finite())
+        {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal ETK evaluator returned non-finite output".into(),
+            ));
+        }
+        Ok(MetalEtkEvaluation {
+            atom_energies: dispatch.atom_energies,
+            gradients: dispatch.gradients,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
     fn run_startup_known_answer_test(&self) -> Result<(), MetalRuntimeError> {
         let mut left = [0_u64; FINGERPRINT_WORDS];
         left[0] = 0b11;
@@ -477,6 +523,49 @@ impl MetalComputeRuntime {
         if observed_stereo.failure_flags != [expected_stereo] {
             return Err(MetalRuntimeError::KernelUnavailable(
                 "Metal startup stereo validation differs from the CPU reference".into(),
+            ));
+        }
+        let etk_positions = [
+            [0.1, 0.2, -0.3, 0.0],
+            [1.2, -0.1, 0.4, 0.0],
+            [2.0, 0.8, -0.2, 0.0],
+            [2.7, 1.1, 0.9, 0.0],
+        ];
+        let torsions = [EtkTorsionConstraint {
+            atoms: [0, 1, 2, 3],
+            coefficients: [0.7, 0.3, 0.2, 0.0, 0.1, 0.0],
+            signs: [1, -1, 1, 0, -1, 0],
+        }];
+        let impropers = [EtkImproperConstraint {
+            atoms: [3, 2, 1, 0],
+            weight: 0.4,
+        }];
+        let distances = [EtkDistanceConstraint {
+            atoms: [0, 3],
+            lower: 0.5,
+            upper: 1.5,
+            weight: 0.8,
+        }];
+        let expected_etk = evaluate_etk_geometry(&etk_positions, &torsions, &impropers, &distances)
+            .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let observed_etk = self.host.evaluate_etk_profiled(
+            &etk_positions,
+            4,
+            &torsions,
+            &impropers,
+            &distances,
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        let observed_etk_energy = observed_etk.atom_energies.iter().sum::<f32>();
+        if !float_slices_close(&[observed_etk_energy], &[expected_etk.energy], 2.0e-5)
+            || !float_slices_close(
+                observed_etk.gradients.as_flattened(),
+                expected_etk.gradients.as_flattened(),
+                2.0e-5,
+            )
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup ETK energy/gradient differs from the CPU reference".into(),
             ));
         }
         Ok(())

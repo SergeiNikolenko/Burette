@@ -19,6 +19,7 @@ source_files=(
   "$script_dir/conformer-distance.v1.metal"
   "$script_dir/conformer-optimize.v1.metal"
   "$script_dir/conformer-stereo.v1.metal"
+  "$script_dir/conformer-etk.v1.metal"
 )
 contract_files=(
   "$script_dir/tanimoto-kernel-contract.v2.json"
@@ -26,6 +27,7 @@ contract_files=(
   "$script_dir/conformer-distance-kernel-contract.v1.json"
   "$script_dir/conformer-optimize-kernel-contract.v1.json"
   "$script_dir/conformer-stereo-kernel-contract.v1.json"
+  "$script_dir/conformer-etk-kernel-contract.v1.json"
 )
 metadata_writer="$script_dir/write-build-metadata.mjs"
 mkdir -p -- "$1"
@@ -69,8 +71,9 @@ air_files=(
   "$stage_dir/conformer-distance.v1.air"
   "$stage_dir/conformer-optimize.v1.air"
   "$stage_dir/conformer-stereo.v1.air"
+  "$stage_dir/conformer-etk.v1.air"
 )
-library_file="$stage_dir/native-compute.v6.metallib"
+library_file="$stage_dir/native-compute.v7.metallib"
 metadata_file="$stage_dir/build-metadata.v2.json"
 
 sha256() {
@@ -82,15 +85,17 @@ source_sha256_1="$(sha256 "${source_files[1]}")"
 source_sha256_2="$(sha256 "${source_files[2]}")"
 source_sha256_3="$(sha256 "${source_files[3]}")"
 source_sha256_4="$(sha256 "${source_files[4]}")"
+source_sha256_5="$(sha256 "${source_files[5]}")"
 contract_sha256_0="$(sha256 "${contract_files[0]}")"
 contract_sha256_1="$(sha256 "${contract_files[1]}")"
 contract_sha256_2="$(sha256 "${contract_files[2]}")"
 contract_sha256_3="$(sha256 "${contract_files[3]}")"
 contract_sha256_4="$(sha256 "${contract_files[4]}")"
+contract_sha256_5="$(sha256 "${contract_files[5]}")"
 metal_tool_sha256="$(sha256 "$metal_tool")"
 metallib_tool_sha256="$(sha256 "$metallib_tool")"
 
-for index in 0 1 2 3 4; do
+for index in 0 1 2 3 4 5; do
   "$metal_tool" \
     -std=metal3.1 \
     -mmacosx-version-min=14.0 \
@@ -107,6 +112,8 @@ done
   fail 'Metal source changed during compilation'
 [[ "$(sha256 "${source_files[4]}")" == "$source_sha256_4" ]] ||
   fail 'Metal source changed during compilation'
+[[ "$(sha256 "${source_files[5]}")" == "$source_sha256_5" ]] ||
+  fail 'Metal source changed during compilation'
 [[ "$(sha256 "${contract_files[0]}")" == "$contract_sha256_0" &&
    "$(sha256 "${contract_files[1]}")" == "$contract_sha256_1" &&
    "$(sha256 "${contract_files[2]}")" == "$contract_sha256_2" ]] ||
@@ -114,6 +121,8 @@ done
 [[ "$(sha256 "${contract_files[3]}")" == "$contract_sha256_3" ]] ||
   fail 'Metal kernel contract changed during compilation'
 [[ "$(sha256 "${contract_files[4]}")" == "$contract_sha256_4" ]] ||
+  fail 'Metal kernel contract changed during compilation'
+[[ "$(sha256 "${contract_files[5]}")" == "$contract_sha256_5" ]] ||
   fail 'Metal kernel contract changed during compilation'
 [[ "$(sha256 "$metal_tool")" == "$metal_tool_sha256" ]] ||
   fail 'Metal compiler changed during compilation'
@@ -125,16 +134,19 @@ CONFORMER_SOURCE_SHA256="$source_sha256_1" \
 DISTANCE_SOURCE_SHA256="$source_sha256_2" \
 OPTIMIZER_SOURCE_SHA256="$source_sha256_3" \
 STEREO_SOURCE_SHA256="$source_sha256_4" \
+ETK_SOURCE_SHA256="$source_sha256_5" \
 TANIMOTO_CONTRACT_SHA256="$contract_sha256_0" \
 CONFORMER_CONTRACT_SHA256="$contract_sha256_1" \
 DISTANCE_CONTRACT_SHA256="$contract_sha256_2" \
 OPTIMIZER_CONTRACT_SHA256="$contract_sha256_3" \
 STEREO_CONTRACT_SHA256="$contract_sha256_4" \
+ETK_CONTRACT_SHA256="$contract_sha256_5" \
 TANIMOTO_AIR_SHA256="$(sha256 "${air_files[0]}")" \
 CONFORMER_AIR_SHA256="$(sha256 "${air_files[1]}")" \
 DISTANCE_AIR_SHA256="$(sha256 "${air_files[2]}")" \
 OPTIMIZER_AIR_SHA256="$(sha256 "${air_files[3]}")" \
 STEREO_AIR_SHA256="$(sha256 "${air_files[4]}")" \
+ETK_AIR_SHA256="$(sha256 "${air_files[5]}")" \
 METALLIB_SHA256="$(sha256 "$library_file")" \
 METAL_TOOL_PATH="$metal_tool" \
 METAL_TOOL_SHA256="$metal_tool_sha256" \
@@ -157,4 +169,4 @@ printf '{"schemaVersion":"burrete.compute.metal-generation-pointer.v1","generati
 keep_stage=1
 /bin/mv -f "$pointer_stage" "$output_dir/current.json"
 pointer_stage=''
-printf 'Built %s/%s\n' "$stage_dir" "native-compute.v6.metallib"
+printf 'Built %s/%s\n' "$stage_dir" "native-compute.v7.metallib"

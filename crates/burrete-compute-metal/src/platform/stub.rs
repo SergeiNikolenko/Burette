@@ -1,12 +1,13 @@
 use burrete_compute_core::{
     ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
-    Fingerprint2048, GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
-    TetrahedralConstraint,
+    EtkDistanceConstraint, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
+    GraphBuildOptions, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions, TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 
 use crate::platform::{
-    MetalDistanceDispatch, MetalDistanceOptimizationDispatch, MetalStereoValidationDispatch,
+    MetalDistanceDispatch, MetalDistanceOptimizationDispatch, MetalEtkDispatch,
+    MetalStereoValidationDispatch,
 };
 use crate::MetalRuntimeError;
 
@@ -116,6 +117,20 @@ impl MetalHost {
         _tetrahedral: &[TetrahedralConstraint],
         _max_memory_bytes: u64,
     ) -> Result<MetalStereoValidationDispatch, MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn evaluate_etk_profiled(
+        &self,
+        _positions: &[[f32; 4]],
+        _atom_count: u32,
+        _torsions: &[EtkTorsionConstraint],
+        _impropers: &[EtkImproperConstraint],
+        _distances: &[EtkDistanceConstraint],
+        _max_memory_bytes: u64,
+    ) -> Result<MetalEtkDispatch, MetalRuntimeError> {
         Err(MetalRuntimeError::UnsupportedPlatform(
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))
