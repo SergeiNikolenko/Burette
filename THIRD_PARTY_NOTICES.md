@@ -96,9 +96,12 @@ independently written.
 
 The CHNO AM1, PM3, PM6_SP, and AM1* parameter slices are adapted against the
 pinned `mlxmolkit` method tables and the corresponding OpenMOPAC parameter
-modules. PM6 core-core PWCCT equations and the bundled CHNO pair values are
-adapted against pinned `mlxmolkit` and PYSEQM references. These slices remain
-separate from unimplemented PM6_D corrections and d-orbital support.
+modules. The complete 40-element parameterized PM6 CSV domain is retained as
+a byte-identical build-time reference and compiled into a typed Rust table,
+including the 18 elements with d-orbital fields. PM6 core-core PWCCT equations
+and the bundled CHNO pair values are adapted against pinned `mlxmolkit` and
+PYSEQM references. Importing the parameter table does not claim that the
+pending native d-integral evaluator is production-ready.
 
 The PM6-D3H4 H4 hydrogen-bond equations, covalent-radius table, short-range
 H-H polynomial, and CHNO D3 C6/CN/r0 reference records are adapted from

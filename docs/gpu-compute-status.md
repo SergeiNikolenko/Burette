@@ -461,9 +461,11 @@ separate product increments.
   match all four upstream method paths within `1e-4 eV` and `1e-5 e`.
   This is an experimental organic-domain slice only. Grid method selection is
   implemented for the five parity-gated methods, H4/HH have CPU and Metal
-  reference paths, and CHNO D3 has compact native CPU and Metal tables.
-  PM6/PM6_D d orbitals, broader element/D3 tables, and production PM6-D3H4 SCF
-  composition remain gated.
+  reference paths, and CHNO D3 has compact native CPU and Metal tables. The
+  complete pinned 40-element PM6 parameter domain is compiled into a typed
+  native table, including 18 d-basis elements and all tail/Slater-Condon
+  fields. PM6/PM6_D d integrals, broader D3 tables, and production PM6-D3H4
+  SCF composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
