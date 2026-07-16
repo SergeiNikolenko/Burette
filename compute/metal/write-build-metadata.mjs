@@ -14,18 +14,21 @@ const requiredEnvironment = [
   "OPTIMIZER_SOURCE_SHA256",
   "STEREO_SOURCE_SHA256",
   "ETK_SOURCE_SHA256",
+  "ETK_OPTIMIZER_SOURCE_SHA256",
   "TANIMOTO_CONTRACT_SHA256",
   "CONFORMER_CONTRACT_SHA256",
   "DISTANCE_CONTRACT_SHA256",
   "OPTIMIZER_CONTRACT_SHA256",
   "STEREO_CONTRACT_SHA256",
   "ETK_CONTRACT_SHA256",
+  "ETK_OPTIMIZER_CONTRACT_SHA256",
   "TANIMOTO_AIR_SHA256",
   "CONFORMER_AIR_SHA256",
   "DISTANCE_AIR_SHA256",
   "OPTIMIZER_AIR_SHA256",
   "STEREO_AIR_SHA256",
   "ETK_AIR_SHA256",
+  "ETK_OPTIMIZER_AIR_SHA256",
   "METALLIB_SHA256",
   "METAL_TOOL_PATH",
   "METAL_TOOL_SHA256",
@@ -50,8 +53,8 @@ for (const name of requiredEnvironment.filter((name) => name.endsWith("_SHA256")
 const normalizedVersion = process.env.METAL_TOOL_VERSION.trim().replace(/\s+/g, " ");
 const metadata = {
   schemaVersion: "burrete.compute.metal-build-metadata.v2",
-  runtimeVersion: "burrete-native-metal-v7",
-  libraryId: "burrete.compute.native.v7",
+  runtimeVersion: "burrete-native-metal-v8",
+  libraryId: "burrete.compute.native.v8",
   sources: [
     { path: "compute/metal/tanimoto.v2.metal", sha256: process.env.TANIMOTO_SOURCE_SHA256 },
     { path: "compute/metal/conformer-initialize.v1.metal", sha256: process.env.CONFORMER_SOURCE_SHA256 },
@@ -59,6 +62,7 @@ const metadata = {
     { path: "compute/metal/conformer-optimize.v1.metal", sha256: process.env.OPTIMIZER_SOURCE_SHA256 },
     { path: "compute/metal/conformer-stereo.v1.metal", sha256: process.env.STEREO_SOURCE_SHA256 },
     { path: "compute/metal/conformer-etk.v1.metal", sha256: process.env.ETK_SOURCE_SHA256 },
+    { path: "compute/metal/conformer-etk-optimize.v1.metal", sha256: process.env.ETK_OPTIMIZER_SOURCE_SHA256 },
   ],
   contracts: [
     { path: "compute/metal/tanimoto-kernel-contract.v2.json", sha256: process.env.TANIMOTO_CONTRACT_SHA256 },
@@ -67,6 +71,7 @@ const metadata = {
     { path: "compute/metal/conformer-optimize-kernel-contract.v1.json", sha256: process.env.OPTIMIZER_CONTRACT_SHA256 },
     { path: "compute/metal/conformer-stereo-kernel-contract.v1.json", sha256: process.env.STEREO_CONTRACT_SHA256 },
     { path: "compute/metal/conformer-etk-kernel-contract.v1.json", sha256: process.env.ETK_CONTRACT_SHA256 },
+    { path: "compute/metal/conformer-etk-optimize-kernel-contract.v1.json", sha256: process.env.ETK_OPTIMIZER_CONTRACT_SHA256 },
   ],
   air: [
     { path: "tanimoto.v2.air", sha256: process.env.TANIMOTO_AIR_SHA256 },
@@ -75,9 +80,10 @@ const metadata = {
     { path: "conformer-optimize.v1.air", sha256: process.env.OPTIMIZER_AIR_SHA256 },
     { path: "conformer-stereo.v1.air", sha256: process.env.STEREO_AIR_SHA256 },
     { path: "conformer-etk.v1.air", sha256: process.env.ETK_AIR_SHA256 },
+    { path: "conformer-etk-optimize.v1.air", sha256: process.env.ETK_OPTIMIZER_AIR_SHA256 },
   ],
   metallib: {
-    path: "native-compute.v7.metallib",
+    path: "native-compute.v8.metallib",
     sha256: process.env.METALLIB_SHA256,
   },
   compiler: {
@@ -106,6 +112,7 @@ const metadata = {
     "burrete_conformer_optimize_v1",
     "burrete_conformer_stereo_validate_v1",
     "burrete_conformer_etk_v1",
+    "burrete_conformer_etk_optimize_v1",
   ],
 };
 

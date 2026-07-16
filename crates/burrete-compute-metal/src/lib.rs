@@ -11,4 +11,4 @@ pub use runtime::{
     MetalQueryExecution, MetalStereoValidation, MetalTanimotoRuntime,
 };
 
-pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v7";
+pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v8";
