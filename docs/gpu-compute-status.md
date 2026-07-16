@@ -424,11 +424,13 @@ separate product increments.
   formal charges are the only charge source in this slice, so neutral inputs
   report electrostatic similarity as unavailable rather than inventing a GPU
   result.
-- The desktop Grid now also exposes `RM1 energy & charges` for 1--256 selected
-  molecules with explicit coordinates. The frozen Grid lease is parsed without
-  Python/MLX, evaluated by the native bounded RM1 reference implementation, and
-  written back as electronic, nuclear, and total energies, SCF status and
-  iterations, and JSON atomic charges. Runtime v14 contracts the dominant
+- The desktop Grid now also exposes a persistent method selector and native
+  `energy & charges` action for RM1 plus parity-gated CHNO slices of AM1, PM3,
+  PM6_SP, and AM1* over 1--256 selected molecules with explicit coordinates.
+  Each method writes to its own Grid columns so runs do not overwrite another
+  method's electronic, nuclear, and total energies, SCF status/iterations, or
+  JSON atomic charges. The frozen Grid lease is parsed without Python/MLX.
+  Runtime v14 contracts the dominant
   two-center Coulomb/exchange Fock contribution on Metal for every SCF
   iteration and diagonalizes matrices through order 32 with a batched Metal
   Jacobi kernel. It also generates all compact H-H, heavy-H, and 22-term
@@ -437,8 +439,8 @@ separate product increments.
   trace-shift/spectral preconditioning controls float32 error, and the SCF tail
   switches adaptively to float64 polishing at the precision floor. The Grid
   reports `nativeMetalScfHybrid` only after at least one verified GPU dispatch.
-  Integral generation and SCF control remain CPU. Unavailable Metal or
-  all-invalid input remains `nativeCpuReference`.
+  SCF orchestration and adaptive float64 polishing remain CPU. Unavailable
+  Metal or all-invalid input remains `nativeCpuReference`.
 - The verified v14 runtime includes `burrete_rm1_pair_fock_v1`. One thread owns one
   Fock-matrix element and accumulates pair tensors in deterministic order with
   no atomics. It adds `burrete_rm1_symmetric_eigen_v1`, with one threadgroup per
@@ -497,15 +499,9 @@ fixed order below:
 3. finish alignment corpus parity, chemistry-derived partial charges,
    non-identity atom maps, durable ResultPack/report publication, and packaged
    UI evidence for the implemented Grid/Mol* pose workflow;
-4. extend the implemented native closed-shell SCF/DIIS/adaptive-damping CPU
-   scaffold, audited RM1 parameter table, bounded molecule/basis pack, and
-   population-charge contract plus verified RM1 core-core energy and sp-basis
-   multipole parameters plus complete 22-term pair integrals and molecular-frame
-   rotation, first-/second-row overlap, and end-to-end H/C/N/O/F RM1 SCF energies
-   and charges plus complete qn1-5 sp overlap and native Grid execution/writeback;
-   with Metal local-integral generation, pair rotation/materialization,
-   two-center Fock contraction, and symmetric eigensolver; next add the
-   remaining parameter sets method by method behind independent
-   known-answer and external parity gates;
+4. extend the parity-gated CHNO AM1, PM3, PM6_SP, and AM1* Grid paths to their
+   documented element domains, then implement PM6/PM6_D, d orbitals, D3, H4,
+   and HH corrections behind independent known-answer and external parity
+   gates;
 5. combined Apple GPU profiling, memory-pressure testing, package proof, and
    benchmark publication.

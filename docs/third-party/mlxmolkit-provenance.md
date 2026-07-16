@@ -29,8 +29,8 @@ the primary author's permission does not replace these obligations.
 | --- | --- | --- |
 | NVIDIA nvMolKit | Apache-2.0 | DG/ETK workflow and gradients, MMFF energy/minimizers, clustering architecture |
 | Shivam Patel `mlxmolkit` | MIT, copyright notice required | In-kernel MMFF/BFGS paths |
-| LANL/Triad PYSEQM `6ced9ea66160428e06d37df18e9f565b8123f84a` | BSD-3-Clause; authoritative license archived | RM1 nuclear-repulsion formula accepted; remaining SCF/integral/d-orbital logic pending |
-| OpenMOPAC `052691223d19935a89f0fe18cd12301bd83e4201` | Apache-2.0; authoritative license archived | RM1 parameter table accepted; AM1/PM3/PM6 tables and conventions remain pending adaptation |
+| LANL/Triad PYSEQM `6ced9ea66160428e06d37df18e9f565b8123f84a` | BSD-3-Clause; authoritative license archived | NDDO nuclear, overlap, integral, rotation, Fock, and energy equations adapted; d-orbital logic remains pending |
+| OpenMOPAC `052691223d19935a89f0fe18cd12301bd83e4201` | Apache-2.0; authoritative license archived | RM1 ten-element and AM1/PM3/PM6_SP/AM1* CHNO parameter data adapted; broader method domains remain pending |
 
 No source or data from these areas may be adapted until the authoritative
 license text, copyright notice, exact source revision, and file mapping are
@@ -138,12 +138,15 @@ copied. The pinned `mlxmolkit/etk_energy_metal.py` and
 `mlxmolkit/etk_minimize_metal.py` files are numerical behavior references only.
 
 The native semiempirical layer defines all seven requested method identities.
-RM1 now has a bounded restricted closed-shell evaluator with deterministic
+RM1 has a bounded restricted closed-shell evaluator with deterministic
 symmetric diagonalization, DIIS, adaptive density damping, the complete
 ten-element upstream parameter domain, NDDO pair contractions, qn1-5 overlap,
-energies, and population charges. Its Grid workflow is production-code native
-but remains explicitly labeled `nativeCpuReference`; Metal execution and the
-other six parameterizations remain blocked on method-by-method parity gates.
+energies, and population charges. Parity-gated CHNO slices of AM1, PM3, PM6_SP,
+and AM1* use the same native evaluator and are exposed through a persistent
+Grid method selector. Runtime v14 executes local-integral generation, pair
+rotation/materialization, two-center Fock contraction, and bounded symmetric
+eigensolves on Metal with CPU parity gates and adaptive float64 polishing.
+PM6, PM6_D, d orbitals, and the remaining correction models are not exposed.
 
 ## Burrete adaptation ledger
 
@@ -177,7 +180,7 @@ copy `mlxmolkit` source.
 | `crates/burrete-compute-core/src/semiempirical/rotation.rs` | `mlxmolkit/rm1/rotation.py`; authoritative `lanl/PYSEQM/seqm/seqm_functions/two_elec_two_center_int.py` | mlxmolkit `9e7337f6f93c40a39ad0187991151944a4f1e274`; PYSEQM `6ced9ea66160428e06d37df18e9f565b8123f84a` | adapted quaternion rotation and full sp pair-tensor contraction into molecular coordinates; explicit H-heavy transpose semantics | PYSEQM BSD-3-Clause; authoritative license archived at `compute/semiempirical/licenses/PYSEQM-BSD-3-CLAUSE.txt` | arbitrary-axis C-O tensor/core known answers and H-heavy transpose parity at `1e-12` or tighter; molecular Fock contraction pending |
 | `crates/burrete-compute-core/src/semiempirical/overlap.rs` | `mlxmolkit/rm1/overlap.py`, `mlxmolkit/rm1/slater_overlap_ref.py`; authoritative `lanl/PYSEQM/seqm/seqm_functions/diat_overlap_PM6_SP.py` | mlxmolkit `9e7337f6f93c40a39ad0187991151944a4f1e274`; PYSEQM `6ced9ea66160428e06d37df18e9f565b8123f84a` | adapted analytic qn1-3 overlap; independently structured bounded 48-point Gauss-Legendre prolate-spheroidal STO overlap for qn4-5, replacing the upstream-documented broken hardcoded iodine path; no SciPy/Python runtime | PYSEQM BSD-3-Clause applies to qn1-3 equations; qn4-5 is formula-only reference with no copied source | C-O/O-H/S-H/S-O/S-Cl analytic matrices and Br-H/I-C numerical overlaps match pinned oracles; methyl iodide converges end-to-end with charge conservation |
 | `crates/burrete-compute-core/src/semiempirical/rm1.rs` | `mlxmolkit/rm1/scf.py`; authoritative `lanl/PYSEQM/seqm/seqm_functions/fock.py` and `energy.py` | mlxmolkit `9e7337f6f93c40a39ad0187991151944a4f1e274`; PYSEQM `6ced9ea66160428e06d37df18e9f565b8123f84a` | adapted NDDO core-Hamiltonian, one-/two-center Coulomb/exchange contractions and electronic-energy equation over Burrete's independent SCF driver | PYSEQM BSD-3-Clause; authoritative license archived at `compute/semiempirical/licenses/PYSEQM-BSD-3-CLAUSE.txt` | H2 and H2O end-to-end energies match frozen references; H2S and methyl iodide converge with charge conservation; false-DIIS-convergence regression covered; broad external corpus pending |
-| `apps/desktop/src-tauri/src/compute/semiempirical_workflow.rs` | `mlxmolkit/rm1/scf.py` operation surface | `9e7337f6f93c40a39ad0187991151944a4f1e274` | Burrete-owned frozen Grid orchestration, V2000/V3000 input conversion, per-row RM1 evaluation, typed analysis writeback, and truthful backend provenance | no upstream orchestration source copied | explicit-water Grid-molfile evaluation, selection bounds, production Vite build, Rust check and clippy; packaged UI proof pending |
+| `apps/desktop/src-tauri/src/compute/semiempirical_workflow.rs` | `mlxmolkit/rm1/scf.py` operation surface | `9e7337f6f93c40a39ad0187991151944a4f1e274` | Burrete-owned frozen Grid orchestration, V2000/V3000 input conversion, method-specific RM1/AM1/PM3/PM6_SP/AM1* evaluation and typed analysis writeback, and truthful backend provenance | no upstream orchestration source copied | all five methods converge through CPU and v14 Metal Grid-molfile tests on explicit water; selector bridge contract and selection bounds covered; packaged UI proof pending |
 | `compute/metal/rm1-fock.v1.metal` | `mlxmolkit/rm1/scf.py`; authoritative `lanl/PYSEQM/seqm/seqm_functions/fock.py` | mlxmolkit `9e7337f6f93c40a39ad0187991151944a4f1e274`; PYSEQM `6ced9ea66160428e06d37df18e9f565b8123f84a` | independent one-thread-per-matrix-element Metal contraction of pre-rotated RM1 two-center Coulomb/exchange tensors | formula behavior follows the PYSEQM BSD-3-Clause reference; no Python/MLX source copied | package-bound startup KAT and complete explicit-water SCF pass with per-dispatch float64 CPU parity on Apple M2 Pro |
 | `compute/metal/rm1-eigen.v1.metal` | `mlxmolkit/rm1/scf.py` diagonalization behavior | `9e7337f6f93c40a39ad0187991151944a4f1e274` | independent maximum-pivot symmetric Jacobi Metal kernel with fixed padded batch slots, trace-shift/spectral host preconditioning, and adaptive float64 SCF polishing | no upstream source copied | package-bound eigenpair KAT, float64 eigenvalue/residual/orthogonality gates, and complete explicit-water SCF on Apple M2 Pro |
 | `compute/metal/rm1-pair-rotate.v1.metal` | `mlxmolkit/rm1/two_center_integrals.py`, `rotation.py`; authoritative `lanl/PYSEQM/seqm/seqm_functions/two_elec_two_center_int_local_frame.py`, `two_elec_two_center_int.py` | mlxmolkit `9e7337f6f93c40a39ad0187991151944a4f1e274`; PYSEQM `6ced9ea66160428e06d37df18e9f565b8123f84a` | independent one-thread-per-pair Metal local-integral generation, molecular-frame rotation, and complete tensor/core-attraction materialization for H-H, heavy-H, and heavy-heavy inputs | formula behavior follows the PYSEQM BSD-3-Clause reference; no Python/MLX source copied | full-element CPU tensor parity, package-bound three-branch startup KAT, and explicit-water SCF on Apple M2 Pro |

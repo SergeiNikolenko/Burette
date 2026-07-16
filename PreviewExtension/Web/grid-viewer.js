@@ -11,8 +11,10 @@
   const CLUSTER_CUTOFF_STORAGE_KEY = 'buret.grid.clusterCutoff';
   const CONFORMER_VARIANT_STORAGE_KEY = 'buret.grid.conformerVariant';
   const MMFF_VARIANT_STORAGE_KEY = 'buret.grid.mmffVariant';
+  const SEMIEMPIRICAL_METHOD_STORAGE_KEY = 'buret.grid.semiempiricalMethod';
   const CONFORMER_VARIANTS = ['DG', 'KDG', 'ETDG', 'ETDGv2', 'ETKDG', 'ETKDGv2', 'ETKDGv3', 'srETKDGv3'];
   const MMFF_VARIANTS = ['MMFF94', 'MMFF94s'];
+  const SEMIEMPIRICAL_METHODS = ['RM1', 'AM1', 'PM3', 'PM6_SP', 'AM1_STAR'];
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
     { value: 'flat', label: 'Flat' },
@@ -144,6 +146,7 @@
     mmffVariant: storedChoice(MMFF_VARIANT_STORAGE_KEY, MMFF_VARIANTS, 'MMFF94s'),
     aligningPoses: false,
     evaluatingSemiempirical: false,
+    semiempiricalMethod: storedChoice(SEMIEMPIRICAL_METHOD_STORAGE_KEY, SEMIEMPIRICAL_METHODS, 'RM1'),
     clustering: false,
     findingSimilar: false,
     exportingClusterRepresentatives: false,
@@ -952,6 +955,7 @@
       aligningPoses: state.aligningPoses,
       evaluatingSemiempirical: state.evaluatingSemiempirical,
       semiempiricalEnabled: caps.cluster,
+      semiempiricalMethod: state.semiempiricalMethod,
       clusterEnabled: caps.cluster,
       clustering: state.clustering,
       findingSimilar: state.findingSimilar,
@@ -1000,6 +1004,11 @@
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
       onAlignSelectedPoses() { requestSelectedPoseAlignment(cfg); },
       onEvaluateSemiempirical() { requestSelectedSemiempiricalEvaluation(cfg); },
+      onSemiempiricalMethodChange(value) {
+        state.semiempiricalMethod = SEMIEMPIRICAL_METHODS.includes(value) ? value : 'RM1';
+        store(SEMIEMPIRICAL_METHOD_STORAGE_KEY, state.semiempiricalMethod);
+        refreshGridControls(cfg);
+      },
       onGenerate3D() { requestSelected3DGeneration(cfg); },
       onOptimizeGeometry() { requestSelectedGeometryOptimization(cfg); },
       onConformerVariantChange(value) {
@@ -1562,18 +1571,19 @@
   function requestSelectedSemiempiricalEvaluation(cfg) {
     if (state.evaluatingSemiempirical) return;
     const rows = selectedMolstarRows();
+    const methodLabel = state.semiempiricalMethod === 'AM1_STAR' ? 'AM1*' : state.semiempiricalMethod;
     if (!rows.length) {
-      setStatus('[grid] Select at least one molecule with explicit coordinates before calculating RM1.', 'error');
+      setStatus(`[grid] Select at least one molecule with explicit coordinates before calculating ${methodLabel}.`, 'error');
       return;
     }
     state.evaluatingSemiempirical = true;
     refreshGridControls(cfg);
-    post('evaluateSemiempiricalGridSelection', '[grid] Calculate RM1 energies and charges.', {
+    post('evaluateSemiempiricalGridSelection', `[grid] Calculate ${methodLabel} energies and charges.`, {
       documentId: cfg?.documentId || null,
       sourceIndexes: rows.map(row => Number(row.index)),
-      method: 'rm1'
+      method: state.semiempiricalMethod
     });
-    setStatus(`[grid] Calculating RM1 energies and charges for ${rows.length.toLocaleString()} selected molecule${rows.length === 1 ? '' : 's'}; execution provenance will identify Metal or CPU fallback.`);
+    setStatus(`[grid] Calculating ${methodLabel} energies and charges for ${rows.length.toLocaleString()} selected molecule${rows.length === 1 ? '' : 's'}; execution provenance will identify Metal or CPU fallback.`);
   }
 
   function requestSingle3DGeneration(row, cfg) {
