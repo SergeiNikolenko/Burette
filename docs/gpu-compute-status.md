@@ -474,9 +474,12 @@ separate product increments.
   5x5 Wigner matrices and d-d/d-p/d-s overlap blocks. A bounded 48-point
   prolate-spheroidal STO oracle now supplies d-s, d-p, and d-d radial overlap
   for principal quantum numbers one through five, including iodine and the
-  hydrogen s-only boundary. Two-center d electron-repulsion integrals, Metal W
-  generation, full PM6 SCF integration, broader D3 tables, and production
-  PM6-D3H4 composition remain gated.
+  hydrogen s-only boundary. The transition-metal/main-group AIJL,
+  Slater-Condon, and POIJ derivation now supplies d-basis charge separations
+  and `rho3` through `rho6` for all 18 parameterized d elements, with S/Fe/I
+  parity against the pinned PYSEQM port. Two-center d electron-repulsion
+  integrals, Metal W generation, full PM6 SCF integration, broader D3 tables,
+  and production PM6-D3H4 composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
