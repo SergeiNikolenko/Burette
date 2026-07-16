@@ -609,6 +609,13 @@ mod tests {
             assert!(result.total_energy_ev.unwrap().is_finite());
             assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-8);
         }
+        for method in ["AM1", "PM3", "PM6_SP"] {
+            let method = GridSemiempiricalMethod::parse(method).unwrap();
+            let (result, _) = evaluate_row_inner(&hydrogen_chloride_row(), method, None)
+                .expect("evaluate extended element domain");
+            assert!(result.converged, "{} did not converge", method.display_name);
+            assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-8);
+        }
     }
 
     #[test]
@@ -628,6 +635,14 @@ mod tests {
             assert!(result.converged, "{} did not converge", method.display_name);
             assert!(gpu_time_ms > 0);
             assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-6);
+        }
+        for method in ["AM1", "PM3", "PM6_SP"] {
+            let method = GridSemiempiricalMethod::parse(method).unwrap();
+            let (result, gpu_time_ms) =
+                evaluate_row_inner(&hydrogen_chloride_row(), method, Some(&runtime))
+                    .expect("evaluate extended element domain on Metal");
+            assert!(result.converged);
+            assert!(gpu_time_ms > 0);
         }
         let method = GridSemiempiricalMethod::parse("PM6_D3H4").unwrap();
         let (result, gpu_time_ms) =
@@ -659,6 +674,19 @@ mod tests {
             name: "hydrogen sulfide".into(),
             molblock: Some(
                 "hydrogen sulfide\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 S   0  0  0  0  0  0  0  0  0  0  0  0\n    1.3360    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.4450    1.2600    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END"
+                    .into(),
+            ),
+        }
+    }
+
+    fn hydrogen_chloride_row() -> GridAlignmentSourceRow {
+        GridAlignmentSourceRow {
+            row_id: 3,
+            source_index: 2,
+            molecule_content_sha256: "2".repeat(64),
+            name: "hydrogen chloride".into(),
+            molblock: Some(
+                "hydrogen chloride\n  Burrete\n\n  2  1  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    1.2746    0.0000    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\nM  END"
                     .into(),
             ),
         }

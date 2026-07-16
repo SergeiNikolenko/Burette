@@ -502,4 +502,49 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn hydrogen_chloride_matches_the_pinned_extended_method_oracles() {
+        let atoms = vec![
+            SemiempiricalAtom {
+                atomic_number: 1,
+                position_angstrom: [0.0, 0.0, 0.0],
+            },
+            SemiempiricalAtom {
+                atomic_number: 17,
+                position_angstrom: [1.2746, 0.0, 0.0],
+            },
+        ];
+        for (method, total_energy_ev, hydrogen_charge) in [
+            (
+                SemiempiricalMethod::Am1,
+                -388.177_331_921_142_75,
+                0.165_945_327_444_033_56,
+            ),
+            (
+                SemiempiricalMethod::Pm3,
+                -332.671_449_492_579_8,
+                0.097_428_169_961_415_35,
+            ),
+            (
+                SemiempiricalMethod::Pm6Sp,
+                -268.890_318_361_053_1,
+                0.213_396_913_562_596_7,
+            ),
+        ] {
+            let molecule = SemiempiricalMolecule::new(method, atoms.clone(), 0).unwrap();
+            let result =
+                evaluate_semiempirical(&molecule, SemiempiricalScfOptions::default()).unwrap();
+            assert_eq!(result.scf.status, SemiempiricalScfStatus::Converged);
+            assert!(
+                (result.total_energy_ev - total_energy_ev).abs() < 1.0e-5,
+                "{method:?}: {result:?}"
+            );
+            assert!(
+                (result.atomic_charges[0] - hydrogen_charge).abs() < 1.0e-6,
+                "{method:?}: {result:?}"
+            );
+            assert!(result.atomic_charges.iter().sum::<f64>().abs() < 1.0e-10);
+        }
+    }
 }

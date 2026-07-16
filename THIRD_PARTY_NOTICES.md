@@ -49,8 +49,9 @@ The bounded closed-shell SCF, symmetric diagonalization, DIIS, adaptive
 damping, molecule packing, and population-charge driver is independently
 written. The native evaluator adapts numeric parameter data and selected NDDO
 equations under the notices below. RM1 is implemented for its ten-element
-upstream domain; parity-gated CHNO slices of AM1, PM3, PM6_SP, and AM1* are
-also available. PM6 and its PM6_D alias use the complete pinned 40-element
+upstream domain. AM1, PM3, and PM6_SP use their complete pinned upstream
+11-, 25-, and 10-element domains respectively; AM1* remains the published
+CHNO parameterization. PM6 and its PM6_D alias use the complete pinned 40-element
 parameter domain with variable 1/4/9-orbital SCF. PM6_D3H4 adds the complete
 pinned Z=1--94 D3 table and the H4/HH post-SCF corrections. The archived
 upstream NPZ inputs and generated native table are source/build-validation

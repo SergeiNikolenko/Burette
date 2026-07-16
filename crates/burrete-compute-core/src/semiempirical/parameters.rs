@@ -314,6 +314,7 @@ const RM1: [SemiempiricalElementParameters; 10] = [
 ];
 
 #[allow(clippy::approx_constant)] // 3.14 is the published AM1 nitrogen hsp parameter.
+#[cfg(any())] // Replaced by the SHA-generated complete upstream table below.
 const AM1: [SemiempiricalElementParameters; 4] = [
     element(
         1,
@@ -375,6 +376,7 @@ const AM1: [SemiempiricalElementParameters; 4] = [
     ),
 ];
 
+#[cfg(any())] // Replaced by the SHA-generated complete upstream table below.
 const PM3: [SemiempiricalElementParameters; 4] = [
     element(
         1,
@@ -438,6 +440,7 @@ const PM3: [SemiempiricalElementParameters; 4] = [
     ),
 ];
 
+#[cfg(any())] // Replaced by the SHA-generated complete upstream table below.
 const PM6_SP: [SemiempiricalElementParameters; 4] = [
     element(
         1,
@@ -477,6 +480,8 @@ const PM6_SP: [SemiempiricalElementParameters; 4] = [
         [[-0.01777, 3.05831, 1.89644], [0.0; 3], [0.0; 3], [0.0; 3]],
     ),
 ];
+
+include!("sp_method_parameters.generated.rs");
 
 #[allow(clippy::approx_constant)] // AM1* retains the exact AM1 one-center integrals.
 const AM1_STAR: [SemiempiricalElementParameters; 4] = [
@@ -561,6 +566,7 @@ pub fn semiempirical_parameters(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SemiempiricalMethod;
 
     #[test]
     fn rm1_table_has_the_complete_upstream_element_domain() {
@@ -582,5 +588,54 @@ mod tests {
         let iodine = rm1_parameters(53).unwrap();
         assert_eq!(iodine.gss_ev, 19.999_741_3);
         assert_eq!(iodine.zeta_p_bohr_inv, 2.317_386_8);
+    }
+
+    #[test]
+    fn sp_method_tables_cover_the_complete_upstream_domains() {
+        let domain = |method| {
+            let table: &[SemiempiricalElementParameters] = match method {
+                SemiempiricalMethod::Am1 => &AM1,
+                SemiempiricalMethod::Pm3 => &PM3,
+                SemiempiricalMethod::Pm6Sp => &PM6_SP,
+                _ => unreachable!(),
+            };
+            table
+                .iter()
+                .map(|parameters| parameters.atomic_number)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            domain(SemiempiricalMethod::Am1),
+            [1, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53]
+        );
+        assert_eq!(
+            domain(SemiempiricalMethod::Pm3),
+            [
+                1, 3, 4, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 30, 31, 32, 33, 34, 35, 48, 49, 50,
+                51, 52, 53
+            ]
+        );
+        assert_eq!(
+            domain(SemiempiricalMethod::Pm6Sp),
+            [1, 6, 7, 8, 9, 15, 16, 17, 35, 53]
+        );
+        assert_eq!(
+            semiempirical_parameters(SemiempiricalMethod::Am1, 17)
+                .unwrap()
+                .uss_ev,
+            -111.613_948
+        );
+        assert_eq!(
+            semiempirical_parameters(SemiempiricalMethod::Pm3, 48)
+                .unwrap()
+                .symbol,
+            "Cd"
+        );
+        assert_eq!(
+            semiempirical_parameters(SemiempiricalMethod::Pm6Sp, 53)
+                .unwrap()
+                .symbol,
+            "I"
+        );
     }
 }
