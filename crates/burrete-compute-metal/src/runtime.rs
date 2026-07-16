@@ -1,15 +1,16 @@
 use std::{num::NonZeroUsize, path::Path, sync::Arc};
 
 use burrete_compute_core::{
-    build_tanimoto_graph, evaluate_distance_constraints, evaluate_etk_geometry, evaluate_mmff,
-    initialize_conformer_positions, optimize_distance_geometry, score_tanimoto_query,
-    validate_conformer_stereo, ChiralVolumeConstraint, DistanceConstraint,
+    align_and_score, build_tanimoto_graph, evaluate_distance_constraints, evaluate_etk_geometry,
+    evaluate_mmff, initialize_conformer_positions, optimize_distance_geometry,
+    score_tanimoto_query, validate_conformer_stereo, AlignmentAtom, AlignmentMode,
+    AlignmentScores, AtomMapping, ChiralVolumeConstraint, DistanceConstraint,
     DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus, EtkDistanceConstraint,
     EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048,
     GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown,
     MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
-    MmffVanDerWaalsTerm, MmffVariant, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
-    TetrahedralConstraint, FINGERPRINT_WORDS,
+    MmffVanDerWaalsTerm, MmffVariant, RigidTransform, SymmetricCsr, TanimotoCounts,
+    TanimotoQueryOptions, TetrahedralConstraint, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -110,6 +111,37 @@ pub struct MetalMmffOptimization {
     pub iterations: Vec<u32>,
     pub statuses: Vec<DistanceGeometryOptimizationStatus>,
     pub optimizers: Vec<MmffOptimizerKind>,
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AlignmentPairDescriptor {
+    pub probe_atom_start: u64,
+    pub probe_atom_count: u64,
+    pub reference_atom_start: u64,
+    pub reference_atom_count: u64,
+    pub mapping_start: u64,
+    pub mapping_count: u64,
+    pub mode: AlignmentMode,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MetalAlignmentBatch<'a> {
+    pub probe_atoms: &'a [AlignmentAtom],
+    pub reference_atoms: &'a [AlignmentAtom],
+    pub mappings: &'a [AtomMapping],
+    pub pairs: &'a [AlignmentPairDescriptor],
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalAlignmentPairResult {
+    pub transform: RigidTransform,
+    pub scores: AlignmentScores,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalAlignmentExecution {
+    pub pairs: Vec<MetalAlignmentPairResult>,
     pub gpu_time_ms: u64,
 }
 
@@ -214,6 +246,76 @@ impl MetalComputeRuntime {
         Ok(MetalQueryExecution {
             counts,
             gpu_time_ms: gpu_time_ms(gpu_time_seconds)?,
+        })
+    }
+
+    pub fn align_and_score_profiled(
+        &self,
+        batch: MetalAlignmentBatch<'_>,
+        max_memory_bytes: u64,
+    ) -> Result<MetalAlignmentExecution, MetalRuntimeError> {
+        let dispatch = self.host.align_and_score_profiled(
+            batch,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        if dispatch.transforms.len() != batch.pairs.len()
+            || dispatch.primary_scores.len() != batch.pairs.len()
+            || dispatch.secondary_scores.len() != batch.pairs.len()
+            || dispatch.statuses.len() != batch.pairs.len()
+        {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal alignment returned inconsistent array lengths".into(),
+            ));
+        }
+        let mut pairs = Vec::with_capacity(batch.pairs.len());
+        for (index, descriptor) in batch.pairs.iter().enumerate() {
+            let status = dispatch.statuses[index];
+            if status & 0x8000_0000 != 0 || status & !1 != 0 {
+                return Err(MetalRuntimeError::Dispatch(format!(
+                    "Metal alignment pair {index} returned invalid status 0x{status:08x}"
+                )));
+            }
+            let transform_rows = dispatch.transforms[index];
+            let primary = dispatch.primary_scores[index];
+            let secondary = dispatch.secondary_scores[index];
+            if transform_rows
+                .iter()
+                .flatten()
+                .chain(primary.iter())
+                .chain(secondary.iter())
+                .any(|value| !value.is_finite())
+            {
+                return Err(MetalRuntimeError::Dispatch(format!(
+                    "Metal alignment pair {index} returned non-finite output"
+                )));
+            }
+            pairs.push(MetalAlignmentPairResult {
+                transform: RigidTransform {
+                    rotation: [
+                        transform_rows[0][..3].try_into().expect("three rotation values"),
+                        transform_rows[1][..3].try_into().expect("three rotation values"),
+                        transform_rows[2][..3].try_into().expect("three rotation values"),
+                    ],
+                    translation: transform_rows[3][..3]
+                        .try_into()
+                        .expect("three translation values"),
+                },
+                scores: AlignmentScores {
+                    rmsd: (descriptor.mode == AlignmentMode::MappedHorn).then_some(primary[0]),
+                    shape_overlap: primary[1],
+                    shape_tanimoto: primary[2],
+                    shape_carbo: primary[3],
+                    electrostatic_overlap: secondary[0],
+                    electrostatic_carbo: secondary[1],
+                    electrostatic_tanimoto: secondary[2],
+                    electrostatic_available: status == 1,
+                    combined_similarity: secondary[3],
+                },
+            });
+        }
+        Ok(MetalAlignmentExecution {
+            pairs,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
         })
     }
 
@@ -878,6 +980,77 @@ impl MetalComputeRuntime {
                 "Metal startup MMFF optimization failed its CPU energy check".into(),
             ));
         }
+        let probe_atoms = [
+            alignment_atom([0.0, 0.0, 0.0, 0.0], 0.8, 1.2, 0.3),
+            alignment_atom([1.0, 0.0, 0.0, 0.0], 0.9, 1.4, -0.2),
+            alignment_atom([0.0, 2.0, 0.0, 0.0], 1.0, 1.6, 0.3),
+            alignment_atom([0.2, 0.4, 1.0, 0.0], 1.1, 1.8, -0.2),
+        ];
+        let reference_atoms = probe_atoms.map(|mut atom| {
+            let [x, y, z, _] = atom.position;
+            atom.position = [2.0 - y, -1.0 + x, 0.5 + z, 0.0];
+            atom
+        });
+        let mappings = [0_u32, 1, 2, 3].map(|atom| AtomMapping {
+            probe_atom: atom,
+            reference_atom: atom,
+            weight: 1.0,
+        });
+        let expected_alignment = align_and_score(
+            &probe_atoms,
+            &reference_atoms,
+            &mappings,
+            AlignmentMode::MappedHorn,
+        )
+        .map_err(|error| MetalRuntimeError::KernelUnavailable(error.to_string()))?;
+        let descriptors = [AlignmentPairDescriptor {
+            probe_atom_start: 0,
+            probe_atom_count: probe_atoms.len() as u64,
+            reference_atom_start: 0,
+            reference_atom_count: reference_atoms.len() as u64,
+            mapping_start: 0,
+            mapping_count: mappings.len() as u64,
+            mode: AlignmentMode::MappedHorn,
+        }];
+        let observed_alignment = self.host.align_and_score_profiled(
+            MetalAlignmentBatch {
+                probe_atoms: &probe_atoms,
+                reference_atoms: &reference_atoms,
+                mappings: &mappings,
+                pairs: &descriptors,
+            },
+            MIN_COMPUTE_MEMORY_BYTES,
+        )?;
+        let observed_primary = observed_alignment.primary_scores[0];
+        let observed_secondary = observed_alignment.secondary_scores[0];
+        let expected_scores = expected_alignment.scores;
+        if observed_alignment.statuses != [1]
+            || !float_slices_close(
+                &observed_primary,
+                &[
+                    expected_scores.rmsd.expect("mapped startup RMSD"),
+                    expected_scores.shape_overlap,
+                    expected_scores.shape_tanimoto,
+                    expected_scores.shape_carbo,
+                ],
+                3.0e-4,
+            )
+            || !float_slices_close(
+                &observed_secondary,
+                &[
+                    expected_scores.electrostatic_overlap,
+                    expected_scores.electrostatic_carbo,
+                    expected_scores.electrostatic_tanimoto,
+                    expected_scores.combined_similarity,
+                ],
+                3.0e-4,
+            )
+            || observed_primary[0] > 3.0e-4
+        {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal startup alignment/scoring differs from the float64 CPU reference".into(),
+            ));
+        }
         Ok(())
     }
 }
@@ -889,6 +1062,20 @@ fn float_slices_close(left: &[f32], right: &[f32], tolerance: f32) -> bool {
         && left.iter().zip(right).all(|(left, right)| {
             left.is_finite() && right.is_finite() && (left - right).abs() <= tolerance
         })
+}
+
+fn alignment_atom(
+    position: [f32; 4],
+    gaussian_exponent: f32,
+    gaussian_amplitude: f32,
+    partial_charge: f32,
+) -> AlignmentAtom {
+    AlignmentAtom {
+        position,
+        gaussian_exponent,
+        gaussian_amplitude,
+        partial_charge,
+    }
 }
 
 fn gpu_time_ms(gpu_time_seconds: f64) -> Result<u64, MetalRuntimeError> {
@@ -983,6 +1170,32 @@ mod tests {
             DistanceGeometryOptimizationStatus::ConvergedGradient
                 | DistanceGeometryOptimizationStatus::ConvergedStep
         )));
+        let atoms = [
+            alignment_atom([0.0, 0.0, 0.0, 0.0], 0.8, 1.2, 0.3),
+            alignment_atom([1.5, 0.0, 0.0, 0.0], 0.9, 1.4, -0.2),
+        ];
+        let descriptors = [AlignmentPairDescriptor {
+            probe_atom_start: 0,
+            probe_atom_count: 2,
+            reference_atom_start: 0,
+            reference_atom_count: 2,
+            mapping_start: 0,
+            mapping_count: 0,
+            mode: AlignmentMode::FixedPose,
+        }];
+        let alignment = runtime
+            .align_and_score_profiled(
+                MetalAlignmentBatch {
+                    probe_atoms: &atoms,
+                    reference_atoms: &atoms,
+                    mappings: &[],
+                    pairs: &descriptors,
+                },
+                MIN_COMPUTE_MEMORY_BYTES,
+            )
+            .expect("packaged Metal fixed-pose scoring");
+        assert!((alignment.pairs[0].scores.shape_tanimoto - 1.0).abs() < 1.0e-5);
+        assert!((alignment.pairs[0].scores.electrostatic_carbo - 1.0).abs() < 1.0e-5);
         let device = runtime.device_identity();
         eprintln!(
             "packaged Metal runtime loaded: device={}, registryId={}, unifiedMemory={}, metallibSha256={}",

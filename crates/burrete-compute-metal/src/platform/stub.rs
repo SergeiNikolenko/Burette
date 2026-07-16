@@ -7,9 +7,11 @@ use burrete_compute_core::{
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 
 use crate::platform::{
-    MetalDistanceDispatch, MetalDistanceOptimizationDispatch, MetalEtkDispatch, MetalMmffDispatch,
-    MetalMmffOptimizationDispatch, MetalStereoValidationDispatch,
+    MetalAlignmentDispatch, MetalDistanceDispatch, MetalDistanceOptimizationDispatch,
+    MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch,
+    MetalStereoValidationDispatch,
 };
+use crate::runtime::MetalAlignmentBatch;
 use crate::MetalRuntimeError;
 
 #[derive(Debug)]
@@ -156,6 +158,16 @@ impl MetalHost {
         _parameters: &MmffParameters,
         _max_memory_bytes: u64,
     ) -> Result<MetalMmffDispatch, MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn align_and_score_profiled(
+        &self,
+        _batch: MetalAlignmentBatch<'_>,
+        _max_memory_bytes: u64,
+    ) -> Result<MetalAlignmentDispatch, MetalRuntimeError> {
         Err(MetalRuntimeError::UnsupportedPlatform(
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))

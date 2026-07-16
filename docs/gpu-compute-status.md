@@ -233,8 +233,8 @@ remain in progress.
 | --- | --- |
 | macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
-| Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, and fused automatic BFGS/L-BFGS MMFF optimization on Apple M2 Pro |
-| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v10 runtime generation passes package verification and real-GPU startup, while a refreshed v10 desktop package remains pending |
+| Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, fused automatic BFGS/L-BFGS MMFF optimization, and mapped Horn/RMSD/shape/ESP scoring on Apple M2 Pro |
+| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v11 runtime generation passes package verification and real-GPU startup, while a refreshed v11 desktop package remains pending |
 | Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -399,13 +399,19 @@ separate product increments.
   on `Apple M2 Pro` (`registryId=0x1000003c0`, unified memory); the tested
   `native-compute.v10.metallib` SHA-256 is
   `84d3d2cf0c31c09e87abe97d7455acd498b204b1bb27109a246be22b47c76a56`.
+- The verified v11 runtime adds mapped Horn/quaternion alignment, weighted RMSD,
+  analytic Gaussian shape Tanimoto/Carbo, and ESP-Sim Carbo/Tanimoto scoring.
+  Its startup KAT recovers a known proper transform and matches the independent
+  float64 CPU oracle on `Apple M2 Pro` (`registryId=0x1000003c0`, unified
+  memory). The tested `native-compute.v11.metallib` SHA-256 is
+  `e38da4f671a12a0d31bf8f68b55c77716dad646ca8c987a0fc24d4b2fca09c85`.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.
 
-These checks prove the source implementation, an isolated current v10 runtime
+These checks prove the source implementation, an isolated current v11 runtime
 generation, and the earlier unique v1 ad-hoc development package, not a current
-v10 desktop package or production release. They do not replace the scientific
+v11 desktop package or production release. They do not replace the scientific
 corpus, 100k-scale benchmark, Developer ID hardened-runtime signature,
 notarization, or visual UI-triggered clustering evidence.
 
