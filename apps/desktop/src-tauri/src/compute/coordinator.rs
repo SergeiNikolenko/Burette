@@ -23,7 +23,8 @@ use uuid::Uuid;
 
 use crate::compute::{
     artifact_publisher::{
-        artifact_manifest_sha256, materialize_cluster_artifact, ClusterPublicationStep,
+        artifact_manifest_sha256, materialize_cluster_artifact, reconcile_artifact_root,
+        ClusterPublicationStep,
     },
     cluster_executor::{
         finish_clustering, graph_options, valid_fingerprints, validate_computation,
@@ -91,7 +92,9 @@ impl ComputeCoordinator {
     ) -> Self {
         let state = match ComputeStore::initialize(compute_root) {
             Ok(store) => match SnapshotRepository::initialize(&store) {
-                Ok(snapshots) => match store.recover_active_jobs(now_ms()) {
+                Ok(snapshots) => match reconcile_artifact_root(&store)
+                    .and_then(|()| store.recover_active_jobs(now_ms()))
+                {
                     Ok(_) => match initialize_runtime_catalog(viewer_runtime_root) {
                         Ok((helper_sha256, engines)) => {
                             CoordinatorState::Ready(Box::new(ReadyCoordinator {

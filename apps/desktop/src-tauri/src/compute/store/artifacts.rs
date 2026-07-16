@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use burrete_compute_protocol::{ArtifactManifest, JobRevisionEvent, JobSnapshot};
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use uuid::Uuid;
@@ -10,6 +12,59 @@ use super::{
 };
 
 impl ComputeStore {
+    pub(crate) fn published_artifact_inventory(
+        &self,
+    ) -> ComputeResult<BTreeMap<String, ArtifactManifest>> {
+        let connection = self.open_connection()?;
+        let mut statement = connection.prepare(
+            "SELECT artifacts.relative_directory, artifacts.manifest_json,
+                    jobs.snapshot_json, job_source_snapshots.snapshot_id,
+                    job_source_snapshots.snapshot_ref_json
+             FROM artifacts
+             INNER JOIN jobs ON jobs.job_id = artifacts.job_id
+             LEFT JOIN job_source_snapshots
+               ON job_source_snapshots.job_id = jobs.job_id
+             WHERE publication_state = 'published'
+             ORDER BY artifacts.relative_directory",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })?;
+        let mut inventory = BTreeMap::new();
+        for row in rows {
+            let (directory, manifest_json, snapshot_json, snapshot_id, snapshot_ref_json) = row?;
+            if inventory.len() >= 4_096 {
+                return Err(ComputeCoordinatorError::Unavailable(
+                    "published compute artifact inventory exceeds the recovery bound".into(),
+                ));
+            }
+            let manifest_json = manifest_json.ok_or_else(|| {
+                ComputeCoordinatorError::Unavailable(
+                    "published compute artifact is missing its durable manifest".into(),
+                )
+            })?;
+            let manifest: ArtifactManifest = serde_json::from_str(&manifest_json)?;
+            let job = decode_snapshot_with_source(
+                &snapshot_json,
+                snapshot_id.as_deref(),
+                snapshot_ref_json.as_deref(),
+            )?;
+            manifest.validate_against_job(&job)?;
+            if inventory.insert(directory, manifest).is_some() {
+                return Err(ComputeCoordinatorError::Unavailable(
+                    "published compute artifact directory is duplicated".into(),
+                ));
+            }
+        }
+        Ok(inventory)
+    }
+
     pub(crate) fn commit_published_artifact(
         &self,
         owner_window_label: &str,
