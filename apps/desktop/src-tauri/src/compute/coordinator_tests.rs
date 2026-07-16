@@ -65,6 +65,7 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
         },
         parameters: ConformerV1Parameters {
             variant: ConformerVariant::EtkdgV3,
+            mmff_variant: burrete_compute_protocol::MmffVariant::Mmff94s,
             conformers_per_molecule: 3,
             max_attempts_per_conformer: 2,
         },
@@ -205,7 +206,7 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
         .expect("read published conformer XYZ");
     assert_eq!(xyz.matches("Burrete conformer molecule=").count(), 6);
     assert!(xyz.contains("etkEnergy="));
-    assert!(xyz.contains("mmff94sEnergy="));
+    assert!(xyz.contains("mmffVariant=MMFF94s mmffEnergy="));
     assert!(xyz.contains("stereo=passed"));
     let page = registry
         .fetch_page(
@@ -222,15 +223,14 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             },
         )
         .expect("fetch conformer Grid result columns");
-    assert_eq!(page.analysis_columns.len(), 6);
+    assert_eq!(page.analysis_columns.len(), 7);
     assert!(page.analysis_columns.iter().any(|column| {
         column.run_id == publication.job.job_id.to_string()
             && column.value_id == "bestEtkEnergy"
             && column.label == "Best ETK energy"
     }));
     assert!(page.analysis_columns.iter().any(|column| {
-        column.run_id == publication.job.job_id.to_string()
-            && column.value_id == "bestMmff94sEnergy"
+        column.run_id == publication.job.job_id.to_string() && column.value_id == "bestMmffEnergy"
     }));
     assert!(page.rows.iter().all(|row| {
         row.analyses.get("conformerCount").map(|cell| &cell.value) == Some(&serde_json::json!(3))
@@ -242,7 +242,9 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             && row.analyses.get("conformerStatus").map(|cell| &cell.value)
                 == Some(&serde_json::json!("ok"))
             && row.analyses.contains_key("bestEtkEnergy")
-            && row.analyses.contains_key("bestMmff94sEnergy")
+            && row.analyses.contains_key("bestMmffEnergy")
+            && row.analyses.get("mmffVariant").map(|cell| &cell.value)
+                == Some(&serde_json::json!("MMFF94s"))
             && row
                 .analyses
                 .get("mmffOptimizationStatus")

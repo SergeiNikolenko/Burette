@@ -34,6 +34,7 @@ fn conformer_snapshot_round_trips_without_a_request_wrapper() {
         },
         parameters: ConformerV1Parameters {
             variant: ConformerVariant::EtkdgV3,
+            mmff_variant: crate::MmffVariant::Mmff94s,
             conformers_per_molecule: 8,
             max_attempts_per_conformer: 4,
         },

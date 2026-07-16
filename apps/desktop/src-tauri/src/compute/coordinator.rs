@@ -1255,10 +1255,17 @@ impl ComputeCoordinator {
                 "distanceStage": successful_job.stages[2],
                 "stereoStage": successful_job.stages[3],
                 "referenceStage": successful_job.stages[4],
+                "conformerVariant": successful_job.request.as_conformer()?.parameters.variant,
+                "mmffVariant": successful_job.request.as_conformer()?.parameters.mmff_variant,
             }),
             created_at_ms: materialized.created_at_ms,
             artifact_id: materialized.artifact_id,
             artifact_manifest_sha256: manifest_sha256.clone(),
+            mmff_variant: successful_job
+                .request
+                .as_conformer()?
+                .parameters
+                .mmff_variant,
             assignments,
         };
         let (grid_applied, grid_warning) = match apply_conformer_analysis_run(

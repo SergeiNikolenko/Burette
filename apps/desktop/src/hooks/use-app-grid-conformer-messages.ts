@@ -4,7 +4,7 @@ import { generateBrowserDev3DConformer, openBrowserDevTextDocument } from "../li
 import { conformerGenerationPreferences, generated3DPoseSetText, type ConformerGenerationResult } from "../lib/conformer-generation";
 import { pathExtension } from "../lib/file-routing";
 import { isTauriRuntime } from "../lib/tauri";
-import { runConformerWorkflow } from "../lib/compute-conformer";
+import { runConformerWorkflow, type ConformerVariant, type MmffVariant } from "../lib/compute-conformer";
 import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 import type { ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
@@ -142,16 +142,23 @@ export function useAppGridConformerMessages({
           )))]
         : [];
       if (isTauriRuntime() && documentId && sourceIndexes.length > 0) {
+        const conformerVariants: ConformerVariant[] = ["DG", "KDG", "ETDG", "ETDGv2", "ETKDG", "ETKDGv2", "ETKDGv3", "srETKDGv3"];
+        const requestedConformerVariant = bodyString(body.conformerVariant) as ConformerVariant;
+        const conformerVariant = conformerVariants.includes(requestedConformerVariant)
+          ? requestedConformerVariant
+          : "ETKDGv3";
+        const requestedMmffVariant = bodyString(body.mmffVariant) as MmffVariant;
+        const mmffVariant: MmffVariant = requestedMmffVariant === "MMFF94" ? "MMFF94" : "MMFF94s";
         const result = await runConformerWorkflow(documentId, sourceIndexes, (phase) => {
           const labels = {
             extracting: "Extracting ETKDG constraints...",
-            embedding: "Generating and MMFF94s-optimizing conformers...",
+            embedding: `Generating ${conformerVariant} and ${mmffVariant}-optimizing conformers...`,
             stereo: "Validating stereochemistry on Metal...",
             validation: "Checking CPU reference parity...",
             publishing: "Publishing conformers and updating Grid...",
           } as const;
           pushStatus(labels[phase]);
-        });
+        }, { variant: conformerVariant, mmffVariant, conformersPerMolecule: 16 });
         await openDocuments(
           [result.primaryOpenPath],
           {},
@@ -159,7 +166,7 @@ export function useAppGridConformerMessages({
         );
         const backend = result.backend === "nativeMetal" ? "Metal GPU" : "reference CPU";
         pushStatus(
-          `Generated and MMFF94s-ranked ${result.passedCount.toLocaleString()} valid conformers via ${backend} and opened the ensemble in Molstar.`,
+          `Generated ${conformerVariant} and ${mmffVariant}-ranked ${result.passedCount.toLocaleString()} valid conformers via ${backend} and opened the ensemble in Molstar.`,
           result.gridApplied ? "success" : "error",
           result.gridWarning ? [result.gridWarning] : undefined,
         );

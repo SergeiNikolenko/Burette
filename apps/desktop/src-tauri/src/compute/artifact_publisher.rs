@@ -530,7 +530,13 @@ pub(crate) fn materialize_conformer_artifact(
             EnginePackRef::from_manifest(&engine_manifest, engine_manifest_file.clone())?;
 
         let result_layout = write_conformer_results(&mut writer, distance, stereo)?;
-        let xyz = encode_conformer_xyz(engine_arrays, distance, stereo)?;
+        let mmff_variant = job
+            .request
+            .as_conformer()?
+            .parameters
+            .mmff_variant
+            .wire_id();
+        let xyz = encode_conformer_xyz(engine_arrays, distance, stereo, mmff_variant)?;
         writer.write("result/conformers.xyz", "chemical/x-xyz", &xyz)?;
         let result_pack_id = Uuid::new_v4();
         let result_pack_sha256 = pack_identity_sha256(&PackIdentity {
@@ -1201,7 +1207,7 @@ fn write_conformer_results(
         )?,
         packed_array_with_unit(
             "mmffEnergies",
-            "mmff94s_energy",
+            "mmff_energy",
             Some("kcal/mol"),
             &mmff_energies,
             PackedDType::F32,
@@ -1265,6 +1271,7 @@ fn encode_conformer_xyz(
     engine: &ConformerEnginePackArrays,
     distance: &ConformerDistanceComputation,
     stereo: &ConformerStereoComputation,
+    mmff_variant: &str,
 ) -> ComputeResult<Vec<u8>> {
     if distance.conformer_atom_starts.len() != distance.conformer_count() + 1
         || distance.conformer_atom_starts.last().copied() != Some(distance.positions.len() as u64)
@@ -1350,11 +1357,12 @@ fn encode_conformer_xyz(
         };
         writeln!(
             xyz,
-            "Burrete conformer molecule={} energyRank={} ordinal={} etkEnergy={:.8} mmff94sEnergy={} mmffStatus={} stereo={}",
+            "Burrete conformer molecule={} energyRank={} ordinal={} etkEnergy={:.8} mmffVariant={} mmffEnergy={} mmffStatus={} stereo={}",
             molecule,
             energy_rank,
             distance.conformer_ordinals[conformer],
             distance.etk_energies[conformer],
+            mmff_variant,
             mmff_energy,
             mmff_status_label(mmff_status),
             if stereo.failure_flags[conformer] == 0 {

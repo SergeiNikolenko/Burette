@@ -6,7 +6,7 @@ variant/seed/adaptive batching, packaged native RDKit extraction, raw job
 submission, adaptive CPU/Metal distance-geometry execution, Metal ETK
 refinement, stereo-aware retry, and final Metal stereo validation implemented;
 conformer EnginePack/ResultPack publication and Grid-to-Mol* workflow
-implemented; seven-term MMFF94s extraction, CPU/Metal optimization, retry,
+implemented; selectable MMFF94/MMFF94s extraction, CPU/Metal optimization, retry,
 energy-ranked ResultPack v2/XYZ publication, and Grid writeback implemented;
 production release, scientific-corpus parity, and scale proof pending
 
@@ -179,11 +179,13 @@ the adaptive scheduler uses the same seven position-sized buffers and
 three-way transient history peak.
 This proves the iterative DG distance-bound optimizer, ETK refinement, stereo
 evaluation primitives, deterministic stereo-aware retries, and MMFF
-optimization primitives. The durable conformer workflow now applies MMFF94s
-after ETK, retries non-converged structures with a conservative bounded policy,
+optimization primitives. The Grid workflow now exposes every admitted DG/ETDG/
+ETKDG variant and applies the selected MMFF94 or MMFF94s profile after ETK. It
+retries non-converged structures with a conservative bounded policy,
 validates stereochemistry after optimization, publishes explicit unavailable
 or non-converged states without false GPU claims, ranks converged structures by
-MMFF94s energy, and writes the best converged energy back to Grid.
+the selected MMFF energy, records the exact variant in XYZ and Grid provenance,
+and writes the best converged energy back to Grid.
 
 The durable executor now consumes the admitted EnginePack without an `N x N`
 allocation, rebuilds the exact adaptive `molecule x conformer` schedule, derives
@@ -449,8 +451,8 @@ fixed order below:
 
 1. complete conformer scientific-corpus and packaged UI release gates for the
    implemented Grid-to-Mol* native workflow;
-2. finish MMFF94/MMFF94s scientific-corpus parity, expose both variants and a
-   standalone geometry-optimization action, and replace the bounded numerical
+2. finish MMFF94/MMFF94s scientific-corpus parity, add a standalone
+   geometry-optimization action, and replace the bounded numerical
    gradient with an independently validated analytic Metal gradient;
 3. finish alignment corpus parity, chemistry-derived partial charges,
    non-identity atom maps, durable ResultPack/report publication, and packaged

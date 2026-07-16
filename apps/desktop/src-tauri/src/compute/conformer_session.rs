@@ -9,9 +9,9 @@ use burrete_compute_core::{
     ExtractedConformerParameters, NativeMmffParameters,
 };
 use burrete_compute_protocol::{
-    ConformerV1SubmitRequest, ConformerVariant, JobSnapshot, MolecularSnapshotRecordV1,
-    OrderedRecordMoleculeIdentityHasher, PackedFileDescriptor, MAX_PACK_BYTES,
-    MOLECULAR_RECORDS_FILE_PATH,
+    ConformerV1SubmitRequest, ConformerVariant, JobSnapshot, MmffVariant,
+    MolecularSnapshotRecordV1, OrderedRecordMoleculeIdentityHasher, PackedFileDescriptor,
+    MAX_PACK_BYTES, MOLECULAR_RECORDS_FILE_PATH,
 };
 use serde::Serialize;
 use uuid::Uuid;
@@ -55,6 +55,7 @@ pub(crate) struct ConformerInputChunk {
     pub(crate) completed_records: u64,
     pub(crate) total_records: u64,
     pub(crate) variant: ConformerVariant,
+    pub(crate) mmff_variant: MmffVariant,
     pub(crate) maximum_result_bytes: usize,
     pub(crate) records: Vec<ConformerInputRecord>,
 }
@@ -82,6 +83,7 @@ pub(crate) struct ConformerExtractionSession {
     session_id: Uuid,
     owner: String,
     variant: ConformerVariant,
+    mmff_variant: MmffVariant,
     expected_records: u64,
     next_ordinal: u64,
     reader: BufReader<File>,
@@ -144,6 +146,7 @@ impl ConformerExtractionSession {
             session_id: Uuid::new_v4(),
             owner: owner.into(),
             variant: request.parameters.variant,
+            mmff_variant: request.parameters.mmff_variant,
             expected_records,
             next_ordinal: 0,
             reader: BufReader::new(file),
@@ -380,6 +383,7 @@ impl ConformerExtractionSession {
             completed_records: start_ordinal,
             total_records: self.expected_records,
             variant: self.variant,
+            mmff_variant: self.mmff_variant,
             maximum_result_bytes: MAX_CONFORMER_RESULT_ENVELOPE_BYTES,
             records,
         }))

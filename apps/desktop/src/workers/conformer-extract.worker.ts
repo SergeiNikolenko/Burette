@@ -46,11 +46,21 @@ self.addEventListener("message", (event: MessageEvent<ConformerExtractionWorkerR
 async function extractChunk(chunk: ConformerInputChunk) {
   validateChunk(chunk);
   const extractor = await loadExtractor();
-  const records = chunk.records.map((record) => extractRecord(extractor, record, chunk.variant));
+  const records = chunk.records.map((record) => extractRecord(
+    extractor,
+    record,
+    chunk.variant,
+    chunk.mmffVariant,
+  ));
   return encodeEnvelope(chunk, records);
 }
 
-function extractRecord(extractor: ExtractorModule, record: ConformerInputRecord, variant: ConformerVariant) {
+function extractRecord(
+  extractor: ExtractorModule,
+  record: ConformerInputRecord,
+  variant: ConformerVariant,
+  mmffVariant: "MMFF94" | "MMFF94s",
+) {
   if (record.format === "unsupportedIdcode") {
     return failedRecord(record, "RDKit conformer extraction does not support DataWarrior IDCode records.");
   }
@@ -70,7 +80,11 @@ function extractRecord(extractor: ExtractorModule, record: ConformerInputRecord,
       throw new Error("RDKit conformer extractor returned an invalid BCEX payload.");
     }
     try {
-      const mmffPayload = extractor.extract_mmff_parameters(record.input, inputFormat, 1);
+      const mmffPayload = extractor.extract_mmff_parameters(
+        record.input,
+        inputFormat,
+        mmffVariant === "MMFF94" ? 0 : 1,
+      );
       if (!(mmffPayload instanceof Uint8Array)
         || mmffPayload.byteLength < 64
         || mmffPayload.byteLength > 0xffff_ffff) {

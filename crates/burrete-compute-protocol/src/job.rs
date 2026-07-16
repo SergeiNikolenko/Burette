@@ -724,6 +724,7 @@ mod tests {
             },
             parameters: ConformerV1Parameters {
                 variant: ConformerVariant::EtkdgV3,
+                mmff_variant: crate::MmffVariant::Mmff94s,
                 conformers_per_molecule: 16,
                 max_attempts_per_conformer: 8,
             },

@@ -1,4 +1,5 @@
 export type ConformerVariant = "DG" | "KDG" | "ETDG" | "ETDGv2" | "ETKDG" | "ETKDGv2" | "ETKDGv3" | "srETKDGv3";
+export type MmffVariant = "MMFF94" | "MMFF94s";
 export type ConformerInputFormat = "molblock" | "smiles" | "unsupportedIdcode";
 
 export type ConformerInputRecord = {
@@ -15,6 +16,7 @@ export type ConformerInputChunk = {
   completedRecords: number;
   totalRecords: number;
   variant: ConformerVariant;
+  mmffVariant: MmffVariant;
   maximumResultBytes: number;
   records: ConformerInputRecord[];
 };
@@ -87,6 +89,12 @@ export type ConformerWorkflowResult = ConformerPublicationStep & {
   backend: "nativeMetal" | "referenceCpu";
 };
 
+export type ConformerWorkflowOptions = {
+  variant: ConformerVariant;
+  mmffVariant: MmffVariant;
+  conformersPerMolecule: number;
+};
+
 export function executeConformerDistance(job: ConformerComputeJob) {
   return invoke<ConformerDistanceExecutionStep>("compute_execute_conformer_distance", {
     jobId: job.jobId,
@@ -119,6 +127,11 @@ export async function runConformerWorkflow(
   documentId: string,
   sourceIndexes: number[],
   onProgress: (phase: ConformerWorkflowPhase, job: ConformerComputeJob) => void,
+  options: ConformerWorkflowOptions = {
+    variant: "ETKDGv3",
+    mmffVariant: "MMFF94s",
+    conformersPerMolecule: 16,
+  },
 ): Promise<ConformerWorkflowResult> {
   const normalizedIndexes = [...new Set(sourceIndexes)]
     .filter((index) => Number.isSafeInteger(index) && index >= 0)
@@ -134,8 +147,9 @@ export async function runConformerWorkflow(
       scope: { kind: "selected", sourceIndexes: normalizedIndexes },
     },
     parameters: {
-      variant: "ETKDGv3",
-      conformersPerMolecule: 16,
+      variant: options.variant,
+      mmffVariant: options.mmffVariant,
+      conformersPerMolecule: options.conformersPerMolecule,
       maxAttemptsPerConformer: 8,
     },
     executionPolicy: {
