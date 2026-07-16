@@ -247,6 +247,27 @@ impl ConformerEnginePackBuilder {
         Ok(())
     }
 
+    /// Appends one extraction chunk atomically. A rejected record leaves the
+    /// canonical arrays at their pre-chunk logical lengths, so the caller may
+    /// safely retry the same frozen-source chunk.
+    pub fn append_batch(
+        &mut self,
+        records: Vec<Option<ExtractedConformerParameters>>,
+    ) -> Result<(), ConformerPackError> {
+        let checkpoint = Counts::from_arrays(&self.arrays);
+        for record in records {
+            let result = match record {
+                Some(extracted) => self.append_valid(extracted),
+                None => self.append_invalid(),
+            };
+            if let Err(error) = result {
+                self.truncate(checkpoint);
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
     pub fn append_invalid(&mut self) -> Result<(), ConformerPackError> {
         let next = Counts::from_arrays(&self.arrays).checked_add(Counts {
             records: 1,
@@ -290,6 +311,66 @@ impl ConformerEnginePackBuilder {
             .etk_distance_term_starts
             .push(counts.etk_distances);
         self.arrays.stereo_center_starts.push(counts.stereo);
+    }
+
+    fn truncate(&mut self, counts: Counts) {
+        self.arrays.atomic_numbers.truncate(counts.atoms as usize);
+        self.arrays.formal_charges.truncate(counts.atoms as usize);
+        self.arrays
+            .distance_atom_pairs
+            .truncate(counts.distances as usize);
+        self.arrays
+            .distance_bounds_squared
+            .truncate(counts.distances as usize);
+        self.arrays
+            .distance_weights
+            .truncate(counts.distances as usize);
+        self.arrays
+            .chiral_atom_quads
+            .truncate(counts.chiral as usize);
+        self.arrays
+            .chiral_volume_bounds
+            .truncate(counts.chiral as usize);
+        self.arrays
+            .torsion_atom_quads
+            .truncate(counts.torsions as usize);
+        self.arrays
+            .torsion_coefficients
+            .truncate(counts.torsions as usize);
+        self.arrays.torsion_signs.truncate(counts.torsions as usize);
+        self.arrays
+            .improper_atom_quads
+            .truncate(counts.impropers as usize);
+        self.arrays
+            .improper_weights
+            .truncate(counts.impropers as usize);
+        self.arrays
+            .etk_distance_atom_pairs
+            .truncate(counts.etk_distances as usize);
+        self.arrays
+            .etk_distance_bounds
+            .truncate(counts.etk_distances as usize);
+        self.arrays
+            .etk_distance_kinds
+            .truncate(counts.etk_distances as usize);
+        self.arrays
+            .etk_distance_weights
+            .truncate(counts.etk_distances as usize);
+        self.arrays
+            .stereo_atom_quints
+            .truncate(counts.stereo as usize);
+        self.arrays.stereo_flags.truncate(counts.stereo as usize);
+        let starts = counts.records as usize + 1;
+        self.arrays.molecule_atom_starts.truncate(starts);
+        self.arrays.distance_term_starts.truncate(starts);
+        self.arrays.chiral_term_starts.truncate(starts);
+        self.arrays.torsion_term_starts.truncate(starts);
+        self.arrays.improper_term_starts.truncate(starts);
+        self.arrays.etk_distance_term_starts.truncate(starts);
+        self.arrays.stereo_center_starts.truncate(starts);
+        self.arrays
+            .record_validity
+            .truncate(counts.records as usize);
     }
 }
 
@@ -645,5 +726,22 @@ mod tests {
 
         let mut bounded = ConformerEnginePackBuilder::new(ConformerVariant::EtkdgV3, 75);
         assert!(bounded.append_valid(extracted(6)).is_err());
+    }
+
+    #[test]
+    fn rejected_batch_rolls_back_every_record() {
+        let mut mismatch = extracted(8);
+        mismatch.variant = ConformerVariant::Kdg;
+        let mut builder = ConformerEnginePackBuilder::new(ConformerVariant::EtkdgV3, 1024);
+
+        assert!(builder
+            .append_batch(vec![Some(extracted(6)), None, Some(mismatch)])
+            .is_err());
+
+        let arrays = builder.finish(0).expect("rolled-back builder");
+        assert!(arrays.atomic_numbers.is_empty());
+        assert!(arrays.record_validity.is_empty());
+        assert_eq!(arrays.molecule_atom_starts, [0]);
+        assert_eq!(arrays.distance_term_starts, [0]);
     }
 }

@@ -204,26 +204,39 @@ impl ConformerExtractionSession {
             };
             decoded.push(value);
         }
-        for (source, value) in expected.records.iter().zip(decoded) {
-            self.identities.push(ConformerMoleculeIdentity {
-                source_record_id: source.source_record_id,
-                molecule_content_sha256: source.molecule_content_sha256.clone(),
-            });
+        let mut pack_records = Vec::new();
+        let mut chunk_errors = Vec::new();
+        pack_records
+            .try_reserve_exact(decoded.len())
+            .map_err(|_| unavailable("cannot allocate conformer pack chunk"))?;
+        chunk_errors
+            .try_reserve_exact(decoded.len())
+            .map_err(|_| unavailable("cannot allocate conformer error chunk"))?;
+        for value in decoded {
             match value {
                 Ok(extracted) => {
-                    self.builder.append_valid(extracted).map_err(|error| {
-                        protocol(format!("cannot assemble EnginePack: {error}"))
-                    })?;
-                    self.errors.push(None);
+                    pack_records.push(Some(extracted));
+                    chunk_errors.push(None);
                 }
                 Err(error) => {
-                    self.builder.append_invalid().map_err(|error| {
-                        protocol(format!("cannot assemble EnginePack: {error}"))
-                    })?;
-                    self.errors.push(Some(error));
+                    pack_records.push(None);
+                    chunk_errors.push(Some(error));
                 }
             }
         }
+        self.builder
+            .append_batch(pack_records)
+            .map_err(|error| protocol(format!("cannot assemble EnginePack: {error}")))?;
+        self.identities.extend(
+            expected
+                .records
+                .iter()
+                .map(|source| ConformerMoleculeIdentity {
+                    source_record_id: source.source_record_id,
+                    molecule_content_sha256: source.molecule_content_sha256.clone(),
+                }),
+        );
+        self.errors.extend(chunk_errors);
         self.pending = None;
         let next = self.read_next_chunk()?;
         self.pending = next.clone();
