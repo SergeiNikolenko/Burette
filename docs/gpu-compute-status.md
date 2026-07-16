@@ -464,8 +464,10 @@ separate product increments.
   reference paths, and CHNO D3 has compact native CPU and Metal tables. The
   complete pinned 40-element PM6 parameter domain is compiled into a typed
   native table, including 18 d-basis elements and all tail/Slater-Condon
-  fields. PM6/PM6_D d integrals, broader D3 tables, and production PM6-D3H4
-  SCF composition remain gated.
+  fields. The 243-term PM6 one-center W integral table is also generated
+  natively from 11 Slater-Condon radial parameters and matches pinned sulfur
+  and iron oracles. Two-center d integrals, Metal W/Fock contraction, broader
+  D3 tables, and production PM6-D3H4 SCF composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.

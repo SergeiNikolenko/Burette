@@ -5,6 +5,7 @@ mod parameters;
 mod pm6_d3_chno;
 mod pm6_d3h4;
 mod pm6_full_parameters;
+mod pm6_w_integrals;
 mod rm1;
 mod rotation;
 mod two_center;
@@ -14,6 +15,7 @@ pub use parameters::{rm1_parameters, semiempirical_parameters, SemiempiricalElem
 pub use pm6_d3_chno::pm6_d3_dispersion_energy;
 pub use pm6_d3h4::{pm6_h4_covalent_radius, pm6_h4_energy, pm6_hh_repulsion_energy};
 pub use pm6_full_parameters::{pm6_full_parameters, Pm6FullElementParameters};
+pub use pm6_w_integrals::{pm6_one_center_w_integrals, pm6_slater_condon_parameter};
 pub use rm1::{
     contract_rm1_pair_fock, evaluate_rm1, evaluate_rm1_with_accelerators,
     evaluate_rm1_with_pair_contractor, evaluate_rm1_with_prepared_pairs_and_accelerators,
