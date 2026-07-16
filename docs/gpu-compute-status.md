@@ -86,6 +86,13 @@ conformer identity, DG and ETK status/objective values, stereo failure flags,
 embedding attempt counts, MMFF94s energies, explicit optimizer and convergence
 status, and the exact 128-bit seed words used for every generated structure.
 
+The frozen conformer corpus now contains 32 packaged-BCEX cases: ethanol,
+chiral lactic acid, cyclohexane, and acetamide under all eight supported
+variants. Every case decodes and completes the DG/ETK/stereo pipeline on the
+v20 Metal runtime on Apple M2 Pro. The hardest chiral DG case requires 23
+identity-derived retries; the desktop production request therefore admits 32
+of the protocol-bounded maximum 64 attempts.
+
 The extractor ABI now has a bounded binary Web Worker and Rust decoder. The
 worker verifies the exported RDKit revision plus BCEX and BMFX versions, emits
 raw BCER v2 envelopes through transferable buffers, and never serializes

@@ -154,7 +154,7 @@ export async function runConformerWorkflow(
       initialization: options.initialization,
       mmffVariant: options.mmffVariant,
       conformersPerMolecule: options.conformersPerMolecule,
-      maxAttemptsPerConformer: 8,
+      maxAttemptsPerConformer: 32,
     },
     executionPolicy: {
       backendPolicy: "gpuPreferred",
