@@ -13,6 +13,7 @@ mod conformer_schedule;
 mod conformer_stereo;
 mod distance_geometry;
 mod distance_optimizer;
+mod etk_geometry;
 
 pub use conformer_engine::{
     ConformerDistanceEngine, ConformerDistanceMolecule, ConformerEngineError,
@@ -39,6 +40,10 @@ pub use distance_geometry::{
 pub use distance_optimizer::{
     optimize_distance_geometry, DistanceGeometryOptimization, DistanceGeometryOptimizationOptions,
     DistanceGeometryOptimizationStatus,
+};
+pub use etk_geometry::{
+    evaluate_etk_geometry, validate_etk_geometry_constraints, EtkDistanceConstraint,
+    EtkGeometryError, EtkGeometryEvaluation, EtkImproperConstraint, EtkTorsionConstraint,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};
