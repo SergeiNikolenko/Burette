@@ -99,6 +99,15 @@ compiler, linker, SDK, and final metallib by hash. These primitives are not a
 claim of completed distance-geometry optimization or an end-to-end conformer
 capability.
 
+A deterministic bounded float32 L-BFGS CPU oracle now drives that distance
+objective for one conformer. It has fixed memory history, capped directions,
+bounded Armijo backtracking, explicit gradient/step convergence, and distinct
+`lineSearchExhausted` and `maxIterations` outcomes. It preserves coordinates
+when line search cannot accept a step and produces identical results across
+repeated runs. This defines the reference behavior for the upcoming fused
+Metal optimizer; the current production metallib still exposes evaluation,
+not iterative embedding.
+
 The durable `JobSnapshot` request is no longer cluster-only. An untagged typed
 union accepts normalized `cluster.v1` and `conformer.v1` requests while keeping
 the existing on-disk JSON shape unchanged. Snapshot validation dispatches to
@@ -240,7 +249,7 @@ separate product increments.
   generated Grid controls. Repository-wide TypeScript checking is currently
   blocked by pre-existing duplicate CodeMirror dependency identities in the
   text-file viewer; the errors do not involve the compute files changed here.
-- All 75 protocol tests and 28 compute-core tests pass after adding the fixed
+- All 75 protocol tests and 32 compute-core tests pass after adding the fixed
   conformer request/pack/plan contracts, identity-derived seed, adaptive batch
   coverage, deterministic coordinate oracle, DG objective/gradient oracle,
   finite-difference gradient validation, rebatching invariance, and memory
