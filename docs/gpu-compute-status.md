@@ -466,8 +466,10 @@ separate product increments.
   native table, including 18 d-basis elements and all tail/Slater-Condon
   fields. The 243-term PM6 one-center W integral table is also generated
   natively from 11 Slater-Condon radial parameters and matches pinned sulfur
-  and iron oracles. Two-center d integrals, Metal W/Fock contraction, broader
-  D3 tables, and production PM6-D3H4 SCF composition remain gated.
+  and iron oracles. Its 45-output packed-density Fock contraction now produces
+  a complete symmetric 9x9 native CPU block with pinned matrix parity.
+  Two-center d integrals, Metal W/Fock contraction, broader D3 tables, and
+  production PM6-D3H4 SCF composition remain gated.
 - Restart tests preserve valid published artifacts, remove canonical orphans,
   reject unknown artifact entries, and disable compute after artifact
   corruption.

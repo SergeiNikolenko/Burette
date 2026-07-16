@@ -110,6 +110,12 @@ PYSEQM `build_two_elec_one_center_int_D.py` map source. The Slater-Condon and
 the pinned upstream oracle for main-group and transition-metal d elements.
 mlxmolkit MIT and PYSEQM BSD-3-Clause attribution apply.
 
+The PM6 45-output one-center d Fock contraction map is retained from the
+pinned `mlxmolkit/rm1/fock_d.py` representation of PYSEQM behavior. Burrete's
+production implementation performs the packed-density weighting, contraction,
+and symmetric 9x9 unpacking in native Rust. mlxmolkit MIT and PYSEQM
+BSD-3-Clause attribution apply.
+
 The PM6-D3H4 H4 hydrogen-bond equations, covalent-radius table, short-range
 H-H polynomial, and CHNO D3 C6/CN/r0 reference records are adapted from
 OpenMOPAC correction behavior through the pinned
