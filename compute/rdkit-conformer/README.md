@@ -29,3 +29,11 @@ BSD-3-Clause and its notice must ship with every extractor artifact.
 the pinned `Embedder.cpp` because RDKit does not publish them in `Embedder.h`.
 This is a narrow version-locked boundary, not a claim of compatibility with
 arbitrary RDKit releases.
+
+The same pinned module now also owns a separate `BMFX` v1 boundary for
+MMFF94/MMFF94s parameter extraction. It calls RDKit's public MMFF property APIs
+and emits partial charges plus seven groups of fixed 48-byte terms that map to
+the native Metal ABI. Nonbonded terms cover all intrafragment graph pairs at
+1-4 distance or beyond, so the immutable parameter pack does not depend on a
+particular input conformer's coordinates. `BMFX` is decoded and validated by
+Rust before any GPU dispatch; it is not folded into the conformer EnginePack.
