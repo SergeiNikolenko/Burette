@@ -71,6 +71,32 @@ pub enum MmffVariant {
     Mmff94s,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AlignmentModeV1 {
+    MappedHorn,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum SemiempiricalMethodV1 {
+    #[serde(rename = "RM1")]
+    Rm1,
+    #[serde(rename = "AM1")]
+    Am1,
+    #[serde(rename = "PM3")]
+    Pm3,
+    #[serde(rename = "PM6")]
+    Pm6,
+    #[serde(rename = "PM6_D")]
+    Pm6D,
+    #[serde(rename = "PM6_D3H4")]
+    Pm6D3H4,
+    #[serde(rename = "PM6_SP")]
+    Pm6Sp,
+    #[serde(rename = "AM1*")]
+    Am1Star,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ConformerInitialization {
@@ -208,31 +234,123 @@ impl ConformerV1SubmitRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AlignmentV1SubmitRequest {
+    pub schema_version: ComputeJobSchemaVersion,
+    pub workflow_template: WorkflowTemplateId,
+    pub source: GridSourceReference,
+    pub parameters: AlignmentV1Parameters,
+    pub execution_policy: ExecutionPolicy,
+    pub limits: AnalysisResourceLimits,
+}
+
+impl AlignmentV1SubmitRequest {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.schema_version != ComputeJobSchemaVersion::V1
+            || self.workflow_template != WorkflowTemplateId::AlignmentV1
+        {
+            return Err(ProtocolError::Validation(
+                "alignment request has an incompatible schema or workflow template".into(),
+            ));
+        }
+        validate_bounded_text("documentId", &self.source.document_id, MAX_DOCUMENT_ID_BYTES)?;
+        self.source.scope.validate()?;
+        require_selected_scope(&self.source.scope, 2, MAX_SELECTED_ROWS, "alignment.v1")?;
+        self.parameters.validate()?;
+        self.limits.validate()
+    }
+
+    pub fn normalized(mut self) -> Result<Self, ProtocolError> {
+        self.source.scope = self.source.scope.normalized()?;
+        self.validate()?;
+        Ok(self)
+    }
+
+    pub fn canonical_json_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
+        canonical_json_bytes(&self.clone().normalized()?)
+    }
+
+    pub fn canonical_sha256(&self) -> Result<String, ProtocolError> {
+        self.canonical_json_bytes().map(|bytes| sha256_hex(&bytes))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SemiempiricalV1SubmitRequest {
+    pub schema_version: ComputeJobSchemaVersion,
+    pub workflow_template: WorkflowTemplateId,
+    pub source: GridSourceReference,
+    pub parameters: SemiempiricalV1Parameters,
+    pub execution_policy: ExecutionPolicy,
+    pub limits: AnalysisResourceLimits,
+}
+
+impl SemiempiricalV1SubmitRequest {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        if self.schema_version != ComputeJobSchemaVersion::V1
+            || self.workflow_template != WorkflowTemplateId::SemiempiricalV1
+        {
+            return Err(ProtocolError::Validation(
+                "semiempirical request has an incompatible schema or workflow template".into(),
+            ));
+        }
+        validate_bounded_text("documentId", &self.source.document_id, MAX_DOCUMENT_ID_BYTES)?;
+        self.source.scope.validate()?;
+        require_selected_scope(&self.source.scope, 1, MAX_SELECTED_ROWS, "semiempirical.v1")?;
+        self.parameters.validate()?;
+        self.limits.validate()
+    }
+
+    pub fn normalized(mut self) -> Result<Self, ProtocolError> {
+        self.source.scope = self.source.scope.normalized()?;
+        self.validate()?;
+        Ok(self)
+    }
+
+    pub fn canonical_json_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
+        canonical_json_bytes(&self.clone().normalized()?)
+    }
+
+    pub fn canonical_sha256(&self) -> Result<String, ProtocolError> {
+        self.canonical_json_bytes().map(|bytes| sha256_hex(&bytes))
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ComputeSubmitRequest {
+    AlignmentV1(AlignmentV1SubmitRequest),
     ClusterV1(ClusterV1SubmitRequest),
     ConformerV1(ConformerV1SubmitRequest),
+    SemiempiricalV1(SemiempiricalV1SubmitRequest),
 }
 
 impl ComputeSubmitRequest {
     pub fn validate(&self) -> Result<(), ProtocolError> {
         match self {
+            Self::AlignmentV1(request) => request.validate(),
             Self::ClusterV1(request) => request.validate(),
             Self::ConformerV1(request) => request.validate(),
+            Self::SemiempiricalV1(request) => request.validate(),
         }
     }
 
     pub fn normalized(self) -> Result<Self, ProtocolError> {
         match self {
+            Self::AlignmentV1(request) => request.normalized().map(Self::AlignmentV1),
             Self::ClusterV1(request) => request.normalized().map(Self::ClusterV1),
             Self::ConformerV1(request) => request.normalized().map(Self::ConformerV1),
+            Self::SemiempiricalV1(request) => request.normalized().map(Self::SemiempiricalV1),
         }
     }
 
     pub fn canonical_json_bytes(&self) -> Result<Vec<u8>, ProtocolError> {
         match self {
+            Self::AlignmentV1(request) => request.canonical_json_bytes(),
             Self::ClusterV1(request) => request.canonical_json_bytes(),
             Self::ConformerV1(request) => request.canonical_json_bytes(),
+            Self::SemiempiricalV1(request) => request.canonical_json_bytes(),
         }
     }
 
@@ -242,30 +360,36 @@ impl ComputeSubmitRequest {
 
     pub const fn workflow_template(&self) -> WorkflowTemplateId {
         match self {
+            Self::AlignmentV1(request) => request.workflow_template,
             Self::ClusterV1(request) => request.workflow_template,
             Self::ConformerV1(request) => request.workflow_template,
+            Self::SemiempiricalV1(request) => request.workflow_template,
         }
     }
 
     pub const fn backend_policy(&self) -> BackendPolicy {
         match self {
+            Self::AlignmentV1(request) => request.execution_policy.backend_policy,
             Self::ClusterV1(request) => request.execution_policy.backend_policy,
             Self::ConformerV1(request) => request.execution_policy.backend_policy,
+            Self::SemiempiricalV1(request) => request.execution_policy.backend_policy,
         }
     }
 
     pub const fn source(&self) -> &GridSourceReference {
         match self {
+            Self::AlignmentV1(request) => &request.source,
             Self::ClusterV1(request) => &request.source,
             Self::ConformerV1(request) => &request.source,
+            Self::SemiempiricalV1(request) => &request.source,
         }
     }
 
     pub fn as_cluster(&self) -> Result<&ClusterV1SubmitRequest, ProtocolError> {
         match self {
             Self::ClusterV1(request) => Ok(request),
-            Self::ConformerV1(_) => Err(ProtocolError::Validation(
-                "cluster operation received a conformer request".into(),
+            _ => Err(ProtocolError::Validation(
+                "cluster operation received a different workflow request".into(),
             )),
         }
     }
@@ -273,8 +397,27 @@ impl ComputeSubmitRequest {
     pub fn as_conformer(&self) -> Result<&ConformerV1SubmitRequest, ProtocolError> {
         match self {
             Self::ConformerV1(request) => Ok(request),
-            Self::ClusterV1(_) => Err(ProtocolError::Validation(
-                "conformer operation received a cluster request".into(),
+            _ => Err(ProtocolError::Validation(
+                "conformer operation received a different workflow request".into(),
+            )),
+        }
+    }
+
+
+    pub fn as_alignment(&self) -> Result<&AlignmentV1SubmitRequest, ProtocolError> {
+        match self {
+            Self::AlignmentV1(request) => Ok(request),
+            _ => Err(ProtocolError::Validation(
+                "alignment operation received a different workflow request".into(),
+            )),
+        }
+    }
+
+    pub fn as_semiempirical(&self) -> Result<&SemiempiricalV1SubmitRequest, ProtocolError> {
+        match self {
+            Self::SemiempiricalV1(request) => Ok(request),
+            _ => Err(ProtocolError::Validation(
+                "semiempirical operation received a different workflow request".into(),
             )),
         }
     }
@@ -289,6 +432,18 @@ impl From<ClusterV1SubmitRequest> for ComputeSubmitRequest {
 impl From<ConformerV1SubmitRequest> for ComputeSubmitRequest {
     fn from(request: ConformerV1SubmitRequest) -> Self {
         Self::ConformerV1(request)
+    }
+}
+
+impl From<AlignmentV1SubmitRequest> for ComputeSubmitRequest {
+    fn from(request: AlignmentV1SubmitRequest) -> Self {
+        Self::AlignmentV1(request)
+    }
+}
+
+impl From<SemiempiricalV1SubmitRequest> for ComputeSubmitRequest {
+    fn from(request: SemiempiricalV1SubmitRequest) -> Self {
+        Self::SemiempiricalV1(request)
     }
 }
 
@@ -576,6 +731,36 @@ pub struct ClusterV1Parameters {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AlignmentV1Parameters {
+    pub mode: AlignmentModeV1,
+}
+
+impl AlignmentV1Parameters {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        if self.mode != AlignmentModeV1::MappedHorn {
+            return Err(ProtocolError::Validation(
+                "alignment.v1 requires mapped Horn alignment".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SemiempiricalV1Parameters {
+    pub method: SemiempiricalMethodV1,
+}
+
+impl SemiempiricalV1Parameters {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        let _ = self.method;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConformerV1Parameters {
     pub variant: ConformerVariant,
     pub initialization: ConformerInitialization,
@@ -768,6 +953,19 @@ pub struct ResourceLimits {
     pub max_dispatch_ms: u32,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AnalysisResourceLimits {
+    pub max_memory_bytes: u64,
+    pub max_dispatch_ms: u32,
+}
+
+impl AnalysisResourceLimits {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        validate_common_resource_limits(self.max_memory_bytes, self.max_dispatch_ms)
+    }
+}
+
 impl ResourceLimits {
     pub fn validate(&self) -> Result<(), ProtocolError> {
         if self.max_edges == 0 || self.max_edges > MAX_UNDIRECTED_SIMILARITY_EDGES {
@@ -775,17 +973,7 @@ impl ResourceLimits {
                 "maxEdges counts undirected similarity edges and must be in 1..={MAX_UNDIRECTED_SIMILARITY_EDGES}"
             )));
         }
-        if !(MIN_COMPUTE_MEMORY_BYTES..=MAX_COMPUTE_MEMORY_BYTES).contains(&self.max_memory_bytes) {
-            return Err(ProtocolError::Validation(format!(
-                "maxMemoryBytes must be in {MIN_COMPUTE_MEMORY_BYTES}..={MAX_COMPUTE_MEMORY_BYTES}"
-            )));
-        }
-        if self.max_dispatch_ms == 0 || self.max_dispatch_ms > MAX_DISPATCH_MS {
-            return Err(ProtocolError::Validation(format!(
-                "maxDispatchMs must be in 1..={MAX_DISPATCH_MS}"
-            )));
-        }
-        Ok(())
+        validate_common_resource_limits(self.max_memory_bytes, self.max_dispatch_ms)
     }
 }
 
@@ -799,16 +987,7 @@ pub struct ConformerResourceLimits {
 
 impl ConformerResourceLimits {
     pub fn validate(&self) -> Result<(), ProtocolError> {
-        if !(MIN_COMPUTE_MEMORY_BYTES..=MAX_COMPUTE_MEMORY_BYTES).contains(&self.max_memory_bytes) {
-            return Err(ProtocolError::Validation(format!(
-                "maxMemoryBytes must be in {MIN_COMPUTE_MEMORY_BYTES}..={MAX_COMPUTE_MEMORY_BYTES}"
-            )));
-        }
-        if self.max_dispatch_ms == 0 || self.max_dispatch_ms > MAX_DISPATCH_MS {
-            return Err(ProtocolError::Validation(format!(
-                "maxDispatchMs must be in 1..={MAX_DISPATCH_MS}"
-            )));
-        }
+        validate_common_resource_limits(self.max_memory_bytes, self.max_dispatch_ms)?;
         if self.max_conformers_per_batch == 0
             || self.max_conformers_per_batch > MAX_CONFORMERS_PER_BATCH
         {
@@ -818,6 +997,42 @@ impl ConformerResourceLimits {
         }
         Ok(())
     }
+}
+
+fn validate_common_resource_limits(
+    max_memory_bytes: u64,
+    max_dispatch_ms: u32,
+) -> Result<(), ProtocolError> {
+    if !(MIN_COMPUTE_MEMORY_BYTES..=MAX_COMPUTE_MEMORY_BYTES).contains(&max_memory_bytes) {
+        return Err(ProtocolError::Validation(format!(
+            "maxMemoryBytes must be in {MIN_COMPUTE_MEMORY_BYTES}..={MAX_COMPUTE_MEMORY_BYTES}"
+        )));
+    }
+    if max_dispatch_ms == 0 || max_dispatch_ms > MAX_DISPATCH_MS {
+        return Err(ProtocolError::Validation(format!(
+            "maxDispatchMs must be in 1..={MAX_DISPATCH_MS}"
+        )));
+    }
+    Ok(())
+}
+
+fn require_selected_scope(
+    scope: &GridScope,
+    minimum: usize,
+    maximum: usize,
+    workflow: &str,
+) -> Result<(), ProtocolError> {
+    let GridScope::Selected(selected) = scope else {
+        return Err(ProtocolError::Validation(format!(
+            "{workflow} requires an explicit selected Grid scope"
+        )));
+    };
+    if !(minimum..=maximum).contains(&selected.source_indexes.len()) {
+        return Err(ProtocolError::Validation(format!(
+            "{workflow} selected scope requires {minimum}..={maximum} source indexes"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_filter_id(value: &str) -> Result<(), ProtocolError> {
@@ -1015,6 +1230,62 @@ mod tests {
         assert!(invalid.validate().is_err());
         invalid = normalized;
         invalid.limits.max_conformers_per_batch = MAX_CONFORMERS_PER_BATCH + 1;
+        assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn alignment_and_semiempirical_requests_require_explicit_bounded_selections() {
+        let policy = ExecutionPolicy {
+            backend_policy: BackendPolicy::GpuPreferred,
+            scheduling_policy: SchedulingPolicy::Interactive,
+        };
+        let limits = AnalysisResourceLimits {
+            max_memory_bytes: 512 * 1024 * 1024,
+            max_dispatch_ms: 250,
+        };
+        let alignment = AlignmentV1SubmitRequest {
+            schema_version: ComputeJobSchemaVersion::V1,
+            workflow_template: WorkflowTemplateId::AlignmentV1,
+            source: GridSourceReference {
+                document_id: "poses".into(),
+                scope: GridScope::Selected(SelectedGridScope {
+                    source_indexes: vec![9, 2, 9],
+                }),
+            },
+            parameters: AlignmentV1Parameters {
+                mode: AlignmentModeV1::MappedHorn,
+            },
+            execution_policy: policy.clone(),
+            limits: limits.clone(),
+        };
+        let normalized = alignment.normalized().expect("normalize alignment request");
+        assert_eq!(
+            normalized.source.scope,
+            GridScope::Selected(SelectedGridScope {
+                source_indexes: vec![2, 9],
+            })
+        );
+        assert!(normalized.canonical_sha256().is_ok());
+
+        let semiempirical = SemiempiricalV1SubmitRequest {
+            schema_version: ComputeJobSchemaVersion::V1,
+            workflow_template: WorkflowTemplateId::SemiempiricalV1,
+            source: GridSourceReference {
+                document_id: "poses".into(),
+                scope: GridScope::Selected(SelectedGridScope {
+                    source_indexes: vec![2],
+                }),
+            },
+            parameters: SemiempiricalV1Parameters {
+                method: SemiempiricalMethodV1::Pm6D3H4,
+            },
+            execution_policy: policy,
+            limits,
+        };
+        assert!(semiempirical.validate().is_ok());
+
+        let mut invalid = normalized;
+        invalid.source.scope = GridScope::All(AllGridScope {});
         assert!(invalid.validate().is_err());
     }
 
