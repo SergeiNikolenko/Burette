@@ -58,8 +58,8 @@ use crate::compute::{
         QueuedConformerV1JobInput,
     },
     job_lifecycle::{
-        fail_stage, finish_publish_stage, finish_stage, start_stage, StageFinishMetrics,
-        StageStartEvidence,
+        fail_stage, finish_cancellation, finish_publish_stage, finish_stage, start_stage,
+        StageFinishMetrics, StageStartEvidence,
     },
     representative_export::{export_cluster_representatives, ClusterRepresentativeExportResult},
     semiempirical_workflow::{
@@ -1472,12 +1472,17 @@ impl ComputeCoordinator {
             }
         };
         if let Some(chunk) = next {
-            ready
+            let mut sessions = ready
                 .fingerprint_sessions
                 .lock()
-                .map_err(|_| poisoned("fingerprint session registry"))?
-                .insert(job_id, session);
+                .map_err(|_| poisoned("fingerprint session registry"))?;
             let job = ready.store.get_job(owner, job_id)?;
+            if job.state == JobState::CancelRequested || job.state == JobState::Cancelled {
+                return Err(ComputeCoordinatorError::Validation(
+                    "fingerprint job was cancelled".into(),
+                ));
+            }
+            sessions.insert(job_id, session);
             return Ok(FingerprintExecutionStep {
                 job,
                 fingerprint_chunk: Some(chunk),
@@ -1789,6 +1794,13 @@ impl ComputeCoordinator {
             .computed_clusters
             .lock()
             .map_err(|_| poisoned("computed cluster registry"))?;
+        let durable = ready.store.get_job(owner, job_id)?;
+        if durable.revision != validation_succeeded.revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision: validation_succeeded.revision,
+                actual_revision: durable.revision,
+            });
+        }
         if computed.insert(job_id, computation).is_some() {
             return Err(ComputeCoordinatorError::Protocol(
                 "computed cluster result already exists for this job".into(),
@@ -2033,8 +2045,17 @@ impl ComputeCoordinator {
         job_id: Uuid,
         expected_revision: u64,
     ) -> ComputeResult<JobRevisionEvent> {
-        self.store()?
-            .request_cancel(owner, job_id, expected_revision, now_ms())
+        let ready = self.ready()?;
+        ready
+            .store
+            .request_cancel(owner, job_id, expected_revision, now_ms())?;
+        let requested = ready.store.get_job(owner, job_id)?;
+        let cancelled = finish_cancellation(&requested, now_ms())?;
+        let event = ready
+            .store
+            .apply_successor(owner, requested.revision, &cancelled)?;
+        discard_cancelled_job_state(ready, job_id)?;
+        Ok(event)
     }
 
     pub(crate) fn get_artifact_manifest(
@@ -2314,6 +2335,40 @@ fn initialize_runtime_catalog(
     let helper_sha256 = current_executable_sha256()?;
     let engines = VerifiedEngineCatalog::load(&viewer_runtime_root, &helper_sha256)?;
     Ok((helper_sha256, engines))
+}
+
+fn discard_cancelled_job_state(ready: &ReadyCoordinator, job_id: Uuid) -> ComputeResult<()> {
+    ready
+        .fingerprint_sessions
+        .lock()
+        .map_err(|_| poisoned("fingerprint session registry"))?
+        .retain(|_, session| session.job_id() != job_id);
+    ready
+        .conformer_submissions
+        .lock()
+        .map_err(|_| poisoned("conformer submission registry"))?
+        .retain(|_, submission| submission.job_id != job_id);
+    ready
+        .prepared_clusters
+        .lock()
+        .map_err(|_| poisoned("prepared cluster registry"))?
+        .remove(&job_id);
+    ready
+        .prepared_conformers
+        .lock()
+        .map_err(|_| poisoned("prepared conformer registry"))?
+        .remove(&job_id);
+    ready
+        .computed_conformers
+        .lock()
+        .map_err(|_| poisoned("computed conformer registry"))?
+        .remove(&job_id);
+    ready
+        .computed_clusters
+        .lock()
+        .map_err(|_| poisoned("computed cluster registry"))?
+        .remove(&job_id);
+    Ok(())
 }
 
 fn poisoned(label: &str) -> ComputeCoordinatorError {

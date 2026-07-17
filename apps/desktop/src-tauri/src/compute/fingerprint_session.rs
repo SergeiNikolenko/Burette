@@ -187,6 +187,10 @@ impl FingerprintSession {
         self.session_id
     }
 
+    pub(crate) fn job_id(&self) -> Uuid {
+        self.job_id
+    }
+
     pub(crate) fn accept_chunk(
         &mut self,
         result: FingerprintChunkResult,

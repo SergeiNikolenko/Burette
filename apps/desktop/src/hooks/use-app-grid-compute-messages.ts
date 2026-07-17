@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   type ClusterFilteredScope,
+  cancelComputeJob,
   computeErrorMessage,
   exportClusterRepresentatives,
   findSimilarMolecules,
@@ -18,11 +19,17 @@ type UseAppGridComputeMessagesOptions = {
   pushStatus: PushStatus;
 };
 
+type ActiveClusterRun = {
+  controller: AbortController;
+  jobId: string | null;
+};
+
 export function useAppGridComputeMessages({
   postMessageToViewerSource,
   pushStatus,
 }: UseAppGridComputeMessagesOptions) {
   const runningDocumentsRef = useRef(new Set<string>());
+  const activeClusterRunsRef = useRef(new Map<string, ActiveClusterRun>());
   const exportingDocumentsRef = useRef(new Set<string>());
   const searchingDocumentsRef = useRef(new Set<string>());
 
@@ -30,6 +37,37 @@ export function useAppGridComputeMessages({
     body: GridComputeMessageBody,
     source: MessageEventSource | null,
   ) => {
+    if (body?.type === "cancelClusterMolecules") {
+      const documentId = typeof body.documentId === "string" ? body.documentId.trim() : "";
+      if (!documentId) return true;
+      const active = activeClusterRunsRef.current.get(documentId);
+      if (!active) {
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridClusterCancellationError",
+          error: "No active clustering job is available to cancel.",
+        });
+        return true;
+      }
+      postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+        type: "gridClusterCancellationRequested",
+      });
+      pushStatus("Cancelling clustering at the current durable stage boundary...");
+      if (!active.jobId) {
+        active.controller.abort();
+        return true;
+      }
+      void cancelComputeJob(active.jobId).then((cancelled) => {
+        if (cancelled) active.controller.abort();
+      }).catch((error) => {
+        const message = computeErrorMessage(error);
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridClusterCancellationError",
+          error: message,
+        });
+        pushStatus(`Clustering cancellation failed: ${message}`, "error");
+      });
+      return true;
+    }
     if (body?.type === "findSimilarMolecules") {
       const documentId = typeof body.documentId === "string" ? body.documentId.trim() : "";
       const jobId = typeof body.jobId === "string" ? body.jobId.trim() : "";
@@ -198,7 +236,12 @@ export function useAppGridComputeMessages({
       ? parseClusterFilteredScope(body.filteredScope)
       : null;
     const cutoff = typeof body.cutoff === "number" ? body.cutoff : 0.7;
+    const activeRun: ActiveClusterRun = {
+      controller: new AbortController(),
+      jobId: null,
+    };
     runningDocumentsRef.current.add(documentId);
+    activeClusterRunsRef.current.set(documentId, activeRun);
     postGridComputeMessage(postMessageToViewerSource, source, documentId, {
       type: "gridClusterStarted",
       selectedCount: sourceIndexes.length || null,
@@ -211,6 +254,7 @@ export function useAppGridComputeMessages({
       : "Clustering all molecules...");
 
     void runClusterWorkflow(documentId, sourceIndexes, cutoff, (progress) => {
+      activeRun.jobId = progress.job.jobId;
       const completed = progress.completedRecords ?? 0;
       const total = progress.totalRecords ?? 0;
       postGridComputeMessage(postMessageToViewerSource, source, documentId, {
@@ -228,7 +272,7 @@ export function useAppGridComputeMessages({
       } else if (progress.phase === "publishing") {
         pushStatus("Publishing cluster results and updating Grid...");
       }
-    }, filteredScope).then((result) => {
+    }, filteredScope, activeRun.controller.signal).then((result) => {
       const backendLabel = result.backend === "nativeMetal" ? "Metal GPU" : "reference CPU";
       postGridComputeMessage(postMessageToViewerSource, source, documentId, {
         type: "gridClusterFinished",
@@ -245,6 +289,13 @@ export function useAppGridComputeMessages({
       const message = `Clustering finished: ${result.clusterCount.toLocaleString()} clusters via ${backendLabel}.`;
       pushStatus(message, result.gridApplied ? "success" : "error", result.gridWarning ? [result.gridWarning] : undefined);
     }).catch((error) => {
+      if (activeRun.controller.signal.aborted) {
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridClusterCancelled",
+        });
+        pushStatus("Clustering cancelled.", "success");
+        return;
+      }
       const message = computeErrorMessage(error);
       postGridComputeMessage(postMessageToViewerSource, source, documentId, {
         type: "gridClusterError",
@@ -253,6 +304,7 @@ export function useAppGridComputeMessages({
       pushStatus(`Clustering failed: ${message}`, "error");
     }).finally(() => {
       runningDocumentsRef.current.delete(documentId);
+      activeClusterRunsRef.current.delete(documentId);
     });
     return true;
   }, [postMessageToViewerSource, pushStatus]);

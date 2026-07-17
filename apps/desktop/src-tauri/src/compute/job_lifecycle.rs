@@ -1,6 +1,6 @@
 use burrete_compute_protocol::{
-    AttemptSnapshot, AttemptState, ComputeFailure, JobOutcomeSummary, JobSnapshot, JobState,
-    ResultPackRef, StageState,
+    AttemptSnapshot, AttemptState, ComputeErrorCode, ComputeFailure, JobOutcomeSummary,
+    JobSnapshot, JobState, ResultPackRef, StageState,
 };
 use uuid::Uuid;
 
@@ -140,6 +140,74 @@ pub(crate) fn finish_stage(
     attempt.state = AttemptState::Succeeded;
     attempt.heartbeat_at_ms = at_ms;
     attempt.finished_at_ms = Some(at_ms);
+    successor.validate_successor(previous)?;
+    Ok(successor)
+}
+
+pub(crate) fn finish_cancellation(
+    previous: &JobSnapshot,
+    requested_at_ms: u64,
+) -> ComputeResult<JobSnapshot> {
+    previous.validate()?;
+    if previous.state != JobState::CancelRequested {
+        return Err(ComputeCoordinatorError::Protocol(
+            "only a cancellation request can become cancelled".into(),
+        ));
+    }
+    let stage_index = previous
+        .stages
+        .iter()
+        .position(|stage| stage.state != StageState::Succeeded)
+        .ok_or_else(|| {
+            ComputeCoordinatorError::Protocol(
+                "cancellation request has no active stage boundary".into(),
+            )
+        })?;
+    let running = previous.stages[stage_index].state == StageState::Running;
+    let stage_id = running.then(|| previous.stages[stage_index].stage_id.clone());
+    let failure = ComputeFailure {
+        code: ComputeErrorCode::Cancelled,
+        message: "Cancelled by owner.".into(),
+        stage_id,
+        molecule_stable_id: None,
+        retryable: false,
+    };
+    let at_ms = requested_at_ms.max(previous.updated_at_ms);
+    let mut successor = previous.clone();
+    successor.revision = next_revision(previous.revision)?;
+    successor.state = JobState::Cancelled;
+    successor.updated_at_ms = at_ms;
+    successor.finished_at_ms = Some(at_ms);
+    successor.progress.message = "Cancelled".into();
+    successor.error = Some(failure.clone());
+
+    if running {
+        let stage = &mut successor.stages[stage_index];
+        let started_at_ms = stage.started_at_ms.ok_or_else(|| {
+            ComputeCoordinatorError::Protocol("running stage lacks a start time".into())
+        })?;
+        stage.state = StageState::Cancelled;
+        stage.progress.message = "Cancelled".into();
+        stage.host_time_ms = Some(at_ms.saturating_sub(started_at_ms) as f64);
+        stage.error = Some(failure.clone());
+        stage.updated_at_ms = Some(at_ms);
+        stage.finished_at_ms = Some(at_ms);
+        let attempt = successor
+            .attempts
+            .iter_mut()
+            .rfind(|attempt| {
+                attempt.stage_id == stage.stage_id && attempt.state == AttemptState::Running
+            })
+            .ok_or_else(|| {
+                ComputeCoordinatorError::Protocol(
+                    "running cancelled stage has no running attempt".into(),
+                )
+            })?;
+        attempt.state = AttemptState::Cancelled;
+        attempt.heartbeat_at_ms = at_ms;
+        attempt.finished_at_ms = Some(at_ms);
+        attempt.error = Some(failure);
+    }
     successor.validate_successor(previous)?;
     Ok(successor)
 }
@@ -380,5 +448,51 @@ mod tests {
             },
         )
         .is_err());
+    }
+
+    #[test]
+    fn cancellation_finishes_running_stage_and_attempt() {
+        let queued = queued_snapshot();
+        let running = start_stage(
+            &queued,
+            0,
+            JobState::Preparing,
+            101,
+            "Freezing source",
+            StageStartEvidence::default(),
+        )
+        .expect("start stage");
+        let mut requested = running.clone();
+        requested.revision += 1;
+        requested.state = JobState::CancelRequested;
+        requested.updated_at_ms = 102;
+        requested.progress.message = "Cancellation requested".into();
+        requested
+            .validate_successor(&running)
+            .expect("request cancellation");
+
+        let cancelled = finish_cancellation(&requested, 105).expect("finish cancellation");
+        assert_eq!(cancelled.state, JobState::Cancelled);
+        assert_eq!(cancelled.stages[0].state, StageState::Cancelled);
+        assert_eq!(cancelled.attempts[0].state, AttemptState::Cancelled);
+        assert_eq!(cancelled.finished_at_ms, Some(105));
+    }
+
+    #[test]
+    fn cancellation_closes_a_queued_job_without_starting_its_stage() {
+        let queued = queued_snapshot();
+        let mut requested = queued.clone();
+        requested.revision += 1;
+        requested.state = JobState::CancelRequested;
+        requested.updated_at_ms = 102;
+        requested.progress.message = "Cancellation requested".into();
+        requested
+            .validate_successor(&queued)
+            .expect("request queued cancellation");
+
+        let cancelled = finish_cancellation(&requested, 103).expect("finish cancellation");
+        assert_eq!(cancelled.state, JobState::Cancelled);
+        assert_eq!(cancelled.stages[0].state, StageState::Queued);
+        assert!(cancelled.attempts.is_empty());
     }
 }

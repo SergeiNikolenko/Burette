@@ -290,6 +290,9 @@ scope derived from the current selection and filters:
   is used;
 - progress distinguishes fingerprinting, similarity/clustering, and
   publication;
+- the active control becomes `Cancel clustering`; cancellation terminates the
+  RDKit worker, closes the durable job and any running stage/attempt as
+  `Cancelled`, and discards prepared in-memory compute buffers;
 - completion reports `Metal GPU` only when the durable numeric stage records
   `nativeMetal`; every other completed execution reports `reference CPU`;
 - a completed run refreshes Grid and exposes typed analysis values;
@@ -563,24 +566,21 @@ signature, notarization, or UI-triggered installed-app acceptance run.
    IPC and helper restart recovery.
 2. Add durable execution stages and ResultPack publication for alignment and
    semiempirical workflows; they currently execute as direct Grid analyses.
-3. Poll and acknowledge cancellation at active stage/chunk boundaries instead
-   of leaving running work at `CancelRequested` until restart recovery.
-4. Complete the required M1-class 8 GB and M3/M4 Max 64 GB hardware matrix in
+3. Complete the required M1-class 8 GB and M3/M4 Max 64 GB hardware matrix in
    addition to the current M2 Pro evidence.
-5. Exercise clustering, conformer generation, optimization, alignment, and
+4. Exercise clustering, conformer generation, optimization, alignment, and
    semiempirical evaluation through the actual installed Grid controls and
    capture the visible backend labels, columns, 3D outputs, and artifacts.
-6. Build with Developer ID and hardened runtime, then notarize and verify the
+5. Build with Developer ID and hardened runtime, then notarize and verify the
    nested and outer production signatures without changing the pinned runtime.
-7. Extend scientific corpora when new upstream/reference releases are pinned;
+6. Extend scientific corpora when new upstream/reference releases are pinned;
    current deterministic, RDKit, mlxmolkit, PYSEQM/OpenMOPAC, CPU/Metal, dense,
    cutoff-boundary, and memory-pressure gates remain required in CI.
 
 ## Next Implementation Order
 
-1. complete active cancellation and its Grid control;
-2. make alignment and semiempirical execution durable jobs with artifacts;
-3. introduce the crash-isolated packaged helper boundary;
-4. run the installed-app and hardware acceptance matrices;
-5. sign with Developer ID, verify hardened runtime, notarize, and publish the
+1. make alignment and semiempirical execution durable jobs with artifacts;
+2. introduce the crash-isolated packaged helper boundary;
+3. run the installed-app and hardware acceptance matrices;
+4. sign with Developer ID, verify hardened runtime, notarize, and publish the
    v20 benchmark and scientific-parity evidence with the release.
