@@ -4,7 +4,8 @@ use std::{
 };
 
 use burrete_compute_protocol::{
-    ClusterV1SubmitRequest, ConformerV1SubmitRequest, GridScope, MolecularSnapshotRef,
+    ClusterV1SubmitRequest, ComputeSubmitRequest, ConformerV1SubmitRequest, GridScope,
+    MolecularSnapshotRef,
 };
 use uuid::Uuid;
 
@@ -15,7 +16,7 @@ use crate::preview::grid_snapshot::{
 
 use super::{
     error::{ComputeCoordinatorError, ComputeResult},
-    job_factory::{VerifiedClusterV1Source, VerifiedConformerV1Source},
+    job_factory::{VerifiedAnalysisV1Source, VerifiedClusterV1Source, VerifiedConformerV1Source},
     store::{
         ComputeStore, SnapshotIntentDraft, SnapshotIntentRecord, SnapshotIntentState,
         SnapshotReconciliationState,
@@ -114,6 +115,15 @@ impl SnapshotRepository {
         Ok(VerifiedClusterV1Source::from_verified_repository(
             request, reference,
         ))
+    }
+
+    pub(crate) fn bind_analysis_source(
+        &self,
+        request: ComputeSubmitRequest,
+        frozen: FrozenGridSnapshot,
+    ) -> ComputeResult<VerifiedAnalysisV1Source> {
+        let reference = verify_frozen_source(frozen)?;
+        VerifiedAnalysisV1Source::from_verified_repository(request, reference)
     }
 
     #[allow(

@@ -1,4 +1,6 @@
 mod alignment_workflow;
+mod analysis_plan;
+mod analysis_snapshot;
 mod artifact_publisher;
 mod artifact_reader;
 mod cluster_executor;
