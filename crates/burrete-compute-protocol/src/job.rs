@@ -7,8 +7,8 @@ use crate::{
         canonical_json_bytes as serialize_canonical_json, sha256_hex, validate_bounded_text,
         validate_json_safe_u64, validate_lower_sha256,
     },
-    BackendPolicy, ClusterV1SubmitRequest, ComputeSubmitRequest, ConformerV1SubmitRequest,
-    ProtocolError, WorkflowTemplateId,
+    AlignmentV1SubmitRequest, BackendPolicy, ClusterV1SubmitRequest, ComputeSubmitRequest,
+    ConformerV1SubmitRequest, ProtocolError, SemiempiricalV1SubmitRequest, WorkflowTemplateId,
 };
 
 const MAX_STAGE_ID_BYTES: usize = 96;
@@ -30,6 +30,21 @@ pub const CONFORMER_STAGE_IDS: [&str; 6] = [
     "conformerConstraints",
     "distanceGeometry",
     "stereoValidation",
+    "validateResults",
+    "publishResults",
+];
+pub const ALIGNMENT_STAGE_IDS: [&str; 5] = [
+    "freezeScope",
+    "prepareAlignment",
+    "alignAndScore",
+    "validateResults",
+    "publishResults",
+];
+pub const SEMIEMPIRICAL_STAGE_IDS: [&str; 6] = [
+    "freezeScope",
+    "prepareHamiltonian",
+    "scf",
+    "energyCorrections",
     "validateResults",
     "publishResults",
 ];
@@ -141,10 +156,14 @@ pub enum Precision {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ExecutionPlanVersion {
+    #[serde(rename = "alignment.execution-plan.v1")]
+    AlignmentV1,
     #[serde(rename = "cluster.execution-plan.v1")]
     ClusterV1,
     #[serde(rename = "conformer.execution-plan.v1")]
     ConformerV1,
+    #[serde(rename = "semiempirical.execution-plan.v1")]
+    SemiempiricalV1,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -405,17 +424,57 @@ impl ExecutionPlan {
         self.validate_memory_limit(request.limits.max_memory_bytes)
     }
 
+    pub fn validate_against_alignment_request(
+        &self,
+        request: &AlignmentV1SubmitRequest,
+        record_count: u64,
+    ) -> Result<(), ProtocolError> {
+        request.validate()?;
+        self.validate_for_record_count(record_count)?;
+        if self.workflow_template != request.workflow_template
+            || self.backend_policy != request.execution_policy.backend_policy
+        {
+            return Err(ProtocolError::Validation(
+                "execution plan differs from the requested workflow or backend policy".into(),
+            ));
+        }
+        self.validate_memory_limit(request.limits.max_memory_bytes)
+    }
+
+    pub fn validate_against_semiempirical_request(
+        &self,
+        request: &SemiempiricalV1SubmitRequest,
+        record_count: u64,
+    ) -> Result<(), ProtocolError> {
+        request.validate()?;
+        self.validate_for_record_count(record_count)?;
+        if self.workflow_template != request.workflow_template
+            || self.backend_policy != request.execution_policy.backend_policy
+        {
+            return Err(ProtocolError::Validation(
+                "execution plan differs from the requested workflow or backend policy".into(),
+            ));
+        }
+        self.validate_memory_limit(request.limits.max_memory_bytes)
+    }
+
     pub fn validate_against_compute_request(
         &self,
         request: &ComputeSubmitRequest,
         record_count: u64,
     ) -> Result<(), ProtocolError> {
         match request {
+            ComputeSubmitRequest::AlignmentV1(request) => {
+                self.validate_against_alignment_request(request, record_count)
+            }
             ComputeSubmitRequest::ClusterV1(request) => {
                 self.validate_against_request(request, record_count)
             }
             ComputeSubmitRequest::ConformerV1(request) => {
                 self.validate_against_conformer_request(request, record_count)
+            }
+            ComputeSubmitRequest::SemiempiricalV1(request) => {
+                self.validate_against_semiempirical_request(request, record_count)
             }
         }
     }
@@ -443,6 +502,13 @@ impl ExecutionPlan {
     ) -> Result<Vec<(&'static str, StageKind, Backend, Precision)>, ProtocolError> {
         let gpu = self.expected_similarity_request_backend();
         match (self.workflow_template, self.plan_version) {
+            (WorkflowTemplateId::AlignmentV1, ExecutionPlanVersion::AlignmentV1) => Ok(vec![
+                (ALIGNMENT_STAGE_IDS[0], StageKind::Materialize, Backend::Coordinator, Precision::NotApplicable),
+                (ALIGNMENT_STAGE_IDS[1], StageKind::ChemistrySemantics, Backend::ReferenceCpu, Precision::Float64),
+                (ALIGNMENT_STAGE_IDS[2], StageKind::NumericCompute, gpu, Precision::Float32),
+                (ALIGNMENT_STAGE_IDS[3], StageKind::Validation, Backend::ReferenceCpu, Precision::Float64),
+                (ALIGNMENT_STAGE_IDS[4], StageKind::ArtifactIo, Backend::Coordinator, Precision::NotApplicable),
+            ]),
             (WorkflowTemplateId::ClusterV1, ExecutionPlanVersion::ClusterV1) => Ok(vec![
                 (CLUSTER_STAGE_IDS[0], StageKind::Materialize, Backend::Coordinator, Precision::NotApplicable),
                 (CLUSTER_STAGE_IDS[1], StageKind::ChemistrySemantics, Backend::Rdkit, Precision::IntegerExact),
@@ -459,6 +525,14 @@ impl ExecutionPlan {
                 (CONFORMER_STAGE_IDS[4], StageKind::Validation, Backend::ReferenceCpu, Precision::Float64),
                 (CONFORMER_STAGE_IDS[5], StageKind::ArtifactIo, Backend::Coordinator, Precision::NotApplicable),
             ]),
+            (WorkflowTemplateId::SemiempiricalV1, ExecutionPlanVersion::SemiempiricalV1) => Ok(vec![
+                (SEMIEMPIRICAL_STAGE_IDS[0], StageKind::Materialize, Backend::Coordinator, Precision::NotApplicable),
+                (SEMIEMPIRICAL_STAGE_IDS[1], StageKind::ChemistrySemantics, Backend::ReferenceCpu, Precision::Float64),
+                (SEMIEMPIRICAL_STAGE_IDS[2], StageKind::NumericCompute, gpu, Precision::Mixed),
+                (SEMIEMPIRICAL_STAGE_IDS[3], StageKind::NumericCompute, gpu, Precision::Mixed),
+                (SEMIEMPIRICAL_STAGE_IDS[4], StageKind::Validation, Backend::ReferenceCpu, Precision::Float64),
+                (SEMIEMPIRICAL_STAGE_IDS[5], StageKind::ArtifactIo, Backend::Coordinator, Precision::NotApplicable),
+            ]),
             _ => Err(ProtocolError::Validation(
                 "execution plan version is incompatible with its workflow".into(),
             )),
@@ -467,11 +541,11 @@ impl ExecutionPlan {
 
     fn numeric_stage_indices(&self) -> &'static [usize] {
         match self.workflow_template {
-            WorkflowTemplateId::AlignmentV1 => &[],
+            WorkflowTemplateId::AlignmentV1 => &[2],
             WorkflowTemplateId::ClusterV1 => &[2],
             WorkflowTemplateId::ConformerV1 => &[2, 3],
             WorkflowTemplateId::SimilaritySearchV1 => &[],
-            WorkflowTemplateId::SemiempiricalV1 => &[],
+            WorkflowTemplateId::SemiempiricalV1 => &[2, 3],
         }
     }
 
@@ -656,6 +730,38 @@ mod tests {
         }
     }
 
+    fn analysis_plan(
+        workflow_template: WorkflowTemplateId,
+        plan_version: ExecutionPlanVersion,
+        stage_ids: &[&str],
+        numeric_indices: &[usize],
+    ) -> ExecutionPlan {
+        let stages = stage_ids
+            .iter()
+            .enumerate()
+            .map(|(index, stage_id)| {
+                let (kind, requested, precision) = if index == 0 {
+                    (StageKind::Materialize, Backend::Coordinator, Precision::NotApplicable)
+                } else if index + 1 == stage_ids.len() {
+                    (StageKind::ArtifactIo, Backend::Coordinator, Precision::NotApplicable)
+                } else if numeric_indices.contains(&index) {
+                    (StageKind::NumericCompute, Backend::NativeMetal, if workflow_template == WorkflowTemplateId::AlignmentV1 { Precision::Float32 } else { Precision::Mixed })
+                } else if stage_id == &"validateResults" {
+                    (StageKind::Validation, Backend::ReferenceCpu, Precision::Float64)
+                } else {
+                    (StageKind::ChemistrySemantics, Backend::ReferenceCpu, Precision::Float64)
+                };
+                stage(stage_id, kind, requested, requested, precision)
+            })
+            .collect();
+        ExecutionPlan {
+            workflow_template,
+            plan_version,
+            backend_policy: BackendPolicy::GpuPreferred,
+            stages,
+        }
+    }
+
     fn request(policy: BackendPolicy, max_memory_bytes: u64) -> ClusterV1SubmitRequest {
         ClusterV1SubmitRequest {
             schema_version: ComputeJobSchemaVersion::V1,
@@ -833,6 +939,29 @@ mod tests {
         let request = request(BackendPolicy::GpuPreferred, 16 * 1024 * 1024);
 
         assert!(mismatched.validate_against_request(&request, 10).is_err());
+    }
+
+    #[test]
+    fn alignment_and_semiempirical_plans_register_real_numeric_stages() {
+        let alignment = analysis_plan(
+            WorkflowTemplateId::AlignmentV1,
+            ExecutionPlanVersion::AlignmentV1,
+            &ALIGNMENT_STAGE_IDS,
+            &[2],
+        );
+        assert_eq!(alignment.validate(), Ok(()));
+        assert_eq!(alignment.stages[2].effective_backend, Backend::NativeMetal);
+
+        let semiempirical = analysis_plan(
+            WorkflowTemplateId::SemiempiricalV1,
+            ExecutionPlanVersion::SemiempiricalV1,
+            &SEMIEMPIRICAL_STAGE_IDS,
+            &[2, 3],
+        );
+        assert_eq!(semiempirical.validate(), Ok(()));
+        assert!(semiempirical.stages[2..=3]
+            .iter()
+            .all(|stage| stage.effective_backend == Backend::NativeMetal));
     }
 
     #[test]

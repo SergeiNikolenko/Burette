@@ -23,7 +23,8 @@ pub use event::{ComputeJobEventSchemaVersion, JobRevisionEvent};
 pub use job::{
     Backend, EngineIdentity, ExecutionPartition, ExecutionPlan, ExecutionPlanVersion,
     FallbackDecision, FallbackReasonCode, JobState, OwnerSurface, PlannedStage, Precision,
-    StageKind, CLUSTER_STAGE_IDS, CONFORMER_STAGE_IDS,
+    StageKind, ALIGNMENT_STAGE_IDS, CLUSTER_STAGE_IDS, CONFORMER_STAGE_IDS,
+    SEMIEMPIRICAL_STAGE_IDS,
 };
 pub use pack::{
     EnginePackManifest, EnginePackRef, EnginePackVersion, FrozenSourceIdentity,
@@ -52,14 +53,16 @@ pub use wire::{
     decode_frame, encode_frame, read_frame, write_frame, WireMessage, MAX_CONTROL_FRAME_BYTES,
 };
 pub use workflow::{
-    AllGridScope, AnalysisFilter, BackendPolicy, ClusterV1Parameters, ClusterV1SubmitRequest,
-    ColumnFilter, ColumnFilterKind, ComputeJobSchemaVersion, ComputeSubmitRequest,
-    ConformerInitialization, ConformerResourceLimits,
+    AlignmentModeV1, AlignmentV1Parameters, AlignmentV1SubmitRequest, AllGridScope,
+    AnalysisFilter, AnalysisResourceLimits, BackendPolicy, ClusterV1Parameters,
+    ClusterV1SubmitRequest, ColumnFilter, ColumnFilterKind, ComputeJobSchemaVersion,
+    ComputeSubmitRequest, ConformerInitialization, ConformerResourceLimits,
     ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant, DescriptorFilter,
     ExecutionPolicy, FilteredGridScope, FingerprintAlgorithm, FingerprintInputOrder,
     FingerprintSettings, GridScope, GridSourceReference, GridTextQuery, MmffVariant,
     RdkitBaselineVersion, RepresentativePolicy, ResourceLimits, SchedulingPolicy,
     SelectedGridScope, SimilarityCutoff,
+    SemiempiricalMethodV1, SemiempiricalV1Parameters, SemiempiricalV1SubmitRequest,
     SimilaritySettings, WorkflowTemplateId, MAX_COMPUTE_MEMORY_BYTES, MAX_CONFORMERS_PER_BATCH,
     MAX_CONFORMERS_PER_MOLECULE, MAX_CONFORMER_ATTEMPTS, MAX_UNDIRECTED_SIMILARITY_EDGES,
     MIN_COMPUTE_MEMORY_BYTES,
