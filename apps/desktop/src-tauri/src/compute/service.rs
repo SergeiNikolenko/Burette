@@ -16,14 +16,15 @@ use std::{
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use burrete_compute_core::{
-    AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping,
+    AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping, DistanceConstraint,
     DistanceGeometryOptimizationOptions, Fingerprint2048, GraphBuildOptions, MmffParameters,
     RigidTransform, Rm1Evaluation, SemiempiricalAtom, SemiempiricalMethod, SemiempiricalMolecule,
     SemiempiricalScfResult, SemiempiricalScfStatus, SymmetricCsr, FINGERPRINT_BYTES,
 };
 use burrete_compute_metal::{
     AlignmentPairDescriptor, MetalAlignmentBatch, MetalAlignmentExecution,
-    MetalAlignmentPairResult, MetalMmffOptimization, MetalRuntimeError, MetalTanimotoRuntime,
+    MetalAlignmentPairResult, MetalDistanceEmbedding, MetalMmffOptimization, MetalRuntimeError,
+    MetalTanimotoRuntime,
 };
 use burrete_compute_protocol::{
     read_frame, write_frame, Backend, CapabilityEntry, CapabilityLimits, CapabilityMaturity,
@@ -37,6 +38,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::semiempirical_workflow::evaluate_semiempirical_molecule;
+use super::service_conformer;
 use super::service_mmff;
 
 const SESSION_ENV: &str = "BURRETE_COMPUTE_SESSION_TOKEN";
@@ -244,6 +246,33 @@ impl ComputeServiceClient {
             max_output_bytes,
         )?;
         service_mmff::decode_output(&output, gpu_time_ms)
+    }
+
+    pub(crate) fn embed_distance_bounds(
+        &self,
+        job_id: Uuid,
+        seeds: &[[u32; 4]],
+        atom_count: u32,
+        constraints: &[DistanceConstraint],
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalDistanceEmbedding, String> {
+        let input = service_conformer::encode_distance_input(
+            seeds,
+            atom_count,
+            constraints,
+            options,
+            max_memory_bytes,
+        )?;
+        let max_output_bytes =
+            service_conformer::distance_output_bound(atom_count as usize, seeds.len())?;
+        let (output, gpu_time_ms) = self.execute_exchange(
+            job_id,
+            WorkerOperation::ConformerDistanceV1,
+            &input,
+            max_output_bytes,
+        )?;
+        service_conformer::decode_distance_output(&output, gpu_time_ms)
     }
 
     fn execute_exchange(
@@ -619,6 +648,22 @@ fn execute_kernel(
                 .map_err(|error| error.to_string())?;
             (
                 service_mmff::encode_output(&execution, input.parameters.atom_count)?,
+                execution.gpu_time_ms,
+            )
+        }
+        WorkerOperation::ConformerDistanceV1 => {
+            let input = service_conformer::decode_distance_input(&input)?;
+            let execution = runtime
+                .embed_distance_bounds_profiled(
+                    &input.seeds,
+                    input.atom_count,
+                    &input.constraints,
+                    input.options,
+                    input.max_memory_bytes,
+                )
+                .map_err(|error| error.to_string())?;
+            (
+                service_conformer::encode_distance_output(&execution, input.atom_count)?,
                 execution.gpu_time_ms,
             )
         }
