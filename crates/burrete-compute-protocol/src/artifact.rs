@@ -10,8 +10,9 @@ use crate::{
     },
     Backend, BackendPolicy, EngineIdentity, FallbackDecision, JobSnapshot, JobState,
     MolecularSnapshotRef, PackedFileDescriptor, Precision, ProtocolError, ResultPackRef,
-    RuntimeIdentity, StageKind, StageState, WorkflowTemplateId, CLUSTER_STAGE_IDS,
-    CONFORMER_STAGE_IDS, MAX_CONTROL_FRAME_BYTES, MAX_PACK_BYTES,
+    RuntimeIdentity, StageKind, StageState, WorkflowTemplateId, ALIGNMENT_STAGE_IDS,
+    CLUSTER_STAGE_IDS, CONFORMER_STAGE_IDS, MAX_CONTROL_FRAME_BYTES, MAX_PACK_BYTES,
+    SEMIEMPIRICAL_STAGE_IDS,
 };
 
 const MAX_FILES: usize = 256;
@@ -27,12 +28,16 @@ pub enum ArtifactManifestSchemaVersion {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ResultPackVersion {
+    #[serde(rename = "alignment.result-pack.v1")]
+    AlignmentV1,
     #[serde(rename = "cluster.result-pack.v1")]
     ClusterV1,
     #[serde(rename = "conformer.result-pack.v1")]
     ConformerV1,
     #[serde(rename = "conformer.result-pack.v2")]
     ConformerV2,
+    #[serde(rename = "semiempirical.result-pack.v1")]
+    SemiempiricalV1,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -201,22 +206,14 @@ impl ArtifactManifest {
 
     fn validate_stages(&self) -> Result<(), ProtocolError> {
         let expected_stage_ids = match self.workflow_template {
-            WorkflowTemplateId::AlignmentV1 => {
-                return validation_error(
-                    "alignment.v1 Grid analyses do not publish this artifact schema",
-                )
-            }
+            WorkflowTemplateId::AlignmentV1 => ALIGNMENT_STAGE_IDS.as_slice(),
             WorkflowTemplateId::ClusterV1 => CLUSTER_STAGE_IDS.as_slice(),
             WorkflowTemplateId::SimilaritySearchV1 => {
                 return validation_error(
                     "similaritySearch.v1 derived analyses do not publish cluster artifacts",
                 )
             }
-            WorkflowTemplateId::SemiempiricalV1 => {
-                return validation_error(
-                    "semiempirical.v1 Grid analyses do not publish this artifact schema",
-                )
-            }
+            WorkflowTemplateId::SemiempiricalV1 => SEMIEMPIRICAL_STAGE_IDS.as_slice(),
             WorkflowTemplateId::ConformerV1 => CONFORMER_STAGE_IDS.as_slice(),
         };
         if self.stages.len() != expected_stage_ids.len() {
