@@ -273,7 +273,7 @@ remain in progress.
 | macOS desktop source build | `Cluster selected`, `Cluster filtered`, `Cluster all`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
 | Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, fused automatic BFGS/L-BFGS MMFF optimization, and mapped Horn/RMSD/shape/ESP scoring on Apple M2 Pro |
-| Packaged development Metal | `Burrete-gpucompute9a97v25.app` is installed at `/Users/nikolenko/Applications/Burrete-gpucompute9a97v25.app`; it packages the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`; helper handshake, runtime/helper SHA binding, replay rejection, real FD-based Tanimoto, alignment/shape/electrostatic, RM1 SCF, DG, ETK, MMFF, and stereo dispatch, plus deep/strict ad-hoc signature verification, pass on Apple M2 Pro |
+| Packaged development Metal | `Burrete-gpucompute9a97v26.app` is installed at `/Users/nikolenko/Applications/Burrete-gpucompute9a97v26.app`; it packages the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`; helper handshake, runtime/helper SHA binding, replay rejection, one-shot transport recovery, real FD-based Tanimoto, alignment/shape/electrostatic, RM1 SCF, DG, ETK, MMFF, and stereo dispatch, plus deep/strict ad-hoc signature verification, pass on Apple M2 Pro |
 | Packaged production Metal | Pending external Developer ID signing, hardened-runtime verification, notarization, and UI-triggered installed-app acceptance evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -373,7 +373,7 @@ A public artifact/report inspector remains a separate product increment.
 - Metal crate unit/parity tests pass, including real graph and exact query-count
   dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
   support.
-- The current `Burrete-gpucompute9a97v25.app` development package was rebuilt
+- The current `Burrete-gpucompute9a97v26.app` development package was rebuilt
   in an isolated tree. Deep/strict ad-hoc signature verification passes for the
   app, its single packaged compute helper, and nested extensions. The helper
   reports Apple M2 Pro, binds its own SHA-256 into the runtime identity, rejects
@@ -383,12 +383,18 @@ A public artifact/report inspector remains a separate product increment.
   two-conformer DG, ETK distance optimization, and chiral validation through
   the anonymous-FD exchange. Each operation reports real nonzero Apple GPU
   time. The signed helper SHA-256 is
-  `2da2d0677864a59ab81d67e7830a0d4ec86396a113df08c080101983e74c8b8b`. The
+  `5bf6a9d775b7490d447634994603c13d4a38b81e52de287ef2c7e92dcdfe3b77`. The
   isolated app is installed under `/Users/nikolenko/Applications`; visible Grid
   invocation and UI-triggered compute acceptance remain separate gates because
   the current Computer Use attempt found the macOS session locked.
+- The bounded agent-browser smoke renders `samples/collections/sdf/multi.sdf`
+  as two RDKit cards, selects ethanol, reports `2 molecules / 1 selected`, and
+  exposes the seven-atom/two-component Inspector. This verifies the Grid
+  collection surface only. The shell explicitly reports that the native app
+  bundle, installer, and Quick Look registration are inactive, so this result
+  is not counted as installed-app or Metal UI acceptance.
 - The packaged runtime is `burrete-native-metal-v20`, generation
-  `generation.UbXDxD`, with `native-compute.v20.metallib` SHA-256
+  `generation.TlAu4j`, with `native-compute.v20.metallib` SHA-256
   `341d858756cfd33438304e0d643d4ad647081df7678f88e407cc2734e87a2c84`.
   The canonical runtime pointer, metadata digest, metallib digest, source/AIR
   manifest, and startup known-answer suite all verify before Metal is reported
