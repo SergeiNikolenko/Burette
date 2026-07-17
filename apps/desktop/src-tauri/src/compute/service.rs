@@ -16,13 +16,14 @@ use std::{
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use burrete_compute_core::{
-    AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping, Fingerprint2048, GraphBuildOptions,
+    AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping,
+    DistanceGeometryOptimizationOptions, Fingerprint2048, GraphBuildOptions, MmffParameters,
     RigidTransform, Rm1Evaluation, SemiempiricalAtom, SemiempiricalMethod, SemiempiricalMolecule,
     SemiempiricalScfResult, SemiempiricalScfStatus, SymmetricCsr, FINGERPRINT_BYTES,
 };
 use burrete_compute_metal::{
     AlignmentPairDescriptor, MetalAlignmentBatch, MetalAlignmentExecution,
-    MetalAlignmentPairResult, MetalRuntimeError, MetalTanimotoRuntime,
+    MetalAlignmentPairResult, MetalMmffOptimization, MetalRuntimeError, MetalTanimotoRuntime,
 };
 use burrete_compute_protocol::{
     read_frame, write_frame, Backend, CapabilityEntry, CapabilityLimits, CapabilityMaturity,
@@ -36,6 +37,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::semiempirical_workflow::evaluate_semiempirical_molecule;
+use super::service_mmff;
 
 const SESSION_ENV: &str = "BURRETE_COMPUTE_SESSION_TOKEN";
 const EXCHANGE_FD_ENV: &str = "BURRETE_COMPUTE_EXCHANGE_FD";
@@ -222,6 +224,26 @@ impl ComputeServiceClient {
             max_output_bytes,
         )?;
         Ok((decode_semiempirical_output(&output)?, gpu_time_ms))
+    }
+
+    pub(crate) fn optimize_mmff(
+        &self,
+        job_id: Uuid,
+        positions: &[[f32; 4]],
+        parameters: &MmffParameters,
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalMmffOptimization, String> {
+        let input = service_mmff::encode_input(positions, parameters, options, max_memory_bytes)?;
+        let conformer_count = positions.len() / parameters.atom_count as usize;
+        let max_output_bytes = service_mmff::output_bound(positions.len(), conformer_count)?;
+        let (output, gpu_time_ms) = self.execute_exchange(
+            job_id,
+            WorkerOperation::MmffOptimizeV1,
+            &input,
+            max_output_bytes,
+        )?;
+        service_mmff::decode_output(&output, gpu_time_ms)
     }
 
     fn execute_exchange(
@@ -584,6 +606,21 @@ fn execute_kernel(
             let (evaluation, gpu_time_ms) =
                 evaluate_semiempirical_molecule(Some(runtime), &molecule, max_memory_bytes)?;
             (encode_semiempirical_output(&evaluation)?, gpu_time_ms)
+        }
+        WorkerOperation::MmffOptimizeV1 => {
+            let input = service_mmff::decode_input(&input)?;
+            let execution = runtime
+                .optimize_mmff_profiled(
+                    &input.positions,
+                    &input.parameters,
+                    input.options,
+                    input.max_memory_bytes,
+                )
+                .map_err(|error| error.to_string())?;
+            (
+                service_mmff::encode_output(&execution, input.parameters.atom_count)?,
+                execution.gpu_time_ms,
+            )
         }
     };
     if output.len() as u64 > exchange.max_output_bytes {
@@ -1586,6 +1623,8 @@ fn now_ms() -> u64 {
 mod tests {
     use std::num::NonZeroUsize;
 
+    use burrete_compute_core::{MmffBondTerm, MmffVariant};
+
     use super::*;
 
     fn graph_options() -> GraphBuildOptions {
@@ -1853,5 +1892,40 @@ mod tests {
         assert_eq!(evaluation.scf.status, SemiempiricalScfStatus::Converged);
         assert!(evaluation.total_energy_ev.is_finite());
         assert!(gpu_time_ms > 0);
+
+        let mmff_parameters = MmffParameters {
+            variant: MmffVariant::Mmff94,
+            atom_count: 2,
+            bonds: vec![MmffBondTerm {
+                atoms: [0, 1],
+                force_constant: 4.0,
+                equilibrium_distance: 1.5,
+            }],
+            angles: Vec::new(),
+            stretch_bends: Vec::new(),
+            out_of_planes: Vec::new(),
+            torsions: Vec::new(),
+            van_der_waals: Vec::new(),
+            electrostatics: Vec::new(),
+        };
+        let optimized = client
+            .optimize_mmff(
+                Uuid::new_v4(),
+                &[[0.0, 0.0, 0.0, 0.0], [1.8, 0.0, 0.0, 0.0]],
+                &mmff_parameters,
+                DistanceGeometryOptimizationOptions::default(),
+                64 * 1024 * 1024,
+            )
+            .expect("execute MMFF optimization through helper");
+        assert!(matches!(
+            optimized.statuses[0],
+            burrete_compute_core::DistanceGeometryOptimizationStatus::ConvergedGradient
+                | burrete_compute_core::DistanceGeometryOptimizationStatus::ConvergedStep
+        ));
+        assert_eq!(
+            optimized.optimizers,
+            [burrete_compute_core::MmffOptimizerKind::Bfgs]
+        );
+        assert!(optimized.gpu_time_ms > 0);
     }
 }
