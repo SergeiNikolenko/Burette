@@ -503,7 +503,7 @@ fn capability_report(
             platform: platform_identity(),
             runtime: Some(runtime.runtime_identity().clone()),
             device: Some(runtime.device_identity().clone()),
-            capabilities: vec![capability_entry(true, None)],
+            capabilities: capability_entries(true, None),
             limits: runtime.limits().clone(),
             reasons: Vec::new(),
             generated_at_ms: now_ms(),
@@ -518,7 +518,7 @@ fn capability_report(
                 platform: platform_identity(),
                 runtime: None,
                 device: None,
-                capabilities: vec![capability_entry(false, Some(code))],
+                capabilities: capability_entries(false, Some(code)),
                 limits: CapabilityLimits {
                     max_control_frame_bytes: MAX_CONTROL_FRAME_BYTES as u64,
                     max_edges: 0,
@@ -1461,17 +1461,44 @@ impl<'a> ByteCursor<'a> {
     }
 }
 
-fn capability_entry(available: bool, reason_code: Option<CapabilityReasonCode>) -> CapabilityEntry {
-    CapabilityEntry {
-        workflow_template: WorkflowTemplateId::ClusterV1,
-        method: "tanimotoNeighbors".into(),
-        chemistry_domain: "cluster.v1/all".into(),
-        backend: Backend::NativeMetal,
-        precision: Precision::IntegerExact,
-        maturity: CapabilityMaturity::Experimental,
-        available,
-        reason_code,
-    }
+fn capability_entries(
+    available: bool,
+    reason_code: Option<CapabilityReasonCode>,
+) -> Vec<CapabilityEntry> {
+    [
+        (
+            WorkflowTemplateId::ClusterV1,
+            "tanimotoNeighbors",
+            "cluster.v1/all",
+            Precision::IntegerExact,
+        ),
+        (
+            WorkflowTemplateId::AlignmentV1,
+            "mappedHornShapeElectrostatics",
+            "alignment.v1/selected",
+            Precision::Float32,
+        ),
+        (
+            WorkflowTemplateId::SemiempiricalV1,
+            "scfDiisAdaptiveDamping",
+            "semiempirical.v1/selected",
+            Precision::Mixed,
+        ),
+    ]
+    .into_iter()
+    .map(
+        |(workflow_template, method, chemistry_domain, precision)| CapabilityEntry {
+            workflow_template,
+            method: method.into(),
+            chemistry_domain: chemistry_domain.into(),
+            backend: Backend::NativeMetal,
+            precision,
+            maturity: CapabilityMaturity::Experimental,
+            available,
+            reason_code,
+        },
+    )
+    .collect()
 }
 
 fn reason_code(error: &MetalRuntimeError) -> CapabilityReasonCode {
@@ -1589,6 +1616,22 @@ mod tests {
                 .expect("decode output"),
             graph
         );
+    }
+
+    #[test]
+    fn service_capabilities_match_executable_kernel_operations() {
+        let entries = capability_entries(true, None);
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].workflow_template, WorkflowTemplateId::ClusterV1);
+        assert_eq!(
+            entries[1].workflow_template,
+            WorkflowTemplateId::AlignmentV1
+        );
+        assert_eq!(
+            entries[2].workflow_template,
+            WorkflowTemplateId::SemiempiricalV1
+        );
+        assert!(entries.iter().all(|entry| entry.available));
     }
 
     #[test]
