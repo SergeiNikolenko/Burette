@@ -48,6 +48,7 @@ for (const command of [
   assert.match(nativeConformerWorkflow, new RegExp(command));
 }
 assert.match(gridConformerMessages, /openDocuments\([\s\S]*result\.primaryOpenPath[\s\S]*rendererMode: "molstar"/);
+assert.match(gridConformerMessages, /openTextDocuments\(\[result\.reportPath\], \{ background: true \}\)/);
 assert.match(conformerWorker, /extract_mmff_parameters/);
 assert.match(conformerWorker, /mmff_extractor_abi_version/);
 assert.match(conformerWorker, /view\.setUint16\(4, 2, true\)/);
@@ -56,5 +57,7 @@ assert.match(conformerExecutor, /mmff_retry_options/);
 assert.match(artifactPublisher, /ResultPackVersion::ConformerV2/);
 assert.match(artifactPublisher, /"mmff_energy"/);
 assert.match(artifactPublisher, /mmffVariant=\{\} mmffEnergy=\{\}/);
+assert.match(artifactPublisher, /"result\/report\.md"/);
+assert.match(artifactPublisher, /"computeReport"/);
 
 console.log("conformer workflow contract tests passed");

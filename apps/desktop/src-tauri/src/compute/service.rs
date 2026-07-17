@@ -537,13 +537,13 @@ impl ComputeServiceConnection {
         }
 
         let mut file = anonymous_exchange_file(exchange_id)?;
-        file.write_all(&input)
+        file.write_all(input)
             .map_err(|error| format!("cannot write compute exchange input: {error}"))?;
         file.flush()
             .map_err(|error| format!("cannot flush compute exchange input: {error}"))?;
         file.seek(SeekFrom::Start(0))
             .map_err(|error| format!("cannot rewind compute exchange input: {error}"))?;
-        let input_sha256 = sha256_hex(&input);
+        let input_sha256 = sha256_hex(input);
         let exchange = WorkerExchange {
             exchange_id,
             input_bytes: input.len() as u64,
@@ -800,7 +800,7 @@ fn capability_report(
             generated_at_ms: now_ms(),
         },
         Err(error) => {
-            let code = reason_code(&error);
+            let code = reason_code(error);
             ComputeCapabilityReport {
                 schema_version: CapabilityReportSchemaVersion::V1,
                 report_revision: 1,

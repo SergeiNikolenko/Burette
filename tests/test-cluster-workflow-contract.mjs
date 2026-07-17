@@ -49,6 +49,7 @@ assert.match(worker, /PreviewExtension\/Web\/rdkit\/RDKit_minimal\.wasm/);
 
 assert.match(bridge, /body\?\.type !== "clusterMolecules"/);
 assert.match(bridge, /result\.backend === "nativeMetal" \? "Metal GPU" : "reference CPU"/);
+assert.match(bridge, /openTextDocuments\(\[result\.reportPath\], \{ background: true \}\)/);
 assert.match(gridUi, /id="cluster-molecules"/);
 assert.match(gridViewer, /post\('clusterMolecules'/);
 assert.match(gridViewer, /kind: 'filtered'/);

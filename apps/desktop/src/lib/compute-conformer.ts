@@ -79,6 +79,7 @@ export type ConformerPublicationStep = {
   gridApplied: boolean;
   gridWarning: string | null;
   primaryOpenPath: string;
+  reportPath: string;
 };
 
 export type ConformerWorkflowPhase = "extracting" | "embedding" | "stereo" | "validation" | "publishing";

@@ -24,6 +24,7 @@ assert.match(workflow, /SemiempiricalMethod::Pm6, "PM6", "pm6"/);
 assert.match(workflow, /"AM1\*"/);
 assert.match(gridMessages, /invoke<GridSemiempiricalResult>\("compute_evaluate_grid_semiempirical"/);
 assert.match(gridMessages, /Metal SCF kernels/);
+assert.match(gridMessages, /openTextDocuments\(\[result\.reportPath\], \{ background: true \}\)/);
 assert.match(gridViewer, /evaluateSemiempiricalGridSelection/);
 assert.match(gridViewer, /semiempiricalEnabled: caps\.cluster/);
 assert.match(gridViewer, /SEMIEMPIRICAL_METHOD_STORAGE_KEY/);

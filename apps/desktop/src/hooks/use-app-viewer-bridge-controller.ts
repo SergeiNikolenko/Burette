@@ -93,6 +93,7 @@ type UseAppViewerBridgeControllerOptions = {
   notifyGridPoseReviewSelection: (targetDocumentId: string, activePose: number) => void;
   openDockingDocument: OpenDockingDocument;
   openDocuments: OpenDocuments;
+  openTextDocuments: (paths: string[], options?: { background?: boolean }) => void | Promise<unknown>;
   openDocumentsInActiveTab: OpenDocumentsInActiveTab;
   openKetcherWithFragment: OpenKetcherWithFragment;
   openKetcherWithStructures: OpenKetcherWithStructures;
@@ -129,6 +130,7 @@ export function useAppViewerBridgeController({
   notifyGridPoseReviewSelection,
   openDockingDocument,
   openDocuments,
+  openTextDocuments,
   openDocumentsInActiveTab,
   openKetcherWithFragment,
   openKetcherWithStructures,
@@ -178,6 +180,7 @@ export function useAppViewerBridgeController({
   const { handleGridConformerMessage } = useAppGridConformerMessages({
     openDocuments,
     openDocumentsInActiveTab,
+    openTextDocuments,
     postMessageToViewerSource,
     preferences,
     pushErrorStatus,
@@ -185,6 +188,7 @@ export function useAppViewerBridgeController({
     rememberRecentStructures,
   });
   const { handleGridComputeMessage } = useAppGridComputeMessages({
+    openTextDocuments,
     postMessageToViewerSource,
     pushStatus,
   });
