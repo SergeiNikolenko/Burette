@@ -43,6 +43,7 @@ pub(crate) struct ClusterPublicationStep {
     pub(crate) artifact_manifest_sha256: String,
     pub(crate) grid_applied: bool,
     pub(crate) grid_warning: Option<String>,
+    pub(crate) report_path: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -54,12 +55,14 @@ pub(crate) struct ConformerPublicationStep {
     pub(crate) grid_applied: bool,
     pub(crate) grid_warning: Option<String>,
     pub(crate) primary_open_path: String,
+    pub(crate) report_path: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct AnalysisPublicationStep {
     pub(crate) artifact_id: Uuid,
     pub(crate) artifact_manifest_sha256: String,
+    pub(crate) report_path: String,
 }
 
 #[derive(Debug)]
@@ -100,6 +103,10 @@ pub(crate) struct MaterializedComputeArtifact {
 impl MaterializedComputeArtifact {
     pub(crate) fn conformer_xyz_path(&self) -> PathBuf {
         self.final_directory.join("result/conformers.xyz")
+    }
+
+    pub(crate) fn report_path(&self) -> PathBuf {
+        self.final_directory.join("result/report.md")
     }
 
     pub(crate) fn manifest_for_job(
@@ -199,6 +206,7 @@ pub(crate) fn materialize_analysis_artifact(
     create_private_directory(&staging.join("result"))?;
 
     let result = (|| {
+        let report = analysis_report(job, &payload)?;
         let mut writer = ArtifactWriter::new(&staging);
         let mut arrays = Vec::new();
         match payload {
@@ -452,6 +460,11 @@ pub(crate) fn materialize_analysis_artifact(
             &serde_json::to_vec(&result_manifest)?,
         )?;
         let result_pack = ResultPackRef::from_manifest(&result_manifest, manifest_file)?;
+        writer.write(
+            "result/report.md",
+            "text/markdown; charset=utf-8",
+            report.as_bytes(),
+        )?;
         writer.sync()?;
         let mut descriptors = writer.descriptors;
         descriptors.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
@@ -768,6 +781,12 @@ pub(crate) fn materialize_cluster_artifact(
         )?;
         let result_pack =
             ResultPackRef::from_manifest(&result_manifest, result_manifest_file.clone())?;
+        let report = cluster_report(job, computation)?;
+        writer.write(
+            "result/report.md",
+            "text/markdown; charset=utf-8",
+            report.as_bytes(),
+        )?;
 
         writer.sync()?;
         let mut all_files = writer.descriptors;
@@ -945,6 +964,12 @@ pub(crate) fn materialize_conformer_artifact(
         )?;
         let result_pack =
             ResultPackRef::from_manifest(&result_manifest, result_manifest_file.clone())?;
+        let report = conformer_report(job, distance, stereo)?;
+        writer.write(
+            "result/report.md",
+            "text/markdown; charset=utf-8",
+            report.as_bytes(),
+        )?;
 
         writer.sync()?;
         let mut all_files = writer.descriptors;
@@ -1970,9 +1995,170 @@ fn artifact_role(path: &str) -> &'static str {
         "result/valid-ordinals.bin" => "validOrdinals",
         "result/csr-row-offsets.bin" => "csrRowOffsets",
         "result/csr-column-indices.bin" => "csrColumnIndices",
+        "result/report.md" => "computeReport",
         path if path.starts_with("result/") => "conformerResultData",
         _ => "computeData",
     }
+}
+
+fn analysis_report(job: &JobSnapshot, payload: &AnalysisArtifactPayload) -> ComputeResult<String> {
+    let summary = match payload {
+        AnalysisArtifactPayload::Alignment {
+            source_record_ids,
+            electrostatic_carbo_scores,
+            ..
+        } => vec![
+            ("Selected poses", source_record_ids.len().to_string()),
+            (
+                "Compared poses",
+                source_record_ids.len().saturating_sub(1).to_string(),
+            ),
+            (
+                "Electrostatic scores available",
+                electrostatic_carbo_scores
+                    .iter()
+                    .filter(|score| score.is_finite())
+                    .count()
+                    .to_string(),
+            ),
+            ("Aligned structure", "result/aligned.sdf".into()),
+        ],
+        AnalysisArtifactPayload::Semiempirical {
+            source_record_ids,
+            converged,
+            atomic_charges,
+            ..
+        } => vec![
+            ("Selected molecules", source_record_ids.len().to_string()),
+            (
+                "SCF converged",
+                converged
+                    .iter()
+                    .filter(|&&value| value != 0)
+                    .count()
+                    .to_string(),
+            ),
+            ("Atomic charges", atomic_charges.len().to_string()),
+        ],
+    };
+    compute_report(job, "Native Molecular Analysis Report", &summary)
+}
+
+fn cluster_report(job: &JobSnapshot, computation: &ClusterComputation) -> ComputeResult<String> {
+    let cluster_count = computation
+        .cluster_ids
+        .iter()
+        .filter_map(|cluster| *cluster)
+        .collect::<BTreeSet<_>>()
+        .len();
+    let summary = vec![
+        ("Source records", computation.cluster_ids.len().to_string()),
+        (
+            "Valid fingerprints",
+            computation.valid_ordinals.len().to_string(),
+        ),
+        (
+            "Failed fingerprints",
+            computation
+                .errors
+                .iter()
+                .filter(|error| error.is_some())
+                .count()
+                .to_string(),
+        ),
+        ("Clusters", cluster_count.to_string()),
+        (
+            "Representatives",
+            computation
+                .representatives
+                .iter()
+                .filter(|&&value| value)
+                .count()
+                .to_string(),
+        ),
+        (
+            "Undirected similarity edges",
+            (computation.graph.column_indices().len() / 2).to_string(),
+        ),
+    ];
+    compute_report(job, "Molecular Clustering Report", &summary)
+}
+
+fn conformer_report(
+    job: &JobSnapshot,
+    distance: &ConformerDistanceComputation,
+    stereo: &ConformerStereoComputation,
+) -> ComputeResult<String> {
+    let parameters = &job.request.as_conformer()?.parameters;
+    let summary = vec![
+        (
+            "Source molecules",
+            job.frozen_source.frozen_source.record_count.to_string(),
+        ),
+        ("Conformers", distance.conformer_count().to_string()),
+        (
+            "Stereo-valid conformers",
+            stereo
+                .failure_flags
+                .iter()
+                .filter(|&&flag| flag == 0)
+                .count()
+                .to_string(),
+        ),
+        (
+            "MMFF converged conformers",
+            distance
+                .mmff_statuses
+                .iter()
+                .filter(|&&status| matches!(status, 0 | 1))
+                .count()
+                .to_string(),
+        ),
+        ("Conformer variant", parameters.variant.wire_id().into()),
+        ("MMFF variant", parameters.mmff_variant.wire_id().into()),
+        ("3D ensemble", "result/conformers.xyz".into()),
+    ];
+    compute_report(
+        job,
+        "Conformer Generation And Optimization Report",
+        &summary,
+    )
+}
+
+fn compute_report(
+    job: &JobSnapshot,
+    title: &str,
+    summary: &[(&str, String)],
+) -> ComputeResult<String> {
+    let mut report = format!(
+        "# {title}\n\n- Job: `{}`\n- Workflow: `{:?}`\n- Snapshot: `{}`\n- Request SHA-256: `{}`\n- ResultPack manifest: `result/manifest.json`\n",
+        job.job_id,
+        job.workflow_template,
+        job.frozen_source.snapshot_sha256,
+        job.normalized_request_sha256,
+    );
+    for (label, value) in summary {
+        report.push_str(&format!("- {label}: `{value}`\n"));
+    }
+    report.push_str("\n## Execution\n\n| Stage | Backend | Kernel | GPU time (ms) | Host time (ms) |\n| --- | --- | --- | ---: | ---: |\n");
+    for stage in &job.stages {
+        report.push_str(&format!(
+            "| `{:?}` | `{:?}` | `{}` | {} | {} |\n",
+            stage.kind,
+            stage.effective_backend,
+            stage.kernel_id.as_deref().unwrap_or("n/a"),
+            stage
+                .gpu_time_ms
+                .map_or_else(|| "n/a".into(), |value| format!("{value:.3}")),
+            stage
+                .host_time_ms
+                .map_or_else(|| "n/a".into(), |value| format!("{value:.3}")),
+        ));
+    }
+    report.push_str("\n## Normalized request\n\n```json\n");
+    report.push_str(&serde_json::to_string_pretty(&job.request)?);
+    report.push_str("\n```\n");
+    Ok(report)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

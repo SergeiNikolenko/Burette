@@ -15,6 +15,7 @@ type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => 
 type UseAppGridConformerMessagesOptions = {
   openDocumentsInActiveTab: (documents: ViewerDocument[]) => void;
   openDocuments: (paths: string[], reloadOptions?: ViewerReloadOptions, preferencesOverride?: Partial<ViewerPreferences>) => Promise<unknown> | void;
+  openTextDocuments: (paths: string[], options?: { background?: boolean }) => void | Promise<unknown>;
   postMessageToViewerSource: PostMessageToViewerSource;
   preferences: ViewerPreferences;
   pushErrorStatus: PushErrorStatus;
@@ -40,6 +41,7 @@ type GridAlignmentResult = {
   mapping: string;
   chargeModel: string;
   gridApplied: boolean;
+  reportPath: string | null;
 };
 
 type GridSemiempiricalResult = {
@@ -56,6 +58,7 @@ type GridSemiempiricalResult = {
   gpuTimeMs: number;
   backend: "nativeMetalScfHybrid" | "nativeCpuReference";
   gridApplied: boolean;
+  reportPath: string | null;
 };
 
 function bodyString(value: unknown) {
@@ -70,6 +73,7 @@ function decodeBase64Text(textBase64: string) {
 export function useAppGridConformerMessages({
   openDocumentsInActiveTab,
   openDocuments,
+  openTextDocuments,
   postMessageToViewerSource,
   preferences,
   pushErrorStatus,
@@ -103,6 +107,7 @@ export function useAppGridConformerMessages({
       void invoke<GridSemiempiricalResult>("compute_evaluate_grid_semiempirical", {
         request: { documentId, sourceIndexes, method },
       }).then((result) => {
+        if (result.reportPath) void openTextDocuments([result.reportPath], { background: true });
         const converged = result.rows.filter((row) => row.converged).length;
         const failed = result.rows.length - converged;
         const execution = result.backend === "nativeMetalScfHybrid"
@@ -154,6 +159,7 @@ export function useAppGridConformerMessages({
             maxMemoryBytes: 2 * 1_024 * 1_024 * 1_024,
           },
         });
+        if (result.reportPath) void openTextDocuments([result.reportPath], { background: true });
         const document = await invoke<ViewerDocument>("open_text_structure", {
           request: {
             title: result.title,
@@ -230,6 +236,7 @@ export function useAppGridConformerMessages({
           mmffVariant,
           conformersPerMolecule: optimizeInputGeometry ? 1 : 16,
         });
+        void openTextDocuments([result.reportPath], { background: true });
         await openDocuments(
           [result.primaryOpenPath],
           {},
@@ -306,7 +313,7 @@ export function useAppGridConformerMessages({
       })
       .finally(() => reply("gridGenerate3DFinished"));
     return true;
-  }, [openDocuments, openDocumentsInActiveTab, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [openDocuments, openDocumentsInActiveTab, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   return { handleGridConformerMessage };
 }

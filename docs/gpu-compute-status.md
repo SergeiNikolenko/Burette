@@ -1,7 +1,7 @@
 # Native GPU Compute Layer Implementation Status
 
 Status: all requested workflow families are implemented in the native v20
-CPU/Metal layer and exposed through Grid and 3D result surfaces. Exact 100k
+CPU/Metal layer and exposed through Grid, 3D, table, and report result surfaces. Exact 100k
 clustering, all conformer variants, MMFF94/MMFF94s optimization, mapped
 alignment/scoring, and all eight semiempirical method identities have focused
 CPU/reference and real-Apple-GPU evidence. Clustering, alignment/scoring, and
@@ -263,8 +263,9 @@ factory emits canonical request/plan hashes, a revision-one durable conformer
 snapshot, and evidence-empty queued stages; the snapshot repository has the
 matching capability-rooted conformer source binding. Chemistry extraction,
 DG/ETK/stereo execution, reference validation, and artifact publication are
-wired; restart recovery for in-flight prepared arrays and Grid/3D presentation
-remain in progress.
+wired. Restart recovery for unpublished in-flight prepared arrays remains
+fail-closed; Grid, 3D, table, and durable Markdown report presentation are
+implemented.
 
 ## Product Truth By Surface
 
@@ -330,7 +331,14 @@ ResultPack, or duplicate fingerprint payload. Consequently it searches the
 frozen scope of that clustering job, which may be a selected subset rather than
 the entire current collection.
 
-A public artifact/report inspector remains a separate product increment.
+Every successful clustering, conformer/MMFF, alignment, and semiempirical
+publication now includes a hash-verified `result/report.md` in the committed
+artifact. The report records the durable job, workflow, frozen snapshot,
+normalized request digest, workflow-specific counts, and actual per-stage
+backend, kernel, GPU time, and host time. Desktop Grid workflows open the
+report as a background text document while keeping Grid or Mol* as the active
+result. A generic low-level binary-array artifact inspector remains a separate
+product increment; it is no longer required to read the user-facing report.
 
 ## Owning Modules
 
@@ -348,6 +356,7 @@ A public artifact/report inspector remains a separate product increment.
 | Packaged conformer extraction and raw submission | `compute/rdkit-conformer/`, `apps/desktop/src/workers/conformer-extract.worker.ts`, `apps/desktop/src/lib/compute-conformer.ts`, `apps/desktop/src-tauri/src/compute/conformer_session.rs` |
 | Adaptive CPU/Metal conformer distance execution | `apps/desktop/src-tauri/src/compute/conformer_executor.rs`, `coordinator.rs` |
 | Artifact materialization and restart reconciliation | `apps/desktop/src-tauri/src/compute/artifact_publisher.rs` |
+| Human-readable compute reports | `apps/desktop/src-tauri/src/compute/artifact_publisher.rs`, `apps/desktop/src/hooks/use-app-grid-compute-messages.ts`, `use-app-grid-conformer-messages.ts` |
 | Immutable representative export and provenance | `apps/desktop/src-tauri/src/compute/representative_export.rs` |
 | Verified fingerprint reuse and exact similarity ranking | `apps/desktop/src-tauri/src/compute/similarity_artifact.rs`, `similarity_search.rs` |
 | Grid analysis writeback/readback | `apps/desktop/src-tauri/src/preview/grid_analysis.rs`, `grid_store.rs` |
@@ -410,6 +419,11 @@ A public artifact/report inspector remains a separate product increment.
   WASM asset.
 - Tauri ACL, shell bridge, generated Grid UI, JavaScript syntax, and clustering
   and similarity workflow contract checks pass.
+- Focused durable workflow tests verify that clustering, conformer/MMFF, and
+  semiempirical artifacts contain a `computeReport` file, that its path remains
+  inside the committed artifact, and that the report contains the expected
+  workflow summary. Frontend contract tests require those reports to open as
+  background text documents after successful Grid operations.
 - The real Grid-to-artifact coordinator test executes similarity search through
   the CPU fallback, verifies exact ranking and all five Grid columns, repeats
   after coordinator restart, preserves clustering results, and rejects a

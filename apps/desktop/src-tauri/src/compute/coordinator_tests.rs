@@ -102,6 +102,14 @@ fn semiempirical_grid_workflow_publishes_a_durable_cpu_fallback_artifact() {
         manifest.result_pack.result_pack_id,
         job.result_pack.unwrap().result_pack_id
     );
+    let report_path = result.report_path.as_deref().expect("analysis report path");
+    let report = std::fs::read_to_string(report_path).expect("read analysis report");
+    assert!(report.contains("# Native Molecular Analysis Report"));
+    assert!(report.contains("SCF converged"));
+    assert!(manifest
+        .files
+        .iter()
+        .any(|file| { file.relative_path == "result/report.md" && file.role == "computeReport" }));
     drop(coordinator);
     std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
     std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
@@ -248,6 +256,10 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             .to_string_lossy()
     );
     assert_eq!(
+        publication.report_path,
+        artifact_root.join("result/report.md").to_string_lossy()
+    );
+    assert_eq!(
         coordinator.get_job("main", job.job_id).unwrap(),
         publication.job
     );
@@ -283,6 +295,10 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
     assert!(xyz.contains("initialization=generated etkEnergy="));
     assert!(xyz.contains("mmffVariant=MMFF94s mmffEnergy="));
     assert!(xyz.contains("stereo=passed"));
+    let report =
+        std::fs::read_to_string(&publication.report_path).expect("read published conformer report");
+    assert!(report.contains("# Conformer Generation And Optimization Report"));
+    assert!(report.contains("MMFF variant: `MMFF94s`"));
     let page = registry
         .fetch_page(
             "main:conformer-submit",
@@ -546,6 +562,10 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
     coordinator
         .get_artifact_manifest("main", publication.artifact_id)
         .expect("read published artifact manifest");
+    let report = std::fs::read_to_string(&publication.report_path)
+        .expect("read published clustering report");
+    assert!(report.contains("# Molecular Clustering Report"));
+    assert!(report.contains("Clusters: `2`"));
 
     let page = registry
         .fetch_page(

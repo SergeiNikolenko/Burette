@@ -538,6 +538,7 @@ impl ComputeCoordinator {
         )?;
         result.artifact_id = Some(publication.artifact_id);
         result.artifact_manifest_sha256 = Some(publication.artifact_manifest_sha256.clone());
+        result.report_path = Some(publication.report_path.clone());
         match apply_grid_semiempirical_result(
             source_lease.database_path_for_freeze(),
             &result,
@@ -717,6 +718,7 @@ impl ComputeCoordinator {
         let publication = self.publish_alignment_v1(owner, ready, validation_succeeded, &result)?;
         result.artifact_id = Some(publication.artifact_id);
         result.artifact_manifest_sha256 = Some(publication.artifact_manifest_sha256.clone());
+        result.report_path = Some(publication.report_path.clone());
         match apply_grid_alignment_result(
             source_lease.database_path_for_freeze(),
             &result,
@@ -890,6 +892,7 @@ impl ComputeCoordinator {
         Ok(AnalysisPublicationStep {
             artifact_id: materialized.artifact_id,
             artifact_manifest_sha256: manifest_sha256,
+            report_path: materialized.report_path().to_string_lossy().into_owned(),
         })
     }
 
@@ -2044,6 +2047,7 @@ impl ComputeCoordinator {
                 .conformer_xyz_path()
                 .to_string_lossy()
                 .into_owned(),
+            report_path: materialized.report_path().to_string_lossy().into_owned(),
         })
     }
 
@@ -2746,6 +2750,7 @@ impl ComputeCoordinator {
             artifact_manifest_sha256: manifest_sha256,
             grid_applied,
             grid_warning,
+            report_path: materialized.report_path().to_string_lossy().into_owned(),
         })
     }
 

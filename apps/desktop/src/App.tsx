@@ -730,6 +730,7 @@ export default function App() {
     notifyGridPoseReviewSelection,
     openDockingDocument,
     openDocuments,
+    openTextDocuments,
     openDocumentsInActiveTab,
     openKetcherWithFragment,
     openKetcherWithStructures,

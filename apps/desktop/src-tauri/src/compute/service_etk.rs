@@ -135,7 +135,7 @@ pub(super) fn decode_input(input: &[u8]) -> Result<OwnedInput, String> {
         let atoms = cursor.u32_array()?;
         let coefficients = cursor.f32_array()?;
         let signs = cursor.i8_array()?;
-        if cursor.array::<2>()? != [0; 2] || signs.iter().any(|sign| !matches!(sign, -1 | 0 | 1)) {
+        if cursor.array::<2>()? != [0; 2] || signs.iter().any(|sign| !matches!(sign, -1..=1)) {
             return Err("ETK torsion encoding is invalid".into());
         }
         torsions.push(EtkTorsionConstraint {
@@ -265,7 +265,7 @@ pub(super) fn decode_output(
 fn validate_shape(positions: &[[f32; 4]], atom_count: u32) -> Result<(), String> {
     if atom_count == 0
         || positions.is_empty()
-        || positions.len() % atom_count as usize != 0
+        || !positions.len().is_multiple_of(atom_count as usize)
         || positions.iter().flatten().any(|value| !value.is_finite())
     {
         Err("ETK positions are not a finite conformer batch".into())

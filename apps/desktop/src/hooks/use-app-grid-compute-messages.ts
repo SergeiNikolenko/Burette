@@ -15,6 +15,7 @@ type GridComputeMessageBody = Record<string, unknown> | null | undefined;
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 
 type UseAppGridComputeMessagesOptions = {
+  openTextDocuments: (paths: string[], options?: { background?: boolean }) => void | Promise<unknown>;
   postMessageToViewerSource: PostMessageToViewerSource;
   pushStatus: PushStatus;
 };
@@ -25,6 +26,7 @@ type ActiveClusterRun = {
 };
 
 export function useAppGridComputeMessages({
+  openTextDocuments,
   postMessageToViewerSource,
   pushStatus,
 }: UseAppGridComputeMessagesOptions) {
@@ -273,6 +275,7 @@ export function useAppGridComputeMessages({
         pushStatus("Publishing cluster results and updating Grid...");
       }
     }, filteredScope, activeRun.controller.signal).then((result) => {
+      void openTextDocuments([result.reportPath], { background: true });
       const backendLabel = result.backend === "nativeMetal" ? "Metal GPU" : "reference CPU";
       postGridComputeMessage(postMessageToViewerSource, source, documentId, {
         type: "gridClusterFinished",
@@ -307,7 +310,7 @@ export function useAppGridComputeMessages({
       activeClusterRunsRef.current.delete(documentId);
     });
     return true;
-  }, [postMessageToViewerSource, pushStatus]);
+  }, [openTextDocuments, postMessageToViewerSource, pushStatus]);
 
   return { handleGridComputeMessage };
 }

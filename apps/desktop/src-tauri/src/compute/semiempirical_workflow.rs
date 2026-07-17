@@ -120,6 +120,7 @@ pub(crate) struct GridSemiempiricalResult {
     pub(crate) run_id: Uuid,
     pub(crate) artifact_id: Option<Uuid>,
     pub(crate) artifact_manifest_sha256: Option<String>,
+    pub(crate) report_path: Option<String>,
     pub(crate) method: &'static str,
     pub(crate) rows: Vec<GridSemiempiricalRow>,
     pub(crate) host_time_ms: u64,
@@ -219,6 +220,7 @@ fn execute_semiempirical_rows(
         run_id,
         artifact_id: None,
         artifact_manifest_sha256: None,
+        report_path: None,
         method: method.display_name,
         rows,
         host_time_ms,
@@ -403,7 +405,7 @@ pub(super) fn evaluate_semiempirical_molecule(
             SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D | SemiempiricalMethod::Pm6D3H4
         ) {
             evaluate_pm6_with_accelerators(
-                &molecule,
+                molecule,
                 SemiempiricalScfOptions::default(),
                 |orbital_count, density, pairs| {
                     let dispatch = runtime
@@ -442,7 +444,7 @@ pub(super) fn evaluate_semiempirical_molecule(
                 .map_err(|error| error.to_string())?;
             gpu_time_ms.set(gpu_time_ms.get() + prepared.gpu_time_ms);
             evaluate_rm1_with_prepared_pairs_and_accelerators(
-                &molecule,
+                molecule,
                 SemiempiricalScfOptions::default(),
                 &prepared.pairs,
                 |orbital_count, density, pairs| {

@@ -79,6 +79,7 @@ type ClusterPublicationStep = {
   artifactManifestSha256: string;
   gridApplied: boolean;
   gridWarning: string | null;
+  reportPath: string;
 };
 
 type FingerprintWorkerRequest = {

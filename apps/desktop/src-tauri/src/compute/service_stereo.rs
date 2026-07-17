@@ -164,7 +164,7 @@ pub(super) fn decode_output(
 fn validate_shape(positions: &[[f32; 4]], atom_count: u32) -> Result<(), String> {
     if atom_count == 0
         || positions.is_empty()
-        || positions.len() % atom_count as usize != 0
+        || !positions.len().is_multiple_of(atom_count as usize)
         || positions.iter().flatten().any(|value| !value.is_finite())
     {
         Err("stereo positions are not a finite conformer batch".into())
