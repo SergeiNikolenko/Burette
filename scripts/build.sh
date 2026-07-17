@@ -550,7 +550,14 @@ bun scripts/check-js-syntax.mjs \
 clean_detritus "$ROOT"
 rm -f /tmp/Burrete.log "${TMPDIR:-/tmp}/Burrete.log" 2>/dev/null || true
 
-rsync -a --delete --exclude build --exclude node_modules --exclude .git --exclude target --exclude apps/desktop/src-tauri/target "$ROOT/" "$SAFE_ROOT/"
+rsync -a --delete \
+  --exclude build \
+  --exclude node_modules \
+  --exclude .git \
+  --exclude .codegraph \
+  --exclude target \
+  --exclude apps/desktop/src-tauri/target \
+  "$ROOT/" "$SAFE_ROOT/"
 clean_detritus "$SAFE_ROOT"
 APP_METADATA_PLIST="$SAFE_ROOT/apps/desktop/src-tauri/AppMetadata.plist"
 if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
