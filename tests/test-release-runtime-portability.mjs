@@ -32,6 +32,7 @@ assert.ok(
   "the reviewed Metal runtime must be compiled before Tauri packages resources",
 );
 assert.match(buildScript, /export CARGO_PROFILE_RELEASE_STRIP=false/);
+assert.match(buildScript, /--exclude \.codegraph/);
 
 assert.match(conformerCommand, /candidate_errors/);
 assert.match(conformerCommand, /format_conformer_candidate_errors/);
