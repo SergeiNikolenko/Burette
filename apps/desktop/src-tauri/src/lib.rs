@@ -14,6 +14,10 @@ use preview::grid_store::GridRuntimeRegistry;
 use std::path::PathBuf;
 use tauri::{Manager, RunEvent};
 
+pub fn run_compute_service() -> Result<(), String> {
+    compute::service::run_compute_service()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "macos")]
@@ -42,10 +46,11 @@ pub fn run() {
                         resource_root.as_ref().map(|root| root.join("ComputeMetal"));
                     let viewer_runtime_root =
                         resource_root.as_ref().map(|root| root.join("ViewerWeb"));
-                    compute::coordinator::ComputeCoordinator::initialize(
+                    compute::coordinator::ComputeCoordinator::initialize_with_service(
                         app_data.join("compute"),
                         metal_runtime_root,
                         viewer_runtime_root,
+                        packaged_compute_service_path(),
                     )
                 })
                 .unwrap_or_else(|error| {
@@ -226,6 +231,23 @@ pub fn run() {
                 show_and_emit_open_documents(app, paths);
             }
         });
+}
+
+fn packaged_compute_service_path() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("BURRETE_COMPUTE_SERVICE_PATH").map(PathBuf::from) {
+        return path.is_file().then_some(path);
+    }
+    let executable = std::env::current_exe().ok()?;
+    let directory = executable.parent()?;
+    let packaged = directory
+        .parent()?
+        .join("Helpers")
+        .join("burrete-compute-service");
+    if packaged.is_file() {
+        return Some(packaged);
+    }
+    let development = directory.join("burrete-compute-service");
+    development.is_file().then_some(development)
 }
 
 fn show_and_emit_open_documents<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paths: Vec<String>) {

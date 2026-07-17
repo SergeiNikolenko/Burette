@@ -141,6 +141,7 @@ pushd apps/desktop >/dev/null
 popd >/dev/null
 
 bun run build:tauri
+cargo build --release --manifest-path apps/desktop/src-tauri/Cargo.toml --bin burrete-compute-service
 QUICKLOOK_APPEX_SOURCE="$QUICKLOOK_APPEX"
 if [[ "$REUSE_QUICKLOOK" == "1" ]]; then
   [[ -d "$EXISTING_PREVIEW_APPEX" ]] || {
@@ -170,6 +171,9 @@ done
 [[ -d "$QUICKLOOK_APPEX_SOURCE" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX_SOURCE" >&2; exit 1; }
 
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"
+mkdir -p "$TAURI_BUILT_APP/Contents/Helpers"
+ditto --norsrc --noextattr "$ROOT/target/release/burrete-compute-service" "$TAURI_BUILT_APP/Contents/Helpers/burrete-compute-service"
+chmod 755 "$TAURI_BUILT_APP/Contents/Helpers/burrete-compute-service"
 rm -rf "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
 ditto --norsrc --noextattr "$QUICKLOOK_APPEX_SOURCE" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex"
 mark_regular_desktop_app "$TAURI_BUILT_APP"

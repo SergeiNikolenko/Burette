@@ -473,6 +473,31 @@ if metallib_sha256 != metallib.get("sha256"):
     fail("metallib SHA-256 differs from build metadata")
 PY
 }
+bundle_compute_service() {
+  local app="$1"
+  local service="$2"
+  [[ -x "$service" ]] || { echo "error: native compute service missing: $service" >&2; exit 1; }
+  mkdir -p "$app/Contents/Helpers"
+  ditto --norsrc --noextattr "$service" "$app/Contents/Helpers/burrete-compute-service"
+  chmod 755 "$app/Contents/Helpers/burrete-compute-service"
+}
+assert_bundled_compute_service() {
+  local app="$1"
+  local label="$2"
+  local service="$app/Contents/Helpers/burrete-compute-service"
+  [[ -x "$service" && ! -L "$service" ]] || {
+    echo "error: packaged native compute service is missing $label: $service" >&2
+    exit 1
+  }
+  file "$service" | grep -q 'Mach-O.*arm64' || {
+    echo "error: packaged native compute service is not arm64 Mach-O $label" >&2
+    exit 1
+  }
+}
+smoke_bundled_compute_service() {
+  local app="$1"
+  bun "$SAFE_ROOT/scripts/check-compute-service.mjs" "$app"
+}
 
 require_tool bun "Install it with: brew install oven-sh/bun/bun"
 require_tool cargo "Install Rust from: https://www.rust-lang.org/tools/install"
@@ -540,6 +565,7 @@ pushd apps/desktop >/dev/null
 popd >/dev/null
 bun run build:tauri
 cargo build --release --bin burrete-core-bridge
+cargo build --release --bin burrete-compute-service
 XCODE_SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)
 if [[ -n "$DEVELOPMENT_TEAM" ]]; then
   XCODE_SIGN_ARGS+=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM")
@@ -562,6 +588,7 @@ done
 QUICKLOOK_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurretePreview.appex"
 THUMBNAIL_APPEX="build/Build/Products/$XCODE_CONFIGURATION/BurreteThumbnail.appex"
 CORE_BRIDGE="$TAURI_TARGET_DIR/release/burrete-core-bridge"
+COMPUTE_SERVICE="$TAURI_TARGET_DIR/release/burrete-compute-service"
 [[ -n "$TAURI_BUILT_APP" ]] || { echo "error: Tauri app bundle missing. Checked: ${TAURI_BUILT_APP_CANDIDATES[*]}" >&2; exit 1; }
 [[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
 [[ -d "$THUMBNAIL_APPEX" ]] || { echo "error: Quick Look thumbnail extension missing: $THUMBNAIL_APPEX" >&2; exit 1; }
@@ -577,7 +604,10 @@ mark_regular_desktop_app "$TAURI_BUILT_APP"
 copy_app_plist_metadata "$TAURI_BUILT_APP"
 bundle_xyzrender_runtime "$TAURI_BUILT_APP"
 bundle_quicklook_xyzrender_launcher "$TAURI_BUILT_APP"
+bundle_compute_service "$TAURI_BUILT_APP" "$COMPUTE_SERVICE"
 assert_bundled_compute_metal_runtime "$TAURI_BUILT_APP" "before signing"
+assert_bundled_compute_service "$TAURI_BUILT_APP" "before signing"
+smoke_bundled_compute_service "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
 CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
@@ -585,6 +615,7 @@ if [[ "$SIGN_IDENTITY" != "-" ]]; then
 fi
 sign_bundled_xyzrender_runtime "$TAURI_BUILT_APP"
 sign_quicklook_xyzrender_launcher "$TAURI_BUILT_APP"
+codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/Helpers/burrete-compute-service" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex/Contents/Resources/burrete-core-bridge" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurretePreview.appex" >/dev/null
 codesign "${CODESIGN_ARGS[@]}" --entitlements "$ROOT/PreviewExtension/BurretePreview.entitlements" "$TAURI_BUILT_APP/Contents/PlugIns/BurreteThumbnail.appex" >/dev/null
@@ -616,6 +647,7 @@ actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex" ]] || { echo "error: embedded Quick Look thumbnail extension missing in Tauri app." >&2; exit 1; }
 assert_bundled_xyzrender_runtime "$LOCAL_APP" "in build output"
 assert_bundled_compute_metal_runtime "$LOCAL_APP" "in build output"
+assert_bundled_compute_service "$LOCAL_APP" "in build output"
 thumbnail_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$LOCAL_APP/Contents/PlugIns/BurreteThumbnail.appex/Contents/Info.plist" 2>/dev/null || true)"
 [[ "$thumbnail_point" == "com.apple.quicklook.thumbnail" ]] || { echo "error: embedded thumbnail extension has wrong extension point: ${thumbnail_point:-unknown}" >&2; exit 1; }
 BUILT_VIEWER_SHELL="$LOCAL_APP/Contents/Resources/ViewerWeb/viewer-shell.js"
@@ -638,6 +670,8 @@ ditto --norsrc --noextattr "$BUILT_APP_SOURCE" "$VERIFY_APP"
 clean_detritus "$VERIFY_APP"
 assert_bundled_xyzrender_runtime "$VERIFY_APP" "before codesign verification"
 assert_bundled_compute_metal_runtime "$VERIFY_APP" "before codesign verification"
+assert_bundled_compute_service "$VERIFY_APP" "before codesign verification"
+smoke_bundled_compute_service "$VERIFY_APP"
 codesign --verify --deep --strict "$VERIFY_APP"
 
 cat <<MSG

@@ -26,6 +26,7 @@ mod representative_export;
 )]
 mod root_lease;
 mod semiempirical_workflow;
+pub(crate) mod service;
 mod similarity_artifact;
 pub(crate) use root_lease::ComputeRootChildDirectory;
 mod similarity_search;
