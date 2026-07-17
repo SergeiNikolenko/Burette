@@ -6369,7 +6369,7 @@ assert.match(gridViewer, /async function scanRemoteBySMARTS\(cfg, token\)/);
 assert.match(gridViewer, /function shouldCollectAllRemoteRows\(\)/);
 assert.match(gridViewer, /async function collectAllRemoteRows\(cfg, query = state\.query \|\| '', sort = state\.sort \|\| 'index'\)/);
 assert.match(gridViewer, /state\.remoteMode && state\.selected\.size === 0 && !state\.smarts\.trim\(\)/);
-assert.match(gridViewer, /if \(kind === 'error' && status && !window\.BurreteDebug && cfg\.appViewer === true\) status\.classList\.add\('hidden'\);/);
+assert.doesNotMatch(gridViewer, /if \(kind === 'error' && status && !window\.BurreteDebug && cfg\.appViewer === true\) status\.classList\.add\('hidden'\);/);
 assert.doesNotMatch(gridViewer, /post\('error', message\);/);
 assert.match(gridViewer, /function pumpRdkitCardQueue\(\) \{\s*if \(state\.rdkitCardRendering \|\| !state\.rdkitCardQueue\.length\) return;\s*if \(!state\.rdkit && !state\.rdkitError\) return;/);
 assert.match(gridViewer, /await initRDKit\(\);\s*state\.rdkitError = '';\s*pumpRdkitCardQueue\(\);/);
