@@ -2320,10 +2320,21 @@ impl ComputeCoordinator {
             let (graph, gpu_time_ms) = match numeric_running.stages[2].effective_backend {
                 Backend::NativeMetal => match &ready.native_metal {
                     NativeMetalState::Available(runtime) => {
-                        let execution = runtime
-                            .build_graph_profiled(&valid, cutoff, options)
-                            .map_err(metal_execution_error)?;
-                        (execution.graph, Some(execution.gpu_time_ms as f64))
+                        if let Some(service) = &ready.compute_service {
+                            let (graph, gpu_time_ms) = service
+                                .build_tanimoto_graph(job_id, &valid, cutoff, options)
+                                .map_err(|error| {
+                                    ComputeCoordinatorError::Unavailable(format!(
+                                        "native Metal compute service execution failed: {error}"
+                                    ))
+                                })?;
+                            (graph, Some(gpu_time_ms as f64))
+                        } else {
+                            let execution = runtime
+                                .build_graph_profiled(&valid, cutoff, options)
+                                .map_err(metal_execution_error)?;
+                            (execution.graph, Some(execution.gpu_time_ms as f64))
+                        }
                     }
                     NativeMetalState::Unavailable { message, .. } => {
                         return Err(ComputeCoordinatorError::Unavailable(message.clone()))
