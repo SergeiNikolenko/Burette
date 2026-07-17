@@ -274,7 +274,7 @@ implemented.
 | macOS desktop source build | `Cluster selected`, `Cluster filtered`, `Cluster all`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
 | Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, fused automatic BFGS/L-BFGS MMFF optimization, and mapped Horn/RMSD/shape/ESP scoring on Apple M2 Pro |
-| Packaged development Metal | `Burrete-gpucompute9a97v26.app` is installed at `/Users/nikolenko/Applications/Burrete-gpucompute9a97v26.app`; it packages the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`; helper handshake, runtime/helper SHA binding, replay rejection, one-shot transport recovery, real FD-based Tanimoto, alignment/shape/electrostatic, RM1 SCF, DG, ETK, MMFF, and stereo dispatch, plus deep/strict ad-hoc signature verification, pass on Apple M2 Pro |
+| Packaged development Metal | `Burrete-gpucompute9a97v27.app` is installed at `/Users/nikolenko/Applications/Burrete-gpucompute9a97v27.app`; it was clean-built from commit `84c019d7`, packages the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`, and passes helper handshake, runtime/helper SHA binding, replay rejection, one-shot transport recovery, real FD-based Tanimoto, alignment/shape/electrostatic, all eight semiempirical methods, DG, ETK, MMFF, stereo, the 32-case conformer corpus, and deep/strict ad-hoc signature verification on Apple M2 Pro |
 | Packaged production Metal | Pending external Developer ID signing, hardened-runtime verification, notarization, and UI-triggered installed-app acceptance evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -382,8 +382,10 @@ product increment; it is no longer required to read the user-facing report.
 - Metal crate unit/parity tests pass, including real graph and exact query-count
   dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
   support.
-- The current `Burrete-gpucompute9a97v26.app` development package was rebuilt
-  in an isolated tree. Deep/strict ad-hoc signature verification passes for the
+- The current `Burrete-gpucompute9a97v27.app` development package was rebuilt
+  from clean detached commit `84c019d7` in an isolated tree. The build boundary
+  now excludes ephemeral `.codegraph` state. Deep/strict ad-hoc signature
+  verification passes for the
   app, its single packaged compute helper, and nested extensions. The helper
   reports Apple M2 Pro, binds its own SHA-256 into the runtime identity, rejects
   replayed control requests, automatically relaunches once after a killed helper,
@@ -391,8 +393,11 @@ product increment; it is no longer required to read the user-facing report.
   fixed-pose shape/electrostatic scoring, converged RM1 water SCF, MMFF94,
   two-conformer DG, ETK distance optimization, and chiral validation through
   the anonymous-FD exchange. Each operation reports real nonzero Apple GPU
-  time. The signed helper SHA-256 is
-  `5bf6a9d775b7490d447634994603c13d4a38b81e52de287ef2c7e92dcdfe3b77`. The
+  time. Direct installed-bundle smokes additionally pass all eight
+  semiempirical method identities, reordered Grid alignment, adaptive conformer
+  batching, and the 32-case all-variant RDKit conformer corpus. The signed
+  helper SHA-256 is
+  `c758554beb3e78fefe05d43d2c511ed328f69cbc3a7b3d58dcd4874e4923ee8e`. The
   isolated app is installed under `/Users/nikolenko/Applications`; visible Grid
   invocation and UI-triggered compute acceptance remain separate gates because
   the current Computer Use attempt found the macOS session locked.
@@ -403,7 +408,7 @@ product increment; it is no longer required to read the user-facing report.
   bundle, installer, and Quick Look registration are inactive, so this result
   is not counted as installed-app or Metal UI acceptance.
 - The packaged runtime is `burrete-native-metal-v20`, generation
-  `generation.TlAu4j`, with `native-compute.v20.metallib` SHA-256
+  `generation.qxCQYr`, with `native-compute.v20.metallib` SHA-256
   `341d858756cfd33438304e0d643d4ad647081df7678f88e407cc2734e87a2c84`.
   The canonical runtime pointer, metadata digest, metallib digest, source/AIR
   manifest, and startup known-answer suite all verify before Metal is reported
@@ -411,6 +416,9 @@ product increment; it is no longer required to read the user-facing report.
 - `bun run check:release` passes. The development package deliberately has an
   ad-hoc signature and no TeamIdentifier, so the release-signature gate
   correctly rejects it until a Developer ID Application identity is supplied.
+  The current keychain contains two Apple Development identities and no
+  Developer ID Application identity, so hardened distribution signing and
+  notarization cannot be claimed from this machine.
 - The pinned RDKit 2025.03.4 runtime reproduces four frozen Morgan
   known-answer vectors byte for byte, and Rust decodes the same vectors through
   the canonical EnginePack ABI.
