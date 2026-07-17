@@ -259,7 +259,7 @@ remain in progress.
 
 | Surface | Current truth |
 | --- | --- |
-| macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
+| macOS desktop source build | `Cluster selected`, `Cluster filtered`, `Cluster all`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
 | Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, fused automatic BFGS/L-BFGS MMFF optimization, and mapped Horn/RMSD/shape/ESP scoring on Apple M2 Pro |
 | Packaged development Metal | `Burrete-gpucompute9a97v20.app` packages the hash-bound v20 runtime, passes deep/strict ad-hoc signature verification, installs, launches, and opens a real Grid sample on Apple M2 Pro |
@@ -280,10 +280,14 @@ remains test-only and is not accepted as production availability.
 ## Implemented User Scenario
 
 Grid now provides a molecular clustering control with a Tanimoto cutoff and
-scope derived from the current selection:
+scope derived from the current selection and filters:
 
-- no selected rows means the immutable all-record scope;
-- selected rows produce an explicit, sorted, deduplicated source-index scope;
+- selected rows take precedence and produce an explicit, sorted, deduplicated
+  source-index scope;
+- with no selected rows, active text, column, descriptor, and analysis filters
+  produce an immutable filtered scope;
+- with neither a selection nor active filters, the immutable all-record scope
+  is used;
 - progress distinguishes fingerprinting, similarity/clustering, and
   publication;
 - completion reports `Metal GPU` only when the durable numeric stage records
@@ -312,8 +316,7 @@ ResultPack, or duplicate fingerprint payload. Consequently it searches the
 frozen scope of that clustering job, which may be a selected subset rather than
 the entire current collection.
 
-Filtered-scope clustering and a public artifact/report inspector remain
-separate product increments.
+A public artifact/report inspector remains a separate product increment.
 
 ## Owning Modules
 
@@ -553,25 +556,31 @@ runtime, the 100k/dense/memory-pressure benchmark gates, and a current installed
 ad-hoc development package. They do not claim a Developer ID production
 signature, notarization, or UI-triggered installed-app acceptance run.
 
-## Remaining Production Release Gates
+## Remaining Implementation And Production Gates
 
-1. Build with Developer ID and hardened runtime, then notarize and verify the
-   nested and outer production signatures without changing the pinned runtime.
-2. Exercise clustering, conformer generation, optimization, alignment, and
+1. Move Metal ownership from the desktop process into the separately signed,
+   crash-isolated helper required by the target architecture, including bounded
+   IPC and helper restart recovery.
+2. Add durable execution stages and ResultPack publication for alignment and
+   semiempirical workflows; they currently execute as direct Grid analyses.
+3. Poll and acknowledge cancellation at active stage/chunk boundaries instead
+   of leaving running work at `CancelRequested` until restart recovery.
+4. Complete the required M1-class 8 GB and M3/M4 Max 64 GB hardware matrix in
+   addition to the current M2 Pro evidence.
+5. Exercise clustering, conformer generation, optimization, alignment, and
    semiempirical evaluation through the actual installed Grid controls and
    capture the visible backend labels, columns, 3D outputs, and artifacts.
-3. Extend scientific corpora when new upstream/reference releases are pinned;
+6. Build with Developer ID and hardened runtime, then notarize and verify the
+   nested and outer production signatures without changing the pinned runtime.
+7. Extend scientific corpora when new upstream/reference releases are pinned;
    current deterministic, RDKit, mlxmolkit, PYSEQM/OpenMOPAC, CPU/Metal, dense,
    cutoff-boundary, and memory-pressure gates remain required in CI.
-4. Decide and document whether release execution remains in-process or moves
-   to the separately signed helper described by the target architecture.
 
 ## Next Implementation Order
 
-The implementation sequence is complete. Remaining work is release evidence,
-not another compute-module stage:
-
-1. run the installed-app UI acceptance matrix and archive screenshots/logs;
-2. sign the unchanged package with Developer ID, verify hardened runtime, and
-   notarize it;
-3. publish the v20 benchmark and scientific-parity evidence with the release.
+1. complete active cancellation and its Grid control;
+2. make alignment and semiempirical execution durable jobs with artifacts;
+3. introduce the crash-isolated packaged helper boundary;
+4. run the installed-app and hardware acceptance matrices;
+5. sign with Developer ID, verify hardened runtime, notarize, and publish the
+   v20 benchmark and scientific-parity evidence with the release.

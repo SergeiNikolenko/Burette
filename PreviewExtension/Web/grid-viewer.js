@@ -1644,14 +1644,32 @@
       .map(Number)
       .filter(index => Number.isSafeInteger(index) && index >= 0)
       .sort((left, right) => left - right);
+    const columnFilters = remoteTableColumnFilters();
+    const descriptorFilters = mergedDescriptorFilters();
+    const analysisFilters = mergedAnalysisFilters();
+    const filteredScope = !sourceIndexes.length && (
+      state.query.trim()
+      || columnFilters.length
+      || descriptorFilters.length
+      || analysisFilters.length
+    ) ? {
+      kind: 'filtered',
+      query: { kind: 'text', text: state.query || '' },
+      columnFilters,
+      descriptorFilters,
+      analysisFilters,
+    } : null;
     setGridClusteringPending(true);
     post('clusterMolecules', '[grid] Cluster molecules.', {
       documentId: cfg?.documentId || null,
       sourceIndexes,
+      filteredScope,
       cutoff: state.clusterCutoff,
     });
     setStatus(sourceIndexes.length
       ? `[grid] Clustering ${sourceIndexes.length.toLocaleString()} selected molecules.`
+      : filteredScope
+      ? '[grid] Clustering the current filtered molecule scope.'
       : '[grid] Clustering the full collection.');
   }
 
@@ -5444,8 +5462,8 @@
     state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
     state.remoteAnalysisColumns = [];
     state.selected = new Set();
-    state.findingSimilar = false;
     state.hiddenRows = new Set();
+    state.findingSimilar = false;
     state.exportingClusterRepresentatives = false;
     state.dirty = false;
     state.dirtyReason = '';
