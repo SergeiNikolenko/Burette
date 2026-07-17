@@ -16,19 +16,24 @@ use burrete_compute_protocol::{
     Backend, BackendPolicy, CapabilityEntry, CapabilityLimits, CapabilityMaturity,
     CapabilityReason, CapabilityReasonCode, CapabilityReportSchemaVersion, ClusterV1SubmitRequest,
     ComputeAvailability, ComputeCapabilityReport, ComputeErrorCode, ComputeFailure,
-    ConformerV1SubmitRequest, EngineIdentity, FallbackDecision, FallbackReasonCode,
-    JobOutcomeSummary, JobRevisionEvent, JobSnapshot, JobState, OwnerSurface, PlatformIdentity,
-    Precision, ProtocolRange, RuntimeIdentity, WorkflowTemplateId, MAX_CONTROL_FRAME_BYTES,
-    PROTOCOL_VERSION,
+    ComputeSubmitRequest, ConformerV1SubmitRequest, EngineIdentity, FallbackDecision,
+    FallbackReasonCode, JobOutcomeSummary, JobRevisionEvent, JobSnapshot, JobState, OwnerSurface,
+    PlatformIdentity, Precision, ProtocolRange, RuntimeIdentity, WorkflowTemplateId,
+    MAX_CONTROL_FRAME_BYTES, PROTOCOL_VERSION,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::compute::{
-    alignment_workflow::{execute_grid_alignment, GridAlignmentRequest, GridAlignmentResult},
+    alignment_workflow::{
+        apply_grid_alignment_result, durable_alignment_request,
+        execute_snapshot_alignment_with_run_id, GridAlignmentRequest, GridAlignmentResult,
+    },
+    analysis_snapshot::load_analysis_source_rows,
     artifact_publisher::{
-        artifact_manifest_sha256, materialize_cluster_artifact, materialize_conformer_artifact,
-        reconcile_artifact_root, ClusterPublicationStep, ConformerPublicationStep,
+        artifact_manifest_sha256, materialize_analysis_artifact, materialize_cluster_artifact,
+        materialize_conformer_artifact, reconcile_artifact_root, AnalysisArtifactPayload,
+        AnalysisPublicationStep, ClusterPublicationStep, ConformerPublicationStep,
     },
     cluster_executor::{
         finish_clustering, graph_options, valid_fingerprints, validate_computation,
@@ -54,8 +59,8 @@ use crate::compute::{
         FingerprintSession,
     },
     job_factory::{
-        build_queued_cluster_v1_job, build_queued_conformer_v1_job, QueuedClusterV1JobInput,
-        QueuedConformerV1JobInput,
+        build_queued_analysis_v1_job, build_queued_cluster_v1_job, build_queued_conformer_v1_job,
+        QueuedAnalysisV1JobInput, QueuedClusterV1JobInput, QueuedConformerV1JobInput,
     },
     job_lifecycle::{
         fail_stage, finish_cancellation, finish_publish_stage, finish_stage, start_stage,
@@ -63,7 +68,9 @@ use crate::compute::{
     },
     representative_export::{export_cluster_representatives, ClusterRepresentativeExportResult},
     semiempirical_workflow::{
-        execute_grid_semiempirical, GridSemiempiricalRequest, GridSemiempiricalResult,
+        apply_grid_semiempirical_result, durable_semiempirical_request,
+        execute_snapshot_semiempirical_with_run_id, GridSemiempiricalRequest,
+        GridSemiempiricalResult,
     },
     similarity_search::{
         execute_similarity_search, SimilaritySearchBackend, SimilaritySearchRequest,
@@ -199,12 +206,9 @@ impl ComputeCoordinator {
                 "The Grid semi-empirical lease does not belong to the requested document".into(),
             ));
         }
-        let ready = self.ready()?;
-        let runtime = match &ready.native_metal {
-            NativeMetalState::Available(runtime) => Some(runtime),
-            NativeMetalState::Unavailable { .. } => None,
-        };
-        execute_grid_semiempirical(runtime, source_lease.database_path_for_freeze(), request)
+        let durable_request = durable_semiempirical_request(request)?;
+        let queued = self.submit_analysis_v1(owner, durable_request.into(), &source_lease)?;
+        self.execute_semiempirical_v1(owner, request, source_lease, queued)
     }
 
     pub(crate) fn align_grid_poses(
@@ -222,17 +226,657 @@ impl ComputeCoordinator {
                 "The Grid alignment lease does not belong to the requested document".into(),
             ));
         }
+        let durable_request = durable_alignment_request(request)?;
+        let queued = self.submit_analysis_v1(owner, durable_request.into(), &source_lease)?;
+        self.execute_alignment_v1(owner, request, source_lease, queued)
+    }
+
+    fn submit_analysis_v1(
+        &self,
+        owner: &str,
+        request: ComputeSubmitRequest,
+        source_lease: &GridSnapshotLease,
+    ) -> ComputeResult<JobSnapshot> {
+        let request = request.normalized()?;
         let ready = self.ready()?;
-        match &ready.native_metal {
-            NativeMetalState::Available(runtime) => {
-                execute_grid_alignment(runtime, source_lease.database_path_for_freeze(), request)
+        let (numeric_admission, pinned_runtime) = ready
+            .native_metal
+            .submission_binding(request.backend_policy(), ready.engines.reference_runtime())?;
+        let snapshot_id = Uuid::new_v4();
+        let job_id = Uuid::new_v4();
+        let publication_attempt_id = Uuid::new_v4();
+        let publication_created_at_ms = now_ms();
+        let frozen = ready.snapshots.publish_grid_source(
+            &ready.store,
+            source_lease.database_path_for_freeze(),
+            &request.source().scope,
+            snapshot_id,
+            job_id,
+            publication_attempt_id,
+            publication_created_at_ms,
+        )?;
+        let result = (|| {
+            let source = ready.snapshots.bind_analysis_source(request, frozen)?;
+            let snapshot = build_queued_analysis_v1_job(QueuedAnalysisV1JobInput {
+                job_id,
+                owner_surface: OwnerSurface::Desktop,
+                source,
+                pinned_runtime,
+                engines: ready.engines.identities().clone(),
+                numeric_admission,
+                created_at_ms: publication_created_at_ms.saturating_add(1),
+            })?;
+            ready
+                .store
+                .insert_prepared_job(owner, &snapshot, publication_attempt_id)?;
+            Ok(snapshot)
+        })();
+        if result.is_err() {
+            ready.snapshots.rollback_uncommitted_publication(
+                &ready.store,
+                snapshot_id,
+                job_id,
+                publication_attempt_id,
+            )?;
+        }
+        result
+    }
+
+    fn execute_semiempirical_v1(
+        &self,
+        owner: &str,
+        request: &GridSemiempiricalRequest,
+        source_lease: GridSnapshotLease,
+        queued: JobSnapshot,
+    ) -> ComputeResult<GridSemiempiricalResult> {
+        let ready = self.ready()?;
+        let freeze_running = start_stage(
+            &queued,
+            0,
+            JobState::Preparing,
+            now_ms(),
+            "Verifying frozen semiempirical scope",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, queued.revision, &freeze_running)?;
+        let freeze_succeeded = finish_stage(
+            &freeze_running,
+            0,
+            JobState::Preparing,
+            now_ms(),
+            "Frozen semiempirical scope verified",
+            StageFinishMetrics {
+                transferred_bytes: queued.frozen_source.manifest.byte_length,
+                ..StageFinishMetrics::default()
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, freeze_running.revision, &freeze_succeeded)?;
+        let prepare_running = start_stage(
+            &freeze_succeeded,
+            1,
+            JobState::Preparing,
+            now_ms(),
+            "Preparing semiempirical Hamiltonians",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, freeze_succeeded.revision, &prepare_running)?;
+        let prepare_started = Instant::now();
+        let source_rows = match ready
+            .snapshots
+            .open_verified_source(&queued.frozen_source)
+            .and_then(|snapshot| load_analysis_source_rows(&snapshot))
+        {
+            Ok(rows) => rows,
+            Err(error) => {
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &prepare_running,
+                    1,
+                    ComputeErrorCode::SourceRevisionMismatch,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms: prepare_started.elapsed().as_secs_f64() * 1_000.0,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
             }
+        };
+        let native = prepare_running.stages[2].effective_backend == Backend::NativeMetal;
+        let prepare_succeeded = finish_stage(
+            &prepare_running,
+            1,
+            if native {
+                JobState::WaitingGpu
+            } else {
+                JobState::Running
+            },
+            now_ms(),
+            "Semiempirical inputs prepared",
+            StageFinishMetrics::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, prepare_running.revision, &prepare_succeeded)?;
+        let runtime = if native {
+            match &ready.native_metal {
+                NativeMetalState::Available(runtime) => Some(runtime),
+                NativeMetalState::Unavailable { message, .. } => {
+                    return Err(ComputeCoordinatorError::Unavailable(format!(
+                        "The admitted Metal runtime became unavailable: {message}"
+                    )))
+                }
+            }
+        } else {
+            None
+        };
+        let numeric_running = start_stage(
+            &prepare_succeeded,
+            2,
+            JobState::Running,
+            now_ms(),
+            "Running SCF, corrections, energies, and charges",
+            runtime.map_or_else(StageStartEvidence::default, |runtime| StageStartEvidence {
+                device: Some(runtime.device_identity().name.clone()),
+                kernel_id: Some("burrete.compute.semiempirical.v1:scf-corrections".into()),
+            }),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, prepare_succeeded.revision, &numeric_running)?;
+        let numeric_started = Instant::now();
+        let result = execute_snapshot_semiempirical_with_run_id(
+            runtime,
+            source_rows,
+            request,
+            queued.job_id,
+        );
+        let host_time_ms = numeric_started.elapsed().as_secs_f64() * 1_000.0;
+        let mut result = match result {
+            Ok(result) => result,
+            Err(error) => {
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &numeric_running,
+                    2,
+                    ComputeErrorCode::NumericalFailure,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
+            }
+        };
+        let successful_records =
+            result.rows.iter().filter(|row| row.error.is_none()).count() as u64;
+        let failed_records = result.rows.len() as u64 - successful_records;
+        if successful_records == 0 {
+            let error = ComputeCoordinatorError::Validation(
+                "semiempirical evaluation produced no successful molecule results".into(),
+            );
+            persist_failed_stage(
+                &ready.store,
+                owner,
+                &numeric_running,
+                2,
+                ComputeErrorCode::NumericalFailure,
+                &error,
+                StageFinishMetrics {
+                    host_time_ms,
+                    ..StageFinishMetrics::default()
+                },
+            )?;
+            return Err(error);
+        }
+        let numeric_succeeded = finish_stage(
+            &numeric_running,
+            2,
+            JobState::Validating,
+            now_ms(),
+            "Semiempirical evaluation completed",
+            StageFinishMetrics {
+                host_time_ms,
+                gpu_time_ms: native.then_some(result.gpu_time_ms as f64),
+                transferred_bytes: result
+                    .rows
+                    .iter()
+                    .filter_map(|row| row.atomic_charges.as_ref())
+                    .map(|charges| charges.len() as u64 * 8)
+                    .sum(),
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, numeric_running.revision, &numeric_succeeded)?;
+        let validation_running = start_stage(
+            &numeric_succeeded,
+            3,
+            JobState::Validating,
+            now_ms(),
+            "Validating semiempirical result bounds",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, numeric_succeeded.revision, &validation_running)?;
+        let validation_succeeded = finish_stage(
+            &validation_running,
+            3,
+            JobState::Publishing,
+            now_ms(),
+            "Semiempirical results validated",
+            StageFinishMetrics::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, validation_running.revision, &validation_succeeded)?;
+        let mut charge_starts = Vec::with_capacity(result.rows.len() + 1);
+        let mut atomic_charges = Vec::new();
+        charge_starts.push(0);
+        for row in &result.rows {
+            if let Some(charges) = &row.atomic_charges {
+                atomic_charges.extend_from_slice(charges);
+            }
+            charge_starts.push(atomic_charges.len() as u64);
+        }
+        let payload = AnalysisArtifactPayload::Semiempirical {
+            source_record_ids: result.rows.iter().map(|row| row.source_index).collect(),
+            electronic_energies: result
+                .rows
+                .iter()
+                .map(|row| row.electronic_energy_ev.unwrap_or(f64::NAN))
+                .collect(),
+            nuclear_energies: result
+                .rows
+                .iter()
+                .map(|row| row.nuclear_energy_ev.unwrap_or(f64::NAN))
+                .collect(),
+            total_energies: result
+                .rows
+                .iter()
+                .map(|row| row.total_energy_ev.unwrap_or(f64::NAN))
+                .collect(),
+            converged: result
+                .rows
+                .iter()
+                .map(|row| u8::from(row.converged))
+                .collect(),
+            iterations: result
+                .rows
+                .iter()
+                .map(|row| row.iterations.unwrap_or_default() as u32)
+                .collect(),
+            charge_starts,
+            atomic_charges,
+        };
+        let publication = self.publish_analysis_payload(
+            owner,
+            ready,
+            validation_succeeded,
+            payload,
+            successful_records,
+            failed_records,
+        )?;
+        result.artifact_id = Some(publication.artifact_id);
+        result.artifact_manifest_sha256 = Some(publication.artifact_manifest_sha256.clone());
+        match apply_grid_semiempirical_result(
+            source_lease.database_path_for_freeze(),
+            &result,
+            publication.artifact_id,
+            &publication.artifact_manifest_sha256,
+        ) {
+            Ok(()) => result.grid_applied = true,
+            Err(error) => result.grid_warning = Some(error.to_string()),
+        }
+        Ok(result)
+    }
+
+    fn execute_alignment_v1(
+        &self,
+        owner: &str,
+        request: &GridAlignmentRequest,
+        source_lease: GridSnapshotLease,
+        queued: JobSnapshot,
+    ) -> ComputeResult<GridAlignmentResult> {
+        let ready = self.ready()?;
+        let freeze_running = start_stage(
+            &queued,
+            0,
+            JobState::Preparing,
+            now_ms(),
+            "Verifying frozen alignment scope",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, queued.revision, &freeze_running)?;
+        let freeze_succeeded = finish_stage(
+            &freeze_running,
+            0,
+            JobState::Preparing,
+            now_ms(),
+            "Frozen alignment scope verified",
+            StageFinishMetrics {
+                transferred_bytes: queued.frozen_source.manifest.byte_length,
+                ..StageFinishMetrics::default()
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, freeze_running.revision, &freeze_succeeded)?;
+        let prepare_running = start_stage(
+            &freeze_succeeded,
+            1,
+            JobState::Preparing,
+            now_ms(),
+            "Preparing mapped atom and bond graphs",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, freeze_succeeded.revision, &prepare_running)?;
+        let prepare_started = Instant::now();
+        let source_rows = match ready
+            .snapshots
+            .open_verified_source(&queued.frozen_source)
+            .and_then(|snapshot| load_analysis_source_rows(&snapshot))
+        {
+            Ok(rows) => rows,
+            Err(error) => {
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &prepare_running,
+                    1,
+                    ComputeErrorCode::SourceRevisionMismatch,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms: prepare_started.elapsed().as_secs_f64() * 1_000.0,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
+            }
+        };
+        let prepare_succeeded = finish_stage(
+            &prepare_running,
+            1,
+            JobState::WaitingGpu,
+            now_ms(),
+            "Mapped alignment inputs prepared",
+            StageFinishMetrics::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, prepare_running.revision, &prepare_succeeded)?;
+        let runtime = match &ready.native_metal {
+            NativeMetalState::Available(runtime) => runtime,
             NativeMetalState::Unavailable { message, .. } => {
-                Err(ComputeCoordinatorError::Unavailable(format!(
+                return Err(ComputeCoordinatorError::Unavailable(format!(
                     "Native Metal alignment is unavailable: {message}"
                 )))
             }
+        };
+        let numeric_running = start_stage(
+            &prepare_succeeded,
+            2,
+            JobState::Running,
+            now_ms(),
+            "Aligning and scoring poses on Metal",
+            StageStartEvidence {
+                device: Some(runtime.device_identity().name.clone()),
+                kernel_id: Some("burrete.compute.alignment.v1:mapped-horn".into()),
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, prepare_succeeded.revision, &numeric_running)?;
+        let numeric_started = Instant::now();
+        let result =
+            execute_snapshot_alignment_with_run_id(runtime, source_rows, request, queued.job_id);
+        let host_time_ms = numeric_started.elapsed().as_secs_f64() * 1_000.0;
+        let mut result = match result {
+            Ok(result) => result,
+            Err(error) => {
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &numeric_running,
+                    2,
+                    ComputeErrorCode::NumericalFailure,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
+            }
+        };
+        let numeric_succeeded = finish_stage(
+            &numeric_running,
+            2,
+            JobState::Validating,
+            now_ms(),
+            "Metal alignment and scoring completed",
+            StageFinishMetrics {
+                host_time_ms,
+                gpu_time_ms: Some(result.gpu_time_ms as f64),
+                transferred_bytes: result.aligned_sdf.len() as u64,
+            },
+        )?;
+        ready
+            .store
+            .apply_successor(owner, numeric_running.revision, &numeric_succeeded)?;
+        let validation_running = start_stage(
+            &numeric_succeeded,
+            3,
+            JobState::Validating,
+            now_ms(),
+            "Validating CPU and Metal alignment parity",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, numeric_succeeded.revision, &validation_running)?;
+        let validation_succeeded = finish_stage(
+            &validation_running,
+            3,
+            JobState::Publishing,
+            now_ms(),
+            "Alignment parity validated",
+            StageFinishMetrics::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, validation_running.revision, &validation_succeeded)?;
+        let publication = self.publish_alignment_v1(owner, ready, validation_succeeded, &result)?;
+        result.artifact_id = Some(publication.artifact_id);
+        result.artifact_manifest_sha256 = Some(publication.artifact_manifest_sha256.clone());
+        match apply_grid_alignment_result(
+            source_lease.database_path_for_freeze(),
+            &result,
+            runtime,
+            publication.artifact_id,
+            &publication.artifact_manifest_sha256,
+        ) {
+            Ok(()) => result.grid_applied = true,
+            Err(error) => result.grid_warning = Some(error.to_string()),
         }
+        Ok(result)
+    }
+
+    fn publish_alignment_v1(
+        &self,
+        owner: &str,
+        ready: &ReadyCoordinator,
+        before_publish: JobSnapshot,
+        result: &GridAlignmentResult,
+    ) -> ComputeResult<AnalysisPublicationStep> {
+        let payload = AnalysisArtifactPayload::Alignment {
+            source_record_ids: result
+                .scores
+                .iter()
+                .map(|score| score.source_index)
+                .collect(),
+            is_references: result
+                .scores
+                .iter()
+                .map(|score| u8::from(score.is_reference))
+                .collect(),
+            rmsd_values: result.scores.iter().map(|score| score.rmsd).collect(),
+            shape_tanimoto_scores: result
+                .scores
+                .iter()
+                .map(|score| score.shape_tanimoto)
+                .collect(),
+            electrostatic_carbo_scores: result
+                .scores
+                .iter()
+                .map(|score| score.electrostatic_carbo.unwrap_or(f32::NAN))
+                .collect(),
+            combined_similarities: result
+                .scores
+                .iter()
+                .map(|score| score.combined_similarity)
+                .collect(),
+            transforms: result.transforms.clone(),
+            aligned_sdf: result.aligned_sdf.clone(),
+        };
+        self.publish_analysis_payload(
+            owner,
+            ready,
+            before_publish,
+            payload,
+            result.scores.len() as u64,
+            0,
+        )
+    }
+
+    fn publish_analysis_payload(
+        &self,
+        owner: &str,
+        ready: &ReadyCoordinator,
+        before_publish: JobSnapshot,
+        payload: AnalysisArtifactPayload,
+        successful_records: u64,
+        failed_records: u64,
+    ) -> ComputeResult<AnalysisPublicationStep> {
+        let stage_index = before_publish.stages.len().checked_sub(1).ok_or_else(|| {
+            ComputeCoordinatorError::Protocol("analysis job has no publish stage".into())
+        })?;
+        let publish_running = start_stage(
+            &before_publish,
+            stage_index,
+            JobState::Publishing,
+            now_ms(),
+            "Publishing verified analysis ResultPack",
+            StageStartEvidence::default(),
+        )?;
+        ready
+            .store
+            .apply_successor(owner, before_publish.revision, &publish_running)?;
+        let publish_started = Instant::now();
+        let materialized = match materialize_analysis_artifact(
+            &ready.store,
+            &publish_running,
+            payload,
+            now_ms().max(publish_running.updated_at_ms),
+        ) {
+            Ok(materialized) => materialized,
+            Err(error) => {
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &publish_running,
+                    stage_index,
+                    ComputeErrorCode::ArtifactCorrupt,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms: publish_started.elapsed().as_secs_f64() * 1_000.0,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                return Err(error);
+            }
+        };
+        let publication = (|| {
+            let successful_job = finish_publish_stage(
+                &publish_running,
+                materialized.created_at_ms,
+                materialized.artifact_id,
+                materialized.result_pack.clone(),
+                JobOutcomeSummary {
+                    successful_records,
+                    failed_records,
+                },
+                StageFinishMetrics {
+                    host_time_ms: publish_started.elapsed().as_secs_f64() * 1_000.0,
+                    transferred_bytes: materialized.byte_count,
+                    ..StageFinishMetrics::default()
+                },
+            )?;
+            let manifest = materialized.manifest_for_job(&successful_job)?;
+            let manifest_sha256 = artifact_manifest_sha256(&manifest)?;
+            Ok((successful_job, manifest, manifest_sha256))
+        })();
+        let (successful_job, manifest, manifest_sha256) = match publication {
+            Ok(publication) => publication,
+            Err(error) => {
+                let cleanup = materialized.cleanup();
+                persist_failed_stage(
+                    &ready.store,
+                    owner,
+                    &publish_running,
+                    stage_index,
+                    ComputeErrorCode::ArtifactCorrupt,
+                    &error,
+                    StageFinishMetrics {
+                        host_time_ms: publish_started.elapsed().as_secs_f64() * 1_000.0,
+                        ..StageFinishMetrics::default()
+                    },
+                )?;
+                cleanup?;
+                return Err(error);
+            }
+        };
+        if let Err(error) = ready.store.commit_published_artifact(
+            owner,
+            publish_running.revision,
+            &successful_job,
+            &manifest,
+            &materialized.relative_directory,
+        ) {
+            let cleanup = materialized.cleanup();
+            persist_failed_stage(
+                &ready.store,
+                owner,
+                &publish_running,
+                stage_index,
+                ComputeErrorCode::ArtifactCorrupt,
+                &error,
+                StageFinishMetrics {
+                    host_time_ms: publish_started.elapsed().as_secs_f64() * 1_000.0,
+                    ..StageFinishMetrics::default()
+                },
+            )?;
+            cleanup?;
+            return Err(error);
+        }
+        Ok(AnalysisPublicationStep {
+            artifact_id: materialized.artifact_id,
+            artifact_manifest_sha256: manifest_sha256,
+        })
     }
 
     pub(crate) fn initialize(
@@ -2263,7 +2907,7 @@ impl NativeMetalState {
             )),
             (BackendPolicy::GpuRequired, Self::Unavailable { message, .. }) => {
                 Err(ComputeCoordinatorError::Unavailable(format!(
-                    "gpuRequired cluster.v1 admission failed: {message}"
+                    "gpuRequired compute admission failed: {message}"
                 )))
             }
             (BackendPolicy::GpuPreferred, Self::Unavailable { code, message }) => Ok((
