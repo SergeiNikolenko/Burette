@@ -2,7 +2,8 @@ use uuid::Uuid;
 
 use super::{
     ControlCommand, ControlResponse, ControlResult, JobCapabilityToken, SessionToken,
-    WorkerControlResponse, WorkerResult,
+    WorkerCommand, WorkerControlRequest, WorkerControlResponse, WorkerExchange, WorkerOperation,
+    WorkerResult,
 };
 use crate::{decode_frame, encode_frame, ProtocolError};
 
@@ -70,4 +71,35 @@ fn worker_handshake_response_echoes_the_coordinator_nonce() {
         decode_frame::<WorkerControlResponse>(&frame).expect("decode worker response"),
         response
     );
+}
+
+#[test]
+fn worker_kernel_exchange_rejects_noncanonical_digest() {
+    let request = WorkerControlRequest::new(
+        Uuid::from_u128(10),
+        WorkerCommand::ExecuteKernel {
+            session_token: SessionToken::new(format!(
+                "{SESSION_TOKEN_PREFIX}{}",
+                "a".repeat(32)
+            ))
+            .expect("valid session token"),
+            job_id: Uuid::from_u128(11),
+            capability: JobCapabilityToken::new(format!(
+                "job-capability.v1.{}",
+                "b".repeat(32)
+            ))
+            .expect("valid job capability"),
+            exchange: WorkerExchange {
+                exchange_id: Uuid::from_u128(12),
+                input_bytes: 1,
+                input_sha256: "A".repeat(64),
+                max_output_bytes: 1,
+            },
+            operation: WorkerOperation::TanimotoGraphV1,
+        },
+    );
+    assert!(matches!(
+        encode_frame(&request),
+        Err(ProtocolError::Validation(_))
+    ));
 }

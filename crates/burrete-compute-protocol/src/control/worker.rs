@@ -3,7 +3,8 @@ use uuid::Uuid;
 
 use super::auth::{
     validate_envelope, validate_job_authority_shape, validate_nonce, validate_revision,
-    validate_text, validate_uuid, JobCapabilityToken, SessionToken, MAX_ERROR_MESSAGE_BYTES,
+    validate_sha256, validate_text, validate_uuid, JobCapabilityToken, SessionToken,
+    MAX_ERROR_MESSAGE_BYTES,
 };
 use super::client::ControlErrorCode;
 use crate::wire::{sealed::Sealed, WireMessage};
@@ -68,6 +69,18 @@ pub enum WorkerCommand {
         session_token: SessionToken,
         nonce: String,
     },
+    AuthorizeJob {
+        session_token: SessionToken,
+        job_id: Uuid,
+        capability: JobCapabilityToken,
+    },
+    ExecuteKernel {
+        session_token: SessionToken,
+        job_id: Uuid,
+        capability: JobCapabilityToken,
+        exchange: WorkerExchange,
+        operation: WorkerOperation,
+    },
     Interrupt {
         session_token: SessionToken,
         job_id: Uuid,
@@ -91,11 +104,28 @@ impl WorkerCommand {
                 job_id,
                 capability,
             }
+            | Self::AuthorizeJob {
+                session_token,
+                job_id,
+                capability,
+            }
+            | Self::ExecuteKernel {
+                session_token,
+                job_id,
+                capability,
+                ..
+            }
             | Self::Interrupt {
                 session_token,
                 job_id,
                 capability,
-            } => validate_job_authority_shape(session_token, *job_id, capability),
+            } => {
+                validate_job_authority_shape(session_token, *job_id, capability)?;
+                if let Self::ExecuteKernel { exchange, .. } = self {
+                    exchange.validate()?;
+                }
+                Ok(())
+            }
             Self::Ping {
                 session_token,
                 nonce,
@@ -105,6 +135,39 @@ impl WorkerCommand {
             }
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkerExchange {
+    pub exchange_id: Uuid,
+    pub input_bytes: u64,
+    pub input_sha256: String,
+    pub max_output_bytes: u64,
+}
+
+impl WorkerExchange {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        validate_uuid("worker exchange ID", self.exchange_id)?;
+        if self.input_bytes == 0 || self.input_bytes > crate::MAX_PACK_BYTES {
+            return Err(ProtocolError::Validation(
+                "worker exchange input byte length is outside the pack bound".into(),
+            ));
+        }
+        validate_sha256("worker exchange input", &self.input_sha256)?;
+        if self.max_output_bytes == 0 || self.max_output_bytes > crate::MAX_PACK_BYTES {
+            return Err(ProtocolError::Validation(
+                "worker exchange output byte limit is outside the pack bound".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkerOperation {
+    TanimotoGraphV1,
 }
 
 /// Strict worker-to-coordinator control envelope.
@@ -167,6 +230,16 @@ pub enum WorkerResult {
         job_id: Uuid,
         revision: u64,
     },
+    JobAuthorized {
+        job_id: Uuid,
+    },
+    KernelCompleted {
+        job_id: Uuid,
+        exchange_id: Uuid,
+        output_bytes: u64,
+        output_sha256: String,
+        gpu_time_ms: u64,
+    },
     Error {
         code: ControlErrorCode,
         message: String,
@@ -192,6 +265,29 @@ impl WorkerResult {
             | Self::InterruptAccepted { job_id, revision } => {
                 validate_uuid("job ID", *job_id)?;
                 validate_revision("job revision", *revision)
+            }
+            Self::JobAuthorized { job_id } => validate_uuid("job ID", *job_id),
+            Self::KernelCompleted {
+                job_id,
+                exchange_id,
+                output_bytes,
+                output_sha256,
+                gpu_time_ms,
+            } => {
+                validate_uuid("job ID", *job_id)?;
+                validate_uuid("worker exchange ID", *exchange_id)?;
+                if *output_bytes == 0 || *output_bytes > crate::MAX_PACK_BYTES {
+                    return Err(ProtocolError::Validation(
+                        "worker output byte length is outside the pack bound".into(),
+                    ));
+                }
+                validate_sha256("worker output", output_sha256)?;
+                if *gpu_time_ms > crate::MAX_JSON_SAFE_INTEGER {
+                    return Err(ProtocolError::Validation(
+                        "worker GPU time exceeds the JSON-safe integer limit".into(),
+                    ));
+                }
+                Ok(())
             }
             Self::Pong { nonce } => validate_nonce("pong nonce", nonce),
             Self::Error { message, .. } => {

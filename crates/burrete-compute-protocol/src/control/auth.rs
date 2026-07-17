@@ -142,6 +142,20 @@ pub(super) fn validate_text(label: &str, value: &str, max: usize) -> Result<(), 
     }
 }
 
+pub(super) fn validate_sha256(label: &str, value: &str) -> Result<(), ProtocolError> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+    {
+        Err(ProtocolError::Validation(format!(
+            "{label} must be a canonical lowercase SHA-256 digest"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
 fn validate_token(label: &str, value: &str, prefix: &str) -> Result<(), ProtocolError> {
     let Some(payload) = value.strip_prefix(prefix) else {
         return Err(ProtocolError::Validation(format!(
