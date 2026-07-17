@@ -2,6 +2,11 @@ use std::path::Path;
 
 use burrete_compute_core::{align_and_score, AlignmentAtom, AlignmentMode, AtomMapping};
 use burrete_compute_metal::{AlignmentPairDescriptor, MetalAlignmentBatch, MetalTanimotoRuntime};
+use burrete_compute_protocol::{
+    AlignmentModeV1, AlignmentV1Parameters, AlignmentV1SubmitRequest, AnalysisResourceLimits,
+    BackendPolicy, ComputeJobSchemaVersion, ExecutionPolicy, GridScope, GridSourceReference,
+    SchedulingPolicy, SelectedGridScope, WorkflowTemplateId,
+};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -13,9 +18,7 @@ use crate::preview::{
     },
     grid_database::open_grid_database,
     grid_identity,
-    grid_store::{
-        alignment_charge_set_for_rows, alignment_source_rows_by_indices, GridAlignmentSourceRow,
-    },
+    grid_store::{alignment_source_rows_by_indices, GridAlignmentSourceRow},
 };
 
 use super::error::{ComputeCoordinatorError, ComputeResult};
@@ -49,6 +52,8 @@ pub(crate) struct GridAlignmentScore {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GridAlignmentResult {
     pub(crate) run_id: Uuid,
+    pub(crate) artifact_id: Option<Uuid>,
+    pub(crate) artifact_manifest_sha256: Option<String>,
     pub(crate) title: String,
     pub(crate) aligned_sdf: String,
     pub(crate) scores: Vec<GridAlignmentScore>,
@@ -57,6 +62,39 @@ pub(crate) struct GridAlignmentResult {
     pub(crate) mapping: &'static str,
     pub(crate) charge_model: String,
     pub(crate) grid_applied: bool,
+    pub(crate) grid_warning: Option<String>,
+    #[serde(skip_serializing)]
+    pub(crate) transforms: Vec<[f32; 16]>,
+}
+
+pub(crate) fn durable_alignment_request(
+    request: &GridAlignmentRequest,
+) -> ComputeResult<AlignmentV1SubmitRequest> {
+    let source_indexes = normalized_indexes(&request.source_indexes)?
+        .into_iter()
+        .map(|index| index as u64)
+        .collect();
+    AlignmentV1SubmitRequest {
+        schema_version: ComputeJobSchemaVersion::V1,
+        workflow_template: WorkflowTemplateId::AlignmentV1,
+        source: GridSourceReference {
+            document_id: request.document_id.clone(),
+            scope: GridScope::Selected(SelectedGridScope { source_indexes }),
+        },
+        parameters: AlignmentV1Parameters {
+            mode: AlignmentModeV1::MappedHorn,
+        },
+        execution_policy: ExecutionPolicy {
+            backend_policy: BackendPolicy::GpuRequired,
+            scheduling_policy: SchedulingPolicy::Interactive,
+        },
+        limits: AnalysisResourceLimits {
+            max_memory_bytes: request.max_memory_bytes.unwrap_or(DEFAULT_MAX_MEMORY_BYTES),
+            max_dispatch_ms: 250,
+        },
+    }
+    .normalized()
+    .map_err(ComputeCoordinatorError::from)
 }
 
 #[derive(Clone, Debug)]
@@ -82,10 +120,21 @@ enum MolfileLayout {
     V3000 { atom_lines: Vec<usize> },
 }
 
-pub(crate) fn execute_grid_alignment(
+#[cfg(test)]
+fn execute_grid_alignment(
     runtime: &MetalTanimotoRuntime,
     database_path: &Path,
     request: &GridAlignmentRequest,
+) -> ComputeResult<GridAlignmentResult> {
+    execute_grid_alignment_with_run_id(runtime, database_path, request, Uuid::new_v4())
+}
+
+#[cfg(test)]
+fn execute_grid_alignment_with_run_id(
+    runtime: &MetalTanimotoRuntime,
+    database_path: &Path,
+    request: &GridAlignmentRequest,
+    run_id: Uuid,
 ) -> ComputeResult<GridAlignmentResult> {
     let indexes = normalized_indexes(&request.source_indexes)?;
     let rows = alignment_source_rows_by_indices(database_path, &indexes)
@@ -95,11 +144,59 @@ pub(crate) fn execute_grid_alignment(
             "One or more selected Grid rows no longer exist".into(),
         ));
     }
-    let mut parsed = rows
+    let parsed = rows
         .iter()
         .map(parse_row)
         .collect::<ComputeResult<Vec<_>>>()?;
-    let charge_model = apply_best_grid_charges(database_path, &rows, &mut parsed)?;
+    execute_alignment_rows(
+        runtime,
+        request,
+        run_id,
+        rows,
+        parsed,
+        "molfileFormalCharge".into(),
+    )
+}
+
+pub(crate) fn execute_snapshot_alignment_with_run_id(
+    runtime: &MetalTanimotoRuntime,
+    rows: Vec<GridAlignmentSourceRow>,
+    request: &GridAlignmentRequest,
+    run_id: Uuid,
+) -> ComputeResult<GridAlignmentResult> {
+    let indexes = normalized_indexes(&request.source_indexes)?;
+    if rows.len() != indexes.len()
+        || rows
+            .iter()
+            .zip(indexes)
+            .any(|(row, index)| row.source_index != index as u64)
+    {
+        return Err(ComputeCoordinatorError::Protocol(
+            "Frozen alignment records differ from the normalized selected scope".into(),
+        ));
+    }
+    let parsed = rows
+        .iter()
+        .map(parse_row)
+        .collect::<ComputeResult<Vec<_>>>()?;
+    execute_alignment_rows(
+        runtime,
+        request,
+        run_id,
+        rows,
+        parsed,
+        "molfileFormalCharge".into(),
+    )
+}
+
+fn execute_alignment_rows(
+    runtime: &MetalTanimotoRuntime,
+    request: &GridAlignmentRequest,
+    run_id: Uuid,
+    rows: Vec<GridAlignmentSourceRow>,
+    parsed: Vec<ParsedMolfile>,
+    charge_model: String,
+) -> ComputeResult<GridAlignmentResult> {
     let reference = &parsed[0];
     let mut probe_atoms = Vec::new();
     let mut reference_atoms = Vec::new();
@@ -151,6 +248,9 @@ pub(crate) fn execute_grid_alignment(
         electrostatic_carbo: reference_has_charge.then_some(1.0),
         combined_similarity: 1.0,
     }];
+    let mut transforms = vec![rigid_transform_matrix(
+        burrete_compute_core::RigidTransform::IDENTITY,
+    )];
     let mut sdf_records = vec![sdf_record(
         &parsed[0],
         None,
@@ -178,6 +278,7 @@ pub(crate) fn execute_grid_alignment(
             &score,
             runtime.device_identity().name.as_str(),
         )?);
+        transforms.push(rigid_transform_matrix(metal.transform));
         scores.push(score);
     }
     let aligned_sdf = format!("{}\n", sdf_records.join("\n"));
@@ -187,18 +288,10 @@ pub(crate) fn execute_grid_alignment(
             MAX_ALIGNMENT_OUTPUT_BYTES / 1024 / 1024
         )));
     }
-    let run_id = Uuid::new_v4();
-    apply_grid_scores(
-        database_path,
-        run_id,
-        &rows,
-        &scores,
-        runtime,
-        execution.gpu_time_ms,
-        &charge_model,
-    )?;
     Ok(GridAlignmentResult {
         run_id,
+        artifact_id: None,
+        artifact_manifest_sha256: None,
         title: format!("aligned-{}-poses.sdf", rows.len()),
         aligned_sdf,
         scores,
@@ -206,8 +299,66 @@ pub(crate) fn execute_grid_alignment(
         backend: "nativeMetal",
         mapping: "deterministicElementBondGraph",
         charge_model,
-        grid_applied: true,
+        grid_applied: false,
+        grid_warning: None,
+        transforms,
     })
+}
+
+pub(crate) fn apply_grid_alignment_result(
+    database_path: &Path,
+    result: &GridAlignmentResult,
+    runtime: &MetalTanimotoRuntime,
+    artifact_id: Uuid,
+    artifact_manifest_sha256: &str,
+) -> ComputeResult<()> {
+    let indexes = result
+        .scores
+        .iter()
+        .map(|score| usize::try_from(score.source_index))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| {
+            ComputeCoordinatorError::Validation("Alignment source index exceeds usize".into())
+        })?;
+    let rows = alignment_source_rows_by_indices(database_path, &indexes)
+        .map_err(ComputeCoordinatorError::Validation)?;
+    if rows.len() != result.scores.len() {
+        return Err(ComputeCoordinatorError::Validation(
+            "One or more aligned Grid rows no longer exist".into(),
+        ));
+    }
+    apply_grid_scores(
+        database_path,
+        result.run_id,
+        &rows,
+        &result.scores,
+        runtime,
+        result.gpu_time_ms,
+        &result.charge_model,
+        artifact_id,
+        artifact_manifest_sha256,
+    )
+}
+
+fn rigid_transform_matrix(transform: burrete_compute_core::RigidTransform) -> [f32; 16] {
+    [
+        transform.rotation[0][0],
+        transform.rotation[0][1],
+        transform.rotation[0][2],
+        0.0,
+        transform.rotation[1][0],
+        transform.rotation[1][1],
+        transform.rotation[1][2],
+        0.0,
+        transform.rotation[2][0],
+        transform.rotation[2][1],
+        transform.rotation[2][2],
+        0.0,
+        transform.translation[0],
+        transform.translation[1],
+        transform.translation[2],
+        1.0,
+    ]
 }
 
 fn normalized_indexes(indexes: &[usize]) -> ComputeResult<Vec<usize>> {
@@ -396,43 +547,6 @@ fn parse_row(row: &GridAlignmentSourceRow) -> ComputeResult<ParsedMolfile> {
     })?;
     parse_molfile(molblock)
         .map_err(|message| ComputeCoordinatorError::Validation(format!("{}: {message}", row.name)))
-}
-
-fn apply_best_grid_charges(
-    database_path: &Path,
-    rows: &[GridAlignmentSourceRow],
-    molecules: &mut [ParsedMolfile],
-) -> ComputeResult<String> {
-    let row_ids = rows.iter().map(|row| row.row_id).collect::<Vec<_>>();
-    let Some(charge_set) = alignment_charge_set_for_rows(database_path, &row_ids)
-        .map_err(ComputeCoordinatorError::Validation)?
-    else {
-        return Ok("molfileFormalCharge".into());
-    };
-    for (row, molecule) in rows.iter().zip(molecules) {
-        let charges = charge_set
-            .charges_by_row_id
-            .get(&row.row_id)
-            .ok_or_else(|| {
-                ComputeCoordinatorError::Validation(format!(
-                    "{} charge analysis is incomplete for {}",
-                    charge_set.value_id, row.name
-                ))
-            })?;
-        if charges.len() != molecule.atoms.len() {
-            return Err(ComputeCoordinatorError::Validation(format!(
-                "{} has {} charges for {} explicit atoms in {}",
-                charge_set.value_id,
-                charges.len(),
-                molecule.atoms.len(),
-                row.name
-            )));
-        }
-        for (atom, &charge) in molecule.atoms.iter_mut().zip(charges) {
-            atom.partial_charge = charge;
-        }
-    }
-    Ok(format!("gridAnalysis:{}", charge_set.value_id))
 }
 
 pub(super) fn parse_molfile(text: &str) -> Result<ParsedMolfile, String> {
@@ -792,6 +906,8 @@ fn apply_grid_scores(
     runtime: &MetalTanimotoRuntime,
     gpu_time_ms: u64,
     charge_model: &str,
+    artifact_id: Uuid,
+    artifact_manifest_sha256: &str,
 ) -> ComputeResult<()> {
     let connection: Connection =
         open_grid_database(database_path).map_err(ComputeCoordinatorError::Validation)?;
@@ -847,6 +963,8 @@ fn apply_grid_scores(
                 "upstream": "https://github.com/guillaume-osmo/mlxmolkit",
             }),
             created_at_ms: now_ms(),
+            artifact_id,
+            artifact_manifest_sha256: artifact_manifest_sha256.into(),
             assignments,
         },
     )
@@ -972,7 +1090,8 @@ mod tests {
         assert_eq!(result.backend, "nativeMetal");
         assert_eq!(result.mapping, "deterministicElementBondGraph");
         assert!(result.scores[1].rmsd < 1.0e-4);
-        assert!(result.grid_applied);
+        assert!(!result.grid_applied);
+        assert!(result.artifact_id.is_none());
         assert!(result.aligned_sdf.contains("Metal GPU"));
 
         let _ = std::fs::remove_dir_all(&grid_root);

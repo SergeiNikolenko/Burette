@@ -205,12 +205,6 @@ pub(crate) struct GridAlignmentSourceRow {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct GridAlignmentChargeSet {
-    pub(crate) value_id: String,
-    pub(crate) charges_by_row_id: BTreeMap<i64, Vec<f32>>,
-}
-
-#[derive(Debug, Clone)]
 pub(crate) struct GridDescriptorValueInput {
     pub(crate) id: String,
     pub(crate) label: String,
@@ -1233,101 +1227,6 @@ pub(crate) fn alignment_source_rows_by_indices(
         return Err("Grid alignment source contains an invalid source index".into());
     }
     Ok(rows)
-}
-
-pub(crate) fn alignment_charge_set_for_rows(
-    database_path: &Path,
-    row_ids: &[i64],
-) -> Result<Option<GridAlignmentChargeSet>, String> {
-    if row_ids.is_empty() {
-        return Ok(None);
-    }
-    const CHARGE_COLUMNS: [&str; 8] = [
-        "pm6D3H4AtomicCharges",
-        "pm6DAtomicCharges",
-        "pm6AtomicCharges",
-        "rm1AtomicCharges",
-        "pm6SpAtomicCharges",
-        "am1StarAtomicCharges",
-        "pm3AtomicCharges",
-        "am1AtomicCharges",
-    ];
-    #[derive(Default)]
-    struct Candidate {
-        value_id: String,
-        created_at_ms: i64,
-        charges_by_row_id: BTreeMap<i64, Vec<f32>>,
-    }
-
-    let connection = open_grid_database(database_path)?;
-    initialize_schema(&connection)?;
-    let placeholders = std::iter::repeat_n("?", row_ids.len())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let sql = format!(
-        "select analysis_values.run_id, analysis_values.value_id,
-                analysis_runs.created_at_ms, analysis_values.molecule_id,
-                analysis_values.value_text
-         from analysis_values
-         join analysis_runs on analysis_runs.run_id = analysis_values.run_id
-         join grid_metadata on grid_metadata.id = 1
-         where analysis_runs.workflow_template = 'semiempirical.v1'
-           and analysis_runs.document_fingerprint_sha256 = grid_metadata.document_fingerprint_sha256
-           and analysis_runs.source_revision = grid_metadata.source_revision
-           and analysis_values.value_kind = 'text'
-           and analysis_values.value_id in ({})
-           and analysis_values.molecule_id in ({placeholders})",
-        std::iter::repeat_n("?", CHARGE_COLUMNS.len())
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    let parameters = CHARGE_COLUMNS
-        .iter()
-        .map(|value| SqlValue::Text((*value).into()))
-        .chain(row_ids.iter().copied().map(SqlValue::Integer));
-    let mut statement = connection
-        .prepare(&sql)
-        .map_err(|error| error.to_string())?;
-    let mut rows = statement
-        .query(params_from_iter(parameters))
-        .map_err(|error| error.to_string())?;
-    let mut candidates = BTreeMap::<String, Candidate>::new();
-    while let Some(row) = rows.next().map_err(|error| error.to_string())? {
-        let run_id: String = row.get(0).map_err(|error| error.to_string())?;
-        let value_id: String = row.get(1).map_err(|error| error.to_string())?;
-        let created_at_ms: i64 = row.get(2).map_err(|error| error.to_string())?;
-        let molecule_id: i64 = row.get(3).map_err(|error| error.to_string())?;
-        let value_text: String = row.get(4).map_err(|error| error.to_string())?;
-        let charges = serde_json::from_str::<Vec<f32>>(&value_text)
-            .map_err(|error| format!("Invalid {value_id} analysis value: {error}"))?;
-        if charges.is_empty() || charges.iter().any(|value| !value.is_finite()) {
-            continue;
-        }
-        let candidate = candidates.entry(run_id).or_default();
-        candidate.value_id = value_id;
-        candidate.created_at_ms = created_at_ms;
-        candidate.charges_by_row_id.insert(molecule_id, charges);
-    }
-    let mut complete = candidates
-        .into_values()
-        .filter(|candidate| candidate.charges_by_row_id.len() == row_ids.len())
-        .collect::<Vec<_>>();
-    complete.sort_by_key(|candidate| {
-        (
-            CHARGE_COLUMNS
-                .iter()
-                .position(|value| *value == candidate.value_id.as_str())
-                .unwrap_or(CHARGE_COLUMNS.len()),
-            std::cmp::Reverse(candidate.created_at_ms),
-        )
-    });
-    Ok(complete
-        .into_iter()
-        .next()
-        .map(|candidate| GridAlignmentChargeSet {
-            value_id: candidate.value_id,
-            charges_by_row_id: candidate.charges_by_row_id,
-        }))
 }
 
 pub(crate) fn replace_descriptor_values_in_database(

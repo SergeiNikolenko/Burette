@@ -56,6 +56,36 @@ pub(crate) struct ConformerPublicationStep {
     pub(crate) primary_open_path: String,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct AnalysisPublicationStep {
+    pub(crate) artifact_id: Uuid,
+    pub(crate) artifact_manifest_sha256: String,
+}
+
+#[derive(Debug)]
+pub(crate) enum AnalysisArtifactPayload {
+    Alignment {
+        source_record_ids: Vec<u64>,
+        is_references: Vec<u8>,
+        rmsd_values: Vec<f32>,
+        shape_tanimoto_scores: Vec<f32>,
+        electrostatic_carbo_scores: Vec<f32>,
+        combined_similarities: Vec<f32>,
+        transforms: Vec<[f32; 16]>,
+        aligned_sdf: String,
+    },
+    Semiempirical {
+        source_record_ids: Vec<u64>,
+        electronic_energies: Vec<f64>,
+        nuclear_energies: Vec<f64>,
+        total_energies: Vec<f64>,
+        converged: Vec<u8>,
+        iterations: Vec<u32>,
+        charge_starts: Vec<u64>,
+        atomic_charges: Vec<f64>,
+    },
+}
+
 #[derive(Debug)]
 pub(crate) struct MaterializedComputeArtifact {
     pub(crate) artifact_id: Uuid,
@@ -128,6 +158,349 @@ impl MaterializedComputeArtifact {
             ))),
         }
     }
+}
+
+pub(crate) fn materialize_analysis_artifact(
+    store: &ComputeStore,
+    job: &JobSnapshot,
+    payload: AnalysisArtifactPayload,
+    created_at_ms: u64,
+) -> ComputeResult<MaterializedComputeArtifact> {
+    job.validate()?;
+    if created_at_ms == 0 {
+        return Err(ComputeCoordinatorError::Validation(
+            "artifact creation time must be positive".into(),
+        ));
+    }
+    let (workflow, result_version) = match (&payload, job.workflow_template) {
+        (AnalysisArtifactPayload::Alignment { .. }, WorkflowTemplateId::AlignmentV1) => (
+            WorkflowTemplateId::AlignmentV1,
+            ResultPackVersion::AlignmentV1,
+        ),
+        (AnalysisArtifactPayload::Semiempirical { .. }, WorkflowTemplateId::SemiempiricalV1) => (
+            WorkflowTemplateId::SemiempiricalV1,
+            ResultPackVersion::SemiempiricalV1,
+        ),
+        _ => {
+            return Err(ComputeCoordinatorError::Protocol(
+                "analysis artifact payload differs from its durable workflow".into(),
+            ))
+        }
+    };
+    let root = store.artifact_root()?;
+    initialize_artifact_root(&root)?;
+    let artifact_id = Uuid::new_v4();
+    let staging_leaf = format!(".artifact-{artifact_id}.staging");
+    let final_leaf = format!("artifact-{artifact_id}");
+    let staging = root.join(&staging_leaf);
+    let final_directory = root.join(&final_leaf);
+    create_private_directory(&staging)?;
+    create_private_directory(&staging.join("engine"))?;
+    create_private_directory(&staging.join("result"))?;
+
+    let result = (|| {
+        let mut writer = ArtifactWriter::new(&staging);
+        let mut arrays = Vec::new();
+        match payload {
+            AnalysisArtifactPayload::Alignment {
+                source_record_ids,
+                is_references,
+                rmsd_values,
+                shape_tanimoto_scores,
+                electrostatic_carbo_scores,
+                combined_similarities,
+                transforms,
+                aligned_sdf,
+            } => {
+                let records = source_record_ids.len() as u64;
+                require_equal_analysis_lengths(
+                    records,
+                    &[
+                        is_references.len(),
+                        rmsd_values.len(),
+                        shape_tanimoto_scores.len(),
+                        electrostatic_carbo_scores.len(),
+                        combined_similarities.len(),
+                        transforms.len(),
+                    ],
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "sourceRecordIds",
+                    "source_record_id",
+                    None,
+                    PackedDType::U64,
+                    vec![records],
+                    &encode_u64(&source_record_ids),
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "isReferences",
+                    "alignment_reference",
+                    None,
+                    PackedDType::Bool8,
+                    vec![records],
+                    &is_references,
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "rmsdValues",
+                    "rmsd",
+                    Some("angstrom"),
+                    PackedDType::F32,
+                    vec![records],
+                    &encode_f32(&rmsd_values),
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "shapeTanimotoScores",
+                    "shape_tanimoto",
+                    None,
+                    PackedDType::F32,
+                    vec![records],
+                    &encode_f32(&shape_tanimoto_scores),
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "electrostaticCarboScores",
+                    "electrostatic_carbo",
+                    None,
+                    PackedDType::F32,
+                    vec![records],
+                    &encode_f32(&electrostatic_carbo_scores),
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "combinedSimilarities",
+                    "combined_similarity",
+                    None,
+                    PackedDType::F32,
+                    vec![records],
+                    &encode_f32(&combined_similarities),
+                )?;
+                let transform_values = transforms.into_iter().flatten().collect::<Vec<_>>();
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "transforms",
+                    "rigid_transform_4x4",
+                    None,
+                    PackedDType::F32,
+                    vec![records, 16],
+                    &encode_f32(&transform_values),
+                )?;
+                writer.write(
+                    "result/aligned.sdf",
+                    "chemical/x-mdl-sdfile",
+                    aligned_sdf.as_bytes(),
+                )?;
+            }
+            AnalysisArtifactPayload::Semiempirical {
+                source_record_ids,
+                electronic_energies,
+                nuclear_energies,
+                total_energies,
+                converged,
+                iterations,
+                charge_starts,
+                atomic_charges,
+            } => {
+                let records = source_record_ids.len() as u64;
+                require_equal_analysis_lengths(
+                    records,
+                    &[
+                        electronic_energies.len(),
+                        nuclear_energies.len(),
+                        total_energies.len(),
+                        converged.len(),
+                        iterations.len(),
+                    ],
+                )?;
+                if charge_starts.len() != source_record_ids.len() + 1
+                    || charge_starts.first() != Some(&0)
+                    || charge_starts.last().copied() != Some(atomic_charges.len() as u64)
+                    || charge_starts.windows(2).any(|pair| pair[0] > pair[1])
+                {
+                    return Err(ComputeCoordinatorError::Validation(
+                        "semiempirical charge offsets do not bind the atomic charge payload".into(),
+                    ));
+                }
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "sourceRecordIds",
+                    "source_record_id",
+                    None,
+                    PackedDType::U64,
+                    vec![records],
+                    &encode_u64(&source_record_ids),
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "electronicEnergies",
+                    "electronic_energy",
+                    Some("eV"),
+                    PackedDType::F64,
+                    vec![records],
+                    &encode_f64(&electronic_energies),
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "nuclearEnergies",
+                    "nuclear_energy",
+                    Some("eV"),
+                    PackedDType::F64,
+                    vec![records],
+                    &encode_f64(&nuclear_energies),
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "totalEnergies",
+                    "total_energy",
+                    Some("eV"),
+                    PackedDType::F64,
+                    vec![records],
+                    &encode_f64(&total_energies),
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "converged",
+                    "scf_converged",
+                    None,
+                    PackedDType::Bool8,
+                    vec![records],
+                    &converged,
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "iterations",
+                    "scf_iterations",
+                    None,
+                    PackedDType::U32,
+                    vec![records],
+                    &encode_u32(&iterations),
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "chargeStarts",
+                    "atomic_charge_offsets",
+                    None,
+                    PackedDType::U64,
+                    vec![records + 1],
+                    &encode_u64(&charge_starts),
+                )?;
+                push_analysis_array(
+                    &mut writer,
+                    &mut arrays,
+                    "atomicCharges",
+                    "mulliken_atomic_charge",
+                    Some("e"),
+                    PackedDType::F64,
+                    vec![atomic_charges.len() as u64],
+                    &encode_f64(&atomic_charges),
+                )?;
+            }
+        }
+        arrays.sort_by(|left, right| left.name.cmp(&right.name));
+        let mut result_files = writer.descriptors.clone();
+        result_files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+        let result_layout = PackedLayout {
+            files: result_files,
+            arrays,
+        };
+        let result_pack_id = Uuid::new_v4();
+        let kind = match workflow {
+            WorkflowTemplateId::AlignmentV1 => "alignment.result-pack.v1",
+            WorkflowTemplateId::SemiempiricalV1 => "semiempirical.result-pack.v1",
+            _ => unreachable!("analysis workflow was checked"),
+        };
+        let result_pack_sha256 = pack_identity_sha256(&PackIdentity {
+            kind,
+            pack_id: result_pack_id,
+            job_id: job.job_id,
+            snapshot_sha256: &job.frozen_source.snapshot_sha256,
+            settings_sha256: &job.normalized_request_sha256,
+            layout: &result_layout,
+        })?;
+        let result_manifest = ResultPackManifest {
+            schema_version: result_version,
+            result_pack_id,
+            result_pack_sha256,
+            job_id: job.job_id,
+            workflow_template: workflow,
+            molecular_snapshot: job.frozen_source.clone(),
+            engine_packs: Vec::new(),
+            layout: result_layout,
+            created_at_ms,
+        };
+        result_manifest.validate()?;
+        let manifest_file = writer.write(
+            "result/manifest.json",
+            "application/json",
+            &serde_json::to_vec(&result_manifest)?,
+        )?;
+        let result_pack = ResultPackRef::from_manifest(&result_manifest, manifest_file)?;
+        writer.sync()?;
+        let mut descriptors = writer.descriptors;
+        descriptors.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+        verify_materialized_files(&staging, &descriptors)?;
+        let files = descriptors
+            .into_iter()
+            .map(|file| ArtifactFile {
+                role: artifact_role(&file.relative_path).into(),
+                relative_path: file.relative_path,
+                sha256: file.sha256,
+                byte_count: file.byte_length,
+                media_type: file.media_type,
+            })
+            .collect::<Vec<_>>();
+        let byte_count = files.iter().try_fold(0_u64, |total, file| {
+            total.checked_add(file.byte_count).ok_or_else(|| {
+                ComputeCoordinatorError::Protocol("artifact byte count overflowed".into())
+            })
+        })?;
+        let root_directory = File::open(&root)?;
+        renameat_with(
+            &root_directory,
+            staging_leaf.as_str(),
+            &root_directory,
+            final_leaf.as_str(),
+            RenameFlags::NOREPLACE,
+        )
+        .map_err(|error| {
+            ComputeCoordinatorError::Filesystem(format!(
+                "cannot atomically publish analysis artifact: {error}"
+            ))
+        })?;
+        root_directory.sync_all()?;
+        verify_materialized_files(&final_directory, &files_as_descriptors(&files))?;
+        Ok(MaterializedComputeArtifact {
+            artifact_id,
+            result_pack,
+            files,
+            relative_directory: format!("artifacts/{final_leaf}"),
+            created_at_ms,
+            byte_count,
+            final_directory: final_directory.clone(),
+        })
+    })();
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&staging);
+        let _ = fs::remove_dir_all(&final_directory);
+    }
+    result
 }
 
 pub(crate) fn materialize_cluster_artifact(
@@ -833,6 +1206,48 @@ fn packed_array(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn push_analysis_array(
+    writer: &mut ArtifactWriter<'_>,
+    arrays: &mut Vec<PackedArrayDescriptor>,
+    name: &str,
+    semantic: &str,
+    unit: Option<&str>,
+    dtype: PackedDType,
+    shape: Vec<u64>,
+    bytes: &[u8],
+) -> ComputeResult<()> {
+    let file = writer.write(
+        &format!("result/{name}.bin"),
+        "application/octet-stream",
+        bytes,
+    )?;
+    arrays.push(packed_array_with_unit(
+        name,
+        semantic,
+        unit,
+        &file,
+        dtype,
+        shape,
+        if dtype.byte_width() == 1 {
+            PackedByteOrder::NotApplicable
+        } else {
+            PackedByteOrder::LittleEndian
+        },
+        dtype.byte_width() as u32,
+    )?);
+    Ok(())
+}
+
+fn require_equal_analysis_lengths(records: u64, lengths: &[usize]) -> ComputeResult<()> {
+    if lengths.iter().any(|length| *length as u64 != records) {
+        return Err(ComputeCoordinatorError::Validation(
+            "analysis result arrays have different record counts".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 fn packed_array_with_unit(
     name: &str,
     semantic: &str,
@@ -1450,6 +1865,10 @@ fn encode_u16(values: &[u16]) -> Vec<u8> {
 
 fn encode_f32(values: &[f32]) -> Vec<u8> {
     values.iter().copied().flat_map(f32::to_le_bytes).collect()
+}
+
+fn encode_f64(values: &[f64]) -> Vec<u8> {
+    values.iter().copied().flat_map(f64::to_le_bytes).collect()
 }
 
 fn initialize_artifact_root(root: &Path) -> ComputeResult<()> {

@@ -136,6 +136,8 @@ pub(crate) struct GridAlignmentAnalysisApplyInput {
     pub(crate) normalized_settings_sha256: String,
     pub(crate) provenance: serde_json::Value,
     pub(crate) created_at_ms: u64,
+    pub(crate) artifact_id: Uuid,
+    pub(crate) artifact_manifest_sha256: String,
     pub(crate) assignments: Vec<GridAlignmentAssignmentInput>,
 }
 
@@ -636,7 +638,11 @@ pub(crate) fn apply_alignment_analysis_run(
             provenance: alignment.provenance.clone(),
             created_at_ms: alignment.created_at_ms,
             values,
-            artifacts: Vec::new(),
+            artifacts: vec![GridAnalysisArtifactInput {
+                artifact_id: alignment.artifact_id,
+                role: "alignmentResult".into(),
+                manifest_sha256: alignment.artifact_manifest_sha256.clone(),
+            }],
         },
     )
 }

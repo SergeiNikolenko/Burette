@@ -13,7 +13,12 @@ use burrete_compute_metal::{
     MetalPm6CorrectionBatch, MetalPm6OneCenterFockBatch, MetalTanimotoRuntime,
     Pm6CorrectionMoleculeDescriptor,
 };
-use burrete_compute_protocol::{CapabilityMaturity, RepresentativePolicy, WorkflowTemplateId};
+use burrete_compute_protocol::{
+    AnalysisResourceLimits, BackendPolicy, CapabilityMaturity, ComputeJobSchemaVersion,
+    ExecutionPolicy, GridScope, GridSourceReference, RepresentativePolicy, SchedulingPolicy,
+    SelectedGridScope, SemiempiricalMethodV1, SemiempiricalV1Parameters,
+    SemiempiricalV1SubmitRequest, WorkflowTemplateId,
+};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -21,7 +26,8 @@ use uuid::Uuid;
 
 use crate::preview::{
     grid_analysis::{
-        apply_analysis_run, GridAnalysisApplyInput, GridAnalysisValue, GridAnalysisValueInput,
+        apply_analysis_run, GridAnalysisApplyInput, GridAnalysisArtifactInput, GridAnalysisValue,
+        GridAnalysisValueInput,
     },
     grid_database::open_grid_database,
     grid_identity,
@@ -110,28 +116,84 @@ pub(crate) struct GridSemiempiricalRow {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GridSemiempiricalResult {
     pub(crate) run_id: Uuid,
+    pub(crate) artifact_id: Option<Uuid>,
+    pub(crate) artifact_manifest_sha256: Option<String>,
     pub(crate) method: &'static str,
     pub(crate) rows: Vec<GridSemiempiricalRow>,
     pub(crate) host_time_ms: u64,
     pub(crate) gpu_time_ms: u64,
     pub(crate) backend: &'static str,
     pub(crate) grid_applied: bool,
+    pub(crate) grid_warning: Option<String>,
 }
 
-pub(crate) fn execute_grid_semiempirical(
-    runtime: Option<&MetalTanimotoRuntime>,
-    database_path: &Path,
+pub(crate) fn durable_semiempirical_request(
     request: &GridSemiempiricalRequest,
-) -> ComputeResult<GridSemiempiricalResult> {
+) -> ComputeResult<SemiempiricalV1SubmitRequest> {
     let method = GridSemiempiricalMethod::parse(&request.method)?;
+    let source_indexes = normalized_indexes(&request.source_indexes)?
+        .into_iter()
+        .map(|index| index as u64)
+        .collect();
+    SemiempiricalV1SubmitRequest {
+        schema_version: ComputeJobSchemaVersion::V1,
+        workflow_template: WorkflowTemplateId::SemiempiricalV1,
+        source: GridSourceReference {
+            document_id: request.document_id.clone(),
+            scope: GridScope::Selected(SelectedGridScope { source_indexes }),
+        },
+        parameters: SemiempiricalV1Parameters {
+            method: match method.method {
+                SemiempiricalMethod::Rm1 => SemiempiricalMethodV1::Rm1,
+                SemiempiricalMethod::Am1 => SemiempiricalMethodV1::Am1,
+                SemiempiricalMethod::Pm3 => SemiempiricalMethodV1::Pm3,
+                SemiempiricalMethod::Pm6 => SemiempiricalMethodV1::Pm6,
+                SemiempiricalMethod::Pm6D => SemiempiricalMethodV1::Pm6D,
+                SemiempiricalMethod::Pm6D3H4 => SemiempiricalMethodV1::Pm6D3H4,
+                SemiempiricalMethod::Pm6Sp => SemiempiricalMethodV1::Pm6Sp,
+                SemiempiricalMethod::Am1Star => SemiempiricalMethodV1::Am1Star,
+            },
+        },
+        execution_policy: ExecutionPolicy {
+            backend_policy: BackendPolicy::GpuPreferred,
+            scheduling_policy: SchedulingPolicy::Throughput,
+        },
+        limits: AnalysisResourceLimits {
+            max_memory_bytes: DEFAULT_MAX_MEMORY_BYTES,
+            max_dispatch_ms: 250,
+        },
+    }
+    .normalized()
+    .map_err(ComputeCoordinatorError::from)
+}
+
+pub(crate) fn execute_snapshot_semiempirical_with_run_id(
+    runtime: Option<&MetalTanimotoRuntime>,
+    source_rows: Vec<GridAlignmentSourceRow>,
+    request: &GridSemiempiricalRequest,
+    run_id: Uuid,
+) -> ComputeResult<GridSemiempiricalResult> {
     let indexes = normalized_indexes(&request.source_indexes)?;
-    let source_rows = alignment_source_rows_by_indices(database_path, &indexes)
-        .map_err(ComputeCoordinatorError::Validation)?;
-    if source_rows.len() != indexes.len() {
-        return Err(ComputeCoordinatorError::Validation(
-            "One or more selected Grid rows no longer exist".into(),
+    if source_rows.len() != indexes.len()
+        || source_rows
+            .iter()
+            .zip(indexes)
+            .any(|(row, index)| row.source_index != index as u64)
+    {
+        return Err(ComputeCoordinatorError::Protocol(
+            "Frozen semiempirical records differ from the normalized selected scope".into(),
         ));
     }
+    execute_semiempirical_rows(runtime, request, run_id, source_rows)
+}
+
+fn execute_semiempirical_rows(
+    runtime: Option<&MetalTanimotoRuntime>,
+    request: &GridSemiempiricalRequest,
+    run_id: Uuid,
+    source_rows: Vec<GridAlignmentSourceRow>,
+) -> ComputeResult<GridSemiempiricalResult> {
+    let method = GridSemiempiricalMethod::parse(&request.method)?;
 
     let started = Instant::now();
     let evaluated = source_rows
@@ -149,26 +211,54 @@ pub(crate) fn execute_grid_semiempirical(
     } else {
         "nativeCpuReference"
     };
-    let run_id = Uuid::new_v4();
-    apply_grid_results(
-        database_path,
-        run_id,
-        &source_rows,
-        &rows,
-        method,
-        backend,
-        host_time_ms,
-        gpu_time_ms,
-    )?;
     Ok(GridSemiempiricalResult {
         run_id,
+        artifact_id: None,
+        artifact_manifest_sha256: None,
         method: method.display_name,
         rows,
         host_time_ms,
         gpu_time_ms,
         backend,
-        grid_applied: true,
+        grid_applied: false,
+        grid_warning: None,
     })
+}
+
+pub(crate) fn apply_grid_semiempirical_result(
+    database_path: &Path,
+    result: &GridSemiempiricalResult,
+    artifact_id: Uuid,
+    artifact_manifest_sha256: &str,
+) -> ComputeResult<()> {
+    let indexes = result
+        .rows
+        .iter()
+        .map(|row| usize::try_from(row.source_index))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| {
+            ComputeCoordinatorError::Validation("Semiempirical source index exceeds usize".into())
+        })?;
+    let source_rows = alignment_source_rows_by_indices(database_path, &indexes)
+        .map_err(ComputeCoordinatorError::Validation)?;
+    if source_rows.len() != result.rows.len() {
+        return Err(ComputeCoordinatorError::Validation(
+            "One or more evaluated Grid rows no longer exist".into(),
+        ));
+    }
+    let method = GridSemiempiricalMethod::parse(result.method)?;
+    apply_grid_results(
+        database_path,
+        result.run_id,
+        &source_rows,
+        &result.rows,
+        method,
+        result.backend,
+        result.host_time_ms,
+        result.gpu_time_ms,
+        artifact_id,
+        artifact_manifest_sha256,
+    )
 }
 
 fn normalized_indexes(indexes: &[usize]) -> ComputeResult<Vec<usize>> {
@@ -432,6 +522,8 @@ fn apply_grid_results(
     backend: &'static str,
     host_time_ms: u64,
     gpu_time_ms: u64,
+    artifact_id: Uuid,
+    artifact_manifest_sha256: &str,
 ) -> ComputeResult<()> {
     let connection: Connection =
         open_grid_database(database_path).map_err(ComputeCoordinatorError::Validation)?;
@@ -544,7 +636,11 @@ fn apply_grid_results(
             }),
             created_at_ms: now_ms(),
             values,
-            artifacts: Vec::new(),
+            artifacts: vec![GridAnalysisArtifactInput {
+                artifact_id,
+                role: "semiempiricalResult".into(),
+                manifest_sha256: artifact_manifest_sha256.into(),
+            }],
         },
     )
     .map_err(ComputeCoordinatorError::Validation)
