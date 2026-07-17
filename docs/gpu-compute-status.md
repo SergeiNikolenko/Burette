@@ -4,10 +4,12 @@ Status: all requested workflow families are implemented in the native v20
 CPU/Metal layer and exposed through Grid and 3D result surfaces. Exact 100k
 clustering, all conformer variants, MMFF94/MMFF94s optimization, mapped
 alignment/scoring, and all eight semiempirical method identities have focused
-CPU/reference and real-Apple-GPU evidence. Clustering Metal dispatch now runs in
-the separately attested compute service rather than the UI process. A current
-v20 development package is built, hash-verified, signed ad hoc, installed, and
-passes a real helper-process Tanimoto dispatch on Apple M2 Pro. Its desktop
+CPU/reference and real-Apple-GPU evidence. Clustering, alignment/scoring, and
+semiempirical SCF Metal dispatches now run in the separately attested compute
+service rather than the UI process. A current v20 development package is built,
+hash-verified, signed ad hoc, installed, and passes real helper-process
+Tanimoto, fixed-pose shape/electrostatic scoring, and RM1 SCF dispatches on
+Apple M2 Pro. Its desktop
 process launches from the installed bundle. Production release remains gated on
 external Developer ID/notarization credentials and final UI-triggered acceptance
 evidence; the current UI inspection attempt was blocked by a locked macOS
@@ -269,7 +271,7 @@ remain in progress.
 | macOS desktop source build | `Cluster selected`, `Cluster filtered`, `Cluster all`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
 | Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, fused automatic BFGS/L-BFGS MMFF optimization, and mapped Horn/RMSD/shape/ESP scoring on Apple M2 Pro |
-| Packaged development Metal | `Burrete-gpucompute9a97v23.app` is installed at `/Users/nikolenko/Applications/Burrete-gpucompute9a97v23.app`; it packages the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`; helper handshake, runtime/helper SHA binding, replay rejection, real FD-based Tanimoto dispatch, deep/strict ad-hoc signature verification, and installed-process launch pass on Apple M2 Pro |
+| Packaged development Metal | `Burrete-gpucompute9a97v24.app` is installed at `/Users/nikolenko/Applications/Burrete-gpucompute9a97v24.app`; it packages the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`; helper handshake, runtime/helper SHA binding, replay rejection, real FD-based Tanimoto, alignment/shape/electrostatic, and RM1 SCF dispatch, plus deep/strict ad-hoc signature verification, pass on Apple M2 Pro |
 | Packaged production Metal | Pending external Developer ID signing, hardened-runtime verification, notarization, and UI-triggered installed-app acceptance evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -338,7 +340,7 @@ A public artifact/report inspector remains a separate product increment.
 | Reviewed Metal kernels | `compute/metal/tanimoto.v2.metal`, `compute/metal/conformer-initialize.v1.metal`, `compute/metal/conformer-distance.v1.metal`, `compute/metal/conformer-optimize.v1.metal`, `compute/metal/conformer-stereo.v1.metal`, `compute/metal/conformer-etk.v1.metal`, `compute/metal/conformer-etk-optimize.v1.metal`, `compute/metal/mmff-energy.v1.metal` |
 | Frozen source verification and RDKit chunk sessions | `apps/desktop/src-tauri/src/compute/fingerprint_session.rs` |
 | Durable job execution and lifecycle | `apps/desktop/src-tauri/src/compute/coordinator.rs`, `job_lifecycle.rs` |
-| Attested helper control/data plane and Tanimoto dispatch | `apps/desktop/src-tauri/src/compute/service.rs`, `crates/burrete-compute-protocol/src/control/worker.rs` |
+| Attested helper control/data plane and clustering/alignment/semiempirical dispatch | `apps/desktop/src-tauri/src/compute/service.rs`, `crates/burrete-compute-protocol/src/control/worker.rs` |
 | Conformer preflight admission and queued snapshot | `apps/desktop/src-tauri/src/compute/conformer_plan.rs`, `job_factory.rs` |
 | Conformer extractor validation and canonical array assembly | `apps/desktop/src/lib/conformer-extractor.ts`, `crates/burrete-compute-core/src/conformer_extract.rs`, `conformer_pack.rs` |
 | Packaged conformer extraction and raw submission | `compute/rdkit-conformer/`, `apps/desktop/src/workers/conformer-extract.worker.ts`, `apps/desktop/src/lib/compute-conformer.ts`, `apps/desktop/src-tauri/src/compute/conformer_session.rs` |
@@ -368,13 +370,14 @@ A public artifact/report inspector remains a separate product increment.
 - Metal crate unit/parity tests pass, including real graph and exact query-count
   dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
   support.
-- The current `Burrete-gpucompute9a97v23.app` development package was rebuilt
+- The current `Burrete-gpucompute9a97v24.app` development package was rebuilt
   in an isolated tree. Deep/strict ad-hoc signature verification passes for the
   app, its single packaged compute helper, and nested extensions. The helper
   reports Apple M2 Pro, binds its own SHA-256 into the runtime identity, rejects
-  replayed control requests, and completes the exact known-answer Tanimoto graph
-  through the anonymous-FD exchange. The isolated app is installed and its main
-  process launches from `/Users/nikolenko/Applications`; visible Grid invocation
+  replayed control requests, and completes the exact known-answer Tanimoto graph,
+  fixed-pose shape/electrostatic scoring, and converged RM1 water SCF through the
+  anonymous-FD exchange. Each operation reports real nonzero Apple GPU time. The
+  isolated app is installed under `/Users/nikolenko/Applications`; visible Grid invocation
   and UI-triggered compute acceptance remain separate gates because the current
   Computer Use attempt found the macOS session locked.
 - The packaged runtime is `burrete-native-metal-v20`, generation
@@ -574,10 +577,10 @@ signature, notarization, or UI-triggered installed-app acceptance run.
 
 ## Remaining Implementation And Production Gates
 
-1. Extend the authenticated anonymous-FD helper ABI from clustering to
-   conformer/MMFF, alignment, and semiempirical dispatches, then add helper
-   restart/retry recovery. Clustering already uses this boundary in packaged
-   production mode; test-only initialization may still dispatch in-process.
+1. Extend the authenticated anonymous-FD helper ABI to conformer generation and
+   MMFF optimization, then add helper restart/retry recovery. Clustering,
+   alignment/scoring, and all semiempirical SCF methods already use this boundary
+   in packaged mode; test-only initialization may still dispatch in-process.
 2. Complete the required M1-class 8 GB and M3/M4 Max 64 GB hardware matrix in
    addition to the current M2 Pro evidence.
 3. Exercise clustering, conformer generation, optimization, alignment, and
