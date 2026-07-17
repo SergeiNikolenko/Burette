@@ -33,17 +33,19 @@ Burrete native GPU Compute Layer. The pinned audit source is commit
 `9e7337f6f93c40a39ad0187991151944a4f1e274`.
 
 The pinned repository contains no top-level `LICENSE` file, although its
-package metadata declares MIT. No `mlxmolkit` source is currently shipped in
-the Compute Layer. Before an adapted file is added, Burrete must preserve the
-permission evidence and add a file-level provenance record mapping the Burrete
-path to the upstream path and commit.
+package metadata declares MIT. Burrete retains only the selected build-time
+reference files, numeric tables, generated maps, and formula adaptations listed
+in `docs/third-party/mlxmolkit-provenance.md`; Python/MLX packaging, CLI,
+examples, and runtime code are not shipped. Every retained or adapted item is
+mapped to its upstream path, commit, secondary source, and validation evidence.
 
 Burrete's independently written distance-geometry and ETK CPU oracles, Metal
 evaluation kernels, bounded L-BFGS CPU oracle, and fused Metal optimizers use
 mathematical equations and optimizer behavior checked against the pinned
-`mlxmolkit` reference. No upstream source text is included. The exact
-formula-only mappings and remaining nvMolKit/Shivam Patel secondary-source
-release gates are recorded in `docs/third-party/mlxmolkit-provenance.md`.
+`mlxmolkit` reference. No upstream DG/ETK optimizer source text is included;
+the nvMolKit/Shivam Patel implementation candidates were excluded in favor of
+independent bounded kernels. Exact formula-only mappings are recorded in
+`docs/third-party/mlxmolkit-provenance.md`.
 
 The bounded closed-shell SCF, symmetric diagonalization, DIIS, adaptive
 damping, molecule packing, and population-charge driver is independently
@@ -105,8 +107,9 @@ a byte-identical build-time reference and compiled into a typed Rust table,
 including the 18 elements with d-orbital fields. The byte-identical upstream
 PM6 PWCCT pair table is SHA-gated and compiled into native sparse records.
 PM6 core-core PWCCT equations and the full variable-basis SCF assembly are
-adapted against pinned `mlxmolkit` and PYSEQM references. Production exposure
-remains gated on native Metal parity and the documented validation suite.
+adapted against pinned `mlxmolkit` and PYSEQM references. Native CPU/Metal
+parity and the documented full-d H2S and correction validation suite pass on
+the hash-bound v20 runtime.
 
 The PM6 243-term one-center W lookup maps are retained from the pinned
 `mlxmolkit/rm1/w_integrals.py` implementation, whose comments identify the

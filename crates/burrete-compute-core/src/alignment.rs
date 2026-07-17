@@ -610,6 +610,54 @@ mod tests {
     }
 
     #[test]
+    fn pinned_mlxmolkit_cheese_fixture_recovers_overlay_and_charge_sign() {
+        // Reference fixture: mlxmolkit/tests/test_cheese.py at
+        // 9e7337f6f93c40a39ad0187991151944a4f1e274. The numeric kernel is
+        // independently implemented; these values are retained only as a
+        // deterministic parity corpus under the upstream MIT license.
+        let atomic_numbers = [6_u8, 7, 8, 16, 1];
+        let reference_positions = [
+            [0.00, 0.00, 0.00, 0.0],
+            [1.42, 0.13, -0.18, 0.0],
+            [-0.38, 1.21, 0.32, 0.0],
+            [0.23, -0.44, 1.71, 0.0],
+            [1.91, 0.78, 0.65, 0.0],
+        ];
+        let charges = [-0.12_f32, -0.34, -0.46, 0.28, 0.64];
+        let rotation = row_rotation_z(19.0);
+        let translation = [-2.3_f32, 0.7, 3.1];
+        let probe_positions = reference_positions.map(|position| {
+            let mut transformed = [0.0_f32; 4];
+            for column in 0..3 {
+                transformed[column] = translation[column]
+                    + (0..3)
+                        .map(|row| position[row] * rotation[row][column])
+                        .sum::<f32>();
+            }
+            transformed
+        });
+        let reference = cheese_atoms(&atomic_numbers, &reference_positions, &charges);
+        let inverted_charges = charges.map(|charge| -charge);
+        let probe = cheese_atoms(&atomic_numbers, &probe_positions, &inverted_charges);
+        let mapping = (0..probe.len())
+            .map(|index| AtomMapping {
+                probe_atom: index as u32,
+                reference_atom: index as u32,
+                weight: 1.0,
+            })
+            .collect::<Vec<_>>();
+
+        let result = align_and_score(&probe, &reference, &mapping, AlignmentMode::MappedHorn)
+            .expect("pinned mlxmolkit CHEESE transform");
+
+        assert!(result.scores.rmsd.expect("mapped RMSD") < 5.0e-3);
+        assert!(result.scores.shape_tanimoto > 0.999);
+        assert!(result.scores.electrostatic_carbo < -0.99);
+        assert!(result.scores.combined_similarity > 0.45);
+        assert!(result.scores.combined_similarity < 0.55);
+    }
+
+    #[test]
     fn rejects_implicit_or_duplicate_mapping() {
         let atoms = atoms(&[[0.0, 0.0, 0.0, 0.0]]);
         assert!(align_and_score(&atoms, &atoms, &[], AlignmentMode::MappedHorn).is_err());
@@ -639,5 +687,44 @@ mod tests {
                 partial_charge: if index.is_multiple_of(2) { 0.3 } else { -0.2 },
             })
             .collect()
+    }
+
+    fn cheese_atoms(
+        atomic_numbers: &[u8],
+        positions: &[[f32; 4]],
+        charges: &[f32],
+    ) -> Vec<AlignmentAtom> {
+        atomic_numbers
+            .iter()
+            .zip(positions)
+            .zip(charges)
+            .map(|((&atomic_number, &position), &partial_charge)| {
+                let radius = match atomic_number {
+                    1 => 1.20_f32,
+                    6 => 1.70,
+                    7 => 1.55,
+                    8 => 1.52,
+                    16 => 1.80,
+                    _ => unreachable!("fixture atomic number"),
+                };
+                let gaussian_exponent = 2.7 / (radius * radius);
+                let gaussian_amplitude = (4.0 / 3.0)
+                    * std::f32::consts::PI
+                    * radius.powi(3)
+                    * (gaussian_exponent / std::f32::consts::PI).powf(1.5);
+                AlignmentAtom {
+                    position,
+                    gaussian_exponent,
+                    gaussian_amplitude,
+                    partial_charge,
+                }
+            })
+            .collect()
+    }
+
+    fn row_rotation_z(degrees: f32) -> [[f32; 3]; 3] {
+        let theta = degrees.to_radians();
+        let (sine, cosine) = theta.sin_cos();
+        [[cosine, sine, 0.0], [-sine, cosine, 0.0], [0.0, 0.0, 1.0]]
     }
 }

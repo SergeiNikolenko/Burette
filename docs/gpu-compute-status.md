@@ -1,17 +1,15 @@
 # Native GPU Compute Layer Implementation Status
 
-Status: `cluster.v1`, immutable representative export, and derived exact
-`Find similar` Grid analysis complete at source level; deterministic conformer
-variant/seed/adaptive batching, packaged native RDKit extraction, raw job
-submission, adaptive CPU/Metal distance-geometry execution, Metal ETK
-refinement, stereo-aware retry, and final Metal stereo validation implemented;
-conformer EnginePack/ResultPack publication and Grid-to-Mol* workflow
-implemented; selectable MMFF94/MMFF94s extraction, CPU/Metal optimization, retry,
-energy-ranked ResultPack v2/XYZ publication, Grid writeback, and standalone
-input-coordinate geometry optimization implemented;
-production release, scientific-corpus parity, and scale proof pending
+Status: all requested workflow families are implemented in the native v20
+CPU/Metal layer and exposed through Grid and 3D result surfaces. Exact 100k
+clustering, all conformer variants, MMFF94/MMFF94s optimization, mapped
+alignment/scoring, and all eight semiempirical method identities have focused
+CPU/reference and real-Apple-GPU evidence. A current v20 development package is
+built, hash-verified, installed, signed ad hoc, and launched. Production release
+remains gated on external Developer ID/notarization credentials and final
+UI-triggered acceptance evidence.
 
-Updated: 2026-07-16
+Updated: 2026-07-17
 
 Target architecture:
 [Native GPU Compute Layer](superpowers/specs/2026-07-15-gpu-compute-platform-design.md)
@@ -79,7 +77,9 @@ maps directly to the shared EnginePack arrays. It is separate from renderer
 MinimalLib and has no Python runtime. The worker-only ES module and WASM pair
 are now covered by the vendored asset lock, verified by the native engine
 catalog, and bound to the exact RDKit source revision, BCEX ABI, and BMFX ABI.
-Broader RDKit/upstream fixtures and packaged UI proof remain incomplete. The
+The 32-case all-variant RDKit/Metal corpus is complete; exact coordinate-stream
+identity with upstream is intentionally not an acceptance rule because Burrete
+replaces its schedule-dependent RNG with immutable identity-derived seeds. The
 paired `conformer.result-pack.v2` ABI is defined and
 strictly validates ragged coordinate offsets, Cartesian positions, molecule and
 conformer identity, DG and ETK status/objective values, stereo failure flags,
@@ -224,8 +224,9 @@ Failed stereochemistry now also triggers a new identity-derived seed and the
 full generation/refinement loop up to the request attempt limit. Metal stereo
 validation is then repeated as a subsequent durable job stage, and its final
 flags must exactly match those produced by the retry loop. Runtime v8 therefore
-admits `gpuRequired` for both numeric stages. Publication remains a separate
-unfinished stage, so no completed user-facing conformer claim is made yet.
+admits `gpuRequired` for both numeric stages. Reference validation and atomic
+EnginePack/ResultPack/XYZ publication are implemented before Grid writeback and
+Mol* opening.
 
 The durable reference-validation stage recomputes every final ETK energy with
 the CPU evaluator and requires it to match the recorded Metal/CPU result within
@@ -261,8 +262,8 @@ remain in progress.
 | macOS desktop source build | `Cluster all`, `Cluster selected`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
 | Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, fused automatic BFGS/L-BFGS MMFF optimization, and mapped Horn/RMSD/shape/ESP scoring on Apple M2 Pro |
-| Packaged development Metal | The earlier cluster-only v1 app package is proven; the current v20 runtime generation passes package verification and real-GPU startup, while a refreshed v20 desktop package remains pending |
-| Packaged production Metal | Pending Developer ID signing, hardened-runtime verification, notarization, scientific-corpus parity, and installed-app UI evidence |
+| Packaged development Metal | `Burrete-gpucompute9a97v20.app` packages the hash-bound v20 runtime, passes deep/strict ad-hoc signature verification, installs, launches, and opens a real Grid sample on Apple M2 Pro |
+| Packaged production Metal | Pending external Developer ID signing, hardened-runtime verification, notarization, and UI-triggered installed-app acceptance evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
 | iPhone source app | Rendering remains unchanged; no macOS Metal compute workflow is exposed |
@@ -351,27 +352,21 @@ separate product increments.
 - Metal crate unit/parity tests pass, including real graph and exact query-count
   dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
   support.
-- An isolated offline-compiled v5 runtime generation passes the hash-bound
-  package verifier and all five startup known-answer paths on `Apple M2 Pro`
-  (`registryId=0x1000003c0`, unified memory). The paths cover graph CSR, exact
-  query, conformer initialization, DG objective/gradient evaluation, and fused
-  DG L-BFGS optimization. The tested `native-compute.v5.metallib` SHA-256 is
-  `52e15c9544f0b33cbfd62379ac96d88f75983b1187cc570fd773aeff93c527aa`.
-- The earlier unique `com.local.BurreteV10.Dev.gpucompute9a97` cluster-only v1
-  package builds and passes
-  deep/strict ad-hoc signature verification at
-  `build/Burrete-gpucompute9a97.app`.
-- That v1 package's `generation.OFdUGZ` metadata SHA-256 is
-  `d2d89932677282987c8bfeb7092205b97f2bbad57342afe55a51967975eaf72b`;
-  the pinned metallib SHA-256 is
-  `fbbf5940ab1925a67ccb382d5cd229ce97086ac60535d30d20f8955c4df13af7`.
-- Loading those exact v1 packaged bytes executes the startup known-answer graph on
-  the real `Apple M2 Pro` Metal device (`registryId=0x100000444`, unified
-  memory) and matches the CPU reference.
-- The real desktop process opened `samples/collections/smiles/multi.smi` as a
-  ready `grid2d` document with no reported workspace errors. The Mac locked
-  before visual canvas inspection and UI-triggered clustering, so those two
-  checks remain explicitly pending.
+- The current `Burrete-gpucompute9a97v20.app` development package was rebuilt
+  in an isolated tree, installed, and launched with
+  `samples/collections/smiles/multi.smi`. Deep/strict ad-hoc signature
+  verification passes for the app and nested extensions, and the real desktop
+  process creates a visible WebKit window and loads the Grid document without a
+  crash. UI-triggered compute acceptance remains a separate manual gate.
+- The packaged runtime is `burrete-native-metal-v20`, generation
+  `generation.h8kfSY`, with `native-compute.v20.metallib` SHA-256
+  `341d858756cfd33438304e0d643d4ad647081df7678f88e407cc2734e87a2c84`.
+  The canonical runtime pointer, metadata digest, metallib digest, source/AIR
+  manifest, and startup known-answer suite all verify before Metal is reported
+  available.
+- `bun run check:release` passes. The development package deliberately has an
+  ad-hoc signature and no TeamIdentifier, so the release-signature gate
+  correctly rejects it until a Developer ID Application identity is supplied.
 - The pinned RDKit 2025.03.4 runtime reproduces four frozen Morgan
   known-answer vectors byte for byte, and Rust decodes the same vectors through
   the canonical EnginePack ABI.
@@ -553,41 +548,30 @@ separate product increments.
   reject unknown artifact entries, and disable compute after artifact
   corruption.
 
-These checks prove the source implementation, an isolated current v11 runtime
-generation, and the earlier unique v1 ad-hoc development package, not a current
-v11 desktop package or production release. They do not replace the scientific
-corpus, 100k-scale benchmark, Developer ID hardened-runtime signature,
-notarization, or visual UI-triggered clustering evidence.
+These checks prove the source implementation, the current v20 hash-bound Metal
+runtime, the 100k/dense/memory-pressure benchmark gates, and a current installed
+ad-hoc development package. They do not claim a Developer ID production
+signature, notarization, or UI-triggered installed-app acceptance run.
 
-## Remaining Cluster Release Gates
+## Remaining Production Release Gates
 
 1. Build with Developer ID and hardened runtime, then notarize and verify the
    nested and outer production signatures without changing the pinned runtime.
-2. Unlock the test Mac and exercise clustering and `Find similar` through the
-   actual packaged Grid controls, including visible columns, backend labels,
-   restart, and artifacts.
-3. Run fingerprint parity against pinned native RDKit and upstream fixtures,
-   plus exact CPU-versus-Metal CSR parity over the frozen scientific corpus.
-4. Extend the passing sparse, dense, cutoff-boundary, and memory-pressure
-   benchmarks with a real chemical-library density run; invalid-record and
-   cancellation behavior remains covered at the workflow contract layer.
-5. Install the unique package and repeat the desktop UI workflow with real
-   SDF/SMILES/CSV samples under memory pressure.
-6. Add artifact/report inspection and cancellation polling between bounded
-   Metal command buffers.
-7. Decide and document whether release execution remains in-process or moves
+2. Exercise clustering, conformer generation, optimization, alignment, and
+   semiempirical evaluation through the actual installed Grid controls and
+   capture the visible backend labels, columns, 3D outputs, and artifacts.
+3. Extend scientific corpora when new upstream/reference releases are pinned;
+   current deterministic, RDKit, mlxmolkit, PYSEQM/OpenMOPAC, CPU/Metal, dense,
+   cutoff-boundary, and memory-pressure gates remain required in CI.
+4. Decide and document whether release execution remains in-process or moves
    to the separately signed helper described by the target architecture.
 
 ## Next Implementation Order
 
-After the cluster release gates are evidenced, implementation proceeds in the
-fixed order below:
+The implementation sequence is complete. Remaining work is release evidence,
+not another compute-module stage:
 
-1. complete conformer scientific-corpus and packaged UI release gates for the
-   implemented Grid-to-Mol* native workflow;
-2. extend the passing 24-case MMFF94/MMFF94s RDKit energy and optimizer corpus
-   with explicit failure-retry fixtures;
-3. finish alignment corpus parity, durable ResultPack/report publication, and
-   packaged UI evidence for the implemented Grid/Mol* pose workflow;
-4. combined Apple GPU profiling, memory-pressure testing, package proof, and
-   benchmark publication.
+1. run the installed-app UI acceptance matrix and archive screenshots/logs;
+2. sign the unchanged package with Developer ID, verify hardened runtime, and
+   notarize it;
+3. publish the v20 benchmark and scientific-parity evidence with the release.
