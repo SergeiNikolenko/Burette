@@ -5,11 +5,13 @@ CPU/Metal layer and exposed through Grid and 3D result surfaces. Exact 100k
 clustering, all conformer variants, MMFF94/MMFF94s optimization, mapped
 alignment/scoring, and all eight semiempirical method identities have focused
 CPU/reference and real-Apple-GPU evidence. Clustering, alignment/scoring, and
-semiempirical SCF Metal dispatches now run in the separately attested compute
-service rather than the UI process. A current v20 development package is built,
+semiempirical SCF and the complete conformer DG/ETK/MMFF/stereo Metal pipeline
+now run in the separately attested compute service rather than the UI process.
+A current v20 development package is built,
 hash-verified, signed ad hoc, installed, and passes real helper-process
-Tanimoto, fixed-pose shape/electrostatic scoring, and RM1 SCF dispatches on
-Apple M2 Pro. Its desktop
+Tanimoto, fixed-pose shape/electrostatic scoring, RM1 SCF, DG embedding, ETK
+optimization, MMFF optimization, and stereo-validation dispatches on Apple M2
+Pro. Its desktop
 process launches from the installed bundle. Production release remains gated on
 external Developer ID/notarization credentials and final UI-triggered acceptance
 evidence; the current UI inspection attempt was blocked by a locked macOS
@@ -271,7 +273,7 @@ remain in progress.
 | macOS desktop source build | `Cluster selected`, `Cluster filtered`, `Cluster all`, immutable `Export diverse`, and exact `Find similar` are wired end to end in Grid |
 | Native CPU backend | Implemented and used as the deterministic reference/fallback backend |
 | Native Metal backend | Real graph, exact query, conformer initialization, fused DG/ETK L-BFGS, stereo-aware retry, final validation, seven-term MMFF evaluation, fused automatic BFGS/L-BFGS MMFF optimization, and mapped Horn/RMSD/shape/ESP scoring on Apple M2 Pro |
-| Packaged development Metal | `Burrete-gpucompute9a97v24.app` is installed at `/Users/nikolenko/Applications/Burrete-gpucompute9a97v24.app`; it packages the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`; helper handshake, runtime/helper SHA binding, replay rejection, real FD-based Tanimoto, alignment/shape/electrostatic, and RM1 SCF dispatch, plus deep/strict ad-hoc signature verification, pass on Apple M2 Pro |
+| Packaged development Metal | `Burrete-gpucompute9a97v25.app` is installed at `/Users/nikolenko/Applications/Burrete-gpucompute9a97v25.app`; it packages the hash-bound v20 runtime and one arm64 helper under `Contents/Helpers`; helper handshake, runtime/helper SHA binding, replay rejection, real FD-based Tanimoto, alignment/shape/electrostatic, RM1 SCF, DG, ETK, MMFF, and stereo dispatch, plus deep/strict ad-hoc signature verification, pass on Apple M2 Pro |
 | Packaged production Metal | Pending external Developer ID signing, hardened-runtime verification, notarization, and UI-triggered installed-app acceptance evidence |
 | Browser development | Compute is explicitly reported unavailable; it never claims Metal execution |
 | Finder Quick Look | Read-only rendering remains unchanged; no compute commands are granted |
@@ -354,9 +356,10 @@ A public artifact/report inspector remains a separate product increment.
 
 ## Validation Completed In This Slice
 
-- 99 focused desktop compute tests pass, including the real Grid-to-artifact
+- 382 desktop library tests pass, including the real Grid-to-artifact
   workflows, durable alignment/semiempirical artifacts, helper exchange ABI,
-  and representative export before and after coordinator restart. Five manual
+  conformer DG/ETK/MMFF/stereo codecs, and representative export before and
+  after coordinator restart. Six manual
   real-GPU tests are kept ignored by default.
 - The deterministic v20 benchmark handles an exact 100,000-fingerprint query
   in 1--2 ms GPU time and constructs a 100,000-vertex sparse exact CSR in
@@ -370,18 +373,22 @@ A public artifact/report inspector remains a separate product increment.
 - Metal crate unit/parity tests pass, including real graph and exact query-count
   dispatches on the local 19-core Apple M2 Pro GPU reported with Metal 4
   support.
-- The current `Burrete-gpucompute9a97v24.app` development package was rebuilt
+- The current `Burrete-gpucompute9a97v25.app` development package was rebuilt
   in an isolated tree. Deep/strict ad-hoc signature verification passes for the
   app, its single packaged compute helper, and nested extensions. The helper
   reports Apple M2 Pro, binds its own SHA-256 into the runtime identity, rejects
-  replayed control requests, and completes the exact known-answer Tanimoto graph,
-  fixed-pose shape/electrostatic scoring, and converged RM1 water SCF through the
-  anonymous-FD exchange. Each operation reports real nonzero Apple GPU time. The
-  isolated app is installed under `/Users/nikolenko/Applications`; visible Grid invocation
-  and UI-triggered compute acceptance remain separate gates because the current
-  Computer Use attempt found the macOS session locked.
+  replayed control requests, automatically relaunches once after a killed helper,
+  and completes the exact known-answer Tanimoto graph,
+  fixed-pose shape/electrostatic scoring, converged RM1 water SCF, MMFF94,
+  two-conformer DG, ETK distance optimization, and chiral validation through
+  the anonymous-FD exchange. Each operation reports real nonzero Apple GPU
+  time. The signed helper SHA-256 is
+  `2da2d0677864a59ab81d67e7830a0d4ec86396a113df08c080101983e74c8b8b`. The
+  isolated app is installed under `/Users/nikolenko/Applications`; visible Grid
+  invocation and UI-triggered compute acceptance remain separate gates because
+  the current Computer Use attempt found the macOS session locked.
 - The packaged runtime is `burrete-native-metal-v20`, generation
-  `generation.h8kfSY`, with `native-compute.v20.metallib` SHA-256
+  `generation.UbXDxD`, with `native-compute.v20.metallib` SHA-256
   `341d858756cfd33438304e0d643d4ad647081df7678f88e407cc2734e87a2c84`.
   The canonical runtime pointer, metadata digest, metallib digest, source/AIR
   manifest, and startup known-answer suite all verify before Metal is reported
@@ -577,24 +584,19 @@ signature, notarization, or UI-triggered installed-app acceptance run.
 
 ## Remaining Implementation And Production Gates
 
-1. Extend the authenticated anonymous-FD helper ABI to conformer generation and
-   MMFF optimization, then add helper restart/retry recovery. Clustering,
-   alignment/scoring, and all semiempirical SCF methods already use this boundary
-   in packaged mode; test-only initialization may still dispatch in-process.
-2. Complete the required M1-class 8 GB and M3/M4 Max 64 GB hardware matrix in
+1. Complete the required M1-class 8 GB and M3/M4 Max 64 GB hardware matrix in
    addition to the current M2 Pro evidence.
-3. Exercise clustering, conformer generation, optimization, alignment, and
+2. Exercise clustering, conformer generation, optimization, alignment, and
    semiempirical evaluation through the actual installed Grid controls and
    capture the visible backend labels, columns, 3D outputs, and artifacts.
-4. Build with Developer ID and hardened runtime, then notarize and verify the
+3. Build with Developer ID and hardened runtime, then notarize and verify the
    nested and outer production signatures without changing the pinned runtime.
-5. Extend scientific corpora when new upstream/reference releases are pinned;
+4. Extend scientific corpora when new upstream/reference releases are pinned;
    current deterministic, RDKit, mlxmolkit, PYSEQM/OpenMOPAC, CPU/Metal, dense,
    cutoff-boundary, and memory-pressure gates remain required in CI.
 
 ## Next Implementation Order
 
-1. route the remaining Metal workflow families through the packaged helper;
-2. run the installed-app and hardware acceptance matrices;
-3. sign with Developer ID, verify hardened runtime, notarize, and publish the
+1. run the installed-app and hardware acceptance matrices;
+2. sign with Developer ID, verify hardened runtime, notarize, and publish the
    v20 benchmark and scientific-parity evidence with the release.
