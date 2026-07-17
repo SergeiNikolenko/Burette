@@ -1,8 +1,8 @@
 use burrete_compute_protocol::{
-    ClusterV1SubmitRequest, ComputeJobSnapshotSchemaVersion, ConformerV1SubmitRequest,
-    ExecutionPlan, JobProgress, JobSnapshot, JobState, MolecularSnapshotRef, OwnerSurface,
-    RuntimeIdentity, StageSnapshot, StageState, WorkflowTemplateId, CLUSTER_STAGE_IDS,
-    CONFORMER_STAGE_IDS,
+    ClusterV1SubmitRequest, ComputeJobSnapshotSchemaVersion, ComputeSubmitRequest,
+    ConformerV1SubmitRequest, ExecutionPlan, JobProgress, JobSnapshot, JobState,
+    MolecularSnapshotRef, OwnerSurface, RuntimeIdentity, StageSnapshot, StageState,
+    WorkflowTemplateId, CLUSTER_STAGE_IDS, CONFORMER_STAGE_IDS,
 };
 use uuid::Uuid;
 
@@ -13,6 +13,10 @@ use super::cluster_plan::{
 use super::conformer_plan::{
     admit_conformer_v1_plan, ConformerBackendAdmission, ConformerV1AdmissionError,
     ConformerV1Preflight,
+};
+use super::{
+    analysis_plan::admit_analysis_plan,
+    error::{ComputeCoordinatorError, ComputeResult},
 };
 
 /// Opaque proof that the snapshot repository bound a normalized request to
@@ -64,6 +68,94 @@ impl VerifiedClusterV1Source {
             frozen_source,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct VerifiedAnalysisV1Source {
+    request: ComputeSubmitRequest,
+    frozen_source: MolecularSnapshotRef,
+}
+
+impl VerifiedAnalysisV1Source {
+    pub(super) fn from_verified_repository(
+        request: ComputeSubmitRequest,
+        frozen_source: MolecularSnapshotRef,
+    ) -> ComputeResult<Self> {
+        if !matches!(
+            request.workflow_template(),
+            WorkflowTemplateId::AlignmentV1 | WorkflowTemplateId::SemiempiricalV1
+        ) {
+            return Err(ComputeCoordinatorError::Protocol(
+                "verified analysis source requires alignment.v1 or semiempirical.v1".into(),
+            ));
+        }
+        Ok(Self {
+            request,
+            frozen_source,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct QueuedAnalysisV1JobInput {
+    pub(crate) job_id: Uuid,
+    pub(crate) owner_surface: OwnerSurface,
+    pub(crate) source: VerifiedAnalysisV1Source,
+    pub(crate) pinned_runtime: RuntimeIdentity,
+    pub(crate) engines: ClusterV1EngineIdentities,
+    pub(crate) numeric_admission: SimilarityBackendAdmission,
+    pub(crate) created_at_ms: u64,
+}
+
+pub(crate) fn build_queued_analysis_v1_job(
+    input: QueuedAnalysisV1JobInput,
+) -> ComputeResult<JobSnapshot> {
+    let VerifiedAnalysisV1Source {
+        request,
+        frozen_source,
+    } = input.source;
+    let request = request.normalized()?;
+    frozen_source.validate()?;
+    input.pinned_runtime.validate()?;
+    let plan = admit_analysis_plan(
+        &request,
+        frozen_source.frozen_source.record_count,
+        &input.engines,
+        input.numeric_admission,
+    )?;
+    let normalized_request_sha256 = request.canonical_sha256()?;
+    let accepted_plan_sha256 = plan.canonical_sha256()?;
+    let stages = queued_stages(&plan);
+    let snapshot = JobSnapshot {
+        schema_version: ComputeJobSnapshotSchemaVersion::V1,
+        job_id: input.job_id,
+        revision: 1,
+        owner_surface: input.owner_surface,
+        workflow_template: request.workflow_template(),
+        state: JobState::Queued,
+        request,
+        normalized_request_sha256,
+        frozen_source,
+        progress: JobProgress {
+            completed_units: 0,
+            total_units: plan.stages.len() as u64,
+            message: "Queued".into(),
+        },
+        plan,
+        accepted_plan_sha256,
+        stages,
+        attempts: Vec::new(),
+        artifact_ids: Vec::new(),
+        result_pack: None,
+        outcome: None,
+        pinned_runtime: input.pinned_runtime,
+        error: None,
+        created_at_ms: input.created_at_ms,
+        updated_at_ms: input.created_at_ms,
+        finished_at_ms: None,
+    };
+    snapshot.validate()?;
+    Ok(snapshot)
 }
 
 #[derive(Clone, Debug)]

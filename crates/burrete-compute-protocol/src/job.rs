@@ -40,11 +40,10 @@ pub const ALIGNMENT_STAGE_IDS: [&str; 5] = [
     "validateResults",
     "publishResults",
 ];
-pub const SEMIEMPIRICAL_STAGE_IDS: [&str; 6] = [
+pub const SEMIEMPIRICAL_STAGE_IDS: [&str; 5] = [
     "freezeScope",
     "prepareHamiltonian",
-    "scf",
-    "energyCorrections",
+    "semiempiricalEvaluation",
     "validateResults",
     "publishResults",
 ];
@@ -503,36 +502,147 @@ impl ExecutionPlan {
         let gpu = self.expected_similarity_request_backend();
         match (self.workflow_template, self.plan_version) {
             (WorkflowTemplateId::AlignmentV1, ExecutionPlanVersion::AlignmentV1) => Ok(vec![
-                (ALIGNMENT_STAGE_IDS[0], StageKind::Materialize, Backend::Coordinator, Precision::NotApplicable),
-                (ALIGNMENT_STAGE_IDS[1], StageKind::ChemistrySemantics, Backend::ReferenceCpu, Precision::Float64),
-                (ALIGNMENT_STAGE_IDS[2], StageKind::NumericCompute, gpu, Precision::Float32),
-                (ALIGNMENT_STAGE_IDS[3], StageKind::Validation, Backend::ReferenceCpu, Precision::Float64),
-                (ALIGNMENT_STAGE_IDS[4], StageKind::ArtifactIo, Backend::Coordinator, Precision::NotApplicable),
+                (
+                    ALIGNMENT_STAGE_IDS[0],
+                    StageKind::Materialize,
+                    Backend::Coordinator,
+                    Precision::NotApplicable,
+                ),
+                (
+                    ALIGNMENT_STAGE_IDS[1],
+                    StageKind::ChemistrySemantics,
+                    Backend::ReferenceCpu,
+                    Precision::Float64,
+                ),
+                (
+                    ALIGNMENT_STAGE_IDS[2],
+                    StageKind::NumericCompute,
+                    gpu,
+                    Precision::Float32,
+                ),
+                (
+                    ALIGNMENT_STAGE_IDS[3],
+                    StageKind::Validation,
+                    Backend::ReferenceCpu,
+                    Precision::Float64,
+                ),
+                (
+                    ALIGNMENT_STAGE_IDS[4],
+                    StageKind::ArtifactIo,
+                    Backend::Coordinator,
+                    Precision::NotApplicable,
+                ),
             ]),
             (WorkflowTemplateId::ClusterV1, ExecutionPlanVersion::ClusterV1) => Ok(vec![
-                (CLUSTER_STAGE_IDS[0], StageKind::Materialize, Backend::Coordinator, Precision::NotApplicable),
-                (CLUSTER_STAGE_IDS[1], StageKind::ChemistrySemantics, Backend::Rdkit, Precision::IntegerExact),
-                (CLUSTER_STAGE_IDS[2], StageKind::NumericCompute, gpu, Precision::IntegerExact),
-                (CLUSTER_STAGE_IDS[3], StageKind::WorkflowSemantics, Backend::ReferenceCpu, Precision::IntegerExact),
-                (CLUSTER_STAGE_IDS[4], StageKind::Validation, Backend::ReferenceCpu, Precision::IntegerExact),
-                (CLUSTER_STAGE_IDS[5], StageKind::ArtifactIo, Backend::Coordinator, Precision::NotApplicable),
+                (
+                    CLUSTER_STAGE_IDS[0],
+                    StageKind::Materialize,
+                    Backend::Coordinator,
+                    Precision::NotApplicable,
+                ),
+                (
+                    CLUSTER_STAGE_IDS[1],
+                    StageKind::ChemistrySemantics,
+                    Backend::Rdkit,
+                    Precision::IntegerExact,
+                ),
+                (
+                    CLUSTER_STAGE_IDS[2],
+                    StageKind::NumericCompute,
+                    gpu,
+                    Precision::IntegerExact,
+                ),
+                (
+                    CLUSTER_STAGE_IDS[3],
+                    StageKind::WorkflowSemantics,
+                    Backend::ReferenceCpu,
+                    Precision::IntegerExact,
+                ),
+                (
+                    CLUSTER_STAGE_IDS[4],
+                    StageKind::Validation,
+                    Backend::ReferenceCpu,
+                    Precision::IntegerExact,
+                ),
+                (
+                    CLUSTER_STAGE_IDS[5],
+                    StageKind::ArtifactIo,
+                    Backend::Coordinator,
+                    Precision::NotApplicable,
+                ),
             ]),
             (WorkflowTemplateId::ConformerV1, ExecutionPlanVersion::ConformerV1) => Ok(vec![
-                (CONFORMER_STAGE_IDS[0], StageKind::Materialize, Backend::Coordinator, Precision::NotApplicable),
-                (CONFORMER_STAGE_IDS[1], StageKind::ChemistrySemantics, Backend::Rdkit, Precision::Float64),
-                (CONFORMER_STAGE_IDS[2], StageKind::NumericCompute, gpu, Precision::Float32),
-                (CONFORMER_STAGE_IDS[3], StageKind::NumericCompute, gpu, Precision::Float32),
-                (CONFORMER_STAGE_IDS[4], StageKind::Validation, Backend::ReferenceCpu, Precision::Float64),
-                (CONFORMER_STAGE_IDS[5], StageKind::ArtifactIo, Backend::Coordinator, Precision::NotApplicable),
+                (
+                    CONFORMER_STAGE_IDS[0],
+                    StageKind::Materialize,
+                    Backend::Coordinator,
+                    Precision::NotApplicable,
+                ),
+                (
+                    CONFORMER_STAGE_IDS[1],
+                    StageKind::ChemistrySemantics,
+                    Backend::Rdkit,
+                    Precision::Float64,
+                ),
+                (
+                    CONFORMER_STAGE_IDS[2],
+                    StageKind::NumericCompute,
+                    gpu,
+                    Precision::Float32,
+                ),
+                (
+                    CONFORMER_STAGE_IDS[3],
+                    StageKind::NumericCompute,
+                    gpu,
+                    Precision::Float32,
+                ),
+                (
+                    CONFORMER_STAGE_IDS[4],
+                    StageKind::Validation,
+                    Backend::ReferenceCpu,
+                    Precision::Float64,
+                ),
+                (
+                    CONFORMER_STAGE_IDS[5],
+                    StageKind::ArtifactIo,
+                    Backend::Coordinator,
+                    Precision::NotApplicable,
+                ),
             ]),
-            (WorkflowTemplateId::SemiempiricalV1, ExecutionPlanVersion::SemiempiricalV1) => Ok(vec![
-                (SEMIEMPIRICAL_STAGE_IDS[0], StageKind::Materialize, Backend::Coordinator, Precision::NotApplicable),
-                (SEMIEMPIRICAL_STAGE_IDS[1], StageKind::ChemistrySemantics, Backend::ReferenceCpu, Precision::Float64),
-                (SEMIEMPIRICAL_STAGE_IDS[2], StageKind::NumericCompute, gpu, Precision::Mixed),
-                (SEMIEMPIRICAL_STAGE_IDS[3], StageKind::NumericCompute, gpu, Precision::Mixed),
-                (SEMIEMPIRICAL_STAGE_IDS[4], StageKind::Validation, Backend::ReferenceCpu, Precision::Float64),
-                (SEMIEMPIRICAL_STAGE_IDS[5], StageKind::ArtifactIo, Backend::Coordinator, Precision::NotApplicable),
-            ]),
+            (WorkflowTemplateId::SemiempiricalV1, ExecutionPlanVersion::SemiempiricalV1) => {
+                Ok(vec![
+                    (
+                        SEMIEMPIRICAL_STAGE_IDS[0],
+                        StageKind::Materialize,
+                        Backend::Coordinator,
+                        Precision::NotApplicable,
+                    ),
+                    (
+                        SEMIEMPIRICAL_STAGE_IDS[1],
+                        StageKind::ChemistrySemantics,
+                        Backend::ReferenceCpu,
+                        Precision::Float64,
+                    ),
+                    (
+                        SEMIEMPIRICAL_STAGE_IDS[2],
+                        StageKind::NumericCompute,
+                        gpu,
+                        Precision::Mixed,
+                    ),
+                    (
+                        SEMIEMPIRICAL_STAGE_IDS[3],
+                        StageKind::Validation,
+                        Backend::ReferenceCpu,
+                        Precision::Float64,
+                    ),
+                    (
+                        SEMIEMPIRICAL_STAGE_IDS[4],
+                        StageKind::ArtifactIo,
+                        Backend::Coordinator,
+                        Precision::NotApplicable,
+                    ),
+                ])
+            }
             _ => Err(ProtocolError::Validation(
                 "execution plan version is incompatible with its workflow".into(),
             )),
@@ -545,14 +655,17 @@ impl ExecutionPlan {
             WorkflowTemplateId::ClusterV1 => &[2],
             WorkflowTemplateId::ConformerV1 => &[2, 3],
             WorkflowTemplateId::SimilaritySearchV1 => &[],
-            WorkflowTemplateId::SemiempiricalV1 => &[2, 3],
+            WorkflowTemplateId::SemiempiricalV1 => &[2],
         }
     }
 
     fn validate_numeric_backend(&self, stage: &PlannedStage) -> Result<(), ProtocolError> {
         let valid = match self.backend_policy {
             BackendPolicy::GpuRequired => stage.effective_backend == Backend::NativeMetal,
-            BackendPolicy::GpuPreferred => matches!(stage.effective_backend, Backend::NativeMetal | Backend::ReferenceCpu),
+            BackendPolicy::GpuPreferred => matches!(
+                stage.effective_backend,
+                Backend::NativeMetal | Backend::ReferenceCpu
+            ),
             BackendPolicy::ReferenceCpu => stage.effective_backend == Backend::ReferenceCpu,
         };
         if valid {
@@ -741,15 +854,39 @@ mod tests {
             .enumerate()
             .map(|(index, stage_id)| {
                 let (kind, requested, precision) = if index == 0 {
-                    (StageKind::Materialize, Backend::Coordinator, Precision::NotApplicable)
+                    (
+                        StageKind::Materialize,
+                        Backend::Coordinator,
+                        Precision::NotApplicable,
+                    )
                 } else if index + 1 == stage_ids.len() {
-                    (StageKind::ArtifactIo, Backend::Coordinator, Precision::NotApplicable)
+                    (
+                        StageKind::ArtifactIo,
+                        Backend::Coordinator,
+                        Precision::NotApplicable,
+                    )
                 } else if numeric_indices.contains(&index) {
-                    (StageKind::NumericCompute, Backend::NativeMetal, if workflow_template == WorkflowTemplateId::AlignmentV1 { Precision::Float32 } else { Precision::Mixed })
+                    (
+                        StageKind::NumericCompute,
+                        Backend::NativeMetal,
+                        if workflow_template == WorkflowTemplateId::AlignmentV1 {
+                            Precision::Float32
+                        } else {
+                            Precision::Mixed
+                        },
+                    )
                 } else if stage_id == &"validateResults" {
-                    (StageKind::Validation, Backend::ReferenceCpu, Precision::Float64)
+                    (
+                        StageKind::Validation,
+                        Backend::ReferenceCpu,
+                        Precision::Float64,
+                    )
                 } else {
-                    (StageKind::ChemistrySemantics, Backend::ReferenceCpu, Precision::Float64)
+                    (
+                        StageKind::ChemistrySemantics,
+                        Backend::ReferenceCpu,
+                        Precision::Float64,
+                    )
                 };
                 stage(stage_id, kind, requested, requested, precision)
             })
@@ -811,12 +948,48 @@ mod tests {
             plan_version: ExecutionPlanVersion::ConformerV1,
             backend_policy: policy,
             stages: vec![
-                stage("freezeScope", StageKind::Materialize, Backend::Coordinator, Backend::Coordinator, Precision::NotApplicable),
-                stage("conformerConstraints", StageKind::ChemistrySemantics, Backend::Rdkit, Backend::Rdkit, Precision::Float64),
-                stage("distanceGeometry", StageKind::NumericCompute, requested, numeric, Precision::Float32),
-                stage("stereoValidation", StageKind::NumericCompute, requested, numeric, Precision::Float32),
-                stage("validateResults", StageKind::Validation, Backend::ReferenceCpu, Backend::ReferenceCpu, Precision::Float64),
-                stage("publishResults", StageKind::ArtifactIo, Backend::Coordinator, Backend::Coordinator, Precision::NotApplicable),
+                stage(
+                    "freezeScope",
+                    StageKind::Materialize,
+                    Backend::Coordinator,
+                    Backend::Coordinator,
+                    Precision::NotApplicable,
+                ),
+                stage(
+                    "conformerConstraints",
+                    StageKind::ChemistrySemantics,
+                    Backend::Rdkit,
+                    Backend::Rdkit,
+                    Precision::Float64,
+                ),
+                stage(
+                    "distanceGeometry",
+                    StageKind::NumericCompute,
+                    requested,
+                    numeric,
+                    Precision::Float32,
+                ),
+                stage(
+                    "stereoValidation",
+                    StageKind::NumericCompute,
+                    requested,
+                    numeric,
+                    Precision::Float32,
+                ),
+                stage(
+                    "validateResults",
+                    StageKind::Validation,
+                    Backend::ReferenceCpu,
+                    Backend::ReferenceCpu,
+                    Precision::Float64,
+                ),
+                stage(
+                    "publishResults",
+                    StageKind::ArtifactIo,
+                    Backend::Coordinator,
+                    Backend::Coordinator,
+                    Precision::NotApplicable,
+                ),
             ],
         }
     }
@@ -880,7 +1053,10 @@ mod tests {
     fn conformer_plan_requires_both_numeric_stages_to_honor_gpu_policy() {
         let request = conformer_request(BackendPolicy::GpuRequired);
         let plan = conformer_plan(BackendPolicy::GpuRequired, Backend::NativeMetal);
-        assert_eq!(plan.validate_against_conformer_request(&request, 10), Ok(()));
+        assert_eq!(
+            plan.validate_against_conformer_request(&request, 10),
+            Ok(())
+        );
 
         let mut cpu_stereo = plan.clone();
         cpu_stereo.stages[3] = stage(
@@ -956,12 +1132,13 @@ mod tests {
             WorkflowTemplateId::SemiempiricalV1,
             ExecutionPlanVersion::SemiempiricalV1,
             &SEMIEMPIRICAL_STAGE_IDS,
-            &[2, 3],
+            &[2],
         );
         assert_eq!(semiempirical.validate(), Ok(()));
-        assert!(semiempirical.stages[2..=3]
-            .iter()
-            .all(|stage| stage.effective_backend == Backend::NativeMetal));
+        assert_eq!(
+            semiempirical.stages[2].effective_backend,
+            Backend::NativeMetal
+        );
     }
 
     #[test]
