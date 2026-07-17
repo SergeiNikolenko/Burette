@@ -6,8 +6,9 @@ use std::{
 
 use burrete_compute_core::{
     evaluate_pm6_with_accelerators, evaluate_rm1_with_prepared_pairs_and_accelerators,
-    evaluate_semiempirical, symmetric_eigendecomposition, SemiempiricalAtom, SemiempiricalError,
-    SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfOptions, SemiempiricalScfStatus,
+    evaluate_semiempirical, symmetric_eigendecomposition, Rm1Evaluation, SemiempiricalAtom,
+    SemiempiricalError, SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfOptions,
+    SemiempiricalScfStatus,
 };
 use burrete_compute_metal::{
     MetalPm6CorrectionBatch, MetalPm6OneCenterFockBatch, MetalTanimotoRuntime,
@@ -37,6 +38,7 @@ use crate::preview::{
 use super::{
     alignment_workflow::parse_molfile,
     error::{ComputeCoordinatorError, ComputeResult},
+    service::ComputeServiceClient,
 };
 
 const MAX_SEMIEMPIRICAL_MOLECULES: usize = 256;
@@ -169,6 +171,7 @@ pub(crate) fn durable_semiempirical_request(
 
 pub(crate) fn execute_snapshot_semiempirical_with_run_id(
     runtime: Option<&MetalTanimotoRuntime>,
+    compute_service: Option<&ComputeServiceClient>,
     source_rows: Vec<GridAlignmentSourceRow>,
     request: &GridSemiempiricalRequest,
     run_id: Uuid,
@@ -184,11 +187,12 @@ pub(crate) fn execute_snapshot_semiempirical_with_run_id(
             "Frozen semiempirical records differ from the normalized selected scope".into(),
         ));
     }
-    execute_semiempirical_rows(runtime, request, run_id, source_rows)
+    execute_semiempirical_rows(runtime, compute_service, request, run_id, source_rows)
 }
 
 fn execute_semiempirical_rows(
     runtime: Option<&MetalTanimotoRuntime>,
+    compute_service: Option<&ComputeServiceClient>,
     request: &GridSemiempiricalRequest,
     run_id: Uuid,
     source_rows: Vec<GridAlignmentSourceRow>,
@@ -198,7 +202,7 @@ fn execute_semiempirical_rows(
     let started = Instant::now();
     let evaluated = source_rows
         .iter()
-        .map(|row| evaluate_row(row, method, runtime))
+        .map(|row| evaluate_row(row, method, runtime, compute_service, run_id))
         .collect::<Vec<_>>();
     let gpu_time_ms = evaluated.iter().map(|(_, gpu_time)| gpu_time).sum();
     let rows = evaluated
@@ -277,8 +281,10 @@ fn evaluate_row(
     row: &GridAlignmentSourceRow,
     method: GridSemiempiricalMethod,
     runtime: Option<&MetalTanimotoRuntime>,
+    compute_service: Option<&ComputeServiceClient>,
+    job_id: Uuid,
 ) -> (GridSemiempiricalRow, u64) {
-    match evaluate_row_inner(row, method, runtime) {
+    match evaluate_row_inner(row, method, runtime, compute_service, job_id) {
         Ok(result) => result,
         Err(error) => (
             GridSemiempiricalRow {
@@ -301,6 +307,8 @@ fn evaluate_row_inner(
     row: &GridAlignmentSourceRow,
     method: GridSemiempiricalMethod,
     runtime: Option<&MetalTanimotoRuntime>,
+    compute_service: Option<&ComputeServiceClient>,
+    job_id: Uuid,
 ) -> Result<(GridSemiempiricalRow, u64), String> {
     let molblock = row
         .molblock
@@ -331,6 +339,33 @@ fn evaluate_row_inner(
         .sum();
     let molecule = SemiempiricalMolecule::new(method.method, atoms, charge)
         .map_err(|error| error.to_string())?;
+    let (evaluation, gpu_time_ms) = if let Some(service) = compute_service {
+        service.evaluate_semiempirical(job_id, &molecule, DEFAULT_MAX_MEMORY_BYTES)?
+    } else {
+        evaluate_semiempirical_molecule(runtime, &molecule, DEFAULT_MAX_MEMORY_BYTES)?
+    };
+    let converged = evaluation.scf.status == SemiempiricalScfStatus::Converged;
+    Ok((
+        GridSemiempiricalRow {
+            source_index: row.source_index,
+            name: row.name.clone(),
+            electronic_energy_ev: Some(evaluation.electronic_energy_ev),
+            nuclear_energy_ev: Some(evaluation.nuclear_energy_ev),
+            total_energy_ev: Some(evaluation.total_energy_ev),
+            atomic_charges: Some(evaluation.atomic_charges),
+            converged,
+            iterations: Some(evaluation.scf.iterations),
+            error: (!converged).then(|| "SCF reached the iteration limit".into()),
+        },
+        gpu_time_ms,
+    ))
+}
+
+pub(super) fn evaluate_semiempirical_molecule(
+    runtime: Option<&MetalTanimotoRuntime>,
+    molecule: &SemiempiricalMolecule,
+    max_memory_bytes: u64,
+) -> Result<(Rm1Evaluation, u64), String> {
     let gpu_time_ms = Cell::new(0_u64);
     let gpu_eigensolves = Cell::new(0_usize);
     let previous_fock = RefCell::new(None::<Vec<f64>>);
@@ -357,14 +392,14 @@ fn evaluate_row_inner(
                 return symmetric_eigendecomposition(matrix, order);
             }
             let dispatch = runtime
-                .symmetric_eigen_profiled(matrix, order, DEFAULT_MAX_MEMORY_BYTES)
+                .symmetric_eigen_profiled(matrix, order, max_memory_bytes)
                 .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
             gpu_eigensolves.set(gpu_eigensolves.get() + 1);
             gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
             Ok((dispatch.eigenvalues, dispatch.eigenvectors))
         };
         if matches!(
-            method.method,
+            molecule.method,
             SemiempiricalMethod::Pm6 | SemiempiricalMethod::Pm6D | SemiempiricalMethod::Pm6D3H4
         ) {
             evaluate_pm6_with_accelerators(
@@ -376,7 +411,7 @@ fn evaluate_row_inner(
                             orbital_count,
                             density,
                             pairs,
-                            DEFAULT_MAX_MEMORY_BYTES,
+                            max_memory_bytes,
                         )
                         .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
                     gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
@@ -393,7 +428,7 @@ fn evaluate_row_inner(
                                 densities: std::slice::from_ref(density),
                                 w_integrals: std::slice::from_ref(w_integrals),
                             },
-                            DEFAULT_MAX_MEMORY_BYTES,
+                            max_memory_bytes,
                         )
                         .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
                     gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
@@ -403,7 +438,7 @@ fn evaluate_row_inner(
             )
         } else {
             let prepared = runtime
-                .prepare_rm1_pairs_profiled(&molecule, DEFAULT_MAX_MEMORY_BYTES)
+                .prepare_rm1_pairs_profiled(molecule, max_memory_bytes)
                 .map_err(|error| error.to_string())?;
             gpu_time_ms.set(gpu_time_ms.get() + prepared.gpu_time_ms);
             evaluate_rm1_with_prepared_pairs_and_accelerators(
@@ -416,7 +451,7 @@ fn evaluate_row_inner(
                             orbital_count,
                             density,
                             pairs,
-                            DEFAULT_MAX_MEMORY_BYTES,
+                            max_memory_bytes,
                         )
                         .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
                     gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
@@ -430,10 +465,10 @@ fn evaluate_row_inner(
             )
         }
     } else {
-        evaluate_semiempirical(&molecule, SemiempiricalScfOptions::default())
+        evaluate_semiempirical(molecule, SemiempiricalScfOptions::default())
     }
     .map_err(|error| error.to_string())?;
-    if method.method == SemiempiricalMethod::Pm6D3H4 {
+    if molecule.method == SemiempiricalMethod::Pm6D3H4 {
         if let Some(runtime) = runtime {
             let correction = runtime
                 .evaluate_pm6_d3h4_profiled(
@@ -444,27 +479,13 @@ fn evaluate_row_inner(
                             atom_count: molecule.atoms.len(),
                         }],
                     },
-                    DEFAULT_MAX_MEMORY_BYTES,
+                    max_memory_bytes,
                 )
                 .map_err(|error| error.to_string())?;
             gpu_time_ms.set(gpu_time_ms.get().saturating_add(correction.gpu_time_ms));
         }
     }
-    let converged = evaluation.scf.status == SemiempiricalScfStatus::Converged;
-    Ok((
-        GridSemiempiricalRow {
-            source_index: row.source_index,
-            name: row.name.clone(),
-            electronic_energy_ev: Some(evaluation.electronic_energy_ev),
-            nuclear_energy_ev: Some(evaluation.nuclear_energy_ev),
-            total_energy_ev: Some(evaluation.total_energy_ev),
-            atomic_charges: Some(evaluation.atomic_charges),
-            converged,
-            iterations: Some(evaluation.scf.iterations),
-            error: (!converged).then(|| "SCF reached the iteration limit".into()),
-        },
-        gpu_time_ms.get(),
-    ))
+    Ok((evaluation, gpu_time_ms.get()))
 }
 
 fn atomic_number(symbol: &str) -> Option<u8> {
@@ -699,7 +720,8 @@ mod tests {
         ] {
             let method = GridSemiempiricalMethod::parse(method).unwrap();
             let (result, gpu_time_ms) =
-                evaluate_row_inner(&row, method, None).expect("evaluate water");
+                evaluate_row_inner(&row, method, None, None, Uuid::new_v4())
+                    .expect("evaluate water");
             assert_eq!(gpu_time_ms, 0);
             assert!(result.converged, "{} did not converge", method.display_name);
             assert!(result.total_energy_ev.unwrap().is_finite());
@@ -707,8 +729,9 @@ mod tests {
         }
         for method in ["AM1", "PM3", "PM6_SP"] {
             let method = GridSemiempiricalMethod::parse(method).unwrap();
-            let (result, _) = evaluate_row_inner(&hydrogen_chloride_row(), method, None)
-                .expect("evaluate extended element domain");
+            let (result, _) =
+                evaluate_row_inner(&hydrogen_chloride_row(), method, None, None, Uuid::new_v4())
+                    .expect("evaluate extended element domain");
             assert!(result.converged, "{} did not converge", method.display_name);
             assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-8);
         }
@@ -726,24 +749,35 @@ mod tests {
             "RM1", "AM1", "PM3", "PM6", "PM6_D", "PM6_D3H4", "PM6_SP", "AM1*",
         ] {
             let method = GridSemiempiricalMethod::parse(method).unwrap();
-            let (result, gpu_time_ms) = evaluate_row_inner(&water_row(), method, Some(&runtime))
-                .expect("evaluate water on Metal");
+            let (result, gpu_time_ms) =
+                evaluate_row_inner(&water_row(), method, Some(&runtime), None, Uuid::new_v4())
+                    .expect("evaluate water on Metal");
             assert!(result.converged, "{} did not converge", method.display_name);
             assert!(gpu_time_ms > 0);
             assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-6);
         }
         for method in ["AM1", "PM3", "PM6_SP"] {
             let method = GridSemiempiricalMethod::parse(method).unwrap();
-            let (result, gpu_time_ms) =
-                evaluate_row_inner(&hydrogen_chloride_row(), method, Some(&runtime))
-                    .expect("evaluate extended element domain on Metal");
+            let (result, gpu_time_ms) = evaluate_row_inner(
+                &hydrogen_chloride_row(),
+                method,
+                Some(&runtime),
+                None,
+                Uuid::new_v4(),
+            )
+            .expect("evaluate extended element domain on Metal");
             assert!(result.converged);
             assert!(gpu_time_ms > 0);
         }
         let method = GridSemiempiricalMethod::parse("PM6_D3H4").unwrap();
-        let (result, gpu_time_ms) =
-            evaluate_row_inner(&hydrogen_sulfide_row(), method, Some(&runtime))
-                .expect("evaluate full-d hydrogen sulfide on Metal");
+        let (result, gpu_time_ms) = evaluate_row_inner(
+            &hydrogen_sulfide_row(),
+            method,
+            Some(&runtime),
+            None,
+            Uuid::new_v4(),
+        )
+        .expect("evaluate full-d hydrogen sulfide on Metal");
         assert!(result.converged);
         assert!(gpu_time_ms > 0);
         assert!(result.total_energy_ev.unwrap().is_finite());

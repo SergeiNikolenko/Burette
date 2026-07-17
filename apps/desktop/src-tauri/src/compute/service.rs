@@ -17,7 +17,8 @@ use std::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use burrete_compute_core::{
     AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping, Fingerprint2048, GraphBuildOptions,
-    RigidTransform, SymmetricCsr, FINGERPRINT_BYTES,
+    RigidTransform, Rm1Evaluation, SemiempiricalAtom, SemiempiricalMethod, SemiempiricalMolecule,
+    SemiempiricalScfResult, SemiempiricalScfStatus, SymmetricCsr, FINGERPRINT_BYTES,
 };
 use burrete_compute_metal::{
     AlignmentPairDescriptor, MetalAlignmentBatch, MetalAlignmentExecution,
@@ -33,6 +34,8 @@ use burrete_compute_protocol::{
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+use super::semiempirical_workflow::evaluate_semiempirical_molecule;
 
 const SESSION_ENV: &str = "BURRETE_COMPUTE_SESSION_TOKEN";
 const EXCHANGE_FD_ENV: &str = "BURRETE_COMPUTE_EXCHANGE_FD";
@@ -51,6 +54,11 @@ const ALIGNMENT_ATOM_BYTES: u64 = 28;
 const ALIGNMENT_MAPPING_BYTES: u64 = 12;
 const ALIGNMENT_PAIR_BYTES: u64 = 56;
 const ALIGNMENT_RESULT_BYTES: u64 = 84;
+const SEMIEMPIRICAL_INPUT_MAGIC: &[u8; 4] = b"BSE1";
+const SEMIEMPIRICAL_OUTPUT_MAGIC: &[u8; 4] = b"BSO1";
+const SEMIEMPIRICAL_INPUT_HEADER_BYTES: u64 = 32;
+const SEMIEMPIRICAL_ATOM_BYTES: u64 = 32;
+const SEMIEMPIRICAL_OUTPUT_HEADER_BYTES: u64 = 72;
 
 pub(crate) struct ComputeServiceClient {
     child: Mutex<Child>,
@@ -197,6 +205,23 @@ impl ComputeServiceClient {
         let mut execution = decode_alignment_output(&output)?;
         execution.gpu_time_ms = gpu_time_ms;
         Ok(execution)
+    }
+
+    pub(crate) fn evaluate_semiempirical(
+        &self,
+        job_id: Uuid,
+        molecule: &SemiempiricalMolecule,
+        max_memory_bytes: u64,
+    ) -> Result<(Rm1Evaluation, u64), String> {
+        let input = encode_semiempirical_input(molecule, max_memory_bytes)?;
+        let max_output_bytes = semiempirical_output_bound(molecule)?;
+        let (output, gpu_time_ms) = self.execute_exchange(
+            job_id,
+            WorkerOperation::SemiempiricalScfV1,
+            &input,
+            max_output_bytes,
+        )?;
+        Ok((decode_semiempirical_output(&output)?, gpu_time_ms))
     }
 
     fn execute_exchange(
@@ -554,6 +579,12 @@ fn execute_kernel(
                 .map_err(|error| error.to_string())?;
             (encode_alignment_output(&execution)?, execution.gpu_time_ms)
         }
+        WorkerOperation::SemiempiricalScfV1 => {
+            let (molecule, max_memory_bytes) = decode_semiempirical_input(&input)?;
+            let (evaluation, gpu_time_ms) =
+                evaluate_semiempirical_molecule(Some(runtime), &molecule, max_memory_bytes)?;
+            (encode_semiempirical_output(&evaluation)?, gpu_time_ms)
+        }
     };
     if output.len() as u64 > exchange.max_output_bytes {
         return Err("compute kernel output exceeds the authorized byte bound".into());
@@ -863,6 +894,232 @@ fn validate_alignment_pair(
     Ok(())
 }
 
+fn encode_semiempirical_input(
+    molecule: &SemiempiricalMolecule,
+    max_memory_bytes: u64,
+) -> Result<Vec<u8>, String> {
+    let total_bytes = SEMIEMPIRICAL_INPUT_HEADER_BYTES
+        .checked_add(
+            (molecule.atoms.len() as u64)
+                .checked_mul(SEMIEMPIRICAL_ATOM_BYTES)
+                .ok_or("semiempirical atom byte length overflow")?,
+        )
+        .filter(|value| *value <= MAX_PACK_BYTES)
+        .ok_or("semiempirical input exceeds the compute exchange bound")?;
+    let mut output = Vec::with_capacity(total_bytes as usize);
+    output.extend_from_slice(SEMIEMPIRICAL_INPUT_MAGIC);
+    push_u32(&mut output, semiempirical_method_tag(molecule.method));
+    push_i32(&mut output, molecule.charge);
+    push_u32(&mut output, 0);
+    push_u64(&mut output, molecule.atoms.len() as u64);
+    push_u64(&mut output, max_memory_bytes);
+    for atom in &molecule.atoms {
+        output.push(atom.atomic_number);
+        output.extend_from_slice(&[0; 7]);
+        for coordinate in atom.position_angstrom {
+            push_f64(&mut output, coordinate);
+        }
+    }
+    Ok(output)
+}
+
+fn decode_semiempirical_input(input: &[u8]) -> Result<(SemiempiricalMolecule, u64), String> {
+    let mut cursor = ByteCursor::new(input);
+    cursor.expect_magic(SEMIEMPIRICAL_INPUT_MAGIC)?;
+    let method = semiempirical_method(cursor.read_u32()?)?;
+    let charge = cursor.read_i32()?;
+    if cursor.read_u32()? != 0 {
+        return Err("semiempirical input reserved field is non-zero".into());
+    }
+    let atom_count = cursor.read_count("semiempirical atom")?;
+    let max_memory_bytes = cursor.read_u64()?;
+    let expected = SEMIEMPIRICAL_INPUT_HEADER_BYTES
+        .checked_add(
+            (atom_count as u64)
+                .checked_mul(SEMIEMPIRICAL_ATOM_BYTES)
+                .ok_or("semiempirical atom byte length overflow")?,
+        )
+        .ok_or("semiempirical input byte length overflow")?;
+    if input.len() as u64 != expected {
+        return Err("semiempirical input byte length is inconsistent".into());
+    }
+    let mut atoms = Vec::new();
+    atoms
+        .try_reserve_exact(atom_count)
+        .map_err(|_| "cannot allocate semiempirical atoms")?;
+    for _ in 0..atom_count {
+        let atomic_number = cursor.read_array::<1>()?[0];
+        if cursor.read_array::<7>()? != [0; 7] {
+            return Err("semiempirical atom reserved bytes are non-zero".into());
+        }
+        atoms.push(SemiempiricalAtom {
+            atomic_number,
+            position_angstrom: [cursor.read_f64()?, cursor.read_f64()?, cursor.read_f64()?],
+        });
+    }
+    let molecule =
+        SemiempiricalMolecule::new(method, atoms, charge).map_err(|error| error.to_string())?;
+    Ok((molecule, max_memory_bytes))
+}
+
+fn encode_semiempirical_output(evaluation: &Rm1Evaluation) -> Result<Vec<u8>, String> {
+    let total_bytes = semiempirical_output_bytes(
+        evaluation.atomic_charges.len(),
+        evaluation.scf.density.len(),
+        evaluation.scf.orbital_energies.len(),
+    )?;
+    let mut output = Vec::with_capacity(total_bytes as usize);
+    output.extend_from_slice(SEMIEMPIRICAL_OUTPUT_MAGIC);
+    push_f64(&mut output, evaluation.electronic_energy_ev);
+    push_f64(&mut output, evaluation.nuclear_energy_ev);
+    push_f64(&mut output, evaluation.total_energy_ev);
+    push_u64(&mut output, evaluation.scf.iterations as u64);
+    push_f64(&mut output, evaluation.scf.density_error);
+    push_u32(
+        &mut output,
+        match evaluation.scf.status {
+            SemiempiricalScfStatus::Converged => 0,
+            SemiempiricalScfStatus::MaximumIterations => 1,
+        },
+    );
+    push_u64(&mut output, evaluation.atomic_charges.len() as u64);
+    push_u64(&mut output, evaluation.scf.density.len() as u64);
+    push_u64(&mut output, evaluation.scf.orbital_energies.len() as u64);
+    for value in evaluation
+        .atomic_charges
+        .iter()
+        .chain(&evaluation.scf.density)
+        .chain(&evaluation.scf.orbital_energies)
+    {
+        push_f64(&mut output, *value);
+    }
+    Ok(output)
+}
+
+fn decode_semiempirical_output(output: &[u8]) -> Result<Rm1Evaluation, String> {
+    let mut cursor = ByteCursor::new(output);
+    cursor.expect_magic(SEMIEMPIRICAL_OUTPUT_MAGIC)?;
+    let electronic_energy_ev = cursor.read_f64()?;
+    let nuclear_energy_ev = cursor.read_f64()?;
+    let total_energy_ev = cursor.read_f64()?;
+    let iterations = cursor.read_count("SCF iteration")?;
+    let density_error = cursor.read_f64()?;
+    let status = match cursor.read_u32()? {
+        0 => SemiempiricalScfStatus::Converged,
+        1 => SemiempiricalScfStatus::MaximumIterations,
+        _ => return Err("semiempirical SCF status is invalid".into()),
+    };
+    let charge_count = cursor.read_count("atomic charge")?;
+    let density_count = cursor.read_count("SCF density")?;
+    let orbital_count = cursor.read_count("orbital energy")?;
+    if output.len() as u64
+        != semiempirical_output_bytes(charge_count, density_count, orbital_count)?
+    {
+        return Err("semiempirical output byte length is inconsistent".into());
+    }
+    let mut read_values = |count: usize| -> Result<Vec<f64>, String> {
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(count)
+            .map_err(|_| "cannot allocate semiempirical output")?;
+        for _ in 0..count {
+            let value = cursor.read_f64()?;
+            if !value.is_finite() {
+                return Err("semiempirical output contains a non-finite value".into());
+            }
+            values.push(value);
+        }
+        Ok(values)
+    };
+    let atomic_charges = read_values(charge_count)?;
+    let density = read_values(density_count)?;
+    let orbital_energies = read_values(orbital_count)?;
+    if [
+        electronic_energy_ev,
+        nuclear_energy_ev,
+        total_energy_ev,
+        density_error,
+    ]
+    .iter()
+    .any(|value| !value.is_finite())
+    {
+        return Err("semiempirical output contains a non-finite scalar".into());
+    }
+    Ok(Rm1Evaluation {
+        electronic_energy_ev,
+        nuclear_energy_ev,
+        total_energy_ev,
+        atomic_charges,
+        scf: SemiempiricalScfResult {
+            density,
+            orbital_energies,
+            iterations,
+            density_error,
+            status,
+        },
+    })
+}
+
+fn semiempirical_output_bound(molecule: &SemiempiricalMolecule) -> Result<u64, String> {
+    let orbitals = molecule.orbital_count as u64;
+    SEMIEMPIRICAL_OUTPUT_HEADER_BYTES
+        .checked_add(
+            (molecule.atoms.len() as u64)
+                .checked_mul(8)
+                .ok_or("charge bound overflow")?,
+        )
+        .and_then(|value| value.checked_add(orbitals.checked_mul(orbitals)?.checked_mul(8)?))
+        .and_then(|value| value.checked_add(orbitals.checked_mul(8)?))
+        .filter(|value| *value <= MAX_PACK_BYTES)
+        .ok_or_else(|| "semiempirical output exceeds the compute exchange bound".into())
+}
+
+fn semiempirical_output_bytes(
+    charge_count: usize,
+    density_count: usize,
+    orbital_count: usize,
+) -> Result<u64, String> {
+    let values = (charge_count as u64)
+        .checked_add(density_count as u64)
+        .and_then(|value| value.checked_add(orbital_count as u64))
+        .ok_or("semiempirical output value count overflow")?;
+    SEMIEMPIRICAL_OUTPUT_HEADER_BYTES
+        .checked_add(
+            values
+                .checked_mul(8)
+                .ok_or("semiempirical output byte length overflow")?,
+        )
+        .filter(|value| *value <= MAX_PACK_BYTES)
+        .ok_or_else(|| "semiempirical output exceeds the compute exchange bound".into())
+}
+
+fn semiempirical_method_tag(method: SemiempiricalMethod) -> u32 {
+    match method {
+        SemiempiricalMethod::Rm1 => 0,
+        SemiempiricalMethod::Am1 => 1,
+        SemiempiricalMethod::Pm3 => 2,
+        SemiempiricalMethod::Pm6 => 3,
+        SemiempiricalMethod::Pm6Sp => 4,
+        SemiempiricalMethod::Pm6D => 5,
+        SemiempiricalMethod::Pm6D3H4 => 6,
+        SemiempiricalMethod::Am1Star => 7,
+    }
+}
+
+fn semiempirical_method(tag: u32) -> Result<SemiempiricalMethod, String> {
+    match tag {
+        0 => Ok(SemiempiricalMethod::Rm1),
+        1 => Ok(SemiempiricalMethod::Am1),
+        2 => Ok(SemiempiricalMethod::Pm3),
+        3 => Ok(SemiempiricalMethod::Pm6),
+        4 => Ok(SemiempiricalMethod::Pm6Sp),
+        5 => Ok(SemiempiricalMethod::Pm6D),
+        6 => Ok(SemiempiricalMethod::Pm6D3H4),
+        7 => Ok(SemiempiricalMethod::Am1Star),
+        _ => Err("semiempirical method is invalid".into()),
+    }
+}
+
 fn encode_graph_input(
     fingerprints: &[Fingerprint2048],
     cutoff: SimilarityCutoff,
@@ -1128,11 +1385,19 @@ fn push_u32(output: &mut Vec<u8>, value: u32) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
+fn push_i32(output: &mut Vec<u8>, value: i32) {
+    output.extend_from_slice(&value.to_le_bytes());
+}
+
 fn push_u64(output: &mut Vec<u8>, value: u64) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
 fn push_f32(output: &mut Vec<u8>, value: f32) {
+    output.extend_from_slice(&value.to_le_bytes());
+}
+
+fn push_f64(output: &mut Vec<u8>, value: f64) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
@@ -1161,12 +1426,20 @@ impl<'a> ByteCursor<'a> {
         Ok(u32::from_le_bytes(self.read_array()?))
     }
 
+    fn read_i32(&mut self) -> Result<i32, String> {
+        Ok(i32::from_le_bytes(self.read_array()?))
+    }
+
     fn read_u64(&mut self) -> Result<u64, String> {
         Ok(u64::from_le_bytes(self.read_array()?))
     }
 
     fn read_f32(&mut self) -> Result<f32, String> {
         Ok(f32::from_le_bytes(self.read_array()?))
+    }
+
+    fn read_f64(&mut self) -> Result<f64, String> {
+        Ok(f64::from_le_bytes(self.read_array()?))
     }
 
     fn read_count(&mut self, label: &str) -> Result<usize, String> {
@@ -1386,6 +1659,50 @@ mod tests {
     }
 
     #[test]
+    fn semiempirical_exchange_abi_round_trips_exactly() {
+        let molecule = SemiempiricalMolecule::new(
+            SemiempiricalMethod::Pm6D3H4,
+            vec![
+                SemiempiricalAtom {
+                    atomic_number: 8,
+                    position_angstrom: [0.0, 0.0, 0.0],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [0.95, 0.0, 0.0],
+                },
+            ],
+            -1,
+        )
+        .expect("valid molecule");
+        let input = encode_semiempirical_input(&molecule, 64 * 1024 * 1024).expect("encode input");
+        let (decoded, memory) = decode_semiempirical_input(&input).expect("decode input");
+        assert_eq!(decoded, molecule);
+        assert_eq!(memory, 64 * 1024 * 1024);
+
+        let expected = Rm1Evaluation {
+            electronic_energy_ev: -12.0,
+            nuclear_energy_ev: 3.0,
+            total_energy_ev: -9.0,
+            atomic_charges: vec![-0.5, -0.5],
+            scf: SemiempiricalScfResult {
+                density: vec![1.0, 0.0, 0.0, 1.0],
+                orbital_energies: vec![-2.0, 1.0],
+                iterations: 7,
+                density_error: 1.0e-8,
+                status: SemiempiricalScfStatus::Converged,
+            },
+        };
+        assert_eq!(
+            decode_semiempirical_output(
+                &encode_semiempirical_output(&expected).expect("encode output")
+            )
+            .expect("decode output"),
+            expected
+        );
+    }
+
+    #[test]
     fn exchange_descriptor_transfer_preserves_identity_and_contents() {
         let (sender, mut receiver) = UnixStream::pair().expect("socket pair");
         let exchange_id = Uuid::new_v4();
@@ -1467,5 +1784,31 @@ mod tests {
             .expect("execute alignment kernel through helper");
         assert!((alignment.pairs[0].scores.shape_tanimoto - 1.0).abs() < 1.0e-5);
         assert!((alignment.pairs[0].scores.electrostatic_carbo - 1.0).abs() < 1.0e-5);
+
+        let water = SemiempiricalMolecule::new(
+            SemiempiricalMethod::Rm1,
+            vec![
+                SemiempiricalAtom {
+                    atomic_number: 8,
+                    position_angstrom: [0.0, 0.0, 0.0],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [0.9584, 0.0, 0.0],
+                },
+                SemiempiricalAtom {
+                    atomic_number: 1,
+                    position_angstrom: [-0.2396, 0.9275, 0.0],
+                },
+            ],
+            0,
+        )
+        .expect("valid water");
+        let (evaluation, gpu_time_ms) = client
+            .evaluate_semiempirical(Uuid::new_v4(), &water, 64 * 1024 * 1024)
+            .expect("execute semiempirical SCF through helper");
+        assert_eq!(evaluation.scf.status, SemiempiricalScfStatus::Converged);
+        assert!(evaluation.total_energy_ev.is_finite());
+        assert!(gpu_time_ms > 0);
     }
 }

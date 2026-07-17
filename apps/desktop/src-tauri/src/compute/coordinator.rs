@@ -396,6 +396,11 @@ impl ComputeCoordinator {
         let numeric_started = Instant::now();
         let result = execute_snapshot_semiempirical_with_run_id(
             runtime,
+            if native {
+                ready.compute_service.as_ref()
+            } else {
+                None
+            },
             source_rows,
             request,
             queued.job_id,
