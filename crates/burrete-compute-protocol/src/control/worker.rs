@@ -170,6 +170,7 @@ pub enum WorkerOperation {
     TanimotoGraphV1,
     AlignmentScoreV1,
     SemiempiricalScfV1,
+    MmffOptimizeV1,
 }
 
 /// Strict worker-to-coordinator control envelope.
