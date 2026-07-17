@@ -644,8 +644,13 @@ impl ComputeCoordinator {
             .store
             .apply_successor(owner, prepare_succeeded.revision, &numeric_running)?;
         let numeric_started = Instant::now();
-        let result =
-            execute_snapshot_alignment_with_run_id(runtime, source_rows, request, queued.job_id);
+        let result = execute_snapshot_alignment_with_run_id(
+            runtime,
+            ready.compute_service.as_ref(),
+            source_rows,
+            request,
+            queued.job_id,
+        );
         let host_time_ms = numeric_started.elapsed().as_secs_f64() * 1_000.0;
         let mut result = match result {
             Ok(result) => result,

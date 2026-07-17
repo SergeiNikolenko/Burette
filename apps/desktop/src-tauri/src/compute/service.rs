@@ -15,8 +15,14 @@ use std::{
 };
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use burrete_compute_core::{Fingerprint2048, GraphBuildOptions, SymmetricCsr, FINGERPRINT_BYTES};
-use burrete_compute_metal::{MetalRuntimeError, MetalTanimotoRuntime};
+use burrete_compute_core::{
+    AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping, Fingerprint2048, GraphBuildOptions,
+    RigidTransform, SymmetricCsr, FINGERPRINT_BYTES,
+};
+use burrete_compute_metal::{
+    AlignmentPairDescriptor, MetalAlignmentBatch, MetalAlignmentExecution,
+    MetalAlignmentPairResult, MetalRuntimeError, MetalTanimotoRuntime,
+};
 use burrete_compute_protocol::{
     read_frame, write_frame, Backend, CapabilityEntry, CapabilityLimits, CapabilityMaturity,
     CapabilityReason, CapabilityReasonCode, CapabilityReportSchemaVersion, ComputeAvailability,
@@ -37,6 +43,14 @@ const GRAPH_INPUT_MAGIC: &[u8; 4] = b"BTG1";
 const GRAPH_OUTPUT_MAGIC: &[u8; 4] = b"BTO1";
 const GRAPH_INPUT_HEADER_BYTES: u64 = 44;
 const GRAPH_OUTPUT_HEADER_BYTES: u64 = 20;
+const ALIGNMENT_INPUT_MAGIC: &[u8; 4] = b"BAL1";
+const ALIGNMENT_OUTPUT_MAGIC: &[u8; 4] = b"BAO1";
+const ALIGNMENT_INPUT_HEADER_BYTES: u64 = 44;
+const ALIGNMENT_OUTPUT_HEADER_BYTES: u64 = 12;
+const ALIGNMENT_ATOM_BYTES: u64 = 28;
+const ALIGNMENT_MAPPING_BYTES: u64 = 12;
+const ALIGNMENT_PAIR_BYTES: u64 = 56;
+const ALIGNMENT_RESULT_BYTES: u64 = 84;
 
 pub(crate) struct ComputeServiceClient {
     child: Mutex<Child>,
@@ -157,6 +171,41 @@ impl ComputeServiceClient {
     ) -> Result<(SymmetricCsr, u64), String> {
         let input = encode_graph_input(fingerprints, cutoff, options)?;
         let max_output_bytes = graph_output_bound(fingerprints.len(), options)?;
+        let (output, gpu_time_ms) = self.execute_exchange(
+            job_id,
+            WorkerOperation::TanimotoGraphV1,
+            &input,
+            max_output_bytes,
+        )?;
+        Ok((decode_graph_output(&output)?, gpu_time_ms))
+    }
+
+    pub(crate) fn align_and_score(
+        &self,
+        job_id: Uuid,
+        batch: MetalAlignmentBatch<'_>,
+        max_memory_bytes: u64,
+    ) -> Result<MetalAlignmentExecution, String> {
+        let input = encode_alignment_input(batch, max_memory_bytes)?;
+        let max_output_bytes = alignment_output_bound(batch.pairs.len())?;
+        let (output, gpu_time_ms) = self.execute_exchange(
+            job_id,
+            WorkerOperation::AlignmentScoreV1,
+            &input,
+            max_output_bytes,
+        )?;
+        let mut execution = decode_alignment_output(&output)?;
+        execution.gpu_time_ms = gpu_time_ms;
+        Ok(execution)
+    }
+
+    fn execute_exchange(
+        &self,
+        job_id: Uuid,
+        operation: WorkerOperation,
+        input: &[u8],
+        max_output_bytes: u64,
+    ) -> Result<(Vec<u8>, u64), String> {
         let exchange_id = Uuid::new_v4();
         let capability =
             JobCapabilityToken::new(format!("job-capability.v1.{}", random_base64url()?))
@@ -196,7 +245,7 @@ impl ComputeServiceClient {
                 job_id,
                 capability,
                 exchange,
-                operation: WorkerOperation::TanimotoGraphV1,
+                operation,
             },
             KERNEL_REQUEST_TIMEOUT,
         )?;
@@ -226,7 +275,7 @@ impl ComputeServiceClient {
         if sha256_hex(&output) != output_sha256 {
             return Err("compute service output digest does not match the exchange file".into());
         }
-        Ok((decode_graph_output(&output)?, gpu_time_ms))
+        Ok((output, gpu_time_ms))
     }
 
     fn request(&self, command: WorkerCommand) -> Result<WorkerResult, String> {
@@ -498,6 +547,13 @@ fn execute_kernel(
                 execution.gpu_time_ms,
             )
         }
+        WorkerOperation::AlignmentScoreV1 => {
+            let owned = decode_alignment_input(&input)?;
+            let execution = runtime
+                .align_and_score_profiled(owned.as_batch(), owned.max_memory_bytes)
+                .map_err(|error| error.to_string())?;
+            (encode_alignment_output(&execution)?, execution.gpu_time_ms)
+        }
     };
     if output.len() as u64 > exchange.max_output_bytes {
         return Err("compute kernel output exceeds the authorized byte bound".into());
@@ -514,6 +570,297 @@ fn execute_kernel(
         output_sha256: sha256_hex(&output),
         gpu_time_ms,
     })
+}
+
+struct OwnedAlignmentInput {
+    probe_atoms: Vec<AlignmentAtom>,
+    reference_atoms: Vec<AlignmentAtom>,
+    mappings: Vec<AtomMapping>,
+    pairs: Vec<AlignmentPairDescriptor>,
+    max_memory_bytes: u64,
+}
+
+impl OwnedAlignmentInput {
+    fn as_batch(&self) -> MetalAlignmentBatch<'_> {
+        MetalAlignmentBatch {
+            probe_atoms: &self.probe_atoms,
+            reference_atoms: &self.reference_atoms,
+            mappings: &self.mappings,
+            pairs: &self.pairs,
+        }
+    }
+}
+
+fn encode_alignment_input(
+    batch: MetalAlignmentBatch<'_>,
+    max_memory_bytes: u64,
+) -> Result<Vec<u8>, String> {
+    let total_bytes = alignment_input_bytes(
+        batch.probe_atoms.len(),
+        batch.reference_atoms.len(),
+        batch.mappings.len(),
+        batch.pairs.len(),
+    )?;
+    let mut output = Vec::with_capacity(
+        usize::try_from(total_bytes)
+            .map_err(|_| "alignment input exceeds this process address space")?,
+    );
+    output.extend_from_slice(ALIGNMENT_INPUT_MAGIC);
+    push_u64(&mut output, batch.probe_atoms.len() as u64);
+    push_u64(&mut output, batch.reference_atoms.len() as u64);
+    push_u64(&mut output, batch.mappings.len() as u64);
+    push_u64(&mut output, batch.pairs.len() as u64);
+    push_u64(&mut output, max_memory_bytes);
+    for atom in batch.probe_atoms.iter().chain(batch.reference_atoms) {
+        for coordinate in atom.position {
+            push_f32(&mut output, coordinate);
+        }
+        push_f32(&mut output, atom.gaussian_exponent);
+        push_f32(&mut output, atom.gaussian_amplitude);
+        push_f32(&mut output, atom.partial_charge);
+    }
+    for mapping in batch.mappings {
+        push_u32(&mut output, mapping.probe_atom);
+        push_u32(&mut output, mapping.reference_atom);
+        push_f32(&mut output, mapping.weight);
+    }
+    for pair in batch.pairs {
+        push_u64(&mut output, pair.probe_atom_start);
+        push_u64(&mut output, pair.probe_atom_count);
+        push_u64(&mut output, pair.reference_atom_start);
+        push_u64(&mut output, pair.reference_atom_count);
+        push_u64(&mut output, pair.mapping_start);
+        push_u64(&mut output, pair.mapping_count);
+        push_u32(
+            &mut output,
+            match pair.mode {
+                AlignmentMode::FixedPose => 0,
+                AlignmentMode::MappedHorn => 1,
+            },
+        );
+        push_u32(&mut output, 0);
+    }
+    Ok(output)
+}
+
+fn decode_alignment_input(input: &[u8]) -> Result<OwnedAlignmentInput, String> {
+    let mut cursor = ByteCursor::new(input);
+    cursor.expect_magic(ALIGNMENT_INPUT_MAGIC)?;
+    let probe_count = cursor.read_count("probe atom")?;
+    let reference_count = cursor.read_count("reference atom")?;
+    let mapping_count = cursor.read_count("atom mapping")?;
+    let pair_count = cursor.read_count("alignment pair")?;
+    let max_memory_bytes = cursor.read_u64()?;
+    let expected = alignment_input_bytes(probe_count, reference_count, mapping_count, pair_count)?;
+    if input.len() as u64 != expected {
+        return Err("alignment input byte length is inconsistent".into());
+    }
+    let mut read_atoms = |count: usize| -> Result<Vec<AlignmentAtom>, String> {
+        let mut atoms = Vec::new();
+        atoms
+            .try_reserve_exact(count)
+            .map_err(|_| "cannot allocate alignment atoms")?;
+        for _ in 0..count {
+            atoms.push(AlignmentAtom {
+                position: [
+                    cursor.read_f32()?,
+                    cursor.read_f32()?,
+                    cursor.read_f32()?,
+                    cursor.read_f32()?,
+                ],
+                gaussian_exponent: cursor.read_f32()?,
+                gaussian_amplitude: cursor.read_f32()?,
+                partial_charge: cursor.read_f32()?,
+            });
+        }
+        Ok(atoms)
+    };
+    let probe_atoms = read_atoms(probe_count)?;
+    let reference_atoms = read_atoms(reference_count)?;
+    let mut mappings = Vec::new();
+    mappings
+        .try_reserve_exact(mapping_count)
+        .map_err(|_| "cannot allocate alignment mappings")?;
+    for _ in 0..mapping_count {
+        mappings.push(AtomMapping {
+            probe_atom: cursor.read_u32()?,
+            reference_atom: cursor.read_u32()?,
+            weight: cursor.read_f32()?,
+        });
+    }
+    let mut pairs = Vec::new();
+    pairs
+        .try_reserve_exact(pair_count)
+        .map_err(|_| "cannot allocate alignment pairs")?;
+    for _ in 0..pair_count {
+        let pair = AlignmentPairDescriptor {
+            probe_atom_start: cursor.read_u64()?,
+            probe_atom_count: cursor.read_u64()?,
+            reference_atom_start: cursor.read_u64()?,
+            reference_atom_count: cursor.read_u64()?,
+            mapping_start: cursor.read_u64()?,
+            mapping_count: cursor.read_u64()?,
+            mode: match cursor.read_u32()? {
+                0 => AlignmentMode::FixedPose,
+                1 => AlignmentMode::MappedHorn,
+                _ => return Err("alignment mode is invalid".into()),
+            },
+        };
+        if cursor.read_u32()? != 0 {
+            return Err("alignment pair reserved field is non-zero".into());
+        }
+        validate_alignment_pair(&pair, probe_count, reference_count, mapping_count)?;
+        pairs.push(pair);
+    }
+    if cursor.remaining() != 0 {
+        return Err("alignment input has trailing bytes".into());
+    }
+    Ok(OwnedAlignmentInput {
+        probe_atoms,
+        reference_atoms,
+        mappings,
+        pairs,
+        max_memory_bytes,
+    })
+}
+
+fn encode_alignment_output(execution: &MetalAlignmentExecution) -> Result<Vec<u8>, String> {
+    let bound = alignment_output_bound(execution.pairs.len())?;
+    let mut output = Vec::with_capacity(bound as usize);
+    output.extend_from_slice(ALIGNMENT_OUTPUT_MAGIC);
+    push_u64(&mut output, execution.pairs.len() as u64);
+    for pair in &execution.pairs {
+        for row in pair.transform.rotation {
+            for value in row {
+                push_f32(&mut output, value);
+            }
+        }
+        for value in pair.transform.translation {
+            push_f32(&mut output, value);
+        }
+        push_f32(&mut output, pair.scores.rmsd.unwrap_or_default());
+        push_f32(&mut output, pair.scores.shape_overlap);
+        push_f32(&mut output, pair.scores.shape_tanimoto);
+        push_f32(&mut output, pair.scores.shape_carbo);
+        push_f32(&mut output, pair.scores.electrostatic_overlap);
+        push_f32(&mut output, pair.scores.electrostatic_carbo);
+        push_f32(&mut output, pair.scores.electrostatic_tanimoto);
+        push_f32(&mut output, pair.scores.combined_similarity);
+        let flags = u32::from(pair.scores.rmsd.is_some())
+            | (u32::from(pair.scores.electrostatic_available) << 1);
+        push_u32(&mut output, flags);
+    }
+    Ok(output)
+}
+
+fn decode_alignment_output(output: &[u8]) -> Result<MetalAlignmentExecution, String> {
+    let mut cursor = ByteCursor::new(output);
+    cursor.expect_magic(ALIGNMENT_OUTPUT_MAGIC)?;
+    let pair_count = cursor.read_count("alignment result")?;
+    if output.len() as u64 != alignment_output_bound(pair_count)? {
+        return Err("alignment output byte length is inconsistent".into());
+    }
+    let mut pairs = Vec::new();
+    pairs
+        .try_reserve_exact(pair_count)
+        .map_err(|_| "cannot allocate alignment results")?;
+    for _ in 0..pair_count {
+        let rotation = [
+            [cursor.read_f32()?, cursor.read_f32()?, cursor.read_f32()?],
+            [cursor.read_f32()?, cursor.read_f32()?, cursor.read_f32()?],
+            [cursor.read_f32()?, cursor.read_f32()?, cursor.read_f32()?],
+        ];
+        let translation = [cursor.read_f32()?, cursor.read_f32()?, cursor.read_f32()?];
+        let rmsd = cursor.read_f32()?;
+        let shape_overlap = cursor.read_f32()?;
+        let shape_tanimoto = cursor.read_f32()?;
+        let shape_carbo = cursor.read_f32()?;
+        let electrostatic_overlap = cursor.read_f32()?;
+        let electrostatic_carbo = cursor.read_f32()?;
+        let electrostatic_tanimoto = cursor.read_f32()?;
+        let combined_similarity = cursor.read_f32()?;
+        let flags = cursor.read_u32()?;
+        if flags & !0b11 != 0 {
+            return Err("alignment output flags are invalid".into());
+        }
+        pairs.push(MetalAlignmentPairResult {
+            transform: RigidTransform {
+                rotation,
+                translation,
+            },
+            scores: AlignmentScores {
+                rmsd: (flags & 1 != 0).then_some(rmsd),
+                shape_overlap,
+                shape_tanimoto,
+                shape_carbo,
+                electrostatic_overlap,
+                electrostatic_carbo,
+                electrostatic_tanimoto,
+                electrostatic_available: flags & 2 != 0,
+                combined_similarity,
+            },
+        });
+    }
+    Ok(MetalAlignmentExecution {
+        pairs,
+        gpu_time_ms: 0,
+    })
+}
+
+fn alignment_input_bytes(
+    probe_count: usize,
+    reference_count: usize,
+    mapping_count: usize,
+    pair_count: usize,
+) -> Result<u64, String> {
+    ALIGNMENT_INPUT_HEADER_BYTES
+        .checked_add(
+            (probe_count as u64)
+                .checked_add(reference_count as u64)
+                .and_then(|count| count.checked_mul(ALIGNMENT_ATOM_BYTES))
+                .ok_or("alignment atom byte length overflow")?,
+        )
+        .and_then(|value| {
+            value.checked_add((mapping_count as u64).checked_mul(ALIGNMENT_MAPPING_BYTES)?)
+        })
+        .and_then(|value| value.checked_add((pair_count as u64).checked_mul(ALIGNMENT_PAIR_BYTES)?))
+        .filter(|value| *value <= MAX_PACK_BYTES)
+        .ok_or_else(|| "alignment input exceeds the compute exchange bound".into())
+}
+
+fn alignment_output_bound(pair_count: usize) -> Result<u64, String> {
+    ALIGNMENT_OUTPUT_HEADER_BYTES
+        .checked_add(
+            (pair_count as u64)
+                .checked_mul(ALIGNMENT_RESULT_BYTES)
+                .ok_or("alignment output byte length overflow")?,
+        )
+        .filter(|value| *value <= MAX_PACK_BYTES)
+        .ok_or_else(|| "alignment output exceeds the compute exchange bound".into())
+}
+
+fn validate_alignment_pair(
+    pair: &AlignmentPairDescriptor,
+    probe_count: usize,
+    reference_count: usize,
+    mapping_count: usize,
+) -> Result<(), String> {
+    let within = |start: u64, count: u64, total: usize| {
+        start
+            .checked_add(count)
+            .is_some_and(|end| end <= total as u64)
+    };
+    if !within(pair.probe_atom_start, pair.probe_atom_count, probe_count)
+        || !within(
+            pair.reference_atom_start,
+            pair.reference_atom_count,
+            reference_count,
+        )
+        || !within(pair.mapping_start, pair.mapping_count, mapping_count)
+    {
+        return Err("alignment pair range exceeds its input array".into());
+    }
+    Ok(())
 }
 
 fn encode_graph_input(
@@ -785,6 +1132,10 @@ fn push_u64(output: &mut Vec<u8>, value: u64) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
+fn push_f32(output: &mut Vec<u8>, value: f32) {
+    output.extend_from_slice(&value.to_le_bytes());
+}
+
 struct ByteCursor<'a> {
     bytes: &'a [u8],
     offset: usize,
@@ -812,6 +1163,15 @@ impl<'a> ByteCursor<'a> {
 
     fn read_u64(&mut self) -> Result<u64, String> {
         Ok(u64::from_le_bytes(self.read_array()?))
+    }
+
+    fn read_f32(&mut self) -> Result<f32, String> {
+        Ok(f32::from_le_bytes(self.read_array()?))
+    }
+
+    fn read_count(&mut self, label: &str) -> Result<usize, String> {
+        usize::try_from(self.read_u64()?)
+            .map_err(|_| format!("{label} count exceeds this process address space"))
     }
 
     fn read_array<const N: usize>(&mut self) -> Result<[u8; N], String> {
@@ -959,6 +1319,73 @@ mod tests {
     }
 
     #[test]
+    fn alignment_exchange_abi_round_trips_exactly() {
+        let probe_atoms = [AlignmentAtom {
+            position: [1.0, 2.0, 3.0, 0.0],
+            gaussian_exponent: 0.8,
+            gaussian_amplitude: 1.2,
+            partial_charge: -0.3,
+        }];
+        let reference_atoms = [AlignmentAtom {
+            position: [3.0, 2.0, 1.0, 0.0],
+            ..probe_atoms[0]
+        }];
+        let mappings = [AtomMapping {
+            probe_atom: 0,
+            reference_atom: 0,
+            weight: 1.0,
+        }];
+        let descriptors = [AlignmentPairDescriptor {
+            probe_atom_start: 0,
+            probe_atom_count: 1,
+            reference_atom_start: 0,
+            reference_atom_count: 1,
+            mapping_start: 0,
+            mapping_count: 1,
+            mode: AlignmentMode::MappedHorn,
+        }];
+        let encoded = encode_alignment_input(
+            MetalAlignmentBatch {
+                probe_atoms: &probe_atoms,
+                reference_atoms: &reference_atoms,
+                mappings: &mappings,
+                pairs: &descriptors,
+            },
+            8 * 1024 * 1024,
+        )
+        .expect("encode alignment input");
+        let decoded = decode_alignment_input(&encoded).expect("decode alignment input");
+        assert_eq!(decoded.probe_atoms, probe_atoms);
+        assert_eq!(decoded.reference_atoms, reference_atoms);
+        assert_eq!(decoded.mappings, mappings);
+        assert_eq!(decoded.pairs, descriptors);
+        assert_eq!(decoded.max_memory_bytes, 8 * 1024 * 1024);
+
+        let expected = MetalAlignmentExecution {
+            pairs: vec![MetalAlignmentPairResult {
+                transform: RigidTransform::IDENTITY,
+                scores: AlignmentScores {
+                    rmsd: Some(0.25),
+                    shape_overlap: 1.0,
+                    shape_tanimoto: 0.9,
+                    shape_carbo: 0.8,
+                    electrostatic_overlap: -0.5,
+                    electrostatic_carbo: -0.4,
+                    electrostatic_tanimoto: -0.3,
+                    electrostatic_available: true,
+                    combined_similarity: 0.2,
+                },
+            }],
+            gpu_time_ms: 0,
+        };
+        assert_eq!(
+            decode_alignment_output(&encode_alignment_output(&expected).expect("encode output"))
+                .expect("decode output"),
+            expected
+        );
+    }
+
+    #[test]
     fn exchange_descriptor_transfer_preserves_identity_and_contents() {
         let (sender, mut receiver) = UnixStream::pair().expect("socket pair");
         let exchange_id = Uuid::new_v4();
@@ -1002,5 +1429,43 @@ mod tests {
             .expect("execute graph kernel through helper");
         assert_eq!(graph.row_offsets(), &[0, 1, 2, 2]);
         assert_eq!(graph.column_indices(), &[1, 0]);
+
+        let atoms = [
+            AlignmentAtom {
+                position: [0.0, 0.0, 0.0, 0.0],
+                gaussian_exponent: 0.8,
+                gaussian_amplitude: 1.2,
+                partial_charge: 0.3,
+            },
+            AlignmentAtom {
+                position: [1.5, 0.0, 0.0, 0.0],
+                gaussian_exponent: 0.9,
+                gaussian_amplitude: 1.4,
+                partial_charge: -0.2,
+            },
+        ];
+        let descriptors = [AlignmentPairDescriptor {
+            probe_atom_start: 0,
+            probe_atom_count: 2,
+            reference_atom_start: 0,
+            reference_atom_count: 2,
+            mapping_start: 0,
+            mapping_count: 0,
+            mode: AlignmentMode::FixedPose,
+        }];
+        let alignment = client
+            .align_and_score(
+                Uuid::new_v4(),
+                MetalAlignmentBatch {
+                    probe_atoms: &atoms,
+                    reference_atoms: &atoms,
+                    mappings: &[],
+                    pairs: &descriptors,
+                },
+                8 * 1024 * 1024,
+            )
+            .expect("execute alignment kernel through helper");
+        assert!((alignment.pairs[0].scores.shape_tanimoto - 1.0).abs() < 1.0e-5);
+        assert!((alignment.pairs[0].scores.electrostatic_carbo - 1.0).abs() < 1.0e-5);
     }
 }

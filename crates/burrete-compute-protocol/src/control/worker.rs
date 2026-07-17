@@ -168,6 +168,7 @@ impl WorkerExchange {
 #[serde(rename_all = "camelCase")]
 pub enum WorkerOperation {
     TanimotoGraphV1,
+    AlignmentScoreV1,
 }
 
 /// Strict worker-to-coordinator control envelope.
