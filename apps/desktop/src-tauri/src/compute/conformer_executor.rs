@@ -318,6 +318,7 @@ pub(crate) fn execute_conformer_distance_geometry_with_service(
                 let refinement = refine_etk(
                     distance_backend,
                     metal,
+                    compute_service.map(|service| (service, job_id)),
                     &attempt.positions,
                     molecule.atomic_numbers.len() as u32,
                     etk.as_terms(),
@@ -351,6 +352,7 @@ pub(crate) fn execute_conformer_distance_geometry_with_service(
                 let stereo_validation = validate_stereo_attempts(
                     stereo_backend,
                     metal,
+                    compute_service.map(|service| (service, job_id)),
                     &mmff_refinement.positions,
                     molecule.atomic_numbers.len() as u32,
                     &stereo.chiral,
@@ -783,6 +785,7 @@ fn embed(
 fn refine_etk(
     backend: Backend,
     metal: Option<&MetalTanimotoRuntime>,
+    compute_service: Option<(&ComputeServiceClient, Uuid)>,
     positions: &[[f32; 4]],
     atom_count: u32,
     terms: EtkGeometryTerms<'_>,
@@ -800,11 +803,22 @@ fn refine_etk(
     }
     match backend {
         Backend::NativeMetal => {
-            let runtime =
-                metal.ok_or_else(|| unavailable("admitted Metal runtime is unavailable"))?;
-            let optimized = runtime
-                .optimize_etk_profiled(positions, atom_count, terms, options, max_memory_bytes)
-                .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+            let optimized = if let Some((service, job_id)) = compute_service {
+                service.optimize_etk(
+                    job_id,
+                    positions,
+                    atom_count,
+                    terms,
+                    options,
+                    max_memory_bytes,
+                )
+            } else {
+                metal
+                    .ok_or_else(|| unavailable("admitted Metal runtime is unavailable"))?
+                    .optimize_etk_profiled(positions, atom_count, terms, options, max_memory_bytes)
+                    .map_err(|error| error.to_string())
+            }
+            .map_err(ComputeCoordinatorError::Validation)?;
             Ok(RefinementBatch {
                 positions: optimized.positions,
                 energies: optimized.energies,
@@ -920,6 +934,7 @@ fn local_stereo_terms(
 fn validate_stereo_attempts(
     backend: Backend,
     metal: Option<&MetalTanimotoRuntime>,
+    compute_service: Option<(&ComputeServiceClient, Uuid)>,
     positions: &[[f32; 4]],
     atom_count: u32,
     chiral: &[ChiralVolumeConstraint],
@@ -935,17 +950,28 @@ fn validate_stereo_attempts(
     }
     match backend {
         Backend::NativeMetal => {
-            let runtime =
-                metal.ok_or_else(|| unavailable("admitted Metal stereo runtime is unavailable"))?;
-            let validated = runtime
-                .validate_stereo_profiled(
+            let validated = if let Some((service, job_id)) = compute_service {
+                service.validate_stereo(
+                    job_id,
                     positions,
                     atom_count,
                     chiral,
                     tetrahedral,
                     max_memory_bytes,
                 )
-                .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+            } else {
+                metal
+                    .ok_or_else(|| unavailable("admitted Metal stereo runtime is unavailable"))?
+                    .validate_stereo_profiled(
+                        positions,
+                        atom_count,
+                        chiral,
+                        tetrahedral,
+                        max_memory_bytes,
+                    )
+                    .map_err(|error| error.to_string())
+            }
+            .map_err(ComputeCoordinatorError::Validation)?;
             Ok(StereoValidationBatch {
                 failure_flags: validated.failure_flags,
                 gpu_time_ms: Some(validated.gpu_time_ms),
