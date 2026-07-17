@@ -16,15 +16,16 @@ use std::{
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use burrete_compute_core::{
-    AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping, DistanceConstraint,
-    DistanceGeometryOptimizationOptions, Fingerprint2048, GraphBuildOptions, MmffParameters,
-    RigidTransform, Rm1Evaluation, SemiempiricalAtom, SemiempiricalMethod, SemiempiricalMolecule,
-    SemiempiricalScfResult, SemiempiricalScfStatus, SymmetricCsr, FINGERPRINT_BYTES,
+    AlignmentAtom, AlignmentMode, AlignmentScores, AtomMapping, ChiralVolumeConstraint,
+    DistanceConstraint, DistanceGeometryOptimizationOptions, EtkGeometryTerms, Fingerprint2048,
+    GraphBuildOptions, MmffParameters, RigidTransform, Rm1Evaluation, SemiempiricalAtom,
+    SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfResult, SemiempiricalScfStatus,
+    SymmetricCsr, TetrahedralConstraint, FINGERPRINT_BYTES,
 };
 use burrete_compute_metal::{
     AlignmentPairDescriptor, MetalAlignmentBatch, MetalAlignmentExecution,
-    MetalAlignmentPairResult, MetalDistanceEmbedding, MetalMmffOptimization, MetalRuntimeError,
-    MetalTanimotoRuntime,
+    MetalAlignmentPairResult, MetalDistanceEmbedding, MetalDistanceOptimization,
+    MetalMmffOptimization, MetalRuntimeError, MetalStereoValidation, MetalTanimotoRuntime,
 };
 use burrete_compute_protocol::{
     read_frame, write_frame, Backend, CapabilityEntry, CapabilityLimits, CapabilityMaturity,
@@ -39,7 +40,9 @@ use uuid::Uuid;
 
 use super::semiempirical_workflow::evaluate_semiempirical_molecule;
 use super::service_conformer;
+use super::service_etk;
 use super::service_mmff;
+use super::service_stereo;
 
 const SESSION_ENV: &str = "BURRETE_COMPUTE_SESSION_TOKEN";
 const EXCHANGE_FD_ENV: &str = "BURRETE_COMPUTE_EXCHANGE_FD";
@@ -273,6 +276,54 @@ impl ComputeServiceClient {
             max_output_bytes,
         )?;
         service_conformer::decode_distance_output(&output, gpu_time_ms)
+    }
+
+    pub(crate) fn optimize_etk(
+        &self,
+        job_id: Uuid,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        terms: EtkGeometryTerms<'_>,
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalDistanceOptimization, String> {
+        let input =
+            service_etk::encode_input(positions, atom_count, terms, options, max_memory_bytes)?;
+        let max_output_bytes =
+            service_etk::output_bound(positions.len(), positions.len() / atom_count as usize)?;
+        let (output, gpu_time_ms) = self.execute_exchange(
+            job_id,
+            WorkerOperation::ConformerEtkV1,
+            &input,
+            max_output_bytes,
+        )?;
+        service_etk::decode_output(&output, gpu_time_ms)
+    }
+
+    pub(crate) fn validate_stereo(
+        &self,
+        job_id: Uuid,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        chiral: &[ChiralVolumeConstraint],
+        tetrahedral: &[TetrahedralConstraint],
+        max_memory_bytes: u64,
+    ) -> Result<MetalStereoValidation, String> {
+        let input = service_stereo::encode_input(
+            positions,
+            atom_count,
+            chiral,
+            tetrahedral,
+            max_memory_bytes,
+        )?;
+        let max_output_bytes = service_stereo::output_bound(positions.len() / atom_count as usize)?;
+        let (output, gpu_time_ms) = self.execute_exchange(
+            job_id,
+            WorkerOperation::ConformerStereoV1,
+            &input,
+            max_output_bytes,
+        )?;
+        service_stereo::decode_output(&output, gpu_time_ms)
     }
 
     fn execute_exchange(
@@ -664,6 +715,38 @@ fn execute_kernel(
                 .map_err(|error| error.to_string())?;
             (
                 service_conformer::encode_distance_output(&execution, input.atom_count)?,
+                execution.gpu_time_ms,
+            )
+        }
+        WorkerOperation::ConformerEtkV1 => {
+            let input = service_etk::decode_input(&input)?;
+            let execution = runtime
+                .optimize_etk_profiled(
+                    &input.positions,
+                    input.atom_count,
+                    input.terms(),
+                    input.options,
+                    input.max_memory_bytes,
+                )
+                .map_err(|error| error.to_string())?;
+            (
+                service_etk::encode_output(&execution, input.atom_count)?,
+                execution.gpu_time_ms,
+            )
+        }
+        WorkerOperation::ConformerStereoV1 => {
+            let input = service_stereo::decode_input(&input)?;
+            let execution = runtime
+                .validate_stereo_profiled(
+                    &input.positions,
+                    input.atom_count,
+                    &input.chiral,
+                    &input.tetrahedral,
+                    input.max_memory_bytes,
+                )
+                .map_err(|error| error.to_string())?;
+            (
+                service_stereo::encode_output(&execution)?,
                 execution.gpu_time_ms,
             )
         }

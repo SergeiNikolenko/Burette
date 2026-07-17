@@ -172,6 +172,8 @@ pub enum WorkerOperation {
     SemiempiricalScfV1,
     MmffOptimizeV1,
     ConformerDistanceV1,
+    ConformerEtkV1,
+    ConformerStereoV1,
 }
 
 /// Strict worker-to-coordinator control envelope.
