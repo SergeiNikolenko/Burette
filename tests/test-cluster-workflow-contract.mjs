@@ -49,7 +49,12 @@ assert.match(bridge, /body\?\.type !== "clusterMolecules"/);
 assert.match(bridge, /result\.backend === "nativeMetal" \? "Metal GPU" : "reference CPU"/);
 assert.match(gridUi, /id="cluster-molecules"/);
 assert.match(gridViewer, /post\('clusterMolecules'/);
+assert.match(gridViewer, /kind: 'filtered'/);
+assert.match(gridViewer, /columnFilters: remoteTableColumnFilters\(\)/);
+assert.match(gridViewer, /descriptorFilters: mergedDescriptorFilters\(\)/);
 assert.match(gridViewer, /analysisFilters: mergedAnalysisFilters\(\)/);
+assert.match(bridge, /parseClusterFilteredScope\(body\.filteredScope\)/);
+assert.match(workflow, /filteredScope \?\? \{ kind: "all" \}/);
 assert.match(gridViewer, /body\.backend === 'nativeMetal' \? 'Metal GPU' : 'reference CPU'/);
 
 assert.match(computeCommands, /fn compute_export_cluster_representatives/);

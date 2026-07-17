@@ -101,6 +101,20 @@ export type ClusterProgress = {
   job: ComputeJob;
 };
 
+export type ClusterFilteredScope = {
+  kind: "filtered";
+  query: { kind: "text"; text: string };
+  columnFilters: Array<{
+    id: string;
+    filterType: "text" | "number";
+    text?: string;
+    min?: number;
+    max?: number;
+  }>;
+  descriptorFilters: Array<{ id: string; min?: number; max?: number }>;
+  analysisFilters: Array<{ runId: string; valueId: string; min?: number; max?: number }>;
+};
+
 export type ClusterWorkflowResult = ClusterPublicationStep & {
   backend: "nativeMetal" | "referenceCpu";
   clusterCount: number;
@@ -178,6 +192,7 @@ export async function runClusterWorkflow(
   sourceIndexes: number[],
   cutoff: number,
   onProgress: (progress: ClusterProgress) => void,
+  filteredScope: ClusterFilteredScope | null = null,
 ): Promise<ClusterWorkflowResult> {
   const normalizedIndexes = [...new Set(sourceIndexes)]
     .filter((index) => Number.isSafeInteger(index) && index >= 0)
@@ -190,7 +205,7 @@ export async function runClusterWorkflow(
       documentId,
       scope: normalizedIndexes.length > 0
         ? { kind: "selected", sourceIndexes: normalizedIndexes }
-        : { kind: "all" },
+        : filteredScope ?? { kind: "all" },
     },
     parameters: {
       fingerprint: {

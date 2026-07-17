@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  type ClusterFilteredScope,
   computeErrorMessage,
   exportClusterRepresentatives,
   findSimilarMolecules,
@@ -193,6 +194,9 @@ export function useAppGridComputeMessages({
     const sourceIndexes = Array.isArray(body.sourceIndexes)
       ? body.sourceIndexes.filter((value): value is number => Number.isSafeInteger(value) && value >= 0)
       : [];
+    const filteredScope = sourceIndexes.length === 0
+      ? parseClusterFilteredScope(body.filteredScope)
+      : null;
     const cutoff = typeof body.cutoff === "number" ? body.cutoff : 0.7;
     runningDocumentsRef.current.add(documentId);
     postGridComputeMessage(postMessageToViewerSource, source, documentId, {
@@ -202,6 +206,8 @@ export function useAppGridComputeMessages({
     });
     pushStatus(sourceIndexes.length
       ? `Clustering ${sourceIndexes.length.toLocaleString()} selected molecules...`
+      : filteredScope
+      ? "Clustering the current filtered molecule scope..."
       : "Clustering all molecules...");
 
     void runClusterWorkflow(documentId, sourceIndexes, cutoff, (progress) => {
@@ -222,7 +228,7 @@ export function useAppGridComputeMessages({
       } else if (progress.phase === "publishing") {
         pushStatus("Publishing cluster results and updating Grid...");
       }
-    }).then((result) => {
+    }, filteredScope).then((result) => {
       const backendLabel = result.backend === "nativeMetal" ? "Metal GPU" : "reference CPU";
       postGridComputeMessage(postMessageToViewerSource, source, documentId, {
         type: "gridClusterFinished",
@@ -252,6 +258,25 @@ export function useAppGridComputeMessages({
   }, [postMessageToViewerSource, pushStatus]);
 
   return { handleGridComputeMessage };
+}
+
+function parseClusterFilteredScope(value: unknown): ClusterFilteredScope | null {
+  if (!value || typeof value !== "object") return null;
+  const scope = value as Record<string, unknown>;
+  const query = scope.query;
+  if (
+    scope.kind !== "filtered"
+    || !query
+    || typeof query !== "object"
+    || (query as Record<string, unknown>).kind !== "text"
+    || typeof (query as Record<string, unknown>).text !== "string"
+    || !Array.isArray(scope.columnFilters)
+    || !Array.isArray(scope.descriptorFilters)
+    || !Array.isArray(scope.analysisFilters)
+  ) {
+    return null;
+  }
+  return value as ClusterFilteredScope;
 }
 
 function postGridComputeMessage(
