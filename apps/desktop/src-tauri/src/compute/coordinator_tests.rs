@@ -5,8 +5,8 @@ use burrete_compute_protocol::{
     ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant, EnginePackManifest,
     ExecutionPolicy, FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
     GridSourceReference, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
-    ResultPackManifest, SchedulingPolicy, SimilarityCutoff, SimilaritySettings, StageState,
-    CONFORMER_RESULT_V2_ARRAY_NAMES, MIN_COMPUTE_MEMORY_BYTES,
+    ResultPackManifest, ResultPackVersion, SchedulingPolicy, SimilarityCutoff, SimilaritySettings,
+    StageState, CONFORMER_RESULT_V2_ARRAY_NAMES, MIN_COMPUTE_MEMORY_BYTES,
 };
 
 use crate::compute::similarity_search::SimilaritySearchRequest;
@@ -32,6 +32,79 @@ fn helper_attestation_is_a_real_sha256_digest() {
     let hash = current_executable_sha256().expect("hash current test executable");
     assert_eq!(hash.len(), 64);
     assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
+}
+
+#[test]
+fn semiempirical_grid_workflow_publishes_a_durable_cpu_fallback_artifact() {
+    let fixture_id = Uuid::new_v4();
+    let temp_root = std::fs::canonicalize(std::env::temp_dir()).expect("canonical temp root");
+    let compute_root = temp_root.join(format!("burrete-semi-durable-{fixture_id}"));
+    let grid_root = temp_root.join(format!("burrete-semi-grid-{fixture_id}"));
+    std::fs::create_dir_all(&grid_root).expect("create Grid fixture directory");
+    let record = b"water\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9584    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2396    0.9275    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END\n$$$$\n";
+    let sdf = [record.as_slice(), record.as_slice()].concat();
+    let handle = build_grid_store(&grid_root, "sdf", &sdf)
+        .expect("build Grid fixture")
+        .expect("SDF fixture is supported");
+    let registry = GridRuntimeRegistry::default();
+    registry
+        .register(
+            "main:semi-durable",
+            handle.database_path,
+            "sdf",
+            handle.cancel_token,
+        )
+        .expect("register Grid fixture");
+    let viewer_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../PreviewExtension/Web");
+    let coordinator = ComputeCoordinator::initialize(compute_root.clone(), None, Some(viewer_root));
+    let result = coordinator
+        .evaluate_grid_semiempirical(
+            "main",
+            &GridSemiempiricalRequest {
+                document_id: "semi-durable".into(),
+                source_indexes: vec![0],
+                method: "RM1".into(),
+            },
+            registry
+                .acquire_snapshot_lease("main:semi-durable")
+                .expect("lease Grid fixture"),
+        )
+        .expect("run durable semiempirical workflow");
+    assert_eq!(result.backend, "nativeCpuReference");
+    assert_eq!(result.rows.len(), 1);
+    assert!(result.grid_applied, "{:?}", result.grid_warning);
+    let job = coordinator
+        .get_job("main", result.run_id)
+        .expect("read durable analysis job");
+    assert_eq!(job.workflow_template, WorkflowTemplateId::SemiempiricalV1);
+    assert_eq!(job.state, JobState::Succeeded);
+    assert_eq!(job.stages[2].effective_backend, Backend::ReferenceCpu);
+    assert!(job.stages[2].fallback.is_some());
+    let artifact_id = *job.artifact_ids.first().expect("published artifact ID");
+    assert_eq!(result.artifact_id, Some(artifact_id));
+    let manifest = coordinator
+        .get_artifact_manifest("main", artifact_id)
+        .expect("read durable analysis artifact");
+    assert_eq!(
+        manifest.result_pack.schema_version,
+        ResultPackVersion::SemiempiricalV1
+    );
+    assert_eq!(
+        result.artifact_manifest_sha256.as_deref(),
+        Some(
+            artifact_manifest_sha256(&manifest)
+                .expect("hash durable artifact")
+                .as_str()
+        )
+    );
+    assert_eq!(
+        manifest.result_pack.result_pack_id,
+        job.result_pack.unwrap().result_pack_id
+    );
+    drop(coordinator);
+    std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
+    std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
 }
 
 #[test]
