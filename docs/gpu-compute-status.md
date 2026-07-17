@@ -354,7 +354,7 @@ A public artifact/report inspector remains a separate product increment.
 
 ## Validation Completed In This Slice
 
-- 96 focused desktop compute tests pass, including the real Grid-to-artifact
+- 99 focused desktop compute tests pass, including the real Grid-to-artifact
   workflows, durable alignment/semiempirical artifacts, helper exchange ABI,
   and representative export before and after coordinator restart. Five manual
   real-GPU tests are kept ignored by default.
