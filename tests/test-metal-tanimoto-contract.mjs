@@ -288,7 +288,7 @@ if (metalLookup.status === 0 && metallibLookup.status === 0) {
     assert.ok(existsSync(resolve(generation, "conformer-optimize.v1.air")));
     assert.ok(existsSync(resolve(generation, "mmff-energy.v1.air")));
     assert.ok(existsSync(resolve(generation, "alignment-score.v1.air")));
-    assert.ok(existsSync(resolve(generation, "native-compute.v11.metallib")));
+    assert.ok(existsSync(resolve(generation, "native-compute.v20.metallib")));
     const metadataHash = createHash("sha256").update(readFileSync(metadataPath)).digest("hex");
     assert.equal(metadataHash, pointer.metadataSha256);
   } finally {
@@ -379,6 +379,13 @@ try {
         ETK_OPTIMIZER_SOURCE_SHA256: fakeHash,
         MMFF_SOURCE_SHA256: fakeHash,
         ALIGNMENT_SOURCE_SHA256: fakeHash,
+        RM1_FOCK_SOURCE_SHA256: fakeHash,
+        RM1_EIGEN_SOURCE_SHA256: fakeHash,
+        RM1_PAIR_ROTATE_SOURCE_SHA256: fakeHash,
+        PM6_H4_HH_SOURCE_SHA256: fakeHash,
+        PM6_D3_SOURCE_SHA256: fakeHash,
+        PM6_ONE_CENTER_FOCK_SOURCE_SHA256: fakeHash,
+        PM6_PAIR_FOCK_SOURCE_SHA256: fakeHash,
         TANIMOTO_CONTRACT_SHA256: fakeHash,
         CONFORMER_CONTRACT_SHA256: fakeHash,
         DISTANCE_CONTRACT_SHA256: fakeHash,
@@ -388,6 +395,13 @@ try {
         ETK_OPTIMIZER_CONTRACT_SHA256: fakeHash,
         MMFF_CONTRACT_SHA256: fakeHash,
         ALIGNMENT_CONTRACT_SHA256: fakeHash,
+        RM1_FOCK_CONTRACT_SHA256: fakeHash,
+        RM1_EIGEN_CONTRACT_SHA256: fakeHash,
+        RM1_PAIR_ROTATE_CONTRACT_SHA256: fakeHash,
+        PM6_H4_HH_CONTRACT_SHA256: fakeHash,
+        PM6_D3_CONTRACT_SHA256: fakeHash,
+        PM6_ONE_CENTER_FOCK_CONTRACT_SHA256: fakeHash,
+        PM6_PAIR_FOCK_CONTRACT_SHA256: fakeHash,
         TANIMOTO_AIR_SHA256: fakeHash,
         CONFORMER_AIR_SHA256: fakeHash,
         DISTANCE_AIR_SHA256: fakeHash,
@@ -397,6 +411,13 @@ try {
         ETK_OPTIMIZER_AIR_SHA256: fakeHash,
         MMFF_AIR_SHA256: fakeHash,
         ALIGNMENT_AIR_SHA256: fakeHash,
+        RM1_FOCK_AIR_SHA256: fakeHash,
+        RM1_EIGEN_AIR_SHA256: fakeHash,
+        RM1_PAIR_ROTATE_AIR_SHA256: fakeHash,
+        PM6_H4_HH_AIR_SHA256: fakeHash,
+        PM6_D3_AIR_SHA256: fakeHash,
+        PM6_ONE_CENTER_FOCK_AIR_SHA256: fakeHash,
+        PM6_PAIR_FOCK_AIR_SHA256: fakeHash,
         METALLIB_SHA256: fakeHash,
         METAL_TOOL_PATH: "/toolchain/metal",
         METAL_TOOL_SHA256: fakeHash,
@@ -411,7 +432,7 @@ try {
   );
   assert.equal(metadataRun.status, 0, metadataRun.stderr);
   const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
-  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v11");
+  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v20");
   assert.equal(metadata.sources[0].sha256, fakeHash);
   assert.equal(metadata.sources[1].sha256, fakeHash);
   assert.equal(metadata.sources[2].sha256, fakeHash);
@@ -428,6 +449,13 @@ try {
     "burrete_conformer_etk_optimize_v1",
     ...mmffContract.entrypoints,
     alignmentContract.kernel,
+    "burrete_rm1_pair_fock_v1",
+    "burrete_rm1_symmetric_eigen_v1",
+    "burrete_rm1_pair_rotate_v1",
+    "burrete_pm6_h4_hh_v1",
+    "burrete_pm6_d3_v2",
+    "burrete_pm6_one_center_fock_v1",
+    "burrete_pm6_pair_fock_v1",
   ]);
 } finally {
   rmSync(metadataDirectory, { recursive: true, force: true });
