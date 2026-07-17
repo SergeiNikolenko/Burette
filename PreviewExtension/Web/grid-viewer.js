@@ -151,6 +151,9 @@
     findingSimilar: false,
     exportingClusterRepresentatives: false,
     clusterCutoff: storedClusterCutoff(),
+    computeBackend: 'checking',
+    computeBackendLabel: 'Checking compute...',
+    computeBackendReason: 'Verifying the packaged helper, Metal library, and Apple GPU.',
     tableMoleculePreview: null,
     railDragging: false,
     pendingGridScrollIndex: null,
@@ -262,7 +265,6 @@
       setStatusText(String(message || ''));
       status.classList.toggle('error', kind === 'error');
       status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
-      if (kind === 'error' && status && !window.BurreteDebug && cfg.appViewer === true) status.classList.add('hidden');
     }
     if (kind === 'error' || window.BurreteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
   }
@@ -310,6 +312,44 @@
     };
   }
 
+  function applyComputeCapabilityReport(report, cfg) {
+    const capabilityList = Array.isArray(report?.capabilities) ? report.capabilities : [];
+    const nativeMetalReady = capabilityList.some(capability => (
+      capability?.available === true && capability?.backend === 'nativeMetal'
+    ));
+    const reasons = Array.isArray(report?.reasons) ? report.reasons : [];
+    const reason = reasons.map(item => String(item?.message || '').trim()).filter(Boolean).join(' ');
+    const fatal = reasons.some(item => ['RuntimeIntegrityError', 'ProtocolMismatch'].includes(String(item?.code || '')));
+    if (nativeMetalReady) {
+      const deviceName = String(report?.device?.name || 'Apple GPU').trim();
+      state.computeBackend = 'metal';
+      state.computeBackendLabel = 'Metal ready';
+      state.computeBackendReason = `${deviceName}; packaged helper and Metal library verified.`;
+    } else if (!fatal && report && typeof report === 'object') {
+      state.computeBackend = 'cpu';
+      state.computeBackendLabel = 'CPU fallback';
+      state.computeBackendReason = reason || 'Metal is unavailable; supported workflows will use the reference CPU backend.';
+    } else {
+      state.computeBackend = 'unavailable';
+      state.computeBackendLabel = 'Compute unavailable';
+      state.computeBackendReason = reason || 'The native compute runtime failed its integrity or protocol check.';
+    }
+    refreshGridControls(cfg);
+  }
+
+  function requestComputeCapabilities(cfg) {
+    if (cfg.appViewer !== true || cfg.gridDataMode !== 'bridge') {
+      state.computeBackend = 'unavailable';
+      state.computeBackendLabel = 'Desktop compute unavailable';
+      state.computeBackendReason = 'Open this collection in the Burrete desktop app to run native compute workflows.';
+      refreshGridControls(cfg);
+      return;
+    }
+    post('requestComputeCapabilities', '[grid] Check native compute capabilities.', {
+      documentId: cfg.documentId || null
+    });
+  }
+
   function rowHasMolecule(row) {
     return !!String(row?.smiles || '').trim() || !!String(row?.molblock || '').trim();
   }
@@ -328,6 +368,18 @@
       const data = event.data;
       if (!data || (data.source !== 'burrete-grid-host' && data.source !== 'burrete-host')) return;
       const body = data.body || {};
+      if (body.type === 'gridComputeCapabilities') {
+        applyComputeCapabilityReport(body.report, config());
+        return;
+      }
+      if (body.type === 'gridComputeCapabilitiesError') {
+        state.computeBackend = 'unavailable';
+        state.computeBackendLabel = 'Compute unavailable';
+        state.computeBackendReason = String(body.error || 'Compute capability check failed.');
+        refreshGridControls(config());
+        setStatus(`[grid] ${state.computeBackendReason}`, 'error');
+        return;
+      }
       if (body.type === 'workspaceHistoryCommand') {
         const direction = body.direction === 'redo' ? 'redo' : 'undo';
         let handled = false;
@@ -976,6 +1028,9 @@
       clusterRepresentativesAvailable: Boolean(latestRepresentativeAnalysisColumn()),
       similarityQuerySelected: state.selected.size === 1,
       clusterCutoff: state.clusterCutoff,
+      computeBackend: state.computeBackend,
+      computeBackendLabel: state.computeBackendLabel,
+      computeBackendReason: state.computeBackendReason,
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
         setUnifiedSearchQuery(value || '', cfg);
@@ -1771,7 +1826,8 @@
     const total = state.remoteMode
       ? (state.recordsTotalHint || state.recordsIndexed || state.totalRows)
       : state.all.length;
-    const unavailable = state.clustering || state.findingSimilar || state.indexing || total === 0;
+    const computeUnavailable = state.computeBackend === 'checking' || state.computeBackend === 'unavailable';
+    const unavailable = computeUnavailable || state.clustering || state.findingSimilar || state.indexing || total === 0;
     if (button) {
       button.disabled = unavailable;
       button.setAttribute('aria-busy', state.clustering ? 'true' : 'false');
@@ -1812,7 +1868,7 @@
     }
     if (exportButton) {
       const available = Boolean(latestRepresentativeAnalysisColumn());
-      exportButton.disabled = state.clustering || state.exportingClusterRepresentatives || !available;
+      exportButton.disabled = computeUnavailable || state.clustering || state.exportingClusterRepresentatives || !available;
       exportButton.setAttribute('aria-busy', state.exportingClusterRepresentatives ? 'true' : 'false');
       exportButton.title = state.exportingClusterRepresentatives
         ? 'Representative export is running'
@@ -1827,7 +1883,7 @@
   function syncGridGenerate3DControls() {
     const button = document.getElementById('generate-3d-selected');
     if (button) {
-      button.disabled = state.generating3d || state.selected.size === 0;
+      button.disabled = state.computeBackend === 'checking' || state.computeBackend === 'unavailable' || state.generating3d || state.selected.size === 0;
       button.classList.toggle('generating', state.generating3d);
       button.title = state.generating3d
         ? '3D generation is running'
@@ -6219,6 +6275,7 @@
       normalizeCardRenderer(cfg);
       normalizeGridViewMode(cfg);
       buildUI(cfg);
+      requestComputeCapabilities(cfg);
       refresh(cfg);
       try {
         await initRDKit();

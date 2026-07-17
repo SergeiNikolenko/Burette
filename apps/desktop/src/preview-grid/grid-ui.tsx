@@ -41,6 +41,9 @@ type GridControlProps = {
   clusterRepresentativesAvailable: boolean;
   similarityQuerySelected: boolean;
   clusterCutoff: number;
+  computeBackend: "checking" | "metal" | "cpu" | "unavailable";
+  computeBackendLabel: string;
+  computeBackendReason: string;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
   onSortChange: (value: string) => void;
@@ -255,6 +258,7 @@ function ClusterControls(props: GridControlProps) {
         id="cluster-molecules"
         className="buret-toggle-button buret-cluster-button"
         type="button"
+        disabled={props.computeBackend === "checking" || props.computeBackend === "unavailable"}
         aria-busy={props.clustering ? "true" : "false"}
         onClick={props.onCluster}
       >
@@ -321,11 +325,11 @@ function SelectedOpenActions(props: GridControlProps) {
         <option value="MMFF94">MMFF94</option>
         <option value="MMFF94s">MMFF94s</option>
       </select>
-      <button id="generate-3d-selected" className="buret-toggle-button" type="button" disabled={props.generating3d} onClick={props.onGenerate3D}>
+      <button id="generate-3d-selected" className="buret-toggle-button" type="button" disabled={props.generating3d || props.computeBackend === "checking" || props.computeBackend === "unavailable"} onClick={props.onGenerate3D}>
         <span data-buret-grid-generate-3d-label>{props.generating3d ? "Generating..." : "Generate 3D"}</span>
         <ControlTooltip label="Generate and selected-MMFF-optimize conformers for selected molecules" />
       </button>
-      <button id="optimize-geometry-selected" className="buret-toggle-button" type="button" disabled={props.generating3d} onClick={props.onOptimizeGeometry}>
+      <button id="optimize-geometry-selected" className="buret-toggle-button" type="button" disabled={props.generating3d || props.computeBackend === "checking" || props.computeBackend === "unavailable"} onClick={props.onOptimizeGeometry}>
         <span data-buret-grid-optimize-geometry-label>{props.generating3d ? "Working..." : "Optimize geometry"}</span>
         <ControlTooltip label="Optimize selected input 3D coordinates with the chosen MMFF variant on Metal" />
       </button>
@@ -404,6 +408,16 @@ function GridControls(props: GridControlProps) {
           <h1>{props.label || "Molecule collection"}</h1>
           <div id="summary" className="buret-summary" />
         </div>
+        <div className="buret-grid-header-actions">
+          <div
+            className={`buret-compute-status buret-compute-status-${props.computeBackend}`}
+            role="status"
+            title={props.computeBackendReason}
+            data-buret-compute-status={props.computeBackend}
+          >
+            <span aria-hidden="true" />
+            {props.computeBackendLabel}
+          </div>
         <div className="buret-actions" hidden={!props.exportEnabled}>
           <button id="copy-selected" type="button" onClick={props.onCopySelected}>
             Copy selected
@@ -429,6 +443,7 @@ function GridControls(props: GridControlProps) {
             Export CSV
             <ControlTooltip label="Export visible table data as CSV" />
           </button>
+        </div>
         </div>
       </header>
       <div className="buret-grid-toolbar">

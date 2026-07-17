@@ -5,6 +5,7 @@ import { conformerGenerationPreferences, generated3DPoseSetText, type ConformerG
 import { pathExtension } from "../lib/file-routing";
 import { isTauriRuntime } from "../lib/tauri";
 import { runConformerWorkflow, type ConformerVariant, type MmffVariant } from "../lib/compute-conformer";
+import { normalizeAppError } from "../lib/app-error";
 import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 import type { ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
@@ -125,7 +126,7 @@ export function useAppGridConformerMessages({
           backend: result.backend,
         });
       }).catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = normalizeAppError(error, `Grid ${method.replace("_STAR", "*")} evaluation failed.`);
         reply("gridSemiempiricalError", { error: message });
         pushErrorStatus(error, `Grid ${method.replace("_STAR", "*")} evaluation failed`);
       });
@@ -183,7 +184,7 @@ export function useAppGridConformerMessages({
           backend: result.backend,
         });
       })().catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = normalizeAppError(error, "Grid pose alignment failed.");
         reply("gridAlignmentError", { error: message });
         pushErrorStatus(error, "Grid pose alignment failed");
       });
@@ -281,7 +282,7 @@ export function useAppGridConformerMessages({
             : await generateBrowserDev3DConformer(request);
           generatedTexts.push(generated3DPoseSetText(text, extension, conformer.text, "single").trimEnd());
         } catch (error) {
-          errors.push(`${itemTitle}: ${error instanceof Error ? error.message : String(error)}`);
+          errors.push(`${itemTitle}: ${normalizeAppError(error, "3D generation failed.")}`);
         }
       }
       if (!generatedTexts.length) {
@@ -308,7 +309,7 @@ export function useAppGridConformerMessages({
       pushStatus(`Generated 3D for ${generatedTexts.length} molecule${generatedTexts.length === 1 ? "" : "s"} and opened it in Molstar.${suffix}`);
     })()
       .catch((error) => {
-        reply("gridGenerate3DError", { error: error instanceof Error ? error.message : String(error) });
+        reply("gridGenerate3DError", { error: normalizeAppError(error, "Grid 3D generation failed.") });
         pushErrorStatus(error, "Grid 3D generation failed");
       })
       .finally(() => reply("gridGenerate3DFinished"));

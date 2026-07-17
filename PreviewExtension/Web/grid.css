@@ -185,6 +185,40 @@ button:disabled {
   font-weight: 400;
 }
 
+.buret-grid-header-actions {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.buret-compute-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--buret-muted);
+  background: var(--buret-control-surface);
+  font: 500 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+.buret-compute-status > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.buret-compute-status-metal { color: #45c97a; }
+.buret-compute-status-cpu { color: #e6ad4c; }
+.buret-compute-status-unavailable { color: #ef6a67; }
+.buret-compute-status-checking > span { animation: buret-compute-pulse 1s ease-in-out infinite; }
+
+@keyframes buret-compute-pulse {
+  50% { opacity: 0.35; }
+}
+
 .buret-eyebrow {
   color: var(--buret-accent);
   font-size: 11px;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { normalizeAppError } from "../apps/desktop/src/lib/app-error.ts";
 
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -48,6 +49,13 @@ assert.match(worker, /fingerprint\.byteLength !== expectedBytes/);
 assert.match(worker, /PreviewExtension\/Web\/rdkit\/RDKit_minimal\.wasm/);
 
 assert.match(bridge, /body\?\.type !== "clusterMolecules"/);
+assert.match(bridge, /body\?\.type === "requestComputeCapabilities"/);
+assert.match(bridge, /invoke<ComputeCapabilityReport>\("compute_capabilities"\)/);
+assert.match(gridViewer, /post\('requestComputeCapabilities'/);
+assert.match(gridViewer, /state\.computeBackendLabel = 'Metal ready'/);
+assert.match(gridViewer, /state\.computeBackendLabel = 'CPU fallback'/);
+assert.match(gridViewer, /state\.computeBackendLabel = 'Compute unavailable'/);
+assert.match(gridUi, /data-buret-compute-status/);
 assert.match(bridge, /result\.backend === "nativeMetal" \? "Metal GPU" : "reference CPU"/);
 assert.match(bridge, /openTextDocuments\(\[result\.reportPath\], \{ background: true \}\)/);
 assert.match(gridUi, /id="cluster-molecules"/);
@@ -105,5 +113,17 @@ assert.match(representativeExport, /provenance\.json/);
 assert.match(representativeExport, /renameat_with\(/);
 assert.match(representativeExport, /RenameFlags::NOREPLACE/);
 assert.match(representativeExport, /table_only_record_count/);
+
+assert.equal(
+  normalizeAppError({ code: "ComputeUnavailable", message: "Metal runtime is missing" }),
+  "Metal runtime is missing (ComputeUnavailable)",
+);
+assert.equal(
+  normalizeAppError('{"code":"ProtocolMismatch","message":"Helper protocol is incompatible"}'),
+  "Helper protocol is incompatible (ProtocolMismatch)",
+);
+assert.equal(normalizeAppError({ error: { message: "nested Tauri failure" } }), "nested Tauri failure");
+assert.notEqual(normalizeAppError({ message: "visible" }), "[object Object]");
+assert.equal(normalizeAppError("[object Object]", "Readable failure"), "Readable failure");
 
 console.log("cluster workflow contract tests passed");

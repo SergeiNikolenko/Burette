@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { StatusKind, StatusNotice } from "../components/types";
+import { normalizeAppError } from "../lib/app-error";
 
 export type RecentStatusError = {
   message: string;
@@ -34,7 +35,7 @@ export function useAppStatus() {
   }, []);
 
   const pushErrorStatus = useCallback((error: unknown, prefix?: string, details: string[] = []) => {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = normalizeAppError(error);
     pushStatus(prefix ? `${prefix}: ${message}` : message, "error", details.length > 0 ? details : [message]);
   }, [pushStatus]);
 

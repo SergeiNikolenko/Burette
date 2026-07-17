@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   type ClusterFilteredScope,
@@ -9,6 +10,7 @@ import {
   runClusterWorkflow,
 } from "../lib/compute-cluster";
 import { isTauriRuntime } from "../lib/tauri";
+import { normalizeAppError } from "../lib/app-error";
 import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
 
 type GridComputeMessageBody = Record<string, unknown> | null | undefined;
@@ -25,6 +27,14 @@ type ActiveClusterRun = {
   jobId: string | null;
 };
 
+type ComputeCapabilityReport = {
+  availability: "available" | "degraded" | "unavailable";
+  device?: { name?: string; unifiedMemory?: boolean } | null;
+  runtime?: { version?: string; metallibSha256?: string | null } | null;
+  capabilities?: Array<{ backend?: string; available?: boolean }>;
+  reasons?: Array<{ code?: string; message?: string }>;
+};
+
 export function useAppGridComputeMessages({
   openTextDocuments,
   postMessageToViewerSource,
@@ -39,6 +49,31 @@ export function useAppGridComputeMessages({
     body: GridComputeMessageBody,
     source: MessageEventSource | null,
   ) => {
+    if (body?.type === "requestComputeCapabilities") {
+      const documentId = typeof body.documentId === "string" ? body.documentId.trim() : "";
+      if (!documentId) return true;
+      if (!isTauriRuntime()) {
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridComputeCapabilitiesError",
+          error: "Native compute is available only in the Burrete desktop runtime.",
+        });
+        return true;
+      }
+      void invoke<ComputeCapabilityReport>("compute_capabilities").then((report) => {
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridComputeCapabilities",
+          report,
+        });
+      }).catch((error) => {
+        const message = normalizeAppError(error, "Compute capability check failed.");
+        postGridComputeMessage(postMessageToViewerSource, source, documentId, {
+          type: "gridComputeCapabilitiesError",
+          error: message,
+        });
+        pushStatus(`Compute capability check failed: ${message}`, "error");
+      });
+      return true;
+    }
     if (body?.type === "cancelClusterMolecules") {
       const documentId = typeof body.documentId === "string" ? body.documentId.trim() : "";
       if (!documentId) return true;

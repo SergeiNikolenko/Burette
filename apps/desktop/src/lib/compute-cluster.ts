@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { normalizeAppError } from "./app-error";
 
 const FINGERPRINT_WORKER_TIMEOUT_MS = 120_000;
 
@@ -324,11 +325,7 @@ export async function runClusterWorkflow(
 }
 
 export function computeErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message;
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
-    return error.message;
-  }
-  return String(error || "Native clustering failed.");
+  return normalizeAppError(error, "Native clustering failed.");
 }
 
 function similarityCutoff(value: number) {

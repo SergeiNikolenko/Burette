@@ -37,27 +37,29 @@ pub fn run() {
         .manage(DescriptorGridJobRegistry::default())
         .manage(startup::PendingOpenDocuments::default())
         .setup(|app| {
-            let compute_coordinator = app
-                .path()
-                .app_data_dir()
-                .map(|app_data| {
-                    let resource_root = app.path().resource_dir().ok();
-                    let metal_runtime_root =
-                        resource_root.as_ref().map(|root| root.join("ComputeMetal"));
-                    let viewer_runtime_root =
-                        resource_root.as_ref().map(|root| root.join("ViewerWeb"));
-                    compute::coordinator::ComputeCoordinator::initialize_with_service(
-                        app_data.join("compute"),
-                        metal_runtime_root,
-                        viewer_runtime_root,
-                        packaged_compute_service_path(),
-                    )
-                })
-                .unwrap_or_else(|error| {
-                    compute::coordinator::ComputeCoordinator::unavailable(format!(
-                        "compute app-data directory is unavailable: {error}"
-                    ))
-                });
+            let compute_coordinator = match app.path().app_data_dir() {
+                Ok(app_data) => match std::fs::create_dir_all(&app_data) {
+                    Ok(()) => {
+                        let resource_root = app.path().resource_dir().ok();
+                        let metal_runtime_root =
+                            resource_root.as_ref().map(|root| root.join("ComputeMetal"));
+                        let viewer_runtime_root =
+                            resource_root.as_ref().map(|root| root.join("ViewerWeb"));
+                        compute::coordinator::ComputeCoordinator::initialize_with_service(
+                            app_data.join("compute"),
+                            metal_runtime_root,
+                            viewer_runtime_root,
+                            packaged_compute_service_path(),
+                        )
+                    }
+                    Err(error) => compute::coordinator::ComputeCoordinator::unavailable(format!(
+                        "compute app-data directory cannot be created: {error}"
+                    )),
+                },
+                Err(error) => compute::coordinator::ComputeCoordinator::unavailable(format!(
+                    "compute app-data directory is unavailable: {error}"
+                )),
+            };
             app.manage(compute_coordinator);
             let argv: Vec<String> = std::env::args().collect();
             let launch_mode = startup::LaunchMode::current(&argv);
