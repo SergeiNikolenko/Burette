@@ -44,6 +44,27 @@ pub const CONFORMER_RESULT_V2_ARRAY_NAMES: [&str; 14] = [
     "stereoFailureFlags",
 ];
 
+pub const ALIGNMENT_RESULT_ARRAY_NAMES: [&str; 7] = [
+    "combinedSimilarities",
+    "electrostaticCarboScores",
+    "isReferences",
+    "rmsdValues",
+    "shapeTanimotoScores",
+    "sourceRecordIds",
+    "transforms",
+];
+
+pub const SEMIEMPIRICAL_RESULT_ARRAY_NAMES: [&str; 8] = [
+    "atomicCharges",
+    "chargeStarts",
+    "converged",
+    "electronicEnergies",
+    "iterations",
+    "nuclearEnergies",
+    "sourceRecordIds",
+    "totalEnergies",
+];
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResultPackManifest {
@@ -66,15 +87,24 @@ impl ResultPackManifest {
         validate_sha256("result pack", &self.result_pack_sha256)?;
         self.molecular_snapshot.validate()?;
         validate_json_safe("result pack creation time", self.created_at_ms)?;
-        if self.engine_packs.is_empty() || self.engine_packs.len() > MAX_ENGINE_PACK_REFS {
+        let allows_snapshot_only_results = matches!(
+            self.workflow_template,
+            WorkflowTemplateId::AlignmentV1 | WorkflowTemplateId::SemiempiricalV1
+        );
+        if (!allows_snapshot_only_results && self.engine_packs.is_empty())
+            || self.engine_packs.len() > MAX_ENGINE_PACK_REFS
+        {
             return Err(ProtocolError::Validation(format!(
                 "result pack requires 1..={MAX_ENGINE_PACK_REFS} engine pack references"
             )));
         }
         let reserved_paths = self.validate_engine_refs()?;
         self.layout.validate()?;
-        if self.workflow_template == WorkflowTemplateId::ConformerV1 {
-            self.validate_conformer_layout()?;
+        match self.workflow_template {
+            WorkflowTemplateId::AlignmentV1 => self.validate_alignment_layout()?,
+            WorkflowTemplateId::ConformerV1 => self.validate_conformer_layout()?,
+            WorkflowTemplateId::SemiempiricalV1 => self.validate_semiempirical_layout()?,
+            WorkflowTemplateId::ClusterV1 | WorkflowTemplateId::SimilaritySearchV1 => {}
         }
         for path in reserved_paths {
             self.layout.reject_file_path(path, "referenced manifest")?;
@@ -86,7 +116,11 @@ impl ResultPackManifest {
         let expected = match self.schema_version {
             ResultPackVersion::ConformerV1 => CONFORMER_RESULT_ARRAY_NAMES.as_slice(),
             ResultPackVersion::ConformerV2 => CONFORMER_RESULT_V2_ARRAY_NAMES.as_slice(),
-            ResultPackVersion::ClusterV1 => unreachable!("validated conformer workflow"),
+            ResultPackVersion::AlignmentV1
+            | ResultPackVersion::ClusterV1
+            | ResultPackVersion::SemiempiricalV1 => {
+                unreachable!("validated conformer workflow")
+            }
         };
         if self.layout.arrays.len() != expected.len()
             || self
@@ -217,6 +251,33 @@ impl ResultPackManifest {
             PackedDType::U32,
             &[conformers],
         )
+    }
+
+    fn validate_alignment_layout(&self) -> Result<(), ProtocolError> {
+        require_exact_array_names(self, &ALIGNMENT_RESULT_ARRAY_NAMES, "alignment")?;
+        let records = first_dimension(self.array("sourceRecordIds")?)?;
+        require_array(self.array("sourceRecordIds")?, "source_record_id", None, PackedDType::U64, &[records])?;
+        require_array(self.array("isReferences")?, "alignment_reference", None, PackedDType::Bool8, &[records])?;
+        require_array(self.array("rmsdValues")?, "rmsd", Some("angstrom"), PackedDType::F32, &[records])?;
+        require_array(self.array("shapeTanimotoScores")?, "shape_tanimoto", None, PackedDType::F32, &[records])?;
+        require_array(self.array("electrostaticCarboScores")?, "electrostatic_carbo", None, PackedDType::F32, &[records])?;
+        require_array(self.array("combinedSimilarities")?, "combined_similarity", None, PackedDType::F32, &[records])?;
+        require_array(self.array("transforms")?, "rigid_transform_4x4", None, PackedDType::F32, &[records, 16])
+    }
+
+    fn validate_semiempirical_layout(&self) -> Result<(), ProtocolError> {
+        require_exact_array_names(self, &SEMIEMPIRICAL_RESULT_ARRAY_NAMES, "semiempirical")?;
+        let records = first_dimension(self.array("sourceRecordIds")?)?;
+        let starts = records.checked_add(1).ok_or_else(|| ProtocolError::Validation("semiempirical result count overflowed".into()))?;
+        let charges = first_dimension(self.array("atomicCharges")?)?;
+        require_array(self.array("sourceRecordIds")?, "source_record_id", None, PackedDType::U64, &[records])?;
+        require_array(self.array("electronicEnergies")?, "electronic_energy", Some("eV"), PackedDType::F64, &[records])?;
+        require_array(self.array("nuclearEnergies")?, "nuclear_energy", Some("eV"), PackedDType::F64, &[records])?;
+        require_array(self.array("totalEnergies")?, "total_energy", Some("eV"), PackedDType::F64, &[records])?;
+        require_array(self.array("converged")?, "scf_converged", None, PackedDType::Bool8, &[records])?;
+        require_array(self.array("iterations")?, "scf_iterations", None, PackedDType::U32, &[records])?;
+        require_array(self.array("chargeStarts")?, "atomic_charge_offsets", None, PackedDType::U64, &[starts])?;
+        require_array(self.array("atomicCharges")?, "mulliken_atomic_charge", Some("e"), PackedDType::F64, &[charges])
     }
 
     fn array(&self, name: &str) -> Result<&PackedArrayDescriptor, ProtocolError> {
@@ -363,13 +424,35 @@ fn validate_compatibility(
     version: ResultPackVersion,
 ) -> Result<(), ProtocolError> {
     match (workflow, version) {
+        (WorkflowTemplateId::AlignmentV1, ResultPackVersion::AlignmentV1) => Ok(()),
         (WorkflowTemplateId::ClusterV1, ResultPackVersion::ClusterV1) => Ok(()),
         (
             WorkflowTemplateId::ConformerV1,
             ResultPackVersion::ConformerV1 | ResultPackVersion::ConformerV2,
         ) => Ok(()),
+        (WorkflowTemplateId::SemiempiricalV1, ResultPackVersion::SemiempiricalV1) => Ok(()),
         _ => Err(ProtocolError::Validation(
             "result pack schema is incompatible with its workflow".into(),
         )),
     }
+}
+
+fn require_exact_array_names<const N: usize>(
+    manifest: &ResultPackManifest,
+    expected: &[&str; N],
+    workflow: &str,
+) -> Result<(), ProtocolError> {
+    if manifest.layout.arrays.len() != expected.len()
+        || manifest
+            .layout
+            .arrays
+            .iter()
+            .map(|array| array.name.as_str())
+            .ne(expected.iter().copied())
+    {
+        return Err(ProtocolError::Validation(format!(
+            "{workflow} ResultPack requires the exact canonical array set"
+        )));
+    }
+    Ok(())
 }

@@ -279,6 +279,53 @@ fn result_manifest() -> ResultPackManifest {
     }
 }
 
+fn analysis_result_manifest(workflow: WorkflowTemplateId) -> ResultPackManifest {
+    let (schema_version, mut arrays) = match workflow {
+        WorkflowTemplateId::AlignmentV1 => (
+            ResultPackVersion::AlignmentV1,
+            vec![
+                conformer_array("combinedSimilarities", "combined_similarity", None, PackedDType::F32, vec![2]),
+                conformer_array("electrostaticCarboScores", "electrostatic_carbo", None, PackedDType::F32, vec![2]),
+                conformer_array("isReferences", "alignment_reference", None, PackedDType::Bool8, vec![2]),
+                conformer_array("rmsdValues", "rmsd", Some("angstrom"), PackedDType::F32, vec![2]),
+                conformer_array("shapeTanimotoScores", "shape_tanimoto", None, PackedDType::F32, vec![2]),
+                conformer_array("sourceRecordIds", "source_record_id", None, PackedDType::U64, vec![2]),
+                conformer_array("transforms", "rigid_transform_4x4", None, PackedDType::F32, vec![2, 16]),
+            ],
+        ),
+        WorkflowTemplateId::SemiempiricalV1 => (
+            ResultPackVersion::SemiempiricalV1,
+            vec![
+                conformer_array("atomicCharges", "mulliken_atomic_charge", Some("e"), PackedDType::F64, vec![5]),
+                conformer_array("chargeStarts", "atomic_charge_offsets", None, PackedDType::U64, vec![3]),
+                conformer_array("converged", "scf_converged", None, PackedDType::Bool8, vec![2]),
+                conformer_array("electronicEnergies", "electronic_energy", Some("eV"), PackedDType::F64, vec![2]),
+                conformer_array("iterations", "scf_iterations", None, PackedDType::U32, vec![2]),
+                conformer_array("nuclearEnergies", "nuclear_energy", Some("eV"), PackedDType::F64, vec![2]),
+                conformer_array("sourceRecordIds", "source_record_id", None, PackedDType::U64, vec![2]),
+                conformer_array("totalEnergies", "total_energy", Some("eV"), PackedDType::F64, vec![2]),
+            ],
+        ),
+        _ => unreachable!("analysis fixture workflow"),
+    };
+    arrays.sort_by(|left, right| left.name.cmp(&right.name));
+    let files = arrays
+        .iter()
+        .map(|array| file(&array.file_relative_path, array.byte_length, "application/octet-stream"))
+        .collect();
+    ResultPackManifest {
+        schema_version,
+        result_pack_id: Uuid::from_u128(30),
+        result_pack_sha256: hash('6'),
+        job_id: Uuid::from_u128(31),
+        workflow_template: workflow,
+        molecular_snapshot: snapshot_ref(),
+        engine_packs: Vec::new(),
+        layout: PackedLayout { files, arrays },
+        created_at_ms: 13,
+    }
+}
+
 #[test]
 fn round_trips_and_binds_all_pack_contracts() {
     let molecular = molecular_manifest();
@@ -301,6 +348,42 @@ fn round_trips_and_binds_all_pack_contracts() {
     let decoded: ResultPackManifest =
         serde_json::from_slice(&encoded).expect("decode result pack manifest");
     assert_eq!(decoded, result);
+}
+
+#[test]
+fn analysis_result_packs_bind_exact_snapshot_only_array_abis() {
+    for workflow in [
+        WorkflowTemplateId::AlignmentV1,
+        WorkflowTemplateId::SemiempiricalV1,
+    ] {
+        let manifest = analysis_result_manifest(workflow);
+        assert_eq!(manifest.validate(), Ok(()));
+        let mut missing = manifest.clone();
+        missing.layout.arrays.pop();
+        assert!(missing.validate().is_err());
+        let mut wrong_shape = manifest;
+        let array_index = wrong_shape
+            .layout
+            .arrays
+            .iter()
+            .position(|array| array.name == "sourceRecordIds")
+            .expect("source identity array");
+        wrong_shape.layout.arrays[array_index].shape[0] += 1;
+        wrong_shape.layout.arrays[array_index].byte_length = wrong_shape.layout.arrays[array_index]
+            .expected_byte_length()
+            .expect("updated fixture byte length");
+        let path = wrong_shape.layout.arrays[array_index]
+            .file_relative_path
+            .clone();
+        wrong_shape
+            .layout
+            .files
+            .iter_mut()
+            .find(|file| file.relative_path == path)
+            .expect("fixture file")
+            .byte_length = wrong_shape.layout.arrays[array_index].byte_length;
+        assert!(wrong_shape.validate().is_err());
+    }
 }
 
 #[test]
