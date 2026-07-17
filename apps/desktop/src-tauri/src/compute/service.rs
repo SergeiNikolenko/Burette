@@ -68,6 +68,22 @@ const SEMIEMPIRICAL_ATOM_BYTES: u64 = 32;
 const SEMIEMPIRICAL_OUTPUT_HEADER_BYTES: u64 = 72;
 
 pub(crate) struct ComputeServiceClient {
+    executable: PathBuf,
+    runtime_root: PathBuf,
+    connection: Mutex<ComputeServiceConnection>,
+}
+
+impl std::fmt::Debug for ComputeServiceClient {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ComputeServiceClient")
+            .field("executable", &self.executable)
+            .field("runtime_root", &self.runtime_root)
+            .finish_non_exhaustive()
+    }
+}
+
+struct ComputeServiceConnection {
     child: Mutex<Child>,
     stdin: Mutex<ChildStdin>,
     responses: Mutex<mpsc::Receiver<Result<WorkerControlResponse, String>>>,
@@ -77,10 +93,10 @@ pub(crate) struct ComputeServiceClient {
     worker_id: Uuid,
 }
 
-impl std::fmt::Debug for ComputeServiceClient {
+impl std::fmt::Debug for ComputeServiceConnection {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
-            .debug_struct("ComputeServiceClient")
+            .debug_struct("ComputeServiceConnection")
             .field("worker_id", &self.worker_id)
             .finish_non_exhaustive()
     }
@@ -88,6 +104,179 @@ impl std::fmt::Debug for ComputeServiceClient {
 
 impl ComputeServiceClient {
     pub(crate) fn launch(executable: &Path, runtime_root: &Path) -> Result<Self, String> {
+        Ok(Self {
+            executable: executable.to_path_buf(),
+            runtime_root: runtime_root.to_path_buf(),
+            connection: Mutex::new(ComputeServiceConnection::launch(executable, runtime_root)?),
+        })
+    }
+
+    pub(crate) fn capabilities(&self) -> Result<ComputeCapabilityReport, String> {
+        self.with_transport_restart(|connection| connection.capabilities())
+    }
+
+    pub(crate) fn build_tanimoto_graph(
+        &self,
+        job_id: Uuid,
+        fingerprints: &[Fingerprint2048],
+        cutoff: SimilarityCutoff,
+        options: GraphBuildOptions,
+    ) -> Result<(SymmetricCsr, u64), String> {
+        self.with_transport_restart(|connection| {
+            connection.build_tanimoto_graph(job_id, fingerprints, cutoff, options)
+        })
+    }
+
+    pub(crate) fn align_and_score(
+        &self,
+        job_id: Uuid,
+        batch: MetalAlignmentBatch<'_>,
+        max_memory_bytes: u64,
+    ) -> Result<MetalAlignmentExecution, String> {
+        self.with_transport_restart(|connection| {
+            connection.align_and_score(job_id, batch, max_memory_bytes)
+        })
+    }
+
+    pub(crate) fn evaluate_semiempirical(
+        &self,
+        job_id: Uuid,
+        molecule: &SemiempiricalMolecule,
+        max_memory_bytes: u64,
+    ) -> Result<(Rm1Evaluation, u64), String> {
+        self.with_transport_restart(|connection| {
+            connection.evaluate_semiempirical(job_id, molecule, max_memory_bytes)
+        })
+    }
+
+    pub(crate) fn optimize_mmff(
+        &self,
+        job_id: Uuid,
+        positions: &[[f32; 4]],
+        parameters: &MmffParameters,
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalMmffOptimization, String> {
+        self.with_transport_restart(|connection| {
+            connection.optimize_mmff(job_id, positions, parameters, options, max_memory_bytes)
+        })
+    }
+
+    pub(crate) fn embed_distance_bounds(
+        &self,
+        job_id: Uuid,
+        seeds: &[[u32; 4]],
+        atom_count: u32,
+        constraints: &[DistanceConstraint],
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalDistanceEmbedding, String> {
+        self.with_transport_restart(|connection| {
+            connection.embed_distance_bounds(
+                job_id,
+                seeds,
+                atom_count,
+                constraints,
+                options,
+                max_memory_bytes,
+            )
+        })
+    }
+
+    pub(crate) fn optimize_etk(
+        &self,
+        job_id: Uuid,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        terms: EtkGeometryTerms<'_>,
+        options: DistanceGeometryOptimizationOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalDistanceOptimization, String> {
+        self.with_transport_restart(|connection| {
+            connection.optimize_etk(
+                job_id,
+                positions,
+                atom_count,
+                terms,
+                options,
+                max_memory_bytes,
+            )
+        })
+    }
+
+    pub(crate) fn validate_stereo(
+        &self,
+        job_id: Uuid,
+        positions: &[[f32; 4]],
+        atom_count: u32,
+        chiral: &[ChiralVolumeConstraint],
+        tetrahedral: &[TetrahedralConstraint],
+        max_memory_bytes: u64,
+    ) -> Result<MetalStereoValidation, String> {
+        self.with_transport_restart(|connection| {
+            connection.validate_stereo(
+                job_id,
+                positions,
+                atom_count,
+                chiral,
+                tetrahedral,
+                max_memory_bytes,
+            )
+        })
+    }
+
+    fn with_transport_restart<T>(
+        &self,
+        operation: impl Fn(&ComputeServiceConnection) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| "compute service supervisor lock is poisoned".to_string())?;
+        match operation(&connection) {
+            Ok(result) => Ok(result),
+            Err(first_error) if is_transport_failure(&first_error) => {
+                *connection =
+                    ComputeServiceConnection::launch(&self.executable, &self.runtime_root)
+                        .map_err(|restart_error| {
+                            format!(
+                                "compute service transport failed ({first_error}); restart failed: {restart_error}"
+                            )
+                        })?;
+                operation(&connection).map_err(|retry_error| {
+                    format!(
+                        "compute service transport failed ({first_error}); retry failed: {retry_error}"
+                    )
+                })
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    #[cfg(test)]
+    fn terminate_for_restart_test(&self) {
+        let connection = self.connection.lock().expect("service supervisor lock");
+        let mut child = connection.child.lock().expect("service child lock");
+        child.kill().expect("terminate helper");
+        child.wait().expect("wait for helper");
+    }
+}
+
+fn is_transport_failure(message: &str) -> bool {
+    message.starts_with("compute service response timed out:")
+        || message.starts_with("compute service response request ID differs")
+        || message.starts_with("compute service response lock is poisoned")
+        || message.starts_with("compute service stdin lock is poisoned")
+        || message.starts_with("compute service request lock is poisoned")
+        || message.starts_with("compute exchange socket lock is poisoned")
+        || message.starts_with("cannot send compute exchange descriptor")
+        || message.contains("failed to write frame")
+        || message.contains("Broken pipe")
+        || message.contains("receiving on a closed channel")
+}
+
+impl ComputeServiceConnection {
+    fn launch(executable: &Path, runtime_root: &Path) -> Result<Self, String> {
         require_regular_executable(executable)?;
         let session_token = SessionToken::new(format!("session.v1.{}", random_base64url()?))
             .map_err(|error| error.to_string())?;
@@ -440,7 +629,7 @@ impl ComputeServiceClient {
     }
 }
 
-impl Drop for ComputeServiceClient {
+impl Drop for ComputeServiceConnection {
     fn drop(&mut self) {
         if let Ok(child) = self.child.get_mut() {
             let _ = child.kill();
@@ -1948,6 +2137,11 @@ mod tests {
         let runtime =
             PathBuf::from(std::env::var("BURRETE_TEST_COMPUTE_RUNTIME").expect("runtime path"));
         let client = ComputeServiceClient::launch(&helper, &runtime).expect("launch service");
+        client.terminate_for_restart_test();
+        assert_eq!(
+            client.capabilities().expect("restart service").availability,
+            ComputeAvailability::Available
+        );
         let fingerprints = vec![
             Fingerprint2048::from_words([u64::MAX; 32]),
             Fingerprint2048::from_words([u64::MAX; 32]),
