@@ -84,7 +84,10 @@ impl JobState {
                     WaitingGpu | Running | CancelRequested | Failed | Interrupted
                 )
                 | (WaitingGpu, Running | CancelRequested | Failed | Interrupted)
-                | (Running, Validating | CancelRequested | Failed | Interrupted)
+                | (
+                    Running,
+                    WaitingGpu | Validating | CancelRequested | Failed | Interrupted
+                )
                 | (
                     Validating,
                     Publishing | CancelRequested | Failed | Interrupted
@@ -1023,6 +1026,7 @@ mod tests {
 
     #[test]
     fn preserves_cancel_requested_as_a_distinct_state() {
+        assert!(JobState::Running.can_transition_to(JobState::WaitingGpu));
         assert!(JobState::Running.can_transition_to(JobState::CancelRequested));
         assert!(JobState::CancelRequested.can_transition_to(JobState::Cancelled));
         assert!(!JobState::Running.can_transition_to(JobState::Cancelled));
