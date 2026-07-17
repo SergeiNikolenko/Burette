@@ -39,6 +39,9 @@ contains only documents that describe the active project.
   [implementation status](gpu-compute-status.md) records what is working in
   source today and keeps packaged Metal, browser, Quick Look, and iPhone claims
   separate.
+- [MolComputeKit relationship](molcomputekit.md): standalone framework release,
+  ownership boundary, compatibility identifiers, and the pinned migration rule
+  for removing Burrete's integration copy.
 - [Stability program](stability.md): preview trace, runtime manifest, nightly
   smoke, and staged stability guardrails.
 - [Installing and building](installing-building.md): source build, local
