@@ -23,6 +23,16 @@ fn validates_a_fully_queued_snapshot() {
 
 #[test]
 fn conformer_snapshot_round_trips_without_a_request_wrapper() {
+    let snapshot = queued_conformer_snapshot();
+
+    let value = serde_json::to_value(&snapshot).expect("serialize conformer snapshot");
+    assert_eq!(value["request"]["workflowTemplate"], "conformer.v1");
+    assert!(value["request"].get("ConformerV1").is_none());
+    let decoded: JobSnapshot = serde_json::from_value(value).expect("decode conformer snapshot");
+    assert_eq!(decoded, snapshot);
+}
+
+fn queued_conformer_snapshot() -> JobSnapshot {
     let request: ComputeSubmitRequest = ConformerV1SubmitRequest {
         schema_version: ComputeJobSchemaVersion::V1,
         workflow_template: WorkflowTemplateId::ConformerV1,
@@ -64,12 +74,7 @@ fn conformer_snapshot_round_trips_without_a_request_wrapper() {
         .collect();
     snapshot.plan = plan;
     assert_eq!(snapshot.validate(), Ok(()));
-
-    let value = serde_json::to_value(&snapshot).expect("serialize conformer snapshot");
-    assert_eq!(value["request"]["workflowTemplate"], "conformer.v1");
-    assert!(value["request"].get("ConformerV1").is_none());
-    let decoded: JobSnapshot = serde_json::from_value(value).expect("decode conformer snapshot");
-    assert_eq!(decoded, snapshot);
+    snapshot
 }
 
 #[test]
@@ -178,6 +183,14 @@ fn validates_each_durable_stage_boundary() {
     );
     assert_eq!(
         boundary_snapshot(BackendPolicy::GpuRequired, 2, true, JobState::Running).validate(),
+        Ok(())
+    );
+    assert_eq!(
+        at_boundary(queued_conformer_snapshot(), 3, false, JobState::WaitingGpu).validate(),
+        Ok(())
+    );
+    assert_eq!(
+        at_boundary(queued_conformer_snapshot(), 3, true, JobState::Running).validate(),
         Ok(())
     );
 }
@@ -495,7 +508,15 @@ fn boundary_snapshot(
     running: bool,
     state: JobState,
 ) -> JobSnapshot {
-    let mut snapshot = queued_snapshot(policy);
+    at_boundary(queued_snapshot(policy), stage_index, running, state)
+}
+
+fn at_boundary(
+    mut snapshot: JobSnapshot,
+    stage_index: usize,
+    running: bool,
+    state: JobState,
+) -> JobSnapshot {
     snapshot.revision = 10 + stage_index as u64;
     snapshot.state = state;
     snapshot.updated_at_ms = 200;
@@ -595,7 +616,11 @@ fn plan(policy: BackendPolicy) -> ExecutionPlan {
         plan_version: ExecutionPlanVersion::ClusterV1,
         backend_policy: policy,
         stages: vec![
-            planned_stage("freezeScope", StageKind::Materialize, Backend::Coordinator),
+            planned_stage(
+                "freezeScope",
+                StageKind::Materialize,
+                Backend::Coordinator,
+            ),
             planned_stage(
                 "fingerprints",
                 StageKind::ChemistrySemantics,
@@ -651,11 +676,7 @@ fn conformer_plan() -> ExecutionPlan {
         plan_version: ExecutionPlanVersion::ConformerV1,
         backend_policy: BackendPolicy::GpuRequired,
         stages: vec![
-            planned_stage(
-                "freezeScope",
-                StageKind::Materialize,
-                Backend::Coordinator,
-            ),
+            planned_stage("freezeScope", StageKind::Materialize, Backend::Coordinator),
             constraints,
             distance,
             stereo,

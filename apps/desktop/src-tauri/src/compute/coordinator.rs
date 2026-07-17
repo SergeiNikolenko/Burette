@@ -1541,10 +1541,15 @@ impl ComputeCoordinator {
             .iter()
             .filter(|error| error.is_some())
             .count();
+        let stereo_state = if distance_running.stages[3].effective_backend.is_gpu() {
+            JobState::WaitingGpu
+        } else {
+            JobState::Running
+        };
         let distance_succeeded = finish_stage(
             &distance_running,
             2,
-            JobState::Running,
+            stereo_state,
             now_ms(),
             if input_geometry {
                 "MMFF-optimized input geometries ready for final validation"
