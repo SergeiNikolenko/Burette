@@ -58,6 +58,9 @@ parameter domain with variable 1/4/9-orbital SCF. PM6_D3H4 adds the complete
 pinned Z=1--94 D3 table and the H4/HH post-SCF corrections. The archived
 upstream NPZ inputs and generated native table are source/build-validation
 assets; Python, NumPy, MLX, and NPZ loading are not production dependencies.
+The frozen `compute/semiempirical/fixtures/pyseqm-scf-9e7337f6.json` fixture
+retains only molecule geometries and numeric PYSEQM known answers published by
+the pinned mlxmolkit test suite for development-time parity validation.
 
 Upstream identifies material derived from or compared with nvMolKit
 (Apache-2.0), Shivam Patel's `mlxmolkit` (MIT), PYSEQM (BSD-3-Clause), and
@@ -153,9 +156,9 @@ mechanically generated from its AST and does not execute Python in production.
 PYSEQM BSD-3-Clause attribution applies.
 
 The PM6-D3H4 H4 hydrogen-bond equations, covalent-radius table, short-range
-H-H polynomial, and CHNO D3 C6/CN/r0 reference records are adapted from
-OpenMOPAC correction behavior through the pinned
+H-H polynomial, and complete Z=1--94 D3 C6/CN/r0 reference records are adapted
+from OpenMOPAC correction behavior through the pinned
 `mlxmolkit/rm1/pm6_d3h4.py` reference and its bundled tables. OpenMOPAC's
-Apache-2.0 and mlxmolkit's MIT attribution apply. The current D3 table is
-explicitly limited to the parity-gated CHNO domain; full-element D3 and
-production PM6-D3H4 SCF composition remain pending.
+Apache-2.0 and mlxmolkit's MIT attribution apply. The generated compact native
+table and production PM6-D3H4 SCF composition are parity-gated on CPU and Metal;
+the upstream NPZ files remain development-time source assets only.

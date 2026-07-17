@@ -367,6 +367,45 @@ fn build_fock(
 mod tests {
     use super::*;
     use crate::{SemiempiricalAtom, SemiempiricalScfStatus};
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PyseqmFixture {
+        source: PyseqmSource,
+        molecules: Vec<PyseqmMolecule>,
+        references: Vec<PyseqmReference>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PyseqmSource {
+        commit: String,
+        absolute_tolerance: f64,
+    }
+
+    #[derive(Deserialize)]
+    struct PyseqmMolecule {
+        id: String,
+        atoms: Vec<PyseqmAtom>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PyseqmAtom {
+        atomic_number: u8,
+        position_angstrom: [f64; 3],
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct PyseqmReference {
+        method: String,
+        molecule: String,
+        electronic_energy: f64,
+        nuclear_energy: f64,
+        total_energy: f64,
+    }
 
     fn molecule(atoms: &[(u8, [f64; 3])]) -> SemiempiricalMolecule {
         SemiempiricalMolecule::rm1(
@@ -380,6 +419,69 @@ mod tests {
             0,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn rm1_am1_and_pm6_match_the_pinned_pyseqm_corpus() {
+        let fixture: PyseqmFixture = serde_json::from_str(include_str!(
+            "../../../../compute/semiempirical/fixtures/pyseqm-scf-9e7337f6.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            fixture.source.commit,
+            "9e7337f6f93c40a39ad0187991151944a4f1e274"
+        );
+        assert_eq!(fixture.references.len(), 12);
+
+        for reference in fixture.references {
+            let method = match reference.method.as_str() {
+                "rm1" => SemiempiricalMethod::Rm1,
+                "am1" => SemiempiricalMethod::Am1,
+                "pm6" => SemiempiricalMethod::Pm6,
+                other => panic!("unsupported fixture method {other}"),
+            };
+            let fixture_molecule = fixture
+                .molecules
+                .iter()
+                .find(|molecule| molecule.id == reference.molecule)
+                .unwrap();
+            let molecule = SemiempiricalMolecule::new(
+                method,
+                fixture_molecule
+                    .atoms
+                    .iter()
+                    .map(|atom| SemiempiricalAtom {
+                        atomic_number: atom.atomic_number,
+                        position_angstrom: atom.position_angstrom,
+                    })
+                    .collect(),
+                0,
+            )
+            .unwrap();
+            let result =
+                evaluate_semiempirical(&molecule, SemiempiricalScfOptions::default()).unwrap();
+            assert_eq!(result.scf.status, SemiempiricalScfStatus::Converged);
+            for (component, actual, expected) in [
+                (
+                    "electronic",
+                    result.electronic_energy_ev,
+                    reference.electronic_energy,
+                ),
+                (
+                    "nuclear",
+                    result.nuclear_energy_ev,
+                    reference.nuclear_energy,
+                ),
+                ("total", result.total_energy_ev, reference.total_energy),
+            ] {
+                assert!(
+                    (actual - expected).abs() < fixture.source.absolute_tolerance,
+                    "{} {} {component}: {actual} != {expected}",
+                    reference.method,
+                    reference.molecule
+                );
+            }
+        }
     }
 
     #[test]
