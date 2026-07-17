@@ -22,6 +22,7 @@ use crate::preview::{
 };
 
 use super::error::{ComputeCoordinatorError, ComputeResult};
+use super::service::ComputeServiceClient;
 
 const MAX_ALIGNMENT_POSES: usize = 256;
 const MAX_ALIGNMENT_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
@@ -150,6 +151,7 @@ fn execute_grid_alignment_with_run_id(
         .collect::<ComputeResult<Vec<_>>>()?;
     execute_alignment_rows(
         runtime,
+        None,
         request,
         run_id,
         rows,
@@ -160,6 +162,7 @@ fn execute_grid_alignment_with_run_id(
 
 pub(crate) fn execute_snapshot_alignment_with_run_id(
     runtime: &MetalTanimotoRuntime,
+    compute_service: Option<&ComputeServiceClient>,
     rows: Vec<GridAlignmentSourceRow>,
     request: &GridAlignmentRequest,
     run_id: Uuid,
@@ -181,6 +184,7 @@ pub(crate) fn execute_snapshot_alignment_with_run_id(
         .collect::<ComputeResult<Vec<_>>>()?;
     execute_alignment_rows(
         runtime,
+        compute_service.map(|service| (service, run_id)),
         request,
         run_id,
         rows,
@@ -191,6 +195,7 @@ pub(crate) fn execute_snapshot_alignment_with_run_id(
 
 fn execute_alignment_rows(
     runtime: &MetalTanimotoRuntime,
+    compute_service: Option<(&ComputeServiceClient, Uuid)>,
     request: &GridAlignmentRequest,
     run_id: Uuid,
     rows: Vec<GridAlignmentSourceRow>,
@@ -223,15 +228,20 @@ fn execute_alignment_rows(
         pair_mappings.push(pair_mapping);
     }
     let max_memory_bytes = request.max_memory_bytes.unwrap_or(DEFAULT_MAX_MEMORY_BYTES);
-    let execution = runtime
-        .align_and_score_profiled(
-            MetalAlignmentBatch {
-                probe_atoms: &probe_atoms,
-                reference_atoms: &reference_atoms,
-                mappings: &mappings,
-                pairs: &descriptors,
+    let batch = MetalAlignmentBatch {
+        probe_atoms: &probe_atoms,
+        reference_atoms: &reference_atoms,
+        mappings: &mappings,
+        pairs: &descriptors,
+    };
+    let execution = compute_service
+        .map_or_else(
+            || {
+                runtime
+                    .align_and_score_profiled(batch, max_memory_bytes)
+                    .map_err(|error| error.to_string())
             },
-            max_memory_bytes,
+            |(service, job_id)| service.align_and_score(job_id, batch, max_memory_bytes),
         )
         .map_err(|error| ComputeCoordinatorError::Unavailable(error.to_string()))?;
 
