@@ -585,6 +585,7 @@ assert.match(buildScript, /hardenedRuntime/);
 assert.match(buildScript, /cargo build --release --bin burrete-core-bridge/);
 assert.match(buildScript, /cargo build --release --bin burrete-compute-service/);
 assert.match(buildScript, /Contents\/Helpers\/burrete-compute-service/);
+assert.match(buildScript, /rm -f "\$app\/Contents\/MacOS\/burrete-compute-service"/);
 assert.match(tauriCargoSource, /default-run\s*=\s*"burrete"/);
 assert.match(buildScript, /check-compute-service\.mjs/);
 assert.match(buildScript, /TAURI_TARGET_DIR="\$\{CARGO_TARGET_DIR:-target\}"/);

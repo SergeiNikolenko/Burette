@@ -480,6 +480,7 @@ bundle_compute_service() {
   mkdir -p "$app/Contents/Helpers"
   ditto --norsrc --noextattr "$service" "$app/Contents/Helpers/burrete-compute-service"
   chmod 755 "$app/Contents/Helpers/burrete-compute-service"
+  rm -f "$app/Contents/MacOS/burrete-compute-service"
 }
 assert_bundled_compute_service() {
   local app="$1"
@@ -487,6 +488,10 @@ assert_bundled_compute_service() {
   local service="$app/Contents/Helpers/burrete-compute-service"
   [[ -x "$service" && ! -L "$service" ]] || {
     echo "error: packaged native compute service is missing $label: $service" >&2
+    exit 1
+  }
+  [[ ! -e "$app/Contents/MacOS/burrete-compute-service" ]] || {
+    echo "error: native compute service must not be duplicated beside the app executable $label" >&2
     exit 1
   }
   file "$service" | grep -q 'Mach-O.*arm64' || {
