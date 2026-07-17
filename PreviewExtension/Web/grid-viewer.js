@@ -435,6 +435,19 @@
         }
         return;
       }
+      if (body.type === 'gridClusterCancellationRequested') {
+        setStatus('[grid] Cancelling clustering at the current durable stage boundary.');
+        return;
+      }
+      if (body.type === 'gridClusterCancelled') {
+        setGridClusteringPending(false);
+        setStatus('[grid] Clustering cancelled.');
+        return;
+      }
+      if (body.type === 'gridClusterCancellationError') {
+        setStatus(body.error || '[grid] Clustering cancellation failed.', 'error');
+        return;
+      }
       if (body.type === 'gridClusterFinished') {
         setGridClusteringPending(false);
         const backend = body.backend === 'nativeMetal' ? 'Metal GPU' : 'reference CPU';
@@ -1635,7 +1648,14 @@
   }
 
   function requestClustering(cfg) {
-    if (state.clustering || state.findingSimilar) return;
+    if (state.clustering) {
+      post('cancelClusterMolecules', '[grid] Cancel clustering.', {
+        documentId: cfg?.documentId || null,
+      });
+      setStatus('[grid] Requesting clustering cancellation.');
+      return;
+    }
+    if (state.findingSimilar) return;
     if (!state.indexReady) {
       setStatus('[grid] Wait for indexing to finish before clustering.', 'error');
       return;

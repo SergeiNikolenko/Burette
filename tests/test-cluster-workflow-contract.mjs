@@ -11,6 +11,8 @@ const gridViewer = source("PreviewExtension/Web/grid-viewer.js");
 const gridCss = source("PreviewExtension/Web/grid.css");
 const computePermission = source("apps/desktop/src-tauri/permissions/compute.toml");
 const computeCommands = source("apps/desktop/src-tauri/src/compute/commands.rs");
+const coordinator = source("apps/desktop/src-tauri/src/compute/coordinator.rs");
+const jobLifecycle = source("apps/desktop/src-tauri/src/compute/job_lifecycle.rs");
 const representativeExport = source("apps/desktop/src-tauri/src/compute/representative_export.rs");
 const artifactReader = source("apps/desktop/src-tauri/src/compute/artifact_reader.rs");
 
@@ -56,6 +58,15 @@ assert.match(gridViewer, /analysisFilters: mergedAnalysisFilters\(\)/);
 assert.match(bridge, /parseClusterFilteredScope\(body\.filteredScope\)/);
 assert.match(workflow, /filteredScope \?\? \{ kind: "all" \}/);
 assert.match(gridViewer, /body\.backend === 'nativeMetal' \? 'Metal GPU' : 'reference CPU'/);
+assert.match(gridUi, /Cancel clustering/);
+assert.match(gridViewer, /post\('cancelClusterMolecules'/);
+assert.match(bridge, /body\?\.type === "cancelClusterMolecules"/);
+assert.match(bridge, /active\.controller\.abort\(\)/);
+assert.match(workflow, /compute_get_job/);
+assert.match(workflow, /compute_cancel_job/);
+assert.match(workflow, /throwIfAborted\(signal\)/);
+assert.match(coordinator, /finish_cancellation\(&requested, now_ms\(\)\)/);
+assert.match(jobLifecycle, /StageState::Cancelled/);
 
 assert.match(computeCommands, /fn compute_export_cluster_representatives/);
 assert.match(bridge, /body\?\.type === "exportClusterRepresentatives"/);

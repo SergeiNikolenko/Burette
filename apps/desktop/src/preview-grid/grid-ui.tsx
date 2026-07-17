@@ -255,12 +255,13 @@ function ClusterControls(props: GridControlProps) {
         id="cluster-molecules"
         className="buret-toggle-button buret-cluster-button"
         type="button"
-        disabled={props.clustering}
         aria-busy={props.clustering ? "true" : "false"}
         onClick={props.onCluster}
       >
-        <span data-buret-grid-cluster-label>{props.clustering ? "Clustering..." : "Cluster all"}</span>
-        <ControlTooltip label="Cluster selected molecules, or the full collection when nothing is selected" />
+        <span data-buret-grid-cluster-label>{props.clustering ? "Cancel clustering" : "Cluster all"}</span>
+        <ControlTooltip label={props.clustering
+          ? "Cancel the active clustering job at its current durable boundary"
+          : "Cluster selected, filtered, or all molecules"} />
       </button>
       <button
         id="find-similar-molecules"

@@ -187,13 +187,35 @@ export async function findSimilarMolecules(
   });
 }
 
+export async function cancelComputeJob(jobId: string): Promise<boolean> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const job = await invoke<ComputeJob>("compute_get_job", { jobId });
+    if (["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(job.state)) {
+      return job.state === "cancelled";
+    }
+    try {
+      await invoke("compute_cancel_job", {
+        jobId,
+        expectedRevision: job.revision,
+      });
+      return true;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError ?? new Error("Compute cancellation did not reach a durable stage boundary.");
+}
+
 export async function runClusterWorkflow(
   documentId: string,
   sourceIndexes: number[],
   cutoff: number,
   onProgress: (progress: ClusterProgress) => void,
   filteredScope: ClusterFilteredScope | null = null,
+  signal?: AbortSignal,
 ): Promise<ClusterWorkflowResult> {
+  throwIfAborted(signal);
   const normalizedIndexes = [...new Set(sourceIndexes)]
     .filter((index) => Number.isSafeInteger(index) && index >= 0)
     .sort((left, right) => left - right);
@@ -237,11 +259,13 @@ export async function runClusterWorkflow(
   try {
     job = await invoke<ComputeJob>("compute_submit_job", { request });
     onProgress({ phase: "queued", job });
+    throwIfAborted(signal);
     let fingerprintStep = await invoke<FingerprintExecutionStep>("compute_begin_cluster_execution", {
       jobId: job.jobId,
       expectedRevision: job.revision,
     });
     job = fingerprintStep.job;
+    throwIfAborted(signal);
     while (fingerprintStep.fingerprintChunk) {
       const chunk = fingerprintStep.fingerprintChunk;
       onProgress({
@@ -250,9 +274,11 @@ export async function runClusterWorkflow(
         totalRecords: chunk.totalRecords,
         job,
       });
-      const result = await worker.fingerprint(chunk);
+      const result = await worker.fingerprint(chunk, signal);
+      throwIfAborted(signal);
       fingerprintStep = await invoke<FingerprintExecutionStep>("compute_submit_fingerprint_chunk", { result });
       job = fingerprintStep.job;
+      throwIfAborted(signal);
     }
     if (!fingerprintStep.readyForCompute) {
       throw new Error("The fingerprint stage completed without a compute-ready result.");
@@ -264,6 +290,7 @@ export async function runClusterWorkflow(
       expectedRevision: job.revision,
     });
     job = execution.job;
+    throwIfAborted(signal);
     if (!execution.readyForPublish) {
       throw new Error("The clustering stage completed without a publishable result.");
     }
@@ -273,6 +300,7 @@ export async function runClusterWorkflow(
       jobId: job.jobId,
       expectedRevision: job.revision,
     });
+    throwIfAborted(signal);
     const numericStage = publication.job.stages.find(
       (stage) => stage.stageId === "tanimotoNeighbors",
     );
@@ -286,10 +314,7 @@ export async function runClusterWorkflow(
     };
   } catch (error) {
     if (job && !["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(job.state)) {
-      await invoke("compute_cancel_job", {
-        jobId: job.jobId,
-        expectedRevision: job.revision,
-      }).catch(() => undefined);
+      await cancelComputeJob(job.jobId).catch(() => undefined);
     }
     throw error;
   } finally {
@@ -310,6 +335,13 @@ function similarityCutoff(value: number) {
   return { numerator: Math.round(normalized * 1_000), denominator: 1_000 };
 }
 
+function throwIfAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+  const error = new Error("Clustering cancelled by the user.");
+  error.name = "AbortError";
+  throw error;
+}
+
 class FingerprintWorkerClient {
   private readonly worker: Worker;
   private nextRequestId = 0;
@@ -321,7 +353,7 @@ class FingerprintWorkerClient {
     });
   }
 
-  fingerprint(chunk: FingerprintInputChunk): Promise<FingerprintChunkResult> {
+  fingerprint(chunk: FingerprintInputChunk, signal?: AbortSignal): Promise<FingerprintChunkResult> {
     const requestId = `fingerprint-${++this.nextRequestId}`;
     return new Promise((resolve, reject) => {
       const timeout = window.setTimeout(() => {
@@ -339,13 +371,25 @@ class FingerprintWorkerClient {
         cleanup();
         reject(new Error(event.message || "RDKit fingerprint worker crashed."));
       };
+      const onAbort = () => {
+        cleanup();
+        const error = new Error("Clustering cancelled by the user.");
+        error.name = "AbortError";
+        reject(error);
+      };
       const cleanup = () => {
         window.clearTimeout(timeout);
         this.worker.removeEventListener("message", onMessage);
         this.worker.removeEventListener("error", onError);
+        signal?.removeEventListener("abort", onAbort);
       };
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
       this.worker.addEventListener("message", onMessage);
       this.worker.addEventListener("error", onError);
+      signal?.addEventListener("abort", onAbort, { once: true });
       const request: FingerprintWorkerRequest = { type: "fingerprintChunk", requestId, chunk };
       this.worker.postMessage(request);
     });
