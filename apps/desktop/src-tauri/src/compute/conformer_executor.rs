@@ -308,6 +308,7 @@ pub(crate) fn execute_conformer_distance_geometry_with_service(
                 let mut attempt = embed(
                     distance_backend,
                     metal,
+                    compute_service.map(|service| (service, job_id)),
                     &seeds,
                     molecule.atomic_numbers.len() as u32,
                     &constraints,
@@ -710,6 +711,7 @@ struct StereoValidationBatch {
 fn embed(
     backend: Backend,
     metal: Option<&MetalTanimotoRuntime>,
+    compute_service: Option<(&ComputeServiceClient, Uuid)>,
     seeds: &[[u32; 4]],
     atom_count: u32,
     constraints: &[DistanceConstraint],
@@ -718,23 +720,34 @@ fn embed(
 ) -> ComputeResult<AttemptBatch> {
     match backend {
         Backend::NativeMetal => {
-            let runtime =
-                metal.ok_or_else(|| unavailable("admitted Metal runtime is unavailable"))?;
             let MetalDistanceEmbedding {
                 positions,
                 energies,
                 statuses,
                 gpu_time_ms,
                 ..
-            } = runtime
-                .embed_distance_bounds_profiled(
+            } = if let Some((service, job_id)) = compute_service {
+                service.embed_distance_bounds(
+                    job_id,
                     seeds,
                     atom_count,
                     constraints,
                     options,
                     max_memory_bytes,
                 )
-                .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
+            } else {
+                metal
+                    .ok_or_else(|| unavailable("admitted Metal runtime is unavailable"))?
+                    .embed_distance_bounds_profiled(
+                        seeds,
+                        atom_count,
+                        constraints,
+                        options,
+                        max_memory_bytes,
+                    )
+                    .map_err(|error| error.to_string())
+            }
+            .map_err(ComputeCoordinatorError::Validation)?;
             Ok(AttemptBatch {
                 positions,
                 energies,

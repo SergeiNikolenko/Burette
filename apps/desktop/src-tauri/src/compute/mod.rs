@@ -27,6 +27,7 @@ mod representative_export;
 mod root_lease;
 mod semiempirical_workflow;
 pub(crate) mod service;
+mod service_conformer;
 mod service_mmff;
 mod similarity_artifact;
 pub(crate) use root_lease::ComputeRootChildDirectory;

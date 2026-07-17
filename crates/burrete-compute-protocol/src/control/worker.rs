@@ -171,6 +171,7 @@ pub enum WorkerOperation {
     AlignmentScoreV1,
     SemiempiricalScfV1,
     MmffOptimizeV1,
+    ConformerDistanceV1,
 }
 
 /// Strict worker-to-coordinator control envelope.
