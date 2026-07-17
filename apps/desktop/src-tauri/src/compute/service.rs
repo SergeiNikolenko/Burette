@@ -1649,6 +1649,12 @@ fn capability_entries(
             "semiempirical.v1/selected",
             Precision::Mixed,
         ),
+        (
+            WorkflowTemplateId::ConformerV1,
+            "distanceGeometryEtkStereoMmff94",
+            "conformer.v1/all",
+            Precision::Float32,
+        ),
     ]
     .into_iter()
     .map(
@@ -1788,7 +1794,7 @@ mod tests {
     #[test]
     fn service_capabilities_match_executable_kernel_operations() {
         let entries = capability_entries(true, None);
-        assert_eq!(entries.len(), 3);
+        assert_eq!(entries.len(), 4);
         assert_eq!(entries[0].workflow_template, WorkflowTemplateId::ClusterV1);
         assert_eq!(
             entries[1].workflow_template,
@@ -1797,6 +1803,10 @@ mod tests {
         assert_eq!(
             entries[2].workflow_template,
             WorkflowTemplateId::SemiempiricalV1
+        );
+        assert_eq!(
+            entries[3].workflow_template,
+            WorkflowTemplateId::ConformerV1
         );
         assert!(entries.iter().all(|entry| entry.available));
     }
@@ -2055,5 +2065,71 @@ mod tests {
             [burrete_compute_core::MmffOptimizerKind::Bfgs]
         );
         assert!(optimized.gpu_time_ms > 0);
+
+        let embedded = client
+            .embed_distance_bounds(
+                Uuid::new_v4(),
+                &[[1, 2, 3, 4], [5, 6, 7, 8]],
+                2,
+                &[DistanceConstraint {
+                    left_atom: 0,
+                    right_atom: 1,
+                    lower_squared: 1.0,
+                    upper_squared: 2.0,
+                    weight: 1.0,
+                }],
+                DistanceGeometryOptimizationOptions::default(),
+                64 * 1024 * 1024,
+            )
+            .expect("execute distance geometry through helper");
+        assert_eq!(embedded.positions.len(), 4);
+        assert_eq!(embedded.energies.len(), 2);
+        assert!(embedded.gpu_time_ms > 0);
+
+        let distances = [burrete_compute_core::EtkDistanceConstraint {
+            atoms: [0, 1],
+            lower: 1.0,
+            upper: 1.2,
+            weight: 2.0,
+        }];
+        let etk = client
+            .optimize_etk(
+                Uuid::new_v4(),
+                &[[0.0, 0.0, 0.0, 0.0], [1.5, 0.0, 0.0, 0.0]],
+                2,
+                EtkGeometryTerms {
+                    torsions: &[],
+                    impropers: &[],
+                    distances: &distances,
+                },
+                DistanceGeometryOptimizationOptions::default(),
+                64 * 1024 * 1024,
+            )
+            .expect("execute ETK optimization through helper");
+        assert_eq!(etk.positions.len(), 2);
+        assert_eq!(etk.energies.len(), 1);
+        assert!(etk.gpu_time_ms > 0);
+
+        let stereo = client
+            .validate_stereo(
+                Uuid::new_v4(),
+                &[
+                    [0.0, 0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 0.0],
+                ],
+                4,
+                &[ChiralVolumeConstraint {
+                    atoms: [0, 1, 2, 3],
+                    lower: -2.0,
+                    upper: 2.0,
+                }],
+                &[],
+                64 * 1024 * 1024,
+            )
+            .expect("execute stereo validation through helper");
+        assert_eq!(stereo.failure_flags, [0]);
+        assert!(stereo.gpu_time_ms > 0);
     }
 }
