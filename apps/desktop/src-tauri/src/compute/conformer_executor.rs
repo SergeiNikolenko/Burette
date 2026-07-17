@@ -16,6 +16,7 @@ use uuid::Uuid;
 use super::{
     conformer_plan::ConformerMoleculeIdentity,
     error::{ComputeCoordinatorError, ComputeResult},
+    service::ComputeServiceClient,
 };
 
 const LBFGS_HISTORY: u32 = 8;
@@ -67,7 +68,8 @@ pub(crate) struct ConformerDeferredConstraints {
     pub(crate) torsion_term_starts: Vec<u64>,
 }
 
-pub(crate) fn execute_conformer_distance_geometry(
+#[cfg(test)]
+fn execute_conformer_distance_geometry(
     job_id: Uuid,
     request: &ConformerV1SubmitRequest,
     arrays: ConformerEnginePackArrays,
@@ -77,6 +79,32 @@ pub(crate) fn execute_conformer_distance_geometry(
     distance_backend: Backend,
     stereo_backend: Backend,
     metal: Option<&MetalTanimotoRuntime>,
+) -> ComputeResult<ConformerDistanceComputation> {
+    execute_conformer_distance_geometry_with_service(
+        job_id,
+        request,
+        arrays,
+        identities,
+        mmff_parameters,
+        input_positions,
+        distance_backend,
+        stereo_backend,
+        metal,
+        None,
+    )
+}
+
+pub(crate) fn execute_conformer_distance_geometry_with_service(
+    job_id: Uuid,
+    request: &ConformerV1SubmitRequest,
+    arrays: ConformerEnginePackArrays,
+    identities: &[ConformerMoleculeIdentity],
+    mmff_parameters: &[Option<NativeMmffParameters>],
+    input_positions: &[Option<Vec<[f32; 4]>>],
+    distance_backend: Backend,
+    stereo_backend: Backend,
+    metal: Option<&MetalTanimotoRuntime>,
+    compute_service: Option<&ComputeServiceClient>,
 ) -> ComputeResult<ConformerDistanceComputation> {
     if identities.len() != arrays.record_count()
         || mmff_parameters.len() != identities.len()
@@ -173,6 +201,7 @@ pub(crate) fn execute_conformer_distance_geometry(
             input_positions,
             distance_backend,
             metal,
+            compute_service.map(|service| (service, job_id)),
         );
     }
     let conformer_count = NonZeroU32::new(request.parameters.conformers_per_molecule)
@@ -304,6 +333,7 @@ pub(crate) fn execute_conformer_distance_geometry(
                 let mmff_refinement = refine_mmff(
                     distance_backend,
                     metal,
+                    compute_service.map(|service| (service, job_id)),
                     &refinement.positions,
                     molecule.atomic_numbers.len() as u32,
                     mmff,
@@ -414,6 +444,7 @@ fn optimize_input_geometries(
     input_positions: &[Option<Vec<[f32; 4]>>],
     backend: Backend,
     metal: Option<&MetalTanimotoRuntime>,
+    compute_service: Option<(&ComputeServiceClient, Uuid)>,
 ) -> ComputeResult<ConformerDistanceComputation> {
     let expected = input_positions
         .iter()
@@ -445,6 +476,7 @@ fn optimize_input_geometries(
         let optimized = refine_mmff(
             backend,
             metal,
+            compute_service,
             positions,
             positions.len() as u32,
             mmff_parameters[record].as_ref(),
@@ -525,6 +557,7 @@ struct MmffRefinementBatch {
 fn refine_mmff(
     backend: Backend,
     metal: Option<&MetalTanimotoRuntime>,
+    compute_service: Option<(&ComputeServiceClient, Uuid)>,
     positions: &[[f32; 4]],
     atom_count: u32,
     parameters: Option<&NativeMmffParameters>,
@@ -551,13 +584,30 @@ fn refine_mmff(
         Backend::NativeMetal => {
             let runtime =
                 metal.ok_or_else(|| unavailable("admitted Metal MMFF runtime is unavailable"))?;
-            let mut optimized = runtime
-                .optimize_mmff_profiled(
-                    positions,
-                    &parameters.parameters,
-                    options,
-                    max_memory_bytes,
+            let execute = |positions: &[[f32; 4]], options| {
+                compute_service.map_or_else(
+                    || {
+                        runtime
+                            .optimize_mmff_profiled(
+                                positions,
+                                &parameters.parameters,
+                                options,
+                                max_memory_bytes,
+                            )
+                            .map_err(|error| error.to_string())
+                    },
+                    |(service, job_id)| {
+                        service.optimize_mmff(
+                            job_id,
+                            positions,
+                            &parameters.parameters,
+                            options,
+                            max_memory_bytes,
+                        )
+                    },
                 )
+            };
+            let mut optimized = execute(positions, options)
                 .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
             let retry_indices = optimized
                 .statuses
@@ -575,13 +625,7 @@ fn refine_mmff(
                             .copied()
                     })
                     .collect::<Vec<_>>();
-                let retry = runtime
-                    .optimize_mmff_profiled(
-                        &retry_positions,
-                        &parameters.parameters,
-                        mmff_retry_options(options),
-                        max_memory_bytes,
-                    )
+                let retry = execute(&retry_positions, mmff_retry_options(options))
                     .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
                 for (retry_index, original_index) in retry_indices.into_iter().enumerate() {
                     let source = retry_index * atom_count..(retry_index + 1) * atom_count;

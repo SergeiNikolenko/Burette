@@ -40,7 +40,9 @@ use crate::compute::{
         ClusterComputation, ClusterExecutionStep,
     },
     cluster_plan::{ClusterV1AdmissionError, SimilarityBackendAdmission},
-    conformer_executor::{execute_conformer_distance_geometry, ConformerDistanceComputation},
+    conformer_executor::{
+        execute_conformer_distance_geometry_with_service, ConformerDistanceComputation,
+    },
     conformer_ipc::{decode_conformer_chunk_result, ConformerChunkResult},
     conformer_plan::{
         derive_conformer_v1_preflight, ConformerBackendAdmission, ConformerMoleculeIdentity,
@@ -1492,7 +1494,7 @@ impl ComputeCoordinator {
         let engine_arrays = prepared.arrays.clone();
         let request = distance_running.request.as_conformer()?;
         let started = Instant::now();
-        let result = execute_conformer_distance_geometry(
+        let result = execute_conformer_distance_geometry_with_service(
             job_id,
             request,
             prepared.arrays,
@@ -1505,6 +1507,7 @@ impl ComputeCoordinator {
                 NativeMetalState::Available(runtime) => Some(runtime),
                 NativeMetalState::Unavailable { .. } => None,
             },
+            ready.compute_service.as_ref(),
         );
         let host_time_ms = started.elapsed().as_secs_f64() * 1_000.0;
         let distance = match result {
