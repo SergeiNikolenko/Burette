@@ -583,6 +583,9 @@ assert.match(buildScript, /dev-namespace\.mjs" patch-tree "\$SAFE_ROOT"/);
 assert.match(buildScript, /Developer ID Application:/);
 assert.match(buildScript, /hardenedRuntime/);
 assert.match(buildScript, /cargo build --release --bin burrete-core-bridge/);
+assert.match(buildScript, /cargo build --release --bin burrete-compute-service/);
+assert.match(buildScript, /Contents\/Helpers\/burrete-compute-service/);
+assert.match(buildScript, /check-compute-service\.mjs/);
 assert.match(buildScript, /TAURI_TARGET_DIR="\$\{CARGO_TARGET_DIR:-target\}"/);
 assert.match(buildScript, /"\$TAURI_TARGET_DIR\/release\/bundle\/macos\/Burrete\.app"/);
 assert.match(buildScript, /CORE_BRIDGE="\$TAURI_TARGET_DIR\/release\/burrete-core-bridge"/);
@@ -766,7 +769,15 @@ assert.equal(vendorAssetsLock.source.profiles, 'config/web-runtime-profiles.json
 assert.equal(vendorAssetsLock.packages.molstar.version, packageConfig.dependencies.molstar);
 assert.equal(vendorAssetsLock.packages['@rdkit/rdkit'].version, packageConfig.dependencies['@rdkit/rdkit']);
 assert.equal(vendorAssetsLock.packages.openchemlib.version, packageConfig.dependencies.openchemlib);
-assert.equal(vendorAssetsLock.assets.length, 5);
+assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), [
+  'PreviewExtension/Web/molstar.css',
+  'PreviewExtension/Web/molstar.js',
+  'PreviewExtension/Web/openchemlib/openchemlib.js',
+  'PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.js',
+  'PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.wasm',
+  'PreviewExtension/Web/rdkit/RDKit_minimal.js',
+  'PreviewExtension/Web/rdkit/RDKit_minimal.wasm',
+]);
 for (const asset of vendorAssetsLock.assets) {
   assert.match(asset.sha256, /^sha256-/);
   assert.ok(asset.bytes > 0);
@@ -778,6 +789,7 @@ assert.deepEqual(vendorAssetsLock.bundleTargets, webRuntimeProfiles.bundleTarget
 assert.ok(webRuntimeProfiles.profiles['desktop-molstar'].includes('molstar.js'));
 assert.ok(webRuntimeProfiles.profiles['desktop-grid'].includes('openchemlib/openchemlib.js'));
 assert.ok(webRuntimeProfiles.profiles['desktop-grid'].includes('rdkit/RDKit_minimal.wasm'));
+assert.ok(webRuntimeProfiles.profiles['desktop-native-compute'].includes('rdkit-conformer/Burrete_rdkit_conformer.wasm'));
 assert.ok(webRuntimeProfiles.profiles['quicklook-molstar'].includes('viewer.js'));
 assert.ok(webRuntimeProfiles.profiles['quicklook-grid'].includes('grid-viewer.js'));
 assert.ok(webRuntimeProfiles.profiles['quicklook-grid'].includes('openchemlib/openchemlib.js'));
@@ -785,6 +797,7 @@ assert.ok(webRuntimeProfiles.profiles['external-artifact'].includes('viewer-shel
 assert.deepEqual(webRuntimeProfiles.bundleTargets.tauri.profiles, [
   'desktop-molstar',
   'desktop-grid',
+  'desktop-native-compute',
   'external-artifact',
 ]);
 assert.deepEqual(webRuntimeProfiles.bundleTargets.quicklook.profiles, [
@@ -1091,7 +1104,7 @@ assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ sourc
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /'unsafe-eval'/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
-assert.match(previewRuntimeGrid, /grid-ui-v10/);
+assert.match(previewRuntimeGrid, /grid-ui-v11/);
 assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 assert.match(previewXyzrender, /xyzrender-runtime/);
 assert.match(gridViewerJS, /resetDocumentRuntimeState\(\);\n\s+state\.remoteMode = isRemoteMode\(cfg\);/);

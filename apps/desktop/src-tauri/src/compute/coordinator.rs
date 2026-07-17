@@ -72,6 +72,7 @@ use crate::compute::{
         execute_snapshot_semiempirical_with_run_id, GridSemiempiricalRequest,
         GridSemiempiricalResult,
     },
+    service::ComputeServiceClient,
     similarity_search::{
         execute_similarity_search, SimilaritySearchBackend, SimilaritySearchRequest,
         SimilaritySearchResult,
@@ -106,6 +107,7 @@ struct ReadyCoordinator {
     snapshots: SnapshotRepository,
     engines: VerifiedEngineCatalog,
     native_metal: NativeMetalState,
+    compute_service: Option<ComputeServiceClient>,
     fingerprint_sessions: Mutex<BTreeMap<Uuid, FingerprintSession>>,
     conformer_submissions: Mutex<BTreeMap<Uuid, PendingConformerSubmission>>,
     prepared_clusters: Mutex<BTreeMap<Uuid, CompletedFingerprintBatch>>,
@@ -879,10 +881,34 @@ impl ComputeCoordinator {
         })
     }
 
+    #[cfg(test)]
     pub(crate) fn initialize(
         compute_root: PathBuf,
         metal_runtime_root: Option<PathBuf>,
         viewer_runtime_root: Option<PathBuf>,
+    ) -> Self {
+        Self::initialize_inner(compute_root, metal_runtime_root, viewer_runtime_root, None)
+    }
+
+    pub(crate) fn initialize_with_service(
+        compute_root: PathBuf,
+        metal_runtime_root: Option<PathBuf>,
+        viewer_runtime_root: Option<PathBuf>,
+        service_executable: Option<PathBuf>,
+    ) -> Self {
+        Self::initialize_inner(
+            compute_root,
+            metal_runtime_root,
+            viewer_runtime_root,
+            Some(service_executable),
+        )
+    }
+
+    fn initialize_inner(
+        compute_root: PathBuf,
+        metal_runtime_root: Option<PathBuf>,
+        viewer_runtime_root: Option<PathBuf>,
+        service_mode: Option<Option<PathBuf>>,
     ) -> Self {
         let state = match ComputeStore::initialize(compute_root) {
             Ok(store) => match SnapshotRepository::initialize(&store) {
@@ -891,14 +917,22 @@ impl ComputeCoordinator {
                 {
                     Ok(_) => match initialize_runtime_catalog(viewer_runtime_root) {
                         Ok((helper_sha256, engines)) => {
+                            let (native_metal, compute_service) = match service_mode {
+                                None => (
+                                    NativeMetalState::probe(metal_runtime_root, &helper_sha256),
+                                    None,
+                                ),
+                                Some(service_executable) => initialize_compute_service(
+                                    service_executable,
+                                    metal_runtime_root,
+                                ),
+                            };
                             CoordinatorState::Ready(Box::new(ReadyCoordinator {
                                 store,
                                 snapshots,
                                 engines,
-                                native_metal: NativeMetalState::probe(
-                                    metal_runtime_root,
-                                    &helper_sha256,
-                                ),
+                                native_metal,
+                                compute_service,
                                 fingerprint_sessions: Mutex::new(BTreeMap::new()),
                                 conformer_submissions: Mutex::new(BTreeMap::new()),
                                 prepared_clusters: Mutex::new(BTreeMap::new()),
@@ -929,11 +963,19 @@ impl ComputeCoordinator {
     pub(crate) fn capability_report(&self) -> ComputeResult<ComputeCapabilityReport> {
         let report = match self.state.as_ref() {
             CoordinatorState::Ready(ready) => match ready.snapshots.health_check() {
-                Ok(()) => match &ready.native_metal {
-                    NativeMetalState::Available(runtime) => available_report(runtime),
-                    NativeMetalState::Unavailable { code, message } => {
-                        unavailable_report(*code, message.clone())
-                    }
+                Ok(()) => match &ready.compute_service {
+                    Some(service) => service.capabilities().unwrap_or_else(|error| {
+                        unavailable_report(
+                            CapabilityReasonCode::RuntimeIntegrityError,
+                            format!("The native compute service is unavailable: {error}"),
+                        )
+                    }),
+                    None => match &ready.native_metal {
+                        NativeMetalState::Available(runtime) => available_report(runtime),
+                        NativeMetalState::Unavailable { code, message } => {
+                            unavailable_report(*code, message.clone())
+                        }
+                    },
                 },
                 Err(error) => unavailable_report(
                     CapabilityReasonCode::RuntimeIntegrityError,
@@ -2968,6 +3010,89 @@ impl NativeMetalState {
             )),
         }
     }
+}
+
+fn initialize_compute_service(
+    executable: Option<PathBuf>,
+    runtime_root: Option<PathBuf>,
+) -> (NativeMetalState, Option<ComputeServiceClient>) {
+    let Some(executable) = executable else {
+        return (
+            NativeMetalState::unavailable(
+                CapabilityReasonCode::RuntimeMissing,
+                "The packaged native compute service is unavailable.",
+            ),
+            None,
+        );
+    };
+    let Some(runtime_root) = runtime_root else {
+        return (
+            NativeMetalState::unavailable(
+                CapabilityReasonCode::RuntimeMissing,
+                "The bundled Burrete Metal runtime directory is unavailable.",
+            ),
+            None,
+        );
+    };
+    let service = match ComputeServiceClient::launch(&executable, &runtime_root) {
+        Ok(service) => service,
+        Err(error) => {
+            return (
+                NativeMetalState::unavailable(
+                    CapabilityReasonCode::RuntimeIntegrityError,
+                    format!("The native compute service failed attestation: {error}"),
+                ),
+                None,
+            )
+        }
+    };
+    let report = match service.capabilities() {
+        Ok(report) => report,
+        Err(error) => {
+            return (
+                NativeMetalState::unavailable(
+                    CapabilityReasonCode::RuntimeIntegrityError,
+                    format!("The native compute service capability probe failed: {error}"),
+                ),
+                Some(service),
+            )
+        }
+    };
+    if report.availability != ComputeAvailability::Available {
+        let reason = report.reasons.first().cloned().unwrap_or(CapabilityReason {
+            code: CapabilityReasonCode::RuntimeIntegrityError,
+            message: "The native compute service reported no available Metal runtime.".into(),
+        });
+        return (
+            NativeMetalState::unavailable(reason.code, reason.message),
+            Some(service),
+        );
+    }
+    let Some(service_runtime) = report.runtime.as_ref() else {
+        return (
+            NativeMetalState::unavailable(
+                CapabilityReasonCode::RuntimeIntegrityError,
+                "The available native compute service omitted its runtime identity.",
+            ),
+            Some(service),
+        );
+    };
+    let direct =
+        NativeMetalState::probe(Some(runtime_root), service_runtime.helper_sha256.as_str());
+    if let NativeMetalState::Available(runtime) = &direct {
+        if runtime.runtime_identity() != service_runtime
+            || report.device.as_ref() != Some(runtime.device_identity())
+        {
+            return (
+                NativeMetalState::unavailable(
+                    CapabilityReasonCode::RuntimeIntegrityError,
+                    "Compute service and coordinator runtime attestations differ.",
+                ),
+                Some(service),
+            );
+        }
+    }
+    (direct, Some(service))
 }
 
 fn initialize_runtime_catalog(
