@@ -28,19 +28,19 @@ The Apple Silicon Compute Layer is under active implementation. The first
 desktop source workflow now runs from immutable Grid scope through a pinned
 RDKit worker, checked CPU/Metal Tanimoto neighbor construction, deterministic
 Butina, immutable artifacts, and typed Grid results. Real Metal command-buffer
-dispatch exists, and a unique development package now compiles, bundles,
-verifies, loads, and dispatches its hash-bound precompiled Metal runtime on an
-Apple M2 Pro. Production Metal remains gated on Developer ID/hardened-runtime
-signing, notarization, scientific-corpus parity, scale benchmarks, and visual
-installed-app evidence.
+dispatch exists, and the current v20 development package compiles, bundles,
+hash-verifies, installs, launches, and dispatches its precompiled runtime on an
+Apple M2 Pro. Production distribution remains gated on external Developer ID/
+hardened-runtime signing, notarization, and final UI-triggered acceptance
+evidence.
 
 | Workflow family | Product status |
 | --- | --- |
-| Similarity and clustering | `Cluster all`/`Cluster selected` is wired end to end; deterministic v20 tests cover a 100k exact query and 100k CSR construction without a dense matrix, plus priority-queue Butina and CSR fill, while real-library density and production-package gates remain |
+| Similarity and clustering | `Cluster all`/`Cluster selected` is wired end to end; deterministic v20 tests cover a 100k exact query and 100k CSR construction without a dense matrix, priority-queue Butina, dense fill, exact cutoff boundaries, and rejection before fill under memory pressure |
 | Similarity search and diverse selection | `Find similar` reuses a verified cluster EnginePack for exact CPU/Metal top-50 ranking and Grid writeback; immutable diverse export includes structures, table, and provenance |
 | Conformer generation | Native Grid selection runs RDKit parameter extraction, adaptive `N x K` Metal DG/ETK/stereo execution, CPU reference validation, durable EnginePack/ResultPack publication, typed Grid writeback, and path-based Mol* ensemble opening; a 32-case all-variant packaged-RDKit/real-Metal corpus passes, while external coordinate-distribution and production-package gates remain |
-| MMFF94/MMFF94s optimization | Seven-term CPU/Metal evaluation, BMFX RDKit parameter ABI, fused Metal BFGS/L-BFGS selection, selectable MMFF94/MMFF94s conformer ranking, standalone input-coordinate `Optimize geometry`, exact Grid/XYZ provenance, and all eight DG/ETDG/ETKDG Grid choices are implemented; broad scientific-corpus parity remains in progress |
-| Alignment, RMSD, shape/electrostatic scoring | Grid `Align & compare` performs bounded Metal Horn alignment, deterministic V2000/V3000 element/bond-graph remapping, CPU parity validation, typed Grid score writeback, aligned Mol* ensemble opening, and electrostatic scoring from a complete common semiempirical charge run when available; broad corpus, durable report, and production-package evidence remain |
+| MMFF94/MMFF94s optimization | Seven-term CPU/Metal evaluation, BMFX RDKit parameter ABI, fused Metal BFGS/L-BFGS selection, selectable conformer ranking, standalone input-coordinate `Optimize geometry`, and Grid/XYZ provenance are implemented; the 24-case pinned RDKit corpus passes on Apple M2 Pro |
+| Alignment, RMSD, shape/electrostatic scoring | Grid `Align & compare` performs bounded Metal Horn alignment, deterministic V2000/V3000 element/bond-graph remapping, CPU parity validation, typed Grid score writeback, aligned annotated SDF/Mol* ensemble opening, and electrostatic scoring from a complete common semiempirical charge run when available; the pinned upstream CHEESE transform/charge fixture and reordered Grid-to-Metal smoke pass |
 | Semiempirical energies and charges | Native Grid evaluation covers RM1, AM1, PM3, PM6, PM6_D, PM6_D3H4, PM6_SP, and AM1* with method-specific domains, SCF/DIIS/adaptive damping, full PM6 d orbitals, D3/H4/HH corrections, energies, charges, and CPU/Metal checks; broad external corpus and production-package gates remain |
 
 Production compute is native Metal plus native CPU/reference chemistry. Python
