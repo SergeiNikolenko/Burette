@@ -40,6 +40,8 @@ type GridControlProps = {
   exportingClusterRepresentatives: boolean;
   clusterRepresentativesAvailable: boolean;
   similarityQuerySelected: boolean;
+  selectedMoleculeCount: number;
+  selectedCoordinateCount: number;
   clusterCutoff: number;
   computeBackend: "checking" | "metal" | "cpu" | "unavailable";
   computeBackendLabel: string;
@@ -304,6 +306,11 @@ function ClusterControls(props: GridControlProps) {
 
 function SelectedOpenActions(props: GridControlProps) {
   if (!props.selectionEnabled) return null;
+  const hasSelection = props.selectedMoleculeCount > 0;
+  const allSelectedHaveCoordinates = hasSelection
+    && props.selectedCoordinateCount === props.selectedMoleculeCount;
+  const computeUnavailable = props.computeBackend === "checking"
+    || props.computeBackend === "unavailable";
   return (
     <div id="selected-open-actions" className="buret-selected-open-actions" hidden>
       <select
@@ -325,13 +332,17 @@ function SelectedOpenActions(props: GridControlProps) {
         <option value="MMFF94">MMFF94</option>
         <option value="MMFF94s">MMFF94s</option>
       </select>
-      <button id="generate-3d-selected" className="buret-toggle-button" type="button" disabled={props.generating3d || props.computeBackend === "checking" || props.computeBackend === "unavailable"} onClick={props.onGenerate3D}>
+      <button id="generate-3d-selected" className="buret-toggle-button" type="button" disabled={props.generating3d || computeUnavailable || !hasSelection} onClick={props.onGenerate3D}>
         <span data-buret-grid-generate-3d-label>{props.generating3d ? "Generating..." : "Generate 3D"}</span>
-        <ControlTooltip label="Generate and selected-MMFF-optimize conformers for selected molecules" />
+        <ControlTooltip label={hasSelection
+          ? "Generate and selected-MMFF-optimize conformers for selected molecules"
+          : "Select one or more molecules first"} />
       </button>
-      <button id="optimize-geometry-selected" className="buret-toggle-button" type="button" disabled={props.generating3d || props.computeBackend === "checking" || props.computeBackend === "unavailable"} onClick={props.onOptimizeGeometry}>
+      <button id="optimize-geometry-selected" className="buret-toggle-button" type="button" disabled={props.generating3d || computeUnavailable || !allSelectedHaveCoordinates} onClick={props.onOptimizeGeometry}>
         <span data-buret-grid-optimize-geometry-label>{props.generating3d ? "Working..." : "Optimize geometry"}</span>
-        <ControlTooltip label="Optimize selected input 3D coordinates with the chosen MMFF variant on Metal" />
+        <ControlTooltip label={allSelectedHaveCoordinates
+          ? "Optimize selected input coordinates with the chosen MMFF variant on Metal"
+          : "Every selected molecule must contain explicit coordinates; generate 3D first when needed"} />
       </button>
       <button id="open-selected-molstar" className="buret-toggle-button" type="button" onClick={() => props.onRendererSwitch("molstar")}>
         Open in Molstar
@@ -346,7 +357,7 @@ function SelectedOpenActions(props: GridControlProps) {
           <select
             aria-label="Semi-empirical method"
             value={props.semiempiricalMethod}
-            disabled={props.evaluatingSemiempirical}
+            disabled={props.evaluatingSemiempirical || !allSelectedHaveCoordinates}
             onChange={(event) => props.onSemiempiricalMethodChange(event.currentTarget.value as SemiempiricalMethod)}
           >
             <option value="RM1">RM1</option>
@@ -369,7 +380,9 @@ function SelectedOpenActions(props: GridControlProps) {
             {props.evaluatingSemiempirical
               ? "Calculating..."
               : `${props.semiempiricalMethod === "AM1_STAR" ? "AM1*" : props.semiempiricalMethod} energy & charges`}
-            <ControlTooltip label="Calculate native semi-empirical energies and atomic charges and write them to Grid" />
+            <ControlTooltip label={allSelectedHaveCoordinates
+              ? "Calculate native semi-empirical energies and atomic charges and write them to Grid"
+              : "Every selected molecule must contain explicit coordinates; generate 3D first when needed"} />
           </button>
         </>
       ) : null}
@@ -377,12 +390,16 @@ function SelectedOpenActions(props: GridControlProps) {
         id="align-selected-poses"
         className="buret-toggle-button"
         type="button"
-        disabled={props.aligningPoses}
+        disabled={props.aligningPoses || props.selectedMoleculeCount < 2 || !allSelectedHaveCoordinates}
         aria-busy={props.aligningPoses ? "true" : "false"}
         onClick={props.onAlignSelectedPoses}
       >
         {props.aligningPoses ? "Aligning..." : "Align & compare"}
-        <ControlTooltip label="Align selected 3D poses to the first selected row on Metal and write scores to Grid" />
+        <ControlTooltip label={props.selectedMoleculeCount < 2
+          ? "Select at least two poses; the first selected row is the reference"
+          : allSelectedHaveCoordinates
+            ? "Align selected 3D poses to the first selected row on Metal and write scores to Grid"
+            : "Every selected pose must contain explicit coordinates"} />
       </button>
     </div>
   );

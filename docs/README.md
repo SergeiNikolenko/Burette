@@ -38,7 +38,9 @@ contains only documents that describe the active project.
   mandatory source/license mapping gate for every adapted file. The
   [implementation status](gpu-compute-status.md) records what is working in
   source today and keeps packaged Metal, browser, Quick Look, and iPhone claims
-  separate.
+  separate. [Native compute user stories](gpu-compute-user-stories.md) describe
+  the Grid entry points, input requirements, outputs, failure behavior, and the
+  universal execution contract shared by every workflow.
 - [MolComputeKit relationship](molcomputekit.md): standalone framework release,
   ownership boundary, compatibility identifiers, and the pinned migration rule
   for removing Burrete's integration copy.

@@ -1001,6 +1001,7 @@
     if (!host || !window.BurreteGridUI || typeof window.BurreteGridUI.mountGridControls !== 'function') {
       throw new Error('BurreteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
     }
+    const selectedRows = selectedMolstarRows();
     window.BurreteGridUI.mountGridControls(host, {
       format: ['csv', 'dwar', 'sdf', 'smiles', 'tsv'].includes(cfg.format) ? cfg.format : 'smiles',
       label: cfg.label || 'Molecule collection',
@@ -1027,6 +1028,8 @@
       exportingClusterRepresentatives: state.exportingClusterRepresentatives,
       clusterRepresentativesAvailable: Boolean(latestRepresentativeAnalysisColumn()),
       similarityQuerySelected: state.selected.size === 1,
+      selectedMoleculeCount: selectedRows.length,
+      selectedCoordinateCount: selectedRows.filter(row => hasMolblockInputCoordinates(row.molblock)).length,
       clusterCutoff: state.clusterCutoff,
       computeBackend: state.computeBackend,
       computeBackendLabel: state.computeBackendLabel,

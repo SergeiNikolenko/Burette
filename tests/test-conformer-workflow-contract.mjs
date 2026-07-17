@@ -12,6 +12,7 @@ const structureInfoPanel = source("apps/desktop/src/components/structure-info-pa
 const nativeConformerWorkflow = source("apps/desktop/src/lib/compute-conformer.ts");
 const gridConformerMessages = source("apps/desktop/src/hooks/use-app-grid-conformer-messages.ts");
 const gridViewer = source("PreviewExtension/Web/grid-viewer.js");
+const gridUi = source("apps/desktop/src/preview-grid/grid-ui.tsx");
 const conformerWorker = source("apps/desktop/src/workers/conformer-extract.worker.ts");
 const conformerExecutor = source("apps/desktop/src-tauri/src/compute/conformer_executor.rs");
 const artifactPublisher = source("apps/desktop/src-tauri/src/compute/artifact_publisher.rs");
@@ -35,6 +36,11 @@ assert.match(gridViewer, /sourceIndexes: rows\.map\(row => Number\(row\.index\)\
 assert.match(gridViewer, /CONFORMER_VARIANTS = \['DG', 'KDG', 'ETDG', 'ETDGv2', 'ETKDG', 'ETKDGv2', 'ETKDGv3', 'srETKDGv3'\]/);
 assert.match(gridViewer, /MMFF_VARIANTS = \['MMFF94', 'MMFF94s'\]/);
 assert.match(gridViewer, /optimizeGeometryGridSelection/);
+assert.match(gridViewer, /selectedMoleculeCount: selectedRows\.length/);
+assert.match(gridViewer, /selectedCoordinateCount: selectedRows\.filter\(row => hasMolblockInputCoordinates\(row\.molblock\)\)\.length/);
+assert.match(gridUi, /disabled=\{props\.generating3d \|\| computeUnavailable \|\| !hasSelection\}/);
+assert.match(gridUi, /disabled=\{props\.generating3d \|\| computeUnavailable \|\| !allSelectedHaveCoordinates\}/);
+assert.match(gridUi, /props\.selectedMoleculeCount < 2 \|\| !allSelectedHaveCoordinates/);
 assert.match(nativeConformerWorkflow, /workflowTemplate: "conformer\.v1"/);
 assert.match(nativeConformerWorkflow, /initialization: options\.initialization/);
 assert.match(nativeConformerWorkflow, /mmffVariant: options\.mmffVariant/);

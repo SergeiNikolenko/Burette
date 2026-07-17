@@ -29,6 +29,7 @@ assert.match(gridViewer, /evaluateSemiempiricalGridSelection/);
 assert.match(gridViewer, /semiempiricalEnabled: caps\.cluster/);
 assert.match(gridViewer, /SEMIEMPIRICAL_METHOD_STORAGE_KEY/);
 assert.match(gridUi, /id="calculate-semiempirical-selected"/);
+assert.match(gridUi, /disabled=\{props\.evaluatingSemiempirical \|\| !allSelectedHaveCoordinates\}/);
 assert.match(gridUi, /aria-label="Semi-empirical method"/);
 assert.match(gridUi, /<option value="PM6">PM6<\/option>/);
 

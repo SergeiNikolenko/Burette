@@ -47,6 +47,9 @@ Production compute is native Metal plus native CPU/reference chemistry. Python
 and MLX are permitted only in development as pinned reference oracles and are
 not ordinary application dependencies.
 
+The concrete Grid flows, input/action matrix, and reusable execution contract
+are documented in [Native Compute User Stories](gpu-compute-user-stories.md).
+
 ## Primary Users
 
 Burrete is for people who inspect molecular and adjacent computational chemistry

@@ -11,13 +11,15 @@ A current v20 development package is built,
 hash-verified, signed ad hoc, installed, and passes real helper-process
 Tanimoto, fixed-pose shape/electrostatic scoring, RM1 SCF, DG embedding, ETK
 optimization, MMFF optimization, and stereo-validation dispatches on Apple M2
-Pro. Its desktop
-process launches from the installed bundle. Production release remains gated on
-external Developer ID/notarization credentials and final UI-triggered acceptance
-evidence; the current UI inspection attempt was blocked by a locked macOS
-session.
+Pro. Its desktop process launches from the installed bundle. The installed Grid
+has completed the single-row cluster edge case and similarity action. A real
+Grid conformer request then exposed two consecutive-GPU-stage lifecycle defects;
+both now have protocol regression coverage, and the repaired package has been
+rebuilt, helper-attested, and installed. Re-running that UI action remains
+pending because the macOS session locked after installation. Production release
+also remains gated on external Developer ID and notarization credentials.
 
-Updated: 2026-07-17
+Updated: 2026-07-18
 
 Target architecture:
 [Native GPU Compute Layer](superpowers/specs/2026-07-15-gpu-compute-platform-design.md)
@@ -620,9 +622,10 @@ signature, notarization, or UI-triggered installed-app acceptance run.
 
 1. Complete the required M1-class 8 GB and M3/M4 Max 64 GB hardware matrix in
    addition to the current M2 Pro evidence.
-2. Exercise clustering, conformer generation, optimization, alignment, and
-   semiempirical evaluation through the actual installed Grid controls and
-   capture the visible backend labels, columns, 3D outputs, and artifacts.
+2. Complete the installed Grid acceptance matrix beyond the already verified
+   single-row clustering and similarity actions: conformer generation,
+   optimization, alignment, semiempirical evaluation, visible backend labels,
+   columns, 3D outputs, and artifacts.
 3. Build with Developer ID and hardened runtime, then notarize and verify the
    nested and outer production signatures without changing the pinned runtime.
 4. Extend scientific corpora when new upstream/reference releases are pinned;
