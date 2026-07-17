@@ -414,6 +414,12 @@ product increment; it is no longer required to read the user-facing report.
 - The pinned RDKit 2025.03.4 runtime reproduces four frozen Morgan
   known-answer vectors byte for byte, and Rust decodes the same vectors through
   the canonical EnginePack ABI.
+- A SHA-pinned fixture from mlxmolkit commit
+  `9e7337f6f93c40a39ad0187991151944a4f1e274` now exercises the native SCF
+  evaluator against 12 PYSEQM known answers: H2, H2O, CH4, and NH3 with RM1,
+  AM1, and full PM6. Electronic, nuclear, and total energies all pass the
+  upstream `0.001 eV` absolute threshold without Python or MLX at test or
+  production runtime.
 - Desktop Rust clippy passes with warnings denied.
 - The production web bundle builds with the dedicated RDKit worker and pinned
   WASM asset.
