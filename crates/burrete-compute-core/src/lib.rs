@@ -241,7 +241,7 @@ pub struct GraphBuildOptions {
 }
 
 impl GraphBuildOptions {
-    fn try_new(
+    pub fn try_new(
         tile_size: NonZeroUsize,
         max_undirected_edges: u64,
         max_memory_bytes: u64,
