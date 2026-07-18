@@ -39,6 +39,7 @@ pub(crate) struct ConformerDistanceComputation {
     pub(crate) mmff_statuses: Vec<u8>,
     pub(crate) mmff_optimizer_kinds: Vec<u8>,
     pub(crate) retry_stereo_failure_flags: Vec<u32>,
+    pub(crate) etk_positions: Vec<[f32; 3]>,
     pub(crate) positions: Vec<[f32; 3]>,
     pub(crate) seed_words: Vec<[u32; 4]>,
     pub(crate) gpu_time_ms: Option<u64>,
@@ -284,6 +285,7 @@ pub(crate) fn execute_conformer_distance_geometry_with_service(
             let mut final_mmff_statuses = vec![4_u8; count];
             let mut final_mmff_optimizers = vec![2_u8; count];
             let mut final_stereo_flags = vec![u32::MAX; count];
+            let mut final_etk_positions = vec![Vec::<[f32; 4]>::new(); count];
             let mut final_positions = vec![Vec::<[f32; 4]>::new(); count];
             let mut final_seeds = vec![[0_u32; 4]; count];
             let mut pending = (0..count).collect::<Vec<_>>();
@@ -385,6 +387,7 @@ pub(crate) fn execute_conformer_distance_geometry_with_service(
                     final_mmff_statuses[local] = mmff_refinement.statuses[attempt_index];
                     final_mmff_optimizers[local] = mmff_refinement.optimizers[attempt_index];
                     final_stereo_flags[local] = stereo_validation.failure_flags[attempt_index];
+                    final_etk_positions[local] = refinement.positions[start..end].to_vec();
                     final_positions[local] = attempt.positions[start..end].to_vec();
                     final_seeds[local] = seeds[attempt_index];
                     if (!converged(attempt.statuses[attempt_index])
@@ -421,6 +424,11 @@ pub(crate) fn execute_conformer_distance_geometry_with_service(
                     .retry_stereo_failure_flags
                     .push(final_stereo_flags[local]);
                 output.seed_words.push(final_seeds[local]);
+                output.etk_positions.extend(
+                    final_etk_positions[local]
+                        .iter()
+                        .map(|position| [position[0], position[1], position[2]]),
+                );
                 output.positions.extend(
                     final_positions[local]
                         .iter()
@@ -499,6 +507,12 @@ fn optimize_input_geometries(
         output.mmff_optimizer_kinds.push(optimized.optimizers[0]);
         output.retry_stereo_failure_flags.push(0);
         output.seed_words.push([0; 4]);
+        output.etk_positions.extend(
+            optimized
+                .positions
+                .iter()
+                .map(|position| [position[0], position[1], position[2]]),
+        );
         output.positions.extend(
             optimized
                 .positions
@@ -1050,6 +1064,7 @@ impl ConformerDistanceComputation {
             mmff_statuses: Vec::new(),
             mmff_optimizer_kinds: Vec::new(),
             retry_stereo_failure_flags: Vec::new(),
+            etk_positions: Vec::new(),
             positions: Vec::new(),
             seed_words: Vec::new(),
             gpu_time_ms: None,
@@ -1108,6 +1123,10 @@ impl ConformerDistanceComputation {
             .try_reserve_exact(conformers)
             .map_err(|_| unavailable("cannot allocate conformer seeds"))?;
         result
+            .etk_positions
+            .try_reserve_exact(atoms)
+            .map_err(|_| unavailable("cannot allocate conformer ETK positions"))?;
+        result
             .positions
             .try_reserve_exact(atoms)
             .map_err(|_| unavailable("cannot allocate conformer positions"))?;
@@ -1130,6 +1149,12 @@ impl ConformerDistanceComputation {
             || self.retry_stereo_failure_flags.len() != count
             || self.seed_words.len() != count
             || self.conformer_atom_starts.last().copied() != Some(self.positions.len() as u64)
+            || self.etk_positions.len() != self.positions.len()
+            || self
+                .etk_positions
+                .iter()
+                .flatten()
+                .any(|value| !value.is_finite())
             || self
                 .positions
                 .iter()
@@ -1211,6 +1236,10 @@ mod tests {
     use serde::Deserialize;
 
     use super::*;
+    use crate::compute::{
+        conformer_reference_validator::validate_conformer_reference,
+        conformer_stereo_executor::ConformerStereoComputation,
+    };
 
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -1341,6 +1370,17 @@ mod tests {
         assert!(result.mmff_statuses.iter().all(|status| *status <= 1));
         assert_eq!(result.mmff_optimizer_kinds, [0, 0]);
         assert!(result.mmff_energies.iter().all(|energy| energy.is_finite()));
+        let stereo = ConformerStereoComputation {
+            failure_flags: result.retry_stereo_failure_flags.clone(),
+            passed_count: result
+                .retry_stereo_failure_flags
+                .iter()
+                .filter(|flags| **flags == 0)
+                .count(),
+            gpu_time_ms: None,
+        };
+        validate_conformer_reference(&result, &stereo)
+            .expect("ETK reference validation must use the pre-MMFF coordinates");
     }
 
     #[test]
@@ -1503,6 +1543,18 @@ mod tests {
         assert_eq!(stereo.failure_flags, [0, 0]);
         assert_eq!(stereo.passed_count, 2);
         assert!(stereo.gpu_time_ms.is_some());
+        validate_conformer_reference(&result, &stereo)
+            .expect("native ETK energies must match the pre-MMFF CPU reference");
+        let input_stereo =
+            crate::compute::conformer_stereo_executor::execute_conformer_stereo_validation(
+                &input,
+                Backend::NativeMetal,
+                Some(&runtime),
+                MIN_COMPUTE_MEMORY_BYTES,
+            )
+            .expect("native Metal input-geometry stereo validation");
+        validate_conformer_reference(&input, &input_stereo)
+            .expect("input-geometry optimization has no ETK stage to validate");
         eprintln!(
             "conformer executor Metal smoke: device={}, conformers={}, distanceGpuTimeMs={:?}, inputGeometryGpuTimeMs={:?}, stereoGpuTimeMs={:?}",
             runtime.device_identity().name,

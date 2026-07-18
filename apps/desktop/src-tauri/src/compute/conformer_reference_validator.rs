@@ -26,11 +26,14 @@ pub(crate) fn validate_conformer_reference(
         ));
     }
     for conformer in 0..distance.conformer_count() {
+        if distance.etk_statuses[conformer] == 4 {
+            continue;
+        }
         let record = distance.conformer_molecule_indices[conformer] as usize;
         let terms = local_etk_terms(&distance.deferred, record)?;
         let start = distance.conformer_atom_starts[conformer] as usize;
         let end = distance.conformer_atom_starts[conformer + 1] as usize;
-        let positions = distance.positions[start..end]
+        let positions = distance.etk_positions[start..end]
             .iter()
             .map(|position| [position[0], position[1], position[2], 0.0])
             .collect::<Vec<_>>();

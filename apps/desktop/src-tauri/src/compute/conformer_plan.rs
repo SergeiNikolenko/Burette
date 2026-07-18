@@ -179,10 +179,25 @@ pub(crate) fn derive_conformer_v1_preflight(
         "positioned atom count",
     )?;
     let result_pack_bytes = result_pack_payload_bytes(positioned_atoms, conformer_count)?;
+    let reference_position_bytes = multiply(
+        positioned_atoms,
+        POSITION_COMPONENTS * F32_BYTES,
+        "ETK reference positions",
+    )?;
+    let retained_result_bytes = sum_buffers(&[result_pack_bytes, reference_position_bytes])?;
+    let batch_memory_bytes = request
+        .limits
+        .max_memory_bytes
+        .checked_sub(retained_result_bytes)
+        .ok_or_else(|| ConformerV1AdmissionError::MemoryLimitExceeded {
+            stage_id: "distanceGeometry",
+            required_bytes: retained_result_bytes,
+            limit_bytes: request.limits.max_memory_bytes,
+        })?;
     let schedule = plan_conformer_batches(
         &molecules,
         ConformerSchedulingOptions {
-            max_memory_bytes: request.limits.max_memory_bytes,
+            max_memory_bytes: batch_memory_bytes,
             resident_engine_bytes: engine_pack_bytes,
             max_conformers_per_batch: NonZeroU32::new(request.limits.max_conformers_per_batch)
                 .expect("validated nonzero batch limit"),
@@ -190,6 +205,7 @@ pub(crate) fn derive_conformer_v1_preflight(
         },
     )
     .map_err(|error| ConformerV1AdmissionError::Contract(error.to_string()))?;
+    let numeric_peak_bytes = sum_buffers(&[retained_result_bytes, schedule.planned_peak_bytes])?;
     Ok(ConformerV1Preflight {
         record_count,
         ordered_record_molecule_identity_sha256,
@@ -198,7 +214,7 @@ pub(crate) fn derive_conformer_v1_preflight(
         total_distance_constraint_count,
         engine_pack_bytes,
         result_pack_bytes,
-        numeric_peak_bytes: schedule.planned_peak_bytes,
+        numeric_peak_bytes,
     })
 }
 
