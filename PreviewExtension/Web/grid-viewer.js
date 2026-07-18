@@ -4335,13 +4335,18 @@
     });
   }
 
+  function commitSelectionChange(cfg) {
+    syncRenderedSelection();
+    refreshGridControls(cfg);
+    updateChrome(cfg);
+  }
+
   function toggleSelection(index, cfg) {
     if (!Number.isFinite(index)) return;
     if (state.selected.has(index)) state.selected.delete(index);
     else state.selected.add(index);
     state.selectionAnchorIndex = index;
-    syncRenderedSelection();
-    updateChrome(cfg);
+    commitSelectionChange(cfg);
   }
 
   function selectRangeTo(index, cfg) {
@@ -4352,23 +4357,20 @@
     if (targetPosition < 0 || anchorPosition < 0) {
       state.selected.add(index);
       state.selectionAnchorIndex = index;
-      syncRenderedSelection();
-      updateChrome(cfg);
+      commitSelectionChange(cfg);
       return;
     }
     const start = Math.min(anchorPosition, targetPosition);
     const end = Math.max(anchorPosition, targetPosition);
     indexes.slice(start, end + 1).forEach(rowIndex => state.selected.add(rowIndex));
-    syncRenderedSelection();
-    updateChrome(cfg);
+    commitSelectionChange(cfg);
   }
 
   function selectAllRows(cfg) {
     const indexes = selectableRowIndexes();
     state.selected = new Set(indexes);
     state.selectionAnchorIndex = indexes.length ? indexes[indexes.length - 1] : null;
-    syncRenderedSelection();
-    updateChrome(cfg);
+    commitSelectionChange(cfg);
   }
 
   function selectPoseReviewRow(activePose, cfg) {
@@ -4376,15 +4378,13 @@
     state.selected.clear();
     state.selected.add(index);
     state.selectionAnchorIndex = index;
-    syncRenderedSelection();
-    updateChrome(cfg);
+    commitSelectionChange(cfg);
   }
 
   function clearSelection(cfg) {
     state.selected.clear();
     state.selectionAnchorIndex = null;
-    syncRenderedSelection();
-    updateChrome(cfg);
+    commitSelectionChange(cfg);
   }
 
   function handleCardSelection(event, row, cfg, cardElement) {

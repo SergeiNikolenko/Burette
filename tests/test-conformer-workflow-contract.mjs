@@ -38,6 +38,10 @@ assert.match(gridViewer, /MMFF_VARIANTS = \['MMFF94', 'MMFF94s'\]/);
 assert.match(gridViewer, /optimizeGeometryGridSelection/);
 assert.match(gridViewer, /selectedMoleculeCount: selectedRows\.length/);
 assert.match(gridViewer, /selectedCoordinateCount: selectedRows\.filter\(row => hasMolblockInputCoordinates\(row\.molblock\)\)\.length/);
+assert.match(gridViewer, /function commitSelectionChange\(cfg\) \{[\s\S]*?refreshGridControls\(cfg\);[\s\S]*?updateChrome\(cfg\);/);
+for (const selectionMutation of ["toggleSelection", "selectRangeTo", "selectAllRows", "selectPoseReviewRow", "clearSelection"]) {
+  assert.match(gridViewer, new RegExp(`function ${selectionMutation}\\([\\s\\S]*?commitSelectionChange\\(cfg\\);`));
+}
 assert.match(gridUi, /disabled=\{props\.generating3d \|\| computeUnavailable \|\| !hasSelection\}/);
 assert.match(gridUi, /disabled=\{props\.generating3d \|\| computeUnavailable \|\| !allSelectedHaveCoordinates\}/);
 assert.match(gridUi, /props\.selectedMoleculeCount < 2 \|\| !allSelectedHaveCoordinates/);

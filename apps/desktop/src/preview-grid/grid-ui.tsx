@@ -373,7 +373,7 @@ function SelectedOpenActions(props: GridControlProps) {
             id="calculate-semiempirical-selected"
             className="buret-toggle-button"
             type="button"
-            disabled={props.evaluatingSemiempirical}
+            disabled={props.evaluatingSemiempirical || !allSelectedHaveCoordinates}
             aria-busy={props.evaluatingSemiempirical ? "true" : "false"}
             onClick={props.onEvaluateSemiempirical}
           >
