@@ -14,6 +14,7 @@ type PushStatus = (message: string, kind?: "info" | "success" | "error", details
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 
 type UseAppGridConformerMessagesOptions = {
+  addDocuments: (documents: ViewerDocument[]) => void;
   openDocumentsInActiveTab: (documents: ViewerDocument[]) => void;
   openDocuments: (paths: string[], reloadOptions?: ViewerReloadOptions, preferencesOverride?: Partial<ViewerPreferences>) => Promise<unknown> | void;
   openTextDocuments: (paths: string[], options?: { background?: boolean }) => void | Promise<unknown>;
@@ -72,6 +73,7 @@ function decodeBase64Text(textBase64: string) {
 }
 
 export function useAppGridConformerMessages({
+  addDocuments,
   openDocumentsInActiveTab,
   openDocuments,
   openTextDocuments,
@@ -107,8 +109,8 @@ export function useAppGridConformerMessages({
       reply("gridSemiempiricalStarted");
       void invoke<GridSemiempiricalResult>("compute_evaluate_grid_semiempirical", {
         request: { documentId, sourceIndexes, method },
-      }).then((result) => {
-        if (result.reportPath) void openTextDocuments([result.reportPath], { background: true });
+      }).then(async (result) => {
+        if (result.reportPath) await openTextDocuments([result.reportPath], { background: true });
         const converged = result.rows.filter((row) => row.converged).length;
         const failed = result.rows.length - converged;
         const execution = result.backend === "nativeMetalScfHybrid"
@@ -160,7 +162,7 @@ export function useAppGridConformerMessages({
             maxMemoryBytes: 2 * 1_024 * 1_024 * 1_024,
           },
         });
-        if (result.reportPath) void openTextDocuments([result.reportPath], { background: true });
+        if (result.reportPath) await openTextDocuments([result.reportPath], { background: true });
         const document = await invoke<ViewerDocument>("open_text_structure", {
           request: {
             title: result.title,
@@ -170,19 +172,19 @@ export function useAppGridConformerMessages({
           preferences: { ...preferences, rendererMode: "molstar" },
           reloadOptions: {},
         });
-        openDocumentsInActiveTab([document]);
-        rememberRecentStructures([document]);
-        const compared = Math.max(0, result.scores.length - 1);
-        pushStatus(
-          `Aligned and scored ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"} against the first selected row on Metal in ${result.gpuTimeMs.toLocaleString()} ms; scores were written to Grid.`,
-          result.gridApplied ? "success" : "error",
-        );
         reply("gridAlignmentFinished", {
           runId: result.runId,
           poseCount: result.scores.length,
           gpuTimeMs: result.gpuTimeMs,
           backend: result.backend,
         });
+        addDocuments([document]);
+        rememberRecentStructures([document]);
+        const compared = Math.max(0, result.scores.length - 1);
+        pushStatus(
+          `Aligned and scored ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"} against the first selected row on Metal in ${result.gpuTimeMs.toLocaleString()} ms; scores were written to Grid.`,
+          result.gridApplied ? "success" : "error",
+        );
       })().catch((error) => {
         const message = normalizeAppError(error, "Grid pose alignment failed.");
         reply("gridAlignmentError", { error: message });
@@ -314,7 +316,7 @@ export function useAppGridConformerMessages({
       })
       .finally(() => reply("gridGenerate3DFinished"));
     return true;
-  }, [openDocuments, openDocumentsInActiveTab, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [addDocuments, openDocuments, openDocumentsInActiveTab, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   return { handleGridConformerMessage };
 }

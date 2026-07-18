@@ -433,6 +433,8 @@
       if (body.type === 'gridAlignmentFinished') {
         state.aligningPoses = false;
         refreshGridControls(config());
+        setGridViewMode('table', config());
+        setStatus(`[grid] Aligned and scored ${Number(body.poseCount || 0).toLocaleString()} poses on Metal; RMSD and similarity columns are shown in the table.`);
         void refreshRemote(config());
         return;
       }
@@ -451,6 +453,10 @@
       if (body.type === 'gridSemiempiricalFinished') {
         state.evaluatingSemiempirical = false;
         refreshGridControls(config());
+        setGridViewMode('table', config());
+        const method = String(body.method || 'Semi-empirical');
+        const converged = Number(body.convergedCount || 0);
+        setStatus(`[grid] ${method} finished for ${converged.toLocaleString()} molecule${converged === 1 ? '' : 's'}; energy and charge columns are shown in the table.`);
         void refreshRemote(config());
         return;
       }
@@ -1030,6 +1036,7 @@
       similarityQuerySelected: state.selected.size === 1,
       selectedMoleculeCount: selectedRows.length,
       selectedCoordinateCount: selectedRows.filter(row => hasMolblockInputCoordinates(row.molblock)).length,
+      selectedGraphsCompatible: selectedRowsHaveCompatibleGraphProfiles(selectedRows),
       clusterCutoff: state.clusterCutoff,
       computeBackend: state.computeBackend,
       computeBackendLabel: state.computeBackendLabel,
@@ -5785,6 +5792,41 @@
       return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)
         && (Math.abs(x) > 1e-6 || Math.abs(y) > 1e-6 || Math.abs(z) > 1e-6);
     });
+  }
+
+  function molblockGraphProfile(value) {
+    const lines = String(value || '').split(/\r?\n/u);
+    const countsIndex = lines.findIndex(line => /\bV2000\b/u.test(line));
+    if (countsIndex < 0) return null;
+    const counts = lines[countsIndex];
+    const atomCount = Number.parseInt(counts.slice(0, 3).trim(), 10);
+    const bondCount = Number.parseInt(counts.slice(3, 6).trim(), 10);
+    if (!Number.isSafeInteger(atomCount) || atomCount < 1 || !Number.isSafeInteger(bondCount) || bondCount < 0) return null;
+    const atomLines = lines.slice(countsIndex + 1, countsIndex + 1 + atomCount);
+    const bondLines = lines.slice(countsIndex + 1 + atomCount, countsIndex + 1 + atomCount + bondCount);
+    if (atomLines.length !== atomCount || bondLines.length !== bondCount) return null;
+    const elements = atomLines.map(line => line.slice(31, 34).trim() || line.trim().split(/\s+/u)[3] || '');
+    if (elements.some(element => !element)) return null;
+    const neighborhoods = elements.map(() => []);
+    for (const line of bondLines) {
+      const first = Number.parseInt(line.slice(0, 3).trim(), 10) - 1;
+      const second = Number.parseInt(line.slice(3, 6).trim(), 10) - 1;
+      const order = Number.parseInt(line.slice(6, 9).trim(), 10);
+      if (first < 0 || second < 0 || first >= atomCount || second >= atomCount || !Number.isSafeInteger(order)) return null;
+      neighborhoods[first].push(`${order}:${elements[second]}`);
+      neighborhoods[second].push(`${order}:${elements[first]}`);
+    }
+    return neighborhoods
+      .map((neighbors, index) => `${elements[index]}[${neighbors.sort().join(',')}]`)
+      .sort()
+      .join('|');
+  }
+
+  function selectedRowsHaveCompatibleGraphProfiles(rows) {
+    if (!Array.isArray(rows) || rows.length < 2) return true;
+    const profiles = rows.map(row => molblockGraphProfile(row?.molblock));
+    if (profiles.some(profile => !profile)) return true;
+    return profiles.every(profile => profile === profiles[0]);
   }
 
   function stripSVGClipping(svg) {

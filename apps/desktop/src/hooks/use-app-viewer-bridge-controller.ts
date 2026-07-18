@@ -178,6 +178,7 @@ export function useAppViewerBridgeController({
     writeGridPerfMetric,
   });
   const { handleGridConformerMessage } = useAppGridConformerMessages({
+    addDocuments,
     openDocuments,
     openDocumentsInActiveTab,
     openTextDocuments,

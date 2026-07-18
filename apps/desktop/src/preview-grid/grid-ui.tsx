@@ -42,6 +42,7 @@ type GridControlProps = {
   similarityQuerySelected: boolean;
   selectedMoleculeCount: number;
   selectedCoordinateCount: number;
+  selectedGraphsCompatible: boolean;
   clusterCutoff: number;
   computeBackend: "checking" | "metal" | "cpu" | "unavailable";
   computeBackendLabel: string;
@@ -390,15 +391,17 @@ function SelectedOpenActions(props: GridControlProps) {
         id="align-selected-poses"
         className="buret-toggle-button"
         type="button"
-        disabled={props.aligningPoses || props.selectedMoleculeCount < 2 || !allSelectedHaveCoordinates}
+        disabled={props.aligningPoses || props.selectedMoleculeCount < 2 || !allSelectedHaveCoordinates || !props.selectedGraphsCompatible}
         aria-busy={props.aligningPoses ? "true" : "false"}
         onClick={props.onAlignSelectedPoses}
       >
         {props.aligningPoses ? "Aligning..." : "Align & compare"}
         <ControlTooltip label={props.selectedMoleculeCount < 2
           ? "Select at least two poses; the first selected row is the reference"
-          : allSelectedHaveCoordinates
-            ? "Align selected 3D poses to the first selected row on Metal and write scores to Grid"
+          : !props.selectedGraphsCompatible
+            ? "Pose alignment requires the same explicit atom and bond graph; select conformers or docking poses of one molecule"
+            : allSelectedHaveCoordinates
+              ? "Align conformers or docking poses of the same molecule to the first selected row on Metal and write scores to Grid"
             : "Every selected pose must contain explicit coordinates"} />
       </button>
     </div>

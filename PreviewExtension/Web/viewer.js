@@ -11606,6 +11606,22 @@
     return null;
   }
 
+  function molstarStandaloneContextMenuPick() {
+    if (!activeConfig || activeConfig.docking) return null;
+    const format = normalizeFormat(activeConfig.sourceExtension || activeConfig.molstarFormat || activeConfig.format);
+    if (!['sdf', 'mol', 'mol2', 'xyz'].includes(format)) return null;
+    const structures = molstarContextStructures();
+    if (structures.length !== 1) return null;
+    const structure = molstarStructureFromRef(structures[0]);
+    return structure ? { loci: { kind: 'structure-loci', structure } } : null;
+  }
+
+  function molstarContextUsesWholeMoleculeScope() {
+    if (!activeConfig || activeConfig.docking) return false;
+    const format = normalizeFormat(activeConfig.sourceExtension || activeConfig.molstarFormat || activeConfig.format);
+    return format === 'sdf' || format === 'mol' || format === 'mol2' || format === 'xyz';
+  }
+
   function currentDockingPoseSource(prepared) {
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
     if (!poses.length) return null;
@@ -12160,7 +12176,9 @@
     const targetStructures = targetStructure ? [targetStructure] : [];
     const resolved = molstarContextResolvedLoci(targetStructure);
     const pickedAtom = resolved.atom;
-    const pickedScope = resolved.selectionBased ? 'selection' : (pickedAtom ? molstarContextScopeForAtom(pickedAtom) : 'selection');
+    const pickedScope = resolved.selectionBased
+      ? 'selection'
+      : (pickedAtom ? (molstarContextUsesWholeMoleculeScope() ? 'ligand' : molstarContextScopeForAtom(pickedAtom)) : 'selection');
     const pickedLabel = resolved.selectionBased ? 'selection' : (pickedAtom ? molstarContextResidueLabel(pickedAtom) : molstarContextTargetLabel(targetStructures));
     if (activeConfig?.docking && activeDockingPrepared) {
       if (pickedAtom && pickedScope === 'ligand') {
@@ -13945,7 +13963,7 @@
         hideMolstarContextMenu();
         return false;
       }
-      const contextPick = picked || molstarContextPickFromEvent(event);
+      const contextPick = picked || molstarContextPickFromEvent(event) || molstarStandaloneContextMenuPick();
       if (!contextPick) {
         event.preventDefault();
         event.stopPropagation();
@@ -13983,7 +14001,7 @@
           hideMolstarContextMenu();
           return;
         }
-        const contextPick = molstarContextPickFromEvent(event);
+        const contextPick = molstarContextPickFromEvent(event) || molstarStandaloneContextMenuPick();
         if (!contextPick) {
           contextPointer = null;
           hideMolstarContextMenu();
@@ -14018,7 +14036,7 @@
           const contextPick = molstarContextPickFromEvent(syntheticContextEvent(pointer), {
             radiusPx: MOLSTAR_TOUCH_PICK_RADIUS_PX,
             stepPx: MOLSTAR_TOUCH_PICK_STEP_PX
-          });
+          }) || molstarStandaloneContextMenuPick();
           if (!contextPick) {
             clearTouchContextPointer();
             return;
