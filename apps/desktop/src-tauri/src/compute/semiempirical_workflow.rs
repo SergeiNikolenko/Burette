@@ -393,9 +393,13 @@ pub(super) fn evaluate_semiempirical_molecule(
                 cpu_polishing.set(true);
                 return symmetric_eigendecomposition(matrix, order);
             }
-            let dispatch = runtime
-                .symmetric_eigen_profiled(matrix, order, max_memory_bytes)
-                .map_err(|error| SemiempiricalError::FockBuild(error.to_string()))?;
+            let dispatch = match runtime.symmetric_eigen_profiled(matrix, order, max_memory_bytes) {
+                Ok(dispatch) => dispatch,
+                Err(_) => {
+                    cpu_polishing.set(true);
+                    return symmetric_eigendecomposition(matrix, order);
+                }
+            };
             gpu_eigensolves.set(gpu_eigensolves.get() + 1);
             gpu_time_ms.set(gpu_time_ms.get() + dispatch.gpu_time_ms);
             Ok((dispatch.eigenvalues, dispatch.eigenvectors))
@@ -785,6 +789,24 @@ mod tests {
         assert!(result.total_energy_ev.unwrap().is_finite());
     }
 
+    #[test]
+    #[ignore = "manual real-GPU regression; set BURRETE_METAL_RUNTIME_ROOT"]
+    fn evaluates_explicit_ethanol_with_metal_scf_kernels() {
+        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+            .map(PathBuf::from)
+            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged runtime");
+        let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
+            .expect("load verified Metal runtime");
+        let method = GridSemiempiricalMethod::parse("RM1").unwrap();
+        let (result, gpu_time_ms) =
+            evaluate_row_inner(&ethanol_row(), method, Some(&runtime), None, Uuid::new_v4())
+                .expect("evaluate explicit ethanol on Metal");
+        assert!(result.converged, "RM1 SCF did not converge");
+        assert!(gpu_time_ms > 0);
+        assert!(result.total_energy_ev.unwrap().is_finite());
+        assert!(result.atomic_charges.unwrap().iter().sum::<f64>().abs() < 1.0e-6);
+    }
+
     fn water_row() -> GridAlignmentSourceRow {
         GridAlignmentSourceRow {
             row_id: 1,
@@ -793,6 +815,22 @@ mod tests {
             name: "water".into(),
             molblock: Some(
                 "water\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9584    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2396    0.9275    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END"
+                    .into(),
+            ),
+        }
+    }
+
+    fn ethanol_row() -> GridAlignmentSourceRow {
+        GridAlignmentSourceRow {
+            row_id: 4,
+            source_index: 0,
+            molecule_content_sha256: "3".repeat(64),
+            name: "ethanol".into(),
+            molblock: Some(
+                include_str!("../../../../../samples/collections/sdf/ethanol_poses.sdf")
+                    .split("\n$$$$")
+                    .next()
+                    .expect("ethanol sample contains one record")
                     .into(),
             ),
         }
