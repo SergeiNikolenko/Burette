@@ -1,236 +1,281 @@
-# Native Compute User Stories
+# Пользовательские сценарии нативного GPU Compute Layer
 
-This document describes how a Burrete user reaches each native compute
-workflow, what input it accepts, what it produces, and how the same interaction
-contract applies across supported molecular collections.
+Этот документ описывает пользовательские сценарии MolComputeKit в Burrete,
+предусловия каждой операции, результат, поведение при ошибке и границы между
+режимами приложения. Цель контракта — одинаковая химическая логика и честная
+информация о backend на каждом поддерживаемом слое.
 
-## Common Entry Point
+## Общая точка входа
 
-1. Open an SDF, SMI/SMILES, CSV, or TSV molecular collection in Burrete.
-2. Select molecules in the Grid card or table view. Search and filters may be
-   used before selection.
-3. Confirm the compute badge in the upper-right corner of Grid:
-   `Metal ready` means a verified Apple GPU runtime is available. A CPU or
-   unavailable badge must not be interpreted as GPU execution.
-4. Run an action from the compute controls beside the renderer controls.
-5. Inspect results in Grid. Workflows that create structures also open a Mol*
-   tab and keep their report as a background document.
+1. Откройте в Burrete молекулярную коллекцию SDF, SMI/SMILES, CSV или TSV.
+2. Выберите молекулы в карточках или таблице Grid. Перед выбором можно применить
+   поиск и фильтры.
+3. Проверьте индикатор вычислений справа сверху:
+   - `Metal ready` означает, что packaged helper и Metal library проверены и
+     доступен указанный Apple GPU;
+   - CPU/fallback означает реальное выполнение reference backend;
+   - `Desktop compute unavailable` означает, что текущий режим не имеет права
+     запускать нативные вычисления.
+4. Запустите операцию из панели Grid.
+5. Численные результаты возвращаются в Grid, структуры открываются в Mol*, а
+   отчёт и provenance сохраняются как неизменяемые артефакты задания.
 
-The first selected row is significant only for alignment, where it becomes the
-reference pose. For all other workflows, source order is preserved only as a
-stable identity and tie-break rule.
+Первая выбранная строка имеет особое значение только для alignment: строка с
+наименьшим стабильным source index становится reference pose. В остальных
+операциях source order используется для устойчивой идентичности и разрешения
+равных результатов, а не как химический параметр.
 
-## Input And Action Matrix
+## Матрица режимов
 
-| Action | Minimum input | Coordinate requirement | Primary result |
+| Режим | Просмотр | Нативные compute-действия | Требуемое поведение |
 | --- | --- | --- | --- |
-| Cluster | selected, filtered, or all molecular rows | none | cluster and representative columns in Grid |
-| Find similar | exactly one selected row plus a successful cluster run | none | ranked top-50 analysis in Grid |
-| Export diverse | a successful cluster run | none | structures, CSV table, and provenance bundle |
-| Generate 3D | one or more rows with SMILES or molfile structure data | none | ranked conformers in Mol* and Grid |
-| Optimize geometry | one or more selected molfiles | explicit coordinates on every selected row | optimized structures in Mol* and Grid |
-| Energy & charges | one to 256 selected molfiles | explicit coordinates on every selected row | method-specific energies, charges, and report |
-| Align & compare | two to 256 compatible poses | explicit coordinates on every selected row | aligned SDF, RMSD, shape, and optional ESP scores |
+| Установленное macOS desktop-приложение, Grid bridge | да | полный набор | Проверить helper, metallib и устройство; показывать `Metal ready` только после attestation |
+| Browser-dev / browser preview | да | нет | Показывать `Desktop compute unavailable`; не отправлять фиктивные GPU-задания |
+| Finder Quick Look | только чтение | нет | Не показывать активные compute-кнопки и не изменять исходный файл |
+| iPhone source app | просмотр поддерживаемых форматов | нет macOS Metal runtime | Не заявлять поддержку desktop compute и не имитировать fallback |
+| Agent/plugin | чтение и управление опубликованными структурами/отчётами | публичного compute action пока нет | Использовать те же bounded artifacts; не обходить Grid/job contracts скрытым вызовом |
 
-Disabled controls are intentional preflight feedback. In particular, a SMILES
-row can be sent directly to `Generate 3D`, but it cannot be optimized, aligned,
-or evaluated semiempirically until an explicit-coordinate structure exists.
-Generate 3D first, then use the resulting structure collection for those
-operations.
+Полная химическая функция считается доступной пользователю только в
+установленном desktop-приложении. Остальные режимы обязаны корректно объяснять
+границу возможностей, а не показывать кнопку, которая завершится неизвестной
+ошибкой или ложным сообщением о GPU.
 
-## US-1: Cluster A Molecular Library
+## Матрица слоёв
 
-As a cheminformatician, I want to group a collection by exact fingerprint
-similarity so that I can inspect chemical series without creating a dense
-pairwise matrix.
+Каждая операция проходит одну и ту же проверяемую цепочку:
 
-Where: Grid toolbar, `Similarity` cutoff and `Cluster selected`, `Cluster
-filtered`, or `Cluster all`.
+1. **Grid UI** определяет доступность кнопки из текущего выбора, наличия
+   координат и capability state.
+2. **Grid viewer** переводит выбранные строки в стабильные source indexes и
+   отправляет типизированное сообщение в host.
+3. **Tauri bridge** проверяет форму запроса и не принимает неподдерживаемую
+   комбинацию режима, метода или scope.
+4. **Coordinator** замораживает molecular snapshot и создаёт durable job с
+   последовательными стадиями.
+5. **Memory planner** учитывает EnginePack, сохраняемый результат, reference
+   coordinates и временные Metal buffers до dispatch.
+6. **Attested compute helper** выполняет разрешённые kernels из pinned runtime;
+   production UI не вызывает Python/MLX.
+7. **Metal / reference CPU** выполняют независимые численные части. Backend,
+   device, kernel, время GPU и fallback записываются на уровне стадии.
+8. **Validation** сравнивает один и тот же физический объект: например, ETK
+   energy проверяется на pre-MMFF координатах, а не на уже изменённой MMFF
+   геометрии.
+9. **Publication** атомарно создаёт manifest, бинарные массивы, структуры и
+   report; незавершённый staging-каталог не считается результатом.
+10. **Writeback** связывает analysis values со stable molecule identity, после
+    чего Grid заново запрашивает страницы и показывает новые колонки.
+11. **Mol*** открывает опубликованную структуру или ансамбль; успешный backend
+    без видимого результата не считается завершённым пользовательским сценарием.
 
-How:
+## Матрица входов и действий
 
-1. Optionally select rows. With no selection, an active search/filter defines
-   the scope; without either, the complete collection is used.
-2. Choose a Tanimoto cutoff. `0.70` is the general-purpose default; higher
-   values split a library into tighter series.
-3. Click `Cluster ...`. Clicking the action again requests cancellation at the
-   current durable stage boundary.
-4. Inspect `clusterId`, representative, status, and error columns in Grid.
+| Действие | Минимальный вход | Требование координат | Основной результат |
+| --- | --- | --- | --- |
+| Кластеризация | выбранные, отфильтрованные или все строки | нет | cluster и representative columns в Grid |
+| Поиск похожих | ровно одна строка и успешный cluster run | нет | top-50 Tanimoto в Grid |
+| Экспорт разнообразия | успешный cluster run | нет | структуры, CSV и provenance bundle |
+| Генерация 3D | одна или несколько строк со SMILES/molfile | нет | ранжированный ансамбль в Mol* и Grid |
+| Оптимизация геометрии | один или несколько molfile records | явные координаты у каждой строки | оптимизированные структуры и MMFF columns |
+| Энергии и заряды | от 1 до 256 molfile records | явные координаты у каждой строки | method-specific energies, charges и report |
+| Alignment и scoring | от 2 до 256 совместимых poses | явные координаты у каждой строки | aligned SDF, RMSD, shape и ESP scores |
 
-Result: fingerprints are packed once, Metal builds blockwise Tanimoto
-neighbours and CSR without an `N x N` matrix, and deterministic CPU Butina
-assigns clusters. The snapshot and artifacts remain tied to the exact source
-row identities. The workflow supports large-library scheduling, including the
-100k test class, subject to the current machine's checked memory plan.
+Отключённая кнопка — результат preflight, а не визуальная случайность. SMILES
+можно передать в `Generate 3D`, но нельзя оптимизировать, выравнивать или
+оценивать semi-empirical методом до появления явных координат.
 
-## US-2: Find Molecules Similar To One Query
+## US-1. Кластеризация молекулярной библиотеки
 
-As a medicinal chemist, I want to select one molecule and retrieve its nearest
-library neighbours so that I can explore an analogue series.
+**Как пользователь**, я хочу сгруппировать библиотеку по fingerprint similarity,
+чтобы увидеть химические серии без построения плотной матрицы `N × N`.
 
-Where: Grid toolbar, `Find similar`.
+**Где:** Grid → `Similarity` → `Cluster selected`, `Cluster filtered` или
+`Cluster all`.
 
-How:
+**Как выполнить:**
 
-1. Complete clustering for the intended library snapshot.
-2. Select exactly one query molecule from that snapshot.
-3. Click `Find similar`.
-4. Sort or filter the derived analysis by similarity or rank.
+1. Выберите строки. Если выбора нет, scope задаёт активный фильтр; если нет и
+   фильтра, используется вся коллекция.
+2. Выберите Tanimoto cutoff. `0.70` — общий default, более высокое значение
+   формирует более узкие серии.
+3. Нажмите `Cluster ...`. Повторное нажатие запрашивает cancellation на текущей
+   durable stage boundary.
+4. Проверьте колонки Cluster ID, Representative, status и error.
 
-Result: Burrete reuses the verified packed fingerprints and performs an exact
-top-50 Tanimoto query. It excludes the query itself and uses stable source row
-identity to resolve equal scores. The action is disabled when there is no valid
-cluster snapshot or the selection is not exactly one row.
+**Результат:** fingerprints упаковываются один раз; Metal строит blockwise
+Tanimoto neighbours и CSR без матрицы `N × N`; deterministic CPU Butina
+назначает кластеры. Snapshot привязан к точным row identities. Планировщик
+поддерживает класс библиотек 100k+ в пределах проверенного memory plan.
 
-## US-3: Select A Diverse Subset
+**Ошибки:** невалидная молекула получает row-level status. Недоступный Metal
+отражается как явный reference CPU fallback только когда политика это разрешает.
 
-As a screening scientist, I want one deterministic representative per cluster
-so that I can reduce a library while retaining chemical diversity.
+## US-2. Поиск аналогов одной молекулы
 
-Where: Grid toolbar, `Export diverse` after clustering.
+**Как medicinal chemist**, я хочу выбрать query molecule и найти ближайшие
+аналоги в той же библиотеке.
 
-How:
+**Где:** Grid → `Find similar`.
 
-1. Cluster the intended selected, filtered, or complete scope.
-2. Click `Export diverse` and choose a destination.
-3. Use the exported SDF/SMI structures and CSV table together; the provenance
-   report records the source snapshot, cutoff, runtime, and representative
-   decisions.
+**Как выполнить:**
 
-Result: export reads the immutable clustering artifacts rather than the
-current mutable visual sort order.
+1. Выполните clustering нужного snapshot.
+2. Выберите ровно одну query molecule из этого snapshot.
+3. Нажмите `Find similar`.
+4. Сортируйте или фильтруйте результат по rank или similarity.
 
-## US-4: Generate And Rank 3D Conformers
+**Результат:** Burrete повторно использует проверенные packed fingerprints,
+исключает query из выдачи и возвращает точный top-50 Tanimoto. При равенстве
+score порядок определяется stable source identity.
 
-As a molecular modeller, I want conformers for selected 2D molecules so that I
-can continue with 3D inspection, optimization, scoring, or docking.
+**Ошибки:** кнопка отключена, если нет подходящего cluster snapshot или выбрано
+не ровно одно соединение.
 
-Where: Grid toolbar after selecting rows, conformer preset, MMFF selector, and
-`Generate 3D`.
+## US-3. Выбор разнообразных представителей
 
-How:
+**Как screening scientist**, я хочу получить одного детерминированного
+представителя каждого кластера и сократить библиотеку без потери серий.
 
-1. Select one or more rows containing valid SMILES or molfile structure data.
-2. Choose DG, KDG, ETDG, ETDGv2, ETKDG, ETKDGv2, ETKDGv3, or srETKDGv3.
-   ETKDGv3 is the general default; srETKDGv3 is intended for small rings.
-3. Choose MMFF94 or MMFF94s for post-embedding optimization and ranking.
-4. Click `Generate 3D` and wait for the Mol* result tab.
-5. Inspect per-conformer convergence, stereo status, retry count, energy, and
-   seed in Grid/report rather than assuming every requested conformer passed.
+**Где:** Grid → `Export diverse` после clustering.
 
-Result: the selected `N molecules x K conformers` workload is divided by the
-unified-memory-aware adaptive planner. DG, ETK refinement, stereo validation,
-and MMFF optimization execute as durable stages; consecutive Metal stages are
-valid protocol transitions. Failed structures are retained as explicit row
-statuses, and converged structures are ranked by the selected MMFF energy.
+**Как выполнить:**
 
-## US-5: Optimize Existing Coordinates
+1. Кластеризуйте нужный scope.
+2. Нажмите `Export diverse` и выберите каталог.
+3. Используйте структуры и CSV вместе с report, где записаны snapshot, cutoff,
+   runtime и representative decisions.
 
-As a computational chemist, I want to minimize supplied coordinates without
-re-embedding the molecule so that the input pose remains the starting point.
+**Результат:** экспорт читается из immutable cluster artifact и не зависит от
+текущей сортировки карточек.
 
-Where: Grid toolbar after selecting coordinate-bearing rows, MMFF selector and
-`Optimize geometry`.
+## US-4. Генерация и ранжирование 3D-конформеров
 
-How:
+**Как molecular modeller**, я хочу получить ансамбль 3D conformers из выбранных
+2D-молекул для дальнейшего scoring, docking и визуального анализа.
 
-1. Open an SDF collection whose selected records contain explicit V2000 or
-   V3000 coordinates.
-2. Select the intended rows and choose MMFF94 or MMFF94s.
-3. Click `Optimize geometry`.
-4. Compare input and optimized coordinates in Mol* and inspect convergence and
-   energy columns in Grid.
+**Где:** Grid → conformer preset → MMFF selector → `Generate 3D`.
 
-Result: Burrete does not silently generate a replacement conformer. BFGS is
-selected for molecules through 32 atoms and L-BFGS for larger molecules;
-non-converged cases receive the bounded retry policy and remain explicit if
-they still fail.
+**Как выполнить:**
 
-## US-6: Calculate Approximate Energies And Charges
+1. Выберите строки с валидным SMILES или molfile.
+2. Выберите DG, KDG, ETDG, ETDGv2, ETKDG, ETKDGv2, ETKDGv3 или srETKDGv3.
+   Общий default — ETKDGv3; srETKDGv3 предназначен для small rings.
+3. Выберите MMFF94 или MMFF94s.
+4. Нажмите `Generate 3D` и дождитесь Mol* tab.
+5. Проверьте convergence, stereo status, retry count, energy и seed в Grid/report.
 
-As a molecular modeller, I want fast approximate electronic energies and
-atomic charges so that I can rank structures and supply electrostatic scoring.
+**Результат:** нагрузка `N molecules × K conformers` делится adaptive planner с
+учётом unified memory. DG, ETK refinement, stereo validation и MMFF — отдельные
+durable stages. Успешные структуры ранжируются по выбранной MMFF energy.
 
-Where: Grid toolbar, semiempirical method selector and `<method> energy &
-charges`.
+**Ошибки:** не прошедшие структуры сохраняются как явные statuses. CPU parity
+сравнивает ETK output до MMFF с теми же pre-MMFF coordinates; допуск не
+расширяется для сокрытия несовпадения.
 
-How:
+## US-5. Оптимизация существующей геометрии
 
-1. Select one to 256 coordinate-bearing records.
-2. Choose RM1, AM1, PM3, PM6, PM6_D, PM6_D3H4, PM6_SP, or AM1*.
-3. Run the action and inspect method-specific total/electronic/nuclear energy,
-   SCF convergence, iteration count, and atomic charge columns.
-4. Use relative conformer energies only within the same method and compatible
-   composition. Do not compare raw totals across different methods as if they
-   shared one energy scale.
+**Как computational chemist**, я хочу минимизировать переданные координаты без
+повторного embedding и сохранить исходную pose как starting point.
 
-Result: SCF orchestration uses DIIS and adaptive damping; supported local
-integrals, rotations, matrix operations, and corrections are dispatched to
-Metal and checked against the CPU reference. PM6_D3H4 adds D3 dispersion,
-H4 hydrogen bonding, and HH repulsion. Unsupported elements or non-convergence
-are per-row failures, not fabricated values. Provenance reports
-`nativeMetalScfHybrid` only after verified GPU work; otherwise it names the CPU
-reference backend.
+**Где:** Grid → MMFF selector → `Optimize geometry`.
 
-## US-7: Align And Compare Conformers Or Docking Poses
+**Как выполнить:**
 
-As a docking scientist, I want several poses aligned to one reference and
-scored consistently so that I can compare geometry, shape, and electrostatics.
+1. Откройте SDF с явными V2000/V3000 coordinates.
+2. Выберите строки и MMFF94 или MMFF94s.
+3. Нажмите `Optimize geometry`.
+4. Сравните исходную и оптимизированную геометрию в Mol*; проверьте energy и
+   convergence columns.
 
-Where: Grid toolbar, `Align & compare`.
+**Результат:** Burrete не генерирует заменяющий conformer. Для молекул до 32
+атомов выбирается BFGS, для более крупных — L-BFGS. Неконвергировавшие случаи
+получают ограниченный retry и остаются видимыми, если retry не помог.
 
-How:
+## US-6. Приближённые энергии и атомные заряды
 
-1. Open an SDF ensemble and select two to 256 coordinate-bearing poses. The
-   lowest selected source row is the reference, independent of click order.
-2. If electrostatic similarity is required, first calculate one common
-   semiempirical charge method for every selected pose.
-3. Click `Align & compare`.
-4. Inspect aligned structures in Mol*, RMSD, shape Tanimoto, electrostatic
-   Carbo, and combined scores in Grid.
+**Как molecular modeller**, я хочу быстро рассчитать electronic energies и
+atomic charges для ranking и electrostatic scoring.
 
-Result: Burrete remaps different atom orders only when element, formal charge,
-bond order, and adjacency define the same molecular graph. Incompatible graphs
-are rejected. Without a complete common charge run, formal molfile charges are
-used; all-zero charges make electrostatic similarity unavailable instead of
-reporting a false zero or perfect score.
+**Где:** Grid → semi-empirical selector → `<method> energy & charges`.
 
-## Universal Execution Contract
+**Как выполнить:**
 
-Every workflow follows the same rules:
+1. Выберите 1–256 records с явными координатами.
+2. Выберите RM1, AM1, PM3, PM6, PM6_D, PM6_D3H4, PM6_SP или AM1*.
+3. Запустите расчёт.
+4. Проверьте колонки status, electronic/nuclear/total energy, SCF iterations и
+   atomic charges. Сравнивайте relative conformer energies только внутри одного
+   метода и совместимого состава.
 
-- Selection is frozen into an immutable molecular snapshot before computation.
-- Row identity, not visible sort position, owns writeback.
-- Memory is admitted before dispatch and batched for Apple unified memory.
-- Metal is preferred for supported numerical stages; required-GPU requests
-  fail rather than silently claiming CPU work as GPU work.
-- CPU/reference code remains an independent numerical validator and an honest
-  fallback where policy allows it.
-- Job, stage, backend, device, convergence, fallback reason, and artifacts are
-  durable and inspectable.
-- Repeated requests use identity-derived seeds and deterministic tie breaks.
-- Ordinary production use requires neither Python nor MLX.
-- Partial molecular failures remain visible per row while valid rows can still
-  complete when the workflow contract permits partial success.
+**Результат:** SCF использует DIIS и adaptive damping; поддерживаемые integrals,
+rotations, matrix operations и corrections выполняются на Metal и проверяются
+reference CPU. PM6_D3H4 включает D3, H4 и HH repulsion. Grid pagination читает
+последний `semiempirical.v1` run и показывает method-specific columns.
 
-The reusable product boundary is therefore not a set of Grid buttons. It is the
-versioned compute protocol plus MolComputeKit/Metal runtime, immutable snapshot
-and artifact contracts, and typed result schemas. Grid and Mol* are Burrete
-clients of that boundary; future CLI, agent, Swift, or batch clients should use
-the same request and provenance contracts rather than reimplementing chemistry.
+**Ошибки:** unsupported element или non-convergence — row-level failure, а не
+выдуманное значение. `nativeMetalScfHybrid` записывается только после реального
+GPU dispatch; иначе provenance явно называет CPU backend и причину fallback.
 
-## Verification Checklist For A New Build
+## US-7. Alignment и сравнение conformers/docking poses
 
-1. Confirm the installed app reports the real backend and Apple GPU identity.
-2. Run a one-row cluster edge case, a multi-row cluster, one similarity query,
-   and diverse export.
-3. Run ETKDGv3 generation from SMILES and verify all durable stages complete.
-4. Run both MMFF variants on a coordinate-bearing SDF.
-5. Run alignment with reordered but isomorphic atom order and reject a
-   different graph.
-6. Run all eight semiempirical identities on known-answer coordinate fixtures.
-7. Compare CPU and Metal results, inspect artifacts, and verify that fallback
-   labels match actual execution.
-8. Repeat under memory pressure and with invalid/unsupported rows.
-9. Verify the result through the installed Grid and Mol* surfaces, not only a
-   library test.
+**Как docking scientist**, я хочу выровнять poses по одному reference и
+сравнить RMSD, shape и electrostatics.
+
+**Где:** Grid → `Align & compare`.
+
+**Как выполнить:**
+
+1. Откройте SDF ensemble и выберите 2–256 coordinate-bearing poses. Reference —
+   строка с наименьшим source index.
+2. Для electrostatic similarity сначала рассчитайте один общий charge method у
+   всех выбранных poses.
+3. Нажмите `Align & compare`.
+4. Проверьте aligned SDF в Mol*, а в Grid — Aligned RMSD, Shape Tanimoto,
+   Electrostatic Carbo и Combined pose similarity.
+
+**Результат:** различный atom order допускается только при точном совпадении
+элементов, formal charges, bond orders и adjacency. Alignment и scoring идут
+batched на Metal; последний `alignment.v1` run возвращается через Grid pages.
+
+**Ошибки:** разные molecular graphs отклоняются. Если нет полного общего charge
+run, используются formal molfile charges; all-zero charges дают unavailable ESP,
+а не ложный ноль или perfect score.
+
+## Универсальный execution contract
+
+- Selection замораживается в immutable molecular snapshot до расчёта.
+- Writeback принадлежит stable molecule identity, а не видимой позиции строки.
+- Память допускается до dispatch и учитывает retained results и scratch buffers.
+- Metal используется максимально для поддерживаемых numerical stages.
+- `gpuRequired` завершается ошибкой, если GPU недоступен; `gpuPreferred` может
+  перейти на CPU только с явным fallback reason.
+- CPU implementation остаётся независимым oracle, а не production-зависимостью
+  Python/MLX.
+- Job, stage, backend, device, kernel, convergence, fallback и artifacts
+  сохраняются и доступны для проверки.
+- Повторные запросы используют identity-derived seeds и deterministic tie-breaks.
+- Partial failures остаются видимыми по строкам, если workflow допускает
+  частичный успех.
+- Успех внутреннего модуля не равен успеху продукта: результат должен появиться
+  в установленном Grid, Mol* или report согласно сценарию.
+
+Переиспользуемая граница — это versioned compute protocol, MolComputeKit/Metal
+runtime, snapshot/artifact contracts и typed result schemas. Grid и Mol* —
+клиенты этого слоя; будущие CLI, agent, Swift или batch clients должны
+использовать те же контракты вместо повторной реализации химии.
+
+## Проверка новой сборки
+
+1. Проверить installed app, bundle identifier, runtime attestation и Apple GPU.
+2. Выполнить cluster edge case, multi-row clustering, similarity query и diverse
+   export.
+3. Сгенерировать ETKDGv3 из SMILES и проверить все durable stages и Mol* result.
+4. Выполнить MMFF94 и MMFF94s на coordinate-bearing SDF.
+5. Проверить alignment для reordered isomorphic atoms и отказ для другого graph.
+6. Выполнить все восемь semi-empirical identities на known-answer fixtures.
+7. Сравнить CPU/Metal, проверить manifests, hashes, artifacts и Grid writeback.
+8. Проверить invalid rows, unsupported elements и memory pressure.
+9. Проверить browser-preview, Quick Look и iPhone на отсутствие ложных compute
+   claims.
+10. Проверить реальный установленный Grid и непустой Mol* canvas, а не только
+    unit/backend tests.
