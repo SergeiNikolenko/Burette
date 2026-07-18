@@ -189,7 +189,7 @@ pub(crate) fn derive_conformer_v1_preflight(
         .limits
         .max_memory_bytes
         .checked_sub(retained_result_bytes)
-        .ok_or_else(|| ConformerV1AdmissionError::MemoryLimitExceeded {
+        .ok_or(ConformerV1AdmissionError::MemoryLimitExceeded {
             stage_id: "distanceGeometry",
             required_bytes: retained_result_bytes,
             limit_bytes: request.limits.max_memory_bytes,
