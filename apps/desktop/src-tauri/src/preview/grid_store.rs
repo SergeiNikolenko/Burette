@@ -683,7 +683,13 @@ fn attach_latest_analysis_runs(
     page_rows: &mut [GridPageRow],
 ) -> Result<Vec<GridAnalysisColumn>, String> {
     let mut columns = Vec::new();
-    for workflow_template in ["cluster.v1", "similaritySearch.v1", "conformer.v1"] {
+    for workflow_template in [
+        "cluster.v1",
+        "similaritySearch.v1",
+        "conformer.v1",
+        "alignment.v1",
+        "semiempirical.v1",
+    ] {
         columns.extend(attach_latest_analysis_run(
             connection,
             page_rows,
@@ -730,7 +736,7 @@ fn attach_latest_analysis_run(
         .query_map([&run_id], |row| {
             let value_id = row.get::<_, String>(0)?;
             Ok(GridAnalysisColumn {
-                label: analysis_label(&value_id).into(),
+                label: analysis_label(&value_id),
                 run_id: run_id.clone(),
                 value_id,
                 value_kind: row.get(1)?,
@@ -800,8 +806,8 @@ fn attach_latest_analysis_run(
     Ok(columns)
 }
 
-fn analysis_label(value_id: &str) -> &str {
-    match value_id {
+fn analysis_label(value_id: &str) -> String {
+    let label = match value_id {
         "clusterId" => "Cluster ID",
         "isRepresentative" => "Representative",
         "clusterStatus" => "Cluster status",
@@ -821,8 +827,40 @@ fn analysis_label(value_id: &str) -> &str {
         "mmffOptimizationStatus" => "MMFF status",
         "mmffOptimizationError" => "MMFF error",
         "conformerError" => "Conformer error",
-        _ => value_id,
-    }
+        "alignmentReference" => "Alignment reference",
+        "alignedRmsd" => "Aligned RMSD",
+        "shapeTanimoto" => "Shape Tanimoto",
+        "electrostaticCarbo" => "Electrostatic Carbo",
+        "combinedPoseSimilarity" => "Combined pose similarity",
+        _ => return semiempirical_analysis_label(value_id).unwrap_or_else(|| value_id.into()),
+    };
+    label.into()
+}
+
+fn semiempirical_analysis_label(value_id: &str) -> Option<String> {
+    let (method, suffix) = [
+        ("pm6D3H4", "PM6_D3H4"),
+        ("am1Star", "AM1*"),
+        ("pm6D", "PM6_D"),
+        ("pm6Sp", "PM6_SP"),
+        ("rm1", "RM1"),
+        ("am1", "AM1"),
+        ("pm3", "PM3"),
+        ("pm6", "PM6"),
+    ]
+    .into_iter()
+    .find_map(|(prefix, method)| value_id.strip_prefix(prefix).map(|suffix| (method, suffix)))?;
+    let quantity = match suffix {
+        "Status" => "status",
+        "ElectronicEnergyEv" => "electronic energy (eV)",
+        "NuclearEnergyEv" => "nuclear energy (eV)",
+        "TotalEnergyEv" => "total energy (eV)",
+        "ScfIterations" => "SCF iterations",
+        "AtomicCharges" => "atomic charges",
+        "Error" => "error",
+        _ => return None,
+    };
+    Some(format!("{method} {quantity}"))
 }
 
 fn attach_descriptor_cells(

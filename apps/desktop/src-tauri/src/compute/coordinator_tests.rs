@@ -110,6 +110,27 @@ fn semiempirical_grid_workflow_publishes_a_durable_cpu_fallback_artifact() {
         .files
         .iter()
         .any(|file| { file.relative_path == "result/report.md" && file.role == "computeReport" }));
+    let page = registry
+        .fetch_page(
+            "main:semi-durable",
+            &GridQuery {
+                query: String::new(),
+                sort: "index".into(),
+                column_filters: Vec::new(),
+                descriptor_filters: Vec::new(),
+                analysis_filters: Vec::new(),
+                descriptor_sort: None,
+                offset: 0,
+                limit: 96,
+            },
+        )
+        .expect("fetch semiempirical Grid result columns");
+    assert!(page.analysis_columns.iter().any(|column| {
+        column.run_id == result.run_id.to_string()
+            && column.value_id == "rm1TotalEnergyEv"
+            && column.label == "RM1 total energy (eV)"
+    }));
+    assert!(page.rows[0].analyses.contains_key("rm1AtomicCharges"));
     drop(coordinator);
     std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
     std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");
