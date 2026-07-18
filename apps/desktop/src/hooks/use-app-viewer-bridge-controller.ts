@@ -23,6 +23,7 @@ import { writeClipboardText } from "../lib/clipboard";
 import { postMessageToViewerSource, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ConformerGenerationMode, MolstarStylePreference } from "../lib/conformer-generation";
+import type { MolecularComputeOperation } from "../lib/standalone-compute";
 import type { DockTabKind } from "../lib/dock";
 import type { PendingMolstarReplaceResolver } from "./use-app-generate-3d-conformer";
 import type { DockingSceneMode, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
@@ -81,6 +82,11 @@ type Generate3DConformer = (
   mode?: ConformerGenerationMode,
   molstarStyle?: MolstarStylePreference | null,
 ) => Promise<void>;
+type RunMolecularCompute = (
+  document: ViewerDocument,
+  operation: MolecularComputeOperation,
+  molstarStyle?: MolstarStylePreference | null,
+) => Promise<void>;
 
 type UseAppViewerBridgeControllerOptions = {
   activeDocument: ViewerDocument | null;
@@ -90,6 +96,7 @@ type UseAppViewerBridgeControllerOptions = {
   documents: ViewerDocument[];
   forgetDirtyGridDocument: (documentId: string | null | undefined) => void;
   generate3DConformer: Generate3DConformer;
+  runMolecularCompute: RunMolecularCompute;
   notifyGridPoseReviewSelection: (targetDocumentId: string, activePose: number) => void;
   openDockingDocument: OpenDockingDocument;
   openDocuments: OpenDocuments;
@@ -127,6 +134,7 @@ export function useAppViewerBridgeController({
   documents,
   forgetDirtyGridDocument,
   generate3DConformer,
+  runMolecularCompute,
   notifyGridPoseReviewSelection,
   openDockingDocument,
   openDocuments,
@@ -207,6 +215,7 @@ export function useAppViewerBridgeController({
     activeDocument,
     documents,
     generate3DConformer,
+    runMolecularCompute,
     postMessageToViewerSource,
     pushStatus,
   });

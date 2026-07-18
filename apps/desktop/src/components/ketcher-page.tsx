@@ -19,6 +19,7 @@ import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily as collectionFamilyForExtension, type CollectionFamily } from "../lib/collection-documents";
 import { detectKetcherImportFormat, normalizeKetcherSmilesImport } from "../lib/ketcher-import-format";
 import { readStructureText } from "../lib/structure-text";
+import { isTauriRuntime } from "../lib/tauri";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import type { StructureDragRecord } from "../lib/structure-drag";
@@ -747,7 +748,9 @@ export function KetcherPage({
         text: collectionRecord?.text ?? molfileToSdf(molfile),
         draftKet,
         draftMolfile: molfile,
-        source3d: target === "generate3d" ? preserved3dSource ?? undefined : undefined,
+        source3d: ["generate3d", "generateEnsemble", "optimizeGeometry", "semiempiricalRm1"].includes(target)
+          ? preserved3dSource ?? undefined
+          : undefined,
         target,
         collectionTargetPath,
       });
@@ -1135,10 +1138,57 @@ export function KetcherPage({
             xyzrender
             <ShortcutTooltip label="Open sketch in xyzrender" />
           </button>
-          <button type="button" disabled={!ketcher || exportingSketch} aria-label="Generate 3D conformer" onClick={() => void openSketch("generate3d")}>
-            3D
-            <ShortcutTooltip label="Generate 3D conformer" />
-          </button>
+          <RadixDropdownMenu
+            align="end"
+            items={[
+              {
+                kind: "item",
+                id: "compute-generate-3d",
+                text: "Generate 3D",
+                detail: "ETKDGv3 + MMFF94s",
+                disabled: !isTauriRuntime(),
+                action: () => void openSketch("generate3d"),
+              },
+              {
+                kind: "item",
+                id: "compute-generate-ensemble",
+                text: "Generate conformer ensemble",
+                detail: "16 ranked conformers",
+                disabled: !isTauriRuntime(),
+                action: () => void openSketch("generateEnsemble"),
+              },
+              { kind: "separator" },
+              {
+                kind: "item",
+                id: "compute-optimize",
+                text: "Optimize geometry",
+                detail: preserved3dSource ? "MMFF94s on current 3D coordinates" : "Requires imported 3D coordinates",
+                disabled: !isTauriRuntime() || !preserved3dSource,
+                action: () => void openSketch("optimizeGeometry"),
+              },
+              {
+                kind: "item",
+                id: "compute-rm1",
+                text: "RM1 energy & charges",
+                detail: preserved3dSource ? "Native semi-empirical workflow" : "Requires imported 3D coordinates",
+                disabled: !isTauriRuntime() || !preserved3dSource,
+                action: () => void openSketch("semiempiricalRm1"),
+              },
+              ...(!isTauriRuntime() ? [{
+                kind: "item" as const,
+                id: "compute-desktop-only",
+                text: "Desktop compute unavailable",
+                detail: "The dev browser previews this native Metal interface",
+                disabled: true,
+              }] : []),
+            ]}
+            trigger={(
+              <button type="button" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
+                Compute
+                <ShortcutTooltip label="Native molecular compute" />
+              </button>
+            )}
+          />
           <RadixDropdownMenu
             align="end"
             items={[

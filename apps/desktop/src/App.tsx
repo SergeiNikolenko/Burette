@@ -564,10 +564,12 @@ export default function App() {
     pushStatus,
   });
 
-  const { generate3DConformer } = useAppGenerate3DConformer({
+  const { generate3DConformer, runMolecularCompute } = useAppGenerate3DConformer({
     activeViewerIframeForDocument,
     openDocumentsInActiveTab,
     pendingMolstarReplaceRef,
+    openDocuments,
+    openTextDocuments,
     preferences,
     pushErrorStatus,
     pushStatus,
@@ -632,7 +634,9 @@ export default function App() {
     addTextDocuments,
     closeTab,
     mergeMoleculeCollections,
+    openDocuments,
     openDocumentsInActiveTab,
+    openTextDocuments,
     openKetcherTab,
     preferences,
     pushErrorStatus,
@@ -727,6 +731,7 @@ export default function App() {
     documents,
     forgetDirtyGridDocument,
     generate3DConformer,
+    runMolecularCompute,
     notifyGridPoseReviewSelection,
     openDockingDocument,
     openDocuments,

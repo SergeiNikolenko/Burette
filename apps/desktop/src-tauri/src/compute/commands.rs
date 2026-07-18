@@ -2,8 +2,9 @@ use burrete_compute_protocol::{
     ArtifactManifest, ClusterV1SubmitRequest, ComputeCapabilityReport, ConformerV1SubmitRequest,
     JobRevisionEvent, JobSnapshot, MAX_JSON_SAFE_INTEGER,
 };
-use serde::Serialize;
-use tauri::{Runtime, State, WebviewWindow};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use tauri::{Manager, Runtime, State, WebviewWindow};
 use uuid::Uuid;
 
 use crate::compute::{
@@ -22,9 +23,113 @@ use crate::compute::{
     similarity_search::{SimilaritySearchRequest, SimilaritySearchResult},
     store::validate_owner_window_label,
 };
-use crate::{preview::grid_store::GridRuntimeRegistry, windows::runtime_document_id};
+use crate::{
+    preview::grid_store::{build_grid_store_with_options, GridParseOptions, GridRuntimeRegistry},
+    windows::runtime_document_id,
+};
 
 const DEFAULT_JOB_LIST_LIMIT: usize = 50;
+const MAX_INLINE_COMPUTE_SOURCE_BYTES: usize = 64 * 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct InlineComputeSourceRequest {
+    title: String,
+    extension: String,
+    text: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct InlineComputeSourceRegistration {
+    document_id: String,
+    source_indexes: Vec<usize>,
+    record_count: usize,
+}
+
+#[tauri::command]
+pub(crate) fn compute_register_inline_source<R: Runtime>(
+    window: WebviewWindow<R>,
+    registry: State<'_, GridRuntimeRegistry>,
+    request: InlineComputeSourceRequest,
+) -> Result<InlineComputeSourceRegistration, String> {
+    let extension = request
+        .extension
+        .trim()
+        .trim_start_matches('.')
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "sdf" | "sd" | "smi" | "smiles") {
+        return Err("Native compute accepts inline SDF or SMILES sources".into());
+    }
+    if request.text.trim().is_empty() {
+        return Err("Native compute source is empty".into());
+    }
+    if request.text.len() > MAX_INLINE_COMPUTE_SOURCE_BYTES {
+        return Err("Native compute source exceeds the 64 MiB inline limit".into());
+    }
+
+    let document_id = format!("inline-compute-{}", Uuid::new_v4());
+    let runtime_dir = window
+        .app_handle()
+        .path()
+        .app_cache_dir()
+        .map_err(|error| error.to_string())?
+        .join("compute-inline")
+        .join(&document_id);
+    fs::create_dir_all(&runtime_dir).map_err(|error| error.to_string())?;
+    let grid_store = match build_grid_store_with_options(
+        &runtime_dir,
+        &extension,
+        request.text.as_bytes(),
+        &GridParseOptions {
+            include_single_sdf: true,
+            ..GridParseOptions::default()
+        },
+    ) {
+        Ok(Some(grid_store)) => grid_store,
+        Ok(None) => {
+            let _ = fs::remove_dir_all(&runtime_dir);
+            return Err(format!(
+                "{} does not contain a supported molecule",
+                request.title
+            ));
+        }
+        Err(error) => {
+            let _ = fs::remove_dir_all(&runtime_dir);
+            return Err(format!(
+                "Cannot register {} for native compute: {error}",
+                request.title
+            ));
+        }
+    };
+
+    if !grid_store.summary.index_ready {
+        grid_store
+            .cancel_token
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = fs::remove_dir_all(&runtime_dir);
+        return Err(
+            "Inline compute currently accepts at most 192 molecule records per operation".into(),
+        );
+    }
+
+    let record_count = grid_store.summary.records_indexed;
+    let namespaced_document_id = runtime_document_id(window.label(), &document_id);
+    if let Err(error) = registry.register(
+        &namespaced_document_id,
+        grid_store.database_path,
+        grid_store.summary.format,
+        grid_store.cancel_token,
+    ) {
+        let _ = fs::remove_dir_all(&runtime_dir);
+        return Err(error);
+    }
+    Ok(InlineComputeSourceRegistration {
+        document_id,
+        source_indexes: (0..record_count).collect(),
+        record_count,
+    })
+}
 
 #[tauri::command]
 pub(crate) async fn compute_evaluate_grid_semiempirical<R: Runtime>(

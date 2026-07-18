@@ -130,6 +130,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             compute::commands::compute_capabilities,
+            compute::commands::compute_register_inline_source,
             compute::commands::compute_align_grid_poses,
             compute::commands::compute_evaluate_grid_semiempirical,
             compute::commands::compute_submit_job,

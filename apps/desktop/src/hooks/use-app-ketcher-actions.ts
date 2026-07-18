@@ -4,31 +4,40 @@ import { save } from "@tauri-apps/plugin-dialog";
 
 import type { KetcherImportRequest, KetcherSketchRequest, StatusKind } from "../components/types";
 import type { KetcherLocation } from "../components/editor-area/page-kinds/ketcher";
-import { generateBrowserDev3DConformer, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
-import { conformerGenerationPreferences, generated3DStatus, type ConformerGenerationResult } from "../lib/conformer-generation";
+import { openBrowserDevTextDocument, readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { downloadTextFile, exportDialogFilters, safeExportFileName, stableTextDocumentId } from "../lib/file-export";
 import { pathExtension } from "../lib/file-routing";
 import { ketcherDraftMolfileFromImportText, ketcherSource3DFromText, queueKetcherImportRequest } from "../lib/ketcher-workflow";
 import { basename } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
+import { runStandaloneConformerWorkflow, runStandaloneSemiempirical } from "../lib/standalone-compute";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type {
   TextFileDocument,
   ViewerDocument,
   ViewerPreferences,
+  ViewerReloadOptions,
 } from "../types";
 
 type PushStatus = (message: string, kind?: StatusKind, details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 type OpenKetcherTab = (location?: KetcherLocation) => void;
 type MergeMoleculeCollections = (targetPath: string | null, paths: string[]) => void | Promise<void>;
+type OpenDocuments = (
+  paths: string[],
+  reloadOptions?: ViewerReloadOptions,
+  preferencesOverride?: Partial<ViewerPreferences>,
+  options?: { replace?: boolean; inActiveTab?: boolean },
+) => Promise<unknown> | void;
 
 type UseAppKetcherActionsOptions = {
   addDocuments: (documents: ViewerDocument[]) => void;
   addTextDocuments: (documents: TextFileDocument[]) => void;
   closeTab: (id: string) => void;
   mergeMoleculeCollections: MergeMoleculeCollections;
+  openDocuments: OpenDocuments;
   openDocumentsInActiveTab: (documents: ViewerDocument[]) => void;
+  openTextDocuments: (paths: string[], options?: { background?: boolean }) => void | Promise<unknown>;
   openKetcherTab: OpenKetcherTab;
   preferences: ViewerPreferences;
   pushErrorStatus: PushErrorStatus;
@@ -44,7 +53,9 @@ export function useAppKetcherActions({
   addTextDocuments,
   closeTab,
   mergeMoleculeCollections,
+  openDocuments,
   openDocumentsInActiveTab,
+  openTextDocuments,
   openKetcherTab,
   preferences,
   pushErrorStatus,
@@ -234,7 +245,7 @@ export function useAppKetcherActions({
   const openKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
     const rendererMode: ViewerPreferences["rendererMode"] = request.target === "grid"
       ? "grid2d"
-      : request.target === "molstar" || request.target === "generate3d"
+      : ["molstar", "generate3d", "generateEnsemble", "optimizeGeometry", "semiempiricalRm1"].includes(request.target)
       ? "molstar"
       : request.target === "xyzrender"
         ? "xyzrender-external"
@@ -306,38 +317,41 @@ export function useAppKetcherActions({
         return;
       }
 
-      if (request.target === "generate3d") {
-        pushStatus("Generating 3D conformer...");
-        const conformerRequest = {
-          title: request.title,
-          extension: request.extension,
-          text: request.text,
-          ...conformerGenerationPreferences(preferences),
-          source3d: request.source3d ?? null,
-        };
-        const conformer = isTauriRuntime()
-          ? await invoke<ConformerGenerationResult>("generate_3d_conformer", { request: conformerRequest })
-          : await generateBrowserDev3DConformer(conformerRequest);
-        const document = isTauriRuntime()
-          ? await invoke<ViewerDocument>("open_text_structure", {
-              request: {
-                title: conformer.title,
-                extension: conformer.extension,
-                text: conformer.text,
-              },
-              preferences: effectivePreferences,
-              reloadOptions,
-            })
-          : await openBrowserDevTextDocument(
-              conformer.title,
-              conformer.extension,
-              conformer.text,
-              effectivePreferences,
-              reloadOptions,
-        );
-        openDocumentsInActiveTab([document]);
-        rememberRecentStructures([document]);
-        pushStatus(generated3DStatus(conformer, "opened it in Molstar"));
+      if (["generate3d", "generateEnsemble", "optimizeGeometry", "semiempiricalRm1"].includes(request.target)) {
+        if (!isTauriRuntime()) {
+          pushStatus("Native Metal compute is available in the desktop app; browser dev only previews the interface.", "error");
+          return;
+        }
+        const usesInputGeometry = request.target === "optimizeGeometry" || request.target === "semiempiricalRm1";
+        const source3d = usesInputGeometry ? request.source3d : null;
+        if (usesInputGeometry && !source3d) {
+          pushStatus("Import a structure with 3D coordinates before running this operation.", "error");
+          return;
+        }
+        const source = source3d
+          ? { title: source3d.title, extension: source3d.extension, text: source3d.text }
+          : { title: request.title, extension: request.extension, text: request.text };
+        if (request.target === "semiempiricalRm1") {
+          pushStatus("Calculating RM1 energy and charges...");
+          const result = await runStandaloneSemiempirical(source, "RM1");
+          if (result.reportPath) void openTextDocuments([result.reportPath], { background: false });
+          const converged = result.rows.filter((row) => row.converged).length;
+          pushStatus(`RM1 converged for ${converged.toLocaleString()} structure${converged === 1 ? "" : "s"}; opened the report.`, converged === result.rows.length ? "success" : "error");
+          return;
+        }
+        const ensemble = request.target === "generateEnsemble";
+        const optimize = request.target === "optimizeGeometry";
+        pushStatus(optimize ? "Optimizing current 3D geometry with MMFF94s..." : ensemble ? "Generating conformer ensemble..." : "Generating 3D geometry...");
+        const result = await runStandaloneConformerWorkflow(source, (phase) => {
+          if (phase === "validation") pushStatus("Checking native result against the CPU reference...");
+        }, {
+          initialization: optimize ? "inputGeometry" : "generated",
+          conformersPerMolecule: ensemble ? 16 : 1,
+        });
+        void openTextDocuments([result.reportPath], { background: true });
+        await openDocuments([result.primaryOpenPath], {}, effectivePreferences, { inActiveTab: true });
+        const backend = result.backend === "nativeMetal" ? "Metal GPU" : "CPU reference fallback";
+        pushStatus(`${optimize ? "Optimized" : "Generated"} ${result.passedCount.toLocaleString()} validated structure${result.passedCount === 1 ? "" : "s"} via ${backend}.`, result.failedCount ? "error" : "success");
         return;
       }
 
@@ -367,7 +381,7 @@ export function useAppKetcherActions({
       pushErrorStatus(error, "Open Ketcher sketch failed");
       throw error;
     }
-  }, [addDocuments, mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [addDocuments, mergeMoleculeCollections, openDocuments, openDocumentsInActiveTab, openTextDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   return {
     applyKetcherToGridRow,

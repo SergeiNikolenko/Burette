@@ -1543,20 +1543,22 @@
     }
     if (generate3dButton && generate3dButton.dataset.bound !== '1') {
       generate3dButton.dataset.bound = '1';
-      generate3dButton.addEventListener('click', requestGenerate3DConformer);
-      generate3dButton.addEventListener('contextmenu', event => {
-        event.preventDefault();
-        showGenerate3DMenu(generate3dButton);
-      });
+      generate3dButton.addEventListener('click', () => showGenerate3DMenu(generate3dButton));
     }
-    const ensembleButton = generate3dMenu?.querySelector('[data-buret-action="generate-3d-ensemble"]');
-    if (ensembleButton && ensembleButton.dataset.bound !== '1') {
-      ensembleButton.dataset.bound = '1';
-      ensembleButton.addEventListener('click', () => {
-        hideGenerate3DMenu();
-        requestGenerate3DConformer({ mode: 'ensemble' });
-      });
-    }
+    generate3dMenu?.querySelectorAll('[data-buret-compute-operation]').forEach(operationButton => {
+      const operation = String(operationButton.dataset.buretComputeOperation || '');
+      operationButton.disabled = operation === 'alignPoses' && !isSdfPoseConformerSet(config);
+      if (operationButton.dataset.bound !== '1') {
+        operationButton.dataset.bound = '1';
+        operationButton.addEventListener('click', () => {
+          if (operationButton.disabled) return;
+          const selectedOperation = String(operationButton.dataset.buretComputeOperation || 'generate3d');
+          const mode = selectedOperation === 'generateEnsemble' ? 'ensemble' : 'single';
+          hideGenerate3DMenu();
+          requestMolecularCompute(selectedOperation, { mode });
+        });
+      }
+    });
     observeMolstarViewportPanel();
     const popoverDocumentChanged = syncXyzrenderPopoverDocument(toolbar, config);
     const popoverWasOpen = popover?.classList.contains('hidden') === false && !popoverDocumentChanged;
@@ -1908,11 +1910,13 @@
     menu.classList.remove('hidden');
     menu.style.top = `${Math.round(rect.bottom + 6)}px`;
     menu.style.left = `${Math.round(Math.max(8, rect.right - menu.offsetWidth))}px`;
+    anchor.setAttribute('aria-expanded', 'true');
     menu.querySelector('[role="menuitem"]')?.focus?.();
   }
 
   function hideGenerate3DMenu() {
     document.querySelector('[data-buret-generate-3d-menu]')?.classList.add('hidden');
+    document.querySelector('[data-buret-action="generate-3d-conformer"]')?.setAttribute('aria-expanded', 'false');
   }
 
   function setGenerate3DPending(pending, mode = 'single') {
@@ -1948,16 +1952,17 @@
     if (event.key === 'Escape') hideGenerate3DMenu();
   });
 
-  function requestGenerate3DConformer(options = {}) {
+  function requestMolecularCompute(operation = 'generate3d', options = {}) {
     const config = activeConfig || window.BurreteConfig || {};
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
-      setStatus('3D conformer generation supports SDF and MOL structures.', 'error');
+      setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
       return;
     }
     const mode = options.mode === 'ensemble' ? 'ensemble' : 'single';
     const sent = postHostMessage({
-      type: 'generate3dConformer',
+      type: 'molecularCompute',
+      operation,
       path: String(config.sourcePath || '').trim(),
       title: String(config.label || 'structure').trim(),
       extension: String(config.sourceExtension || config.format || '').trim(),
@@ -1965,13 +1970,18 @@
       mode
     });
     if (!sent) {
-      setStatus('3D conformer generation is available only in the app viewer.', 'error');
+      setStatus('Native Metal compute is available only in the desktop app.', 'error');
       return;
     }
-    setGenerate3DPending(true, mode);
-    setStatus(mode === 'ensemble'
-      ? '[web] Generating conformer set with RDKit...'
-      : '[web] Generating 3D conformer with RDKit...');
+    if (operation === 'generate3d' || operation === 'generateEnsemble') setGenerate3DPending(true, mode);
+    const labels = {
+      generate3d: 'Generating 3D geometry',
+      generateEnsemble: 'Generating conformer ensemble',
+      optimizeGeometry: 'Optimizing geometry',
+      semiempiricalRm1: 'Calculating RM1 energy and charges',
+      alignPoses: 'Aligning and comparing poses'
+    };
+    setStatus(`[web] ${labels[operation] || 'Starting molecular compute'} in the desktop native runtime...`);
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
@@ -13079,6 +13089,11 @@
       actions.push(['pubchem:identity', 'Search PubChem — Identical']);
       actions.push(['pubchem:similarity', 'Search PubChem — Similar (90%)']);
     }
+    if (canGenerate3DConformerFromConfig(activeConfig || {}, 'molstar')) {
+      actions.push(['compute:optimizeGeometry', 'Compute — Optimize geometry']);
+      actions.push(['compute:semiempiricalRm1', 'Compute — RM1 energy & charges']);
+      if (isSdfPoseConformerSet(activeConfig || {})) actions.push(['compute:alignPoses', 'Compute — Align & compare poses']);
+    }
     actions.push(['focus', 'Focus in current view']);
     return actions;
   }
@@ -13171,6 +13186,8 @@
         const searchType = action.slice('pubchem:'.length);
         await openMolstarPubChemSearch(target, searchType);
         setStatus(`[web] Opening PubChem ${searchType === 'identity' ? 'identity' : '90% similarity'} search for ${targetLabel}.`);
+      } else if (action.startsWith('compute:')) {
+        requestMolecularCompute(action.slice('compute:'.length));
       } else if (action === 'focus') {
         const handled = focusMolstarContextPick(target) || await resetMolstarCameraForContext();
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;

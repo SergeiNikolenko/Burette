@@ -1216,6 +1216,10 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   background: var(--buret-toolbar-hover);
   outline: none;
 }
+.buret-generate-3d-menu button:disabled {
+  color: color-mix(in srgb, var(--buret-toolbar-color) 42%, transparent);
+  cursor: not-allowed;
+}
 body.buret-molstar-viewport-panel-open .buret-generate-3d-control {
   top: var(--buret-generate-3d-panel-top, calc(var(--buret-viewport-controls-top) + 48px));
   z-index: 35;
