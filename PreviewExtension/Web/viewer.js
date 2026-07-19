@@ -4209,6 +4209,11 @@
     const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
     const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
     const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
+    const viewportControlRailRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
+    const generate3DControlRight = viewportControlRailRect
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - viewportControlRailRect.left + FLOATING_LAYOUT_GAP * 2))
+      : 70;
+    root.style.setProperty('--buret-generate-3d-control-right', generate3DControlRight + 'px');
     const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row');
     document.body?.classList.toggle('buret-selection-toolbar-open', !!selectionToolbarRect && !!toolbarRect);
     const mainRect = visibleRect('.msp-plugin .msp-layout-main');

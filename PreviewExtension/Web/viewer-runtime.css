@@ -13,6 +13,7 @@
   --buret-toolbar-color: rgba(255, 255, 255, 0.94);
   --buret-control-island-right: 12px;
   --buret-control-island-gap: 6px;
+  --buret-generate-3d-control-right: 70px;
   --buret-viewport-controls-top: calc(var(--buret-toolbar-safe-top) + 42px);
   --buret-viewport-panel-max-height: calc(100vh - 96px);
   --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
@@ -1138,7 +1139,7 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
 .buret-generate-3d-control {
   position: absolute;
   top: var(--buret-viewport-controls-top);
-  right: 62px;
+  right: var(--buret-generate-3d-control-right);
   z-index: 35;
   min-width: 104px;
   height: 36px;
