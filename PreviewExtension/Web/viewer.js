@@ -1543,11 +1543,24 @@
     }
     if (generate3dButton && generate3dButton.dataset.bound !== '1') {
       generate3dButton.dataset.bound = '1';
-      generate3dButton.addEventListener('click', () => showGenerate3DMenu(generate3dButton));
+      generate3dButton.addEventListener('click', event => showGenerate3DMenu(generate3dButton, event.detail === 0));
+      generate3dButton.addEventListener('keydown', event => {
+        if (event.key !== 'ArrowDown') return;
+        event.preventDefault();
+        event.stopPropagation();
+        showGenerate3DMenu(generate3dButton, true);
+      });
     }
     generate3dMenu?.querySelectorAll('[data-buret-compute-operation]').forEach(operationButton => {
       const operation = String(operationButton.dataset.buretComputeOperation || '');
       operationButton.disabled = operation === 'alignPoses' && !isSdfPoseConformerSet(config);
+      if (operation === 'alignPoses') {
+        const disabledReason = 'Requires an SDF ensemble or docking poses';
+        operationButton.title = operationButton.disabled ? disabledReason : 'Align and compare poses';
+        operationButton.setAttribute('aria-label', operationButton.disabled
+          ? `Align and compare poses. ${disabledReason}`
+          : 'Align and compare poses');
+      }
       if (operationButton.dataset.bound !== '1') {
         operationButton.dataset.bound = '1';
         operationButton.addEventListener('click', () => {
@@ -1903,15 +1916,25 @@
     if (!sent) setStatus('SDF grid switching is available only in the app or Quick Look viewer.', 'error');
   }
 
-  function showGenerate3DMenu(anchor) {
+  function showGenerate3DMenu(anchor, focusFirst = false) {
     const menu = document.querySelector('[data-buret-generate-3d-menu]');
     if (!menu || anchor?.classList?.contains('hidden') || anchor?.disabled) return;
     const rect = anchor.getBoundingClientRect();
     menu.classList.remove('hidden');
-    menu.style.top = `${Math.round(rect.bottom + 6)}px`;
-    menu.style.left = `${Math.round(Math.max(8, rect.right - menu.offsetWidth))}px`;
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+    const left = Math.min(
+      Math.max(8, rect.right - menuWidth),
+      Math.max(8, window.innerWidth - menuWidth - 8),
+    );
+    const below = rect.bottom + 4;
+    const top = below + menuHeight <= window.innerHeight - 8
+      ? below
+      : Math.max(8, rect.top - menuHeight - 4);
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.left = `${Math.round(left)}px`;
     anchor.setAttribute('aria-expanded', 'true');
-    menu.querySelector('[role="menuitem"]')?.focus?.();
+    if (focusFirst) menu.querySelector('[role="menuitem"]:not(:disabled)')?.focus?.();
   }
 
   function hideGenerate3DMenu() {
@@ -1949,7 +1972,27 @@
     hideGenerate3DMenu();
   });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') hideGenerate3DMenu();
+    const menu = document.querySelector('[data-buret-generate-3d-menu]');
+    if (!menu || menu.classList.contains('hidden')) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hideGenerate3DMenu();
+      document.querySelector('[data-buret-action="generate-3d-conformer"]')?.focus?.();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const items = [...menu.querySelectorAll('[role="menuitem"]:not(:disabled)')];
+    if (items.length === 0) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(document.activeElement);
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : event.key === 'ArrowUp'
+          ? (currentIndex <= 0 ? items.length - 1 : currentIndex - 1)
+          : (currentIndex + 1) % items.length;
+    items[nextIndex]?.focus?.();
   });
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {

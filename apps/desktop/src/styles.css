@@ -1192,6 +1192,28 @@ img.radix-menu-item-icon {
   margin: 5px 8px;
   background: var(--line-subtler);
 }
+.radix-menu.compute-command-menu {
+  width: min(288px, calc(100vw - 16px));
+  min-width: 0;
+  padding: 5px;
+}
+.compute-command-menu .radix-menu-item {
+  min-height: 32px;
+  padding: 0 10px;
+}
+.compute-command-menu .radix-menu-item-body,
+.compute-command-menu .radix-menu-item-copy {
+  width: 100%;
+}
+.compute-command-menu .radix-menu-item-copy {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 14px;
+}
+.compute-command-menu .radix-menu-item-detail {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
 .open-editor-menu-content {
   min-width: 224px;
   max-width: min(268px, calc(100vw - 16px));
@@ -4138,6 +4160,17 @@ img.radix-menu-item-icon {
 }
 .ketcher-page-actions button:active:not(:disabled) {
   transform: scale(0.98);
+}
+.ketcher-page-actions .ketcher-compute-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+.ketcher-compute-trigger svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0.62;
 }
 .ketcher-collection-menu-anchor {
   position: relative;
