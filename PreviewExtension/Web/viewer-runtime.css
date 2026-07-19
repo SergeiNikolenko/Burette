@@ -25,7 +25,7 @@
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
   --buret-molstar-panel-radius: 10px;
-  --buret-menu-background: rgba(30, 32, 36, 0.97);
+  --buret-menu-background: rgb(30, 32, 36);
   --buret-menu-section-background: rgba(255, 255, 255, 0.09);
   --buret-menu-input-background: rgba(255, 255, 255, 0.12);
   --buret-menu-input-focus-background: rgba(255, 255, 255, 0.16);
@@ -62,7 +62,7 @@ body.buret-theme-light {
   --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
-  --buret-menu-background: rgba(248, 248, 246, 0.98);
+  --buret-menu-background: rgb(248, 248, 246);
   --buret-menu-section-background: rgba(0, 0, 0, 0.055);
   --buret-menu-input-background: rgba(0, 0, 0, 0.075);
   --buret-menu-input-focus-background: rgba(0, 0, 0, 0.105);
@@ -778,8 +778,8 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   border-radius: 12px;
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
-  -webkit-backdrop-filter: blur(30px) saturate(1.35);
-  backdrop-filter: blur(30px) saturate(1.35);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow: var(--buret-menu-shadow);
 }
 .buret-molecule-context-menu-title {
@@ -849,16 +849,16 @@ body.burette-mobile-host .buret-molecule-context-menu {
   border: 0.5px solid rgba(255, 255, 255, 0.22);
   border-radius: 24px;
   color: #f5f5f7;
-  background: rgba(28, 28, 30, 0.78);
-  -webkit-backdrop-filter: blur(42px) saturate(1.75);
-  backdrop-filter: blur(42px) saturate(1.75);
+  background: var(--buret-menu-background);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.42),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu {
   color: #1d1d1f;
-  background: rgba(246, 246, 242, 0.76);
+  background: var(--buret-menu-background);
   border-color: rgba(0, 0, 0, 0.10);
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.20),
@@ -1207,8 +1207,8 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   border-radius: 10px;
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
-  -webkit-backdrop-filter: blur(22px) saturate(1.25);
-  backdrop-filter: blur(22px) saturate(1.25);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow: var(--buret-menu-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   transform-origin: top right;
@@ -1437,8 +1437,8 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
   box-shadow: var(--buret-menu-shadow);
-  -webkit-backdrop-filter: blur(18px) saturate(1.18);
-  backdrop-filter: blur(18px) saturate(1.18);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 .buret-xyzrender-popover.hidden { display: none; }
 .buret-xyzrender-popover-header {
@@ -2235,6 +2235,14 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-agent-panel-chart-row strong {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+body .msp-plugin .msp-action-menu-options,
+body .msp-plugin .msp-action-menu-options-no-header,
+body .msp-plugin .msp-animation-viewport-controls-select,
+body .msp-plugin .msp-selection-viewport-controls-actions {
+  background: var(--buret-menu-background) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
   .buret-docking-pose-animation {

@@ -9,7 +9,7 @@
   --buret-control-hover: rgba(255, 255, 255, 0.11);
   --buret-control-active: rgba(255, 255, 255, 0.14);
   --buret-control-focus: rgba(255, 255, 255, 0.16);
-  --buret-menu-surface: rgb(37 37 40 / 0.86);
+  --buret-menu-surface: rgb(37 37 40);
   --buret-detail-surface: #202020;
   --buret-panel: #202020;
   --buret-grid-rail-popover-surface: #303033;
@@ -62,7 +62,7 @@ html[data-buret-theme="light"] {
   --buret-control-hover: rgba(0, 0, 0, 0.075);
   --buret-control-active: rgba(0, 0, 0, 0.10);
   --buret-control-focus: rgba(0, 0, 0, 0.13);
-  --buret-menu-surface: rgb(244 244 246 / 0.88);
+  --buret-menu-surface: rgb(244 244 246);
   --buret-detail-surface: #ffffff;
   --buret-panel: rgba(255, 255, 255, 0.94);
   --buret-grid-rail-popover-surface: #ffffff;
@@ -1243,8 +1243,8 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   color: var(--buret-text);
   background: var(--buret-menu-surface);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
-  -webkit-backdrop-filter: blur(30px) saturate(1.35);
-  backdrop-filter: blur(30px) saturate(1.35);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .buret-grid-molecule-context-menu-title {
