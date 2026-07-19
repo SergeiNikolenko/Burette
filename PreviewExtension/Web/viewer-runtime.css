@@ -958,17 +958,6 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
     opacity 180ms ease,
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.buret-toolbar-group {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-width: 0;
-}
-.buret-toolbar-group + .buret-toolbar-group {
-  margin-left: 3px;
-  padding-left: 6px;
-  border-left: 1px solid var(--buret-toolbar-border);
-}
 #buret-toolbar.buret-toolbar-docked .buret-toolbar-content {
   overflow-x: auto;
   overflow-y: hidden;
@@ -1141,22 +1130,30 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.36));
 }
 .buret-generate-3d-control {
-  width: auto;
-  min-width: 82px;
-  padding: 0 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
+  position: absolute;
+  top: var(--buret-viewport-controls-top);
+  right: 62px;
+  z-index: 35;
+  min-width: 104px;
+  height: 36px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 10px;
+  padding: 0 12px;
+  color: var(--buret-toolbar-color);
+  background: color-mix(in srgb, var(--buret-toolbar-background) 92%, var(--buret-menu-input-background, transparent));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  letter-spacing: 0;
   white-space: nowrap;
 }
-.buret-generate-3d-control .buret-menu-chevron {
-  width: 12px;
-  height: 12px;
-  opacity: 0.62;
+.buret-generate-3d-control:hover,
+.buret-generate-3d-control:focus-visible {
+  background: var(--buret-toolbar-hover);
+  outline: 1px solid var(--buret-toolbar-border);
+  outline-offset: -1px;
 }
 .buret-generate-3d-control.generating {
-  min-width: 126px;
+  min-width: 132px;
   cursor: progress;
 }
 .buret-generate-3d-control.generating::before {
@@ -1180,9 +1177,6 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   background: currentColor;
   animation: buret-generate-3d-progress-down 900ms ease-in-out infinite;
 }
-.buret-generate-3d-control.generating .buret-menu-chevron {
-  display: none;
-}
 .buret-generate-3d-control.hidden {
   display: none;
 }
@@ -1194,23 +1188,21 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
 .buret-generate-3d-menu {
   position: fixed;
   z-index: 45;
-  width: min(288px, calc(100vw - 16px));
-  min-width: 0;
-  box-sizing: border-box;
-  padding: 5px;
+  min-width: 182px;
+  padding: 6px;
   border: 1px solid var(--buret-toolbar-border);
-  border-radius: 9px;
+  border-radius: 10px;
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
   box-shadow: var(--buret-menu-shadow);
-  font: 400 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 .buret-generate-3d-menu.hidden {
   display: none;
 }
 .buret-generate-3d-menu button {
   width: 100%;
-  min-height: 32px;
+  min-height: 30px;
   border: 0;
   border-radius: 7px;
   padding: 0 10px;
@@ -1218,10 +1210,6 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   background: transparent;
   font: inherit;
   text-align: left;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
 }
 .buret-generate-3d-menu button:hover,
 .buret-generate-3d-menu button:focus-visible {
@@ -1232,15 +1220,9 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   color: color-mix(in srgb, var(--buret-toolbar-color) 42%, transparent);
   cursor: not-allowed;
 }
-.buret-compute-menu-detail {
-  flex: 0 0 auto;
-  color: color-mix(in srgb, var(--buret-toolbar-color) 52%, transparent);
-  font-size: 11px;
-}
-.buret-compute-menu-separator {
-  height: 1px;
-  margin: 4px 8px;
-  background: var(--buret-menu-divider);
+body.buret-molstar-viewport-panel-open .buret-generate-3d-control {
+  top: var(--buret-generate-3d-panel-top, calc(var(--buret-viewport-controls-top) + 48px));
+  z-index: 35;
 }
 .buret-renderer-control {
   display: none; align-items: center; gap: 4px; padding-left: 5px;

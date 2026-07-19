@@ -1140,22 +1140,20 @@ export function KetcherPage({
           </button>
           <RadixDropdownMenu
             align="end"
-            sideOffset={4}
-            contentClassName="compute-command-menu"
             items={[
               {
                 kind: "item",
                 id: "compute-generate-3d",
                 text: "Generate 3D",
-                detail: "ETKDGv3",
+                detail: "ETKDGv3 + MMFF94s",
                 disabled: !isTauriRuntime(),
                 action: () => void openSketch("generate3d"),
               },
               {
                 kind: "item",
                 id: "compute-generate-ensemble",
-                text: "Generate Ensemble",
-                detail: "16 conformers",
+                text: "Generate conformer ensemble",
+                detail: "16 ranked conformers",
                 disabled: !isTauriRuntime(),
                 action: () => void openSketch("generateEnsemble"),
               },
@@ -1164,7 +1162,7 @@ export function KetcherPage({
                 kind: "item",
                 id: "compute-optimize",
                 text: "Optimize geometry",
-                detail: preserved3dSource ? "MMFF94s" : "Needs 3D",
+                detail: preserved3dSource ? "MMFF94s on current 3D coordinates" : "Requires imported 3D coordinates",
                 disabled: !isTauriRuntime() || !preserved3dSource,
                 action: () => void openSketch("optimizeGeometry"),
               },
@@ -1172,24 +1170,21 @@ export function KetcherPage({
                 kind: "item",
                 id: "compute-rm1",
                 text: "RM1 energy & charges",
-                detail: preserved3dSource ? "RM1" : "Needs 3D",
+                detail: preserved3dSource ? "Native semi-empirical workflow" : "Requires imported 3D coordinates",
                 disabled: !isTauriRuntime() || !preserved3dSource,
                 action: () => void openSketch("semiempiricalRm1"),
               },
-              ...(!isTauriRuntime() ? [
-                { kind: "separator" as const },
-                {
-                  kind: "item" as const,
-                  id: "compute-desktop-only",
-                  text: "Desktop app required",
-                  disabled: true,
-                },
-              ] : []),
+              ...(!isTauriRuntime() ? [{
+                kind: "item" as const,
+                id: "compute-desktop-only",
+                text: "Desktop compute unavailable",
+                detail: "The dev browser previews this native Metal interface",
+                disabled: true,
+              }] : []),
             ]}
             trigger={(
-              <button className="ketcher-compute-trigger" type="button" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
-                <span>Compute</span>
-                <svg viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              <button type="button" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
+                Compute
                 <ShortcutTooltip label="Native molecular compute" />
               </button>
             )}
