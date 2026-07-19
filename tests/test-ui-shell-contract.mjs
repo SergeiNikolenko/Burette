@@ -4609,6 +4609,10 @@ assert.match(previewRuntimeCss, /overscroll-behavior: contain;/);
 assert.match(previewRuntimeCss, /\.buret-tooltip \{/);
 assert.match(previewRuntimeCss, /\.buret-button:hover > \.buret-tooltip/);
 assert.match(previewRuntimeCss, /\.buret-generate-3d-control:hover > \.buret-tooltip/);
+assert.match(
+  previewRuntimeCss,
+  /\.buret-generate-3d-control\[aria-expanded="true"\] > \.buret-tooltip \{[^}]*opacity: 0;[^}]*visibility: hidden;/s,
+);
 assert.match(previewRuntimeCss, /\.buret-molstar-tooltip \{/);
 assert.match(previewRuntimeCss, /\.buret-molstar-tooltip\.visible \{/);
 assert.match(previewRuntimeCss, /\.buret-molstar-transition-frame \{/);
