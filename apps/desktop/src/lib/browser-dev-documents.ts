@@ -163,6 +163,7 @@ type BrowserDevConformerGenerationRequest = {
   extension: string;
   text: string;
   engine?: ViewerPreferences["conformerEngine"];
+  operation?: "generate" | "optimize";
   mode?: "single" | "ensemble";
   candidateCount?: number;
   rmsdCutoff?: number;

@@ -4,7 +4,8 @@ import { save } from "@tauri-apps/plugin-dialog";
 
 import type { KetcherImportRequest, KetcherSketchRequest, StatusKind } from "../components/types";
 import type { KetcherLocation } from "../components/editor-area/page-kinds/ketcher";
-import { openBrowserDevTextDocument, readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
+import { browserDevComputeReportDocument, runBrowserDevSemiempirical } from "../lib/browser-dev-compute";
+import { generateBrowserDev3DConformer, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { downloadTextFile, exportDialogFilters, safeExportFileName, stableTextDocumentId } from "../lib/file-export";
 import { pathExtension } from "../lib/file-routing";
 import { ketcherDraftMolfileFromImportText, ketcherSource3DFromText, queueKetcherImportRequest } from "../lib/ketcher-workflow";
@@ -318,10 +319,6 @@ export function useAppKetcherActions({
       }
 
       if (["generate3d", "generateEnsemble", "optimizeGeometry", "semiempiricalRm1"].includes(request.target)) {
-        if (!isTauriRuntime()) {
-          pushStatus("Native Metal compute is available in the desktop app; browser dev only previews the interface.", "error");
-          return;
-        }
         const usesInputGeometry = request.target === "optimizeGeometry" || request.target === "semiempiricalRm1";
         const source3d = usesInputGeometry ? request.source3d : null;
         if (usesInputGeometry && !source3d) {
@@ -331,6 +328,43 @@ export function useAppKetcherActions({
         const source = source3d
           ? { title: source3d.title, extension: source3d.extension, text: source3d.text }
           : { title: request.title, extension: request.extension, text: request.text };
+        if (!isTauriRuntime()) {
+          if (request.target === "semiempiricalRm1") {
+            pushStatus("Calculating RM1 energy and charges with the native Metal dev backend...");
+            const result = await runBrowserDevSemiempirical(source);
+            const report = browserDevComputeReportDocument(
+              `${source.title.replace(/\.[^.]+$/u, "")}-rm1-report.json`,
+              result,
+            );
+            addTextDocuments([report]);
+            const converged = result.rows.filter((row) => row.converged).length;
+            pushStatus(`RM1 converged for ${converged.toLocaleString()} structure${converged === 1 ? "" : "s"}; opened the dev report.`, converged === result.rows.length ? "success" : "error");
+            return;
+          }
+          const ensemble = request.target === "generateEnsemble";
+          const optimize = request.target === "optimizeGeometry";
+          pushStatus(optimize
+            ? "Optimizing current 3D geometry with RDKit MMFF94s (dev CPU backend)..."
+            : ensemble ? "Generating conformer ensemble with the dev RDKit backend..." : "Generating 3D geometry with the dev RDKit backend...");
+          const generated = await generateBrowserDev3DConformer({
+            ...source,
+            engine: optimize ? "rdkit" : preferences.conformerEngine,
+            operation: optimize ? "optimize" : "generate",
+            mode: ensemble ? "ensemble" : "single",
+            candidateCount: preferences.conformerCandidateCount,
+            rmsdCutoff: preferences.conformerRmsdCutoff,
+          });
+          const generatedDocument = await openBrowserDevTextDocument(
+            generated.title,
+            generated.extension,
+            generated.text,
+            effectivePreferences,
+          );
+          openDocumentsInActiveTab([generatedDocument]);
+          rememberRecentStructures([generatedDocument]);
+          pushStatus(`${optimize ? "Optimized" : "Generated"} via ${generated.method} on the temporary dev backend.`, "success");
+          return;
+        }
         if (request.target === "semiempiricalRm1") {
           pushStatus("Calculating RM1 energy and charges...");
           const result = await runStandaloneSemiempirical(source, "RM1");

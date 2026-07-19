@@ -18,6 +18,10 @@ pub fn run_compute_service() -> Result<(), String> {
     compute::service::run_compute_service()
 }
 
+pub fn run_compute_dev_backend() -> Result<(), String> {
+    compute::dev_backend::run()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "macos")]

@@ -773,7 +773,7 @@ export function KetcherPage({
     } finally {
       setExportingSketch(false);
     }
-  }, [actions, exportingSketch, ketcher]);
+  }, [actions, exportingSketch, ketcher, preserved3dSource]);
 
   const sketchDragRecord = useCallback(async () => {
     if (!ketcher) return null;
@@ -1145,16 +1145,16 @@ export function KetcherPage({
                 kind: "item",
                 id: "compute-generate-3d",
                 text: "Generate 3D",
-                detail: "ETKDGv3 + MMFF94s",
-                disabled: !isTauriRuntime(),
+                detail: isTauriRuntime() ? "ETKDGv3 + MMFF94s" : "Dev backend · RDKit CPU",
+                disabled: false,
                 action: () => void openSketch("generate3d"),
               },
               {
                 kind: "item",
                 id: "compute-generate-ensemble",
                 text: "Generate conformer ensemble",
-                detail: "16 ranked conformers",
-                disabled: !isTauriRuntime(),
+                detail: isTauriRuntime() ? "16 ranked conformers" : "Dev backend · RDKit CPU",
+                disabled: false,
                 action: () => void openSketch("generateEnsemble"),
               },
               { kind: "separator" },
@@ -1162,25 +1162,22 @@ export function KetcherPage({
                 kind: "item",
                 id: "compute-optimize",
                 text: "Optimize geometry",
-                detail: preserved3dSource ? "MMFF94s on current 3D coordinates" : "Requires imported 3D coordinates",
-                disabled: !isTauriRuntime() || !preserved3dSource,
+                detail: preserved3dSource
+                  ? isTauriRuntime() ? "MMFF94s on current 3D coordinates" : "Dev backend · RDKit MMFF94s CPU"
+                  : "Requires imported 3D coordinates",
+                disabled: !preserved3dSource,
                 action: () => void openSketch("optimizeGeometry"),
               },
               {
                 kind: "item",
                 id: "compute-rm1",
                 text: "RM1 energy & charges",
-                detail: preserved3dSource ? "Native semi-empirical workflow" : "Requires imported 3D coordinates",
-                disabled: !isTauriRuntime() || !preserved3dSource,
+                detail: preserved3dSource
+                  ? isTauriRuntime() ? "Native semi-empirical workflow" : "Dev backend · native Metal"
+                  : "Requires imported 3D coordinates",
+                disabled: !preserved3dSource,
                 action: () => void openSketch("semiempiricalRm1"),
               },
-              ...(!isTauriRuntime() ? [{
-                kind: "item" as const,
-                id: "compute-desktop-only",
-                text: "Desktop compute unavailable",
-                detail: "The dev browser previews this native Metal interface",
-                disabled: true,
-              }] : []),
             ]}
             trigger={(
               <button type="button" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">

@@ -570,6 +570,7 @@ export default function App() {
     pendingMolstarReplaceRef,
     openDocuments,
     openTextDocuments,
+    openTextDocumentsInActiveTab,
     preferences,
     pushErrorStatus,
     pushStatus,

@@ -13,6 +13,7 @@ mod conformer_reference_validator;
 mod conformer_session;
 mod conformer_stereo_executor;
 pub(crate) mod coordinator;
+pub(crate) mod dev_backend;
 mod engine_catalog;
 pub(crate) mod error;
 mod fingerprint_session;

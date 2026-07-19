@@ -1,6 +1,7 @@
 import { type MutableRefObject, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
+import { browserDevComputeReportDocument, runBrowserDevAlignment, runBrowserDevSemiempirical } from "../lib/browser-dev-compute";
 import { generateBrowserDev3DConformer, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import {
   conformerGenerationPreferences,
@@ -45,6 +46,7 @@ type UseAppGenerate3DConformerOptions = {
   openDocuments: OpenDocuments;
   openDocumentsInActiveTab: OpenDocumentsInActiveTab;
   openTextDocuments: (paths: string[], options?: { background?: boolean }) => void | Promise<unknown>;
+  openTextDocumentsInActiveTab: (documents: import("../types").TextFileDocument[]) => void;
   pendingMolstarReplaceRef: MutableRefObject<Map<string, PendingMolstarReplaceResolver>>;
   preferences: ViewerPreferences;
   pushErrorStatus: PushErrorStatus;
@@ -102,6 +104,7 @@ export function useAppGenerate3DConformer({
   openDocuments,
   openDocumentsInActiveTab,
   openTextDocuments,
+  openTextDocumentsInActiveTab,
   pendingMolstarReplaceRef,
   preferences,
   pushErrorStatus,
@@ -208,18 +211,33 @@ export function useAppGenerate3DConformer({
     operation: MolecularComputeOperation,
     molstarStyle?: MolstarStylePreference | null,
   ) => {
-    if (!isTauriRuntime()) {
-      pushStatus("Native Metal compute is available in the desktop app; browser dev only previews the interface.", "error");
-      return;
-    }
     if (operation === "generate3d" || operation === "generateEnsemble") {
       await generate3DConformer(document, operation === "generateEnsemble" ? "ensemble" : "single", molstarStyle);
       return;
     }
     try {
-      const text = await readStructureText(document.path);
+      const text = readBrowserDevVirtualTextDocument(document.path) ?? await readStructureText(document.path);
       const source = { title: document.title, extension: document.extension, text };
       if (operation === "optimizeGeometry") {
+        if (!isTauriRuntime()) {
+          pushStatus("Optimizing the current 3D geometry with RDKit MMFF94s (dev CPU backend)...");
+          const optimized = await generateBrowserDev3DConformer({
+            ...source,
+            engine: "rdkit",
+            operation: "optimize",
+            mode: "single",
+          });
+          const optimizedDocument = await openBrowserDevTextDocument(
+            optimized.title,
+            optimized.extension,
+            optimized.text,
+            { ...preferences, rendererMode: "molstar" },
+          );
+          openDocumentsInActiveTab([optimizedDocument]);
+          rememberRecentStructures([optimizedDocument]);
+          pushStatus(`Optimized the structure with ${optimized.method} on the temporary dev backend.`, "success");
+          return;
+        }
         pushStatus("Optimizing the current 3D geometry with MMFF94s on Metal...");
         const result = await runStandaloneConformerWorkflow(source, (phase) => {
           if (phase === "validation") pushStatus("Checking optimized geometry against the CPU reference...");
@@ -230,29 +248,52 @@ export function useAppGenerate3DConformer({
         return;
       }
       if (operation === "semiempiricalRm1") {
-        pushStatus("Calculating RM1 energy and charges...");
-        const result = await runStandaloneSemiempirical(source, "RM1");
-        if (result.reportPath) void openTextDocuments([result.reportPath], { background: false });
+        pushStatus(isTauriRuntime()
+          ? "Calculating RM1 energy and charges..."
+          : "Calculating RM1 energy and charges with the native Metal dev backend...");
+        const result = isTauriRuntime()
+          ? await runStandaloneSemiempirical(source, "RM1")
+          : await runBrowserDevSemiempirical(source);
+        if (isTauriRuntime()) {
+          if (result.reportPath) void openTextDocuments([result.reportPath], { background: false });
+        } else {
+          const report = browserDevComputeReportDocument(
+            `${document.title.replace(/\.[^.]+$/u, "")}-rm1-report.json`,
+            result,
+          );
+          openTextDocumentsInActiveTab([report]);
+        }
         const converged = result.rows.filter((row) => row.converged).length;
         const backend = result.backend === "nativeMetalScfHybrid" ? "Metal SCF kernels" : "CPU reference fallback";
         pushStatus(`RM1 converged for ${converged.toLocaleString()} structure${converged === 1 ? "" : "s"} via ${backend}; opened the report.`, converged === result.rows.length ? "success" : "error");
         return;
       }
-      pushStatus("Aligning and scoring the pose ensemble on Metal...");
-      const result = await runStandaloneAlignment(source);
-      if (result.reportPath) void openTextDocuments([result.reportPath], { background: true });
-      const alignedDocument = await invoke<ViewerDocument>("open_text_structure", {
-        request: { title: result.title, extension: "sdf", text: result.alignedSdf },
-        preferences: { ...preferences, rendererMode: "molstar" },
-        reloadOptions: {},
-      });
+      pushStatus(isTauriRuntime()
+        ? "Aligning and scoring the pose ensemble on Metal..."
+        : "Aligning and scoring the pose ensemble with the native Metal dev backend...");
+      const result = isTauriRuntime()
+        ? await runStandaloneAlignment(source)
+        : await runBrowserDevAlignment(source);
+      if (isTauriRuntime() && result.reportPath) void openTextDocuments([result.reportPath], { background: true });
+      const alignedDocument = isTauriRuntime()
+        ? await invoke<ViewerDocument>("open_text_structure", {
+            request: { title: result.title, extension: "sdf", text: result.alignedSdf },
+            preferences: { ...preferences, rendererMode: "molstar" },
+            reloadOptions: {},
+          })
+        : await openBrowserDevTextDocument(
+            result.title,
+            "sdf",
+            result.alignedSdf,
+            { ...preferences, rendererMode: "molstar" },
+          );
       openDocumentsInActiveTab([alignedDocument]);
       rememberRecentStructures([alignedDocument]);
-      pushStatus(`Aligned and scored ${result.scores.length.toLocaleString()} poses on Metal; opened the aligned ensemble.`, "success");
+      pushStatus(`Aligned and scored ${result.scores.length.toLocaleString()} poses via native Metal; opened the aligned ensemble.`, "success");
     } catch (error) {
       pushErrorStatus(error, "Molecular compute failed");
     }
-  }, [generate3DConformer, openDocuments, openDocumentsInActiveTab, openTextDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [generate3DConformer, openDocuments, openDocumentsInActiveTab, openTextDocuments, openTextDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   return { generate3DConformer, runMolecularCompute };
 }
