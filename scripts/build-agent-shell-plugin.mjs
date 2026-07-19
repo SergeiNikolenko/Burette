@@ -15,6 +15,7 @@ const runtimeScripts = [
   'agent-preview.mjs',
   'agent-shell-server.mjs',
   'burrete-agent.mjs',
+  'rdkit_conformer.py',
 ];
 const requiredPreviewAssets = [
   'viewer.js',

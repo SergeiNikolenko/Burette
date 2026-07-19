@@ -202,6 +202,26 @@ try {
       assert.equal(stableViewerRuntimeResponse.status, 200);
       assert.match(stableViewerRuntimeResponse.headers.get('content-type') ?? '', /^text\/javascript\b/u);
       assert.match(await stableViewerRuntimeResponse.text(), /BurreteAgent|BurreteDataBase64|molstar/u);
+      const invalidConformerResponse = await fetch(new URL('/__burette/generate-3d-conformer', prebuiltPayload.result.url), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: '{}',
+      });
+      assert.equal(invalidConformerResponse.status, 500);
+      assert.match(await invalidConformerResponse.text(), /supports MOL, SDF, and SMILES input/u);
+      const nativeComputeStatusResponse = await fetch(new URL('/__burette/native-compute', prebuiltPayload.result.url));
+      assert.equal(nativeComputeStatusResponse.status, 200);
+      assert.match(nativeComputeStatusResponse.headers.get('content-type') ?? '', /^application\/json\b/u);
+      const nativeComputeStatus = await nativeComputeStatusResponse.json();
+      assert.equal(typeof nativeComputeStatus.available, 'boolean');
+      assert.equal(Array.isArray(nativeComputeStatus.operations), true);
+      const invalidNativeComputeResponse = await fetch(new URL('/__burette/native-compute', prebuiltPayload.result.url), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: '{}',
+      });
+      assert.equal(invalidNativeComputeResponse.status, 500);
+      assert.doesNotMatch(await invalidNativeComputeResponse.text(), /Method not allowed/u);
       for (const [runtimePath, contentType] of [
         ['grid-viewer.js', /^text\/javascript\b/u],
         ['grid-ui.js', /^text\/javascript\b/u],

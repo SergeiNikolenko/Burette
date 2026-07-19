@@ -216,6 +216,7 @@ for (const asset of [
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
   "scripts/burrete-agent.mjs",
+  "scripts/rdkit_conformer.py",
   "scripts/install-local.mjs",
 ]) {
   assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
