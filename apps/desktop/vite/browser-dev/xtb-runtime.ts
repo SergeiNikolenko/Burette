@@ -15,6 +15,7 @@ export type BrowserDevXtbResolution = {
 };
 
 type RuntimeConfig = { selectedExecutablePath?: unknown };
+type BrowserDevManagedInstaller = { kind: "pixi" | "conda"; executablePath: string };
 
 const runtimeRoot = join(homedir(), "Library", "Application Support", "Burrete", "browser-dev", "runtimes", "xtb");
 const configPath = join(runtimeRoot, "config.json");
@@ -69,6 +70,10 @@ export function browserDevXtbRuntimeRoot() {
   return runtimeRoot;
 }
 
+export function browserDevManagedInstallerName() {
+  return resolveManagedInstaller()?.kind ?? null;
+}
+
 function readSelection(): string | null {
   if (!existsSync(configPath)) return null;
   let payload: RuntimeConfig;
@@ -108,21 +113,15 @@ async function installManaged(): Promise<BrowserDevXtbResolution> {
     if (selectionRevision === selectionBefore) await selectBrowserDevXtb(null);
     return resolveBrowserDevXtb();
   }
-  const pixi = resolvePixi();
-  if (!pixi) {
-    throw new Error("Managed xTB installation requires Pixi. Install Pixi, or choose an existing xTB executable in Settings.");
+  const installer = resolveManagedInstaller();
+  if (!installer) {
+    throw new Error("Managed xTB installation requires Pixi or Conda. Install either package manager, or choose an existing xTB executable in Settings.");
   }
   await mkdir(runtimeRoot, { recursive: true });
   const staging = join(runtimeRoot, `staging-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   await mkdir(staging, { recursive: true });
   try {
-    const manifestPath = join(staging, "pixi.toml");
-    await writeFile(manifestPath, pixiManifest, "utf8");
-    await writeFile(join(staging, "pixi.lock"), pixiLock, "utf8");
-    await execFileAsync(pixi, ["install", "--locked", "--manifest-path", manifestPath], {
-      timeout: 5 * 60_000,
-      maxBuffer: 2 * 1024 * 1024,
-    });
+    await installIntoStaging(installer, staging);
     validateXtbExecutable(join(staging, ".pixi", "envs", "default", "bin", "xtb"));
     await promoteStagedRuntime(staging);
     if (selectionRevision === selectionBefore) await selectBrowserDevXtb(null);
@@ -179,7 +178,60 @@ function resolvePixi() {
     "/opt/homebrew/bin/pixi",
     "/usr/local/bin/pixi",
   ];
-  return candidates.find(isExecutableFile) ?? null;
+  return firstAbsoluteExecutable(candidates);
+}
+
+function resolveConda() {
+  const candidates = [
+    process.env.CONDA_EXE ?? "",
+    ...["miniconda3", "miniforge3", "mambaforge", "anaconda3"].flatMap((directory) => [
+      join(homedir(), directory, "bin", "conda"),
+      join(homedir(), directory, "bin", "mamba"),
+    ]),
+    ...(process.env.PATH ?? "").split(delimiter).filter(Boolean).flatMap((directory) => [
+      join(directory, "conda"),
+      join(directory, "mamba"),
+    ]),
+    "/opt/homebrew/bin/conda",
+    "/opt/homebrew/bin/mamba",
+    "/usr/local/bin/conda",
+    "/usr/local/bin/mamba",
+  ].filter(Boolean);
+  return firstAbsoluteExecutable(candidates);
+}
+
+function firstAbsoluteExecutable(candidates: string[]) {
+  return candidates.find((path) => isAbsolute(path) && isExecutableFile(path)) ?? null;
+}
+
+function resolveManagedInstaller(): BrowserDevManagedInstaller | null {
+  const pixi = resolvePixi();
+  if (pixi) return { kind: "pixi", executablePath: pixi };
+  const conda = resolveConda();
+  return conda ? { kind: "conda", executablePath: conda } : null;
+}
+
+async function installIntoStaging(installer: BrowserDevManagedInstaller, staging: string) {
+  if (installer.kind === "pixi") {
+    const manifestPath = join(staging, "pixi.toml");
+    await writeFile(manifestPath, pixiManifest, "utf8");
+    await writeFile(join(staging, "pixi.lock"), pixiLock, "utf8");
+    await execFileAsync(installer.executablePath, ["install", "--locked", "--manifest-path", manifestPath], {
+      timeout: 5 * 60_000,
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    return;
+  }
+
+  const environment = join(staging, ".pixi", "envs", "default");
+  await mkdir(join(staging, ".pixi", "envs"), { recursive: true });
+  await execFileAsync(installer.executablePath, [
+    "create", "--yes", "--no-default-packages", "--override-channels",
+    "--channel", "conda-forge", "--prefix", environment, "xtb=6.7.*",
+  ], {
+    timeout: 5 * 60_000,
+    maxBuffer: 2 * 1024 * 1024,
+  });
 }
 
 function validateExecutable(path: string) {
