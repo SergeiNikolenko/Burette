@@ -785,7 +785,6 @@ kbd span { margin-left: 2px; }
   transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 .sidebar-section-title-button span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-section-title-button:hover,
 .sidebar-section-title-button:focus-visible { background: var(--surface-subtle); color: var(--text-secondary); outline: none; }
 .sidebar-section-title-button:active { transform: scale(0.99); }
 .sidebar-section-chevron {
