@@ -6360,7 +6360,7 @@ img.radix-menu-item-icon {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: transparent;
+  background: rgb(0 0 0 / 0.14);
 }
 [cmdk-dialog] {
   position: fixed;
@@ -6371,21 +6371,12 @@ img.radix-menu-item-icon {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
-  border: 1px solid var(--line-subtler);
+  border: 1px solid var(--line-subtle);
   border-radius: 16px;
-  background: var(--surface-card);
+  background: color-mix(in srgb, var(--bg-base) 96%, var(--fg-base) 4%);
   color: var(--text-secondary);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 24px 72px rgb(0 0 0 / 0.2), 0 4px 18px rgb(0 0 0 / 0.12);
   z-index: 101;
-  isolation: isolate;
-}
-[cmdk-dialog]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: color-mix(in srgb, var(--bg-base) 55%, transparent);
 }
 [cmdk-dialog] [cmdk-root] {
   min-height: 0;
