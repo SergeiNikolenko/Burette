@@ -25,7 +25,15 @@ export function useAppShellNavigationActions({
   const focusSidebarSearch = useCallback(() => {
     if (!sidebarOpen) toggleSidebar();
     window.setTimeout(() => {
-      document.querySelector<HTMLInputElement>("[data-sidebar-search]")?.focus();
+      const searchInput = document.querySelector<HTMLInputElement>("[data-sidebar-search]");
+      if (searchInput) {
+        searchInput.focus();
+        return;
+      }
+      document.querySelector<HTMLButtonElement>("[data-sidebar-search-toggle]")?.click();
+      window.setTimeout(() => {
+        document.querySelector<HTMLInputElement>("[data-sidebar-search]")?.focus();
+      }, 0);
     }, 0);
   }, [sidebarOpen, toggleSidebar]);
 
