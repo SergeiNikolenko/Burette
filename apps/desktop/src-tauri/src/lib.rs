@@ -156,6 +156,7 @@ pub fn run() {
             compute::commands::compute_find_similar,
             compute::commands::compute_purge_job,
             commands::agent_integration::agent_integration_status,
+            commands::chemical_editors::default_application_icon_path,
             commands::chemical_editors::finder_icon_path,
             commands::chemical_editors::list_chemical_editor_targets,
             commands::chemical_editors::open_in_chemical_editor,

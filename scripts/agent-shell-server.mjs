@@ -65,6 +65,7 @@ const RUNTIME_ASSET_PATHS = new Set([
 ]);
 const RUNTIME_ASSET_NAMES = new Set([...RUNTIME_ASSET_PATHS].filter((path) => !path.includes('/')));
 const APP_ICONS = {
+  'default-app': resolve(scriptDir, '..', 'apps', 'desktop', 'src-tauri', 'icons', 'icon.png'),
   finder: '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns',
   maestro: '/Applications/SchrodingerSuites2026-1/Maestro.app/Contents/Resources/Maestro.icns',
   chimerax: '/Applications/ChimeraX-1.10.app/Contents/Resources/chimerax-icon.icns',
@@ -626,7 +627,9 @@ async function handleStatic(res, method, url) {
   const filePath = isWithin(candidate, distRoot) && existsSync(candidate)
     ? candidate
     : indexPath;
-  await sendStaticFile(res, method, filePath, filePath === indexPath);
+  const relativePath = relative(distRoot, filePath);
+  const noCache = filePath === indexPath || relativePath === 'index.js' || relativePath === 'boot-overlay.js';
+  await sendStaticFile(res, method, filePath, noCache);
 }
 
 async function handleRdkitWasm(res, method) {

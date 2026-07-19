@@ -71,6 +71,7 @@ const defaultFsAllow = defaultDevFileSources.map((path) => {
 });
 const execFileAsync = promisify(execFile);
 const BROWSER_DEV_APP_ICONS: Record<string, string> = {
+  "default-app": join(repoRoot, "apps", "desktop", "src-tauri", "icons", "icon.png"),
   finder: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns",
   maestro: "/Applications/SchrodingerSuites2026-1/Maestro.app/Contents/Resources/Maestro.icns",
   chimerax: "/Applications/ChimeraX-1.10.app/Contents/Resources/chimerax-icon.icns",
