@@ -122,7 +122,7 @@ export function useAppGenerate3DConformer({
     }
     pushStatus(isTauriRuntime()
       ? `Starting native ${conformerGenerationTaskLabel(mode)} workflow...`
-      : `Generating ${conformerGenerationTaskLabel(mode)} with ${preferences.conformerEngine.toUpperCase()}...`);
+      : `Generating ${conformerGenerationTaskLabel(mode)} with the native Metal backend...`);
     try {
       const text = readBrowserDevVirtualTextDocument(document.path) ?? await readStructureText(document.path);
       if (isTauriRuntime()) {
@@ -147,9 +147,8 @@ export function useAppGenerate3DConformer({
           { rendererMode: "molstar", molstarStyle: molstarStyle ?? preferences.molstarStyle },
           { inActiveTab: true },
         );
-        const backend = result.backend === "nativeMetal" ? "Metal GPU" : "CPU reference fallback";
         pushStatus(
-          `Generated ${result.passedCount.toLocaleString()} validated conformer${result.passedCount === 1 ? "" : "s"} via ${backend} and opened the artifact in Molstar.`,
+          `Generated ${result.passedCount.toLocaleString()} validated conformer${result.passedCount === 1 ? "" : "s"} via Metal GPU and opened the artifact in Molstar.`,
           result.failedCount ? "error" : "success",
         );
         return;
@@ -164,7 +163,7 @@ export function useAppGenerate3DConformer({
       };
       const conformer = await generateBrowserDev3DConformer(request);
       const poseSetText = generated3DPoseSetText(text, document.extension, conformer.text, mode);
-      const poseSetTitle = generated3DPoseSetTitle(document.title, poseSetText);
+      const poseSetTitle = generated3DPoseSetTitle(conformer.title, poseSetText);
       const effectiveMolstarStyle = molstarStyle ?? preferences.molstarStyle;
       const molstarPreferences = { ...preferences, rendererMode: "molstar" as const, molstarStyle: effectiveMolstarStyle };
       const generatedDocument = await openBrowserDevTextDocument(
@@ -220,7 +219,7 @@ export function useAppGenerate3DConformer({
       const source = { title: document.title, extension: document.extension, text };
       if (operation === "optimizeGeometry") {
         if (!isTauriRuntime()) {
-          pushStatus("Optimizing the current 3D geometry with RDKit MMFF94s (dev CPU backend)...");
+          pushStatus("Optimizing the current 3D geometry with MMFF94s on Metal...");
           const optimized = await generateBrowserDev3DConformer({
             ...source,
             engine: "rdkit",
@@ -235,7 +234,7 @@ export function useAppGenerate3DConformer({
           );
           openDocumentsInActiveTab([optimizedDocument]);
           rememberRecentStructures([optimizedDocument]);
-          pushStatus(`Optimized the structure with ${optimized.method} on the temporary dev backend.`, "success");
+          pushStatus(`Optimized the structure with ${optimized.method}.`, "success");
           return;
         }
         pushStatus("Optimizing the current 3D geometry with MMFF94s on Metal...");
@@ -264,8 +263,10 @@ export function useAppGenerate3DConformer({
           openTextDocumentsInActiveTab([report]);
         }
         const converged = result.rows.filter((row) => row.converged).length;
-        const backend = result.backend === "nativeMetalScfHybrid" ? "Metal SCF kernels" : "CPU reference fallback";
-        pushStatus(`RM1 converged for ${converged.toLocaleString()} structure${converged === 1 ? "" : "s"} via ${backend}; opened the report.`, converged === result.rows.length ? "success" : "error");
+        if (result.backend !== "nativeMetalScfHybrid") {
+          throw new Error("Metal-only RM1 workflow rejected a non-Metal result.");
+        }
+        pushStatus(`RM1 converged for ${converged.toLocaleString()} structure${converged === 1 ? "" : "s"} via Metal SCF kernels; opened the report.`, converged === result.rows.length ? "success" : "error");
         return;
       }
       pushStatus(isTauriRuntime()

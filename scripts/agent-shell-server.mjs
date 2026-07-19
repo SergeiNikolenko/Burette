@@ -9,12 +9,10 @@ import { fileURLToPath } from 'node:url';
 
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
-const CONFORMER_REQUEST_LIMIT = 25 * 1024 * 1024;
 const NATIVE_COMPUTE_REQUEST_LIMIT = 12 * 1024 * 1024;
 const NATIVE_COMPUTE_TIMEOUT_MS = 10 * 60 * 1000;
 const AMBER_NC_PREVIEW_FRAME_LIMIT = 100;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const RDKIT_CONFORMER_SCRIPT_PATH = resolve(scriptDir, 'rdkit_conformer.py');
 const STRUCTURE_EXTENSIONS = new Set([
   'pdb', 'ent', 'pdbqt', 'pqr', 'xpdb',
   'cif', 'mmcif', 'mcif', 'bcif', 'mmtf',
@@ -217,10 +215,6 @@ async function handleRequest(req, res) {
   }
   if (url.pathname === '/__burette/rdkit-wasm') {
     await handleRdkitWasm(res, method);
-    return;
-  }
-  if (url.pathname === '/__burette/generate-3d-conformer') {
-    await handleGenerate3DConformer(req, res, method);
     return;
   }
   if (url.pathname === '/__burette/native-compute') {
@@ -659,199 +653,13 @@ async function handleRdkitWasm(res, method) {
   sendJson(res, 404, { error: 'Not found' });
 }
 
-async function handleGenerate3DConformer(req, res, method) {
-  if (method !== 'POST') {
-    sendJson(res, 405, { error: 'Method not allowed' });
-    return;
-  }
-  try {
-    sendJson(res, 200, await generate3DConformer(await readJsonBody(req, CONFORMER_REQUEST_LIMIT)));
-  } catch (error) {
-    sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
-  }
-}
-
-async function generate3DConformer(body) {
-  const request = conformerRequest(body);
-  if (!existsSync(RDKIT_CONFORMER_SCRIPT_PATH)) {
-    throw new Error(`Missing conformer generator: ${RDKIT_CONFORMER_SCRIPT_PATH}`);
-  }
-  const script = await readFile(RDKIT_CONFORMER_SCRIPT_PATH, 'utf8');
-  const input = JSON.stringify({
-    text: request.text,
-    extension: request.extension,
-    engine: request.engine,
-    operation: request.operation,
-    mode: request.mode,
-    candidateCount: request.candidateCount,
-    rmsdCutoff: request.rmsdCutoff,
-    source3d: request.source3d,
-  });
-  const errors = [];
-  for (const python of conformerPythonCandidates(request.engine)) {
-    try {
-      const outputText = await runPythonWithStdin(
-        python,
-        script,
-        input,
-        Math.max(30_000, request.candidateCount * 1_000),
-      );
-      const generated = JSON.parse(outputText);
-      if (typeof generated?.text !== 'string' || !generated.text.trim()) {
-        throw new Error('3D conformer generator returned an empty structure.');
-      }
-      return {
-        title: request.operation === 'optimize'
-          ? safeStructureFileName(`${request.title.replace(/\.[^.]+$/u, '')}-optimized`, 'sdf')
-          : request.mode === 'ensemble'
-            ? generatedConformerSetTitle(request.title)
-            : generatedConformerTitle(request.title),
-        extension: 'sdf',
-        text: generated.text,
-        method: typeof generated.method === 'string' && generated.method.trim() ? generated.method : 'ETKDG',
-        ...(typeof generated.conformerCount === 'number' ? { conformerCount: generated.conformerCount } : {}),
-      };
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : `${python.label}: ${String(error)}`);
-    }
-  }
-  const engineLabel = request.engine === 'datamol' ? 'Datamol' : 'RDKit';
-  const envName = request.engine === 'datamol' ? 'BURRETE_DATAMOL_PYTHON' : 'BURRETE_RDKIT_PYTHON';
-  throw new Error(errors.length
-    ? `${engineLabel} conformer generation failed: ${errors.join('; ')}`
-    : `${engineLabel} Python is required for 3D conformer generation. Set ${envName} to a Python executable with ${request.engine} installed.`);
-}
-
-function conformerRequest(body) {
-  const source = body && typeof body === 'object' && 'request' in body ? body.request : body;
-  if (!source || typeof source !== 'object') throw new Error('Missing conformer generation request');
-  const title = typeof source.title === 'string' && source.title.trim() ? source.title : 'ketcher-sketch.sdf';
-  const extension = String(source.extension || '').trim().replace(/^\./u, '').toLowerCase();
-  const text = typeof source.text === 'string' ? source.text : '';
-  const engine = String(source.engine || 'datamol').trim().toLowerCase();
-  const operation = String(source.operation || 'generate').trim().toLowerCase();
-  const mode = String(source.mode || 'single').trim().toLowerCase() === 'ensemble' ? 'ensemble' : 'single';
-  const candidateCount = boundedNumber(source.candidateCount, 128, 1, 512);
-  const rmsdCutoff = boundedNumber(source.rmsdCutoff, 0.75, 0, 5);
-  const source3d = source.source3d && typeof source.source3d === 'object'
-    ? {
-        title: typeof source.source3d.title === 'string' ? source.source3d.title : '',
-        extension: typeof source.source3d.extension === 'string' ? source.source3d.extension : '',
-        text: typeof source.source3d.text === 'string' ? source.source3d.text : '',
-      }
-    : null;
-  if (!['sdf', 'sd', 'mol', 'smi', 'smiles'].includes(extension)) {
-    throw new Error('3D conformer generation currently supports MOL, SDF, and SMILES input.');
-  }
-  if (!['datamol', 'rdkit'].includes(engine)) {
-    throw new Error('3D conformer generation supports Datamol and RDKit engines.');
-  }
-  if (!['generate', 'optimize'].includes(operation)) {
-    throw new Error('Browser dev conformer operation must be generate or optimize.');
-  }
-  if (!text.trim()) throw new Error('Draw a molecule first');
-  if (Buffer.byteLength(text, 'utf8') > TEXT_FILE_READ_LIMIT) throw new Error('Structure text is too large');
-  if (text.includes('$RXN')) throw new Error('3D conformer generation supports single small molecules, not reactions.');
-  if (source3d) {
-    const sourceExtension = source3d.extension.trim().replace(/^\./u, '').toLowerCase();
-    if (!['sdf', 'sd', 'mol'].includes(sourceExtension)) {
-      throw new Error('3D pose preservation currently supports MOL and SDF sources.');
-    }
-    if (Buffer.byteLength(source3d.text, 'utf8') > TEXT_FILE_READ_LIMIT) {
-      throw new Error('Source 3D structure text is too large');
-    }
-  }
-  return { title, extension, text, engine, operation, mode, candidateCount, rmsdCutoff, source3d };
-}
-
-function boundedNumber(value, fallback, minimum, maximum) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.max(minimum, Math.min(maximum, number));
-}
-
-function safeStructureFileName(title, extension) {
-  const rawName = title.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'ketcher-sketch';
-  const dotIndex = rawName.lastIndexOf('.');
-  const rawStem = dotIndex > 0 ? rawName.slice(0, dotIndex) : rawName;
-  const stem = rawStem.replace(/[^A-Za-z0-9_.-]/gu, '-').replace(/^[-_.]+|[-_.]+$/gu, '') || 'ketcher-sketch';
-  return `${stem}.${extension}`;
-}
-
-function generatedConformerTitle(title) {
-  return safeStructureFileName(title, 'sdf').replace(/\.sdf$/u, '-3d.sdf');
-}
-
-function generatedConformerSetTitle(title) {
-  return safeStructureFileName(title, 'sdf').replace(/\.sdf$/u, '-3d-conformers.sdf');
-}
-
-function conformerPythonCandidates(engine) {
-  const candidates = [];
-  const configured = String(engine === 'datamol' ? process.env.BURRETE_DATAMOL_PYTHON || '' : process.env.BURRETE_RDKIT_PYTHON || '').trim();
-  if (configured) candidates.push({ label: configured, command: configured, args: [] });
-  const packageName = engine === 'datamol' ? 'datamol' : 'rdkit';
-  const uvx = resolveExecutable('uvx');
-  if (uvx) candidates.push({ label: `${uvx} --from ${packageName} python`, command: uvx, args: ['--from', packageName, 'python'] });
-  candidates.push(
-    { label: 'python3', command: 'python3', args: [] },
-    { label: 'python', command: 'python', args: [] },
-  );
-  const seen = new Set();
-  return candidates.filter((candidate) => {
-    const key = [candidate.command, ...candidate.args].join('\0');
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function resolveExecutable(name) {
-  const candidates = [
-    process.env.HOME ? resolve(process.env.HOME, '.local', 'bin', name) : '',
-    process.env.HOME ? resolve(process.env.HOME, '.cargo', 'bin', name) : '',
-    resolve('/opt/homebrew/bin', name),
-    resolve('/usr/local/bin', name),
-    ...String(process.env.PATH || '').split(':').filter(Boolean).map((row) => resolve(row, name)),
-  ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(candidate)) || null;
-}
-
-function runPythonWithStdin(python, script, input, timeoutMs) {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(python.command, [...python.args, '-c', script], { stdio: ['pipe', 'pipe', 'pipe'] });
-    const stdoutChunks = [];
-    const stderrChunks = [];
-    const timeout = setTimeout(() => {
-      child.kill();
-      rejectPromise(new Error(`${python.label}: conformer generator timed out`));
-    }, timeoutMs);
-    child.stdout.on('data', (chunk) => stdoutChunks.push(Buffer.from(chunk)));
-    child.stderr.on('data', (chunk) => stderrChunks.push(Buffer.from(chunk)));
-    child.on('error', (error) => {
-      clearTimeout(timeout);
-      rejectPromise(new Error(`${python.label}: ${error.message}`));
-    });
-    child.on('close', (code, signal) => {
-      clearTimeout(timeout);
-      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
-      if (code === 0) {
-        resolvePromise(Buffer.concat(stdoutChunks).toString('utf8'));
-        return;
-      }
-      rejectPromise(new Error(stderr || `${python.label}: conformer generator exited with ${signal || code}`));
-    });
-    child.stdin.end(input);
-  });
-}
-
 async function handleNativeCompute(req, res, method) {
   const runtime = nativeComputeRuntime();
   if (method === 'GET') {
     sendJson(res, 200, {
       available: Boolean(runtime),
       provider: runtime ? 'nativeMetalDevBridge' : null,
-      operations: runtime ? ['semiempiricalRm1', 'alignPoses'] : [],
+      operations: runtime ? ['generate3d', 'generateEnsemble', 'optimizeGeometry', 'semiempiricalRm1', 'alignPoses'] : [],
     });
     return;
   }

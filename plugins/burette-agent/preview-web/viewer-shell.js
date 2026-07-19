@@ -133,16 +133,43 @@
           </details>
         </div>
       </div>
-      <button class="buret-generate-3d-control hidden" type="button" data-buret-action="generate-3d-conformer" aria-label="Generate 3D conformer">
-        <span data-buret-generate-3d-label>Generate 3D</span>
-        <span class="buret-tooltip" role="tooltip">Generate a real 3D conformer</span>
+      <button id="buret-compute-menu-trigger" class="buret-generate-3d-control hidden" type="button" data-buret-action="generate-3d-conformer" aria-label="Open molecular compute menu" aria-haspopup="menu" aria-controls="buret-compute-menu" aria-expanded="false">
+        <span data-buret-generate-3d-label>Compute</span>
+        <span class="buret-tooltip" role="tooltip">Native molecular compute</span>
       </button>
-      <div class="buret-generate-3d-menu hidden" data-buret-generate-3d-menu role="menu" aria-label="Generate 3D options">
-        <button type="button" role="menuitem" data-buret-action="generate-3d-ensemble">Generate conformer set</button>
+      <div id="buret-compute-menu" class="buret-generate-3d-menu hidden" data-buret-generate-3d-menu role="menu" aria-labelledby="buret-compute-menu-trigger" aria-orientation="vertical">
+        <button type="button" role="menuitem" data-buret-compute-operation="generate3d">Generate 3D</button>
+        <button type="button" role="menuitem" data-buret-compute-operation="generateEnsemble">Generate conformer ensemble</button>
+        <button type="button" role="menuitem" data-buret-compute-operation="optimizeGeometry">Optimize geometry</button>
+        <button type="button" role="menuitem" data-buret-compute-operation="semiempiricalRm1">RM1 energy &amp; charges</button>
+        <button type="button" role="menuitem" data-buret-compute-operation="alignPoses">Align &amp; compare poses</button>
       </div>
       <aside class="buret-preview-dock buret-preview-dock-right" data-buret-preview-dock="right" aria-label="Right dock" aria-hidden="true"></aside>
       <section class="buret-preview-dock buret-preview-dock-bottom" data-buret-preview-dock="bottom" aria-label="Bottom dock" aria-hidden="true"></section>
     `);
+    if (window.__BURRETE_HOSTED_MCP_WIDGET__ === true) {
+      const toolbar = document.getElementById('buret-toolbar');
+      const grip = toolbar?.querySelector('[data-drag-handle]');
+      if (toolbar && grip) {
+        toolbar.classList.add('collapsed');
+        document.body?.classList.add('buret-toolbar-collapsed');
+        grip.setAttribute('aria-expanded', 'false');
+        grip.setAttribute('aria-label', 'Expand controls');
+        grip.setAttribute('title', 'Expand controls');
+        const fallbackGripClick = event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const collapsed = !toolbar.classList.contains('collapsed');
+          toolbar.classList.toggle('collapsed', collapsed);
+          document.body?.classList.toggle('buret-toolbar-collapsed', collapsed);
+          grip.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+          grip.setAttribute('aria-label', collapsed ? 'Expand controls' : 'Collapse controls');
+          grip.setAttribute('title', collapsed ? 'Expand controls' : 'Collapse controls');
+        };
+        window.__BURRETE_HOSTED_GRIP_FALLBACK__ = fallbackGripClick;
+        grip.addEventListener('click', fallbackGripClick);
+      }
+    }
   }
 
   window.BurreteViewerShell = { mountToolbar };

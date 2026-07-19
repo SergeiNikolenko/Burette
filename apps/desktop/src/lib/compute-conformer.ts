@@ -26,12 +26,29 @@ export type ConformerExtractionWorkerRequest = {
   type: "extractConformerChunk";
   requestId: string;
   chunk: ConformerInputChunk;
+} | {
+  type: "extractStandaloneConformers";
+  requestId: string;
+  variant: ConformerVariant;
+  mmffVariant: MmffVariant;
+  records: Array<{
+    input: string;
+    format: "molblock" | "smiles";
+  }>;
 };
 
 export type ConformerExtractionWorkerResponse = {
   type: "conformerChunkResult";
   requestId: string;
   result?: ArrayBuffer;
+  error?: string;
+} | {
+  type: "standaloneConformerResult";
+  requestId: string;
+  records?: Array<{
+    conformer: ArrayBuffer;
+    mmff: ArrayBuffer;
+  }>;
   error?: string;
 };
 
@@ -158,7 +175,7 @@ export async function runConformerWorkflow(
       maxAttemptsPerConformer: 32,
     },
     executionPolicy: {
-      backendPolicy: "gpuPreferred",
+      backendPolicy: "gpuRequired",
       schedulingPolicy: "throughput",
     },
     limits: {
@@ -185,14 +202,18 @@ export async function runConformerWorkflow(
     onProgress("publishing", job);
     const publication = await publishConformer(job);
     const numericStages = publication.job.stages ?? [];
+    const backend = numericStages.some((stage) => stage.effectiveBackend === "nativeMetal")
+      ? "nativeMetal"
+      : "referenceCpu";
+    if (backend !== "nativeMetal") {
+      throw new Error("Metal-only conformer workflow rejected a non-Metal result.");
+    }
     return {
       ...publication,
       conformerCount: stereo.conformerCount,
       passedCount: validation.passedCount,
       failedCount: validation.failedCount,
-      backend: numericStages.some((stage) => stage.effectiveBackend === "nativeMetal")
-        ? "nativeMetal"
-        : "referenceCpu",
+      backend,
     };
   } catch (error) {
     if (job && !["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(job.state)) {
@@ -242,7 +263,7 @@ class ConformerExtractionWorkerClient {
         reject(new Error("RDKit conformer extraction worker timed out."));
       }, EXTRACTION_TIMEOUT_MS);
       const onMessage = (event: MessageEvent<ConformerExtractionWorkerResponse>) => {
-        if (event.data?.requestId !== requestId) return;
+        if (event.data?.requestId !== requestId || event.data.type !== "conformerChunkResult") return;
         cleanup();
         if (event.data.error) reject(new Error(event.data.error));
         else if (event.data.result) resolve(new Uint8Array(event.data.result));

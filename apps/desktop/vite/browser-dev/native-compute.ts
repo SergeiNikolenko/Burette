@@ -16,7 +16,9 @@ export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repo
       sendJson(res, 200, {
         available: Boolean(runtimeRoot),
         provider: runtimeRoot ? "nativeMetalDevBridge" : null,
-        operations: runtimeRoot ? ["semiempiricalRm1", "alignPoses"] : [],
+        operations: runtimeRoot
+          ? ["generate3d", "generateEnsemble", "optimizeGeometry", "semiempiricalRm1", "alignPoses"]
+          : [],
       }, "no-cache");
       return;
     }

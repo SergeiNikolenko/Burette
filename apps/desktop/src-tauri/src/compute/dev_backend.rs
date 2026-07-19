@@ -3,7 +3,17 @@ use std::{
     path::PathBuf,
 };
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use burrete_compute_core::{
+    decode_native_mmff_parameters, ConformerEnginePackBuilder, ExtractedConformerParameters,
+};
 use burrete_compute_metal::MetalTanimotoRuntime;
+use burrete_compute_protocol::{
+    AllGridScope, Backend, BackendPolicy, ComputeJobSchemaVersion, ConformerInitialization,
+    ConformerResourceLimits, ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant,
+    ExecutionPolicy, GridScope, GridSourceReference, MmffVariant, SchedulingPolicy,
+    WorkflowTemplateId,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -13,6 +23,10 @@ use crate::preview::grid_store::GridAlignmentSourceRow;
 
 use super::{
     alignment_workflow::{execute_snapshot_alignment_with_run_id, GridAlignmentRequest},
+    conformer_executor::execute_conformer_distance_geometry_with_service,
+    conformer_plan::ConformerMoleculeIdentity,
+    conformer_stereo_executor::execute_conformer_stereo_validation,
+    molfile_coordinates::parse_molfile_positions,
     semiempirical_workflow::{
         execute_snapshot_semiempirical_with_run_id, GridSemiempiricalRequest,
     },
@@ -27,11 +41,15 @@ const HELPER_SHA256_PLACEHOLDER: &str =
 struct DevComputeRequest {
     operation: DevComputeOperation,
     source: DevComputeSource,
+    conformer: Option<DevConformerRequest>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum DevComputeOperation {
+    Generate3d,
+    GenerateEnsemble,
+    OptimizeGeometry,
     SemiempiricalRm1,
     AlignPoses,
 }
@@ -44,23 +62,49 @@ struct DevComputeSource {
     text: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DevConformerRequest {
+    variant: ConformerVariant,
+    mmff_variant: MmffVariant,
+    records: Vec<DevConformerRecord>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DevConformerRecord {
+    template: Option<String>,
+    conformer_base64: String,
+    mmff_base64: String,
+}
+
 pub(crate) fn run() -> Result<(), String> {
     let runtime_root = parse_runtime_root()?;
     let request = read_request()?;
-    let rows = source_rows(&request.source)?;
     let runtime = MetalTanimotoRuntime::load(&runtime_root, HELPER_SHA256_PLACEHOLDER)
         .map_err(|error| format!("native Metal dev backend is unavailable: {error}"))?;
     let run_id = Uuid::new_v4();
-    let source_indexes = (0..rows.len()).collect::<Vec<_>>();
     let result = match request.operation {
+        DevComputeOperation::Generate3d
+        | DevComputeOperation::GenerateEnsemble
+        | DevComputeOperation::OptimizeGeometry => execute_conformer(
+            &runtime,
+            &request.source,
+            request
+                .conformer
+                .as_ref()
+                .ok_or("native Metal conformer request is missing extracted parameters")?,
+            request.operation,
+            run_id,
+        )?,
         DevComputeOperation::SemiempiricalRm1 => serde_json::to_value(
             execute_snapshot_semiempirical_with_run_id(
                 Some(&runtime),
                 None,
-                rows,
+                source_rows(&request.source)?,
                 &GridSemiempiricalRequest {
                     document_id: "browser-dev-inline".into(),
-                    source_indexes,
+                    source_indexes: source_indexes(&request.source)?,
                     method: "RM1".into(),
                 },
                 run_id,
@@ -72,10 +116,10 @@ pub(crate) fn run() -> Result<(), String> {
             execute_snapshot_alignment_with_run_id(
                 &runtime,
                 None,
-                rows,
+                source_rows(&request.source)?,
                 &GridAlignmentRequest {
                     document_id: "browser-dev-inline".into(),
-                    source_indexes,
+                    source_indexes: source_indexes(&request.source)?,
                     max_memory_bytes: None,
                 },
                 run_id,
@@ -85,6 +129,291 @@ pub(crate) fn run() -> Result<(), String> {
         .map_err(|error| error.to_string())?,
     };
     write_response(result)
+}
+
+fn source_indexes(source: &DevComputeSource) -> Result<Vec<usize>, String> {
+    Ok((0..source_rows(source)?.len()).collect())
+}
+
+fn execute_conformer(
+    runtime: &MetalTanimotoRuntime,
+    source: &DevComputeSource,
+    input: &DevConformerRequest,
+    operation: DevComputeOperation,
+    run_id: Uuid,
+) -> Result<Value, String> {
+    if input.records.is_empty() || input.records.len() > 256 {
+        return Err("native Metal conformer request accepts between 1 and 256 records".into());
+    }
+    let initialization = if matches!(operation, DevComputeOperation::OptimizeGeometry) {
+        ConformerInitialization::InputGeometry
+    } else {
+        ConformerInitialization::Generated
+    };
+    let conformers_per_molecule = if matches!(operation, DevComputeOperation::GenerateEnsemble) {
+        16
+    } else {
+        1
+    };
+    let request = ConformerV1SubmitRequest {
+        schema_version: ComputeJobSchemaVersion::V1,
+        workflow_template: WorkflowTemplateId::ConformerV1,
+        source: GridSourceReference {
+            document_id: "browser-dev-inline".into(),
+            scope: GridScope::All(AllGridScope::default()),
+        },
+        parameters: ConformerV1Parameters {
+            variant: input.variant,
+            initialization,
+            mmff_variant: input.mmff_variant,
+            conformers_per_molecule,
+            max_attempts_per_conformer: 32,
+        },
+        execution_policy: ExecutionPolicy {
+            backend_policy: BackendPolicy::GpuRequired,
+            scheduling_policy: SchedulingPolicy::Throughput,
+        },
+        limits: ConformerResourceLimits {
+            max_memory_bytes: 4 * 1_024 * 1_024 * 1_024,
+            max_dispatch_ms: 250,
+            max_conformers_per_batch: 2_048,
+        },
+    }
+    .normalized()
+    .map_err(|error| error.to_string())?;
+    let mut builder = ConformerEnginePackBuilder::new(input.variant, 512 * 1024 * 1024);
+    let mut identities = Vec::with_capacity(input.records.len());
+    let mut mmff_parameters = Vec::with_capacity(input.records.len());
+    let mut input_positions = Vec::with_capacity(input.records.len());
+    for (index, record) in input.records.iter().enumerate() {
+        let conformer_bytes = decode_base64("BCEX", &record.conformer_base64)?;
+        let mmff_bytes = decode_base64("BMFX", &record.mmff_base64)?;
+        let extracted =
+            ExtractedConformerParameters::decode(&conformer_bytes, input.variant, 64 * 1024 * 1024)
+                .map_err(|error| format!("invalid native conformer parameters: {error}"))?;
+        builder
+            .append_valid(extracted)
+            .map_err(|error| error.to_string())?;
+        let mmff = decode_native_mmff_parameters(&mmff_bytes, 64 * 1024 * 1024)
+            .map_err(|error| format!("invalid native MMFF parameters: {error}"))?;
+        let identity_bytes = record
+            .template
+            .as_deref()
+            .unwrap_or(source.text.as_str())
+            .as_bytes();
+        identities.push(ConformerMoleculeIdentity {
+            source_record_id: (index + 1) as u64,
+            molecule_content_sha256: hex_sha256(identity_bytes),
+        });
+        input_positions.push(
+            if initialization == ConformerInitialization::InputGeometry {
+                Some(parse_molfile_positions(record.template.as_deref().ok_or(
+                    "Metal geometry optimization requires MOL or SDF coordinates",
+                )?)?)
+            } else {
+                None
+            },
+        );
+        mmff_parameters.push(Some(mmff));
+    }
+    let arrays = builder
+        .finish(input.records.len() as u64)
+        .map_err(|error| error.to_string())?;
+    let distance = execute_conformer_distance_geometry_with_service(
+        run_id,
+        &request,
+        arrays,
+        &identities,
+        &mmff_parameters,
+        &input_positions,
+        Backend::NativeMetal,
+        Backend::NativeMetal,
+        Some(runtime),
+        None,
+    )
+    .map_err(|error| error.to_string())?;
+    let stereo = execute_conformer_stereo_validation(
+        &distance,
+        Backend::NativeMetal,
+        Some(runtime),
+        request.limits.max_memory_bytes,
+    )
+    .map_err(|error| error.to_string())?;
+    let text = conformer_sdf(
+        &distance,
+        &stereo.failure_flags,
+        &input.records,
+        input.variant,
+    )?;
+    let title = format!(
+        "{}-{}-metal.sdf",
+        source
+            .title
+            .trim_end_matches(&format!(".{}", source.extension)),
+        if initialization == ConformerInitialization::InputGeometry {
+            "optimized"
+        } else {
+            "conformers"
+        }
+    );
+    Ok(json!({
+        "title": title,
+        "extension": "sdf",
+        "text": text,
+        "method": format!("{} + {} · Metal GPU", input.variant.wire_id(), input.mmff_variant.wire_id()),
+        "conformerCount": distance.conformer_molecule_indices.len(),
+        "passedCount": stereo.failure_flags.iter().filter(|flags| **flags == 0).count(),
+        "backend": "nativeMetal",
+        "gpuTimeMs": distance.gpu_time_ms.unwrap_or(0).saturating_add(stereo.gpu_time_ms.unwrap_or(0)),
+        "device": runtime.device_identity().name,
+    }))
+}
+
+fn decode_base64(label: &str, value: &str) -> Result<Vec<u8>, String> {
+    let bytes = STANDARD
+        .decode(value)
+        .map_err(|_| format!("native {label} payload is not valid base64"))?;
+    if bytes.is_empty() || bytes.len() > 64 * 1024 * 1024 {
+        return Err(format!("native {label} payload is empty or too large"));
+    }
+    Ok(bytes)
+}
+
+fn hex_sha256(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn conformer_sdf(
+    distance: &super::conformer_executor::ConformerDistanceComputation,
+    stereo_flags: &[u32],
+    records: &[DevConformerRecord],
+    variant: ConformerVariant,
+) -> Result<String, String> {
+    let mut output = String::new();
+    for conformer in 0..distance.conformer_molecule_indices.len() {
+        let molecule_index = distance.conformer_molecule_indices[conformer] as usize;
+        let atom_start = distance.conformer_atom_starts[conformer] as usize;
+        let atom_end = distance.conformer_atom_starts[conformer + 1] as usize;
+        let positions = &distance.positions[atom_start..atom_end];
+        let molecule = distance
+            .distance_engine
+            .molecule(molecule_index as u64)
+            .map_err(|error| error.to_string())?
+            .ok_or("native conformer output references an invalid molecule")?;
+        let molblock = match records
+            .get(molecule_index)
+            .and_then(|record| record.template.as_deref())
+        {
+            Some(template) => molblock_with_positions(template, positions)?,
+            None => synthetic_molblock(molecule.atomic_numbers, positions)?,
+        };
+        output.push_str(molblock.trim_end());
+        output.push_str(&format!(
+            "\n>  <BURRETE_COMPUTE_BACKEND>\nMetal GPU\n\n>  <BURRETE_CONFORMER_VARIANT>\n{}\n\n>  <BURRETE_MMFF_ENERGY_KCAL_MOL>\n{:.8}\n\n>  <BURRETE_STEREO_STATUS>\n{}\n\n$$$$\n",
+            variant.wire_id(),
+            distance.mmff_energies[conformer],
+            if stereo_flags[conformer] == 0 { "passed" } else { "failed" },
+        ));
+    }
+    Ok(output)
+}
+
+fn molblock_with_positions(template: &str, positions: &[[f32; 3]]) -> Result<String, String> {
+    let mut lines = template
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .lines()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if let Some(counts) = lines.iter().position(|line| line.contains("V2000")) {
+        let atom_count = lines[counts]
+            .get(..3)
+            .ok_or("V2000 counts line is truncated")?
+            .trim()
+            .parse::<usize>()
+            .map_err(|_| "V2000 atom count is invalid")?;
+        if atom_count != positions.len() || counts + atom_count >= lines.len() {
+            return Err("V2000 template atom count differs from Metal output".into());
+        }
+        for (offset, position) in positions.iter().enumerate() {
+            let line = &lines[counts + 1 + offset];
+            let tail = line.get(30..).unwrap_or("");
+            lines[counts + 1 + offset] = format!(
+                "{:>10.4}{:>10.4}{:>10.4}{tail}",
+                position[0], position[1], position[2]
+            );
+        }
+        return Ok(lines.join("\n"));
+    }
+    let atom_lines = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| {
+            line.trim_start().starts_with("M  V30") && {
+                let tokens = line.split_whitespace().collect::<Vec<_>>();
+                tokens.len() >= 7
+                    && tokens[2].parse::<usize>().is_ok()
+                    && tokens[3].chars().next().is_some_and(char::is_alphabetic)
+            }
+        })
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    if atom_lines.len() != positions.len() {
+        return Err("V3000 template atom count differs from Metal output".into());
+    }
+    for (&line_index, position) in atom_lines.iter().zip(positions) {
+        let tokens = lines[line_index].split_whitespace().collect::<Vec<_>>();
+        let suffix = tokens
+            .get(7..)
+            .map(|items| items.join(" "))
+            .unwrap_or_default();
+        lines[line_index] = format!(
+            "M  V30 {} {} {:.6} {:.6} {:.6} {}",
+            tokens[2], tokens[3], position[0], position[1], position[2], suffix
+        )
+        .trim_end()
+        .to_string();
+    }
+    Ok(lines.join("\n"))
+}
+
+fn synthetic_molblock(atomic_numbers: &[u16], positions: &[[f32; 3]]) -> Result<String, String> {
+    if atomic_numbers.len() != positions.len() || atomic_numbers.len() > 999 {
+        return Err("SMILES Metal output cannot be represented as V2000".into());
+    }
+    let mut output = format!(
+        "Burrete Metal conformer\n  Burrete\n\n{:>3}{:>3}  0  0  0  0            999 V2000\n",
+        atomic_numbers.len(),
+        0
+    );
+    for (&atomic_number, position) in atomic_numbers.iter().zip(positions) {
+        output.push_str(&format!(
+            "{:>10.4}{:>10.4}{:>10.4} {:<3} 0  0  0  0  0  0  0  0  0  0  0  0\n",
+            position[0],
+            position[1],
+            position[2],
+            element_symbol(atomic_number)?
+        ));
+    }
+    output.push_str("M  END");
+    Ok(output)
+}
+
+fn element_symbol(atomic_number: u16) -> Result<&'static str, String> {
+    const SYMBOLS: [&str; 54] = [
+        "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S",
+        "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga",
+        "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd",
+        "Ag", "Cd", "In", "Sn", "Sb", "Te", "I",
+    ];
+    SYMBOLS
+        .get(atomic_number as usize)
+        .copied()
+        .filter(|symbol| !symbol.is_empty())
+        .ok_or_else(|| format!("atomic number {atomic_number} is not supported by dev SDF output"))
 }
 
 fn parse_runtime_root() -> Result<PathBuf, String> {
@@ -222,5 +551,17 @@ mod tests {
             text: "O water".into(),
         };
         assert!(source_rows(&source).is_err());
+    }
+
+    #[test]
+    fn writes_metal_coordinates_without_changing_v2000_topology() {
+        let positions = [[1.25, -2.5, 3.75], [4.0, 5.5, -6.25], [-7.0, 8.0, 9.0]];
+        let output = molblock_with_positions(WATER, &positions).expect("updated molblock");
+
+        assert!(output.contains("    1.2500   -2.5000    3.7500 O"));
+        assert!(output.contains("    4.0000    5.5000   -6.2500 H"));
+        assert!(output.contains("   -7.0000    8.0000    9.0000 H"));
+        assert!(output.contains("  1  2  1  0  0  0  0"));
+        assert!(output.contains("  1  3  1  0  0  0  0"));
     }
 }

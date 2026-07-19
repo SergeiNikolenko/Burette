@@ -344,8 +344,8 @@ export function useAppKetcherActions({
           const ensemble = request.target === "generateEnsemble";
           const optimize = request.target === "optimizeGeometry";
           pushStatus(optimize
-            ? "Optimizing current 3D geometry with RDKit MMFF94s (dev CPU backend)..."
-            : ensemble ? "Generating conformer ensemble with the dev RDKit backend..." : "Generating 3D geometry with the dev RDKit backend...");
+            ? "Optimizing current 3D geometry with MMFF94s on Metal..."
+            : ensemble ? "Generating conformer ensemble on Metal..." : "Generating 3D geometry on Metal...");
           const generated = await generateBrowserDev3DConformer({
             ...source,
             engine: optimize ? "rdkit" : preferences.conformerEngine,
@@ -362,7 +362,7 @@ export function useAppKetcherActions({
           );
           openDocumentsInActiveTab([generatedDocument]);
           rememberRecentStructures([generatedDocument]);
-          pushStatus(`${optimize ? "Optimized" : "Generated"} via ${generated.method} on the temporary dev backend.`, "success");
+          pushStatus(`${optimize ? "Optimized" : "Generated"} via ${generated.method}.`, "success");
           return;
         }
         if (request.target === "semiempiricalRm1") {
@@ -384,8 +384,7 @@ export function useAppKetcherActions({
         });
         void openTextDocuments([result.reportPath], { background: true });
         await openDocuments([result.primaryOpenPath], {}, effectivePreferences, { inActiveTab: true });
-        const backend = result.backend === "nativeMetal" ? "Metal GPU" : "CPU reference fallback";
-        pushStatus(`${optimize ? "Optimized" : "Generated"} ${result.passedCount.toLocaleString()} validated structure${result.passedCount === 1 ? "" : "s"} via ${backend}.`, result.failedCount ? "error" : "success");
+        pushStatus(`${optimize ? "Optimized" : "Generated"} ${result.passedCount.toLocaleString()} validated structure${result.passedCount === 1 ? "" : "s"} via Metal GPU.`, result.failedCount ? "error" : "success");
         return;
       }
 

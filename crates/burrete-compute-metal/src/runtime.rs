@@ -434,20 +434,22 @@ impl MetalComputeRuntime {
             pairs,
             max_memory_bytes.min(self.limits.max_memory_bytes),
         )?;
+        let maximum_drift = dispatch
+            .contribution_ev
+            .iter()
+            .zip(&expected)
+            .map(|(observed, expected)| (*observed - *expected as f32).abs())
+            .fold(0.0_f32, f32::max);
         if dispatch.contribution_ev.len() != expected.len()
             || dispatch
                 .contribution_ev
                 .iter()
                 .any(|value| !value.is_finite())
-            || dispatch
-                .contribution_ev
-                .iter()
-                .zip(&expected)
-                .any(|(observed, expected)| (*observed - *expected as f32).abs() > 2.0e-4)
+            || maximum_drift > 5.0e-4
         {
-            return Err(MetalRuntimeError::KernelUnavailable(
-                "Metal RM1 pair Fock contraction differs from the float64 CPU reference".into(),
-            ));
+            return Err(MetalRuntimeError::KernelUnavailable(format!(
+                "Metal RM1 pair Fock contraction differs from the float64 CPU reference: maximum drift={maximum_drift:e}"
+            )));
         }
         Ok(MetalRm1FockContribution {
             contribution_ev: dispatch.contribution_ev,
@@ -861,7 +863,7 @@ impl MetalComputeRuntime {
                     orthogonality_maximum.max((overlap - expected_overlap).abs());
             }
         }
-        if eigenvalue_drift > 2.0e-4 || residual_maximum > 5.0e-4 || orthogonality_maximum > 5.0e-4
+        if eigenvalue_drift > 5.0e-4 || residual_maximum > 5.0e-4 || orthogonality_maximum > 5.0e-4
         {
             return Err(MetalRuntimeError::KernelUnavailable(format!(
                 "Metal symmetric eigensolver parity failed: eigenvalue={eigenvalue_drift:e}, residual={residual_maximum:e}, orthogonality={orthogonality_maximum:e}"

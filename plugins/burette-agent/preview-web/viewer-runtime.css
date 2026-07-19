@@ -13,6 +13,7 @@
   --buret-toolbar-color: rgba(255, 255, 255, 0.94);
   --buret-control-island-right: 12px;
   --buret-control-island-gap: 6px;
+  --buret-generate-3d-control-right: 70px;
   --buret-viewport-controls-top: calc(var(--buret-toolbar-safe-top) + 42px);
   --buret-viewport-panel-max-height: calc(100vh - 96px);
   --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
@@ -25,7 +26,7 @@
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
   --buret-molstar-panel-radius: 10px;
-  --buret-menu-background: rgba(30, 32, 36, 0.97);
+  --buret-menu-background: rgb(30, 32, 36);
   --buret-menu-section-background: rgba(255, 255, 255, 0.09);
   --buret-menu-input-background: rgba(255, 255, 255, 0.12);
   --buret-menu-input-focus-background: rgba(255, 255, 255, 0.16);
@@ -62,7 +63,7 @@ body.buret-theme-light {
   --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
-  --buret-menu-background: rgba(248, 248, 246, 0.98);
+  --buret-menu-background: rgb(248, 248, 246);
   --buret-menu-section-background: rgba(0, 0, 0, 0.055);
   --buret-menu-input-background: rgba(0, 0, 0, 0.075);
   --buret-menu-input-focus-background: rgba(0, 0, 0, 0.105);
@@ -778,8 +779,8 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   border-radius: 12px;
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
-  -webkit-backdrop-filter: blur(30px) saturate(1.35);
-  backdrop-filter: blur(30px) saturate(1.35);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow: var(--buret-menu-shadow);
 }
 .buret-molecule-context-menu-title {
@@ -839,7 +840,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   outline: none;
   background: var(--buret-menu-input-background);
 }
-body.burette-mobile-host #status {
+body.burette-mobile-host #status.hidden {
   display: none !important;
 }
 body.burette-mobile-host .buret-molecule-context-menu {
@@ -849,16 +850,16 @@ body.burette-mobile-host .buret-molecule-context-menu {
   border: 0.5px solid rgba(255, 255, 255, 0.22);
   border-radius: 24px;
   color: #f5f5f7;
-  background: rgba(28, 28, 30, 0.78);
-  -webkit-backdrop-filter: blur(42px) saturate(1.75);
-  backdrop-filter: blur(42px) saturate(1.75);
+  background: var(--buret-menu-background);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.42),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu {
   color: #1d1d1f;
-  background: rgba(246, 246, 242, 0.76);
+  background: var(--buret-menu-background);
   border-color: rgba(0, 0, 0, 0.10);
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.20),
@@ -1056,6 +1057,12 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   transform: translate(-50%, 0) scale(1);
   transition-delay: 180ms, 180ms, 0s;
 }
+.buret-generate-3d-control[aria-expanded="true"] > .buret-tooltip {
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -4px) scale(0.98);
+  transition-delay: 0s;
+}
 #buret-toolbar .buret-button:hover > .buret-tooltip,
 #buret-toolbar .buret-button:focus-visible > .buret-tooltip,
 #buret-toolbar .buret-molstar-style-slot:hover > .buret-tooltip,
@@ -1132,7 +1139,7 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
 .buret-generate-3d-control {
   position: absolute;
   top: var(--buret-viewport-controls-top);
-  right: 62px;
+  right: var(--buret-generate-3d-control-right);
   z-index: 35;
   min-width: 104px;
   height: 36px;
@@ -1145,6 +1152,8 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   letter-spacing: 0;
   white-space: nowrap;
+  transform-origin: top center;
+  transition: opacity 150ms ease, transform 170ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0s, background 150ms ease;
 }
 .buret-generate-3d-control:hover,
 .buret-generate-3d-control:focus-visible {
@@ -1188,14 +1197,25 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
 .buret-generate-3d-menu {
   position: fixed;
   z-index: 45;
-  min-width: 182px;
+  box-sizing: border-box;
+  width: min(248px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 10px;
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow: var(--buret-menu-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  transform-origin: top right;
+}
+.buret-generate-3d-menu[data-placement="top"] {
+  transform-origin: bottom right;
 }
 .buret-generate-3d-menu.hidden {
   display: none;
@@ -1210,15 +1230,42 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   background: transparent;
   font: inherit;
   text-align: left;
+  white-space: nowrap;
 }
-.buret-generate-3d-menu button:hover,
+.buret-generate-3d-menu button:hover {
+  background: var(--buret-toolbar-hover);
+}
 .buret-generate-3d-menu button:focus-visible {
   background: var(--buret-toolbar-hover);
+  box-shadow: inset 0 0 0 1px var(--buret-toolbar-border);
   outline: none;
 }
+.buret-generate-3d-menu button:disabled {
+  color: color-mix(in srgb, var(--buret-toolbar-color) 42%, transparent);
+  cursor: not-allowed;
+}
 body.buret-molstar-viewport-panel-open .buret-generate-3d-control {
-  top: var(--buret-generate-3d-panel-top, calc(var(--buret-viewport-controls-top) + 48px));
-  z-index: 35;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-8px) scale(0.98);
+  transition-delay: 0s, 0s, 150ms, 0s;
+}
+body.buret-toolbar-collapsed .buret-generate-3d-control {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-8px) scale(0.98);
+  transition-delay: 0s, 0s, 150ms, 0s;
+}
+body.buret-toolbar-collapsed .buret-generate-3d-menu,
+body.buret-molstar-viewport-panel-open .buret-generate-3d-menu {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-generate-3d-control {
+    transition: none;
+  }
 }
 .buret-renderer-control {
   display: none; align-items: center; gap: 4px; padding-left: 5px;
@@ -1391,8 +1438,8 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
   box-shadow: var(--buret-menu-shadow);
-  -webkit-backdrop-filter: blur(18px) saturate(1.18);
-  backdrop-filter: blur(18px) saturate(1.18);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 .buret-xyzrender-popover.hidden { display: none; }
 .buret-xyzrender-popover-header {
@@ -1986,6 +2033,7 @@ body.burette-mobile-host .buret-docking-poses button {
   align-items: center;
   gap: 6px;
 }
+.buret-trajectory-smooth-button { min-width: 58px; font-weight: 600; }
 .buret-docking-pose-animation {
   max-height: 0;
   margin-top: 0;
@@ -2062,6 +2110,31 @@ body.burette-mobile-host .buret-docking-poses button {
   min-width: 60px;
   accent-color: var(--buret-molstar-accent);
   cursor: pointer;
+}
+@media (max-width: 360px) {
+  .buret-docking-poses {
+    top: 64px;
+    width: calc(100vw - 24px);
+  }
+  .buret-docking-pose-main {
+    display: grid;
+    grid-template-columns: 28px auto minmax(62px, 1fr) auto auto;
+    width: 100%;
+  }
+  .buret-docking-pose-main > span {
+    min-width: 0;
+  }
+  .buret-docking-pose-main > button:not(.buret-docking-pose-animation-button) {
+    padding-inline: 7px;
+  }
+  .buret-docking-pose-animation {
+    width: 100%;
+  }
+  .buret-docking-pose-slider {
+    min-width: 0;
+    width: auto;
+    flex: 1 1 auto;
+  }
 }
 .buret-agent-panel {
   position: fixed;
@@ -2163,6 +2236,14 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-agent-panel-chart-row strong {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+body .msp-plugin .msp-action-menu-options,
+body .msp-plugin .msp-action-menu-options-no-header,
+body .msp-plugin .msp-animation-viewport-controls-select,
+body .msp-plugin .msp-selection-viewport-controls-actions {
+  background: var(--buret-menu-background) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
   .buret-docking-pose-animation {

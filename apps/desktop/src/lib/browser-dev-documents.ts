@@ -1,4 +1,5 @@
 import { collectionExtension, mergeCollectionSources, parseSdfCollectionRecords } from "./collection-documents";
+import { runBrowserDevMetalConformer } from "./browser-dev-compute";
 import { parseDataWarrior } from "./datawarrior";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
@@ -604,34 +605,13 @@ export function writeBrowserDevVirtualTextDocument(path: string, text: string) {
 export async function generateBrowserDev3DConformer(
   request: BrowserDevConformerGenerationRequest,
 ): Promise<BrowserDevConformerGenerationResult> {
-  const response = await fetch("/__burette/generate-3d-conformer", {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ request }),
+  const source = request.operation === "optimize" && request.source3d
+    ? request.source3d
+    : { title: request.title, extension: request.extension, text: request.text };
+  return runBrowserDevMetalConformer(source, {
+    mode: request.mode,
+    optimize: request.operation === "optimize",
   });
-  const payload = await response.json().catch(() => null) as Partial<BrowserDevConformerGenerationResult> & { error?: unknown } | null;
-  if (!response.ok) {
-    const message = typeof payload?.error === "string" && payload.error.trim()
-      ? payload.error.trim()
-      : `3D conformer request failed with status ${response.status}`;
-    throw new Error(message);
-  }
-  if (
-    !payload
-    || typeof payload.title !== "string"
-    || payload.extension !== "sdf"
-    || typeof payload.text !== "string"
-    || typeof payload.method !== "string"
-  ) {
-    throw new Error("3D conformer request returned an invalid response.");
-  }
-  return {
-    title: payload.title,
-    extension: payload.extension,
-    text: payload.text,
-    method: payload.method,
-    conformerCount: typeof payload.conformerCount === "number" ? payload.conformerCount : undefined,
-  };
 }
 
 async function openBrowserDevDocument(

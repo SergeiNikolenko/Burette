@@ -242,11 +242,10 @@ export function useAppGridConformerMessages({
           {},
           { rendererMode: "molstar" },
         );
-        const backend = result.backend === "nativeMetal" ? "Metal GPU" : "reference CPU";
         pushStatus(
           optimizeInputGeometry
-            ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via ${backend}; per-row convergence status and energy were written to Grid and the results opened in Molstar.`
-            : `Generated ${conformerVariant} and ${mmffVariant}-ranked ${result.passedCount.toLocaleString()} valid conformers via ${backend} and opened the ensemble in Molstar.`,
+            ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via Metal GPU; per-row convergence status and energy were written to Grid and the results opened in Molstar.`
+            : `Generated ${conformerVariant} and ${mmffVariant}-ranked ${result.passedCount.toLocaleString()} valid conformers via Metal GPU and opened the ensemble in Molstar.`,
           result.gridApplied ? "success" : "error",
           result.gridWarning ? [result.gridWarning] : undefined,
         );

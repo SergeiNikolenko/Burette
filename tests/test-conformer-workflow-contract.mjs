@@ -38,7 +38,7 @@ assert.match(gridViewer, /optimizeGeometryGridSelection/);
 assert.match(nativeConformerWorkflow, /workflowTemplate: "conformer\.v1"/);
 assert.match(nativeConformerWorkflow, /initialization: options\.initialization/);
 assert.match(nativeConformerWorkflow, /mmffVariant: options\.mmffVariant/);
-assert.match(nativeConformerWorkflow, /backendPolicy: "gpuPreferred"/);
+assert.match(nativeConformerWorkflow, /backendPolicy: "gpuRequired"/);
 for (const command of [
   "compute_execute_conformer_distance",
   "compute_execute_conformer_stereo",

@@ -216,11 +216,11 @@ for (const asset of [
   "scripts/agent-preview.mjs",
   "scripts/agent-shell-server.mjs",
   "scripts/burrete-agent.mjs",
-  "scripts/rdkit_conformer.py",
   "scripts/install-local.mjs",
 ]) {
   assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
 }
+assert.equal(packedFiles.has("scripts/rdkit_conformer.py"), false, "browser shell must not package the Python conformer fallback");
 
 const browserShellJavaScript = [
   "browser-shell-dist/index.js",

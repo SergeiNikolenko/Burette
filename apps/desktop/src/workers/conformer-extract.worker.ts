@@ -30,7 +30,21 @@ let extractorPromise: Promise<ExtractorModule> | null = null;
 
 self.addEventListener("message", (event: MessageEvent<ConformerExtractionWorkerRequest>) => {
   const request = event.data;
-  if (request?.type !== "extractConformerChunk" || !request.requestId) return;
+  if (!request?.requestId) return;
+  if (request.type === "extractStandaloneConformers") {
+    void extractStandalone(request)
+      .then((records) => {
+        const transfer = records.flatMap((record) => [record.conformer, record.mmff]);
+        reply({ type: "standaloneConformerResult", requestId: request.requestId, records }, transfer);
+      })
+      .catch((error) => reply({
+        type: "standaloneConformerResult",
+        requestId: request.requestId,
+        error: boundedError(error),
+      }));
+    return;
+  }
+  if (request.type !== "extractConformerChunk") return;
   void extractChunk(request.chunk)
     .then((bytes) => {
       const result = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
@@ -42,6 +56,38 @@ self.addEventListener("message", (event: MessageEvent<ConformerExtractionWorkerR
       error: boundedError(error),
     }));
 });
+
+async function extractStandalone(request: Extract<ConformerExtractionWorkerRequest, { type: "extractStandaloneConformers" }>) {
+  if (!Array.isArray(request.records) || request.records.length < 1 || request.records.length > 256) {
+    throw new Error("Standalone conformer extraction requires between 1 and 256 records.");
+  }
+  const extractor = await loadExtractor();
+  return request.records.map((record) => {
+    if (!record.input.trim()) throw new Error("Standalone conformer input is empty.");
+    const inputFormat = record.format === "molblock" ? 0 : 1;
+    const conformer = extractor.extract_conformer_parameters(
+      record.input,
+      inputFormat,
+      variantTag(request.variant),
+    );
+    const mmff = extractor.extract_mmff_parameters(
+      record.input,
+      inputFormat,
+      request.mmffVariant === "MMFF94" ? 0 : 1,
+    );
+    if (conformer.byteLength < 64 || mmff.byteLength < 64) {
+      throw new Error("Pinned RDKit extractor returned an invalid native parameter payload.");
+    }
+    return {
+      conformer: exactArrayBuffer(conformer),
+      mmff: exactArrayBuffer(mmff),
+    };
+  });
+}
+
+function exactArrayBuffer(bytes: Uint8Array) {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
 
 async function extractChunk(chunk: ConformerInputChunk) {
   validateChunk(chunk);
