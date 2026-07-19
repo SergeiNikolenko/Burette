@@ -1145,6 +1145,8 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   letter-spacing: 0;
   white-space: nowrap;
+  transform-origin: top center;
+  transition: opacity 150ms ease, transform 170ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0s, background 150ms ease;
 }
 .buret-generate-3d-control:hover,
 .buret-generate-3d-control:focus-visible {
@@ -1188,14 +1190,25 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
 .buret-generate-3d-menu {
   position: fixed;
   z-index: 45;
-  min-width: 182px;
+  box-sizing: border-box;
+  width: min(248px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 10px;
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+  backdrop-filter: blur(22px) saturate(1.25);
   box-shadow: var(--buret-menu-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  transform-origin: top right;
+}
+.buret-generate-3d-menu[data-placement="top"] {
+  transform-origin: bottom right;
 }
 .buret-generate-3d-menu.hidden {
   display: none;
@@ -1210,10 +1223,14 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   background: transparent;
   font: inherit;
   text-align: left;
+  white-space: nowrap;
 }
-.buret-generate-3d-menu button:hover,
+.buret-generate-3d-menu button:hover {
+  background: var(--buret-toolbar-hover);
+}
 .buret-generate-3d-menu button:focus-visible {
   background: var(--buret-toolbar-hover);
+  box-shadow: inset 0 0 0 1px var(--buret-toolbar-border);
   outline: none;
 }
 .buret-generate-3d-menu button:disabled {
@@ -1221,8 +1238,27 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   cursor: not-allowed;
 }
 body.buret-molstar-viewport-panel-open .buret-generate-3d-control {
-  top: var(--buret-generate-3d-panel-top, calc(var(--buret-viewport-controls-top) + 48px));
-  z-index: 35;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-8px) scale(0.98);
+  transition-delay: 0s, 0s, 150ms, 0s;
+}
+body.buret-toolbar-collapsed .buret-generate-3d-control {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-8px) scale(0.98);
+  transition-delay: 0s, 0s, 150ms, 0s;
+}
+body.buret-toolbar-collapsed .buret-generate-3d-menu,
+body.buret-molstar-viewport-panel-open .buret-generate-3d-menu {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-generate-3d-control {
+    transition: none;
+  }
 }
 .buret-renderer-control {
   display: none; align-items: center; gap: 4px; padding-left: 5px;

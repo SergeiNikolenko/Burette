@@ -133,11 +133,11 @@
           </details>
         </div>
       </div>
-      <button class="buret-generate-3d-control hidden" type="button" data-buret-action="generate-3d-conformer" aria-label="Open molecular compute menu" aria-haspopup="menu" aria-expanded="false">
+      <button id="buret-compute-menu-trigger" class="buret-generate-3d-control hidden" type="button" data-buret-action="generate-3d-conformer" aria-label="Open molecular compute menu" aria-haspopup="menu" aria-controls="buret-compute-menu" aria-expanded="false">
         <span data-buret-generate-3d-label>Compute</span>
         <span class="buret-tooltip" role="tooltip">Native molecular compute</span>
       </button>
-      <div class="buret-generate-3d-menu hidden" data-buret-generate-3d-menu role="menu" aria-label="Molecular compute operations">
+      <div id="buret-compute-menu" class="buret-generate-3d-menu hidden" data-buret-generate-3d-menu role="menu" aria-labelledby="buret-compute-menu-trigger" aria-orientation="vertical">
         <button type="button" role="menuitem" data-buret-compute-operation="generate3d">Generate 3D</button>
         <button type="button" role="menuitem" data-buret-compute-operation="generateEnsemble">Generate conformer ensemble</button>
         <button type="button" role="menuitem" data-buret-compute-operation="optimizeGeometry">Optimize geometry</button>

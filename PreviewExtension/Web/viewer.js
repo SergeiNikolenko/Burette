@@ -1906,17 +1906,45 @@
   function showGenerate3DMenu(anchor) {
     const menu = document.querySelector('[data-buret-generate-3d-menu]');
     if (!menu || anchor?.classList?.contains('hidden') || anchor?.disabled) return;
-    const rect = anchor.getBoundingClientRect();
     menu.classList.remove('hidden');
-    menu.style.top = `${Math.round(rect.bottom + 6)}px`;
-    menu.style.left = `${Math.round(Math.max(8, rect.right - menu.offsetWidth))}px`;
+    positionGenerate3DMenu(anchor);
     anchor.setAttribute('aria-expanded', 'true');
     menu.querySelector('[role="menuitem"]')?.focus?.();
   }
 
-  function hideGenerate3DMenu() {
+  function positionGenerate3DMenu(anchor = document.querySelector('[data-buret-action="generate-3d-conformer"]')) {
+    const menu = document.querySelector('[data-buret-generate-3d-menu]');
+    if (!menu || menu.classList.contains('hidden') || !anchor) return;
+    const margin = 12;
+    const gap = 6;
+    const anchorRect = anchor.getBoundingClientRect();
+    const controlsRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
+    const rightBoundary = controlsRect && controlsRect.left > anchorRect.left
+      ? Math.min(anchorRect.right, controlsRect.left - 8)
+      : Math.min(anchorRect.right, window.innerWidth - margin);
+    const menuWidth = menu.offsetWidth;
+    const left = Math.min(
+      Math.max(margin, rightBoundary - menuWidth),
+      Math.max(margin, window.innerWidth - margin - menuWidth),
+    );
+    const belowTop = anchorRect.bottom + gap;
+    const spaceBelow = window.innerHeight - margin - belowTop;
+    const spaceAbove = anchorRect.top - gap - margin;
+    const openAbove = spaceBelow < Math.min(menu.scrollHeight, 180) && spaceAbove > spaceBelow;
+    const availableHeight = Math.max(96, openAbove ? spaceAbove : spaceBelow);
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(openAbove
+      ? Math.max(margin, anchorRect.top - gap - Math.min(menu.scrollHeight, availableHeight))
+      : belowTop)}px`;
+    menu.style.maxHeight = `${Math.floor(availableHeight)}px`;
+    menu.dataset.placement = openAbove ? 'top' : 'bottom';
+  }
+
+  function hideGenerate3DMenu({ restoreFocus = false } = {}) {
     document.querySelector('[data-buret-generate-3d-menu]')?.classList.add('hidden');
-    document.querySelector('[data-buret-action="generate-3d-conformer"]')?.setAttribute('aria-expanded', 'false');
+    const trigger = document.querySelector('[data-buret-action="generate-3d-conformer"]');
+    trigger?.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) trigger?.focus?.();
   }
 
   function setGenerate3DPending(pending, mode = 'single') {
@@ -1949,7 +1977,24 @@
     hideGenerate3DMenu();
   });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') hideGenerate3DMenu();
+    const menu = document.querySelector('[data-buret-generate-3d-menu]');
+    if (!menu || menu.classList.contains('hidden')) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hideGenerate3DMenu({ restoreFocus: true });
+      return;
+    }
+    const items = Array.from(menu.querySelectorAll('[role="menuitem"]')).filter(item => !item.disabled);
+    const currentIndex = items.indexOf(document.activeElement);
+    let nextIndex = -1;
+    if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
+    if (event.key === 'ArrowUp') nextIndex = currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = items.length - 1;
+    if (nextIndex >= 0 && items[nextIndex]) {
+      event.preventDefault();
+      items[nextIndex].focus();
+    }
   });
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {
@@ -2249,12 +2294,7 @@
       const panel = document.querySelector('.msp-viewport-controls-panel');
       const rect = panel?.getBoundingClientRect();
       const open = !!rect && rect.width > 0 && rect.height > 0;
-      if (open) {
-        const nextTop = Math.min(Math.max(rect.bottom + 12, 64), Math.max(window.innerHeight - 48, 64));
-        document.documentElement.style.setProperty('--buret-generate-3d-panel-top', `${Math.round(nextTop)}px`);
-      } else {
-        document.documentElement.style.removeProperty('--buret-generate-3d-panel-top');
-      }
+      if (open) hideGenerate3DMenu();
       document.body.classList.toggle(MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS, open);
     };
     molstarViewportPanelObserver = new MutationObserver(update);
@@ -3932,7 +3972,10 @@
   }
 
   function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
-    if (collapsed) setXyzrenderPopoverVisibility(toolbar, false);
+    if (collapsed) {
+      setXyzrenderPopoverVisibility(toolbar, false);
+      hideGenerate3DMenu();
+    }
     toolbar.classList.toggle('collapsed', collapsed);
     document.body?.classList.toggle('buret-toolbar-collapsed', collapsed);
     const grip = toolbar.querySelector('[data-drag-handle]');
@@ -4068,6 +4111,7 @@
       repositionToolbar(toolbar);
       updateFloatingLayoutOffsets();
       positionXyzrenderPopover(toolbar);
+      positionGenerate3DMenu();
     });
   }
 
@@ -4247,6 +4291,7 @@
       molstarViewportPanelOpen = panelOpen;
       molstarSelectionControlsOpen = selectionOpen;
       const suppressToolbar = panelOpen;
+      if (suppressToolbar) hideGenerate3DMenu();
       document.body?.classList.toggle('buret-molstar-viewport-panel-open', panelOpen);
       document.body?.classList.toggle('buret-molstar-selection-controls-open', selectionOpen);
       const toolbar = document.getElementById('buret-toolbar');
