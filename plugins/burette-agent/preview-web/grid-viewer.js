@@ -42,6 +42,10 @@
   const GRID_WINDOW_OVERSCAN_ROWS = 4;
   const GRID_MAX_WINDOW_ROWS = 18;
   const GRID_MIN_ESTIMATED_ROW_HEIGHT = 190;
+  const GRID_EDIT_HISTORY_LIMIT = 50;
+  const NATIVE_MOLSTAR_SELECTION_LIMIT = 100;
+  const NATIVE_KETCHER_SELECTION_LIMIT = 25;
+  const NATIVE_GENERATE_3D_SELECTION_LIMIT = 20;
   const TABLE_COLUMN_PICKER_LIMIT = 240;
   const TABLE_DEFAULT_COLUMN_WIDTH = 118;
   const TABLE_COLUMN_OVERSCAN_PX = 360;
@@ -90,6 +94,9 @@
     ketcherOpenPendingUntil: 0,
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
+    editingText: false,
+    textFocusListenersInstalled: false,
+    textFocusUpdateTimer: 0,
     svgCache: new Map(),
     rdkitCardQueue: [],
     rdkitCardRendering: false,
@@ -110,9 +117,12 @@
     hostRequests: new Map(),
     remoteMode: false,
     remoteLoading: false,
+    hostReadOnly: window.name === 'burrete-read-only',
+    closeTransitionActive: false,
     dirty: false,
     dirtyReason: '',
     undoStack: [],
+    redoStack: [],
     rowPatches: new Map(),
     insertedRows: [],
     indexPollTimer: null,
@@ -137,7 +147,8 @@
     tableMoleculePreview: null,
     railDragging: false,
     pendingGridScrollIndex: null,
-    pendingGridRailPosition: null
+    pendingGridRailPosition: null,
+    menuStateSignature: ''
   };
 
   function post(type, message, payload = {}) {
@@ -199,7 +210,7 @@
       const key = event.key?.toLowerCase();
       const commandKey = event.metaKey || event.ctrlKey;
       const togglesSidebar = commandKey && !event.altKey && !event.shiftKey && key === 'b';
-      const opensCommandPalette = (commandKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
+      const opensCommandPalette = (commandKey && event.shiftKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
       if (!opensCommandPalette && !togglesSidebar) return;
       event.preventDefault();
       post(togglesSidebar ? 'toggleSidebar' : 'openCommandPalette');
@@ -207,6 +218,39 @@
   }
 
   initShellShortcutBridge();
+
+  function syncGridTextEditingState() {
+    const editingText = isEditableShortcutTarget(document.activeElement);
+    if (editingText === state.editingText) return;
+    state.editingText = editingText;
+    const cfg = safeConfig();
+    if (cfg) notifyGridMenuState(cfg);
+  }
+
+  function scheduleGridTextEditingStateSync() {
+    if (state.textFocusUpdateTimer) window.clearTimeout(state.textFocusUpdateTimer);
+    state.textFocusUpdateTimer = window.setTimeout(() => {
+      state.textFocusUpdateTimer = 0;
+      syncGridTextEditingState();
+    }, 0);
+  }
+
+  function installGridTextFocusListeners() {
+    if (state.textFocusListenersInstalled) {
+      syncGridTextEditingState();
+      return;
+    }
+    state.textFocusListenersInstalled = true;
+    document.addEventListener('focusin', () => {
+      if (state.textFocusUpdateTimer) {
+        window.clearTimeout(state.textFocusUpdateTimer);
+        state.textFocusUpdateTimer = 0;
+      }
+      syncGridTextEditingState();
+    });
+    document.addEventListener('focusout', scheduleGridTextEditingStateSync);
+    syncGridTextEditingState();
+  }
 
   function nowMs() {
     return typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -280,14 +324,24 @@
     return window.BurreteConfig;
   }
 
+  function safeConfig() {
+    try {
+      return config();
+    } catch (_) {
+      return null;
+    }
+  }
+
   function capabilities(cfg) {
     const caps = cfg.capabilities || {};
     const molecularGrid = effectiveMolecularGrid(cfg);
+    const editing = caps.editing !== false && !state.hostReadOnly;
     return {
+      editing,
       selection: !!caps.selection,
       export: !!caps.export,
       substructureSearch: molecularGrid && !!caps.substructureSearch,
-      ketcherOpen: cfg.appViewer === true && !!caps.rendererSwitch,
+      ketcherOpen: editing && cfg.appViewer === true && !!caps.rendererSwitch,
       rendererSwitch: molecularGrid && (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch
     };
   }
@@ -305,6 +359,36 @@
     return cfg.appViewer === true && cfg.gridDataMode === 'bridge' && !Array.isArray(window.BurreteGridRecords);
   }
 
+  function setGridCloseTransition(active) {
+    state.closeTransitionActive = active;
+    root.inert = active;
+    root.toggleAttribute('aria-busy', active);
+    if (active && document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    let overlay = document.getElementById('buret-grid-close-transition');
+    if (!active) {
+      overlay?.remove();
+      return;
+    }
+    if (overlay) return;
+    overlay = document.createElement('div');
+    overlay.id = 'buret-grid-close-transition';
+    overlay.className = 'buret-grid-close-transition';
+    overlay.setAttribute('role', 'status');
+    overlay.innerHTML = '<span>Finishing current change…</span>';
+    document.body.appendChild(overlay);
+  }
+
+  function setGridReadOnly(readOnly) {
+    state.hostReadOnly = readOnly;
+    root.dataset.readOnly = readOnly ? 'true' : 'false';
+    hideMoleculeContextMenu();
+    const cfg = safeConfig();
+    if (!cfg) return;
+    refreshGridControls(cfg);
+    syncGridEditControls();
+    notifyGridMenuState(cfg);
+  }
+
   function installHostMessageListener() {
     window.addEventListener('message', event => {
       const data = event.data;
@@ -313,9 +397,14 @@
       if (body.type === 'workspaceHistoryCommand') {
         const direction = body.direction === 'redo' ? 'redo' : 'undo';
         let handled = false;
-        if (direction === 'undo' && state.undoStack.length) {
-          undoLastGridEdit(config());
-          handled = true;
+        if (!state.closeTransitionActive) {
+          if (direction === 'undo' && state.undoStack.length) {
+            undoLastGridEdit(config());
+            handled = true;
+          } else if (direction === 'redo' && state.redoStack.length) {
+            redoLastGridEdit(config());
+            handled = true;
+          }
         }
         event.source?.postMessage({
           source: 'burrete-grid',
@@ -327,9 +416,32 @@
         }, '*');
         return;
       }
+      if (body.type === 'gridCloseTransitionChanged') {
+        setGridCloseTransition(body.active === true);
+        if (body.requestId) {
+          post('gridCloseTransitionAcknowledged', '', {
+            requestId: String(body.requestId),
+            active: state.closeTransitionActive
+          });
+        }
+        return;
+      }
+      if (body.type === 'gridReadOnlyChanged') {
+        setGridReadOnly(body.readOnly === true);
+        return;
+      }
+      if (body.type === 'gridMenuCommand') {
+        if (state.closeTransitionActive) return;
+        const cfg = safeConfig();
+        executeGridMenuCommand(body, cfg);
+        return;
+      }
       if (body.type === 'gridRecordsAppended') {
+        if (!capabilities(config()).editing) return;
         state.hiddenRows.clear();
         state.selected.clear();
+        state.undoStack = [];
+        state.redoStack = [];
         state.svgCache.clear();
         state.xyzrenderCardCache.clear();
         markGridDirty('appended molecules');
@@ -378,6 +490,7 @@
         return;
       }
       if (body.type === 'gridSaved') {
+        if (!capabilities(config()).editing) return;
         markGridClean();
         setStatus(`[grid] Saved ${body.name || 'collection file'}.`);
         updateChrome(config());
@@ -388,6 +501,8 @@
         return;
       }
       if (body.type === 'gridApplyKetcherRow') {
+        if (state.closeTransitionActive) return;
+        if (!capabilities(config()).editing) return;
         applyKetcherGridRow(body, config());
         return;
       }
@@ -409,6 +524,161 @@
       else if (body.type === 'xyzrenderSheetItemRendered') pending.resolve(body);
       else pending.reject(new Error(body.error || 'Grid host request failed.'));
     });
+  }
+
+  function executeGridMenuCommand(body, cfg = null) {
+    const cfgValue = cfg || safeConfig();
+    if (!cfgValue) return;
+    const command = String(body?.command || '').trim();
+    const caps = capabilities(cfgValue);
+    const selectedStructureCount = selectedMolecularGridRowCount();
+    switch (command) {
+      case 'file.save':
+        if (!caps.export) return;
+        void saveGrid(cfgValue);
+        return;
+      case 'file.save-as':
+        if (!caps.export) return;
+        void saveGridAs(cfgValue);
+        return;
+      case 'file.export-smiles':
+        if (!caps.export) return;
+        void exportSmiles(cfgValue);
+        return;
+      case 'file.export-csv':
+        if (!caps.export) return;
+        void exportCSV(cfgValue);
+        return;
+      case 'edit.undo-grid':
+        if (!caps.editing) return;
+        undoLastGridEdit(cfgValue);
+        return;
+      case 'edit.redo-grid':
+        if (!caps.editing) return;
+        redoLastGridEdit(cfgValue);
+        return;
+      case 'edit.find': {
+        const search = document.getElementById('search');
+        if (search instanceof HTMLElement) search.focus();
+        return;
+      }
+      case 'collection.copy-selected':
+        if (!caps.selection || selectedGridRowCount() < 1) return;
+        void copySelected();
+        return;
+      case 'collection.select-all':
+        if (!caps.selection) return;
+        selectAllRows(cfgValue);
+        return;
+      case 'collection.clear-selection':
+        if (!caps.selection) return;
+        clearSelection(cfgValue);
+        return;
+      case 'collection.calculate-descriptors':
+        if (state.dirty) {
+          setStatus('[grid] Save the collection before calculating descriptors for all molecules.', 'error');
+          return;
+        }
+        post('calculateGridDescriptors', '[grid] Calculate descriptors for all molecules.', {
+          documentId: cfgValue.documentId || null
+        });
+        setStatus('[grid] Calculating descriptors for all molecules.');
+        return;
+      case 'view.grid-cards':
+        setGridViewMode('cards', cfgValue);
+        return;
+      case 'view.grid-table':
+        setGridViewMode('table', cfgValue);
+        return;
+      case 'view.grid-properties':
+        onShowGridProperties(cfgValue);
+        return;
+      case 'view.grid-renderer-rdkit':
+        setCardRenderer('rdkit', cfgValue);
+        return;
+      case 'view.grid-renderer-xyzrender':
+        setCardRenderer('xyzrender', cfgValue);
+        return;
+      case 'structure.open-in-molstar':
+        if (!caps.rendererSwitch || selectedStructureCount < 1 || selectedStructureCount > NATIVE_MOLSTAR_SELECTION_LIMIT) return;
+        requestRendererSwitch('molstar', cfgValue);
+        return;
+      case 'structure.edit-in-ketcher': {
+        if (!caps.ketcherOpen || selectedStructureCount < 1 || selectedStructureCount > NATIVE_KETCHER_SELECTION_LIMIT) return;
+        const rows = selectedMolstarRows();
+        if (rows.length === 1) requestOpenInKetcher(rows[0], cfgValue);
+        else requestSelectedKetcherDocument(cfgValue);
+        return;
+      }
+      case 'structure.generate-3d':
+        if (!caps.selection || selectedStructureCount < 1 || selectedStructureCount > NATIVE_GENERATE_3D_SELECTION_LIMIT) return;
+        requestSelected3DGeneration(cfgValue);
+        return;
+      case 'structure.calculate-properties':
+      case 'structure.refine-geometry':
+      case 'file.close-tab':
+        return;
+      default:
+        if (command) console.warn('[grid] Unknown menu command:', command);
+    }
+  }
+
+  function onShowGridProperties(cfg) {
+    if (!cfg) return;
+    state.showProperties = !state.showProperties;
+    applyGridPreferences(cfg);
+    void render(cfg);
+  }
+
+  function notifyGridMenuState(cfg) {
+    if (cfg?.appViewer !== true) return;
+    const undoEntry = state.undoStack[state.undoStack.length - 1] || null;
+    const redoEntry = state.redoStack[state.redoStack.length - 1] || null;
+    const caps = capabilities(cfg);
+    if (!caps.editing) return;
+    const selectedStructureCount = selectedMolecularGridRowCount();
+    const payload = {
+      selectedCount: selectedGridRowCount(),
+      selectedStructureCount,
+      dirty: state.dirty,
+      canUndo: undoEntry !== null,
+      canRedo: redoEntry !== null,
+      undoLabel: undoEntry?.label || null,
+      redoLabel: redoEntry?.label || null,
+      editingText: state.editingText,
+      viewMode: state.viewMode,
+      showProperties: state.showProperties,
+      cardRenderer: state.cardRenderer,
+      hasMolecules: effectiveMolecularGrid(cfg),
+      saveEnabled: caps.export && collectionIndexReady(),
+      exportEnabled: caps.export,
+      selectionEnabled: caps.selection,
+      canOpenSelectedInMolstar: caps.rendererSwitch && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_MOLSTAR_SELECTION_LIMIT,
+      canOpenSelectedInKetcher: caps.ketcherOpen && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_KETCHER_SELECTION_LIMIT,
+      canGenerate3dForSelection: caps.selection && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_GENERATE_3D_SELECTION_LIMIT,
+      supportsXyzrender: supportsXyzrenderCards(cfg),
+      generating3d: state.generating3d
+    };
+    const signature = JSON.stringify(payload);
+    if (signature === state.menuStateSignature) return;
+    state.menuStateSignature = signature;
+    post('gridMenuStateChanged', '', payload);
+  }
+
+  function selectedMolecularGridRowCount() {
+    if (!state.selected.size) return 0;
+    const pool = state.remoteMode ? state.rows : state.all;
+    return pool.reduce((count, row) => (
+      state.selected.has(Number(row?.index)) && rowHasMolecule(row) ? count + 1 : count
+    ), 0);
+  }
+
+  function selectedGridRowCount() {
+    if (!state.selected.size) return 0;
+    const pool = state.remoteMode ? state.rows : state.all;
+    return pool.reduce((count, row) => (
+      state.selected.has(Number(row?.index)) ? count + 1 : count
+    ), 0);
   }
 
   function hostRequest(type, payload = {}) {
@@ -765,7 +1035,7 @@
       throw new Error('BurreteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
     }
     window.BurreteGridUI.mountGridControls(host, {
-      format: ['csv', 'sdf', 'smiles', 'tsv'].includes(cfg.format) ? cfg.format : 'smiles',
+      format: ['csv', 'dwar', 'sdf', 'smiles', 'tsv'].includes(cfg.format) ? cfg.format : 'smiles',
       label: cfg.label || 'Molecule collection',
       exportEnabled: caps.export,
       selectionEnabled: caps.selection,
@@ -875,18 +1145,34 @@
     syncRdkitCoordinatesControl();
     syncGridEditControls();
     syncGridGenerate3DControls();
+    notifyGridMenuState(currentCfg);
   }
 
   function syncGridEditControls() {
+    const cfg = safeConfig();
+    const editing = cfg ? capabilities(cfg).editing : !state.hostReadOnly;
+    const saveReady = collectionIndexReady();
     const saveButton = document.getElementById('save-grid');
     if (saveButton) {
-      saveButton.disabled = !state.dirty;
-      saveButton.title = state.dirty ? 'Overwrite the source collection file' : 'No unsaved changes';
+      saveButton.disabled = !editing || !state.dirty || !saveReady;
+      saveButton.title = !editing
+        ? 'This embedded collection preview is read-only'
+        : !saveReady ? 'Wait for collection indexing to finish before saving'
+        : state.dirty ? 'Overwrite the source collection file' : 'No unsaved changes';
     }
     const undoButton = document.getElementById('undo-grid-edit');
     if (undoButton) {
-      undoButton.disabled = state.undoStack.length === 0;
-      undoButton.title = state.undoStack.length ? 'Undo the last collection edit' : 'Nothing to undo';
+      undoButton.disabled = !editing || state.undoStack.length === 0;
+      undoButton.title = !editing
+        ? 'This embedded collection preview is read-only'
+        : state.undoStack.length ? 'Undo the last collection edit' : 'Nothing to undo';
+    }
+    const saveAsButton = document.getElementById('save-grid-as');
+    if (saveAsButton) {
+      saveAsButton.disabled = !editing || !saveReady;
+      saveAsButton.title = !editing
+        ? 'This embedded collection preview is read-only'
+        : saveReady ? 'Save this collection as a new file' : 'Wait for collection indexing to finish before saving';
     }
   }
 
@@ -1257,6 +1543,7 @@
   }
 
   function requestSelectedKetcherDocument(cfg) {
+    if (!capabilities(cfg).editing) return;
     const now = Date.now();
     if (now < state.ketcherOpenPendingUntil) return;
     const rows = selectedMolstarRows();
@@ -1349,6 +1636,8 @@
   function setGridGenerate3DPending(pending) {
     state.generating3d = pending === true;
     syncGridGenerate3DControls();
+    const cfg = safeConfig();
+    if (cfg) notifyGridMenuState(cfg);
   }
 
   function syncGridGenerate3DControls() {
@@ -1516,6 +1805,7 @@
   }
 
   function requestOpenInKetcher(row, cfg) {
+    if (!capabilities(cfg).editing) return;
     const record = gridDragRecord(row);
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
     if (!record) {
@@ -1856,7 +2146,7 @@
         limit: loadBatchSize(cfg)
       }));
       if (token !== state.token) return;
-      state.rows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
+      state.rows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
       invalidateTableColumnCatalog();
       applyGridPageState(result);
       state.visibleCount = Math.min(loadBatchSize(cfg), state.rows.length);
@@ -1893,7 +2183,7 @@
           offset,
           limit
         }));
-        const pageRows = Array.isArray(result.rows) ? result.rows : [];
+        const pageRows = await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg);
         applyGridPageState(result);
         total = Number(result.totalRows || 0);
         for (const row of pageRows) {
@@ -2008,7 +2298,7 @@
         limit: loadBatchSize(cfg)
       }));
       if (token !== state.token) return;
-      const nextRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
+      const nextRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
       applyGridPageState(result);
       state.rows.push(...nextRows);
       if (nextRows.length) invalidateTableColumnCatalog();
@@ -2038,6 +2328,18 @@
           props: patch.props || row.props || {}
         };
       });
+  }
+
+  function materializeRemoteCollectionRows(rows) {
+    const materialized = applyVirtualGridEdits(rows);
+    const includedIndexes = new Set(materialized.map(row => Number(row.index)));
+    for (const row of applyVirtualGridEdits(state.insertedRows)) {
+      const index = Number(row.index);
+      if (includedIndexes.has(index)) continue;
+      includedIndexes.add(index);
+      materialized.push(row);
+    }
+    return materialized;
   }
 
   function currentLocalCollectionRows() {
@@ -2346,6 +2648,7 @@
     }
     document.getElementById('footer').textContent = footerText;
     updateGridRail();
+    notifyGridMenuState(cfg);
   }
 
   function moleculeCountLabel(count) {
@@ -2529,7 +2832,7 @@
           limit: Math.max(loadBatchSize(cfg), 240)
         }));
         if (token !== state.token) return;
-        const nextRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
+        const nextRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
         state.totalRows = Number(result.totalRows || state.totalRows);
         if (!nextRows.length) break;
         state.rows.push(...nextRows);
@@ -3619,9 +3922,11 @@
   }
 
   function replaceGridRow(row, patch, cfg, options = {}) {
+    if (state.closeTransitionActive) return false;
+    if (!capabilities(cfg).editing) return false;
     const index = Number(row?.index);
     if (!Number.isFinite(index)) return false;
-    if (options.undo !== false) pushUndoSnapshot('replace molecule');
+    if (options.undo !== false) pushUndoSnapshot('Replace Molecule');
     let replaced = false;
     const replace = candidate => {
       if (Number(candidate?.index) !== index) return candidate;
@@ -3653,9 +3958,11 @@
   }
 
   function duplicateGridRow(row, cfg) {
+    if (state.closeTransitionActive) return false;
+    if (!capabilities(cfg).editing) return false;
     const index = Number(row?.index);
     if (!Number.isFinite(index)) return false;
-    pushUndoSnapshot('duplicate molecule');
+    pushUndoSnapshot('Duplicate Molecule');
     const duplicate = {
       ...row,
       index: nextGridRowIndex(),
@@ -3686,6 +3993,7 @@
   }
 
   function applyKetcherGridRow(body, cfg) {
+    if (!capabilities(cfg).editing) return;
     const rowIndex = Number(body.rowIndex);
     if (!Number.isFinite(rowIndex)) {
       setStatus('[grid] Ketcher Apply did not identify a grid row.', 'error');
@@ -3858,10 +4166,19 @@
   }
 
   function handleGridSelectionKeydown(event, cfg) {
-    if (!capabilities(cfg).selection) return;
     const target = event.target;
-    if (target?.closest?.('input, textarea, select, button, [contenteditable="true"], [data-buret-card-resize]')) return;
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+    if (event.defaultPrevented || isEditableShortcutTarget(target)) return;
+    const key = event.key?.toLowerCase();
+    const commandKey = event.metaKey || event.ctrlKey;
+    if (commandKey && !event.altKey && key === 'z') {
+      event.preventDefault();
+      if (event.shiftKey) redoLastGridEdit(cfg);
+      else undoLastGridEdit(cfg);
+      return;
+    }
+    if (!capabilities(cfg).selection) return;
+    if (target?.closest?.('button, [data-buret-card-resize]')) return;
+    if (commandKey && key === 'a') {
       event.preventDefault();
       selectAllRows(cfg);
       return;
@@ -3915,8 +4232,11 @@
   }
 
   function removeGridRow(row, options = {}) {
+    if (state.closeTransitionActive) return false;
+    const cfg = safeConfig();
+    if (cfg && !capabilities(cfg).editing) return false;
     const index = Number(row.index);
-    if (options.undo !== false) pushUndoSnapshot('delete molecule');
+    if (options.undo !== false) pushUndoSnapshot('Delete Molecule');
     state.selected.delete(index);
     state.hiddenRows.add(index);
     if (!state.remoteMode) {
@@ -3927,6 +4247,7 @@
     invalidateTableColumnCatalog();
     state.totalRows = Math.max(0, state.totalRows - 1);
     markGridDirty('row edits');
+    return true;
   }
 
   function markGridDirty(reason) {
@@ -3935,6 +4256,8 @@
     state.dirtyReason = reason || state.dirtyReason || 'edits';
     if (!wasDirty) notifyGridDirty(true);
     syncGridEditControls();
+    const cfg = safeConfig();
+    if (cfg) notifyGridMenuState(cfg);
   }
 
   function markGridClean() {
@@ -3942,8 +4265,11 @@
     state.dirty = false;
     state.dirtyReason = '';
     state.undoStack = [];
+    state.redoStack = [];
     if (wasDirty) notifyGridDirty(false);
     syncGridEditControls();
+    const cfg = safeConfig();
+    if (cfg) notifyGridMenuState(cfg);
   }
 
   function notifyGridDirty(dirty) {
@@ -3987,22 +4313,48 @@
   }
 
   function pushUndoSnapshot(label) {
-    state.undoStack.push({
-      label: String(label || 'edit'),
-      snapshot: snapshotGridEditState()
-    });
-    if (state.undoStack.length > 50) state.undoStack.shift();
+    pushGridEditHistoryEntry(state.undoStack, label, snapshotGridEditState());
+    state.redoStack = [];
     syncGridEditControls();
+    const cfg = safeConfig();
+    if (cfg) notifyGridMenuState(cfg);
+  }
+
+  function pushGridEditHistoryEntry(stack, label, snapshot) {
+    stack.push({
+      label: String(label || 'Edit'),
+      snapshot
+    });
+    if (stack.length > GRID_EDIT_HISTORY_LIMIT) stack.shift();
   }
 
   function undoLastGridEdit(cfg) {
+    if (state.closeTransitionActive) return;
+    if (!capabilities(cfg).editing) return;
     const entry = state.undoStack.pop();
     if (!entry) {
       syncGridEditControls();
       return;
     }
+    pushGridEditHistoryEntry(state.redoStack, entry.label, snapshotGridEditState());
     restoreGridEditState(entry.snapshot);
     setStatus(`[grid] Undid ${entry.label}.`);
+    notifyGridMenuState(cfg);
+    void render(cfg);
+  }
+
+  function redoLastGridEdit(cfg) {
+    if (state.closeTransitionActive) return;
+    if (!capabilities(cfg).editing) return;
+    const entry = state.redoStack.pop();
+    if (!entry) {
+      syncGridEditControls();
+      return;
+    }
+    pushGridEditHistoryEntry(state.undoStack, entry.label, snapshotGridEditState());
+    restoreGridEditState(entry.snapshot);
+    setStatus(`[grid] Redid ${entry.label}.`);
+    notifyGridMenuState(cfg);
     void render(cfg);
   }
 
@@ -4363,6 +4715,8 @@
       void copyMoleculeStructure(row);
     } else if (action === 'export') {
       exportMolecule(row);
+    } else if (action === 'pubchem-identity' || action === 'pubchem-similarity') {
+      void openGridPubChemSearch(row, action === 'pubchem-identity' ? 'identity' : 'similarity');
     } else {
       setStatus(`[grid] Molecule action is unavailable for ${label}.`);
     }
@@ -4393,15 +4747,22 @@
     const subtitle = document.createElement('div');
     subtitle.className = 'buret-grid-molecule-context-menu-subtitle';
     subtitle.textContent = row.smiles || 'SDF molecule';
+    const editing = capabilities(config()).editing;
     const actions = [
       ['open', 'Preview molecule'],
       ['molstar', 'Open in Mol*'],
-      ['ketcher', 'Edit in Ketcher'],
-      ['duplicate', 'Duplicate'],
-      ['remove', 'Delete from collection'],
+      ...(editing ? [
+        ['ketcher', 'Edit in Ketcher'],
+        ['duplicate', 'Duplicate'],
+        ['remove', 'Delete from collection']
+      ] : []),
       ['copy', 'Copy structure'],
       ['export', 'Export molecule...']
     ];
+    if (cfg.appViewer === true && cfg.pubChemSearch === true && (String(row?.smiles || '').trim() || String(row?.molblock || '').trim())) {
+      actions.push(['pubchem-identity', 'Search PubChem — Identical']);
+      actions.push(['pubchem-similarity', 'Search PubChem — Similar (90%)']);
+    }
     menu.append(title, subtitle);
     actions.forEach(([action, label]) => {
       const button = document.createElement('button');
@@ -4720,6 +5081,45 @@
     return '';
   }
 
+  async function openGridPubChemSearch(row, searchType) {
+    try {
+      if (searchType !== 'identity' && searchType !== 'similarity') throw new Error('Unsupported PubChem search type.');
+      const smiles = await canonicalPubChemSmiles(row);
+      if (!validPubChemSmiles(smiles)) throw new Error('The molecule does not have a complete PubChem-searchable SMILES.');
+      post('openPubChemSearch', `[grid] Opening PubChem ${searchType === 'identity' ? 'identity' : '90% similarity'} search.`, {
+        searchType,
+        smiles
+      });
+    } catch (error) {
+      setStatus(`[grid] PubChem search failed.\n\n${error?.message || String(error)}`, 'error');
+    }
+  }
+
+  async function canonicalPubChemSmiles(row) {
+    const molblock = String(row?.molblock || '').trim();
+    const sourceSmiles = String(row?.smiles || '').trim();
+    if (!molblock && !sourceSmiles) return '';
+    const rdkit = state.rdkit || await initRDKit();
+    let molecule = null;
+    try {
+      molecule = rdkit.get_mol(molblock || sourceSmiles);
+      if (!molecule || (typeof molecule.is_valid === 'function' && !molecule.is_valid())) return '';
+      return typeof molecule.get_smiles === 'function' ? String(molecule.get_smiles() || '').trim() : '';
+    } catch (_) {
+      return '';
+    } finally {
+      try { molecule?.delete?.(); } catch {}
+    }
+  }
+
+  function validPubChemSmiles(smiles) {
+    const value = String(smiles || '').trim();
+    return value.length > 0
+      && value.length <= 4096
+      && !value.includes('*')
+      && !/[\u0000-\u001F\u007F]/u.test(value);
+  }
+
   function scheduleRdkitCard(card, row) {
     const target = card.querySelector('[data-buret-rdkit-card-key]');
     if (!target) return;
@@ -4936,6 +5336,13 @@
     state.dirty = false;
     state.dirtyReason = '';
     state.undoStack = [];
+    state.redoStack = [];
+    state.editingText = false;
+    if (state.textFocusUpdateTimer) {
+      window.clearTimeout(state.textFocusUpdateTimer);
+      state.textFocusUpdateTimer = 0;
+    }
+    state.menuStateSignature = '';
     state.rowPatches = new Map();
     state.insertedRows = [];
     state.xyzrenderPreset = null;
@@ -5352,8 +5759,20 @@
     return state.remoteMode && state.selected.size === 0 && !state.smarts.trim();
   }
 
+  function collectionIndexReady() {
+    return !state.remoteMode || (state.indexReady && !state.indexing);
+  }
+
+  function requireCollectionIndexReady(action) {
+    if (collectionIndexReady()) return true;
+    setStatus(`[grid] Wait for collection indexing to finish before ${action}.`, 'error');
+    return false;
+  }
+
   async function copySelected() {
-    const sourceRows = shouldCollectAllRemoteRows() ? await collectAllRemoteRows(config()) : selectedOrFiltered();
+    const collectAll = shouldCollectAllRemoteRows();
+    if (collectAll && !requireCollectionIndexReady('copying the full collection')) return;
+    const sourceRows = collectAll ? await collectAllRemoteRows(config()) : selectedOrFiltered();
     const text = sourceRows.map(row => `${row.smiles || ''}\t${row.name || ''}`.trim()).join('\n');
     if (await writeClipboardText(text, '[grid] Copied molecules.')) return;
     if (canUseNativeBridge()) {
@@ -5376,7 +5795,9 @@
   }
 
   async function exportSmiles(cfg) {
-    const rows = shouldCollectAllRemoteRows() ? await collectAllRemoteRows(cfg) : selectedOrFiltered();
+    const collectAll = shouldCollectAllRemoteRows();
+    if (collectAll && !requireCollectionIndexReady('exporting the full collection')) return;
+    const rows = collectAll ? await collectAllRemoteRows(cfg) : selectedOrFiltered();
     const text = rows
       .map(row => `${row.smiles || ''}\t${row.name || `mol_${Number(row.index) + 1}`}`.trim())
       .filter(Boolean)
@@ -5385,7 +5806,9 @@
   }
 
   async function exportCSV(cfg) {
-    const rows = shouldCollectAllRemoteRows() ? await collectAllRemoteRows(cfg) : selectedOrFiltered();
+    const collectAll = shouldCollectAllRemoteRows();
+    if (collectAll && !requireCollectionIndexReady('exporting the full collection')) return;
+    const rows = collectAll ? await collectAllRemoteRows(cfg) : selectedOrFiltered();
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
       ['index', 'name', 'smiles', ...props],
@@ -5395,7 +5818,10 @@
   }
 
   async function saveGridAs(cfg) {
+    if (!capabilities(cfg).editing) return;
+    if (!requireCollectionIndexReady('saving')) return;
     const rows = await collectCurrentCollectionRows(cfg);
+    if (state.closeTransitionActive) return;
     if (!rows.length) {
       setStatus('[grid] There are no molecules to save.', 'error');
       return;
@@ -5413,7 +5839,10 @@
   }
 
   async function saveGrid(cfg) {
+    if (!capabilities(cfg).editing) return;
+    if (!requireCollectionIndexReady('saving')) return;
     const rows = await collectCurrentCollectionRows(cfg);
+    if (state.closeTransitionActive) return;
     if (!rows.length) {
       setStatus('[grid] There are no molecules to save.', 'error');
       return;
@@ -5433,7 +5862,7 @@
   async function collectCurrentCollectionRows(cfg) {
     if (state.remoteMode) {
       const rows = await collectAllRemoteRows(cfg, '', 'index');
-      return rows.concat(state.insertedRows);
+      return materializeRemoteCollectionRows(rows);
     }
     return currentLocalCollectionRows();
   }
@@ -5489,8 +5918,9 @@
   function serializeDelimitedRows(rows, separator) {
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
-      ['index', 'name', 'smiles', 'molblock', ...props],
+      ['burrete_encoding', 'index', 'name', 'smiles', 'molblock', ...props],
       ...rows.map(row => [
+        'escaped-v1',
         row.index,
         row.name || '',
         row.smiles || '',
@@ -5498,7 +5928,15 @@
         ...props.map(prop => (row.props || {})[prop] || '')
       ])
     ];
-    return data.map(row => row.map(value => separator === '\t' ? tsv(value) : csv(value)).join(separator)).join('\n') + '\n';
+    return data.map(row => row.map(value => gridDelimitedCell(value, separator)).join(separator)).join('\n') + '\n';
+  }
+
+  function gridDelimitedCell(value, separator) {
+    const escaped = String(value ?? '')
+      .replace(/\\/g, '\\\\')
+      .replace(/\r\n|\r|\n/g, '\\n')
+      .replace(/\t/g, '\\t');
+    return separator === '\t' ? escaped : csv(escaped);
   }
 
   function download(text, name, type) {
@@ -5549,7 +5987,7 @@
         offset,
         limit
       }));
-      const pageRows = applyVirtualGridEdits(Array.isArray(result.rows) ? result.rows : []);
+      const pageRows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
       applyGridPageState(result);
       total = Number(result.totalRows || 0);
       rows.push(...pageRows);
@@ -5611,11 +6049,41 @@
     return escapeHTML(value).replace(/`/g, '&#96;');
   }
 
+  async function hydrateDataWarriorRows(rows, cfg) {
+    if (!Array.isArray(rows) || !rows.some(row => String(row?.idcode || '').trim())) return rows;
+    const openChemLib = window.BurreteOpenChemLib;
+    if (!openChemLib?.Molecule?.fromIDCode) throw new Error('OpenChemLib IDCode decoder is unavailable.');
+    return rows.map(row => {
+      const idcode = String(row?.idcode || '').trim();
+      if (!idcode || row.molblock) return row;
+      try {
+        const coordinates = String(row?.idcoordinates || '').trim();
+        const molecule = coordinates
+          ? openChemLib.Molecule.fromIDCode(idcode, coordinates)
+          : openChemLib.Molecule.fromIDCode(idcode, true);
+        return {
+          ...row,
+          molblock: molecule.toMolfile(),
+          smiles: molecule.toIsomericSmiles(),
+        };
+      } catch (error) {
+        return {
+          ...row,
+          props: {
+            ...(row.props || {}),
+            'DataWarrior decode error': error?.message || String(error),
+          },
+        };
+      }
+    });
+  }
+
   async function main() {
     try {
       const cfg = config();
       resetDocumentRuntimeState();
       state.remoteMode = isRemoteMode(cfg);
+      if (!state.remoteMode) state.all = await hydrateDataWarriorRows(state.all, cfg);
       state.totalRows = state.remoteMode ? 0 : state.all.length;
       applyTheme(cfg);
       installThemeListener(cfg);
@@ -5623,6 +6091,7 @@
       normalizeCardRenderer(cfg);
       normalizeGridViewMode(cfg);
       buildUI(cfg);
+      installGridTextFocusListeners();
       refresh(cfg);
       try {
         await initRDKit();
