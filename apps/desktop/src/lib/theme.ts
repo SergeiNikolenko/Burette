@@ -105,7 +105,7 @@ export function buildThemeStyle(preferences: ViewerPreferences, systemThemeMode?
     "--item-active-bg": `${fgMix} calc(var(--contrast) * 26%), transparent)`,
     "--kbd-bg": `${fgMix} calc(var(--contrast) * 16%), transparent)`,
     "--scrollbar-thumb": `${fgMix} calc(var(--contrast) * 58%), transparent)`,
-    "--tab-active-bg": `${fgMix} calc(var(--contrast) * ${mode === "dark" ? "34" : "24"}%), transparent)`,
+    "--tab-active-bg": mode === "dark" ? "rgb(29 29 29)" : "rgb(244 244 244)",
   } as CSSProperties;
   return style;
 }

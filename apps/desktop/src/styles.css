@@ -38,7 +38,7 @@
   --scrollbar-thumb: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 58%), transparent);
   --link-color: var(--accent);
   --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='gray' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 4.5l3 3 3-3'/></svg>");
-  --tab-active-bg: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 24%), transparent);
+  --tab-active-bg: rgb(29 29 29);
   --chrome-control-height: 32px;
   --chrome-control-padding: 12px;
   --chrome-height: 56px;
@@ -134,7 +134,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --bg: rgba(17, 17, 17, 0.715);
   --text: #fcfcfc;
   --text-primary: #fcfcfc;
-  --tab-active-bg: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 34%), transparent);
+  --tab-active-bg: rgb(29 29 29);
   color-scheme: dark;
 }
 
@@ -181,7 +181,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
     --bg: rgba(17, 17, 17, 0.715);
     --text: #fcfcfc;
     --text-primary: #fcfcfc;
-    --tab-active-bg: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 34%), transparent);
+    --tab-active-bg: rgb(29 29 29);
   }
 }
 
@@ -473,7 +473,7 @@ button:focus-visible > .shortcut-tooltip {
 }
 .tab > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; }
 .tab:hover { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
-.tab.active { background: var(--surface-subtle-strong); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
+.tab.active { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
 .tab-shell[data-active] .tab { padding-right: 34px; }
 .tab-shell[data-selected="true"] .tab {
   background: var(--surface-selected);

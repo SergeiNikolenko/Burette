@@ -1987,6 +1987,7 @@ assert.match(themeSource, /media\.addEventListener\("change", onChange\)/);
 assert.match(themeSource, /media\.removeEventListener\("change", onChange\)/);
 assert.match(themeSource, /const shellBgOpacity = mode === "light" \? Math\.min\(bgOpacity, 0\.715\) : bgOpacity;/);
 assert.match(themeSource, /"--bg-opacity": String\(shellBgOpacity\)/);
+assert.match(themeSource, /"--tab-active-bg": mode === "dark" \? "rgb\(29 29 29\)" : "rgb\(244 244 244\)"/);
 assert.match(appLayout, /const systemThemeMode = useSystemThemeMode\(\)/);
 assert.match(appLayout, /buildThemeStyle\(state\.preferences, systemThemeMode\)/);
 assert.match(appLayout, /resolveThemeMode\(state\.preferences\.theme, systemThemeMode\)/);
@@ -2029,7 +2030,9 @@ assert.match(styles, /\.tab-scroll-region \{[^}]*width: max-content;[^}]*flex: 0
 assert.match(styles, /\.tab-strip-spacer \{[^}]*min-width: 0;[^}]*flex: 1 1 28px/s);
 assert.match(styles, /\.tab-shell \{[^}]*position: relative/s);
 assert.match(styles, /\.tab:hover \{[^}]*backdrop-filter: blur\(40px\)/);
-assert.match(styles, /\.tab\.active \{[^}]*background: var\(--surface-subtle-strong\);[^}]*backdrop-filter: blur\(40px\)/s);
+assert.match(styles, /--tab-active-bg: rgb\(29 29 29\);/);
+assert.doesNotMatch(styles, /--tab-active-bg: color-mix\(/);
+assert.match(styles, /\.tab\.active \{[^}]*background: var\(--tab-active-bg\);[^}]*backdrop-filter: blur\(40px\)/s);
 assert.match(styles, /\.tab-close \{[^}]*transform: translate\(100%, -50%\);/s);
 assert.match(styles, /\.tab-shell\[data-active\] \.tab \{[^}]*padding-right: 34px;/s);
 assert.match(styles, /\.tab-shell\[data-active\] \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;[^}]*transform: translate\(0, -50%\);[^}]*background: var\(--surface-subtle\);[^}]*backdrop-filter: blur\(20px\)/s);
