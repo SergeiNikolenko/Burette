@@ -804,41 +804,76 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   letter-spacing: 0.01em;
 }
 .buret-molecule-context-mode {
+  position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2px;
+  overflow: hidden;
   margin: 2px 2px 6px;
   padding: 2px;
   border-radius: 9px;
   background: color-mix(in srgb, var(--buret-toolbar-color) 8%, transparent);
 }
+.buret-molecule-context-mode::before {
+  position: absolute;
+  z-index: 0;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 6px) / 2);
+  border-radius: 7px;
+  background: var(--buret-menu-input-background);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+  content: "";
+  pointer-events: none;
+  transform: translateX(0);
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.buret-molecule-context-mode[data-mode="atom"]::before {
+  transform: translateX(calc(100% + 2px));
+}
 .buret-molecule-context-menu .buret-molecule-context-mode-button {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 26px;
   border-radius: 7px;
   padding: 4px 8px;
+  background: transparent;
   font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-align: center;
 }
 .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
-  background: var(--buret-menu-input-background);
+  background: transparent;
+  font-weight: 500;
 }
 .buret-molecule-context-menu button {
-  display: block;
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
   width: 100%;
   min-height: 30px;
   box-sizing: border-box;
-  border: 1px solid var(--buret-menu-border);
-  border-radius: 8px;
-  padding: 6px 8px;
+  margin: 0;
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 10px;
   color: inherit;
   background: transparent;
-  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-align: left;
+  white-space: nowrap;
+  cursor: default;
+  transition: background 120ms ease, color 120ms ease;
 }
 .buret-molecule-context-menu button:hover,
 .buret-molecule-context-menu button:focus {
   outline: none;
-  background: var(--buret-menu-input-background);
+  background: color-mix(in srgb, var(--buret-toolbar-color) 8%, transparent);
 }
 body.burette-mobile-host #status.hidden {
   display: none !important;
@@ -886,6 +921,16 @@ body.burette-mobile-host .buret-molecule-context-mode {
   border-radius: 13px;
   background: rgba(118, 118, 128, 0.22);
 }
+body.burette-mobile-host .buret-molecule-context-mode::before {
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 9px) / 2);
+  border-radius: 10px;
+}
+body.burette-mobile-host .buret-molecule-context-mode[data-mode="atom"]::before {
+  transform: translateX(calc(100% + 3px));
+}
 body.buret-theme-light.burette-mobile-host .buret-molecule-context-mode {
   background: rgba(118, 118, 128, 0.14);
 }
@@ -894,15 +939,16 @@ body.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mo
   border: 0;
   border-radius: 10px;
   padding: 7px 10px;
+  background: transparent;
   font: 600 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-align: center;
 }
 body.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
-  background: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  background: transparent;
+  box-shadow: none;
 }
 body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
-  background: rgba(255, 255, 255, 0.74);
+  background: transparent;
 }
 body.burette-mobile-host .buret-molecule-context-menu button {
   min-height: 48px;
@@ -919,12 +965,20 @@ body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu button {
 body.burette-mobile-host .buret-molecule-context-menu button + button {
   margin-top: 6px;
 }
+body.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button + .buret-molecule-context-mode-button {
+  margin-top: 0;
+}
 body.burette-mobile-host .buret-molecule-context-menu button[data-buret-molecule-action^="remove"] {
   color: #ff6961;
 }
 body.burette-mobile-host .buret-molecule-context-menu button:hover,
 body.burette-mobile-host .buret-molecule-context-menu button:focus {
   background: rgba(255, 255, 255, 0.20);
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-molecule-context-mode::before {
+    transition: none;
+  }
 }
 #buret-toolbar {
   position: absolute; top: var(--buret-toolbar-safe-top); right: var(--buret-control-island-right); left: auto; z-index: 2147483646;

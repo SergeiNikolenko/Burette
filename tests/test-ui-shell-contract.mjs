@@ -5208,6 +5208,7 @@ assert.doesNotMatch(previewViewer, /picked\?\.structure \|\| \(structures\.lengt
 assert.match(previewViewer, /if \(!menuTarget\.structures\.length \|\| menuTarget\.scope === 'none'\) \{\s*hideMolstarContextMenu\(\);\s*return;\s*\}/);
 assert.match(previewViewer, /className = 'buret-molecule-context-menu-actions'/);
 assert.match(previewViewer, /className = 'buret-molecule-context-mode'/);
+assert.match(previewViewer, /modeGroup\.dataset\.mode = mode;/);
 assert.match(previewViewer, /aria-label', 'Ligand selection scope'/);
 assert.match(previewViewer, /\[\['molecule', 'Molecule'\], \['atom', 'Atom'\]\]/);
 assert.match(previewViewer, /button\.dataset\.buretContextMode = value;/);
@@ -5382,7 +5383,11 @@ assert.match(previewRuntimeCss, /\.buret-molecule-context-menu \{[^}]*backdrop-f
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu-section-label \{/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-mode \{/);
 assert.match(previewRuntimeCss, /grid-template-columns: 1fr 1fr;/);
+assert.match(previewRuntimeCss, /\.buret-molecule-context-mode::before \{/);
+assert.match(previewRuntimeCss, /\.buret-molecule-context-mode\[data-mode="atom"\]::before \{/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu \.buret-molecule-context-mode-button\[aria-pressed="true"\] \{/);
+assert.match(previewRuntimeCss, /\.buret-molecule-context-menu button \{[^}]*border: 0;/);
+assert.match(previewRuntimeCss, /body\.burette-mobile-host \.buret-molecule-context-menu \.buret-molecule-context-mode-button \+ \.buret-molecule-context-mode-button \{[^}]*margin-top: 0;/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu button:hover,/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-popover \{[\s\S]*border: 0;/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-popover \{[^}]*backdrop-filter: none;/);

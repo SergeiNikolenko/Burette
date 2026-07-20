@@ -13944,6 +13944,7 @@
     if (menuTarget.scope === 'ligand' && menuTarget.atomLoci) {
       const modeGroup = document.createElement('div');
       modeGroup.className = 'buret-molecule-context-mode';
+      modeGroup.dataset.mode = mode;
       modeGroup.setAttribute('role', 'group');
       modeGroup.setAttribute('aria-label', 'Ligand selection scope');
       [['molecule', 'Molecule'], ['atom', 'Atom']].forEach(([value, label]) => {
@@ -13956,6 +13957,7 @@
         button.addEventListener('click', () => {
           mode = value;
           molstarContextMenuMode = mode;
+          modeGroup.dataset.mode = mode;
           modeGroup.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', item.dataset.buretContextMode === mode ? 'true' : 'false'));
           renderActions();
         });
