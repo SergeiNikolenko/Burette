@@ -18,14 +18,17 @@ const runtimeScripts = [
 ];
 const requiredPreviewAssets = [
   'viewer.js',
+  'viewer-bootstrap.js',
   'viewer-shell.js',
   'viewer-runtime.css',
+  'trajectory-smoothing.js',
   'molstar.js',
   'molstar.css',
   'burette-agent.js',
   'grid-viewer.js',
   'grid-ui.js',
   'grid.css',
+  'openchemlib/openchemlib.js',
   'rdkit/RDKit_minimal.js',
   'rdkit/RDKit_minimal.wasm',
 ];
