@@ -454,7 +454,7 @@ button:focus-visible > .shortcut-tooltip {
 .tab {
   position: relative;
   max-width: 180px;
-  height: var(--chrome-control-height);
+  height: 28px;
   border: 0;
   border-radius: 12px;
   background: transparent;

@@ -981,7 +981,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 }
 #buret-toolbar {
   position: absolute; top: var(--buret-toolbar-safe-top); right: var(--buret-control-island-right); left: auto; z-index: 2147483646;
-  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 6px;
+  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 6px 0;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 12px; color: var(--buret-toolbar-color);
   background: var(--buret-toolbar-background);
