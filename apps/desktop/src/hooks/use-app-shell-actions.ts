@@ -2,6 +2,10 @@ import { useMemo } from "react";
 import type { ShellActions } from "../components/types";
 import type { DockDropInput } from "../lib/dock";
 import {
+  setGridDocumentCloseTransition,
+  type WindowCloseMutationPermit,
+} from "../lib/window-mutation-barrier";
+import {
   useWorkspaceHistoryStore,
   workspaceHistoryNone,
   type WorkspaceHistoryGroup,
@@ -46,9 +50,13 @@ type UseAppShellActionsOptions = {
   closeGridRuntime: (documentId: string | null | undefined) => void;
   closeQuickLookPreview: ShellActions["closeQuickLookPreview"];
   closeTab: (id: string) => void;
-  confirmDiscardDirtyGridDocument: (documentId: string | null | undefined) => boolean;
-  confirmDiscardDirtyGridDocuments: (documentIds: string[]) => boolean;
   confirmCloseSourceDocuments: (documentIds: string[]) => boolean;
+  confirmDiscardDirtyGridDocument: (
+    documentId: string | null | undefined,
+  ) => Promise<WindowCloseMutationPermit | null>;
+  confirmDiscardDirtyGridDocuments: (
+    documentIds: string[],
+  ) => Promise<WindowCloseMutationPermit | null>;
   copyActiveDocumentPath: ShellActions["copyActiveDocumentPath"];
   copyDocumentPath: ShellActions["copyDocumentPath"];
   copyPath: ShellActions["copyPath"];
@@ -268,6 +276,7 @@ type DocumentShellActions = Pick<
   ShellActions,
   | "closeDocument"
   | "closeTab"
+  | "closeOtherTabs"
   | "closeActiveDocument"
   | "clearAllDocuments"
   | "listChemicalEditorTargets"
@@ -631,6 +640,7 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
     documents: {
       closeDocument: actions.closeDocument,
       closeTab: actions.closeTab,
+      closeOtherTabs: actions.closeOtherTabs,
       closeActiveDocument: actions.closeActiveDocument,
       clearAllDocuments: actions.clearAllDocuments,
       listChemicalEditorTargets: actions.listChemicalEditorTargets,
@@ -1055,58 +1065,109 @@ export function createDocumentCloseShellActions({
   closeDocument: (id: string) => void;
   closeGridRuntime: (documentId: string | null | undefined) => void;
   closeTab: (id: string) => void;
-  confirmDiscardDirtyGridDocument: (documentId: string | null | undefined) => boolean;
-  confirmDiscardDirtyGridDocuments: (documentIds: string[]) => boolean;
   confirmCloseSourceDocuments: (documentIds: string[]) => boolean;
+  confirmDiscardDirtyGridDocument: (
+    documentId: string | null | undefined,
+  ) => Promise<WindowCloseMutationPermit | null>;
+  confirmDiscardDirtyGridDocuments: (
+    documentIds: string[],
+  ) => Promise<WindowCloseMutationPermit | null>;
   documents: ViewerDocument[];
   forgetDirtyGridDocument: (documentId: string | null | undefined) => void;
   forgetDirtyGridDocuments: (documentIds: string[]) => void;
   pushStatus: PushStatus;
   tabs: MoleculeTab[];
-}): Pick<ShellActions, "closeDocument" | "closeTab" | "closeActiveDocument" | "clearAllDocuments"> {
+}): Pick<ShellActions, "closeDocument" | "closeTab" | "closeOtherTabs" | "closeActiveDocument" | "clearAllDocuments"> {
+  const completeClose = async (
+    permit: WindowCloseMutationPermit,
+    documentIds: string[],
+    close: () => void,
+  ) => {
+    setGridDocumentCloseTransition(documentIds, true);
+    try {
+      await permit.waitForPending(documentIds);
+      close();
+    } finally {
+      setGridDocumentCloseTransition(documentIds, false);
+      permit.release();
+    }
+  };
+
+  const documentIdForTab = (tab: MoleculeTab | undefined) => {
+    if (tab?.location.kind !== "file") return null;
+    const location = tab.location;
+    const document = documents.find((candidate) => (
+      candidate.id === location.documentId
+      || candidate.path === location.path
+    ));
+    return document?.id ?? location.documentId ?? null;
+  };
+
   return {
-    closeDocument: (id: string) => {
-      if (!confirmDiscardDirtyGridDocument(id)) return;
+    closeDocument: async (id: string) => {
       if (!confirmCloseSourceDocuments([id])) return;
-      closeGridRuntime(id);
-      forgetDirtyGridDocument(id);
-      closeDocument(id);
+      const permit = await confirmDiscardDirtyGridDocument(id);
+      if (!permit) return;
+      await completeClose(permit, [id], () => {
+        closeGridRuntime(id);
+        forgetDirtyGridDocument(id);
+        closeDocument(id);
+      });
     },
-    closeTab: (id: string) => {
+    closeTab: async (id: string) => {
       const tab = tabs.find((candidate) => candidate.id === id);
-      const documentIds: string[] = [];
-      if (tab?.location.kind === "file") {
-        const location = tab.location;
-        const document = documents.find((candidate) => (
-          candidate.id === location.documentId ||
-          candidate.path === location.path
-        ));
-        const targetDocumentId = document?.id ?? location.documentId ?? null;
-        if (targetDocumentId) documentIds.push(targetDocumentId);
-        if (!confirmDiscardDirtyGridDocuments(documentIds)) return;
-        if (!confirmCloseSourceDocuments(documentIds)) return;
+      const targetDocumentId = documentIdForTab(tab);
+      const documentIds = targetDocumentId ? [targetDocumentId] : [];
+      if (!confirmCloseSourceDocuments(documentIds)) return;
+      const permit = await confirmDiscardDirtyGridDocuments(documentIds);
+      if (!permit) return;
+      await completeClose(permit, documentIds, () => {
         closeGridRuntime(targetDocumentId);
-      }
-      if (documentIds.length > 0) {
+        forgetDirtyGridDocument(targetDocumentId);
+        closeTab(id);
+      });
+    },
+    closeOtherTabs: async (id: string) => {
+      const otherTabs = tabs.filter((tab) => tab.id !== id);
+      if (otherTabs.length === 0) return;
+      const documentIds = Array.from(new Set(
+        otherTabs
+          .map((tab) => documentIdForTab(tab))
+          .filter((documentId): documentId is string => documentId !== null),
+      ));
+      if (!confirmCloseSourceDocuments(documentIds)) return;
+      const permit = await confirmDiscardDirtyGridDocuments(documentIds);
+      if (!permit) return;
+      await completeClose(permit, documentIds, () => {
+        for (const documentId of documentIds) closeGridRuntime(documentId);
         forgetDirtyGridDocuments(documentIds);
-      }
-      closeTab(id);
+        for (const tab of otherTabs) closeTab(tab.id);
+        pushStatus("Closed other tabs");
+      });
     },
-    closeActiveDocument: () => {
-      if (!confirmDiscardDirtyGridDocument(activeDocument?.id)) return;
+    closeActiveDocument: async () => {
+      const documentId = activeDocument?.id;
       if (activeDocument && !confirmCloseSourceDocuments([activeDocument.id])) return;
-      closeGridRuntime(activeDocument?.id);
-      forgetDirtyGridDocument(activeDocument?.id);
-      closeActiveDocument();
-      pushStatus("Closed active tab");
+      const permit = await confirmDiscardDirtyGridDocument(documentId);
+      if (!permit) return;
+      await completeClose(permit, documentId ? [documentId] : [], () => {
+        closeGridRuntime(documentId);
+        forgetDirtyGridDocument(documentId);
+        closeActiveDocument();
+        pushStatus("Closed active tab");
+      });
     },
-    clearAllDocuments: () => {
-      if (!confirmDiscardDirtyGridDocuments(documents.map((document) => document.id))) return;
-      if (!confirmCloseSourceDocuments(documents.map((document) => document.id))) return;
-      for (const document of documents) closeGridRuntime(document.id);
-      clearDirtyGridDocuments();
-      closeAllDocuments();
-      pushStatus("Closed all tabs");
+    clearAllDocuments: async () => {
+      const documentIds = documents.map((document) => document.id);
+      if (!confirmCloseSourceDocuments(documentIds)) return;
+      const permit = await confirmDiscardDirtyGridDocuments(documentIds);
+      if (!permit) return;
+      await completeClose(permit, documentIds, () => {
+        for (const document of documents) closeGridRuntime(document.id);
+        clearDirtyGridDocuments();
+        closeAllDocuments();
+        pushStatus("Closed all tabs");
+      });
     },
   };
 }

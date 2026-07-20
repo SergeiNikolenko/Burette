@@ -79,7 +79,7 @@ pub(crate) fn existing_paths(paths: Vec<String>) -> Vec<String> {
 pub(crate) fn open_new_workspace_window<R: Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<String, String> {
-    windows::open_new_workspace_window(&app).map_err(|err| err.to_string())
+    windows::open_new_workspace_window(&app)
 }
 
 #[tauri::command]
@@ -235,11 +235,21 @@ pub(crate) fn export_diagnostics_bundle<R: Runtime>(
 
 #[tauri::command]
 pub(crate) fn open_external_url(url: String) -> Result<(), String> {
-    let releases_url = "https://github.com/SergeiNikolenko/Burrete/releases";
-    if url != releases_url && !url.starts_with(&(String::from(releases_url) + "/")) {
-        return Err("Only Burrete release URLs can be opened from Settings".into());
+    if !is_allowed_external_url(&url) {
+        return Err("Only approved Burrete project URLs can be opened".into());
     }
     tauri_plugin_opener::open_url(url, None::<&str>).map_err(|err| err.to_string())
+}
+
+fn is_allowed_external_url(url: &str) -> bool {
+    const PROJECT_URL: &str = "https://github.com/SergeiNikolenko/Burrete";
+    const RELEASES_URL: &str = "https://github.com/SergeiNikolenko/Burrete/releases";
+    const NEW_ISSUE_URL: &str = "https://github.com/SergeiNikolenko/Burrete/issues/new";
+
+    url == PROJECT_URL
+        || url == NEW_ISSUE_URL
+        || url == RELEASES_URL
+        || url.starts_with(&(String::from(RELEASES_URL) + "/"))
 }
 
 fn append_app_log(
@@ -517,8 +527,9 @@ fn unix_timestamp_ms() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::{
-        copy_redacted_text_file, read_external_preview_svg, redact_diagnostic_text,
-        write_base64_file, write_text_file, WriteBase64FileRequest, WriteTextFileRequest,
+        copy_redacted_text_file, is_allowed_external_url, read_external_preview_svg,
+        redact_diagnostic_text, write_base64_file, write_text_file, WriteBase64FileRequest,
+        WriteTextFileRequest,
     };
     use base64::Engine;
     use std::fs;
@@ -528,6 +539,31 @@ mod tests {
             "burrete-shell-command-{}-{name}",
             uuid::Uuid::new_v4()
         ))
+    }
+
+    #[test]
+    fn external_url_allowlist_is_limited_to_project_help_destinations() {
+        for url in [
+            "https://github.com/SergeiNikolenko/Burrete",
+            "https://github.com/SergeiNikolenko/Burrete/releases",
+            "https://github.com/SergeiNikolenko/Burrete/releases/tag/v1.0.0",
+            "https://github.com/SergeiNikolenko/Burrete/issues/new",
+        ] {
+            assert!(is_allowed_external_url(url), "expected {url} to be allowed");
+        }
+
+        for url in [
+            "http://github.com/SergeiNikolenko/Burrete",
+            "https://github.com/SergeiNikolenko/Burrete/issues",
+            "https://github.com/SergeiNikolenko/Burrete/issues/new/extra",
+            "https://github.com/SergeiNikolenko/Burrete/releases.evil.example",
+            "https://github.com.evil.example/SergeiNikolenko/Burrete/releases",
+        ] {
+            assert!(
+                !is_allowed_external_url(url),
+                "expected {url} to be rejected"
+            );
+        }
     }
 
     #[test]

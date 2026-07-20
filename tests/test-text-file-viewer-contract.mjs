@@ -218,7 +218,7 @@ assert.match(appDockPayloadOpen, /const rightDockTextPaths = unopenedPaths\.filt
 assert.match(appDockPayloadOpen, /isPreferredTextPath\(path, extension\) \|\| \(!structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\)\)/);
 assert.match(appDockPayloadOpen, /else if \(isPreferredTextPath\(path, extension\)\) \{\s*textPaths\.push\(path\);/);
 assert.match(appDockPayloadOpen, /dockOpenPaths = unopenedPaths\.filter\(\(path\) => !rightDockTextPaths\.includes\(path\)\);/);
-assert.match(appDockPayloadOpen, /open_text_files", \{ paths: rightDockTextPaths \}/);
+assert.match(appDockPayloadOpen, /open_text_files", \{[\s\S]*paths: rightDockTextPaths,[\s\S]*openStateRevision: currentDocumentRegistryRevision\(\),[\s\S]*\}/);
 assert.match(appDockPayloadOpen, /for \(const path of dockOpenPaths\) \{/);
 const rightDockTextOpenBlock = appDockPayloadOpen.match(/if \(input\.area === "right" && unopenedPaths\.length > 0\) \{[\s\S]*?return;\s*\}/)?.[0] ?? "";
 assert.match(rightDockTextOpenBlock, /pathExtension|structureExtensions|structureAndTextExtensions/);

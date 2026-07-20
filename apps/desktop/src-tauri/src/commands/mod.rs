@@ -10,6 +10,7 @@ pub(crate) mod numpy_artifact;
 pub(crate) mod preview_cache;
 pub(crate) mod pubchem;
 pub(crate) mod quicklook;
+pub(crate) mod recent_documents;
 pub(crate) mod runtime_doctor;
 pub(crate) mod shell;
 pub(crate) mod source_editing;

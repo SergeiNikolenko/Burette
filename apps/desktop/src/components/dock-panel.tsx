@@ -312,7 +312,7 @@ function DockPanelContent({
           <div className="dock-viewer">
             {dockDocument.renderer === "spectrum"
               ? <SpectrumViewer document={dockDocument} embedded />
-              : <ViewerFrame document={dockDocument} />}
+              : <ViewerFrame document={dockDocument} readOnly />}
           </div>
         </div>
       );

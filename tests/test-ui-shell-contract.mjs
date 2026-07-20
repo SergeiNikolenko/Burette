@@ -7,6 +7,17 @@ async function source(path) {
   return readFile(resolve(path), 'utf8');
 }
 
+function assertSourceIncludesAll(sourceText, values, surface) {
+  for (const value of values) {
+    const doubleQuoted = `"${value}"`;
+    const singleQuoted = `'${value}'`;
+    assert.ok(
+      sourceText.includes(doubleQuoted) || sourceText.includes(singleQuoted),
+      `${surface} is missing ${value}`,
+    );
+  }
+}
+
 const [
   desktopIndex,
   app,
@@ -147,6 +158,9 @@ const [
   openDropHook,
   openEventsHook,
   menuEventsHook,
+  appNativeMenuHook,
+  gridNativeMenuStateHook,
+  nativeMenuTypes,
   windowTitle,
   componentFormat,
   instance,
@@ -193,6 +207,8 @@ const [
   gridUi,
   gridViewer,
   previewViewer,
+  agentPreviewViewer,
+  agentGridViewer,
   previewShell,
   previewRuntimeCss,
   updateSource,
@@ -345,6 +361,9 @@ const [
   source('apps/desktop/src/hooks/use-open-drop.ts'),
   source('apps/desktop/src/hooks/use-open-events.ts'),
   source('apps/desktop/src/hooks/use-menu-events.ts'),
+  source('apps/desktop/src/hooks/use-app-native-menu.ts'),
+  source('apps/desktop/src/hooks/use-grid-native-menu-state.ts'),
+  source('apps/desktop/src/lib/native-menu.ts'),
   source('apps/desktop/src/components/window-title/index.tsx'),
   source('apps/desktop/src/components/format.ts'),
   source('apps/desktop/src/lib/instance.ts'),
@@ -391,6 +410,8 @@ const [
   source('apps/desktop/src/preview-grid/grid-ui.tsx'),
   source('PreviewExtension/Web/grid-viewer.js'),
   source('PreviewExtension/Web/viewer.js'),
+  source('plugins/burette-agent/preview-web/viewer.js'),
+  source('plugins/burette-agent/preview-web/grid-viewer.js'),
   source('PreviewExtension/Web/viewer-shell.js'),
   source('PreviewExtension/Web/viewer-runtime.css'),
   source('apps/desktop/src/update.ts'),
@@ -410,6 +431,7 @@ const desktopPackage = JSON.parse(await source('apps/desktop/package.json'));
 const viewerShell = previewShell;
 const viewer = previewViewer;
 const commandDocuments = await source('apps/desktop/src-tauri/src/commands/documents.rs');
+const windowMutationBarrier = await source('apps/desktop/src/lib/window-mutation-barrier.ts');
 const tauriLib = await source('apps/desktop/src-tauri/src/lib.rs');
 const tauriConfig = await source('apps/desktop/src-tauri/tauri.conf.json');
 const burretePermissions = await source('apps/desktop/src-tauri/permissions/burrete.toml');
@@ -937,9 +959,11 @@ assert.match(moleculeStore, /navigateForward:/);
 assert.match(moleculeStore, /restoreSession:/);
 assert.match(moleculeStore, /getMoleculeSessionSnapshot/);
 assert.match(moleculeStore, /activeDocumentId: null/);
-assert.match(moleculeStore, /recentStructures: \[\]/);
+assert.match(moleculeStore, /recentStructures: loadGlobalRecentStructures\(\) \?\? \[\]/);
 assert.match(moleculeStore, /rememberRecentStructures:/);
 assert.match(moleculeStore, /clearRecentStructures:/);
+assert.match(moleculeStore, /GLOBAL_RECENT_STRUCTURES_STORAGE_KEY/);
+assert.match(moleculeStore, /saveGlobalRecentStructures\(recentStructures\)/);
 assert.match(moleculeStore, /name: workspaceStorageKey\("burrete\.molecule\.session"\)/);
 assert.match(moleculeStore, /function shouldIgnorePersistedSession\(\)/);
 assert.match(moleculeStore, /window\.location\.hostname === "127\.0\.0\.1" \|\| window\.location\.hostname === "localhost"/);
@@ -958,7 +982,11 @@ assert.match(moleculeStore, /from "\.\.\/lib\/temporary-documents"/);
 assert.doesNotMatch(moleculeStore, /function persistedDocuments/);
 assert.match(moleculeStore, /tab\.location\.kind !== "file"/);
 assert.match(moleculeStore, /recentStructures: recentStructures\.filter\(isPersistentRecentStructure\)/);
-assert.match(moleculeStore, /if \(isPersistentViewerDocument\(document\)\) byPath\.set\(document\.path, toRecentStructure\(document\)\)/);
+assert.match(moleculeStore, /\.filter\(isPersistentViewerDocument\)\s*\.map\(toRecentStructure\)/);
+assert.match(moleculeStore, /invoke\("merge_recent_documents", \{ documents: remembered \}\)/);
+assert.match(moleculeStore, /invoke\("prune_recent_documents", \{ checkedDocuments, existingPaths \}\)/);
+assert.match(moleculeStore, /listen<GlobalRecentStructuresSnapshot>\(\s*"recent-documents:changed"/);
+assert.match(moleculeStore, /void initializeNativeRecentDocuments\(\)/);
 assert.match(moleculeStore, /const storedTabs = \(stored\?\.tabs \?\? current\.tabs\)\.filter/);
 assert.match(browserDevStartup, /export async function browserDevFilesFromLocation\(\)/);
 assert.match(browserDevStartup, /if \(params\.has\("devDocking"\)\) return \[\];/);
@@ -1002,6 +1030,7 @@ assert.match(app, /from "\.\/hooks\/use-app-dock-payload-open"/);
 assert.match(appFileOpenHook, /from "\.\.\/lib\/file-routing"/);
 assert.match(appDockPayloadHook, /from "\.\.\/lib\/file-routing"/);
 assert.match(appFileOpenHook, /if \(document\.renderer === NOT_RENDERABLE_RENDERER\) \{\s*closeDocument\(document\.id\);/);
+assert.match(appFileOpenHook, /if \(document\.renderer === NOT_RENDERABLE_RENDERER\) \{\s*closeDocument\(document\.id\);\s*void abortOpenDocumentClaims\(\[document\]\)/);
 assert.match(appDockPayloadHook, /const documents = result\.documents\.filter\(\(document\) => document\.renderer !== NOT_RENDERABLE_RENDERER\);/);
 assert.match(appFileOpenHook, /const backgroundTextPaths = structureAndTextPaths\.filter\(\(path\) => openedStructureAndTextPaths\.has\(path\)\);/);
 assert.match(appFileOpenHook, /await openTextDocuments\(backgroundTextPaths, \{ background: true \}\);/);
@@ -1079,6 +1108,8 @@ assert.doesNotThrow(() => new Function(bootOverlayScript));
 assert.match(packageJson, /scripts\/bundle-report\.mjs/);
 assert.match(app, /useAppUpdates\(\{[\s\S]*?enabled: !hostedMcpWidget,[\s\S]*?pushErrorStatus,[\s\S]*?pushStatus,[\s\S]*?\}\)/);
 assert.match(appUpdatesHook, /const \{ buildInfo, buildInfoLoaded \} = useAppBootstrap\(setUpdate\)/);
+assert.match(appUpdatesHook, /const restarting = await invoke<boolean>\("install_update"/);
+assert.match(appUpdatesHook, /if \(!restarting\) \{[\s\S]*?isInstalling: false,[\s\S]*?Update restart cancelled/s);
 assert.match(appBootstrapHook, /window\.__BURRETE_BOOT_OVERLAY__\?\.markMounted\(\);[\s\S]*?markPerformanceOnce\("app:shell-visible"\);/);
 assert.match(appBootstrapHook, /void loadBuildInfo\(\)\.then\(\(info\) => \{/);
 assert.match(appBootstrapHook, /setBuildInfo\(info\);/);
@@ -1108,11 +1139,25 @@ assert.match(appDescriptorsHook, /Descriptor calculation failed:/);
 assert.match(app, /useAppDirtyGridDocuments\(\)/);
 assert.doesNotMatch(app, /setDirtyGridDocuments/);
 assert.match(appGridControlMessagesHook, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
-assert.match(appGridFileActionsHook, /forgetDirtyGridDocument\(typeof body\.documentId === "string" \? body\.documentId : null\)/);
+assert.match(appGridFileActionsHook, /forgetDirtyGridDocument\(documentId\)/);
 assert.match(appShellActionsHook, /clearDirtyGridDocuments\(\);/);
 assert.match(appDirtyGridHook, /useState<Set<string>>\(\(\) => new Set\(\)\)/);
-assert.match(appDirtyGridHook, /This grid has unsaved changes/);
-assert.match(appDirtyGridHook, /dirtyCount === 1 \? " has" : "s have"/);
+assert.match(appDirtyGridHook, /const dirtyGridDocumentsRef = useRef\(dirtyGridDocuments\)/);
+assert.match(appDirtyGridHook, /dirtyGridDocumentsRef\.current = next;\s*setDirtyGridDocuments\(next\)/s);
+assert.match(appDirtyGridHook, /const getWindowDocumentDirtySnapshot = useCallback\(\(\) => \(\{[\s\S]*dirty: dirtyGridDocumentsRef\.current\.size > 0,[\s\S]*revision: dirtyRevisionRef\.current/);
+assert.match(appDirtyGridHook, /This grid has unsaved or in-progress changes/);
+assert.match(appDirtyGridHook, /Review Unsaved Changes…/);
+assert.match(appDirtyGridHook, /Close Without Saving/);
+assert.match(appDirtyGridHook, /await message\(detail/);
+assert.match(appDirtyGridHook, /beginWindowCloseTransition\(\)/);
+assert.match(appDirtyGridHook, /transition\.pendingDocumentIds/);
+assert.match(appShellActionsHook, /await permit\.waitForPending\(documentIds\)/);
+assert.match(appShellActionsHook, /permit\.release\(\)/);
+assert.match(appGridWorkflowsHook, /if \(result\.recordsAppended > 0\) updateDirtyGridDocument\(targetDocument\.id, true\);\s*notifyGridRecordsAppended\(targetDocument\.id, result\)/s);
+assert.match(appKetcherActionsHook, /updateDirtyGridDocument\(request\.documentId, true\);\s*iframe\.contentWindow\.postMessage/s);
+assert.match(appKetcherActionsHook, /isGridDocumentCloseTransitionActive\(request\.documentId\)/);
+assert.match(appKetcherActionsHook, /Wait for the collection update to finish before applying the grid edit\./);
+assert.match(ketcherPage, /runWindowMutation\(gridEditSource\.documentId, async \(\) =>/);
 assert.match(app, /useAppQuickLook/);
 assert.match(app, /useAppQuickLookDocumentOpen/);
 assert.match(appShellActionsHook, /closeQuickLookPreview/);
@@ -1245,7 +1290,8 @@ assert.match(appSidebarProjectsHook, /!import\.meta\.env\.DEV \|\| isTauriRuntim
 assert.match(appSidebarProjectsHook, /list_project_structure_files/);
 assert.match(appSidebarProjectsHook, /prunedPersistedPathsRef/);
 assert.match(appSidebarProjectsHook, /pruneSidebarPaths\(existingPaths\)/);
-assert.match(appSidebarProjectsHook, /pruneRecentStructures\(existingPaths\)/);
+assert.match(appSidebarProjectsHook, /const checkedDocuments = recentStructures\.map/);
+assert.match(appSidebarProjectsHook, /existingPaths\.filter\(\(path\) => checkedPaths\.has\(path\)\)/);
 assert.match(appStartupEffectsHook, /const browserDevProjectRoots = isWebDemoWorkspace\(\) && webDemoProjectRoot\(\)/);
 assert.match(appStartupEffectsHook, /browserDevExplicitFolders\.length > 0\s*\?\s*browserDevExplicitFolders\s*:\s*uniqueParentDirectories\(paths\);/);
 assert.match(appStartupEffectsHook, /const workspace = commonParentDirectory\(browserDevProjectRoots\);/);
@@ -1419,7 +1465,7 @@ assert.match(viewerFrame, /isHostedMcpWidget\(\)[\s\S]*?\? undefined/);
 assert.match(viewerFrame, /\.\.\.\(sandbox \? \{ sandbox \} : \{\}\)/);
 assert.match(viewerFrame, /"data-source-preview-role": active \? "active" : "staging"/);
 assert.match(viewerFrame, /"aria-hidden": active \? undefined : true/);
-assert.match(viewerFrame, /inert: active \? undefined : true/);
+assert.match(viewerFrame, /inert: !active \|\| closeTransitionActive/);
 assert.match(fileKind, /const sheetDropTarget = document\.renderer === "xyzrender-external"/);
 assert.match(fileKind, /const collectionDropTarget = document\.renderer === "grid2d"/);
 assert.doesNotMatch(fileKind, /viewer-generate-3d-button/);
@@ -2757,7 +2803,7 @@ assert.match(appKetcherActionsHook, /const openKetcherExportRaw = useCallback/);
 assert.match(appKetcherActionsHook, /path: `burrete-ketcher-export:\/\/\$\{id\}\/\$\{title\}`/);
 assert.match(appKetcherActionsHook, /addTextDocuments\(\[document\]\)/);
 assert.match(appKetcherActionsHook, /const saveKetcherExportFile = useCallback\(async/);
-assert.match(appKetcherActionsHook, /invoke<string>\("save_text_as", \{ text: request\.text, outputPath \}\)/);
+assert.match(appKetcherActionsHook, /invoke<string>\("save_text_as", \{[\s\S]*?text: request\.text,[\s\S]*?outputPath,[\s\S]*?sourcePath: null/);
 assert.match(componentTypes, /openKetcherExportRaw: \(request: \{/);
 assert.match(componentTypes, /saveKetcherExportFile: \(request: \{/);
 assert.match(appKetcherViewerMessagesHook, /from "\.\.\/lib\/ketcher-workflow"/);
@@ -2781,6 +2827,22 @@ assert.match(appKetcherActionsHook, /openDocumentsInActiveTab\(\[document\]\)/);
 assert.match(appKetcherActionsHook, /request\.target === "collection" && request\.collectionTargetPath/);
 assert.match(appKetcherActionsHook, /request\.target === "collection"[\s\S]*save\(\{[\s\S]*defaultPath: "ketcher-collection\.sdf"/);
 assert.match(appKetcherActionsHook, /invoke<ViewerDocument>\("create_molecule_collection"/);
+assert.match(appKetcherActionsHook, /openStateRevision: currentDocumentRegistryRevision\(\)/);
+assert.match(appKetcherActionsHook, /abortOpenDocumentClaims\(\[document\]\)/);
+assert.match(appKetcherActionsHook, /runWindowMutation\(targetMutationKey/);
+assert.match(appKetcherActionsHook, /targetDocument\?\.renderer === "grid2d" \? targetDocument\.id : null/);
+assert.match(appKetcherActionsHook, /const targetMutationKey = targetDocument\?\.id \?\? mutationKey/);
+assert.match(appKetcherActionsHook, /isDirtyGridDocument\(gridTargetId\)/);
+assert.match(appKetcherActionsHook, /setGridDocumentCloseTransition\(\[gridTargetId\], true\)/);
+assert.match(appKetcherActionsHook, /setGridDocumentCloseTransition\(\[gridTargetId\], false\)/);
+assert.match(appKetcherActionsHook, /waitForGridDocumentCloseTransition\(\[gridTargetId\]\)/);
+assert.match(appKetcherActionsHook, /const document = await writeDocument\(\);[\s\S]*isDirtyGridDocument\(gridTargetId\)/);
+assert.match(appKetcherActionsHook, /if \(!gridTargetId\) return runWindowMutation\(targetMutationKey, operation\)/);
+assert.match(appKetcherActionsHook, /materializeCollectionDocument\(targetDocument, request\.collectionTargetPath/);
+assert.match(appKetcherActionsHook, /materializeCollectionDocument\(targetDocument, outputPath/);
+assert.match(appKetcherActionsHook, /finally \{[\s\S]*setGridDocumentCloseTransition\(\[gridTargetId\], false\)/);
+assert.match(appKetcherActionsHook, /Save or undo the open collection's changes before replacing its file\./);
+assert.match(appDirtyGridHook, /const isDirtyGridDocument = useCallback/);
 assert.match(appKetcherActionsHook, /request\.target === "grid"\s*\?\s*"grid2d"/);
 assert.match(browserDevDocuments, /\["grid2d", "grid", "grid-2d"\]\.includes\(value\)/);
 assert.match(componentTypes, /KetcherSketchTarget = "grid" \| "molstar" \| "generate3d" \| "xyzrender" \| "collection"/);
@@ -2903,8 +2965,8 @@ assert.match(fepSetupKind, /className="fep-setup-candidates"/);
 assert.match(fepSetupKind, /function payloadSummary/);
 assert.match(fepSetupKind, /function candidateLabels/);
 assert.match(fepSetupKind, /Source files remain unchanged/);
-assert.match(fepSetupKind, /<ViewerFrame document=\{docking\} \/>/);
-assert.match(fepSetupKind, /<ViewerFrame document=\{grid\} \/>/);
+assert.match(fepSetupKind, /<ViewerFrame document=\{docking\} readOnly \/>/);
+assert.match(fepSetupKind, /<ViewerFrame document=\{grid\} readOnly \/>/);
 assert.match(fepNetworkKind, /export const fepNetworkKind = definePageKind/);
 assert.match(fepNetworkKind, /kind: "fep-network"/);
 assert.match(fepNetworkKind, /parseFepNetworkText/);
@@ -2918,7 +2980,8 @@ assert.match(fepNetworkKind, /options=\{\[\["graph", "Graph"\], \["grid", "Grid"
 assert.match(fepNetworkKind, /options=\{\[\["common", "Common"\], \["different", "Different"\], \["off", "Off"\]\]\}/);
 assert.match(fepNetworkKind, /options=\{\[\["score", "Score"\], \["energy", "Energy"\]\]\}/);
 assert.match(fepNetworkKind, /disabledValues=\{hasEnergyEdges \? \[\] : \["energy"\]\}/);
-assert.match(fepNetworkKind, /<ViewerFrame document=\{gridDocument\} className="fep-network-grid-frame viewer-iframe" \/>/);
+assert.match(fepNetworkKind, /<ViewerFrame document=\{gridDocument\} className="fep-network-grid-frame viewer-iframe" readOnly \/>/);
+assert.match(fepNetworkKind, /capabilities: \{\s*editing: false,/);
 assert.match(fepNetworkKind, /function EdgeLegend/);
 assert.match(fepNetworkKind, /function edgeVisual/);
 assert.match(fepNetworkKind, /className="fep-network-edge"/);
@@ -3016,8 +3079,8 @@ assert.match(poseReviewKind, /pose-review-pane-docking/);
 assert.match(poseReviewKind, /pose-review-pane-grid/);
 assert.match(poseReviewKind, /actions\.openFepSetupWorkspace/);
 assert.match(poseReviewKind, />FEP Setup<\/button>/);
-assert.match(poseReviewKind, /<ViewerFrame document=\{docking\} \/>/);
-assert.match(poseReviewKind, /<ViewerFrame document=\{grid\} \/>/);
+assert.match(poseReviewKind, /<ViewerFrame document=\{docking\} readOnly \/>/);
+assert.match(poseReviewKind, /<ViewerFrame document=\{grid\} readOnly \/>/);
 assert.match(styles, /\.pose-review-workspace \{/);
 assert.match(styles, /grid-template-columns: minmax\(360px, 1\.1fr\) minmax\(320px, 0\.9fr\);/);
 assert.match(styles, /\.pose-review-pane \{/);
@@ -3244,7 +3307,7 @@ assert.match(welcome, /Command Palette/);
 assert.match(welcome, /Settings/);
 assert.match(welcome, /from "\.\.\/shortcut-tooltip"/);
 assert.match(welcome, /<ShortcutTooltip label="Open Structure" shortcut="⌘O" \/>/);
-assert.match(welcome, /<ShortcutTooltip label="Command Palette" shortcut="⌘P \/" \/>/);
+assert.match(welcome, /<ShortcutTooltip label="Command Palette" shortcut="⇧⌘P \/" \/>/);
 assert.match(welcome, /<ShortcutTooltip label="Settings" shortcut="⌘," \/>/);
 assert.doesNotMatch(welcome, /Open molecular structures/);
 assert.match(errorBoundary, /export class ErrorBoundary/);
@@ -3615,7 +3678,7 @@ assert.match(appShellActionsHook, /createDockDropShellActions/);
 assert.match(appShellActionsHook, /input\.payload\.paths\.length \+ input\.payload\.records\.length \+ \(input\.payload\.items\?\.length \?\? 0\)/);
 assert.match(appShellActionsHook, /\.\.\.createDocumentCloseShellActions\(\{/);
 assert.match(appShellActionsHook, /createDocumentCloseShellActions/);
-assert.match(appShellActionsHook, /confirmDiscardDirtyGridDocument\(activeDocument\?\.id\)/);
+assert.match(appShellActionsHook, /confirmDiscardDirtyGridDocument\(documentId\)/);
 assert.match(appShellActionsHook, /closeGridRuntime\(targetDocumentId\)/);
 assert.match(appShellActionsHook, /forgetDirtyGridDocuments\(documentIds\)/);
 assert.match(appShellActionsHook, /\.\.\.createRecentShellActions\(\{ clearRecentStructures, pushStatus \}\)/);
@@ -3695,7 +3758,8 @@ assert.match(appOpenDropMergeCollectionsHook, /void mergeMoleculeCollections\(ac
 assert.match(appDockingWorkflowsHook, /const unsupportedPaths = candidatePaths\.filter\(\(path\) => !isMoleculeCollectionPath\(path\)\)/);
 assert.match(appDockingWorkflowsHook, /Collection merge accepts only SDF, SMILES, CSV, or TSV inputs\./);
 assert.match(appOpenDropControllerHook, /useOpenDrop\(openPaths, pushStatus, \{/);
-assert.match(tauriSource, /export function trackTauriListener\(registration: Promise<TauriUnlisten>, label: string\)/);
+assert.match(tauriSource, /export function trackTauriListener\([\s\S]*registration: Promise<TauriUnlisten>,[\s\S]*onRegistered\?: \(\) => void/);
+assert.match(tauriSource, /onRegistered\?\.\(\)/);
 assert.match(tauriSource, /if \(disposed\) \{\s*disposeTauriListener\(next, label\);/s);
 assert.match(tauriSource, /listener setup failed/);
 assert.match(tauriSource, /listener cleanup failed/);
@@ -3711,14 +3775,24 @@ assert.match(openDropHook, /onDragDropEvent/);
 assert.doesNotMatch(openDropHook, /let unlisten/);
 assert.doesNotMatch(openDropHook, /unlisten\?\.\(\)/);
 assert.match(menuEventsHook, /const handlersRef = useRef\(/);
-assert.match(menuEventsHook, /handlersRef\.current = \{/);
-assert.match(menuEventsHook, /trackTauriListener\(listen\(MENU_UNDO_EVENT, \(\) => \{\s*void dispatchWorkspaceHistoryCommand\("undo", handlersRef\.current\.actions\);\s*\}\), MENU_UNDO_EVENT\)/);
-assert.match(menuEventsHook, /trackTauriListener\(listen\(MENU_REDO_EVENT, \(\) => \{\s*void dispatchWorkspaceHistoryCommand\("redo", handlersRef\.current\.actions\);\s*\}\), MENU_REDO_EVENT\)/);
-assert.match(menuEventsHook, /trackTauriListener\(listen\(MENU_OPEN_SETTINGS_EVENT, \(\) => \{\s*handlersRef\.current\.openSettings\(\);\s*\}\), MENU_OPEN_SETTINGS_EVENT\)/);
+assert.match(menuEventsHook, /handlersRef\.current = options/);
+assert.match(menuEventsHook, /listen<void>\(MENU_COMMAND_EVENT/);
+assert.match(menuEventsHook, /handlersRef\.current\.handleNativeMenuCommand\(command\)/);
 assert.match(menuEventsHook, /const cleanups = \[/);
 assert.match(menuEventsHook, /for \(const cleanup of cleanups\) cleanup\(\)/);
 assert.doesNotMatch(menuEventsHook, /let unlisten/);
 assert.doesNotMatch(menuEventsHook, /unlisten\?\.\(\)/);
+assert.doesNotMatch(menuEventsHook, /MENU_OPEN_SETTINGS_EVENT/);
+assert.doesNotMatch(menuEventsHook, /MENU_OPEN_FILES_EVENT/);
+assert.doesNotMatch(menuEventsHook, /MENU_REVEAL_ACTIVE_EVENT/);
+assert.doesNotMatch(menuEventsHook, /MENU_COPY_ACTIVE_PATH_EVENT/);
+assert.doesNotMatch(menuEventsHook, /MENU_SHOW_ACTIVE_METADATA_EVENT/);
+assert.doesNotMatch(menuEventsHook, /MENU_EXPORT_PREVIEW_PNG_EVENT/);
+assert.doesNotMatch(menuEventsHook, /MENU_EXPORT_PREVIEW_SVG_EVENT/);
+assert.doesNotMatch(menuEventsHook, /MENU_CLEAR_PREVIEW_CACHE_EVENT/);
+assert.doesNotMatch(menuEventsHook, /MENU_RESET_QUICK_LOOK_EVENT/);
+assert.doesNotMatch(menuEventsHook, /MENU_OPEN_LOGS_EVENT/);
+assert.doesNotMatch(menuEventsHook, /MENU_CHECK_UPDATES_EVENT/);
 assert.match(app, /documents,/);
 assert.match(appOpenDropControllerHook, /useAppClipboard\(\{ openClipboardText, pushErrorStatus, pushStatus \}\)/);
 assert.match(appClipboardHook, /navigator\.clipboard\?\.readText/);
@@ -3761,7 +3835,7 @@ assert.match(appOpenActionsHook, /No recent structures to open/);
 assert.match(appOpenActionsHook, /const chooseFiles = useCallback/);
 assert.match(
   app,
-  /useMenuEvents\(\{\s*actions,\s*chooseFiles: actions\.chooseFiles,\s*openMostRecentStructure: actions\.openMostRecentStructure,\s*revealActiveDocument: actions\.revealActiveDocument,\s*copyActiveDocumentPath: actions\.copyActiveDocumentPath,\s*showActiveDocumentMetadata: actions\.showActiveDocumentMetadata,\s*exportActivePreviewAsPng: actions\.exportActivePreviewAsPng,\s*exportActivePreviewAsSvg: actions\.exportActivePreviewAsSvg,\s*clearCache: actions\.clearCache,\s*resetQuickLook: actions\.resetQuickLook,\s*openLogs: actions\.openLogs,\s*openSettings: actions\.openSettings,\s*checkForUpdates: actions\.checkForUpdates,\s*saveSource:/s,
+  /useAppNativeMenu\(\{\s*state,\s*actions,\s*gridMenuState:\s*activeGridMenuState,\s*openDocuments,\s*confirmCloseWindow,\s*getWindowDocumentDirtySnapshot,\s*windowDocumentDirty:\s*hasDirtyGridDocuments \|\| sourceEditing\.hasUnsavedOrSavingSessions,\s*sourceSaveEnabled,\s*saveActiveSource,\s*\}\)/s,
 );
 assert.match(app, /from "\.\/hooks\/use-app-host-runtime-operations"/);
 assert.match(app, /from "\.\/hooks\/use-app-preference-effects"/);
@@ -4963,7 +5037,7 @@ assert.match(previewViewer, /function embeddedStructureDataByteLength\(\)/);
 assert.match(previewViewer, /async function ensureBrowserDevStructureData\(config, cb\)/);
 assert.match(previewViewer, /window\.BurreteDataBytes = null;\s*window\.BurreteDataBase64 = null;\s*await loadStructureData\(config, cb\);/);
 assert.match(previewViewer, /function disposeActiveMolstarViewer\(\)/);
-assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*setMolstarStructureDirty\(false\);/);
+assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*notifyMolstarSelectionChanged\(null\);\s*molstarSelectionHostSignature = '';\s*setMolstarStructureDirty\(false\);/);
 assert.match(previewViewer, /function startMolstar\(config, cb\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.panelTogglesBound !== '1'\)/);
 assert.match(previewViewer, /if \(toolbar\.dataset\.dragBound === '1'\) return;/);
@@ -5124,7 +5198,7 @@ assert.match(previewViewer, /function clearMolstarEditUndoHistory\(\)/);
 assert.match(previewViewer, /function restoreMolstarEditUndoSnapshot\(snapshot\)/);
 assert.match(previewViewer, /function undoMolstarLastEdit\(\)/);
 assert.match(previewViewer, /await plugin\.clear\(\);[\s\S]*loadPreparedStructure\(activeViewer, prepared\)[\s\S]*setMolstarStructureDirty\(snapshot\.dirty === true\);/);
-assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{\s*setMolstarStructureDirty\(false\);\s*clearMolstarEditUndoHistory\(\);/);
+assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{[\s\S]*?setMolstarStructureDirty\(false\);\s*clearMolstarEditUndoHistory\(\);/);
 assert.match(previewViewer, /action === 'remove-chain'/);
 assert.match(previewViewer, /captureMolstarEditUndoSnapshot\(`delete \$\{targetLabel\}`\)[\s\S]*deleteMolstarContextPick\(target\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
 assert.match(previewViewer, /captureMolstarEditUndoSnapshot\(`delete \$\{bulkLabel\}`\)[\s\S]*deleteMolstarContextBulkType\(target\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
@@ -5151,7 +5225,7 @@ assert.match(previewViewer, /function molstarContextNormalizeLoci\(loci, granula
 assert.match(previewViewer, /lociApi\.normalize\(loci, granularity, true\)/);
 assert.match(previewViewer, /function molstarContextResolvedLoci\(targetStructure\)/);
 assert.match(previewViewer, /const selectionLoci = molstarContextSelectionLociForStructure\(targetStructure\)/);
-assert.match(previewViewer, /if \(molstarContextMenuMode !== 'atom' && selectedAtom && \(!pickedAtom \|\| molstarContextLociContainsAtom\(selectionLoci, pickedAtom\)\)\) return \{/);
+assert.match(previewViewer, /if \(\(molstarContextMenuMode !== 'atom' \|\| !pickedAtom\) && selectedAtom && \(!pickedAtom \|\| molstarContextLociContainsAtom\(selectionLoci, pickedAtom\)\)\) return \{/);
 assert.match(previewViewer, /selectionBased: true/);
 assert.match(previewViewer, /atomLoci: molstarContextAtomLociForStructure\(structure \|\| pickedLoci\?\.structure, pickedAtom\)/);
 assert.match(previewViewer, /molstarContextAtomLociForStructure\(structure \|\| selectionLoci\?\.structure, selectedAtom\)/);
@@ -5252,6 +5326,18 @@ assert.match(previewViewer, /if \(options\.keepMoleculePreview\) return;/);
 assert.match(previewViewer, /showMolstarContextMenu\(event, pick\)[\s\S]*?hideMolstarContextMenu\(\{ keepMoleculePreview: true \}\);/);
 assert.match(previewViewer, /const hideMoleculePreviewFromEvent = \(event\) => \{[\s\S]*?scheduleMolstarSelectedMoleculePreview\(\);/);
 assert.match(previewViewer, /function installMolstarSelectionPreviewSync\(viewer\)/);
+assert.match(previewViewer, /function notifyMolstarSelectionChanged\(target\)/);
+assert.match(previewViewer, /function molstarContextTargetIgnoringMenuPick\(\)/);
+assert.match(previewViewer, /function molstarSelectedMoleculeTargetFromSelection\(\)/);
+assert.match(previewViewer, /return target\?\.selectionBased \? molstarSelectedMoleculePreviewTarget\(target\) : null;/);
+assert.match(previewViewer, /if \(type === 'get_xtb_context'\) \{\s*const target = molstarSelectedMoleculeTargetFromSelection\(\);/);
+assert.match(previewViewer, /if \(picked && picked\.index > 0\) \{[\s\S]*?atom: pickedAtom,[\s\S]*?selectionBased: resolved\.selectionBased,[\s\S]*?scope: 'ligand'/);
+assert.match(previewViewer, /postHostMessage\(\{ type: 'selectionChanged', selection \}\)/);
+assert.match(previewViewer, /const selected = atomCount !== null && contextDocument \? candidate : null;/);
+assert.match(previewViewer, /atoms: atomCount/);
+assert.match(previewViewer, /\(molstarContextMenuMode !== 'atom' \|\| !pickedAtom\) && selectedAtom/);
+assert.match(previewViewer, /sourceEntry: receptorEntry,[\s\S]*?selectedEntry: pickedAtom \? pdbEntryForResidue\(receptorEntry, pickedAtom\) : null/);
+assert.match(previewViewer, /if \(molstarContextSelectionLociForStructure\(structures\[index\]\)\)/);
 assert.match(previewViewer, /const selectionEvents = plugin\.managers\?\.structure\?\.selection\?\.events \|\| \{\};/);
 assert.match(previewViewer, /const interactivityEvents = plugin\.managers\?\.interactivity\?\.lociSelects\?\.events \|\| \{\};/);
 assert.match(previewViewer, /document\.addEventListener\(eventName, update, true\)/);
@@ -5642,7 +5728,7 @@ assert.match(shortcuts, /!event\.altKey && !event\.shiftKey && key === "b"/);
 assert.match(shortcuts, /toggleSidebar\(\)/);
 assert.match(shortcuts, /actions\.openMostRecentStructure\(\)/);
 assert.match(shortcuts, /actions\.revealActiveDocument\(\)/);
-assert.match(shortcuts, /actions\.copyActiveDocumentPath\(\)/);
+assert.match(shortcuts, /event\.shiftKey && key === "c"[\s\S]*actions\.copyActiveDocumentPath\(\)/);
 assert.match(shortcuts, /actions\.showActiveDocumentMetadata\(\)/);
 assert.match(shortcuts, /actions\.exportActivePreviewAsPng\(\)/);
 assert.match(shortcuts, /actions\.exportActivePreviewAsSvg\(\)/);
@@ -5651,17 +5737,242 @@ assert.match(keyboardShortcutsSection, /command: "Undo"[\s\S]*?keybindings: \["�
 assert.match(keyboardShortcutsSection, /command: "Redo"[\s\S]*?keybindings: \["⇧⌘Z"\]/);
 assert.match(shortcutDocs, /\| Cmd\+Z \| Undo the latest workspace or focused preview edit \|/);
 assert.match(shortcutDocs, /\| Cmd\+Shift\+Z \| Redo the latest workspace or focused preview edit when available \|/);
-assert.match(menuEventsHook, /MENU_UNDO_EVENT/);
-assert.match(menuEventsHook, /MENU_REDO_EVENT/);
-assert.match(menuEventsHook, /MENU_OPEN_RECENT_EVENT/);
-assert.match(menuEventsHook, /MENU_REVEAL_ACTIVE_EVENT/);
-assert.match(menuEventsHook, /MENU_COPY_ACTIVE_PATH_EVENT/);
-assert.match(menuEventsHook, /MENU_SHOW_ACTIVE_METADATA_EVENT/);
-assert.match(menuEventsHook, /MENU_EXPORT_PREVIEW_PNG_EVENT/);
-assert.match(menuEventsHook, /MENU_EXPORT_PREVIEW_SVG_EVENT/);
-assert.match(menuEventsHook, /MENU_CLEAR_PREVIEW_CACHE_EVENT/);
-assert.match(menuEventsHook, /MENU_RESET_QUICK_LOOK_EVENT/);
-assert.match(menuEventsHook, /MENU_OPEN_LOGS_EVENT/);
+assert.match(shortcuts, /commandKey && !event\.altKey && event\.shiftKey && key === "p"/);
+assert.match(shortcuts, /if \(isTauriRuntime\(\)\) return/);
+assert.match(shortcuts, /commandKey && !event\.altKey && !event\.shiftKey && key === "n"/);
+assert.match(shortcuts, /commandKey && !event\.altKey && !event\.shiftKey && key === "t"/);
+assert.match(shortcuts, /event\.ctrlKey && !event\.metaKey && !event\.altKey && key === "tab"/);
+const nativeShortcutGuardIndex = shortcuts.indexOf("if (isTauriRuntime()) return;");
+const closeTabShortcutIndex = shortcuts.indexOf('if (commandKey && !event.altKey && !event.shiftKey && key === "w")');
+assert.ok(nativeShortcutGuardIndex >= 0 && nativeShortcutGuardIndex < closeTabShortcutIndex);
+assert.doesNotMatch(shortcuts, /commandKey && key === "w"/);
+for (const embeddedViewer of [previewViewer, gridViewer, agentPreviewViewer, agentGridViewer]) {
+  assert.match(embeddedViewer, /commandKey && event\.shiftKey && key === 'p'/);
+  assert.match(embeddedViewer, /!commandKey && !event\.altKey && key === '\/'/);
+}
+for (const embeddedGridViewer of [gridViewer, agentGridViewer]) {
+  assert.match(embeddedGridViewer, /body\.type === 'gridCloseTransitionChanged'/);
+  assert.match(embeddedGridViewer, /body\.type === 'gridReadOnlyChanged'/);
+  assert.match(embeddedGridViewer, /body\.type === 'gridMenuCommand'/);
+  assert.match(embeddedGridViewer, /gridCloseTransitionAcknowledged/);
+}
+assert.match(gridViewer, /caps\.editing !== false && !state\.hostReadOnly/);
+assert.match(gridViewer, /if \(!capabilities\(cfg\)\.editing\) return false/);
+assert.match(gridViewer, /if \(!caps\.selection \|\| selectedGridRowCount\(\) < 1\) return/);
+assert.match(gridViewer, /root\.inert = active/);
+assert.match(gridViewer, /if \(state\.closeTransitionActive\) return;/);
+assert.match(gridViewer, /gridCloseTransitionAcknowledged/);
+assert.match(windowMutationBarrier, /windowMutationTails/);
+assert.match(windowMutationBarrier, /gridDocumentCloseTransitionCounts/);
+assert.match(windowMutationBarrier, /iframe\.inert = transitionActive/);
+assert.match(windowMutationBarrier, /iframe\.toggleAttribute\("aria-busy", transitionActive\)/);
+assert.match(windowMutationBarrier, /waitForGridDocumentCloseTransition/);
+assert.match(gridViewer, /Finishing current change…/);
+assert.match(gridCss, /\.buret-grid-close-transition/);
+assert.match(menuEventsHook, /MENU_COMMAND_EVENT/);
+assert.match(menuEventsHook, /invoke<NativeMenuCommand\[]>\("drain_native_menu_commands"\)/);
+assert.match(menuEventsHook, /listen<void>\(MENU_COMMAND_EVENT, drainNativeMenuCommands\)/);
+assert.match(menuEventsHook, /for \(const command of commands\)/);
+assert.match(nativeMenuTypes, /export type NativeMenuCommand/);
+assert.match(nativeMenuTypes, /export type NativeMenuState/);
+assert.match(nativeMenuTypes, /documentRegistryRevision: number/);
+assert.match(nativeMenuTypes, /export function nextDocumentRegistryRevision\(\)/);
+assert.match(nativeMenuTypes, /sessionStorage\.setItem\(DOCUMENT_REGISTRY_REVISION_KEY/);
+assert.match(nativeMenuTypes, /export type GridNativeMenuState/);
+assert.match(nativeMenuTypes, /export type ExitPreflightRequest = \{\s*requestId: string;\s*\}/s);
+assert.match(nativeMenuTypes, /recentPath\?: string/);
+assert.doesNotMatch(nativeMenuTypes, /recentIndex/);
+for (const stateField of [
+  "activeTabClosable",
+  "tabCount",
+  "closableTabCount",
+  "canExportExternalPreview",
+  "documentDirty",
+  "canRedo",
+  "undoLabel",
+  "redoLabel",
+  "gridEditingText",
+  "gridDirty",
+  "gridExportEnabled",
+  "gridSelectionEnabled",
+  "editingText",
+  "canOpenInMolstar",
+  "canEditInKetcher",
+  "canGenerate3d",
+  "canRunCrest",
+  "canRunPrism",
+  "canRunXtb",
+]) {
+  assert.match(nativeMenuTypes, new RegExp(`\\b${stateField}\\??:`));
+}
+assert.match(nativeMenuTypes, /recentDocuments: Array<\{ path: string; title: string \}> \| null/);
+assert.match(appNativeMenuHook, /invoke\("sync_native_menu", \{ state: nativeState \}\)/);
+assert.match(appNativeMenuHook, /const openDocumentPaths = useMemo/);
+assert.match(appNativeMenuHook, /nativeOpenDocumentPaths\(state\.documents, state\.textDocuments\)/);
+assert.match(appNativeMenuHook, /const activeDocumentReadable = activeDocumentFileBacked/);
+assert.match(appNativeMenuHook, /const documentRegistryRevision = useMemo\([\s\S]*nextDocumentRegistryRevision\(\)/);
+assert.match(appNativeMenuHook, /hasActiveFile: activeDocumentFileBacked \|\| activeTextTabFileBacked/);
+assert.match(appNativeMenuHook, /canExportExternalPreview: activeDocument\?\.renderer === "xyzrender-external"/);
+assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onFocusChanged/);
+assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onCloseRequested/);
+assert.match(appNativeMenuHook, /event\.preventDefault\(\);[\s\S]*await confirmCloseWindowRef\.current\(\)/);
+assert.match(appNativeMenuHook, /confirmCloseWindowRef\.current\(\)/);
+assert.match(appNativeMenuHook, /setGridDocumentCloseTransition\(documentIds, true\)/);
+assert.match(appNativeMenuHook, /setWindowShellCloseTransition\(true\)/);
+assert.match(appNativeMenuHook, /await currentWindow\.setEnabled\(false\)/);
+assert.match(appNativeMenuHook, /if \(await currentWindow\.isEnabled\(\)\)/);
+assert.match(appNativeMenuHook, /await permit\.waitForPending\(\)/);
+assert.match(appNativeMenuHook, /sameWindowItemIds\(documentIds, windowDocumentIdsRef\.current\)/);
+assert.match(appNativeMenuHook, /sameWindowItemIds\(tabIds, windowTabIdsRef\.current\)/);
+assert.match(appNativeMenuHook, /finalDirtySnapshot\.closeGuardRevision !== closeGuardRevision/);
+assert.match(appNativeMenuHook, /if \(closingWindowRef\.current\) return;/);
+assert.match(appNativeMenuHook, /listen<ExitPreflightRequest>\(EXIT_PREFLIGHT_EVENT/);
+assert.match(appNativeMenuHook, /invoke<string>\("register_exit_preflight_listener"\)/);
+assert.match(appNativeMenuHook, /invoke\("unregister_exit_preflight_listener", \{ registrationId/);
+assert.match(appNativeMenuHook, /invoke\("respond_to_exit_preflight"/);
+assert.match(appNativeMenuHook, /const barrier = sealWindowMutations\(\)/);
+assert.match(appNativeMenuHook, /closeTransitionActive: snapshot\.closeTransitionActive\s*\|\| barrier\.closeTransitionActive\s*\|\| barrier\.pendingCount > 0/);
+assert.match(appNativeMenuHook, /dirty: snapshot\.dirty \|\| barrier\.pendingCount > 0/);
+assert.match(appNativeMenuHook, /revision: snapshot\.revision/);
+assert.match(appNativeMenuHook, /listen\(EXIT_TRANSITION_RESUMED_EVENT, resumeWindowMutations\)/);
+assert.match(appNativeMenuHook, /\}, \[\]\);\s*\n\s*const handleNativeMenuCommand/s);
+assert.match(appNativeMenuHook, /document\.addEventListener\("focusin", syncEditingState, true\)/);
+assert.match(viewerFrame, /"data-read-only": readOnly \? "true" : undefined/);
+assert.match(viewerFrame, /name: readOnly \? "burrete-read-only" : "burrete-editable"/);
+assert.match(viewerFrame, /body: \{ type: "gridReadOnlyChanged", readOnly: true \}/);
+assert.match(viewerFrame, /isGridDocumentCloseTransitionActive\(document\.id\)/);
+assert.match(viewerFrame, /body: \{ type: "gridCloseTransitionChanged", active: true \}/);
+assert.match(dockPanel, /<ViewerFrame document=\{dockDocument\} readOnly \/>/);
+assert.match(appGridControlMessagesHook, /isReadOnlyViewerMessageSource\(eventSource\)/);
+assert.match(appNativeMenuHook, /case "file\.open-recent"/);
+assert.match(appNativeMenuHook, /\(\{ command, recentPath \}: NativeMenuCommand\)/);
+assert.match(appNativeMenuHook, /isAbsoluteNativeFilePath\(recentPath\)/);
+assert.match(appNativeMenuHook, /await openDocuments\(\[recentPath\]\)/);
+assert.doesNotMatch(appNativeMenuHook, /state\.recentStructures\.find\(\(candidate\) => candidate\.path === recentPath\)/);
+assert.doesNotMatch(appNativeMenuHook, /recentIndex/);
+assert.match(appNativeMenuHook, /isAbsoluteNativeFilePath\(path\).*path\.length > MAX_RECENT_PATH_CHARS/s);
+assert.match(appNativeMenuHook, /title: title\.slice\(0, MAX_RECENT_TITLE_CHARS\)/);
+assert.match(appNativeMenuHook, /case "structure\.open-in-molstar"/);
+assert.match(appNativeMenuHook, /postGridMenuCommand\(activeDocument\.id, command\)/);
+assert.match(appNativeMenuHook, /canSave: sourceSaveEnabled\s*\|\| Boolean\(isGrid/);
+assert.match(appNativeMenuHook, /case "file\.save":\s*if \(sourceSaveEnabled\) await saveActiveSource\(\);\s*else gridCommand\(\);/s);
+assertSourceIncludesAll(appNativeMenuHook, [
+  "file.new-tab",
+  "file.open-clipboard",
+  "file.close-other-tabs",
+  "file.close-all-tabs",
+  "structure.crest-generate",
+  "structure.prism-prune",
+  "structure.xtb-optimize",
+  "structure.xtb-properties",
+  "structure.xtb-frequencies",
+  "structure.xtb-vipea",
+  "structure.xtb-fukui",
+  "window.previous-tab",
+  "window.next-tab",
+], "desktop native-menu dispatcher");
+const xtbPropertiesRoute = appNativeMenuHook.slice(
+  appNativeMenuHook.indexOf('case "structure.xtb-properties":'),
+  appNativeMenuHook.indexOf('case "structure.xtb-frequencies":'),
+);
+assert.match(xtbPropertiesRoute, /if \(!activeDocument \|\| isGrid \|\| !canRunXtb\) return/);
+assert.match(xtbPropertiesRoute, /await actions\.runXtbActiveOperation\("properties"\)/);
+assert.doesNotMatch(xtbPropertiesRoute, /runXtbGridScoring/);
+assert.match(appNativeMenuHook, /case "structure\.open-in-molstar":[\s\S]*?if \(!activeDocument \|\| !canOpenInMolstar\) return/);
+assert.match(appNativeMenuHook, /case "structure\.edit-in-ketcher":[\s\S]*?if \(!activeDocument \|\| !canEditInKetcher\) return/);
+assert.match(appNativeMenuHook, /case "structure\.generate-3d":[\s\S]*?if \(!activeDocument \|\| !canGenerate3d\) return/);
+assert.match(appNativeMenuHook, /case "structure\.crest-generate":[\s\S]*?if \(!activeDocument \|\| isGrid \|\| !canRunCrest\) return/);
+assert.match(appNativeMenuHook, /case "structure\.prism-prune":[\s\S]*?if \(!activeDocument \|\| isGrid \|\| !canRunPrism\) return/);
+assert.match(appNativeMenuHook, /const DIRECT_XTB_EXTENSIONS = new Set\(\["sdf", "sd", "mol", "xyz", "pdb"\]\)/);
+assert.match(appNativeMenuHook, /state\.conformerStatus\?\.openbabel\?\.installed === true/);
+assert.match(appNativeMenuHook, /activeLigandSelection\.atoms <= 300/);
+assert.match(appNativeMenuHook, /activeDocumentFileBacked/);
+assert.match(appXtbWorkflowsHook, /request\.operation === "vipea"[\s\S]*\? "gfn1"/);
+for (const capability of [
+  "canOpenInMolstar",
+  "canEditInKetcher",
+  "canGenerate3d",
+  "canRunCrest",
+  "canRunPrism",
+  "canRunXtb",
+]) {
+  assert.match(appNativeMenuHook, new RegExp(`${capability},`));
+}
+const gridNativeMenuCommands = [
+  "edit.undo-grid",
+  "edit.redo-grid",
+  "edit.find",
+  "collection.copy-selected",
+  "collection.select-all",
+  "collection.clear-selection",
+  "collection.calculate-descriptors",
+];
+assertSourceIncludesAll(appNativeMenuHook, gridNativeMenuCommands, "desktop native-menu dispatcher");
+assertSourceIncludesAll(gridViewer, gridNativeMenuCommands, "Grid native-menu dispatcher");
+assertSourceIncludesAll(agentGridViewer, gridNativeMenuCommands, "plugin Grid native-menu dispatcher");
+assert.match(gridNativeMenuStateHook, /activeDocument\?\.renderer === "grid2d"/);
+assert.match(appGridControlMessagesHook, /body\?\.type === "gridMenuStateChanged"/);
+assert.match(appGridControlMessagesHook, /updateGridMenuState\(documentId/);
+assert.match(appGridControlMessagesHook, /const normalizedSelectedCount = Number\.isFinite\(selectedCount\)/);
+assert.match(appGridControlMessagesHook, /Math\.min\(normalizedSelectedCount, Math\.max\(0, Math\.trunc\(selectedStructureCount\)\)\)/);
+assert.match(appGridControlMessagesHook, /canRedo: body\.canRedo === true/);
+assert.match(appGridControlMessagesHook, /undoLabel: typeof body\.undoLabel === "string"/);
+assert.match(appGridControlMessagesHook, /redoLabel: typeof body\.redoLabel === "string"/);
+assert.match(appGridControlMessagesHook, /editingText: body\.editingText === true/);
+for (const field of ["canRedo", "undoLabel", "redoLabel", "editingText", "saveEnabled", "exportEnabled", "selectionEnabled", "canOpenSelectedInMolstar", "canOpenSelectedInKetcher", "canGenerate3dForSelection"]) {
+  assert.match(gridNativeMenuStateHook, new RegExp(`left\\.${field} === right\\.${field}`));
+}
+assert.match(gridViewer, /body\.type === 'gridMenuCommand'/);
+assert.match(gridViewer, /post\('gridMenuStateChanged'/);
+assert.match(gridViewer, /selectedCount: selectedGridRowCount\(\)/);
+assert.match(gridViewer, /saveEnabled: caps\.export && collectionIndexReady\(\)/);
+assert.match(gridViewer, /exportEnabled: caps\.export/);
+assert.match(gridViewer, /if \(!requireCollectionIndexReady\('saving'\)\) return/);
+assert.match(gridViewer, /selectionEnabled: caps\.selection/);
+assert.match(gridViewer, /canOpenSelectedInMolstar: caps\.rendererSwitch/);
+assert.match(gridViewer, /const NATIVE_MOLSTAR_SELECTION_LIMIT = 100/);
+assert.match(gridViewer, /const NATIVE_KETCHER_SELECTION_LIMIT = 25/);
+assert.match(gridViewer, /const NATIVE_GENERATE_3D_SELECTION_LIMIT = 20/);
+assert.match(gridViewer, /if \(!caps\.rendererSwitch \|\| selectedStructureCount < 1/);
+assert.match(gridViewer, /if \(rows\.length === 1\) requestOpenInKetcher\(rows\[0\], cfgValue\)/);
+assert.match(gridViewer, /Save the collection before calculating descriptors for all molecules/);
+assert.match(gridViewer, /canRedo: redoEntry !== null/);
+assert.match(gridViewer, /undoLabel: undoEntry\?\.label \|\| null/);
+assert.match(gridViewer, /redoLabel: redoEntry\?\.label \|\| null/);
+assert.match(gridViewer, /editingText: state\.editingText/);
+const resetDocumentRuntimeState = gridViewer.match(/function resetDocumentRuntimeState\(\) \{[\s\S]*?\n  \}/)?.[0] ?? "";
+assert.match(resetDocumentRuntimeState, /state\.undoStack = \[\]/);
+assert.match(resetDocumentRuntimeState, /state\.redoStack = \[\]/);
+assert.match(resetDocumentRuntimeState, /state\.menuStateSignature = ''/);
+const gridRecordsAppended = gridViewer.match(/if \(body\.type === 'gridRecordsAppended'\) \{[\s\S]*?\n      \}/)?.[0] ?? "";
+assert.doesNotMatch(gridRecordsAppended, /state\.closeTransitionActive/);
+assert.match(gridRecordsAppended, /state\.undoStack = \[\]/);
+assert.match(gridRecordsAppended, /state\.redoStack = \[\]/);
+const gridApplyKetcherRow = gridViewer.match(/if \(body\.type === 'gridApplyKetcherRow'\) \{[\s\S]*?\n      \}/)?.[0] ?? "";
+assert.match(gridApplyKetcherRow, /if \(state\.closeTransitionActive\) return;/);
+for (const saveFunction of ["saveGridAs", "saveGrid"]) {
+  const saveSource = gridViewer.match(new RegExp(`async function ${saveFunction}\\(cfg\\) \\{[\\s\\S]*?\\n  \\}`))?.[0] ?? "";
+  assert.match(saveSource, /const rows = await collectCurrentCollectionRows\(cfg\);\s*if \(state\.closeTransitionActive\) return;/);
+}
+for (const mutationFunction of ["replaceGridRow", "duplicateGridRow", "removeGridRow", "undoLastGridEdit", "redoLastGridEdit"]) {
+  const mutationSource = gridViewer.match(new RegExp(`function ${mutationFunction}\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0] ?? "";
+  assert.match(mutationSource, /state\.closeTransitionActive/);
+}
+const pushUndoSnapshot = gridViewer.match(/function pushUndoSnapshot\(label\) \{[\s\S]*?\n  \}/)?.[0] ?? "";
+const undoLastGridEdit = gridViewer.match(/function undoLastGridEdit\(cfg\) \{[\s\S]*?\n  \}/)?.[0] ?? "";
+const redoLastGridEdit = gridViewer.match(/function redoLastGridEdit\(cfg\) \{[\s\S]*?\n  \}/)?.[0] ?? "";
+assert.match(gridViewer, /const GRID_EDIT_HISTORY_LIMIT = 50/);
+assert.match(pushUndoSnapshot, /state\.redoStack = \[\]/);
+assert.match(undoLastGridEdit, /pushGridEditHistoryEntry\(state\.redoStack, entry\.label, snapshotGridEditState\(\)\)/);
+assert.match(redoLastGridEdit, /pushGridEditHistoryEntry\(state\.undoStack, entry\.label, snapshotGridEditState\(\)\)/);
+assert.match(gridViewer, /if \(stack\.length > GRID_EDIT_HISTORY_LIMIT\) stack\.shift\(\)/);
+assert.match(gridViewer, /if \(state\.textFocusListenersInstalled\)/);
+assert.match(gridViewer, /document\.addEventListener\('focusin'/);
+assert.match(gridViewer, /document\.addEventListener\('focusout', scheduleGridTextEditingStateSync\)/);
+const gridSelectionKeydown = gridViewer.match(/function handleGridSelectionKeydown\(event, cfg\) \{[\s\S]*?\n  \}/)?.[0] ?? "";
+assert.match(gridSelectionKeydown, /isEditableShortcutTarget\(target\)/);
+assert.match(gridSelectionKeydown, /event\.shiftKey\) redoLastGridEdit\(cfg\)/);
+assert.match(gridSelectionKeydown, /else undoLastGridEdit\(cfg\)/);
 assert.match(commandPalette, /id: "open-recent"/);
 assert.match(commandPalette, /id: "search-projects"/);
 assert.match(commandPalette, /id: "reveal-active"/);
@@ -5735,7 +6046,7 @@ assert.match(viewerBridgeMessagesLib, /export function viewerBridgeSource\(value
 assert.match(viewerBridgeMessagesLib, /export function viewerBridgeBodyDocumentId\(body: ViewerBridgeMessageBody\)/);
 assert.match(viewerBridgeMessagesLib, /isKnownViewerMessageSource\(eventSource, viewerBridgeBodyDocumentId\(body\)\)/);
 assert.match(viewerBridgeMessagesLib, /source === "burrete-grid"/);
-assert.match(viewerBridgeMessagesLib, /handleGridControlMessage\(body\)/);
+assert.match(viewerBridgeMessagesLib, /handleGridControlMessage\(body, eventSource\)/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "copyText"/);
 assert.match(appGridControlMessagesHook, /writeClipboardText\(text\)/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "calculateGridDescriptors"/);
@@ -5748,10 +6059,25 @@ assert.match(appGridFileActionsHook, /const outputPath = await save\(/);
 assert.match(appGridFileActionsHook, /invoke<string>\("save_text_as"/);
 assert.match(appGridFileActionsHook, /body\?\.type === "saveGridAs"/);
 assert.match(appGridFileActionsHook, /body\?\.type === "saveGrid"/);
+assert.match(appGridFileActionsHook, /runWindowMutation\(documentId, async \(\) =>/);
+assert.match(appGridFileActionsHook, /gridFormatsMatch\(targetDocument\.extension, snapshotName\)/);
+for (const [source, expectedCalls, expectedSourcePaths] of [
+  [appViewerFileActionsHook, 1, 1],
+  [appKetcherActionsHook, 1, 1],
+  [appGridFileActionsHook, 4, 5],
+]) {
+  assert.equal((source.match(/invoke<string>\("save_text_as"/g) ?? []).length, expectedCalls);
+  assert.equal((source.match(/sourcePath:/g) ?? []).length, expectedSourcePaths);
+}
+assert.match(appGridFileActionsHook, /can no longer be saved as/);
+assert.match(appGridFileActionsHook, /rebindSavedGridDocument\(documentId, savedPath\)/);
+assert.match(appGridFileActionsHook, /rebindSavedGridDocument\(documentId, savedPath\)[\s\S]*release_save_as_reservation/);
+assert.match(appGridFileActionsHook, /if \(replacement\.id !== documentId\) closeGridRuntime\(documentId\)/);
+assert.match(appGridFileActionsHook, /Saved \$\{basename\(savedPath\)\}, but could not switch the active document/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "gridDirtyChanged"/);
 assert.match(appGridControlMessagesHook, /updateDirtyGridDocument\(documentId, body\.dirty === true\)/);
-assert.match(appDirtyGridHook, /This grid has unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
-assert.match(appDirtyGridHook, /\$\{dirtyCount\} grid document\$\{dirtyCount === 1 \? " has" : "s have"\} unsaved changes\. Save or Save As before closing to keep edits\. Close without saving\?/);
+assert.match(appDirtyGridHook, /buttons: \{\s*yes: "Review Unsaved Changes…",\s*no: CLOSE_WITHOUT_SAVING_LABEL,\s*cancel: "Cancel"/s);
+assert.match(appDirtyGridHook, /`\$\{dirtyCount\} grid documents have unsaved or in-progress changes\.`/);
 assert.match(appGridFileActionsHook, /body\?\.type === "exportGridMolecule"/);
 assert.match(appGridFileActionsHook, /type: "gridSavedAs"/);
 assert.match(appGridFileActionsHook, /type: "gridSaveAsError"/);
@@ -5773,7 +6099,24 @@ assert.match(fileRouting, /export type GridDelimitedColumnChoice = \{/);
 assert.match(fileRouting, /export function isDelimitedColumnAmbiguity\(error: unknown\)/);
 assert.match(fileRouting, /multiple possible structure columns/);
 assert.match(appFileOpenHook, /const openDelimitedGridDocument = useCallback/);
+assert.match(appFileOpenHook, /const rebindSavedGridDocument = useCallback/);
+assert.match(appFileOpenHook, /rendererMode: "grid2d" as const/);
+assert.match(appFileOpenHook, /request: \{ path, smilesColumn: "smiles" \}/);
+assert.match(appFileOpenHook, /replaceDocument\(documentId, replacement\)/);
 assert.match(appFileOpenHook, /invoke<ViewerDocument>\("open_delimited_grid_document"/);
+assert.match(appFileOpenHook, /openStateRevision: currentDocumentRegistryRevision\(\)/);
+assert.match(appFileOpenHook, /abortOpenDocumentClaims\(result\.documents\)/);
+assert.match(appDockPayloadHook, /openStateRevision: currentDocumentRegistryRevision\(\)/);
+assert.match(appDockPayloadHook, /abortOpenDocumentClaims\(discardedDocuments\)/);
+assert.match(appDockPayloadHook, /let unmaterializedDocuments: Array<ViewerDocument \| TextFileDocument> = \[\];/);
+assert.match(appDockPayloadHook, /unmaterializedDocuments\.push\(\.\.\.structurePathResult\.documents\);/);
+assert.match(appDockPayloadHook, /unmaterializedDocuments\.push\(\.\.\.spectrumTextResult\.documents\);/);
+assert.match(appDockPayloadHook, /unmaterializedDocuments\.push\(\.\.\.textResult\.documents\);/);
+assert.match(appDockPayloadHook, /const materializedStructureClaims = new Set<ViewerDocument \| TextFileDocument>\(\[/);
+assert.match(appDockPayloadHook, /unmaterializedDocuments = unmaterializedDocuments\.filter\(\(document\) => !materializedStructureClaims\.has\(document\)\);/);
+assert.match(appDockPayloadHook, /const materializedTextClaims = new Set<ViewerDocument \| TextFileDocument>\(openedTextDocuments\);/);
+assert.match(appDockPayloadHook, /unmaterializedDocuments = unmaterializedDocuments\.filter\(\(document\) => !materializedTextClaims\.has\(document\)\);/);
+assert.match(appDockPayloadHook, /if \(unmaterializedDocuments\.length > 0\) \{\s*void abortOpenDocumentClaims\(unmaterializedDocuments\)/);
 assert.match(appFileOpenHook, /const showDelimitedGridColumnOpenMenu = useCallback/);
 assert.match(appFileOpenHook, /invoke<GridDelimitedColumnChoice\[\]>\("grid_delimited_columns"/);
 assert.match(appFileOpenHook, /void showDelimitedGridColumnOpenMenu\(cleanPaths\[0\], effectivePreferences, options\.replace === true\)/);
@@ -5863,6 +6206,7 @@ assert.match(appViewerStateMessagesHook, /openCommandPalette\(\);\s*return true;
 assert.match(appViewerStateMessagesHook, /body\?\.type === "toggleSidebar"/);
 assert.match(appViewerStateMessagesHook, /toggleSidebar\(\);\s*return true;/);
 assert.match(appViewerStateMessagesHook, /body\?\.type === "selectionChanged"/);
+assert.match(appViewerStateMessagesHook, /atomCount !== null && Number\.isFinite\(atomCount\) && atomCount > 0/);
 assert.match(appViewerStateMessagesHook, /setViewerLigandSelections/);
 assert.match(appViewerStateMessagesHook, /body\?\.type === "rendererChanged"/);
 assert.match(appViewerStateMessagesHook, /xyzrenderPresetOptions: presetOptions/);
@@ -5876,19 +6220,27 @@ assert.match(appMaintenanceHook, /Quick Look reset completed/);
 assert.match(appMaintenanceHook, /Quick Look reset reported issues/);
 assert.doesNotMatch(app, /Quick Look reset requested/);
 
-assert.match(shortcutDocs, /\| Cmd\+P or \/ \| Open command palette \|/);
+assert.match(shortcutDocs, /\| Cmd\+Shift\+P or \/ \| Open command palette \|/);
+assert.match(shortcutDocs, /\| Cmd\+N \| Open a new Burrete window \|/);
+assert.match(shortcutDocs, /\| Cmd\+T \| Open a new launcher tab \|/);
 assert.match(shortcutDocs, /\| Cmd\+B \| Toggle sidebar \|/);
 assert.match(shortcutDocs, /\| Cmd\+Shift\+O \| Open most recent structure \|/);
 assert.match(shortcutDocs, /\| Cmd\+Shift\+R \| Reveal active structure in Finder \|/);
 assert.match(shortcutDocs, /\| Cmd\+Shift\+C \| Copy active structure path \|/);
-assert.match(shortcutDocs, /\| Cmd\+I \| Show active structure metadata \|/);
+assert.match(shortcutDocs, /\| Cmd\+I \| Get information about the active file \|/);
+assert.match(shortcutDocs, /\| Cmd\+W \| Close the active tab \|/);
+assert.match(shortcutDocs, /\| Cmd\+Shift\+W \| Close the active window \|/);
+assert.match(shortcutDocs, /\| Control\+Tab \| Select the next tab \|/);
+assert.match(shortcutDocs, /\| Control\+Shift\+Tab \| Select the previous tab \|/);
+assert.match(shortcutDocs, /\| Cmd\+Z \| Undo in the active text or collection context \|/);
+assert.match(shortcutDocs, /\| Cmd\+Shift\+Z \| Redo in the active text or collection context \|/);
 assert.match(shortcutDocs, /\| Cmd\+Shift\+E \| Export active external preview as PNG \|/);
 assert.match(shortcutDocs, /\| Cmd\+Option\+E \| Export active external preview as SVG \|/);
 assert.match(shortcutDocs, /Search Projects and Structures/);
 assert.match(shortcutDocs, /Open Recent/);
 assert.match(shortcutDocs, /Reveal in Finder/);
 assert.match(shortcutDocs, /Copy Path/);
-assert.match(shortcutDocs, /Show Metadata/);
+assert.match(shortcutDocs, /Get Info/);
 assert.match(shortcutDocs, /Export Preview as PNG/);
 assert.match(shortcutDocs, /Export Preview as SVG/);
 assert.match(shortcutDocs, /Clear Recent Structures/);
@@ -6050,7 +6402,8 @@ assert.doesNotMatch(gridViewer, /railKeyHandler: null/);
 assert.doesNotMatch(gridViewer, /popover\.dataset\.state/);
 assert.doesNotMatch(gridViewer, /role="listbox"/);
 assert.doesNotMatch(gridViewer, /role="option" aria-selected="false"/);
-assert.match(gridViewer, /event\.key\.toLowerCase\(\) === 'a'/);
+assert.match(gridViewer, /const key = event\.key\?\.toLowerCase\(\)/);
+assert.match(gridViewer, /commandKey && key === 'a'/);
 assert.match(gridViewer, /state\.selected\.clear\(\)/);
 assert.match(gridCss, /--buret-control-height: 36px;/);
 assert.match(gridCss, /--buret-control-surface: rgba\(255, 255, 255, 0\.075\);/);
@@ -6642,6 +6995,9 @@ assert.match(previewViewer, /event\.key === 'ArrowRight'/);
 assert.doesNotMatch(moleculeStore, /function persistedDocuments\(documents: ViewerDocument\[\]\)/);
 assert.match(moleculeStore, /tab\.location\.kind !== "fep-network"/);
 assert.match(moleculeStore, /openFepNetworkTab:/);
-assert.match(moleculeStore, /if \(isPersistentViewerDocument\(document\)\) byPath\.set\(document\.path, toRecentStructure\(document\)\)/);
+assert.match(
+  moleculeStore,
+  /normalizeGlobalRecentStructures\(incoming\s*\.filter\(isPersistentViewerDocument\)\s*\.map\(toRecentStructure\)\)/,
+);
 
 console.log('ui shell contract tests passed');

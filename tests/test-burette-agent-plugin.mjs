@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFile, readdir, stat, unlink } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { editStructureFragmentFile, extractStructureComponentFile } from "../plugins/burette-agent/mcp/lib/structure-components.mjs";
@@ -107,6 +108,11 @@ for (const [skill, allowImplicitInvocation] of skillInvocationPolicies) {
 }
 
 const installScript = await read("scripts/install-local.mjs");
+const requiredPreviewRuntimeAssets = [
+  "viewer-bootstrap.js",
+  "trajectory-smoothing.js",
+  "openchemlib/openchemlib.js",
+];
 assert.match(installScript, /\.codex", "plugins", "burrete-marketplace"/);
 assert.match(installScript, /"plugin", "marketplace", "add", marketplaceRoot, "--json"/);
 assert.match(installScript, /"plugin", "add", pluginId, "--json"/);
@@ -116,12 +122,74 @@ assert.match(installScript, /\.\/plugins\/burrete/);
 assert.match(installScript, /readPluginVersion/);
 assert.match(installScript, /"mcp\/lib\/server-bundle\.mjs"/);
 assert.match(installScript, /"preview-web\/viewer\.js"/);
+assert.match(installScript, /"browser-shell-dist\/index\.js"/);
+assert.match(installScript, /"scripts\/agent-preview\.mjs"/);
+assert.match(installScript, /"scripts\/agent-shell-server\.mjs"/);
+for (const asset of requiredPreviewRuntimeAssets) {
+  assert.equal(installScript.includes(`"preview-web/${asset}"`), true, `installer does not require ${asset}`);
+}
 assert.match(installScript, /missingBundleFiles/);
 assert.match(installScript, /process\.argv\.includes\("--build"\)/);
 assert.match(installScript, /mcp\/lib\/tool-response 2\.mjs/);
 assert.doesNotMatch(installScript, /\.agents\/plugins\/burrete/);
 assert.doesNotMatch(installScript, /BURRETE_PLUGIN_MARKETPLACE/);
 assert.doesNotMatch(installScript, /"bun", \["install", "--production"\]/);
+
+const buildAgentShellScript = await readFile("scripts/build-agent-shell-plugin.mjs", "utf8");
+for (const asset of requiredPreviewRuntimeAssets) {
+  assert.equal(buildAgentShellScript.includes(`'${asset}'`), true, `generator does not require ${asset}`);
+}
+const bundledAgentShellServer = await read("scripts/agent-shell-server.mjs");
+for (const asset of requiredPreviewRuntimeAssets) {
+  assert.equal(bundledAgentShellServer.includes(`'${asset}'`), true, `bundled server does not serve ${asset}`);
+}
+
+const requiredBundleBlock = installScript.match(/const requiredBundleFiles = \[([\s\S]*?)\n\];/u)?.[1] ?? "";
+const installerRequiredFiles = [...requiredBundleBlock.matchAll(/"([^"]+)"/gu)].map(match => match[1]);
+assert.equal(installerRequiredFiles.length > 0, true);
+for (const missingAsset of [
+  ...requiredPreviewRuntimeAssets.map(asset => `preview-web/${asset}`),
+  "browser-shell-dist/assets/missing-chunk.js",
+  "mcp/lib/server-chunk-missing.mjs",
+]) {
+  const fixtureRoot = await mkdtemp(path.join(tmpdir(), "burrete-plugin-install-contract-"));
+  const fixturePluginRoot = path.join(fixtureRoot, "plugins", "burette-agent");
+  const fixtureHome = path.join(fixtureRoot, "home");
+  try {
+    await mkdir(path.join(fixturePluginRoot, "scripts"), { recursive: true });
+    await cp(path.join(pluginRoot, "scripts", "install-local.mjs"), path.join(fixturePluginRoot, "scripts", "install-local.mjs"));
+    await mkdir(path.join(fixturePluginRoot, ".codex-plugin"), { recursive: true });
+    await writeFile(path.join(fixturePluginRoot, ".codex-plugin", "plugin.json"), '{"version":"0.0.0"}\n');
+    for (const relativePath of installerRequiredFiles) {
+      if (relativePath === missingAsset) continue;
+      const target = path.join(fixturePluginRoot, relativePath);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, relativePath === "browser-shell-dist/index.js"
+        ? 'import "./assets/missing-chunk.js";\n'
+        : relativePath === "mcp/lib/server-bundle.mjs"
+          ? 'import "./server-chunk-missing.mjs";\n'
+        : "fixture\n");
+    }
+    const chunkPath = path.join(fixturePluginRoot, "browser-shell-dist", "assets", "missing-chunk.js");
+    if (missingAsset !== "browser-shell-dist/assets/missing-chunk.js") {
+      await mkdir(path.dirname(chunkPath), { recursive: true });
+      await writeFile(chunkPath, "export {};\n");
+    }
+    const serverChunkPath = path.join(fixturePluginRoot, "mcp/lib/server-chunk-missing.mjs");
+    if (missingAsset !== "mcp/lib/server-chunk-missing.mjs") {
+      await mkdir(path.dirname(serverChunkPath), { recursive: true });
+      await writeFile(serverChunkPath, "export {};\n");
+    }
+    const result = spawnSync(process.execPath, [path.join(fixturePluginRoot, "scripts", "install-local.mjs")], {
+      encoding: "utf8",
+      env: { ...process.env, HOME: fixtureHome },
+    });
+    assert.notEqual(result.status, 0, `installer accepted bundle without ${missingAsset}`);
+    assert.match(result.stderr, new RegExp(missingAsset.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")));
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
+}
 
 const server = await read("mcp/server.mjs");
 assert.match(server, /new McpServer/);
@@ -208,12 +276,17 @@ assert.equal(packDryRun.status, 0, packDryRun.stderr);
 const packPayload = JSON.parse(packDryRun.stdout);
 const packedFiles = new Set(packPayload[0].files.map(file => file.path));
 for (const asset of [
+  "browser-shell-dist/boot-overlay.js",
   "browser-shell-dist/index.html",
+  "browser-shell-dist/index.js",
   "preview-web/index.html",
   "preview-web/viewer.js",
+  "preview-web/viewer-bootstrap.js",
+  "preview-web/trajectory-smoothing.js",
   "preview-web/grid-viewer.js",
   "preview-web/grid-ui.js",
   "preview-web/grid.css",
+  "preview-web/openchemlib/openchemlib.js",
   "preview-web/rdkit/RDKit_minimal.js",
   "preview-web/rdkit/RDKit_minimal.wasm",
   "scripts/agent-preview.mjs",
@@ -222,6 +295,22 @@ for (const asset of [
   "scripts/install-local.mjs",
 ]) {
   assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
+}
+
+for (const entrypoint of ["browser-shell-dist/index.html", "browser-shell-dist/index.js"]) {
+  const source = await read(entrypoint);
+  for (const match of source.matchAll(/["'`](?:\.\/)?(assets\/[^"'`?#\s]+)["'`]/gu)) {
+    const reference = path.posix.normalize(match[1]);
+    if (!reference.startsWith("assets/")) continue;
+    const referencedAsset = path.posix.join("browser-shell-dist", reference);
+    assert.equal(packedFiles.has(referencedAsset), true, `npm package is missing ${referencedAsset}`);
+  }
+}
+
+const bundledServerSource = await read("mcp/lib/server-bundle.mjs");
+for (const match of bundledServerSource.matchAll(/["']\.\/(server-chunk-[^"'/?#\s]+\.mjs)["']/gu)) {
+  const referencedChunk = path.posix.join("mcp/lib", match[1]);
+  assert.equal(packedFiles.has(referencedChunk), true, `npm package is missing ${referencedChunk}`);
 }
 
 const browserShellJavaScript = [

@@ -107,6 +107,7 @@ export type ConformerToolStatus = {
 export type ConformerStatus = {
   crest: ConformerToolStatus;
   prism: ConformerToolStatus;
+  openbabel?: ConformerToolStatus;
 };
 
 export type ConformerSettings = {
@@ -385,6 +386,7 @@ export type ViewerDocument = {
   runtimePath: string;
   byteCount: number;
   virtual?: boolean;
+  openClaimId?: string;
   sourcePath?: string | null;
   dockingRequest?: DockingDocumentRequest;
   mergedCollection?: MergedCollectionDocument;
@@ -403,6 +405,7 @@ export type TextFileDocument = {
   content: string;
   truncated: boolean;
   modifiedAt?: number | null;
+  openClaimId?: string;
 };
 
 export type RecentStructure = {

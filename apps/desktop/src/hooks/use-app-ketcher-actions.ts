@@ -9,8 +9,17 @@ import { conformerGenerationPreferences, generated3DStatus, type ConformerGenera
 import { downloadTextFile, exportDialogFilters, safeExportFileName, stableTextDocumentId } from "../lib/file-export";
 import { pathExtension } from "../lib/file-routing";
 import { ketcherDraftMolfileFromImportText, ketcherSource3DFromText, queueKetcherImportRequest } from "../lib/ketcher-workflow";
+import { currentDocumentRegistryRevision } from "../lib/native-menu";
+import { abortOpenDocumentClaims } from "../lib/open-document-claims";
 import { basename } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
+import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
+import {
+  isGridDocumentCloseTransitionActive,
+  runWindowMutation,
+  setGridDocumentCloseTransition,
+  waitForGridDocumentCloseTransition,
+} from "../lib/window-mutation-barrier";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type {
   TextFileDocument,
@@ -27,6 +36,8 @@ type UseAppKetcherActionsOptions = {
   addDocuments: (documents: ViewerDocument[]) => void;
   addTextDocuments: (documents: TextFileDocument[]) => void;
   closeTab: (id: string) => void;
+  documents: ViewerDocument[];
+  isDirtyGridDocument: (documentId: string) => boolean;
   mergeMoleculeCollections: MergeMoleculeCollections;
   openDocumentsInActiveTab: (documents: ViewerDocument[]) => void;
   openKetcherTab: OpenKetcherTab;
@@ -37,12 +48,15 @@ type UseAppKetcherActionsOptions = {
   setActiveDocument: (id: string) => void;
   setStructureDragActive: (active: boolean) => void;
   tabs: MoleculeTab[];
+  updateDirtyGridDocument: (documentId: string, dirty: boolean) => void;
 };
 
 export function useAppKetcherActions({
   addDocuments,
   addTextDocuments,
   closeTab,
+  documents,
+  isDirtyGridDocument,
   mergeMoleculeCollections,
   openDocumentsInActiveTab,
   openKetcherTab,
@@ -53,6 +67,7 @@ export function useAppKetcherActions({
   setActiveDocument,
   setStructureDragActive,
   tabs,
+  updateDirtyGridDocument,
 }: UseAppKetcherActionsOptions) {
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
@@ -150,7 +165,11 @@ export function useAppKetcherActions({
         filters: exportDialogFilters(title, "text/plain"),
       });
       if (!outputPath) return;
-      const savedPath = await invoke<string>("save_text_as", { text: request.text, outputPath });
+      const savedPath = await invoke<string>("save_text_as", {
+        text: request.text,
+        outputPath,
+        sourcePath: null,
+      });
       pushStatus(`Saved ${basename(savedPath)}`);
     } catch (error) {
       pushErrorStatus(error, "Save Ketcher export failed");
@@ -201,12 +220,16 @@ export function useAppKetcherActions({
     extension: string;
     text: string;
   }) => {
+    if (isGridDocumentCloseTransitionActive(request.documentId)) {
+      throw new Error("Wait for the collection update to finish before applying the grid edit.");
+    }
     const ketcherTabId = tabs.find((tab) => tab.location.kind === "ketcher")?.id ?? null;
-    const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(request.documentId)}"]`);
+    const iframe = activeViewerIframeForDocument(request.documentId, "grid2d");
     if (!iframe?.contentWindow) {
       pushStatus("Grid edit target is not open.", "error");
       return;
     }
+    updateDirtyGridDocument(request.documentId, true);
     iframe.contentWindow.postMessage({
       source: "burrete-grid-host",
       body: {
@@ -225,13 +248,53 @@ export function useAppKetcherActions({
       }, 0);
     }
     pushStatus("Applied Ketcher edit to grid");
-  }, [closeTab, pushStatus, setActiveDocument, tabs]);
+  }, [closeTab, pushStatus, setActiveDocument, tabs, updateDirtyGridDocument]);
 
   const clearKetcherImportRequest = useCallback((id: number) => {
     setKetcherImportRequest((request) => (request?.id === id ? null : request));
   }, []);
 
   const openKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
+    const materializeCollectionDocument = (
+      targetDocument: ViewerDocument | undefined,
+      mutationKey: string,
+      writeDocument: () => Promise<ViewerDocument>,
+    ) => {
+      const gridTargetId = targetDocument?.renderer === "grid2d" ? targetDocument.id : null;
+      const targetMutationKey = targetDocument?.id ?? mutationKey;
+      const operation = async () => {
+        if (gridTargetId && isDirtyGridDocument(gridTargetId)) {
+          throw new Error("Save or undo the open collection's changes before replacing its file.");
+        }
+
+        const document = await writeDocument();
+        if (gridTargetId && isDirtyGridDocument(gridTargetId)) {
+          await abortOpenDocumentClaims([document]).catch((error) => {
+            console.warn("Open document claim abort failed", error);
+          });
+          throw new Error("Save or undo the open collection's changes before replacing its file.");
+        }
+        try {
+          openDocumentsInActiveTab([document]);
+        } catch (error) {
+          await abortOpenDocumentClaims([document]).catch((abortError) => {
+            console.warn("Open document claim abort failed", abortError);
+          });
+          throw error;
+        }
+        return document;
+      };
+      if (!gridTargetId) return runWindowMutation(targetMutationKey, operation);
+      return (async () => {
+        try {
+          setGridDocumentCloseTransition([gridTargetId], true);
+          await waitForGridDocumentCloseTransition([gridTargetId]);
+          return await runWindowMutation(targetMutationKey, operation);
+        } finally {
+          setGridDocumentCloseTransition([gridTargetId], false);
+        }
+      })();
+    };
     const rendererMode: ViewerPreferences["rendererMode"] = request.target === "grid"
       ? "grid2d"
       : request.target === "molstar" || request.target === "generate3d"
@@ -245,15 +308,21 @@ export function useAppKetcherActions({
     try {
       if (request.target === "collection" && request.collectionTargetPath) {
         if (isTauriRuntime()) {
-          const document = await invoke<ViewerDocument>("append_to_molecule_collection", {
-            request: {
-              targetPath: request.collectionTargetPath,
-              extension: request.extension,
-              text: request.text,
-            },
-            preferences: effectivePreferences,
-          });
-          openDocumentsInActiveTab([document]);
+          const targetDocument = documents.find((document) => (
+            document.id === request.collectionTargetPath
+            || document.path === request.collectionTargetPath
+          ));
+          const document = await materializeCollectionDocument(targetDocument, request.collectionTargetPath, () => (
+            invoke<ViewerDocument>("append_to_molecule_collection", {
+              request: {
+                targetPath: request.collectionTargetPath,
+                extension: request.extension,
+                text: request.text,
+              },
+              preferences: effectivePreferences,
+              openStateRevision: currentDocumentRegistryRevision(),
+            })
+          ));
           rememberRecentStructures([document]);
           pushStatus(`Added Ketcher sketch to ${basename(document.path)}`);
           return;
@@ -279,15 +348,18 @@ export function useAppKetcherActions({
             pushStatus("New collection canceled");
             return;
           }
-          const document = await invoke<ViewerDocument>("create_molecule_collection", {
-            request: {
-              outputPath,
-              extension: request.extension,
-              text: request.text,
-            },
-            preferences: effectivePreferences,
-          });
-          openDocumentsInActiveTab([document]);
+          const targetDocument = documents.find((document) => document.path === outputPath);
+          const document = await materializeCollectionDocument(targetDocument, outputPath, () => (
+            invoke<ViewerDocument>("create_molecule_collection", {
+              request: {
+                outputPath,
+                extension: request.extension,
+                text: request.text,
+              },
+              preferences: effectivePreferences,
+              openStateRevision: currentDocumentRegistryRevision(),
+            })
+          ));
           rememberRecentStructures([document]);
           pushStatus(`Created ${basename(document.path)}`);
           return;
@@ -367,7 +439,7 @@ export function useAppKetcherActions({
       pushErrorStatus(error, "Open Ketcher sketch failed");
       throw error;
     }
-  }, [addDocuments, mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [addDocuments, documents, isDirtyGridDocument, mergeMoleculeCollections, openDocumentsInActiveTab, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   return {
     applyKetcherToGridRow,

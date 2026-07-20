@@ -79,7 +79,7 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
     pushStatus("Installing update...");
     try {
       clearDismissedUpdate();
-      await invoke("install_update", {
+      const restarting = await invoke<boolean>("install_update", {
         request: {
           tagName: release.tagName,
           assetName: release.installAsset.name,
@@ -97,6 +97,14 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
           allowSameVersion: release.replacesCurrentBuild,
         },
       });
+      if (!restarting) {
+        setUpdate((previous) => ({
+          ...previous,
+          isInstalling: false,
+          statusText: "Update restart cancelled. Your downloaded update remains staged.",
+        }));
+        pushStatus("Update restart cancelled");
+      }
     } catch (error) {
       setUpdate((previous) => ({
         ...previous,

@@ -52,7 +52,9 @@ const STATIC_MIME_TYPES = new Map([
 ]);
 const RUNTIME_ASSET_PATHS = new Set([
   'viewer-runtime.css',
+  'viewer-bootstrap.js',
   'viewer-shell.js',
+  'trajectory-smoothing.js',
   'molstar.css',
   'molstar.js',
   'burette-agent.js',
@@ -60,6 +62,7 @@ const RUNTIME_ASSET_PATHS = new Set([
   'grid-viewer.js',
   'grid-ui.js',
   'grid.css',
+  'openchemlib/openchemlib.js',
   'rdkit/RDKit_minimal.js',
   'rdkit/RDKit_minimal.wasm',
 ]);

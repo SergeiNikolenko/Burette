@@ -7,6 +7,24 @@ async function source(path) {
   return readFile(resolve(path), 'utf8');
 }
 
+function assertSourceIncludesAll(sourceText, values, surface) {
+  for (const value of values) {
+    assert.ok(sourceText.includes(`"${value}"`), `${surface} is missing ${value}`);
+  }
+}
+
+function assertMenuItemAccelerator(sourceText, id, accelerator) {
+  const start = sourceText.indexOf(`with_id("${id}"`);
+  assert.ok(start >= 0, `native menu is missing ${id}`);
+  const end = sourceText.indexOf('.build(app)', start);
+  assert.ok(end > start, `native menu item ${id} has no build boundary`);
+  const itemSource = sourceText.slice(start, end);
+  assert.ok(
+    itemSource.includes(`.accelerator("${accelerator}")`),
+    `${id} must use ${accelerator}`,
+  );
+}
+
 async function exists(path) {
   try {
     await access(resolve(path));
@@ -20,6 +38,10 @@ const [
   commandsIndex,
   lib,
   menu,
+  menuBuild,
+  menuEvents,
+  menuQuit,
+  menuState,
   startupSource,
   startupCommand,
   agentIntegrationCommand,
@@ -99,6 +121,10 @@ const [
   source('apps/desktop/src-tauri/src/commands/mod.rs'),
   source('apps/desktop/src-tauri/src/lib.rs'),
   source('apps/desktop/src-tauri/src/menu.rs'),
+  source('apps/desktop/src-tauri/src/menu/build.rs'),
+  source('apps/desktop/src-tauri/src/menu/events.rs'),
+  source('apps/desktop/src-tauri/src/menu/quit.rs'),
+  source('apps/desktop/src-tauri/src/menu/state.rs'),
   source('apps/desktop/src-tauri/src/startup.rs'),
   source('apps/desktop/src-tauri/src/commands/startup.rs'),
   source('apps/desktop/src-tauri/src/commands/agent_integration.rs'),
@@ -176,6 +202,8 @@ const [
   source('scripts/rdkit_conformer.py'),
 ]);
 const previewFormatsSource = previewFormats;
+const nativeMenuSource = [menu, menuBuild, menuEvents, menuQuit, menuState].join('\n');
+const macosTerminationSource = await source('apps/desktop/src-tauri/src/macos.rs');
 const previewTrace = await source('apps/desktop/src-tauri/src/preview/trace.rs');
 const nightlySmokeWorkflow = await source('.github/workflows/nightly-smoke.yml');
 
@@ -196,6 +224,7 @@ assert.ok(mainWindowConfig);
 assert.equal(tauriConfig.build.beforeBuildCommand, 'true');
 assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite build --config vite.config.ts');
 assert.equal(desktopPackageConfig.scripts['build:tauri'], 'bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build');
+assert.equal(mainWindowConfig.create, false);
 assert.equal(mainWindowConfig.visible, true);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
 assert.equal(tauriConfig.bundle.resources['../../../plugins/burette-agent'], 'plugins/burette-agent');
@@ -208,6 +237,9 @@ assert.ok(defaultCapability.permissions.includes('dialog:allow-message'));
 assert.ok(defaultCapability.permissions.includes('dialog:allow-save'));
 assert.ok(defaultCapability.permissions.includes('core:menu:allow-new'));
 assert.ok(defaultCapability.permissions.includes('core:menu:allow-popup'));
+assert.ok(defaultCapability.permissions.includes('core:window:allow-close'));
+assert.ok(defaultCapability.permissions.includes('core:window:allow-set-enabled'));
+assert.ok(defaultCapability.permissions.includes('core:window:allow-is-enabled'));
 assert.ok(defaultCapability.permissions.includes('core:window:allow-internal-toggle-maximize'));
 assert.deepEqual(defaultCapability.windows, ['main', 'workspace-*']);
 assert.equal(defaultCapability.webviews, undefined);
@@ -294,6 +326,8 @@ for (const commandPath of [
   'commands::documents::open_text_structure',
   'commands::documents::fetch_remote_structure',
   'commands::documents::save_text_as',
+  'commands::documents::release_save_as_reservation',
+  'commands::documents::abort_open_document_claim',
   'commands::descriptors::descriptor_calculate_grid',
   'commands::descriptors::descriptor_start_grid',
   'commands::descriptors::descriptor_grid_job_status',
@@ -935,20 +969,24 @@ assert.match(tray, /pub\(crate\) fn show_main_window/);
 assert.match(tray, /pub\(crate\) fn hide_main_window/);
 assert.match(tray, /tray\.new-window/);
 assert.match(tray, /windows::open_new_workspace_window\(app\)/);
-assert.match(tray, /const DEFAULT_MAIN_WINDOW_WIDTH: f64 = 1180\.0;/);
-assert.match(tray, /const DEFAULT_MAIN_WINDOW_HEIGHT: f64 = 760\.0;/);
-assert.match(tray, /fn normalize_main_window/);
-assert.match(tray, /\.inner_size\(\)/);
-assert.match(tray, /window\.set_size\(Size::Logical\(LogicalSize::new\(/);
-assert.match(tray, /window\.center\(\)/);
+assert.match(tray, /windows::focus_or_create_workspace_window\(app, Some\(windows::MAIN_WINDOW_LABEL\)\)/);
+assert.match(tray, /menu::emit_command_to_window\(&window, "file\.open", None\)/);
+assert.match(tray, /menu::emit_command_to_window\(&window, "settings\.open", None\)/);
 assert.doesNotMatch(tray, /default_window_icon/);
 assert.doesNotMatch(tray, /\.title\("B"\)/);
 assert.match(lib, /mod windows;/);
 assert.match(lib, /windows::focused_window_label\(app\)/);
-assert.match(lib, /windows::show_window\(app, &window_label\)/);
-assert.match(lib, /startup::signal_open_documents_for_window\(app, &window_label, paths\)/);
+assert.match(lib, /RunEvent::Reopen/);
+assert.match(lib, /windows::focus_or_create_workspace_window/);
+assert.match(macosTerminationSource, /fn after_current_appkit_event/);
+assert.match(macosTerminationSource, /DispatchQueue::main\(\)\.exec_async\(work\)/);
+assert.match(lib, /macos::after_current_appkit_event\(initial_workspace\)/);
+assert.match(lib, /startup::signal_open_documents_for_window\(app, window\.label\(\), paths\)/);
 assert.match(windowsSource, /pub\(crate\) const MAIN_WINDOW_LABEL: &str = "main"/);
 assert.match(windowsSource, /pub\(crate\) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-"/);
+assert.match(windowsSource, /pub\(crate\) fn focus_or_create_workspace_window/);
+assert.match(windowsSource, /create_workspace_window\(app, MAIN_WINDOW_LABEL\.to_string\(\)\)/);
+assert.match(windowsSource, /let label = next_workspace_label\(app\);\s*let window = create_workspace_window\(app, label\.clone\(\)\)\?/);
 assert.match(windowsSource, /WebviewWindowBuilder::new\(app, &label, url\)/);
 assert.match(windowsSource, /index\.html\?burreteWindow=\{label\}/);
 assert.match(windowsSource, /\.transparent\(true\)\s*\.background_color\(Color\(0, 0, 0, 0\)\)/);
@@ -966,42 +1004,283 @@ assert.match(lib, /commands::documents::open_documents/);
 assert.match(lib, /commands::documents::sync_viewer_preferences/);
 assert.match(lib, /commands::quicklook::reset_quick_look/);
 assert.match(lib, /commands::updater::install_update/);
-assert.match(menu, /PredefinedMenuItem::about/);
-assert.match(menu, /PredefinedMenuItem::services/);
-assert.match(menu, /PredefinedMenuItem::show_all/);
-assert.match(menu, /SubmenuBuilder::new\(app, "Help"\)/);
-for (const menuId of [
+assert.match(nativeMenuSource, /PredefinedMenuItem::about/);
+assert.match(nativeMenuSource, /PredefinedMenuItem::services/);
+assert.match(nativeMenuSource, /PredefinedMenuItem::show_all/);
+assert.doesNotMatch(nativeMenuSource, /PredefinedMenuItem::quit/);
+assert.match(nativeMenuSource, /SubmenuBuilder::new\(app, "File"\)/);
+assert.match(nativeMenuSource, /SubmenuBuilder::with_id\(app, "edit\.menu", "Edit"\)/);
+assert.match(nativeMenuSource, /SubmenuBuilder::new\(app, "View"\)/);
+assert.match(nativeMenuSource, /SubmenuBuilder::with_id\(app, "structure\.menu", "Structure"\)/);
+assert.match(nativeMenuSource, /SubmenuBuilder::with_id\(app, "collection\.menu", "Collection"\)/);
+assert.match(nativeMenuSource, /SubmenuBuilder::with_id\(app, WINDOW_SUBMENU_ID, "Window"\)/);
+assert.match(nativeMenuSource, /SubmenuBuilder::with_id\(app, HELP_SUBMENU_ID, "Help"\)/);
+assertSourceIncludesAll(nativeMenuSource, [
+  'app.quit',
   'file.new-window',
+  'file.new-tab',
+  'file.open-clipboard',
   'file.open-recent',
+  'file.save',
+  'file.save-as',
   'file.reveal-active',
   'file.copy-active-path',
   'file.show-active-metadata',
+  'file.export-smiles',
+  'file.export-csv',
   'file.export-preview-png',
   'file.export-preview-svg',
+  'file.close-tab',
+  'file.close-other-tabs',
+  'file.close-all-tabs',
+  'file.close-window',
+  'edit.menu',
+  'edit.undo-grid',
+  'edit.redo-grid',
+  'edit.find',
+  'view.toggle-sidebar',
+  'view.toggle-inspector',
+  'view.toggle-bottom-panel',
+  'view.grid-cards',
+  'view.grid-table',
+  'view.grid-properties',
+  'view.grid-renderer-rdkit',
+  'view.grid-renderer-xyzrender',
+  'view.command-palette',
+  'structure.open-in-molstar',
+  'structure.edit-in-ketcher',
+  'structure.conformers',
+  'structure.generate-3d',
+  'structure.crest-generate',
+  'structure.prism-prune',
+  'structure.xtb',
+  'structure.xtb-optimize',
+  'structure.xtb-properties',
+  'structure.xtb-frequencies',
+  'structure.xtb-vipea',
+  'structure.xtb-fukui',
+  'collection.menu',
+  'collection.copy-selected',
+  'collection.select-all',
+  'collection.clear-selection',
+  'collection.calculate-descriptors',
+  'window.previous-tab',
+  'window.next-tab',
+  'help.keyboard-shortcuts',
+  'help.whats-new',
+  'help.report-issue',
+  'help.runtime-doctor',
+  'help.export-diagnostics',
   'maintenance.clear-preview-cache',
   'maintenance.reset-quick-look',
   'maintenance.open-logs',
+], 'Rust native menu');
+assertSourceIncludesAll(menuEvents, [
+  'file.new-tab',
+  'file.open-clipboard',
+  'file.close-other-tabs',
+  'file.close-all-tabs',
+  'edit.undo-grid',
+  'edit.redo-grid',
+  'edit.find',
+  'structure.crest-generate',
+  'structure.prism-prune',
+  'structure.xtb-optimize',
+  'structure.xtb-properties',
+  'structure.xtb-frequencies',
+  'structure.xtb-vipea',
+  'structure.xtb-fukui',
+  'collection.copy-selected',
+  'collection.select-all',
+  'collection.clear-selection',
+  'collection.calculate-descriptors',
+  'window.previous-tab',
+  'window.next-tab',
+], 'Rust native-menu event dispatcher');
+assert.match(nativeMenuSource, /New Window/);
+for (const [id, accelerator] of [
+  ['settings.open', 'CmdOrCtrl+,'],
+  ['app.quit', 'CmdOrCtrl+Q'],
+  ['file.new-window', 'CmdOrCtrl+N'],
+  ['file.new-tab', 'CmdOrCtrl+T'],
+  ['file.open', 'CmdOrCtrl+O'],
+  ['file.save', 'CmdOrCtrl+S'],
+  ['file.save-as', 'CmdOrCtrl+Shift+S'],
+  ['file.copy-active-path', 'CmdOrCtrl+Shift+C'],
+  ['file.close-tab', 'CmdOrCtrl+W'],
+  ['file.close-window', 'CmdOrCtrl+Shift+W'],
+  ['edit.find', 'CmdOrCtrl+F'],
+  ['edit.undo-grid', 'CmdOrCtrl+Z'],
+  ['edit.redo-grid', 'CmdOrCtrl+Shift+Z'],
+  ['window.previous-tab', 'Ctrl+Shift+Tab'],
+  ['window.next-tab', 'Ctrl+Tab'],
 ]) {
-  assert.match(menu, new RegExp(menuId.replaceAll('.', '\\.')));
+  assertMenuItemAccelerator(nativeMenuSource, id, accelerator);
 }
-assert.match(menu, /New Window/);
-assert.match(menu, /accelerator\("CmdOrCtrl\+Shift\+N"\)/);
-for (const eventName of [
-  'MENU_OPEN_RECENT_EVENT',
-  'MENU_REVEAL_ACTIVE_EVENT',
-  'MENU_COPY_ACTIVE_PATH_EVENT',
-  'MENU_SHOW_ACTIVE_METADATA_EVENT',
-  'MENU_EXPORT_PREVIEW_PNG_EVENT',
-  'MENU_EXPORT_PREVIEW_SVG_EVENT',
-  'MENU_CLEAR_PREVIEW_CACHE_EVENT',
-  'MENU_RESET_QUICK_LOOK_EVENT',
-  'MENU_OPEN_LOGS_EVENT',
+assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+Shift\+N"\)/);
+assert.match(nativeMenuSource, /accelerator\("CmdOrCtrl\+Shift\+P"\)/);
+assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+U"\)/);
+assert.match(nativeMenuSource, /const MENU_COMMAND_EVENT/);
+assert.match(nativeMenuSource, /pub\(crate\) fn emit_command_to_focused_window/);
+assert.match(nativeMenuSource, /pub\(crate\) fn sync_native_menu/);
+for (const field of [
+  'has_active_file',
+  'active_tab_closable',
+  'tab_count',
+  'closable_tab_count',
+  'can_export_external_preview',
+  'document_dirty',
+  'can_redo',
+  'undo_label',
+  'redo_label',
+  'grid_editing_text',
+  'grid_dirty',
+  'grid_export_enabled',
+  'grid_selection_enabled',
+  'can_open_in_molstar',
+  'can_edit_in_ketcher',
+  'can_generate_3d',
+  'can_run_crest',
+  'can_run_prism',
+  'can_run_xtb',
 ]) {
-  assert.match(menu, new RegExp(`pub\\(crate\\) const ${eventName}`));
-  assert.match(lib, new RegExp(`menu::${eventName}`));
+  assert.match(nativeMenuSource, new RegExp(`\\b${field}:`));
 }
-assert.match(menu, /Check for Updates/);
-assert.match(menu, /short_version: Some\(pkg\.version\.to_string\(\)\)/);
+assert.match(nativeMenuSource, /recent_path: Option/);
+assert.match(nativeMenuSource, /path: String/);
+assert.doesNotMatch(nativeMenuSource, /recent_index/);
+assert.match(nativeMenuSource, /RecentMenuSnapshot/);
+assert.match(nativeMenuSource, /state\.validate\(\)\?/);
+assert.match(nativeMenuSource, /sync_document_edited\(&window, state\.document_dirty\)\?/);
+assert.match(nativeMenuSource, /\.with_webview\(move \|webview\| unsafe/);
+assert.match(nativeMenuSource, /let use_grid_history = state\.is_grid && !state\.grid_editing_text/);
+assert.match(nativeMenuSource, /contextual_history_title\("Undo", state\.undo_label\.as_deref\(\)\)/);
+assert.match(nativeMenuSource, /contextual_history_title\("Redo", state\.redo_label\.as_deref\(\)\)/);
+assert.match(nativeMenuSource, /"structure\.open-in-molstar",\s*state\.can_open_in_molstar/s);
+assert.match(nativeMenuSource, /"structure\.edit-in-ketcher",\s*state\.can_edit_in_ketcher/s);
+assert.match(nativeMenuSource, /"structure\.generate-3d",\s*state\.can_generate_3d/s);
+assert.match(nativeMenuSource, /"structure\.crest-generate", state\.can_run_crest/);
+assert.match(nativeMenuSource, /"structure\.prism-prune", state\.can_run_prism/);
+assert.match(nativeMenuSource, /"structure\.xtb-optimize", state\.can_run_xtb/);
+assert.match(nativeMenuSource, /"collection\.copy-selected", has_grid_selection/);
+assert.match(nativeMenuSource, /"collection\.calculate-descriptors",\s*state\.is_grid && state\.grid_has_molecules && !state\.grid_dirty/s);
+assert.match(nativeMenuSource, /"file\.reveal-active", state\.has_active_file/);
+assert.match(lib, /menu::handle_event\(app, event\.id\(\)\.0\.as_str\(\)\)/);
+assert.match(lib, /menu::sync_native_menu/);
+assert.match(tauriPermissionSource, /"sync_native_menu"/);
+for (const command of [
+  'drain_native_menu_commands',
+  'register_exit_preflight_listener',
+  'unregister_exit_preflight_listener',
+  'respond_to_exit_preflight',
+]) {
+  assert.match(lib, new RegExp(`menu::${command}`));
+  assert.match(tauriPermissionSource, new RegExp(`"${command}"`));
+}
+assert.match(nativeMenuSource, /is_recent_menu_item_id\(id\)/);
+assert.match(nativeMenuSource, /recent_path\(app, id\)/);
+assert.match(nativeMenuSource, /WINDOW_REQUIRED_COMMANDS/);
+assert.match(nativeMenuSource, /focus_or_create_workspace_window/);
+assert.match(nativeMenuSource, /emit_command_to_window\(&window, "file\.open-recent", Some\(path\)\)/);
+assert.match(nativeMenuSource, /PendingNativeMenuCommands/);
+assert.match(nativeMenuSource, /MAX_PENDING_COMMANDS_PER_WINDOW/);
+assert.match(nativeMenuSource, /pending\.drain\(window\.label\(\)\)/);
+assert.match(nativeMenuSource, /window\.emit\(MENU_COMMAND_EVENT, \(\)\)/);
+assert.doesNotMatch(nativeMenuSource, /strictly_focused_window/);
+assert.match(tray, /menu::request_quit\(app\)/);
+assert.doesNotMatch(nativeMenuSource, /DirtyWindowRegistry/);
+assert.match(nativeMenuSource, /ExitPreflightCoordinator/);
+assert.match(nativeMenuSource, /QuitGuard/);
+assert.match(nativeMenuSource, /MessageDialogButtons::YesNoCancelCustom/);
+assert.match(nativeMenuSource, /Review Unsaved Changes…/);
+assert.match(nativeMenuSource, /responded_windows\.len\(\) != pending\.expected_windows\.len\(\)/);
+assert.match(nativeMenuSource, /recv_timeout\(EXIT_PREFLIGHT_RESPONSE_TIMEOUT\)/);
+assert.match(nativeMenuSource, /Timed out while checking windows for unsaved changes/);
+assert.match(nativeMenuSource, /close_transition_windows/);
+assert.match(nativeMenuSource, /ExitPreflightOutcome::CloseTransitionActive/);
+assert.match(nativeMenuSource, /Ok\(ExitPreflightOutcome::CloseTransitionActive\) => \{/);
+assert.match(nativeMenuSource, /if let Err\(error\) = transition\.pause_window_interaction\(\)/);
+assert.match(nativeMenuSource, /if dirty_windows\.is_empty\(\) \{[\s\S]*transition\.pause_window_interaction\(\)[\s\S]*show_unsaved_changes_dialog[\s\S]*UnsavedChangesDecision::Proceed[\s\S]*transition\.pause_window_interaction\(\)/);
+assert.match(nativeMenuSource, /show_unsaved_changes_dialog\(app, intent, &dirty_windows\)[\s\S]*dirty_windows[\s\S]*app\.get_webview_window\(label\)[\s\S]*dialog = dialog\.parent\(&window\)/);
+assert.doesNotMatch(nativeMenuSource, /transition\.pause_window_interaction\(\)[\s\S]*if dirty_windows\.is_empty\(\)/);
+assert.match(nativeMenuSource, /window\.is_enabled\(\)/);
+assert.match(nativeMenuSource, /paused_window_labels\.insert\(window\.label\(\)\.to_string\(\)\)/);
+assert.match(nativeMenuSource, /restore_window_interaction\(&self\.app, &self\.paused_window_labels\)/);
+assert.doesNotMatch(nativeMenuSource, /fn set_window_interaction/);
+assert.match(nativeMenuSource, /reset_native_menu_for_no_windows/);
+assert.match(windowsSource, /set_activation_policy\(tauri::ActivationPolicy::Regular\)/);
+assert.match(windowsSource, /\.visible\(false\)/);
+assert.match(windowsSource, /\.focused\(false\)/);
+assert.match(windowsSource, /if created \{\s*let _ = window\.destroy\(\);/);
+assert.doesNotMatch(windowsSource, /window\.set_enabled\(false\)/);
+assert.match(lib, /should_keep_running_after_last_window_closed\(\s*code,/);
+assert.match(lib, /if !keep_running_without_windows \{\s*menu::request_quit\(app\);/);
+assert.match(nativeMenuSource, /if let Err\(error\) = transition\.pause_window_interaction\(\)/);
+assert.match(nativeMenuSource, /let _ = coordinator\.finish\(&request_id\);\s*return Err\(error\);/);
+assert.match(nativeMenuSource, /finish_validation/);
+assert.match(nativeMenuSource, /Window contents changed during exit confirmation/);
+assert.match(nativeMenuSource, /pending\.expected_windows != \*live_windows|&pending\.expected_windows != live_windows/);
+assert.match(menuEvents, /if exit_transition_is_active\(app\) \{\s*return;/);
+assert.match(tray, /if menu::exit_transition_is_active\(app\)/);
+assert.match(windowsSource, /if crate::menu::exit_transition_is_active\(app\)/);
+assert.match(lib, /if menu::exit_transition_is_active\(app\)/);
+assert.match(
+  lib,
+  /RunEvent::ExitRequested \{ code, api, \.\. \} if menu::should_prevent_exit\(app\) =>/,
+);
+assert.match(lib, /api\.prevent_exit\(\)/);
+assert.match(lib, /macos::install_termination_handler\(app\.handle\(\)\)/);
+const tauriBuildIndex = lib.indexOf('.build(tauri::generate_context!())');
+const macosTerminationInstallIndex = lib.indexOf(
+  'macos::install_termination_handler(app.handle())',
+);
+const tauriRunIndex = lib.indexOf('.run(|app, event| match event');
+assert.ok(
+  tauriBuildIndex >= 0 &&
+    tauriBuildIndex < macosTerminationInstallIndex &&
+    macosTerminationInstallIndex < tauriRunIndex,
+  'the macOS termination delegate hook must be installed after Tauri builds the Tao delegate and before the event loop starts',
+);
+assert.match(macosTerminationSource, /sel!\(applicationShouldTerminate:\)/);
+assert.match(macosTerminationSource, /class_addMethod\(/);
+assert.match(macosTerminationSource, /class_getInstanceMethod\(delegate_class, selector\)/);
+assert.match(macosTerminationSource, /NSApplicationTerminateReply::NSTerminateLater/);
+assert.match(macosTerminationSource, /catch_unwind\(std::panic::AssertUnwindSafe\(termination_reply\)\)/);
+assert.match(macosTerminationSource, /run_on_main_thread/);
+assert.match(macosTerminationSource, /replyToApplicationShouldTerminate: response/);
+assert.match(macosTerminationSource, /impl<R: tauri::Runtime> Drop for PendingTerminationReply<R>/);
+assert.match(menuQuit, /pending_termination_reply\.allow\(\)/);
+const unpackIndex = updaterCommand.indexOf('unpack_and_validate_update(');
+const updateLeaseIndex = updaterCommand.indexOf('let _install_lease = UpdateInstallLease::acquire()?;');
+const updateProgressIndex = updaterCommand.indexOf('update_progress::show(');
+const disableInteractionIndex = updaterCommand.indexOf('crate::menu::ExitTransition::acquire(&app)');
+const updatePreflightIndex = updaterCommand.indexOf('crate::menu::confirm_exit(');
+const validateExitIndex = updaterCommand.indexOf('crate::menu::validate_exit_permit(');
+const launchInstallerIndex = updaterCommand.indexOf('launch_installer(');
+const authorizeExitIndex = updaterCommand.indexOf('crate::menu::authorize_exit(');
+const appExitIndex = updaterCommand.indexOf('app.exit(0)');
+assert.ok(unpackIndex >= 0 && unpackIndex < updatePreflightIndex);
+assert.ok(updateLeaseIndex >= 0 && updateLeaseIndex < updateProgressIndex);
+assert.ok(disableInteractionIndex >= 0 && disableInteractionIndex < updatePreflightIndex);
+assert.match(nativeMenuSource, /impl<R: Runtime> Drop for ExitTransition<R>/);
+assert.match(updaterCommand, /compare_exchange\(false, true, Ordering::AcqRel, Ordering::Acquire\)/);
+assert.match(updaterCommand, /impl Drop for UpdateInstallLease/);
+assert.match(updaterCommand, /continue_after_exit_confirmation\(/);
+assert.match(updaterCommand, /update_exit_confirmation_gates_installer_continuation/);
+assert.ok(updatePreflightIndex < launchInstallerIndex);
+assert.ok(updatePreflightIndex < validateExitIndex && validateExitIndex < launchInstallerIndex);
+assert.ok(launchInstallerIndex < authorizeExitIndex);
+assert.ok(authorizeExitIndex < appExitIndex);
+assert.match(updaterCommand, /finish_failed_exit_authorization\(&app, helper, error\)/);
+assert.match(updaterCommand, /helper\.abort\(\)/);
+assert.match(updaterCommand, /helper\.commit\(\)/);
+assert.match(nativeMenuSource, /"Burrete Help"/);
+assert.match(nativeMenuSource, /"Optimize & Calculate Frequencies"/);
+assert.match(nativeMenuSource, /"Calculate Vertical IP\/EA \(IPEA-xTB\)"/);
+assert.match(nativeMenuSource, /"Select Visible Molecules"/);
+assert.doesNotMatch(nativeMenuSource, /Generate Ensemble with CREST…|Prune Conformers with PRISM…|Calculate Descriptors for All Molecules…/);
+assert.match(nativeMenuSource, /Check for Updates/);
+assert.match(nativeMenuSource, /short_version: Some\(pkg\.version\.to_string\(\)\)/);
 
 for (const moduleName of ['runtime_grid', 'runtime_utils', 'runtime_viewer', 'trace']) {
   assert.match(previewIndex, new RegExp(`pub\\(crate\\) mod ${moduleName};`));
@@ -1011,6 +1290,19 @@ assert.match(previewIndex, /pub\(crate\) mod grid_store;/);
 assert.match(previewRuntime, /pub\(crate\) fn open_document_for_window/);
 assert.match(previewRuntime, /runtime_document_id\(window_label, &document_id\)/);
 assert.match(documentsCommand, /window: tauri::WebviewWindow<R>/);
+assert.match(documentsCommand, /fn save_text_as[\s\S]*registry\.with_save_as_permit[\s\S]*registry\.with_write_permit[\s\S]*write_text_atomically\(&output, &text\)/);
+assert.match(documentsCommand, /fn release_save_as_reservation[\s\S]*registry\.release_save_as_reservation/);
+assert.match(documentsCommand, /fn abort_open_document_claim[\s\S]*registry\.abort_open_claim/);
+assert.match(documentsCommand, /fn open_with_provisional_claim[\s\S]*begin_provisional_open[\s\S]*finish_provisional_open/);
+assert.match(documentsCommand, /fn finish_provisional_open[\s\S]*match result[\s\S]*abort_open_claim/);
+assert.match(documentsCommand, /fn write_collection_with_provisional_claim[\s\S]*begin_provisional_open[\s\S]*with_write_permit[\s\S]*abort_open_claim/);
+assert.match(documentsCommand, /fn open_with_provisional_read_claims[\s\S]*begin_provisional_open[\s\S]*abort_open_claim/);
+assert.match(documentsCommand, /fn open_delimited_grid_document[\s\S]*open_with_provisional_claim/);
+assert.match(nativeMenuSource, /document_registry_revision: u64/);
+assert.match(nativeMenuSource, /revision\.cmp\(&current\.revision\)[\s\S]*Ordering::Less => return Ok\(\(\)\)[\s\S]*Ordering::Equal/);
+assert.match(documentsCommand, /fn save_molecule_collection_as[\s\S]*tauri::WebviewWindow[\s\S]*OpenDocumentRegistry[\s\S]*Save destination must be an absolute path[\s\S]*registry\.with_write_permit[\s\S]*copy_file_atomically/);
+assert.doesNotMatch(documentsCommand.match(/fn save_molecule_collection_as[\s\S]*?\n}\n\n#\[tauri::command\]/)?.[0] ?? "", /fs::copy/);
+assert.match(documentsCommand, /preserve_file_metadata\(path, &temporary_path\)\?/);
 assert.match(gridCommand, /runtime_document_id\(window\.label\(\), &request\.document_id\)/);
 assert.match(previewRuntime, /active_pose: Option<usize>/);
 assert.match(previewRuntime, /request\.active_pose/);
@@ -1067,7 +1359,7 @@ assert.match(previewRuntimeGrid, /grid-ui-v10/);
 assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 assert.match(previewXyzrender, /xyzrender-runtime/);
 assert.match(gridViewerJS, /resetDocumentRuntimeState\(\);\n\s+state\.remoteMode = isRemoteMode\(cfg\);/);
-assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
+assert.match(gridViewerJS, /buildUI\(cfg\);\n\s+installGridTextFocusListeners\(\);\n\s+refresh\(cfg\);\n\s+try \{\n\s+await initRDKit\(\);/);
 assert.match(gridViewerJS, /if \(state\.cardRenderer === 'rdkit'\) \{\n\s+if \(state\.remoteMode\) \{\n\s+if \(state\.rows\.length\) void renderVirtualWindow\(cfg, state\.token, \{ force: true \}\);\n\s+\} else \{\n\s+render\(cfg\);\n\s+\}\n\s+\}/);
 assert.match(gridViewerJS, /function supportsXyzrenderCards\(cfg\)/);
 assert.match(gridViewerJS, /cfg\?\.appViewer === true && \(\s*cfg\?\.gridDataMode === 'bridge'/);

@@ -91,14 +91,14 @@ function PoseReviewWorkspace({
   return (
     <section className="pose-review-workspace" aria-label="Pose review workspace">
       <div className="pose-review-pane pose-review-pane-docking">
-        <ViewerFrame document={docking} />
+        <ViewerFrame document={docking} readOnly />
       </div>
       <div className="pose-review-actions" aria-label="Pose review actions">
         <button type="button" onClick={onOpenFepSetup}>FEP Setup</button>
         <span>{fileName(location.receptorPath)} - Pose {referencePose + 1}</span>
       </div>
       <div className="pose-review-pane pose-review-pane-grid">
-        <ViewerFrame document={grid} />
+        <ViewerFrame document={grid} readOnly />
       </div>
     </section>
   );
