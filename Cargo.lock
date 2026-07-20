@@ -357,6 +357,7 @@ dependencies = [
  "burrete-core",
  "cocoa",
  "core-foundation",
+ "dispatch2",
  "ed25519-dalek",
  "flate2",
  "objc",
