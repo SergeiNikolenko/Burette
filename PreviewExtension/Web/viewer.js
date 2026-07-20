@@ -1944,9 +1944,10 @@
   }
 
   function hideGenerate3DMenu({ restoreFocus = false } = {}) {
-    document.querySelector('[data-buret-generate-3d-menu]')?.classList.add('hidden');
+    const menu = document.querySelector('[data-buret-generate-3d-menu]');
+    if (menu && !menu.classList.contains('hidden')) menu.classList.add('hidden');
     const trigger = document.querySelector('[data-buret-action="generate-3d-conformer"]');
-    trigger?.setAttribute('aria-expanded', 'false');
+    if (trigger?.getAttribute('aria-expanded') !== 'false') trigger?.setAttribute('aria-expanded', 'false');
     if (restoreFocus) trigger?.focus?.();
   }
 
@@ -2293,10 +2294,7 @@
 
   function observeMolstarViewportPanel() {
     if (molstarViewportPanelObserver || !document.body) return;
-    const update = () => {
-      const state = refreshMolstarViewportPanelState();
-      if (state.open) hideGenerate3DMenu();
-    };
+    const update = () => refreshMolstarViewportPanelState();
     molstarViewportPanelObserver = new MutationObserver(update);
     molstarViewportPanelObserver.observe(document.body, {
       childList: true,

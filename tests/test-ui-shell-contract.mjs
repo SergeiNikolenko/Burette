@@ -4599,6 +4599,14 @@ assert.match(previewViewer, /activeMolstarPrepared\?\.sdfPoseRecordCount/);
 assert.doesNotMatch(previewViewer, /3D conformer generation is disabled for SDF pose\/conformer sets/);
 assert.match(previewViewer, /const MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS = 'buret-molstar-viewport-panel-open'/);
 assert.match(previewViewer, /function observeMolstarViewportPanel\(\)/);
+assert.doesNotMatch(
+  previewViewer,
+  /const update = \(\) => \{\s*const state = refreshMolstarViewportPanelState\(\);\s*if \(state\.open\) hideGenerate3DMenu\(\);\s*\};/,
+);
+assert.match(
+  previewViewer,
+  /if \(menu && !menu\.classList\.contains\('hidden'\)\) menu\.classList\.add\('hidden'\);/,
+);
 assert.match(previewViewer, /function requestMolecularCompute\(operation = 'generate3d', options = \{\}\)/);
 assert.match(previewViewer, /type: 'molecularCompute'/);
 assert.match(previewViewer, /operation,/);
