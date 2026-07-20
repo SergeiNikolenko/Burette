@@ -470,7 +470,8 @@ button:focus-visible > .shortcut-tooltip {
 }
 .tab > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; }
 .tab:hover { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
-.tab.active { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
+.tab.active { background: var(--surface-subtle-strong); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
+.tab-shell[data-active] .tab { padding-right: 34px; }
 .tab-shell[data-selected="true"] .tab {
   background: var(--surface-selected);
   color: var(--text-secondary);
@@ -507,7 +508,7 @@ button:focus-visible > .shortcut-tooltip {
   color: var(--text-faint);
   background: transparent;
   cursor: default;
-  transition: opacity 120ms ease-out, color 120ms ease-out, transform 120ms ease-out;
+  transition: opacity 120ms ease-out, color 120ms ease-out, background 120ms ease-out, transform 120ms ease-out;
 }
 @container (max-width: 320px) {
   .topbar .tab-history-controls,
@@ -523,7 +524,21 @@ button:focus-visible > .shortcut-tooltip {
 }
 .tab-shell:hover .tab-close,
 .tab-shell:focus-within .tab-close { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
-.tab-close:hover { color: var(--text-secondary); }
+.tab-shell[data-active] .tab-close {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(0, -50%);
+  color: var(--text-muted);
+  background: var(--surface-subtle);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+.tab-close:hover {
+  color: var(--text-secondary);
+  background: var(--surface-hover);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
 .utility-tab { min-width: auto; }
 .workspace { position: relative; min-height: 0; flex: 1; display: flex; }
 .workbench {

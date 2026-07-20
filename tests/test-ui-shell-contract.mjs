@@ -2029,11 +2029,13 @@ assert.match(styles, /\.tab-scroll-region \{[^}]*width: max-content;[^}]*flex: 0
 assert.match(styles, /\.tab-strip-spacer \{[^}]*min-width: 0;[^}]*flex: 1 1 28px/s);
 assert.match(styles, /\.tab-shell \{[^}]*position: relative/s);
 assert.match(styles, /\.tab:hover \{[^}]*backdrop-filter: blur\(40px\)/);
-assert.match(styles, /\.tab\.active \{[^}]*backdrop-filter: blur\(40px\)/);
+assert.match(styles, /\.tab\.active \{[^}]*background: var\(--surface-subtle-strong\);[^}]*backdrop-filter: blur\(40px\)/s);
 assert.match(styles, /\.tab-close \{[^}]*transform: translate\(100%, -50%\);/s);
+assert.match(styles, /\.tab-shell\[data-active\] \.tab \{[^}]*padding-right: 34px;/s);
+assert.match(styles, /\.tab-shell\[data-active\] \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;[^}]*transform: translate\(0, -50%\);[^}]*background: var\(--surface-subtle\);[^}]*backdrop-filter: blur\(20px\)/s);
 assert.match(styles, /\.tab-shell:hover \.tab-close/);
 assert.match(styles, /\.tab-shell:focus-within \.tab-close \{[^}]*transform: translate\(0, -50%\);/s);
-assert.match(styles, /\.tab-close:hover \{ color: var\(--text-secondary\); \}/);
+assert.match(styles, /\.tab-close:hover \{[^}]*color: var\(--text-secondary\);[^}]*background: var\(--surface-hover\);[^}]*backdrop-filter: blur\(20px\)/s);
 assert.match(closeIcon, /export function CloseIcon/);
 assert.match(closeIcon, /className="close-glyph"/);
 assert.doesNotMatch(closeIcon, /from "\.\/system-icon"/);
