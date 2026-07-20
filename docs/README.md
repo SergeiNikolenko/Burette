@@ -14,6 +14,9 @@ contains only documents that describe the active project.
   principles, non-goals, and product voice.
 - [Design direction](design-system.md): current shell reality, source-of-truth
   theme files, surface rules, and component guidance.
+- [shadcn UI migration](shadcn-ui-migration.md): inspected React control
+  inventory, protected runtime contracts, staged component migration, and
+  validation criteria.
 - [Configuration](configuration.md): source-of-truth config files, development
   overrides, runtime environment, release secrets, and smoke/perf variables.
 - [Security and permissions](security-and-permissions.md): local file access,
