@@ -46,14 +46,15 @@ html.buret-transparent-background canvas { background: transparent !important; b
 body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
 strong { font-weight: 400; }
 body.buret-theme-light {
+  --buret-control-fill: rgb(244, 244, 244);
   --buret-shell-background: #ffffff;
-  --buret-panel-background: rgb(248, 248, 248);
-  --buret-toolbar-background: rgb(248, 248, 248);
+  --buret-panel-background: var(--buret-control-fill);
+  --buret-toolbar-background: var(--buret-control-fill);
   --buret-toolbar-border: rgba(0, 0, 0, 0.12);
   --buret-toolbar-hover: rgba(0, 0, 0, 0.08);
   --buret-toolbar-color: rgba(20, 21, 23, 0.92);
-  --buret-molstar-panel-background: rgb(248, 248, 248);
-  --buret-molstar-row-background: rgb(238, 238, 238);
+  --buret-molstar-panel-background: var(--buret-control-fill);
+  --buret-molstar-row-background: var(--buret-control-fill);
   --buret-molstar-field-background: rgb(255, 255, 255);
   --buret-molstar-hover-background: rgb(228, 228, 228);
   --buret-molstar-border: rgba(0, 0, 0, 0.13);
@@ -61,10 +62,10 @@ body.buret-theme-light {
   --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
-  --buret-menu-background: rgb(248, 248, 246);
-  --buret-menu-section-background: rgba(0, 0, 0, 0.055);
-  --buret-menu-input-background: rgba(0, 0, 0, 0.075);
-  --buret-menu-input-focus-background: rgba(0, 0, 0, 0.105);
+  --buret-menu-background: var(--buret-control-fill);
+  --buret-menu-section-background: var(--buret-control-fill);
+  --buret-menu-input-background: var(--buret-control-fill);
+  --buret-menu-input-focus-background: var(--buret-control-fill);
   --buret-menu-border: rgba(0, 0, 0, 0.11);
   --buret-menu-divider: rgba(0, 0, 0, 0.08);
   --buret-menu-toggle-track: rgba(0, 0, 0, 0.16);
@@ -1002,7 +1003,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 #buret-toolbar > * { flex: 0 0 auto; }
 #buret-toolbar.buret-dragging { transition: none; }
 #buret-toolbar .buret-toolbar-content {
-  display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; overflow: hidden;
+  display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; overflow-x: auto; overflow-y: hidden;
   max-width: calc(100vw - 72px); opacity: 1; transform: translateX(0);
   transition:
     max-width 220ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -1011,6 +1012,8 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
     opacity 180ms ease,
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
+#buret-toolbar .buret-toolbar-content::-webkit-scrollbar { display: none; }
+#buret-toolbar .buret-button { flex: 0 0 auto; white-space: nowrap; }
 #buret-toolbar.buret-toolbar-docked .buret-toolbar-content {
   overflow-x: auto;
   overflow-y: hidden;

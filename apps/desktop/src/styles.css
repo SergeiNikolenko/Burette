@@ -17,8 +17,8 @@
   --line: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 24%), transparent);
   --line-subtle: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 24%), transparent);
   --line-subtler: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 15%), transparent);
-  --focus-border: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 65%), transparent);
-  --focus-ring: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 95%), transparent);
+  --focus-border: #0a84ff;
+  --focus-ring: #0a84ff;
   --line-strong: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 65%), transparent);
   --sidebar-divider-right: transparent;
   --workspace-edge-border: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 22%), transparent);
@@ -77,6 +77,18 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   font-size: 13px;
   line-height: 1.2;
 }
+.app-shell::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: calc(var(--chrome-height) - 1px);
+  z-index: 3;
+  height: 1px;
+  background: var(--line-subtler);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 0.08);
+  pointer-events: none;
+}
+.app-shell[data-hosted-mcp-widget="true"]::after { display: none; }
 .app-shell[data-theme="auto"] {
   color-scheme: light dark;
 }
@@ -96,24 +108,25 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --line: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
   --line-subtle: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
   --line-subtler: color-mix(in srgb, black calc(var(--contrast) * 15%), transparent);
-  --focus-border: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
-  --focus-ring: color-mix(in srgb, black calc(var(--contrast) * 120%), transparent);
+  --focus-border: #0a84ff;
+  --focus-ring: #0a84ff;
   --line-strong: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
   --border-color: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
   --surface-primary: var(--bg-base);
   --surface-card: transparent;
-  --surface-subtle: color-mix(in srgb, black calc(var(--contrast) * 18%), transparent);
-  --surface-subtle-strong: color-mix(in srgb, black calc(var(--contrast) * 36%), transparent);
-  --surface-hover: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
-  --surface-active: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
-  --surface-input: color-mix(in srgb, black calc(var(--contrast) * 20%), transparent);
-  --surface-selected: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
+  --control-fill: rgb(244 244 244);
+  --surface-subtle: var(--control-fill);
+  --surface-subtle-strong: var(--control-fill);
+  --surface-hover: var(--control-fill);
+  --surface-active: var(--control-fill);
+  --surface-input: var(--control-fill);
+  --surface-selected: var(--control-fill);
   --surface-palette: color-mix(in srgb, white 86%, transparent);
-  --item-hover-bg: color-mix(in srgb, black calc(var(--contrast) * 16%), transparent);
-  --item-active-bg: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
-  --kbd-bg: color-mix(in srgb, black calc(var(--contrast) * 16%), transparent);
+  --item-hover-bg: var(--control-fill);
+  --item-active-bg: var(--control-fill);
+  --kbd-bg: var(--control-fill);
   --scrollbar-thumb: color-mix(in srgb, black calc(var(--contrast) * 58%), transparent);
-  --tab-active-bg: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
+  --tab-active-bg: var(--control-fill);
   color-scheme: light;
 }
 
@@ -141,24 +154,25 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
     --line: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
     --line-subtle: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
     --line-subtler: color-mix(in srgb, black calc(var(--contrast) * 15%), transparent);
-    --focus-border: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
-    --focus-ring: color-mix(in srgb, black calc(var(--contrast) * 120%), transparent);
+    --focus-border: #0a84ff;
+    --focus-ring: #0a84ff;
     --line-strong: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
     --border-color: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
     --surface-primary: var(--bg-base);
     --surface-card: transparent;
-    --surface-subtle: color-mix(in srgb, black calc(var(--contrast) * 18%), transparent);
-    --surface-subtle-strong: color-mix(in srgb, black calc(var(--contrast) * 36%), transparent);
-    --surface-hover: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
-    --surface-active: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
-    --surface-input: color-mix(in srgb, black calc(var(--contrast) * 20%), transparent);
-    --surface-selected: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
+    --control-fill: rgb(244 244 244);
+    --surface-subtle: var(--control-fill);
+    --surface-subtle-strong: var(--control-fill);
+    --surface-hover: var(--control-fill);
+    --surface-active: var(--control-fill);
+    --surface-input: var(--control-fill);
+    --surface-selected: var(--control-fill);
     --surface-palette: color-mix(in srgb, white 86%, transparent);
-    --item-hover-bg: color-mix(in srgb, black calc(var(--contrast) * 16%), transparent);
-    --item-active-bg: color-mix(in srgb, black calc(var(--contrast) * 26%), transparent);
-    --kbd-bg: color-mix(in srgb, black calc(var(--contrast) * 16%), transparent);
+    --item-hover-bg: var(--control-fill);
+    --item-active-bg: var(--control-fill);
+    --kbd-bg: var(--control-fill);
     --scrollbar-thumb: color-mix(in srgb, black calc(var(--contrast) * 58%), transparent);
-    --tab-active-bg: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
+    --tab-active-bg: var(--control-fill);
   }
 }
 
@@ -247,17 +261,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   padding: var(--chrome-control-padding) 0;
   transition: left 140ms ease-out;
   container-type: inline-size;
-}
-.topbar::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: -12px;
-  bottom: 0;
-  height: 1px;
-  background: var(--line-subtler);
-  box-shadow: 0 8px 18px rgb(0 0 0 / 0.08);
-  pointer-events: none;
 }
 .chrome-button,
 .new-tab {
@@ -453,7 +456,7 @@ button:focus-visible > .shortcut-tooltip {
   max-width: 180px;
   height: var(--chrome-control-height);
   border: 0;
-  border-radius: 8px;
+  border-radius: 12px;
   background: transparent;
   color: var(--text-muted);
   padding: 0 14px;
@@ -1731,7 +1734,7 @@ img.radix-menu-item-icon {
   min-width: 36px;
   height: 30px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 12px;
   background: transparent;
   color: var(--text-muted);
   display: inline-flex;
