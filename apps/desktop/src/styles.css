@@ -1,3 +1,35 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.app-shell[data-effective-theme="dark"] *));
+
+@theme inline {
+  --color-background: var(--shadcn-background);
+  --color-foreground: var(--shadcn-foreground);
+  --color-card: var(--shadcn-card);
+  --color-card-foreground: var(--shadcn-card-foreground);
+  --color-popover: var(--shadcn-popover);
+  --color-popover-foreground: var(--shadcn-popover-foreground);
+  --color-primary: var(--shadcn-primary);
+  --color-primary-foreground: var(--shadcn-primary-foreground);
+  --color-secondary: var(--shadcn-secondary);
+  --color-secondary-foreground: var(--shadcn-secondary-foreground);
+  --color-muted: var(--shadcn-muted);
+  --color-muted-foreground: var(--shadcn-muted-foreground);
+  --color-accent: var(--shadcn-accent);
+  --color-accent-foreground: var(--shadcn-accent-foreground);
+  --color-destructive: var(--shadcn-destructive);
+  --color-destructive-foreground: var(--shadcn-destructive-foreground);
+  --color-border: var(--shadcn-border);
+  --color-input: var(--shadcn-input);
+  --color-ring: var(--shadcn-ring);
+  --radius-sm: calc(var(--control-radius) * 0.6);
+  --radius-md: calc(var(--control-radius) * 0.8);
+  --radius-lg: var(--control-radius);
+  --radius-xl: calc(var(--control-radius) * 1.2);
+}
+
 :root {
   --accent: #af52de;
   --bg-base: #111111;
@@ -65,6 +97,26 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 
 .app-shell {
   --menu-surface: color-mix(in srgb, var(--bg-base) 96%, var(--fg-base) 4%);
+  --shadcn-background: var(--surface-primary);
+  --shadcn-foreground: var(--text-primary);
+  --shadcn-card: var(--surface-card);
+  --shadcn-card-foreground: var(--text-primary);
+  --shadcn-popover: var(--menu-surface);
+  --shadcn-popover-foreground: var(--text-primary);
+  --shadcn-primary: var(--accent);
+  --shadcn-primary-foreground: #ffffff;
+  --shadcn-secondary: var(--surface-subtle);
+  --shadcn-secondary-foreground: var(--text-primary);
+  --shadcn-muted: var(--surface-subtle);
+  --shadcn-muted-foreground: var(--text-muted);
+  --shadcn-accent: var(--surface-hover);
+  --shadcn-accent-foreground: var(--text-primary);
+  --shadcn-destructive: #ff453a;
+  --shadcn-destructive-foreground: #ffffff;
+  --shadcn-border: var(--line-subtle);
+  --shadcn-input: var(--surface-input);
+  --shadcn-ring: var(--focus-ring);
+  --shadcn-disabled-opacity: 0.48;
   position: relative;
   width: 100vw;
   height: 100vh;
@@ -131,12 +183,22 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   color-scheme: light;
 }
 
+.app-shell[data-theme="light"],
+.app-shell[data-effective-theme="light"] {
+  --shadcn-destructive: #d70015;
+}
+
 .app-shell[data-theme="dark"] {
   --bg: rgba(17, 17, 17, 0.715);
   --text: #fcfcfc;
   --text-primary: #fcfcfc;
   --tab-active-bg: rgb(29 29 29);
   color-scheme: dark;
+}
+
+.app-shell[data-theme="dark"],
+.app-shell[data-effective-theme="dark"] {
+  --shadcn-destructive: #ff453a;
 }
 
 @media (prefers-color-scheme: light) {

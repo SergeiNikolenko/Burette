@@ -719,7 +719,7 @@ assert.match(desmondPreviewExtract, /backbone_quota = max\(128, atom_limit \/\/ 
 assert.match(desmondPreviewExtract, /0 means all atoms unless --target-mb is set/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--target-mb"/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
-assert.match(viteConfig, /plugins: \[react\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
+assert.match(viteConfig, /plugins: \[tailwindcss\(\), react\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
 assert.doesNotMatch(viteConfig, /join\(homedir\(\), "Desktop"\),/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
