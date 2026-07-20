@@ -101,6 +101,7 @@
   const DOCKING_TOPOLOGY_TRAJECTORY_FORMATS = new Set(['top', 'psf', 'prmtop', 'tpr']);
   const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
   const MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS = 'buret-molstar-viewport-panel-open';
+  const MOLSTAR_VIEWPORT_POPOVER_OPEN_CLASS = 'buret-molstar-viewport-popover-open';
   let xyzrenderControlsApplyTimer = 0;
   let xyzrenderInlineRequestSerial = 0;
   let xyzrenderSheetRequestSerial = 0;
@@ -239,6 +240,7 @@
       '.msp-plugin input[aria-label], .msp-plugin input[title]'
     );
     if (!control || control.closest('#buret-toolbar, .buret-preview-dock, .buret-generate-3d-control')) return null;
+    if (control.closest('.msp-hover-box-wrapper')) return null;
     return control;
   }
 
@@ -1051,6 +1053,7 @@
   let floatingPanelTrackingInstalled = false;
   let floatingLayoutFrame = 0;
   let molstarViewportPanelOpen = false;
+  let molstarViewportPopoverOpen = false;
   let molstarSelectionControlsOpen = false;
   const previewDockState = { right: false, bottom: false };
   let previewDockObserve = null;
@@ -2291,11 +2294,8 @@
   function observeMolstarViewportPanel() {
     if (molstarViewportPanelObserver || !document.body) return;
     const update = () => {
-      const panel = document.querySelector('.msp-viewport-controls-panel');
-      const rect = panel?.getBoundingClientRect();
-      const open = !!rect && rect.width > 0 && rect.height > 0;
-      if (open) hideGenerate3DMenu();
-      document.body.classList.toggle(MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS, open);
+      const state = refreshMolstarViewportPanelState();
+      if (state.open || state.popoverOpen) hideGenerate3DMenu();
     };
     molstarViewportPanelObserver = new MutationObserver(update);
     molstarViewportPanelObserver.observe(document.body, {
@@ -4274,8 +4274,14 @@
       attributes: true,
       attributeFilter: ['class', 'style', 'hidden', 'aria-hidden']
     });
+    const scheduleViewportPopoverRefresh = (event) => {
+      if (!event.target?.closest?.('.msp-viewport-controls-buttons .msp-hover-box-wrapper')) return;
+      scheduleFloatingLayoutRefresh();
+    };
     window.addEventListener('resize', scheduleFloatingLayoutRefresh);
     document.addEventListener('click', () => setTimeout(scheduleFloatingLayoutRefresh, 0), true);
+    document.addEventListener('pointerover', scheduleViewportPopoverRefresh, true);
+    document.addEventListener('pointerout', scheduleViewportPopoverRefresh, true);
     scheduleFloatingLayoutRefresh();
   }
 
@@ -4289,15 +4295,26 @@
 
   function refreshMolstarViewportPanelState() {
     const panels = Array.from(document.querySelectorAll('.msp-plugin .msp-viewport-controls-panel')).filter(isVisible);
+    const hoverBoxes = Array.from(document.querySelectorAll(
+      '.msp-plugin .msp-viewport-controls-buttons .msp-hover-box-body'
+    )).filter(isVisible);
     panels.forEach(installDraggableViewportPanel);
     const panelOpen = panels.length > 0;
+    const popoverOpen = hoverBoxes.length > 0;
     const selectionOpen = !!visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row');
-    if (panelOpen !== molstarViewportPanelOpen || selectionOpen !== molstarSelectionControlsOpen) {
+    if (
+      panelOpen !== molstarViewportPanelOpen ||
+      popoverOpen !== molstarViewportPopoverOpen ||
+      selectionOpen !== molstarSelectionControlsOpen
+    ) {
       molstarViewportPanelOpen = panelOpen;
+      molstarViewportPopoverOpen = popoverOpen;
       molstarSelectionControlsOpen = selectionOpen;
       const suppressToolbar = panelOpen;
-      if (suppressToolbar) hideGenerate3DMenu();
-      document.body?.classList.toggle('buret-molstar-viewport-panel-open', panelOpen);
+      if (panelOpen || popoverOpen) hideGenerate3DMenu();
+      if (popoverOpen) hideMolstarControlTooltip();
+      document.body?.classList.toggle(MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS, panelOpen);
+      document.body?.classList.toggle(MOLSTAR_VIEWPORT_POPOVER_OPEN_CLASS, popoverOpen);
       document.body?.classList.toggle('buret-molstar-selection-controls-open', selectionOpen);
       const toolbar = document.getElementById('buret-toolbar');
       if (toolbar) {
@@ -4310,7 +4327,7 @@
         }
       }
     }
-    return { open: panelOpen, selectionOpen, panels };
+    return { open: panelOpen, popoverOpen, selectionOpen, panels, hoverBoxes };
   }
 
   function installDraggableViewportPanel(panel) {

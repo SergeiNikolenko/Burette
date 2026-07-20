@@ -2,12 +2,10 @@
 :root {
   --buret-viewer-ui-scale: 0.9;
   --buret-toolbar-safe-top: 12px;
-  --buret-overlay-opacity: 0.90;
-  --buret-overlay-strong-opacity: 0.96;
   --buret-canvas-background: #000000;
   --buret-shell-background: #000000;
-  --buret-panel-background: rgba(18, 20, 22, var(--buret-overlay-opacity));
-  --buret-toolbar-background: rgba(12, 13, 14, var(--buret-overlay-opacity));
+  --buret-panel-background: rgb(18, 20, 22);
+  --buret-toolbar-background: rgb(12, 13, 14);
   --buret-toolbar-border: rgba(255, 255, 255, 0.10);
   --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
   --buret-toolbar-color: rgba(255, 255, 255, 0.94);
@@ -16,10 +14,10 @@
   --buret-generate-3d-control-right: 70px;
   --buret-viewport-controls-top: calc(var(--buret-toolbar-safe-top) + 42px);
   --buret-viewport-panel-max-height: calc(100vh - 96px);
-  --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
-  --buret-molstar-row-background: rgba(24, 26, 29, var(--buret-overlay-strong-opacity));
-  --buret-molstar-field-background: rgba(32, 35, 39, var(--buret-overlay-strong-opacity));
-  --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
+  --buret-molstar-panel-background: rgb(14, 15, 17);
+  --buret-molstar-row-background: rgb(24, 26, 29);
+  --buret-molstar-field-background: rgb(32, 35, 39);
+  --buret-molstar-hover-background: rgb(48, 52, 58);
   --buret-molstar-border: rgba(255, 255, 255, 0.10);
   --buret-molstar-text: rgba(246, 247, 249, 0.94);
   --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
@@ -49,15 +47,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif
 strong { font-weight: 400; }
 body.buret-theme-light {
   --buret-shell-background: #ffffff;
-  --buret-panel-background: rgba(248, 248, 248, var(--buret-overlay-opacity));
-  --buret-toolbar-background: rgba(248, 248, 248, var(--buret-overlay-opacity));
+  --buret-panel-background: rgb(248, 248, 248);
+  --buret-toolbar-background: rgb(248, 248, 248);
   --buret-toolbar-border: rgba(0, 0, 0, 0.12);
   --buret-toolbar-hover: rgba(0, 0, 0, 0.08);
   --buret-toolbar-color: rgba(20, 21, 23, 0.92);
-  --buret-molstar-panel-background: rgba(248, 248, 248, var(--buret-overlay-strong-opacity));
-  --buret-molstar-row-background: rgba(238, 238, 238, var(--buret-overlay-strong-opacity));
-  --buret-molstar-field-background: rgba(255, 255, 255, var(--buret-overlay-strong-opacity));
-  --buret-molstar-hover-background: rgba(228, 228, 228, 0.98);
+  --buret-molstar-panel-background: rgb(248, 248, 248);
+  --buret-molstar-row-background: rgb(238, 238, 238);
+  --buret-molstar-field-background: rgb(255, 255, 255);
+  --buret-molstar-hover-background: rgb(228, 228, 228);
   --buret-molstar-border: rgba(0, 0, 0, 0.13);
   --buret-molstar-text: rgba(32, 33, 35, 0.94);
   --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
@@ -77,15 +75,15 @@ body.buret-theme-light {
 }
 body.buret-theme-dark {
   --buret-shell-background: var(--buret-canvas-background);
-  --buret-panel-background: rgba(18, 20, 22, var(--buret-overlay-opacity));
-  --buret-toolbar-background: rgba(12, 13, 14, var(--buret-overlay-opacity));
+  --buret-panel-background: rgb(18, 20, 22);
+  --buret-toolbar-background: rgb(12, 13, 14);
   --buret-toolbar-border: rgba(255, 255, 255, 0.10);
   --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
   --buret-toolbar-color: rgba(255, 255, 255, 0.94);
-  --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
-  --buret-molstar-row-background: rgba(24, 26, 29, var(--buret-overlay-strong-opacity));
-  --buret-molstar-field-background: rgba(32, 35, 39, var(--buret-overlay-strong-opacity));
-  --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
+  --buret-molstar-panel-background: rgb(14, 15, 17);
+  --buret-molstar-row-background: rgb(24, 26, 29);
+  --buret-molstar-field-background: rgb(32, 35, 39);
+  --buret-molstar-hover-background: rgb(48, 52, 58);
   --buret-molstar-border: rgba(255, 255, 255, 0.10);
   --buret-molstar-text: rgba(246, 247, 249, 0.94);
   --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
@@ -1298,7 +1296,8 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   color: color-mix(in srgb, var(--buret-toolbar-color) 42%, transparent);
   cursor: not-allowed;
 }
-body.buret-molstar-viewport-panel-open .buret-generate-3d-control {
+body.buret-molstar-viewport-panel-open .buret-generate-3d-control,
+body.buret-molstar-viewport-popover-open .buret-generate-3d-control {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -1313,7 +1312,8 @@ body.buret-toolbar-collapsed .buret-generate-3d-control {
   transition-delay: 0s, 0s, 150ms, 0s;
 }
 body.buret-toolbar-collapsed .buret-generate-3d-menu,
-body.buret-molstar-viewport-panel-open .buret-generate-3d-menu {
+body.buret-molstar-viewport-panel-open .buret-generate-3d-menu,
+body.buret-molstar-viewport-popover-open .buret-generate-3d-menu {
   display: none;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1686,12 +1686,12 @@ body.burette-mobile-host .msp-plugin .msp-log,
 body.burette-mobile-host .msp-plugin .msp-sequence {
   border: 0.5px solid rgba(255, 255, 255, 0.20) !important;
   border-radius: var(--buret-molstar-panel-radius) !important;
-  background: rgba(28, 28, 30, 0.76) !important;
+  background: var(--buret-menu-background) !important;
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.38),
     inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
-  -webkit-backdrop-filter: blur(42px) saturate(1.75) !important;
-  backdrop-filter: blur(42px) saturate(1.75) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-left,
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-right,
@@ -1705,7 +1705,7 @@ body.buret-theme-light.burette-mobile-host .msp-plugin .msp-animation-viewport-c
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-log,
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-sequence {
   border-color: rgba(0, 0, 0, 0.10) !important;
-  background: rgba(246, 246, 242, 0.78) !important;
+  background: var(--buret-menu-background) !important;
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
@@ -1960,8 +1960,8 @@ body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-selection-viewp
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-log,
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-sequence,
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-viewport-controls-panel {
-  -webkit-backdrop-filter: blur(42px) saturate(1.75) !important;
-  backdrop-filter: blur(42px) saturate(1.75) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 body.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls,
 body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls {
@@ -1975,15 +1975,15 @@ body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div {
   overflow: hidden;
   border: 0.5px solid rgba(255, 255, 255, 0.20) !important;
   border-radius: 20px !important;
-  background: rgba(28, 28, 30, 0.70) !important;
+  background: var(--buret-menu-background) !important;
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
-  -webkit-backdrop-filter: blur(32px) saturate(1.6);
-  backdrop-filter: blur(32px) saturate(1.6);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls > div,
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div {
   border-color: rgba(0, 0, 0, 0.10) !important;
-  background: rgba(246, 246, 242, 0.76) !important;
+  background: var(--buret-menu-background) !important;
 }
 body.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls button,
 body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls button {
@@ -2061,15 +2061,15 @@ body.burette-mobile-host .buret-docking-poses {
   padding: 6px;
   border: 0.5px solid rgba(255, 255, 255, 0.20);
   border-radius: 20px;
-  background: rgba(28, 28, 30, 0.74);
+  background: var(--buret-menu-background);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
-  -webkit-backdrop-filter: blur(32px) saturate(1.6);
-  backdrop-filter: blur(32px) saturate(1.6);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   font: 500 15px/1.1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 body.buret-theme-light.burette-mobile-host .buret-docking-poses {
   border-color: rgba(0, 0, 0, 0.10);
-  background: rgba(246, 246, 242, 0.76);
+  background: var(--buret-menu-background);
 }
 body.burette-mobile-host .buret-docking-poses button {
   min-width: 44px;
