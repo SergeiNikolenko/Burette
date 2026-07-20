@@ -40,6 +40,7 @@
   --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='gray' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 4.5l3 3 3-3'/></svg>");
   --tab-active-bg: rgb(29 29 29);
   --chrome-control-height: 32px;
+  --control-radius: 10px;
   --chrome-control-padding: 12px;
   --chrome-height: 56px;
   --chrome-drag-height: 72px;
@@ -267,7 +268,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   position: relative;
   height: var(--chrome-control-height);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-muted);
   display: inline-flex;
@@ -330,7 +331,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   min-height: 28px;
   max-width: min(240px, calc(100vw - 16px));
   padding: 7px 8px 7px 10px;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: color-mix(in srgb, var(--bg-base) 82%, transparent);
   color: var(--text-primary);
   box-shadow: 0 8px 22px rgb(0 0 0 / 0.28);
@@ -438,7 +439,7 @@ button:focus-visible > .shortcut-tooltip {
   width: 28px;
   height: var(--chrome-control-height);
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-icon-muted);
   font-size: 16px;
@@ -634,7 +635,7 @@ button:focus-visible > .shortcut-tooltip {
   height: 28px;
   flex: 0 0 28px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -652,7 +653,7 @@ button:focus-visible > .shortcut-tooltip {
 .sidebar-search-row {
   width: 100%;
   height: var(--chrome-control-height);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   border: 0;
   background: var(--surface-input);
   margin: 0 0 calc(var(--chrome-control-padding) + 4px);
@@ -705,7 +706,7 @@ button:focus-visible > .shortcut-tooltip {
 .sidebar-search-action-row {
   width: 100%;
   min-height: 32px;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   border: 0;
   background: transparent;
   margin: -4px 0 10px;
@@ -724,7 +725,7 @@ button:focus-visible > .shortcut-tooltip {
 .sidebar-tool-row {
   width: 100%;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   border: 0;
   background: transparent;
   margin: 0 0 10px;
@@ -790,7 +791,7 @@ kbd span { margin-left: 2px; }
   flex: 1;
   height: 30px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-faint);
   padding: 0 8px;
@@ -826,7 +827,7 @@ kbd span { margin-left: 2px; }
   height: 30px;
   flex: 0 0 30px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-faint);
   padding: 0;
@@ -850,7 +851,7 @@ kbd span { margin-left: 2px; }
   width: 100%;
   min-height: 32px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-secondary);
   padding: 5px 64px 5px 10px;
@@ -946,7 +947,7 @@ kbd span { margin-left: 2px; }
   width: 30px;
   height: 30px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   padding: 0;
   display: grid;
   place-items: center;
@@ -985,7 +986,7 @@ kbd span { margin-left: 2px; }
   position: relative;
   width: 100%;
   min-height: 28px;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   color: var(--text-secondary);
   padding: 5px 40px 5px calc(6px + (var(--project-depth, 0) * 6px));
   display: flex;
@@ -1054,7 +1055,7 @@ kbd span { margin-left: 2px; }
   width: 100%;
   min-height: 32px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-secondary);
   padding: 5px 38px 5px 10px;
@@ -1075,7 +1076,7 @@ kbd span { margin-left: 2px; }
   width: 100%;
   min-height: 32px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-faint);
   padding: 5px 10px 5px 36px;
@@ -1355,7 +1356,7 @@ img.radix-menu-item-icon {
 }
 .empty-sidebar { color: var(--text-muted); font-size: 13px; padding: 8px; line-height: 1.35; }
 .sidebar-footer { position: relative; padding: 12px; display: grid; gap: 2px; }
-.sidebar-product { height: 32px; width: 100%; border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); padding: 0 8px 0 10px; display: flex; align-items: center; gap: 6px; font-weight: 400; line-height: 1.15; text-align: left; transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out; }
+.sidebar-product { height: 32px; width: 100%; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--text-muted); padding: 0 8px 0 10px; display: flex; align-items: center; gap: 6px; font-weight: 400; line-height: 1.15; text-align: left; transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out; }
 .sidebar-product:hover { background: var(--surface-subtle); color: var(--text-secondary); }
 .sidebar-product:active { transform: scale(0.99); }
 .sidebar-product-icon { width: 20px; height: 16px; flex: 0 0 20px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-icon-muted); }
@@ -1367,7 +1368,7 @@ img.radix-menu-item-icon {
   height: 36px;
   width: 100%;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-secondary);
   padding: 0 8px 0 10px;
@@ -1406,7 +1407,7 @@ img.radix-menu-item-icon {
   height: 34px;
   width: 100%;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-muted);
   padding: 0 8px;
@@ -1469,7 +1470,7 @@ img.radix-menu-item-icon {
   width: 100%;
   height: 36px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-secondary);
   padding: 0 10px;
@@ -1836,7 +1837,7 @@ img.radix-menu-item-icon {
   height: 30px;
   flex: 0 0 30px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-icon-muted);
   display: grid;
@@ -1870,7 +1871,7 @@ img.radix-menu-item-icon {
 .dock-metric {
   min-width: 0;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-card);
   padding: 10px;
   display: grid;
@@ -1892,7 +1893,7 @@ img.radix-menu-item-icon {
 .dock-action {
   height: 32px;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-input);
   color: var(--text-secondary);
   padding: 0 12px;
@@ -2156,7 +2157,7 @@ img.radix-menu-item-icon {
 .structure-brief-card {
   min-width: 0;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-card);
   padding: 8px;
   display: grid;
@@ -2887,7 +2888,7 @@ img.radix-menu-item-icon {
   width: max-content;
   max-width: min(260px, calc(100vw - 24px));
   padding: 7px 9px;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: color-mix(in srgb, var(--bg-base) 86%, transparent);
   color: var(--text-primary);
   box-shadow: 0 8px 22px rgb(0 0 0 / 0.28);
@@ -3374,7 +3375,7 @@ img.radix-menu-item-icon {
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-subtle);
 }
 .trajectory-smoothing-power button {
@@ -3429,7 +3430,7 @@ img.radix-menu-item-icon {
   width: max-content;
   max-width: min(260px, calc(100vw - 24px));
   padding: 7px 9px;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: color-mix(in srgb, var(--bg-base) 86%, transparent);
   color: var(--text-primary);
   box-shadow: 0 8px 22px rgb(0 0 0 / 0.28);
@@ -3503,7 +3504,7 @@ img.radix-menu-item-icon {
 .trajectory-smoothing-check input { accent-color: var(--accent); }
 .trajectory-smoothing-update-status { color: var(--accent); font-size: 10px; font-weight: 650; }
 .trajectory-smoothing-update-status[data-complete] { color: color-mix(in srgb, #2da66f 76%, var(--text-primary)); }
-.trajectory-smoothing-error { padding: 8px 9px; border: 1px solid color-mix(in srgb, var(--danger, #c43b45) 35%, var(--line-subtler)); border-radius: 8px; background: color-mix(in srgb, var(--danger, #c43b45) 8%, transparent); color: var(--text-primary); font-size: 11px; line-height: 1.4; }
+.trajectory-smoothing-error { padding: 8px 9px; border: 1px solid color-mix(in srgb, var(--danger, #c43b45) 35%, var(--line-subtler)); border-radius: var(--control-radius); background: color-mix(in srgb, var(--danger, #c43b45) 8%, transparent); color: var(--text-primary); font-size: 11px; line-height: 1.4; }
 .trajectory-smoothing-runtime-row { display: grid; grid-template-columns: minmax(104px, 1fr) auto auto; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line-subtler); color: var(--text-secondary); font-size: 11px; }
 .trajectory-smoothing-runtime-row strong { color: color-mix(in srgb, #2da66f 76%, var(--text-primary)); font-size: 11px; }
 .trajectory-smoothing-runtime-row small { color: var(--text-muted); font-size: 10px; }
@@ -3663,7 +3664,7 @@ img.radix-menu-item-icon {
 }
 .dock-drop-item {
   min-width: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-subtle);
   padding: 8px 10px;
   display: grid;
@@ -3761,7 +3762,7 @@ img.radix-menu-item-icon {
 }
 .dock-empty {
   min-height: 40px;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-subtle);
   color: var(--text-muted);
   display: flex;
@@ -3994,7 +3995,7 @@ img.radix-menu-item-icon {
   align-items: center;
   gap: 8px;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   color: var(--text-muted);
   background: color-mix(in srgb, var(--bg-base) 92%, var(--surface-subtle));
 }
@@ -4144,7 +4145,7 @@ img.radix-menu-item-icon {
 .ketcher-page-icon {
   width: 34px;
   height: 34px;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-subtle);
   color: var(--accent);
   display: grid;
@@ -4180,7 +4181,7 @@ img.radix-menu-item-icon {
   min-width: 0;
   height: 30px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-subtle);
   color: var(--text-secondary);
   padding: 0 12px;
@@ -4213,7 +4214,7 @@ img.radix-menu-item-icon {
   width: min(260px, 72vw);
   padding: 6px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--menu-surface);
   box-shadow: 0 18px 44px var(--shadow);
 }
@@ -4239,7 +4240,7 @@ img.radix-menu-item-icon {
   grid-template-columns: 28px minmax(34px, 1fr) 28px;
   align-items: center;
   overflow: visible;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-subtle);
   color: var(--text-secondary);
 }
@@ -4914,7 +4915,7 @@ img.radix-menu-item-icon {
 .ketcher-drop-overlay > div {
   min-width: 168px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: #ffffff;
   border: 1px solid #d7dce2;
   color: #333333;
@@ -4969,7 +4970,7 @@ img.radix-menu-item-icon {
   margin: 0;
   overflow: auto;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-subtle);
   color: var(--text-secondary);
   padding: 10px 12px;
@@ -5108,7 +5109,7 @@ img.radix-menu-item-icon {
   min-width: 82px;
   height: 30px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-subtle);
   color: var(--text-secondary);
   padding: 0 12px;
@@ -5120,7 +5121,7 @@ img.radix-menu-item-icon {
   min-width: 82px;
   height: 30px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-subtle);
   color: var(--text-secondary);
   padding: 0 12px;
@@ -5214,7 +5215,7 @@ img.radix-menu-item-icon {
   max-width: 260px;
   height: 28px;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-input);
   color: var(--text-secondary);
   padding: 0 28px 0 8px;
@@ -5226,7 +5227,7 @@ img.radix-menu-item-icon {
   align-items: center;
   gap: 6px;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-input);
   color: var(--text-secondary);
   padding: 0 8px;
@@ -5312,7 +5313,7 @@ img.radix-menu-item-icon {
   display: grid;
   gap: 1px;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   overflow: hidden;
 }
 .spectrum-metadata-list > div {
@@ -5836,7 +5837,7 @@ img.radix-menu-item-icon {
   align-items: center;
   gap: 3px;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-subtle);
 }
 .fep-network-segment > span {
@@ -5958,7 +5959,7 @@ img.radix-menu-item-icon {
   align-items: center;
   gap: 8px;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--bg-base) 90%, transparent);
   box-shadow: 0 10px 24px rgb(0 0 0 / 0.12);
@@ -6010,7 +6011,7 @@ img.radix-menu-item-icon {
   grid-template-rows: minmax(0, 1fr) 20px;
   overflow: hidden;
   border: 1px solid var(--line-subtle);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: color-mix(in srgb, var(--bg-base) 97%, var(--surface-subtle));
   box-shadow: 0 6px 18px rgb(0 0 0 / 0.12);
   transform: translate(-50%, -50%);
@@ -6133,7 +6134,7 @@ img.radix-menu-item-icon {
   border-radius: 12px;
 }
 .file-drop-feedback[data-target-kind="tab-strip"] .file-drop-target {
-  border-radius: 8px;
+  border-radius: var(--control-radius);
 }
 .file-drop-card {
   position: fixed;
@@ -6292,7 +6293,7 @@ img.radix-menu-item-icon {
   flex: 0 0 auto;
   height: 28px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-input);
   color: var(--text-secondary);
   padding: 0 10px;
@@ -6346,7 +6347,7 @@ img.radix-menu-item-icon {
   width: 28px;
   height: 28px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-muted);
   padding: 0;
@@ -6490,7 +6491,7 @@ img.radix-menu-item-icon {
 .new-tab-build-badge { min-height: 22px; max-width: 260px; border-radius: 6px; padding: 3px 8px; display: inline-flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--surface-subtle); color: var(--text-secondary); font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: uppercase; }
 .new-tab-build-detail { max-width: 760px; margin: 10px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.35; }
 .new-tab-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.new-tab-page button { position: relative; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 400; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; transition: color 120ms ease, background 120ms ease; }
+.new-tab-page button { position: relative; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 400; height: 28px; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; transition: color 120ms ease, background 120ms ease; }
 .new-tab-page button:hover { color: var(--text-primary); background: transparent; }
 .new-tab-page kbd { font-size: 11px; letter-spacing: 0.16em; color: var(--text-icon-muted); }
 .new-tab-page .shortcut-tooltip-key { color: var(--text-secondary); font-size: 11px; letter-spacing: 0; }
@@ -6508,7 +6509,7 @@ img.radix-menu-item-icon {
 .error-boundary-card h1 { margin: 0; font-size: 16px; font-weight: 400; }
 .error-boundary-card pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .error-boundary-stack { color: #888; }
-.error-boundary-card button { justify-self: start; height: 32px; border: 1px solid #555; border-radius: 8px; background: #333; color: #ccc; padding: 0 12px; }
+.error-boundary-card button { justify-self: start; height: 32px; border: 1px solid #555; border-radius: var(--control-radius); background: #333; color: #ccc; padding: 0 12px; }
 .editor-scroll-container-shell {
   position: relative;
   height: 100%;
@@ -6544,7 +6545,7 @@ img.radix-menu-item-icon {
 .agent-summary-card {
   margin: 0 -14px;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-card);
   display: flex;
   align-items: flex-start;
@@ -6563,7 +6564,7 @@ img.radix-menu-item-icon {
 .agent-integration-section { margin: 0 0 28px; }
 .settings-section h2 { margin: 0 0 12px; color: var(--text-muted); font-size: 13px; font-weight: 400; }
 .agent-integration-section h2 { margin: 0 0 12px; color: var(--text-muted); font-size: 13px; font-weight: 400; }
-.settings-card { margin: 0 -14px; overflow: hidden; border: 1px solid var(--line-subtler); border-radius: 8px; background: var(--surface-card); }
+.settings-card { margin: 0 -14px; overflow: hidden; border: 1px solid var(--line-subtler); border-radius: var(--control-radius); background: var(--surface-card); }
 .settings-control {
   display: flex;
   align-items: flex-start;
@@ -6603,7 +6604,7 @@ img.radix-menu-item-icon {
   margin: 0 -14px 12px;
   overflow: hidden;
   border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-card);
 }
 .agent-disclosure summary {
@@ -6755,7 +6756,7 @@ img.radix-menu-item-icon {
   height: 34px;
   appearance: none;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-input) var(--select-chevron) no-repeat right 10px center / 12px 12px;
   color: var(--text-secondary);
   padding: 0 32px 0 12px;
@@ -6768,7 +6769,7 @@ img.radix-menu-item-icon {
   min-width: 190px;
   height: 36px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-input);
   color: var(--text-secondary);
   padding: 0 10px 0 12px;
@@ -6822,7 +6823,7 @@ img.settings-open-destination-icon {
   align-items: center;
   gap: 8px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-input);
   padding: 4px 12px 4px 4px;
   transition: border-color 120ms ease, background 120ms ease;
@@ -6863,7 +6864,7 @@ img.settings-open-destination-icon {
   height: 34px;
   min-width: 0;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-input);
   color: var(--text-secondary);
   padding: 0 12px;
@@ -6927,7 +6928,7 @@ img.settings-open-destination-icon {
   min-width: 96px;
   height: 34px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   background: var(--surface-input);
   color: var(--text-secondary);
   padding: 0 12px;

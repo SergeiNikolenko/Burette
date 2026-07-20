@@ -1978,6 +1978,8 @@ assert.doesNotMatch(gridViewer, /const theme = cfg\.theme === 'light' \? 'light'
 assert.match(styles, /\.molecule-stage/);
 assert.match(styles, /inset: var\(--chrome-height\) 0 0/);
 assert.match(styles, /--accent: #af52de/);
+assert.match(styles, /--control-radius: 10px/);
+assert.doesNotMatch(styles, /border-radius: 8px/);
 assert.match(styles, /--chrome-drag-height: 72px/);
 assert.match(styles, /\.app-shell\[data-theme="light"\] \{[^}]*--bg-base: #ffffff;[^}]*--fg-base: #0d0d0d;[^}]*--bg: rgba\(255, 255, 255, 0\.715\);[^}]*--surface-card: transparent;/s);
 assert.match(styles, /@media \(prefers-color-scheme: light\) \{[\s\S]*\.app-shell\[data-theme="auto"\] \{[^}]*--bg-base: #ffffff;[^}]*--bg: rgba\(255, 255, 255, 0\.715\);[^}]*--surface-card: transparent;/);
