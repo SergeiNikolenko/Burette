@@ -519,7 +519,7 @@ button:focus-visible > .shortcut-tooltip {
   .topbar .new-tab,
   .topbar .tab-strip-spacer { display: none; }
   .topbar .tab-scroll-region { width: 100%; flex: 1 1 auto; }
-  .topbar .tab-shell { min-width: 0; max-width: 100%; flex: 1 1 auto; }
+  .topbar .tab-shell { min-width: 0; max-width: 100%; flex: 0 0 auto; }
   .topbar .tab { min-width: 0; max-width: 100%; padding-inline: 10px 28px; }
 }
 .tab:hover > span:first-child {
@@ -533,15 +533,12 @@ button:focus-visible > .shortcut-tooltip {
   pointer-events: auto;
   transform: translate(0, -50%);
   color: var(--text-muted);
-  background: var(--surface-subtle);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: transparent;
 }
 .tab-close:hover {
   color: var(--text-secondary);
   background: var(--surface-hover);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
 }
 .utility-tab { min-width: auto; }
 .workspace { position: relative; min-height: 0; flex: 1; display: flex; }
@@ -1710,7 +1707,7 @@ img.radix-menu-item-icon {
 .dock-tab-strip {
   min-width: 0;
   flex: 1;
-  height: 30px;
+  height: 28px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1733,9 +1730,9 @@ img.radix-menu-item-icon {
 .dock-tab {
   max-width: 150px;
   min-width: 36px;
-  height: 30px;
+  height: 28px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text-muted);
   display: inline-flex;
@@ -1780,25 +1777,27 @@ img.radix-menu-item-icon {
 .dock-tab[data-active] {
   background: var(--tab-active-bg);
   color: var(--text-secondary);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
 }
 .dock-tab:active { transform: scale(0.985); }
 .dock-tab-close {
   position: absolute;
-  right: 8px;
+  right: 5px;
   top: 50%;
   transform: translateY(-50%);
-  width: 13px;
-  height: 13px;
+  width: 20px;
+  height: 20px;
   border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--fg-base) 58%, transparent);
-  color: var(--bg-base);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
   display: grid;
   place-items: center;
   padding: 0;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease-out, background 120ms ease-out, transform 120ms ease-out;
+  opacity: 1;
+  pointer-events: auto;
+  transition: color 120ms ease-out, background 120ms ease-out, box-shadow 120ms ease-out;
 }
 .dock-tab-shell:hover .dock-tab-close,
 .dock-tab-shell:focus-within .dock-tab-close {
@@ -1806,14 +1805,15 @@ img.radix-menu-item-icon {
   pointer-events: auto;
 }
 .dock-tab-shell[data-active] .dock-tab {
-  padding-right: 27px;
+  padding-right: 34px;
 }
 .dock-tab-close:hover {
-  background: color-mix(in srgb, var(--fg-base) 72%, transparent);
-  transform: translateY(-50%) scale(1.03);
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
 }
 .dock-panel[data-area="right"] .dock-tab-close {
-  right: 8px;
+  right: 5px;
 }
 @container (min-width: 360px) {
   .dock-panel[data-area="right"] .dock-tab-shell {
