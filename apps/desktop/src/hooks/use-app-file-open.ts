@@ -22,6 +22,8 @@ import {
 } from "../lib/file-routing";
 import { markPerformanceOnce } from "../lib/performance";
 import { fetchRemoteStructure } from "../lib/remote-structure";
+import { currentDocumentRegistryRevision } from "../lib/native-menu";
+import { abortOpenDocumentClaims } from "../lib/open-document-claims";
 import { basename } from "../lib/sidebar-projects";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { readStructureText } from "../lib/structure-text";
@@ -56,6 +58,7 @@ type UseAppFileOpenOptions = {
   pushErrorStatus: PushErrorStatus;
   pushStatus: PushStatus;
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
+  replaceDocument: (documentId: string, replacement: ViewerDocument) => void;
   setActiveDocument: (id: string) => void;
   setDockActiveTab: (area: DockArea, kind: DockTabKind) => void;
   setDockDocument: (area: DockArea, documentId: string | null) => void;
@@ -79,6 +82,7 @@ export function useAppFileOpen({
   pushErrorStatus,
   pushStatus,
   rememberRecentStructures,
+  replaceDocument,
   setActiveDocument,
   setDockActiveTab,
   setDockDocument,
@@ -95,9 +99,17 @@ export function useAppFileOpen({
       const document = await invoke<ViewerDocument>("open_delimited_grid_document", {
         request: { path, smilesColumn },
         preferences: effectivePreferences,
+        openStateRevision: currentDocumentRegistryRevision(),
       });
-      if (replace) setDocuments([document]);
-      else addDocuments([document]);
+      try {
+        if (replace) setDocuments([document]);
+        else addDocuments([document]);
+      } catch (error) {
+        void abortOpenDocumentClaims([document]).catch((abortError) => {
+          console.warn("Open document claim abort failed", abortError);
+        });
+        throw error;
+      }
       rememberRecentStructures([document]);
       pushStatus(`Opened ${document.title}`);
     },
@@ -160,11 +172,24 @@ export function useAppFileOpen({
       pushStatus("Opening structures...");
       try {
         const result = isTauriRuntime()
-          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences: effectivePreferences, reloadOptions, mode: options.mode })
+          ? await invoke<OpenDocumentsResult>("open_documents", {
+              paths: structurePaths,
+              preferences: effectivePreferences,
+              reloadOptions,
+              mode: options.mode,
+              openStateRevision: currentDocumentRegistryRevision(),
+            })
           : await openBrowserDevDocuments(structurePaths, effectivePreferences, reloadOptions);
-        if (options.replace) setDocuments(result.documents);
-        else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
-        else addDocuments(result.documents);
+        try {
+          if (options.replace) setDocuments(result.documents);
+          else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
+          else addDocuments(result.documents);
+        } catch (error) {
+          void abortOpenDocumentClaims(result.documents).catch((abortError) => {
+            console.warn("Open document claim abort failed", abortError);
+          });
+          throw error;
+        }
         if (!options.replace && !options.inActiveTab && result.documents[0]) {
           setActiveDocument(result.documents[0].id);
         }
@@ -200,11 +225,21 @@ export function useAppFileOpen({
       pushStatus("Opening text files...");
       try {
         const result = isTauriRuntime()
-          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: cleanPaths })
+          ? await invoke<OpenTextFilesResult>("open_text_files", {
+              paths: cleanPaths,
+              openStateRevision: currentDocumentRegistryRevision(),
+            })
           : await openBrowserDevTextFiles(cleanPaths);
-        if (options.background) addBackgroundTextDocuments(result.documents);
-        else if (options.inActiveTab) openTextDocumentsInActiveTab(result.documents);
-        else addTextDocuments(result.documents);
+        try {
+          if (options.background) addBackgroundTextDocuments(result.documents);
+          else if (options.inActiveTab) openTextDocumentsInActiveTab(result.documents);
+          else addTextDocuments(result.documents);
+        } catch (error) {
+          void abortOpenDocumentClaims(result.documents).catch((abortError) => {
+            console.warn("Open document claim abort failed", abortError);
+          });
+          throw error;
+        }
         const openedText = "Opened " + result.documents.length + " text file" + (result.documents.length === 1 ? "" : "s");
         if (result.errors.length > 0) {
           pushStatus(`${openedText}. ${summarizeErrors(result.errors)}`, "error", result.errors);
@@ -230,12 +265,22 @@ export function useAppFileOpen({
       pushStatus("Opening spectra...");
       try {
         const result = isTauriRuntime()
-          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: cleanPaths })
+          ? await invoke<OpenTextFilesResult>("open_text_files", {
+              paths: cleanPaths,
+              openStateRevision: currentDocumentRegistryRevision(),
+            })
           : await openBrowserDevTextFiles(cleanPaths);
         const documents = result.documents.map(spectrumDocumentFromText);
-        if (options.background) addBackgroundDocuments(documents);
-        else if (options.inActiveTab) openDocumentsInActiveTab(documents);
-        else addDocuments(documents);
+        try {
+          if (options.background) addBackgroundDocuments(documents);
+          else if (options.inActiveTab) openDocumentsInActiveTab(documents);
+          else addDocuments(documents);
+        } catch (error) {
+          void abortOpenDocumentClaims(result.documents).catch((abortError) => {
+            console.warn("Open document claim abort failed", abortError);
+          });
+          throw error;
+        }
         if (!options.background && !options.inActiveTab && documents[0]) {
           setActiveDocument(documents[0].id);
           setDockDocument("right", documents[0].id);
@@ -306,6 +351,9 @@ export function useAppFileOpen({
       for (const document of openedDocuments) {
         if (document.renderer === NOT_RENDERABLE_RENDERER) {
           closeDocument(document.id);
+          void abortOpenDocumentClaims([document]).catch((abortError) => {
+            console.warn("Open document claim abort failed", abortError);
+          });
         } else {
           openedStructureAndTextPaths.add(document.path);
           preferredStructureDocumentId = preferredStructureDocumentId ?? document.id;
@@ -401,9 +449,47 @@ export function useAppFileOpen({
     }
   }, [addDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument]);
 
+  const rebindSavedGridDocument = useCallback(async (documentId: string, path: string) => {
+    if (!isTauriRuntime()) {
+      throw new Error("Saved grid rebinding is available in the desktop app only.");
+    }
+    const extension = pathExtension(path);
+    const gridPreferences = { ...preferences, rendererMode: "grid2d" as const };
+    const replacement = extension === "csv" || extension === "tsv"
+      ? await invoke<ViewerDocument>("open_delimited_grid_document", {
+          request: { path, smilesColumn: "smiles" },
+          preferences: gridPreferences,
+          openStateRevision: currentDocumentRegistryRevision(),
+        })
+      : await invoke<OpenDocumentsResult>("open_documents", {
+          paths: [path],
+          preferences: gridPreferences,
+          reloadOptions: undefined,
+          mode: undefined,
+          openStateRevision: currentDocumentRegistryRevision(),
+        }).then((result) => {
+          const document = result.documents[0];
+          if (!document) {
+            throw new Error(result.errors[0] ?? "The saved collection could not be reopened.");
+          }
+          return document;
+        });
+    try {
+      replaceDocument(documentId, replacement);
+    } catch (error) {
+      void abortOpenDocumentClaims([replacement]).catch((abortError) => {
+        console.warn("Open document claim abort failed", abortError);
+      });
+      throw error;
+    }
+    rememberRecentStructures([replacement]);
+    return replacement;
+  }, [preferences, rememberRecentStructures, replaceDocument]);
+
   return {
     openDocuments,
     openPaths,
+    rebindSavedGridDocument,
     openStructureRecordDocuments,
     openStructureRecords,
     openStructureUrlInMolstar,

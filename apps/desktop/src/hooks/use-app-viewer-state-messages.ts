@@ -82,6 +82,7 @@ export function useAppViewerStateMessages({
         ? body.selection as Record<string, unknown>
         : null;
       updateHostedMcpSelectionContext(selection, documentId);
+      const atomCount = selection?.atoms == null ? null : Number(selection.atoms);
       setViewerLigandSelections((previous) => ({
         ...previous,
         [documentId]: selection?.selector ? {
@@ -89,7 +90,9 @@ export function useAppViewerStateMessages({
           label: String(selection.label || "Selected ligand"),
           value: String(selection.value || ""),
           selector: selection.selector as ViewerLigandSelection["selector"],
-          atoms: Math.max(0, Math.trunc(Number(selection.atoms) || 0)),
+          atoms: atomCount !== null && Number.isFinite(atomCount) && atomCount > 0
+            ? Math.min(1_000_000, Math.trunc(atomCount))
+            : null,
         } : null,
       }));
       return true;

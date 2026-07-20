@@ -32,7 +32,7 @@ export type FirstRenderMessageHandler = (
 export type ViewerBridgeMessageHandlers = {
   handleDockingPoseMessage: SourceMessageHandler;
   handleGridConformerMessage: BodyEventMessageHandler;
-  handleGridControlMessage: BodyMessageHandler;
+  handleGridControlMessage: BodyEventMessageHandler;
   handleGridFileMessage: BodyEventMessageHandler;
   handleGridRuntimeMessage: BodyEventMessageHandler;
   handleKetcherViewerMessage: BodyMessageHandler;
@@ -109,7 +109,7 @@ export async function dispatchViewerBridgeMessage(
     return true;
   }
   if (source === "burrete-grid") {
-    if (handlers.handleGridControlMessage(body)) {
+    if (handlers.handleGridControlMessage(body, eventSource)) {
       return true;
     }
     if (handlers.handleGridFileMessage(body, eventSource)) {

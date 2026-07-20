@@ -4,6 +4,7 @@ import {
   dispatchWorkspaceHistoryCommand,
   isKetcherWorkspaceTarget,
 } from "../lib/workspace-history-dispatch";
+import { isTauriRuntime } from "../lib/tauri";
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -18,6 +19,27 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
     const onKeyDown = (event: KeyboardEvent) => {
       const commandKey = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
+      const selectAdjacentTab = (offset: -1 | 1) => {
+        if (state.tabs.length === 0) return;
+        const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+        const currentIndex = activeIndex >= 0 ? activeIndex : 0;
+        const nextIndex = (currentIndex + offset + state.tabs.length) % state.tabs.length;
+        actions.selectTab(state.tabs[nextIndex].id);
+      };
+      if (!commandKey && !event.altKey && key === "/" && !isEditableTarget(event.target)) {
+        event.preventDefault();
+        actions.openCommandPalette();
+        return;
+      }
+      if (commandKey && !event.altKey && !event.shiftKey && /^[1-9]$/.test(event.key)) {
+        const tab = state.tabs[Number(event.key) - 1];
+        if (tab) {
+          event.preventDefault();
+          actions.selectTab(tab.id);
+        }
+        return;
+      }
+      if (isTauriRuntime()) return;
       if (commandKey && key === "z" && !event.altKey) {
         if (
           isEditableTarget(event.target) ||
@@ -28,12 +50,12 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         void dispatchWorkspaceHistoryCommand(event.shiftKey ? "redo" : "undo", actions);
         return;
       }
-      if (!commandKey && !event.altKey && key === "/" && !isEditableTarget(event.target)) {
+      if (event.ctrlKey && !event.metaKey && !event.altKey && key === "tab") {
         event.preventDefault();
-        actions.openCommandPalette();
+        selectAdjacentTab(event.shiftKey ? -1 : 1);
         return;
       }
-      if (commandKey && key === "o") {
+      if (commandKey && !event.altKey && key === "o") {
         event.preventDefault();
         if (event.shiftKey) {
           void actions.openMostRecentStructure();
@@ -42,27 +64,32 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         }
         return;
       }
-      if (commandKey && event.shiftKey && key === "n") {
+      if (commandKey && !event.altKey && !event.shiftKey && key === "n") {
         event.preventDefault();
         void actions.openNewWindow();
         return;
       }
-      if (commandKey && event.shiftKey && key === "r") {
+      if (commandKey && !event.altKey && !event.shiftKey && key === "t") {
+        event.preventDefault();
+        actions.openNewTab();
+        return;
+      }
+      if (commandKey && !event.altKey && event.shiftKey && key === "r") {
         event.preventDefault();
         void actions.revealActiveDocument();
         return;
       }
-      if (commandKey && event.shiftKey && key === "c") {
+      if (commandKey && !event.altKey && event.shiftKey && key === "c") {
         event.preventDefault();
         void actions.copyActiveDocumentPath();
         return;
       }
-      if (commandKey && key === "i") {
+      if (commandKey && !event.altKey && !event.shiftKey && key === "i") {
         event.preventDefault();
         void actions.showActiveDocumentMetadata();
         return;
       }
-      if (commandKey && key === "e" && (event.shiftKey || event.altKey)) {
+      if (commandKey && key === "e" && event.altKey !== event.shiftKey) {
         event.preventDefault();
         if (event.altKey) {
           void actions.exportActivePreviewAsSvg();
@@ -71,12 +98,12 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         }
         return;
       }
-      if (commandKey && key === "p") {
+      if (commandKey && !event.altKey && event.shiftKey && key === "p") {
         event.preventDefault();
         actions.openCommandPalette();
         return;
       }
-      if (commandKey && key === "j") {
+      if (commandKey && !event.altKey && !event.shiftKey && key === "j") {
         event.preventDefault();
         actions.toggleDock("bottom");
         return;
@@ -86,35 +113,27 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         toggleSidebar();
         return;
       }
-      if (commandKey && event.altKey && key === "b") {
+      if (commandKey && event.altKey && !event.shiftKey && key === "b") {
         event.preventDefault();
         actions.toggleDock("right");
         return;
       }
-      if (commandKey && event.key === "\\") {
+      if (commandKey && !event.altKey && !event.shiftKey && event.key === "\\") {
         event.preventDefault();
         toggleSidebar();
         return;
       }
-      if (commandKey && key === ",") {
+      if (commandKey && !event.altKey && !event.shiftKey && key === ",") {
         event.preventDefault();
         actions.openSettings();
         return;
       }
-      if (commandKey && key === "w") {
+      if (commandKey && !event.altKey && !event.shiftKey && key === "w") {
         event.preventDefault();
         actions.closeActiveDocument();
-        return;
-      }
-      if (commandKey && /^[1-9]$/.test(event.key)) {
-        const tab = state.tabs[Number(event.key) - 1];
-        if (tab) {
-          event.preventDefault();
-          actions.selectTab(tab.id);
-        }
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [actions, enabled, state.tabs, toggleSidebar]);
+  }, [actions, enabled, state.activeTabId, state.tabs, toggleSidebar]);
 }

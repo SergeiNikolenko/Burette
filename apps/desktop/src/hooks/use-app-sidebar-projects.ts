@@ -36,7 +36,10 @@ type UseAppSidebarProjectsArgs = {
   pinnedStructurePaths: string[];
   projectNameOverrides: Record<string, string>;
   projectRoots: string[];
-  pruneRecentStructures: (existingPaths: string[]) => void;
+  pruneRecentStructures: (
+    checkedDocuments: Array<Pick<RecentStructure, "path" | "openedAt">>,
+    existingPaths: string[],
+  ) => void;
   pruneSidebarPaths: (existingPaths: string[]) => void;
   pushErrorStatus: (error: unknown, prefix?: string, details?: string[]) => void;
   recentStructures: RecentStructure[];
@@ -164,7 +167,12 @@ export function useAppSidebarProjects({
       .then((existingPaths) => {
         if (cancelled) return;
         pruneSidebarPaths(existingPaths);
-        pruneRecentStructures(existingPaths);
+        const checkedDocuments = recentStructures.map(({ path, openedAt }) => ({ path, openedAt }));
+        const checkedPaths = new Set(checkedDocuments.map((document) => document.path));
+        pruneRecentStructures(
+          checkedDocuments,
+          existingPaths.filter((path) => checkedPaths.has(path)),
+        );
       })
       .catch(() => {});
     return () => {

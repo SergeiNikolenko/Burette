@@ -1,10 +1,13 @@
 import { useCallback } from "react";
 import type { GridDescriptorRunOptions } from "../lib/descriptors";
+import type { GridNativeMenuState } from "../lib/native-menu";
+import { isReadOnlyViewerMessageSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 type GridControlMessageBody = Record<string, unknown> | null | undefined;
+const MAX_NATIVE_MENU_SELECTED_COUNT = 10_000_000;
 type OpenKetcherWithFragment = (
   title: string,
   text: string,
@@ -27,6 +30,7 @@ type UseAppGridControlMessagesOptions = {
   pushErrorStatus: PushErrorStatus;
   pushStatus: PushStatus;
   updateDirtyGridDocument: (documentId: string, dirty: boolean) => void;
+  updateGridMenuState: (documentId: string, state: GridNativeMenuState) => void;
   writeClipboardText: (text: string) => Promise<void>;
   writeGridPerfMetric: (body: unknown) => void;
 };
@@ -40,10 +44,16 @@ export function useAppGridControlMessages({
   pushErrorStatus,
   pushStatus,
   updateDirtyGridDocument,
+  updateGridMenuState,
   writeClipboardText,
   writeGridPerfMetric,
 }: UseAppGridControlMessagesOptions) {
-  const handleGridControlMessage = useCallback((body: GridControlMessageBody) => {
+  const handleGridControlMessage = useCallback((
+    body: GridControlMessageBody,
+    eventSource: MessageEventSource | null,
+  ) => {
+    const readOnlySource = isReadOnlyViewerMessageSource(eventSource);
+    if (readOnlySource && body?.type === "openInKetcher" && body.gridEdit === true) return true;
     if (body?.type === "openInKetcher") {
       const title = typeof body.title === "string" && body.title.trim()
         ? body.title.trim()
@@ -114,13 +124,56 @@ export function useAppGridControlMessages({
     }
 
     if (body?.type === "gridDirtyChanged") {
+      if (readOnlySource) return true;
       const documentId = typeof body.documentId === "string" ? body.documentId : "";
       updateDirtyGridDocument(documentId, body.dirty === true);
       return true;
     }
 
+    if (body?.type === "gridMenuStateChanged") {
+      if (readOnlySource) return true;
+      const documentId = typeof body.documentId === "string" && body.documentId
+        ? body.documentId
+        : activeDocument?.id ?? "";
+      if (!documentId) return true;
+      const selectedCount = Number(body.selectedCount);
+      const normalizedSelectedCount = Number.isFinite(selectedCount)
+        ? Math.min(MAX_NATIVE_MENU_SELECTED_COUNT, Math.max(0, Math.trunc(selectedCount)))
+        : 0;
+      const selectedStructureCount = Number(body.selectedStructureCount);
+      updateGridMenuState(documentId, {
+        selectedCount: normalizedSelectedCount,
+        selectedStructureCount: Number.isFinite(selectedStructureCount)
+          ? Math.min(normalizedSelectedCount, Math.max(0, Math.trunc(selectedStructureCount)))
+          : 0,
+        dirty: body.dirty === true,
+        canUndo: body.canUndo === true,
+        canRedo: body.canRedo === true,
+        undoLabel: typeof body.undoLabel === "string" && body.undoLabel.trim()
+          ? body.undoLabel.trim().slice(0, 80)
+          : null,
+        redoLabel: typeof body.redoLabel === "string" && body.redoLabel.trim()
+          ? body.redoLabel.trim().slice(0, 80)
+          : null,
+        editingText: body.editingText === true,
+        viewMode: body.viewMode === "table" ? "table" : "cards",
+        showProperties: body.showProperties === true,
+        cardRenderer: body.cardRenderer === "xyzrender" ? "xyzrender" : "rdkit",
+        hasMolecules: body.hasMolecules === true,
+        saveEnabled: body.saveEnabled === true,
+        exportEnabled: body.exportEnabled === true,
+        selectionEnabled: body.selectionEnabled === true,
+        canOpenSelectedInMolstar: body.canOpenSelectedInMolstar === true,
+        canOpenSelectedInKetcher: body.canOpenSelectedInKetcher === true,
+        canGenerate3dForSelection: body.canGenerate3dForSelection === true,
+        supportsXyzrender: body.supportsXyzrender === true,
+        generating3d: body.generating3d === true,
+      });
+      return true;
+    }
+
     return false;
-  }, [activeDocument, calculateGridDescriptors, documents, openKetcherWithFragment, openKetcherWithStructures, pushErrorStatus, pushStatus, updateDirtyGridDocument, writeClipboardText, writeGridPerfMetric]);
+  }, [activeDocument, calculateGridDescriptors, documents, openKetcherWithFragment, openKetcherWithStructures, pushErrorStatus, pushStatus, updateDirtyGridDocument, updateGridMenuState, writeClipboardText, writeGridPerfMetric]);
 
   return { handleGridControlMessage };
 }

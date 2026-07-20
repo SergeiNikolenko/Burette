@@ -10,7 +10,17 @@ const keyboardShortcutRows: ShortcutRow[] = [
   {
     command: "Open command palette",
     description: "Search commands, settings, projects, and structures.",
-    keybindings: ["⌘P", "/"],
+    keybindings: ["⇧⌘P", "/"],
+  },
+  {
+    command: "New window",
+    description: "Open another Burrete workspace window.",
+    keybindings: ["⌘N"],
+  },
+  {
+    command: "New tab",
+    description: "Open a launcher tab in the current window.",
+    keybindings: ["⌘T"],
   },
   {
     command: "Open structures",
@@ -53,9 +63,34 @@ const keyboardShortcutRows: ShortcutRow[] = [
     keybindings: ["⌘,"],
   },
   {
-    command: "Close active structure",
-    description: "Close the selected structure tab.",
+    command: "Close active tab",
+    description: "Close the selected tab.",
     keybindings: ["⌘W"],
+  },
+  {
+    command: "Close active window",
+    description: "Close the frontmost Burrete window.",
+    keybindings: ["⇧⌘W"],
+  },
+  {
+    command: "Select next tab",
+    description: "Move to the next tab in the current window.",
+    keybindings: ["⌃⇥"],
+  },
+  {
+    command: "Select previous tab",
+    description: "Move to the previous tab in the current window.",
+    keybindings: ["⌃⇧⇥"],
+  },
+  {
+    command: "Undo",
+    description: "Undo in the active text editor or molecule collection.",
+    keybindings: ["⌘Z"],
+  },
+  {
+    command: "Redo",
+    description: "Redo in the active text editor or molecule collection.",
+    keybindings: ["⇧⌘Z"],
   },
   {
     command: "Reveal in Finder",
@@ -68,7 +103,7 @@ const keyboardShortcutRows: ShortcutRow[] = [
     keybindings: ["⇧⌘C"],
   },
   {
-    command: "Show metadata",
+    command: "Get Info",
     description: "Show renderer, format, path, and file size for the active structure.",
     keybindings: ["⌘I"],
   },

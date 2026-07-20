@@ -57,6 +57,18 @@ try {
 
   assert.equal(unhandled.length, 0);
   assert.ok(warnings.some((entry) => String(entry[0]).includes('setup-listener listener setup failed')));
+
+  let registeredCalls = 0;
+  trackTauriListener(Promise.resolve(() => {}), 'registered-listener', () => {
+    registeredCalls += 1;
+  });
+  trackTauriListener(Promise.reject(new Error('registration failed')), 'rejected-listener', () => {
+    registeredCalls += 1;
+  });
+  await settle();
+
+  assert.equal(registeredCalls, 1);
+  assert.equal(unhandled.length, 0);
 } finally {
   process.off('unhandledRejection', onUnhandled);
   console.warn = originalWarn;

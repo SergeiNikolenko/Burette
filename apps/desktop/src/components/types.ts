@@ -40,7 +40,7 @@ export type ViewerLigandSelection = {
   label: string;
   value: string;
   selector: Record<string, string | number | Array<string | number>>;
-  atoms: number;
+  atoms: number | null;
 };
 
 export type StructureOverlayMode = "single" | "all";
@@ -201,10 +201,11 @@ export type ShellActions = {
   setSidebarQuery: (query: string) => void;
   toggleProjectExpanded: (projectId: string) => void;
   togglePinnedStructure: (path: string) => void;
-  closeDocument: (id: string) => void;
-  closeTab: (id: string) => void;
-  closeActiveDocument: () => void;
-  clearAllDocuments: () => void;
+  closeDocument: (id: string) => void | Promise<void>;
+  closeTab: (id: string) => void | Promise<void>;
+  closeOtherTabs: (id: string) => void | Promise<void>;
+  closeActiveDocument: () => void | Promise<void>;
+  clearAllDocuments: () => void | Promise<void>;
   openDockingDocument: (receptorPath: string, ligandPaths: string[], options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null }) => void | Promise<ViewerDocument | null>;
   openDockingStructureRecords: (receptorPath: string, ligandPaths: string[], records: StructureDragPayload["records"]) => void | Promise<void>;
   appendGridRecords: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
