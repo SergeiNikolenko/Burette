@@ -1397,7 +1397,9 @@
   }
 
   function toggleViewerTheme(viewer = activeViewer) {
-    setViewerTheme(resolveViewerTheme() === 'dark' ? 'light' : 'dark', viewer);
+    const nextTheme = resolveViewerTheme() === 'dark' ? 'light' : 'dark';
+    setViewerTheme(nextTheme, viewer);
+    return nextTheme;
   }
 
   function applyStaticRendererTheme() {
@@ -3948,7 +3950,8 @@
     const button = toolbar?.querySelector('[data-buret-action="theme"]');
     if (!button) return;
     button.onclick = () => {
-      toggleViewerTheme(viewer);
+      const nextTheme = toggleViewerTheme(viewer);
+      postHostMessage({ type: 'setTheme', value: nextTheme });
     };
   }
 

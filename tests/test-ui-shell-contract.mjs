@@ -5938,6 +5938,7 @@ assert.match(viewerBridgeLib, /querySelectorAll<HTMLIFrameElement>\("\.viewer-if
 assert.match(viewer, /function initShellShortcutBridge\(\)/);
 assert.match(viewer, /const togglesSidebar = commandKey && !event\.altKey && !event\.shiftKey && key === 'b'/);
 assert.match(viewer, /postHostMessage\(\{ type: togglesSidebar \? 'toggleSidebar' : 'openCommandPalette' \}\)/);
+assert.match(viewer, /postHostMessage\(\{ type: 'setTheme', value: nextTheme \}\)/);
 assert.match(gridViewer, /function initShellShortcutBridge\(\)/);
 assert.match(gridViewer, /const togglesSidebar = commandKey && !event\.altKey && !event\.shiftKey && key === 'b'/);
 assert.match(gridViewer, /post\(togglesSidebar \? 'toggleSidebar' : 'openCommandPalette'\)/);
@@ -5946,6 +5947,9 @@ assert.match(appViewerStateMessagesHook, /body\?\.type === "openCommandPalette"/
 assert.match(appViewerStateMessagesHook, /openCommandPalette\(\);\s*return true;/);
 assert.match(appViewerStateMessagesHook, /body\?\.type === "toggleSidebar"/);
 assert.match(appViewerStateMessagesHook, /toggleSidebar\(\);\s*return true;/);
+assert.match(appViewerStateMessagesHook, /body\?\.type === "setTheme"/);
+assert.match(appViewerStateMessagesHook, /setPreference\("theme", theme\);\s*return true;/);
+assert.match(appViewerBridgeControllerHook, /useAppViewerStateMessages\(\{[\s\S]*setPreference,[\s\S]*\}\)/);
 assert.match(appViewerStateMessagesHook, /body\?\.type === "selectionChanged"/);
 assert.match(appViewerStateMessagesHook, /setViewerLigandSelections/);
 assert.match(appViewerStateMessagesHook, /body\?\.type === "rendererChanged"/);

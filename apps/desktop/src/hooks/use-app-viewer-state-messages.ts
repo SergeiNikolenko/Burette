@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
-import type { ViewerDocument } from "../types";
+import type { ViewerDocument, ViewerPreferences } from "../types";
 import type { DockTabKind } from "../lib/dock";
 import { updateHostedMcpSelectionContext } from "../lib/hosted-mcp-widget";
 
@@ -22,6 +22,7 @@ type UseAppViewerStateMessagesOptions = {
   documents: ViewerDocument[];
   openCommandPalette: () => void;
   openDockTab: (area: "right", kind: DockTabKind) => void;
+  setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setViewerLigandSelections: SetViewerLigandSelections;
   setStructureOverlayModes: SetStructureOverlayModes;
   toggleSidebar: () => void;
@@ -42,6 +43,7 @@ export function useAppViewerStateMessages({
   documents,
   openCommandPalette,
   openDockTab,
+  setPreference,
   setViewerLigandSelections,
   setStructureOverlayModes,
   toggleSidebar,
@@ -54,6 +56,12 @@ export function useAppViewerStateMessages({
 
     if ((sourceName === "burrete-viewer" || sourceName === "burrete-grid") && body?.type === "toggleSidebar") {
       toggleSidebar();
+      return true;
+    }
+
+    if (sourceName === "burrete-viewer" && body?.type === "setTheme") {
+      const theme = body.value === "light" || body.value === "dark" ? body.value : null;
+      if (theme) setPreference("theme", theme);
       return true;
     }
 
@@ -131,7 +139,7 @@ export function useAppViewerStateMessages({
     }
 
     return false;
-  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, setStructureOverlayModes, setViewerLigandSelections, toggleSidebar]);
+  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, setPreference, setStructureOverlayModes, setViewerLigandSelections, toggleSidebar]);
 
   return { handleViewerStateMessage };
 }

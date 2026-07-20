@@ -267,6 +267,7 @@ export function useAppViewerBridgeController({
     documents,
     openCommandPalette,
     openDockTab,
+    setPreference,
     setViewerLigandSelections,
     setStructureOverlayModes,
     toggleSidebar,
