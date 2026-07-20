@@ -4598,7 +4598,6 @@ assert.match(previewViewer, /function isSdfPoseConformerSet\(config\)/);
 assert.match(previewViewer, /activeMolstarPrepared\?\.sdfPoseRecordCount/);
 assert.doesNotMatch(previewViewer, /3D conformer generation is disabled for SDF pose\/conformer sets/);
 assert.match(previewViewer, /const MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS = 'buret-molstar-viewport-panel-open'/);
-assert.match(previewViewer, /const MOLSTAR_VIEWPORT_POPOVER_OPEN_CLASS = 'buret-molstar-viewport-popover-open'/);
 assert.match(previewViewer, /function observeMolstarViewportPanel\(\)/);
 assert.match(previewViewer, /function requestMolecularCompute\(operation = 'generate3d', options = \{\}\)/);
 assert.match(previewViewer, /type: 'molecularCompute'/);
@@ -4637,10 +4636,7 @@ assert.match(previewViewer, /function installMolstarControlTooltips\(\)/);
 assert.match(previewViewer, /window\.__buretteMolstarControlTooltipsInstalled/);
 assert.match(previewViewer, /\.msp-plugin button\[aria-label\], \.msp-plugin button\[title\]/);
 assert.match(previewViewer, /control\.closest\('\.msp-hover-box-wrapper'\)/);
-assert.match(previewViewer, /\.msp-plugin \.msp-viewport-controls-buttons \.msp-hover-box-body/);
-assert.match(previewViewer, /classList\.toggle\(MOLSTAR_VIEWPORT_POPOVER_OPEN_CLASS, popoverOpen\)/);
-assert.match(previewViewer, /document\.addEventListener\('pointerover', scheduleViewportPopoverRefresh, true\)/);
-assert.match(previewViewer, /document\.addEventListener\('pointerout', scheduleViewportPopoverRefresh, true\)/);
+assert.doesNotMatch(previewViewer, /scheduleViewportPopoverRefresh/);
 assert.match(previewViewer, /function molstarTooltipLabel\(control\)/);
 assert.match(previewViewer, /control\.getAttribute\('aria-label'\) \|\| control\.getAttribute\('title'\)/);
 assert.match(previewViewer, /function positionMolstarControlTooltip\(control\)/);
@@ -4675,14 +4671,19 @@ assert.match(previewRuntimeCss, /\.buret-molstar-transition-frame \{/);
 assert.match(previewRuntimeCss, /\.buret-molstar-transition-frame\.fade-out \{/);
 assert.match(previewRuntimeCss, /--buret-generate-3d-control-right: 70px;/);
 assert.match(previewRuntimeCss, /right: var\(--buret-generate-3d-control-right\);/);
+assert.match(previewRuntimeCss, /\.buret-generate-3d-control \{[^}]*margin-right: -10px;/s);
 assert.match(previewRuntimeCss, /z-index: 35;/);
 assert.match(
   previewRuntimeCss,
-  /body\.buret-molstar-viewport-panel-open \.buret-generate-3d-control,\s*body\.buret-molstar-viewport-popover-open \.buret-generate-3d-control \{/,
+  /body\.buret-molstar-viewport-panel-open \.buret-generate-3d-control,/,
+);
+assert.match(
+  previewRuntimeCss,
+  /body:has\(\.msp-viewport-controls-buttons \.msp-hover-box-wrapper:hover\) \.buret-generate-3d-control \{/,
 );
 assert.match(previewRuntimeCss, /body\.buret-toolbar-collapsed \.buret-generate-3d-control \{/);
 assert.match(previewRuntimeCss, /body\.buret-toolbar-collapsed \.buret-generate-3d-menu,/);
-assert.match(previewRuntimeCss, /body\.buret-molstar-viewport-popover-open \.buret-generate-3d-menu/);
+assert.match(previewRuntimeCss, /body:has\(\.msp-viewport-controls-buttons \.msp-hover-box-wrapper:hover\) \.buret-generate-3d-menu/);
 assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*hideGenerate3DMenu\(\);/);
 assert.match(previewViewer, /const viewportControlRailRect = visibleRect\('\.msp-plugin \.msp-viewport-controls-buttons'\);/);
 assert.match(previewViewer, /window\.innerWidth - viewportControlRailRect\.left \+ FLOATING_LAYOUT_GAP \* 2/);

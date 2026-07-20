@@ -1195,6 +1195,7 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   position: absolute;
   top: var(--buret-viewport-controls-top);
   right: var(--buret-generate-3d-control-right);
+  margin-right: -10px;
   z-index: 35;
   min-width: 104px;
   height: 36px;
@@ -1300,7 +1301,7 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   cursor: not-allowed;
 }
 body.buret-molstar-viewport-panel-open .buret-generate-3d-control,
-body.buret-molstar-viewport-popover-open .buret-generate-3d-control {
+body:has(.msp-viewport-controls-buttons .msp-hover-box-wrapper:hover) .buret-generate-3d-control {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -1316,7 +1317,7 @@ body.buret-toolbar-collapsed .buret-generate-3d-control {
 }
 body.buret-toolbar-collapsed .buret-generate-3d-menu,
 body.buret-molstar-viewport-panel-open .buret-generate-3d-menu,
-body.buret-molstar-viewport-popover-open .buret-generate-3d-menu {
+body:has(.msp-viewport-controls-buttons .msp-hover-box-wrapper:hover) .buret-generate-3d-menu {
   display: none;
 }
 @media (prefers-reduced-motion: reduce) {
