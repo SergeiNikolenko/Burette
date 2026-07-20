@@ -1224,8 +1224,10 @@ assert.match(menuEvents, /if exit_transition_is_active\(app\) \{\s*return;/);
 assert.match(tray, /if menu::exit_transition_is_active\(app\)/);
 assert.match(windowsSource, /if crate::menu::exit_transition_is_active\(app\)/);
 assert.match(lib, /if menu::exit_transition_is_active\(app\)/);
-assert.match(lib, /RunEvent::ExitRequested \{ code, api, \.\. \} =>/);
-assert.match(lib, /if menu::should_prevent_exit\(app\)/);
+assert.match(
+  lib,
+  /RunEvent::ExitRequested \{ code, api, \.\. \} if menu::should_prevent_exit\(app\) =>/,
+);
 assert.match(lib, /api\.prevent_exit\(\)/);
 assert.match(lib, /macos::install_termination_handler\(app\.handle\(\)\)/);
 const tauriBuildIndex = lib.indexOf('.build(tauri::generate_context!())');

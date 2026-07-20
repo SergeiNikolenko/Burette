@@ -192,19 +192,17 @@ pub fn run() {
                 );
             }
         }
-        RunEvent::ExitRequested { code, api, .. } => {
-            if menu::should_prevent_exit(app) {
-                api.prevent_exit();
-                #[cfg(target_os = "macos")]
-                let keep_running_without_windows = should_keep_running_after_last_window_closed(
-                    code,
-                    !app.webview_windows().is_empty(),
-                );
-                #[cfg(not(target_os = "macos"))]
-                let keep_running_without_windows = false;
-                if !keep_running_without_windows {
-                    menu::request_quit(app);
-                }
+        RunEvent::ExitRequested { code, api, .. } if menu::should_prevent_exit(app) => {
+            api.prevent_exit();
+            #[cfg(target_os = "macos")]
+            let keep_running_without_windows = should_keep_running_after_last_window_closed(
+                code,
+                !app.webview_windows().is_empty(),
+            );
+            #[cfg(not(target_os = "macos"))]
+            let keep_running_without_windows = false;
+            if !keep_running_without_windows {
+                menu::request_quit(app);
             }
         }
         _ => {}
