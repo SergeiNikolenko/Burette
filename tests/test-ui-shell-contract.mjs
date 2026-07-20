@@ -4703,8 +4703,10 @@ assert.match(previewRuntimeCss, /\.buret-corner-button \{/);
 assert.match(previewRuntimeCss, /body\.burette-quicklook-host \{\s*--buret-toolbar-safe-top: 56px;/s);
 assert.match(previewRuntimeCss, /body\.burette-quicklook-host \.buret-corner-button \{/);
 assert.match(previewRuntimeCss, /transition: background 180ms ease, box-shadow 180ms ease;/);
-assert.match(previewRuntimeCss, /Keep the native Mol\* top-left animation button on every Mol\* screen\. Do not remove\./);
-assert.match(previewRuntimeCss, /body \.msp-plugin \.msp-viewport-top-left-controls,\s*body \.msp-plugin \.msp-animation-viewport-controls,\s*body \.msp-plugin \.msp-animation-viewport-controls > div:first-child > button \{\s*pointer-events: auto;\s*\}/s);
+assert.match(
+  previewRuntimeCss,
+  /body:not\(\.burette-mobile-host\) \.msp-plugin \.msp-viewport-top-left-controls \{\s*display: none !important;\s*\}/s,
+);
 assert.doesNotMatch(previewRuntimeCss, /left 180ms cubic-bezier\(0\.22, 1, 0\.36, 1\)/);
 assert.match(previewRuntimeCss, /#buret-toolbar\.buret-dragging \{ transition: none; \}/);
 assert.match(previewRuntimeCss, /#buret-toolbar\.buret-toolbar-docked \{/);
