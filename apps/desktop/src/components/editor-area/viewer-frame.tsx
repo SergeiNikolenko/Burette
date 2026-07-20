@@ -10,6 +10,10 @@ import type {
 import { isTauriRuntime } from "../../lib/tauri";
 import { isHostedMcpWidget } from "../../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../../lib/web-demo-workspace";
+import {
+  isGridDocumentCloseTransitionActive,
+  replayPendingGridCloseTransitionRequests,
+} from "../../lib/window-mutation-barrier";
 
 export function viewerFrameSandbox() {
   if (isTauriRuntime()) return "allow-scripts allow-downloads";
@@ -25,6 +29,7 @@ export function ViewerFrame({
   sourcePreview,
   onStagingLoad,
   className = "viewer-iframe",
+  readOnly = false,
 }: {
   document: ViewerDocument;
   iframeRef?: Ref<HTMLIFrameElement>;
@@ -32,10 +37,13 @@ export function ViewerFrame({
   sourcePreview?: SourcePreviewFrameSnapshot;
   onStagingLoad?: (identity: SourcePreviewIdentity, frame: HTMLIFrameElement) => void;
   className?: string;
+  readOnly?: boolean;
 }) {
   const tauriRuntime = isTauriRuntime();
   const heroEmbed = isWebDemoHeroEmbed();
   const sandbox = viewerFrameSandbox();
+  const closeTransitionActive = document.renderer === "grid2d"
+    && isGridDocumentCloseTransitionActive(document.id);
   const runtimePathForFrame = (runtimePath: string) => heroEmbed
     ? runtimePath.replace(
         "</head>",
@@ -58,6 +66,29 @@ export function ViewerFrame({
       )
     : runtimePath;
 
+  const handleFrameLoad = (
+    event: SyntheticEvent<HTMLIFrameElement>,
+    active: boolean,
+    identity?: SourcePreviewIdentity,
+  ) => {
+    if (document.renderer === "grid2d") {
+      if (readOnly) {
+        event.currentTarget.contentWindow?.postMessage({
+          source: "burrete-grid-host",
+          body: { type: "gridReadOnlyChanged", readOnly: true },
+        }, "*");
+      }
+      if (isGridDocumentCloseTransitionActive(document.id)) {
+        event.currentTarget.contentWindow?.postMessage({
+          source: "burrete-grid-host",
+          body: { type: "gridCloseTransitionChanged", active: true },
+        }, "*");
+        replayPendingGridCloseTransitionRequests(event.currentTarget);
+      }
+    }
+    if (!active && identity) onStagingLoad?.(identity, event.currentTarget);
+  };
+
   const renderSlot = (slot: SourcePreviewSlot, runtime: SourcePreviewRuntime) => {
     const active = sourcePreview?.activeSlot === slot;
     const identity = runtime.identity;
@@ -68,13 +99,18 @@ export function ViewerFrame({
       ...(sandbox ? { sandbox } : {}),
       referrerPolicy: "no-referrer" as const,
       "aria-hidden": active ? undefined : true,
-      inert: active ? undefined : true,
+      inert: !active || closeTransitionActive,
+      "aria-busy": closeTransitionActive || undefined,
       "data-document-id": document.id,
       "data-renderer": document.renderer,
+      "data-read-only": readOnly ? "true" : undefined,
+      name: readOnly ? "burrete-read-only" : "burrete-editable",
       "data-source-preview-role": active ? "active" : "staging",
       "data-source-preview-request-id": identity?.requestId,
       "data-source-preview-revision": identity?.revision,
-      onLoad: !active && identity ? (event: SyntheticEvent<HTMLIFrameElement>) => onStagingLoad?.(identity, event.currentTarget) : undefined,
+      onLoad: document.renderer === "grid2d" || (!active && identity)
+        ? (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, active, identity)
+        : undefined,
       style: active ? undefined : {
         position: "absolute" as const,
         inset: 0,
@@ -100,8 +136,15 @@ export function ViewerFrame({
       className,
       ...(sandbox ? { sandbox } : {}),
       referrerPolicy: "no-referrer" as const,
+      inert: closeTransitionActive,
+      "aria-busy": closeTransitionActive || undefined,
       "data-document-id": document.id,
       "data-renderer": document.renderer,
+      "data-read-only": readOnly ? "true" : undefined,
+      name: readOnly ? "burrete-read-only" : "burrete-editable",
+      onLoad: document.renderer === "grid2d"
+        ? (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, true)
+        : undefined,
     };
     const runtimePath = runtimePathForFrame(document.runtimePath);
     return tauriRuntime ? (

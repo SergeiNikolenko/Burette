@@ -105,6 +105,48 @@ assert.equal(withDockDocument.documents.find((item) => item.id === "dock:bottom:
 assert.equal(withDockDocument.activeDocumentId, "molstar-doc");
 
 resetStore();
+const originalGrid = document("grid-a", "/tmp/collection-a.csv", "collection-a.csv", "grid2d");
+const replacementGrid = document("grid-b", "/tmp/collection-b.csv", "collection-b.csv", "grid2d");
+const unrelated = document("other", "/tmp/other.pdb");
+useMoleculeStore.setState({
+  documents: [originalGrid, unrelated],
+  tabs: [
+    {
+      id: "tab-grid",
+      location: { kind: "file", documentId: originalGrid.id, path: originalGrid.path },
+      back: [{ kind: "file", documentId: originalGrid.id, path: originalGrid.path }],
+      forward: [{ kind: "file", documentId: originalGrid.id, path: originalGrid.path }],
+    },
+    {
+      id: "tab-other",
+      location: { kind: "file", documentId: unrelated.id, path: unrelated.path },
+      back: [],
+      forward: [],
+    },
+  ],
+  activeTabId: "tab-grid",
+  activeDocumentId: originalGrid.id,
+});
+
+useMoleculeStore.getState().replaceDocument(originalGrid.id, replacementGrid);
+
+const rebound = useMoleculeStore.getState();
+assert.deepEqual(rebound.documents.map((item) => item.path), [replacementGrid.path, unrelated.path]);
+assert.equal(rebound.activeDocumentId, replacementGrid.id);
+assert.deepEqual(rebound.tabs.find((tab) => tab.id === "tab-grid")?.location, {
+  kind: "file",
+  documentId: replacementGrid.id,
+  path: replacementGrid.path,
+});
+assert.equal(rebound.tabs.find((tab) => tab.id === "tab-grid")?.back[0]?.path, replacementGrid.path);
+assert.equal(rebound.tabs.find((tab) => tab.id === "tab-grid")?.forward[0]?.path, replacementGrid.path);
+assert.equal(rebound.tabs.find((tab) => tab.id === "tab-other")?.location.path, unrelated.path);
+assert.equal(
+  rebound.documents.find((item) => item.id === rebound.activeDocumentId)?.path,
+  replacementGrid.path,
+);
+
+resetStore();
 useMoleculeStore.setState({
   documents: [],
   tabs: [{
@@ -208,12 +250,17 @@ useMoleculeStore.getState().rememberRecentStructures(manyDocuments);
 
 const recent = useMoleculeStore.getState().recentStructures;
 assert.equal(recent.length, manyDocuments.length);
+assert.equal(JSON.parse(storage.get("burrete.recent.structures")).documents.length, manyDocuments.length);
 assert.deepEqual(
   recent.map((structure) => structure.path).sort(),
   manyDocuments.map((structure) => structure.path).sort(),
 );
 
-useMoleculeStore.getState().pruneRecentStructures([
+const checkedRecentDocuments = useMoleculeStore.getState().recentStructures
+  .map(({ path, openedAt }) => ({ path, openedAt }));
+const openedWhilePruning = document("recent-late", "/tmp/project/opened-while-pruning.pdb");
+useMoleculeStore.getState().rememberRecentStructures([openedWhilePruning]);
+useMoleculeStore.getState().pruneRecentStructures(checkedRecentDocuments, [
   "/tmp/project/file-00.pdb",
   "/tmp/project/file-03.pdb",
 ]);
@@ -223,7 +270,12 @@ assert.deepEqual(
   [
     "/tmp/project/file-00.pdb",
     "/tmp/project/file-03.pdb",
+    openedWhilePruning.path,
   ],
 );
+
+useMoleculeStore.getState().clearRecentStructures();
+assert.deepEqual(useMoleculeStore.getState().recentStructures, []);
+assert.deepEqual(JSON.parse(storage.get("burrete.recent.structures")).documents, []);
 
 console.log("molecule store behavior tests passed");

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import type { SourceEditingContextValue, SourceEditingView } from "../lib/source-editing/context";
 import { SourcePreviewAdapter } from "../lib/source-preview/adapter";
@@ -99,10 +98,15 @@ export function useSourceEditingController({
   const timersRef = useRef(new Map<string, number>());
   const savingPathsRef = useRef(new Set<string>());
   const stagingWindowsRef = useRef(new Map<WindowProxy, { path: string; identity: SourcePreviewIdentity }>());
+  const dirtySnapshotRef = useRef({ signature: "", revision: 0 });
 
-  useEffect(() => {
-    sessionsRef.current = sessions;
-  }, [sessions]);
+  const commitSessions = useCallback((update: (current: Record<string, InternalSourceSession>) => Record<string, InternalSourceSession>) => {
+    const current = sessionsRef.current;
+    const next = update(current);
+    if (next === current) return;
+    sessionsRef.current = next;
+    setSessions(next);
+  }, []);
 
   const clearStagingWindows = useCallback((path: string, identity?: SourcePreviewIdentity) => {
     for (const [source, staged] of stagingWindowsRef.current) {
@@ -115,13 +119,13 @@ export function useSourceEditingController({
   }, []);
 
   const updateSession = useCallback((path: string, update: (session: InternalSourceSession) => InternalSourceSession) => {
-    setSessions((current) => {
+    commitSessions((current) => {
       const session = current[path];
       if (!session) return current;
       const next = update(session);
       return { ...current, [path]: { ...next, status: statusFor(next) } };
     });
-  }, []);
+  }, [commitSessions]);
 
   const beginEditing = useCallback(async (document: ViewerDocument) => {
     const existing = sessionsRef.current[document.path];
@@ -199,13 +203,13 @@ export function useSourceEditingController({
         saveDisabledReason: isTauriRuntime() ? null : "Available in desktop app",
         sourcePreview: adapter.getSnapshot(),
       };
-      setSessions((current) => ({ ...current, [document.path]: session }));
+      commitSessions((current) => ({ ...current, [document.path]: session }));
       setDockOpen("right", true);
       setDockActiveTab("right", "text");
     } catch (error) {
       pushErrorStatus(error, "Edit Source");
     }
-  }, [clearStagingWindows, pushErrorStatus, setDockActiveTab, setDockOpen, updateSession]);
+  }, [clearStagingWindows, commitSessions, pushErrorStatus, setDockActiveTab, setDockOpen, updateSession]);
 
   const preparePreview = useCallback(async (document: ViewerDocument, content?: string, revision?: number) => {
     const session = sessionsRef.current[document.path];
@@ -425,53 +429,69 @@ export function useSourceEditingController({
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [activeDocument, save]);
 
-  const hasDirtySessions = Object.values(sessions).some((session) => session.dirty);
-  useEffect(() => {
-    if (!hasDirtySessions) return undefined;
-    if (!isTauriRuntime()) {
-      const onBeforeUnload = (event: BeforeUnloadEvent) => {
-        event.preventDefault();
-        event.returnValue = "";
+  const hasUnsavedOrSavingSessions = Object.values(sessions).some((session) => session.dirty || session.saving);
+  const getWindowDirtySnapshot = useCallback(() => {
+    const unsafeSessions = Object.values(sessionsRef.current)
+      .map((session) => ({
+        path: session.path,
+        revision: session.revision,
+        dirty: session.dirty,
+        saving: session.saving || savingPathsRef.current.has(session.path),
+      }))
+      .filter((session) => session.dirty || session.saving)
+      .sort((left, right) => left.path.localeCompare(right.path));
+    const signature = JSON.stringify(unsafeSessions);
+    if (signature !== dirtySnapshotRef.current.signature) {
+      dirtySnapshotRef.current = {
+        signature,
+        revision: dirtySnapshotRef.current.revision + 1,
       };
-      window.addEventListener("beforeunload", onBeforeUnload);
-      return () => window.removeEventListener("beforeunload", onBeforeUnload);
     }
-    const appWindow = getCurrentWindow();
-    let disposed = false;
-    let closeConfirmed = false;
-    let unlisten: (() => void) | undefined;
-    void appWindow.onCloseRequested(async (event) => {
-      const savingCount = [...savingPathsRef.current].length;
-      if (savingCount > 0) {
-        event.preventDefault();
-        await messageDialog(
-          savingCount === 1 ? "A source file is still being saved. Wait for it to finish before closing." : `${savingCount} source files are still being saved. Wait for them to finish before closing.`,
-          { title: "Save in Progress", kind: "info" },
-        );
-        return;
-      }
-      const dirtyCount = Object.values(sessionsRef.current).filter((session) => session.dirty).length;
-      if (dirtyCount === 0 || closeConfirmed) return;
-      event.preventDefault();
-      const confirmed = await confirmDialog(
-        dirtyCount === 1
-          ? "Discard the unsaved source edit and close this window?"
-          : `Discard unsaved source edits in ${dirtyCount} documents and close this window?`,
-        { title: "Unsaved Source Changes", kind: "warning", okLabel: "Discard", cancelLabel: "Cancel" },
-      );
-      if (confirmed) {
-        closeConfirmed = true;
-        await appWindow.close();
-      }
-    }).then((cleanup) => {
-      if (disposed) cleanup();
-      else unlisten = cleanup;
-    });
-    return () => {
-      disposed = true;
-      unlisten?.();
+    return {
+      dirty: unsafeSessions.length > 0,
+      revision: dirtySnapshotRef.current.revision,
+      closeTransitionActive: unsafeSessions.some((session) => session.saving),
     };
-  }, [hasDirtySessions]);
+  }, []);
+
+  const confirmCloseWindow = useCallback(async () => {
+    const savingCount = Object.values(sessionsRef.current).filter(
+      (session) => session.saving || savingPathsRef.current.has(session.path),
+    ).length;
+    if (savingCount > 0) {
+      const text = savingCount === 1
+        ? "A source file is still being saved. Wait for it to finish before closing."
+        : `${savingCount} source files are still being saved. Wait for them to finish before closing.`;
+      if (isTauriRuntime()) {
+        await messageDialog(text, { title: "Save in Progress", kind: "info" });
+      } else {
+        window.alert(text);
+      }
+      return false;
+    }
+    const dirtyCount = Object.values(sessionsRef.current).filter((session) => session.dirty).length;
+    if (dirtyCount === 0) return true;
+    const text = dirtyCount === 1
+      ? "Discard the unsaved source edit and close this window?"
+      : `Discard unsaved source edits in ${dirtyCount} documents and close this window?`;
+    if (!isTauriRuntime()) return window.confirm(text);
+    return confirmDialog(text, {
+      title: "Unsaved Source Changes",
+      kind: "warning",
+      okLabel: "Discard",
+      cancelLabel: "Cancel",
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!hasUnsavedOrSavingSessions || isTauriRuntime()) return undefined;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasUnsavedOrSavingSessions]);
 
   useEffect(() => () => {
     for (const timer of timersRef.current.values()) window.clearTimeout(timer);
@@ -506,11 +526,11 @@ export function useSourceEditingController({
         void invoke("close_opened_source_document", { request: { documentId } }).catch(() => {});
       }
     }
-    setSessions((current) => Object.fromEntries(
+    commitSessions((current) => Object.fromEntries(
       Object.entries(current).filter(([, session]) => !documentIds.includes(session.documentId)),
     ));
     return true;
-  }, [clearStagingWindows]);
+  }, [clearStagingWindows, commitSessions]);
 
   return useMemo(() => ({
     sessionForDocument: (document: ViewerDocument | null) => document ? sessions[document.path] ?? null : null,
@@ -520,5 +540,8 @@ export function useSourceEditingController({
     save,
     stagingLoaded,
     closeDocuments,
-  }), [beginEditing, closeDocuments, preparePreview, save, sessions, stagingLoaded, updateDraft]);
+    confirmCloseWindow,
+    getWindowDirtySnapshot,
+    hasUnsavedOrSavingSessions,
+  }), [beginEditing, closeDocuments, confirmCloseWindow, getWindowDirtySnapshot, hasUnsavedOrSavingSessions, preparePreview, save, sessions, stagingLoaded, updateDraft]);
 }

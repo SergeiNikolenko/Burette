@@ -1,14 +1,9 @@
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{LogicalSize, Manager, Runtime, Size, WebviewWindow};
+use tauri::{Manager, Runtime, WebviewWindow};
 
 use crate::menu;
 use crate::windows;
-
-const DEFAULT_MAIN_WINDOW_WIDTH: f64 = 1180.0;
-const DEFAULT_MAIN_WINDOW_HEIGHT: f64 = 760.0;
-const MIN_REASONABLE_WINDOW_WIDTH: u32 = 640;
-const MIN_REASONABLE_WINDOW_HEIGHT: u32 = 420;
 
 pub(crate) fn configure_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
     let show = MenuItemBuilder::with_id("tray.show", "Show Burrete").build(app)?;
@@ -34,21 +29,30 @@ pub(crate) fn configure_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .icon(status_image())
         .icon_as_template(true)
         .tooltip("Burrete")
-        .on_menu_event(|app, event| match event.id().0.as_str() {
-            "tray.show" => show_main_window(app),
-            "tray.new-window" => {
-                let _ = windows::open_new_workspace_window(app);
+        .on_menu_event(|app, event| {
+            if menu::exit_transition_is_active(app) {
+                return;
             }
-            "tray.open" => {
-                show_main_window(app);
-                menu::emit_to_focused_window(app, menu::MENU_OPEN_FILES_EVENT);
+            match event.id().0.as_str() {
+                "tray.show" => {
+                    let _ = show_main_window(app);
+                }
+                "tray.new-window" => {
+                    let _ = windows::open_new_workspace_window(app);
+                }
+                "tray.open" => {
+                    if let Ok(window) = show_main_window(app) {
+                        menu::emit_command_to_window(&window, "file.open", None);
+                    }
+                }
+                "tray.settings" => {
+                    if let Ok(window) = show_main_window(app) {
+                        menu::emit_command_to_window(&window, "settings.open", None);
+                    }
+                }
+                "tray.quit" => menu::request_quit(app),
+                _ => {}
             }
-            "tray.settings" => {
-                show_main_window(app);
-                menu::emit_to_focused_window(app, menu::MENU_OPEN_SETTINGS_EVENT);
-            }
-            "tray.quit" => app.exit(0),
-            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -57,7 +61,9 @@ pub(crate) fn configure_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
                 ..
             } = event
             {
-                show_main_window(tray.app_handle());
+                if !menu::exit_transition_is_active(tray.app_handle()) {
+                    let _ = show_main_window(tray.app_handle());
+                }
             }
         });
 
@@ -138,13 +144,10 @@ fn put_pixel(rgba: &mut [u8], x: u32, y: u32, alpha: u8) {
     rgba[index + 3] = alpha;
 }
 
-pub(crate) fn show_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
-    if let Ok(Some(window)) = windows::show_window(app, windows::MAIN_WINDOW_LABEL) {
-        let _ = window.show();
-        let _ = window.unminimize();
-        normalize_main_window(&window);
-        let _ = window.set_focus();
-    }
+pub(crate) fn show_main_window<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<WebviewWindow<R>, String> {
+    windows::focus_or_create_workspace_window(app, Some(windows::MAIN_WINDOW_LABEL))
 }
 
 pub(crate) fn hide_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
@@ -153,22 +156,4 @@ pub(crate) fn hide_main_window<R: Runtime>(app: &tauri::AppHandle<R>) {
     }
     #[cfg(target_os = "macos")]
     let _ = app.hide();
-}
-
-fn normalize_main_window<R: Runtime>(window: &WebviewWindow<R>) {
-    let needs_reset = window
-        .inner_size()
-        .map(|size| {
-            size.width < MIN_REASONABLE_WINDOW_WIDTH || size.height < MIN_REASONABLE_WINDOW_HEIGHT
-        })
-        .unwrap_or(false);
-    if !needs_reset {
-        return;
-    }
-
-    let _ = window.set_size(Size::Logical(LogicalSize::new(
-        DEFAULT_MAIN_WINDOW_WIDTH,
-        DEFAULT_MAIN_WINDOW_HEIGHT,
-    )));
-    let _ = window.center();
 }

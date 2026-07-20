@@ -430,7 +430,7 @@ function FepNetworkPreview({ actions, location }: { actions: ShellActions; locat
             />
           </div>
         ) : (
-          gridDocument ? <ViewerFrame document={gridDocument} className="fep-network-grid-frame viewer-iframe" /> : null
+          gridDocument ? <ViewerFrame document={gridDocument} className="fep-network-grid-frame viewer-iframe" readOnly /> : null
         )}
       </div>
     </section>
@@ -908,6 +908,7 @@ function fepGridHtml(title: string, records: FepGridRecord[]) {
     pageSize: 720,
     rdkitWasmPath: "/__burette/rdkit-wasm",
     capabilities: {
+      editing: false,
       selection: true,
       export: true,
       substructureSearch: true,

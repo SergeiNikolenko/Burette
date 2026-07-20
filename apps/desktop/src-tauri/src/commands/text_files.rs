@@ -4,6 +4,9 @@ use serde::Serialize;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use tauri::Runtime;
+
+use crate::menu::OpenDocumentRegistry;
 
 const TEXT_FILE_READ_LIMIT: usize = 12 * 1024 * 1024;
 const OPENMM_BINARY_ARTIFACT_EXTENSIONS: &[&str] = &["chk", "checkpoint"];
@@ -41,6 +44,8 @@ pub(crate) struct TextFileDocument {
     content: String,
     truncated: bool,
     modified_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    open_claim_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,11 +64,29 @@ pub(crate) fn read_text_file(
 }
 
 #[tauri::command]
-pub(crate) fn open_text_files(paths: Vec<String>) -> Result<OpenTextFilesResult, String> {
+pub(crate) fn open_text_files<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    registry: tauri::State<'_, OpenDocumentRegistry>,
+    paths: Vec<String>,
+    open_state_revision: u64,
+) -> Result<OpenTextFilesResult, String> {
     let mut documents = Vec::new();
     let mut errors = Vec::new();
     for path in paths {
-        match read_text_file_impl(PathBuf::from(&path), None) {
+        let path = PathBuf::from(&path);
+        let path = match canonical_text_file_path(&path) {
+            Ok(path) => path,
+            Err(error) => {
+                errors.push(error);
+                continue;
+            }
+        };
+        match open_text_file_with_provisional_claim(
+            &registry,
+            window.label(),
+            path,
+            open_state_revision,
+        ) {
             Ok(document) => documents.push(document),
             Err(error) => errors.push(error),
         }
@@ -72,6 +95,32 @@ pub(crate) fn open_text_files(paths: Vec<String>) -> Result<OpenTextFilesResult,
         return Err(errors.join("; "));
     }
     Ok(OpenTextFilesResult { documents, errors })
+}
+
+fn canonical_text_file_path(path: &Path) -> Result<PathBuf, String> {
+    path.canonicalize()
+        .map_err(|err| format!("{}: {err}", path.display()))
+}
+
+fn open_text_file_with_provisional_claim(
+    registry: &OpenDocumentRegistry,
+    window_label: &str,
+    path: PathBuf,
+    baseline_revision: u64,
+) -> Result<TextFileDocument, String> {
+    let claim_id = registry.begin_provisional_open(window_label, &path, baseline_revision)?;
+    match read_text_file_impl(path, None) {
+        Ok(mut document) => {
+            document.open_claim_id = claim_id;
+            Ok(document)
+        }
+        Err(error) => {
+            if let Some(claim_id) = claim_id {
+                let _ = registry.abort_open_claim(window_label, &claim_id);
+            }
+            Err(error)
+        }
+    }
 }
 
 fn read_text_file_impl(
@@ -100,6 +149,7 @@ fn read_text_file_impl(
             content: numpy_artifact_text_summary(&path, metadata.len())?,
             truncated: false,
             modified_at,
+            open_claim_id: None,
         });
     }
     let read_limit = read_limit(max_bytes);
@@ -116,6 +166,7 @@ fn read_text_file_impl(
                 content: molecular_binary_artifact_summary(&path, metadata.len()),
                 truncated: false,
                 modified_at,
+                open_claim_id: None,
             });
         }
         return Err(format!("{} is not a text file", path.display()));
@@ -139,6 +190,7 @@ fn read_text_file_impl(
         content,
         truncated,
         modified_at,
+        open_claim_id: None,
     })
 }
 
@@ -240,7 +292,11 @@ fn language_for_extension(extension: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{read_text_file_impl, TEXT_FILE_READ_LIMIT};
+    use super::{
+        canonical_text_file_path, open_text_file_with_provisional_claim, read_text_file_impl,
+        TEXT_FILE_READ_LIMIT,
+    };
+    use crate::menu::OpenDocumentRegistry;
     use flate2::write::GzEncoder;
     use flate2::Compression;
     use std::fs;
@@ -287,6 +343,43 @@ mod tests {
         assert_eq!(document.language, "shell");
         assert_eq!(document.content, "echo hello\n");
         assert!(!document.truncated);
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn opens_relative_text_files_with_canonical_document_paths() {
+        let path = std::path::PathBuf::from(format!(
+            "burrete-text-file-test-{}-relative.txt",
+            uuid::Uuid::new_v4()
+        ));
+        fs::write(&path, "relative path\n").expect("fixture should write");
+        let canonical = canonical_text_file_path(&path).expect("fixture should canonicalize");
+        let registry = OpenDocumentRegistry::default();
+
+        let document =
+            open_text_file_with_provisional_claim(&registry, "main", canonical.clone(), 7)
+                .expect("relative text file should open");
+
+        assert!(canonical.is_absolute());
+        assert_eq!(document.path, canonical.to_string_lossy());
+        assert!(document.open_claim_id.is_some());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn failed_text_open_releases_its_provisional_claim() {
+        let path = temp_path("data.bin");
+        fs::write(&path, [b'a', 0, b'b']).expect("fixture should write");
+        let path = canonical_text_file_path(&path).expect("fixture should canonicalize");
+        let registry = OpenDocumentRegistry::default();
+
+        let error = open_text_file_with_provisional_claim(&registry, "main", path.clone(), 7)
+            .expect_err("binary file should fail");
+        assert!(error.contains("is not a text file"));
+
+        registry
+            .with_write_permit("workspace", &path, None, || Ok(()))
+            .expect("a failed open must release its provisional claim");
         let _ = fs::remove_file(path);
     }
 

@@ -216,7 +216,7 @@ function isKetcherImportPath(path: string) {
   return isKetcherImportExtension(fileExtension(path));
 }
 
-function isKetcherImportExtension(extension: string) {
+export function isKetcherImportExtension(extension: string) {
   return ["mol", "sd", "sdf", "smi", "smiles"].includes(extension.trim().replace(/^\./u, "").toLowerCase());
 }
 

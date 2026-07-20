@@ -1291,10 +1291,13 @@ function conformerActionCanScopeCrest(action: StructureViewerAction) {
 }
 
 function conformerStatusSummary(status: ShellViewState["conformerStatus"]) {
-  if (!status) return "CREST / PRISM";
+  if (!status) return "CREST / PRISM / Open Babel";
   const crest = status.crest.installed ? "CREST ready" : "CREST missing";
   const prism = status.prism.installed ? "PRISM ready" : "PRISM missing";
-  return `${crest} · ${prism}`;
+  const openbabel = !status.openbabel
+    ? "Open Babel status unavailable"
+    : status.openbabel.installed ? "Open Babel ready" : "Open Babel missing";
+  return `${crest} · ${prism} · ${openbabel}`;
 }
 
 function conformerSettingsSummary(settings: ConformerSettings) {

@@ -8,6 +8,7 @@ import {
   type GridDescriptorResultRow,
   type GridDescriptorRunOptions,
 } from "../lib/descriptors";
+import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
 
 const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job";
@@ -33,7 +34,7 @@ export function useAppDescriptors({
   }, []);
 
   const applyGridDescriptorControls = useCallback((documentId: string, controls: GridDescriptorControls) => {
-    const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`);
+    const iframe = activeViewerIframeForDocument(documentId, "grid2d");
     if (!iframe?.contentWindow) {
       pushStatus("Grid descriptor target is not open.", "error");
       return;
@@ -51,7 +52,7 @@ export function useAppDescriptors({
   }, [pushStatus]);
 
   const applyGridDescriptorResults = useCallback((documentId: string, rows: GridDescriptorResultRow[]) => {
-    const iframe = document.querySelector<HTMLIFrameElement>(`.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`);
+    const iframe = activeViewerIframeForDocument(documentId, "grid2d");
     if (!iframe?.contentWindow) {
       pushStatus("Grid descriptor target is not open.", "error");
       return;

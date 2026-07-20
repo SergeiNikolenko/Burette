@@ -4,9 +4,11 @@ use std::collections::{BTreeSet, HashSet};
 use std::env;
 #[cfg(target_os = "macos")]
 use std::ffi::CString;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{IpAddr, ToSocketAddrs};
+#[cfg(target_os = "macos")]
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 #[cfg(target_os = "macos")]
@@ -18,6 +20,7 @@ use tauri::{Manager, Runtime};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::commands::source_editing::OpenedSourceRegistry;
+use crate::menu::OpenDocumentRegistry;
 use crate::preview::formats::{
     format_for_extension, resolve_renderer, structure_path_extension,
     supported_structure_extensions,
@@ -295,21 +298,199 @@ pub(crate) fn classify_open_paths(paths: Vec<String>) -> ClassifiedOpenPaths {
 pub(crate) fn open_documents<R: Runtime>(
     app: tauri::AppHandle<R>,
     window: tauri::WebviewWindow<R>,
+    registry: tauri::State<'_, OpenDocumentRegistry>,
     paths: Vec<String>,
     preferences: ViewerPreferences,
     reload_options: Option<ViewerReloadOptions>,
     mode: Option<OpenDocumentsMode>,
+    open_state_revision: u64,
 ) -> Result<OpenDocumentsResult, String> {
-    open_documents_for_window_label(
-        &app,
-        window.label(),
-        paths,
-        preferences,
-        reload_options,
+    if matches!(
         mode,
-    )
+        Some(OpenDocumentsMode::CombinePoses | OpenDocumentsMode::CombineGrid)
+    ) {
+        let mut documents = Vec::new();
+        let (document_paths, mut errors) = expand_open_document_paths(paths);
+        let claimed_paths = document_paths.clone();
+        let result = match mode {
+            Some(OpenDocumentsMode::CombinePoses) => open_with_provisional_read_claims(
+                &registry,
+                window.label(),
+                &claimed_paths,
+                open_state_revision,
+                || open_combined_pose_document(&app, document_paths, &preferences, &mut errors),
+            ),
+            Some(OpenDocumentsMode::CombineGrid) => open_with_provisional_read_claims(
+                &registry,
+                window.label(),
+                &claimed_paths,
+                open_state_revision,
+                || {
+                    open_combined_grid_document(
+                        &app,
+                        window.label(),
+                        document_paths,
+                        &preferences,
+                        &mut errors,
+                    )
+                },
+            ),
+            _ => unreachable!("combined modes are handled above"),
+        };
+        match result {
+            Ok(document) => documents.push(document),
+            Err(error) => errors.push(error),
+        }
+        if documents.is_empty() && !errors.is_empty() {
+            return Err(errors.join("; "));
+        }
+        return Ok(OpenDocumentsResult { documents, errors });
+    }
+
+    let mut documents = Vec::new();
+    let (document_paths, mut errors) = expand_open_document_paths(paths);
+    for path in document_paths {
+        let source_path = path.canonicalize().ok();
+        let claimed_path = path.clone();
+        match open_with_provisional_claim(
+            &registry,
+            window.label(),
+            &claimed_path,
+            open_state_revision,
+            || {
+                open_document_for_window(
+                    &app,
+                    window.label(),
+                    path,
+                    &preferences,
+                    reload_options.as_ref(),
+                )
+            },
+        ) {
+            Ok(document) => {
+                if let Some(source_path) = source_path {
+                    let document_id = crate::preview::runtime_utils::stable_id(&source_path);
+                    if let Err(error) = app.state::<OpenedSourceRegistry>().register(
+                        document_id,
+                        window.label().to_string(),
+                        source_path,
+                        "structure",
+                    ) {
+                        errors.push(error);
+                    }
+                }
+                documents.push(document)
+            }
+            Err(error) => errors.push(error),
+        }
+    }
+    if documents.is_empty() && !errors.is_empty() {
+        return Err(errors.join("; "));
+    }
+    Ok(OpenDocumentsResult { documents, errors })
 }
 
+fn open_with_provisional_claim(
+    registry: &OpenDocumentRegistry,
+    window_label: &str,
+    path: &Path,
+    baseline_revision: u64,
+    open: impl FnOnce() -> Result<ViewerDocument, String>,
+) -> Result<ViewerDocument, String> {
+    let claim_id = registry.begin_provisional_open(window_label, path, baseline_revision)?;
+    finish_provisional_open(registry, window_label, claim_id, open())
+}
+
+fn finish_provisional_open(
+    registry: &OpenDocumentRegistry,
+    window_label: &str,
+    claim_id: Option<String>,
+    result: Result<ViewerDocument, String>,
+) -> Result<ViewerDocument, String> {
+    match result {
+        Ok(mut document) => {
+            if let Some(claim_id) = claim_id {
+                if document.file_path().is_some() {
+                    document.set_open_claim_id(claim_id);
+                } else {
+                    let _ = registry.abort_open_claim(window_label, &claim_id);
+                }
+            }
+            Ok(document)
+        }
+        Err(error) => {
+            if let Some(claim_id) = claim_id {
+                let _ = registry.abort_open_claim(window_label, &claim_id);
+            }
+            Err(error)
+        }
+    }
+}
+
+fn open_with_provisional_read_claims<T>(
+    registry: &OpenDocumentRegistry,
+    window_label: &str,
+    paths: &[PathBuf],
+    baseline_revision: u64,
+    read: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let mut claim_ids = Vec::new();
+    for path in paths {
+        match registry.begin_provisional_open(window_label, path, baseline_revision) {
+            Ok(Some(claim_id)) => claim_ids.push(claim_id),
+            Ok(None) => {}
+            Err(error) => {
+                for claim_id in claim_ids {
+                    let _ = registry.abort_open_claim(window_label, &claim_id);
+                }
+                return Err(error);
+            }
+        }
+    }
+
+    let result = read();
+    for claim_id in claim_ids {
+        let _ = registry.abort_open_claim(window_label, &claim_id);
+    }
+    result
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum CollectionWriteTarget {
+    ExistingOrNew,
+    NewDocument,
+}
+
+fn write_collection_with_provisional_claim<T>(
+    registry: &OpenDocumentRegistry,
+    window_label: &str,
+    output_path: &Path,
+    baseline_revision: u64,
+    target: CollectionWriteTarget,
+    write: impl FnOnce() -> Result<T, String>,
+) -> Result<(T, Option<String>), String> {
+    let claim_id = registry.begin_provisional_open(window_label, output_path, baseline_revision)?;
+    if target == CollectionWriteTarget::NewDocument && claim_id.is_none() {
+        return Err("Close the destination document before replacing it.".into());
+    }
+    match registry.with_claimed_write_permit(
+        window_label,
+        output_path,
+        Some(output_path),
+        claim_id.as_deref(),
+        write,
+    ) {
+        Ok(result) => Ok((result, claim_id)),
+        Err(error) => {
+            if let Some(claim_id) = claim_id {
+                let _ = registry.abort_open_claim(window_label, &claim_id);
+            }
+            Err(error)
+        }
+    }
+}
+
+#[cfg(test)]
 pub(crate) fn open_documents_for_window_label<R: Runtime>(
     app: &tauri::AppHandle<R>,
     window_label: &str,
@@ -494,14 +675,8 @@ fn combined_sdf_data(sdf_paths: &[PathBuf]) -> Result<CombinedSdfData, String> {
     let mut data = Vec::new();
     let mut byte_count = 0_u64;
     for path in sdf_paths {
-        let metadata = fs::metadata(path).map_err(|err| format!("{}: {err}", path.display()))?;
-        if metadata.len() > crate::preview::runtime::MAX_STRUCTURE_FILE_SIZE {
-            return Err(format!(
-                "{} is larger than the 75 MB preview limit",
-                path.display()
-            ));
-        }
-        let bytes = fs::read(path).map_err(|err| format!("{}: {err}", path.display()))?;
+        let bytes =
+            read_sdf_file_with_limit(path, crate::preview::runtime::MAX_STRUCTURE_FILE_SIZE)?;
         if bytes.iter().all(|byte| byte.is_ascii_whitespace()) {
             continue;
         }
@@ -519,6 +694,22 @@ fn combined_sdf_data(sdf_paths: &[PathBuf]) -> Result<CombinedSdfData, String> {
         return Err("No SDF docking poses found to combine".to_string());
     }
     Ok(CombinedSdfData { data, byte_count })
+}
+
+fn read_sdf_file_with_limit(path: &Path, maximum_bytes: u64) -> Result<Vec<u8>, String> {
+    let mut input = fs::File::open(path).map_err(|err| format!("{}: {err}", path.display()))?;
+    let mut bytes = Vec::new();
+    Read::by_ref(&mut input)
+        .take(maximum_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|err| format!("{}: {err}", path.display()))?;
+    if bytes.len() as u64 > maximum_bytes {
+        return Err(format!(
+            "{} is larger than the 75 MB preview limit",
+            path.display()
+        ));
+    }
+    Ok(bytes)
 }
 
 fn common_sdf_label_path(sdf_paths: &[PathBuf]) -> PathBuf {
@@ -662,18 +853,30 @@ fn expand_project_structure_targets(
 pub(crate) fn open_delimited_grid_document<R: Runtime>(
     app: tauri::AppHandle<R>,
     window: tauri::WebviewWindow<R>,
+    registry: tauri::State<'_, OpenDocumentRegistry>,
     request: DelimitedGridOpenRequest,
     preferences: ViewerPreferences,
+    open_state_revision: u64,
 ) -> Result<ViewerDocument, String> {
-    open_document_with_grid_options(
-        &app,
+    let path = PathBuf::from(request.path);
+    let claimed_path = path.clone();
+    open_with_provisional_claim(
+        &registry,
         window.label(),
-        PathBuf::from(request.path),
-        &preferences,
-        None,
-        &GridParseOptions {
-            smiles_column: Some(request.smiles_column),
-            ..GridParseOptions::default()
+        &claimed_path,
+        open_state_revision,
+        || {
+            open_document_with_grid_options(
+                &app,
+                window.label(),
+                path,
+                &preferences,
+                None,
+                &GridParseOptions {
+                    smiles_column: Some(request.smiles_column),
+                    ..GridParseOptions::default()
+                },
+            )
         },
     )
 }
@@ -1448,8 +1651,10 @@ pub(crate) fn open_merged_collection<R: Runtime>(
 pub(crate) fn append_to_molecule_collection<R: Runtime>(
     app: tauri::AppHandle<R>,
     window: tauri::WebviewWindow<R>,
+    registry: tauri::State<'_, OpenDocumentRegistry>,
     request: AppendCollectionRequest,
     preferences: ViewerPreferences,
+    open_state_revision: u64,
 ) -> Result<ViewerDocument, String> {
     let target_path = PathBuf::from(&request.target_path)
         .canonicalize()
@@ -1484,32 +1689,52 @@ pub(crate) fn append_to_molecule_collection<R: Runtime>(
         return Err("Structure text is empty".to_string());
     }
 
-    let existing = fs::read_to_string(&target_path)
-        .map_err(|err| format!("{}: {err}", target_path.display()))?;
-    let merged = merge_collection_text(target_family, &[existing.as_str(), request.text.as_str()])?;
-    if merged.trim().is_empty() {
-        return Err("Merged collection is empty".to_string());
-    }
-    write_text_atomically(&target_path, &merged)?;
-    open_document_for_window(&app, window.label(), target_path, &preferences, None)
+    let ((), claim_id) = write_collection_with_provisional_claim(
+        &registry,
+        window.label(),
+        &target_path,
+        open_state_revision,
+        CollectionWriteTarget::ExistingOrNew,
+        || {
+            let existing = fs::read_to_string(&target_path)
+                .map_err(|err| format!("{}: {err}", target_path.display()))?;
+            let merged =
+                merge_collection_text(target_family, &[existing.as_str(), request.text.as_str()])?;
+            if merged.trim().is_empty() {
+                return Err("Merged collection is empty".to_string());
+            }
+            write_text_atomically(&target_path, &merged)
+        },
+    )?;
+    finish_provisional_open(
+        &registry,
+        window.label(),
+        claim_id,
+        open_document_for_window(&app, window.label(), target_path, &preferences, None),
+    )
 }
 
 #[tauri::command]
 pub(crate) fn create_molecule_collection<R: Runtime>(
     app: tauri::AppHandle<R>,
     window: tauri::WebviewWindow<R>,
+    registry: tauri::State<'_, OpenDocumentRegistry>,
     request: CreateCollectionRequest,
     preferences: ViewerPreferences,
+    open_state_revision: u64,
 ) -> Result<ViewerDocument, String> {
-    let output_path = PathBuf::from(&request.output_path);
-    if output_path.as_os_str().is_empty() {
+    let requested_output_path = PathBuf::from(&request.output_path);
+    if requested_output_path.as_os_str().is_empty() {
         return Err("Missing collection output path".to_string());
     }
-    let extension = structure_path_extension(&output_path);
+    if !requested_output_path.is_absolute() {
+        return Err("Collection output path must be absolute".to_string());
+    }
+    let extension = structure_path_extension(&requested_output_path);
     let output_family = collection_family(&extension).ok_or_else(|| {
         format!(
             "{} is not a supported molecule collection",
-            output_path.display()
+            requested_output_path.display()
         )
     })?;
     let request_extension = request
@@ -1530,16 +1755,40 @@ pub(crate) fn create_molecule_collection<R: Runtime>(
     if request.text.trim().is_empty() {
         return Err("Structure text is empty".to_string());
     }
-    if let Some(parent) = output_path.parent() {
-        fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
-    }
-    let merged = merge_collection_text(output_family, &[request.text.as_str()])?;
-    write_text_atomically(&output_path, &merged)?;
-    open_document_for_window(&app, window.label(), output_path, &preferences, None)
+    let parent = requested_output_path
+        .parent()
+        .ok_or_else(|| "Collection output path has no parent directory".to_string())?;
+    let file_name = requested_output_path
+        .file_name()
+        .ok_or_else(|| "Collection output path must name a file".to_string())?;
+    fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
+    let output_path = parent
+        .canonicalize()
+        .map_err(|err| format!("{}: {err}", parent.display()))?
+        .join(file_name);
+    let ((), claim_id) = write_collection_with_provisional_claim(
+        &registry,
+        window.label(),
+        &output_path,
+        open_state_revision,
+        CollectionWriteTarget::NewDocument,
+        || {
+            let merged = merge_collection_text(output_family, &[request.text.as_str()])?;
+            write_text_atomically(&output_path, &merged)
+        },
+    )?;
+    finish_provisional_open(
+        &registry,
+        window.label(),
+        claim_id,
+        open_document_for_window(&app, window.label(), output_path, &preferences, None),
+    )
 }
 
 #[tauri::command]
-pub(crate) fn save_molecule_collection_as(
+pub(crate) fn save_molecule_collection_as<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    registry: tauri::State<'_, OpenDocumentRegistry>,
     path: String,
     output_path: String,
 ) -> Result<String, String> {
@@ -1554,22 +1803,73 @@ pub(crate) fn save_molecule_collection_as(
         ));
     }
     let output = PathBuf::from(&output_path);
+    if !output.is_absolute() {
+        return Err("Save destination must be an absolute path".into());
+    }
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
     }
-    fs::copy(&input_path, &output)
-        .map_err(|err| format!("{} -> {}: {err}", input_path.display(), output.display()))?;
+    registry.with_write_permit(window.label(), &output, Some(&input_path), || {
+        copy_file_atomically(&input_path, &output)
+    })?;
     Ok(output.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-pub(crate) fn save_text_as(text: String, output_path: String) -> Result<String, String> {
+pub(crate) fn save_text_as<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    registry: tauri::State<'_, OpenDocumentRegistry>,
+    text: String,
+    output_path: String,
+    source_path: Option<String>,
+) -> Result<String, String> {
     let output = PathBuf::from(&output_path);
+    if !output.is_absolute() {
+        return Err("Save destination must be an absolute path".into());
+    }
+    let source = source_path.map(PathBuf::from);
+    if source.as_ref().is_some_and(|path| !path.is_absolute()) {
+        return Err("Save source must be an absolute path".into());
+    }
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
     }
-    fs::write(&output, text).map_err(|err| format!("{}: {err}", output.display()))?;
+    match source.as_deref() {
+        Some(source) => registry.with_save_as_permit(window.label(), &output, source, || {
+            write_text_atomically(&output, &text)
+        })?,
+        None => registry.with_write_permit(window.label(), &output, None, || {
+            write_text_atomically(&output, &text)
+        })?,
+    }
     Ok(output.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub(crate) fn release_save_as_reservation<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    registry: tauri::State<'_, OpenDocumentRegistry>,
+    output_path: String,
+    source_path: String,
+) -> Result<bool, String> {
+    let output = PathBuf::from(output_path);
+    let source = PathBuf::from(source_path);
+    if !output.is_absolute() || !source.is_absolute() {
+        return Err("Save As reservation paths must be absolute".into());
+    }
+    registry.release_save_as_reservation(window.label(), &output, &source)
+}
+
+#[tauri::command]
+pub(crate) fn abort_open_document_claim<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    registry: tauri::State<'_, OpenDocumentRegistry>,
+    claim_id: String,
+) -> Result<bool, String> {
+    let claim_id = uuid::Uuid::parse_str(&claim_id)
+        .map_err(|_| "Open document claim ID is invalid".to_string())?
+        .to_string();
+    registry.abort_open_claim(window.label(), &claim_id)
 }
 
 #[tauri::command]
@@ -2246,7 +2546,10 @@ fn parse_delimited_collection_header(line: &str, separator: char) -> Vec<String>
     cells
 }
 
-fn write_text_atomically(path: &Path, text: &str) -> Result<(), String> {
+fn write_file_atomically(
+    path: &Path,
+    write_contents: impl FnOnce(&mut fs::File) -> Result<(), String>,
+) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
@@ -2255,12 +2558,94 @@ fn write_text_atomically(path: &Path, text: &str) -> Result<(), String> {
         .and_then(|value| value.to_str())
         .unwrap_or("collection");
     let temporary_path = parent.join(format!(".{file_name}.tmp-{}", uuid::Uuid::new_v4()));
-    fs::write(&temporary_path, text)
-        .map_err(|err| format!("{}: {err}", temporary_path.display()))?;
-    if let Err(error) = fs::rename(&temporary_path, path) {
+    let existing_metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(format!("{} is a symbolic link", path.display()));
+            }
+            if metadata.permissions().readonly() {
+                return Err(format!("{} is read-only", path.display()));
+            }
+            Some(metadata)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("{}: {error}", path.display())),
+    };
+    let result = (|| {
+        let mut temporary = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)
+            .map_err(|err| format!("{}: {err}", temporary_path.display()))?;
+        if let Some(metadata) = &existing_metadata {
+            preserve_file_metadata(path, &temporary_path)?;
+            fs::set_permissions(&temporary_path, metadata.permissions())
+                .map_err(|err| format!("{}: {err}", temporary_path.display()))?;
+        }
+        write_contents(&mut temporary)?;
+        temporary
+            .sync_all()
+            .map_err(|err| format!("{}: {err}", temporary_path.display()))?;
+        drop(temporary);
+        fs::rename(&temporary_path, path).map_err(|error| format!("{}: {error}", path.display()))
+    })();
+    if let Err(error) = result {
         let _ = fs::remove_file(&temporary_path);
-        return Err(format!("{}: {error}", path.display()));
+        return Err(error);
     }
+    Ok(())
+}
+
+fn write_text_atomically(path: &Path, text: &str) -> Result<(), String> {
+    write_file_atomically(path, |temporary| {
+        temporary
+            .write_all(text.as_bytes())
+            .map_err(|err| format!("{}: {err}", path.display()))
+    })
+}
+
+fn copy_file_atomically(source: &Path, destination: &Path) -> Result<(), String> {
+    let mut input = fs::File::open(source).map_err(|err| format!("{}: {err}", source.display()))?;
+    write_file_atomically(destination, |temporary| {
+        std::io::copy(&mut input, temporary)
+            .map(|_| ())
+            .map_err(|err| format!("{} -> {}: {err}", source.display(), destination.display()))
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn preserve_file_metadata(source: &Path, destination: &Path) -> Result<(), String> {
+    use std::ffi::{c_char, c_void};
+
+    const COPYFILE_METADATA: u32 = (1 << 0) | (1 << 1) | (1 << 2);
+    extern "C" {
+        fn copyfile(from: *const c_char, to: *const c_char, state: *mut c_void, flags: u32) -> i32;
+    }
+
+    let source = CString::new(source.as_os_str().as_bytes())
+        .map_err(|_| format!("{} contains a NUL byte", source.display()))?;
+    let destination = CString::new(destination.as_os_str().as_bytes())
+        .map_err(|_| format!("{} contains a NUL byte", destination.display()))?;
+    let result = unsafe {
+        copyfile(
+            source.as_ptr(),
+            destination.as_ptr(),
+            std::ptr::null_mut(),
+            COPYFILE_METADATA,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "could not preserve file metadata: {}",
+            std::io::Error::last_os_error()
+        ))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn preserve_file_metadata(_source: &Path, _destination: &Path) -> Result<(), String> {
     Ok(())
 }
 
@@ -2612,17 +2997,21 @@ mod tests {
     use super::{
         bundled_conformer_python_candidates_from_executable, classify_open_paths,
         conformer_python_candidates, conformer_python_runtime_spec,
-        conformer_python_status_candidates, expand_open_document_paths, expand_open_targets,
-        expand_project_structure_targets, generated_conformer_title, list_project_structure_files,
-        looks_like_supported_structure_file, normalize_inline_structure_extension,
-        open_text_structure_for_window_label, smiles_from_sheet_data,
-        supported_open_target_extensions, ProjectStructureScanLimits, TextStructureRequest,
+        conformer_python_status_candidates, copy_file_atomically, expand_open_document_paths,
+        expand_open_targets, expand_project_structure_targets, generated_conformer_title,
+        list_project_structure_files, looks_like_supported_structure_file,
+        normalize_inline_structure_extension, open_text_structure_for_window_label,
+        open_with_provisional_claim, open_with_provisional_read_claims, read_sdf_file_with_limit,
+        smiles_from_sheet_data, supported_open_target_extensions,
+        write_collection_with_provisional_claim, write_text_atomically, CollectionWriteTarget,
+        ProjectStructureScanLimits, TextStructureRequest,
     };
+    use crate::menu::OpenDocumentRegistry;
     use crate::preview::grid_store::GridRuntimeRegistry;
-    use crate::preview::runtime::ViewerPreferences;
+    use crate::preview::runtime::{ViewerDocument, ViewerPreferences};
     use std::fs;
     #[cfg(unix)]
-    use std::os::unix::fs::symlink;
+    use std::os::unix::fs::{symlink, PermissionsExt};
     use std::path::Path;
     use tauri::Manager;
 
@@ -2648,6 +3037,119 @@ mod tests {
             theme_dark_translucent: 20.0,
             theme_dark_contrast: 16.0,
         }
+    }
+
+    #[test]
+    fn failed_open_releases_its_provisional_claim() {
+        let registry = OpenDocumentRegistry::default();
+        let path = Path::new("/tmp/burrete-failed-open.sdf");
+
+        let error = open_with_provisional_claim(&registry, "main", path, 7, || {
+            Err::<ViewerDocument, _>("parse failed".to_string())
+        })
+        .expect_err("the simulated open should fail");
+        assert_eq!(error, "parse failed");
+
+        registry
+            .with_write_permit("workspace", path, None, || Ok(()))
+            .expect("a failed open must release its provisional claim");
+    }
+
+    #[test]
+    fn combined_read_claims_block_writes_then_release_on_success() {
+        let registry = OpenDocumentRegistry::default();
+        let path = Path::new("/tmp/burrete-combined-read.sdf");
+
+        open_with_provisional_read_claims(&registry, "main", &[path.into()], 7, || {
+            assert!(registry
+                .with_write_permit("workspace", path, None, || Ok(()))
+                .is_err());
+            Ok(())
+        })
+        .expect("combined read should succeed");
+
+        registry
+            .with_write_permit("workspace", path, None, || Ok(()))
+            .expect("a successful virtual result must release its source claims");
+    }
+
+    #[test]
+    fn failed_combined_read_releases_its_source_claims() {
+        let registry = OpenDocumentRegistry::default();
+        let path = Path::new("/tmp/burrete-failed-combined-read.sdf");
+
+        let error = open_with_provisional_read_claims(&registry, "main", &[path.into()], 7, || {
+            Err::<(), _>("combine failed".to_string())
+        })
+        .expect_err("the simulated combined read should fail");
+        assert_eq!(error, "combine failed");
+
+        registry
+            .with_write_permit("workspace", path, None, || Ok(()))
+            .expect("a failed virtual result must release its source claims");
+    }
+
+    #[test]
+    fn collection_write_claim_blocks_cross_window_overwrite() {
+        let registry = OpenDocumentRegistry::default();
+        let path = Path::new("/tmp/burrete-collection-write.sdf");
+
+        let ((), claim_id) = write_collection_with_provisional_claim(
+            &registry,
+            "main",
+            path,
+            7,
+            CollectionWriteTarget::ExistingOrNew,
+            || Ok(()),
+        )
+        .expect("collection write should succeed");
+        let claim_id = claim_id.expect("new collection should retain an open claim");
+        assert!(registry
+            .with_write_permit("workspace", path, None, || Ok(()))
+            .is_err());
+        registry
+            .abort_open_claim("main", &claim_id)
+            .expect("release test claim");
+
+        registry
+            .with_write_permit("workspace", path, None, || Ok(()))
+            .expect("the released collection destination may be reused");
+    }
+
+    #[test]
+    fn failed_collection_write_releases_its_provisional_claim() {
+        let registry = OpenDocumentRegistry::default();
+        let path = Path::new("/tmp/burrete-failed-collection-write.sdf");
+
+        let error = write_collection_with_provisional_claim(
+            &registry,
+            "main",
+            path,
+            7,
+            CollectionWriteTarget::ExistingOrNew,
+            || Err::<(), _>("write failed".to_string()),
+        )
+        .expect_err("the simulated collection write should fail");
+        assert_eq!(error, "write failed");
+
+        registry
+            .with_write_permit("workspace", path, None, || Ok(()))
+            .expect("a failed collection write must release its provisional claim");
+    }
+
+    #[test]
+    fn bounded_sdf_read_enforces_the_actual_byte_limit() {
+        let root =
+            std::env::temp_dir().join(format!("burrete-bounded-sdf-read-{}", uuid::Uuid::new_v4()));
+        let path = root.join("combined.sdf");
+        fs::create_dir_all(&root).expect("create test directory");
+        fs::write(&path, b"12345").expect("write SDF source");
+
+        let error = read_sdf_file_with_limit(&path, 4).expect_err("source must exceed the limit");
+
+        assert!(error.contains("larger than"));
+        fs::remove_file(path).expect("remove SDF source");
+        fs::remove_dir(root).expect("remove test directory");
     }
 
     fn mock_app_with_grid_registry() -> tauri::App<tauri::test::MockRuntime> {
@@ -3175,5 +3677,127 @@ mod tests {
         fs::remove_file(alias).unwrap();
         fs::remove_file(real).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_text_save_preserves_permissions() {
+        let root = std::env::temp_dir().join(format!(
+            "burrete-atomic-save-permissions-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let path = root.join("collection.csv");
+        fs::create_dir_all(&root).expect("create test directory");
+        fs::write(&path, "old\n").expect("write original");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640))
+            .expect("set original permissions");
+
+        write_text_atomically(&path, "new\n").expect("save replacement");
+
+        assert_eq!(
+            fs::read_to_string(&path).expect("read replacement"),
+            "new\n"
+        );
+        assert_eq!(
+            fs::metadata(&path)
+                .expect("replacement metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o640
+        );
+        fs::remove_file(path).expect("remove test file");
+        fs::remove_dir(root).expect("remove test directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_text_save_rejects_read_only_files() {
+        let root = std::env::temp_dir().join(format!(
+            "burrete-atomic-save-read-only-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let path = root.join("collection.csv");
+        fs::create_dir_all(&root).expect("create test directory");
+        fs::write(&path, "original\n").expect("write original");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o444))
+            .expect("set read-only permissions");
+
+        let error =
+            write_text_atomically(&path, "replacement\n").expect_err("read-only save must fail");
+
+        assert!(error.contains("read-only"));
+        assert_eq!(
+            fs::read_to_string(&path).expect("read original"),
+            "original\n"
+        );
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644))
+            .expect("restore writable permissions");
+        fs::remove_file(path).expect("remove test file");
+        fs::remove_dir(root).expect("remove test directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_collection_copy_rejects_symlink_destinations() {
+        let root = std::env::temp_dir().join(format!(
+            "burrete-atomic-copy-symlink-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let source = root.join("source.sdf");
+        let real_destination = root.join("real-destination.sdf");
+        let destination = root.join("destination.sdf");
+        fs::create_dir_all(&root).expect("create test directory");
+        fs::write(&source, b"source\0bytes").expect("write source");
+        fs::write(&real_destination, b"original").expect("write real destination");
+        symlink(&real_destination, &destination).expect("create destination symlink");
+
+        let error = copy_file_atomically(&source, &destination)
+            .expect_err("an atomic collection copy must reject a symlink destination");
+
+        assert!(error.contains("symbolic link"));
+        assert_eq!(
+            fs::read(&real_destination).expect("read real destination"),
+            b"original"
+        );
+        fs::remove_file(destination).expect("remove symlink");
+        fs::remove_file(real_destination).expect("remove real destination");
+        fs::remove_file(source).expect("remove source");
+        fs::remove_dir(root).expect("remove test directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_collection_copy_preserves_bytes_and_destination_permissions() {
+        let root = std::env::temp_dir().join(format!(
+            "burrete-atomic-copy-permissions-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let source = root.join("source.sdf");
+        let destination = root.join("destination.sdf");
+        let source_bytes = b"molecule\0collection\n$$$$\n";
+        fs::create_dir_all(&root).expect("create test directory");
+        fs::write(&source, source_bytes).expect("write source");
+        fs::write(&destination, b"old").expect("write destination");
+        fs::set_permissions(&destination, fs::Permissions::from_mode(0o640))
+            .expect("set destination permissions");
+
+        copy_file_atomically(&source, &destination).expect("copy collection atomically");
+
+        assert_eq!(
+            fs::read(&destination).expect("read destination"),
+            source_bytes
+        );
+        assert_eq!(
+            fs::metadata(&destination)
+                .expect("destination metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o640
+        );
+        fs::remove_file(destination).expect("remove destination");
+        fs::remove_file(source).expect("remove source");
+        fs::remove_dir(root).expect("remove test directory");
     }
 }

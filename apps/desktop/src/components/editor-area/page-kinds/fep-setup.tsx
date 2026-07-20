@@ -68,7 +68,7 @@ function FepSetupWorkspace({
   return (
     <section className="fep-setup-workspace" aria-label="FEP setup workspace">
       <div className="fep-setup-pane fep-setup-pane-docking">
-        <ViewerFrame document={docking} />
+        <ViewerFrame document={docking} readOnly />
       </div>
       <aside className="fep-setup-panel">
         <header>
@@ -103,7 +103,7 @@ function FepSetupWorkspace({
         <p>Source files remain unchanged.</p>
       </aside>
       <div className="fep-setup-pane fep-setup-pane-grid">
-        <ViewerFrame document={grid} />
+        <ViewerFrame document={grid} readOnly />
       </div>
     </section>
   );

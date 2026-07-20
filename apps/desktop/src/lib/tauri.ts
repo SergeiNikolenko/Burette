@@ -4,7 +4,11 @@ export function isTauriRuntime() {
 
 type TauriUnlisten = () => void | PromiseLike<void>;
 
-export function trackTauriListener(registration: Promise<TauriUnlisten>, label: string) {
+export function trackTauriListener(
+  registration: Promise<TauriUnlisten>,
+  label: string,
+  onRegistered?: () => void,
+) {
   let disposed = false;
   let unlisten: TauriUnlisten | undefined;
 
@@ -15,6 +19,7 @@ export function trackTauriListener(registration: Promise<TauriUnlisten>, label: 
         return;
       }
       unlisten = next;
+      onRegistered?.();
     })
     .catch((error) => {
       console.warn(`[Burrete] ${label} listener setup failed`, error);

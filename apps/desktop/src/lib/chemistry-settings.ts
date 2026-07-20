@@ -64,7 +64,10 @@ export function conformerOperationLabel(operation: ConformerOperation) {
 export function conformerStatusLine(status: ConformerStatus) {
   const crest = status.crest.installed ? "CREST ready" : "CREST missing";
   const prism = status.prism.installed ? "PRISM ready" : "PRISM missing";
-  return `${crest}; ${prism}`;
+  const openbabel = !status.openbabel
+    ? "Open Babel status unavailable"
+    : status.openbabel.installed ? "Open Babel ready" : "Open Babel missing";
+  return `${crest}; ${prism}; ${openbabel}`;
 }
 
 export const DEFAULT_XTB_SETTINGS: XtbSettings = {

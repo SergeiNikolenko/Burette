@@ -9,17 +9,24 @@ open.
 
 | Shortcut | Action |
 | --- | --- |
-| Cmd+P or / | Open command palette |
+| Cmd+Shift+P or / | Open command palette |
+| Cmd+N | Open a new Burrete window |
+| Cmd+T | Open a new launcher tab |
 | Cmd+O | Open molecular structure files |
 | Cmd+Shift+O | Open most recent structure |
 | Cmd+Z | Undo the latest workspace or focused preview edit |
 | Cmd+Shift+Z | Redo the latest workspace or focused preview edit when available |
 | Cmd+B | Toggle sidebar |
 | Cmd+, | Open Settings |
-| Cmd+W | Close active structure tab |
+| Cmd+W | Close the active tab |
+| Cmd+Shift+W | Close the active window |
+| Control+Tab | Select the next tab |
+| Control+Shift+Tab | Select the previous tab |
+| Cmd+Z | Undo in the active text or collection context |
+| Cmd+Shift+Z | Redo in the active text or collection context |
 | Cmd+Shift+R | Reveal active structure in Finder |
 | Cmd+Shift+C | Copy active structure path |
-| Cmd+I | Show active structure metadata |
+| Cmd+I | Get information about the active file |
 | Cmd+Shift+E | Export active external preview as PNG |
 | Cmd+Option+E | Export active external preview as SVG |
 | Cmd+1 ... Cmd+9 | Jump to the matching structure tab |
@@ -35,13 +42,13 @@ These actions are available from the command palette.
 | Search Projects and Structures | Focus the sidebar project filter |
 | Settings | Open Settings |
 | Hide Sidebar / Show Sidebar | Toggle sidebar |
-| Close Active Structure | Close the selected molecule tab |
-| Close All Structures | Clear all open molecule tabs |
+| Close Active Tab | Close the selected tab |
+| Close All Tabs | Close all workspace tabs |
 | Clear Recent Structures | Clear the persisted recent structure list |
 | Clear Preview Cache | Remove generated preview runtimes |
 | Reveal in Finder | Show the active structure in Finder |
 | Copy Path | Copy the active structure path |
-| Show Metadata | Show the active structure path, renderer, format, and size |
+| Get Info | Show the active structure path, renderer, format, and size |
 | Export Preview as PNG | Save the active external SVG preview as a PNG |
 | Export Preview as SVG | Save the active external SVG preview |
 | Reset Quick Look | Refresh Finder preview registration |
