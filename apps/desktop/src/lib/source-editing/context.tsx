@@ -16,6 +16,12 @@ export type SourceEditingView = {
   sourcePreview: SourcePreviewFrameSnapshot | null;
 };
 
+export type SourceEditingWindowDirtySnapshot = {
+  dirty: boolean;
+  revision: number;
+  closeTransitionActive: boolean;
+};
+
 export type SourceEditingContextValue = {
   sessionForDocument: (document: ViewerDocument | null) => SourceEditingView | null;
   beginEditing: (document: ViewerDocument) => void | Promise<void>;
@@ -24,6 +30,9 @@ export type SourceEditingContextValue = {
   save: (document: ViewerDocument) => void | Promise<void>;
   stagingLoaded: (document: ViewerDocument, identity: SourcePreviewIdentity, frame: HTMLIFrameElement) => void;
   closeDocuments: (documentIds: string[]) => boolean;
+  confirmCloseWindow: () => Promise<boolean>;
+  getWindowDirtySnapshot: () => SourceEditingWindowDirtySnapshot;
+  hasUnsavedOrSavingSessions: boolean;
 };
 
 const SourceEditingContext = createContext<SourceEditingContextValue | null>(null);

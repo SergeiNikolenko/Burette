@@ -31,6 +31,7 @@
   const SDF_CONTEXT_COLOR_STORAGE_KEY = 'buret.sdf.contextColor';
   const XYZ_FRAME_MODE_STORAGE_KEY = 'buret.xyz.frameMode';
   const XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT = 80;
+  const MAX_STRUCTURE_OVERLAY_FRAME_COUNT = 50;
   const XYZ_FRAME_BACKGROUND_MIN_ALPHA = 0.0001;
   const DEFAULT_MOLSTAR_STYLE = 'illustrative';
   const MOLSTAR_STYLE_OPTIONS = [
@@ -114,6 +115,9 @@
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
   let molstarLassoOverlay = null;
+  const molstarLassoSelectionAtoms = new Map();
+  const molstarLassoSelectionAtomKeys = new Set();
+  const molstarLassoSelectionResidueKeys = new Set();
   let xyzrenderLassoEnabled = false;
   let xyzrenderLassoStroke = null;
   let xyzrenderLassoOverlay = null;
@@ -135,6 +139,7 @@
   let molstarMoleculePreviewDrag = null;
   let molstarMoleculePreviewTarget = null;
   let molstarMoleculePreviewSuppressClickUntil = 0;
+  let molstarSelectionHostSignature = '';
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
   const molstarPreviewSvgCache = new Map();
@@ -190,7 +195,7 @@
       const key = event.key?.toLowerCase();
       const commandKey = event.metaKey || event.ctrlKey;
       const togglesSidebar = commandKey && !event.altKey && !event.shiftKey && key === 'b';
-      const opensCommandPalette = (commandKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
+      const opensCommandPalette = (commandKey && event.shiftKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
       if (!opensCommandPalette && !togglesSidebar) return;
       event.preventDefault();
       postHostMessage({ type: togglesSidebar ? 'toggleSidebar' : 'openCommandPalette' });
@@ -494,7 +499,7 @@
   async function executeBurreteAgentAction(action) {
     const type = String(action?.type || '');
     if (type === 'get_xtb_context') {
-      const target = molstarContextTarget();
+      const target = molstarSelectedMoleculeTargetFromSelection();
       return {
         ok: true,
         command: 'get_xtb_context',
@@ -559,6 +564,15 @@
     if (type === 'set_structure_pose') {
       return setStructurePoseFromAction(action);
     }
+    if (type === 'apply_trajectory_smoothing') {
+      return applyTrajectorySmoothingFromAction(action);
+    }
+    if (type === 'apply_external_trajectory_smoothing') {
+      return applyExternalTrajectorySmoothingFromAction(action);
+    }
+    if (type === 'set_trajectory_smoothing_view') {
+      return setTrajectorySmoothingViewFromAction(action);
+    }
     if (type === 'set_molstar_style') {
       return setMolstarStyleFromAction(action);
     }
@@ -578,7 +592,13 @@
       return setSdfPoseIndexFromAction(action);
     }
     if (type === 'focus_selection') {
-      return window.BurreteAgent.run({ command: 'focusSelection', args: action.args || {} });
+      return window.BurreteAgent.run({
+        command: 'focusSelection',
+        args: {
+          ...(action.args || {}),
+          selector: action.selector || action.args?.selector || 'last'
+        }
+      });
     }
     if (type === 'label_selection') {
       return window.BurreteAgent.run({
@@ -747,6 +767,72 @@
       }, '*');
     })();
   });
+
+  window.BurreteViewerActions = { run: executeBurreteAgentAction };
+
+  let hostedMcpActionsApplied = false;
+  function hostedMcpSelectionFromResults(actions, results) {
+    let selection = null;
+    for (let index = 0; index < actions.length; index++) {
+      const action = actions[index];
+      const result = results[index];
+      if (action?.type === 'clear_selection' && result?.ok !== false) selection = null;
+      if (action?.type !== 'select_residues' || result?.ok === false) continue;
+      const details = result?.result || {};
+      const residues = Array.isArray(details.residuesPreview)
+        ? details.residuesPreview.slice(0, 96).map(residue => ({
+          chain: String(residue.auth_asym_id || residue.label_asym_id || ''),
+          sequence: residue.auth_seq_id ?? residue.label_seq_id ?? null,
+          compId: String(residue.auth_comp_id || residue.label_comp_id || '')
+        }))
+        : [];
+      selection = {
+        source: 'agent',
+        label: String(action.label || `Agent selection: ${Number(details.counts?.atoms) || 0} atoms across ${residues.length} residues`),
+        atoms: Math.max(0, Number(details.counts?.atoms) || 0),
+        residues,
+        atomIdentities: []
+      };
+    }
+    return selection;
+  }
+
+  async function applyHostedMcpActions() {
+    if (hostedMcpActionsApplied) return;
+    const requestedActions = Array.isArray(window.BurreteConfig?.hostedMcpActions)
+      ? window.BurreteConfig.hostedMcpActions.slice(0, 8)
+      : [];
+    if (!requestedActions.length) return;
+    hostedMcpActionsApplied = true;
+    try {
+      await window.BurreteHostedAppBridge?.ready;
+      const actions = window.BurreteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
+      if (actions.length !== requestedActions.length) {
+        throw new Error('Hosted scene contained an action outside the public Burrete allowlist.');
+      }
+      await window.BurreteAgent?.ready;
+      const results = [];
+      for (const action of actions) results.push(await executeBurreteAgentAction(action));
+      window.__mqlPost?.('sceneActionsApplied', '', {
+        report: {
+          revision: Date.now(),
+          documentId: String(window.BurreteConfig?.documentId || 'active-structure'),
+          selection: hostedMcpSelectionFromResults(actions, results),
+          results
+        }
+      });
+    } catch (error) {
+      window.__mqlPost?.('sceneActionsApplied', '', {
+        report: {
+          revision: Date.now(),
+          results: [agentActionFailure('hosted_scene', 'ACTION_ERROR', error?.message || String(error))]
+        }
+      });
+    }
+  }
+
+  window.addEventListener('burette-agent-ready', () => { void applyHostedMcpActions(); }, { once: true });
+  void applyHostedMcpActions();
 
   function agentActionFailure(command, code, message) {
     return {
@@ -950,6 +1036,8 @@
   let activeViewer = null;
   let activeConfig = null;
   let activeMolstarPrepared = null;
+  let trajectorySmoothingState = null;
+  let pendingTrajectoryPlaybackRestore = null;
   let activeSdfPoseMode = 'single';
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
@@ -2245,6 +2333,16 @@
 
   function structureOverlayToggleAvailable(prepared = activeMolstarPrepared) {
     if (!structureOverlayAvailable(prepared)) return false;
+    const format = normalizeFormat(activeConfig?.molstarFormat || activeConfig?.format);
+    const trajectoryOverlay = prepared?.kind === 'trajectory'
+      || prepared?.nativeTrajectoryControls === true
+      || prepared?.xyzFrameOverlayAvailable === true
+      || prepared?.pdbModelOverlayAvailable === true
+      || format === 'xyz';
+    if (trajectoryOverlay) {
+      const poseCount = Number(prepared?.poseCount || prepared?.xyzFrameCount || prepared?.pdbModelCount || activeConfig?.trajectoryFrameCount || 0);
+      return Number.isFinite(poseCount) && poseCount > 1 && poseCount <= MAX_STRUCTURE_OVERLAY_FRAME_COUNT;
+    }
     return true;
   }
 
@@ -2754,12 +2852,40 @@
     return MOLSTAR_STYLE_OPTIONS.find(option => option.value === value)?.label || value;
   }
 
+  function captureMolstarCameraSnapshot(viewer) {
+    const camera = viewer?.plugin?.canvas3d?.camera;
+    if (!camera || typeof camera.getSnapshot !== 'function') return null;
+    try {
+      const snapshot = camera.getSnapshot();
+      if (!snapshot) return null;
+      return {
+        ...snapshot,
+        position: snapshot.position?.slice?.() || snapshot.position,
+        target: snapshot.target?.slice?.() || snapshot.target,
+        up: snapshot.up?.slice?.() || snapshot.up
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function restoreMolstarCameraSnapshot(viewer, snapshot) {
+    if (!snapshot) return;
+    const canvas3d = viewer?.plugin?.canvas3d;
+    if (!canvas3d?.requestCameraReset) return;
+    try {
+      canvas3d.requestCameraReset({ snapshot, durationMs: 0 });
+      canvas3d.requestDraw?.();
+    } catch (_) {}
+  }
+
   async function reloadMolstarStyle(viewer, style, serial) {
     const prepared = activeMolstarPrepared;
     if (!prepared) {
       await applyMolstarStyle(viewer, style);
       return;
     }
+    const cameraSnapshot = captureMolstarCameraSnapshot(viewer);
     const plugin = viewer?.plugin;
     if (typeof plugin?.clear === 'function') {
       await plugin.clear();
@@ -2772,6 +2898,7 @@
     applyLayoutState(viewer);
     scheduleLayoutStateReapply(viewer);
     try { viewer.handleResize(); } catch (_) {}
+    restoreMolstarCameraSnapshot(viewer, cameraSnapshot);
     setStatus(`[web] Applied Mol* ${molstarStyleLabel(style)} style`);
     setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
@@ -3777,6 +3904,10 @@
   }
 
   function restoreToolbarCollapsed(toolbar, viewer) {
+    if (window.BurreteConfig?.hostedMcpWidgetBootstrap === true) {
+      setToolbarCollapsed(toolbar, true, viewer, false);
+      return;
+    }
     let collapsed = false;
     try {
       const stored = window.localStorage && window.localStorage.getItem('buret.toolbar.collapsed');
@@ -3857,6 +3988,10 @@
     let drag = null;
     let ignoreNextGripClick = false;
     const grip = toolbar.querySelector('[data-drag-handle]');
+    if (grip && window.__BURRETE_HOSTED_GRIP_FALLBACK__) {
+      grip.removeEventListener('click', window.__BURRETE_HOSTED_GRIP_FALLBACK__);
+      delete window.__BURRETE_HOSTED_GRIP_FALLBACK__;
+    }
     grip?.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
@@ -8583,6 +8718,12 @@
     if (!cleared) {
       return sceneActionFailure('clear_selection', 'NOT_IMPLEMENTED', 'Mol* selection managers are unavailable.');
     }
+    molstarLassoSelectionAtoms.clear();
+    molstarLassoSelectionAtomKeys.clear();
+    molstarLassoSelectionResidueKeys.clear();
+    window.__mqlPost?.('selectionChanged', '', {
+      selection: { source: 'viewer', cleared: true, atoms: 0, residues: [], atomIdentities: [] }
+    });
     return { ok: true, command: 'clear_selection', result: { cleared: true } };
   }
 
@@ -8784,6 +8925,12 @@
       return;
     }
     activeDockingPrepared = null;
+    if (prepared.format === 'mol' && typeof viewer.loadStructureFromData === 'function') {
+      await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
+      await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
+      installDockingPoseControls(viewer, null);
+      return;
+    }
     if (prepared.kind === 'sdf-collection') {
       await applySdfCollectionVisibility(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount));
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
@@ -9452,6 +9599,171 @@
     }
   }
 
+  function currentTrajectoryPlaybackSnapshot() {
+    const root = document.querySelector('.buret-docking-poses');
+    if (!root) return null;
+    const slider = root.querySelector('.buret-docking-pose-slider');
+    const speed = root.querySelector('.buret-docking-pose-speed');
+    const stop = root.querySelector('button[aria-label^="Stop "]');
+    return {
+      frameIndex: Math.max(0, Math.trunc(Number(slider?.value) || 1) - 1),
+      fps: String(speed?.value || ''),
+      playing: Boolean(stop)
+    };
+  }
+
+  async function restoreTrajectoryPlaybackSnapshot(snapshot) {
+    if (!snapshot) return;
+    if (activeStructurePoseSetter) await activeStructurePoseSetter(snapshot.frameIndex);
+    const root = document.querySelector('.buret-docking-poses');
+    const speed = root?.querySelector('.buret-docking-pose-speed');
+    if (speed && snapshot.fps) {
+      speed.value = snapshot.fps;
+      speed.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (snapshot.playing && !root?.querySelector('button[aria-label^="Stop "]')) {
+      root?.querySelector('button[aria-label^="Play "]')?.click();
+    }
+  }
+
+  async function replaceTrajectorySmoothingPrepared(prepared, playbackOverride = null) {
+    if (!activeViewer?.plugin || !prepared) throw new Error('The Mol* trajectory viewer is not ready.');
+    if (typeof activeViewer.plugin.clear !== 'function') throw new Error('Mol* cannot replace this trajectory in place.');
+    const currentPlayback = currentTrajectoryPlaybackSnapshot();
+    const playbackSnapshot = playbackOverride ? {
+      frameIndex: Math.max(0, Math.trunc(Number(playbackOverride.frameIndex) || 0)),
+      fps: currentPlayback?.fps || '',
+      playing: playbackOverride.playing === true
+    } : currentPlayback;
+    pendingTrajectoryPlaybackRestore = playbackSnapshot;
+    try {
+      await activeViewer.plugin.clear();
+      await loadPreparedStructure(activeViewer, prepared);
+      await restoreTrajectoryPlaybackSnapshot(playbackSnapshot);
+      applyLayoutState(activeViewer);
+      scheduleLayoutStateReapply(activeViewer);
+      try { activeViewer.handleResize(); } catch (_) {}
+    } finally {
+      pendingTrajectoryPlaybackRestore = null;
+    }
+  }
+
+  async function applyTrajectorySmoothingFromAction(action = {}) {
+    const engine = window.BurreteTrajectorySmoothing;
+    const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
+    if (!engine?.smooth || !originalPrepared) {
+      return agentActionFailure('apply_trajectory_smoothing', 'NOT_AVAILABLE', 'Trajectory smoothing is unavailable in this viewer runtime.');
+    }
+    try {
+      const result = engine.smooth({
+        data: originalPrepared.data,
+        format: originalPrepared.format,
+        preset: action.preset,
+        targetFrames: action.targetFrames,
+        referenceFrame: action.referenceFrame,
+        align: action.align !== false
+      });
+      const smoothedPrepared = {
+        ...originalPrepared,
+        data: result.data,
+        format: result.format,
+        label: `${originalPrepared.label || 'Trajectory'} - smoothed motion`,
+        poseCount: result.frameCount,
+        pdbModelCount: result.format === 'pdb' ? result.frameCount : originalPrepared.pdbModelCount,
+        xyzFrameCount: result.format === 'xyz' ? result.frameCount : originalPrepared.xyzFrameCount,
+        nativeTrajectoryControls: true,
+        controlLabel: 'Frame'
+      };
+      trajectorySmoothingState = { originalPrepared, smoothedPrepared, result, view: 'smoothed' };
+      await replaceTrajectorySmoothingPrepared(smoothedPrepared);
+      updateTrajectorySmoothingButtons();
+      postHostMessage({
+        type: 'trajectorySmoothingChanged',
+        documentId: activeConfig?.documentId || '',
+        view: 'smoothed',
+        keyframeCount: result.keyframes.length,
+        frameCount: result.frameCount,
+        interpolation: result.interpolation,
+        keyframes: result.keyframes,
+        rawSignal: result.rawSignal,
+        filteredSignal: result.filteredSignal
+      });
+      return {
+        ok: true,
+        command: 'apply_trajectory_smoothing',
+        result: { keyframeCount: result.keyframes.length, frameCount: result.frameCount, interpolation: result.interpolation }
+      };
+    } catch (error) {
+      return agentActionFailure('apply_trajectory_smoothing', 'UNSUPPORTED_TRAJECTORY', error?.message || String(error));
+    }
+  }
+
+  async function applyExternalTrajectorySmoothingFromAction(action = {}) {
+    const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
+    if (!originalPrepared || !action.sourceUrl) {
+      return agentActionFailure('apply_external_trajectory_smoothing', 'NOT_AVAILABLE', 'The smoothed trajectory is unavailable.');
+    }
+    try {
+      const response = await fetch(String(action.sourceUrl), { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Could not read smoothed trajectory: ${response.status}`);
+      const data = await response.text();
+      const frameCount = Math.max(2, Math.trunc(Number(action.frameCount) || 2));
+      const smoothedPrepared = {
+        ...originalPrepared,
+        data,
+        format: 'xyz',
+        label: `${originalPrepared.label || 'Trajectory'} - smoothed view`,
+        poseCount: frameCount,
+        pdbModelCount: 0,
+        xyzFrameCount: frameCount,
+        nativeTrajectoryControls: true,
+        controlLabel: 'Frame'
+      };
+      trajectorySmoothingState = {
+        originalPrepared,
+        smoothedPrepared,
+        result: { frameCount, interpolation: action.interpolation || 'linear' },
+        view: 'smoothed'
+      };
+      await replaceTrajectorySmoothingPrepared(smoothedPrepared, {
+        frameIndex: action.frameIndex,
+        playing: action.playing
+      });
+      updateTrajectorySmoothingButtons();
+      postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view: 'smoothed' });
+      return { ok: true, command: 'apply_external_trajectory_smoothing', result: { frameCount } };
+    } catch (error) {
+      return agentActionFailure('apply_external_trajectory_smoothing', 'ACTION_ERROR', error?.message || String(error));
+    }
+  }
+
+  async function setTrajectorySmoothingViewFromAction(action = {}) {
+    if (!trajectorySmoothingState) {
+      return agentActionFailure('set_trajectory_smoothing_view', 'NO_SMOOTHED_TRAJECTORY', 'Build a smoothed trajectory first.');
+    }
+    const view = action.view === 'original' ? 'original' : 'smoothed';
+    try {
+      const prepared = view === 'original' ? trajectorySmoothingState.originalPrepared : trajectorySmoothingState.smoothedPrepared;
+      await replaceTrajectorySmoothingPrepared(prepared);
+      trajectorySmoothingState.view = view;
+      updateTrajectorySmoothingButtons();
+      postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view });
+      return { ok: true, command: 'set_trajectory_smoothing_view', result: { view } };
+    } catch (error) {
+      return agentActionFailure('set_trajectory_smoothing_view', 'ACTION_ERROR', error?.message || String(error));
+    }
+  }
+
+  function updateTrajectorySmoothingButtons() {
+    const active = trajectorySmoothingState?.view === 'smoothed';
+    document.querySelectorAll('.buret-trajectory-smooth-button').forEach(button => {
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      button.setAttribute('aria-label', active ? 'Turn Smooth motion off' : 'Turn Smooth motion on');
+      button.setAttribute('title', active ? 'Show the original trajectory' : 'Build or restore the smoothed view');
+    });
+  }
+
   async function setMolstarStyleFromAction(action = {}) {
     const style = normalizeMolstarStyle(action.style);
     try {
@@ -9668,10 +9980,14 @@
       return;
     }
     if (prepared.poseCount <= 1) return;
-    let activePose = readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount);
+    const playbackRestore = pendingTrajectoryPlaybackRestore;
+    pendingTrajectoryPlaybackRestore = null;
+    let activePose = playbackRestore
+      ? Math.max(0, Math.min(prepared.poseCount - 1, playbackRestore.frameIndex))
+      : readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount);
     const initialPose = activePose;
     let loopTimer = null;
-    let loopActive = false;
+    let loopActive = Boolean(playbackRestore?.playing);
     let loopBusy = false;
     let loopStartedAt = 0;
     let loopStartPose = activePose;
@@ -9708,6 +10024,15 @@
     loop.type = 'button';
     loop.textContent = 'Loop';
     loop.setAttribute('aria-label', `Play ${controlLabelLower} loop`);
+    const smooth = document.createElement('button');
+    smooth.type = 'button';
+    smooth.className = 'buret-trajectory-smooth-button';
+    smooth.textContent = 'Smooth';
+    const smoothingActive = trajectorySmoothingState?.view === 'smoothed';
+    smooth.classList.toggle('active', smoothingActive);
+    smooth.setAttribute('aria-pressed', smoothingActive ? 'true' : 'false');
+    smooth.setAttribute('aria-label', smoothingActive ? 'Turn Smooth motion off' : 'Turn Smooth motion on');
+    smooth.title = smoothingActive ? 'Show the original trajectory' : 'Build or restore the smoothed view';
     const speed = document.createElement('input');
     speed.className = 'buret-docking-pose-speed';
     speed.setAttribute('aria-label', `${controlLabel} loop frames per second`);
@@ -9715,7 +10040,7 @@
     speed.min = '0.1';
     speed.step = '0.1';
     speed.inputMode = 'decimal';
-    speed.value = formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
+    speed.value = playbackRestore?.fps || formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
     speed.title = 'Frames per second (FPS)';
     const updateSpeedMode = () => {
       const fps = Number(speed.value);
@@ -9744,6 +10069,13 @@
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
       refreshNativeTrajectoryStandalonePreview();
+      postHostMessage({
+        type: 'trajectoryFrameChanged',
+        documentId: activeConfig?.documentId || '',
+        frameIndex: activePose,
+        frameCount: prepared.poseCount,
+        playing: loopActive
+      });
     };
     const setAnimationOptionsOpen = (open) => {
       root.classList.toggle('buret-docking-poses-animation-open', Boolean(open));
@@ -9765,6 +10097,13 @@
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
       if (active) setAnimationOptionsOpen(true);
+      postHostMessage({
+        type: 'trajectoryFrameChanged',
+        documentId: activeConfig?.documentId || '',
+        frameIndex: activePose,
+        frameCount: prepared.poseCount,
+        playing: loopActive
+      });
     };
     updateControls();
     updateSpeedMode();
@@ -9963,6 +10302,14 @@
       setLoopActive(true);
       scheduleLoopStep();
     });
+    smooth.addEventListener('click', () => {
+      const posted = postHostMessage({
+        type: 'openTrajectorySmoothing',
+        documentId: activeConfig?.documentId || ''
+      });
+      setStatus(posted ? '[web] Smooth motion toggled.' : '[web] Smooth motion is available in the Info panel.');
+      setTimeout(hideStatus, 1200);
+    });
     speed.addEventListener('change', () => {
       const delay = loopDelayMs();
       const fps = trajectoryDelayToFps(delay, prepared);
@@ -10006,6 +10353,7 @@
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
     mainRow.append(animation, previous, label, next);
+    if (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls) mainRow.append(smooth);
     if (all) mainRow.append(all);
     animationRow.append(speed, loop, slider);
     root.append(mainRow, animationRow);
@@ -10022,9 +10370,17 @@
         })
       : null;
     if (prepared.nativeTrajectoryControls && initialPose > 0) {
-      void setPose(initialPose);
+      void setPose(initialPose).finally(() => {
+        if (!playbackRestore?.playing || activeStructurePoseSetter !== setPose) return;
+        setLoopActive(true);
+        scheduleLoopStep();
+      });
     } else {
       notifyDockingPoseChanged(activePose, prepared);
+      if (playbackRestore?.playing) {
+        setLoopActive(true);
+        scheduleLoopStep();
+      }
     }
     dockingPoseControlsDisposer = () => {
       stopPoseRepeat();
@@ -10033,7 +10389,13 @@
         sliderInputTimer = null;
       }
       pendingSliderIndex = null;
-      setLoopActive(false);
+      if (pendingTrajectoryPlaybackRestore?.playing) {
+        if (loopTimer) clearTimeout(loopTimer);
+        loopTimer = null;
+        loopActive = false;
+      } else {
+        setLoopActive(false);
+      }
       syncDisposer?.();
       isolationDisposer?.();
       hoverDisposer?.();
@@ -10375,6 +10737,9 @@
     if (!additive) {
       selects?.deselectAll?.();
       selection?.clear?.();
+      molstarLassoSelectionAtoms.clear();
+      molstarLassoSelectionAtomKeys.clear();
+      molstarLassoSelectionResidueKeys.clear();
     }
     let selected = 0;
     for (const pick of picks) {
@@ -10384,8 +10749,48 @@
       if (canSelectStructure) selection.fromLoci('add', loci, lassoApplyGranularity);
       selected += 1;
     }
-    if (selected > 0) scheduleMolstarSelectedMoleculePreview();
+    if (selected > 0) {
+      scheduleMolstarSelectedMoleculePreview();
+      notifyMolstarLassoSelection(picks, selected);
+    }
     return selected;
+  }
+
+  function notifyMolstarLassoSelection(picks, selected) {
+    for (const pick of picks) {
+      const atom = molstarContextAtomFromLoci(pick?.loci);
+      if (!atom) continue;
+      const chain = String(atom.auth_asym_id || atom.label_asym_id || '').trim();
+      const sequence = atom.auth_seq_id ?? atom.label_seq_id ?? null;
+      const compId = String(atom.auth_comp_id || atom.label_comp_id || '').trim();
+      const atomName = String(atom.auth_atom_id || atom.label_atom_id || '').trim();
+      const atomKey = `${chain}:${sequence ?? ''}:${compId}:${atomName}:${atom.atomIndex ?? ''}`;
+      molstarLassoSelectionAtomKeys.add(atomKey);
+      molstarLassoSelectionResidueKeys.add(`${chain}:${sequence ?? ''}:${compId}`);
+      if (!molstarLassoSelectionAtoms.has(atomKey) && molstarLassoSelectionAtoms.size < 96) {
+        molstarLassoSelectionAtoms.set(atomKey, { chain, sequence, compId, atomName });
+      }
+    }
+    const atoms = Array.from(molstarLassoSelectionAtoms.values());
+    const residues = new Map();
+    for (const atom of atoms) {
+      const { chain, sequence, compId } = atom;
+      const residueKey = `${chain}:${sequence ?? ''}:${compId}`;
+      if (!residues.has(residueKey) && residues.size < 96) {
+        residues.set(residueKey, { chain, sequence, compId });
+      }
+    }
+    window.__mqlPost?.('selectionChanged', '', {
+      selection: {
+        source: 'lasso',
+        label: `Lasso selection: ${molstarLassoSelectionAtomKeys.size} visible atom${molstarLassoSelectionAtomKeys.size === 1 ? '' : 's'} across ${molstarLassoSelectionResidueKeys.size} residue${molstarLassoSelectionResidueKeys.size === 1 ? '' : 's'}`,
+        atoms: molstarLassoSelectionAtomKeys.size,
+        residueCount: molstarLassoSelectionResidueKeys.size,
+        visibleTargets: selected,
+        residues: Array.from(residues.values()),
+        atomIdentities: atoms
+      }
+    });
   }
 
   function onXyzrenderLassoPointerDown(event) {
@@ -11199,6 +11604,11 @@
       });
       if (index >= 0) return { index, structure: structures[index] };
     }
+    for (let index = 0; index < structures.length; index += 1) {
+      if (molstarContextSelectionLociForStructure(structures[index])) {
+        return { index, structure: structures[index] };
+      }
+    }
     return null;
   }
 
@@ -11533,7 +11943,7 @@
     const pickedAtom = molstarContextAtomFromLoci(pickedLoci);
     const selectionLoci = molstarContextSelectionLociForStructure(targetStructure);
     const selectedAtom = molstarContextAtomFromLoci(selectionLoci);
-    if (molstarContextMenuMode !== 'atom' && selectedAtom && (!pickedAtom || molstarContextLociContainsAtom(selectionLoci, pickedAtom))) return {
+    if ((molstarContextMenuMode !== 'atom' || !pickedAtom) && selectedAtom && (!pickedAtom || molstarContextLociContainsAtom(selectionLoci, pickedAtom))) return {
       loci: selectionLoci,
       atomLoci: pickedAtom
         ? molstarContextAtomLociForStructure(structure || selectionLoci?.structure, pickedAtom)
@@ -11790,15 +12200,19 @@
         };
       }
       if (picked?.index === 0) {
+        const receptorEntry = activeDockingPrepared.receptorEntry || null;
         return {
           structures: targetStructures,
           structure: targetStructure,
           loci: resolved.loci,
           atomLoci: resolved.atomLoci,
+          atom: pickedAtom,
           selectionBased: resolved.selectionBased,
           label: pickedLabel,
           scope: 'selection',
-          receptor: activeDockingPrepared.receptorEntry || null
+          receptor: receptorEntry,
+          sourceEntry: receptorEntry,
+          selectedEntry: pickedAtom ? pdbEntryForResidue(receptorEntry, pickedAtom) : null
         };
       }
       if (picked && picked.index > 0) {
@@ -11808,6 +12222,8 @@
           structure: targetStructure,
           loci: resolved.loci,
           atomLoci: resolved.atomLoci,
+          atom: pickedAtom,
+          selectionBased: resolved.selectionBased,
           label: pose?.label || 'Ligand',
           scope: 'ligand',
           receptor: activeDockingPrepared.receptorEntry || null,
@@ -11836,6 +12252,19 @@
     const previousMode = molstarContextMenuMode;
     molstarContextMenuPick = pick || null;
     molstarContextMenuMode = 'atom';
+    try {
+      return molstarContextTarget();
+    } finally {
+      molstarContextMenuPick = previousPick;
+      molstarContextMenuMode = previousMode;
+    }
+  }
+
+  function molstarContextTargetIgnoringMenuPick() {
+    const previousPick = molstarContextMenuPick;
+    const previousMode = molstarContextMenuMode;
+    molstarContextMenuPick = null;
+    molstarContextMenuMode = 'molecule';
     try {
       return molstarContextTarget();
     } finally {
@@ -12671,6 +13100,10 @@
     actions.push(['save-format:mmcif', 'Save as mmCIF']);
     if (molstarModifiedPdbExportAvailable()) actions.push(['save-format:pdb', 'Save as PDB']);
     if (molstarContextSdfExportAvailable(target)) actions.push(['save-format:sdf', 'Save ligand as SDF']);
+    if (molstarPubChemSearchAvailable(target)) {
+      actions.push(['pubchem:identity', 'Search PubChem — Identical']);
+      actions.push(['pubchem:similarity', 'Search PubChem — Similar (90%)']);
+    }
     actions.push(['focus', 'Focus in current view']);
     return actions;
   }
@@ -12759,6 +13192,10 @@
         const saved = saveMolstarModifiedStructureAs(format, target);
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
         if (normalizeFormat(format) !== 'sdf') setMolstarStructureDirty(false);
+      } else if (action.startsWith('pubchem:')) {
+        const searchType = action.slice('pubchem:'.length);
+        await openMolstarPubChemSearch(target, searchType);
+        setStatus(`[web] Opening PubChem ${searchType === 'identity' ? 'identity' : '90% similarity'} search for ${targetLabel}.`);
       } else if (action === 'focus') {
         const handled = focusMolstarContextPick(target) || await resetMolstarCameraForContext();
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
@@ -12812,6 +13249,46 @@
     }
     const entry = target.selectedEntry || target.ligand || null;
     return normalizeFormat(entry?.format) === 'sdf' ? entry : null;
+  }
+
+  function molstarPubChemSearchAvailable(target) {
+    return activeConfig?.appViewer === true
+      && activeConfig?.pubChemSearch === true
+      && !molstarStructureDirty
+      && !!molstarExactPubChemSdfEntry(target);
+  }
+
+  function molstarExactPubChemSdfEntry(target) {
+    if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
+    for (const entry of [target.ligand, target.selectedEntry, target.sourceEntry]) {
+      if (normalizeFormat(entry?.format) === 'sdf' && String(entry?.data || '').trim()) return entry;
+    }
+    return null;
+  }
+
+  async function openMolstarPubChemSearch(target, searchType) {
+    if (searchType !== 'identity' && searchType !== 'similarity') throw new Error('Unsupported PubChem search type.');
+    if (!molstarPubChemSearchAvailable(target)) throw new Error('PubChem search requires an unmodified molecule with an exact SDF structure.');
+    const entry = molstarExactPubChemSdfEntry(target);
+    const rdkit = await molstarPreviewInitRDKit();
+    let molecule = null;
+    try {
+      molecule = rdkit.get_mol(String(entry?.data || ''));
+      if (!molecule || (typeof molecule.is_valid === 'function' && !molecule.is_valid())) throw new Error('RDKit could not read the molecule.');
+      const smiles = typeof molecule.get_smiles === 'function' ? String(molecule.get_smiles() || '').trim() : '';
+      if (!validPubChemSmiles(smiles)) throw new Error('The molecule does not have a complete PubChem-searchable SMILES.');
+      if (!postHostMessage({ type: 'openPubChemSearch', searchType, smiles })) throw new Error('PubChem search is unavailable in this host.');
+    } finally {
+      try { molecule?.delete?.(); } catch (_) {}
+    }
+  }
+
+  function validPubChemSmiles(smiles) {
+    const value = String(smiles || '').trim();
+    return value.length > 0
+      && value.length <= 4096
+      && !value.includes('*')
+      && !/[\u0000-\u001F\u007F]/u.test(value);
   }
 
   function molstarStandaloneMoleculePreviewEntryForTarget(target, entry = null) {
@@ -13063,6 +13540,13 @@
     throw lastError || new Error('RDKit_minimal.wasm is missing.');
   }
 
+  async function molstarPreviewLoadRDKitWasmData() {
+    if (window.BurreteRDKitWasmBase64) return;
+    const dataURL = runtimeURL('BurreteRDKitWasmDataURL', '');
+    if (!dataURL) return;
+    await molstarPreviewLoadScript(dataURL);
+  }
+
   function molstarPreviewRDKitWasmPath(file) {
     if (!String(file || '').endsWith('.wasm')) return file;
     return molstarPreviewRDKitWasmCandidates()[0] || 'rdkit/RDKit_minimal.wasm';
@@ -13076,6 +13560,7 @@
         await molstarPreviewLoadRDKitScript();
       }
       if (typeof window.initRDKitModule !== 'function') throw new Error('RDKit_minimal.js is missing.');
+      await molstarPreviewLoadRDKitWasmData();
       const options = { locateFile: molstarPreviewRDKitWasmPath };
       if (window.BurreteRDKitWasmBase64) {
         options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
@@ -13308,6 +13793,11 @@
     }
     if (!target) return molstarSelectionMoleculePreviewTarget();
     return null;
+  }
+
+  function molstarSelectedMoleculeTargetFromSelection() {
+    const target = molstarContextTargetIgnoringMenuPick();
+    return target?.selectionBased ? molstarSelectedMoleculePreviewTarget(target) : null;
   }
 
   function showMolstarSelectedMoleculePreviewNow(target) {
@@ -13710,6 +14200,37 @@
     }
   }
 
+  function molstarSelectionAtomCount(target) {
+    const entry = molstarMoleculePreviewEntry(target);
+    const declared = Number(entry?.atomCount);
+    if (Number.isFinite(declared) && declared > 0) return Math.min(1000000, Math.trunc(declared));
+    const count = ligandAtomCoordinates(entry).length;
+    return count > 0 ? Math.min(1000000, count) : null;
+  }
+
+  function notifyMolstarSelectionChanged(target) {
+    const candidate = target && (target.scope === 'ligand' || target.scope === 'ion') ? target : null;
+    const atomCount = candidate ? molstarSelectionAtomCount(candidate) : null;
+    const contextDocument = candidate ? molstarContextDocumentPayload(candidate) : null;
+    const selected = atomCount !== null && contextDocument ? candidate : null;
+    const selector = selected
+      ? selected.focus?.selector || (selected.atom
+        ? molstarContextLigandSelector(selected.atom)
+        : { kind: selected.scope })
+      : null;
+    const label = String(selected?.label || '').trim().slice(0, 256);
+    const selection = selector ? {
+      selector,
+      label: label || (selected.scope === 'ion' ? 'Selected ion' : 'Selected ligand'),
+      value: label,
+      atoms: atomCount
+    } : null;
+    const signature = JSON.stringify(selection);
+    if (signature === molstarSelectionHostSignature) return;
+    molstarSelectionHostSignature = signature;
+    postHostMessage({ type: 'selectionChanged', selection });
+  }
+
   function installMolstarSelectionPreviewSync(viewer) {
     if (molstarSelectionPreviewCleanup) {
       try { molstarSelectionPreviewCleanup(); } catch (_) {}
@@ -13717,7 +14238,11 @@
     }
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    const update = () => scheduleMolstarSelectedMoleculePreview();
+    const update = () => {
+      const target = molstarSelectedMoleculeTargetFromSelection();
+      scheduleMolstarSelectedMoleculePreview(target);
+      notifyMolstarSelectionChanged(target);
+    };
     const disposers = [];
     const selectionEvents = plugin.managers?.structure?.selection?.events || {};
     const interactivityEvents = plugin.managers?.interactivity?.lociSelects?.events || {};
@@ -13740,6 +14265,7 @@
         try { dispose(); } catch (_) {}
       });
     };
+    update();
   }
 
   function withTimeout(promise, timeoutMs, message) {
@@ -13796,7 +14322,9 @@
       ...(pickScale !== undefined ? { pickScale } : {}),
       ...(resolutionMode !== undefined ? { resolutionMode } : {}),
       viewportBackgroundColor: transparentBackground ? undefined : canvasBackgroundCSS(),
-      powerPreference: isQuickLookHost() ? 'default' : 'high-performance'
+      powerPreference: String(activeConfig?.molstarPowerPreference || '') === 'default' || isQuickLookHost()
+        ? 'default'
+        : 'high-performance'
     };
   }
 
@@ -13844,6 +14372,8 @@
   }
 
   function disposeActiveMolstarViewer() {
+    notifyMolstarSelectionChanged(null);
+    molstarSelectionHostSignature = '';
     setMolstarStructureDirty(false);
     clearMolstarEditUndoHistory();
     resetXyzFrameOverlayState(activeViewer);
@@ -13867,6 +14397,7 @@
     }
     activeViewer = null;
     activeMolstarPrepared = null;
+    trajectorySmoothingState = null;
     updateSdfPoseButton(null);
     activeMolstarCacheBuster = null;
     window.BurreteViewer = null;
@@ -13945,6 +14476,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       debug('BurreteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
     }
     await applyMolstarContextFocus(config);
+    notifyMolstarSelectionChanged(molstarSelectedMoleculePreviewTarget());
     void reportBurreteAgentState();
     startBurreteAgentActionPolling();
     trackMolstarOrientation(viewer, config);
@@ -14148,8 +14680,14 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
         const fx = parseFloatLoose(get('_atom_site_fract_x'));
         const fy = parseFloatLoose(get('_atom_site_fract_y'));
         const fz = parseFloatLoose(get('_atom_site_fract_z'));
-        if (!haveCell || !Number.isFinite(fx) || !Number.isFinite(fy) || !Number.isFinite(fz)) continue;
-        [x, y, z] = fracToCart(fx, fy, fz, a, b, c, alpha, beta, gamma);
+        if (!Number.isFinite(fx) || !Number.isFinite(fy) || !Number.isFinite(fz)) continue;
+        if (haveCell) {
+          [x, y, z] = fracToCart(fx, fy, fz, a, b, c, alpha, beta, gamma);
+        } else {
+          // Open Babel writes Cartesian coordinates under fractional tags when
+          // exporting a molecule without a crystallographic unit cell.
+          [x, y, z] = [fx, fy, fz];
+        }
       }
       atoms.push({ label, element, x, y, z });
     }
@@ -14191,7 +14729,10 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
   function showError(error) {
     const message = error && (error.stack || error.message) ? (error.stack || error.message) : String(error);
-    setStatus(`[web] Burrete web renderer failed to load this file.\n\n${message}\n\nCheck: ./scripts/tail-log.sh`, 'error');
+    const diagnostics = window.__BURRETE_HOSTED_MCP_WIDGET__ === true
+      ? ''
+      : '\n\nCheck: ./scripts/tail-log.sh';
+    setStatus(`[web] Burrete web renderer failed to load this file.\n\n${message}${diagnostics}`, 'error');
     // eslint-disable-next-line no-console
     console.error(error);
   }

@@ -1,8 +1,10 @@
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::Deserialize;
 use std::fs;
+use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -16,6 +18,52 @@ const RELEASE_DOWNLOAD_PREFIX: &str =
 const DOWNLOAD_PROGRESS_START: f64 = 0.04;
 const DOWNLOAD_PROGRESS_END: f64 = 0.34;
 const DOWNLOAD_PROGRESS_POLL_INTERVAL: Duration = Duration::from_millis(500);
+static UPDATE_INSTALL_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+struct UpdateInstallLease;
+
+impl UpdateInstallLease {
+    fn acquire() -> Result<Self, String> {
+        UPDATE_INSTALL_ACTIVE
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| Self)
+            .map_err(|_| "Another update installation is already in progress.".to_string())
+    }
+}
+
+impl Drop for UpdateInstallLease {
+    fn drop(&mut self) {
+        UPDATE_INSTALL_ACTIVE.store(false, Ordering::Release);
+    }
+}
+
+struct InstallerProcessGuard {
+    child: Option<Child>,
+}
+
+impl InstallerProcessGuard {
+    fn new(child: Child) -> Self {
+        Self { child: Some(child) }
+    }
+
+    fn abort(mut self) -> Result<(), String> {
+        self.child
+            .take()
+            .map_or(Ok(()), |mut child| terminate_installer_helper(&mut child))
+    }
+
+    fn commit(mut self) {
+        self.child.take();
+    }
+}
+
+impl Drop for InstallerProcessGuard {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = terminate_installer_helper(&mut child);
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,43 +99,172 @@ struct UpdateManifest {
     minimum_system_version: String,
 }
 
+async fn continue_after_exit_confirmation<P, Continue, ContinueFuture, Stop>(
+    decision: Result<Option<P>, String>,
+    on_stop: Stop,
+    proceed: Continue,
+) -> Result<bool, String>
+where
+    Continue: FnOnce(P) -> ContinueFuture,
+    ContinueFuture: Future<Output = Result<bool, String>>,
+    Stop: FnOnce(),
+{
+    match decision {
+        Ok(Some(permit)) => proceed(permit).await,
+        Ok(None) => {
+            on_stop();
+            Ok(false)
+        }
+        Err(error) => {
+            on_stop();
+            Err(error)
+        }
+    }
+}
+
 #[tauri::command]
 pub(crate) async fn install_update(
     app: tauri::AppHandle,
     request: UpdateInstallRequest,
-) -> Result<(), String> {
+) -> Result<bool, String> {
+    let _install_lease = UpdateInstallLease::acquire()?;
     let package_version = app.package_info().version.to_string();
     let app_data_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
     let app_bundle = current_app_bundle()?;
     let progress_app = app.clone();
+    let download_app_data_dir = app_data_dir.clone();
+    let release_tag = request.tag_name.clone();
 
     update_progress::show(&app, "Preparing update...", Some(0.04));
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let archive = download_update(&progress_app, &app_data_dir, &package_version, &request)?;
+    let staged_result = tauri::async_runtime::spawn_blocking(move || {
+        let archive = download_update(
+            &progress_app,
+            &download_app_data_dir,
+            &package_version,
+            &request,
+        )?;
         let staged_app = unpack_and_validate_update(
             &progress_app,
-            &app_data_dir,
+            &download_app_data_dir,
             &archive,
             &package_version,
             &request,
         )?;
-        update_progress::show(&progress_app, "Preparing installer...", Some(0.92));
-        launch_installer(&app_data_dir, &staged_app, &app_bundle, &request.tag_name)
+        Ok::<PathBuf, String>(staged_app)
     })
-    .await
-    .map_err(|err| err.to_string())?;
+    .await;
 
-    match result {
-        Ok(()) => {
-            update_progress::show(&app, "Restarting Burrete...", Some(1.0));
-            app.exit(0);
-            Ok(())
+    let staged_app = match staged_result {
+        Ok(Ok(staged_app)) => staged_app,
+        Ok(Err(error)) => {
+            update_progress::close(&app);
+            return Err(error);
         }
         Err(error) => {
             update_progress::close(&app);
-            Err(error)
+            return Err(error.to_string());
+        }
+    };
+
+    update_progress::show(&app, "Ready to restart...", Some(0.92));
+    let mut interaction_pause = match crate::menu::ExitTransition::acquire(&app) {
+        Ok(pause) => pause,
+        Err(error) => {
+            update_progress::close(&app);
+            return Err(error);
+        }
+    };
+    let confirmation = crate::menu::confirm_exit(
+        &app,
+        crate::menu::ExitIntent::RestartForUpdate,
+        &mut interaction_pause,
+    )
+    .await;
+    let stop_app = app.clone();
+    continue_after_exit_confirmation(
+        confirmation,
+        move || update_progress::close(&stop_app),
+        move |permit| async move {
+            let validated_permit = match crate::menu::validate_exit_permit(&app, permit).await {
+                Ok(Some(validated)) => validated,
+                Ok(None) => {
+                    update_progress::close(&app);
+                    return Ok(false);
+                }
+                Err(error) => {
+                    update_progress::close(&app);
+                    return Err(error);
+                }
+            };
+
+            update_progress::show(&app, "Preparing installer...", Some(0.96));
+            let launch_result = tauri::async_runtime::spawn_blocking(move || {
+                launch_installer(&app_data_dir, &staged_app, &app_bundle, &release_tag)
+            })
+            .await;
+
+            match launch_result {
+                Ok(Ok(helper)) => {
+                    if let Err(error) = crate::menu::authorize_exit(&app, validated_permit) {
+                        return finish_failed_exit_authorization(&app, helper, error);
+                    }
+                    helper.commit();
+                    interaction_pause.keep_paused();
+                    update_progress::show(&app, "Restarting Burrete...", Some(1.0));
+                    app.exit(0);
+                    Ok(true)
+                }
+                Ok(Err(error)) => finish_failed_installer_launch(&app, error),
+                Err(error) => finish_failed_installer_launch(&app, error.to_string()),
+            }
+        },
+    )
+    .await
+}
+
+fn finish_failed_installer_launch(
+    app: &tauri::AppHandle,
+    launch_error: String,
+) -> Result<bool, String> {
+    update_progress::close(app);
+    Err(launch_error)
+}
+
+fn finish_failed_exit_authorization(
+    app: &tauri::AppHandle,
+    helper: InstallerProcessGuard,
+    authorization_error: String,
+) -> Result<bool, String> {
+    let helper_cleanup = helper.abort();
+    update_progress::close(app);
+    match helper_cleanup {
+        Ok(()) => Err(authorization_error),
+        Err(cleanup_error) => Err(format!(
+            "{authorization_error} Updater helper cleanup also failed: {cleanup_error}"
+        )),
+    }
+}
+
+fn terminate_installer_helper(helper: &mut Child) -> Result<(), String> {
+    if helper
+        .try_wait()
+        .map_err(|error| error.to_string())?
+        .is_none()
+    {
+        if let Err(kill_error) = helper.kill() {
+            if helper
+                .try_wait()
+                .map_err(|error| error.to_string())?
+                .is_none()
+            {
+                return Err(format!("Could not stop the updater helper: {kill_error}"));
+            }
         }
     }
+    helper
+        .wait()
+        .map(|_| ())
+        .map_err(|error| format!("Could not reap the updater helper: {error}"))
 }
 
 fn download_update(
@@ -840,7 +1017,7 @@ fn launch_installer(
     staged_app: &Path,
     destination_app: &Path,
     release_tag: &str,
-) -> Result<(), String> {
+) -> Result<InstallerProcessGuard, String> {
     let updates_dir = update_dir(app_data_dir, release_tag)?;
     let script = updates_dir.join(format!("install-{}.sh", safe_path_component(release_tag)));
     let log = updates_dir.join(format!("install-{}.log", safe_path_component(release_tag)));
@@ -859,8 +1036,8 @@ fn launch_installer(
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|err| format!("Could not launch the updater helper: {err}"))?;
-    Ok(())
+        .map(InstallerProcessGuard::new)
+        .map_err(|err| format!("Could not launch the updater helper: {err}"))
 }
 
 fn installer_script(
@@ -1431,6 +1608,7 @@ fn compare_prerelease(left: &[PrereleaseIdentifier], right: &[PrereleaseIdentifi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
 
     const TEST_PUBLIC_KEY_HEX: &str =
         "83acdae4aa36bc1749f7abfb138bd44a06eeaa6076640a9a118a00200beed26c";
@@ -1662,5 +1840,79 @@ mod tests {
         let error = validate_downloaded_app_descriptor(&current, &downloaded)
             .expect_err("mismatched team must still be rejected");
         assert!(error.contains("TeamIdentifier"));
+    }
+
+    #[test]
+    fn update_exit_confirmation_gates_installer_continuation() {
+        tauri::async_runtime::block_on(async {
+            let stopped = Cell::new(0);
+            let proceeded = Cell::new(0);
+            let cancelled = continue_after_exit_confirmation(
+                Ok(None::<u8>),
+                || stopped.set(stopped.get() + 1),
+                |_: u8| async {
+                    proceeded.set(proceeded.get() + 1);
+                    Ok(true)
+                },
+            )
+            .await;
+            assert_eq!(cancelled, Ok(false));
+            assert_eq!(stopped.get(), 1);
+            assert_eq!(proceeded.get(), 0);
+
+            stopped.set(0);
+            let blocked = continue_after_exit_confirmation(
+                Err::<Option<u8>, _>("blocked".to_string()),
+                || stopped.set(stopped.get() + 1),
+                |_: u8| async {
+                    proceeded.set(proceeded.get() + 1);
+                    Ok(true)
+                },
+            )
+            .await;
+            assert_eq!(blocked, Err("blocked".to_string()));
+            assert_eq!(stopped.get(), 1);
+            assert_eq!(proceeded.get(), 0);
+
+            stopped.set(0);
+            let received_permit = Cell::new(0);
+            let proceeded_ref = &proceeded;
+            let received_permit_ref = &received_permit;
+            let continued = continue_after_exit_confirmation(
+                Ok(Some(7_u8)),
+                || stopped.set(stopped.get() + 1),
+                |permit| async move {
+                    proceeded_ref.set(proceeded_ref.get() + 1);
+                    received_permit_ref.set(permit);
+                    Ok(true)
+                },
+            )
+            .await;
+            assert_eq!(continued, Ok(true));
+            assert_eq!(stopped.get(), 0);
+            assert_eq!(proceeded.get(), 1);
+            assert_eq!(received_permit.get(), 7);
+        });
+    }
+
+    #[test]
+    fn terminates_and_reaps_a_running_installer_helper() {
+        let mut child = Command::new("/bin/sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep helper");
+
+        terminate_installer_helper(&mut child).expect("terminate helper");
+        assert!(child.try_wait().expect("query helper").is_some());
+    }
+
+    #[test]
+    fn accepts_an_installer_helper_that_already_exited() {
+        let mut child = Command::new("/usr/bin/true")
+            .spawn()
+            .expect("spawn completed helper");
+        child.wait().expect("wait for completed helper");
+
+        terminate_installer_helper(&mut child).expect("reap completed helper");
     }
 }

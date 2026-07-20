@@ -38,7 +38,11 @@ export function useAppViewerFileActions({
             filters: exportDialogFilters(name, bodyString(body.mimeType, "")),
           });
           if (!outputPath) return;
-          const savedPath = await invoke<string>("save_text_as", { text, outputPath });
+          const savedPath = await invoke<string>("save_text_as", {
+            text,
+            outputPath,
+            sourcePath: null,
+          });
           pushStatus(`Exported ${basename(savedPath)}`);
         } catch (error) {
           pushErrorStatus(error, "Molstar export failed");

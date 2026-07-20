@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   deserializeLocation,
   serializeLocation,
@@ -18,6 +20,17 @@ import {
   isPersistentRecentStructure,
   isPersistentViewerDocument,
 } from "../lib/temporary-documents";
+import {
+  applyGlobalRecentStructuresSnapshot,
+  globalRecentStructuresRevision,
+  GLOBAL_RECENT_STRUCTURES_STORAGE_KEY,
+  loadGlobalRecentStructures,
+  loadGlobalRecentStructuresSnapshot,
+  normalizeGlobalRecentStructures,
+  saveGlobalRecentStructures,
+  type GlobalRecentStructuresSnapshot,
+} from "../lib/global-recent-structures";
+import { isTauriRuntime } from "../lib/tauri";
 import { workspaceStorageKey } from "../lib/window-scope";
 
 export type MoleculeTab = {
@@ -43,12 +56,16 @@ type MoleculeState = {
   setDocuments: (documents: ViewerDocument[]) => void;
   addDocuments: (documents: ViewerDocument[]) => void;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
+  replaceDocument: (documentId: string, replacement: ViewerDocument) => void;
   openDocumentsInActiveTab: (documents: ViewerDocument[], options?: { backLocation?: Location }) => void;
   addTextDocuments: (documents: TextFileDocument[]) => void;
   addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
   openTextDocumentsInActiveTab: (documents: TextFileDocument[], options?: { backLocation?: Location }) => void;
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
-  pruneRecentStructures: (existingPaths: string[]) => void;
+  pruneRecentStructures: (
+    checkedDocuments: Array<Pick<RecentStructure, "path" | "openedAt">>,
+    existingPaths: string[],
+  ) => void;
   clearRecentStructures: () => void;
   openNewTab: () => void;
   openFepNetworkTab: (location: FepNetworkLocation) => void;
@@ -132,6 +149,19 @@ function fileLocation(document: ViewerDocument): Location {
   return { kind: "file", documentId: document.id, path: document.path };
 }
 
+function replaceFileLocation(
+  location: Location,
+  documentId: string,
+  previousPath: string,
+  replacement: ViewerDocument,
+): Location {
+  if (location.kind !== "file"
+    || (location.documentId !== documentId && location.path !== previousPath)) {
+    return location;
+  }
+  return fileLocation(replacement);
+}
+
 export function createTextFileTab(document: TextFileDocument, id = createTabId()): MoleculeTab {
   return {
     id,
@@ -189,6 +219,66 @@ function toRecentStructure(document: ViewerDocument): RecentStructure {
     byteCount: document.byteCount,
     openedAt: Date.now(),
   };
+}
+
+function mergedRecentStructures(existing: RecentStructure[], incoming: RecentStructure[]) {
+  return normalizeGlobalRecentStructures([...existing, ...incoming]);
+}
+
+function prunedRecentStructures(
+  current: RecentStructure[],
+  checkedDocuments: Array<Pick<RecentStructure, "path" | "openedAt">>,
+  existingPaths: string[],
+) {
+  const checked = new Map(checkedDocuments.map((document) => [document.path, document.openedAt]));
+  const existing = new Set(existingPaths);
+  return current.filter((structure) => {
+    const checkedOpenedAt = checked.get(structure.path);
+    return checkedOpenedAt === undefined
+      || structure.openedAt > checkedOpenedAt
+      || existing.has(structure.path);
+  });
+}
+
+function reconcileRecentStructures(request: Promise<GlobalRecentStructuresSnapshot>) {
+  void request
+    .then(applyRecentStructuresSnapshot)
+    .catch(() => {
+      // The local optimistic list remains usable if native synchronization is unavailable.
+    });
+}
+
+function applyRecentStructuresSnapshot(snapshot: GlobalRecentStructuresSnapshot) {
+  const recentStructures = applyGlobalRecentStructuresSnapshot(snapshot);
+  if (recentStructures) useMoleculeStore.setState({ recentStructures });
+}
+
+async function initializeNativeRecentDocuments() {
+  try {
+    const unlisten = await listen<GlobalRecentStructuresSnapshot>(
+      "recent-documents:changed",
+      (event) => applyRecentStructuresSnapshot(event.payload),
+    );
+    window.addEventListener("beforeunload", () => unlisten(), { once: true });
+  } catch {
+    // The command response and native persistence still keep Recent Documents usable.
+  }
+  const initial = loadGlobalRecentStructuresSnapshot() ?? { revision: 0, documents: [] };
+  reconcileRecentStructures(invoke("initialize_recent_documents", {
+    documents: initial.documents,
+    revision: Math.max(initial.revision, globalRecentStructuresRevision()),
+  }));
+}
+
+function recentStructuresForMigration(
+  stored: RecentStructure[] | undefined,
+  current: RecentStructure[],
+) {
+  const global = loadGlobalRecentStructures();
+  if (global !== null) return global;
+  const migrated = (stored ?? current).filter(isPersistentRecentStructure);
+  saveGlobalRecentStructures(migrated);
+  return migrated;
 }
 
 function persistedTabs(tabs: MoleculeTab[]) {
@@ -321,7 +411,7 @@ export const useMoleculeStore = create<MoleculeState>()(
       tabs: [createLauncherTab()],
       activeTabId: "tab-1",
       activeDocumentId: null,
-      recentStructures: [],
+      recentStructures: loadGlobalRecentStructures() ?? [],
       setDocuments: (documents) =>
         set(() => {
           const tabs = buildFileTabs(documents);
@@ -368,6 +458,32 @@ export const useMoleculeStore = create<MoleculeState>()(
           for (const document of incoming) byId.set(document.id, document);
           const documents = Array.from(byId.values());
           return { documents, activeDocumentId: activeDocumentIdFrom(state.tabs, state.activeTabId, documents) };
+        }),
+      replaceDocument: (documentId, replacement) =>
+        set((state) => {
+          const previous = state.documents.find((document) => document.id === documentId);
+          if (!previous) return state;
+          const documents = state.documents
+            .filter((document) => (
+              document.id === documentId
+              || (document.id !== replacement.id && document.path !== replacement.path)
+            ))
+            .map((document) => (document.id === documentId ? replacement : document));
+          const tabs = state.tabs.map((tab) => ({
+            ...tab,
+            location: replaceFileLocation(tab.location, documentId, previous.path, replacement),
+            back: tab.back.map((location) => (
+              replaceFileLocation(location, documentId, previous.path, replacement)
+            )),
+            forward: tab.forward.map((location) => (
+              replaceFileLocation(location, documentId, previous.path, replacement)
+            )),
+          }));
+          return {
+            documents,
+            tabs,
+            activeDocumentId: activeDocumentIdFrom(tabs, state.activeTabId, documents),
+          };
         }),
       openDocumentsInActiveTab: (incoming, options = {}) =>
         set((state) => {
@@ -507,24 +623,42 @@ export const useMoleculeStore = create<MoleculeState>()(
           const activeTabId = activeTabIdOrFirst(nextTabs, targetTab.id);
           return { textDocuments, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, state.documents) };
         }),
-      rememberRecentStructures: (incoming) =>
+      rememberRecentStructures: (incoming) => {
+        const remembered = normalizeGlobalRecentStructures(incoming
+          .filter(isPersistentViewerDocument)
+          .map(toRecentStructure));
+        if (remembered.length === 0) return;
         set((state) => {
-          const byPath = new Map(state.recentStructures.map((structure) => [structure.path, structure]));
-          for (const document of incoming) {
-            if (isPersistentViewerDocument(document)) byPath.set(document.path, toRecentStructure(document));
-          }
-          return {
-            recentStructures: Array.from(byPath.values())
-              .sort((a, b) => b.openedAt - a.openedAt),
-          };
-        }),
-      pruneRecentStructures: (existingPaths) =>
+          const existing = loadGlobalRecentStructures() ?? state.recentStructures;
+          const recentStructures = mergedRecentStructures(existing, remembered);
+          saveGlobalRecentStructures(recentStructures);
+          return { recentStructures };
+        });
+        if (isTauriRuntime()) {
+          reconcileRecentStructures(invoke("merge_recent_documents", { documents: remembered }));
+        }
+      },
+      pruneRecentStructures: (checkedDocuments, existingPaths) => {
         set((state) => {
-          const existing = new Set(existingPaths);
-          const recentStructures = state.recentStructures.filter((structure) => existing.has(structure.path));
-          return recentStructures.length === state.recentStructures.length ? state : { recentStructures };
-        }),
-      clearRecentStructures: () => set({ recentStructures: [] }),
+          const current = loadGlobalRecentStructures() ?? state.recentStructures;
+          const recentStructures = prunedRecentStructures(current, checkedDocuments, existingPaths);
+          saveGlobalRecentStructures(recentStructures);
+          return recentStructures.length === state.recentStructures.length
+            && recentStructures.every((structure, index) => structure.path === state.recentStructures[index]?.path)
+            ? state
+            : { recentStructures };
+        });
+        if (isTauriRuntime()) {
+          reconcileRecentStructures(invoke("prune_recent_documents", { checkedDocuments, existingPaths }));
+        }
+      },
+      clearRecentStructures: () => {
+        saveGlobalRecentStructures([]);
+        set({ recentStructures: [] });
+        if (isTauriRuntime()) {
+          reconcileRecentStructures(invoke("clear_recent_documents"));
+        }
+      },
       openNewTab: () =>
         set((state) => {
           const tab = createLauncherTab();
@@ -768,7 +902,7 @@ export const useMoleculeStore = create<MoleculeState>()(
         if (shouldIgnorePersistedSession()) {
           return {
             ...current,
-            recentStructures: (stored?.recentStructures ?? current.recentStructures).filter(isPersistentRecentStructure),
+            recentStructures: recentStructuresForMigration(stored?.recentStructures, current.recentStructures),
           };
         }
         const documents = current.documents;
@@ -790,9 +924,20 @@ export const useMoleculeStore = create<MoleculeState>()(
           tabs,
           activeTabId,
           activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents),
-          recentStructures: (stored?.recentStructures ?? current.recentStructures).filter(isPersistentRecentStructure),
+          recentStructures: recentStructuresForMigration(stored?.recentStructures, current.recentStructures),
         };
       },
     },
   ),
 );
+
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  if (isTauriRuntime()) {
+    void initializeNativeRecentDocuments();
+  }
+  window.addEventListener("storage", (event) => {
+    if (event.key !== GLOBAL_RECENT_STRUCTURES_STORAGE_KEY) return;
+    const recentStructures = loadGlobalRecentStructures();
+    if (recentStructures) useMoleculeStore.setState({ recentStructures });
+  });
+}

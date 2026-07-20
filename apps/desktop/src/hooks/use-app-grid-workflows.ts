@@ -11,6 +11,8 @@ import {
 } from "../lib/file-routing";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import { isTauriRuntime } from "../lib/tauri";
+import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
+import { runWindowMutation } from "../lib/window-mutation-barrier";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { ViewerDocument } from "../types";
 
@@ -38,6 +40,7 @@ type UseAppGridWorkflowsOptions = {
   pushStatus: PushStatus;
   setActiveTab: (id: string) => void;
   tabs: MoleculeTab[];
+  updateDirtyGridDocument: (documentId: string, dirty: boolean) => void;
 };
 
 export function useAppGridWorkflows({
@@ -49,6 +52,7 @@ export function useAppGridWorkflows({
   pushStatus,
   setActiveTab,
   tabs,
+  updateDirtyGridDocument,
 }: UseAppGridWorkflowsOptions) {
   const pendingXyzrenderSheetDropRef = useRef<{ documentId: string; payload: StructureDragPayload } | null>(null);
   const pendingBrowserGridAppendRef = useRef<BrowserGridAppend[]>([]);
@@ -106,9 +110,7 @@ export function useAppGridWorkflows({
   }, [activeDocument, addXyzrenderSheetItemsToDocument]);
 
   const notifyGridRecordsAppended = useCallback((targetDocumentId: string, result: GridAppendResult) => {
-    const iframe = Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe[data-document-id]")).find(
-      (item) => item.dataset.documentId === targetDocumentId,
-    );
+    const iframe = activeViewerIframeForDocument(targetDocumentId, "grid2d");
     iframe?.contentWindow?.postMessage({
       source: "burrete-grid-host",
       body: {
@@ -145,7 +147,7 @@ export function useAppGridWorkflows({
   }, [postBrowserGridAppend]);
 
   const appendDelimitedGridRecords = useCallback(
-    async (targetDocument: ViewerDocument, path: string, smilesColumn: string) => {
+    (targetDocument: ViewerDocument, path: string, smilesColumn: string) => runWindowMutation(targetDocument.id, async () => {
       const result = await invoke<GridAppendResult>("grid_append_delimited_records", {
         request: {
           documentId: targetDocument.id,
@@ -153,6 +155,7 @@ export function useAppGridWorkflows({
           smilesColumn,
         },
       });
+      if (result.recordsAppended > 0) updateDirtyGridDocument(targetDocument.id, true);
       notifyGridRecordsAppended(targetDocument.id, result);
       const message = `Appended ${result.recordsAppended} molecule${result.recordsAppended === 1 ? "" : "s"} to grid`;
       if (result.errors.length > 0) {
@@ -160,8 +163,8 @@ export function useAppGridWorkflows({
       } else {
         pushStatus(message);
       }
-    },
-    [notifyGridRecordsAppended, pushStatus],
+    }),
+    [notifyGridRecordsAppended, pushStatus, updateDirtyGridDocument],
   );
 
   const showDelimitedGridColumnAppendMenu = useCallback(
@@ -224,7 +227,7 @@ export function useAppGridWorkflows({
       pushStatus(`Adding ${count} molecule source${count === 1 ? "" : "s"} to grid`);
       return true;
     }
-    void (async () => {
+    void runWindowMutation(targetDocument.id, async () => {
       try {
         const result = await invoke<GridAppendResult>("grid_append_records", {
           request: {
@@ -233,6 +236,7 @@ export function useAppGridWorkflows({
             records: payload.records,
           },
         });
+        if (result.recordsAppended > 0) updateDirtyGridDocument(targetDocument.id, true);
         notifyGridRecordsAppended(targetDocument.id, result);
         const message = `Appended ${result.recordsAppended} molecule${result.recordsAppended === 1 ? "" : "s"} to grid`;
         if (result.errors.length > 0) {
@@ -248,9 +252,9 @@ export function useAppGridWorkflows({
         }
         pushErrorStatus(error, "Grid append failed");
       }
-    })();
+    }).catch((error) => pushErrorStatus(error, "Grid append paused"));
     return true;
-  }, [documents, notifyGridRecordsAppended, postBrowserGridAppend, pushErrorStatus, pushStatus, setActiveTab, showDelimitedGridColumnAppendMenu, tabs]);
+  }, [documents, notifyGridRecordsAppended, postBrowserGridAppend, pushErrorStatus, pushStatus, setActiveTab, showDelimitedGridColumnAppendMenu, tabs, updateDirtyGridDocument]);
 
   useEffect(() => {
     const pending = pendingXyzrenderSheetDropRef.current;

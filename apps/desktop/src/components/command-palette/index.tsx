@@ -176,15 +176,15 @@ export function CommandPalette({
       {
         id: "close-active",
         group: "Suggested",
-        label: "Close Active Structure",
-        description: "Close the selected molecule tab",
+        label: "Close Active Tab",
+        description: "Close the selected tab",
         run: actions.closeActiveDocument,
       },
       {
         id: "close-all",
         group: "Suggested",
-        label: "Close All Structures",
-        description: "Clear all open molecule tabs",
+        label: "Close All Tabs",
+        description: "Close every open workspace tab",
         run: actions.clearAllDocuments,
       },
       {
@@ -218,7 +218,7 @@ export function CommandPalette({
       {
         id: "show-active-metadata",
         group: "Active Structure",
-        label: "Show Metadata",
+        label: "Get Info",
         description: "Show active structure path, renderer, format, and size",
         run: actions.showActiveDocumentMetadata,
       },

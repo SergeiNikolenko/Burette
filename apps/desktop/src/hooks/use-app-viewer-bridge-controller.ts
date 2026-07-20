@@ -23,6 +23,7 @@ import { postMessageToViewerSource, isKnownViewerMessageSource } from "../lib/vi
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ConformerGenerationMode, MolstarStylePreference } from "../lib/conformer-generation";
 import type { DockTabKind } from "../lib/dock";
+import type { GridNativeMenuState } from "../lib/native-menu";
 import type { PendingMolstarReplaceResolver } from "./use-app-generate-3d-conformer";
 import type { DockingSceneMode, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
@@ -86,6 +87,7 @@ type UseAppViewerBridgeControllerOptions = {
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addDocuments: (documents: ViewerDocument[]) => void;
   calculateGridDescriptors: (documentId: string, options?: { rowIndexes?: number[] }) => void;
+  closeGridRuntime: (documentId: string | null | undefined) => void;
   documents: ViewerDocument[];
   forgetDirtyGridDocument: (documentId: string | null | undefined) => void;
   generate3DConformer: Generate3DConformer;
@@ -104,6 +106,7 @@ type UseAppViewerBridgeControllerOptions = {
   preferences: ViewerPreferences;
   pushErrorStatus: PushErrorStatus;
   pushStatus: PushStatus;
+  rebindSavedGridDocument: (documentId: string, path: string) => Promise<ViewerDocument>;
   reloadActive: () => Promise<void>;
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
@@ -113,6 +116,7 @@ type UseAppViewerBridgeControllerOptions = {
   skipNextPreferenceRefreshRef: RefValue<boolean>;
   toggleSidebar: () => void;
   updateDirtyGridDocument: (documentId: string | null | undefined, dirty: boolean) => void;
+  updateGridMenuState: (documentId: string, state: GridNativeMenuState) => void;
   writeGridPerfMetric: (metric: unknown) => void | Promise<void>;
   xyzrenderOrientationRefRef: RefValue<string | null>;
 };
@@ -122,6 +126,7 @@ export function useAppViewerBridgeController({
   addBackgroundDocuments,
   addDocuments,
   calculateGridDescriptors,
+  closeGridRuntime,
   documents,
   forgetDirtyGridDocument,
   generate3DConformer,
@@ -140,6 +145,7 @@ export function useAppViewerBridgeController({
   preferences,
   pushErrorStatus,
   pushStatus,
+  rebindSavedGridDocument,
   reloadActive,
   rememberRecentStructures,
   setPreference,
@@ -149,15 +155,18 @@ export function useAppViewerBridgeController({
   skipNextPreferenceRefreshRef,
   toggleSidebar,
   updateDirtyGridDocument,
+  updateGridMenuState,
   writeGridPerfMetric,
   xyzrenderOrientationRefRef,
 }: UseAppViewerBridgeControllerOptions) {
   const { handleGridFileMessage } = useAppGridFileActions({
+    closeGridRuntime,
     documents,
     forgetDirtyGridDocument,
     postMessageToViewerSource,
     pushErrorStatus,
     pushStatus,
+    rebindSavedGridDocument,
   });
   const { handleGridRuntimeMessage } = useAppGridRuntimeMessages({
     postMessageToViewerSource,
@@ -171,6 +180,7 @@ export function useAppViewerBridgeController({
     pushErrorStatus,
     pushStatus,
     updateDirtyGridDocument,
+    updateGridMenuState,
     writeClipboardText,
     writeGridPerfMetric,
   });

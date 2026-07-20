@@ -46,6 +46,7 @@ pub(crate) struct ConformerToolStatus {
 pub(crate) struct ConformerStatus {
     crest: ConformerToolStatus,
     prism: ConformerToolStatus,
+    openbabel: ConformerToolStatus,
 }
 
 #[derive(Debug, Deserialize)]
@@ -146,6 +147,12 @@ pub(crate) fn conformer_status() -> ConformerStatus {
             "PRISM Pruner is available. Burrete will use this executable for ensemble pruning.",
             "Install PRISM Pruner with uv tool install prism_pruner, or expose prism_pruner on PATH.",
             &["--help"],
+        ),
+        openbabel: conformer_tool_status(
+            resolve_executable("obabel"),
+            "Open Babel is available for conformer input preparation.",
+            "Install Open Babel or expose obabel on PATH to prepare non-XYZ CREST inputs.",
+            &["--version"],
         ),
     }
 }

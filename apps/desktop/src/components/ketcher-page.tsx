@@ -22,6 +22,7 @@ import { readStructureText } from "../lib/structure-text";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { hostedKetcherSeedFromWindow, isHostedKetcherWidget, type HostedKetcherSeed } from "../lib/hosted-mcp-widget";
+import { runWindowMutation } from "../lib/window-mutation-barrier";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action-executor";
 import type { KetcherLocation } from "./editor-area/page-kinds";
@@ -965,32 +966,36 @@ export function KetcherPage({
     return "failure";
   }, [actions, ketcher]);
 
-  const applyGridEdit = useCallback(async () => {
-    if (!ketcher || !gridEditSource || exportingSketch) return;
-    setExportingSketch(true);
-    try {
-      setStatus("Applying grid edit");
-      const [smiles, molfile] = await Promise.all([
-        withKetcherTimeout(ketcher.getSmiles(), "SMILES export"),
-        withKetcherTimeout(ketcher.getMolfile("v2000"), "Molfile export"),
-      ]);
-      if (isBlankKetcherMolfile(molfile)) {
-        setStatus("Draw a molecule first");
-        return;
+  const applyGridEdit = useCallback(() => {
+    if (!ketcher || !gridEditSource || exportingSketch) return Promise.resolve();
+    return runWindowMutation(gridEditSource.documentId, async () => {
+      setExportingSketch(true);
+      try {
+        setStatus("Applying grid edit");
+        const [smiles, molfile] = await Promise.all([
+          withKetcherTimeout(ketcher.getSmiles(), "SMILES export"),
+          withKetcherTimeout(ketcher.getMolfile("v2000"), "Molfile export"),
+        ]);
+        if (isBlankKetcherMolfile(molfile)) {
+          setStatus("Draw a molecule first");
+          return;
+        }
+        actions.applyKetcherToGridRow({
+          documentId: gridEditSource.documentId,
+          rowIndex: gridEditSource.rowIndex,
+          title: gridEditSource.title,
+          extension: "sdf",
+          text: molfileToSdf(molfile, smiles),
+        });
+        setStatus("Applied edit to grid");
+      } catch (error) {
+        setStatus(ketcherExportErrorMessage(error));
+      } finally {
+        setExportingSketch(false);
       }
-      actions.applyKetcherToGridRow({
-        documentId: gridEditSource.documentId,
-        rowIndex: gridEditSource.rowIndex,
-        title: gridEditSource.title,
-        extension: "sdf",
-        text: molfileToSdf(molfile, smiles),
-      });
-      setStatus("Applied edit to grid");
-    } catch (error) {
-      setStatus(ketcherExportErrorMessage(error));
-    } finally {
-      setExportingSketch(false);
-    }
+    }).catch((error) => {
+      setStatus(error instanceof Error ? error.message : String(error));
+    });
   }, [actions, exportingSketch, gridEditSource, ketcher]);
 
   const consumeImportRequest = useCallback((request: KetcherImportRequest | null) => {

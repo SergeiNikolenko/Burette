@@ -203,9 +203,12 @@ try {
       assert.match(stableViewerRuntimeResponse.headers.get('content-type') ?? '', /^text\/javascript\b/u);
       assert.match(await stableViewerRuntimeResponse.text(), /BurreteAgent|BurreteDataBase64|molstar/u);
       for (const [runtimePath, contentType] of [
+        ['viewer-bootstrap.js', /^text\/javascript\b/u],
+        ['trajectory-smoothing.js', /^text\/javascript\b/u],
         ['grid-viewer.js', /^text\/javascript\b/u],
         ['grid-ui.js', /^text\/javascript\b/u],
         ['grid.css', /^text\/css\b/u],
+        ['openchemlib/openchemlib.js', /^text\/javascript\b/u],
         ['rdkit/RDKit_minimal.js', /^text\/javascript\b/u],
         ['rdkit/RDKit_minimal.wasm', /^application\/wasm\b/u],
       ]) {

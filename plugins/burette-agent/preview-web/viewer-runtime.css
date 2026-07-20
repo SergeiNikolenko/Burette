@@ -839,7 +839,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   outline: none;
   background: var(--buret-menu-input-background);
 }
-body.burette-mobile-host #status {
+body.burette-mobile-host #status.hidden {
   display: none !important;
 }
 body.burette-mobile-host .buret-molecule-context-menu {
@@ -1986,6 +1986,7 @@ body.burette-mobile-host .buret-docking-poses button {
   align-items: center;
   gap: 6px;
 }
+.buret-trajectory-smooth-button { min-width: 58px; font-weight: 600; }
 .buret-docking-pose-animation {
   max-height: 0;
   margin-top: 0;
@@ -2062,6 +2063,31 @@ body.burette-mobile-host .buret-docking-poses button {
   min-width: 60px;
   accent-color: var(--buret-molstar-accent);
   cursor: pointer;
+}
+@media (max-width: 360px) {
+  .buret-docking-poses {
+    top: 64px;
+    width: calc(100vw - 24px);
+  }
+  .buret-docking-pose-main {
+    display: grid;
+    grid-template-columns: 28px auto minmax(62px, 1fr) auto auto;
+    width: 100%;
+  }
+  .buret-docking-pose-main > span {
+    min-width: 0;
+  }
+  .buret-docking-pose-main > button:not(.buret-docking-pose-animation-button) {
+    padding-inline: 7px;
+  }
+  .buret-docking-pose-animation {
+    width: 100%;
+  }
+  .buret-docking-pose-slider {
+    min-width: 0;
+    width: auto;
+    flex: 1 1 auto;
+  }
 }
 .buret-agent-panel {
   position: fixed;

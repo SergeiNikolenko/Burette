@@ -2130,3 +2130,23 @@ body.buret-hide-properties .buret-card-body {
     --buret-grid-content-padding-inline: 12px;
   }
 }
+.buret-grid-close-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--buret-bg) 72%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.buret-grid-close-transition span {
+  padding: 8px 13px;
+  border: 1px solid var(--buret-border);
+  border-radius: 999px;
+  background: var(--buret-surface-raised);
+  color: var(--buret-text);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 14%);
+}

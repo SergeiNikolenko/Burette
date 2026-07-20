@@ -15,7 +15,12 @@ const MOLSTAR_COORDINATE_TRAJECTORY_EXTENSIONS = new Set([
   "lammpstrj",
 ]);
 const MOLSTAR_TRAJECTORY_EXTENSIONS = new Set([...MOLSTAR_COORDINATE_TRAJECTORY_EXTENSIONS, "top", "psf", "prmtop"]);
-const MOLSTAR_VIEWER_EXTENSIONS = new Set([
+const MOLSTAR_DIRECT_VIEWER_EXTENSIONS = new Set(
+  previewFormatRegistry.formats
+    .filter((format) => Boolean(format.viewer) && format.viewer?.externalOnly !== true)
+    .flatMap((format) => format.extensions.map((extension) => extension === "mae.gz" ? "maegz" : extension)),
+);
+const MOLSTAR_COMBINE_EXTENSIONS = new Set([
   ...previewFormatRegistry.formats
     .filter((format) => Boolean(format.viewer))
     .flatMap((format) => format.extensions.map((extension) => extension === "mae.gz" ? "maegz" : extension)),
@@ -34,7 +39,11 @@ export function isProteinLikeDockingSource(path: string) {
 }
 
 export function isMolstarCombineSource(path: string) {
-  return MOLSTAR_VIEWER_EXTENSIONS.has(extensionForDocking(path));
+  return MOLSTAR_COMBINE_EXTENSIONS.has(extensionForDocking(path));
+}
+
+export function isMolstarViewerExtension(extension: string) {
+  return MOLSTAR_DIRECT_VIEWER_EXTENSIONS.has(extension.trim().replace(/^\./u, "").toLowerCase());
 }
 
 export function isMolstarCoordinateTrajectorySource(path: string) {
