@@ -2,30 +2,29 @@
 :root {
   --buret-viewer-ui-scale: 0.9;
   --buret-toolbar-safe-top: 12px;
-  --buret-overlay-opacity: 0.90;
-  --buret-overlay-strong-opacity: 0.96;
   --buret-canvas-background: #000000;
   --buret-shell-background: #000000;
-  --buret-panel-background: rgba(18, 20, 22, var(--buret-overlay-opacity));
-  --buret-toolbar-background: rgba(12, 13, 14, var(--buret-overlay-opacity));
+  --buret-panel-background: rgb(18, 20, 22);
+  --buret-toolbar-background: rgb(12, 13, 14);
   --buret-toolbar-border: rgba(255, 255, 255, 0.10);
   --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
   --buret-toolbar-color: rgba(255, 255, 255, 0.94);
   --buret-control-island-right: 12px;
   --buret-control-island-gap: 6px;
+  --buret-generate-3d-control-right: 70px;
   --buret-viewport-controls-top: calc(var(--buret-toolbar-safe-top) + 42px);
   --buret-viewport-panel-max-height: calc(100vh - 96px);
-  --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
-  --buret-molstar-row-background: rgba(24, 26, 29, var(--buret-overlay-strong-opacity));
-  --buret-molstar-field-background: rgba(32, 35, 39, var(--buret-overlay-strong-opacity));
-  --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
+  --buret-molstar-panel-background: rgb(14, 15, 17);
+  --buret-molstar-row-background: rgb(24, 26, 29);
+  --buret-molstar-field-background: rgb(32, 35, 39);
+  --buret-molstar-hover-background: rgb(48, 52, 58);
   --buret-molstar-border: rgba(255, 255, 255, 0.10);
   --buret-molstar-text: rgba(246, 247, 249, 0.94);
   --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
   --buret-molstar-panel-radius: 10px;
-  --buret-menu-background: rgba(30, 32, 36, 0.97);
+  --buret-menu-background: rgb(30, 32, 36);
   --buret-menu-section-background: rgba(255, 255, 255, 0.09);
   --buret-menu-input-background: rgba(255, 255, 255, 0.12);
   --buret-menu-input-focus-background: rgba(255, 255, 255, 0.16);
@@ -47,25 +46,26 @@ html.buret-transparent-background canvas { background: transparent !important; b
 body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
 strong { font-weight: 400; }
 body.buret-theme-light {
+  --buret-control-fill: rgb(244, 244, 244);
   --buret-shell-background: #ffffff;
-  --buret-panel-background: rgba(248, 248, 248, var(--buret-overlay-opacity));
-  --buret-toolbar-background: rgba(248, 248, 248, var(--buret-overlay-opacity));
+  --buret-panel-background: var(--buret-control-fill);
+  --buret-toolbar-background: var(--buret-control-fill);
   --buret-toolbar-border: rgba(0, 0, 0, 0.12);
   --buret-toolbar-hover: rgba(0, 0, 0, 0.08);
   --buret-toolbar-color: rgba(20, 21, 23, 0.92);
-  --buret-molstar-panel-background: rgba(248, 248, 248, var(--buret-overlay-strong-opacity));
-  --buret-molstar-row-background: rgba(238, 238, 238, var(--buret-overlay-strong-opacity));
-  --buret-molstar-field-background: rgba(255, 255, 255, var(--buret-overlay-strong-opacity));
-  --buret-molstar-hover-background: rgba(228, 228, 228, 0.98);
+  --buret-molstar-panel-background: var(--buret-control-fill);
+  --buret-molstar-row-background: var(--buret-control-fill);
+  --buret-molstar-field-background: rgb(255, 255, 255);
+  --buret-molstar-hover-background: rgb(228, 228, 228);
   --buret-molstar-border: rgba(0, 0, 0, 0.13);
   --buret-molstar-text: rgba(32, 33, 35, 0.94);
   --buret-molstar-muted-text: rgba(86, 88, 92, 0.82);
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.18);
-  --buret-menu-background: rgba(248, 248, 246, 0.98);
-  --buret-menu-section-background: rgba(0, 0, 0, 0.055);
-  --buret-menu-input-background: rgba(0, 0, 0, 0.075);
-  --buret-menu-input-focus-background: rgba(0, 0, 0, 0.105);
+  --buret-menu-background: var(--buret-control-fill);
+  --buret-menu-section-background: var(--buret-control-fill);
+  --buret-menu-input-background: var(--buret-control-fill);
+  --buret-menu-input-focus-background: var(--buret-control-fill);
   --buret-menu-border: rgba(0, 0, 0, 0.11);
   --buret-menu-divider: rgba(0, 0, 0, 0.08);
   --buret-menu-toggle-track: rgba(0, 0, 0, 0.16);
@@ -76,15 +76,15 @@ body.buret-theme-light {
 }
 body.buret-theme-dark {
   --buret-shell-background: var(--buret-canvas-background);
-  --buret-panel-background: rgba(18, 20, 22, var(--buret-overlay-opacity));
-  --buret-toolbar-background: rgba(12, 13, 14, var(--buret-overlay-opacity));
+  --buret-panel-background: rgb(18, 20, 22);
+  --buret-toolbar-background: rgb(12, 13, 14);
   --buret-toolbar-border: rgba(255, 255, 255, 0.10);
   --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
   --buret-toolbar-color: rgba(255, 255, 255, 0.94);
-  --buret-molstar-panel-background: rgba(14, 15, 17, var(--buret-overlay-strong-opacity));
-  --buret-molstar-row-background: rgba(24, 26, 29, var(--buret-overlay-strong-opacity));
-  --buret-molstar-field-background: rgba(32, 35, 39, var(--buret-overlay-strong-opacity));
-  --buret-molstar-hover-background: rgba(48, 52, 58, 0.98);
+  --buret-molstar-panel-background: rgb(14, 15, 17);
+  --buret-molstar-row-background: rgb(24, 26, 29);
+  --buret-molstar-field-background: rgb(32, 35, 39);
+  --buret-molstar-hover-background: rgb(48, 52, 58);
   --buret-molstar-border: rgba(255, 255, 255, 0.10);
   --buret-molstar-text: rgba(246, 247, 249, 0.94);
   --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
@@ -511,14 +511,8 @@ body .msp-plugin .msp-layout-collapse-left.msp-layout-hide-top.msp-layout-hide-b
   height: auto !important;
   min-height: 0 !important;
 }
-/* Keep the native Mol* top-left animation button on every Mol* screen. Do not remove. */
-body .msp-plugin .msp-viewport-top-left-controls,
-body .msp-plugin .msp-animation-viewport-controls,
-body .msp-plugin .msp-animation-viewport-controls > div:first-child > button {
-  pointer-events: auto;
-}
-body .msp-plugin .msp-viewport-top-left-controls {
-  z-index: 45;
+body:not(.burette-mobile-host) .msp-plugin .msp-viewport-top-left-controls {
+  display: none !important;
 }
 body .msp-plugin .msp-viewport-controls {
   top: var(--buret-viewport-controls-top) !important;
@@ -778,8 +772,8 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   border-radius: 12px;
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
-  -webkit-backdrop-filter: blur(30px) saturate(1.35);
-  backdrop-filter: blur(30px) saturate(1.35);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow: var(--buret-menu-shadow);
 }
 .buret-molecule-context-menu-title {
@@ -803,41 +797,76 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   letter-spacing: 0.01em;
 }
 .buret-molecule-context-mode {
+  position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2px;
+  overflow: hidden;
   margin: 2px 2px 6px;
   padding: 2px;
   border-radius: 9px;
   background: color-mix(in srgb, var(--buret-toolbar-color) 8%, transparent);
 }
+.buret-molecule-context-mode::before {
+  position: absolute;
+  z-index: 0;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 6px) / 2);
+  border-radius: 7px;
+  background: var(--buret-menu-input-background);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+  content: "";
+  pointer-events: none;
+  transform: translateX(0);
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.buret-molecule-context-mode[data-mode="atom"]::before {
+  transform: translateX(calc(100% + 2px));
+}
 .buret-molecule-context-menu .buret-molecule-context-mode-button {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 26px;
   border-radius: 7px;
   padding: 4px 8px;
+  background: transparent;
   font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-align: center;
 }
 .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
-  background: var(--buret-menu-input-background);
+  background: transparent;
+  font-weight: 500;
 }
 .buret-molecule-context-menu button {
-  display: block;
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
   width: 100%;
   min-height: 30px;
   box-sizing: border-box;
-  border: 1px solid var(--buret-menu-border);
-  border-radius: 8px;
-  padding: 6px 8px;
+  margin: 0;
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 10px;
   color: inherit;
   background: transparent;
-  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-align: left;
+  white-space: nowrap;
+  cursor: default;
+  transition: background 120ms ease, color 120ms ease;
 }
 .buret-molecule-context-menu button:hover,
 .buret-molecule-context-menu button:focus {
   outline: none;
-  background: var(--buret-menu-input-background);
+  background: color-mix(in srgb, var(--buret-toolbar-color) 8%, transparent);
 }
 body.burette-mobile-host #status.hidden {
   display: none !important;
@@ -849,16 +878,16 @@ body.burette-mobile-host .buret-molecule-context-menu {
   border: 0.5px solid rgba(255, 255, 255, 0.22);
   border-radius: 24px;
   color: #f5f5f7;
-  background: rgba(28, 28, 30, 0.78);
-  -webkit-backdrop-filter: blur(42px) saturate(1.75);
-  backdrop-filter: blur(42px) saturate(1.75);
+  background: var(--buret-menu-background);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.42),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu {
   color: #1d1d1f;
-  background: rgba(246, 246, 242, 0.76);
+  background: var(--buret-menu-background);
   border-color: rgba(0, 0, 0, 0.10);
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.20),
@@ -885,6 +914,16 @@ body.burette-mobile-host .buret-molecule-context-mode {
   border-radius: 13px;
   background: rgba(118, 118, 128, 0.22);
 }
+body.burette-mobile-host .buret-molecule-context-mode::before {
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc((100% - 9px) / 2);
+  border-radius: 10px;
+}
+body.burette-mobile-host .buret-molecule-context-mode[data-mode="atom"]::before {
+  transform: translateX(calc(100% + 3px));
+}
 body.buret-theme-light.burette-mobile-host .buret-molecule-context-mode {
   background: rgba(118, 118, 128, 0.14);
 }
@@ -893,15 +932,16 @@ body.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mo
   border: 0;
   border-radius: 10px;
   padding: 7px 10px;
+  background: transparent;
   font: 600 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   text-align: center;
 }
 body.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
-  background: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  background: transparent;
+  box-shadow: none;
 }
 body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
-  background: rgba(255, 255, 255, 0.74);
+  background: transparent;
 }
 body.burette-mobile-host .buret-molecule-context-menu button {
   min-height: 48px;
@@ -918,6 +958,9 @@ body.buret-theme-light.burette-mobile-host .buret-molecule-context-menu button {
 body.burette-mobile-host .buret-molecule-context-menu button + button {
   margin-top: 6px;
 }
+body.burette-mobile-host .buret-molecule-context-menu .buret-molecule-context-mode-button + .buret-molecule-context-mode-button {
+  margin-top: 0;
+}
 body.burette-mobile-host .buret-molecule-context-menu button[data-buret-molecule-action^="remove"] {
   color: #ff6961;
 }
@@ -925,9 +968,14 @@ body.burette-mobile-host .buret-molecule-context-menu button:hover,
 body.burette-mobile-host .buret-molecule-context-menu button:focus {
   background: rgba(255, 255, 255, 0.20);
 }
+@media (prefers-reduced-motion: reduce) {
+  .buret-molecule-context-mode::before {
+    transition: none;
+  }
+}
 #buret-toolbar {
   position: absolute; top: var(--buret-toolbar-safe-top); right: var(--buret-control-island-right); left: auto; z-index: 2147483646;
-  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 6px;
+  display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 6px 0;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 12px; color: var(--buret-toolbar-color);
   background: var(--buret-toolbar-background);
@@ -949,7 +997,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 #buret-toolbar > * { flex: 0 0 auto; }
 #buret-toolbar.buret-dragging { transition: none; }
 #buret-toolbar .buret-toolbar-content {
-  display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; overflow: hidden;
+  display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; overflow-x: auto; overflow-y: hidden;
   max-width: calc(100vw - 72px); opacity: 1; transform: translateX(0);
   transition:
     max-width 220ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -958,6 +1006,8 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
     opacity 180ms ease,
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
+#buret-toolbar .buret-toolbar-content::-webkit-scrollbar { display: none; }
+#buret-toolbar .buret-button { flex: 0 0 auto; white-space: nowrap; }
 #buret-toolbar.buret-toolbar-docked .buret-toolbar-content {
   overflow-x: auto;
   overflow-y: hidden;
@@ -1056,6 +1106,12 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   transform: translate(-50%, 0) scale(1);
   transition-delay: 180ms, 180ms, 0s;
 }
+.buret-generate-3d-control[aria-expanded="true"] > .buret-tooltip {
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -4px) scale(0.98);
+  transition-delay: 0s;
+}
 #buret-toolbar .buret-button:hover > .buret-tooltip,
 #buret-toolbar .buret-button:focus-visible > .buret-tooltip,
 #buret-toolbar .buret-molstar-style-slot:hover > .buret-tooltip,
@@ -1132,7 +1188,8 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
 .buret-generate-3d-control {
   position: absolute;
   top: var(--buret-viewport-controls-top);
-  right: 62px;
+  right: var(--buret-generate-3d-control-right);
+  margin-right: -10px;
   z-index: 35;
   min-width: 104px;
   height: 36px;
@@ -1145,6 +1202,8 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   letter-spacing: 0;
   white-space: nowrap;
+  transform-origin: top center;
+  transition: opacity 150ms ease, transform 170ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0s, background 150ms ease;
 }
 .buret-generate-3d-control:hover,
 .buret-generate-3d-control:focus-visible {
@@ -1188,14 +1247,25 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
 .buret-generate-3d-menu {
   position: fixed;
   z-index: 45;
-  min-width: 182px;
+  box-sizing: border-box;
+  width: min(248px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 10px;
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   box-shadow: var(--buret-menu-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  transform-origin: top right;
+}
+.buret-generate-3d-menu[data-placement="top"] {
+  transform-origin: bottom right;
 }
 .buret-generate-3d-menu.hidden {
   display: none;
@@ -1210,15 +1280,44 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   background: transparent;
   font: inherit;
   text-align: left;
+  white-space: nowrap;
 }
-.buret-generate-3d-menu button:hover,
+.buret-generate-3d-menu button:hover {
+  background: var(--buret-toolbar-hover);
+}
 .buret-generate-3d-menu button:focus-visible {
   background: var(--buret-toolbar-hover);
+  box-shadow: inset 0 0 0 1px var(--buret-toolbar-border);
   outline: none;
 }
-body.buret-molstar-viewport-panel-open .buret-generate-3d-control {
-  top: var(--buret-generate-3d-panel-top, calc(var(--buret-viewport-controls-top) + 48px));
-  z-index: 35;
+.buret-generate-3d-menu button:disabled {
+  color: color-mix(in srgb, var(--buret-toolbar-color) 42%, transparent);
+  cursor: not-allowed;
+}
+body.buret-molstar-viewport-panel-open .buret-generate-3d-control,
+body:has(.msp-viewport-controls-buttons .msp-hover-box-wrapper:hover) .buret-generate-3d-control {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-8px) scale(0.98);
+  transition-delay: 0s, 0s, 150ms, 0s;
+}
+body.buret-toolbar-collapsed .buret-generate-3d-control {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-8px) scale(0.98);
+  transition-delay: 0s, 0s, 150ms, 0s;
+}
+body.buret-toolbar-collapsed .buret-generate-3d-menu,
+body.buret-molstar-viewport-panel-open .buret-generate-3d-menu,
+body:has(.msp-viewport-controls-buttons .msp-hover-box-wrapper:hover) .buret-generate-3d-menu {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-generate-3d-control {
+    transition: none;
+  }
 }
 .buret-renderer-control {
   display: none; align-items: center; gap: 4px; padding-left: 5px;
@@ -1391,8 +1490,8 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   color: var(--buret-toolbar-color);
   background: var(--buret-menu-background);
   box-shadow: var(--buret-menu-shadow);
-  -webkit-backdrop-filter: blur(18px) saturate(1.18);
-  backdrop-filter: blur(18px) saturate(1.18);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 .buret-xyzrender-popover.hidden { display: none; }
 .buret-xyzrender-popover-header {
@@ -1585,12 +1684,12 @@ body.burette-mobile-host .msp-plugin .msp-log,
 body.burette-mobile-host .msp-plugin .msp-sequence {
   border: 0.5px solid rgba(255, 255, 255, 0.20) !important;
   border-radius: var(--buret-molstar-panel-radius) !important;
-  background: rgba(28, 28, 30, 0.76) !important;
+  background: var(--buret-menu-background) !important;
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.38),
     inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
-  -webkit-backdrop-filter: blur(42px) saturate(1.75) !important;
-  backdrop-filter: blur(42px) saturate(1.75) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-left,
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-layout-right,
@@ -1604,7 +1703,7 @@ body.buret-theme-light.burette-mobile-host .msp-plugin .msp-animation-viewport-c
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-log,
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-sequence {
   border-color: rgba(0, 0, 0, 0.10) !important;
-  background: rgba(246, 246, 242, 0.78) !important;
+  background: var(--buret-menu-background) !important;
   box-shadow:
     0 24px 72px rgba(0, 0, 0, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
@@ -1859,8 +1958,8 @@ body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-selection-viewp
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-log,
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-sequence,
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-viewport-controls-panel {
-  -webkit-backdrop-filter: blur(42px) saturate(1.75) !important;
-  backdrop-filter: blur(42px) saturate(1.75) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 body.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls,
 body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls {
@@ -1874,15 +1973,15 @@ body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div {
   overflow: hidden;
   border: 0.5px solid rgba(255, 255, 255, 0.20) !important;
   border-radius: 20px !important;
-  background: rgba(28, 28, 30, 0.70) !important;
+  background: var(--buret-menu-background) !important;
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
-  -webkit-backdrop-filter: blur(32px) saturate(1.6);
-  backdrop-filter: blur(32px) saturate(1.6);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls > div,
 body.buret-theme-light.burette-mobile-host .msp-plugin .msp-animation-viewport-controls > div {
   border-color: rgba(0, 0, 0, 0.10) !important;
-  background: rgba(246, 246, 242, 0.76) !important;
+  background: var(--buret-menu-background) !important;
 }
 body.burette-mobile-host .msp-plugin .msp-viewport-top-left-controls button,
 body.burette-mobile-host .msp-plugin .msp-animation-viewport-controls button {
@@ -1960,15 +2059,15 @@ body.burette-mobile-host .buret-docking-poses {
   padding: 6px;
   border: 0.5px solid rgba(255, 255, 255, 0.20);
   border-radius: 20px;
-  background: rgba(28, 28, 30, 0.74);
+  background: var(--buret-menu-background);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
-  -webkit-backdrop-filter: blur(32px) saturate(1.6);
-  backdrop-filter: blur(32px) saturate(1.6);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   font: 500 15px/1.1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 body.buret-theme-light.burette-mobile-host .buret-docking-poses {
   border-color: rgba(0, 0, 0, 0.10);
-  background: rgba(246, 246, 242, 0.76);
+  background: var(--buret-menu-background);
 }
 body.burette-mobile-host .buret-docking-poses button {
   min-width: 44px;
@@ -2189,6 +2288,14 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-agent-panel-chart-row strong {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+body .msp-plugin .msp-action-menu-options,
+body .msp-plugin .msp-action-menu-options-no-header,
+body .msp-plugin .msp-animation-viewport-controls-select,
+body .msp-plugin .msp-selection-viewport-controls-actions {
+  background: var(--buret-menu-background) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
   .buret-docking-pose-animation {

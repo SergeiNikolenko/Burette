@@ -19,6 +19,7 @@ import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily as collectionFamilyForExtension, type CollectionFamily } from "../lib/collection-documents";
 import { detectKetcherImportFormat, normalizeKetcherSmilesImport } from "../lib/ketcher-import-format";
 import { readStructureText } from "../lib/structure-text";
+import { isTauriRuntime } from "../lib/tauri";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { hostedKetcherSeedFromWindow, isHostedKetcherWidget, type HostedKetcherSeed } from "../lib/hosted-mcp-widget";
@@ -793,7 +794,9 @@ export function KetcherPage({
         text: collectionRecord?.text ?? molfileToSdf(molfile),
         draftKet,
         draftMolfile: molfile,
-        source3d: target === "generate3d" ? preserved3dSource ?? undefined : undefined,
+        source3d: ["generate3d", "generateEnsemble", "optimizeGeometry", "semiempiricalRm1"].includes(target)
+          ? preserved3dSource ?? undefined
+          : undefined,
         target,
         collectionTargetPath,
       });
@@ -816,7 +819,7 @@ export function KetcherPage({
     } finally {
       setExportingSketch(false);
     }
-  }, [actions, exportingSketch, ketcher]);
+  }, [actions, exportingSketch, ketcher, preserved3dSource]);
 
   const sketchDragRecord = useCallback(async () => {
     if (!ketcher) return null;
@@ -1185,10 +1188,54 @@ export function KetcherPage({
             xyzrender
             <ShortcutTooltip label="Open sketch in xyzrender" />
           </button>
-          <button type="button" disabled={!ketcher || exportingSketch} aria-label="Generate 3D conformer" onClick={() => void openSketch("generate3d")}>
-            3D
-            <ShortcutTooltip label="Generate 3D conformer" />
-          </button>
+          <RadixDropdownMenu
+            align="end"
+            items={[
+              {
+                kind: "item",
+                id: "compute-generate-3d",
+                text: "Generate 3D",
+                detail: isTauriRuntime() ? "ETKDGv3 + MMFF94s" : "Dev backend · RDKit CPU",
+                disabled: false,
+                action: () => void openSketch("generate3d"),
+              },
+              {
+                kind: "item",
+                id: "compute-generate-ensemble",
+                text: "Generate conformer ensemble",
+                detail: isTauriRuntime() ? "16 ranked conformers" : "Dev backend · RDKit CPU",
+                disabled: false,
+                action: () => void openSketch("generateEnsemble"),
+              },
+              { kind: "separator" },
+              {
+                kind: "item",
+                id: "compute-optimize",
+                text: "Optimize geometry",
+                detail: preserved3dSource
+                  ? isTauriRuntime() ? "MMFF94s on current 3D coordinates" : "Dev backend · RDKit MMFF94s CPU"
+                  : "Requires imported 3D coordinates",
+                disabled: !preserved3dSource,
+                action: () => void openSketch("optimizeGeometry"),
+              },
+              {
+                kind: "item",
+                id: "compute-rm1",
+                text: "RM1 energy & charges",
+                detail: preserved3dSource
+                  ? isTauriRuntime() ? "Native semi-empirical workflow" : "Dev backend · native Metal"
+                  : "Requires imported 3D coordinates",
+                disabled: !preserved3dSource,
+                action: () => void openSketch("semiempiricalRm1"),
+              },
+            ]}
+            trigger={(
+              <button type="button" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
+                Compute
+                <ShortcutTooltip label="Native molecular compute" />
+              </button>
+            )}
+          />
           <RadixDropdownMenu
             align="end"
             items={[

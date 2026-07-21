@@ -2,6 +2,7 @@
 #![allow(clippy::items_after_test_module, clippy::too_many_arguments)]
 
 mod commands;
+mod compute;
 #[cfg(target_os = "macos")]
 mod macos;
 mod menu;
@@ -16,6 +17,14 @@ use commands::source_editing::{OpenedSourceRegistry, SourceEditRegistry};
 use preview::grid_store::GridRuntimeRegistry;
 use std::path::PathBuf;
 use tauri::{Manager, RunEvent};
+
+pub fn run_compute_service() -> Result<(), String> {
+    compute::service::run_compute_service()
+}
+
+pub fn run_compute_dev_backend() -> Result<(), String> {
+    compute::dev_backend::run()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -42,6 +51,28 @@ pub fn run() {
         .manage(RecentDocumentsRegistry::default())
         .manage(startup::PendingOpenDocuments::default())
         .setup(|app| {
+            let compute_coordinator = app
+                .path()
+                .app_data_dir()
+                .map(|app_data| {
+                    let resource_root = app.path().resource_dir().ok();
+                    let metal_runtime_root =
+                        resource_root.as_ref().map(|root| root.join("ComputeMetal"));
+                    let viewer_runtime_root =
+                        resource_root.as_ref().map(|root| root.join("ViewerWeb"));
+                    compute::coordinator::ComputeCoordinator::initialize_with_service(
+                        app_data.join("compute"),
+                        metal_runtime_root,
+                        viewer_runtime_root,
+                        packaged_compute_service_path(),
+                    )
+                })
+                .unwrap_or_else(|error| {
+                    compute::coordinator::ComputeCoordinator::unavailable(format!(
+                        "compute app-data directory is unavailable: {error}"
+                    ))
+                });
+            app.manage(compute_coordinator);
             let argv: Vec<String> = std::env::args().collect();
             let launch_mode = startup::LaunchMode::current(&argv);
             let startup_paths = startup::file_args_from_argv(argv, std::env::current_dir().ok());
@@ -78,6 +109,28 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            compute::commands::compute_capabilities,
+            compute::commands::compute_register_inline_source,
+            compute::commands::compute_align_grid_poses,
+            compute::commands::compute_evaluate_grid_semiempirical,
+            compute::commands::compute_submit_job,
+            compute::commands::compute_begin_conformer_submission,
+            compute::commands::compute_submit_conformer_chunk,
+            compute::commands::compute_execute_conformer_distance,
+            compute::commands::compute_execute_conformer_stereo,
+            compute::commands::compute_validate_conformer_reference,
+            compute::commands::compute_publish_conformer,
+            compute::commands::compute_begin_cluster_execution,
+            compute::commands::compute_submit_fingerprint_chunk,
+            compute::commands::compute_execute_cluster,
+            compute::commands::compute_publish_cluster,
+            compute::commands::compute_get_job,
+            compute::commands::compute_list_jobs,
+            compute::commands::compute_cancel_job,
+            compute::commands::compute_get_artifact_manifest,
+            compute::commands::compute_export_cluster_representatives,
+            compute::commands::compute_find_similar,
+            compute::commands::compute_purge_job,
             menu::sync_native_menu,
             menu::drain_native_menu_commands,
             menu::register_exit_preflight_listener,
@@ -88,6 +141,7 @@ pub fn run() {
             commands::recent_documents::prune_recent_documents,
             commands::recent_documents::clear_recent_documents,
             commands::agent_integration::agent_integration_status,
+            commands::chemical_editors::default_application_icon_path,
             commands::chemical_editors::finder_icon_path,
             commands::chemical_editors::list_chemical_editor_targets,
             commands::chemical_editors::open_in_chemical_editor,
@@ -136,6 +190,7 @@ pub fn run() {
             commands::documents::render_xyzrender_sheet_item,
             commands::documents::render_xyzrender_sheet_items,
             commands::grid::grid_fetch_page,
+            commands::grid::grid_mark_virtual_edit,
             commands::grid::grid_append_records,
             commands::grid::grid_delimited_columns,
             commands::grid::grid_append_delimited_records,
@@ -212,6 +267,23 @@ pub fn run() {
 #[cfg(target_os = "macos")]
 fn should_keep_running_after_last_window_closed(code: Option<i32>, has_windows: bool) -> bool {
     code.is_none() && !has_windows
+}
+
+fn packaged_compute_service_path() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("BURRETE_COMPUTE_SERVICE_PATH").map(PathBuf::from) {
+        return path.is_file().then_some(path);
+    }
+    let executable = std::env::current_exe().ok()?;
+    let directory = executable.parent()?;
+    let packaged = directory
+        .parent()?
+        .join("Helpers")
+        .join("burrete-compute-service");
+    if packaged.is_file() {
+        return Some(packaged);
+    }
+    let development = directory.join("burrete-compute-service");
+    development.is_file().then_some(development)
 }
 
 fn show_and_emit_open_documents<R: tauri::Runtime>(app: &tauri::AppHandle<R>, paths: Vec<String>) {

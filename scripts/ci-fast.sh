@@ -15,6 +15,7 @@ bun run test:agent
 bun run test:update
 bun run test:ui
 bun run test:tauri-structure
+bun run test:compute-metal
 cargo check -j "${CARGO_BUILD_JOBS:-1}" --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test -j "${CARGO_BUILD_JOBS:-1}" --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --test-threads=1
 plutil -lint apps/desktop/src-tauri/AppMetadata.plist apps/desktop/src-tauri/Info.plist PreviewExtension/Info.plist PreviewExtension/BurretePreview.entitlements

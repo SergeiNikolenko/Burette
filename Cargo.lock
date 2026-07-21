@@ -354,15 +354,20 @@ name = "burrete"
 version = "1.0.28"
 dependencies = [
  "base64 0.22.1",
+ "burrete-compute-core",
+ "burrete-compute-metal",
+ "burrete-compute-protocol",
  "burrete-core",
  "cocoa",
  "core-foundation",
  "dispatch2",
  "ed25519-dalek",
  "flate2",
+ "libc",
  "objc",
  "plist",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -372,6 +377,43 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "burrete-compute-core"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "burrete-compute-protocol",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "burrete-compute-metal"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "burrete-compute-core",
+ "burrete-compute-protocol",
+ "metal",
+ "objc",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+]
+
+[[package]]
+name = "burrete-compute-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "sha2 0.11.0",
  "uuid",
 ]
 
@@ -2251,6 +2293,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "metal"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7047791b5bc903b8cd963014b355f71dc9864a9a0b727057676c1dcae5cbc15"
+dependencies = [
+ "bitflags 2.11.1",
+ "block",
+ "core-graphics-types",
+ "foreign-types",
+ "log",
+ "objc",
+ "paste",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2657,6 +2714,12 @@ dependencies = [
  "smallvec",
  "windows-link 0.2.1",
 ]
+
+[[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pathdiff"
@@ -3121,6 +3184,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
+name = "ryu-js"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04d056b875a9d2e6cb9a61d127afee9ac5999b9f87bcb32079d1318e505be714"
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3279,6 +3348,17 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "serde_json_canonicalizer"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe52319a927259afbfa5180c5157cd8167edfd3e8c254f9558c7fef44c5649f2"
+dependencies = [
+ "ryu-js",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

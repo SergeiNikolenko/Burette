@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "libraryId": "burrete.compute.conformer-initialize.v1",
+  "source": "conformer-initialize.v1.metal",
+  "deploymentTarget": "14.0",
+  "algorithm": "counter-based deterministic float4 coordinate initialization",
+  "range": "[-1,1)",
+  "parameterAbi": {
+    "name": "ConformerInitializeBatchV1",
+    "sizeBytes": 16,
+    "alignmentBytes": 8,
+    "byteOrder": "littleEndian",
+    "fields": [
+      { "name": "atomCount", "type": "uint32", "offsetBytes": 0 },
+      { "name": "conformerCount", "type": "uint32", "offsetBytes": 4 },
+      { "name": "outputAtomOffset", "type": "uint64", "offsetBytes": 8 }
+    ]
+  },
+  "entrypoint": {
+    "name": "burrete_conformer_initialize_v1",
+    "threads": "atomCount * conformerCount",
+    "buffers": [
+      { "name": "seedWords", "index": 0, "type": "uint4", "access": "read", "elements": "conformerCount" },
+      { "name": "batch", "index": 1, "type": "ConformerInitializeBatchV1", "access": "constant", "elements": "1" },
+      { "name": "positions", "index": 2, "type": "float4", "access": "write", "elements": "outputAtomOffset + atomCount * conformerCount" }
+    ]
+  },
+  "claims": {
+    "distanceGeometryEmbedding": false,
+    "chunkInvariant": true,
+    "fullPairMatrix": false
+  }
+}

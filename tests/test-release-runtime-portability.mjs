@@ -20,6 +20,19 @@ assert.match(buildScript, /_CodeSignature/);
 assert.match(buildScript, /codesign --verify --deep --strict \"\$python_framework\"/);
 assert.match(buildScript, /otool -L/);
 assert.match(buildScript, /External Homebrew dependency/);
+assert.match(buildScript, /build_compute_metal_runtime/);
+assert.match(buildScript, /compute\/metal\/build-metallib\.sh/);
+assert.match(buildScript, /assert_bundled_compute_metal_runtime/);
+assert.match(buildScript, /cargo build --release --bin burrete-compute-service/);
+assert.match(buildScript, /Contents\/Helpers\/burrete-compute-service/);
+assert.match(buildScript, /smoke_bundled_compute_service/);
+assert.match(buildScript, /check-compute-service\.mjs/);
+assert.ok(
+  buildScript.indexOf("build_compute_metal_runtime\n") < buildScript.indexOf("bun run build:tauri"),
+  "the reviewed Metal runtime must be compiled before Tauri packages resources",
+);
+assert.match(buildScript, /export CARGO_PROFILE_RELEASE_STRIP=false/);
+assert.match(buildScript, /--exclude \.codegraph/);
 
 assert.match(conformerCommand, /candidate_errors/);
 assert.match(conformerCommand, /format_conformer_candidate_errors/);

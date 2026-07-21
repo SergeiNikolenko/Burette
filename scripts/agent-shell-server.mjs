@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, watch } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
+const NATIVE_COMPUTE_REQUEST_LIMIT = 12 * 1024 * 1024;
+const NATIVE_COMPUTE_TIMEOUT_MS = 10 * 60 * 1000;
 const AMBER_NC_PREVIEW_FRAME_LIMIT = 100;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const STRUCTURE_EXTENSIONS = new Set([
@@ -68,6 +70,7 @@ const RUNTIME_ASSET_PATHS = new Set([
 ]);
 const RUNTIME_ASSET_NAMES = new Set([...RUNTIME_ASSET_PATHS].filter((path) => !path.includes('/')));
 const APP_ICONS = {
+  'default-app': resolve(scriptDir, '..', 'apps', 'desktop', 'src-tauri', 'icons', 'icon.png'),
   finder: '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns',
   maestro: '/Applications/SchrodingerSuites2026-1/Maestro.app/Contents/Resources/Maestro.icns',
   chimerax: '/Applications/ChimeraX-1.10.app/Contents/Resources/chimerax-icon.icns',
@@ -215,6 +218,10 @@ async function handleRequest(req, res) {
   }
   if (url.pathname === '/__burette/rdkit-wasm') {
     await handleRdkitWasm(res, method);
+    return;
+  }
+  if (url.pathname === '/__burette/native-compute') {
+    await handleNativeCompute(req, res, method);
     return;
   }
   if (url.pathname.startsWith('/__burette/runtime/')) {
@@ -629,7 +636,9 @@ async function handleStatic(res, method, url) {
   const filePath = isWithin(candidate, distRoot) && existsSync(candidate)
     ? candidate
     : indexPath;
-  await sendStaticFile(res, method, filePath, filePath === indexPath);
+  const relativePath = relative(distRoot, filePath);
+  const noCache = filePath === indexPath || relativePath === 'index.js' || relativePath === 'boot-overlay.js';
+  await sendStaticFile(res, method, filePath, noCache);
 }
 
 async function handleRdkitWasm(res, method) {
@@ -645,6 +654,85 @@ async function handleRdkitWasm(res, method) {
     }
   }
   sendJson(res, 404, { error: 'Not found' });
+}
+
+async function handleNativeCompute(req, res, method) {
+  const runtime = nativeComputeRuntime();
+  if (method === 'GET') {
+    sendJson(res, 200, {
+      available: Boolean(runtime),
+      provider: runtime ? 'nativeMetalDevBridge' : null,
+      operations: runtime ? ['generate3d', 'generateEnsemble', 'optimizeGeometry', 'semiempiricalRm1', 'alignPoses'] : [],
+    });
+    return;
+  }
+  if (method !== 'POST') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  try {
+    if (!runtime) throw new Error('Native Metal dev runtime is unavailable in this Browser shell.');
+    const body = await readJsonBody(req, NATIVE_COMPUTE_REQUEST_LIMIT);
+    const input = JSON.stringify(body);
+    if (Buffer.byteLength(input, 'utf8') > NATIVE_COMPUTE_REQUEST_LIMIT) {
+      throw new Error('Native compute request exceeds 12 MiB');
+    }
+    sendJson(res, 200, await runNativeCompute(runtime, input));
+  } catch (error) {
+    sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+function nativeComputeRuntime() {
+  const repoRoot = resolve(scriptDir, '..');
+  const runtimeRoots = [
+    String(process.env.BURRETE_DEV_COMPUTE_RUNTIME_ROOT || '').trim(),
+    resolve(repoRoot, 'target', 'debug', 'ComputeMetal'),
+    resolve(repoRoot, 'target', 'release', 'ComputeMetal'),
+  ].filter(Boolean);
+  const runtimeRoot = runtimeRoots.find((candidate) => existsSync(resolve(candidate, 'current.json')));
+  if (!runtimeRoot) return null;
+  const executables = [
+    resolve(repoRoot, 'target', 'debug', 'burrete-compute-dev-backend'),
+    resolve(repoRoot, 'target', 'release', 'burrete-compute-dev-backend'),
+  ];
+  const executable = executables.find((candidate) => existsSync(candidate));
+  return executable ? { executable, runtimeRoot } : null;
+}
+
+function runNativeCompute(runtime, input) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(runtime.executable, ['--runtime-root', runtime.runtimeRoot], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    const timeout = setTimeout(() => {
+      child.kill();
+      rejectPromise(new Error('Native Metal dev backend timed out'));
+    }, NATIVE_COMPUTE_TIMEOUT_MS);
+    child.stdout.on('data', (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr.on('data', (chunk) => stderrChunks.push(Buffer.from(chunk)));
+    child.on('error', (error) => {
+      clearTimeout(timeout);
+      rejectPromise(error);
+    });
+    child.on('close', (code, signal) => {
+      clearTimeout(timeout);
+      const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim();
+      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
+      if (code !== 0) {
+        rejectPromise(new Error(stderr || `Native Metal dev backend exited with ${signal || code}`));
+        return;
+      }
+      try {
+        const payload = JSON.parse(stdout);
+        if (!payload || typeof payload !== 'object') throw new Error('Native Metal dev backend returned an invalid response');
+        resolvePromise(payload);
+      } catch (error) {
+        rejectPromise(error);
+      }
+    });
+    child.stdin.end(input);
+  });
 }
 
 async function handleRuntimeAsset(res, method, url) {
@@ -810,9 +898,14 @@ function languageForTextExtension(extension) {
   return 'text';
 }
 
-async function readJsonBody(req) {
+async function readJsonBody(req, byteLimit = Number.POSITIVE_INFINITY) {
   let raw = '';
-  for await (const chunk of req) raw += chunk.toString('utf8');
+  let byteCount = 0;
+  for await (const chunk of req) {
+    byteCount += Buffer.byteLength(chunk);
+    if (byteCount > byteLimit) throw new Error(`Request exceeds ${Math.floor(byteLimit / (1024 * 1024))} MiB`);
+    raw += chunk.toString('utf8');
+  }
   return raw ? JSON.parse(raw) : {};
 }
 

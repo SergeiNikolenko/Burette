@@ -219,7 +219,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
                       aria-label={visibleTabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
                       onClick={closeTab}
                     >
-                      <CloseIcon size={11} />
+                      <CloseIcon size={13} />
                     </button>
                   )}
                 </div>

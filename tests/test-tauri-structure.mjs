@@ -79,7 +79,9 @@ const [
   buretteAgentJS,
   tauriConfigSource,
   tauriPermissionSource,
+  computePermissionSource,
   defaultCapabilitySource,
+  computeCapabilitySource,
   buildScript,
   quickLookXyzrenderLauncherScript,
   buildDevScript,
@@ -162,7 +164,9 @@ const [
   source('PreviewExtension/Web/burette-agent.js'),
   source('apps/desktop/src-tauri/tauri.conf.json'),
   source('apps/desktop/src-tauri/permissions/burrete.toml'),
+  source('apps/desktop/src-tauri/permissions/compute.toml'),
   source('apps/desktop/src-tauri/capabilities/default.json'),
+  source('apps/desktop/src-tauri/capabilities/compute.json'),
   source('scripts/build.sh'),
   source('scripts/bundle-quicklook-xyzrender-launcher.sh'),
   source('scripts/build-dev.sh'),
@@ -213,10 +217,15 @@ const desktopPackageConfig = JSON.parse(desktopPackageSource);
 const vendorAssetsLock = JSON.parse(vendorAssetsLockSource);
 const webRuntimeProfiles = JSON.parse(webRuntimeProfilesSource);
 const defaultCapability = JSON.parse(defaultCapabilitySource);
+const computeCapability = JSON.parse(computeCapabilitySource);
 const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label === 'main');
 const tauriHandlerSource = lib.match(/tauri::generate_handler!\[([\s\S]*?)\]/)?.[1] ?? '';
-const registeredTauriCommands = [...tauriHandlerSource.matchAll(/commands::(?:\w+::)+(\w+)/g)].map((match) => match[1]);
-const allowedTauriCommands = [...tauriPermissionSource.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
+const registeredTauriCommands = [
+  ...tauriHandlerSource.matchAll(/(?:commands::(?:\w+::)+|compute::commands::)(\w+)/g),
+].map((match) => match[1]);
+const allowedViewerCommands = [...tauriPermissionSource.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
+const allowedComputeCommands = [...computePermissionSource.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
+const allowedTauriCommands = [...allowedViewerCommands, ...allowedComputeCommands];
 
 assert.ok(tauriHandlerSource, 'the registered Tauri command handler must be discoverable');
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
@@ -228,6 +237,7 @@ assert.equal(mainWindowConfig.create, false);
 assert.equal(mainWindowConfig.visible, true);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
 assert.equal(tauriConfig.bundle.resources['../../../plugins/burette-agent'], 'plugins/burette-agent');
+assert.equal(tauriConfig.bundle.resources['../../../compute/metal/runtime'], 'ComputeMetal');
 assert.match(tauriConfig.app.security.csp, /'unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /'wasm-unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /style-src[^;]*'unsafe-inline'/);
@@ -245,6 +255,22 @@ assert.deepEqual(defaultCapability.windows, ['main', 'workspace-*']);
 assert.equal(defaultCapability.webviews, undefined);
 assert.equal(defaultCapability.remote, undefined);
 assert.ok(defaultCapability.permissions.includes('allow-viewer-commands'));
+assert.equal(defaultCapability.permissions.includes('allow-compute-commands'), false);
+assert.equal(computeCapability.local, true);
+assert.deepEqual(computeCapability.windows, ['main', 'workspace-*']);
+assert.equal(computeCapability.webviews, undefined);
+assert.equal(computeCapability.remote, undefined);
+assert.deepEqual(computeCapability.permissions, ['allow-compute-commands']);
+assert.deepEqual(
+  allowedComputeCommands.toSorted(),
+  registeredTauriCommands.filter((command) => command.startsWith('compute_')).toSorted(),
+  'the dedicated compute ACL must contain every compute command and nothing else',
+);
+assert.deepEqual(
+  allowedViewerCommands.filter((command) => command.startsWith('compute_')),
+  [],
+  'viewer commands must not inherit compute control',
+);
 assert.deepEqual(
   registeredTauriCommands.filter((command) => !allowedTauriCommands.includes(command)),
   [],
@@ -333,6 +359,7 @@ for (const commandPath of [
   'commands::descriptors::descriptor_grid_job_status',
   'commands::descriptors::descriptor_cancel_grid',
   'commands::grid::grid_fetch_page',
+  'commands::grid::grid_mark_virtual_edit',
   'commands::grid::grid_append_records',
   'commands::grid::grid_delimited_columns',
   'commands::grid::grid_append_delimited_records',
@@ -481,6 +508,7 @@ assert.match(documentsCommand, /ViewerDocument::virtual_structure/);
 assert.match(documentsCommand, /open_document_for_window\(\s*app,\s*window_label,\s*output_path,\s*&preferences,\s*reload_options\.as_ref\(\),\s*\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
 assert.match(documentsCommand, /open_document_for_window\(&app, window\.label\(\), output_path, &preferences, None\)\s*\.map\(\|document\| document\.into_virtual\(\)\)/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_fetch_page/);
+assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_mark_virtual_edit/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_append_records/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_delimited_columns/);
 assert.match(gridCommand, /#\[tauri::command\]\s+pub\(crate\) fn grid_append_delimited_records/);
@@ -589,6 +617,11 @@ assert.match(buildScript, /dev-namespace\.mjs" patch-tree "\$SAFE_ROOT"/);
 assert.match(buildScript, /Developer ID Application:/);
 assert.match(buildScript, /hardenedRuntime/);
 assert.match(buildScript, /cargo build --release --bin burrete-core-bridge/);
+assert.match(buildScript, /cargo build --release --bin burrete-compute-service/);
+assert.match(buildScript, /Contents\/Helpers\/burrete-compute-service/);
+assert.match(buildScript, /rm -f "\$app\/Contents\/MacOS\/burrete-compute-service"/);
+assert.match(tauriCargoSource, /default-run\s*=\s*"burrete"/);
+assert.match(buildScript, /check-compute-service\.mjs/);
 assert.match(buildScript, /TAURI_TARGET_DIR="\$\{CARGO_TARGET_DIR:-target\}"/);
 assert.match(buildScript, /"\$TAURI_TARGET_DIR\/release\/bundle\/macos\/Burrete\.app"/);
 assert.match(buildScript, /CORE_BRIDGE="\$TAURI_TARGET_DIR\/release\/burrete-core-bridge"/);
@@ -772,7 +805,15 @@ assert.equal(vendorAssetsLock.source.profiles, 'config/web-runtime-profiles.json
 assert.equal(vendorAssetsLock.packages.molstar.version, packageConfig.dependencies.molstar);
 assert.equal(vendorAssetsLock.packages['@rdkit/rdkit'].version, packageConfig.dependencies['@rdkit/rdkit']);
 assert.equal(vendorAssetsLock.packages.openchemlib.version, packageConfig.dependencies.openchemlib);
-assert.equal(vendorAssetsLock.assets.length, 5);
+assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), [
+  'PreviewExtension/Web/molstar.css',
+  'PreviewExtension/Web/molstar.js',
+  'PreviewExtension/Web/openchemlib/openchemlib.js',
+  'PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.js',
+  'PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.wasm',
+  'PreviewExtension/Web/rdkit/RDKit_minimal.js',
+  'PreviewExtension/Web/rdkit/RDKit_minimal.wasm',
+]);
 for (const asset of vendorAssetsLock.assets) {
   assert.match(asset.sha256, /^sha256-/);
   assert.ok(asset.bytes > 0);
@@ -784,6 +825,7 @@ assert.deepEqual(vendorAssetsLock.bundleTargets, webRuntimeProfiles.bundleTarget
 assert.ok(webRuntimeProfiles.profiles['desktop-molstar'].includes('molstar.js'));
 assert.ok(webRuntimeProfiles.profiles['desktop-grid'].includes('openchemlib/openchemlib.js'));
 assert.ok(webRuntimeProfiles.profiles['desktop-grid'].includes('rdkit/RDKit_minimal.wasm'));
+assert.ok(webRuntimeProfiles.profiles['desktop-native-compute'].includes('rdkit-conformer/Burrete_rdkit_conformer.wasm'));
 assert.ok(webRuntimeProfiles.profiles['quicklook-molstar'].includes('viewer.js'));
 assert.ok(webRuntimeProfiles.profiles['quicklook-grid'].includes('grid-viewer.js'));
 assert.ok(webRuntimeProfiles.profiles['quicklook-grid'].includes('openchemlib/openchemlib.js'));
@@ -791,6 +833,7 @@ assert.ok(webRuntimeProfiles.profiles['external-artifact'].includes('viewer-shel
 assert.deepEqual(webRuntimeProfiles.bundleTargets.tauri.profiles, [
   'desktop-molstar',
   'desktop-grid',
+  'desktop-native-compute',
   'external-artifact',
 ]);
 assert.deepEqual(webRuntimeProfiles.bundleTargets.quicklook.profiles, [
@@ -1355,7 +1398,7 @@ assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ sourc
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /'unsafe-eval'/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
-assert.match(previewRuntimeGrid, /grid-ui-v10/);
+assert.match(previewRuntimeGrid, /grid-ui-v11/);
 assert.match(previewXyzrender, /std::env::current_exe\(\)/);
 assert.match(previewXyzrender, /xyzrender-runtime/);
 assert.match(gridViewerJS, /resetDocumentRuntimeState\(\);\n\s+state\.remoteMode = isRemoteMode\(cfg\);/);

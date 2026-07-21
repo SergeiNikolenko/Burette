@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "burrete.rdkit-conformer-extractor.v1",
+  "magicAscii": "BCEX",
+  "byteOrder": "little-endian",
+  "headerBytes": 64,
+  "maximumTotalBytes": 4294967295,
+  "inputs": [
+    {"tag": 0, "format": "molblock", "contract": "One sanitized canonical V2000 or V3000 MOL block; explicit hydrogens are preserved."},
+    {"tag": 1, "format": "smiles", "contract": "One canonical SMILES; RDKit sanitizes it and adds explicit hydrogens before extraction."}
+  ],
+  "rdkit": {
+    "tag": "Release_2025_03_4",
+    "commit": "276b5a662302c6a548ac4f1363c066f3258e3a20",
+    "releaseNumber": 20250304
+  },
+  "variants": ["DG", "KDG", "ETDG", "ETDGv2", "ETKDG", "ETKDGv2", "ETKDGv3", "srETKDGv3"],
+  "header": [
+    {"name": "magic", "offset": 0, "type": "u8", "count": 4},
+    {"name": "abiVersion", "offset": 4, "type": "u16", "count": 1},
+    {"name": "headerBytes", "offset": 6, "type": "u16", "count": 1},
+    {"name": "variant", "offset": 8, "type": "u8", "count": 1},
+    {"name": "flags", "offset": 9, "type": "u8", "count": 1},
+    {"name": "reserved", "offset": 10, "type": "u16", "count": 1},
+    {"name": "counts", "offset": 12, "type": "u32", "count": 7},
+    {"name": "payloadBytes", "offset": 40, "type": "u32", "count": 1},
+    {"name": "totalBytes", "offset": 44, "type": "u32", "count": 1},
+    {"name": "rdkitReleaseNumber", "offset": 48, "type": "u32", "count": 1},
+    {"name": "reservedZero", "offset": 52, "type": "u8", "count": 12}
+  ],
+  "countOrder": ["atoms", "distanceTerms", "chiralTerms", "torsionTerms", "improperTerms", "etkDistanceTerms", "stereoCenters"],
+  "payload": [
+    {"name": "atomicNumbers", "type": "u16", "width": 1, "count": "atoms"},
+    {"name": "formalCharges", "type": "i8", "width": 1, "count": "atoms"},
+    {"name": "distanceAtomPairs", "type": "u32", "width": 2, "count": "distanceTerms"},
+    {"name": "distanceBoundsSquared", "type": "f32", "width": 2, "count": "distanceTerms"},
+    {"name": "distanceWeights", "type": "f32", "width": 1, "count": "distanceTerms"},
+    {"name": "chiralAtomQuads", "type": "u32", "width": 4, "count": "chiralTerms"},
+    {"name": "chiralVolumeBounds", "type": "f32", "width": 2, "count": "chiralTerms"},
+    {"name": "torsionAtomQuads", "type": "u32", "width": 4, "count": "torsionTerms"},
+    {"name": "torsionCoefficients", "type": "f32", "width": 6, "count": "torsionTerms"},
+    {"name": "torsionSigns", "type": "i8", "width": 6, "count": "torsionTerms"},
+    {"name": "improperAtomQuads", "type": "u32", "width": 4, "count": "improperTerms"},
+    {"name": "improperWeights", "type": "f32", "width": 1, "count": "improperTerms"},
+    {"name": "etkDistanceAtomPairs", "type": "u32", "width": 2, "count": "etkDistanceTerms"},
+    {"name": "etkDistanceBounds", "type": "f32", "width": 2, "count": "etkDistanceTerms"},
+    {"name": "etkDistanceKinds", "type": "u8", "width": 1, "count": "etkDistanceTerms"},
+    {"name": "etkDistanceWeights", "type": "f32", "width": 1, "count": "etkDistanceTerms"},
+    {"name": "stereoAtomQuints", "type": "u32", "width": 5, "count": "stereoCenters"},
+    {"name": "stereoFlags", "type": "u8", "width": 1, "count": "stereoCenters"}
+  ],
+  "alignment": "Each payload array begins at the next offset divisible by its element byte width; padding bytes are zero.",
+  "failure": "The module throws and returns no bytes on parse, sanitation, smoothing, domain, size, or ABI failure."
+}

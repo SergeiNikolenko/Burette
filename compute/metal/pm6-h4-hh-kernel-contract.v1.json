@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "kernel": "burrete_pm6_h4_hh_v1",
+  "model": "PM6-D3H4 Rezac-Hobza H4 hydrogen bonding and short-range H-H repulsion",
+  "dispatch": "one GPU thread per molecule; molecules are independently batched",
+  "inputs": {
+    "atoms": "packed float4 position/radius and uint4 atomic identity",
+    "molecules": "uint4 atom start/count spans"
+  },
+  "outputs": {
+    "correctionsEv": "float2 H4 and H-H correction energies per molecule"
+  },
+  "precision": "float32 Metal with mandatory float64 CPU parity gate",
+  "bounds": {
+    "maximumAtomsPerMolecule": 128,
+    "maximumMolecules": 256
+  }
+}

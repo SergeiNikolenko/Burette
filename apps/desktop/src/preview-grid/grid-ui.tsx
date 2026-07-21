@@ -12,6 +12,8 @@ type XyzrenderPresetOption = {
   label: string;
 };
 
+type SemiempiricalMethod = "RM1" | "AM1" | "PM3" | "PM6" | "PM6_D" | "PM6_D3H4" | "PM6_SP" | "AM1_STAR";
+
 type GridControlProps = {
   format: "csv" | "sdf" | "smiles" | "tsv";
   label: string;
@@ -26,6 +28,19 @@ type GridControlProps = {
   ketcherOpen: boolean;
   rendererSwitch: boolean;
   generating3d: boolean;
+  aligningPoses: boolean;
+  evaluatingSemiempirical: boolean;
+  semiempiricalEnabled: boolean;
+  semiempiricalMethod: SemiempiricalMethod;
+  conformerVariant: "DG" | "KDG" | "ETDG" | "ETDGv2" | "ETKDG" | "ETKDGv2" | "ETKDGv3" | "srETKDGv3";
+  mmffVariant: "MMFF94" | "MMFF94s";
+  clusterEnabled: boolean;
+  clustering: boolean;
+  findingSimilar: boolean;
+  exportingClusterRepresentatives: boolean;
+  clusterRepresentativesAvailable: boolean;
+  similarityQuerySelected: boolean;
+  clusterCutoff: number;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
   onSortChange: (value: string) => void;
@@ -33,6 +48,10 @@ type GridControlProps = {
   onClearSmarts: () => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
+  onCluster: () => void;
+  onFindSimilar: () => void;
+  onExportClusterRepresentatives: () => void;
+  onClusterCutoffChange: (value: number) => void;
   onCopySelected: () => void;
   onSaveGrid: () => void;
   onSaveGridAs: () => void;
@@ -45,6 +64,13 @@ type GridControlProps = {
   onSetCardRenderer: (value: "rdkit" | "xyzrender") => void;
   onXyzrenderPresetChange: (value: string) => void;
   onOpenKetcher: () => void;
+  onAlignSelectedPoses: () => void;
+  onEvaluateSemiempirical: () => void;
+  onSemiempiricalMethodChange: (value: SemiempiricalMethod) => void;
+  onGenerate3D: () => void;
+  onOptimizeGeometry: () => void;
+  onConformerVariantChange: (value: GridControlProps["conformerVariant"]) => void;
+  onMmffVariantChange: (value: GridControlProps["mmffVariant"]) => void;
   onRendererSwitch: (value: "molstar") => void;
   onRdkitUseInputCoordsChange: (checked: boolean) => void;
 };
@@ -207,10 +233,102 @@ function SelectionControls(props: GridControlProps) {
   );
 }
 
+function ClusterControls(props: GridControlProps) {
+  if (!props.clusterEnabled) return null;
+  return (
+    <div className="buret-grid-control-group buret-grid-cluster-group" aria-label="Molecular clustering">
+      <label className="buret-grid-cluster-cutoff">
+        Similarity
+        <select
+          id="cluster-cutoff"
+          aria-label="Tanimoto similarity cutoff"
+          value={props.clusterCutoff.toFixed(2)}
+          disabled={props.clustering}
+          onChange={(event) => props.onClusterCutoffChange(Number(event.currentTarget.value))}
+        >
+          {[0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9].map((cutoff) => (
+            <option key={cutoff} value={cutoff.toFixed(2)}>{cutoff.toFixed(2)}</option>
+          ))}
+        </select>
+      </label>
+      <button
+        id="cluster-molecules"
+        className="buret-toggle-button buret-cluster-button"
+        type="button"
+        aria-busy={props.clustering ? "true" : "false"}
+        onClick={props.onCluster}
+      >
+        <span data-buret-grid-cluster-label>{props.clustering ? "Cancel clustering" : "Cluster all"}</span>
+        <ControlTooltip label={props.clustering
+          ? "Cancel the active clustering job at its current durable boundary"
+          : "Cluster selected, filtered, or all molecules"} />
+      </button>
+      <button
+        id="find-similar-molecules"
+        className="buret-toggle-button buret-similarity-button"
+        type="button"
+        disabled={
+          props.clustering
+          || props.findingSimilar
+          || !props.clusterRepresentativesAvailable
+          || !props.similarityQuerySelected
+        }
+        aria-busy={props.findingSimilar ? "true" : "false"}
+        onClick={props.onFindSimilar}
+      >
+        <span data-buret-grid-similarity-label>
+          {props.findingSimilar ? "Searching..." : "Find similar"}
+        </span>
+        <ControlTooltip label="Find the top 50 matches to the single selected molecule in the latest clustered snapshot" />
+      </button>
+      <button
+        id="export-cluster-representatives"
+        className="buret-toggle-button buret-cluster-export-button"
+        type="button"
+        disabled={props.clustering || props.exportingClusterRepresentatives || !props.clusterRepresentativesAvailable}
+        aria-busy={props.exportingClusterRepresentatives ? "true" : "false"}
+        onClick={props.onExportClusterRepresentatives}
+      >
+        <span data-buret-grid-representative-export-label>
+          {props.exportingClusterRepresentatives ? "Exporting..." : "Export diverse"}
+        </span>
+        <ControlTooltip label="Export the immutable representative subset, structures, table, and provenance report" />
+      </button>
+    </div>
+  );
+}
+
 function SelectedOpenActions(props: GridControlProps) {
   if (!props.selectionEnabled) return null;
   return (
     <div id="selected-open-actions" className="buret-selected-open-actions" hidden>
+      <select
+        aria-label="Conformer generation method"
+        value={props.conformerVariant}
+        disabled={props.generating3d}
+        onChange={(event) => props.onConformerVariantChange(event.currentTarget.value as GridControlProps["conformerVariant"])}
+      >
+        {["DG", "KDG", "ETDG", "ETDGv2", "ETKDG", "ETKDGv2", "ETKDGv3", "srETKDGv3"].map((variant) => (
+          <option key={variant} value={variant}>{variant}</option>
+        ))}
+      </select>
+      <select
+        aria-label="MMFF optimization variant"
+        value={props.mmffVariant}
+        disabled={props.generating3d}
+        onChange={(event) => props.onMmffVariantChange(event.currentTarget.value as GridControlProps["mmffVariant"])}
+      >
+        <option value="MMFF94">MMFF94</option>
+        <option value="MMFF94s">MMFF94s</option>
+      </select>
+      <button id="generate-3d-selected" className="buret-toggle-button" type="button" disabled={props.generating3d} onClick={props.onGenerate3D}>
+        <span data-buret-grid-generate-3d-label>{props.generating3d ? "Generating..." : "Generate 3D"}</span>
+        <ControlTooltip label="Generate and selected-MMFF-optimize conformers for selected molecules" />
+      </button>
+      <button id="optimize-geometry-selected" className="buret-toggle-button" type="button" disabled={props.generating3d} onClick={props.onOptimizeGeometry}>
+        <span data-buret-grid-optimize-geometry-label>{props.generating3d ? "Working..." : "Optimize geometry"}</span>
+        <ControlTooltip label="Optimize selected input 3D coordinates with the chosen MMFF variant on Metal" />
+      </button>
       <button id="open-selected-molstar" className="buret-toggle-button" type="button" onClick={() => props.onRendererSwitch("molstar")}>
         Open in Molstar
         <ControlTooltip label="Open selected molecules in Molstar" />
@@ -218,6 +336,49 @@ function SelectedOpenActions(props: GridControlProps) {
       <button id="open-selected-ketcher" className="buret-toggle-button" type="button" onClick={props.onOpenKetcher}>
         Open in Ketcher
         <ControlTooltip label="Open selected molecule in Ketcher" />
+      </button>
+      {props.semiempiricalEnabled ? (
+        <>
+          <select
+            aria-label="Semi-empirical method"
+            value={props.semiempiricalMethod}
+            disabled={props.evaluatingSemiempirical}
+            onChange={(event) => props.onSemiempiricalMethodChange(event.currentTarget.value as SemiempiricalMethod)}
+          >
+            <option value="RM1">RM1</option>
+            <option value="AM1">AM1</option>
+            <option value="PM3">PM3</option>
+            <option value="PM6">PM6</option>
+            <option value="PM6_D">PM6_D</option>
+            <option value="PM6_D3H4">PM6_D3H4</option>
+            <option value="PM6_SP">PM6_SP</option>
+            <option value="AM1_STAR">AM1*</option>
+          </select>
+          <button
+            id="calculate-semiempirical-selected"
+            className="buret-toggle-button"
+            type="button"
+            disabled={props.evaluatingSemiempirical}
+            aria-busy={props.evaluatingSemiempirical ? "true" : "false"}
+            onClick={props.onEvaluateSemiempirical}
+          >
+            {props.evaluatingSemiempirical
+              ? "Calculating..."
+              : `${props.semiempiricalMethod === "AM1_STAR" ? "AM1*" : props.semiempiricalMethod} energy & charges`}
+            <ControlTooltip label="Calculate native semi-empirical energies and atomic charges and write them to Grid" />
+          </button>
+        </>
+      ) : null}
+      <button
+        id="align-selected-poses"
+        className="buret-toggle-button"
+        type="button"
+        disabled={props.aligningPoses}
+        aria-busy={props.aligningPoses ? "true" : "false"}
+        onClick={props.onAlignSelectedPoses}
+      >
+        {props.aligningPoses ? "Aligning..." : "Align & compare"}
+        <ControlTooltip label="Align selected 3D poses to the first selected row on Metal and write scores to Grid" />
       </button>
     </div>
   );
@@ -308,6 +469,7 @@ function GridControls(props: GridControlProps) {
           </button>
           <GridRenderControls {...props} />
           <XyzrenderStyleControl {...props} />
+          <ClusterControls {...props} />
           <div className="buret-toolbar-spacer" aria-hidden="true" />
           <SelectedOpenActions {...props} />
           <SelectionControls {...props} />

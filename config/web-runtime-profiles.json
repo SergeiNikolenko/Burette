@@ -20,6 +20,10 @@
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
     ],
+    "desktop-native-compute": [
+      "rdkit-conformer/Burrete_rdkit_conformer.js",
+      "rdkit-conformer/Burrete_rdkit_conformer.wasm"
+    ],
     "quicklook-molstar": [
       "molstar.js",
       "molstar.css",
@@ -51,6 +55,7 @@
       "profiles": [
         "desktop-molstar",
         "desktop-grid",
+        "desktop-native-compute",
         "external-artifact"
       ],
       "resourceRoot": "apps/desktop/src-tauri/tauri.conf.json#/bundle/resources/../../../PreviewExtension/Web=ViewerWeb"

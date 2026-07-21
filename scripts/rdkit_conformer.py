@@ -19,6 +19,7 @@ except Exception as exc:
 
 text = str(payload.get("text") or "")
 engine = str(payload.get("engine") or "datamol").strip().lower()
+operation = str(payload.get("operation") or "generate").strip().lower()
 mode = str(payload.get("mode") or "single").strip().lower()
 extension = str(payload.get("extension") or "").strip().lower().lstrip(".")
 source3d = payload.get("source3d")
@@ -27,6 +28,9 @@ if not text.strip():
     sys.exit(3)
 if engine not in ("datamol", "rdkit"):
     sys.stderr.write("3D conformer generation supports Datamol and RDKit engines.")
+    sys.exit(3)
+if operation not in ("generate", "optimize"):
+    sys.stderr.write("Conformer operation must be generate or optimize.")
     sys.exit(3)
 if mode not in ("single", "ensemble"):
     mode = "single"
@@ -146,8 +150,8 @@ def conformer_plane_thickness(value, conf_id):
 
 def molecule_force_field(value, conf_id):
     if AllChem.MMFFHasAllMoleculeParams(value):
-        props = AllChem.MMFFGetMoleculeProperties(value)
-        return AllChem.MMFFGetMoleculeForceField(value, props, confId=int(conf_id)), "MMFF"
+        props = AllChem.MMFFGetMoleculeProperties(value, mmffVariant="MMFF94s")
+        return AllChem.MMFFGetMoleculeForceField(value, props, confId=int(conf_id)), "MMFF94s"
     return AllChem.UFFGetMoleculeForceField(value, confId=int(conf_id)), "UFF"
 
 
@@ -211,6 +215,38 @@ def conformer_energy_property(conf, forcefield):
 
 def select_ensemble_conformer_ids(scored):
     return [item[2] for item in sorted(scored, key=lambda item: (item[0], item[1], item[2]))]
+
+
+if operation == "optimize":
+    if mol.GetNumConformers() == 0:
+        sys.stderr.write("Geometry optimization requires a structure with 3D coordinates.")
+        sys.exit(4)
+    input_conf = mol.GetConformer()
+    if hasattr(input_conf, "Is3D") and not input_conf.Is3D():
+        sys.stderr.write("Geometry optimization requires a structure with 3D coordinates.")
+        sys.exit(4)
+    mol = Chem.AddHs(mol, addCoords=True)
+    conf_id = int(mol.GetConformer().GetId())
+    try:
+        energy, family = optimize_conformer(mol, conf_id)
+    except Exception as exc:
+        sys.stderr.write("RDKit geometry optimization failed: " + str(exc))
+        sys.exit(4)
+    try:
+        output_mol = Chem.RemoveHs(mol, sanitize=False)
+    except Exception:
+        output_mol = mol
+    output_mol.SetProp("_Name", "Optimized geometry")
+    output_mol.SetProp("BURRETE_OPTIMIZER", family)
+    if math.isfinite(energy):
+        output_mol.SetProp("BURRETE_ENERGY_KCAL_MOL", format(energy, ".10g"))
+    block = Chem.MolToMolBlock(output_mol, confId=conf_id, kekulize=False)
+    sys.stdout.write(json.dumps({
+        "text": block.rstrip() + "\n$$$$\n",
+        "method": "RDKit+" + family,
+        "conformerCount": 1,
+    }))
+    sys.exit(0)
 
 
 used_datamol = engine == "datamol" and core is None

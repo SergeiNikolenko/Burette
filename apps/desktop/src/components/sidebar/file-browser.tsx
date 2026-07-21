@@ -1,4 +1,4 @@
-import { useState, type DragEvent as ReactDragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
@@ -19,7 +19,10 @@ export function FileBrowser({
   actions: ShellActions;
 }) {
   const [pinnedOpen, setPinnedOpen] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(() => state.sidebarQuery.trim().length > 0);
   const [ketcherDropActive, setKetcherDropActive] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchToggleRef = useRef<HTMLButtonElement>(null);
   const hideProjectPreviews = state.buildInfo.isAgentShell && !state.workspacePath;
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
@@ -44,6 +47,33 @@ export function FileBrowser({
     }),
     state,
   });
+
+  useEffect(() => {
+    if (hasSidebarQuery) setSearchOpen(true);
+  }, [hasSidebarQuery]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [searchOpen]);
+
+  const toggleSearch = () => {
+    if (searchOpen) {
+      actions.setSidebarQuery("");
+      setSearchOpen(false);
+      return;
+    }
+    setSearchOpen(true);
+  };
+
+  const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    actions.setSidebarQuery("");
+    setSearchOpen(false);
+    window.requestAnimationFrame(() => searchToggleRef.current?.focus());
+  };
 
   const toggleAllProjectFolders = () => {
     if (!projectsExpanded) actions.toggleProjectsOpen();
@@ -79,25 +109,45 @@ export function FileBrowser({
 
   return (
     <ScrollFade className="sidebar-scroll">
-      <label
-        className="sidebar-search-row"
-        aria-label="Search projects and structures"
-      >
-        <span className="sidebar-search-icon" aria-hidden="true">
+      <div className="sidebar-browser-header">
+        <strong className="sidebar-browser-title">Burrete</strong>
+        <button
+          ref={searchToggleRef}
+          type="button"
+          className="sidebar-search-toggle"
+          data-sidebar-search-toggle
+          onClick={toggleSearch}
+          aria-label={searchOpen ? "Close project search" : "Search projects and structures"}
+          aria-expanded={searchOpen}
+          aria-controls="sidebar-project-search"
+        >
           <HugeiconsIcon icon={Search01Icon} size={16} color="currentColor" strokeWidth={2} />
-        </span>
-        <input
-          type="search"
-          data-sidebar-search
-          value={state.sidebarQuery}
-          onChange={(event) => actions.setSidebarQuery(event.currentTarget.value)}
-          placeholder="Search"
+        </button>
+      </div>
+      {searchOpen ? (
+        <label
+          id="sidebar-project-search"
+          className="sidebar-search-row"
           aria-label="Search projects and structures"
-          autoComplete="off"
-          spellCheck={false}
-        />
-        <kbd>⌘<span>P</span></kbd>
-      </label>
+        >
+          <span className="sidebar-search-icon" aria-hidden="true">
+            <HugeiconsIcon icon={Search01Icon} size={16} color="currentColor" strokeWidth={2} />
+          </span>
+          <input
+            ref={searchInputRef}
+            type="search"
+            data-sidebar-search
+            value={state.sidebarQuery}
+            onChange={(event) => actions.setSidebarQuery(event.currentTarget.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="Search"
+            aria-label="Search projects and structures"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <kbd>⌘<span>P</span></kbd>
+        </label>
+      ) : null}
       {canFetchRemoteStructure && (
         <button
           type="button"

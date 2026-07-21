@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v2",
+  "libraryId": "burrete.compute.tanimoto.v2",
+  "source": "tanimoto.v2.metal",
+  "deploymentTarget": "14.0",
+  "fingerprint": {
+    "bits": 2048,
+    "canonicalWordType": "uint64",
+    "canonicalWordsPerRecord": 32,
+    "metalWordType": "uint32",
+    "metalWordsPerRecord": 64,
+    "metalWordMapping": "low32ThenHigh32ForEachCanonicalWord",
+    "rowStrideBytes": 256,
+    "byteOrder": "littleEndian",
+    "wordOrder": "increasingBitIndex",
+    "bitOrderWithinWord": "leastSignificantBitFirst"
+  },
+  "cutoff": {
+    "comparison": "intersection * denominator >= union * numerator",
+    "maximumTerm": 9007199254740991,
+    "zeroUnionMatchesOnlyZeroNumerator": true
+  },
+  "parameterAbis": {
+    "graphTile": {
+      "name": "TanimotoTileV1",
+      "sizeBytes": 56,
+      "alignmentBytes": 8,
+      "byteOrder": "littleEndian",
+      "fields": [
+        { "name": "recordCount", "type": "uint64", "offsetBytes": 0 },
+        { "name": "rowStart", "type": "uint64", "offsetBytes": 8 },
+        { "name": "rowCount", "type": "uint64", "offsetBytes": 16 },
+        { "name": "columnStart", "type": "uint64", "offsetBytes": 24 },
+        { "name": "columnCount", "type": "uint64", "offsetBytes": 32 },
+        { "name": "cutoffNumerator", "type": "uint64", "offsetBytes": 40 },
+        { "name": "cutoffDenominator", "type": "uint64", "offsetBytes": 48 }
+      ]
+    },
+    "queryBatch": {
+      "name": "TanimotoQueryBatchV1",
+      "sizeBytes": 24,
+      "alignmentBytes": 8,
+      "byteOrder": "littleEndian",
+      "fields": [
+        { "name": "recordCount", "type": "uint64", "offsetBytes": 0 },
+        { "name": "rowStart", "type": "uint64", "offsetBytes": 8 },
+        { "name": "rowCount", "type": "uint64", "offsetBytes": 16 }
+      ]
+    }
+  },
+  "dispatch": {
+    "oneThreadOwnsOneRow": true,
+    "maximumRecordCount": 4294967295,
+    "maximumRowTileRecords": 1024,
+    "maximumColumnTileRecords": 1024,
+    "maximumPairsPerTile": 1048576,
+    "maximumQueryBatchRecords": 262144,
+    "logicalTilesPartitionPairDomainExactlyOnce": true,
+    "queryBatchesPartitionLibraryExactlyOnce": true,
+    "columnsAdvanceContiguouslyPerRow": true,
+    "countAndFillUseIdenticalTileSequence": true,
+    "sameRowDispatchesCompleteSeriallyOnOneCommandQueue": true,
+    "threadsPerGraphGrid": "tile.rowCount",
+    "threadsPerQueryGrid": "batch.rowCount",
+    "fullPairMatrix": false,
+    "atomics": false
+  },
+  "entrypoints": [
+    {
+      "name": "burrete_tanimoto_degree_count_v1",
+      "buffers": [
+        { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
+        { "name": "tile", "index": 1, "type": "TanimotoTileV1", "alignmentBytes": 8, "access": "constant", "elements": "1" },
+        { "name": "rowDegrees", "index": 2, "type": "uint64", "alignmentBytes": 8, "access": "readWrite", "elements": "recordCount" }
+      ]
+    },
+    {
+      "name": "burrete_tanimoto_csr_fill_v1",
+      "buffers": [
+        { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
+        { "name": "tile", "index": 1, "type": "TanimotoTileV1", "alignmentBytes": 8, "access": "constant", "elements": "1" },
+        { "name": "rowOffsets", "index": 2, "type": "uint64", "alignmentBytes": 8, "access": "read", "elements": "recordCount + 1" },
+        { "name": "rowCursors", "index": 3, "type": "uint64", "alignmentBytes": 8, "access": "readWrite", "elements": "recordCount" },
+        { "name": "columnIndices", "index": 4, "type": "uint64", "alignmentBytes": 8, "access": "write", "elements": "rowOffsets[recordCount]" },
+        { "name": "rowStatus", "index": 5, "type": "uint32", "alignmentBytes": 4, "access": "write", "elements": "recordCount" }
+      ]
+    },
+    {
+      "name": "burrete_tanimoto_query_counts_v1",
+      "buffers": [
+        { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
+        { "name": "query", "index": 1, "type": "uint32", "alignmentBytes": 4, "access": "constant", "elements": "64" },
+        { "name": "counts", "index": 2, "type": "uint2", "alignmentBytes": 8, "access": "write", "elements": "recordCount" },
+        { "name": "batch", "index": 3, "type": "TanimotoQueryBatchV1", "alignmentBytes": 8, "access": "constant", "elements": "1" }
+      ]
+    }
+  ]
+}

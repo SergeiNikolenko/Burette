@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { gunzipSync } from "node:zlib";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import {
   deferKetcherCssPlugin,
   desktopManualChunks,
@@ -34,6 +35,7 @@ import {
 } from "./vite/browser-dev/folding-results";
 import { registerBrowserDevMsbuddyRoutes } from "./vite/browser-dev/msbuddy";
 import { registerBrowserDevMdsmoothRoute } from "./vite/browser-dev/mdsmooth";
+import { registerBrowserDevNativeComputeRoute } from "./vite/browser-dev/native-compute";
 import { registerBrowserDevRuntimeDoctorRoute } from "./vite/browser-dev/runtime-doctor";
 import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
 import {
@@ -76,6 +78,7 @@ const defaultFsAllow = defaultDevFileSources.map((path) => {
 });
 const execFileAsync = promisify(execFile);
 const BROWSER_DEV_APP_ICONS: Record<string, string> = {
+  "default-app": join(repoRoot, "apps", "desktop", "src-tauri", "icons", "icon.png"),
   finder: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns",
   maestro: "/Applications/SchrodingerSuites2026-1/Maestro.app/Contents/Resources/Maestro.icns",
   chimerax: "/Applications/ChimeraX-1.10.app/Contents/Resources/chimerax-icon.icns",
@@ -1712,6 +1715,7 @@ function readConformerRequestBody(body: unknown) {
   const extension = String(request.extension || "").trim().replace(/^\./u, "").toLowerCase();
   const text = typeof request.text === "string" ? request.text : "";
   const engine = String(request.engine || "datamol").trim().toLowerCase();
+  const operation = String(request.operation || "generate").trim().toLowerCase();
   const mode = String(request.mode || "single").trim().toLowerCase() === "ensemble" ? "ensemble" : "single";
   const candidateCount = boundedNumber(request.candidateCount, 128, 1, 512);
   const rmsdCutoff = boundedNumber(request.rmsdCutoff, 0.75, 0, 5);
@@ -1732,6 +1736,9 @@ function readConformerRequestBody(body: unknown) {
   if (!["datamol", "rdkit"].includes(engine)) {
     throw new Error("3D conformer generation supports Datamol and RDKit engines.");
   }
+  if (!["generate", "optimize"].includes(operation)) {
+    throw new Error("Browser dev conformer operation must be generate or optimize.");
+  }
   if (!text.trim()) {
     throw new Error("Draw a molecule first");
   }
@@ -1751,7 +1758,7 @@ function readConformerRequestBody(body: unknown) {
     }
   }
 
-  return { title, extension, text, engine, mode, candidateCount, rmsdCutoff, source3d: source3dRequest };
+  return { title, extension, text, engine, operation, mode, candidateCount, rmsdCutoff, source3d: source3dRequest };
 }
 
 function boundedNumber(value: unknown, fallback: number, min: number, max: number) {
@@ -1767,6 +1774,7 @@ async function generate3DConformerForBrowserDev(body: unknown) {
     text: request.text,
     extension: request.extension,
     engine: request.engine,
+    operation: request.operation,
     mode: request.mode,
     candidateCount: request.candidateCount,
     rmsdCutoff: request.rmsdCutoff,
@@ -1781,7 +1789,9 @@ async function generate3DConformerForBrowserDev(body: unknown) {
         throw new Error("3D conformer generator returned an empty structure.");
       }
       return {
-        title: request.mode === "ensemble" ? generatedConformerSetTitle(request.title) : generatedConformerTitle(request.title),
+        title: request.operation === "optimize"
+          ? safeTextStructureFileName(`${request.title.replace(/\.[^.]+$/u, "")}-optimized`, "sdf")
+          : request.mode === "ensemble" ? generatedConformerSetTitle(request.title) : generatedConformerTitle(request.title),
         extension: "sdf",
         text: generated.text,
         method: typeof generated.method === "string" && generated.method.trim() ? generated.method : "ETKDG",
@@ -3591,6 +3601,7 @@ export function browserDevXyzrenderPlugin() {
       });
       registerBrowserDevAgentSessionRoute(server);
       registerBrowserDevAppIconRoute(server, BROWSER_DEV_APP_ICONS, execFileAsync);
+      registerBrowserDevNativeComputeRoute(server, repoRoot);
       registerBrowserDevFileContentRoutes(server, fileRoutes);
       registerBrowserDevFoldingResultRoute(server, { isDevFileReadAllowed });
       registerBrowserDevDesmondPreviewRoute(server, {
@@ -3844,16 +3855,19 @@ function normalizeOrientationRef(value: string | null) {
 export default defineConfig({
   root: desktopRoot,
   base: "./",
-  plugins: [react(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin()],
+  plugins: [tailwindcss(), react(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin()],
   resolve: {
-    alias: hostedMcpBuild
-      ? {
-          "./lib/ketcher-browser-require": resolve(
-            desktopRoot,
-            "src/lib/hosted-browser-require.ts",
-          ),
-        }
-      : undefined,
+    alias: {
+      "@": resolve(desktopRoot, "src"),
+      ...(hostedMcpBuild
+        ? {
+            "./lib/ketcher-browser-require": resolve(
+              desktopRoot,
+              "src/lib/hosted-browser-require.ts",
+            ),
+          }
+        : {}),
+    },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },
   define: {

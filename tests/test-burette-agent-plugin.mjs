@@ -296,6 +296,7 @@ for (const asset of [
 ]) {
   assert.equal(packedFiles.has(asset), true, `npm package is missing ${asset}`);
 }
+assert.equal(packedFiles.has("scripts/rdkit_conformer.py"), false, "browser shell must not package the Python conformer fallback");
 
 for (const entrypoint of ["browser-shell-dist/index.html", "browser-shell-dist/index.js"]) {
   const source = await read(entrypoint);

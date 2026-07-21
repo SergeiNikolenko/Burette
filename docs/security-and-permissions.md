@@ -19,6 +19,30 @@ native command permissions.
 Do not add recursive directory ingestion, broad home-directory reads, or hidden
 network fetches without an explicit design and validation plan.
 
+## Compute Data Root
+
+The native Compute Layer stores its coordinator database, immutable molecular
+snapshots, and artifacts below the app-data `compute/` directory. The root is
+private to the current user (`0700`), is owned by one Burrete process through a
+retained exclusive lease, and is revalidated before path-based database access.
+The `snapshots/` child is created and reopened relative to the retained root
+descriptor. Snapshot directories and files use descriptor-relative operations,
+strict whitelists, private modes, canonical identifiers, bounded inventories,
+same-file hashing, durable staging, and atomic no-replace publication.
+
+The supported production location is a local Unix filesystem with ordinary
+APFS/POSIX directory-link and atomic-rename semantics. A relocated app-data
+directory on a filesystem with incompatible metadata semantics must fail closed
+rather than weaken snapshot verification.
+
+The lease coordinates Burrete processes and protects against accidental path
+replacement, stale writers, symlink traversal, and hard-linked snapshot files.
+It is not an OS security boundary against an actively malicious process already
+running as the same macOS user and deliberately ignoring the advisory lease.
+Such a process can race name-based POSIX operations that have no portable
+descriptor-only unlink equivalent. Protect that boundary with macOS account and
+device security; do not claim resistance to a hostile same-UID process.
+
 ## Tauri Permissions
 
 Tauri command access is controlled by:

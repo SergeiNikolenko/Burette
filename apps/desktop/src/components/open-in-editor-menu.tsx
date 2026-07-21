@@ -6,6 +6,7 @@ import type { ChemicalEditorTarget, ShellActions, ShellViewState } from "./types
 import type { MenuItemSpec } from "./menu-types";
 import { isTauriRuntime } from "../lib/tauri";
 import { useFinderIconUrl } from "../hooks/use-finder-icon-url";
+import { useDefaultApplicationIconUrl } from "../hooks/use-default-application-icon-url";
 
 type ActiveFile = {
   path: string;
@@ -15,6 +16,7 @@ type ActiveFile = {
 export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
   const activeFile = useMemo(() => activeFileFromState(state), [state]);
   const finderIconUrl = useFinderIconUrl();
+  const defaultApplicationIconUrl = useDefaultApplicationIconUrl(activeFile?.path ?? null);
   const [targets, setTargets] = useState<ChemicalEditorTarget[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadedPath, setLoadedPath] = useState<string | null>(null);
@@ -73,6 +75,7 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
         id: "chemical-editor-default",
         text: "Open with Default App",
         iconText: "DA",
+        iconUrl: defaultApplicationIconUrl ?? undefined,
         action: () => {
           void actions.openPathWithDefaultApp(activeFile.path);
         },
@@ -88,13 +91,18 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
         },
       },
     ];
-  }, [actions, activeFile, finderIconUrl, loadedPath, loading, targets]);
+  }, [actions, activeFile, defaultApplicationIconUrl, finderIconUrl, loadedPath, loading, targets]);
 
   if (!activeFile) return null;
 
   const visibleTargets = targets.length > 0 ? targets : browserDevPreviewTargets(activeFile.path);
   const preferredTarget = preferredTargetForDestination(state.preferences.openInDefaultDestination, visibleTargets);
-  const preferredIconUrl = openDestinationIconUrl(state.preferences.openInDefaultDestination, preferredTarget, finderIconUrl);
+  const preferredIconUrl = openDestinationIconUrl(
+    state.preferences.openInDefaultDestination,
+    preferredTarget,
+    finderIconUrl,
+    defaultApplicationIconUrl,
+  );
   const label = openDestinationLabel(state.preferences.openInDefaultDestination, preferredTarget);
 
   return (
@@ -142,9 +150,15 @@ function openDestinationLabel(destination: string, target: ChemicalEditorTarget 
   return "Reveal in Finder";
 }
 
-function openDestinationIconUrl(destination: string, target: ChemicalEditorTarget | null, finderIconUrl: string | null) {
+function openDestinationIconUrl(
+  destination: string,
+  target: ChemicalEditorTarget | null,
+  finderIconUrl: string | null,
+  defaultApplicationIconUrl: string | null,
+) {
   if (target) return editorIconUrl(target);
   if (destination === "finder" || destination === "auto") return finderIconUrl;
+  if (destination === "default-app") return defaultApplicationIconUrl;
   return null;
 }
 

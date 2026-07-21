@@ -240,6 +240,7 @@
       '.msp-plugin input[aria-label], .msp-plugin input[title]'
     );
     if (!control || control.closest('#buret-toolbar, .buret-preview-dock, .buret-generate-3d-control')) return null;
+    if (control.closest('.msp-hover-box-wrapper')) return null;
     return control;
   }
 
@@ -1264,7 +1265,7 @@
     root.style.setProperty('--buret-molstar-muted-text', `color-mix(in srgb, ${foreground} 64%, transparent)`);
     root.style.setProperty('--buret-molstar-accent', accent);
     root.style.setProperty('--buret-menu-accent', accent);
-    root.style.setProperty('--buret-menu-background', `color-mix(in srgb, ${background} ${Math.round(Math.min(opacity + 0.1, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-menu-background', background);
     root.style.setProperty('--buret-menu-section-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 16)}%, transparent)`);
     root.style.setProperty('--buret-menu-input-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 22)}%, transparent)`);
     root.style.setProperty('--buret-menu-input-focus-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 30)}%, transparent)`);
@@ -1395,7 +1396,9 @@
   }
 
   function toggleViewerTheme(viewer = activeViewer) {
-    setViewerTheme(resolveViewerTheme() === 'dark' ? 'light' : 'dark', viewer);
+    const nextTheme = resolveViewerTheme() === 'dark' ? 'light' : 'dark';
+    setViewerTheme(nextTheme, viewer);
+    return nextTheme;
   }
 
   function applyStaticRendererTheme() {
@@ -1544,20 +1547,22 @@
     }
     if (generate3dButton && generate3dButton.dataset.bound !== '1') {
       generate3dButton.dataset.bound = '1';
-      generate3dButton.addEventListener('click', requestGenerate3DConformer);
-      generate3dButton.addEventListener('contextmenu', event => {
-        event.preventDefault();
-        showGenerate3DMenu(generate3dButton);
-      });
+      generate3dButton.addEventListener('click', () => showGenerate3DMenu(generate3dButton));
     }
-    const ensembleButton = generate3dMenu?.querySelector('[data-buret-action="generate-3d-ensemble"]');
-    if (ensembleButton && ensembleButton.dataset.bound !== '1') {
-      ensembleButton.dataset.bound = '1';
-      ensembleButton.addEventListener('click', () => {
-        hideGenerate3DMenu();
-        requestGenerate3DConformer({ mode: 'ensemble' });
-      });
-    }
+    generate3dMenu?.querySelectorAll('[data-buret-compute-operation]').forEach(operationButton => {
+      const operation = String(operationButton.dataset.buretComputeOperation || '');
+      operationButton.disabled = operation === 'alignPoses' && !isSdfPoseConformerSet(config);
+      if (operationButton.dataset.bound !== '1') {
+        operationButton.dataset.bound = '1';
+        operationButton.addEventListener('click', () => {
+          if (operationButton.disabled) return;
+          const selectedOperation = String(operationButton.dataset.buretComputeOperation || 'generate3d');
+          const mode = selectedOperation === 'generateEnsemble' ? 'ensemble' : 'single';
+          hideGenerate3DMenu();
+          requestMolecularCompute(selectedOperation, { mode });
+        });
+      }
+    });
     observeMolstarViewportPanel();
     const popoverDocumentChanged = syncXyzrenderPopoverDocument(toolbar, config);
     const popoverWasOpen = popover?.classList.contains('hidden') === false && !popoverDocumentChanged;
@@ -1905,15 +1910,46 @@
   function showGenerate3DMenu(anchor) {
     const menu = document.querySelector('[data-buret-generate-3d-menu]');
     if (!menu || anchor?.classList?.contains('hidden') || anchor?.disabled) return;
-    const rect = anchor.getBoundingClientRect();
     menu.classList.remove('hidden');
-    menu.style.top = `${Math.round(rect.bottom + 6)}px`;
-    menu.style.left = `${Math.round(Math.max(8, rect.right - menu.offsetWidth))}px`;
+    positionGenerate3DMenu(anchor);
+    anchor.setAttribute('aria-expanded', 'true');
     menu.querySelector('[role="menuitem"]')?.focus?.();
   }
 
-  function hideGenerate3DMenu() {
-    document.querySelector('[data-buret-generate-3d-menu]')?.classList.add('hidden');
+  function positionGenerate3DMenu(anchor = document.querySelector('[data-buret-action="generate-3d-conformer"]')) {
+    const menu = document.querySelector('[data-buret-generate-3d-menu]');
+    if (!menu || menu.classList.contains('hidden') || !anchor) return;
+    const margin = 12;
+    const gap = 6;
+    const anchorRect = anchor.getBoundingClientRect();
+    const controlsRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
+    const rightBoundary = controlsRect && controlsRect.left > anchorRect.left
+      ? Math.min(anchorRect.right, controlsRect.left - 8)
+      : Math.min(anchorRect.right, window.innerWidth - margin);
+    const menuWidth = menu.offsetWidth;
+    const left = Math.min(
+      Math.max(margin, rightBoundary - menuWidth),
+      Math.max(margin, window.innerWidth - margin - menuWidth),
+    );
+    const belowTop = anchorRect.bottom + gap;
+    const spaceBelow = window.innerHeight - margin - belowTop;
+    const spaceAbove = anchorRect.top - gap - margin;
+    const openAbove = spaceBelow < Math.min(menu.scrollHeight, 180) && spaceAbove > spaceBelow;
+    const availableHeight = Math.max(96, openAbove ? spaceAbove : spaceBelow);
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(openAbove
+      ? Math.max(margin, anchorRect.top - gap - Math.min(menu.scrollHeight, availableHeight))
+      : belowTop)}px`;
+    menu.style.maxHeight = `${Math.floor(availableHeight)}px`;
+    menu.dataset.placement = openAbove ? 'top' : 'bottom';
+  }
+
+  function hideGenerate3DMenu({ restoreFocus = false } = {}) {
+    const menu = document.querySelector('[data-buret-generate-3d-menu]');
+    if (menu && !menu.classList.contains('hidden')) menu.classList.add('hidden');
+    const trigger = document.querySelector('[data-buret-action="generate-3d-conformer"]');
+    if (trigger?.getAttribute('aria-expanded') !== 'false') trigger?.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) trigger?.focus?.();
   }
 
   function setGenerate3DPending(pending, mode = 'single') {
@@ -1946,19 +1982,37 @@
     hideGenerate3DMenu();
   });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') hideGenerate3DMenu();
+    const menu = document.querySelector('[data-buret-generate-3d-menu]');
+    if (!menu || menu.classList.contains('hidden')) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hideGenerate3DMenu({ restoreFocus: true });
+      return;
+    }
+    const items = Array.from(menu.querySelectorAll('[role="menuitem"]')).filter(item => !item.disabled);
+    const currentIndex = items.indexOf(document.activeElement);
+    let nextIndex = -1;
+    if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
+    if (event.key === 'ArrowUp') nextIndex = currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = items.length - 1;
+    if (nextIndex >= 0 && items[nextIndex]) {
+      event.preventDefault();
+      items[nextIndex].focus();
+    }
   });
 
-  function requestGenerate3DConformer(options = {}) {
+  function requestMolecularCompute(operation = 'generate3d', options = {}) {
     const config = activeConfig || window.BurreteConfig || {};
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
-      setStatus('3D conformer generation supports SDF and MOL structures.', 'error');
+      setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
       return;
     }
     const mode = options.mode === 'ensemble' ? 'ensemble' : 'single';
     const sent = postHostMessage({
-      type: 'generate3dConformer',
+      type: 'molecularCompute',
+      operation,
       path: String(config.sourcePath || '').trim(),
       title: String(config.label || 'structure').trim(),
       extension: String(config.sourceExtension || config.format || '').trim(),
@@ -1966,13 +2020,18 @@
       mode
     });
     if (!sent) {
-      setStatus('3D conformer generation is available only in the app viewer.', 'error');
+      setStatus('Native Metal compute is available only in the desktop app.', 'error');
       return;
     }
-    setGenerate3DPending(true, mode);
-    setStatus(mode === 'ensemble'
-      ? '[web] Generating conformer set with RDKit...'
-      : '[web] Generating 3D conformer with RDKit...');
+    if (operation === 'generate3d' || operation === 'generateEnsemble') setGenerate3DPending(true, mode);
+    const labels = {
+      generate3d: 'Generating 3D geometry',
+      generateEnsemble: 'Generating conformer ensemble',
+      optimizeGeometry: 'Optimizing geometry',
+      semiempiricalRm1: 'Calculating RM1 energy and charges',
+      alignPoses: 'Aligning and comparing poses'
+    };
+    setStatus(`[web] ${labels[operation] || 'Starting molecular compute'} in the desktop native runtime...`);
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
@@ -2236,18 +2295,7 @@
 
   function observeMolstarViewportPanel() {
     if (molstarViewportPanelObserver || !document.body) return;
-    const update = () => {
-      const panel = document.querySelector('.msp-viewport-controls-panel');
-      const rect = panel?.getBoundingClientRect();
-      const open = !!rect && rect.width > 0 && rect.height > 0;
-      if (open) {
-        const nextTop = Math.min(Math.max(rect.bottom + 12, 64), Math.max(window.innerHeight - 48, 64));
-        document.documentElement.style.setProperty('--buret-generate-3d-panel-top', `${Math.round(nextTop)}px`);
-      } else {
-        document.documentElement.style.removeProperty('--buret-generate-3d-panel-top');
-      }
-      document.body.classList.toggle(MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS, open);
-    };
+    const update = () => refreshMolstarViewportPanelState();
     molstarViewportPanelObserver = new MutationObserver(update);
     molstarViewportPanelObserver.observe(document.body, {
       childList: true,
@@ -3899,7 +3947,8 @@
     const button = toolbar?.querySelector('[data-buret-action="theme"]');
     if (!button) return;
     button.onclick = () => {
-      toggleViewerTheme(viewer);
+      const nextTheme = toggleViewerTheme(viewer);
+      postHostMessage({ type: 'setTheme', value: nextTheme });
     };
   }
 
@@ -3923,7 +3972,10 @@
   }
 
   function setToolbarCollapsed(toolbar, collapsed, viewer, persist = true) {
-    if (collapsed) setXyzrenderPopoverVisibility(toolbar, false);
+    if (collapsed) {
+      setXyzrenderPopoverVisibility(toolbar, false);
+      hideGenerate3DMenu();
+    }
     toolbar.classList.toggle('collapsed', collapsed);
     document.body?.classList.toggle('buret-toolbar-collapsed', collapsed);
     const grip = toolbar.querySelector('[data-drag-handle]');
@@ -4059,6 +4111,7 @@
       repositionToolbar(toolbar);
       updateFloatingLayoutOffsets();
       positionXyzrenderPopover(toolbar);
+      positionGenerate3DMenu();
     });
   }
 
@@ -4156,6 +4209,11 @@
     const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
     const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
     const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
+    const viewportControlRailRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
+    const generate3DControlRight = viewportControlRailRect
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - viewportControlRailRect.left + FLOATING_LAYOUT_GAP * 2))
+      : 70;
+    root.style.setProperty('--buret-generate-3d-control-right', generate3DControlRight + 'px');
     const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row');
     document.body?.classList.toggle('buret-selection-toolbar-open', !!selectionToolbarRect && !!toolbarRect);
     const mainRect = visibleRect('.msp-plugin .msp-layout-main');
@@ -4234,11 +4292,15 @@
     panels.forEach(installDraggableViewportPanel);
     const panelOpen = panels.length > 0;
     const selectionOpen = !!visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row');
-    if (panelOpen !== molstarViewportPanelOpen || selectionOpen !== molstarSelectionControlsOpen) {
+    if (
+      panelOpen !== molstarViewportPanelOpen ||
+      selectionOpen !== molstarSelectionControlsOpen
+    ) {
       molstarViewportPanelOpen = panelOpen;
       molstarSelectionControlsOpen = selectionOpen;
       const suppressToolbar = panelOpen;
-      document.body?.classList.toggle('buret-molstar-viewport-panel-open', panelOpen);
+      if (panelOpen) hideGenerate3DMenu();
+      document.body?.classList.toggle(MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS, panelOpen);
       document.body?.classList.toggle('buret-molstar-selection-controls-open', selectionOpen);
       const toolbar = document.getElementById('buret-toolbar');
       if (toolbar) {
@@ -13104,6 +13166,11 @@
       actions.push(['pubchem:identity', 'Search PubChem — Identical']);
       actions.push(['pubchem:similarity', 'Search PubChem — Similar (90%)']);
     }
+    if (canGenerate3DConformerFromConfig(activeConfig || {}, 'molstar')) {
+      actions.push(['compute:optimizeGeometry', 'Compute — Optimize geometry']);
+      actions.push(['compute:semiempiricalRm1', 'Compute — RM1 energy & charges']);
+      if (isSdfPoseConformerSet(activeConfig || {})) actions.push(['compute:alignPoses', 'Compute — Align & compare poses']);
+    }
     actions.push(['focus', 'Focus in current view']);
     return actions;
   }
@@ -13196,6 +13263,8 @@
         const searchType = action.slice('pubchem:'.length);
         await openMolstarPubChemSearch(target, searchType);
         setStatus(`[web] Opening PubChem ${searchType === 'identity' ? 'identity' : '90% similarity'} search for ${targetLabel}.`);
+      } else if (action.startsWith('compute:')) {
+        requestMolecularCompute(action.slice('compute:'.length));
       } else if (action === 'focus') {
         const handled = focusMolstarContextPick(target) || await resetMolstarCameraForContext();
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
@@ -13907,6 +13976,7 @@
     if (menuTarget.scope === 'ligand' && menuTarget.atomLoci) {
       const modeGroup = document.createElement('div');
       modeGroup.className = 'buret-molecule-context-mode';
+      modeGroup.dataset.mode = mode;
       modeGroup.setAttribute('role', 'group');
       modeGroup.setAttribute('aria-label', 'Ligand selection scope');
       [['molecule', 'Molecule'], ['atom', 'Atom']].forEach(([value, label]) => {
@@ -13919,6 +13989,7 @@
         button.addEventListener('click', () => {
           mode = value;
           molstarContextMenuMode = mode;
+          modeGroup.dataset.mode = mode;
           modeGroup.querySelectorAll('button').forEach(item => item.setAttribute('aria-pressed', item.dataset.buretContextMode === mode ? 'true' : 'false'));
           renderActions();
         });
