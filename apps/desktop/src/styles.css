@@ -1579,7 +1579,6 @@ img.radix-menu-item-icon {
   outline: 1px solid var(--focus-ring);
   outline-offset: -1px;
 }
-.sidebar-search-row:focus-within,
 .sidebar-search-toggle:focus-visible,
 .sidebar-search-action-row:focus-visible,
 .sidebar-tool-row:focus-visible,
