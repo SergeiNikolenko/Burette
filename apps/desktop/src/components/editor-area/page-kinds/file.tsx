@@ -8,6 +8,7 @@ import { ViewerFrame } from "../viewer-frame";
 import { showNativeContextMenu } from "../../native-context-menu";
 import { definePageKind } from "./types";
 import { SpectrumViewer } from "../../spectrum-viewer";
+import { useSourceEditing } from "../../../lib/source-editing/context";
 
 export type FileLocation = { kind: "file"; documentId?: string; path: string };
 
@@ -56,6 +57,8 @@ function StructureViewerSurface({
   actions: ShellActions;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const sourceEditing = useSourceEditing();
+  const sourceSession = sourceEditing?.sessionForDocument(document) ?? null;
   const sheetDropTarget = document.renderer === "xyzrender-external";
   const collectionDropTarget = document.renderer === "grid2d";
   const dropTarget = useMemo(() => ({
@@ -145,7 +148,12 @@ function StructureViewerSurface({
       onDrop={handleDrop}
       onContextMenu={handleContextMenu}
     >
-      <ViewerFrame document={document} iframeRef={iframeRef} />
+      <ViewerFrame
+        document={document}
+        iframeRef={iframeRef}
+        sourcePreview={sourceSession?.sourcePreview ?? undefined}
+        onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
+      />
     </div>
   );
 }

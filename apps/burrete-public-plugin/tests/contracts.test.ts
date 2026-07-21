@@ -144,6 +144,7 @@ describe("viewer resource contract", () => {
     expect(html).toContain("__BURRETE_HOSTED_ANALYTICS_ORIGIN__");
     expect(html).toContain("__BURRETE_HOSTED_MCP_BRIDGE_READY__");
     expect(html).toContain("__BURRETE_HOSTED_OPENAI_GLOBALS__");
+    expect(html).toContain("callServerTool");
     expect(html).toContain("Burrete viewer failed to load.");
     expect(html).toContain('<div id="root"></div>');
     expect(html).toContain("body .app-shell { width: 100%; height: 100%; }");

@@ -51,6 +51,10 @@ export function useAddBackgroundDocuments() {
   return useMoleculeStore((state) => state.addBackgroundDocuments);
 }
 
+export function useReplaceDocument() {
+  return useMoleculeStore((state) => state.replaceDocument);
+}
+
 export function useAddTextTabs() {
   return useMoleculeStore((state) => state.addTextDocuments);
 }

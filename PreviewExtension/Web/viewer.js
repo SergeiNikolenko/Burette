@@ -139,6 +139,7 @@
   let molstarMoleculePreviewDrag = null;
   let molstarMoleculePreviewTarget = null;
   let molstarMoleculePreviewSuppressClickUntil = 0;
+  let molstarSelectionHostSignature = '';
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
   const molstarPreviewSvgCache = new Map();
@@ -194,7 +195,7 @@
       const key = event.key?.toLowerCase();
       const commandKey = event.metaKey || event.ctrlKey;
       const togglesSidebar = commandKey && !event.altKey && !event.shiftKey && key === 'b';
-      const opensCommandPalette = (commandKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
+      const opensCommandPalette = (commandKey && event.shiftKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
       if (!opensCommandPalette && !togglesSidebar) return;
       event.preventDefault();
       postHostMessage({ type: togglesSidebar ? 'toggleSidebar' : 'openCommandPalette' });
@@ -499,7 +500,7 @@
   async function executeBurreteAgentAction(action) {
     const type = String(action?.type || '');
     if (type === 'get_xtb_context') {
-      const target = molstarContextTarget();
+      const target = molstarSelectedMoleculeTargetFromSelection();
       return {
         ok: true,
         command: 'get_xtb_context',
@@ -11665,6 +11666,11 @@
       });
       if (index >= 0) return { index, structure: structures[index] };
     }
+    for (let index = 0; index < structures.length; index += 1) {
+      if (molstarContextSelectionLociForStructure(structures[index])) {
+        return { index, structure: structures[index] };
+      }
+    }
     return null;
   }
 
@@ -11999,7 +12005,7 @@
     const pickedAtom = molstarContextAtomFromLoci(pickedLoci);
     const selectionLoci = molstarContextSelectionLociForStructure(targetStructure);
     const selectedAtom = molstarContextAtomFromLoci(selectionLoci);
-    if (molstarContextMenuMode !== 'atom' && selectedAtom && (!pickedAtom || molstarContextLociContainsAtom(selectionLoci, pickedAtom))) return {
+    if ((molstarContextMenuMode !== 'atom' || !pickedAtom) && selectedAtom && (!pickedAtom || molstarContextLociContainsAtom(selectionLoci, pickedAtom))) return {
       loci: selectionLoci,
       atomLoci: pickedAtom
         ? molstarContextAtomLociForStructure(structure || selectionLoci?.structure, pickedAtom)
@@ -12256,15 +12262,19 @@
         };
       }
       if (picked?.index === 0) {
+        const receptorEntry = activeDockingPrepared.receptorEntry || null;
         return {
           structures: targetStructures,
           structure: targetStructure,
           loci: resolved.loci,
           atomLoci: resolved.atomLoci,
+          atom: pickedAtom,
           selectionBased: resolved.selectionBased,
           label: pickedLabel,
           scope: 'selection',
-          receptor: activeDockingPrepared.receptorEntry || null
+          receptor: receptorEntry,
+          sourceEntry: receptorEntry,
+          selectedEntry: pickedAtom ? pdbEntryForResidue(receptorEntry, pickedAtom) : null
         };
       }
       if (picked && picked.index > 0) {
@@ -12274,6 +12284,8 @@
           structure: targetStructure,
           loci: resolved.loci,
           atomLoci: resolved.atomLoci,
+          atom: pickedAtom,
+          selectionBased: resolved.selectionBased,
           label: pose?.label || 'Ligand',
           scope: 'ligand',
           receptor: activeDockingPrepared.receptorEntry || null,
@@ -12302,6 +12314,19 @@
     const previousMode = molstarContextMenuMode;
     molstarContextMenuPick = pick || null;
     molstarContextMenuMode = 'atom';
+    try {
+      return molstarContextTarget();
+    } finally {
+      molstarContextMenuPick = previousPick;
+      molstarContextMenuMode = previousMode;
+    }
+  }
+
+  function molstarContextTargetIgnoringMenuPick() {
+    const previousPick = molstarContextMenuPick;
+    const previousMode = molstarContextMenuMode;
+    molstarContextMenuPick = null;
+    molstarContextMenuMode = 'molecule';
     try {
       return molstarContextTarget();
     } finally {
@@ -13839,6 +13864,11 @@
     return null;
   }
 
+  function molstarSelectedMoleculeTargetFromSelection() {
+    const target = molstarContextTargetIgnoringMenuPick();
+    return target?.selectionBased ? molstarSelectedMoleculePreviewTarget(target) : null;
+  }
+
   function showMolstarSelectedMoleculePreviewNow(target) {
     const resolved = molstarSelectedMoleculePreviewTarget(target);
     if (!molstarMoleculePreviewEntry(resolved)) return false;
@@ -14241,6 +14271,37 @@
     }
   }
 
+  function molstarSelectionAtomCount(target) {
+    const entry = molstarMoleculePreviewEntry(target);
+    const declared = Number(entry?.atomCount);
+    if (Number.isFinite(declared) && declared > 0) return Math.min(1000000, Math.trunc(declared));
+    const count = ligandAtomCoordinates(entry).length;
+    return count > 0 ? Math.min(1000000, count) : null;
+  }
+
+  function notifyMolstarSelectionChanged(target) {
+    const candidate = target && (target.scope === 'ligand' || target.scope === 'ion') ? target : null;
+    const atomCount = candidate ? molstarSelectionAtomCount(candidate) : null;
+    const contextDocument = candidate ? molstarContextDocumentPayload(candidate) : null;
+    const selected = atomCount !== null && contextDocument ? candidate : null;
+    const selector = selected
+      ? selected.focus?.selector || (selected.atom
+        ? molstarContextLigandSelector(selected.atom)
+        : { kind: selected.scope })
+      : null;
+    const label = String(selected?.label || '').trim().slice(0, 256);
+    const selection = selector ? {
+      selector,
+      label: label || (selected.scope === 'ion' ? 'Selected ion' : 'Selected ligand'),
+      value: label,
+      atoms: atomCount
+    } : null;
+    const signature = JSON.stringify(selection);
+    if (signature === molstarSelectionHostSignature) return;
+    molstarSelectionHostSignature = signature;
+    postHostMessage({ type: 'selectionChanged', selection });
+  }
+
   function installMolstarSelectionPreviewSync(viewer) {
     if (molstarSelectionPreviewCleanup) {
       try { molstarSelectionPreviewCleanup(); } catch (_) {}
@@ -14248,7 +14309,11 @@
     }
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    const update = () => scheduleMolstarSelectedMoleculePreview();
+    const update = () => {
+      const target = molstarSelectedMoleculeTargetFromSelection();
+      scheduleMolstarSelectedMoleculePreview(target);
+      notifyMolstarSelectionChanged(target);
+    };
     const disposers = [];
     const selectionEvents = plugin.managers?.structure?.selection?.events || {};
     const interactivityEvents = plugin.managers?.interactivity?.lociSelects?.events || {};
@@ -14271,6 +14336,7 @@
         try { dispose(); } catch (_) {}
       });
     };
+    update();
   }
 
   function withTimeout(promise, timeoutMs, message) {
@@ -14377,6 +14443,8 @@
   }
 
   function disposeActiveMolstarViewer() {
+    notifyMolstarSelectionChanged(null);
+    molstarSelectionHostSignature = '';
     setMolstarStructureDirty(false);
     clearMolstarEditUndoHistory();
     resetXyzFrameOverlayState(activeViewer);
@@ -14479,6 +14547,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       debug('BurreteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
     }
     await applyMolstarContextFocus(config);
+    notifyMolstarSelectionChanged(molstarSelectedMoleculePreviewTarget());
     void reportBurreteAgentState();
     startBurreteAgentActionPolling();
     trackMolstarOrientation(viewer, config);

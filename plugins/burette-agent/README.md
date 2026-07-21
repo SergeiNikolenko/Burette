@@ -69,8 +69,10 @@ External agents should use the short facade first:
 ```text
 burrete.get_context
 burrete.open_workspace
+burrete.open_ketcher
 burrete.observe_workspace
 burrete.control_viewer
+burrete.control_ketcher
 burrete.render_panel
 ```
 
@@ -79,6 +81,15 @@ burrete.render_panel
 instead of carrying raw URLs, session directories, or transport modes. The
 advanced tools remain available for docking setup, fragment extraction,
 trajectory review, bounded report rendering, and lower-level scene operations.
+
+Ketcher is exposed as a separate active surface. Call `burrete.open_ketcher`
+with the workspace handle, then use `burrete.control_ketcher` with an action
+that includes `apiVersion: "burrete-ketcher-agent/v1"`, the observed
+`surfaceId`, and the current `expectedRevision`. Structure edits, exports,
+selection/highlight state, and dirty/persisted revisions are returned in the
+bounded `chemicalEditor` snapshot. A stale revision or a tab switch fails
+closed; observe the workspace again before retrying. `request_persist` only
+prepares a user-confirmation request and never writes a file silently.
 
 `auto` is the default because it does not require the full Browser shell to be
 available. It tries `browser-agent-shell` first and falls back to the tokenized

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,19 +25,26 @@ const pluginVersion = await readPluginVersion();
 const pluginId = `burrete@${marketplaceName}`;
 const installRoot = path.join(home, ".codex", "plugins", "cache", marketplaceName, "burrete", pluginVersion);
 const requiredBundleFiles = [
+  "browser-shell-dist/boot-overlay.js",
   "browser-shell-dist/index.html",
+  "browser-shell-dist/index.js",
   "preview-web/index.html",
   "preview-web/viewer.js",
+  "preview-web/viewer-bootstrap.js",
   "preview-web/viewer-shell.js",
   "preview-web/viewer-runtime.css",
+  "preview-web/trajectory-smoothing.js",
   "preview-web/molstar.js",
   "preview-web/molstar.css",
   "preview-web/burette-agent.js",
   "preview-web/grid-viewer.js",
   "preview-web/grid-ui.js",
   "preview-web/grid.css",
+  "preview-web/openchemlib/openchemlib.js",
   "preview-web/rdkit/RDKit_minimal.js",
   "preview-web/rdkit/RDKit_minimal.wasm",
+  "scripts/agent-preview.mjs",
+  "scripts/agent-shell-server.mjs",
   "scripts/burrete-agent.mjs",
   "mcp/lib/server-bundle.mjs",
 ];
@@ -92,7 +99,25 @@ function isSourceCheckout() {
 }
 
 function missingBundleFiles() {
-  return requiredBundleFiles.filter(relativePath => !existsSync(path.join(pluginRoot, relativePath)));
+  const requiredFiles = new Set(requiredBundleFiles);
+  for (const entrypoint of ["browser-shell-dist/index.html", "browser-shell-dist/index.js"]) {
+    const entrypointPath = path.join(pluginRoot, entrypoint);
+    if (!existsSync(entrypointPath)) continue;
+    const source = readFileSync(entrypointPath, "utf8");
+    for (const match of source.matchAll(/["'`](?:\.\/)?(assets\/[^"'`?#\s]+)["'`]/gu)) {
+      const reference = path.posix.normalize(match[1]);
+      if (!reference.startsWith("assets/")) continue;
+      requiredFiles.add(path.posix.join("browser-shell-dist", reference));
+    }
+  }
+  const serverBundlePath = path.join(pluginRoot, "mcp/lib/server-bundle.mjs");
+  if (existsSync(serverBundlePath)) {
+    const source = readFileSync(serverBundlePath, "utf8");
+    for (const match of source.matchAll(/["']\.\/(server-chunk-[^"'/?#\s]+\.mjs)["']/gu)) {
+      requiredFiles.add(path.posix.join("mcp/lib", match[1]));
+    }
+  }
+  return [...requiredFiles].filter(relativePath => !existsSync(path.join(pluginRoot, relativePath)));
 }
 
 async function updateMarketplace() {

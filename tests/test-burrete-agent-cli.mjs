@@ -225,9 +225,12 @@ try {
       assert.equal(invalidNativeComputeResponse.status, 500);
       assert.doesNotMatch(await invalidNativeComputeResponse.text(), /Method not allowed/u);
       for (const [runtimePath, contentType] of [
+        ['viewer-bootstrap.js', /^text\/javascript\b/u],
+        ['trajectory-smoothing.js', /^text\/javascript\b/u],
         ['grid-viewer.js', /^text\/javascript\b/u],
         ['grid-ui.js', /^text\/javascript\b/u],
         ['grid.css', /^text\/css\b/u],
+        ['openchemlib/openchemlib.js', /^text\/javascript\b/u],
         ['rdkit/RDKit_minimal.js', /^text\/javascript\b/u],
         ['rdkit/RDKit_minimal.wasm', /^application\/wasm\b/u],
       ]) {

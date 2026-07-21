@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, defaultHighlightStyle, foldGutter, indentOnInput, LanguageDescription, syntaxHighlighting } from "@codemirror/language";
@@ -12,79 +12,59 @@ import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { MaestroOutlineViewer } from "./text-file-viewer/maestro-outline-viewer";
 import type { MarkdownOpenPaths } from "./text-file-viewer/markdown-link-navigation";
 import { hasStructureTextHighlighting, structureTextHighlighting, textNumberHighlighting } from "./text-file-viewer/structure-text-highlighting";
-import { saveTextDocument } from "../lib/save-text-document";
 import { Button } from "./ui/button";
 
 const AGENT_SHELL_BUILD = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
-const EDITABLE_SOURCE_EXTENSIONS = new Set([
-  "cif", "ent", "gro", "mcif", "mmcif", "mol", "mol2", "pdb", "pdbqt", "pqr", "sd", "sdf", "xpdb", "xyz",
-]);
 
 export function TextFileViewer({
   document,
   openPaths,
   onStructureSelection,
+  sourceEditing,
 }: {
   document: TextFileDocument;
   openPaths?: MarkdownOpenPaths;
   onStructureSelection?: (document: TextFileDocument, selection: TextStructureSelection) => void;
+  sourceEditing?: {
+    editable: boolean;
+    content: string;
+    status: string;
+    dirty: boolean;
+    saving: boolean;
+    diagnostic?: string | null;
+    saveDisabledReason?: string | null;
+    showApplyPreview?: boolean;
+    onBeginEditing?: () => void;
+    onChange?: (content: string) => void;
+    onSave?: () => void | Promise<void>;
+    onApplyPreview?: () => void | Promise<void>;
+  };
 }) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const selectionTimeoutRef = useRef<number | null>(null);
   const onStructureSelectionRef = useRef(onStructureSelection);
-  const draftRef = useRef(document.content);
-  const saveDraftRef = useRef<(() => Promise<void>) | null>(null);
+  const onContentChangeRef = useRef(sourceEditing?.onChange);
+  const saveSourceRef = useRef(sourceEditing?.onSave);
+  const documentRef = useRef(document);
+  const syncingContentRef = useRef(false);
   const lastStructureSelectionKeyRef = useRef<string | null>(null);
   const lineDragStartRef = useRef<{ from: number; to: number } | null>(null);
   const languageCompartment = useMemo(() => new Compartment(), [document.id]);
   const markdownDocument = isMarkdown(document);
   const maestroDocument = isMaestroText(document);
-  const canEdit = !document.truncated
-    && !markdownDocument
-    && !maestroDocument
-    && document.path.startsWith("/")
-    && EDITABLE_SOURCE_EXTENSIONS.has(document.extension.toLowerCase());
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(document.content);
-  const [savedContent, setSavedContent] = useState(document.content);
-  const [modifiedAt, setModifiedAt] = useState(document.modifiedAt ?? null);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const dirty = draft !== savedContent;
-
-  useEffect(() => {
-    draftRef.current = document.content;
-    setDraft(document.content);
-    setSavedContent(document.content);
-    setModifiedAt(document.modifiedAt ?? null);
-    setEditing(false);
-    setSaving(false);
-    setSaveError(null);
-  }, [document.id, document.content, document.modifiedAt]);
-
-  const saveDraft = useCallback(async () => {
-    if (!canEdit || saving || draftRef.current === savedContent) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const saved = await saveTextDocument(document.path, draftRef.current, modifiedAt);
-      setSavedContent(draftRef.current);
-      setModifiedAt(saved.modifiedAt);
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSaving(false);
-    }
-  }, [canEdit, document.path, modifiedAt, savedContent, saving]);
-
-  useEffect(() => {
-    saveDraftRef.current = saveDraft;
-  }, [saveDraft]);
+  const editorContent = sourceEditing?.content ?? document.content;
+  const editable = Boolean(sourceEditing?.editable);
 
   useEffect(() => {
     onStructureSelectionRef.current = onStructureSelection;
   }, [onStructureSelection]);
+
+  useEffect(() => {
+    onContentChangeRef.current = sourceEditing?.onChange;
+    saveSourceRef.current = sourceEditing?.onSave;
+    documentRef.current = document;
+  }, [document, sourceEditing?.onChange, sourceEditing?.onSave]);
 
   useEffect(() => {
     if (markdownDocument || maestroDocument) return undefined;
@@ -107,7 +87,7 @@ export function TextFileViewer({
     const view = new EditorView({
       parent,
       state: EditorState.create({
-        doc: draftRef.current,
+        doc: editorContent,
         extensions: [
           lineNumbers(),
           highlightActiveLineGutter(),
@@ -119,18 +99,17 @@ export function TextFileViewer({
           highlightActiveLine(),
           highlightSelectionMatches(),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-          EditorState.readOnly.of(!editing),
-          EditorView.editable.of(editing),
+          ...(editable
+            ? [EditorState.readOnly.of(false), EditorView.editable.of(true)]
+            : [EditorState.readOnly.of(true), EditorView.editable.of(false)]),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              const content = update.state.doc.toString();
-              draftRef.current = content;
-              setDraft(content);
+            if (update.docChanged && !syncingContentRef.current) {
+              onContentChangeRef.current?.(update.state.doc.toString());
             }
             if (!update.selectionSet) return;
             const range = update.state.selection.main;
             if (range.empty) return;
-            const selection = textStructureSelectionFromRange(document, range.from, range.to);
+            const selection = textStructureSelectionFromRange(documentRef.current, range.from, range.to);
             if (selection) emitStructureSelection(selection);
           }),
           keymap.of([
@@ -138,7 +117,8 @@ export function TextFileViewer({
               key: "Mod-s",
               preventDefault: true,
               run: () => {
-                void saveDraftRef.current?.();
+                if (!saveSourceRef.current) return false;
+                void saveSourceRef.current();
                 return true;
               },
             },
@@ -160,7 +140,7 @@ export function TextFileViewer({
       return target && parent.contains(target) ? target : null;
     };
     const emitStructureRange = (from: number, to: number) => {
-      const structureSelection = textStructureSelectionFromRange(document, from, to);
+      const structureSelection = textStructureSelectionFromRange(documentRef.current, from, to);
       if (structureSelection) emitStructureSelection(structureSelection);
     };
     const emitLineDragStructureSelection = (lineElement: HTMLElement) => {
@@ -177,7 +157,7 @@ export function TextFileViewer({
       if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
       if (!selection.anchorNode || !parent.contains(selection.anchorNode)) return;
       if (!selection.focusNode || !parent.contains(selection.focusNode)) return;
-      const selectedTextStructureSelection = textStructureSelectionFromSelectedText(document, selection.toString());
+      const selectedTextStructureSelection = textStructureSelectionFromSelectedText(documentRef.current, selection.toString());
       if (selectedTextStructureSelection) {
         emitStructureSelection(selectedTextStructureSelection);
         return;
@@ -196,7 +176,7 @@ export function TextFileViewer({
       if (selectedDocumentLines.length === 0) return;
       const from = Math.min(...selectedDocumentLines.map((line) => line.from));
       const to = Math.max(...selectedDocumentLines.map((line) => line.to));
-      const structureSelection = textStructureSelectionFromRange(document, from, to);
+      const structureSelection = textStructureSelectionFromRange(documentRef.current, from, to);
       if (structureSelection) emitStructureSelection(structureSelection);
     };
     window.document.addEventListener("selectionchange", emitNativeStructureSelection);
@@ -257,7 +237,18 @@ export function TextFileViewer({
       view.destroy();
       viewRef.current = null;
     };
-  }, [document.id, editing, languageCompartment, markdownDocument, maestroDocument]);
+  }, [document.id, editable, languageCompartment, markdownDocument, maestroDocument]);
+
+  useEffect(() => {
+    if (markdownDocument || maestroDocument) return;
+    const view = viewRef.current;
+    if (!view || view.state.doc.toString() === editorContent) return;
+    syncingContentRef.current = true;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: editorContent },
+    });
+    syncingContentRef.current = false;
+  }, [editorContent, markdownDocument, maestroDocument]);
 
   useEffect(() => {
     if (markdownDocument || maestroDocument) return undefined;
@@ -283,39 +274,37 @@ export function TextFileViewer({
           {document.truncated && <span className="text-file-badge">Truncated</span>}
         </div>
         <div className="text-file-meta">
-          {canEdit && !editing && (
-            <Button type="button" variant="secondary" size="xs" onClick={() => setEditing(true)}>
-              Edit Source
+          {sourceEditing && (
+            <span className="source-edit-status" aria-live="polite">
+              {sourceEditing.dirty && <span className="source-edit-dirty" aria-label="Unsaved changes">●</span>}
+              {sourceEditing.status}
+            </span>
+          )}
+          <span>{document.language}</span>
+          <span>{formatBytes(new TextEncoder().encode(editorContent).byteLength)}</span>
+          {sourceEditing?.onBeginEditing && !sourceEditing.editable && (
+            <Button type="button" variant="secondary" size="xs" onClick={sourceEditing.onBeginEditing}>Edit Source</Button>
+          )}
+          {sourceEditing?.showApplyPreview && sourceEditing.editable && (
+            <Button type="button" variant="secondary" size="xs" onClick={() => void sourceEditing.onApplyPreview?.()}>Apply Preview</Button>
+          )}
+          {sourceEditing?.editable && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="xs"
+              disabled={sourceEditing.saving || Boolean(sourceEditing.saveDisabledReason) || !sourceEditing.dirty}
+              title={sourceEditing.saveDisabledReason ?? "Save source (Command-S)"}
+              onClick={() => void sourceEditing.onSave?.()}
+            >
+              Save
             </Button>
           )}
-          {canEdit && editing && (
-            <>
-              <span className="source-edit-status" aria-live="polite">
-                {saveError ?? (saving ? "Saving…" : dirty ? "Edited" : "Saved")}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                disabled={saving}
-                onClick={() => {
-                  draftRef.current = savedContent;
-                  setDraft(savedContent);
-                  setSaveError(null);
-                  setEditing(false);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button type="button" variant="secondary" size="xs" disabled={!dirty || saving} onClick={() => void saveDraft()}>
-                Save
-              </Button>
-            </>
-          )}
-          {!editing && <span>{document.language}</span>}
-          {!editing && <span>{formatBytes(new TextEncoder().encode(draft).byteLength)}</span>}
         </div>
       </div>
+      {sourceEditing?.diagnostic && (
+        <div className="source-edit-diagnostic" role="status">{sourceEditing.diagnostic}</div>
+      )}
       {markdownDocument ? (
         <MarkdownRichViewer document={document} openPaths={openPaths} />
       ) : maestroDocument ? (

@@ -30,8 +30,6 @@ const [
   markdownImageResolver,
   markdownLinkNavigation,
   browserDevTextFiles,
-  saveTextDocument,
-  browserDevFileRoutes,
   tauriLib,
   textFilesCommand,
   permissions,
@@ -62,8 +60,6 @@ const [
   source("apps/desktop/src/components/text-file-viewer/markdown-image-src-resolver.ts"),
   source("apps/desktop/src/components/text-file-viewer/markdown-link-navigation.ts"),
   source("apps/desktop/src/lib/browser-dev-text-files.ts"),
-  source("apps/desktop/src/lib/save-text-document.ts"),
-  source("apps/desktop/vite/browser-dev/files.ts"),
   source("apps/desktop/src-tauri/src/lib.rs"),
   source("apps/desktop/src-tauri/src/commands/text_files.rs"),
   source("apps/desktop/src-tauri/permissions/burrete.toml"),
@@ -91,13 +87,13 @@ assert.match(tabsHook, /export function useOpenTextDocuments\(/);
 assert.match(tabsHook, /export function useAddTextTabs\(/);
 
 assert.match(textViewer, /new EditorView\(/);
-assert.match(textViewer, /textStructureSelectionFromRange\(document, range\.from, range\.to\)/);
-assert.match(textViewer, /textStructureSelectionFromSelectedText\(document, selection\.toString\(\)\)/);
+assert.match(textViewer, /textStructureSelectionFromRange\(documentRef\.current, range\.from, range\.to\)/);
+assert.match(textViewer, /textStructureSelectionFromSelectedText\(documentRef\.current, selection\.toString\(\)\)/);
 assert.match(textViewer, /onStructureSelectionRef\.current\?\.\(document, selection\)/);
 assert.match(textViewer, /window\.document\.addEventListener\("selectionchange", emitNativeStructureSelection\)/);
 assert.match(textViewer, /view\.posAtDOM\(lineElement, 0\)/);
 assert.match(textViewer, /range\.intersectsNode\(lineElement\)/);
-assert.match(textViewer, /textStructureSelectionFromRange\(document, from, to\)/);
+assert.match(textViewer, /textStructureSelectionFromRange\(documentRef\.current, from, to\)/);
 assert.doesNotMatch(textViewer, /textStructureSelectionFromRange\(document, line\.from, line\.to, \{ preferAtom: true \}\)/);
 assert.match(textViewer, /lineDragStartRef/);
 assert.doesNotMatch(textViewer, /hoverTimeoutRef/);
@@ -107,12 +103,14 @@ assert.match(textViewer, /parent\.addEventListener\("pointermove", onPointerMove
 assert.match(textViewer, /parent\.addEventListener\("pointerup", onPointerUp\)/);
 assert.match(textViewer, /parent\.addEventListener\("pointercancel", onPointerCancel\)/);
 assert.match(textViewer, /parent\.addEventListener\("pointerleave", onPointerLeave\)/);
-assert.match(textViewer, /EditorState\.readOnly\.of\(!editing\)/);
-assert.match(textViewer, /EditorView\.editable\.of\(editing\)/);
-assert.match(textViewer, />\s*Edit Source\s*<\/Button>/);
+assert.match(textViewer, /EditorState\.readOnly\.of\(true\)/);
+assert.match(textViewer, /EditorView\.editable\.of\(false\)/);
+assert.match(textViewer, /EditorState\.readOnly\.of\(false\)/);
+assert.match(textViewer, /EditorView\.editable\.of\(true\)/);
+assert.match(textViewer, /onContentChangeRef\.current\?\.\(update\.state\.doc\.toString\(\)\)/);
+assert.match(textViewer, />Edit Source<\/Button>/);
 assert.match(textViewer, /key: "Mod-s"/);
-assert.match(textViewer, /saveTextDocument\(document\.path, draftRef\.current, modifiedAt\)/);
-assert.match(textViewer, /EDITABLE_SOURCE_EXTENSIONS\.has\(document\.extension\.toLowerCase\(\)\)/);
+assert.match(textViewer, /saveSourceRef\.current\(\)/);
 assert.doesNotMatch(textViewer, /EditorView\.lineWrapping/);
 assert.match(textViewer, /markdown\(\{ codeLanguages: languages \}\)/);
 assert.match(textViewer, /LanguageDescription\.matchFilename\(languages, document\.title\)/);
@@ -187,10 +185,6 @@ assert.match(textFilesCommand, /String::from_utf8_lossy/);
 assert.match(tauriLib, /commands::text_files::open_text_files/);
 assert.match(permissions, /"open_text_files"/);
 assert.match(browserDevTextFiles, /\/__burette\/read-text-file\?path=\$\{encodeURIComponent\(path\)\}/);
-assert.match(saveTextDocument, /invoke<string>\("write_text_file"/);
-assert.match(saveTextDocument, /\/__burette\/write-text-file\?path=\$\{encodeURIComponent\(path\)\}/);
-assert.match(browserDevFileRoutes, /server\.middlewares\.use\("\/__burette\/write-text-file"/);
-assert.match(browserDevFileRoutes, /expectedModifiedAt !== currentModifiedAt/);
 assert.match(browserDevTextFiles, /export async function openBrowserDevTextFiles/);
 for (const extension of ["inpcrd", "rst7", "crd", "rst", "state", "xml"]) {
   assert.match(viteConfig, new RegExp(`"${extension}"`), `${extension} should be allowed by browser-dev read-file`);
@@ -226,7 +220,7 @@ assert.match(appDockPayloadOpen, /const rightDockTextPaths = unopenedPaths\.filt
 assert.match(appDockPayloadOpen, /isPreferredTextPath\(path, extension\) \|\| \(!structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\)\)/);
 assert.match(appDockPayloadOpen, /else if \(isPreferredTextPath\(path, extension\)\) \{\s*textPaths\.push\(path\);/);
 assert.match(appDockPayloadOpen, /dockOpenPaths = unopenedPaths\.filter\(\(path\) => !rightDockTextPaths\.includes\(path\)\);/);
-assert.match(appDockPayloadOpen, /open_text_files", \{ paths: rightDockTextPaths \}/);
+assert.match(appDockPayloadOpen, /open_text_files", \{[\s\S]*paths: rightDockTextPaths,[\s\S]*openStateRevision: currentDocumentRegistryRevision\(\),[\s\S]*\}/);
 assert.match(appDockPayloadOpen, /for \(const path of dockOpenPaths\) \{/);
 const rightDockTextOpenBlock = appDockPayloadOpen.match(/if \(input\.area === "right" && unopenedPaths\.length > 0\) \{[\s\S]*?return;\s*\}/)?.[0] ?? "";
 assert.match(rightDockTextOpenBlock, /pathExtension|structureExtensions|structureAndTextExtensions/);

@@ -23,7 +23,7 @@ globalThis.window = { localStorage: globalThis.localStorage };
 const { useShellStore } = await import("../apps/desktop/src/stores/shell-store.ts");
 
 const initial = useShellStore.getState();
-assert.equal(initial.rightDockOpen, true);
+assert.equal(initial.rightDockOpen, false);
 assert.deepEqual(initial.rightDockTabs.map((tab) => tab.kind), [
   "inspector",
   "text",

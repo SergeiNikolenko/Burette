@@ -1,6 +1,6 @@
 ---
 name: index
-description: "Primary router for Burrete. Use when the plugin is at-mentioned or for molecular workspace work: opening structures, operating Mol*, reviewing SDF/property collections, trajectories, workflow result bundles, molecular reports, or Browser/Computer visual QA."
+description: "Primary router for Burrete. Use when the plugin is at-mentioned or for molecular workspace work: opening structures, operating Mol* or Ketcher, reviewing SDF/property collections, trajectories, workflow result bundles, molecular reports, or Browser/Computer visual QA."
 ---
 
 # Burrete
@@ -53,8 +53,9 @@ interpretation.
 
 For external agent workflows, prefer the short MCP facade first:
 `burrete.get_context`, `burrete.open_workspace`,
-`burrete.observe_workspace`, `burrete.control_viewer`, and
-`burrete.render_panel`. These tools return a stable `workspaceSessionId` and
+`burrete.open_ketcher`, `burrete.observe_workspace`, `burrete.control_viewer`,
+`burrete.control_ketcher`, and `burrete.render_panel`. These tools return a
+stable `workspaceSessionId` and
 compact `modelContext`; the advanced Burrete tools remain available for
 docking, fragments, reports, trajectories, and lower-level scene operations.
 
@@ -91,6 +92,8 @@ A Burrete workflow is complete only when:
 - the requested workspace or artifact is opened or a typed blocker is reported;
 - `observe.activeDocument.ready` is true and the Mol* `viewerAgent` reports
   available/ready when the active renderer is Mol*;
+- when the active surface is Ketcher, `activeSurface.ready` is true and
+  `chemicalEditor.phase` is `ready`;
 - Browser or Computer visual QA is run when the user asked to see the UI or the
   change affects visible layout;
 - the central molecular canvas is visibly nonblank when a rendered structure

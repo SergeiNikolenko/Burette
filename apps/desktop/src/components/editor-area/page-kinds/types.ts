@@ -7,6 +7,7 @@ export interface SerializedLocation {
 }
 
 export interface PageComponentProps<L extends { kind: string }> {
+  tabId: string;
   location: L;
   state: ShellViewState;
   actions: ShellActions;

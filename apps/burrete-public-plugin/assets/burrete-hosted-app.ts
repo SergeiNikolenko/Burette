@@ -1,4 +1,5 @@
 import { App, type McpUiUpdateModelContextRequest } from "@modelcontextprotocol/ext-apps";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { inject, pageview } from "@vercel/analytics";
 import {
   createSceneContext,
@@ -13,6 +14,10 @@ declare global {
       setSource: (source: unknown) => void;
       updateSelection: (selection: unknown, documentId: string) => Promise<boolean>;
       updateScene: (report: unknown) => Promise<boolean>;
+      callServerTool: (
+        name: string,
+        arguments_?: Record<string, unknown>,
+      ) => Promise<CallToolResult>;
       sanitizeViewerActions: (actions: unknown) => Record<string, unknown>[];
     };
     __BURRETE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;
@@ -40,18 +45,31 @@ const app = new App(
 
 let sourceDescriptor: unknown;
 let connected = false;
-const ready = app.connect().then(() => {
+const appConnected = app.connect().then(() => {
   connected = true;
-  return app.getHostCapabilities()?.updateModelContext !== undefined;
+  return true;
 }).catch((error) => {
   console.error("Burrete Apps bridge initialization failed", error);
   return false;
 });
+const ready = appConnected.then((initialized) => (
+  initialized && app.getHostCapabilities()?.updateModelContext !== undefined
+));
 
 async function updateModelContext(params: McpUiUpdateModelContextRequest["params"]) {
   if (!(await ready) || !connected) return false;
   await app.updateModelContext(params);
   return true;
+}
+
+async function callServerTool(
+  name: string,
+  arguments_: Record<string, unknown> = {},
+) {
+  if (!(await appConnected) || !connected) {
+    throw new Error("Burrete Apps bridge is not ready for server tool calls.");
+  }
+  return app.callServerTool({ name, arguments: arguments_ });
 }
 
 const queuedCalls = Array.isArray(window.__BURRETE_HOSTED_APP_QUEUE__)
@@ -67,6 +85,7 @@ const bridge = {
   updateScene(report: unknown) {
     return updateModelContext(createSceneContext(report, sourceDescriptor));
   },
+  callServerTool,
   sanitizeViewerActions,
   ready,
 };
@@ -77,4 +96,4 @@ for (const call of queuedCalls) {
     void bridge.updateSelection(call.args[0], String(call.args[1] || "active-structure"));
   } else if (call.method === "updateScene") void bridge.updateScene(call.args[0]);
 }
-window.__BURRETE_HOSTED_APP_READY__?.(true);
+void appConnected.then((initialized) => window.__BURRETE_HOSTED_APP_READY__?.(initialized));

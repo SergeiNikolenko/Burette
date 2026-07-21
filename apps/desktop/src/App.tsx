@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { AppLayout } from "./components/app-layout";
 import type { StructureOverlayMode, ViewerLigandSelection } from "./components/types";
 import { WindowTitle } from "./components/window-title";
@@ -26,17 +26,21 @@ import { useAppFileOpen } from "./hooks/use-app-file-open";
 import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
 import { useAppGenerate3DConformer } from "./hooks/use-app-generate-3d-conformer";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
+import { useGridNativeMenuState } from "./hooks/use-grid-native-menu-state";
 import { useAppHostRuntimeOperations } from "./hooks/use-app-host-runtime-operations";
 import { useAgentFocusLayout } from "./hooks/use-agent-focus-layout";
 import { useHostedMcpWidget } from "./hooks/use-hosted-mcp-widget";
 import { useKeyboardShortcuts } from "./hooks/use-keyboard-shortcuts";
 import { useAppKetcherActions } from "./hooks/use-app-ketcher-actions";
 import { useAppMaintenance } from "./hooks/use-app-maintenance";
+import { useAppNativeMenu } from "./hooks/use-app-native-menu";
 import { useAppMolstarActionSenders } from "./hooks/use-app-molstar-action-senders";
 import { useAppMolstarXtbContext } from "./hooks/use-app-molstar-xtb-context";
 import { useAppOpenActions } from "./hooks/use-app-open-actions";
 import { useAppOpenDropController } from "./hooks/use-app-open-drop-controller";
 import { useAppPreferenceEffects } from "./hooks/use-app-preference-effects";
+import { useAppQuickLook } from "./hooks/use-app-quick-look";
+import { useAppQuickLookDocumentOpen } from "./hooks/use-app-quick-look-document-open";
 import { useAppResize } from "./hooks/use-app-resize";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppShellActions } from "./hooks/use-app-shell-actions";
@@ -51,7 +55,8 @@ import { useAppViewerReloadActions } from "./hooks/use-app-viewer-reload-actions
 import { useAppViewerRuntimeRefs } from "./hooks/use-app-viewer-runtime-refs";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
 import { useAppXtbWorkflows } from "./hooks/use-app-xtb-workflows";
-import { useMenuEvents } from "./hooks/use-menu-events";
+import { useSourceEditingController } from "./hooks/use-source-editing";
+import { SourceEditingProvider } from "./lib/source-editing/context";
 import { useDockLayout } from "./hooks/use-dock-layout";
 import { useSidebar } from "./hooks/use-sidebar";
 import {
@@ -79,6 +84,7 @@ import {
   useOpenNewTab,
   useOpenPoseReviewTab,
   usePruneRecentStructures,
+  useReplaceDocument,
   useOpenSettingsTab,
   useOpenSettingsSection,
   useOpenTextDocuments,
@@ -97,9 +103,10 @@ import { expandBrowserDevStructureBundles } from "./lib/browser-dev-structure-bu
 import { writeClipboardText } from "./lib/clipboard";
 import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { structureExtensionFromPath } from "./lib/file-routing";
-import { isHostedMcpWidget } from "./lib/hosted-mcp-widget";
+import { isHostedKetcherWidget, isHostedMcpWidget } from "./lib/hosted-mcp-widget";
 import type { StructureDragPayload } from "./lib/structure-drag";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "./lib/viewer-bridge";
+import { trackWebDemoScreenView, trackWebDemoStructureView } from "./lib/web-demo-analytics";
 import {
   configureWorkspaceHistoryExtras,
   useWorkspaceHistoryStore,
@@ -120,6 +127,13 @@ export default function App() {
   const activeTabId = useActiveTabId();
   const activeTab = useActiveTab();
   const activeDocument = useActiveDocument();
+  useEffect(() => {
+    trackWebDemoScreenView(activeTab?.location.kind, activeDocument?.renderer);
+  }, [activeDocument?.renderer, activeTab?.id, activeTab?.location.kind]);
+  useEffect(() => {
+    if (!activeDocument) return;
+    trackWebDemoStructureView(activeDocument.extension, activeDocument.renderer);
+  }, [activeDocument?.id, activeDocument?.extension, activeDocument?.renderer]);
   const addBackgroundDocuments = useAddBackgroundDocuments();
   const addBackgroundTextDocuments = useAddBackgroundTextDocuments();
   const addDocuments = useAddTabs();
@@ -129,6 +143,7 @@ export default function App() {
   const setDocuments = useSetDocuments();
   const openNewTab = useOpenNewTab();
   const openKetcherTab = useOpenKetcherTab();
+  const hostedKetcherWidget = isHostedKetcherWidget();
   const openFepNetworkTab = useOpenFepNetworkTab();
   const openFepSetupTab = useOpenFepSetupTab();
   const openPoseReviewTab = useOpenPoseReviewTab();
@@ -142,6 +157,7 @@ export default function App() {
   const recentStructures = useRecentStructures();
   const rememberRecentStructures = useRememberRecentStructures();
   const pruneRecentStructures = usePruneRecentStructures();
+  const replaceDocument = useReplaceDocument();
   const clearRecentStructures = useClearRecentStructures();
   const setActiveTab = useSetActiveTab();
   const setActiveDocument = useSetActiveDocument();
@@ -149,6 +165,11 @@ export default function App() {
   const closeDocument = useCloseDocument();
   const closeActiveDocument = useCloseActiveTab();
   const closeAllDocuments = useCloseAllTabs();
+
+  useEffect(() => {
+    if (!hostedKetcherWidget || activeTab?.location.kind === "ketcher") return;
+    openKetcherTab();
+  }, [activeTab?.location.kind, hostedKetcherWidget, openKetcherTab]);
   const moveTab = useMoveTab();
   const {
     sidebarOpen,
@@ -254,12 +275,17 @@ export default function App() {
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
   const {
     clearDirtyGridDocuments,
+    confirmDiscardAllDirtyGridDocuments,
     confirmDiscardDirtyGridDocument,
     confirmDiscardDirtyGridDocuments,
     forgetDirtyGridDocument,
     forgetDirtyGridDocuments,
+    getWindowDocumentDirtySnapshot: getGridWindowDocumentDirtySnapshot,
+    hasDirtyGridDocuments,
+    isDirtyGridDocument,
     updateDirtyGridDocument,
   } = useAppDirtyGridDocuments();
+  const { activeGridMenuState, updateGridMenuState } = useGridNativeMenuState(activeDocument, documents);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [viewerLigandSelections, setViewerLigandSelections] = useState<Record<string, ViewerLigandSelection | null>>({});
   const [structureOverlayModes, setStructureOverlayModes] = useState<Record<string, StructureOverlayMode>>({});
@@ -369,7 +395,19 @@ export default function App() {
   const {
     browserDevExplicitFolders,
     browserDevHasExplicitWorkspaceQuery,
+    browserDevQuickLookPath,
   } = useAppBrowserDevStartup();
+  const { openQuickLookDocument } = useAppQuickLookDocumentOpen({ preferences });
+  const {
+    closeQuickLookPreview,
+    quickLookDocument,
+    quickLookError,
+    quickLookStandalone,
+  } = useAppQuickLook({
+    browserDevQuickLookPath,
+    openQuickLookDocument,
+    pushErrorStatus,
+  });
   const {
     activeProject,
     setWorkspacePath,
@@ -392,6 +430,63 @@ export default function App() {
   });
 
   const activeTextDocument = useAppActiveTextDocument({ activeTab, textDocuments });
+  const sourceEditing = useSourceEditingController({
+    activeDocument,
+    preferences,
+    pushErrorStatus,
+    setDockActiveTab,
+    setDockOpen,
+  });
+  const activeSourceSession = sourceEditing.sessionForDocument(activeDocument);
+  const sourceSaveEnabled = Boolean(activeDocument
+    && activeSourceSession?.editable
+    && activeSourceSession.dirty
+    && !activeSourceSession.saving
+    && !activeSourceSession.saveDisabledReason);
+  const saveActiveSource = useCallback(async () => {
+    if (!activeDocument) return;
+    const session = sourceEditing.sessionForDocument(activeDocument);
+    if (!session?.editable || !session.dirty || session.saving || session.saveDisabledReason) return;
+    await sourceEditing.save(activeDocument);
+  }, [activeDocument, sourceEditing]);
+  const confirmCloseWindow = useCallback(async () => {
+    const sourceBefore = sourceEditing.getWindowDirtySnapshot();
+    if (!await sourceEditing.confirmCloseWindow()) return null;
+    const permit = await confirmDiscardAllDirtyGridDocuments();
+    if (!permit) return null;
+    try {
+      const sourceAfter = sourceEditing.getWindowDirtySnapshot();
+      if (sourceAfter.revision === sourceBefore.revision
+        || await sourceEditing.confirmCloseWindow()) return permit;
+      permit.release();
+      return null;
+    } catch (error) {
+      permit.release();
+      throw error;
+    }
+  }, [confirmDiscardAllDirtyGridDocuments, sourceEditing]);
+  const combinedWindowDirtyRevisionRef = useRef({
+    gridRevision: null as number | null,
+    sourceRevision: null as number | null,
+    revision: 0,
+  });
+  const getWindowDocumentDirtySnapshot = useCallback(() => {
+    const gridSnapshot = getGridWindowDocumentDirtySnapshot();
+    const sourceSnapshot = sourceEditing.getWindowDirtySnapshot();
+    const combined = combinedWindowDirtyRevisionRef.current;
+    if (combined.gridRevision !== gridSnapshot.revision
+      || combined.sourceRevision !== sourceSnapshot.revision) {
+      combined.gridRevision = gridSnapshot.revision;
+      combined.sourceRevision = sourceSnapshot.revision;
+      combined.revision += 1;
+    }
+    return {
+      dirty: gridSnapshot.dirty || sourceSnapshot.dirty,
+      revision: combined.revision,
+      closeTransitionActive: sourceSnapshot.closeTransitionActive,
+      closeGuardRevision: sourceSnapshot.revision,
+    };
+  }, [getGridWindowDocumentDirtySnapshot, sourceEditing]);
   const {
     copyActiveDocumentPath,
     copyDocumentPath,
@@ -416,6 +511,7 @@ export default function App() {
   const {
     openDocuments,
     openPaths,
+    rebindSavedGridDocument,
     openStructureRecordDocuments,
     openStructureRecords,
     openStructureUrlInMolstar,
@@ -436,6 +532,7 @@ export default function App() {
     pushErrorStatus,
     pushStatus,
     rememberRecentStructures,
+    replaceDocument,
     setActiveDocument,
     setDockActiveTab,
     setDockDocument,
@@ -634,6 +731,8 @@ export default function App() {
     addDocuments,
     addTextDocuments,
     closeTab,
+    documents,
+    isDirtyGridDocument,
     mergeMoleculeCollections,
     openDocuments,
     openDocumentsInActiveTab,
@@ -646,6 +745,7 @@ export default function App() {
     setActiveDocument,
     setStructureDragActive,
     tabs,
+    updateDirtyGridDocument,
   });
 
   const {
@@ -661,6 +761,7 @@ export default function App() {
     pushStatus,
     setActiveTab,
     tabs,
+    updateDirtyGridDocument,
   });
 
   const {
@@ -696,7 +797,9 @@ export default function App() {
     openClipboard,
   } = useAppOpenDropController({
     activeDocument,
+    activeTabId,
     activeTabKind: activeTab?.location.kind ?? null,
+    openKetcherTab,
     addProjectRoots: addDroppedProjectRoots,
     addXyzrenderSheetItems,
     appendGridRecords,
@@ -729,6 +832,7 @@ export default function App() {
     addBackgroundDocuments,
     addDocuments,
     calculateGridDescriptors,
+    closeGridRuntime,
     documents,
     forgetDirtyGridDocument,
     generate3DConformer,
@@ -749,6 +853,7 @@ export default function App() {
     preferences,
     pushErrorStatus,
     pushStatus,
+    rebindSavedGridDocument,
     reloadActive,
     rememberRecentStructures,
     setPreference,
@@ -758,6 +863,7 @@ export default function App() {
     skipNextPreferenceRefreshRef,
     toggleSidebar,
     updateDirtyGridDocument,
+    updateGridMenuState,
     writeGridPerfMetric,
     xyzrenderOrientationRefRef,
   });
@@ -802,9 +908,11 @@ export default function App() {
     closeDocument,
     closeDockTab,
     closeGridRuntime,
+    closeQuickLookPreview,
     closeTab,
     confirmDiscardDirtyGridDocument,
     confirmDiscardDirtyGridDocuments,
+    confirmCloseSourceDocuments: sourceEditing.closeDocuments,
     copyActiveDocumentPath,
     copyDocumentPath,
     copyPath,
@@ -904,22 +1012,6 @@ export default function App() {
     toggleSidebar,
   });
 
-  useMenuEvents({
-    actions,
-    chooseFiles: actions.chooseFiles,
-    openMostRecentStructure: actions.openMostRecentStructure,
-    revealActiveDocument: actions.revealActiveDocument,
-    copyActiveDocumentPath: actions.copyActiveDocumentPath,
-    showActiveDocumentMetadata: actions.showActiveDocumentMetadata,
-    exportActivePreviewAsPng: actions.exportActivePreviewAsPng,
-    exportActivePreviewAsSvg: actions.exportActivePreviewAsSvg,
-    clearCache: actions.clearCache,
-    resetQuickLook: actions.resetQuickLook,
-    openLogs: actions.openLogs,
-    openSettings: actions.openSettings,
-    checkForUpdates: actions.checkForUpdates,
-  });
-
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
   const state = useAppShellViewState({
@@ -929,6 +1021,9 @@ export default function App() {
     activeTab,
     activeTabId,
     activeDocument,
+    quickLookDocument,
+    quickLookError,
+    quickLookStandalone,
     recentStructures,
     sidebarProjects,
     projectsOpen,
@@ -976,6 +1071,18 @@ export default function App() {
     buildInfo,
   });
 
+  useAppNativeMenu({
+    state,
+    actions,
+    gridMenuState: activeGridMenuState,
+    openDocuments,
+    confirmCloseWindow,
+    getWindowDocumentDirtySnapshot,
+    windowDocumentDirty: hasDirtyGridDocuments || sourceEditing.hasUnsavedOrSavingSessions,
+    sourceSaveEnabled,
+    saveActiveSource,
+  });
+
   useKeyboardShortcuts(
     state,
     actions,
@@ -984,7 +1091,7 @@ export default function App() {
   );
 
   return (
-    <>
+    <SourceEditingProvider value={sourceEditing}>
       <WindowTitle activeDocument={activeDocument} />
       <AppLayout
         state={state}
@@ -1014,6 +1121,6 @@ export default function App() {
           />
         </Suspense>
       ) : null}
-    </>
+    </SourceEditingProvider>
   );
 }

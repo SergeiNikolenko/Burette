@@ -400,9 +400,19 @@ pub(crate) struct ViewerDocument {
     is_virtual: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     docking_request: Option<DockingDocumentRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    open_claim_id: Option<String>,
 }
 
 impl ViewerDocument {
+    pub(crate) fn file_path(&self) -> Option<&Path> {
+        (!self.is_virtual).then(|| Path::new(&self.path))
+    }
+
+    pub(crate) fn set_open_claim_id(&mut self, claim_id: String) {
+        self.open_claim_id = Some(claim_id);
+    }
+
     pub(crate) fn into_virtual(mut self) -> Self {
         self.is_virtual = true;
         self
@@ -426,6 +436,7 @@ impl ViewerDocument {
             byte_count,
             is_virtual: true,
             docking_request: None,
+            open_claim_id: None,
         }
     }
 }
@@ -591,6 +602,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 byte_count: metadata.len(),
                 is_virtual: false,
                 docking_request: None,
+                open_claim_id: None,
             });
         }
         Ok(None) => None,
@@ -671,6 +683,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 byte_count: metadata.len(),
                 is_virtual: false,
                 docking_request: None,
+                open_claim_id: None,
             });
         }
     }
@@ -748,6 +761,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         byte_count: metadata.len(),
         is_virtual: false,
         docking_request: None,
+        open_claim_id: None,
     })
 }
 
@@ -1137,6 +1151,7 @@ pub(crate) fn open_docking_document<R: Runtime>(
         byte_count,
         is_virtual: true,
         docking_request: Some(docking_request),
+        open_claim_id: None,
     })
 }
 
@@ -1221,6 +1236,7 @@ mod document_open_tests {
         ViewerPreferences, ViewerReloadOptions,
     };
     use crate::commands::documents::open_documents_for_window_label;
+    use crate::commands::source_editing::OpenedSourceRegistry;
     use crate::preview::grid_store::GridRuntimeRegistry;
     use base64::Engine;
     use std::collections::BTreeMap;
@@ -1260,6 +1276,7 @@ mod document_open_tests {
     fn mock_app_with_grid_registry() -> tauri::App<tauri::test::MockRuntime> {
         let app = tauri::test::mock_app();
         app.manage(GridRuntimeRegistry::default());
+        app.manage(OpenedSourceRegistry::default());
         app
     }
 

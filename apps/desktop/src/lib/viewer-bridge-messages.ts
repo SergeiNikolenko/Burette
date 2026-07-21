@@ -33,7 +33,7 @@ export type ViewerBridgeMessageHandlers = {
   handleDockingPoseMessage: SourceMessageHandler;
   handleGridConformerMessage: BodyEventMessageHandler;
   handleGridComputeMessage: BodyEventMessageHandler;
-  handleGridControlMessage: BodyMessageHandler;
+  handleGridControlMessage: BodyEventMessageHandler;
   handleGridFileMessage: BodyEventMessageHandler;
   handleGridRuntimeMessage: BodyEventMessageHandler;
   handleKetcherViewerMessage: BodyMessageHandler;
@@ -113,7 +113,7 @@ export async function dispatchViewerBridgeMessage(
     if (handlers.handleGridComputeMessage(body, eventSource)) {
       return true;
     }
-    if (handlers.handleGridControlMessage(body)) {
+    if (handlers.handleGridControlMessage(body, eventSource)) {
       return true;
     }
     if (handlers.handleGridFileMessage(body, eventSource)) {

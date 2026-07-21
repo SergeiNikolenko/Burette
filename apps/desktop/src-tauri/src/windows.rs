@@ -6,6 +6,7 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
+use crate::commands::source_editing::{OpenedSourceRegistry, SourceEditRegistry};
 use crate::preview::grid_store::GridRuntimeRegistry;
 
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
@@ -40,40 +41,83 @@ pub(crate) fn focused_window_label<R: Runtime>(app: &tauri::AppHandle<R>) -> Opt
         .or_else(|| windows.keys().next().cloned())
 }
 
-pub(crate) fn show_window<R: Runtime>(
+pub(crate) fn focus_or_create_workspace_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
-    label: &str,
-) -> tauri::Result<Option<WebviewWindow<R>>> {
-    #[cfg(target_os = "macos")]
-    let _ = app.show();
-    let window = if let Some(window) = app.get_webview_window(label) {
-        window
-    } else if label == MAIN_WINDOW_LABEL {
-        return Ok(None);
-    } else {
-        create_workspace_window(app, label.to_string())?
+    preferred_label: Option<&str>,
+) -> Result<WebviewWindow<R>, String> {
+    if crate::menu::exit_transition_is_active(app) {
+        return Err("A window cannot be shown while Burrete is quitting or restarting.".into());
+    }
+    show_workspace_application(app)?;
+    let windows = app.webview_windows();
+    let existing_window = preferred_label
+        .and_then(|label| windows.get(label).cloned())
+        .or_else(|| {
+            windows
+                .values()
+                .find(|window| window.is_focused().unwrap_or(false))
+                .cloned()
+        })
+        .or_else(|| windows.get(MAIN_WINDOW_LABEL).cloned())
+        .or_else(|| windows.values().next().cloned());
+    let (window, created) = match existing_window {
+        Some(window) => (window, false),
+        None => (
+            create_workspace_window(app, MAIN_WINDOW_LABEL.to_string())?,
+            true,
+        ),
     };
-    let _ = window.show();
-    let _ = window.unminimize();
+    if crate::menu::exit_transition_is_active(app) {
+        if created {
+            let _ = window.destroy();
+        }
+        return Err("A window cannot be shown while Burrete is quitting or restarting.".into());
+    }
+    window.show().map_err(|error| error.to_string())?;
+    window.unminimize().map_err(|error| error.to_string())?;
     normalize_workspace_window(&window);
-    let _ = window.set_focus();
-    Ok(Some(window))
+    window.set_focus().map_err(|error| error.to_string())?;
+    Ok(window)
 }
 
 pub(crate) fn open_new_workspace_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
-) -> tauri::Result<String> {
+) -> Result<String, String> {
+    if crate::menu::exit_transition_is_active(app) {
+        return Err(
+            "A new window cannot be opened while Burrete is quitting or restarting.".into(),
+        );
+    }
+    show_workspace_application(app)?;
     let label = next_workspace_label(app);
     let window = create_workspace_window(app, label.clone())?;
-    let _ = window.show();
-    let _ = window.set_focus();
+    if crate::menu::exit_transition_is_active(app) {
+        let _ = window.destroy();
+        return Err(
+            "A new window cannot be opened while Burrete is quitting or restarting.".into(),
+        );
+    }
+    window.show().map_err(|error| error.to_string())?;
+    window.unminimize().map_err(|error| error.to_string())?;
+    normalize_workspace_window(&window);
+    window.set_focus().map_err(|error| error.to_string())?;
     Ok(label)
+}
+
+fn show_workspace_application<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        app.set_activation_policy(tauri::ActivationPolicy::Regular)
+            .map_err(|error| error.to_string())?;
+        app.show().map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn create_workspace_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
     label: String,
-) -> tauri::Result<WebviewWindow<R>> {
+) -> Result<WebviewWindow<R>, String> {
     let url = WebviewUrl::App(format!("index.html?burreteWindow={label}").into());
     let builder = WebviewWindowBuilder::new(app, &label, url)
         .title("Burrete")
@@ -83,8 +127,8 @@ fn create_workspace_window<R: Runtime>(
         )
         .min_inner_size(MIN_WORKSPACE_WINDOW_WIDTH, MIN_WORKSPACE_WINDOW_HEIGHT)
         .decorations(true)
-        .visible(true)
-        .focused(true)
+        .visible(false)
+        .focused(false)
         .prevent_overflow();
     let builder = builder
         .transparent(true)
@@ -101,7 +145,11 @@ fn create_workspace_window<R: Runtime>(
                 .build(),
         )
         .shadow(true);
-    let window = builder.build()?;
+    let window = builder.build().map_err(|error| error.to_string())?;
+    if crate::menu::exit_transition_is_active(app) {
+        let _ = window.destroy();
+        return Err("Workspace creation was cancelled during an exit transition.".into());
+    }
     attach_window_cleanup(app, &window);
     Ok(window)
 }
@@ -117,6 +165,11 @@ pub(crate) fn attach_window_cleanup<R: Runtime>(
             let _ = app
                 .state::<GridRuntimeRegistry>()
                 .unregister_prefix(&runtime_document_prefix(&label));
+            let _ = app
+                .state::<OpenedSourceRegistry>()
+                .unregister_window(&label);
+            let _ = app.state::<SourceEditRegistry>().unregister_window(&label);
+            crate::menu::window_destroyed(&app, &label);
         }
     });
 }

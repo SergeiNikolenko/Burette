@@ -1808,9 +1808,22 @@ fn parse_delimited_table_batch(
             complete: true,
         });
     };
-    let headers: Vec<_> = parse_delimited_line(header_line, separator)
+    let raw_headers: Vec<_> = parse_delimited_line(header_line, separator)
         .into_iter()
         .map(|value| value.trim().to_string())
+        .collect();
+    let encoding_index = raw_headers
+        .iter()
+        .position(|value| normalize_column_name(value) == "burrete_encoding");
+    let headers: Vec<_> = raw_headers
+        .into_iter()
+        .map(|value| {
+            if encoding_index.is_some() {
+                decode_saved_grid_cell(&value)
+            } else {
+                value
+            }
+        })
         .collect();
     let inferred_smiles_indexes =
         infer_smiles_columns_from_values(headers.len(), &rows[1..], separator);
@@ -1841,21 +1854,53 @@ fn parse_delimited_table_batch(
                     "compound_id" | "id" | "name" | "title" | "compound"
                 )
         });
+    let molblock_index = normalized_headers
+        .iter()
+        .position(|value| matches!(value.as_str(), "molblock" | "molfile"));
     let mut records = Vec::new();
     let mut next_line = start_line.max(1).min(rows.len());
     let mut next_index = start_index;
     while next_line < rows.len() {
         let row_number = next_line;
-        let cells = parse_delimited_line(&rows[next_line], separator);
+        let raw_cells = parse_delimited_line(&rows[next_line], separator);
+        let saved_grid_encoding = encoding_index
+            .and_then(|index| raw_cells.get(index))
+            .is_some_and(|value| value.trim() == "escaped-v1");
+        let cells: Vec<_> = raw_cells
+            .into_iter()
+            .map(|value| {
+                if saved_grid_encoding {
+                    decode_saved_grid_cell(&value)
+                } else {
+                    value
+                }
+            })
+            .collect();
         next_line += 1;
-        for smiles_index in &smiles_indexes {
-            let Some(smiles) = cells
-                .get(*smiles_index)
-                .map(|value| value.trim())
-                .filter(|value| !value.is_empty())
-            else {
-                continue;
-            };
+        let row_smiles: Vec<_> = smiles_indexes
+            .iter()
+            .filter_map(|smiles_index| {
+                cells
+                    .get(*smiles_index)
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty())
+                    .map(|smiles| (*smiles_index, smiles))
+            })
+            .collect();
+        let molblock = molblock_index
+            .and_then(|index| cells.get(index))
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(|value| clipped(value, 250_000));
+        if row_smiles.is_empty() && molblock.is_none() {
+            continue;
+        }
+        let record_sources: Vec<_> = if row_smiles.is_empty() {
+            vec![None]
+        } else {
+            row_smiles.into_iter().map(Some).collect()
+        };
+        for source in record_sources {
             let raw_name = name_index
                 .and_then(|index| cells.get(index))
                 .map(|value| value.trim())
@@ -1865,29 +1910,33 @@ fn parse_delimited_table_batch(
             } else {
                 clipped(raw_name, 160)
             };
-            let name = if has_multiple_smiles_columns {
-                clipped(
-                    &format!(
-                        "{} {}",
-                        base_name,
-                        column_label(&headers, *smiles_index).trim_matches('\'')
-                    ),
-                    160,
-                )
-            } else {
-                base_name
-            };
+            let name =
+                if let (true, Some((smiles_index, _))) = (has_multiple_smiles_columns, source) {
+                    clipped(
+                        &format!(
+                            "{} {}",
+                            base_name,
+                            column_label(&headers, smiles_index).trim_matches('\'')
+                        ),
+                        160,
+                    )
+                } else {
+                    base_name
+                };
             let mut props = BTreeMap::new();
             props.insert("CSV row".to_string(), row_number.to_string());
-            props.insert(
-                "SMILES column".to_string(),
-                clipped(
-                    column_label(&headers, *smiles_index).trim_matches('\''),
-                    500,
-                ),
-            );
+            if let Some((smiles_index, _)) = source {
+                props.insert(
+                    "SMILES column".to_string(),
+                    clipped(column_label(&headers, smiles_index).trim_matches('\''), 500),
+                );
+            }
             for (index, header) in headers.iter().enumerate() {
-                if smiles_indexes.contains(&index) || Some(index) == name_index {
+                if smiles_indexes.contains(&index)
+                    || Some(index) == name_index
+                    || Some(index) == molblock_index
+                    || Some(index) == encoding_index
+                {
                     continue;
                 }
                 if let Some(value) = cells
@@ -1903,8 +1952,8 @@ fn parse_delimited_table_batch(
             records.push(GridInputRecord {
                 index: next_index,
                 name,
-                smiles: Some(clipped(smiles, 2048)),
-                molblock: None,
+                smiles: source.map(|(_, smiles)| clipped(smiles, 2048)),
+                molblock: molblock.clone(),
                 idcode: None,
                 idcoordinates: None,
                 props,
@@ -2101,6 +2150,28 @@ fn parse_delimited_line(line: &str, separator: char) -> Vec<String> {
     }
     fields.push(field);
     fields
+}
+
+fn decode_saved_grid_cell(value: &str) -> String {
+    let mut decoded = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            decoded.push(ch);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => decoded.push('\n'),
+            Some('t') => decoded.push('\t'),
+            Some('\\') => decoded.push('\\'),
+            Some(next) => {
+                decoded.push('\\');
+                decoded.push(next);
+            }
+            None => decoded.push('\\'),
+        }
+    }
+    decoded
 }
 
 fn is_smiles_column(value: &str) -> bool {
@@ -3331,6 +3402,78 @@ mod tests {
         assert_eq!(page.rows[0].smiles.as_deref(), Some("CCO"));
 
         let _ = std::fs::remove_dir_all(&runtime_dir);
+    }
+
+    #[test]
+    fn reopens_saved_grid_rows_with_molblocks_or_smiles() {
+        let csv = "burrete_encoding,index,name,smiles,molblock\n\
+                   escaped-v1,0,From SDF,,Molecule\\n  Burrete\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n\
+                   escaped-v1,1,From SMILES,CC,\n";
+        let batch = parse_delimited_table_batch(
+            csv,
+            ',',
+            0,
+            0,
+            100,
+            &GridParseOptions {
+                smiles_column: Some("smiles".into()),
+                include_single_sdf: false,
+            },
+        )
+        .expect("parse saved grid CSV");
+
+        assert_eq!(batch.records.len(), 2);
+        assert_eq!(batch.records[0].name, "From SDF");
+        assert_eq!(batch.records[0].smiles, None);
+        assert!(batch.records[0]
+            .molblock
+            .as_deref()
+            .is_some_and(|molblock| molblock.contains("\nM  END")));
+        assert_eq!(batch.records[1].name, "From SMILES");
+        assert_eq!(batch.records[1].smiles.as_deref(), Some("CC"));
+        assert_eq!(batch.records[1].molblock, None);
+    }
+
+    #[test]
+    fn reopens_saved_grid_cells_with_reversible_escapes() {
+        let csv = "burrete_encoding,index,name,smiles,molblock,Note\n\
+                   escaped-v1,0,Path\\\\name,,Molecule \\\\ literal\\nM  END,Line 1\\nLine 2 \\\\ tail\n";
+        let batch = parse_delimited_table_batch(
+            csv,
+            ',',
+            0,
+            0,
+            100,
+            &GridParseOptions {
+                smiles_column: Some("smiles".to_string()),
+                include_single_sdf: false,
+            },
+        )
+        .expect("parse escaped saved row");
+
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].name, r"Path\name");
+        assert_eq!(
+            batch.records[0].molblock.as_deref(),
+            Some("Molecule \\ literal\nM  END")
+        );
+        assert_eq!(
+            batch.records[0].props.get("Note").map(String::as_str),
+            Some("Line 1\nLine 2 \\ tail")
+        );
+    }
+
+    #[test]
+    fn accepts_molblock_only_rows_beside_multiple_smiles_columns() {
+        let csv = "burrete_encoding,name,target_smiles,proposal_smiles,molblock\n\
+                   escaped-v1,From SDF,,,Molecule\\n  Burrete\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n";
+        let batch = parse_delimited_table_batch(csv, ',', 0, 0, 100, &GridParseOptions::default())
+            .expect("parse molblock-only row");
+
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.records[0].name, "From SDF");
+        assert_eq!(batch.records[0].smiles, None);
+        assert!(batch.records[0].molblock.is_some());
     }
 
     #[test]

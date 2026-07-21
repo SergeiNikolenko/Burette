@@ -38,7 +38,13 @@ import { registerBrowserDevMdsmoothRoute } from "./vite/browser-dev/mdsmooth";
 import { registerBrowserDevNativeComputeRoute } from "./vite/browser-dev/native-compute";
 import { registerBrowserDevRuntimeDoctorRoute } from "./vite/browser-dev/runtime-doctor";
 import { registerBrowserDevXtbRoutes } from "./vite/browser-dev/xtb";
-import { installBrowserDevManagedXtb, resolveBrowserDevXtb, selectBrowserDevXtb, selectedBrowserDevXtbPath } from "./vite/browser-dev/xtb-runtime";
+import {
+  browserDevManagedInstallerName,
+  installBrowserDevManagedXtb,
+  resolveBrowserDevXtb,
+  selectBrowserDevXtb,
+  selectedBrowserDevXtbPath,
+} from "./vite/browser-dev/xtb-runtime";
 import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
@@ -1849,7 +1855,7 @@ async function browserDevXtbStatus() {
       installed: false,
       executablePath: null,
       version: null,
-      installer: resolveExecutable("pixi") ? "pixi" : null,
+      installer: browserDevManagedInstallerName(),
       installHint: error instanceof Error ? error.message : String(error),
       source: null,
       selectedExecutablePath,

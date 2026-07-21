@@ -5,8 +5,8 @@ use burrete_compute_protocol::{
     ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant, EnginePackManifest,
     ExecutionPolicy, FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
     GridSourceReference, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
-    ResultPackManifest, ResultPackVersion, SchedulingPolicy, SimilarityCutoff, SimilaritySettings,
-    StageState, CONFORMER_RESULT_V2_ARRAY_NAMES, MIN_COMPUTE_MEMORY_BYTES,
+    ResultPackManifest, SchedulingPolicy, SimilarityCutoff, SimilaritySettings, StageState,
+    CONFORMER_RESULT_V2_ARRAY_NAMES, MIN_COMPUTE_MEMORY_BYTES,
 };
 
 use crate::compute::similarity_search::SimilaritySearchRequest;
@@ -35,7 +35,7 @@ fn helper_attestation_is_a_real_sha256_digest() {
 }
 
 #[test]
-fn semiempirical_grid_workflow_publishes_a_durable_cpu_fallback_artifact() {
+fn semiempirical_grid_workflow_fails_closed_without_native_metal_runtime() {
     let fixture_id = Uuid::new_v4();
     let temp_root = std::fs::canonicalize(std::env::temp_dir()).expect("canonical temp root");
     let compute_root = temp_root.join(format!("burrete-semi-durable-{fixture_id}"));
@@ -58,7 +58,7 @@ fn semiempirical_grid_workflow_publishes_a_durable_cpu_fallback_artifact() {
     let viewer_root =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../PreviewExtension/Web");
     let coordinator = ComputeCoordinator::initialize(compute_root.clone(), None, Some(viewer_root));
-    let result = coordinator
+    let error = coordinator
         .evaluate_grid_semiempirical(
             "main",
             &GridSemiempiricalRequest {
@@ -70,46 +70,12 @@ fn semiempirical_grid_workflow_publishes_a_durable_cpu_fallback_artifact() {
                 .acquire_snapshot_lease("main:semi-durable")
                 .expect("lease Grid fixture"),
         )
-        .expect("run durable semiempirical workflow");
-    assert_eq!(result.backend, "nativeCpuReference");
-    assert_eq!(result.rows.len(), 1);
-    assert!(result.grid_applied, "{:?}", result.grid_warning);
-    let job = coordinator
-        .get_job("main", result.run_id)
-        .expect("read durable analysis job");
-    assert_eq!(job.workflow_template, WorkflowTemplateId::SemiempiricalV1);
-    assert_eq!(job.state, JobState::Succeeded);
-    assert_eq!(job.stages[2].effective_backend, Backend::ReferenceCpu);
-    assert!(job.stages[2].fallback.is_some());
-    let artifact_id = *job.artifact_ids.first().expect("published artifact ID");
-    assert_eq!(result.artifact_id, Some(artifact_id));
-    let manifest = coordinator
-        .get_artifact_manifest("main", artifact_id)
-        .expect("read durable analysis artifact");
-    assert_eq!(
-        manifest.result_pack.schema_version,
-        ResultPackVersion::SemiempiricalV1
-    );
-    assert_eq!(
-        result.artifact_manifest_sha256.as_deref(),
-        Some(
-            artifact_manifest_sha256(&manifest)
-                .expect("hash durable artifact")
-                .as_str()
-        )
-    );
-    assert_eq!(
-        manifest.result_pack.result_pack_id,
-        job.result_pack.unwrap().result_pack_id
-    );
-    let report_path = result.report_path.as_deref().expect("analysis report path");
-    let report = std::fs::read_to_string(report_path).expect("read analysis report");
-    assert!(report.contains("# Native Molecular Analysis Report"));
-    assert!(report.contains("SCF converged"));
-    assert!(manifest
-        .files
-        .iter()
-        .any(|file| { file.relative_path == "result/report.md" && file.role == "computeReport" }));
+        .expect_err("semiempirical workflow must not fall back without Metal");
+    assert!(matches!(
+        error,
+        ComputeCoordinatorError::Unavailable(message)
+            if message.contains("gpuRequired compute admission failed")
+    ));
     drop(coordinator);
     std::fs::remove_dir_all(compute_root).expect("remove compute fixture");
     std::fs::remove_dir_all(grid_root).expect("remove Grid fixture");

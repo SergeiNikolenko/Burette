@@ -538,7 +538,7 @@ export function EditorTabs({
                     {
                       kind: "item" as const,
                       id: "show-tab-document-metadata",
-                      text: "Show Metadata",
+                      text: "Get Info",
                       action: () => {
                         actions.showDocumentMetadata(tabDocument);
                       },
@@ -585,7 +585,7 @@ export function EditorTabs({
                     {
                       kind: "item" as const,
                       id: "show-tab-text-file-metadata",
-                      text: "Show Metadata",
+                      text: "Get Info",
                       action: () => {
                         actions.showTextFileMetadata(textDocument);
                       },
@@ -626,11 +626,7 @@ export function EditorTabs({
                       kind: "item" as const,
                       id: "close-other-tabs",
                       text: "Close Other Tabs",
-                      action: () => {
-                        for (const candidate of visibleTabs) {
-                          if (candidate.id !== tab.id) actions.closeTab(candidate.id);
-                        }
-                      },
+                      action: () => actions.closeOtherTabs(tab.id),
                     },
                   ]
                 : []),

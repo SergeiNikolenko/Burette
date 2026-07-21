@@ -7,6 +7,7 @@ import {
   viewerBridgeBodyDocumentId,
   viewerBridgeSource,
 } from "../apps/desktop/src/lib/viewer-bridge-messages.ts";
+import { isReadOnlyViewerMessageSource } from "../apps/desktop/src/lib/viewer-bridge.ts";
 
 function makeHandlers(overrides = {}) {
   const calls = [];
@@ -167,5 +168,56 @@ assert.equal(viewerBridgeBodyDocumentId(null), undefined);
   ]);
   assert.equal(calls.some((call) => call[0] === "viewer-file"), false);
 }
+
+{
+  const gridMenuState = {
+    type: "gridMenuStateChanged",
+    documentId: "grid-doc",
+    selectedCount: 2,
+    dirty: true,
+    canUndo: true,
+    canRedo: true,
+    undoLabel: "Delete Molecule",
+    redoLabel: "Replace Molecule",
+    editingText: false,
+  };
+  const gridMessage = parseViewerBridgeMessage({
+    data: { source: "burrete-grid", body: gridMenuState },
+    source: eventSource,
+  });
+  assert.ok(gridMessage);
+  const { calls, handlers } = makeHandlers({
+    handleGridControlMessage: (receivedBody, source) => {
+      calls.push(["grid-control", receivedBody, source]);
+      return true;
+    },
+  });
+  const handled = await dispatchViewerBridgeMessage(gridMessage, handlers);
+  assert.equal(handled, true);
+  assert.deepEqual(calls.map((call) => call[0]), [
+    "known",
+    "host",
+    "state",
+    "runtime-file",
+    "dock",
+    "first-render",
+    "xyzrender-sheet",
+    "grid-compute",
+    "grid-control",
+  ]);
+  assert.deepEqual(calls.at(-1)?.[1], gridMenuState);
+  assert.equal(calls.at(-1)?.[2], eventSource);
+}
+
+globalThis.document = {
+  querySelectorAll: () => [
+    { contentWindow: eventSource },
+    { contentWindow: { postMessage() {} } },
+  ],
+};
+assert.equal(isReadOnlyViewerMessageSource(eventSource), true);
+assert.equal(isReadOnlyViewerMessageSource({ postMessage() {} }), false);
+assert.equal(isReadOnlyViewerMessageSource(null), false);
+delete globalThis.document;
 
 console.log("viewer bridge message contract tests passed");

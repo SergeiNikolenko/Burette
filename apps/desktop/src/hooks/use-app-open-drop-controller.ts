@@ -36,7 +36,9 @@ type ChooseDropAction = (
 
 type UseAppOpenDropControllerOptions = {
   activeDocument: ViewerDocument | null;
+  activeTabId: string | null;
   activeTabKind: string | null;
+  openKetcherTab: () => void | Promise<void>;
   addProjectRoots: (paths: string[]) => void;
   addXyzrenderSheetItems: (payload: StructureDragPayload) => boolean;
   appendGridRecords: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
@@ -59,7 +61,9 @@ type UseAppOpenDropControllerOptions = {
 
 export function useAppOpenDropController({
   activeDocument,
+  activeTabId,
   activeTabKind,
+  openKetcherTab,
   addProjectRoots,
   addXyzrenderSheetItems,
   appendGridRecords,
@@ -86,6 +90,9 @@ export function useAppOpenDropController({
   });
   useAgentSession({
     activeDocument,
+    activeTabId,
+    activeTabKind,
+    openKetcherTab,
     documents,
     openTextDocuments,
     openPaths,

@@ -16,6 +16,7 @@ import type { ShellActions, ShellViewState } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
 import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
+import { useSourceEditing } from "../lib/source-editing/context";
 import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
@@ -109,12 +110,13 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
       catalog.filter((kind) => {
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
+        if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
         return true;
       }).map((kind) => ({
         kind: "item" as const,
         id: `dock-${area}-${kind}`,
         text: DOCK_TAB_LABELS[kind],
-        disabled: tabs.some((tab) => tab.kind === kind) || (kind === "xyzrender" && !xyzrenderDockDocument),
+        disabled: tabs.some((tab) => tab.kind === kind),
         action: () => actions.openDockTab(area, kind),
       })),
       { x: rect.left, y: rect.bottom + 6 },
@@ -310,7 +312,7 @@ function DockPanelContent({
           <div className="dock-viewer">
             {dockDocument.renderer === "spectrum"
               ? <SpectrumViewer document={dockDocument} embedded />
-              : <ViewerFrame document={dockDocument} />}
+              : <ViewerFrame document={dockDocument} readOnly />}
           </div>
         </div>
       );
@@ -1422,6 +1424,7 @@ function SingleDocumentTextPanel({
   openPaths: ShellActions["openPaths"];
   onStructureSelection: ShellActions["selectTextStructure"];
 }) {
+  const sourceEditing = useSourceEditing();
   const textPreviewLimit = isMaestroStructure(activeDocument) ? 1_500_000 : 3_000_000;
   const existingDocument = activeTextDocument ?? (activeDocument
     ? textDocuments.find((document) => document.path === activeDocument.path) ?? null
@@ -1468,9 +1471,37 @@ function SingleDocumentTextPanel({
 
   const document = existingDocument ?? loadedDocument;
   if (document) {
+    const sourceSession = sourceEditing?.sessionForDocument(activeDocument) ?? null;
+    const sourceEditingProps = activeDocument && activeDocument.path === document.path && sourceEditing
+      ? sourceSession
+        ? {
+          editable: sourceSession.editable,
+          content: sourceSession.content,
+          status: sourceSession.status,
+          dirty: sourceSession.dirty,
+          saving: sourceSession.saving,
+          diagnostic: sourceSession.diagnostic,
+          saveDisabledReason: sourceSession.saveDisabledReason,
+          showApplyPreview: sourceSession.previewMode === "manual" && sourceSession.dirty,
+          onChange: (content: string) => sourceEditing.updateDraft(activeDocument, content),
+          onSave: () => sourceEditing.save(activeDocument),
+          onApplyPreview: () => sourceEditing.applyPreview(activeDocument),
+        }
+        : {
+          editable: false,
+          content: document.content,
+          status: "Read Only",
+          dirty: false,
+          saving: false,
+          diagnostic: null,
+          saveDisabledReason: null,
+          showApplyPreview: false,
+          onBeginEditing: () => sourceEditing.beginEditing(activeDocument),
+        }
+      : undefined;
     return (
       <div className="dock-viewer">
-        <TextFileViewer document={document} openPaths={openPaths} onStructureSelection={onStructureSelection} />
+        <TextFileViewer document={document} openPaths={openPaths} onStructureSelection={onStructureSelection} sourceEditing={sourceEditingProps} />
       </div>
     );
   }

@@ -15,6 +15,8 @@ import {
 } from "../lib/file-routing";
 import { isSpectrumPath, spectrumDocumentFromText } from "../lib/spectrum";
 import { isTauriRuntime } from "../lib/tauri";
+import { currentDocumentRegistryRevision } from "../lib/native-menu";
+import { abortOpenDocumentClaims } from "../lib/open-document-claims";
 import type {
   OpenDocumentsResult,
   OpenTextFilesResult,
@@ -97,6 +99,7 @@ export function useAppDockPayloadOpen({
     }
 
     pushStatus(`Opening in ${input.area === "right" ? "right dock" : "bottom dock"}...`);
+    let unmaterializedDocuments: Array<ViewerDocument | TextFileDocument> = [];
     try {
       let dockOpenPaths = unopenedPaths;
       if (input.area === "right" && unopenedPaths.length > 0) {
@@ -110,10 +113,16 @@ export function useAppDockPayloadOpen({
         dockOpenPaths = unopenedPaths.filter((path) => !rightDockTextPaths.includes(path));
         if (rightDockTextPaths.length > 0) {
           const textResult = isTauriRuntime()
-            ? await invoke<OpenTextFilesResult>("open_text_files", { paths: rightDockTextPaths })
+            ? await invoke<OpenTextFilesResult>("open_text_files", {
+                paths: rightDockTextPaths,
+                openStateRevision: currentDocumentRegistryRevision(),
+              })
             : await openBrowserDevTextFiles(rightDockTextPaths);
+          unmaterializedDocuments.push(...textResult.documents);
           if (textResult.documents.length > 0) {
             addBackgroundTextDocuments(textResult.documents);
+            const materializedRightDockTextClaims = new Set<ViewerDocument | TextFileDocument>(textResult.documents);
+            unmaterializedDocuments = unmaterializedDocuments.filter((document) => !materializedRightDockTextClaims.has(document));
             setDockDocument(input.area, textResult.documents[0].id);
           }
           const openedText = `Opened ${textResult.documents.length} text file${textResult.documents.length === 1 ? "" : "s"} in right dock`;
@@ -154,22 +163,46 @@ export function useAppDockPayloadOpen({
 
       const structurePathResult = structurePaths.length > 0
         ? isTauriRuntime()
-          ? await invoke<OpenDocumentsResult>("open_documents", { paths: structurePaths, preferences, reloadOptions: undefined })
+          ? await invoke<OpenDocumentsResult>("open_documents", {
+              paths: structurePaths,
+              preferences,
+              reloadOptions: undefined,
+              openStateRevision: currentDocumentRegistryRevision(),
+            })
           : await openBrowserDevDocuments(structurePaths, preferences, undefined, browserDevDockDocumentIds(input.area, structurePaths))
         : { documents: [], errors: [] };
+      unmaterializedDocuments.push(...structurePathResult.documents);
       const spectrumTextResult = spectrumPaths.length > 0
         ? isTauriRuntime()
-          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: spectrumPaths })
+          ? await invoke<OpenTextFilesResult>("open_text_files", {
+              paths: spectrumPaths,
+              openStateRevision: currentDocumentRegistryRevision(),
+            })
           : await openBrowserDevTextFiles(spectrumPaths)
         : { documents: [], errors: [] };
+      unmaterializedDocuments.push(...spectrumTextResult.documents);
       const spectrumDocuments = spectrumTextResult.documents.map(spectrumDocumentFromText);
       const structureAndTextResults: OpenDocumentsResult[] = [];
       for (const path of structureAndTextPaths) {
         try {
           const result = isTauriRuntime()
-            ? await invoke<OpenDocumentsResult>("open_documents", { paths: [path], preferences, reloadOptions: undefined })
+            ? await invoke<OpenDocumentsResult>("open_documents", {
+                paths: [path],
+                preferences,
+                reloadOptions: undefined,
+                openStateRevision: currentDocumentRegistryRevision(),
+              })
             : await openBrowserDevDocuments([path], preferences, undefined, browserDevDockDocumentIds(input.area, [path]));
+          unmaterializedDocuments.push(...result.documents);
           const documents = result.documents.filter((document) => document.renderer !== NOT_RENDERABLE_RENDERER);
+          const discardedDocuments = result.documents.filter((document) => document.renderer === NOT_RENDERABLE_RENDERER);
+          if (discardedDocuments.length > 0) {
+            const discardedClaims = new Set<ViewerDocument | TextFileDocument>(discardedDocuments);
+            unmaterializedDocuments = unmaterializedDocuments.filter((document) => !discardedClaims.has(document));
+            void abortOpenDocumentClaims(discardedDocuments).catch((abortError) => {
+              console.warn("Open document claim abort failed", abortError);
+            });
+          }
           if (documents.length > 0 || result.errors.length > 0) {
             structureAndTextResults.push({ documents, errors: result.errors });
           }
@@ -178,18 +211,29 @@ export function useAppDockPayloadOpen({
       const textOpenPaths = [...textPaths, ...structureAndTextPaths];
       const textResult = textOpenPaths.length > 0
         ? isTauriRuntime()
-          ? await invoke<OpenTextFilesResult>("open_text_files", { paths: textOpenPaths })
+          ? await invoke<OpenTextFilesResult>("open_text_files", {
+              paths: textOpenPaths,
+              openStateRevision: currentDocumentRegistryRevision(),
+            })
           : await openBrowserDevTextFiles(textOpenPaths)
         : { documents: [], errors: [] };
+      unmaterializedDocuments.push(...textResult.documents);
       const recordResult = cleanRecords.length > 0
         ? await openStructureRecordDocuments(cleanRecords)
         : { opened: [], errors: [] };
+      unmaterializedDocuments.push(...recordResult.opened);
       const openedStructures = [
         ...spectrumDocuments,
         ...structurePathResult.documents,
         ...structureAndTextResults.flatMap((result) => result.documents),
         ...recordResult.opened,
       ];
+      const materializedStructureClaims = new Set<ViewerDocument | TextFileDocument>([
+        ...spectrumTextResult.documents,
+        ...structurePathResult.documents,
+        ...structureAndTextResults.flatMap((result) => result.documents),
+        ...recordResult.opened,
+      ]);
       const openedTextDocuments = textResult.documents;
       const errors = [
         ...spectrumTextResult.errors,
@@ -200,10 +244,13 @@ export function useAppDockPayloadOpen({
       ];
       if (openedStructures.length > 0) {
         addBackgroundDocuments(openedStructures);
+        unmaterializedDocuments = unmaterializedDocuments.filter((document) => !materializedStructureClaims.has(document));
         rememberRecentStructures(openedStructures);
       }
       if (openedTextDocuments.length > 0) {
         addBackgroundTextDocuments(openedTextDocuments);
+        const materializedTextClaims = new Set<ViewerDocument | TextFileDocument>(openedTextDocuments);
+        unmaterializedDocuments = unmaterializedDocuments.filter((document) => !materializedTextClaims.has(document));
       }
       const firstDockDocumentId = openedStructures[0]?.id ?? openedTextDocuments[0]?.id ?? existingDocumentId;
       if (firstDockDocumentId) {
@@ -218,6 +265,11 @@ export function useAppDockPayloadOpen({
       }
       pushStatus(openedText);
     } catch (error) {
+      if (unmaterializedDocuments.length > 0) {
+        void abortOpenDocumentClaims(unmaterializedDocuments).catch((abortError) => {
+          console.warn("Open document claim abort failed", abortError);
+        });
+      }
       pushErrorStatus(error, "Dock open failed");
     }
   }, [

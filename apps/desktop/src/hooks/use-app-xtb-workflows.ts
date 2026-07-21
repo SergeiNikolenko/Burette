@@ -228,8 +228,10 @@ export function useAppXtbWorkflows({
     setXtbJobs((previous) => [pendingJob, ...previous].slice(0, 20));
     try {
       const saveRunFiles = request.saveRunFiles ?? xtbSettings.saveRunFiles;
+      const method = request.operation === "vipea"
+        ? "gfn1"
+        : request.method ?? xtbSettings.method;
       const result = await runXtbRequest({
-        method: xtbSettings.method,
         optLevel: xtbSettings.optLevel,
         charge: xtbSettings.charge,
         uhf: xtbSettings.uhf,
@@ -248,6 +250,7 @@ export function useAppXtbWorkflows({
           : xtbSettings.timeoutSeconds,
         saveRunFiles,
         ...request,
+        method,
         jobId,
       });
       const cancelled = cancelledXtbJobIdsRef.current.has(jobId) || /cancelled/iu.test(result.error ?? "");

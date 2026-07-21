@@ -82,6 +82,7 @@ export function spectrumDocumentFromText(document: TextFileDocument): ViewerDocu
     runtimePath: "",
     byteCount: document.byteCount,
     virtual: false,
+    openClaimId: document.openClaimId,
   };
 }
 

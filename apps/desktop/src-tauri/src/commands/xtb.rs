@@ -442,7 +442,7 @@ fn xtb_status_from_environment<R: Runtime>(app: &tauri::AppHandle<R>) -> XtbStat
             installed: false,
             executable_path: None,
             version: None,
-            installer: resolve_executable("pixi").map(|_| "pixi".to_string()),
+            installer: xtb_runtime::managed_installer_name(),
             install_hint: error,
             source: None,
             selected_executable_path: xtb_runtime::selected(app)

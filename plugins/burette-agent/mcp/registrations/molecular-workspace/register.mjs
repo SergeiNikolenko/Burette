@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 
@@ -14,6 +15,14 @@ import { toolText } from "../../lib/tool-response.mjs";
 
 const actionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
 const externalActionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
+const ketcherActionSchema = z.object({
+  apiVersion: z.string().trim().min(1),
+  type: z.string().trim().min(1),
+  actionId: z.string().trim().min(1).optional(),
+  surfaceId: z.string().trim().min(1),
+  expectedRevision: z.number().int().min(0),
+  command: z.enum(["set_structure", "clear_structure", "highlight_atoms", "get_structure", "request_persist"]),
+}).passthrough();
 const OBSERVE_ARRAY_LIMIT = 50;
 const OBSERVE_BOUNDS_LIMIT = 100;
 const OBSERVE_KEY_LIMIT = 128;
@@ -27,8 +36,10 @@ const PUBLIC_CONTRACT = {
   tools: [
     "burrete.get_context",
     "burrete.open_workspace",
+    "burrete.open_ketcher",
     "burrete.observe_workspace",
     "burrete.control_viewer",
+    "burrete.control_ketcher",
     "burrete.render_panel",
   ],
   advancedTools: [
@@ -45,6 +56,7 @@ const PUBLIC_CONTRACT = {
     canOpenWorkspace: true,
     canObserveWorkspace: true,
     canControlMolstar: true,
+    canControlKetcher: true,
     canRenderPanels: true,
     canUseBrowserShell: true,
     canUseBrowserPreview: true,
@@ -183,6 +195,58 @@ export function registerMolecularWorkspace(server) {
 
   registerAppTool(
     server,
+    "burrete.open_ketcher",
+    {
+      title: "Open Burrete Ketcher",
+      description: "Open a Ketcher chemical editor in an existing Burrete workspace session.",
+      inputSchema: {
+        workspaceSessionId: z.string().trim().optional(),
+        viewerSessionId: z.string().trim().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: { visibility: ["model"] },
+      },
+    },
+    async input => {
+      const resolved = resolveWorkspaceSession(input);
+      if (!resolved.ok) return publicContractFailure("burrete.open_ketcher", resolved.error);
+      const actionResult = await runWorkspaceAction({
+        url: resolved.session.url,
+        sessionDir: resolved.session.sessionDir,
+        waitMs: input.waitMs ?? 12000,
+        action: { type: "open_ketcher" },
+      });
+      const observed = actionResult.ok ? await observeWorkspaceSession(resolved.session) : null;
+      const readiness = workspaceReadiness(observed?.payload?.result || null);
+      const session = updateKnownSession(resolved.session, {
+        observe: observed?.payload?.result || resolved.session.observe || null,
+      });
+      return publicContractResult("burrete.open_ketcher", {
+        ok: actionResult.ok,
+        session,
+        observe: observed?.payload?.result || null,
+        result: actionResult.payload?.result || null,
+        action: { type: "open_ketcher" },
+        applied: actionResult.ok,
+        ready: readiness.ready,
+        completionState: readiness.ready ? "ready" : actionResult.ok ? "not_ready" : "failed",
+        error: actionResult.ok ? null : actionResult.error || viewerNotReadyError(readiness),
+        exitCode: actionResult.exitCode,
+      });
+    },
+  );
+
+  registerAppTool(
+    server,
     "burrete.observe_workspace",
     {
       title: "Observe Burrete Workspace",
@@ -273,6 +337,61 @@ export function registerMolecularWorkspace(server) {
         observe: observed?.payload?.result || null,
         result: actionResult.payload?.result || null,
         action: input.action,
+        applied: actionResult.ok,
+        error: actionResult.ok ? null : actionResult.error,
+        exitCode: actionResult.exitCode,
+      });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "burrete.control_ketcher",
+    {
+      title: "Control Burrete Ketcher",
+      description: "Apply a bounded, revision-checked action to the active Burrete Ketcher surface.",
+      inputSchema: {
+        workspaceSessionId: z.string().trim().optional(),
+        viewerSessionId: z.string().trim().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        action: ketcherActionSchema,
+        waitMs: z.number().int().min(0).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const resolved = resolveWorkspaceSession(input);
+      if (!resolved.ok) return publicContractFailure("burrete.control_ketcher", resolved.error);
+      const action = input.action.actionId
+        ? input.action
+        : { ...input.action, actionId: randomUUID() };
+      const actionResult = await runWorkspaceAction({
+        url: resolved.session.url,
+        sessionDir: resolved.session.sessionDir,
+        waitMs: input.waitMs ?? 12000,
+        action,
+      });
+      const observed = actionResult.ok ? await observeWorkspaceSession(resolved.session) : null;
+      const session = updateKnownSession(resolved.session, {
+        observe: observed?.payload?.result || resolved.session.observe || null,
+      });
+      return publicContractResult("burrete.control_ketcher", {
+        ok: actionResult.ok,
+        session,
+        observe: observed?.payload?.result || null,
+        result: actionResult.payload?.result || null,
+        action,
         applied: actionResult.ok,
         error: actionResult.ok ? null : actionResult.error,
         exitCode: actionResult.exitCode,
@@ -1080,6 +1199,8 @@ function buildModelContext({ session, observe, structureSummary }) {
     mode: observe?.mode || session?.mode || null,
     surface: session?.surface || surfaceFromMode(observe?.mode || session?.mode),
     activeDocument,
+    activeSurface: observe?.activeSurface || null,
+    chemicalEditor: observe?.chemicalEditor || null,
     viewer: observe?.viewer || observe?.viewerAgent || null,
     scene: observe?.scene || null,
     tabs: Array.isArray(observe?.tabs) ? observe.tabs.map(tab => ({
@@ -1593,6 +1714,21 @@ function boundedToolError(error) {
 
 function workspaceReadiness(observe) {
   const activeDocument = observe?.activeDocument || null;
+  const activeSurface = observe?.activeSurface || null;
+  const chemicalEditor = observe?.chemicalEditor || null;
+  if (activeSurface?.kind === "ketcher") {
+    const editorReady = activeSurface.ready === true && chemicalEditor?.phase === "ready";
+    return {
+      ready: editorReady,
+      documentReady: editorReady,
+      requiresViewerAgent: false,
+      requiresKetcherAgent: true,
+      agentAvailable: editorReady,
+      agentReady: editorReady,
+      viewerReady: editorReady,
+      lastError: null,
+    };
+  }
   const viewerAgent = observe?.viewerAgent || null;
   const renderer = String(activeDocument?.renderer || activeDocument?.viewer || "").toLowerCase();
   const requiresViewerAgent = renderer.includes("molstar");
