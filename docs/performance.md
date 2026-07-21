@@ -105,10 +105,13 @@ runtime is created after an early page-sized batch, and the UI receives:
 - `recordsTotal`
 - `indexReady`
 
-Search uses SQLite FTS5 through `molecules_fts` when available and falls back to
-`LIKE` when FTS is unavailable. Pagination and sort stay in the desktop grid
-command path so the web runtime does not need to hold the entire collection in
-memory.
+Search semantics are defined by the shared, parameterized `LIKE` predicate.
+SQLite FTS5 through `molecules_fts` is used only as a candidate-page fast path
+after an exact count proves that the FTS candidates cover the complete `LIKE`
+result inside the same read transaction. Substring queries that FTS cannot
+cover, and runtimes without FTS, stay on the exact `LIKE` path. Pagination and
+sort stay in the desktop grid command path so the web runtime does not need to
+hold the entire collection in memory.
 
 Grid bridge page sizes are intentionally split by host. Desktop Tauri and
 browser-dev runtimes request 72 rows per page to keep scrolling responsive

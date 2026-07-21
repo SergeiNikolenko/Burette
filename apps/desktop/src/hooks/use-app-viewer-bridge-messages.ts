@@ -11,6 +11,7 @@ type UseAppViewerBridgeMessagesOptions = ViewerBridgeMessageHandlers;
 export function useAppViewerBridgeMessages({
   handleDockingPoseMessage,
   handleGridConformerMessage,
+  handleGridComputeMessage,
   handleGridControlMessage,
   handleGridFileMessage,
   handleGridRuntimeMessage,
@@ -36,6 +37,7 @@ export function useAppViewerBridgeMessages({
       await dispatchViewerBridgeMessage(message, {
         handleDockingPoseMessage,
         handleGridConformerMessage,
+        handleGridComputeMessage,
         handleGridControlMessage,
         handleGridFileMessage,
         handleGridRuntimeMessage,
@@ -60,6 +62,7 @@ export function useAppViewerBridgeMessages({
   }, [
     handleDockingPoseMessage,
     handleGridConformerMessage,
+    handleGridComputeMessage,
     handleGridControlMessage,
     handleGridFileMessage,
     handleGridRuntimeMessage,

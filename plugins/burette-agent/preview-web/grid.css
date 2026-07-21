@@ -9,7 +9,7 @@
   --buret-control-hover: rgba(255, 255, 255, 0.11);
   --buret-control-active: rgba(255, 255, 255, 0.14);
   --buret-control-focus: rgba(255, 255, 255, 0.16);
-  --buret-menu-surface: rgb(37 37 40 / 0.86);
+  --buret-menu-surface: rgb(37 37 40);
   --buret-detail-surface: #202020;
   --buret-panel: #202020;
   --buret-grid-rail-popover-surface: #303033;
@@ -62,7 +62,7 @@ html[data-buret-theme="light"] {
   --buret-control-hover: rgba(0, 0, 0, 0.075);
   --buret-control-active: rgba(0, 0, 0, 0.10);
   --buret-control-focus: rgba(0, 0, 0, 0.13);
-  --buret-menu-surface: rgb(244 244 246 / 0.88);
+  --buret-menu-surface: rgb(244 244 246);
   --buret-detail-surface: #ffffff;
   --buret-panel: rgba(255, 255, 255, 0.94);
   --buret-grid-rail-popover-surface: #ffffff;
@@ -363,6 +363,38 @@ button:disabled {
   background: var(--buret-control-active);
   color: var(--buret-text);
   font: 400 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+.buret-grid-cluster-group {
+  padding-left: 6px;
+  border-left: 1px solid color-mix(in srgb, var(--buret-border) 58%, transparent);
+}
+
+.buret-grid-cluster-cutoff {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--buret-control-height);
+  padding: 0 4px 0 8px;
+  color: var(--buret-muted);
+  font: 400 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  white-space: nowrap;
+}
+
+.buret-grid-cluster-cutoff select {
+  width: 62px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--buret-control-surface);
+  color: var(--buret-text);
+}
+
+.buret-cluster-button[aria-busy="true"],
+.buret-similarity-button[aria-busy="true"],
+.buret-cluster-export-button[aria-busy="true"] {
+  color: var(--buret-accent);
 }
 
 .buret-grid-toolbar .buret-rdkit-coords-control {
@@ -1211,8 +1243,8 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   color: var(--buret-text);
   background: var(--buret-menu-surface);
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
-  -webkit-backdrop-filter: blur(30px) saturate(1.35);
-  backdrop-filter: blur(30px) saturate(1.35);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .buret-grid-molecule-context-menu-title {

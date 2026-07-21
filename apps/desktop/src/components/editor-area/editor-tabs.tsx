@@ -446,30 +446,6 @@ export function EditorTabs({
 
   return (
     <div className="tab-strip">
-      {!readOnly ? <div className="tab-history-controls">
-        <button
-          type="button"
-          className="tab-history-button"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={actions.navigateBack}
-          disabled={!actions.canNavigateBack}
-          title="Back"
-          aria-label="Back"
-        >
-          ←
-        </button>
-        <button
-          type="button"
-          className="tab-history-button"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={actions.navigateForward}
-          disabled={!actions.canNavigateForward}
-          title="Forward"
-          aria-label="Forward"
-        >
-          →
-        </button>
-      </div> : null}
       <ScrollFade
         axis="horizontal"
         className="tab-scroll-region"

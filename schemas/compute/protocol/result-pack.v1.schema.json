@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burrete.app/schemas/compute/protocol/result-pack.v1.schema.json",
+  "title": "Burrete ResultPackManifest cluster.v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "resultPackId",
+    "resultPackSha256",
+    "jobId",
+    "workflowTemplate",
+    "molecularSnapshot",
+    "enginePacks",
+    "layout",
+    "createdAtMs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "cluster.result-pack.v1"
+    },
+    "resultPackId": {
+      "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+    },
+    "resultPackSha256": {
+      "$ref": "common.v1.schema.json#/$defs/sha256"
+    },
+    "jobId": {
+      "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+    },
+    "workflowTemplate": {
+      "const": "cluster.v1"
+    },
+    "molecularSnapshot": {
+      "$ref": "molecular-snapshot.v1.schema.json#/$defs/molecularSnapshotRef"
+    },
+    "enginePacks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "engine-pack.v1.schema.json#/$defs/enginePackRef"
+      }
+    },
+    "layout": {
+      "$ref": "common.v1.schema.json#/$defs/packedLayout"
+    },
+    "createdAtMs": {
+      "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+    }
+  },
+  "$defs": {
+    "resultPackRef": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "resultPackId",
+        "resultPackSha256",
+        "jobId",
+        "workflowTemplate",
+        "snapshotId",
+        "snapshotSha256",
+        "manifest"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "cluster.result-pack.v1"
+        },
+        "resultPackId": {
+          "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+        },
+        "resultPackSha256": {
+          "$ref": "common.v1.schema.json#/$defs/sha256"
+        },
+        "jobId": {
+          "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+        },
+        "workflowTemplate": {
+          "const": "cluster.v1"
+        },
+        "snapshotId": {
+          "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+        },
+        "snapshotSha256": {
+          "$ref": "common.v1.schema.json#/$defs/sha256"
+        },
+        "manifest": {
+          "$ref": "common.v1.schema.json#/$defs/manifestFileDescriptor"
+        }
+      }
+    }
+  }
+}

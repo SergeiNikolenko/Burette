@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "libraryId": "burrete.compute.conformer-stereo.v1",
+  "source": "conformer-stereo.v1.metal",
+  "deploymentTarget": "14.0",
+  "algorithm": "batched signed chiral-volume and tetrahedral non-planarity validation",
+  "failureBits": {
+    "chiralVolume": 1,
+    "tetrahedralGeometry": 2,
+    "nonfinitePosition": 4
+  },
+  "parameterAbi": {
+    "name": "ConformerStereoBatchV1",
+    "sizeBytes": 16,
+    "alignmentBytes": 4,
+    "byteOrder": "littleEndian",
+    "fields": [
+      { "name": "atomCount", "type": "uint32", "offsetBytes": 0 },
+      { "name": "conformerCount", "type": "uint32", "offsetBytes": 4 },
+      { "name": "chiralCount", "type": "uint32", "offsetBytes": 8 },
+      { "name": "tetrahedralCount", "type": "uint32", "offsetBytes": 12 }
+    ]
+  },
+  "entrypoint": {
+    "name": "burrete_conformer_stereo_validate_v1",
+    "threads": "conformerCount",
+    "buffers": [
+      { "name": "positions", "index": 0, "type": "float4", "access": "read", "elements": "atomCount * conformerCount" },
+      { "name": "chiralAtomQuads", "index": 1, "type": "uint4", "access": "read", "elements": "chiralCount" },
+      { "name": "chiralVolumeBounds", "index": 2, "type": "float2", "access": "read", "elements": "chiralCount" },
+      { "name": "tetrahedralAtomQuints", "index": 3, "type": "uint32[5]", "access": "read", "elements": "tetrahedralCount" },
+      { "name": "tetrahedralFlags", "index": 4, "type": "uint32", "access": "read", "elements": "tetrahedralCount" },
+      { "name": "batch", "index": 5, "type": "ConformerStereoBatchV1", "access": "constant", "elements": "1" },
+      { "name": "failureFlags", "index": 6, "type": "uint32", "access": "write", "elements": "conformerCount" }
+    ]
+  },
+  "claims": {
+    "stereoValidation": true,
+    "etkMinimization": false,
+    "atomics": false,
+    "fullPairMatrix": false
+  }
+}

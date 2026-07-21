@@ -18,6 +18,7 @@ function makeHandlers(overrides = {}) {
   const handlers = {
     handleDockingPoseMessage: handler("dock"),
     handleGridConformerMessage: handler("grid-conformer"),
+    handleGridComputeMessage: handler("grid-compute"),
     handleGridControlMessage: handler("grid-control"),
     handleGridFileMessage: handler("grid-file"),
     handleGridRuntimeMessage: handler("grid-runtime"),
@@ -161,6 +162,7 @@ assert.equal(viewerBridgeBodyDocumentId(null), undefined);
     "dock",
     "first-render",
     "xyzrender-sheet",
+    "grid-compute",
     "grid-control",
     "grid-file",
   ]);
@@ -200,6 +202,7 @@ assert.equal(viewerBridgeBodyDocumentId(null), undefined);
     "dock",
     "first-render",
     "xyzrender-sheet",
+    "grid-compute",
     "grid-control",
   ]);
   assert.deepEqual(calls.at(-1)?.[1], gridMenuState);

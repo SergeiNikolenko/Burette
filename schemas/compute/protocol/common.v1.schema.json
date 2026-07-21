@@ -1,0 +1,873 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burrete.app/schemas/compute/protocol/common.v1.schema.json",
+  "title": "Burrete compute protocol common definitions v1",
+  "$comment": "This schema is a structural prefilter. Cross-field equality, canonical ordering, byte-counted string bounds, arithmetic, range overlap, and aggregate limits remain enforced by the Rust protocol validator.",
+  "$defs": {
+    "jsonSafeUInt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveJsonSafeUInt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "u32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "u16": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "nonNilUuid": {
+      "type": "string",
+      "format": "uuid",
+      "not": {
+        "const": "00000000-0000-0000-0000-000000000000"
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "label64": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "label96": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 96
+    },
+    "label160": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "label256": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "cleanLabel64": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/label64"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f]+$"
+        }
+      ]
+    },
+    "cleanLabel160": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/label160"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f]+$"
+        }
+      ]
+    },
+    "cleanLabel256": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/label256"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f]+$"
+        }
+      ]
+    },
+    "statusText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "cleanStatusText": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/statusText"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f]+$"
+        }
+      ]
+    },
+    "nullableLabel160": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/label160"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullableStatusText": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/statusText"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "canonicalRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*//)(?!.*\\/$)(?!\\.\\.?(?:/|$))(?!.*\\/\\.\\.?(?:/|$)).+$"
+    },
+    "cleanPackedPath": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/canonicalRelativePath"
+        },
+        {
+          "type": "string",
+          "pattern": "^(?!\\s)(?!.*\\s$)[^\\u0000-\\u001f\\u007f]+$"
+        }
+      ]
+    },
+    "workflowTemplate": {
+      "const": "cluster.v1"
+    },
+    "backendPolicy": {
+      "enum": ["gpuRequired", "gpuPreferred", "referenceCpu"]
+    },
+    "backend": {
+      "enum": ["coordinator", "rdkit", "nativeMetal", "referenceCpu"]
+    },
+    "precision": {
+      "enum": ["integerExact", "float32", "float64", "mixed", "notApplicable"]
+    },
+    "stageKind": {
+      "enum": [
+        "chemistrySemantics",
+        "numericCompute",
+        "workflowSemantics",
+        "validation",
+        "artifactIo",
+        "materialize"
+      ]
+    },
+    "jobState": {
+      "enum": [
+        "queued",
+        "preparing",
+        "waiting_gpu",
+        "running",
+        "validating",
+        "publishing",
+        "cancel_requested",
+        "cancelled",
+        "failed",
+        "interrupted",
+        "succeeded",
+        "succeeded_with_failures"
+      ]
+    },
+    "engineIdentity": {
+      "type": "object",
+      "required": ["engineId", "version", "manifestSha256"],
+      "additionalProperties": false,
+      "properties": {
+        "engineId": {
+          "$ref": "#/$defs/label160"
+        },
+        "version": {
+          "$ref": "#/$defs/label160"
+        },
+        "manifestSha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "backendEngineBinding": {
+      "$comment": "Binds the engineId spelling to the effective backend for any object containing effectiveBackend and engine.",
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": { "effectiveBackend": { "const": "coordinator" } },
+            "required": ["effectiveBackend"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "engine": {
+                "allOf": [
+                  { "$ref": "#/$defs/engineIdentity" },
+                  { "type": "object", "properties": { "engineId": { "const": "burrete-coordinator" } } }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "effectiveBackend": { "const": "rdkit" } },
+            "required": ["effectiveBackend"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "engine": {
+                "allOf": [
+                  { "$ref": "#/$defs/engineIdentity" },
+                  { "type": "object", "properties": { "engineId": { "const": "rdkit" } } }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "effectiveBackend": { "const": "nativeMetal" } },
+            "required": ["effectiveBackend"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "engine": {
+                "allOf": [
+                  { "$ref": "#/$defs/engineIdentity" },
+                  { "type": "object", "properties": { "engineId": { "const": "burrete-native-metal" } } }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "effectiveBackend": { "const": "referenceCpu" } },
+            "required": ["effectiveBackend"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "engine": {
+                "allOf": [
+                  { "$ref": "#/$defs/engineIdentity" },
+                  { "type": "object", "properties": { "engineId": { "const": "burrete-reference-cpu" } } }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "runtimeIdentity": {
+      "type": "object",
+      "required": ["version", "manifestSha256", "helperSha256", "metallibSha256"],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "$ref": "#/$defs/label160"
+        },
+        "manifestSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "helperSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "metallibSha256": {
+          "oneOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "fallbackReasonCode": {
+      "enum": [
+        "CapabilityUnavailable",
+        "UnsupportedPartition",
+        "MemoryAdmissionDenied",
+        "RuntimeUnavailable"
+      ]
+    },
+    "fallbackDecision": {
+      "type": "object",
+      "required": ["code", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/fallbackReasonCode"
+        },
+        "reason": {
+          "$ref": "#/$defs/statusText"
+        }
+      }
+    },
+    "nullableFallbackDecision": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/fallbackDecision"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "computeErrorCode": {
+      "enum": [
+        "InvalidChemistry",
+        "UnsupportedChemistry",
+        "CapabilityMismatch",
+        "GpuAdmissionDenied",
+        "GpuExecutionFailed",
+        "NumericalFailure",
+        "ValidationMismatch",
+        "WorkerCrashed",
+        "ArtifactCorrupt",
+        "RuntimeIntegrityError",
+        "SourceRevisionMismatch",
+        "Cancelled"
+      ]
+    },
+    "computeFailure": {
+      "type": "object",
+      "required": ["code", "message", "retryable"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/computeErrorCode"
+        },
+        "message": {
+          "$ref": "#/$defs/statusText"
+        },
+        "stageId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/label96"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "moleculeStableId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/label256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "const": "Cancelled"
+              }
+            },
+            "required": ["code"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "retryable": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nullableComputeFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/computeFailure"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "packedFileDescriptor": {
+      "type": "object",
+      "required": ["relativePath", "sha256", "byteLength", "mediaType"],
+      "additionalProperties": false,
+      "properties": {
+        "relativePath": {
+          "$ref": "#/$defs/cleanPackedPath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1099511627776
+        },
+        "mediaType": {
+          "$ref": "#/$defs/cleanLabel160"
+        }
+      }
+    },
+    "manifestFileDescriptor": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/packedFileDescriptor"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "byteLength": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1099511627776
+            },
+            "mediaType": {
+              "const": "application/json"
+            }
+          }
+        }
+      ]
+    },
+    "packedDType": {
+      "enum": ["bool8", "u8", "i8", "u16", "i16", "u32", "i32", "u64", "i64", "f32", "f64"]
+    },
+    "packedByteOrder": {
+      "enum": ["littleEndian", "bigEndian", "notApplicable"]
+    },
+    "packedArrayDescriptor": {
+      "type": "object",
+      "required": [
+        "name",
+        "semantic",
+        "fileRelativePath",
+        "dtype",
+        "shape",
+        "byteOrder",
+        "alignment",
+        "byteOffset",
+        "byteLength"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/cleanLabel160"
+        },
+        "semantic": {
+          "$ref": "#/$defs/cleanLabel160"
+        },
+        "unit": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/cleanLabel64"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fileRelativePath": {
+          "$ref": "#/$defs/cleanPackedPath"
+        },
+        "dtype": {
+          "$ref": "#/$defs/packedDType"
+        },
+        "shape": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/jsonSafeUInt"
+          }
+        },
+        "byteOrder": {
+          "$ref": "#/$defs/packedByteOrder"
+        },
+        "alignment": {
+          "enum": [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+        },
+        "byteOffset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1099511627776
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1099511627776
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "dtype": {
+                "enum": ["bool8", "u8", "i8"]
+              }
+            },
+            "required": ["dtype"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOrder": {
+                "const": "notApplicable"
+              }
+            }
+          },
+          "else": {
+            "type": "object",
+            "properties": {
+              "byteOrder": {
+                "enum": ["littleEndian", "bigEndian"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "dtype": {
+                "enum": ["u16", "i16"]
+              }
+            },
+            "required": ["dtype"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "enum": [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "dtype": {
+                "enum": ["u32", "i32", "f32"]
+              }
+            },
+            "required": ["dtype"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "enum": [4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "dtype": {
+                "enum": ["u64", "i64", "f64"]
+              }
+            },
+            "required": ["dtype"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "enum": [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 2
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 2
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 4
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 4
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 8
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 8
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 16
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 16
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 32
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 32
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 64
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 64
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 128
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 128
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 256
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 256
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 512
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 512
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 1024
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 1024
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 2048
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 2048
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "alignment": {
+                "const": 4096
+              }
+            },
+            "required": ["alignment"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "byteOffset": {
+                "type": "integer",
+                "multipleOf": 4096
+              }
+            }
+          }
+        }
+      ]
+    },
+    "packedLayout": {
+      "type": "object",
+      "required": ["files", "arrays"],
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/packedFileDescriptor"
+          }
+        },
+        "arrays": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/packedArrayDescriptor"
+          }
+        }
+      }
+    }
+  }
+}

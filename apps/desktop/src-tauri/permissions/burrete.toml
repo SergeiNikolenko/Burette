@@ -3,6 +3,7 @@ identifier = "allow-viewer-commands"
 description = "Allows the Burrete desktop shell to open structures and manage local viewer runtime state."
 commands.allow = [
   "agent_integration_status",
+  "default_application_icon_path",
   "finder_icon_path",
   "list_chemical_editor_targets",
   "open_in_chemical_editor",
@@ -49,6 +50,7 @@ commands.allow = [
   "create_molecule_collection",
   "save_molecule_collection_as",
   "grid_fetch_page",
+  "grid_mark_virtual_edit",
   "grid_close_runtime",
   "grid_append_records",
   "grid_delimited_columns",

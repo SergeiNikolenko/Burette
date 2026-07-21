@@ -12,6 +12,7 @@ import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { MaestroOutlineViewer } from "./text-file-viewer/maestro-outline-viewer";
 import type { MarkdownOpenPaths } from "./text-file-viewer/markdown-link-navigation";
 import { hasStructureTextHighlighting, structureTextHighlighting, textNumberHighlighting } from "./text-file-viewer/structure-text-highlighting";
+import { Button } from "./ui/button";
 
 const AGENT_SHELL_BUILD = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
 
@@ -44,6 +45,7 @@ export function TextFileViewer({
   const selectionTimeoutRef = useRef<number | null>(null);
   const onStructureSelectionRef = useRef(onStructureSelection);
   const onContentChangeRef = useRef(sourceEditing?.onChange);
+  const saveSourceRef = useRef(sourceEditing?.onSave);
   const documentRef = useRef(document);
   const syncingContentRef = useRef(false);
   const lastStructureSelectionKeyRef = useRef<string | null>(null);
@@ -60,8 +62,9 @@ export function TextFileViewer({
 
   useEffect(() => {
     onContentChangeRef.current = sourceEditing?.onChange;
+    saveSourceRef.current = sourceEditing?.onSave;
     documentRef.current = document;
-  }, [document, sourceEditing?.onChange]);
+  }, [document, sourceEditing?.onChange, sourceEditing?.onSave]);
 
   useEffect(() => {
     if (markdownDocument || maestroDocument) return undefined;
@@ -109,7 +112,19 @@ export function TextFileViewer({
             const selection = textStructureSelectionFromRange(documentRef.current, range.from, range.to);
             if (selection) emitStructureSelection(selection);
           }),
-          keymap.of([...searchKeymap, ...defaultKeymap]),
+          keymap.of([
+            {
+              key: "Mod-s",
+              preventDefault: true,
+              run: () => {
+                if (!saveSourceRef.current) return false;
+                void saveSourceRef.current();
+                return true;
+              },
+            },
+            ...searchKeymap,
+            ...defaultKeymap,
+          ]),
           textViewerTheme,
           languageCompartment.of(baseLanguageSupport(document)),
         ],
@@ -268,21 +283,22 @@ export function TextFileViewer({
           <span>{document.language}</span>
           <span>{formatBytes(new TextEncoder().encode(editorContent).byteLength)}</span>
           {sourceEditing?.onBeginEditing && !sourceEditing.editable && (
-            <button type="button" className="dock-action dock-action-compact" onClick={sourceEditing.onBeginEditing}>Edit Source</button>
+            <Button type="button" variant="secondary" size="xs" onClick={sourceEditing.onBeginEditing}>Edit Source</Button>
           )}
           {sourceEditing?.showApplyPreview && sourceEditing.editable && (
-            <button type="button" className="dock-action dock-action-compact" onClick={() => void sourceEditing.onApplyPreview?.()}>Apply Preview</button>
+            <Button type="button" variant="secondary" size="xs" onClick={() => void sourceEditing.onApplyPreview?.()}>Apply Preview</Button>
           )}
           {sourceEditing?.editable && (
-            <button
+            <Button
               type="button"
-              className="dock-action dock-action-compact"
+              variant="secondary"
+              size="xs"
               disabled={sourceEditing.saving || Boolean(sourceEditing.saveDisabledReason) || !sourceEditing.dirty}
               title={sourceEditing.saveDisabledReason ?? "Save source (Command-S)"}
               onClick={() => void sourceEditing.onSave?.()}
             >
               Save
-            </button>
+            </Button>
           )}
         </div>
       </div>

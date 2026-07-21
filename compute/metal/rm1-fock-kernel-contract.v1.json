@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "kernel": "burrete_rm1_pair_fock_v1",
+  "source": "rm1-fock.v1.metal",
+  "dispatch": {
+    "threads": "orbitalCount * orbitalCount",
+    "ownership": "one thread owns one Fock matrix element",
+    "materialization": "one matrix per molecule; no molecule-pair matrix"
+  },
+  "pairDescriptor": {
+    "name": "Rm1FockPairV1",
+    "byteLength": 24,
+    "alignmentBytes": 4,
+    "tensorElements": 256,
+    "maximumOrbitalsPerAtom": 4,
+    "reservedMustBeZero": true
+  },
+  "buffers": [
+    { "index": 0, "name": "density", "type": "float[orbitalCount^2]", "access": "read" },
+    { "index": 1, "name": "pairs", "type": "Rm1FockPairV1[pairCount]", "access": "read" },
+    { "index": 2, "name": "repulsion", "type": "float[pairCount*256]", "access": "read" },
+    { "index": 3, "name": "orbitalCount", "type": "uint", "access": "constant" },
+    { "index": 4, "name": "pairCount", "type": "uint", "access": "constant" },
+    { "index": 5, "name": "contribution", "type": "float[orbitalCount^2]", "access": "write" }
+  ],
+  "numerics": {
+    "model": "RM1 NDDO two-center Coulomb and exchange contraction",
+    "precision": "float32 Metal, compared with float64 CPU reference",
+    "accumulation": "deterministic pair and local-orbital order per output element"
+  }
+}

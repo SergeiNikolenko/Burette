@@ -4,10 +4,11 @@ use std::path::PathBuf;
 use tauri::{Runtime, State};
 
 use crate::preview::formats::{structure_path_extension, supported_structure_extensions};
+use crate::preview::grid_predicate::parse_column_filter_kind;
 use crate::preview::grid_store::{
-    delimited_smiles_column_choices, GridColumnFilter, GridDelimitedColumnChoice,
-    GridDescriptorFilter, GridDescriptorSort, GridPageResult, GridParseOptions, GridQuery,
-    GridRuntimeRegistry,
+    delimited_smiles_column_choices, GridAnalysisFilter, GridColumnFilter,
+    GridDelimitedColumnChoice, GridDescriptorFilter, GridDescriptorSort, GridPageResult,
+    GridParseOptions, GridQuery, GridRuntimeRegistry,
 };
 
 const GRID_APPEND_MAX_SOURCE_SIZE: u64 = 25 * 1024 * 1024;
@@ -20,9 +21,16 @@ pub(crate) struct GridPageRequest {
     sort: Option<String>,
     column_filters: Option<Vec<GridColumnFilterRequest>>,
     descriptor_filters: Option<Vec<GridDescriptorFilterRequest>>,
+    analysis_filters: Option<Vec<GridAnalysisFilter>>,
     descriptor_sort: Option<GridDescriptorSortRequest>,
     offset: Option<usize>,
     limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct GridVirtualEditRequest {
+    document_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,23 +102,26 @@ pub(crate) fn grid_fetch_page<R: Runtime>(
     request: GridPageRequest,
 ) -> Result<GridPageResult, String> {
     let document_id = crate::windows::runtime_document_id(window.label(), &request.document_id);
+    let column_filters = request
+        .column_filters
+        .unwrap_or_default()
+        .into_iter()
+        .map(|filter| {
+            Ok(GridColumnFilter {
+                id: filter.id,
+                filter_type: parse_column_filter_kind(&filter.filter_type)?,
+                text: filter.text,
+                min: filter.min,
+                max: filter.max,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     registry.fetch_page(
         &document_id,
         &GridQuery {
             query: request.query.unwrap_or_default(),
             sort: request.sort.unwrap_or_else(|| "index".to_string()),
-            column_filters: request
-                .column_filters
-                .unwrap_or_default()
-                .into_iter()
-                .map(|filter| GridColumnFilter {
-                    id: filter.id,
-                    filter_type: filter.filter_type,
-                    text: filter.text,
-                    min: filter.min,
-                    max: filter.max,
-                })
-                .collect(),
+            column_filters,
             descriptor_filters: request
                 .descriptor_filters
                 .unwrap_or_default()
@@ -121,6 +132,7 @@ pub(crate) fn grid_fetch_page<R: Runtime>(
                     max: filter.max,
                 })
                 .collect(),
+            analysis_filters: request.analysis_filters.unwrap_or_default(),
             descriptor_sort: request.descriptor_sort.map(|sort| GridDescriptorSort {
                 id: sort.id,
                 direction: sort.direction.unwrap_or_else(|| "asc".to_string()),
@@ -129,6 +141,16 @@ pub(crate) fn grid_fetch_page<R: Runtime>(
             limit: request.limit.unwrap_or(48),
         },
     )
+}
+
+#[tauri::command]
+pub(crate) fn grid_mark_virtual_edit<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    registry: State<'_, GridRuntimeRegistry>,
+    request: GridVirtualEditRequest,
+) -> Result<u64, String> {
+    let document_id = crate::windows::runtime_document_id(window.label(), &request.document_id);
+    registry.mark_virtual_edit(&document_id)
 }
 
 #[tauri::command]
