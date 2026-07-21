@@ -733,7 +733,6 @@ export default function App() {
     closeTab,
     documents,
     isDirtyGridDocument,
-    mergeMoleculeCollections,
     openDocuments,
     openDocumentsInActiveTab,
     openTextDocuments,
