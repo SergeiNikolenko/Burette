@@ -16,6 +16,8 @@ import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/th
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
 
+const DEFAULT_SIDEBAR_WIDTH = 240;
+
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
 }
@@ -32,6 +34,7 @@ export function AppLayout({
   onDismissStatus,
   onToggleSidebar,
   onResizeStart,
+  onSidebarWidthChange,
   onRightDockResizeStart,
   onBottomDockResizeStart,
   dropPreview,
@@ -46,6 +49,7 @@ export function AppLayout({
   onDismissStatus: () => void;
   onToggleSidebar: () => void;
   onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onSidebarWidthChange: (width: number) => void;
   onRightDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   onBottomDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   dropPreview: FileDropPreview | null;
@@ -240,14 +244,34 @@ export function AppLayout({
           <div
             className="splitter"
             onPointerDown={onResizeStart}
+            onDoubleClick={() => onSidebarWidthChange(DEFAULT_SIDEBAR_WIDTH)}
+            onKeyDown={(event) => {
+              const step = event.shiftKey ? 48 : 16;
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                onSidebarWidthChange(clampSidebarWidth(sidebarWidth - step, maxSidebarWidth));
+              } else if (event.key === "ArrowRight") {
+                event.preventDefault();
+                onSidebarWidthChange(clampSidebarWidth(sidebarWidth + step, maxSidebarWidth));
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                onSidebarWidthChange(220);
+              } else if (event.key === "End") {
+                event.preventDefault();
+                onSidebarWidthChange(maxSidebarWidth);
+              }
+            }}
+            tabIndex={0}
             role="separator"
             aria-orientation="vertical"
             aria-valuemin={220}
             aria-valuemax={maxSidebarWidth}
             aria-valuenow={sidebarWidth}
-            aria-label="Resize sidebar"
+            aria-label="Resize sidebar (drag, or use arrow keys; double-click to reset)"
             data-dragging={state.sidebarDragging || undefined}
-          />
+          >
+            <span className="splitter-grip" aria-hidden="true" />
+          </div>
         )}
         <section className="workbench">
           <section className="workbench-main">

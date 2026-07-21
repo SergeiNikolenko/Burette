@@ -1098,6 +1098,7 @@ export default function App() {
         onDismissStatus={clearStatus}
         onToggleSidebar={toggleSidebar}
         onResizeStart={startSidebarResize}
+        onSidebarWidthChange={setSidebarWidth}
         onRightDockResizeStart={startRightDockResize}
         onBottomDockResizeStart={startBottomDockResize}
         dropPreview={dropPreview}

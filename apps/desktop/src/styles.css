@@ -1626,7 +1626,26 @@ img.radix-menu-item-icon {
 }
 .splitter::before { content: ""; position: absolute; inset: 0; }
 .splitter::after { content: ""; position: absolute; inset: 0 auto 0 3px; width: 1px; background: transparent; transition: background 120ms ease; }
-.splitter:hover::after, .splitter[data-dragging]::after { background: var(--line-subtle); }
+.splitter:hover::after, .splitter:focus-visible::after, .splitter[data-dragging]::after { background: var(--line-subtle); }
+.splitter:focus-visible { outline: none; }
+.splitter-grip {
+  position: absolute;
+  top: 50%;
+  left: 3.5px;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--line-subtle);
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease;
+  pointer-events: none;
+}
+.splitter:hover .splitter-grip,
+.splitter:focus-visible .splitter-grip,
+.splitter[data-dragging] .splitter-grip { opacity: 1; }
+.splitter:focus-visible .splitter-grip,
+.splitter[data-dragging] .splitter-grip { background: var(--text-muted); }
 .main-stage {
   position: relative;
   min-width: 0;
