@@ -14,6 +14,9 @@ contains only documents that describe the active project.
   principles, non-goals, and product voice.
 - [Design direction](design-system.md): current shell reality, source-of-truth
   theme files, surface rules, and component guidance.
+- [shadcn UI migration](shadcn-ui-migration.md): inspected React control
+  inventory, protected runtime contracts, staged component migration, and
+  validation criteria.
 - [Configuration](configuration.md): source-of-truth config files, development
   overrides, runtime environment, release secrets, and smoke/perf variables.
 - [Security and permissions](security-and-permissions.md): local file access,
@@ -23,6 +26,25 @@ contains only documents that describe the active project.
   Ketcher editing scope, artifacts, and checks.
 - [Performance architecture](performance.md): runtime profiles, caches, binary
   payloads, grid search, and no-regression guardrails.
+- [Native GPU Compute Layer](superpowers/specs/2026-07-15-gpu-compute-platform-design.md):
+  authoritative target architecture for selectively adapting the useful
+  `mlxmolkit` algorithms into native Apple Silicon workflows without a
+  production Python/MLX dependency. It covers attribution, provenance,
+  clustering, conformers, MMFF, alignment/scoring, semiempirical chemistry,
+  scheduling, and product integration. Its companion
+  [validation and delivery contract](superpowers/specs/2026-07-15-gpu-compute-validation-and-delivery.md)
+  defines scientific gates, failure testing, and staged completion criteria.
+  The active
+  [foundation and `cluster.v1` implementation plan](superpowers/plans/2026-07-15-gpu-compute-foundation-cluster-v1.md)
+  gives the file-by-file delivery sequence for the first packaged Metal slice.
+  The [mlxmolkit provenance ledger](third-party/mlxmolkit-provenance.md) is the
+  mandatory source/license mapping gate for every adapted file. The
+  [implementation status](gpu-compute-status.md) records what is working in
+  source today and keeps packaged Metal, browser, Quick Look, and iPhone claims
+  separate.
+- [MolComputeKit relationship](molcomputekit.md): standalone framework release,
+  ownership boundary, compatibility identifiers, and the pinned migration rule
+  for removing Burrete's integration copy.
 - [Stability program](stability.md): preview trace, runtime manifest, nightly
   smoke, and staged stability guardrails.
 - [Installing and building](installing-building.md): source build, local

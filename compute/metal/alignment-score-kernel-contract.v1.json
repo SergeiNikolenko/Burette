@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "kernel": "burrete_alignment_score_v1",
+  "source": "alignment-score.v1.metal",
+  "dispatch": {
+    "threads": "pairCount",
+    "ownership": "one thread owns one bounded pair",
+    "materialization": "transform and scalar scores only; no poses x references x atoms tensor"
+  },
+  "pairDescriptor": {
+    "name": "AlignmentPairV1",
+    "byteLength": 64,
+    "alignmentBytes": 8,
+    "mappingRequiredForFlags": 1,
+    "reservedMustBeZero": true
+  },
+  "mapping": {
+    "name": "AtomMappingV1",
+    "byteLength": 16,
+    "alignmentBytes": 4,
+    "uniqueProbeAndReferenceIndices": true,
+    "positiveFiniteWeight": true
+  },
+  "buffers": [
+    { "index": 0, "name": "probePositions", "type": "float4", "access": "read" },
+    { "index": 1, "name": "probeParameters", "type": "float4(exponent,amplitude,charge,reserved)", "access": "read" },
+    { "index": 2, "name": "referencePositions", "type": "float4", "access": "read" },
+    { "index": 3, "name": "referenceParameters", "type": "float4(exponent,amplitude,charge,reserved)", "access": "read" },
+    { "index": 4, "name": "mappings", "type": "AtomMappingV1", "access": "read" },
+    { "index": 5, "name": "pairs", "type": "AlignmentPairV1", "access": "read" },
+    { "index": 6, "name": "transforms", "type": "float4[pairCount*4]", "access": "write" },
+    { "index": 7, "name": "primaryScores", "type": "float4(rmsd,shapeOverlap,shapeTanimoto,shapeCarbo)", "access": "write" },
+    { "index": 8, "name": "secondaryScores", "type": "float4(espOverlap,espCarbo,espTanimoto,combined)", "access": "write" },
+    { "index": 9, "name": "statuses", "type": "uint", "access": "write" }
+  ],
+  "numerics": {
+    "alignment": "weighted Horn quaternion, proper rotation, 48 shifted power iterations with five deterministic starts",
+    "shape": "analytic atom-centered Gaussian overlap; Tanimoto and Carbo normalization",
+    "electrostatic": "ESP-Sim nine-term Gaussian Coulomb overlap; signed Carbo and Tanimoto normalization",
+    "combined": "shape Tanimoto when ESP is unavailable; equal shape and renormalized ESP-Carbo weights otherwise"
+  }
+}

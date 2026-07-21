@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "kernelId": "burrete.mmff-energy.v1",
+  "entrypoints": [
+    "burrete_mmff_energy_v1",
+    "burrete_mmff_analytic_gradient_v1",
+    "burrete_mmff_optimize_v1"
+  ],
+  "positionType": "float4",
+  "termType": {
+    "name": "MmffTermV1",
+    "size": 48,
+    "alignment": 16,
+    "fields": [
+      { "name": "atoms", "offset": 0, "type": "uint4" },
+      { "name": "parameters0", "offset": 16, "type": "float4" },
+      { "name": "parameters1", "offset": 32, "type": "float4" }
+    ]
+  },
+  "energyUnits": "kcal/mol",
+  "gradientUnits": "kcal/(mol*angstrom)",
+  "gradientMethod": "forwardModeAutomaticDifferentiation",
+  "gradientOracle": "float64 CPU central difference",
+  "optimization": {
+    "smallMoleculeOptimizer": "BFGS",
+    "largeMoleculeOptimizer": "L-BFGS",
+    "automaticAtomThreshold": 32,
+    "lineSearch": "boundedArmijo",
+    "statusCodes": ["convergedGradient", "convergedStep", "lineSearchExhausted", "maxIterations"]
+  },
+  "energyTerms": [
+    "bondStretch",
+    "angleBend",
+    "stretchBend",
+    "outOfPlane",
+    "torsion",
+    "vanDerWaals",
+    "electrostatic"
+  ]
+}

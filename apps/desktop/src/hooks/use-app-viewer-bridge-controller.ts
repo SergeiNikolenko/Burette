@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useAppDockingPoseMessages } from "./use-app-docking-pose-messages";
 import { useAppGridConformerMessages } from "./use-app-grid-conformer-messages";
+import { useAppGridComputeMessages } from "./use-app-grid-compute-messages";
 import { useAppGridControlMessages } from "./use-app-grid-control-messages";
 import { useAppGridFileActions } from "./use-app-grid-file-actions";
 import { useAppGridRuntimeMessages } from "./use-app-grid-runtime-messages";
@@ -22,6 +23,7 @@ import { writeClipboardText } from "../lib/clipboard";
 import { postMessageToViewerSource, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ConformerGenerationMode, MolstarStylePreference } from "../lib/conformer-generation";
+import type { MolecularComputeOperation } from "../lib/standalone-compute";
 import type { DockTabKind } from "../lib/dock";
 import type { GridNativeMenuState } from "../lib/native-menu";
 import type { PendingMolstarReplaceResolver } from "./use-app-generate-3d-conformer";
@@ -81,6 +83,11 @@ type Generate3DConformer = (
   mode?: ConformerGenerationMode,
   molstarStyle?: MolstarStylePreference | null,
 ) => Promise<void>;
+type RunMolecularCompute = (
+  document: ViewerDocument,
+  operation: MolecularComputeOperation,
+  molstarStyle?: MolstarStylePreference | null,
+) => Promise<void>;
 
 type UseAppViewerBridgeControllerOptions = {
   activeDocument: ViewerDocument | null;
@@ -91,9 +98,11 @@ type UseAppViewerBridgeControllerOptions = {
   documents: ViewerDocument[];
   forgetDirtyGridDocument: (documentId: string | null | undefined) => void;
   generate3DConformer: Generate3DConformer;
+  runMolecularCompute: RunMolecularCompute;
   notifyGridPoseReviewSelection: (targetDocumentId: string, activePose: number) => void;
   openDockingDocument: OpenDockingDocument;
   openDocuments: OpenDocuments;
+  openTextDocuments: (paths: string[], options?: { background?: boolean }) => void | Promise<unknown>;
   openDocumentsInActiveTab: OpenDocumentsInActiveTab;
   openKetcherWithFragment: OpenKetcherWithFragment;
   openKetcherWithStructures: OpenKetcherWithStructures;
@@ -130,9 +139,11 @@ export function useAppViewerBridgeController({
   documents,
   forgetDirtyGridDocument,
   generate3DConformer,
+  runMolecularCompute,
   notifyGridPoseReviewSelection,
   openDockingDocument,
   openDocuments,
+  openTextDocuments,
   openDocumentsInActiveTab,
   openKetcherWithFragment,
   openKetcherWithStructures,
@@ -185,12 +196,19 @@ export function useAppViewerBridgeController({
     writeGridPerfMetric,
   });
   const { handleGridConformerMessage } = useAppGridConformerMessages({
+    openDocuments,
     openDocumentsInActiveTab,
+    openTextDocuments,
     postMessageToViewerSource,
     preferences,
     pushErrorStatus,
     pushStatus,
     rememberRecentStructures,
+  });
+  const { handleGridComputeMessage } = useAppGridComputeMessages({
+    openTextDocuments,
+    postMessageToViewerSource,
+    pushStatus,
   });
   const { handleKetcherViewerMessage } = useAppKetcherViewerMessages({
     activeDocument,
@@ -207,6 +225,7 @@ export function useAppViewerBridgeController({
     activeDocument,
     documents,
     generate3DConformer,
+    runMolecularCompute,
     postMessageToViewerSource,
     pushStatus,
   });
@@ -258,6 +277,7 @@ export function useAppViewerBridgeController({
     documents,
     openCommandPalette,
     openDockTab,
+    setPreference,
     setViewerLigandSelections,
     setStructureOverlayModes,
     toggleSidebar,
@@ -287,6 +307,7 @@ export function useAppViewerBridgeController({
   useAppViewerBridgeMessages({
     handleDockingPoseMessage,
     handleGridConformerMessage,
+    handleGridComputeMessage,
     handleGridControlMessage,
     handleGridFileMessage,
     handleGridRuntimeMessage,

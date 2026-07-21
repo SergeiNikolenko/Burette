@@ -45,7 +45,16 @@ export type ViewerLigandSelection = {
 
 export type StructureOverlayMode = "single" | "all";
 
-export type KetcherSketchTarget = "grid" | "molstar" | "generate3d" | "xyzrender" | "collection" | "xtb";
+export type KetcherSketchTarget =
+  | "grid"
+  | "molstar"
+  | "generate3d"
+  | "generateEnsemble"
+  | "optimizeGeometry"
+  | "semiempiricalRm1"
+  | "xyzrender"
+  | "collection"
+  | "xtb";
 
 export type KetcherSketchRequest = {
   title: string;

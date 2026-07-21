@@ -1,0 +1,8 @@
+diff --git a/Code/MinimalLib/CMakeLists.txt b/Code/MinimalLib/CMakeLists.txt
+index 509a169d4..95d651e7a 100644
+--- a/Code/MinimalLib/CMakeLists.txt
++++ b/Code/MinimalLib/CMakeLists.txt
+@@ -44,2 +44,3 @@ if(RDK_BUILD_MINIMAL_LIB)
+     set_target_properties(RDKit_minimal PROPERTIES LINK_FLAGS "--bind")
++    include("${BURRETE_CONFORMER_SOURCE_DIR}/CMakeLists.txt")
+ endif(RDK_BUILD_MINIMAL_LIB)

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "libraryId": "burrete.compute.conformer-etk-optimize.v1",
+  "source": "conformer-etk-optimize.v1.metal",
+  "deploymentTarget": "14.0",
+  "algorithm": "one-threadgroup-per-conformer L-BFGS refinement of ETK torsion, improper, and flat-bottom distance energy",
+  "parameterAbi": {
+    "name": "ConformerEtkOptimizeConfigV1",
+    "sizeBytes": 48,
+    "alignmentBytes": 4,
+    "byteOrder": "littleEndian",
+    "fields": [
+      { "name": "atomCount", "type": "uint32", "offsetBytes": 0 },
+      { "name": "conformerCount", "type": "uint32", "offsetBytes": 4 },
+      { "name": "torsionCount", "type": "uint32", "offsetBytes": 8 },
+      { "name": "improperCount", "type": "uint32", "offsetBytes": 12 },
+      { "name": "distanceCount", "type": "uint32", "offsetBytes": 16 },
+      { "name": "maxIterations", "type": "uint32", "offsetBytes": 20 },
+      { "name": "historySize", "type": "uint32", "offsetBytes": 24 },
+      { "name": "maxLineSearchSteps", "type": "uint32", "offsetBytes": 28 },
+      { "name": "gradientTolerance", "type": "float32", "offsetBytes": 32 },
+      { "name": "relativeStepTolerance", "type": "float32", "offsetBytes": 36 },
+      { "name": "armijoCoefficient", "type": "float32", "offsetBytes": 40 },
+      { "name": "maxStepFactor", "type": "float32", "offsetBytes": 44 }
+    ]
+  },
+  "entrypoint": {
+    "name": "burrete_conformer_etk_optimize_v1",
+    "threadgroups": "conformerCount",
+    "threadsPerThreadgroup": 32,
+    "buffers": {
+      "inputsAndParameters": "0..9",
+      "optimizerWorkspaceAndOutputs": "10..21"
+    }
+  },
+  "statusCodes": {
+    "0": "convergedGradient",
+    "1": "convergedStep",
+    "2": "lineSearchExhausted",
+    "3": "maxIterations"
+  },
+  "claims": {
+    "etkEnergy": true,
+    "etkMinimization": true,
+    "optimizer": "L-BFGS",
+    "lineSearch": "bounded Armijo backtracking",
+    "atomics": false,
+    "fullPairMatrix": false
+  }
+}

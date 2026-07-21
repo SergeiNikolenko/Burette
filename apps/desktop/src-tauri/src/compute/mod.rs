@@ -1,0 +1,39 @@
+mod alignment_workflow;
+mod analysis_plan;
+mod analysis_snapshot;
+mod artifact_publisher;
+mod artifact_reader;
+mod cluster_executor;
+mod cluster_plan;
+pub(crate) mod commands;
+mod conformer_executor;
+mod conformer_ipc;
+mod conformer_plan;
+mod conformer_reference_validator;
+mod conformer_session;
+mod conformer_stereo_executor;
+pub(crate) mod coordinator;
+pub(crate) mod dev_backend;
+mod engine_catalog;
+pub(crate) mod error;
+mod fingerprint_session;
+mod job_factory;
+mod job_lifecycle;
+mod molfile_coordinates;
+mod representative_export;
+#[allow(
+    dead_code,
+    reason = "the coordinator will acquire compute-root ownership before runtime activation"
+)]
+mod root_lease;
+mod semiempirical_workflow;
+pub(crate) mod service;
+mod service_conformer;
+mod service_etk;
+mod service_mmff;
+mod service_stereo;
+mod similarity_artifact;
+pub(crate) use root_lease::ComputeRootChildDirectory;
+mod similarity_search;
+mod snapshot_repository;
+pub(crate) mod store;

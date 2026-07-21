@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "kernel": "burrete_rm1_symmetric_eigen_v1",
+  "source": "rm1-eigen.v1.metal",
+  "dispatch": {
+    "threadgroups": "matrixCount",
+    "threadsPerThreadgroup": 32,
+    "ownership": "one threadgroup owns one symmetric matrix",
+    "maximumOrder": 32,
+    "materialization": "fixed padded 32x32 matrix slots for bounded batched SCF"
+  },
+  "buffers": [
+    { "index": 0, "name": "inputMatrices", "type": "float[matrixCount*1024]", "access": "read" },
+    { "index": 1, "name": "orders", "type": "uint[matrixCount]", "access": "read" },
+    { "index": 2, "name": "matrixCount", "type": "uint", "access": "constant" },
+    { "index": 3, "name": "eigenvalues", "type": "float[matrixCount*32]", "access": "write" },
+    { "index": 4, "name": "eigenvectors", "type": "float[matrixCount*1024]", "access": "write" },
+    { "index": 5, "name": "statuses", "type": "uint[matrixCount]", "access": "write" }
+  ],
+  "numerics": {
+    "algorithm": "maximum-pivot symmetric Jacobi rotation with parallel row and eigenvector updates",
+    "pivotTolerance": 0.0000001,
+    "maximumIterations": "64*order*order",
+    "ordering": "ascending eigenvalues with matched eigenvector columns",
+    "precision": "float32 Metal with float64 CPU residual and eigenpair parity gates"
+  }
+}

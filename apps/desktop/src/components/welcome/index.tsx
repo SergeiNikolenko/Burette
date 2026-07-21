@@ -25,9 +25,6 @@ export function WelcomeScreen({ actions, buildInfo }: { actions: ShellActions; b
           ) : null}
         </div>
         <h1>Open a molecular structure</h1>
-        <p className="new-tab-description">
-          Use the shell to inspect files quickly, switch renderers when needed, and return to recent structures without leaving the workspace.
-        </p>
         {buildInfo.isDevBuild ? (
           <p className="new-tab-build-detail">{buildDetail(buildInfo)}</p>
         ) : null}

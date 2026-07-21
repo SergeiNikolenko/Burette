@@ -185,6 +185,24 @@ pub(crate) fn finder_icon_path<R: Runtime>(
 }
 
 #[tauri::command]
+pub(crate) fn default_application_icon_path<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    path: String,
+) -> Result<Option<String>, String> {
+    let target_path = PathBuf::from(&path)
+        .canonicalize()
+        .map_err(|err| format!("{path}: {err}"))?;
+    let Some(application_path) = default_application_path(&target_path) else {
+        return Ok(None);
+    };
+    let cache_key = stable_editor_id("default", &application_path.to_string_lossy());
+    Ok(
+        app_icon_png_path(&application_path, &app_icon_cache_dir(&app)?, &cache_key)
+            .map(|path| path.to_string_lossy().into_owned()),
+    )
+}
+
+#[tauri::command]
 pub(crate) fn open_in_chemical_editor<R: Runtime>(
     app: tauri::AppHandle<R>,
     path: String,
@@ -508,6 +526,50 @@ fn app_icon_png_path(app_path: &Path, cache_dir: &Path, editor_id: &str) -> Opti
     } else {
         None
     }
+}
+
+#[cfg(target_os = "macos")]
+fn default_application_path(path: &Path) -> Option<PathBuf> {
+    use cocoa::base::{id, nil};
+    use cocoa::foundation::NSAutoreleasePool;
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::ffi::{c_char, CString};
+
+    let path = CString::new(path.to_string_lossy().as_bytes()).ok()?;
+    unsafe {
+        let _pool = NSAutoreleasePool::new(nil);
+        let path_string: id = msg_send![class!(NSString), stringWithUTF8String: path.as_ptr()];
+        if path_string.is_null() {
+            return None;
+        }
+        let file_url: id = msg_send![class!(NSURL), fileURLWithPath: path_string];
+        if file_url.is_null() {
+            return None;
+        }
+        let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+        let application_url: id = msg_send![workspace, URLForApplicationToOpenURL: file_url];
+        if application_url.is_null() {
+            return None;
+        }
+        let application_path: id = msg_send![application_url, path];
+        if application_path.is_null() {
+            return None;
+        }
+        let utf8: *const c_char = msg_send![application_path, UTF8String];
+        if utf8.is_null() {
+            return None;
+        }
+        Some(PathBuf::from(
+            std::ffi::CStr::from_ptr(utf8)
+                .to_string_lossy()
+                .into_owned(),
+        ))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn default_application_path(_path: &Path) -> Option<PathBuf> {
+    None
 }
 
 #[cfg(test)]

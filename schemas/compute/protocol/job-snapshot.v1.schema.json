@@ -1,0 +1,813 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burrete.app/schemas/compute/protocol/job-snapshot.v1.schema.json",
+  "title": "Burrete JobSnapshot v1",
+  "$comment": "The Rust validator is authoritative for JCS hashes, plan/stage/result identity bindings, timestamp ordering, progress equality, and attempt history.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "jobId",
+    "revision",
+    "ownerSurface",
+    "workflowTemplate",
+    "state",
+    "request",
+    "normalizedRequestSha256",
+    "frozenSource",
+    "progress",
+    "plan",
+    "acceptedPlanSha256",
+    "stages",
+    "attempts",
+    "artifactIds",
+    "pinnedRuntime",
+    "createdAtMs",
+    "updatedAtMs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "burrete.compute-job-snapshot.v1"
+    },
+    "jobId": {
+      "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+    },
+    "revision": {
+      "$ref": "common.v1.schema.json#/$defs/positiveJsonSafeUInt"
+    },
+    "ownerSurface": {
+      "enum": ["desktop", "desktopAgent", "browserDev"]
+    },
+    "workflowTemplate": {
+      "const": "cluster.v1"
+    },
+    "state": {
+      "$ref": "common.v1.schema.json#/$defs/jobState"
+    },
+    "request": {
+      "$ref": "../workflow-templates/cluster.v1.schema.json"
+    },
+    "normalizedRequestSha256": {
+      "$ref": "common.v1.schema.json#/$defs/sha256"
+    },
+    "frozenSource": {
+      "$ref": "molecular-snapshot.v1.schema.json#/$defs/molecularSnapshotRef"
+    },
+    "progress": {
+      "$ref": "#/$defs/jobProgress"
+    },
+    "plan": {
+      "$ref": "../workflow-templates/cluster.v1.schema.json#/$defs/executionPlan"
+    },
+    "acceptedPlanSha256": {
+      "$ref": "common.v1.schema.json#/$defs/sha256"
+    },
+    "stages": {
+      "$ref": "#/$defs/clusterStageSnapshots"
+    },
+    "attempts": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "$comment": "Rust additionally enforces unique attemptId values, per-stage ordering, and latest-attempt binding.",
+      "items": {
+        "$ref": "#/$defs/attemptSnapshot"
+      }
+    },
+    "artifactIds": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+      }
+    },
+    "resultPack": {
+      "oneOf": [
+        {
+          "$ref": "result-pack.v1.schema.json#/$defs/resultPackRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "outcome": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/jobOutcomeSummary"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "pinnedRuntime": {
+      "$ref": "common.v1.schema.json#/$defs/runtimeIdentity"
+    },
+    "error": {
+      "$ref": "common.v1.schema.json#/$defs/nullableComputeFailure"
+    },
+    "createdAtMs": {
+      "$ref": "common.v1.schema.json#/$defs/positiveJsonSafeUInt"
+    },
+    "updatedAtMs": {
+      "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+    },
+    "finishedAtMs": {
+      "oneOf": [
+        {
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "const": "queued"
+          }
+        },
+        "required": ["state"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "const": "queued"
+                }
+              }
+            }
+          },
+          "attempts": {
+            "type": "array",
+            "maxItems": 0
+          },
+          "artifactIds": {
+            "type": "array",
+            "maxItems": 0
+          },
+          "resultPack": {
+            "type": "null"
+          },
+          "outcome": {
+            "type": "null"
+          },
+          "error": {
+            "type": "null"
+          },
+          "finishedAtMs": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "enum": ["succeeded", "succeeded_with_failures"]
+          }
+        },
+        "required": ["state"]
+      },
+      "then": {
+        "type": "object",
+        "required": ["resultPack", "outcome", "finishedAtMs"],
+        "properties": {
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "const": "succeeded"
+                }
+              }
+            }
+          },
+          "attempts": {
+            "type": "array",
+            "minItems": 6,
+            "allOf": [
+              { "type": "array", "contains": { "type": "object", "properties": { "stageId": { "const": "freezeScope" }, "state": { "const": "succeeded" } }, "required": ["stageId", "state"] } },
+              { "type": "array", "contains": { "type": "object", "properties": { "stageId": { "const": "fingerprints" }, "state": { "const": "succeeded" } }, "required": ["stageId", "state"] } },
+              { "type": "array", "contains": { "type": "object", "properties": { "stageId": { "const": "tanimotoNeighbors" }, "state": { "const": "succeeded" } }, "required": ["stageId", "state"] } },
+              { "type": "array", "contains": { "type": "object", "properties": { "stageId": { "const": "butinaClusters" }, "state": { "const": "succeeded" } }, "required": ["stageId", "state"] } },
+              { "type": "array", "contains": { "type": "object", "properties": { "stageId": { "const": "validateResults" }, "state": { "const": "succeeded" } }, "required": ["stageId", "state"] } },
+              { "type": "array", "contains": { "type": "object", "properties": { "stageId": { "const": "publishResults" }, "state": { "const": "succeeded" } }, "required": ["stageId", "state"] } }
+            ]
+          },
+          "artifactIds": {
+            "type": "array",
+            "minItems": 1
+          },
+          "resultPack": {
+            "$ref": "result-pack.v1.schema.json#/$defs/resultPackRef"
+          },
+          "outcome": {
+            "$ref": "#/$defs/jobOutcomeSummary"
+          },
+          "error": {
+            "type": "null"
+          },
+          "finishedAtMs": {
+            "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "const": "succeeded"
+          }
+        },
+        "required": ["state"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "allOf": [
+              { "$ref": "#/$defs/jobOutcomeSummary" },
+              { "type": "object", "properties": { "failedRecords": { "const": 0 } } }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "const": "succeeded_with_failures"
+          }
+        },
+        "required": ["state"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "allOf": [
+              { "$ref": "#/$defs/jobOutcomeSummary" },
+              {
+                "type": "object",
+                "properties": {
+                  "successfulRecords": { "type": "integer", "minimum": 1 },
+                  "failedRecords": { "type": "integer", "minimum": 1 }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "jobProgress": {
+      "type": "object",
+      "required": ["completedUnits", "totalUnits", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "completedUnits": {
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+        },
+        "totalUnits": {
+          "$ref": "common.v1.schema.json#/$defs/positiveJsonSafeUInt"
+        },
+        "message": {
+          "$ref": "common.v1.schema.json#/$defs/statusText"
+        }
+      }
+    },
+    "jobOutcomeSummary": {
+      "type": "object",
+      "required": ["successfulRecords", "failedRecords"],
+      "additionalProperties": false,
+      "properties": {
+        "successfulRecords": {
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+        },
+        "failedRecords": {
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+        }
+      }
+    },
+    "stageSnapshot": {
+      "type": "object",
+      "required": [
+        "stageId",
+        "ordinal",
+        "kind",
+        "idempotent",
+        "state",
+        "progress",
+        "requestedBackend",
+        "effectiveBackend",
+        "engine",
+        "precision",
+        "transferredBytes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "stageId": {
+          "$ref": "common.v1.schema.json#/$defs/statusText"
+        },
+        "ordinal": {
+          "$ref": "common.v1.schema.json#/$defs/u16"
+        },
+        "kind": {
+          "$ref": "common.v1.schema.json#/$defs/stageKind"
+        },
+        "idempotent": {
+          "type": "boolean"
+        },
+        "state": {
+          "enum": ["queued", "running", "succeeded", "failed", "cancelled", "interrupted"]
+        },
+        "progress": {
+          "$ref": "#/$defs/jobProgress"
+        },
+        "requestedBackend": {
+          "$ref": "common.v1.schema.json#/$defs/backend"
+        },
+        "effectiveBackend": {
+          "$ref": "common.v1.schema.json#/$defs/backend"
+        },
+        "engine": {
+          "$ref": "common.v1.schema.json#/$defs/engineIdentity"
+        },
+        "device": {
+          "$ref": "common.v1.schema.json#/$defs/nullableStatusText"
+        },
+        "precision": {
+          "$ref": "common.v1.schema.json#/$defs/precision"
+        },
+        "kernelId": {
+          "$ref": "common.v1.schema.json#/$defs/nullableStatusText"
+        },
+        "gpuTimeMs": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "hostTimeMs": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "transferredBytes": {
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+        },
+        "fallback": {
+          "$ref": "common.v1.schema.json#/$defs/nullableFallbackDecision"
+        },
+        "error": {
+          "$ref": "common.v1.schema.json#/$defs/nullableComputeFailure"
+        },
+        "startedAtMs": {
+          "oneOf": [
+            {
+              "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updatedAtMs": {
+          "oneOf": [
+            {
+              "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finishedAtMs": {
+          "oneOf": [
+            {
+              "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "common.v1.schema.json#/$defs/backendEngineBinding"
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "const": "queued"
+              }
+            },
+            "required": ["state"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "device": { "type": "null" },
+              "kernelId": { "type": "null" },
+              "gpuTimeMs": { "type": "null" },
+              "hostTimeMs": { "type": "null" },
+              "transferredBytes": { "const": 0 },
+              "error": { "type": "null" },
+              "startedAtMs": { "type": "null" },
+              "updatedAtMs": { "type": "null" },
+              "finishedAtMs": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "state": { "const": "running" }
+            },
+            "required": ["state"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["startedAtMs", "updatedAtMs"],
+            "properties": {
+              "error": { "type": "null" },
+              "startedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "updatedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "finishedAtMs": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "state": { "const": "succeeded" }
+            },
+            "required": ["state"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["hostTimeMs", "startedAtMs", "updatedAtMs", "finishedAtMs"],
+            "properties": {
+              "error": { "type": "null" },
+              "hostTimeMs": { "type": "number", "minimum": 0 },
+              "startedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "updatedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "finishedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "state": { "const": "failed" }
+            },
+            "required": ["state"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["error", "hostTimeMs", "startedAtMs", "updatedAtMs", "finishedAtMs"],
+            "properties": {
+              "error": {
+                "allOf": [
+                  { "$ref": "common.v1.schema.json#/$defs/computeFailure" },
+                  { "type": "object", "properties": { "code": { "not": { "const": "Cancelled" } } } }
+                ]
+              },
+              "hostTimeMs": { "type": "number", "minimum": 0 },
+              "startedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "updatedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "finishedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "state": { "const": "interrupted" }
+            },
+            "required": ["state"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["error", "hostTimeMs", "startedAtMs", "updatedAtMs", "finishedAtMs"],
+            "properties": {
+              "error": {
+                "allOf": [
+                  { "$ref": "common.v1.schema.json#/$defs/computeFailure" },
+                  { "type": "object", "properties": { "code": { "not": { "const": "Cancelled" } }, "retryable": { "const": true } } }
+                ]
+              },
+              "hostTimeMs": { "type": "number", "minimum": 0 },
+              "startedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "updatedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "finishedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "state": { "const": "cancelled" }
+            },
+            "required": ["state"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["error", "hostTimeMs", "startedAtMs", "updatedAtMs", "finishedAtMs"],
+            "properties": {
+              "error": {
+                "allOf": [
+                  { "$ref": "common.v1.schema.json#/$defs/computeFailure" },
+                  { "type": "object", "properties": { "code": { "const": "Cancelled" } } }
+                ]
+              },
+              "hostTimeMs": { "type": "number", "minimum": 0 },
+              "startedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "updatedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "finishedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "kind": { "const": "numericCompute" },
+              "effectiveBackend": { "const": "nativeMetal" },
+              "state": { "enum": ["running", "succeeded"] }
+            },
+            "required": ["kind", "effectiveBackend", "state"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["device", "kernelId"],
+            "properties": {
+              "device": { "$ref": "common.v1.schema.json#/$defs/statusText" },
+              "kernelId": { "$ref": "common.v1.schema.json#/$defs/statusText" }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "kind": { "const": "numericCompute" },
+              "effectiveBackend": { "const": "nativeMetal" },
+              "state": { "const": "succeeded" }
+            },
+            "required": ["kind", "effectiveBackend", "state"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["gpuTimeMs"],
+            "properties": {
+              "gpuTimeMs": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "type": "object",
+              "properties": {
+                "kind": { "const": "numericCompute" },
+                "effectiveBackend": { "const": "nativeMetal" }
+              },
+              "required": ["kind", "effectiveBackend"]
+            }
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "device": { "type": "null" },
+              "kernelId": { "type": "null" },
+              "gpuTimeMs": { "type": "null" }
+            }
+          }
+        }
+      ]
+    },
+    "attemptSnapshot": {
+      "type": "object",
+      "required": [
+        "attemptId",
+        "stageId",
+        "attemptNumber",
+        "runtimeVersion",
+        "state",
+        "startedAtMs",
+        "heartbeatAtMs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "attemptId": {
+          "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
+        },
+        "stageId": {
+          "enum": [
+            "freezeScope",
+            "fingerprints",
+            "tanimotoNeighbors",
+            "butinaClusters",
+            "validateResults",
+            "publishResults"
+          ]
+        },
+        "attemptNumber": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "runtimeVersion": {
+          "$ref": "common.v1.schema.json#/$defs/label160"
+        },
+        "state": {
+          "enum": ["running", "succeeded", "failed", "interrupted", "cancelled"]
+        },
+        "startedAtMs": {
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+        },
+        "heartbeatAtMs": {
+          "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+        },
+        "finishedAtMs": {
+          "oneOf": [
+            {
+              "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "$ref": "common.v1.schema.json#/$defs/nullableComputeFailure"
+        },
+        "retryReason": {
+          "$ref": "common.v1.schema.json#/$defs/nullableStatusText"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": { "state": { "const": "running" } },
+            "required": ["state"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "finishedAtMs": { "type": "null" },
+              "error": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "state": { "const": "succeeded" } },
+            "required": ["state"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["finishedAtMs"],
+            "properties": {
+              "finishedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "error": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "state": { "const": "failed" } },
+            "required": ["state"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["finishedAtMs", "error"],
+            "properties": {
+              "finishedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "error": {
+                "allOf": [
+                  { "$ref": "common.v1.schema.json#/$defs/computeFailure" },
+                  { "type": "object", "properties": { "code": { "not": { "const": "Cancelled" } } } }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "state": { "const": "interrupted" } },
+            "required": ["state"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["finishedAtMs", "error"],
+            "properties": {
+              "finishedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "error": {
+                "allOf": [
+                  { "$ref": "common.v1.schema.json#/$defs/computeFailure" },
+                  { "type": "object", "properties": { "code": { "not": { "const": "Cancelled" } }, "retryable": { "const": true } } }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "state": { "const": "cancelled" } },
+            "required": ["state"]
+          },
+          "then": {
+            "type": "object",
+            "required": ["finishedAtMs", "error"],
+            "properties": {
+              "finishedAtMs": { "$ref": "common.v1.schema.json#/$defs/jsonSafeUInt" },
+              "error": {
+                "allOf": [
+                  { "$ref": "common.v1.schema.json#/$defs/computeFailure" },
+                  { "type": "object", "properties": { "code": { "const": "Cancelled" } } }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "clusterStageSnapshots": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageSnapshot" },
+            { "type": "object", "properties": { "ordinal": { "const": 0 }, "stageId": { "const": "freezeScope" }, "kind": { "const": "materialize" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageSnapshot" },
+            { "type": "object", "properties": { "ordinal": { "const": 1 }, "stageId": { "const": "fingerprints" }, "kind": { "const": "chemistrySemantics" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageSnapshot" },
+            { "type": "object", "properties": { "ordinal": { "const": 2 }, "stageId": { "const": "tanimotoNeighbors" }, "kind": { "const": "numericCompute" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageSnapshot" },
+            { "type": "object", "properties": { "ordinal": { "const": 3 }, "stageId": { "const": "butinaClusters" }, "kind": { "const": "workflowSemantics" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageSnapshot" },
+            { "type": "object", "properties": { "ordinal": { "const": 4 }, "stageId": { "const": "validateResults" }, "kind": { "const": "validation" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/stageSnapshot" },
+            { "type": "object", "properties": { "ordinal": { "const": 5 }, "stageId": { "const": "publishResults" }, "kind": { "const": "artifactIo" } } }
+          ]
+        }
+      ],
+      "items": false
+    }
+  }
+}

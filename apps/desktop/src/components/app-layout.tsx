@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
@@ -55,6 +56,27 @@ export function AppLayout({
   onPaste: (event: React.ClipboardEvent<HTMLElement>) => void;
 }) {
   const viewportWidth = typeof window === "undefined" ? 1200 : window.innerWidth;
+  const tauriRuntime = isTauriRuntime();
+  const [windowFullscreen, setWindowFullscreen] = useState(false);
+  useEffect(() => {
+    if (!tauriRuntime) return;
+    const appWindow = getCurrentWindow();
+    let disposed = false;
+    let stopResizeListener: (() => void) | null = null;
+    const syncFullscreen = async () => {
+      const fullscreen = await appWindow.isFullscreen();
+      if (!disposed) setWindowFullscreen(fullscreen);
+    };
+    void syncFullscreen();
+    void appWindow.onResized(() => void syncFullscreen()).then((stop) => {
+      if (disposed) stop();
+      else stopResizeListener = stop;
+    });
+    return () => {
+      disposed = true;
+      stopResizeListener?.();
+    };
+  }, [tauriRuntime]);
   const hostedMcpWidget = isHostedMcpWidget();
   const heroEmbed = isWebDemoHeroEmbed();
   const maxSidebarWidth = Math.max(280, Math.min(420, Math.floor(viewportWidth * 0.35)));
@@ -65,7 +87,12 @@ export function AppLayout({
   const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
   const rightDockWidth = clampRightDockWidth(state.rightDockWidth, viewportWidth, sidebarLayoutWidth);
   const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
-  const tabChromeLeft = hostedMcpWidget ? 12 : state.sidebarOpen ? sidebarLayoutWidth + 12 : 132;
+  const compactLeadingChrome = !tauriRuntime || windowFullscreen;
+  const tabChromeLeft = hostedMcpWidget
+    ? 12
+    : state.sidebarOpen
+      ? sidebarLayoutWidth + 12
+      : compactLeadingChrome ? 112 : 192;
   const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
   const bottomDockOpen = !settingsMode && !hostedMcpWidget && state.bottomDockOpen;
   const dockDragging = state.sidebarDragging || state.rightDockDragging || state.bottomDockDragging;
@@ -106,7 +133,8 @@ export function AppLayout({
       data-theme={state.preferences.theme}
       data-effective-theme={effectiveTheme}
       data-active-page-kind={activePageKind ?? undefined}
-      data-runtime={isTauriRuntime() ? "tauri" : "browser"}
+      data-runtime={tauriRuntime ? "tauri" : "browser"}
+      data-window-fullscreen={windowFullscreen ? "true" : undefined}
       data-hosted-mcp-widget={hostedMcpWidget ? "true" : undefined}
       data-hero-embed={heroEmbed ? "true" : undefined}
       data-settings-mode={settingsMode ? "true" : undefined}
@@ -139,6 +167,30 @@ export function AppLayout({
               >
                 <DockToggleIcon />
               </button>
+              <div className="tab-history-controls" aria-label="Navigation history">
+                <button
+                  type="button"
+                  className="tab-history-button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={actions.navigateBack}
+                  disabled={!actions.canNavigateBack}
+                  title="Back"
+                  aria-label="Back"
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  className="tab-history-button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={actions.navigateForward}
+                  disabled={!actions.canNavigateForward}
+                  title="Forward"
+                  aria-label="Forward"
+                >
+                  →
+                </button>
+              </div>
             </div>
           ) : null}
           <div className="chrome-trailing-controls" data-tauri-drag-region>

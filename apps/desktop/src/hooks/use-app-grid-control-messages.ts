@@ -1,5 +1,7 @@
 import { useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { GridDescriptorRunOptions } from "../lib/descriptors";
+import { isTauriRuntime } from "../lib/tauri";
 import type { GridNativeMenuState } from "../lib/native-menu";
 import { isReadOnlyViewerMessageSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
@@ -126,6 +128,10 @@ export function useAppGridControlMessages({
     if (body?.type === "gridDirtyChanged") {
       if (readOnlySource) return true;
       const documentId = typeof body.documentId === "string" ? body.documentId : "";
+      if (documentId && body.dirty === true && isTauriRuntime()) {
+        void invoke("grid_mark_virtual_edit", { request: { documentId } })
+          .catch((error) => pushErrorStatus(error, "Grid edit tracking failed"));
+      }
       updateDirtyGridDocument(documentId, body.dirty === true);
       return true;
     }

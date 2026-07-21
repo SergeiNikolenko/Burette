@@ -1,0 +1,166 @@
+{
+  "schemaVersion": "burrete.compute-artifact-manifest.v1",
+  "artifactId": "018f48f2-2e20-7e53-976b-cf93e0897702",
+  "jobId": "018f48f2-2e20-7e53-976b-cf93e08976ff",
+  "workflowTemplate": "cluster.v1",
+  "molecularSnapshot": {
+    "schemaVersion": "burrete.molecular-snapshot.v1",
+    "snapshotId": "018f48f2-2e20-7e53-976b-cf93e0897701",
+    "snapshotSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "frozenSource": {
+      "documentFingerprintSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "sourceRevision": 1,
+      "recordCount": 2,
+      "orderedRecordMoleculeIdentitySha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "manifest": {
+      "relativePath": "snapshot/manifest.json",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "byteLength": 128,
+      "mediaType": "application/json"
+    }
+  },
+  "normalizedRequestSha256": "e9ac23cb9b124ece406aee5619cf49112de538f4fdf6d2f2217387df1ab202af",
+  "acceptedPlanSha256": "a75db182c2934237ef08c0f32efaf919b18b7ce8d1eb57efa205d5d0f3f6b1d0",
+  "runtime": {
+    "version": "compute-runtime-1.0.0",
+    "manifestSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+    "helperSha256": "7777777777777777777777777777777777777777777777777777777777777777",
+    "metallibSha256": "8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  "resultPack": {
+    "schemaVersion": "cluster.result-pack.v1",
+    "resultPackId": "018f48f2-2e20-7e53-976b-cf93e0897703",
+    "resultPackSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "jobId": "018f48f2-2e20-7e53-976b-cf93e08976ff",
+    "workflowTemplate": "cluster.v1",
+    "snapshotId": "018f48f2-2e20-7e53-976b-cf93e0897701",
+    "snapshotSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "manifest": {
+      "relativePath": "result/manifest.json",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "byteLength": 128,
+      "mediaType": "application/json"
+    }
+  },
+  "files": [
+    {
+      "role": "resultPackManifest",
+      "relativePath": "result/manifest.json",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "byteCount": 128,
+      "mediaType": "application/json"
+    }
+  ],
+  "stages": [
+    {
+      "stageId": "freezeScope",
+      "kind": "materialize",
+      "engine": {
+        "engineId": "burrete-coordinator",
+        "version": "1.0.0",
+        "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "requestedBackend": "coordinator",
+      "effectiveBackend": "coordinator",
+      "precision": "notApplicable",
+      "device": null,
+      "kernelId": null,
+      "gpuTimeMs": null,
+      "hostTimeMs": 2,
+      "transferredBytes": 64,
+      "fallback": null
+    },
+    {
+      "stageId": "fingerprints",
+      "kind": "chemistrySemantics",
+      "engine": {
+        "engineId": "rdkit",
+        "version": "1.0.0",
+        "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "requestedBackend": "rdkit",
+      "effectiveBackend": "rdkit",
+      "precision": "integerExact",
+      "device": null,
+      "kernelId": null,
+      "gpuTimeMs": null,
+      "hostTimeMs": 2,
+      "transferredBytes": 64,
+      "fallback": null
+    },
+    {
+      "stageId": "tanimotoNeighbors",
+      "kind": "numericCompute",
+      "engine": {
+        "engineId": "burrete-native-metal",
+        "version": "1.0.0",
+        "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "requestedBackend": "nativeMetal",
+      "effectiveBackend": "nativeMetal",
+      "precision": "integerExact",
+      "device": "Apple GPU",
+      "kernelId": "tanimoto.v1",
+      "gpuTimeMs": 1,
+      "hostTimeMs": 2,
+      "transferredBytes": 64,
+      "fallback": null
+    },
+    {
+      "stageId": "butinaClusters",
+      "kind": "workflowSemantics",
+      "engine": {
+        "engineId": "burrete-reference-cpu",
+        "version": "1.0.0",
+        "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "requestedBackend": "referenceCpu",
+      "effectiveBackend": "referenceCpu",
+      "precision": "integerExact",
+      "device": null,
+      "kernelId": null,
+      "gpuTimeMs": null,
+      "hostTimeMs": 2,
+      "transferredBytes": 64,
+      "fallback": null
+    },
+    {
+      "stageId": "validateResults",
+      "kind": "validation",
+      "engine": {
+        "engineId": "burrete-reference-cpu",
+        "version": "1.0.0",
+        "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "requestedBackend": "referenceCpu",
+      "effectiveBackend": "referenceCpu",
+      "precision": "integerExact",
+      "device": null,
+      "kernelId": null,
+      "gpuTimeMs": null,
+      "hostTimeMs": 2,
+      "transferredBytes": 64,
+      "fallback": null
+    },
+    {
+      "stageId": "publishResults",
+      "kind": "artifactIo",
+      "engine": {
+        "engineId": "burrete-coordinator",
+        "version": "1.0.0",
+        "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "requestedBackend": "coordinator",
+      "effectiveBackend": "coordinator",
+      "precision": "notApplicable",
+      "device": null,
+      "kernelId": null,
+      "gpuTimeMs": null,
+      "hostTimeMs": 2,
+      "transferredBytes": 64,
+      "fallback": null
+    }
+  ],
+  "createdAtMs": 153
+}

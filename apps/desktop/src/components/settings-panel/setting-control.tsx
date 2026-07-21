@@ -1,7 +1,22 @@
 import type { ReactNode } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
-import { useThemePortalContainer } from "../radix-menu";
-import { CloseIcon } from "../close-icon";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Field, FieldContent, FieldDescription, FieldTitle } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 
 export type SettingRow = {
   label: string;
@@ -16,22 +31,22 @@ export function SettingsSection({ title, rows }: { title: string; rows: SettingR
   return (
     <section className="settings-section">
       <h2>{title}</h2>
-      <div className="settings-card">
+      <Card className="settings-card">
         {rows.map((row) => (
           <SettingControl key={row.label} row={row} />
         ))}
-      </div>
+      </Card>
     </section>
   );
 }
 
 export function SettingControl({ row }: { row: SettingRow }) {
   return (
-    <div className="settings-control">
-      <div className="settings-control-copy">
-        <div className="settings-control-label">{row.label}</div>
-        {row.description && <div className="settings-control-description">{row.description}</div>}
-      </div>
+    <Field orientation="responsive" className="settings-control">
+      <FieldContent className="settings-control-copy">
+        <FieldTitle className="settings-control-label">{row.label}</FieldTitle>
+        {row.description && <FieldDescription className="settings-control-description">{row.description}</FieldDescription>}
+      </FieldContent>
       <div className="settings-control-actions">
         {row.reset && (
           row.confirm ? (
@@ -47,22 +62,25 @@ export function SettingControl({ row }: { row: SettingRow }) {
               onConfirm={row.reset}
             />
           ) : (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="xs"
               className="settings-reset-button"
               onClick={row.reset}
+              disabled={!row.isModified}
               aria-hidden={!row.isModified}
               tabIndex={row.isModified ? 0 : -1}
               title="Reset to default"
               data-hidden={!row.isModified || undefined}
             >
               Reset
-            </button>
+            </Button>
           )
         )}
         {row.control}
       </div>
-    </div>
+    </Field>
   );
 }
 
@@ -76,13 +94,13 @@ export function SelectControl({
   onChange: (value: string) => void;
 }) {
   return (
-    <select className="settings-select" value={value} onChange={(event) => onChange(event.target.value)}>
+    <NativeSelect className="settings-select" size="sm" value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map((option) => (
-        <option key={option} value={option}>
+        <NativeSelectOption key={option} value={option}>
           {option}
-        </option>
+        </NativeSelectOption>
       ))}
-    </select>
+    </NativeSelect>
   );
 }
 
@@ -99,14 +117,14 @@ export function ColorControl({
   return (
     <div className="settings-color-control">
       <span className="settings-color-swatch" style={{ backgroundColor: swatch }}>
-        <input
+        <Input
           type="color"
           value={swatch}
           aria-label="Pick color"
           onChange={(event) => onChange(event.target.value.toUpperCase())}
         />
       </span>
-      <input
+      <Input
         type="text"
         value={value}
         spellCheck={false}
@@ -127,7 +145,7 @@ export function TextControl({
   onChange: (value: string) => void;
 }) {
   return (
-    <input
+    <Input
       type="text"
       className="settings-text-control"
       value={value}
@@ -155,13 +173,15 @@ export function RangeControl({
   const displayValue = Number.isInteger(step) ? Math.round(value).toString() : value.toFixed(2).replace(/\.?0+$/u, "");
   return (
     <div className="settings-range-control">
-      <input
-        type="range"
+      <Slider
         min={min}
         max={max}
         step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
+        value={[value]}
+        onValueChange={(values) => {
+          const nextValue = values[0];
+          if (nextValue !== undefined) onChange(nextValue);
+        }}
       />
       <span>{suffix ? `${displayValue} ${suffix}` : displayValue}</span>
     </div>
@@ -178,17 +198,12 @@ export function ToggleControl({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <button
-      type="button"
+    <Switch
       className="settings-toggle"
-      role="switch"
       aria-label={label}
-      aria-checked={checked}
-      data-checked={checked || undefined}
-      onClick={() => onChange(!checked)}
-    >
-      <span />
-    </button>
+      checked={checked}
+      onCheckedChange={onChange}
+    />
   );
 }
 
@@ -334,9 +349,9 @@ export function SettingsActionButton({
   }
 
   return (
-    <button type="button" className="settings-action-button" disabled={disabled} onClick={onClick}>
+    <Button type="button" variant="secondary" size="sm" className="settings-action-button" disabled={disabled} onClick={onClick}>
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -361,13 +376,13 @@ function ConfirmActionButton({
   confirmLabel: ReactNode;
   onConfirm: () => void;
 }) {
-  const portalContainer = useThemePortalContainer();
-
   return (
-    <Dialog.Root>
-      <Dialog.Trigger asChild>
-        <button
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
           type="button"
+          variant={className === "settings-reset-button" ? "ghost" : "secondary"}
+          size={className === "settings-reset-button" ? "xs" : "sm"}
           className={className}
           disabled={disabled}
           aria-hidden={hidden}
@@ -376,34 +391,22 @@ function ConfirmActionButton({
           data-hidden={hidden || undefined}
         >
           {label}
-        </button>
-      </Dialog.Trigger>
-      <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className="radix-dialog" aria-describedby="settings-confirm-description">
-          <div className="radix-dialog-header">
-            <Dialog.Title>{dialogTitle}</Dialog.Title>
-            <Dialog.Close asChild>
-              <button type="button" className="radix-dialog-close" aria-label="Cancel">
-                <CloseIcon size={14} />
-              </button>
-            </Dialog.Close>
-          </div>
-          <Dialog.Description id="settings-confirm-description" className="radix-dialog-description">
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>
+          <AlertDialogDescription id="settings-confirm-description">
             {dialogDescription}
-          </Dialog.Description>
-          <div className="radix-dialog-actions">
-            <Dialog.Close asChild>
-              <button type="button" className="settings-action-button">Cancel</button>
-            </Dialog.Close>
-            <Dialog.Close asChild>
-              <button type="button" className="settings-action-button" onClick={onConfirm}>
-                {confirmLabel}
-              </button>
-            </Dialog.Close>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={onConfirm}>
+            {confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

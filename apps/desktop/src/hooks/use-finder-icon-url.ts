@@ -7,11 +7,14 @@ const BROWSER_DEV_FINDER_ICON_URL = "/__burette/app-icon/finder.png";
 
 export function useFinderIconUrl() {
   const [iconUrl, setIconUrl] = useState<string | null>(() => (
-    !isTauriRuntime() && import.meta.env.DEV ? BROWSER_DEV_FINDER_ICON_URL : null
+    !isTauriRuntime() ? BROWSER_DEV_FINDER_ICON_URL : null
   ));
 
   useEffect(() => {
-    if (!isTauriRuntime()) return;
+    if (!isTauriRuntime()) {
+      setIconUrl(BROWSER_DEV_FINDER_ICON_URL);
+      return;
+    }
     let cancelled = false;
     void invoke<string | null>("finder_icon_path")
       .then((path) => {

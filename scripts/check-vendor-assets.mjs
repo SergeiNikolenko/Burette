@@ -28,6 +28,8 @@ const assetSpecs = [
   { path: 'PreviewExtension/Web/molstar.css', package: 'molstar' },
   { path: 'PreviewExtension/Web/rdkit/RDKit_minimal.js', package: '@rdkit/rdkit' },
   { path: 'PreviewExtension/Web/rdkit/RDKit_minimal.wasm', package: '@rdkit/rdkit' },
+  { path: 'PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.js', package: 'burrete-rdkit-conformer' },
+  { path: 'PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.wasm', package: 'burrete-rdkit-conformer' },
   { path: 'PreviewExtension/Web/openchemlib/openchemlib.js', package: 'openchemlib' },
 ];
 

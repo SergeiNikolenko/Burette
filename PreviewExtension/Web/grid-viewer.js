@@ -8,6 +8,13 @@
   const TABLE_HIDDEN_COLUMNS_STORAGE_KEY = 'buret.grid.tableHiddenColumns';
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
+  const CLUSTER_CUTOFF_STORAGE_KEY = 'buret.grid.clusterCutoff';
+  const CONFORMER_VARIANT_STORAGE_KEY = 'buret.grid.conformerVariant';
+  const MMFF_VARIANT_STORAGE_KEY = 'buret.grid.mmffVariant';
+  const SEMIEMPIRICAL_METHOD_STORAGE_KEY = 'buret.grid.semiempiricalMethod';
+  const CONFORMER_VARIANTS = ['DG', 'KDG', 'ETDG', 'ETDGv2', 'ETKDG', 'ETKDGv2', 'ETKDGv3', 'srETKDGv3'];
+  const MMFF_VARIANTS = ['MMFF94', 'MMFF94s'];
+  const SEMIEMPIRICAL_METHODS = ['RM1', 'AM1', 'PM3', 'PM6', 'PM6_D', 'PM6_D3H4', 'PM6_SP', 'AM1_STAR'];
   const DEFAULT_XYZRENDER_PRESETS = [
     { value: 'default', label: 'Default' },
     { value: 'flat', label: 'Flat' },
@@ -84,6 +91,7 @@
     tableScrollLeft: 0,
     tableColumnScrollFrame: 0,
     remoteDescriptorIds: [],
+    remoteAnalysisColumns: [],
     tableFilterTimer: 0,
     cardRenderer: storedCardRenderer(),
     xyzrenderPreset: null,
@@ -144,6 +152,15 @@
     contextMenuOutsideHandler: null,
     contextMenuKeyHandler: null,
     generating3d: false,
+    conformerVariant: storedChoice(CONFORMER_VARIANT_STORAGE_KEY, CONFORMER_VARIANTS, 'ETKDGv3'),
+    mmffVariant: storedChoice(MMFF_VARIANT_STORAGE_KEY, MMFF_VARIANTS, 'MMFF94s'),
+    aligningPoses: false,
+    evaluatingSemiempirical: false,
+    semiempiricalMethod: storedChoice(SEMIEMPIRICAL_METHOD_STORAGE_KEY, SEMIEMPIRICAL_METHODS, 'RM1'),
+    clustering: false,
+    findingSimilar: false,
+    exportingClusterRepresentatives: false,
+    clusterCutoff: storedClusterCutoff(),
     tableMoleculePreview: null,
     railDragging: false,
     pendingGridScrollIndex: null,
@@ -342,7 +359,8 @@
       export: !!caps.export,
       substructureSearch: molecularGrid && !!caps.substructureSearch,
       ketcherOpen: editing && cfg.appViewer === true && !!caps.rendererSwitch,
-      rendererSwitch: molecularGrid && (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch
+      rendererSwitch: molecularGrid && (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch,
+      cluster: molecularGrid && cfg.appViewer === true && cfg.gridDataMode === 'bridge'
     };
   }
 
@@ -466,6 +484,42 @@
         setStatus('[grid] Generating 3D conformers.');
         return;
       }
+      if (body.type === 'gridAlignmentStarted') {
+        state.aligningPoses = true;
+        refreshGridControls(config());
+        setStatus('[grid] Aligning and scoring selected poses on Metal.');
+        return;
+      }
+      if (body.type === 'gridAlignmentFinished') {
+        state.aligningPoses = false;
+        refreshGridControls(config());
+        void refreshRemote(config());
+        return;
+      }
+      if (body.type === 'gridAlignmentError') {
+        state.aligningPoses = false;
+        refreshGridControls(config());
+        setStatus(body.error || '[grid] Pose alignment failed.', 'error');
+        return;
+      }
+      if (body.type === 'gridSemiempiricalStarted') {
+        state.evaluatingSemiempirical = true;
+        refreshGridControls(config());
+        setStatus('[grid] Calculating RM1 energies and atomic charges; execution provenance will identify Metal or CPU fallback.');
+        return;
+      }
+      if (body.type === 'gridSemiempiricalFinished') {
+        state.evaluatingSemiempirical = false;
+        refreshGridControls(config());
+        void refreshRemote(config());
+        return;
+      }
+      if (body.type === 'gridSemiempiricalError') {
+        state.evaluatingSemiempirical = false;
+        refreshGridControls(config());
+        setStatus(body.error || '[grid] RM1 evaluation failed.', 'error');
+        return;
+      }
       if (body.type === 'gridGenerate3DFinished') {
         setGridGenerate3DPending(false);
         return;
@@ -473,6 +527,108 @@
       if (body.type === 'gridGenerate3DError') {
         setGridGenerate3DPending(false);
         setStatus(body.error || '[grid] 3D generation failed.', 'error');
+        return;
+      }
+      if (body.type === 'gridClusterStarted') {
+        setGridClusteringPending(true);
+        setStatus('[grid] Preparing immutable clustering inputs.');
+        return;
+      }
+      if (body.type === 'gridClusterProgress') {
+        setGridClusteringPending(true);
+        const completed = Number(body.completedRecords || 0);
+        const total = Number(body.totalRecords || 0);
+        if (body.phase === 'fingerprints' && total > 0) {
+          setStatus(`[grid] Fingerprints ${completed.toLocaleString()} / ${total.toLocaleString()}.`);
+        } else if (body.phase === 'similarity') {
+          setStatus('[grid] Building blockwise Tanimoto neighbors and Butina clusters.');
+        } else if (body.phase === 'publishing') {
+          setStatus('[grid] Publishing verified cluster results.');
+        }
+        return;
+      }
+      if (body.type === 'gridClusterCancellationRequested') {
+        setStatus('[grid] Cancelling clustering at the current durable stage boundary.');
+        return;
+      }
+      if (body.type === 'gridClusterCancelled') {
+        setGridClusteringPending(false);
+        setStatus('[grid] Clustering cancelled.');
+        return;
+      }
+      if (body.type === 'gridClusterCancellationError') {
+        setStatus(body.error || '[grid] Clustering cancellation failed.', 'error');
+        return;
+      }
+      if (body.type === 'gridClusterFinished') {
+        setGridClusteringPending(false);
+        const backend = body.backend === 'nativeMetal' ? 'Metal GPU' : 'reference CPU';
+        const clusterCount = Number(body.clusterCount || 0);
+        const failed = Number(body.failedRecords || 0);
+        const warning = String(body.gridWarning || '').trim();
+        setStatus(
+          warning
+            ? `[grid] Created ${clusterCount.toLocaleString()} clusters via ${backend}; Grid writeback warning: ${warning}`
+            : `[grid] Created ${clusterCount.toLocaleString()} clusters via ${backend}${failed ? `; ${failed.toLocaleString()} fingerprint failures` : ''}.`,
+          warning ? 'error' : 'info'
+        );
+        if (body.gridApplied === true) void refreshRemote(config());
+        return;
+      }
+      if (body.type === 'gridClusterError') {
+        setGridClusteringPending(false);
+        setStatus(body.error || '[grid] Clustering failed.', 'error');
+        return;
+      }
+      if (body.type === 'gridSimilaritySearchStarted') {
+        setGridSimilaritySearchPending(true);
+        setStatus('[grid] Scoring the verified fingerprint library against the selected query.');
+        return;
+      }
+      if (body.type === 'gridSimilaritySearchFinished') {
+        setGridSimilaritySearchPending(false);
+        const backend = body.backend === 'nativeMetal' ? 'Metal GPU' : 'reference CPU';
+        const displayed = Array.isArray(body.matches) ? body.matches.length : 0;
+        const qualified = Number(body.qualifiedMatchCount || displayed);
+        const library = Number(body.validRecordCount || body.libraryRecordCount || 0);
+        const warning = String(body.gridWarning || '').trim();
+        setStatus(
+          warning
+            ? `[grid] Found ${displayed.toLocaleString()} displayed matches via ${backend}; Grid writeback warning: ${warning}`
+            : `[grid] Found ${displayed.toLocaleString()} displayed match${displayed === 1 ? '' : 'es'} via ${backend} from ${library.toLocaleString()} valid molecules${qualified > displayed ? `; ${qualified.toLocaleString()} passed the cutoff` : ''}.`,
+          warning ? 'error' : 'info'
+        );
+        if (body.gridApplied === true) void refreshRemote(config());
+        return;
+      }
+      if (body.type === 'gridSimilaritySearchError') {
+        setGridSimilaritySearchPending(false);
+        setStatus(body.error || '[grid] Similarity search failed.', 'error');
+        return;
+      }
+      if (body.type === 'gridClusterRepresentativesExportStarted') {
+        setGridClusterRepresentativeExportPending(true);
+        setStatus('[grid] Preparing an immutable diverse-representative bundle.');
+        return;
+      }
+      if (body.type === 'gridClusterRepresentativesExportFinished') {
+        setGridClusterRepresentativeExportPending(false);
+        const count = Number(body.representativeCount || 0);
+        const bundlePath = String(body.bundlePath || '').trim();
+        setStatus(
+          `[grid] Exported ${count.toLocaleString()} diverse representative${count === 1 ? '' : 's'}${bundlePath ? ` to ${bundlePath}` : ''}.`,
+          'info'
+        );
+        return;
+      }
+      if (body.type === 'gridClusterRepresentativesExportCancelled') {
+        setGridClusterRepresentativeExportPending(false);
+        setStatus('[grid] Diverse-representative export cancelled.');
+        return;
+      }
+      if (body.type === 'gridClusterRepresentativesExportError') {
+        setGridClusterRepresentativeExportPending(false);
+        setStatus(body.error || '[grid] Diverse-representative export failed.', 'error');
         return;
       }
       if (body.type === 'poseReviewSelection') {
@@ -705,6 +861,9 @@
     state.indexReady = result.indexReady !== false;
     state.indexing = result.indexing === true || !state.indexReady;
     state.remoteDescriptorIds = Array.isArray(result.descriptorIds) ? result.descriptorIds.map(String) : [];
+    state.remoteAnalysisColumns = Array.isArray(result.analysisColumns)
+      ? result.analysisColumns.filter(column => column && typeof column === 'object')
+      : [];
   }
 
   function scheduleIndexPoll(cfg) {
@@ -854,6 +1013,15 @@
     }
   }
 
+  function storedChoice(key, choices, fallback) {
+    try {
+      const value = window.localStorage?.getItem(key);
+      return choices.includes(value) ? value : fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   function storedStringSet(key) {
     try {
       const raw = window.localStorage?.getItem(key);
@@ -901,6 +1069,23 @@
     } catch (_) {
       return fallback;
     }
+  }
+
+  function storedClusterCutoff() {
+    try {
+      const value = Number(window.localStorage?.getItem(CLUSTER_CUTOFF_STORAGE_KEY));
+      return [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9].includes(value) ? value : 0.7;
+    } catch (_) {
+      return 0.7;
+    }
+  }
+
+  function setClusterCutoff(value) {
+    const cutoff = Number(value);
+    if (![0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9].includes(cutoff)) return;
+    state.clusterCutoff = cutoff;
+    store(CLUSTER_CUTOFF_STORAGE_KEY, cutoff);
+    syncGridClusterControls();
   }
 
   function clampInteger(value, min, max, fallback) {
@@ -1048,6 +1233,19 @@
       ketcherOpen: caps.ketcherOpen,
       rendererSwitch: caps.rendererSwitch,
       generating3d: state.generating3d,
+      conformerVariant: state.conformerVariant,
+      mmffVariant: state.mmffVariant,
+      aligningPoses: state.aligningPoses,
+      evaluatingSemiempirical: state.evaluatingSemiempirical,
+      semiempiricalEnabled: caps.cluster,
+      semiempiricalMethod: state.semiempiricalMethod,
+      clusterEnabled: caps.cluster,
+      clustering: state.clustering,
+      findingSimilar: state.findingSimilar,
+      exportingClusterRepresentatives: state.exportingClusterRepresentatives,
+      clusterRepresentativesAvailable: Boolean(latestRepresentativeAnalysisColumn()),
+      similarityQuerySelected: state.selected.size === 1,
+      clusterCutoff: state.clusterCutoff,
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
         setUnifiedSearchQuery(value || '', cfg);
@@ -1071,6 +1269,10 @@
       },
       onSelectAll() { selectAllRows(cfg); },
       onClearSelection() { clearSelection(cfg); },
+      onCluster() { requestClustering(cfg); },
+      onFindSimilar() { requestSimilaritySearch(cfg); },
+      onExportClusterRepresentatives() { requestClusterRepresentativeExport(cfg); },
+      onClusterCutoffChange(value) { setClusterCutoff(value); },
       onCopySelected() { copySelected(); },
       onSaveGrid() { saveGrid(cfg); },
       onSaveGridAs() { saveGridAs(cfg); },
@@ -1083,7 +1285,25 @@
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
       onXyzrenderPresetChange(value) { setXyzrenderPreset(value, cfg); },
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
+      onAlignSelectedPoses() { requestSelectedPoseAlignment(cfg); },
+      onEvaluateSemiempirical() { requestSelectedSemiempiricalEvaluation(cfg); },
+      onSemiempiricalMethodChange(value) {
+        state.semiempiricalMethod = SEMIEMPIRICAL_METHODS.includes(value) ? value : 'RM1';
+        store(SEMIEMPIRICAL_METHOD_STORAGE_KEY, state.semiempiricalMethod);
+        refreshGridControls(cfg);
+      },
       onGenerate3D() { requestSelected3DGeneration(cfg); },
+      onOptimizeGeometry() { requestSelectedGeometryOptimization(cfg); },
+      onConformerVariantChange(value) {
+        state.conformerVariant = CONFORMER_VARIANTS.includes(value) ? value : 'ETKDGv3';
+        store(CONFORMER_VARIANT_STORAGE_KEY, state.conformerVariant);
+        refreshGridControls(cfg);
+      },
+      onMmffVariantChange(value) {
+        state.mmffVariant = MMFF_VARIANTS.includes(value) ? value : 'MMFF94s';
+        store(MMFF_VARIANT_STORAGE_KEY, state.mmffVariant);
+        refreshGridControls(cfg);
+      },
       onCalculateSelectedDescriptors() { requestSelectedDescriptorCalculation(cfg); },
       onRendererSwitch(value) { requestRendererSwitch(value, cfg); },
       onRdkitUseInputCoordsChange(checked) {
@@ -1368,6 +1588,7 @@
       ...fields,
       columnFilters: remoteTableColumnFilters(),
       descriptorFilters: mergedDescriptorFilters(),
+      analysisFilters: mergedAnalysisFilters(),
       descriptorSort: state.descriptorSort
     };
   }
@@ -1375,7 +1596,7 @@
   function remoteTableColumnFilters() {
     const filters = [];
     for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
-      if (!filter || columnId.startsWith('descriptor:')) continue;
+      if (!filter || columnId.startsWith('descriptor:') || columnId.startsWith('analysis:')) continue;
       const row = { id: columnId, filterType: filter.type === 'number' ? 'number' : 'text' };
       if (row.filterType === 'number') {
         const min = Number(filter.min);
@@ -1406,6 +1627,24 @@
       if (row.min !== undefined || row.max !== undefined) merged.push(row);
     }
     return merged;
+  }
+
+  function mergedAnalysisFilters() {
+    const filters = [];
+    for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
+      if (!columnId.startsWith('analysis:') || filter?.type !== 'number') continue;
+      const valueId = columnId.slice('analysis:'.length);
+      const column = (state.remoteAnalysisColumns || []).find(candidate => String(candidate.valueId || '') === valueId);
+      const runId = String(column?.runId || '');
+      if (!runId) continue;
+      const row = { runId, valueId };
+      const min = Number(filter.min);
+      const max = Number(filter.max);
+      if (Number.isFinite(min)) row.min = min;
+      if (Number.isFinite(max)) row.max = max;
+      if (row.min !== undefined || row.max !== undefined) filters.push(row);
+    }
+    return filters;
   }
 
   function syncCardRendererSwitch() {
@@ -1593,6 +1832,60 @@
     request3DGenerationForRows(rows, cfg);
   }
 
+  function requestSelectedGeometryOptimization(cfg) {
+    const rows = selectedMolstarRows();
+    if (!rows.length) {
+      setStatus('[grid] Select one or more molecules with input 3D coordinates first.');
+      return;
+    }
+    const molecules = rows.map(row => gridConformerGenerationInput(row)).filter(Boolean);
+    const title = `${cfg?.label || 'Molecules'} — optimized geometry`;
+    setGridGenerate3DPending(true);
+    post('optimizeGeometryGridSelection', '[grid] Optimize selected input geometry.', {
+      documentId: cfg?.documentId || null,
+      title,
+      sourceIndexes: rows.map(row => Number(row.index)),
+      molecules,
+      conformerVariant: state.conformerVariant,
+      mmffVariant: state.mmffVariant
+    });
+    setStatus(`[grid] Optimizing ${molecules.length.toLocaleString()} input geometr${molecules.length === 1 ? 'y' : 'ies'}.`);
+  }
+
+  function requestSelectedPoseAlignment(cfg) {
+    if (state.aligningPoses) return;
+    const rows = selectedMolstarRows();
+    if (rows.length < 2) {
+      setStatus('[grid] Select at least two 3D poses. The first selected row is the reference.', 'error');
+      return;
+    }
+    state.aligningPoses = true;
+    refreshGridControls(cfg);
+    post('alignGridPoses', '[grid] Align and compare selected poses.', {
+      documentId: cfg?.documentId || null,
+      sourceIndexes: rows.map(row => Number(row.index))
+    });
+    setStatus(`[grid] Aligning ${rows.length.toLocaleString()} poses to the first selected row on Metal.`);
+  }
+
+  function requestSelectedSemiempiricalEvaluation(cfg) {
+    if (state.evaluatingSemiempirical) return;
+    const rows = selectedMolstarRows();
+    const methodLabel = state.semiempiricalMethod === 'AM1_STAR' ? 'AM1*' : state.semiempiricalMethod;
+    if (!rows.length) {
+      setStatus(`[grid] Select at least one molecule with explicit coordinates before calculating ${methodLabel}.`, 'error');
+      return;
+    }
+    state.evaluatingSemiempirical = true;
+    refreshGridControls(cfg);
+    post('evaluateSemiempiricalGridSelection', `[grid] Calculate ${methodLabel} energies and charges.`, {
+      documentId: cfg?.documentId || null,
+      sourceIndexes: rows.map(row => Number(row.index)),
+      method: state.semiempiricalMethod
+    });
+    setStatus(`[grid] Calculating ${methodLabel} energies and charges for ${rows.length.toLocaleString()} selected molecule${rows.length === 1 ? '' : 's'}; execution provenance will identify Metal or CPU fallback.`);
+  }
+
   function requestSingle3DGeneration(row, cfg) {
     if (!row) {
       setStatus('[grid] Select a molecule before generating 3D.', 'error');
@@ -1616,7 +1909,10 @@
     post('generate3dGridSelection', '[grid] Generate 3D for selected molecules.', {
       documentId: cfg?.documentId || null,
       title,
-      molecules
+      sourceIndexes: rows.map(row => Number(row.index)),
+      molecules,
+      conformerVariant: state.conformerVariant,
+      mmffVariant: state.mmffVariant
     });
     setStatus(`[grid] Generating 3D for ${molecules.length.toLocaleString()} molecule${molecules.length === 1 ? '' : 's'}.`);
   }
@@ -1638,6 +1934,183 @@
     syncGridGenerate3DControls();
     const cfg = safeConfig();
     if (cfg) notifyGridMenuState(cfg);
+  }
+
+  function requestClustering(cfg) {
+    if (state.clustering) {
+      post('cancelClusterMolecules', '[grid] Cancel clustering.', {
+        documentId: cfg?.documentId || null,
+      });
+      setStatus('[grid] Requesting clustering cancellation.');
+      return;
+    }
+    if (state.findingSimilar) return;
+    if (!state.indexReady) {
+      setStatus('[grid] Wait for indexing to finish before clustering.', 'error');
+      return;
+    }
+    const sourceIndexes = [...state.selected]
+      .map(Number)
+      .filter(index => Number.isSafeInteger(index) && index >= 0)
+      .sort((left, right) => left - right);
+    const columnFilters = remoteTableColumnFilters();
+    const descriptorFilters = mergedDescriptorFilters();
+    const analysisFilters = mergedAnalysisFilters();
+    const filteredScope = !sourceIndexes.length && (
+      state.query.trim()
+      || columnFilters.length
+      || descriptorFilters.length
+      || analysisFilters.length
+    ) ? {
+      kind: 'filtered',
+      query: { kind: 'text', text: state.query || '' },
+      columnFilters,
+      descriptorFilters,
+      analysisFilters,
+    } : null;
+    setGridClusteringPending(true);
+    post('clusterMolecules', '[grid] Cluster molecules.', {
+      documentId: cfg?.documentId || null,
+      sourceIndexes,
+      filteredScope,
+      cutoff: state.clusterCutoff,
+    });
+    setStatus(sourceIndexes.length
+      ? `[grid] Clustering ${sourceIndexes.length.toLocaleString()} selected molecules.`
+      : filteredScope
+      ? '[grid] Clustering the current filtered molecule scope.'
+      : '[grid] Clustering the full collection.');
+  }
+
+  function setGridClusteringPending(pending) {
+    state.clustering = pending === true;
+    syncGridClusterControls();
+  }
+
+  function requestSimilaritySearch(cfg) {
+    if (state.clustering || state.findingSimilar) return;
+    if (!state.indexReady) {
+      setStatus('[grid] Wait for indexing to finish before searching for similar molecules.', 'error');
+      return;
+    }
+    if (state.selected.size !== 1) {
+      setStatus('[grid] Select exactly one query molecule before similarity search.', 'error');
+      return;
+    }
+    const jobId = String(latestRepresentativeAnalysisColumn()?.runId || '').trim();
+    if (!jobId) {
+      setStatus('[grid] Run clustering before searching its verified fingerprint snapshot.', 'error');
+      return;
+    }
+    const querySourceIndex = Number([...state.selected][0]);
+    if (!Number.isSafeInteger(querySourceIndex) || querySourceIndex < 0) {
+      setStatus('[grid] The selected query molecule has no valid source index.', 'error');
+      return;
+    }
+    setGridSimilaritySearchPending(true);
+    post('findSimilarMolecules', '[grid] Find similar molecules.', {
+      documentId: cfg?.documentId || null,
+      jobId,
+      querySourceIndex,
+      cutoff: state.clusterCutoff,
+      topK: 50
+    });
+    setStatus(`[grid] Finding up to 50 molecules with Tanimoto similarity at least ${Number(state.clusterCutoff).toFixed(2)}.`);
+  }
+
+  function setGridSimilaritySearchPending(pending) {
+    state.findingSimilar = pending === true;
+    syncGridClusterControls();
+  }
+
+  function latestRepresentativeAnalysisColumn() {
+    return (state.remoteAnalysisColumns || []).find(column => (
+      String(column?.valueId || '') === 'isRepresentative'
+      && String(column?.valueKind || '') === 'boolean'
+      && String(column?.runId || '').trim()
+    )) || null;
+  }
+
+  function requestClusterRepresentativeExport(cfg) {
+    if (state.clustering || state.exportingClusterRepresentatives) return;
+    const column = latestRepresentativeAnalysisColumn();
+    const jobId = String(column?.runId || '').trim();
+    if (!jobId) {
+      setStatus('[grid] Run clustering before exporting diverse representatives.', 'error');
+      return;
+    }
+    setGridClusterRepresentativeExportPending(true);
+    post('exportClusterRepresentatives', '[grid] Export diverse representatives.', {
+      documentId: cfg?.documentId || null,
+      jobId,
+      collectionName: baseName(cfg?.label || 'molecules')
+    });
+  }
+
+  function setGridClusterRepresentativeExportPending(pending) {
+    state.exportingClusterRepresentatives = pending === true;
+    syncGridClusterControls();
+  }
+
+  function syncGridClusterControls() {
+    const button = document.getElementById('cluster-molecules');
+    const similarityButton = document.getElementById('find-similar-molecules');
+    const exportButton = document.getElementById('export-cluster-representatives');
+    const cutoff = document.getElementById('cluster-cutoff');
+    const total = state.remoteMode
+      ? (state.recordsTotalHint || state.recordsIndexed || state.totalRows)
+      : state.all.length;
+    const unavailable = state.clustering || state.findingSimilar || state.indexing || total === 0;
+    if (button) {
+      button.disabled = unavailable;
+      button.setAttribute('aria-busy', state.clustering ? 'true' : 'false');
+      button.title = state.clustering
+        ? 'Clustering is running'
+        : state.indexing
+        ? 'Wait for indexing to finish'
+        : state.selected.size
+        ? `Cluster ${state.selected.size.toLocaleString()} selected molecules`
+        : 'Cluster the full collection';
+      const label = button.querySelector('[data-buret-grid-cluster-label]');
+      if (label) {
+        label.textContent = state.clustering
+          ? 'Clustering...'
+          : state.selected.size
+          ? `Cluster selected (${state.selected.size.toLocaleString()})`
+          : 'Cluster all';
+      }
+    }
+    if (cutoff) {
+      cutoff.disabled = state.clustering || state.findingSimilar;
+      cutoff.value = Number(state.clusterCutoff).toFixed(2);
+    }
+    if (similarityButton) {
+      const available = Boolean(latestRepresentativeAnalysisColumn());
+      const querySelected = state.selected.size === 1;
+      similarityButton.disabled = unavailable || !available || !querySelected;
+      similarityButton.setAttribute('aria-busy', state.findingSimilar ? 'true' : 'false');
+      similarityButton.title = state.findingSimilar
+        ? 'Similarity search is running'
+        : !available
+        ? 'Run clustering before searching its verified fingerprint snapshot'
+        : !querySelected
+        ? 'Select exactly one query molecule'
+        : `Find the top 50 matches at Tanimoto ≥ ${Number(state.clusterCutoff).toFixed(2)}`;
+      const label = similarityButton.querySelector('[data-buret-grid-similarity-label]');
+      if (label) label.textContent = state.findingSimilar ? 'Searching...' : 'Find similar';
+    }
+    if (exportButton) {
+      const available = Boolean(latestRepresentativeAnalysisColumn());
+      exportButton.disabled = state.clustering || state.exportingClusterRepresentatives || !available;
+      exportButton.setAttribute('aria-busy', state.exportingClusterRepresentatives ? 'true' : 'false');
+      exportButton.title = state.exportingClusterRepresentatives
+        ? 'Representative export is running'
+        : available
+        ? 'Export immutable diverse representatives with provenance'
+        : 'Run clustering before exporting diverse representatives';
+      const label = exportButton.querySelector('[data-buret-grid-representative-export-label]');
+      if (label) label.textContent = state.exportingClusterRepresentatives ? 'Exporting...' : 'Export diverse';
+    }
   }
 
   function syncGridGenerate3DControls() {
@@ -2626,6 +3099,7 @@
     if (openSelectedMolstar) openSelectedMolstar.disabled = state.selected.size === 0;
     const openSelectedKetcher = document.getElementById('open-selected-ketcher');
     if (openSelectedKetcher) openSelectedKetcher.disabled = state.selected.size === 0 || Date.now() < state.ketcherOpenPendingUntil;
+    syncGridClusterControls();
     syncRdkitCoordinatesControl();
     syncGridEditControls();
     let footerText;
@@ -3078,10 +3552,19 @@
       { id: 'smiles', label: 'SMILES', type: 'text', fixed: true, get: row => rowSmiles(row) }
     ];
     const descriptorColumns = new Map();
+    const analysisColumns = new Map();
     const propColumns = new Set();
     for (const row of rows) {
       for (const [id, value] of Object.entries(row.descriptors || {})) {
         if (!descriptorColumns.has(id)) descriptorColumns.set(id, value?.label || id);
+      }
+      for (const [id, value] of Object.entries(row.analyses || {})) {
+        if (!analysisColumns.has(id)) analysisColumns.set(id, {
+          runId: value?.runId || '',
+          valueId: value?.valueId || id,
+          label: id,
+          valueKind: value?.valueKind || 'text'
+        });
       }
       for (const key of Object.keys(row.props || {})) {
         propColumns.add(key);
@@ -3090,6 +3573,10 @@
     if (state.remoteMode) {
       for (const id of state.remoteDescriptorIds || []) {
         if (!descriptorColumns.has(id)) descriptorColumns.set(id, id);
+      }
+      for (const column of state.remoteAnalysisColumns || []) {
+        const valueId = String(column?.valueId || '');
+        if (valueId) analysisColumns.set(valueId, column);
       }
     }
     for (const key of propColumns) {
@@ -3109,6 +3596,17 @@
         kind: 'descriptor',
         title: descriptorHelpText(id, label),
         get: row => descriptorDisplayValue(row.descriptors?.[id])
+      });
+    }
+    for (const [id, analysis] of analysisColumns) {
+      const valueKind = String(analysis?.valueKind || 'text');
+      columns.push({
+        id: `analysis:${id}`,
+        label: String(analysis?.label || id),
+        type: valueKind === 'integer' || valueKind === 'real' ? 'number' : 'text',
+        kind: 'analysis',
+        title: `Analysis result ${id} · run ${String(analysis?.runId || '')}`,
+        get: row => analysisDisplayValue(row.analyses?.[id])
       });
     }
     columns.forEach(column => {
@@ -3139,6 +3637,7 @@
       state.totalRows,
       state.recordsIndexed,
       state.remoteMode ? (state.remoteDescriptorIds || []).join('\u001f') : '',
+      state.remoteMode ? JSON.stringify(state.remoteAnalysisColumns || []) : '',
       firstKey,
       lastKey,
       state.rowPatches.size,
@@ -3149,7 +3648,7 @@
 
   function tableColumnCatalogRowKey(row) {
     if (!row) return 'empty';
-    return `${row.rowId ?? ''}:${row.index ?? ''}:${Object.keys(row.descriptors || {}).length}:${Object.keys(row.props || {}).length}`;
+    return `${row.rowId ?? ''}:${row.index ?? ''}:${Object.keys(row.descriptors || {}).length}:${Object.keys(row.analyses || {}).length}:${Object.keys(row.props || {}).length}`;
   }
 
   function tableVisibleColumns(catalog) {
@@ -3382,7 +3881,7 @@
       <label class="buret-table-column-item" data-column-search="${escapeAttr(tableColumnPickerSearchText(column))}">
         <input type="checkbox" ${visible.has(column.id) ? 'checked' : ''} data-buret-table-column="${escapeAttr(column.id)}">
         <span>${escapeHTML(column.label)}</span>
-        <small>${column.kind === 'descriptor' ? 'descriptor' : 'property'} / ${column.type}</small>
+        <small>${column.kind === 'descriptor' ? 'descriptor' : column.kind === 'analysis' ? 'analysis' : 'property'} / ${column.type}</small>
       </label>
     `).join('');
     const remaining = Math.max(0, matchCount - columns.length);
@@ -3536,12 +4035,17 @@
     if (columnId === 'smiles') return rowSmiles(row);
     if (columnId.startsWith('prop:')) return String(row.props?.[columnId.slice(5)] ?? '');
     if (columnId.startsWith('descriptor:')) return descriptorDisplayValue(row.descriptors?.[columnId.slice('descriptor:'.length)]);
+    if (columnId.startsWith('analysis:')) return analysisDisplayValue(row.analyses?.[columnId.slice('analysis:'.length)]);
     return '';
   }
 
   function tableColumnNumericValue(row, columnId) {
     if (columnId === 'index') return Number(row.index) + 1;
     if (columnId.startsWith('descriptor:')) return descriptorNumericValue(row.descriptors?.[columnId.slice('descriptor:'.length)]);
+    if (columnId.startsWith('analysis:')) {
+      const value = row.analyses?.[columnId.slice('analysis:'.length)]?.value;
+      return typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
+    }
     const value = Number(tableColumnDisplayValue(row, columnId));
     return Number.isFinite(value) ? value : Number.NaN;
   }
@@ -5331,8 +5835,11 @@
     state.smartsMatches = new Map();
     state.rows = [];
     state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
+    state.remoteAnalysisColumns = [];
     state.selected = new Set();
     state.hiddenRows = new Set();
+    state.findingSimilar = false;
+    state.exportingClusterRepresentatives = false;
     state.dirty = false;
     state.dirtyReason = '';
     state.undoStack = [];
@@ -5709,15 +6216,29 @@
 
   function metadata(row) {
     const entries = Object.entries(row.props || {}).filter(([, value]) => String(value || '').length).slice(0, 6);
+    const analyses = Object.entries(row.analyses || {})
+      .filter(([, value]) => analysisDisplayValue(value))
+      .slice(0, 6);
     const descriptors = Object.entries(row.descriptors || {})
       .filter(([, value]) => descriptorDisplayValue(value))
       .slice(0, 6);
-    if (!entries.length && !descriptors.length) return '<div class="buret-no-metadata">No metadata</div>';
+    if (!entries.length && !descriptors.length && !analyses.length) return '<div class="buret-no-metadata">No metadata</div>';
     const propItems = entries.map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(value)}</dd>`);
+    const analysisItems = analyses.map(([key, value]) => (
+      `<dt>${escapeHTML((state.remoteAnalysisColumns || []).find(column => column.valueId === key)?.label || key)}</dt><dd>${escapeHTML(analysisDisplayValue(value))}</dd>`
+    ));
     const descriptorItems = descriptors.map(([key, value]) => (
       `<dt>${escapeHTML(value.label || key)}</dt><dd>${escapeHTML(descriptorDisplayValue(value))}</dd>`
     ));
-    return `<dl class="buret-metadata">${[...descriptorItems, ...propItems].join('')}</dl>`;
+    return `<dl class="buret-metadata">${[...analysisItems, ...descriptorItems, ...propItems].join('')}</dl>`;
+  }
+
+  function analysisDisplayValue(cell) {
+    if (!cell || cell.value === null || cell.value === undefined) return '';
+    if (cell.valueKind === 'boolean') return cell.value === true ? 'true' : 'false';
+    if (cell.valueKind === 'integer') return String(Math.trunc(Number(cell.value)));
+    if (cell.valueKind === 'real' && typeof cell.value === 'number') return String(Number(cell.value.toPrecision(8)));
+    return String(cell.value);
   }
 
   function descriptorDisplayValue(value) {

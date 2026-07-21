@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "burrete.molecular-snapshot-record.v1",
+  "sourceRecordId": 42,
+  "moleculeContentSha256": "abababababababababababababababababababababababababababababababab",
+  "name": "ethanol",
+  "smiles": "CCO",
+  "molblock": null,
+  "idcode": null,
+  "idcoordinates": null,
+  "props": {
+    "source": "golden"
+  }
+}
