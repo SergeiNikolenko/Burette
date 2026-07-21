@@ -2,12 +2,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [componentsJson, styles, portalContainer, alertDialog, desktopTsconfig] = await Promise.all([
+const [componentsJson, styles, portalContainer, alertDialog, desktopTsconfig, rootTsconfig] = await Promise.all([
   readFile("apps/desktop/components.json", "utf8"),
   readFile("apps/desktop/src/styles.css", "utf8"),
   readFile("apps/desktop/src/components/ui/portal-container.ts", "utf8"),
   readFile("apps/desktop/src/components/ui/alert-dialog.tsx", "utf8"),
   readFile("apps/desktop/tsconfig.json", "utf8"),
+  readFile("tsconfig.json", "utf8"),
 ]);
 
 const components = JSON.parse(componentsJson);
@@ -20,7 +21,8 @@ assert.equal(components.aliases.utils, "@/lib/utils");
 
 const tsconfig = JSON.parse(desktopTsconfig);
 assert.equal(tsconfig.extends, "../../tsconfig.json");
-assert.deepEqual(tsconfig.compilerOptions.paths["@/*"], ["./src/*"]);
+const sharedTsconfig = JSON.parse(rootTsconfig);
+assert.deepEqual(sharedTsconfig.compilerOptions.paths["@/*"], ["./apps/desktop/src/*"]);
 
 assert.match(styles, /@import "tailwindcss";/);
 assert.match(styles, /@import "shadcn\/tailwind\.css";/);
