@@ -293,8 +293,13 @@ fn conformer_sdf(
     variant: ConformerVariant,
 ) -> Result<String, String> {
     let mut output = String::new();
-    for conformer in 0..distance.conformer_molecule_indices.len() {
-        let molecule_index = distance.conformer_molecule_indices[conformer] as usize;
+    for (conformer, molecule_index) in distance
+        .conformer_molecule_indices
+        .iter()
+        .copied()
+        .enumerate()
+    {
+        let molecule_index = molecule_index as usize;
         let atom_start = distance.conformer_atom_starts[conformer] as usize;
         let atom_end = distance.conformer_atom_starts[conformer + 1] as usize;
         let positions = &distance.positions[atom_start..atom_end];
