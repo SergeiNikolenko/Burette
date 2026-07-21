@@ -1036,6 +1036,8 @@ kbd span { margin-left: 2px; }
   display: grid;
   gap: 1px;
   padding-left: 2px;
+  min-height: 0;
+  overflow: hidden;
 }
 .project-folder-node {
   display: grid;
@@ -1099,6 +1101,19 @@ kbd span { margin-left: 2px; }
   transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;
 }
 .project-folder-children-shell[data-expanded="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+}
+.project-group-children-shell {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;
+}
+.project-group-children-shell[data-expanded="true"] {
   grid-template-rows: 1fr;
   opacity: 1;
   pointer-events: auto;
