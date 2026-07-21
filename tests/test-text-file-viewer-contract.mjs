@@ -30,6 +30,8 @@ const [
   markdownImageResolver,
   markdownLinkNavigation,
   browserDevTextFiles,
+  saveTextDocument,
+  browserDevFileRoutes,
   tauriLib,
   textFilesCommand,
   permissions,
@@ -60,6 +62,8 @@ const [
   source("apps/desktop/src/components/text-file-viewer/markdown-image-src-resolver.ts"),
   source("apps/desktop/src/components/text-file-viewer/markdown-link-navigation.ts"),
   source("apps/desktop/src/lib/browser-dev-text-files.ts"),
+  source("apps/desktop/src/lib/save-text-document.ts"),
+  source("apps/desktop/vite/browser-dev/files.ts"),
   source("apps/desktop/src-tauri/src/lib.rs"),
   source("apps/desktop/src-tauri/src/commands/text_files.rs"),
   source("apps/desktop/src-tauri/permissions/burrete.toml"),
@@ -103,8 +107,12 @@ assert.match(textViewer, /parent\.addEventListener\("pointermove", onPointerMove
 assert.match(textViewer, /parent\.addEventListener\("pointerup", onPointerUp\)/);
 assert.match(textViewer, /parent\.addEventListener\("pointercancel", onPointerCancel\)/);
 assert.match(textViewer, /parent\.addEventListener\("pointerleave", onPointerLeave\)/);
-assert.match(textViewer, /EditorState\.readOnly\.of\(true\)/);
-assert.match(textViewer, /EditorView\.editable\.of\(false\)/);
+assert.match(textViewer, /EditorState\.readOnly\.of\(!editing\)/);
+assert.match(textViewer, /EditorView\.editable\.of\(editing\)/);
+assert.match(textViewer, />\s*Edit Source\s*<\/Button>/);
+assert.match(textViewer, /key: "Mod-s"/);
+assert.match(textViewer, /saveTextDocument\(document\.path, draftRef\.current, modifiedAt\)/);
+assert.match(textViewer, /EDITABLE_SOURCE_EXTENSIONS\.has\(document\.extension\.toLowerCase\(\)\)/);
 assert.doesNotMatch(textViewer, /EditorView\.lineWrapping/);
 assert.match(textViewer, /markdown\(\{ codeLanguages: languages \}\)/);
 assert.match(textViewer, /LanguageDescription\.matchFilename\(languages, document\.title\)/);
@@ -179,6 +187,10 @@ assert.match(textFilesCommand, /String::from_utf8_lossy/);
 assert.match(tauriLib, /commands::text_files::open_text_files/);
 assert.match(permissions, /"open_text_files"/);
 assert.match(browserDevTextFiles, /\/__burette\/read-text-file\?path=\$\{encodeURIComponent\(path\)\}/);
+assert.match(saveTextDocument, /invoke<string>\("write_text_file"/);
+assert.match(saveTextDocument, /\/__burette\/write-text-file\?path=\$\{encodeURIComponent\(path\)\}/);
+assert.match(browserDevFileRoutes, /server\.middlewares\.use\("\/__burette\/write-text-file"/);
+assert.match(browserDevFileRoutes, /expectedModifiedAt !== currentModifiedAt/);
 assert.match(browserDevTextFiles, /export async function openBrowserDevTextFiles/);
 for (const extension of ["inpcrd", "rst7", "crd", "rst", "state", "xml"]) {
   assert.match(viteConfig, new RegExp(`"${extension}"`), `${extension} should be allowed by browser-dev read-file`);

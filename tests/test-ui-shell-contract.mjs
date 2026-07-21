@@ -1871,6 +1871,7 @@ assert.match(styles, /\.ketcher-page-actions button\s*\{[^}]*position: relative;
 assert.match(styles, /\.ketcher-scale-control\s*\{[^}]*overflow: visible;/s);
 assert.match(styles, /\.ketcher-scale-control span\s*\{[^}]*font-variant-numeric: tabular-nums;/s);
 assert.match(styles, /\.ketcher-page-actions \.ketcher-theme-control\s*\{[^}]*min-width: 64px;[^}]*\}/s);
+assert.match(styles, /\.ketcher-page-actions button\.ketcher-theme-control:focus-visible:not\(:disabled\)\s*\{[^}]*outline: none;[^}]*\}/s);
 assert.doesNotMatch(styles, /\.ketcher-page-actions \.ketcher-theme-control\s*\{[^}]*border:/s);
 assert.doesNotMatch(styles, /\.ketcher-theme-control\.active/);
 assert.doesNotMatch(styles, /\.ketcher-theme-control\s*\{[^}]*grid-template-columns:/s);
@@ -2058,6 +2059,8 @@ assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab \{\s*padding-ri
 assert.match(styles, /\.dock-tab \{[^}]*height: 28px;[^}]*border-radius: 10px;/s);
 assert.match(styles, /\.dock-tab-close \{[^}]*width: 20px;[^}]*height: 20px;[^}]*border-radius: 8px;[^}]*background: transparent;[^}]*opacity: 1;[^}]*pointer-events: auto;/s);
 assert.match(styles, /\.dock-tab-close:hover \{[^}]*background: var\(--surface-hover\);[^}]*box-shadow: inset 0 0 0 1px var\(--line-subtle\)/s);
+assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab-close \{[^}]*color: var\(--text-secondary\);[^}]*\}/s);
+assert.match(styles, /\.text-file-editor \.cm-gutters \{[^}]*border-right: 0;[^}]*background: transparent;[^}]*color: var\(--text-muted\);[^}]*\}/s);
 assert.doesNotMatch(styles, /\.dock-tab-shell:hover \.dock-tab svg,\s*\.dock-tab-shell:focus-within \.dock-tab svg \{\s*opacity: 0/s);
 assert.doesNotMatch(styles, /\.dock-tab\[data-active\] svg \{\s*opacity: 0/s);
 assert.match(appResizeHook, /const RIGHT_DOCK_CLOSE_THRESHOLD = 180/);

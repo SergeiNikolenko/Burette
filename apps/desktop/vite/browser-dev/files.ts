@@ -1,8 +1,8 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import type { ViteDevServer } from "vite";
 
-import { sendJson, sendJsonError } from "./http";
+import { readJsonBody, sendJson, sendJsonError } from "./http";
 
 type BrowserDevFileRoutesOptions = {
   collectDefaultDevFiles: () => Promise<string[]>;
@@ -180,6 +180,56 @@ export function registerBrowserDevFileContentRoutes(server: ViteDevServer, optio
         content: readableBytes.toString("utf8"),
         truncated,
         modifiedAt: Math.max(0, Math.floor(info.mtimeMs)),
+      }, "no-cache");
+    } catch (error) {
+      sendJsonError(res, 500, error);
+    }
+  });
+
+  server.middlewares.use("/__burette/write-text-file", async (req, res) => {
+    if ((req.method || "GET").toUpperCase() !== "PUT") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    try {
+      const url = new URL(req.url || "", "http://127.0.0.1");
+      const path = url.searchParams.get("path");
+      if (!path) {
+        sendJson(res, 400, { error: "Missing path" });
+        return;
+      }
+      const filePath = resolve(path);
+      if (!options.isDevFileReadAllowed(filePath)) {
+        sendJson(res, 403, { error: "Forbidden" });
+        return;
+      }
+      const info = await stat(filePath);
+      if (!info.isFile()) {
+        sendJson(res, 400, { error: "Unsupported file" });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const contents = body.contents;
+      const expectedModifiedAt = body.expectedModifiedAt;
+      if (typeof contents !== "string") {
+        sendJson(res, 400, { error: "Missing file contents" });
+        return;
+      }
+      const byteCount = Buffer.byteLength(contents, "utf8");
+      if (byteCount > options.devFileSizeLimit) {
+        sendJson(res, 413, { error: "Edited file exceeds the browser-dev size limit" });
+        return;
+      }
+      const currentModifiedAt = Math.max(0, Math.floor(info.mtimeMs));
+      if (typeof expectedModifiedAt === "number" && expectedModifiedAt !== currentModifiedAt) {
+        sendJson(res, 409, { error: "The file changed on disk. Reopen it before saving your edits." });
+        return;
+      }
+      await writeFile(filePath, contents, "utf8");
+      const savedInfo = await stat(filePath);
+      sendJson(res, 200, {
+        byteCount,
+        modifiedAt: Math.max(0, Math.floor(savedInfo.mtimeMs)),
       }, "no-cache");
     } catch (error) {
       sendJsonError(res, 500, error);

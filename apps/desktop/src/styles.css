@@ -1869,6 +1869,9 @@ img.radix-menu-item-icon {
 .dock-tab-shell[data-active] .dock-tab {
   padding-right: 34px;
 }
+.dock-tab-shell[data-active] .dock-tab-close {
+  color: var(--text-secondary);
+}
 .dock-tab-close:hover {
   background: var(--surface-hover);
   color: var(--text-secondary);
@@ -4033,6 +4036,14 @@ img.radix-menu-item-icon {
   color: var(--text-muted);
   font-size: 12px;
 }
+.source-edit-status {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .text-file-editor,
 .text-file-rich-editor,
 .maestro-outline-viewer {
@@ -4156,6 +4167,11 @@ img.radix-menu-item-icon {
 .text-file-editor .cm-content,
 .text-file-rich-editor .cm-content {
   font-family: var(--editor-font);
+}
+.text-file-editor .cm-gutters {
+  border-right: 0;
+  background: transparent;
+  color: var(--text-muted);
 }
 .text-file-rich-editor .cm-content {
   box-sizing: border-box;
@@ -4324,6 +4340,9 @@ img.radix-menu-item-icon {
 }
 .ketcher-page-actions .ketcher-theme-control {
   min-width: 64px;
+}
+.ketcher-page-actions button.ketcher-theme-control:focus-visible:not(:disabled) {
+  outline: none;
 }
 .ketcher-page-body {
   min-height: 0;

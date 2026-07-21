@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { defaultKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, defaultHighlightStyle, foldGutter, indentOnInput, LanguageDescription, syntaxHighlighting } from "@codemirror/language";
@@ -12,8 +12,13 @@ import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { MaestroOutlineViewer } from "./text-file-viewer/maestro-outline-viewer";
 import type { MarkdownOpenPaths } from "./text-file-viewer/markdown-link-navigation";
 import { hasStructureTextHighlighting, structureTextHighlighting, textNumberHighlighting } from "./text-file-viewer/structure-text-highlighting";
+import { saveTextDocument } from "../lib/save-text-document";
+import { Button } from "./ui/button";
 
 const AGENT_SHELL_BUILD = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
+const EDITABLE_SOURCE_EXTENSIONS = new Set([
+  "cif", "ent", "gro", "mcif", "mmcif", "mol", "mol2", "pdb", "pdbqt", "pqr", "sd", "sdf", "xpdb", "xyz",
+]);
 
 export function TextFileViewer({
   document,
@@ -28,11 +33,54 @@ export function TextFileViewer({
   const viewRef = useRef<EditorView | null>(null);
   const selectionTimeoutRef = useRef<number | null>(null);
   const onStructureSelectionRef = useRef(onStructureSelection);
+  const draftRef = useRef(document.content);
+  const saveDraftRef = useRef<(() => Promise<void>) | null>(null);
   const lastStructureSelectionKeyRef = useRef<string | null>(null);
   const lineDragStartRef = useRef<{ from: number; to: number } | null>(null);
   const languageCompartment = useMemo(() => new Compartment(), [document.id]);
   const markdownDocument = isMarkdown(document);
   const maestroDocument = isMaestroText(document);
+  const canEdit = !document.truncated
+    && !markdownDocument
+    && !maestroDocument
+    && document.path.startsWith("/")
+    && EDITABLE_SOURCE_EXTENSIONS.has(document.extension.toLowerCase());
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(document.content);
+  const [savedContent, setSavedContent] = useState(document.content);
+  const [modifiedAt, setModifiedAt] = useState(document.modifiedAt ?? null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const dirty = draft !== savedContent;
+
+  useEffect(() => {
+    draftRef.current = document.content;
+    setDraft(document.content);
+    setSavedContent(document.content);
+    setModifiedAt(document.modifiedAt ?? null);
+    setEditing(false);
+    setSaving(false);
+    setSaveError(null);
+  }, [document.id, document.content, document.modifiedAt]);
+
+  const saveDraft = useCallback(async () => {
+    if (!canEdit || saving || draftRef.current === savedContent) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const saved = await saveTextDocument(document.path, draftRef.current, modifiedAt);
+      setSavedContent(draftRef.current);
+      setModifiedAt(saved.modifiedAt);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  }, [canEdit, document.path, modifiedAt, savedContent, saving]);
+
+  useEffect(() => {
+    saveDraftRef.current = saveDraft;
+  }, [saveDraft]);
 
   useEffect(() => {
     onStructureSelectionRef.current = onStructureSelection;
@@ -59,7 +107,7 @@ export function TextFileViewer({
     const view = new EditorView({
       parent,
       state: EditorState.create({
-        doc: document.content,
+        doc: draftRef.current,
         extensions: [
           lineNumbers(),
           highlightActiveLineGutter(),
@@ -71,16 +119,32 @@ export function TextFileViewer({
           highlightActiveLine(),
           highlightSelectionMatches(),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-          EditorState.readOnly.of(true),
-          EditorView.editable.of(false),
+          EditorState.readOnly.of(!editing),
+          EditorView.editable.of(editing),
           EditorView.updateListener.of((update) => {
+            if (update.docChanged) {
+              const content = update.state.doc.toString();
+              draftRef.current = content;
+              setDraft(content);
+            }
             if (!update.selectionSet) return;
             const range = update.state.selection.main;
             if (range.empty) return;
             const selection = textStructureSelectionFromRange(document, range.from, range.to);
             if (selection) emitStructureSelection(selection);
           }),
-          keymap.of([...searchKeymap, ...defaultKeymap]),
+          keymap.of([
+            {
+              key: "Mod-s",
+              preventDefault: true,
+              run: () => {
+                void saveDraftRef.current?.();
+                return true;
+              },
+            },
+            ...searchKeymap,
+            ...defaultKeymap,
+          ]),
           textViewerTheme,
           languageCompartment.of(baseLanguageSupport(document)),
         ],
@@ -193,7 +257,7 @@ export function TextFileViewer({
       view.destroy();
       viewRef.current = null;
     };
-  }, [document, languageCompartment, markdownDocument, maestroDocument]);
+  }, [document.id, editing, languageCompartment, markdownDocument, maestroDocument]);
 
   useEffect(() => {
     if (markdownDocument || maestroDocument) return undefined;
@@ -219,8 +283,37 @@ export function TextFileViewer({
           {document.truncated && <span className="text-file-badge">Truncated</span>}
         </div>
         <div className="text-file-meta">
-          <span>{document.language}</span>
-          <span>{formatBytes(document.byteCount)}</span>
+          {canEdit && !editing && (
+            <Button type="button" variant="secondary" size="xs" onClick={() => setEditing(true)}>
+              Edit Source
+            </Button>
+          )}
+          {canEdit && editing && (
+            <>
+              <span className="source-edit-status" aria-live="polite">
+                {saveError ?? (saving ? "Saving…" : dirty ? "Edited" : "Saved")}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                disabled={saving}
+                onClick={() => {
+                  draftRef.current = savedContent;
+                  setDraft(savedContent);
+                  setSaveError(null);
+                  setEditing(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="button" variant="secondary" size="xs" disabled={!dirty || saving} onClick={() => void saveDraft()}>
+                Save
+              </Button>
+            </>
+          )}
+          {!editing && <span>{document.language}</span>}
+          {!editing && <span>{formatBytes(new TextEncoder().encode(draft).byteLength)}</span>}
         </div>
       </div>
       {markdownDocument ? (
