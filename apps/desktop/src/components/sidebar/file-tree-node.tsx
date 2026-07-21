@@ -94,7 +94,6 @@ export function ProjectGroup({
     if (event.detail < 2) return;
     event.preventDefault();
     event.stopPropagation();
-    startRename();
   };
 
   const startRename = () => {
@@ -207,7 +206,6 @@ export function ProjectGroup({
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          startRename();
         }}
         onContextMenu={handleContextMenu}
         onDragStart={sidebarDrag.onDragStart}
@@ -516,7 +514,6 @@ function ProjectTreeNodeView({
     if (event.detail < 2) return;
     event.preventDefault();
     event.stopPropagation();
-    startRename();
   };
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "F2") {
@@ -567,7 +564,6 @@ function ProjectTreeNodeView({
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          startRename();
         }}
         onContextMenu={handleContextMenu}
         onDragStart={sidebarDrag.onDragStart}
