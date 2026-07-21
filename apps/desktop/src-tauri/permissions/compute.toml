@@ -3,6 +3,7 @@ identifier = "allow-compute-commands"
 description = "Allows trusted Burrete desktop windows to inspect and control durable local compute jobs."
 commands.allow = [
   "compute_capabilities",
+  "compute_register_inline_source",
   "compute_align_grid_poses",
   "compute_evaluate_grid_semiempirical",
   "compute_submit_job",
