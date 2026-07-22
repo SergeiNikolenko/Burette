@@ -2111,6 +2111,41 @@ mod tests {
             .positions
             .iter()
             .any(|position| position[2] != 0.0));
+
+        let wide_fingerprints = (0_u64..66)
+            .map(|index| {
+                let mut words = [0_u64; FINGERPRINT_WORDS];
+                words[0] = index + 1;
+                words[1] = index.wrapping_mul(0x9e37_79b9_7f4a_7c15) | 1;
+                Fingerprint2048::from_words(words)
+            })
+            .collect::<Vec<_>>();
+        let wide_options = TanimotoKnnOptions::try_new(
+            NonZeroUsize::new(64).expect("nonzero k"),
+            MIN_COMPUTE_MEMORY_BYTES,
+        )
+        .expect("wide kNN options");
+        let wide_expected =
+            build_tanimoto_knn(&wide_fingerprints, wide_options).expect("wide CPU kNN reference");
+        let wide_observed = runtime
+            .build_tanimoto_knn_profiled(&wide_fingerprints, wide_options)
+            .expect("wide Metal Tanimoto kNN");
+        assert_eq!(wide_observed.neighbors_per_vertex, 64);
+        assert_eq!(
+            wide_observed.source_indices,
+            wide_expected
+                .source_indices()
+                .iter()
+                .map(|index| *index as u32)
+                .collect::<Vec<_>>()
+        );
+        for (observed, expected) in wide_observed
+            .similarities
+            .iter()
+            .zip(wide_expected.counts())
+        {
+            assert!((observed - expected.similarity() as f32).abs() <= 1.0e-6);
+        }
     }
 
     #[test]

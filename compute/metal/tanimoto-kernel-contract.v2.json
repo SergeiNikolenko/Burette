@@ -56,6 +56,18 @@
         { "name": "recordCount", "type": "uint64", "offsetBytes": 0 },
         { "name": "rowIndex", "type": "uint64", "offsetBytes": 8 }
       ]
+    },
+    "topKRow": {
+      "name": "TanimotoTopKRowV1",
+      "sizeBytes": 24,
+      "alignmentBytes": 8,
+      "byteOrder": "littleEndian",
+      "fields": [
+        { "name": "recordCount", "type": "uint64", "offsetBytes": 0 },
+        { "name": "rowIndex", "type": "uint64", "offsetBytes": 8 },
+        { "name": "neighborCount", "type": "uint32", "offsetBytes": 16 },
+        { "name": "reserved", "type": "uint32", "offsetBytes": 20 }
+      ]
     }
   },
   "dispatch": {
@@ -65,6 +77,7 @@
     "maximumColumnTileRecords": 1024,
     "maximumPairsPerTile": 1048576,
     "maximumQueryBatchRecords": 262144,
+    "maximumNeighborsPerVertex": 64,
     "logicalTilesPartitionPairDomainExactlyOnce": true,
     "queryBatchesPartitionLibraryExactlyOnce": true,
     "columnsAdvanceContiguouslyPerRow": true,
@@ -110,6 +123,23 @@
         { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
         { "name": "scores", "index": 1, "type": "float32", "alignmentBytes": 4, "access": "write", "elements": "recordCount" },
         { "name": "config", "index": 2, "type": "TanimotoScoreRowV1", "alignmentBytes": 8, "access": "constant", "elements": "1" }
+      ]
+    },
+    {
+      "name": "burrete_tanimoto_counts_row_v1",
+      "buffers": [
+        { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
+        { "name": "counts", "index": 1, "type": "uint2", "alignmentBytes": 8, "access": "write", "elements": "recordCount" },
+        { "name": "config", "index": 2, "type": "TanimotoScoreRowV1", "alignmentBytes": 8, "access": "constant", "elements": "1" }
+      ]
+    },
+    {
+      "name": "burrete_tanimoto_top_k_row_v1",
+      "buffers": [
+        { "name": "counts", "index": 0, "type": "uint2", "alignmentBytes": 8, "access": "read", "elements": "recordCount" },
+        { "name": "outputIndices", "index": 1, "type": "uint32", "alignmentBytes": 4, "access": "write", "elements": "neighborCount" },
+        { "name": "outputSimilarities", "index": 2, "type": "float32", "alignmentBytes": 4, "access": "write", "elements": "neighborCount" },
+        { "name": "config", "index": 3, "type": "TanimotoTopKRowV1", "alignmentBytes": 8, "access": "constant", "elements": "1" }
       ]
     }
   ]

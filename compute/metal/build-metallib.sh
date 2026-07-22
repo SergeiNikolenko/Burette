@@ -59,15 +59,28 @@ command -v xcrun >/dev/null 2>&1 || fail 'xcrun is required to build Metal asset
 command -v bun >/dev/null 2>&1 || fail 'bun is required to write Metal build metadata'
 [[ -x /usr/bin/shasum ]] || fail '/usr/bin/shasum is required'
 
-if ! metal_tool="$(xcrun --sdk macosx --find metal 2>/dev/null)" ||
-  [[ ! -x "$metal_tool" ]]; then
+metal_tool="$(xcrun --sdk macosx --find metal 2>/dev/null || true)"
+if [[ ! -x "$metal_tool" ]]; then
+  shopt -s nullglob
+  mounted_metal_tools=(
+    /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-*/Metal.xctoolchain/usr/bin/metal
+  )
+  shopt -u nullglob
+  for candidate in "${mounted_metal_tools[@]}"; do
+    metal_tool="$candidate"
+  done
+fi
+if [[ ! -x "$metal_tool" ]]; then
   fail 'Metal compiler unavailable; install the Xcode Metal Toolchain (xcodebuild -downloadComponent MetalToolchain)'
 fi
 if ! compiler_version="$("$metal_tool" --version 2>&1)"; then
   fail "Metal compiler cannot execute: $compiler_version"
 fi
-if ! metallib_tool="$(xcrun --sdk macosx --find metallib 2>/dev/null)" ||
-  [[ ! -x "$metallib_tool" ]]; then
+metallib_tool="$(xcrun --sdk macosx --find metallib 2>/dev/null || true)"
+if [[ ! -x "$metallib_tool" ]]; then
+  metallib_tool="$(dirname "$metal_tool")/metallib"
+fi
+if [[ ! -x "$metallib_tool" ]]; then
   fail 'metallib linker unavailable; install the Xcode Metal Toolchain (xcodebuild -downloadComponent MetalToolchain)'
 fi
 if ! sdk_path="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null)" ||

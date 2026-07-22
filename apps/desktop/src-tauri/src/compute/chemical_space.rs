@@ -10,7 +10,7 @@ use super::{
     fingerprint_session::CompletedFingerprintBatch,
 };
 
-const MAX_NEIGHBORS: usize = 16;
+const MAX_NEIGHBORS: usize = 64;
 const DEFAULT_MAX_MEMORY_BYTES: u64 = 4 * 1_024 * 1_024 * 1_024;
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -55,15 +55,15 @@ pub(crate) fn execute_chemical_space(
             "Chemical space requires at least two valid molecular fingerprints".into(),
         ));
     }
+    if request.neighbors == 0 || request.neighbors > MAX_NEIGHBORS {
+        return Err(ComputeCoordinatorError::Validation(format!(
+            "Chemical-space neighbors must be in 1..={MAX_NEIGHBORS}"
+        )));
+    }
     let neighbors = request.neighbors.min(fingerprints.len() - 1);
     let neighbor_count = NonZeroUsize::new(neighbors).ok_or_else(|| {
         ComputeCoordinatorError::Validation("Chemical space neighbor count must be positive".into())
     })?;
-    if neighbors > MAX_NEIGHBORS {
-        return Err(ComputeCoordinatorError::Validation(format!(
-            "The current exact Metal top-k runtime supports at most {MAX_NEIGHBORS} neighbors"
-        )));
-    }
     let knn_options = TanimotoKnnOptions::try_new(neighbor_count, request.max_memory_bytes)
         .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
     let umap_options = UmapOptions::try_new(

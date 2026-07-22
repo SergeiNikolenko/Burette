@@ -168,6 +168,8 @@ const metadata = {
     "burrete_tanimoto_csr_fill_v1",
     "burrete_tanimoto_query_counts_v1",
     "burrete_tanimoto_score_row_v1",
+    "burrete_tanimoto_counts_row_v1",
+    "burrete_tanimoto_top_k_row_v1",
     "burrete_conformer_initialize_v1",
     "burrete_conformer_distance_v1",
     "burrete_conformer_optimize_v1",

@@ -3,6 +3,7 @@
 using namespace metal;
 
 constant ulong kFingerprintWordCount = 64;
+constant uint kMaximumTanimotoNeighbors = 64;
 
 // The host validates these fields before dispatch. In particular:
 // - recordCount fits uint32 and each tile count is at most 1,024;
@@ -34,6 +35,16 @@ struct TanimotoQueryBatchV1 {
 struct TanimotoScoreRowV1 {
     ulong recordCount;
     ulong rowIndex;
+};
+
+// Selects an exact Tanimoto top-K from one uint2(intersection, union) row.
+// A single GPU thread owns the bounded insertion buffer, which keeps the full
+// O(N) score row and all exact comparisons on Metal while returning only O(K).
+struct TanimotoTopKRowV1 {
+    ulong recordCount;
+    ulong rowIndex;
+    uint neighborCount;
+    uint reserved;
 };
 
 inline bool tanimoto_matches_v1(
@@ -195,4 +206,108 @@ kernel void burrete_tanimoto_score_row_v1(
     scores[column] = unionCount == 0
         ? 0.0f
         : static_cast<float>(intersection) / static_cast<float>(unionCount);
+}
+
+kernel void burrete_tanimoto_counts_row_v1(
+    device const uint* fingerprints [[buffer(0)]],
+    device uint2* counts [[buffer(1)]],
+    constant TanimotoScoreRowV1& config [[buffer(2)]],
+    uint column [[thread_position_in_grid]]
+) {
+    if (static_cast<ulong>(column) >= config.recordCount ||
+        config.rowIndex >= config.recordCount) {
+        return;
+    }
+    if (static_cast<ulong>(column) == config.rowIndex) {
+        counts[column] = uint2(0, 0);
+        return;
+    }
+
+    device const uint* left =
+        fingerprints + config.rowIndex * kFingerprintWordCount;
+    device const uint* right =
+        fingerprints + static_cast<ulong>(column) * kFingerprintWordCount;
+    uint intersection = 0;
+    uint unionCount = 0;
+    for (ulong word = 0; word < kFingerprintWordCount; ++word) {
+        intersection += popcount(left[word] & right[word]);
+        unionCount += popcount(left[word] | right[word]);
+    }
+    counts[column] = uint2(intersection, unionCount);
+}
+
+inline bool tanimoto_ranked_before_v1(
+    uint candidateIntersection,
+    uint candidateUnion,
+    uint candidateIndex,
+    uint existingIntersection,
+    uint existingUnion,
+    uint existingIndex
+) {
+    const ulong candidateCross =
+        static_cast<ulong>(candidateIntersection) * existingUnion;
+    const ulong existingCross =
+        static_cast<ulong>(existingIntersection) * candidateUnion;
+    return candidateCross > existingCross ||
+        (candidateCross == existingCross && candidateIndex < existingIndex);
+}
+
+kernel void burrete_tanimoto_top_k_row_v1(
+    device const uint2* counts [[buffer(0)]],
+    device uint* outputIndices [[buffer(1)]],
+    device float* outputSimilarities [[buffer(2)]],
+    constant TanimotoTopKRowV1& config [[buffer(3)]],
+    uint threadIndex [[thread_position_in_grid]]
+) {
+    if (threadIndex != 0 || config.rowIndex >= config.recordCount ||
+        config.neighborCount == 0 ||
+        config.neighborCount > kMaximumTanimotoNeighbors) {
+        return;
+    }
+
+    uint selectedIndices[kMaximumTanimotoNeighbors];
+    uint selectedIntersections[kMaximumTanimotoNeighbors];
+    uint selectedUnions[kMaximumTanimotoNeighbors];
+    uint selectedCount = 0;
+
+    for (ulong candidate = 0; candidate < config.recordCount; ++candidate) {
+        if (candidate == config.rowIndex) {
+            continue;
+        }
+        const uint2 candidateCounts = counts[candidate];
+        uint insertion = selectedCount;
+        for (uint rank = 0; rank < selectedCount; ++rank) {
+            if (tanimoto_ranked_before_v1(
+                    candidateCounts.x,
+                    candidateCounts.y,
+                    static_cast<uint>(candidate),
+                    selectedIntersections[rank],
+                    selectedUnions[rank],
+                    selectedIndices[rank])) {
+                insertion = rank;
+                break;
+            }
+        }
+        if (insertion >= config.neighborCount) {
+            continue;
+        }
+        const uint newCount = min(selectedCount + 1, config.neighborCount);
+        for (uint rank = newCount - 1; rank > insertion; --rank) {
+            selectedIndices[rank] = selectedIndices[rank - 1];
+            selectedIntersections[rank] = selectedIntersections[rank - 1];
+            selectedUnions[rank] = selectedUnions[rank - 1];
+        }
+        selectedIndices[insertion] = static_cast<uint>(candidate);
+        selectedIntersections[insertion] = candidateCounts.x;
+        selectedUnions[insertion] = candidateCounts.y;
+        selectedCount = newCount;
+    }
+
+    for (uint rank = 0; rank < config.neighborCount; ++rank) {
+        outputIndices[rank] = selectedIndices[rank];
+        outputSimilarities[rank] = selectedUnions[rank] == 0
+            ? 0.0f
+            : static_cast<float>(selectedIntersections[rank]) /
+                static_cast<float>(selectedUnions[rank]);
+    }
 }
