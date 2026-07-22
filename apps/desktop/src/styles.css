@@ -6932,7 +6932,12 @@ img.radix-menu-item-icon {
 .agent-integration-section { margin: 0 0 28px; }
 .settings-section h2 { margin: 0 0 12px; color: var(--text-muted); font-size: 13px; font-weight: 400; }
 .agent-integration-section h2 { margin: 0 0 12px; color: var(--text-muted); font-size: 13px; font-weight: 400; }
-.settings-card { margin: 0 -14px; gap: 0; overflow: hidden; border: 1px solid var(--line-subtler); border-radius: var(--control-radius); background: var(--surface-card); padding: 0; box-shadow: none; }
+/* shadcn's Field orientation="responsive" only lays a row out side-by-side
+   inside a container *named* field-group (its @md/field-group: classes). The
+   settings rows sit directly in this card rather than in a <FieldGroup>, so
+   name the container here; without it the query never matches and every row
+   stays stacked no matter how much width is available. */
+.settings-card { margin: 0 -14px; gap: 0; overflow: hidden; border: 1px solid var(--line-subtler); border-radius: var(--control-radius); background: var(--surface-card); padding: 0; box-shadow: none; container: field-group / inline-size; }
 .settings-control {
   display: flex;
   align-items: flex-start;
