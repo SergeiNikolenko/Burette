@@ -1006,8 +1006,13 @@ kbd span { margin-left: 2px; }
   transform: rotate(100deg);
 }
 .anim-icon-nudge-left:hover,
-.settings-back-button:hover .anim-icon-nudge-left {
+.settings-back-button:hover .anim-icon-nudge-left,
+.tab-history-button:hover .anim-icon-nudge-left {
   transform: translateX(-2px);
+}
+.anim-icon-nudge-right:hover,
+.tab-history-button:hover .anim-icon-nudge-right {
+  transform: translateX(2px);
 }
 .anim-icon-pop:hover,
 .sidebar-search-row:hover .anim-icon-pop,
@@ -1023,12 +1028,22 @@ kbd span { margin-left: 2px; }
     transform: rotate(360deg);
   }
 }
+.sidebar-toggle-root svg {
+  transition: transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: center;
+}
+.sidebar-toggle-root:hover svg {
+  transform: scale(1.12);
+}
 @media (prefers-reduced-motion: reduce) {
   .anim-icon {
     transition: none;
   }
   .anim-icon-orbit {
     animation: none;
+  }
+  .sidebar-toggle-root svg {
+    transition: none;
   }
 }
 .project-folder-toggle-button {

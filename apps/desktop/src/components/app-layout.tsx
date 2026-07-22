@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { PanelLeft } from "lucide-react";
+import { AnimatedBackIcon, AnimatedForwardIcon } from "./ui/animated-icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
@@ -182,7 +183,7 @@ export function AppLayout({
                   title="Back"
                   aria-label="Back"
                 >
-                  ←
+                  <AnimatedBackIcon size={16} />
                 </button>
                 <button
                   type="button"
@@ -193,7 +194,7 @@ export function AppLayout({
                   title="Forward"
                   aria-label="Forward"
                 >
-                  →
+                  <AnimatedForwardIcon size={16} />
                 </button>
               </div>
             </div>
