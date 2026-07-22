@@ -50,7 +50,9 @@
   --line-subtle: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 24%), transparent);
   --line-subtler: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 15%), transparent);
   --focus-border: #0a84ff;
-  --focus-ring: transparent;
+  /* Neutral, never blue. Every consumer is a :focus-visible rule, so this shows
+     for keyboard navigation only and a mouse click still leaves no ring. */
+  --focus-ring: color-mix(in srgb, var(--fg-base) 55%, transparent);
   --line-strong: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 65%), transparent);
   --sidebar-divider-right: transparent;
   --workspace-edge-border: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 22%), transparent);
@@ -162,7 +164,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --line-subtle: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
   --line-subtler: color-mix(in srgb, black calc(var(--contrast) * 15%), transparent);
   --focus-border: #0a84ff;
-  --focus-ring: transparent;
+  --focus-ring: color-mix(in srgb, black 55%, transparent);
   --line-strong: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
   --border-color: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
   --surface-primary: var(--bg-base);
@@ -218,7 +220,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
     --line-subtle: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
     --line-subtler: color-mix(in srgb, black calc(var(--contrast) * 15%), transparent);
     --focus-border: #0a84ff;
-    --focus-ring: transparent;
+    --focus-ring: color-mix(in srgb, black 55%, transparent);
     --line-strong: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
     --border-color: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
     --surface-primary: var(--bg-base);
@@ -4449,6 +4451,9 @@ img.radix-menu-item-icon {
 .ketcher-page-actions button:focus-visible:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text-primary);
+}
+/* Ring is keyboard-only; hover shares the rule above but must not get one. */
+.ketcher-page-actions button:focus-visible:not(:disabled) {
   outline: 1px solid var(--focus-ring);
   outline-offset: -1px;
 }
@@ -5399,6 +5404,9 @@ img.radix-menu-item-icon {
 .ketcher-dock-actions button:focus-visible:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text-primary);
+}
+/* Ring is keyboard-only; hover shares the rule above but must not get one. */
+.ketcher-dock-actions button:focus-visible:not(:disabled) {
   outline: 1px solid var(--focus-ring);
   outline-offset: -1px;
 }
