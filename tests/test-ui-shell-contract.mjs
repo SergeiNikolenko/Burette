@@ -5766,7 +5766,8 @@ assert.match(previewViewer, /button\.dataset\.buretAction = 'structure-overlay-t
 assert.match(previewViewer, /root\.classList\.add\('buret-docking-poses-overlay-only'\)/);
 assert.match(previewViewer, /if \(all\) mainRow\.append\(all\);\s*animationRow\.append\(speed, loop, slider\);/);
 assert.match(previewViewer, /toggleRow\.className = 'buret-docking-pose-toggles'/);
-assert.match(previewViewer, /toggleRow\.append\(loop\);/);
+assert.match(previewViewer, /toggleRow\.append\(loop, speed, slider\);/);
+assert.match(previewViewer, /if \(!toggleRow\) root\.append\(animationRow\);/);
 assert.match(previewViewer, /animation\.addEventListener\('contextmenu'/);
 assert.match(previewViewer, /function pdbTrajectoryTimesPs\(data\)/);
 assert.match(previewViewer, /function trajectoryPoseLabel\(prepared, controlLabel, activePose\)/);

@@ -10866,10 +10866,9 @@
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
     if (toggleRow) {
       toggleRow.className = 'buret-docking-pose-toggles';
-      toggleRow.append(loop);
+      toggleRow.append(loop, speed, slider);
       if (align) toggleRow.append(align);
       if (all) toggleRow.append(all);
-      animationRow.append(speed, slider);
     } else {
       if (all) mainRow.append(all);
       animationRow.append(speed, loop, slider);
@@ -10877,7 +10876,7 @@
     root.append(mainRow);
     if (toggleRow) root.append(toggleRow);
     if (fileList) root.append(fileList);
-    root.append(animationRow);
+    if (!toggleRow) root.append(animationRow);
     document.body.appendChild(root);
     restoreDockingPoseControlsPosition(root);
     const isolationDisposer = installDockingPoseInteractionIsolation(root);
