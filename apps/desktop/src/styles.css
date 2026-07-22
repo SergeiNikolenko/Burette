@@ -714,15 +714,6 @@ button:focus-visible > .shortcut-tooltip {
   display: flex;
   flex-direction: column;
 }
-.sidebar-shell {
-  width: var(--sidebar-layout-width, 0px);
-  min-width: 0;
-  max-width: 420px;
-  flex: 0 0 auto;
-  overflow: hidden;
-  transition: width 140ms ease-out;
-  will-change: width;
-}
 .sidebar-shell-inner {
   height: 100%;
 }
@@ -1746,38 +1737,6 @@ img.radix-menu-item-icon {
 .pin-hit:focus-visible {
   box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
-.splitter {
-  width: 8px;
-  flex: 0 0 8px;
-  margin-left: -4px;
-  margin-right: -4px;
-  position: relative;
-  z-index: 3;
-  cursor: col-resize;
-  touch-action: none;
-}
-.splitter::before { content: ""; position: absolute; inset: 0; }
-.splitter::after { content: ""; position: absolute; inset: 0 auto 0 3px; width: 1px; background: transparent; transition: background 120ms ease; }
-.splitter:hover::after, .splitter:focus-visible::after, .splitter[data-dragging]::after { background: var(--line-subtle); }
-.splitter:focus-visible { outline: none; }
-.splitter-grip {
-  position: absolute;
-  top: 50%;
-  left: 3.5px;
-  transform: translate(-50%, -50%);
-  width: 4px;
-  height: 30px;
-  border-radius: 999px;
-  background: var(--line-subtle);
-  opacity: 0;
-  transition: opacity 120ms ease, background 120ms ease;
-  pointer-events: none;
-}
-.splitter:hover .splitter-grip,
-.splitter:focus-visible .splitter-grip,
-.splitter[data-dragging] .splitter-grip { opacity: 1; }
-.splitter:focus-visible .splitter-grip,
-.splitter[data-dragging] .splitter-grip { background: var(--text-muted); }
 .main-stage {
   position: relative;
   min-width: 0;
@@ -1805,9 +1764,6 @@ img.radix-menu-item-icon {
 }
 .app-shell[data-effective-theme="dark"] .dock-panel {
   --dock-divider-active-color: color-mix(in srgb, var(--accent) 70%, var(--text-primary));
-}
-.dock-panel[data-dragging] {
-  transition: width 90ms linear, height 90ms linear, opacity 90ms linear;
 }
 .dock-panel[data-open="false"] {
   opacity: 0;
@@ -1859,11 +1815,6 @@ img.radix-menu-item-icon {
 .app-shell[data-structure-drag-active="true"] .dock-panel[data-open="true"]:hover {
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-base));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent);
-}
-.dock-resizer {
-  position: absolute;
-  z-index: 2;
-  background: transparent;
 }
 .dock-panel[data-area="right"] .dock-resizer {
   left: -5px;

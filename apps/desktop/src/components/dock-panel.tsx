@@ -55,7 +55,6 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     ? [configuredTabs.find((tab) => tab.kind === "inspector") ?? createDockTab("inspector")]
     : configuredTabs;
   const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
-  const dragging = area === "right" ? state.rightDockDragging : state.bottomDockDragging;
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
@@ -152,7 +151,6 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
       data-area={area}
       data-active-tab={activeTab.kind}
       data-open={open ? "true" : "false"}
-      data-dragging={dragging || undefined}
       data-drop-active={dropActive || undefined}
       aria-hidden={!open || undefined}
       inert={!open}

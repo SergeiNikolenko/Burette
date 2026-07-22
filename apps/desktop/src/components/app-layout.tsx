@@ -78,10 +78,7 @@ export function AppLayout({
   actions,
   onDismissStatus,
   onToggleSidebar,
-  onResizeStart,
   onSidebarWidthChange,
-  onRightDockResizeStart,
-  onBottomDockResizeStart,
   dropPreview,
   onDragEnter,
   onDragOver,
@@ -93,10 +90,7 @@ export function AppLayout({
   actions: ShellActions;
   onDismissStatus: () => void;
   onToggleSidebar: () => void;
-  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   onSidebarWidthChange: (width: number) => void;
-  onRightDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
-  onBottomDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   dropPreview: FileDropPreview | null;
   onDragEnter: (event: React.DragEvent<HTMLElement>) => void;
   onDragOver: (event: React.DragEvent<HTMLElement>) => void;
@@ -162,14 +156,11 @@ export function AppLayout({
     },
     [onToggleSidebar],
   );
-  const dockDragging = state.sidebarDragging || state.rightDockDragging || state.bottomDockDragging;
-  const chromeTransition = dockDragging ? "none" : undefined;
   const systemThemeMode = useSystemThemeMode();
   const shellStyle = {
     ...buildThemeStyle(state.preferences, systemThemeMode),
     "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
     "--right-dock-width": `${rightDockOpen ? rightDockWidth : 0}px`,
-    "--bottom-dock-height": `${bottomDockOpen ? state.bottomDockHeight : 0}px`,
     "--chrome-height": hostedMcpWidget ? "0px" : undefined,
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
@@ -289,7 +280,7 @@ export function AppLayout({
           </div>
           <header
             className="topbar"
-            style={{ left: tabChromeLeft, transition: chromeTransition }}
+            style={{ left: tabChromeLeft }}
           >
             <EditorTabs state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
           </header>
