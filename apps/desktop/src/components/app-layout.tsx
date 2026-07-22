@@ -38,13 +38,27 @@ function clampRightDockWidth(width: number, viewportWidth: number, sidebarLayout
 function usePanelOpenSync(open: boolean, expandedSizePx: number) {
   const panelRef = useRef<PanelImperativeHandle | null>(null);
   useLayoutEffect(() => {
-    const panel = panelRef.current;
-    if (!panel) return;
-    if (open) {
-      if (panel.getSize().inPixels < 1) panel.resize(`${Math.max(expandedSizePx, 1)}px`);
-    } else if (panel.getSize().inPixels > 1) {
-      panel.resize("0px");
+    let raf = 0;
+    const apply = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      if (open) {
+        if (panel.getSize().inPixels < 1) panel.resize(`${Math.max(expandedSizePx, 1)}px`);
+      } else if (panel.getSize().inPixels > 1) {
+        panel.resize("0px");
+      }
+    };
+    apply();
+    // When closing, minSize drops (e.g. 220px -> 0px) in this same commit, but the
+    // library may only register the new 0 minSize after this layout effect runs,
+    // so the resize("0px") above can be clamped back up to the old minSize and the
+    // panel never reaches 0. Re-apply next frame, once minSize has settled.
+    if (!open && panelRef.current && panelRef.current.getSize().inPixels > 1) {
+      raf = requestAnimationFrame(apply);
     }
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [open, expandedSizePx]);
   return panelRef;
 }
