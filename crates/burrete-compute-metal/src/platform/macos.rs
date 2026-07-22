@@ -6,7 +6,7 @@ use burrete_compute_core::{
     AlignmentMode, ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
     Fingerprint2048, GraphBuildOptions, MmffParameters, Pm6FockPair, Rm1FockPair,
-    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoKnnOptions, TanimotoQueryOptions,
     TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
@@ -23,10 +23,13 @@ use crate::platform::{
     MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch, MetalPm6D3Dispatch,
     MetalPm6H4HhDispatch, MetalPm6OneCenterFockDispatch, MetalPm6PairFockDispatch,
     MetalRm1FockDispatch, MetalRm1PairRotationDispatch, MetalStereoValidationDispatch,
-    MetalSymmetricEigenDispatch,
+    MetalSymmetricEigenDispatch, MetalTanimotoKnnDispatch,
 };
 use crate::runtime::{MetalAlignmentBatch, MetalPm6CorrectionBatch, MetalPm6OneCenterFockBatch};
 use crate::MetalRuntimeError;
+
+#[path = "macos/mps_top_k.rs"]
+mod mps_top_k;
 
 const MAX_TILE_RECORDS: usize = 1_024;
 const MAX_QUERY_BATCH_RECORDS: usize = 262_144;
@@ -50,6 +53,13 @@ struct TanimotoQueryBatchV1 {
     record_count: u64,
     row_start: u64,
     row_count: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct TanimotoScoreRowV1 {
+    record_count: u64,
+    row_index: u64,
 }
 
 #[repr(C, align(8))]
@@ -257,6 +267,7 @@ pub(crate) struct MetalHost {
     degree_pipeline: ComputePipelineState,
     fill_pipeline: ComputePipelineState,
     query_pipeline: ComputePipelineState,
+    score_row_pipeline: ComputePipelineState,
     conformer_initialize_pipeline: ComputePipelineState,
     conformer_distance_pipeline: ComputePipelineState,
     conformer_optimize_pipeline: ComputePipelineState,
@@ -305,6 +316,7 @@ impl MetalHost {
         let degree_pipeline = pipeline(&device, library, "burrete_tanimoto_degree_count_v1")?;
         let fill_pipeline = pipeline(&device, library, "burrete_tanimoto_csr_fill_v1")?;
         let query_pipeline = pipeline(&device, library, "burrete_tanimoto_query_counts_v1")?;
+        let score_row_pipeline = pipeline(&device, library, "burrete_tanimoto_score_row_v1")?;
         let conformer_initialize_pipeline =
             pipeline(&device, library, "burrete_conformer_initialize_v1")?;
         let conformer_distance_pipeline =
@@ -335,6 +347,7 @@ impl MetalHost {
             degree_pipeline,
             fill_pipeline,
             query_pipeline,
+            score_row_pipeline,
             conformer_initialize_pipeline,
             conformer_distance_pipeline,
             conformer_optimize_pipeline,
@@ -549,6 +562,141 @@ impl MetalHost {
             });
         }
         Ok((counts, gpu_time_seconds))
+    }
+
+    pub(crate) fn build_tanimoto_knn_profiled(
+        &self,
+        fingerprints: &[Fingerprint2048],
+        options: TanimotoKnnOptions,
+    ) -> Result<MetalTanimotoKnnDispatch, MetalRuntimeError> {
+        let record_count = fingerprints.len();
+        let neighbors_per_vertex = options
+            .neighbor_count()
+            .get()
+            .min(record_count.saturating_sub(1));
+        if neighbors_per_vertex == 0 {
+            return Ok(MetalTanimotoKnnDispatch {
+                source_indices: Vec::new(),
+                similarities: Vec::new(),
+                neighbors_per_vertex,
+                gpu_time_seconds: 0.0,
+            });
+        }
+        if neighbors_per_vertex > 16 {
+            return resource_limit(
+                "native MPS top-K currently supports at most 16 neighbors per vertex",
+            );
+        }
+        if record_count > u32::MAX as usize {
+            return resource_limit("fingerprint count exceeds the Metal uint32 row limit");
+        }
+        admit_knn_memory(
+            record_count,
+            neighbors_per_vertex,
+            options.max_memory_bytes(),
+        )?;
+
+        let fingerprints_buffer = buffer_with_slice(&self.device, fingerprints);
+        let score_bytes = record_count
+            .checked_mul(size_of::<f32>())
+            .ok_or_else(memory_overflow)?;
+        let score_buffer = self
+            .device
+            .new_buffer(score_bytes as u64, MTLResourceOptions::StorageModePrivate);
+        let thread_width = self
+            .score_row_pipeline
+            .thread_execution_width()
+            .min(self.score_row_pipeline.max_total_threads_per_threadgroup());
+        if thread_width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal Tanimoto score pipeline advertises a zero thread width".into(),
+            ));
+        }
+
+        let result_count = record_count
+            .checked_mul(neighbors_per_vertex)
+            .ok_or_else(memory_overflow)?;
+        let mut source_indices = Vec::with_capacity(result_count);
+        let mut similarities = Vec::with_capacity(result_count);
+        let mut gpu_time_seconds = 0.0;
+        for row_index in 0..record_count {
+            let config = TanimotoScoreRowV1 {
+                record_count: record_count as u64,
+                row_index: row_index as u64,
+            };
+            gpu_time_seconds += autoreleasepool(|| {
+                let command = self.queue.new_command_buffer();
+                let encoder = command.new_compute_command_encoder();
+                encoder.set_compute_pipeline_state(&self.score_row_pipeline);
+                encoder.set_buffer(0, Some(&fingerprints_buffer), 0);
+                encoder.set_buffer(1, Some(&score_buffer), 0);
+                encoder.set_bytes(
+                    2,
+                    size_of_val(&config) as u64,
+                    (&config as *const TanimotoScoreRowV1).cast(),
+                );
+                encoder.dispatch_threads(
+                    MTLSize {
+                        width: record_count as u64,
+                        height: 1,
+                        depth: 1,
+                    },
+                    MTLSize {
+                        width: thread_width,
+                        height: 1,
+                        depth: 1,
+                    },
+                );
+                encoder.end_encoding();
+                command.commit();
+                command.wait_until_completed();
+                completed_gpu_time(command)
+            })?;
+            let selected = mps_top_k::find_top_k(
+                &self.device,
+                &self.queue,
+                &score_buffer,
+                1,
+                record_count,
+                score_bytes as u64,
+                neighbors_per_vertex,
+            )?;
+            gpu_time_seconds += selected.gpu_time_seconds;
+            if selected
+                .indices
+                .iter()
+                .any(|index| *index as usize >= record_count || *index as usize == row_index)
+            {
+                return Err(MetalRuntimeError::Dispatch(
+                    "Metal Tanimoto top-K returned invalid neighbors".into(),
+                ));
+            }
+            let mut ranked = selected
+                .indices
+                .into_iter()
+                .map(|index| {
+                    let counts =
+                        fingerprints[row_index].tanimoto_counts(&fingerprints[index as usize]);
+                    (index, counts)
+                })
+                .collect::<Vec<_>>();
+            ranked.sort_unstable_by(|left, right| {
+                right
+                    .1
+                    .compare_similarity(left.1)
+                    .then_with(|| left.0.cmp(&right.0))
+            });
+            for (index, counts) in ranked {
+                source_indices.push(index);
+                similarities.push(counts.similarity() as f32);
+            }
+        }
+        Ok(MetalTanimotoKnnDispatch {
+            source_indices,
+            similarities,
+            neighbors_per_vertex,
+            gpu_time_seconds,
+        })
     }
 
     pub(crate) fn initialize_conformers_profiled(
@@ -3204,6 +3352,30 @@ fn admit_query_memory(record_count: usize, limit: u64) -> Result<(), MetalRuntim
     Ok(())
 }
 
+fn admit_knn_memory(
+    record_count: usize,
+    neighbors_per_vertex: usize,
+    limit: u64,
+) -> Result<(), MetalRuntimeError> {
+    let records = record_count as u64;
+    let neighbors = neighbors_per_vertex as u64;
+    let required = MEMORY_HEADROOM_BYTES
+        .checked_add(
+            records
+                .checked_mul(256 * 2 + 4)
+                .ok_or_else(memory_overflow)?,
+        )
+        .and_then(|total| total.checked_add(records.checked_mul(neighbors)?.checked_mul(8)?))
+        .and_then(|total| total.checked_add(neighbors.checked_mul(8)?))
+        .ok_or_else(memory_overflow)?;
+    if required > limit {
+        return resource_limit(format!(
+            "Metal Tanimoto kNN requires {required} accounted bytes; limit is {limit}"
+        ));
+    }
+    Ok(())
+}
+
 fn memory_overflow() -> MetalRuntimeError {
     MetalRuntimeError::ResourceLimit("Metal working-set accounting overflowed".into())
 }
@@ -3235,6 +3407,9 @@ mod tests {
         assert_eq!(std::mem::offset_of!(TanimotoQueryBatchV1, row_count), 16);
         assert_eq!(std::mem::size_of::<TanimotoQueryCountsV1>(), 8);
         assert_eq!(std::mem::align_of::<TanimotoQueryCountsV1>(), 8);
+        assert_eq!(std::mem::size_of::<TanimotoScoreRowV1>(), 16);
+        assert_eq!(std::mem::align_of::<TanimotoScoreRowV1>(), 8);
+        assert_eq!(std::mem::offset_of!(TanimotoScoreRowV1, row_index), 8);
         assert_eq!(std::mem::size_of::<ConformerInitializeBatchV1>(), 16);
         assert_eq!(std::mem::align_of::<ConformerInitializeBatchV1>(), 8);
         assert_eq!(
@@ -3272,6 +3447,13 @@ mod tests {
         let bytes_per_record = 256 * 2 + 8 * 2 + 16;
         assert!(admit_query_memory(1, base + bytes_per_record).is_ok());
         assert!(admit_query_memory(1, base + bytes_per_record - 1).is_err());
+    }
+
+    #[test]
+    fn knn_memory_admission_counts_results_and_device_score_row() {
+        let required = MEMORY_HEADROOM_BYTES + (256 * 2 + 4) + 3 * 8 + 3 * 8;
+        assert!(admit_knn_memory(1, 3, required).is_ok());
+        assert!(admit_knn_memory(1, 3, required - 1).is_err());
     }
 
     #[test]

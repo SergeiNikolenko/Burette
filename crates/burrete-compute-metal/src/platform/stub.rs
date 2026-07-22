@@ -2,7 +2,7 @@ use burrete_compute_core::{
     ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
     Fingerprint2048, GraphBuildOptions, MmffParameters, Pm6FockPair, Rm1FockPair,
-    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoKnnOptions, TanimotoQueryOptions,
     TetrahedralConstraint,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
@@ -12,7 +12,7 @@ use crate::platform::{
     MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch, MetalPm6D3Dispatch,
     MetalPm6H4HhDispatch, MetalPm6OneCenterFockDispatch, MetalPm6PairFockDispatch,
     MetalRm1FockDispatch, MetalRm1PairRotationDispatch, MetalStereoValidationDispatch,
-    MetalSymmetricEigenDispatch,
+    MetalSymmetricEigenDispatch, MetalTanimotoKnnDispatch,
 };
 use crate::runtime::{MetalAlignmentBatch, MetalPm6CorrectionBatch, MetalPm6OneCenterFockBatch};
 use crate::MetalRuntimeError;
@@ -74,6 +74,16 @@ impl MetalHost {
         _fingerprints: &[Fingerprint2048],
         _options: TanimotoQueryOptions,
     ) -> Result<(Vec<TanimotoCounts>, f64), MetalRuntimeError> {
+        Err(MetalRuntimeError::UnsupportedPlatform(
+            "native Metal compute requires macOS on Apple Silicon".into(),
+        ))
+    }
+
+    pub(crate) fn build_tanimoto_knn_profiled(
+        &self,
+        _fingerprints: &[Fingerprint2048],
+        _options: TanimotoKnnOptions,
+    ) -> Result<MetalTanimotoKnnDispatch, MetalRuntimeError> {
         Err(MetalRuntimeError::UnsupportedPlatform(
             "native Metal compute requires macOS on Apple Silicon".into(),
         ))

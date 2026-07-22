@@ -13,7 +13,8 @@ pub use runtime::{
     MetalPm6D3Execution, MetalPm6D3H4Execution, MetalPm6H4HhExecution, MetalPm6OneCenterFockBatch,
     MetalPm6OneCenterFockExecution, MetalPm6PairFockContribution, MetalQueryExecution,
     MetalRm1FockContribution, MetalRm1PreparedPairs, MetalStereoValidation, MetalSymmetricEigen,
-    MetalTanimotoRuntime, Pm6CorrectionMoleculeDescriptor, Pm6D3H4Correction, Pm6H4HhCorrection,
+    MetalTanimotoKnnExecution, MetalTanimotoRuntime, Pm6CorrectionMoleculeDescriptor,
+    Pm6D3H4Correction, Pm6H4HhCorrection,
 };
 
-pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v20";
+pub const NATIVE_METAL_RUNTIME_VERSION: &str = "burrete-native-metal-v21";

@@ -12,7 +12,7 @@ use burrete_compute_core::{
     GraphBuildOptions, MmffAngleTerm, MmffBondTerm, MmffElectrostaticTerm, MmffEnergyBreakdown,
     MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
     MmffVanDerWaalsTerm, MmffVariant, Pm6FockPair, RigidTransform, Rm1FockPair, SemiempiricalAtom,
-    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
+    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoKnnOptions, TanimotoQueryOptions,
     TetrahedralConstraint, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
@@ -49,6 +49,15 @@ pub struct MetalQueryExecution {
     pub counts: Vec<TanimotoCounts>,
     /// Sum of Metal's completed-command-buffer GPUStartTime/GPUEndTime
     /// intervals. This excludes CPU encoding and synchronization time.
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalTanimotoKnnExecution {
+    pub source_indices: Vec<u32>,
+    pub similarities: Vec<f32>,
+    pub neighbors_per_vertex: usize,
+    /// Sum of completed Metal and MPS command-buffer GPU intervals.
     pub gpu_time_ms: u64,
 }
 
@@ -335,6 +344,22 @@ impl MetalComputeRuntime {
         Ok(MetalQueryExecution {
             counts,
             gpu_time_ms: gpu_time_ms(gpu_time_seconds)?,
+        })
+    }
+
+    pub fn build_tanimoto_knn_profiled(
+        &self,
+        fingerprints: &[Fingerprint2048],
+        options: TanimotoKnnOptions,
+    ) -> Result<MetalTanimotoKnnExecution, MetalRuntimeError> {
+        let dispatch = self
+            .host
+            .build_tanimoto_knn_profiled(fingerprints, options)?;
+        Ok(MetalTanimotoKnnExecution {
+            source_indices: dispatch.source_indices,
+            similarities: dispatch.similarities,
+            neighbors_per_vertex: dispatch.neighbors_per_vertex,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
         })
     }
 
@@ -1900,7 +1925,7 @@ mod tests {
     use std::path::PathBuf;
 
     use base64::{engine::general_purpose::STANDARD, Engine as _};
-    use burrete_compute_core::{butina_clusters, ButinaOptions};
+    use burrete_compute_core::{build_tanimoto_knn, butina_clusters, ButinaOptions};
     use serde::Deserialize;
 
     use super::*;
@@ -1990,6 +2015,42 @@ mod tests {
                 .as_deref()
                 .expect("packaged runtime must pin its metallib"),
         );
+    }
+
+    #[test]
+    #[ignore = "manual packaged-runtime Tanimoto kNN smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    fn builds_tanimoto_knn_with_the_packaged_runtime_on_the_real_gpu() {
+        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+            .map(PathBuf::from)
+            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged ComputeMetal directory");
+        let runtime = MetalComputeRuntime::load(&root, &"0".repeat(64))
+            .expect("verified packaged Metal runtime");
+        let fingerprints = [0b1111_u64, 0b1110, 0b1100, 0b1000].map(|first_word| {
+            let mut words = [0_u64; FINGERPRINT_WORDS];
+            words[0] = first_word;
+            Fingerprint2048::from_words(words)
+        });
+        let options = TanimotoKnnOptions::try_new(
+            NonZeroUsize::new(1).expect("nonzero k"),
+            MIN_COMPUTE_MEMORY_BYTES,
+        )
+        .expect("kNN options");
+        let expected = build_tanimoto_knn(&fingerprints, options).expect("CPU kNN reference");
+        let observed = runtime
+            .build_tanimoto_knn_profiled(&fingerprints, options)
+            .expect("Metal Tanimoto kNN");
+
+        assert_eq!(observed.neighbors_per_vertex, 1);
+        assert_eq!(
+            observed.source_indices,
+            expected
+                .source_indices()
+                .iter()
+                .map(|index| *index as u32)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(observed.similarities, vec![0.75, 0.75, 2.0 / 3.0, 0.5]);
+        assert!(observed.gpu_time_ms <= 2_000);
     }
 
     #[test]

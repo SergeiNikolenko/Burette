@@ -13,7 +13,7 @@ const POINTER_MAX_BYTES: u64 = 4 * 1024;
 const METADATA_MAX_BYTES: u64 = 64 * 1024;
 const METALLIB_MAX_BYTES: u64 = 64 * 1024 * 1024;
 const METADATA_FILE: &str = "build-metadata.v2.json";
-const METALLIB_FILE: &str = "native-compute.v20.metallib";
+const METALLIB_FILE: &str = "native-compute.v21.metallib";
 const SOURCES: [(&str, &[u8]); 16] = [
     (
         "compute/metal/tanimoto.v2.metal",
@@ -164,10 +164,11 @@ const AIR_PATHS: [&str; 16] = [
     "pm6-one-center-fock.v1.air",
     "pm6-pair-fock.v1.air",
 ];
-const ENTRYPOINTS: [&str; 20] = [
+const ENTRYPOINTS: [&str; 21] = [
     "burrete_tanimoto_degree_count_v1",
     "burrete_tanimoto_csr_fill_v1",
     "burrete_tanimoto_query_counts_v1",
+    "burrete_tanimoto_score_row_v1",
     "burrete_conformer_initialize_v1",
     "burrete_conformer_distance_v1",
     "burrete_conformer_optimize_v1",
@@ -339,7 +340,7 @@ fn validate_metadata(metadata: &BuildMetadata) -> Result<(), MetalRuntimeError> 
     let expected_entrypoints: Vec<String> = ENTRYPOINTS.iter().map(ToString::to_string).collect();
     if metadata.schema_version != "burrete.compute.metal-build-metadata.v2"
         || metadata.runtime_version != NATIVE_METAL_RUNTIME_VERSION
-        || metadata.library_id != "burrete.compute.native.v20"
+        || metadata.library_id != "burrete.compute.native.v21"
         || !matches_hashed_inputs(&metadata.sources, &SOURCES)
         || !matches_hashed_inputs(&metadata.contracts, &CONTRACTS)
         || metadata.air.len() != AIR_PATHS.len()
@@ -572,7 +573,7 @@ mod tests {
             json!({
                 "schemaVersion": "burrete.compute.metal-build-metadata.v2",
                 "runtimeVersion": NATIVE_METAL_RUNTIME_VERSION,
-                "libraryId": "burrete.compute.native.v20",
+                "libraryId": "burrete.compute.native.v21",
                 "sources": SOURCES.map(|(path, bytes)| json!({
                     "path": path,
                     "sha256": sha256(bytes),

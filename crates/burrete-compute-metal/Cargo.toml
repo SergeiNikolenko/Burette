@@ -3,6 +3,9 @@ name = "burrete-compute-metal"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+cargo-clippy = []
+
 [dependencies]
 burrete-compute-core = { path = "../burrete-compute-core" }
 burrete-compute-protocol = { path = "../burrete-compute-protocol" }
@@ -11,7 +14,7 @@ serde_json = "1"
 sha2 = "0.11"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-metal = "0.33"
+metal = { version = "0.33", features = ["mps"] }
 objc = "0.2"
 
 [dev-dependencies]

@@ -46,6 +46,16 @@
         { "name": "rowStart", "type": "uint64", "offsetBytes": 8 },
         { "name": "rowCount", "type": "uint64", "offsetBytes": 16 }
       ]
+    },
+    "scoreRow": {
+      "name": "TanimotoScoreRowV1",
+      "sizeBytes": 16,
+      "alignmentBytes": 8,
+      "byteOrder": "littleEndian",
+      "fields": [
+        { "name": "recordCount", "type": "uint64", "offsetBytes": 0 },
+        { "name": "rowIndex", "type": "uint64", "offsetBytes": 8 }
+      ]
     }
   },
   "dispatch": {
@@ -92,6 +102,14 @@
         { "name": "query", "index": 1, "type": "uint32", "alignmentBytes": 4, "access": "constant", "elements": "64" },
         { "name": "counts", "index": 2, "type": "uint2", "alignmentBytes": 8, "access": "write", "elements": "recordCount" },
         { "name": "batch", "index": 3, "type": "TanimotoQueryBatchV1", "alignmentBytes": 8, "access": "constant", "elements": "1" }
+      ]
+    },
+    {
+      "name": "burrete_tanimoto_score_row_v1",
+      "buffers": [
+        { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
+        { "name": "scores", "index": 1, "type": "float32", "alignmentBytes": 4, "access": "write", "elements": "recordCount" },
+        { "name": "config", "index": 2, "type": "TanimotoScoreRowV1", "alignmentBytes": 8, "access": "constant", "elements": "1" }
       ]
     }
   ]

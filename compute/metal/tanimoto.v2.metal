@@ -29,6 +29,13 @@ struct TanimotoQueryBatchV1 {
     ulong rowCount;
 };
 
+// Produces one dense score row at a time. The host immediately feeds this
+// device buffer to MPSMatrixFindTopK, so the O(N) row never crosses to CPU.
+struct TanimotoScoreRowV1 {
+    ulong recordCount;
+    ulong rowIndex;
+};
+
 inline bool tanimoto_matches_v1(
     device const uint* left,
     device const uint* right,
@@ -158,4 +165,34 @@ kernel void burrete_tanimoto_query_counts_v1(
         unionCount += popcount(queryWord | fingerprintWord);
     }
     counts[row] = uint2(intersection, unionCount);
+}
+
+kernel void burrete_tanimoto_score_row_v1(
+    device const uint* fingerprints [[buffer(0)]],
+    device float* scores [[buffer(1)]],
+    constant TanimotoScoreRowV1& config [[buffer(2)]],
+    uint column [[thread_position_in_grid]]
+) {
+    if (static_cast<ulong>(column) >= config.recordCount ||
+        config.rowIndex >= config.recordCount) {
+        return;
+    }
+    if (static_cast<ulong>(column) == config.rowIndex) {
+        scores[column] = -INFINITY;
+        return;
+    }
+
+    device const uint* left =
+        fingerprints + config.rowIndex * kFingerprintWordCount;
+    device const uint* right =
+        fingerprints + static_cast<ulong>(column) * kFingerprintWordCount;
+    uint intersection = 0;
+    uint unionCount = 0;
+    for (ulong word = 0; word < kFingerprintWordCount; ++word) {
+        intersection += popcount(left[word] & right[word]);
+        unionCount += popcount(left[word] | right[word]);
+    }
+    scores[column] = unionCount == 0
+        ? 0.0f
+        : static_cast<float>(intersection) / static_cast<float>(unionCount);
 }

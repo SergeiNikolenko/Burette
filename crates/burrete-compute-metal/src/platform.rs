@@ -4,6 +4,13 @@ pub(crate) struct MetalDistanceDispatch {
     pub(crate) gpu_time_seconds: f64,
 }
 
+pub(crate) struct MetalTanimotoKnnDispatch {
+    pub(crate) source_indices: Vec<u32>,
+    pub(crate) similarities: Vec<f32>,
+    pub(crate) neighbors_per_vertex: usize,
+    pub(crate) gpu_time_seconds: f64,
+}
+
 pub(crate) struct MetalDistanceOptimizationDispatch {
     pub(crate) positions: Vec<[f32; 4]>,
     pub(crate) energies: Vec<f32>,
