@@ -296,7 +296,22 @@ export function AppLayout({
         </>
       )}
       <section className="workspace">
-        <ResizablePanelGroup orientation="horizontal" className="workspace-panels">
+        {/* Sizes are persisted from onLayoutChanged, not onResize: onResize is
+            driven by a ResizeObserver and also fires for window resizes,
+            constraint re-clamps and imperative collapse()/expand(), so writing
+            from there overwrote the user's stored size with a clamped one (a
+            400px sidebar became 280px for good after shrinking the window).
+            onLayoutChanged reports isUserInteraction for exactly the pointer and
+            keyboard resizes we want to remember. */}
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="workspace-panels"
+          onLayoutChanged={(_layout, meta) => {
+            if (!meta.isUserInteraction) return;
+            const px = Math.round(sidebarPanelRef.current?.getSize().inPixels ?? 0);
+            if (px > 1) onSidebarWidthChange(px);
+          }}
+        >
           <ResizablePanel
             id="sidebar"
             className="workspace-sidebar-panel"
@@ -309,13 +324,7 @@ export function AppLayout({
             maxSize={`${maxSidebarWidth}px`}
             groupResizeBehavior="preserve-pixel-size"
             onResize={(size) => {
-              const px = Math.round(size.inPixels);
-              if (px > 1) {
-                onSidebarWidthChange(px);
-                if (!settingsMode) setSidebarOpen(true);
-              } else if (!settingsMode) {
-                setSidebarOpen(false);
-              }
+              if (!settingsMode) setSidebarOpen(Math.round(size.inPixels) > 1);
             }}
           >
             <div className="sidebar-shell-inner">
@@ -327,9 +336,25 @@ export function AppLayout({
           ) : null}
           <ResizablePanel id="center" className="workspace-center-panel" style={CLIPPED_PANEL_STYLE}>
             <section className="workbench">
-              <ResizablePanelGroup orientation="horizontal" className="workbench-panels">
+              <ResizablePanelGroup
+                orientation="horizontal"
+                className="workbench-panels"
+                onLayoutChanged={(_layout, meta) => {
+                  if (!meta.isUserInteraction) return;
+                  const px = Math.round(rightDockPanelRef.current?.getSize().inPixels ?? 0);
+                  if (px > 1) actions.setDockSize("right", px);
+                }}
+              >
                 <ResizablePanel id="workbench-main" className="workbench-main-panel" minSize={`${MAIN_MIN_WIDTH}px`} style={CLIPPED_PANEL_STYLE}>
-                  <ResizablePanelGroup orientation="vertical" className="workbench-main-panels">
+                  <ResizablePanelGroup
+                    orientation="vertical"
+                    className="workbench-main-panels"
+                    onLayoutChanged={(_layout, meta) => {
+                      if (!meta.isUserInteraction) return;
+                      const px = Math.round(bottomDockPanelRef.current?.getSize().inPixels ?? 0);
+                      if (px > 1) actions.setDockSize("bottom", px);
+                    }}
+                  >
                     <ResizablePanel id="main" className="main-panel" style={CLIPPED_PANEL_STYLE}>
                       <section className="main-stage">
                         <ViewerArea state={layoutState} actions={actions} />
@@ -350,13 +375,8 @@ export function AppLayout({
                       maxSize="70%"
                       groupResizeBehavior="preserve-pixel-size"
                       onResize={(size) => {
-                        const px = Math.round(size.inPixels);
-                        if (px > 1) {
-                          actions.setDockSize("bottom", px);
-                          if (!bottomDockOpen) actions.setDockOpen("bottom", true);
-                        } else if (bottomDockOpen) {
-                          actions.setDockOpen("bottom", false);
-                        }
+                        const open = Math.round(size.inPixels) > 1;
+                        if (open !== bottomDockOpen) actions.setDockOpen("bottom", open);
                       }}
                     >
                       {/* Always mounted: DockPanel renders its own closed state
@@ -382,13 +402,8 @@ export function AppLayout({
                   maxSize="70%"
                   groupResizeBehavior="preserve-pixel-size"
                   onResize={(size) => {
-                    const px = Math.round(size.inPixels);
-                    if (px > 1) {
-                      actions.setDockSize("right", px);
-                      if (!rightDockOpen) actions.setDockOpen("right", true);
-                    } else if (rightDockOpen) {
-                      actions.setDockOpen("right", false);
-                    }
+                    const open = Math.round(size.inPixels) > 1;
+                    if (open !== rightDockOpen) actions.setDockOpen("right", open);
                   }}
                 >
                   <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
