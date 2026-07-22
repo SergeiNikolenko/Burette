@@ -2041,6 +2041,13 @@ img.radix-menu-item-icon {
     padding: 0 9px;
   }
 
+  /* The padding shorthand above also resets the room reserved for the close
+     button (which is absolutely positioned at the tab's right edge), so the
+     active tab's label would run underneath it. Restore that room. */
+  .dock-panel[data-area="right"] .dock-tab-shell[data-active] .dock-tab {
+    padding-right: 34px;
+  }
+
   .dock-panel[data-area="right"] .dock-tab:not([data-active]) span {
     display: block;
   }
