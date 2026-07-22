@@ -17,6 +17,7 @@ import type { ShellActions, ShellViewState } from "../types";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
 
 const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
+const MAX_MOLSTAR_SCENE_STRUCTURES = 200;
 
 type ProjectTreeNode =
   | {
@@ -94,7 +95,6 @@ export function ProjectGroup({
     if (event.detail < 2) return;
     event.preventDefault();
     event.stopPropagation();
-    startRename();
   };
 
   const startRename = () => {
@@ -194,7 +194,7 @@ export function ProjectGroup({
   return (
     <div className="project-group" role="listitem">
       <div
-        role="button"
+        role="treeitem"
         tabIndex={0}
         className="project-group-row"
         draggable={!renaming && project.items.length > 0}
@@ -207,7 +207,6 @@ export function ProjectGroup({
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          startRename();
         }}
         onContextMenu={handleContextMenu}
         onDragStart={sidebarDrag.onDragStart}
@@ -281,7 +280,11 @@ export function ProjectGroup({
           />
         </span>
       </div>
-      {expanded && (
+      <div
+        className="project-group-children-shell"
+        data-expanded={expanded ? "true" : "false"}
+        aria-hidden={!expanded}
+      >
         <div className="project-children" role="list">
           {visibleTree.map((node) => (
             <ProjectTreeNodeView
@@ -310,7 +313,7 @@ export function ProjectGroup({
             </button>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -322,7 +325,7 @@ function projectMenuItems(project: SidebarProject, actions: ShellActions, startR
       kind: "item" as const,
       id: "open-project-molstar-scene",
       text: "Open all in Mol* scene",
-      disabled: scenePaths.length < 2,
+      disabled: scenePaths.length < 2 || scenePaths.length > MAX_MOLSTAR_SCENE_STRUCTURES,
       action: () => openProjectFolderMolstarScene(project, null, actions, "structureAll"),
     },
     { kind: "separator" as const },
@@ -377,7 +380,7 @@ function projectFolderMenuItems(project: SidebarProject, folderPath: string, act
       kind: "item" as const,
       id: "open-folder-molstar-scene",
       text: "Open all in Mol* scene",
-      disabled: scenePaths.length < 2,
+      disabled: scenePaths.length < 2 || scenePaths.length > MAX_MOLSTAR_SCENE_STRUCTURES,
       action: () => openProjectFolderMolstarScene(project, folderPath, actions, "structureAll"),
     },
     { kind: "separator" as const },
@@ -419,6 +422,7 @@ function openProjectFolderMolstarScene(
 ) {
   const paths = molstarScenePathsForProjectFolder(project, folderPath);
   if (paths.length < 2) return;
+  if (paths.length > MAX_MOLSTAR_SCENE_STRUCTURES) return;
   void actions.openDockingDocument(paths[0], paths.slice(1), { sceneMode });
 }
 
@@ -516,7 +520,6 @@ function ProjectTreeNodeView({
     if (event.detail < 2) return;
     event.preventDefault();
     event.stopPropagation();
-    startRename();
   };
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "F2") {
@@ -553,7 +556,7 @@ function ProjectTreeNodeView({
   return (
     <div className="project-folder-node" role="listitem">
       <div
-        role="button"
+        role="treeitem"
         tabIndex={0}
         className="project-folder-row"
         style={projectDepthStyle(depth)}
@@ -567,7 +570,6 @@ function ProjectTreeNodeView({
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          startRename();
         }}
         onContextMenu={handleContextMenu}
         onDragStart={sidebarDrag.onDragStart}
@@ -772,7 +774,7 @@ export function ProjectItem({
 
   return (
     <div
-      role="button"
+      role="treeitem"
       tabIndex={0}
       draggable
       className={className}
