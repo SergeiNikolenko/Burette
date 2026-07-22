@@ -47,26 +47,17 @@
         { "name": "rowCount", "type": "uint64", "offsetBytes": 16 }
       ]
     },
-    "scoreRow": {
-      "name": "TanimotoScoreRowV1",
-      "sizeBytes": 16,
+    "knnBatch": {
+      "name": "TanimotoKnnBatchV1",
+      "sizeBytes": 32,
       "alignmentBytes": 8,
       "byteOrder": "littleEndian",
       "fields": [
         { "name": "recordCount", "type": "uint64", "offsetBytes": 0 },
-        { "name": "rowIndex", "type": "uint64", "offsetBytes": 8 }
-      ]
-    },
-    "topKRow": {
-      "name": "TanimotoTopKRowV1",
-      "sizeBytes": 24,
-      "alignmentBytes": 8,
-      "byteOrder": "littleEndian",
-      "fields": [
-        { "name": "recordCount", "type": "uint64", "offsetBytes": 0 },
-        { "name": "rowIndex", "type": "uint64", "offsetBytes": 8 },
-        { "name": "neighborCount", "type": "uint32", "offsetBytes": 16 },
-        { "name": "reserved", "type": "uint32", "offsetBytes": 20 }
+        { "name": "rowStart", "type": "uint64", "offsetBytes": 8 },
+        { "name": "rowCount", "type": "uint64", "offsetBytes": 16 },
+        { "name": "neighborCount", "type": "uint32", "offsetBytes": 24 },
+        { "name": "reserved", "type": "uint32", "offsetBytes": 28 }
       ]
     }
   },
@@ -78,6 +69,7 @@
     "maximumPairsPerTile": 1048576,
     "maximumQueryBatchRecords": 262144,
     "maximumNeighborsPerVertex": 64,
+    "maximumKnnBatchRows": 32,
     "logicalTilesPartitionPairDomainExactlyOnce": true,
     "queryBatchesPartitionLibraryExactlyOnce": true,
     "columnsAdvanceContiguouslyPerRow": true,
@@ -118,28 +110,20 @@
       ]
     },
     {
-      "name": "burrete_tanimoto_score_row_v1",
+      "name": "burrete_tanimoto_counts_batch_v1",
       "buffers": [
         { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
-        { "name": "scores", "index": 1, "type": "float32", "alignmentBytes": 4, "access": "write", "elements": "recordCount" },
-        { "name": "config", "index": 2, "type": "TanimotoScoreRowV1", "alignmentBytes": 8, "access": "constant", "elements": "1" }
+        { "name": "counts", "index": 1, "type": "uint2", "alignmentBytes": 8, "access": "write", "elements": "rowCount * recordCount" },
+        { "name": "config", "index": 2, "type": "TanimotoKnnBatchV1", "alignmentBytes": 8, "access": "constant", "elements": "1" }
       ]
     },
     {
-      "name": "burrete_tanimoto_counts_row_v1",
+      "name": "burrete_tanimoto_top_k_batch_v1",
       "buffers": [
-        { "name": "fingerprints", "index": 0, "type": "uint32", "alignmentBytes": 4, "access": "read", "elements": "recordCount * 64" },
-        { "name": "counts", "index": 1, "type": "uint2", "alignmentBytes": 8, "access": "write", "elements": "recordCount" },
-        { "name": "config", "index": 2, "type": "TanimotoScoreRowV1", "alignmentBytes": 8, "access": "constant", "elements": "1" }
-      ]
-    },
-    {
-      "name": "burrete_tanimoto_top_k_row_v1",
-      "buffers": [
-        { "name": "counts", "index": 0, "type": "uint2", "alignmentBytes": 8, "access": "read", "elements": "recordCount" },
-        { "name": "outputIndices", "index": 1, "type": "uint32", "alignmentBytes": 4, "access": "write", "elements": "neighborCount" },
-        { "name": "outputSimilarities", "index": 2, "type": "float32", "alignmentBytes": 4, "access": "write", "elements": "neighborCount" },
-        { "name": "config", "index": 3, "type": "TanimotoTopKRowV1", "alignmentBytes": 8, "access": "constant", "elements": "1" }
+        { "name": "counts", "index": 0, "type": "uint2", "alignmentBytes": 8, "access": "read", "elements": "rowCount * recordCount" },
+        { "name": "outputIndices", "index": 1, "type": "uint32", "alignmentBytes": 4, "access": "write", "elements": "rowCount * neighborCount" },
+        { "name": "outputSimilarities", "index": 2, "type": "float32", "alignmentBytes": 4, "access": "write", "elements": "rowCount * neighborCount" },
+        { "name": "config", "index": 3, "type": "TanimotoKnnBatchV1", "alignmentBytes": 8, "access": "constant", "elements": "1" }
       ]
     }
   ]

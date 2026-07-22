@@ -180,6 +180,7 @@ assert.equal(contract.dispatch.atomics, false);
 assert.equal(contract.dispatch.maximumPairsPerTile, 1024 * 1024);
 assert.equal(contract.dispatch.maximumQueryBatchRecords, 262144);
 assert.equal(contract.dispatch.maximumNeighborsPerVertex, 64);
+assert.equal(contract.dispatch.maximumKnnBatchRows, 32);
 assert.equal(contract.dispatch.logicalTilesPartitionPairDomainExactlyOnce, true);
 assert.equal(contract.dispatch.queryBatchesPartitionLibraryExactlyOnce, true);
 assert.equal(contract.dispatch.sameRowDispatchesCompleteSeriallyOnOneCommandQueue, true);
@@ -207,11 +208,11 @@ assert.deepEqual(
   contract.parameterAbis.queryBatch.fields.map(({ offsetBytes }) => offsetBytes),
   [0, 8, 16],
 );
-assert.equal(contract.parameterAbis.topKRow.sizeBytes, 24);
-assert.equal(contract.parameterAbis.topKRow.alignmentBytes, 8);
+assert.equal(contract.parameterAbis.knnBatch.sizeBytes, 32);
+assert.equal(contract.parameterAbis.knnBatch.alignmentBytes, 8);
 assert.deepEqual(
-  contract.parameterAbis.topKRow.fields.map(({ offsetBytes }) => offsetBytes),
-  [0, 8, 16, 20],
+  contract.parameterAbis.knnBatch.fields.map(({ offsetBytes }) => offsetBytes),
+  [0, 8, 16, 24, 28],
 );
 const expectedBuffers = {
   burrete_tanimoto_degree_count_v1: ["fingerprints", "tile", "rowDegrees"],
@@ -224,9 +225,8 @@ const expectedBuffers = {
     "rowStatus",
   ],
   burrete_tanimoto_query_counts_v1: ["fingerprints", "query", "counts", "batch"],
-  burrete_tanimoto_score_row_v1: ["fingerprints", "scores", "config"],
-  burrete_tanimoto_counts_row_v1: ["fingerprints", "counts", "config"],
-  burrete_tanimoto_top_k_row_v1: [
+  burrete_tanimoto_counts_batch_v1: ["fingerprints", "counts", "config"],
+  burrete_tanimoto_top_k_batch_v1: [
     "counts",
     "outputIndices",
     "outputSimilarities",
