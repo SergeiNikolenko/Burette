@@ -5766,7 +5766,6 @@ assert.match(previewViewer, /button\.dataset\.buretAction = 'structure-overlay-t
 assert.match(previewViewer, /root\.classList\.add\('buret-docking-poses-overlay-only'\)/);
 assert.match(previewViewer, /if \(all\) mainRow\.append\(all\);\s*animationRow\.append\(speed, loop, slider\);/);
 assert.match(previewViewer, /toggleRow\.className = 'buret-docking-pose-toggles'/);
-assert.match(previewViewer, /toggleRow\.append\(loop, speed, slider\);/);
 assert.match(previewViewer, /if \(!toggleRow\) root\.append\(animationRow\);/);
 assert.match(previewViewer, /animation\.addEventListener\('contextmenu'/);
 assert.match(previewViewer, /function pdbTrajectoryTimesPs\(data\)/);
@@ -7105,7 +7104,8 @@ assert.doesNotMatch(styles, /\.docking-drop-overlay/);
 assert.match(appDockingWorkflowsHook, /openBrowserDevDockingDocument/);
 assert.match(appDockingWorkflowsHook, /const openDockingDocument = useCallback/);
 assert.match(appStartupEffectsHook, /browserDevDockingFromLocation\(\)/);
-assert.match(appStartupEffectsHook, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths\)/);
+assert.match(appStartupEffectsHook, /void openDockingDocument\(request\.receptorPath, request\.ligandPaths, \{ sceneMode \}\)/);
+assert.match(appStartupEffectsHook, /const sceneMode = browserDevSceneModeFromLocation\(\)/);
 assert.match(appDockingWorkflowsHook, /request\.activePose = options\.activePose \?\? null/);
 assert.match(appDockingWorkflowsHook, /request\.sceneMode = options\.sceneMode \?\? null/);
 assert.match(appDockingWorkflowsHook, /request\.poseMode = options\.sceneMode === "structureAll" \? "all" : "single"/);

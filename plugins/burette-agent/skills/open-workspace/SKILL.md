@@ -61,6 +61,24 @@ Open that URL only through the Codex in-app Browser plugin. Do not start a
 separate tokenized agent preview only to get sidebars, the right dock, or the
 bottom dock.
 
+### Opening a folder as one Mol* scene
+
+By default every path becomes its own Burrete tab. When the user wants a set of
+related structures compared in a single viewer — a folder of simulation stages,
+docked poses, or model variants — pass `--scene` with a folder or with two or
+more files:
+
+```bash
+bun scripts/burrete-agent.mjs open --mode browser-agent-shell <folder> --scene structureAll
+```
+
+That returns a URL shaped like
+`http://127.0.0.1:<port>/?devDocking=<newline-separated paths>&devScene=structureAll&agentLayout=focus`,
+which opens one combined Mol* scene instead of one tab per file. Use
+`structureAll` to start with every structure overlaid and `structurePoses` to
+start on a single structure. In the scene the user can step through structures,
+pick one by file name, and press `Align` to superimpose them.
+
 Keep the returned `sessionDir`. In agent shell mode, `observe` and `act` use
 the same CLI session contract as desktop app mode:
 

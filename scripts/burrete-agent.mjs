@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, open as openFile, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open as openFile, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -77,6 +77,11 @@ function parseOptions(args) {
     }
     if (arg === '--kind') {
       out.kind = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--scene') {
+      out.scene = requireValue(args, index, arg);
       index += 1;
       continue;
     }
@@ -244,8 +249,40 @@ function canonicalMode(mode) {
   return mode === 'browser-dev-shell' ? 'browser-agent-shell' : mode;
 }
 
+const SCENE_STRUCTURE_EXTENSIONS = new Set([
+  'pdb', 'ent', 'pdbqt', 'pqr', 'xpdb',
+  'cif', 'mmcif', 'mcif', 'bcif', 'mmtf',
+  'sdf', 'sd', 'mol', 'mol2', 'xyz', 'gro',
+]);
+
+function sceneModeOption(options) {
+  const mode = String(options.scene ?? '').trim();
+  if (!mode) return null;
+  if (mode === 'structureAll' || mode === 'structurePoses') return mode;
+  fail('INVALID_ARGS', '--scene must be structureAll or structurePoses.', 2);
+  return null;
+}
+
+async function sceneFilesFor(target, options) {
+  const info = await stat(target).catch(() => null);
+  if (info?.isDirectory()) {
+    const names = await readdir(target);
+    const files = names
+      .filter(name => SCENE_STRUCTURE_EXTENSIONS.has(name.split('.').pop()?.toLowerCase() ?? ''))
+      .sort()
+      .map(name => resolve(target, name));
+    if (files.length < 2) fail('INVALID_ARGS', `--scene needs at least two structure files in ${target}.`, 2);
+    return files;
+  }
+  const files = options.rest.map(path => resolve(path));
+  if (files.length < 2) fail('INVALID_ARGS', '--scene needs a folder or at least two structure files.', 2);
+  return files;
+}
+
 async function openBrowserAgentShell(file, options) {
-  const initialFile = resolve(file);
+  const sceneMode = sceneModeOption(options);
+  const sceneFiles = sceneMode ? await sceneFilesFor(resolve(file), options) : null;
+  const initialFile = sceneFiles ? sceneFiles[0] : resolve(file);
   const sessionDir = options.sessionDir ? resolve(options.sessionDir) : await mkdtemp(resolve(tmpdir(), 'burrete-agent-shell-'));
   const token = randomUUID();
   if (options.sessionDir) await assertBrowserSessionDirectoryAvailable(sessionDir);
@@ -265,7 +302,12 @@ async function openBrowserAgentShell(file, options) {
   const port = options.port ? Number(options.port) : await allocatePort(host);
   if (!Number.isInteger(port) || port <= 0) fail('INVALID_ARGS', '--port must be a positive integer.', 2);
   const url = new URL(`http://${hostForUrl(host)}:${port}/`);
-  url.searchParams.set('devFiles', initialFile);
+  if (sceneFiles) {
+    url.searchParams.set('devDocking', sceneFiles.join('\n'));
+    url.searchParams.set('devScene', sceneMode);
+  } else {
+    url.searchParams.set('devFiles', initialFile);
+  }
   url.searchParams.set('agentLayout', 'focus');
   await writeJsonFile(resolve(sessionDir, 'session.json'), {
     apiVersion,

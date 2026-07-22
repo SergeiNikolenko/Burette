@@ -2133,12 +2133,8 @@ body.burette-mobile-host .buret-docking-poses button {
   margin-top: 6px;
 }
 .buret-docking-pose-toggles > button {
-  flex: 0 0 auto;
-}
-.buret-docking-pose-toggles .buret-docking-pose-slider {
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 56px;
+  flex: 1 1 0;
+  height: 30px;
 }
 .buret-docking-poses-collapsed .buret-docking-pose-main > *:not(.buret-docking-pose-animation-button),
 .buret-docking-poses-collapsed .buret-docking-pose-toggles,
@@ -2315,8 +2311,62 @@ body.burette-mobile-host .buret-docking-poses button {
   flex: 0 0 110px;
   width: 110px;
   min-width: 60px;
-  accent-color: var(--buret-molstar-accent);
+  height: 12px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
   cursor: pointer;
+}
+.buret-docking-pose-slider:focus-visible {
+  outline: none;
+}
+.buret-docking-pose-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--buret-molstar-accent) 0 var(--buret-slider-fill, 0%),
+    var(--buret-menu-toggle-track) var(--buret-slider-fill, 0%) 100%
+  );
+}
+.buret-docking-pose-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--buret-menu-toggle-track);
+}
+.buret-docking-pose-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--buret-molstar-accent);
+}
+.buret-docking-pose-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 50%;
+  background: #fff;
+  transition: box-shadow 120ms ease;
+}
+.buret-docking-pose-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 50%;
+  background: #fff;
+  transition: box-shadow 120ms ease;
+}
+.buret-docking-pose-slider:hover::-webkit-slider-thumb,
+.buret-docking-pose-slider:focus-visible::-webkit-slider-thumb,
+.buret-docking-pose-slider:active::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-molstar-accent) 45%, transparent);
+}
+.buret-docking-pose-slider:hover::-moz-range-thumb,
+.buret-docking-pose-slider:focus-visible::-moz-range-thumb,
+.buret-docking-pose-slider:active::-moz-range-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--buret-molstar-accent) 45%, transparent);
 }
 @media (max-width: 360px) {
   .buret-docking-poses {

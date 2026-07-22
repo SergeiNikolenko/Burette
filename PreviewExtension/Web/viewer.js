@@ -10866,7 +10866,6 @@
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
     if (toggleRow) {
       toggleRow.className = 'buret-docking-pose-toggles';
-      toggleRow.append(loop, speed, slider);
       if (align) toggleRow.append(align);
       if (all) toggleRow.append(all);
     } else {
