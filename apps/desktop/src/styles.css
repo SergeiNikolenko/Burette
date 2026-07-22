@@ -636,17 +636,18 @@ button:focus-visible > .shortcut-tooltip {
   left: 50%;
   transform: translate(-50%, -50%);
   width: 4px;
-  height: 30px;
+  height: 44px;
   border-radius: 999px;
-  background: var(--line-subtle);
-  opacity: 0;
-  transition: opacity 120ms ease, background 120ms ease;
+  background: var(--text-muted);
+  transition: background 120ms ease, height 120ms ease;
   pointer-events: none;
 }
-.resizable-handle-horizontal .resizable-handle-grip { width: 30px; height: 4px; }
+.resizable-handle-horizontal .resizable-handle-grip { width: 44px; height: 4px; }
 .resizable-handle:hover .resizable-handle-grip,
-.resizable-handle:focus-visible .resizable-handle-grip { opacity: 1; }
-.resizable-handle:focus-visible .resizable-handle-grip { background: var(--text-muted); }
+.resizable-handle:focus-visible .resizable-handle-grip,
+.resizable-handle[data-dragging] .resizable-handle-grip { background: var(--text-primary); }
+.resizable-handle:hover .resizable-handle-grip { height: 56px; }
+.resizable-handle-horizontal:hover .resizable-handle-grip { height: 4px; width: 56px; }
 .workbench {
   min-width: 0;
   min-height: 0;
