@@ -280,6 +280,7 @@ export function AppLayout({
             defaultSize={`${sidebarWidth}px`}
             minSize="220px"
             maxSize={`${maxSidebarWidth}px`}
+            groupResizeBehavior="preserve-pixel-size"
             onResize={(size) => {
               const px = Math.round(size.inPixels);
               if (px > 1) {
@@ -319,6 +320,7 @@ export function AppLayout({
                       defaultSize={`${state.bottomDockHeight}px`}
                       minSize="120px"
                       maxSize="70%"
+                      groupResizeBehavior="preserve-pixel-size"
                       onResize={(size) => {
                         const px = Math.round(size.inPixels);
                         if (px > 1) {
@@ -345,6 +347,7 @@ export function AppLayout({
                   defaultSize={`${state.rightDockWidth}px`}
                   minSize="180px"
                   maxSize="70%"
+                  groupResizeBehavior="preserve-pixel-size"
                   onResize={(size) => {
                     const px = Math.round(size.inPixels);
                     if (px > 1) {
