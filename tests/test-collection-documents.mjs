@@ -10,7 +10,13 @@ const {
   parseSdfCollectionRecords,
   splitSdfCollectionRecords,
 } = await import("../apps/desktop/src/lib/collection-documents.ts");
-const { openBrowserDevTextDocument, parseBrowserDevDelimitedGridRecords } = await import("../apps/desktop/src/lib/browser-dev-documents.ts");
+const {
+  openBrowserDevTextDocument,
+  parseBrowserDevDelimitedGridRecords,
+  appendToBrowserDevCollection,
+  writeBrowserDevVirtualTextDocument,
+  readBrowserDevVirtualTextDocument,
+} = await import("../apps/desktop/src/lib/browser-dev-documents.ts");
 const { defaultPreferences } = await import("../apps/desktop/src/stores/settings-store.ts");
 
 assert.equal(collectionExtension("/tmp/a.MAE.GZ"), "gz");
@@ -119,5 +125,26 @@ assert.throws(
   ]),
   /not a supported molecule collection/,
 );
+
+// Browser-dev "Add to collection" appends a sketch into a stable receiver that reuses
+// its tab (same path) and accumulates records instead of spawning a fresh merged snapshot.
+writeBrowserDevVirtualTextDocument("/tmp/append-target.sdf", "seed-mol\n  CDK\n$$$$\n");
+const firstAppend = await appendToBrowserDevCollection(
+  "/tmp/append-target.sdf",
+  { extension: "sdf", text: "sketch-one\n  CDK\n$$$$\n" },
+  defaultPreferences,
+);
+assert.equal(firstAppend.renderer, "grid2d");
+assert.equal(firstAppend.title, "append-target.sdf");
+assert.equal(firstAppend.mergedCollection, undefined, "append receiver is a plain collection, not a merged snapshot");
+const secondAppend = await appendToBrowserDevCollection(
+  "/tmp/append-target.sdf",
+  { extension: "sdf", text: "sketch-two\n  CDK\n$$$$\n" },
+  defaultPreferences,
+);
+assert.equal(secondAppend.path, firstAppend.path, "receiver path stays stable so the tab is reused");
+const receiverText = readBrowserDevVirtualTextDocument(secondAppend.path);
+assert.ok(receiverText, "receiver keeps its accumulated collection text");
+assert.equal((receiverText.match(/\$\$\$\$/g) ?? []).length, 3, "records accumulate across appends");
 
 console.log("collection document tests passed");

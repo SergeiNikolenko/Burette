@@ -36,7 +36,6 @@ type LayoutShellViewState = Pick<
   | "page"
   | "sidebarOpen"
   | "sidebarWidth"
-  | "sidebarDragging"
   | "status"
   | "dropActive"
   | "buildInfo"
@@ -53,14 +52,12 @@ type DockShellViewState = Pick<
   | "rightDockActiveTab"
   | "rightDockDocumentId"
   | "rightDockTool"
-  | "rightDockDragging"
   | "bottomDockOpen"
   | "bottomDockHeight"
   | "bottomDockTabs"
   | "bottomDockActiveTab"
   | "bottomDockDocumentId"
   | "bottomDockTool"
-  | "bottomDockDragging"
   | "dockDroppedStructures"
   | "structureDragActive"
 >;
@@ -150,7 +147,6 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
       page: state.page,
       sidebarOpen: state.sidebarOpen,
       sidebarWidth: state.sidebarWidth,
-      sidebarDragging: state.sidebarDragging,
       status: state.status,
       dropActive: state.dropActive,
       buildInfo: state.buildInfo,
@@ -165,14 +161,12 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
       rightDockActiveTab: state.rightDockActiveTab,
       rightDockDocumentId: state.rightDockDocumentId,
       rightDockTool: state.rightDockTool,
-      rightDockDragging: state.rightDockDragging,
       bottomDockOpen: state.bottomDockOpen,
       bottomDockHeight: state.bottomDockHeight,
       bottomDockTabs: state.bottomDockTabs,
       bottomDockActiveTab: state.bottomDockActiveTab,
       bottomDockDocumentId: state.bottomDockDocumentId,
       bottomDockTool: state.bottomDockTool,
-      bottomDockDragging: state.bottomDockDragging,
       dockDroppedStructures: state.dockDroppedStructures,
       structureDragActive: state.structureDragActive,
     },
