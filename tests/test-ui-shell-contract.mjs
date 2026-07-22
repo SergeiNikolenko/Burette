@@ -62,7 +62,6 @@ const [
   appPreferenceEffectsHook,
   appQuickLookHook,
   appQuickLookDocumentOpenHook,
-  appResizeHook,
   appRendererMessageHook,
   appSidebarProjectsHook,
   appSdfViewerMessagesHook,
@@ -265,7 +264,6 @@ const [
   source('apps/desktop/src/hooks/use-app-preference-effects.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look.ts'),
   source('apps/desktop/src/hooks/use-app-quick-look-document-open.ts'),
-  source('apps/desktop/src/hooks/use-app-resize.ts'),
   source('apps/desktop/src/hooks/use-app-renderer-message.ts'),
   source('apps/desktop/src/hooks/use-app-sidebar-projects.ts'),
   source('apps/desktop/src/hooks/use-app-sdf-viewer-messages.ts'),
@@ -1313,8 +1311,9 @@ assert.doesNotMatch(appLayout, /SidebarLeftIcon/);
 assert.doesNotMatch(appLayout, /from "\.\/system-icon"/);
 assert.match(appLayout, /function DockToggleIcon\(\{ className \}: \{ className\?: string \}\)/);
 assert.match(appLayout, /function clampRightDockWidth\(width: number, viewportWidth: number, sidebarLayoutWidth: number\)/);
-assert.match(appLayout, /<rect x="2\.25" y="2\.25" width="13\.5" height="13\.5" rx="3\.25" stroke="currentColor" strokeWidth="1\.8" \/>/);
-assert.match(appLayout, /<path d="M6\.75 4\.75V13\.25" stroke="currentColor" strokeWidth="1\.8" strokeLinecap="round" \/>/);
+// The hand-drawn toggle SVG was replaced by the Lucide panel icon.
+assert.match(appLayout, /import \{ ArrowLeft, ArrowRight, PanelLeft \} from "lucide-react"/);
+assert.match(appLayout, /<PanelLeft className=\{className\} size=\{18\} strokeWidth=\{1\.8\} aria-hidden \/>/);
 assert.match(appLayout, /onDismissStatus: \(\) => void;/);
 assert.match(appLayout, /<NotificationPopup notice=\{state\.status\} onDismiss=\{onDismissStatus\} \/>/);
 assert.match(appLayout, /<FileDropFeedback preview=\{dropPreview\} \/>/);
@@ -1335,18 +1334,12 @@ assert.match(appLayout, /const tabChromeLeft = hostedMcpWidget[\s\S]*\? sidebarL
 assert.match(appLayout, /const rightDockOpen = !settingsMode && !hostedMcpWidget && state\.rightDockOpen/);
 assert.match(appLayout, /const bottomDockOpen = !settingsMode && !hostedMcpWidget && state\.bottomDockOpen/);
 assert.match(appLayout, /"--right-dock-width": `\$\{rightDockOpen \? rightDockWidth : 0\}px`/);
-assert.match(appLayout, /"--bottom-dock-height": `\$\{bottomDockOpen \? state\.bottomDockHeight : 0\}px`/);
 assert.match(appLayout, /"--chrome-height": hostedMcpWidget \? "0px" : undefined/);
 assert.match(appLayout, /\{chromeVisible && \(/);
 assert.match(appLayout, /const activePageKind = state\.activeTab\?\.location\.kind \?\? null/);
 assert.match(appLayout, /data-active-page-kind=\{activePageKind \?\? undefined\}/);
-assert.match(appLayout, /className="sidebar-shell"/);
-assert.match(appLayout, /className="sidebar-shell-inner" style=\{\{ width: sidebarWidth \}\}/);
 assert.match(appLayout, /<Sidebar state=\{layoutState\} actions=\{actions\} open=\{sidebarVisible\} \/>/);
 assert.doesNotMatch(appLayout, /state\.sidebarOpen && <Sidebar/);
-assert.match(appLayout, /\{state\.sidebarOpen && !settingsMode && !hostedMcpWidget && \(\s*<div\s+className="splitter"/s);
-assert.match(appLayout, /\{!settingsMode && !hostedMcpWidget && \(\s*<DockPanel\s+area="bottom"/s);
-assert.match(appLayout, /\{!settingsMode && !hostedMcpWidget && \(\s*<DockPanel\s+area="right"/s);
 assert.doesNotMatch(appLayout, /instance-badge/);
 assert.doesNotMatch(appLayout, /statusbar/);
 assert.doesNotMatch(appLayout, /chrome-text-button/);
@@ -1415,8 +1408,6 @@ assert.match(editorTabs, /showNativeContextMenu\(items, \{ x: event\.clientX, y:
 assert.match(editorTabs, /actions\.openNewTab/);
 assert.doesNotMatch(editorTabs, /from "lucide-react"/);
 assert.doesNotMatch(editorTabs, /className="tab-history-controls"/);
-assert.match(appLayout, /←/);
-assert.match(appLayout, /→/);
 assert.match(editorTabs, /import \{ CloseIcon \} from "\.\.\/close-icon"/);
 assert.match(editorTabs, /<CloseIcon size=\{13\} \/>/);
 assert.match(appLayout, /className="chrome-leading-controls"/);
@@ -2059,7 +2050,6 @@ assert.match(styles, /\.shortcut-tooltip \{[^}]*position: absolute;[^}]*min-heig
 assert.match(styles, /button:hover > \.shortcut-tooltip,\s*button:focus-visible > \.shortcut-tooltip \{[^}]*opacity: 1;[^}]*visibility: visible;[^}]*transform: translate\(-50%, 0\) scale\(1\);[^}]*transition-delay: 180ms, 180ms, 0s;/s);
 assert.match(styles, /\.shortcut-tooltip-key \{[^}]*border-radius: 999px;[^}]*letter-spacing: 0;/s);
 assert.doesNotMatch(styles, /\.workspace \{[^}]*z-index:/s);
-assert.match(styles, /\.splitter \{[^}]*z-index: 3;/s);
 assert.match(styles, /--sidebar-divider-right: transparent/);
 assert.match(styles, /--workspace-edge-border: color-mix\(in srgb, var\(--fg-base\) calc\(var\(--contrast\) \* 22%\), transparent\)/);
 assert.match(styles, /\.sidebar::after \{[^}]*background: var\(--sidebar-divider-right\);/s);
@@ -2102,7 +2092,6 @@ assert.match(styles, /\.tab-close:hover \{[^}]*color: var\(--text-secondary\);[^
 assert.match(closeIcon, /export function CloseIcon/);
 assert.match(closeIcon, /className="close-glyph"/);
 assert.doesNotMatch(closeIcon, /from "\.\/system-icon"/);
-assert.match(closeIcon, /strokeLinecap="round"/);
 for (const sourceText of [dockPanel, editorTabs, notificationPopup, settingControl]) {
   assert.doesNotMatch(sourceText, /className="(?:tab-close|dock-tab-close|radix-dialog-close)"[\s\S]*?>\s*[x×]\s*<\/button>/);
 }
@@ -2118,17 +2107,24 @@ assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab-close \{[^}]*co
 assert.match(styles, /\.text-file-editor \.cm-gutters \{[^}]*border-right: 0;[^}]*background: transparent;[^}]*color: var\(--text-muted\);[^}]*\}/s);
 assert.doesNotMatch(styles, /\.dock-tab-shell:hover \.dock-tab svg,\s*\.dock-tab-shell:focus-within \.dock-tab svg \{\s*opacity: 0/s);
 assert.doesNotMatch(styles, /\.dock-tab\[data-active\] svg \{\s*opacity: 0/s);
-assert.match(appResizeHook, /const RIGHT_DOCK_CLOSE_THRESHOLD = 180/);
-assert.match(appResizeHook, /const BOTTOM_DOCK_CLOSE_THRESHOLD = 120/);
-assert.match(appResizeHook, /if \(nextWidth <= RIGHT_DOCK_CLOSE_THRESHOLD\) \{/);
-assert.match(appResizeHook, /setDockOpen\("right", false\)/);
-assert.match(appResizeHook, /if \(nextHeight <= BOTTOM_DOCK_CLOSE_THRESHOLD\) \{/);
-assert.match(appResizeHook, /setDockOpen\("bottom", false\)/);
-assert.match(appResizeHook, /\[beginWorkspaceHistoryGroup, commitWorkspaceHistoryGroup, rightDockWidth, setDockOpen, setDockSize\]/);
-assert.match(appResizeHook, /\[beginWorkspaceHistoryGroup, bottomDockHeight, commitWorkspaceHistoryGroup, setDockOpen, setDockSize\]/);
+// The hand-rolled resize system is gone; the layout is driven by
+// react-resizable-panels. These pin the invariants that were expensive to find:
+// open/close must go through collapse()/expand() (resize("0px") is clamped back
+// to minSize and proved flaky), defaultSize must be captured once and the sync
+// effect must depend on `open` alone (feeding the live size back froze drags
+// mid-gesture), sizes may only be persisted for real user resizes (onResize is a
+// ResizeObserver and would overwrite stored sizes on window resize), and panels
+// must never be conditionally unmounted (that throws "Invalid N panel layout").
+assert.match(appLayout, /panel\.collapse\(\)/);
+assert.match(appLayout, /panel\.expand\(\)/);
+assert.match(appLayout, /\}, \[open\]\);/);
+assert.match(appLayout, /function useInitialSize/);
+assert.match(appLayout, /onLayoutChanged=\{\(_layout, meta\) => \{/);
+assert.match(appLayout, /if \(!meta\.isUserInteraction\) return;/);
+assert.doesNotMatch(appLayout, /\{rightDockOpen \? <DockPanel/);
+assert.doesNotMatch(appLayout, /\{bottomDockOpen \? <DockPanel/);
 assert.match(dockPanel, /data-open=\{open \? "true" : "false"\}/);
 assert.match(dockPanel, /data-active-tab=\{activeTab\.kind\}/);
-assert.match(dockPanel, /data-dragging=\{dragging \|\| undefined\}/);
 assert.match(dockPanel, /const catalog = dockTabCatalog\(area\)/);
 assert.match(dockPanel, /if \(!catalog\.includes\(tab\.kind\)\) return false/);
 assert.doesNotMatch(dockPanel, /DescriptorPanel/);
@@ -2581,13 +2577,10 @@ assert.match(dockPanel, /className="dock-panel-inner"/);
 assert.match(dockPanel, /readBrowserDevVirtualTextDocument/);
 assert.match(dockPanel, /const virtualText = readBrowserDevVirtualTextDocument\(activeDocument\.path\);/);
 assert.match(dockPanel, /const documentPromise = virtualText === null[\s\S]*readStructureTextDocument\(activeDocument\.path,[\s\S]*textDocumentFromVirtualText\(activeDocument, virtualText\)/);
-assert.match(dockPanel, /style=\{area === "right" \? \{ width: size \} : \{ height: size \}\}/);
-assert.match(dockPanel, /style=\{area === "right" \? \{ width: open \? size : 0 \} : \{ height: open \? size : 0 \}\}/);
 assert.match(styles, /--dock-divider-color: var\(--line-subtler\)/);
 assert.doesNotMatch(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{[\s\S]*--dock-divider-color:/);
 assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{/);
 assert.match(styles, /\.dock-panel \{[\s\S]*transition: width 180ms cubic-bezier\(0\.2, 0, 0, 1\), height 180ms cubic-bezier\(0\.2, 0, 0, 1\), opacity 140ms ease-out;/);
-assert.match(styles, /\.dock-panel\[data-dragging\] \{[\s\S]*transition: width 90ms linear, height 90ms linear, opacity 90ms linear;/);
 assert.match(styles, /\.dock-panel\[data-open="false"\] \{/);
 assert.match(styles, /\.xyzrender-dock-preset-gallery \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(styles, /\.xyzrender-dock-display-grid \{[\s\S]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\);/);
@@ -2597,7 +2590,6 @@ assert.match(styles, /\.dock-panel\[data-open="false"\] \.dock-panel-inner \{[\s
 assert.match(styles, /\.dock-panel\[data-area="right"\]\[data-open="false"\] \{[\s\S]*min-width: 0;/);
 assert.match(styles, /\.dock-panel\[data-area="bottom"\]\[data-open="false"\] \{[\s\S]*min-height: 0;/);
 assert.match(styles, /\.dock-panel-inner \{[\s\S]*display: flex;[\s\S]*flex-direction: column;[\s\S]*overflow: hidden;/);
-assert.match(styles, /\.dock-panel\[data-area="right"\] \{[\s\S]*min-width: 0;[\s\S]*max-width: min\(960px, max\(0px, calc\(100vw - var\(--sidebar-layout-width, 0px\) - 280px\)\)\);/);
 assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-panel-inner \{[\s\S]*height: 100%;[\s\S]*min-width: 0;[\s\S]*max-width: 100%;/);
 assert.match(styles, /\.dock-panel\[data-area="bottom"\] \.dock-panel-inner \{[\s\S]*width: 100%;[\s\S]*min-height: 180px;/);
 assert.doesNotMatch(styles, /\.dock-panel\[data-area="right"\] \{[^}]*box-shadow: inset 1px 0 0 var\(--dock-divider-color\);/);
@@ -3397,7 +3389,6 @@ assert.match(sidebarSurface, /className="project-folder-children"/);
 assert.doesNotMatch(sidebarSurface, /project-folder-disclosure/);
 assert.match(styles, /\.project-group-row \{[^}]*position: relative;[^}]*color: var\(--text-secondary\);[^}]*padding: 5px 64px 5px 10px;[^}]*overflow: hidden;/s);
 assert.match(styles, /\.project-group-row:hover \{\s*background: var\(--surface-subtle\);\s*\}/);
-assert.match(styles, /\.project-folder-row \{[^}]*position: relative;[^}]*color: var\(--text-secondary\);[^}]*padding: 5px 40px 5px calc\(6px \+ \(var\(--project-depth, 0\) \* 6px\)\);[^}]*overflow: hidden;/s);
 assert.match(styles, /\.project-folder-toggle-button \{[^}]*right: 30px;/s);
 assert.match(styles, /\.project-folder-row > \.project-folder-toggle-button \{\s*right: 4px;\s*\}/);
 assert.match(styles, /\.project-folder-name \{[^}]*flex: 1;/s);
@@ -3474,7 +3465,6 @@ assert.doesNotMatch(sidebarSurface, /project-source-badge/);
 assert.doesNotMatch(sidebarSurface, /project-open-folder/);
 assert.doesNotMatch(sidebarSurface, /project-group-count/);
 assert.match(sidebarSurface, /Open Active Project Folder/);
-assert.doesNotMatch(sidebarSurface, /from "lucide-react"/);
 assert.match(sidebarSurface, /M8\.7071 2\.39644/);
 assert.match(sidebarSurface, /from "\.\.\/\.\.\/lib\/instance"/);
 assert.match(sidebarSurface, /appInstanceLabel/);
@@ -3512,8 +3502,6 @@ assert.doesNotMatch(styles, /\.sidebar-workspace-menu/);
 assert.doesNotMatch(styles, /--workspace-menu-left/);
 assert.doesNotMatch(styles, /--workspace-menu-top/);
 assert.doesNotMatch(styles, /--workspace-menu-max-height/);
-assert.match(styles, /\.topbar \{[^}]*transition: left 140ms ease-out/s);
-assert.match(styles, /\.sidebar-shell \{[^}]*transition: width 140ms ease-out/s);
 assert.match(styles, /\.sidebar-shell-inner \{[^}]*height: 100%;[^}]*\}/s);
 assert.doesNotMatch(styles, /\.sidebar \{[^}]*transition: transform 140ms ease-out, opacity 140ms ease-out/s);
 assert.doesNotMatch(styles, /\.sidebar\[data-open="false"\]/);
@@ -3761,26 +3749,7 @@ assert.match(appShellViewStateHook, /visibleDocuments: state\.documents/);
 assert.match(appShellViewStateHook, /viewerLigandSelection: state\.activeDocument/);
 assert.match(appShellViewStateHook, /viewerLigandSelections\[state\.activeDocument\.id\] \?\? null/);
 assert.match(app, /useKeyboardShortcuts\(\s*state,\s*actions,\s*toggleSidebar,\s*!commandPaletteOpen && !hostedMcpWidget,\s*\)/);
-assert.match(appResizeHook, /const SIDEBAR_DRAG_CLOSE_WIDTH = 180/);
-assert.match(app, /const \{\s*bottomDockDragging,\s*rightDockDragging,\s*sidebarDragging,\s*startBottomDockResize,\s*startRightDockResize,\s*startSidebarResize,\s*\} = useAppResize/);
-assert.match(appResizeHook, /const resizeTarget = event\.currentTarget/);
-assert.match(appResizeHook, /const pointerId = event\.pointerId/);
-assert.match(appResizeHook, /let didStop = false/);
-assert.match(appResizeHook, /if \(didStop\) return/);
-assert.match(appResizeHook, /resizeTarget\.setPointerCapture\(pointerId\)/);
-assert.match(appResizeHook, /resizeTarget\.releasePointerCapture\(pointerId\)/);
-assert.match(appResizeHook, /move\.buttons === 0/);
-assert.match(appResizeHook, /const nextWidth = startWidth \+ move\.clientX - startX/);
-assert.match(appResizeHook, /nextWidth < SIDEBAR_DRAG_CLOSE_WIDTH/);
-assert.match(appResizeHook, /closeSidebar\(\)/);
-assert.match(appResizeHook, /stop\(\);\s*return;/);
-assert.match(appResizeHook, /window\.addEventListener\("blur", stop\)/);
-assert.match(appResizeHook, /document\.addEventListener\("visibilitychange", onVisibilityChange\)/);
-assert.match(appResizeHook, /resizeTarget\.addEventListener\("lostpointercapture", stop\)/);
-assert.match(appResizeHook, /window\.removeEventListener\("blur", stop\)/);
-assert.match(appResizeHook, /document\.removeEventListener\("visibilitychange", onVisibilityChange\)/);
-assert.match(appResizeHook, /resizeTarget\.removeEventListener\("lostpointercapture", stop\)/);
-assert.match(styles, /--focus-ring: #0a84ff/);
+assert.match(styles, /--focus-ring: color-mix\(in srgb, var\(--fg-base\) 55%, transparent\)/);
 assert.match(styles, /--focus-border: #0a84ff/);
 assert.match(styles, /--control-fill: rgb\(244 244 244\)/);
 assert.match(styles, /\.app-shell::after \{[\s\S]*inset-inline: 0;[\s\S]*top: calc\(var\(--chrome-height\) - 1px\)/);
@@ -3790,7 +3759,6 @@ assert.match(styles, /\.tab-close \{[\s\S]*border-radius: 8px;/);
 assert.match(styles, /\.dock-tab \{[\s\S]*border-radius: 10px;/);
 assert.doesNotMatch(welcome, /new-tab-description/);
 assert.doesNotMatch(styles, /\[cmdk-input\]:focus-visible/);
-assert.match(styles, /\.sidebar-search-row:focus-within,[\s\S]*\.sidebar-search-action-row:focus-visible,[\s\S]*\.settings-action-button:focus-visible:not\(:disabled\) \{[\s\S]*outline: 1px solid var\(--focus-ring\)/);
 assert.doesNotMatch(styles, /outline: 2px solid var\(--focus-ring\)/);
 assert.match(styles, /\.settings-select:focus-visible,[\s\S]*\.settings-text-control:focus-visible \{[\s\S]*box-shadow: inset 0 0 0 1px var\(--focus-ring\)/);
 assert.match(styles, /\[cmdk-dialog\] \{[\s\S]*top: 16%/);

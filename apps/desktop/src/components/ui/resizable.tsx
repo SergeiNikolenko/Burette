@@ -24,7 +24,15 @@ export function ResizableHandle({
   ...props
 }: SeparatorProps & { withHandle?: boolean }) {
   return (
-    <Separator className={["resizable-handle", className].filter(Boolean).join(" ")} {...props}>
+    // disableDoubleClick: the library otherwise installs a document-level
+    // dblclick handler that resets the panel to the defaultSize captured at
+    // mount. Our handles overlap 7px of the neighbouring content, so a
+    // double-click aimed at that content would silently resize the panel.
+    <Separator
+      disableDoubleClick
+      className={["resizable-handle", className].filter(Boolean).join(" ")}
+      {...props}
+    >
       {withHandle ? <span className="resizable-handle-grip" aria-hidden="true" /> : null}
       {children}
     </Separator>

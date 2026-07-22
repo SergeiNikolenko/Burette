@@ -6876,7 +6876,11 @@ img.radix-menu-item-icon {
   overflow: hidden;
   color: var(--text-primary);
 }
-.settings-panel-content { width: min(672px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 96px 32px 80px; container-type: inline-size; }
+/* Named so the settings breakpoint below resolves against this column. Without a
+   name it would bind to the nearest inline-size container, which is now the
+   settings card (it declares `field-group` for shadcn's responsive Field), and
+   the rows would switch layout ~26px before the column actually got narrow. */
+.settings-panel-content { width: min(672px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 96px 32px 80px; container: settings-panel / inline-size; }
 .agent-integration-content { width: min(760px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 96px 32px 80px; container-type: inline-size; }
 .settings-panel[data-settings-section="agent"] .settings-panel-content { width: min(760px, calc(100% - 64px)); }
 .agent-integration-panel[data-embedded] .agent-integration-content { width: 100%; margin: 0; padding: 0; }
@@ -7274,7 +7278,11 @@ img.settings-open-destination-icon {
 }
 .settings-toggle[data-checked],
 .settings-toggle[data-state="checked"] { background: var(--accent); }
-.settings-toggle span {
+/* Target the thumb itself rather than any span: shadcn's Switch happens to
+   render exactly one today, but a second (an sr-only label, a ripple) would
+   silently inherit these absolute-positioned thumb styles — the same trap that
+   froze the slider's filled range. */
+.settings-toggle > [data-slot="switch-thumb"] {
   position: absolute;
   left: 2px;
   top: 2px;
@@ -7301,7 +7309,7 @@ img.settings-open-destination-icon {
 }
 .settings-action-button:hover:not(:disabled) { background: var(--surface-subtle-strong); color: var(--text-primary); }
 .settings-action-button:disabled { opacity: 0.48; }
-@container (max-width: 520px) {
+@container settings-panel (max-width: 520px) {
   .settings-card { margin: 0; }
   .settings-control { display: grid; gap: 10px; }
   .agent-integration-header { display: grid; gap: 16px; }
