@@ -8,7 +8,7 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
-  const DOCKING_POSE_POSITION_VERSION = '5';
+  const DOCKING_POSE_POSITION_VERSION = '6';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -1043,6 +1043,7 @@
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
   let activeDockingPoseCollectionState = null;
+  let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
   let latestXyzrenderOrientationRef = null;
@@ -5309,9 +5310,7 @@
   function trajectoryPoseLabel(prepared, controlLabel, activePose) {
     const indexText = `${activePose + 1}/${prepared.poseCount}`;
     const timeNs = formatTrajectoryTimeNs(prepared?.trajectoryTimesPs?.[activePose]);
-    if (timeNs) return `Time ${timeNs} ns - ${indexText}`;
-    const structureLabel = prepared?.dockingSceneMode ? prepared?.poses?.[activePose]?.label : '';
-    return structureLabel ? `${structureLabel} · ${indexText}` : `${controlLabel} ${activePose + 1} / ${prepared.poseCount}`;
+    return timeNs ? `Time ${timeNs} ns - ${indexText}` : `${controlLabel} ${activePose + 1} / ${prepared.poseCount}`;
   }
 
   function readTrajectoryLoopFps(config, prepared) {
@@ -8193,6 +8192,7 @@
     if (!state || state.key !== stateKey || !sdfCollectionVisibilityStateStillLoaded(viewer, state)) {
       resetXyzFrameOverlayState(viewer);
       resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
       if (typeof plugin.clear === 'function') await plugin.clear();
       const backgroundStructures = [];
       if (allMode) {
@@ -8367,6 +8367,7 @@
       resetXyzFrameOverlayState(viewer);
       resetSdfCollectionVisibilityState(viewer);
       resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
       if (typeof plugin.clear === 'function') await plugin.clear();
       const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
       if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
@@ -8389,6 +8390,7 @@
     if (!state || state.key !== stateKey || !xyzFrameOverlayStateStillLoaded(viewer, state)) {
       resetSdfCollectionVisibilityState(viewer);
       resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
       if (typeof plugin.clear === 'function') await plugin.clear();
       const contextStructures = [];
       for (const index of backgroundIndexes) {
@@ -8459,12 +8461,115 @@
     await applyMolstarNonIllustrativePostprocessing(viewer);
   }
 
+  function dockingSceneStateKey(prepared, style) {
+    const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
+    const first = poses[0] || {};
+    const last = poses[poses.length - 1] || {};
+    return [
+      activeConfig?.documentId || '',
+      prepared?.label || '',
+      poses.length,
+      first.sourcePath || first.label || '',
+      last.sourcePath || last.label || '',
+      xyzFrameOverlayRawSignature(first.data || ''),
+      style,
+      prepared?.structureAlignmentEnabled === true ? 'aligned' : 'raw'
+    ].join('|');
+  }
+
+  function resetDockingSceneVisibilityState(viewer = null) {
+    if (!viewer || activeDockingSceneVisibilityState?.viewer === viewer) {
+      activeDockingSceneVisibilityState = null;
+    }
+  }
+
+  function molstarStructureCellRefs(viewer) {
+    return new Set(Array.from(molstarCurrentStructures(viewer))
+      .map(structure => structure?.cell?.transform?.ref)
+      .filter(Boolean));
+  }
+
+  function dockingSceneVisibilityStateStillLoaded(viewer, state) {
+    if (!state || state.viewer !== viewer) return false;
+    const refs = molstarStructureCellRefs(viewer);
+    const required = (state.poseRefs || []).flat();
+    return required.length > 0 && required.every(ref => refs.has(ref));
+  }
+
+  function setDockingSceneRefsHidden(viewer, refs, hidden) {
+    const state = viewer?.plugin?.state?.data;
+    if (typeof state?.updateCellState !== 'function') return;
+    const wanted = new Set(refs || []);
+    if (!wanted.size) return;
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const structureRef = structure?.cell?.transform?.ref;
+      if (!structureRef || !wanted.has(structureRef)) continue;
+      state.updateCellState(structureRef, { isHidden: hidden });
+      for (const component of structure.components || []) {
+        const componentRef = component?.cell?.transform?.ref;
+        if (componentRef) state.updateCellState(componentRef, { isHidden: hidden });
+        for (const representation of component.representations || []) {
+          const representationRef = representation?.cell?.transform?.ref;
+          if (representationRef) state.updateCellState(representationRef, { isHidden: hidden });
+        }
+      }
+    }
+  }
+
+  async function applyDockingSceneSinglePose(viewer, prepared, activePose, options) {
+    const plugin = viewer.plugin;
+    if (typeof plugin?.state?.data?.updateCellState !== 'function') return false;
+    const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
+    const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
+    if (!poses[activeIndex]) return false;
+    const style = configuredMolstarStyle(activeConfig);
+    const stateKey = dockingSceneStateKey(prepared, style);
+    let state = activeDockingSceneVisibilityState;
+    let rebuilt = false;
+    if (!state || state.key !== stateKey || !dockingSceneVisibilityStateStillLoaded(viewer, state)) {
+      resetXyzFrameOverlayState(viewer);
+      resetSdfCollectionVisibilityState(viewer);
+      resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
+      if (typeof plugin.clear === 'function') await plugin.clear();
+      const poseRefs = [];
+      for (const entry of poses) {
+        const before = molstarStructureCellRefs(viewer);
+        await loadMolstarEntry(viewer, entry);
+        poseRefs.push(Array.from(molstarStructureCellRefs(viewer)).filter(ref => !before.has(ref)));
+      }
+      if (!poseRefs.every(refs => refs.length)) {
+        activeDockingSceneVisibilityState = null;
+        return false;
+      }
+      await applyMolstarStyle(viewer, style);
+      await applyMolstarWaterLineRepresentation(viewer);
+      state = { viewer, key: stateKey, poseRefs, activeIndex: -1 };
+      activeDockingSceneVisibilityState = state;
+      rebuilt = true;
+    }
+    if (state.activeIndex !== activeIndex) {
+      if (state.activeIndex < 0) {
+        state.poseRefs.forEach((refs, index) => setDockingSceneRefsHidden(viewer, refs, index !== activeIndex));
+      } else {
+        setDockingSceneRefsHidden(viewer, state.poseRefs[state.activeIndex] || [], true);
+        setDockingSceneRefsHidden(viewer, state.poseRefs[activeIndex] || [], false);
+      }
+      state.activeIndex = activeIndex;
+    }
+    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+    if (rebuilt || options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
+    return true;
+  }
+
   async function applyDockingSceneVisibility(viewer, prepared, activePose = 0, options = {}) {
     if (!viewer || prepared?.kind !== 'docking' || !prepared.dockingSceneMode) return;
     const plugin = viewer.plugin;
+    if (activeSdfPoseMode !== 'all' && await applyDockingSceneSinglePose(viewer, prepared, activePose, options)) return;
     resetXyzFrameOverlayState(viewer);
     resetSdfCollectionVisibilityState(viewer);
     resetDockingPoseCollectionState(viewer);
+    resetDockingSceneVisibilityState(viewer);
     if (typeof plugin.clear === 'function') await plugin.clear();
     const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
     const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
@@ -9410,6 +9515,7 @@
       resetXyzFrameOverlayState(viewer);
       resetSdfCollectionVisibilityState(viewer);
       resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
       await plugin.clear();
     }
     if (prepared.trajectoryPair) {
@@ -9429,6 +9535,7 @@
   let dockingPoseControlsDisposer = null;
   let activeSdfCollectionPoseSetter = null;
   let activeStructurePoseSetter = null;
+  let activeStructureAlignmentControl = null;
 
   function isDockingPoseKeyboardTarget(target) {
     const element = target instanceof Element ? target : null;
@@ -9547,8 +9654,7 @@
   function applyDefaultDockingPoseControlsPosition(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     root.dataset.defaultPosition = '1';
     const bounds = dockingPoseControlsBounds(mainRect);
-    const top = root.classList.contains('buret-docking-poses-structure-scene') ? 58 : 14;
-    moveDockingPoseControls(root, bounds.left, top, mainRect);
+    moveDockingPoseControls(root, bounds.left, 14, mainRect);
   }
 
   function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
@@ -9570,7 +9676,7 @@
     let drag = null;
     const onPointerDown = (event) => {
       if (event.button !== 0) return;
-      if (event.target.closest('button, input, select, textarea, [contenteditable="true"]')) return;
+      if (event.target.closest('button, input, select, textarea, [contenteditable="true"], .buret-docking-pose-files')) return;
       const rect = root.getBoundingClientRect();
       drag = {
         pointerId: event.pointerId,
@@ -10193,6 +10299,7 @@
     }
     activeSdfCollectionPoseSetter = null;
     activeStructurePoseSetter = null;
+    activeStructureAlignmentControl = null;
     document.body.classList.remove('buret-docking-pose-controls-active');
     if (!prepared) return;
     const overlayAvailable = structureOverlayAvailable(prepared);
@@ -10243,16 +10350,22 @@
     let sliderInputTimer = null;
     let sliderInputBusy = false;
     let pendingSliderIndex = null;
+    let fileListDisposer = null;
     const mainRow = document.createElement('div');
     mainRow.className = 'buret-docking-pose-main';
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
     const label = prepared.dockingSceneMode ? document.createElement('button') : document.createElement('span');
-    if (prepared.dockingSceneMode) {
+    const currentName = prepared.dockingSceneMode ? document.createElement('span') : null;
+    const currentIndex = prepared.dockingSceneMode ? document.createElement('span') : null;
+    if (currentName && currentIndex) {
       label.type = 'button';
       label.className = 'buret-docking-pose-current';
       label.setAttribute('aria-haspopup', 'listbox');
       label.setAttribute('aria-expanded', 'false');
+      currentName.className = 'buret-docking-pose-current-name';
+      currentIndex.className = 'buret-docking-pose-current-index';
+      label.append(currentName, currentIndex);
     }
     label.title = prepared.ligandLabel || '';
     const fileList = prepared.dockingSceneMode ? document.createElement('div') : null;
@@ -10348,8 +10461,16 @@
       prepared.kind === 'xyz-frame-overlay' ||
       (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true)
     );
+    const applyLabel = (poseIndex) => {
+      if (!currentName || !currentIndex) {
+        label.textContent = trajectoryPoseLabel(prepared, controlLabel, poseIndex);
+        return;
+      }
+      currentName.textContent = prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`;
+      currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount}`;
+    };
     const updateControls = () => {
-      label.textContent = trajectoryPoseLabel(prepared, controlLabel, activePose);
+      applyLabel(activePose);
       label.title = prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
       previous.disabled = activePose <= 0;
       next.disabled = activePose >= prepared.poseCount - 1;
@@ -10370,9 +10491,19 @@
     };
     const setFileListOpen = (open) => {
       if (!fileList) return;
+      if (open) {
+        const rootRect = root.getBoundingClientRect();
+        const triggerLeft = Math.round(label.offsetLeft);
+        const spaceBelow = window.innerHeight - rootRect.bottom;
+        root.classList.toggle('buret-docking-poses-files-above', spaceBelow < 200 && rootRect.top > spaceBelow);
+        fileList.style.left = `${triggerLeft}px`;
+        fileList.style.minWidth = `${Math.max(128, Math.round(label.getBoundingClientRect().width))}px`;
+        fileList.style.maxWidth = `${Math.max(160, Math.round(window.innerWidth - 12 - rootRect.left - triggerLeft))}px`;
+      }
       root.classList.toggle('buret-docking-poses-files-open', Boolean(open));
       label.setAttribute('aria-expanded', open ? 'true' : 'false');
     };
+    const isFileListOpen = () => root.classList.contains('buret-docking-poses-files-open');
     const setAnimationOptionsOpen = (open) => {
       root.classList.toggle('buret-docking-poses-animation-open', Boolean(open));
       animation.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -10449,7 +10580,7 @@
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
-      label.textContent = trajectoryPoseLabel(prepared, controlLabel, nextIndex);
+      applyLabel(nextIndex);
       try {
         if (prepared.nativeTrajectoryControls) {
           const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
@@ -10505,24 +10636,35 @@
     };
     if (fileList) {
       label.addEventListener('click', () => {
-        setFileListOpen(!root.classList.contains('buret-docking-poses-files-open'));
+        setFileListOpen(!isFileListOpen());
       });
       fileButtons.forEach((button, index) => {
+        button.addEventListener('pointerenter', (event) => {
+          if (event.pointerType === 'touch' || index === activePose) return;
+          scheduleSliderInputPose(index);
+        });
         button.addEventListener('click', () => {
           setFileListOpen(false);
-          void setPose(index, { userStep: true });
+          if (index !== activePose) scheduleSliderInputPose(index);
         });
       });
+      const onOutsidePointerDown = (event) => {
+        if (!isFileListOpen()) return;
+        if (event.target instanceof Node && root.contains(event.target)) return;
+        setFileListOpen(false);
+      };
+      window.addEventListener('pointerdown', onOutsidePointerDown, true);
+      fileListDisposer = () => window.removeEventListener('pointerdown', onOutsidePointerDown, true);
     }
     if (align && alignmentSupported) {
-      align.addEventListener('click', () => {
+      const toggleAlignment = () => {
         align.disabled = true;
         const enabling = prepared.structureAlignmentEnabled !== true;
         try {
           let result = null;
           if (enabling) result = alignStructureSceneEntries(prepared);
           else restoreStructureSceneEntries(prepared);
-          void applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: true }).then(() => {
+          return applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: true }).then(() => {
             align.textContent = enabling ? 'Aligned' : 'Align';
             align.classList.toggle('active', enabling);
             align.setAttribute('aria-pressed', enabling ? 'true' : 'false');
@@ -10542,8 +10684,15 @@
           if (enabling) restoreStructureSceneEntries(prepared);
           align.disabled = false;
           setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
+          return Promise.resolve();
         }
-      });
+      };
+      activeStructureAlignmentControl = {
+        toggle: toggleAlignment,
+        isAligned: () => prepared.structureAlignmentEnabled === true,
+        referenceLabel: () => prepared.poses?.[0]?.label || 'the first structure'
+      };
+      align.addEventListener('click', () => { void toggleAlignment(); });
     }
     activeStructurePoseSetter = setPose;
     if (prepared.kind === 'sdf-collection') activeSdfCollectionPoseSetter = setPose;
@@ -10661,7 +10810,7 @@
     speed.addEventListener('input', updateSpeedMode);
     slider.addEventListener('input', () => {
       const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
-      label.textContent = trajectoryPoseLabel(prepared, controlLabel, previewIndex);
+      applyLabel(previewIndex);
       if (supportsLivePoseInput()) scheduleSliderInputPose(previewIndex);
     });
     slider.addEventListener('change', () => {
@@ -10680,6 +10829,12 @@
     const onKeyDown = (event) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
       if (isDockingPoseKeyboardTarget(event.target)) return;
+      if (event.key === 'Escape' && fileList && isFileListOpen()) {
+        event.preventDefault();
+        setFileListOpen(false);
+        label.focus();
+        return;
+      }
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
         if (activePose > 0) void setPose(activePose - 1, { userStep: true });
@@ -10741,6 +10896,7 @@
       isolationDisposer?.();
       hoverDisposer?.();
       dragDisposer?.();
+      fileListDisposer?.();
       document.body.classList.remove('buret-docking-pose-controls-active');
       if (activeStructurePoseSetter === setPose) activeStructurePoseSetter = null;
       if (activeSdfCollectionPoseSetter === setPose) activeSdfCollectionPoseSetter = null;
@@ -13436,6 +13592,11 @@
     ];
     if (molstarContextCanBulkDelete(target)) actions.push(['remove-type', `Delete ${molstarContextBulkDeleteLabel(target)}`]);
     if (target?.scope === 'residue') actions.push(['remove-chain', 'Delete chain']);
+    if (activeStructureAlignmentControl) {
+      actions.push(activeStructureAlignmentControl.isAligned()
+        ? ['align-structures', 'Reset structure alignment']
+        : ['align-structures', `Align structures to ${activeStructureAlignmentControl.referenceLabel()}`]);
+    }
     if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
     actions.push(['save-modified', 'Save modified structure']);
     actions.push(['save-format:mmcif', 'Save as mmCIF']);
@@ -13484,7 +13645,12 @@
     const targetLabel = target.label;
     let previewAfterAction = null;
     try {
-      if (action === 'select') {
+      if (action === 'align-structures') {
+        if (!activeStructureAlignmentControl) throw new Error('No structure scene is available to align.');
+        hideMolstarContextMenu();
+        await activeStructureAlignmentControl.toggle();
+        return;
+      } else if (action === 'select') {
         const selectionLoci = molstarContextSelectionLoci(target);
         if (!selectMolstarContextPick({ ...target, loci: selectionLoci }, { applyGranularity: false })) throw new Error('No Mol* residue or ligand is available to select.');
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;

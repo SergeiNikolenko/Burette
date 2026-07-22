@@ -2080,58 +2080,138 @@ body.burette-mobile-host .buret-docking-poses button {
   cursor: default;
 }
 .buret-docking-pose-main,
-.buret-docking-pose-animation,
-.buret-docking-pose-files {
+.buret-docking-pose-animation {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 .buret-docking-pose-current {
-  min-width: 160px;
-  max-width: min(240px, 32vw);
-  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  width: min(230px, 32vw);
+  padding-right: 8px !important;
   text-align: left;
+}
+.buret-docking-pose-current-name {
+  min-width: 0 !important;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-align: left !important;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.buret-docking-pose-current-index {
+  min-width: 0 !important;
+  flex: 0 0 auto;
+  margin-left: auto;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+}
 .buret-docking-pose-current::after {
-  content: '▾';
-  margin-left: 8px;
-  opacity: 0.66;
+  content: '';
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-right: 1.4px solid currentColor;
+  border-bottom: 1.4px solid currentColor;
+  opacity: 0.5;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .buret-docking-poses-files-open .buret-docking-pose-current::after {
-  content: '▴';
+  transform: translateY(1px) rotate(-135deg);
 }
 .buret-docking-pose-align {
-  font-weight: 600 !important;
+  min-width: 58px;
 }
 .buret-docking-pose-files {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 2;
+  box-sizing: border-box;
   display: none;
   flex-direction: column;
   align-items: stretch;
-  gap: 2px;
-  max-height: min(360px, 55vh);
-  margin-top: 5px;
+  width: max-content;
+  min-width: 128px;
+  max-width: min(320px, calc(100vw - 28px));
+  max-height: min(320px, 52vh);
   padding: 4px;
+  overflow-x: hidden;
   overflow-y: auto;
-  border-top: 1px solid var(--buret-menu-border);
+  overscroll-behavior: contain;
+  border: 1px solid var(--buret-menu-border);
+  border-radius: 8px;
+  background: var(--buret-menu-background);
+  box-shadow: var(--buret-menu-shadow);
+  cursor: default;
+  transform-origin: top left;
+}
+.buret-docking-poses-files-above .buret-docking-pose-files {
+  top: auto;
+  bottom: calc(100% + 4px);
+  transform-origin: bottom left;
 }
 .buret-docking-poses-files-open .buret-docking-pose-files {
   display: flex;
+  animation: buret-docking-pose-files-in 100ms ease-out;
+}
+.buret-docking-poses-files-open.buret-docking-poses-files-above .buret-docking-pose-files {
+  animation-name: buret-docking-pose-files-in-above;
+}
+@keyframes buret-docking-pose-files-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes buret-docking-pose-files-in-above {
+  from { opacity: 0; transform: translateY(8px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .buret-docking-poses .buret-docking-pose-file {
+  position: relative;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
   width: 100%;
-  height: 30px;
-  padding-inline: 7px;
+  min-height: 26px;
+  height: auto;
+  padding: 4px 24px 4px 6px;
+  border-radius: 6px;
+  background: transparent;
   text-align: left;
+}
+.buret-docking-poses button.buret-docking-pose-file.active {
+  background: transparent;
+  color: inherit;
+}
+.buret-docking-poses .buret-docking-pose-file:not(:disabled):hover,
+.buret-docking-poses .buret-docking-pose-file:focus-visible {
+  background: var(--buret-menu-section-background);
+  outline: none;
+}
+.buret-docking-pose-file.active::after {
+  content: '';
+  position: absolute;
+  right: 9px;
+  width: 4px;
+  height: 8px;
+  border-right: 1.5px solid var(--buret-molstar-accent);
+  border-bottom: 1.5px solid var(--buret-molstar-accent);
+  transform: translateY(-1px) rotate(45deg);
 }
 .buret-docking-pose-file-number {
   min-width: 0 !important;
   text-align: left !important;
   font-variant-numeric: tabular-nums;
-  opacity: 0.62;
+  opacity: 0.45;
+}
+.buret-docking-pose-file.active .buret-docking-pose-file-number {
+  color: var(--buret-molstar-accent);
+  opacity: 1;
 }
 .buret-docking-pose-file-name {
   min-width: 0 !important;
@@ -2231,6 +2311,7 @@ body.burette-mobile-host .buret-docking-poses button {
   .buret-docking-pose-main > span,
   .buret-docking-pose-current {
     min-width: 0;
+    width: auto;
     max-width: none;
   }
   .buret-docking-pose-main > button:not(.buret-docking-pose-animation-button) {
