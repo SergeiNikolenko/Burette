@@ -102,6 +102,36 @@ export type ClusterProgress = {
   job: ComputeJob;
 };
 
+export type ChemicalSpaceOptions = {
+  dimensions: 2 | 3;
+  neighbors: number;
+  epochs: number;
+  minDist: number;
+  spread: number;
+  learningRate: number;
+  negativeSampleRate: number;
+  randomSeed: number;
+};
+
+export type ChemicalSpaceResult = {
+  sourceRecordIds: number[];
+  positions: Array<[number, number, number]>;
+  dimensions: 2 | 3;
+  neighbors: number;
+  successfulRecords: number;
+  failedRecords: number;
+  backend: "nativeMetal";
+  tanimotoGpuTimeMs: number;
+  umapGpuTimeMs: number;
+  hostTimeMs: number;
+};
+
+export type ChemicalSpaceProgress = {
+  phase: "queued" | "fingerprints" | "embedding";
+  completedRecords?: number;
+  totalRecords?: number;
+};
+
 export type ClusterFilteredScope = {
   kind: "filtered";
   query: { kind: "text"; text: string };
@@ -221,39 +251,13 @@ export async function runClusterWorkflow(
     .filter((index) => Number.isSafeInteger(index) && index >= 0)
     .sort((left, right) => left - right);
   const cutoffFraction = similarityCutoff(cutoff);
-  const request = {
-    schemaVersion: "burrete.compute-job.v1",
-    workflowTemplate: "cluster.v1",
-    source: {
-      documentId,
-      scope: normalizedIndexes.length > 0
-        ? { kind: "selected", sourceIndexes: normalizedIndexes }
-        : filteredScope ?? { kind: "all" },
-    },
-    parameters: {
-      fingerprint: {
-        algorithm: "rdkitMorganBit.v1",
-        rdkitVersion: "2025.03.4",
-        radius: 2,
-        bitCount: 2_048,
-        useChirality: true,
-        useFeatures: false,
-        sanitize: true,
-        inputOrder: "sourceRecord",
-      },
-      similarity: { cutoff: cutoffFraction },
-      representativePolicy: "butinaMaxNeighbors.v1",
-    },
-    executionPolicy: {
-      backendPolicy: "gpuPreferred",
-      schedulingPolicy: "throughput",
-    },
-    limits: {
-      maxEdges: 100_000_000,
-      maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
-      maxDispatchMs: 250,
-    },
-  };
+  const request = clusterPreparationRequest(
+    documentId,
+    normalizedIndexes,
+    cutoffFraction,
+    filteredScope,
+    "gpuPreferred",
+  );
 
   let job: ComputeJob | null = null;
   const worker = new FingerprintWorkerClient();
@@ -321,6 +325,105 @@ export async function runClusterWorkflow(
   } finally {
     worker.dispose();
   }
+}
+
+export async function runChemicalSpaceWorkflow(
+  documentId: string,
+  options: ChemicalSpaceOptions,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+): Promise<ChemicalSpaceResult> {
+  const request = clusterPreparationRequest(
+    documentId,
+    [],
+    { numerator: 0, denominator: 1 },
+    null,
+    "gpuRequired",
+  );
+  let job: ComputeJob | null = null;
+  const worker = new FingerprintWorkerClient();
+  try {
+    throwIfAborted(signal);
+    job = await invoke<ComputeJob>("compute_submit_job", { request });
+    onProgress({ phase: "queued" });
+    let fingerprintStep = await invoke<FingerprintExecutionStep>("compute_begin_cluster_execution", {
+      jobId: job.jobId,
+      expectedRevision: job.revision,
+    });
+    job = fingerprintStep.job;
+    while (fingerprintStep.fingerprintChunk) {
+      throwIfAborted(signal);
+      const chunk = fingerprintStep.fingerprintChunk;
+      onProgress({
+        phase: "fingerprints",
+        completedRecords: chunk.completedRecords,
+        totalRecords: chunk.totalRecords,
+      });
+      const result = await worker.fingerprint(chunk, signal);
+      fingerprintStep = await invoke<FingerprintExecutionStep>("compute_submit_fingerprint_chunk", { result });
+      job = fingerprintStep.job;
+    }
+    if (!fingerprintStep.readyForCompute) {
+      throw new Error("The fingerprint stage completed without a compute-ready result.");
+    }
+    throwIfAborted(signal);
+    onProgress({ phase: "embedding" });
+    return await invoke<ChemicalSpaceResult>("compute_execute_chemical_space", {
+      jobId: job.jobId,
+      expectedRevision: job.revision,
+      request: {
+        ...options,
+        maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+      },
+    });
+  } finally {
+    worker.dispose();
+    if (job && !["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(job.state)) {
+      await cancelComputeJob(job.jobId).catch(() => undefined);
+    }
+  }
+}
+
+function clusterPreparationRequest(
+  documentId: string,
+  normalizedIndexes: number[],
+  cutoffFraction: { numerator: number; denominator: number },
+  filteredScope: ClusterFilteredScope | null,
+  backendPolicy: "gpuPreferred" | "gpuRequired",
+) {
+  return {
+    schemaVersion: "burrete.compute-job.v1",
+    workflowTemplate: "cluster.v1",
+    source: {
+      documentId,
+      scope: normalizedIndexes.length > 0
+        ? { kind: "selected", sourceIndexes: normalizedIndexes }
+        : filteredScope ?? { kind: "all" },
+    },
+    parameters: {
+      fingerprint: {
+        algorithm: "rdkitMorganBit.v1",
+        rdkitVersion: "2025.03.4",
+        radius: 2,
+        bitCount: 2_048,
+        useChirality: true,
+        useFeatures: false,
+        sanitize: true,
+        inputOrder: "sourceRecord",
+      },
+      similarity: { cutoff: cutoffFraction },
+      representativePolicy: "butinaMaxNeighbors.v1",
+    },
+    executionPolicy: {
+      backendPolicy,
+      schedulingPolicy: "throughput",
+    },
+    limits: {
+      maxEdges: 100_000_000,
+      maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+      maxDispatchMs: 250,
+    },
+  };
 }
 
 export function computeErrorMessage(error: unknown): string {

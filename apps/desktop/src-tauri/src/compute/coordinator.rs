@@ -35,6 +35,7 @@ use crate::compute::{
         materialize_conformer_artifact, reconcile_artifact_root, AnalysisArtifactPayload,
         AnalysisPublicationStep, ClusterPublicationStep, ConformerPublicationStep,
     },
+    chemical_space::{execute_chemical_space, ChemicalSpaceRequest, ChemicalSpaceResult},
     cluster_executor::{
         finish_clustering, graph_options, valid_fingerprints, validate_computation,
         ClusterComputation, ClusterExecutionStep,
@@ -186,7 +187,7 @@ pub(crate) struct ConformerReferenceValidationStep {
 }
 
 #[derive(Debug)]
-enum NativeMetalState {
+pub(crate) enum NativeMetalState {
     Available(MetalTanimotoRuntime),
     Unavailable {
         code: CapabilityReasonCode,
@@ -195,6 +196,42 @@ enum NativeMetalState {
 }
 
 impl ComputeCoordinator {
+    pub(crate) fn execute_chemical_space(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        expected_revision: u64,
+        request: ChemicalSpaceRequest,
+    ) -> ComputeResult<ChemicalSpaceResult> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let job = ready.store.get_job(owner, job_id)?;
+        if job.revision != expected_revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: job.revision,
+            });
+        }
+        let prepared = ready
+            .prepared_clusters
+            .lock()
+            .map_err(|_| poisoned("prepared cluster registry"))?;
+        let batch = prepared
+            .get(&job_id)
+            .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                entity: "prepared chemical-space fingerprints",
+                id: job_id.to_string(),
+            })?;
+        if batch.grid_lease.namespaced_document_id()
+            != runtime_document_id(owner, &job.request.source().document_id)
+        {
+            return Err(ComputeCoordinatorError::Forbidden(
+                "prepared chemical space does not belong to this Grid window".into(),
+            ));
+        }
+        execute_chemical_space(batch, &ready.native_metal, request)
+    }
+
     pub(crate) fn evaluate_grid_semiempirical(
         &self,
         owner: &str,
