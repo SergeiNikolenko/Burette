@@ -310,6 +310,10 @@ export function useAppNativeMenu({
             || finalDirtySnapshot.closeGuardRevision !== closeGuardRevision) {
             throw new Error("Window contents changed while closing.");
           }
+          if (windowInteractionPaused) {
+            await currentWindow.setEnabled(true);
+            windowInteractionPaused = false;
+          }
           await currentWindow.close();
         } catch (error) {
           if (closeTransitionStarted) {
