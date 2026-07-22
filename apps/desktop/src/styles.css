@@ -652,7 +652,12 @@ button:focus-visible > .shortcut-tooltip {
   transform: translateY(-50%);
 }
 .resizable-handle:hover::after,
-.resizable-handle[data-dragging]::after { background: var(--line-strong); }
+.resizable-handle:active::after,
+.resizable-handle:focus-visible::after { background: var(--line-strong); }
+/* Grip: hidden at rest (only the divider line shows), fades in gray on
+   hover/keyboard focus, then darkens to full contrast while actually dragging.
+   react-resizable-panels exposes the drag state through the :active
+   pseudo-class (button held on the Separator), not a data attribute. */
 .resizable-handle-grip {
   position: absolute;
   top: 50%;
@@ -662,15 +667,18 @@ button:focus-visible > .shortcut-tooltip {
   height: 44px;
   border-radius: 999px;
   background: var(--text-muted);
-  transition: background 120ms ease, height 120ms ease;
+  opacity: 0;
+  transition: background 120ms ease, height 120ms ease, width 120ms ease, opacity 120ms ease;
   pointer-events: none;
 }
 .resizable-handle-horizontal .resizable-handle-grip { width: 44px; height: 4px; }
 .resizable-handle:hover .resizable-handle-grip,
-.resizable-handle:focus-visible .resizable-handle-grip,
-.resizable-handle[data-dragging] .resizable-handle-grip { background: var(--text-primary); }
-.resizable-handle:hover .resizable-handle-grip { height: 56px; }
-.resizable-handle-horizontal:hover .resizable-handle-grip { height: 4px; width: 56px; }
+.resizable-handle:focus-visible .resizable-handle-grip { opacity: 1; }
+.resizable-handle:active .resizable-handle-grip { opacity: 1; background: var(--text-primary); }
+.resizable-handle:hover .resizable-handle-grip,
+.resizable-handle:active .resizable-handle-grip { height: 56px; }
+.resizable-handle-horizontal:hover .resizable-handle-grip,
+.resizable-handle-horizontal:active .resizable-handle-grip { height: 4px; width: 56px; }
 .workbench {
   min-width: 0;
   min-height: 0;
