@@ -630,6 +630,29 @@ button:focus-visible > .shortcut-tooltip {
   margin: -4px 0;
   cursor: row-resize;
 }
+.resizable-handle::after {
+  content: "";
+  position: absolute;
+  background: var(--line-subtle);
+  pointer-events: none;
+  transition: background 120ms ease;
+}
+.resizable-handle:not(.resizable-handle-horizontal)::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+.resizable-handle-horizontal::after {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+}
+.resizable-handle:hover::after,
+.resizable-handle[data-dragging]::after { background: var(--line-strong); }
 .resizable-handle-grip {
   position: absolute;
   top: 50%;
