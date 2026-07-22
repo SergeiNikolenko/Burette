@@ -459,7 +459,7 @@ except ValueError as error:
     fail(f"build metadata cannot be decoded: {error}")
 if metadata.get("schemaVersion") != "burrete.compute.metal-build-metadata.v2":
     fail("build metadata schema mismatch")
-if metadata.get("runtimeVersion") != "burrete-native-metal-v21":
+if metadata.get("runtimeVersion") != "burrete-native-metal-v22":
     fail("runtime version mismatch")
 metallib = metadata.get("metallib", {})
 metallib_name = metallib.get("path", "")

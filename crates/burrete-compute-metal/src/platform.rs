@@ -11,6 +11,11 @@ pub(crate) struct MetalTanimotoKnnDispatch {
     pub(crate) gpu_time_seconds: f64,
 }
 
+pub(crate) struct MetalUmapDispatch {
+    pub(crate) positions: Vec<[f32; 4]>,
+    pub(crate) gpu_time_seconds: f64,
+}
+
 pub(crate) struct MetalDistanceOptimizationDispatch {
     pub(crate) positions: Vec<[f32; 4]>,
     pub(crate) energies: Vec<f32>,

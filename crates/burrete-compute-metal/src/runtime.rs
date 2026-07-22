@@ -13,7 +13,7 @@ use burrete_compute_core::{
     MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
     MmffVanDerWaalsTerm, MmffVariant, Pm6FockPair, RigidTransform, Rm1FockPair, SemiempiricalAtom,
     SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoKnnOptions, TanimotoQueryOptions,
-    TetrahedralConstraint, FINGERPRINT_WORDS,
+    TanimotoUmapGraph, TetrahedralConstraint, UmapOptions, FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -58,6 +58,15 @@ pub struct MetalTanimotoKnnExecution {
     pub similarities: Vec<f32>,
     pub neighbors_per_vertex: usize,
     /// Sum of completed Metal and MPS command-buffer GPU intervals.
+    pub gpu_time_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalUmapExecution {
+    /// `float4` storage; `z` is exactly zero for a 2D embedding.
+    pub positions: Vec<[f32; 4]>,
+    pub component_count: u32,
+    /// Sum of completed Metal command-buffer GPU intervals.
     pub gpu_time_ms: u64,
 }
 
@@ -359,6 +368,24 @@ impl MetalComputeRuntime {
             source_indices: dispatch.source_indices,
             similarities: dispatch.similarities,
             neighbors_per_vertex: dispatch.neighbors_per_vertex,
+            gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
+        })
+    }
+
+    pub fn optimize_umap_profiled(
+        &self,
+        graph: &TanimotoUmapGraph,
+        options: UmapOptions,
+        max_memory_bytes: u64,
+    ) -> Result<MetalUmapExecution, MetalRuntimeError> {
+        let dispatch = self.host.optimize_umap_profiled(
+            graph,
+            options,
+            max_memory_bytes.min(self.limits.max_memory_bytes),
+        )?;
+        Ok(MetalUmapExecution {
+            positions: dispatch.positions,
+            component_count: options.n_components(),
             gpu_time_ms: gpu_time_ms(dispatch.gpu_time_seconds)?,
         })
     }
@@ -1925,7 +1952,9 @@ mod tests {
     use std::path::PathBuf;
 
     use base64::{engine::general_purpose::STANDARD, Engine as _};
-    use burrete_compute_core::{build_tanimoto_knn, butina_clusters, ButinaOptions};
+    use burrete_compute_core::{
+        build_tanimoto_knn, build_tanimoto_umap_graph, butina_clusters, ButinaOptions,
+    };
     use serde::Deserialize;
 
     use super::*;
@@ -2018,8 +2047,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "manual packaged-runtime Tanimoto kNN smoke; set BURRETE_METAL_RUNTIME_ROOT"]
-    fn builds_tanimoto_knn_with_the_packaged_runtime_on_the_real_gpu() {
+    #[ignore = "manual packaged-runtime chemical-space smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    fn builds_tanimoto_umap_with_the_packaged_runtime_on_the_real_gpu() {
         let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
             .map(PathBuf::from)
             .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged ComputeMetal directory");
@@ -2051,6 +2080,37 @@ mod tests {
         );
         assert_eq!(observed.similarities, vec![0.75, 0.75, 2.0 / 3.0, 0.5]);
         assert!(observed.gpu_time_ms <= 2_000);
+
+        let options_2d =
+            UmapOptions::try_new(2, 20, 0.1, 1.0, 1.0, 5, 42).expect("2D UMAP options");
+        let graph = build_tanimoto_umap_graph(
+            fingerprints.len(),
+            NonZeroUsize::new(observed.neighbors_per_vertex).expect("nonzero k"),
+            &observed.source_indices,
+            &observed.similarities,
+            options_2d,
+        )
+        .expect("Tanimoto fuzzy graph");
+        let embedding_2d = runtime
+            .optimize_umap_profiled(&graph, options_2d, MIN_COMPUTE_MEMORY_BYTES)
+            .expect("Metal UMAP 2D");
+        assert_eq!(embedding_2d.positions.len(), fingerprints.len());
+        assert_eq!(embedding_2d.component_count, 2);
+        assert!(embedding_2d
+            .positions
+            .iter()
+            .all(|position| position[2] == 0.0));
+
+        let options_3d =
+            UmapOptions::try_new(3, 20, 0.1, 1.0, 1.0, 5, 42).expect("3D UMAP options");
+        let embedding_3d = runtime
+            .optimize_umap_profiled(&graph, options_3d, MIN_COMPUTE_MEMORY_BYTES)
+            .expect("Metal UMAP 3D");
+        assert_eq!(embedding_3d.component_count, 3);
+        assert!(embedding_3d
+            .positions
+            .iter()
+            .any(|position| position[2] != 0.0));
     }
 
     #[test]

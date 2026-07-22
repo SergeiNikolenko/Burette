@@ -4,7 +4,10 @@
 //! commit `06c8a75ad007820b35185937f83c03e09ab6bd5b` (Apache-2.0).
 //! Production optimization is implemented independently in Metal.
 
-use std::{collections::HashMap, num::NonZeroUsize};
+use std::{
+    collections::{BTreeMap, HashMap},
+    num::NonZeroUsize,
+};
 
 const MAX_UMAP_EPOCHS: u32 = 2_000;
 const MAX_NEGATIVE_SAMPLE_RATE: u32 = 64;
@@ -176,7 +179,6 @@ pub fn build_tanimoto_umap_graph(
     }
 
     let mut directed = HashMap::with_capacity(expected);
-    let mut directed_rows = Vec::with_capacity(vertex_count);
     for row in 0..vertex_count {
         let start = row * k;
         let end = start + k;
@@ -196,28 +198,34 @@ pub fn build_tanimoto_umap_graph(
             .map(|distance| (distance - rho).max(0.0))
             .collect::<Vec<_>>();
         let sigma = solve_sigma(&shifted, k);
-        let mut row_weights = Vec::with_capacity(k);
         for (&column, shifted_distance) in indices.iter().zip(shifted) {
             let weight = (-shifted_distance / sigma.max(1e-10)).exp();
             directed.insert(pair_key(row as u32, column), weight);
-            row_weights.push((column, weight));
         }
-        directed_rows.push(row_weights);
     }
 
-    let max_weight = directed.values().copied().reduce(f32::max).unwrap_or(0.0);
+    let mut symmetric_rows = vec![BTreeMap::new(); vertex_count];
+    for (&key, &forward) in &directed {
+        let row = (key >> 32) as u32;
+        let column = key as u32;
+        let reverse = directed.get(&pair_key(column, row)).copied().unwrap_or(0.0);
+        let symmetric = forward + reverse - forward * reverse;
+        symmetric_rows[row as usize].insert(column, symmetric);
+        symmetric_rows[column as usize].insert(row, symmetric);
+    }
+    let max_weight = symmetric_rows
+        .iter()
+        .flat_map(|row| row.values())
+        .copied()
+        .reduce(f32::max)
+        .unwrap_or(0.0);
     let threshold = max_weight / options.n_epochs() as f32;
     let mut row_offsets = Vec::with_capacity(vertex_count + 1);
     let mut column_indices = Vec::with_capacity(expected);
     let mut weights = Vec::with_capacity(expected);
     row_offsets.push(0);
-    for (row, row_weights) in directed_rows.into_iter().enumerate() {
-        for (column, forward) in row_weights {
-            let reverse = directed
-                .get(&pair_key(column, row as u32))
-                .copied()
-                .unwrap_or(0.0);
-            let symmetric = forward + reverse - forward * reverse;
+    for row_weights in symmetric_rows {
+        for (column, symmetric) in row_weights {
             if symmetric >= threshold {
                 column_indices.push(column);
                 weights.push(symmetric);
@@ -376,7 +384,7 @@ mod tests {
         .expect("fuzzy graph");
         assert_eq!(graph.vertex_count(), 3);
         assert_eq!(graph.row_offsets(), &[0, 2, 4, 6]);
-        assert_eq!(graph.column_indices(), &[1, 2, 0, 2, 1, 0]);
+        assert_eq!(graph.column_indices(), &[1, 2, 0, 2, 0, 1]);
         assert!(graph
             .weights()
             .iter()

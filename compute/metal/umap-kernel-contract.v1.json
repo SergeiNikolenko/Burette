@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
+  "libraryId": "burrete.compute.umap.v1",
+  "source": "umap.v1.metal",
+  "deploymentTarget": "14.0",
+  "provenance": {
+    "upstream": "https://github.com/hanxiao/mlx-vis",
+    "commit": "06c8a75ad007820b35185937f83c03e09ab6bd5b",
+    "declaredLicense": "Apache-2.0"
+  },
+  "parameterAbis": {
+    "epoch": {
+      "name": "UmapEpochConfigV1",
+      "sizeBytes": 56,
+      "alignmentBytes": 8,
+      "byteOrder": "littleEndian",
+      "fields": [
+        { "name": "vertexCount", "type": "uint64", "offsetBytes": 0 },
+        { "name": "edgeCount", "type": "uint64", "offsetBytes": 8 },
+        { "name": "randomSeed", "type": "uint64", "offsetBytes": 16 },
+        { "name": "componentCount", "type": "uint32", "offsetBytes": 24 },
+        { "name": "negativeSampleRate", "type": "uint32", "offsetBytes": 28 },
+        { "name": "epoch", "type": "uint32", "offsetBytes": 32 },
+        { "name": "epochCount", "type": "uint32", "offsetBytes": 36 },
+        { "name": "alpha", "type": "float32", "offsetBytes": 40 },
+        { "name": "curveA", "type": "float32", "offsetBytes": 44 },
+        { "name": "curveB", "type": "float32", "offsetBytes": 48 },
+        { "name": "reserved", "type": "uint32", "offsetBytes": 52 }
+      ]
+    }
+  },
+  "dispatch": {
+    "oneThreadOwnsOneVertex": true,
+    "positionStorage": "float4",
+    "supportedComponentCounts": [2, 3],
+    "raceFreeJacobiUpdates": true,
+    "fullPairMatrix": false,
+    "atomics": false
+  },
+  "entrypoints": [
+    {
+      "name": "burrete_umap_initialize_v1",
+      "buffers": [
+        { "name": "positions", "index": 0, "type": "float4", "access": "write", "elements": "vertexCount" },
+        { "name": "config", "index": 1, "type": "UmapEpochConfigV1", "access": "constant", "elements": "1" }
+      ]
+    },
+    {
+      "name": "burrete_umap_epoch_v1",
+      "buffers": [
+        { "name": "inputPositions", "index": 0, "type": "float4", "access": "read", "elements": "vertexCount" },
+        { "name": "rowOffsets", "index": 1, "type": "uint64", "access": "read", "elements": "vertexCount + 1" },
+        { "name": "columnIndices", "index": 2, "type": "uint32", "access": "read", "elements": "edgeCount" },
+        { "name": "weights", "index": 3, "type": "float32", "access": "read", "elements": "edgeCount" },
+        { "name": "outputPositions", "index": 4, "type": "float4", "access": "write", "elements": "vertexCount" },
+        { "name": "config", "index": 5, "type": "UmapEpochConfigV1", "access": "constant", "elements": "1" }
+      ]
+    }
+  ]
+}
