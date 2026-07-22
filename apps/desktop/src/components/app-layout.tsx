@@ -35,19 +35,32 @@ function clampRightDockWidth(width: number, viewportWidth: number, sidebarLayout
 // state before paint, so closed panels don't flash open on mount.
 function useCollapsiblePanelSync(open: boolean, expandedSizePx: number) {
   const panelRef = useRef<PanelImperativeHandle | null>(null);
+  // The expanded size is read through a ref so that persisting a size while the
+  // user drags (which updates it every frame) never re-runs this effect. Doing so
+  // used to re-enter expand()/resize() mid-gesture, which reset the library's
+  // drag origin and froze the divider until the pointer was released.
+  const expandedSizeRef = useRef(expandedSizePx);
+  expandedSizeRef.current = expandedSizePx;
   useLayoutEffect(() => {
     const panel = panelRef.current;
     if (!panel) return;
     if (open) {
       if (panel.isCollapsed()) {
         panel.expand();
-        if (expandedSizePx > 1) panel.resize(`${expandedSizePx}px`);
+        const px = expandedSizeRef.current;
+        if (px > 1) panel.resize(`${px}px`);
       }
     } else if (!panel.isCollapsed()) {
       panel.collapse();
     }
-  }, [open, expandedSizePx]);
+  }, [open]);
   return panelRef;
+}
+
+// `defaultSize` is only meant to seed a panel on mount. Feeding the live stored
+// size back into it re-seeds the panel mid-drag, so capture it once.
+function useInitialSize(sizePx: number) {
+  return useRef(sizePx).current;
 }
 
 export function AppLayout({
@@ -124,6 +137,9 @@ export function AppLayout({
   const sidebarPanelRef = useCollapsiblePanelSync(sidebarVisible, sidebarWidth);
   const rightDockPanelRef = useCollapsiblePanelSync(rightDockOpen, rightDockWidth);
   const bottomDockPanelRef = useCollapsiblePanelSync(bottomDockOpen, state.bottomDockHeight);
+  const initialSidebarSize = useInitialSize(sidebarWidth);
+  const initialRightDockSize = useInitialSize(rightDockWidth);
+  const initialBottomDockSize = useInitialSize(state.bottomDockHeight);
   // The sidebar store only exposes a toggle; wrap it as an idempotent setter so
   // drag-to-collapse can sync the flag without double-toggling.
   const sidebarOpenRef = useRef(sidebarVisible);
@@ -277,7 +293,7 @@ export function AppLayout({
             panelRef={sidebarPanelRef}
             collapsible
             collapsedSize="0px"
-            defaultSize={`${sidebarWidth}px`}
+            defaultSize={`${initialSidebarSize}px`}
             minSize="220px"
             maxSize={`${maxSidebarWidth}px`}
             groupResizeBehavior="preserve-pixel-size"
@@ -317,7 +333,7 @@ export function AppLayout({
                       panelRef={bottomDockPanelRef}
                       collapsible
                       collapsedSize="0px"
-                      defaultSize={`${state.bottomDockHeight}px`}
+                      defaultSize={`${initialBottomDockSize}px`}
                       minSize="120px"
                       maxSize="70%"
                       groupResizeBehavior="preserve-pixel-size"
@@ -344,7 +360,7 @@ export function AppLayout({
                   panelRef={rightDockPanelRef}
                   collapsible
                   collapsedSize="0px"
-                  defaultSize={`${state.rightDockWidth}px`}
+                  defaultSize={`${initialRightDockSize}px`}
                   minSize="180px"
                   maxSize="70%"
                   groupResizeBehavior="preserve-pixel-size"
