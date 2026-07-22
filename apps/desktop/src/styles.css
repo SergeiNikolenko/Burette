@@ -1157,7 +1157,9 @@ kbd span { margin-left: 2px; }
   min-height: 28px;
   border-radius: var(--control-radius);
   color: var(--text-secondary);
-  padding: 5px 40px 5px calc(6px + (var(--project-depth, 0) * 6px));
+  /* Indentation comes from the nesting of .project-folder-children now, not from
+     a per-row depth multiplier, so every level also gets a guide line for free. */
+  padding: 5px 40px 5px 6px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1227,10 +1229,27 @@ kbd span { margin-left: 2px; }
   pointer-events: auto;
 }
 .project-folder-children {
+  position: relative;
   min-height: 0;
   overflow: hidden;
   display: grid;
   gap: 1px;
+  /* One nesting level of indent. Because the tree nests in the DOM, this
+     compounds naturally with depth and needs no per-row depth arithmetic. */
+  padding-left: 14px;
+}
+/* Guide line for this nesting level, same idea as the Files component's
+   `before:w-px` rule. Kept inside the padding box so the container's own
+   overflow: hidden (used by the expand/collapse animation) can't clip it. */
+.project-folder-children::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line-subtler);
+  pointer-events: none;
 }
 .project {
   position: relative;
@@ -1280,7 +1299,7 @@ kbd span { margin-left: 2px; }
 .project-group-row:active,
 .project-show-more:active,
 .project:active { transform: none; }
-.nested-project { padding-left: calc(6px + (var(--project-depth, 0) * 6px)); }
+.nested-project { padding-left: 6px; }
 .project-icon {
   width: 20px;
   height: 16px;
