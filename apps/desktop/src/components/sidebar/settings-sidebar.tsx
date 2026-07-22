@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { settingsNavGroups, type SettingsSectionId } from "../../lib/settings-sections";
+import { AnimatedBackIcon, AnimatedSearchIcon } from "../ui/animated-icons";
 import type { ShellActions, ShellViewState } from "../types";
 
 export function SettingsSidebar({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
@@ -31,11 +32,11 @@ export function SettingsSidebar({ state, actions }: { state: ShellViewState; act
     <div className="settings-sidebar">
       <div className="settings-sidebar-spacer" data-tauri-drag-region />
       <button type="button" className="settings-back-button" onClick={handleBackToApp}>
-        <BackIcon />
+        <AnimatedBackIcon />
         <span>Back to app</span>
       </button>
       <label className="settings-search">
-        <SearchIcon />
+        <AnimatedSearchIcon />
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -90,23 +91,6 @@ function SettingsNavButton({
       </span>
       <span>{label}</span>
     </button>
-  );
-}
-
-function BackIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M9.5 3.5L5 8L9.5 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M7.25 12.5C10.1495 12.5 12.5 10.1495 12.5 7.25C12.5 4.35051 10.1495 2 7.25 2C4.35051 2 2 4.35051 2 7.25C2 10.1495 4.35051 12.5 7.25 12.5Z" stroke="currentColor" strokeWidth="1.35" />
-      <path d="M11 11L14 14" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
-    </svg>
   );
 }
 
