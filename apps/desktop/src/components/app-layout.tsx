@@ -338,7 +338,7 @@ export function AppLayout({
                       collapsible
                       collapsedSize="0px"
                       defaultSize={`${initialBottomDockSize}px`}
-                      minSize="120px"
+                      minSize="180px"
                       maxSize="70%"
                       groupResizeBehavior="preserve-pixel-size"
                       onResize={(size) => {
@@ -351,7 +351,11 @@ export function AppLayout({
                         }
                       }}
                     >
-                      {bottomDockOpen ? <DockPanel area="bottom" state={layoutState} actions={actions} /> : null}
+                      {/* Always mounted: DockPanel renders its own closed state
+                          (data-open / aria-hidden / inert) and unmounting it on
+                          close would drop the dock's internal state and re-fire
+                          the xyzrender auto-open on every reopen. */}
+                      <DockPanel area="bottom" state={layoutState} actions={actions} />
                     </ResizablePanel>
                   </ResizablePanelGroup>
                 </ResizablePanel>
@@ -365,7 +369,7 @@ export function AppLayout({
                   collapsible
                   collapsedSize="0px"
                   defaultSize={`${initialRightDockSize}px`}
-                  minSize="180px"
+                  minSize="260px"
                   maxSize="70%"
                   groupResizeBehavior="preserve-pixel-size"
                   onResize={(size) => {
@@ -378,7 +382,7 @@ export function AppLayout({
                     }
                   }}
                 >
-                  {rightDockOpen ? <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} /> : null}
+                  <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
                 </ResizablePanel>
               </ResizablePanelGroup>
             </section>
