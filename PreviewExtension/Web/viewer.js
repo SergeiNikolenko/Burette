@@ -9325,9 +9325,10 @@
   }
 
   async function loadMolstarEntryWithStructureRefs(viewer, entry, presetOptions = undefined) {
-    const before = new Set(molstarCurrentStructures(viewer));
+    const before = molstarStructureCellRefs(viewer);
     await loadMolstarEntry(viewer, entry, presetOptions);
-    return Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure));
+    return Array.from(molstarCurrentStructures(viewer))
+      .filter(structure => !before.has(structure?.cell?.transform?.ref));
   }
 
   async function loadMolstarEntryAsLines(viewer, entry) {

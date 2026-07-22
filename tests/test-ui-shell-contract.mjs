@@ -5702,7 +5702,8 @@ assert.match(previewViewer, /async function loadMolstarEntry\(viewer, entry, pre
 assert.match(previewViewer, /applyPreset\(trajectory, entry\.loadPreset \|\| 'default', presetOptions\)/);
 assert.match(previewViewer, /async function loadMolstarEntryWithStructureRefs\(viewer, entry, presetOptions = undefined\)/);
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, entry, presetOptions\)/);
-assert.match(previewViewer, /return Array\.from\(molstarCurrentStructures\(viewer\)\)\.filter\(structure => !before\.has\(structure\)\)/);
+assert.match(previewViewer, /const before = molstarStructureCellRefs\(viewer\);\s*await loadMolstarEntry\(viewer, entry, presetOptions\);/);
+assert.match(previewViewer, /\.filter\(structure => !before\.has\(structure\?\.cell\?\.transform\?\.ref\)\)/);
 assert.match(previewViewer, /async function applyDockingSceneVisibility\(viewer, prepared, activePose = 0, options = \{\}\)/);
 assert.match(previewViewer, /const resolvedContextStyle = dockingSceneBackgroundStyle\(contextStyle, style\)/);
 assert.match(previewViewer, /const backgroundEntries = poses\.filter\(\(_, index\) => index !== activeIndex\)/);
