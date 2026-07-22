@@ -20,6 +20,7 @@ mod etk_geometry;
 mod mmff;
 mod mmff_extract;
 mod semiempirical;
+mod umap;
 
 pub use alignment::{
     align_and_score, AlignmentAtom, AlignmentError, AlignmentMode, AlignmentResult,
@@ -84,6 +85,9 @@ pub use semiempirical::{
     Rm1OverlapMatrix, Rm1RotatedPairIntegrals, Rm1TwoCenterIntegrals, SemiempiricalAtom,
     SemiempiricalElementParameters, SemiempiricalError, SemiempiricalMethod, SemiempiricalMolecule,
     SemiempiricalScfOptions, SemiempiricalScfResult, SemiempiricalScfStatus,
+};
+pub use umap::{
+    build_tanimoto_umap_graph, fit_umap_curve, TanimotoUmapGraph, UmapError, UmapOptions,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};
@@ -461,7 +465,10 @@ impl TanimotoKnn {
         &self.counts
     }
 
-    pub fn neighbors(&self, vertex: usize) -> Option<impl Iterator<Item = (u64, TanimotoCounts)> + '_> {
+    pub fn neighbors(
+        &self,
+        vertex: usize,
+    ) -> Option<impl Iterator<Item = (u64, TanimotoCounts)> + '_> {
         if vertex >= self.vertex_count {
             return None;
         }
@@ -615,7 +622,11 @@ pub fn build_tanimoto_knn(
         .checked_mul(neighbors_per_vertex)
         .ok_or(ClusterCoreError::CsrOverflow)?;
     let mut source_indices = Vec::new();
-    try_reserve_exact(&mut source_indices, entry_count, "Tanimoto kNN index output")?;
+    try_reserve_exact(
+        &mut source_indices,
+        entry_count,
+        "Tanimoto kNN index output",
+    )?;
     let mut counts = Vec::new();
     try_reserve_exact(&mut counts, entry_count, "Tanimoto kNN count output")?;
     let mut row = BinaryHeap::new();
@@ -666,8 +677,8 @@ pub fn accounted_tanimoto_knn_bytes(
     neighbors_per_vertex: usize,
 ) -> Result<u64, ClusterCoreError> {
     let vertices = u64::try_from(vertex_count).map_err(|_| ClusterCoreError::CsrOverflow)?;
-    let neighbors = u64::try_from(neighbors_per_vertex)
-        .map_err(|_| ClusterCoreError::CsrOverflow)?;
+    let neighbors =
+        u64::try_from(neighbors_per_vertex).map_err(|_| ClusterCoreError::CsrOverflow)?;
     let entries = vertices
         .checked_mul(neighbors)
         .ok_or(ClusterCoreError::CsrOverflow)?;
@@ -678,7 +689,9 @@ pub fn accounted_tanimoto_knn_bytes(
     ]
     .into_iter()
     .try_fold(MEMORY_ACCOUNTING_HEADROOM_BYTES, |total, bytes| {
-        total.checked_add(bytes).ok_or(ClusterCoreError::CsrOverflow)
+        total
+            .checked_add(bytes)
+            .ok_or(ClusterCoreError::CsrOverflow)
     })
 }
 

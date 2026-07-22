@@ -290,8 +290,8 @@ fn exact_tanimoto_knn_orders_by_ratio_then_source_index() {
         fingerprint(&[0, 4]),
         Fingerprint2048::ZERO,
     ];
-    let graph = build_tanimoto_knn(&fingerprints, knn_options(3, 1024 * 1024))
-        .expect("exact Tanimoto kNN");
+    let graph =
+        build_tanimoto_knn(&fingerprints, knn_options(3, 1024 * 1024)).expect("exact Tanimoto kNN");
 
     assert_eq!(graph.vertex_count(), fingerprints.len());
     assert_eq!(graph.neighbors_per_vertex(), 3);
@@ -317,8 +317,8 @@ fn exact_tanimoto_knn_orders_by_ratio_then_source_index() {
 #[test]
 fn exact_tanimoto_knn_clamps_k_and_handles_empty_input() {
     let fingerprints = [fingerprint(&[0]), fingerprint(&[1]), fingerprint(&[2])];
-    let graph = build_tanimoto_knn(&fingerprints, knn_options(64, 1024 * 1024))
-        .expect("clamped kNN");
+    let graph =
+        build_tanimoto_knn(&fingerprints, knn_options(64, 1024 * 1024)).expect("clamped kNN");
     assert_eq!(graph.neighbors_per_vertex(), 2);
     assert_eq!(graph.source_indices().len(), 6);
     assert_eq!(graph.counts().len(), 6);
