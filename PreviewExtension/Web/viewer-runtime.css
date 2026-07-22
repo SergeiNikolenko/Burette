@@ -2126,6 +2126,21 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-pose-align {
   min-width: 58px;
 }
+.buret-docking-pose-toggles {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.buret-docking-pose-toggles > button {
+  flex: 1 1 0;
+}
+.buret-docking-poses-collapsed .buret-docking-pose-main > *:not(.buret-docking-pose-animation-button),
+.buret-docking-poses-collapsed .buret-docking-pose-toggles,
+.buret-docking-poses-collapsed .buret-docking-pose-files,
+.buret-docking-poses-collapsed .buret-docking-pose-animation {
+  display: none !important;
+}
 .buret-docking-pose-files {
   position: absolute;
   top: calc(100% + 4px);

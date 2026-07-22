@@ -192,7 +192,8 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const compositionSummary = composition.documentId === document.id ? composition.summary : null;
   const compositionPending = composition.documentId === document.id && composition.loading;
   const rawCompositionError = composition.documentId === document.id ? composition.error : null;
-  const compositionError = isVirtualMolstarScene(document) ? null : rawCompositionError;
+  const virtualScene = isVirtualMolstarScene(document);
+  const compositionError = virtualScene ? null : rawCompositionError;
   const selectedEntity = selectedStructureRow(document, compositionSummary, activeActionKey);
   const poseControls = structurePoseControlsFor(document, compositionSummary) ?? trajectoryPlaybackControlsFor(document, trajectoryPlayback);
   const trajectoryDocument = isTrajectorySmoothingDocument(document, poseControls);
@@ -383,7 +384,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
 
       {poseControls ? (
         <>
-          {trajectoryDocument ? (
+          {trajectoryDocument && !virtualScene ? (
             <TrajectorySmoothingCard
               document={document}
               controls={poseControls}

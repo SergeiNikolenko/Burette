@@ -10768,7 +10768,23 @@
         flushPendingSliderInput();
       }, 24);
     };
+    const setControlsCollapsed = (collapsed) => {
+      root.classList.toggle('buret-docking-poses-collapsed', Boolean(collapsed));
+      animation.title = collapsed ? 'Show playback controls' : 'Select animation';
+      if (!collapsed) return;
+      setFileListOpen(false);
+      setAnimationOptionsOpen(false);
+    };
+    animation.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setControlsCollapsed(!root.classList.contains('buret-docking-poses-collapsed'));
+    });
     animation.addEventListener('click', () => {
+      if (root.classList.contains('buret-docking-poses-collapsed')) {
+        setControlsCollapsed(false);
+        return;
+      }
       const open = !isAnimationOptionsOpen();
       setAnimationOptionsOpen(open);
       if (!open) return;
@@ -10846,11 +10862,20 @@
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
     mainRow.append(animation, previous, label, next);
-    if (align) mainRow.append(align);
     if (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls) mainRow.append(smooth);
-    if (all) mainRow.append(all);
-    animationRow.append(speed, loop, slider);
+    const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
+    if (toggleRow) {
+      toggleRow.className = 'buret-docking-pose-toggles';
+      toggleRow.append(loop);
+      if (align) toggleRow.append(align);
+      if (all) toggleRow.append(all);
+      animationRow.append(speed, slider);
+    } else {
+      if (all) mainRow.append(all);
+      animationRow.append(speed, loop, slider);
+    }
     root.append(mainRow);
+    if (toggleRow) root.append(toggleRow);
     if (fileList) root.append(fileList);
     root.append(animationRow);
     document.body.appendChild(root);
