@@ -5946,6 +5946,10 @@ assert.match(appNativeMenuHook, /await permit\.waitForPending\(\)/);
 assert.match(appNativeMenuHook, /sameWindowItemIds\(documentIds, windowDocumentIdsRef\.current\)/);
 assert.match(appNativeMenuHook, /sameWindowItemIds\(tabIds, windowTabIdsRef\.current\)/);
 assert.match(appNativeMenuHook, /finalDirtySnapshot\.closeGuardRevision !== closeGuardRevision/);
+assert.match(
+  appNativeMenuHook,
+  /if \(windowInteractionPaused\) \{\s*await currentWindow\.setEnabled\(true\);\s*windowInteractionPaused = false;\s*\}\s*await currentWindow\.close\(\)/,
+);
 assert.match(appNativeMenuHook, /if \(closingWindowRef\.current\) return;/);
 assert.match(appNativeMenuHook, /listen<ExitPreflightRequest>\(EXIT_PREFLIGHT_EVENT/);
 assert.match(appNativeMenuHook, /invoke<string>\("register_exit_preflight_listener"\)/);
