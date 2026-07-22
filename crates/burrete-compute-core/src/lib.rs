@@ -234,6 +234,47 @@ impl TanimotoQueryOptions {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TanimotoKnnOptions {
+    neighbor_count: NonZeroUsize,
+    max_memory_bytes: u64,
+}
+
+impl TanimotoKnnOptions {
+    pub fn try_new(
+        neighbor_count: NonZeroUsize,
+        max_memory_bytes: u64,
+    ) -> Result<Self, ClusterCoreError> {
+        if !(1..=MAX_COMPUTE_MEMORY_BYTES).contains(&max_memory_bytes) {
+            return Err(ClusterCoreError::InvalidOptions(format!(
+                "max_memory_bytes must be in 1..={MAX_COMPUTE_MEMORY_BYTES}"
+            )));
+        }
+        Ok(Self {
+            neighbor_count,
+            max_memory_bytes,
+        })
+    }
+
+    pub fn from_resource_limits(
+        neighbor_count: NonZeroUsize,
+        limits: &ResourceLimits,
+    ) -> Result<Self, ClusterCoreError> {
+        limits
+            .validate()
+            .map_err(|error| ClusterCoreError::InvalidOptions(error.to_string()))?;
+        Self::try_new(neighbor_count, limits.max_memory_bytes)
+    }
+
+    pub const fn neighbor_count(self) -> NonZeroUsize {
+        self.neighbor_count
+    }
+
+    pub const fn max_memory_bytes(self) -> u64 {
+        self.max_memory_bytes
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GraphBuildOptions {
     tile_size: NonZeroUsize,
     max_undirected_edges: u64,
@@ -391,6 +432,71 @@ pub struct SymmetricCsr {
     column_indices: Vec<u64>,
 }
 
+/// Exact directed k-nearest-neighbor graph in source-row order.
+///
+/// Neighbors are sorted by decreasing exact Tanimoto ratio, then by increasing
+/// source index. `neighbors_per_vertex` is `min(requested_k, vertex_count - 1)`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TanimotoKnn {
+    vertex_count: usize,
+    neighbors_per_vertex: usize,
+    source_indices: Vec<u64>,
+    counts: Vec<TanimotoCounts>,
+}
+
+impl TanimotoKnn {
+    pub const fn vertex_count(&self) -> usize {
+        self.vertex_count
+    }
+
+    pub const fn neighbors_per_vertex(&self) -> usize {
+        self.neighbors_per_vertex
+    }
+
+    pub fn source_indices(&self) -> &[u64] {
+        &self.source_indices
+    }
+
+    pub fn counts(&self) -> &[TanimotoCounts] {
+        &self.counts
+    }
+
+    pub fn neighbors(&self, vertex: usize) -> Option<impl Iterator<Item = (u64, TanimotoCounts)> + '_> {
+        if vertex >= self.vertex_count {
+            return None;
+        }
+        let start = vertex * self.neighbors_per_vertex;
+        let end = start + self.neighbors_per_vertex;
+        Some(
+            self.source_indices[start..end]
+                .iter()
+                .copied()
+                .zip(self.counts[start..end].iter().copied()),
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RankedTanimotoNeighbor {
+    source_index: u64,
+    counts: TanimotoCounts,
+}
+
+impl Ord for RankedTanimotoNeighbor {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .counts
+            .compare_similarity(self.counts)
+            .then_with(|| self.source_index.cmp(&other.source_index))
+    }
+}
+
+impl PartialOrd for RankedTanimotoNeighbor {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl SymmetricCsr {
     pub fn try_new(
         row_offsets: Vec<u64>,
@@ -484,6 +590,96 @@ pub fn score_tanimoto_query(
             .map(|fingerprint| query.tanimoto_counts(fingerprint)),
     );
     Ok(counts)
+}
+
+/// Builds the exact Tanimoto top-k graph without materializing an `N x N`
+/// matrix. The bounded per-row heap keeps only the requested best candidates.
+pub fn build_tanimoto_knn(
+    fingerprints: &[Fingerprint2048],
+    options: TanimotoKnnOptions,
+) -> Result<TanimotoKnn, ClusterCoreError> {
+    let vertex_count = fingerprints.len();
+    let neighbors_per_vertex = options
+        .neighbor_count
+        .get()
+        .min(vertex_count.saturating_sub(1));
+    let required_bytes = accounted_tanimoto_knn_bytes(vertex_count, neighbors_per_vertex)?;
+    if required_bytes > options.max_memory_bytes {
+        return Err(ClusterCoreError::MemoryBudgetExceeded {
+            required_bytes,
+            limit_bytes: options.max_memory_bytes,
+        });
+    }
+
+    let entry_count = vertex_count
+        .checked_mul(neighbors_per_vertex)
+        .ok_or(ClusterCoreError::CsrOverflow)?;
+    let mut source_indices = Vec::new();
+    try_reserve_exact(&mut source_indices, entry_count, "Tanimoto kNN index output")?;
+    let mut counts = Vec::new();
+    try_reserve_exact(&mut counts, entry_count, "Tanimoto kNN count output")?;
+    let mut row = BinaryHeap::new();
+    row.try_reserve(neighbors_per_vertex)
+        .map_err(|_| ClusterCoreError::AllocationFailed {
+            buffer: "Tanimoto kNN row heap",
+            requested_elements: neighbors_per_vertex as u64,
+        })?;
+
+    for (source_index, fingerprint) in fingerprints.iter().enumerate() {
+        row.clear();
+        for (candidate_index, candidate) in fingerprints.iter().enumerate() {
+            if candidate_index == source_index {
+                continue;
+            }
+            let neighbor = RankedTanimotoNeighbor {
+                source_index: candidate_index as u64,
+                counts: fingerprint.tanimoto_counts(candidate),
+            };
+            if row.len() < neighbors_per_vertex {
+                row.push(neighbor);
+            } else if row.peek().is_some_and(|worst| neighbor < *worst) {
+                row.pop();
+                row.push(neighbor);
+            }
+        }
+        let mut ranked = row.drain().collect::<Vec<_>>();
+        ranked.sort_unstable_by(|left, right| {
+            right
+                .counts
+                .compare_similarity(left.counts)
+                .then_with(|| left.source_index.cmp(&right.source_index))
+        });
+        source_indices.extend(ranked.iter().map(|neighbor| neighbor.source_index));
+        counts.extend(ranked.iter().map(|neighbor| neighbor.counts));
+    }
+
+    Ok(TanimotoKnn {
+        vertex_count,
+        neighbors_per_vertex,
+        source_indices,
+        counts,
+    })
+}
+
+pub fn accounted_tanimoto_knn_bytes(
+    vertex_count: usize,
+    neighbors_per_vertex: usize,
+) -> Result<u64, ClusterCoreError> {
+    let vertices = u64::try_from(vertex_count).map_err(|_| ClusterCoreError::CsrOverflow)?;
+    let neighbors = u64::try_from(neighbors_per_vertex)
+        .map_err(|_| ClusterCoreError::CsrOverflow)?;
+    let entries = vertices
+        .checked_mul(neighbors)
+        .ok_or(ClusterCoreError::CsrOverflow)?;
+    [
+        checked_buffer_bytes::<u64>(entries)?,
+        checked_buffer_bytes::<TanimotoCounts>(entries)?,
+        checked_buffer_bytes::<RankedTanimotoNeighbor>(neighbors)?,
+    ]
+    .into_iter()
+    .try_fold(MEMORY_ACCOUNTING_HEADROOM_BYTES, |total, bytes| {
+        total.checked_add(bytes).ok_or(ClusterCoreError::CsrOverflow)
+    })
 }
 
 pub fn accounted_tanimoto_query_bytes(record_count: usize) -> Result<u64, ClusterCoreError> {
