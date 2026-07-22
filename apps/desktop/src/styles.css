@@ -616,17 +616,17 @@ button:focus-visible > .shortcut-tooltip {
 .resizable-handle {
   position: relative;
   z-index: 3;
-  flex: 0 0 8px;
-  width: 8px;
-  margin-inline: -4px;
+  flex: 0 0 14px;
+  width: 14px;
+  margin-inline: -7px;
   cursor: col-resize;
   touch-action: none;
   outline: none;
 }
 .resizable-handle-horizontal {
   width: auto;
-  height: 8px;
-  margin: -4px 0;
+  height: 14px;
+  margin: -7px 0;
   cursor: row-resize;
 }
 .resizable-handle::after {
