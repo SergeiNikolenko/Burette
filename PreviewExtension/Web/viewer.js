@@ -8,7 +8,7 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
-  const DOCKING_POSE_POSITION_VERSION = '4';
+  const DOCKING_POSE_POSITION_VERSION = '5';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -5017,6 +5017,184 @@
     return mode === 'structureAll' || mode === 'structurePoses' ? mode : '';
   }
 
+  function pdbAlphaCarbonChains(data) {
+    const chains = new Map();
+    for (const line of String(data || '').split(/\r?\n/)) {
+      if (!line.startsWith('ATOM  ') || line.slice(12, 16).trim() !== 'CA') continue;
+      const altLoc = line.slice(16, 17);
+      if (altLoc && altLoc !== ' ' && altLoc !== 'A') continue;
+      const x = Number(line.slice(30, 38));
+      const y = Number(line.slice(38, 46));
+      const z = Number(line.slice(46, 54));
+      if (![x, y, z].every(Number.isFinite)) continue;
+      const chain = line.slice(21, 22).trim() || '_';
+      const residue = `${line.slice(22, 26).trim()}:${line.slice(26, 27).trim()}`;
+      if (!chains.has(chain)) chains.set(chain, new Map());
+      if (!chains.get(chain).has(residue)) chains.get(chain).set(residue, [x, y, z]);
+    }
+    return chains;
+  }
+
+  function largestEigenvectorSymmetric4(matrix) {
+    const values = matrix.map(row => row.slice());
+    const vectors = Array.from({ length: 4 }, (_, row) => (
+      Array.from({ length: 4 }, (_, column) => row === column ? 1 : 0)
+    ));
+    for (let iteration = 0; iteration < 40; iteration += 1) {
+      let p = 0;
+      let q = 1;
+      let largest = Math.abs(values[p][q]);
+      for (let row = 0; row < 4; row += 1) {
+        for (let column = row + 1; column < 4; column += 1) {
+          const candidate = Math.abs(values[row][column]);
+          if (candidate > largest) {
+            largest = candidate;
+            p = row;
+            q = column;
+          }
+        }
+      }
+      if (largest < 1e-10) break;
+      const angle = 0.5 * Math.atan2(2 * values[p][q], values[q][q] - values[p][p]);
+      const cosine = Math.cos(angle);
+      const sine = Math.sin(angle);
+      for (let index = 0; index < 4; index += 1) {
+        if (index === p || index === q) continue;
+        const aip = values[index][p];
+        const aiq = values[index][q];
+        values[index][p] = values[p][index] = cosine * aip - sine * aiq;
+        values[index][q] = values[q][index] = sine * aip + cosine * aiq;
+      }
+      const app = values[p][p];
+      const aqq = values[q][q];
+      const apq = values[p][q];
+      values[p][p] = cosine * cosine * app - 2 * sine * cosine * apq + sine * sine * aqq;
+      values[q][q] = sine * sine * app + 2 * sine * cosine * apq + cosine * cosine * aqq;
+      values[p][q] = values[q][p] = 0;
+      for (let row = 0; row < 4; row += 1) {
+        const vip = vectors[row][p];
+        const viq = vectors[row][q];
+        vectors[row][p] = cosine * vip - sine * viq;
+        vectors[row][q] = sine * vip + cosine * viq;
+      }
+    }
+    let largestIndex = 0;
+    for (let index = 1; index < 4; index += 1) {
+      if (values[index][index] > values[largestIndex][largestIndex]) largestIndex = index;
+    }
+    const vector = vectors.map(row => row[largestIndex]);
+    const length = Math.hypot(...vector) || 1;
+    return vector.map(value => value / length);
+  }
+
+  function pdbRigidAlignment(movingPoints, referencePoints) {
+    const count = Math.min(movingPoints.length, referencePoints.length);
+    if (count < 3) return null;
+    const movingCenter = [0, 0, 0];
+    const referenceCenter = [0, 0, 0];
+    for (let index = 0; index < count; index += 1) {
+      for (let axis = 0; axis < 3; axis += 1) {
+        movingCenter[axis] += movingPoints[index][axis] / count;
+        referenceCenter[axis] += referencePoints[index][axis] / count;
+      }
+    }
+    const covariance = Array.from({ length: 3 }, () => [0, 0, 0]);
+    for (let index = 0; index < count; index += 1) {
+      const moving = movingPoints[index].map((value, axis) => value - movingCenter[axis]);
+      const reference = referencePoints[index].map((value, axis) => value - referenceCenter[axis]);
+      for (let row = 0; row < 3; row += 1) {
+        for (let column = 0; column < 3; column += 1) covariance[row][column] += moving[row] * reference[column];
+      }
+    }
+    const [[sxx, sxy, sxz], [syx, syy, syz], [szx, szy, szz]] = covariance;
+    const [w, x, y, z] = largestEigenvectorSymmetric4([
+      [sxx + syy + szz, syz - szy, szx - sxz, sxy - syx],
+      [syz - szy, sxx - syy - szz, sxy + syx, szx + sxz],
+      [szx - sxz, sxy + syx, -sxx + syy - szz, syz + szy],
+      [sxy - syx, szx + sxz, syz + szy, -sxx - syy + szz]
+    ]);
+    const rotation = [
+      [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+      [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+      [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]
+    ];
+    const apply = point => rotation.map((row, axis) => (
+      row.reduce((sum, value, column) => sum + value * (point[column] - movingCenter[column]), 0) + referenceCenter[axis]
+    ));
+    let squaredError = 0;
+    for (let index = 0; index < count; index += 1) {
+      const aligned = apply(movingPoints[index]);
+      squaredError += aligned.reduce((sum, value, axis) => sum + (value - referencePoints[index][axis]) ** 2, 0);
+    }
+    return { apply, rmsd: Math.sqrt(squaredError / count), count };
+  }
+
+  function transformPdbCoordinates(data, apply) {
+    return String(data || '').split(/\r?\n/).map(line => {
+      if (!line.startsWith('ATOM  ') && !line.startsWith('HETATM')) return line;
+      const point = [Number(line.slice(30, 38)), Number(line.slice(38, 46)), Number(line.slice(46, 54))];
+      if (!point.every(Number.isFinite)) return line;
+      const aligned = apply(point);
+      const coordinates = aligned.map(value => value.toFixed(3).padStart(8, ''));
+      return `${line.slice(0, 30)}${coordinates.join('')}${line.slice(54)}`;
+    }).join('\n');
+  }
+
+  function alignStructureSceneEntries(prepared) {
+    const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
+    if (poses.length < 2 || poses.some(entry => normalizeFormat(entry?.format) !== 'pdb')) {
+      throw new Error('One-click alignment currently requires two or more PDB structures.');
+    }
+    for (const entry of poses) {
+      if (typeof entry.unalignedData !== 'string') entry.unalignedData = entry.data;
+    }
+    const reference = poses[0];
+    const referenceChains = pdbAlphaCarbonChains(reference.unalignedData);
+    const movingChainsByPose = poses.slice(1).map(entry => pdbAlphaCarbonChains(entry.unalignedData));
+    const sharedChains = Array.from(referenceChains.entries()).map(([chain, residues]) => {
+      const keysByPose = movingChainsByPose.map(chains => {
+        const movingResidues = chains.get(chain);
+        return movingResidues ? Array.from(residues.keys()).filter(key => movingResidues.has(key)) : [];
+      });
+      return { chain, residues, keysByPose, minimumMatches: Math.min(...keysByPose.map(keys => keys.length)) };
+    }).filter(candidate => candidate.minimumMatches >= 3)
+      .sort((left, right) => right.minimumMatches - left.minimumMatches);
+    const sharedChain = sharedChains[0];
+    if (!sharedChain) throw new Error('No Cα chain with at least three common residues exists across every structure.');
+    let alignedCount = 0;
+    let matchedCount = 0;
+    let rmsdTotal = 0;
+    for (let poseIndex = 1; poseIndex < poses.length; poseIndex += 1) {
+      const entry = poses[poseIndex];
+      const movingResidues = movingChainsByPose[poseIndex - 1].get(sharedChain.chain);
+      const keys = sharedChain.keysByPose[poseIndex - 1];
+      const movingPoints = keys.map(key => movingResidues.get(key));
+      const referencePoints = keys.map(key => sharedChain.residues.get(key));
+      const alignment = pdbRigidAlignment(movingPoints, referencePoints);
+      if (!alignment) throw new Error(`Not enough Cα atoms could align ${entry.label || `structure ${poseIndex + 1}`}.`);
+      entry.data = transformPdbCoordinates(entry.unalignedData, alignment.apply);
+      alignedCount += 1;
+      matchedCount += alignment.count;
+      rmsdTotal += alignment.rmsd;
+    }
+    reference.data = reference.unalignedData;
+    prepared.structureAlignmentEnabled = true;
+    return {
+      alignedCount,
+      chain: sharedChain.chain === '_' ? '(blank)' : sharedChain.chain,
+      averageMatches: Math.round(matchedCount / Math.max(alignedCount, 1)),
+      averageRmsd: rmsdTotal / Math.max(alignedCount, 1),
+      referenceLabel: reference.label || 'first structure'
+    };
+  }
+
+  function restoreStructureSceneEntries(prepared) {
+    for (const entry of Array.isArray(prepared?.poses) ? prepared.poses : []) {
+      if (typeof entry.unalignedData === 'string') entry.data = entry.unalignedData;
+    }
+    prepared.structureAlignmentEnabled = false;
+  }
+
   function dockingPoseStorageKey(config) {
     const documentId = String(config?.documentId || '').trim();
     if (documentId) return `burrete.dockingPose.${documentId}`;
@@ -5131,7 +5309,9 @@
   function trajectoryPoseLabel(prepared, controlLabel, activePose) {
     const indexText = `${activePose + 1}/${prepared.poseCount}`;
     const timeNs = formatTrajectoryTimeNs(prepared?.trajectoryTimesPs?.[activePose]);
-    return timeNs ? `Time ${timeNs} ns - ${indexText}` : `${controlLabel} ${activePose + 1} / ${prepared.poseCount}`;
+    if (timeNs) return `Time ${timeNs} ns - ${indexText}`;
+    const structureLabel = prepared?.dockingSceneMode ? prepared?.poses?.[activePose]?.label : '';
+    return structureLabel ? `${structureLabel} · ${indexText}` : `${controlLabel} ${activePose + 1} / ${prepared.poseCount}`;
   }
 
   function readTrajectoryLoopFps(config, prepared) {
@@ -9367,7 +9547,8 @@
   function applyDefaultDockingPoseControlsPosition(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     root.dataset.defaultPosition = '1';
     const bounds = dockingPoseControlsBounds(mainRect);
-    moveDockingPoseControls(root, bounds.left, 14, mainRect);
+    const top = root.classList.contains('buret-docking-poses-structure-scene') ? 58 : 14;
+    moveDockingPoseControls(root, bounds.left, top, mainRect);
   }
 
   function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
@@ -10020,6 +10201,7 @@
     document.body.classList.add('buret-docking-pose-controls-active');
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
+    if (prepared.dockingSceneMode) root.classList.add('buret-docking-poses-structure-scene');
     const controlLabel = String(prepared.controlLabel || 'Pose');
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
@@ -10065,8 +10247,37 @@
     mainRow.className = 'buret-docking-pose-main';
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
-    const label = document.createElement('span');
+    const label = prepared.dockingSceneMode ? document.createElement('button') : document.createElement('span');
+    if (prepared.dockingSceneMode) {
+      label.type = 'button';
+      label.className = 'buret-docking-pose-current';
+      label.setAttribute('aria-haspopup', 'listbox');
+      label.setAttribute('aria-expanded', 'false');
+    }
     label.title = prepared.ligandLabel || '';
+    const fileList = prepared.dockingSceneMode ? document.createElement('div') : null;
+    const fileButtons = [];
+    if (fileList) {
+      fileList.className = 'buret-docking-pose-files';
+      fileList.setAttribute('role', 'listbox');
+      fileList.setAttribute('aria-label', 'Open structures');
+      prepared.poses.forEach((entry, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'buret-docking-pose-file';
+        button.setAttribute('role', 'option');
+        button.title = entry.label || `Structure ${index + 1}`;
+        const number = document.createElement('span');
+        number.className = 'buret-docking-pose-file-number';
+        number.textContent = String(index + 1).padStart(2, '0');
+        const name = document.createElement('span');
+        name.className = 'buret-docking-pose-file-name';
+        name.textContent = entry.label || `Structure ${index + 1}`;
+        button.append(number, name);
+        fileButtons.push(button);
+        fileList.append(button);
+      });
+    }
     const animation = document.createElement('button');
     animation.type = 'button';
     animation.className = 'buret-docking-pose-animation-button';
@@ -10082,6 +10293,18 @@
     next.type = 'button';
     next.textContent = 'Next';
     next.setAttribute('aria-label', `Next ${controlLabelLower}`);
+    const align = prepared.dockingSceneMode ? document.createElement('button') : null;
+    const alignmentSupported = Boolean(align) && prepared.poses.every(entry => normalizeFormat(entry?.format) === 'pdb');
+    if (align) {
+      align.type = 'button';
+      align.className = 'buret-docking-pose-align';
+      align.textContent = prepared.structureAlignmentEnabled ? 'Aligned' : 'Align';
+      align.title = alignmentSupported
+        ? 'Align every structure to the first file using Cα atoms from the largest common chain'
+        : 'One-click alignment currently supports PDB structure scenes';
+      align.disabled = !alignmentSupported;
+      align.setAttribute('aria-pressed', prepared.structureAlignmentEnabled ? 'true' : 'false');
+    }
     const loop = document.createElement('button');
     loop.type = 'button';
     loop.textContent = 'Loop';
@@ -10127,9 +10350,15 @@
     );
     const updateControls = () => {
       label.textContent = trajectoryPoseLabel(prepared, controlLabel, activePose);
+      label.title = prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
       previous.disabled = activePose <= 0;
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
+      fileButtons.forEach((button, index) => {
+        const active = index === activePose;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
       refreshNativeTrajectoryStandalonePreview();
       postHostMessage({
         type: 'trajectoryFrameChanged',
@@ -10138,6 +10367,11 @@
         frameCount: prepared.poseCount,
         playing: loopActive
       });
+    };
+    const setFileListOpen = (open) => {
+      if (!fileList) return;
+      root.classList.toggle('buret-docking-poses-files-open', Boolean(open));
+      label.setAttribute('aria-expanded', open ? 'true' : 'false');
     };
     const setAnimationOptionsOpen = (open) => {
       root.classList.toggle('buret-docking-poses-animation-open', Boolean(open));
@@ -10269,6 +10503,48 @@
         console.error(error);
       }
     };
+    if (fileList) {
+      label.addEventListener('click', () => {
+        setFileListOpen(!root.classList.contains('buret-docking-poses-files-open'));
+      });
+      fileButtons.forEach((button, index) => {
+        button.addEventListener('click', () => {
+          setFileListOpen(false);
+          void setPose(index, { userStep: true });
+        });
+      });
+    }
+    if (align && alignmentSupported) {
+      align.addEventListener('click', () => {
+        align.disabled = true;
+        const enabling = prepared.structureAlignmentEnabled !== true;
+        try {
+          let result = null;
+          if (enabling) result = alignStructureSceneEntries(prepared);
+          else restoreStructureSceneEntries(prepared);
+          void applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false }).then(() => {
+            align.textContent = enabling ? 'Aligned' : 'Align';
+            align.classList.toggle('active', enabling);
+            align.setAttribute('aria-pressed', enabling ? 'true' : 'false');
+            if (result) {
+              align.title = `Aligned to ${result.referenceLabel} using chain ${result.chain} Cα · ${result.averageMatches} matched atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
+              setStatus(`[web] Aligned ${result.alignedCount + 1} structures to ${result.referenceLabel} using chain ${result.chain} Cα (${result.averageMatches} matched atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+            } else {
+              align.title = 'Align every structure to the first file using Cα atoms from the largest common chain';
+              setStatus('[web] Restored original structure coordinates.');
+            }
+            setTimeout(hideStatus, 2200);
+          }).catch(error => {
+            if (enabling) restoreStructureSceneEntries(prepared);
+            setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
+          }).finally(() => { align.disabled = false; });
+        } catch (error) {
+          if (enabling) restoreStructureSceneEntries(prepared);
+          align.disabled = false;
+          setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
+        }
+      });
+    }
     activeStructurePoseSetter = setPose;
     if (prepared.kind === 'sdf-collection') activeSdfCollectionPoseSetter = setPose;
     const stopPoseRepeat = () => {
@@ -10385,7 +10661,7 @@
     speed.addEventListener('input', updateSpeedMode);
     slider.addEventListener('input', () => {
       const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
-      label.textContent = `${controlLabel} ${previewIndex + 1} / ${prepared.poseCount}`;
+      label.textContent = trajectoryPoseLabel(prepared, controlLabel, previewIndex);
       if (supportsLivePoseInput()) scheduleSliderInputPose(previewIndex);
     });
     slider.addEventListener('change', () => {
@@ -10415,10 +10691,13 @@
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
     mainRow.append(animation, previous, label, next);
+    if (align) mainRow.append(align);
     if (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls) mainRow.append(smooth);
     if (all) mainRow.append(all);
     animationRow.append(speed, loop, slider);
-    root.append(mainRow, animationRow);
+    root.append(mainRow);
+    if (fileList) root.append(fileList);
+    root.append(animationRow);
     document.body.appendChild(root);
     restoreDockingPoseControlsPosition(root);
     const isolationDisposer = installDockingPoseInteractionIsolation(root);

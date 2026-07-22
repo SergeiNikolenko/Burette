@@ -2080,10 +2080,65 @@ body.burette-mobile-host .buret-docking-poses button {
   cursor: default;
 }
 .buret-docking-pose-main,
-.buret-docking-pose-animation {
+.buret-docking-pose-animation,
+.buret-docking-pose-files {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.buret-docking-pose-current {
+  min-width: 160px;
+  max-width: min(240px, 32vw);
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-docking-pose-current::after {
+  content: '▾';
+  margin-left: 8px;
+  opacity: 0.66;
+}
+.buret-docking-poses-files-open .buret-docking-pose-current::after {
+  content: '▴';
+}
+.buret-docking-pose-align {
+  font-weight: 600 !important;
+}
+.buret-docking-pose-files {
+  display: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  max-height: min(360px, 55vh);
+  margin-top: 5px;
+  padding: 4px;
+  overflow-y: auto;
+  border-top: 1px solid var(--buret-menu-border);
+}
+.buret-docking-poses-files-open .buret-docking-pose-files {
+  display: flex;
+}
+.buret-docking-poses .buret-docking-pose-file {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  width: 100%;
+  height: 30px;
+  padding-inline: 7px;
+  text-align: left;
+}
+.buret-docking-pose-file-number {
+  min-width: 0 !important;
+  text-align: left !important;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.62;
+}
+.buret-docking-pose-file-name {
+  min-width: 0 !important;
+  overflow: hidden;
+  text-align: left !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .buret-trajectory-smooth-button { min-width: 58px; font-weight: 600; }
 .buret-docking-pose-animation {
@@ -2170,11 +2225,13 @@ body.burette-mobile-host .buret-docking-poses button {
   }
   .buret-docking-pose-main {
     display: grid;
-    grid-template-columns: 28px auto minmax(62px, 1fr) auto auto;
+    grid-template-columns: 28px auto minmax(62px, 1fr) auto auto auto;
     width: 100%;
   }
-  .buret-docking-pose-main > span {
+  .buret-docking-pose-main > span,
+  .buret-docking-pose-current {
     min-width: 0;
+    max-width: none;
   }
   .buret-docking-pose-main > button:not(.buret-docking-pose-animation-button) {
     padding-inline: 7px;
