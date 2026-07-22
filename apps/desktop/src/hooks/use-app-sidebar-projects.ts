@@ -64,6 +64,7 @@ export function useAppSidebarProjects({
   const [projectStructures, setProjectStructures] = useState<SidebarProjectStructure[]>([]);
   const [webDemoRevision, setWebDemoRevision] = useState(0);
   const prunedPersistedPathsRef = useRef(false);
+  const lastGeneratedFilesSignatureRef = useRef<string>("");
 
   useEffect(() => {
     if (!isWebDemoWorkspace()) return undefined;
@@ -105,21 +106,28 @@ export function useAppSidebarProjects({
   useEffect(() => {
     if (!isTauriRuntime()) {
       if (!browserDevGeneratedRoot) {
+        lastGeneratedFilesSignatureRef.current = "";
         setProjectStructures([]);
         return undefined;
       }
       let cancelled = false;
       let reportedError = false;
+      lastGeneratedFilesSignatureRef.current = "";
+      const applyFiles = (files: string[]) => {
+        const signature = files.join("\n");
+        if (cancelled || signature === lastGeneratedFilesSignatureRef.current) return;
+        lastGeneratedFilesSignatureRef.current = signature;
+        setProjectStructures(files.map(browserDevProjectStructureForPath));
+      };
       const refresh = async () => {
         try {
           const response = await fetch(`/__burette/dev-files?root=${encodeURIComponent(browserDevGeneratedRoot)}`, { cache: "no-store" });
           if (!response.ok) throw new Error(`Generated project scan failed with HTTP ${response.status}`);
           const payload = await response.json() as { files?: string[] };
-          const files = Array.isArray(payload.files) ? payload.files : [];
-          if (!cancelled) setProjectStructures(files.map(browserDevProjectStructureForPath));
+          applyFiles(Array.isArray(payload.files) ? payload.files : []);
         } catch (error) {
           if (cancelled) return;
-          setProjectStructures([]);
+          applyFiles([]);
           if (!reportedError) {
             reportedError = true;
             pushErrorStatus(error, "Generated project scan failed");
