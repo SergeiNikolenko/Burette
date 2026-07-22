@@ -574,6 +574,40 @@ export async function openBrowserDevMergedCollection(
   };
 }
 
+// Browser dev cannot append to files on disk the way the native runtime does, so
+// a Ketcher sketch is appended into a stable in-memory receiver keyed by the target
+// path. Re-opening the receiver (same path) reuses its tab, and reading its own text
+// back on the next append lets records accumulate instead of merging fresh each time.
+export async function appendToBrowserDevCollection(
+  targetPath: string,
+  record: { extension: string; text: string },
+  preferences: ViewerPreferences,
+): Promise<ViewerDocument> {
+  const receiverId = stableId(`ketcher-append:${targetPath}`);
+  const receiverName = fileTitle(targetPath).replace(/[\\/]/gu, "").trim() || `collection.${record.extension}`;
+  const receiverPath = `burrete-collection://${receiverId}/${receiverName}`;
+  const baseText = browserDevVirtualTextDocuments.get(receiverPath) ?? await readBrowserDevCollectionText(targetPath);
+  const merged = mergeCollectionSources([
+    { path: receiverPath, extension: collectionExtension(receiverName) || record.extension, text: baseText },
+    { path: `ketcher-sketch.${record.extension}`, extension: record.extension, text: record.text },
+  ]);
+  const grid = gridPayload(receiverPath, merged.extension, merged.text);
+  if (!grid) throw new Error("Ketcher sketch did not produce a supported molecule collection record.");
+  browserDevVirtualTextDocuments.set(receiverPath, merged.text);
+  const bytes = new TextEncoder().encode(merged.text);
+  const html = await gridHtml(receiverPath, receiverId, grid.records, grid.format, preferences, bytes.length);
+  return {
+    id: receiverId,
+    path: receiverPath,
+    title: receiverName,
+    extension: merged.extension,
+    renderer: "grid2d",
+    runtimePath: html,
+    byteCount: bytes.length,
+    virtual: true,
+  };
+}
+
 export async function readBrowserDevCollectionText(path: string) {
   const virtualText = browserDevVirtualTextDocuments.get(path);
   if (virtualText !== undefined) return virtualText;

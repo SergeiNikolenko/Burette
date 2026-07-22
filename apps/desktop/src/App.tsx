@@ -41,7 +41,6 @@ import { useAppOpenDropController } from "./hooks/use-app-open-drop-controller";
 import { useAppPreferenceEffects } from "./hooks/use-app-preference-effects";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppQuickLookDocumentOpen } from "./hooks/use-app-quick-look-document-open";
-import { useAppResize } from "./hooks/use-app-resize";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppShellActions } from "./hooks/use-app-shell-actions";
 import { useAppShellNavigationActions } from "./hooks/use-app-shell-navigation-actions";
@@ -223,24 +222,6 @@ export default function App() {
     setDockTool,
     addDockDrop,
   } = useDockLayout();
-  const {
-    bottomDockDragging,
-    rightDockDragging,
-    sidebarDragging,
-    startBottomDockResize,
-    startRightDockResize,
-    startSidebarResize,
-  } = useAppResize({
-    beginWorkspaceHistoryGroup,
-    bottomDockHeight,
-    closeSidebar,
-    commitWorkspaceHistoryGroup,
-    rightDockWidth,
-    setDockOpen,
-    setDockSize,
-    setSidebarWidth,
-    sidebarWidth,
-  });
   const { toggleDockTab } = useAppDockActions({
     bottomDockActiveTab,
     bottomDockOpen,
@@ -733,7 +714,6 @@ export default function App() {
     closeTab,
     documents,
     isDirtyGridDocument,
-    mergeMoleculeCollections,
     openDocuments,
     openDocumentsInActiveTab,
     openTextDocuments,
@@ -1034,21 +1014,18 @@ export default function App() {
     page,
     sidebarOpen,
     sidebarWidth,
-    sidebarDragging,
     rightDockOpen,
     rightDockWidth,
     rightDockTabs,
     rightDockActiveTab,
     rightDockDocumentId,
     rightDockTool,
-    rightDockDragging,
     bottomDockOpen,
     bottomDockHeight,
     bottomDockTabs,
     bottomDockActiveTab,
     bottomDockDocumentId,
     bottomDockTool,
-    bottomDockDragging,
     dockDroppedStructures,
     structureDragActive,
     poseReviewSelections,
@@ -1098,9 +1075,7 @@ export default function App() {
         actions={actions}
         onDismissStatus={clearStatus}
         onToggleSidebar={toggleSidebar}
-        onResizeStart={startSidebarResize}
-        onRightDockResizeStart={startRightDockResize}
-        onBottomDockResizeStart={startBottomDockResize}
+        onSidebarWidthChange={setSidebarWidth}
         dropPreview={dropPreview}
         onDragEnter={handleBrowserDrag}
         onDragOver={handleBrowserDrag}

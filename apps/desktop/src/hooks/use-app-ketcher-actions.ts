@@ -5,7 +5,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import type { KetcherImportRequest, KetcherSketchRequest, StatusKind } from "../components/types";
 import type { KetcherLocation } from "../components/editor-area/page-kinds/ketcher";
 import { browserDevComputeReportDocument, runBrowserDevSemiempirical } from "../lib/browser-dev-compute";
-import { generateBrowserDev3DConformer, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
+import { appendToBrowserDevCollection, generateBrowserDev3DConformer, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { downloadTextFile, exportDialogFilters, safeExportFileName, stableTextDocumentId } from "../lib/file-export";
 import { pathExtension } from "../lib/file-routing";
 import { ketcherDraftMolfileFromImportText, ketcherSource3DFromText, queueKetcherImportRequest } from "../lib/ketcher-workflow";
@@ -32,7 +32,6 @@ import type {
 type PushStatus = (message: string, kind?: StatusKind, details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 type OpenKetcherTab = (location?: KetcherLocation) => void;
-type MergeMoleculeCollections = (targetPath: string | null, paths: string[]) => void | Promise<void>;
 type OpenDocuments = (
   paths: string[],
   reloadOptions?: ViewerReloadOptions,
@@ -46,7 +45,6 @@ type UseAppKetcherActionsOptions = {
   closeTab: (id: string) => void;
   documents: ViewerDocument[];
   isDirtyGridDocument: (documentId: string) => boolean;
-  mergeMoleculeCollections: MergeMoleculeCollections;
   openDocuments: OpenDocuments;
   openDocumentsInActiveTab: (documents: ViewerDocument[]) => void;
   openTextDocuments: (paths: string[], options?: { background?: boolean }) => void | Promise<unknown>;
@@ -67,7 +65,6 @@ export function useAppKetcherActions({
   closeTab,
   documents,
   isDirtyGridDocument,
-  mergeMoleculeCollections,
   openDocuments,
   openDocumentsInActiveTab,
   openTextDocuments,
@@ -340,14 +337,14 @@ export function useAppKetcherActions({
           return;
         }
 
-        const sketchDocument = await openBrowserDevTextDocument(
-          request.title,
-          request.extension,
-          request.text,
+        const document = await appendToBrowserDevCollection(
+          request.collectionTargetPath,
+          { extension: request.extension, text: request.text },
           effectivePreferences,
-          reloadOptions,
         );
-        await mergeMoleculeCollections(request.collectionTargetPath, [sketchDocument.path]);
+        openDocumentsInActiveTab([document]);
+        rememberRecentStructures([document]);
+        pushStatus(`Added Ketcher sketch to ${basename(request.collectionTargetPath)}`);
         return;
       }
       if (request.target === "collection") {
@@ -486,7 +483,7 @@ export function useAppKetcherActions({
       pushErrorStatus(error, "Open Ketcher sketch failed");
       throw error;
     }
-  }, [addDocuments, documents, isDirtyGridDocument, mergeMoleculeCollections, openDocuments, openDocumentsInActiveTab, openTextDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [addDocuments, documents, isDirtyGridDocument, openDocuments, openDocumentsInActiveTab, openTextDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   return {
     applyKetcherToGridRow,
