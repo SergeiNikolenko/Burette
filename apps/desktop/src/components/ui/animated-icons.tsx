@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Orbit, Search, Settings } from "lucide-react";
+import { ArrowLeft, Orbit, Search, Settings } from "lucide-react";
 
 // Lucide icons with lightweight CSS micro-animations (see the .anim-icon rules in
 // styles.css), in the spirit of the Animate UI icon set but dependency-free. They
@@ -20,10 +20,6 @@ export function AnimatedSettingsIcon({ size = 18, className, strokeWidth = 1.75 
 
 export function AnimatedBackIcon({ size = 16, className, strokeWidth = 2 }: AnimatedIconProps) {
   return <ArrowLeft size={size} strokeWidth={strokeWidth} className={cx("anim-icon anim-icon-nudge-left", className)} aria-hidden />;
-}
-
-export function AnimatedForwardIcon({ size = 16, className, strokeWidth = 2 }: AnimatedIconProps) {
-  return <ArrowRight size={size} strokeWidth={strokeWidth} className={cx("anim-icon anim-icon-nudge-right", className)} aria-hidden />;
 }
 
 export function AnimatedSearchIcon({ size = 16, className, strokeWidth = 2 }: AnimatedIconProps) {

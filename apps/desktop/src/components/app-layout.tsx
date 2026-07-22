@@ -1,6 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { PanelLeft } from "lucide-react";
-import { AnimatedBackIcon, AnimatedForwardIcon } from "./ui/animated-icons";
+import { ArrowLeft, ArrowRight, PanelLeft } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
@@ -11,14 +10,13 @@ import { QuickLookPreview } from "./quick-look-preview";
 import { Sidebar } from "./sidebar";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import { FileDropFeedback } from "./file-drop-feedback";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "./ui/resizable";
 import type { ShellActions, ShellViewState } from "./types";
 import type { FileDropPreview } from "../lib/drop-preview";
 import { isTauriRuntime } from "../lib/tauri";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
-
-const DEFAULT_SIDEBAR_WIDTH = 240;
 
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
@@ -183,7 +181,7 @@ export function AppLayout({
                   title="Back"
                   aria-label="Back"
                 >
-                  <AnimatedBackIcon size={16} />
+                  <ArrowLeft size={16} aria-hidden />
                 </button>
                 <button
                   type="button"
@@ -194,7 +192,7 @@ export function AppLayout({
                   title="Forward"
                   aria-label="Forward"
                 >
-                  <AnimatedForwardIcon size={16} />
+                  <ArrowRight size={16} aria-hidden />
                 </button>
               </div>
             </div>
@@ -235,70 +233,79 @@ export function AppLayout({
         </>
       )}
       <section className="workspace">
-        {(!hostedMcpWidget || settingsMode) ? (
-          <div className="sidebar-shell" style={{ transition: chromeTransition }}>
-            <div className="sidebar-shell-inner" style={{ width: sidebarWidth }}>
-              <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
-            </div>
-          </div>
-        ) : null}
-        {state.sidebarOpen && !settingsMode && !hostedMcpWidget && (
-          <div
-            className="splitter"
-            onPointerDown={onResizeStart}
-            onDoubleClick={() => onSidebarWidthChange(DEFAULT_SIDEBAR_WIDTH)}
-            onKeyDown={(event) => {
-              const step = event.shiftKey ? 48 : 16;
-              if (event.key === "ArrowLeft") {
-                event.preventDefault();
-                onSidebarWidthChange(clampSidebarWidth(sidebarWidth - step, maxSidebarWidth));
-              } else if (event.key === "ArrowRight") {
-                event.preventDefault();
-                onSidebarWidthChange(clampSidebarWidth(sidebarWidth + step, maxSidebarWidth));
-              } else if (event.key === "Home") {
-                event.preventDefault();
-                onSidebarWidthChange(220);
-              } else if (event.key === "End") {
-                event.preventDefault();
-                onSidebarWidthChange(maxSidebarWidth);
-              }
-            }}
-            tabIndex={0}
-            role="separator"
-            aria-orientation="vertical"
-            aria-valuemin={220}
-            aria-valuemax={maxSidebarWidth}
-            aria-valuenow={sidebarWidth}
-            aria-label="Resize sidebar (drag, or use arrow keys; double-click to reset)"
-            data-dragging={state.sidebarDragging || undefined}
-          >
-            <span className="splitter-grip" aria-hidden="true" />
-          </div>
-        )}
-        <section className="workbench">
-          <section className="workbench-main">
-            <section className="main-stage">
-              <ViewerArea state={layoutState} actions={actions} />
+        <ResizablePanelGroup orientation="horizontal" className="workspace-panels">
+          {(settingsMode || (!hostedMcpWidget && state.sidebarOpen)) ? (
+            <ResizablePanel
+              id="sidebar"
+              className="workspace-sidebar-panel"
+              defaultSize={`${sidebarWidth}px`}
+              minSize="220px"
+              maxSize={`${maxSidebarWidth}px`}
+              onResize={(size) => {
+                const px = Math.round(size.inPixels);
+                if (px > 1) onSidebarWidthChange(px);
+              }}
+            >
+              <div className="sidebar-shell-inner">
+                <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
+              </div>
+            </ResizablePanel>
+          ) : null}
+          {(!settingsMode && !hostedMcpWidget && state.sidebarOpen) ? (
+            <ResizableHandle withHandle aria-label="Resize sidebar" />
+          ) : null}
+          <ResizablePanel id="center" className="workspace-center-panel">
+            <section className="workbench">
+              <ResizablePanelGroup orientation="horizontal" className="workbench-panels">
+                <ResizablePanel id="workbench-main" className="workbench-main-panel">
+                  <ResizablePanelGroup orientation="vertical" className="workbench-main-panels">
+                    <ResizablePanel id="main" className="main-panel">
+                      <section className="main-stage">
+                        <ViewerArea state={layoutState} actions={actions} />
+                      </section>
+                    </ResizablePanel>
+                    {(!settingsMode && !hostedMcpWidget && state.bottomDockOpen) ? (
+                      <ResizableHandle withHandle className="resizable-handle-horizontal" aria-label="Resize bottom dock" />
+                    ) : null}
+                    {(!settingsMode && !hostedMcpWidget && state.bottomDockOpen) ? (
+                      <ResizablePanel
+                        id="bottom-dock"
+                        className="dock-panel-shell"
+                        defaultSize={`${state.bottomDockHeight}px`}
+                        minSize="120px"
+                        maxSize="70%"
+                        onResize={(size) => {
+                          const px = Math.round(size.inPixels);
+                          if (px > 1) actions.setDockSize("bottom", px);
+                        }}
+                      >
+                        <DockPanel area="bottom" state={layoutState} actions={actions} />
+                      </ResizablePanel>
+                    ) : null}
+                  </ResizablePanelGroup>
+                </ResizablePanel>
+                {(!settingsMode && !hostedMcpWidget && state.rightDockOpen) ? (
+                  <ResizableHandle withHandle aria-label="Resize right dock" />
+                ) : null}
+                {(!settingsMode && !hostedMcpWidget && state.rightDockOpen) ? (
+                  <ResizablePanel
+                    id="right-dock"
+                    className="dock-panel-shell"
+                    defaultSize={`${state.rightDockWidth}px`}
+                    minSize="180px"
+                    maxSize="70%"
+                    onResize={(size) => {
+                      const px = Math.round(size.inPixels);
+                      if (px > 1) actions.setDockSize("right", px);
+                    }}
+                  >
+                    <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
+                  </ResizablePanel>
+                ) : null}
+              </ResizablePanelGroup>
             </section>
-            {!settingsMode && !hostedMcpWidget && (
-              <DockPanel
-                area="bottom"
-                state={layoutState}
-                actions={actions}
-                onResizeStart={onBottomDockResizeStart}
-              />
-            )}
-          </section>
-          {!settingsMode && !hostedMcpWidget && (
-            <DockPanel
-              area="right"
-              state={layoutState}
-              actions={actions}
-              onResizeStart={onRightDockResizeStart}
-              readOnly={hostedMcpWidget}
-            />
-          )}
-        </section>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </section>
       <FileDropFeedback preview={dropPreview} />
       {state.status && (

@@ -604,6 +604,49 @@ button:focus-visible > .shortcut-tooltip {
 }
 .utility-tab { min-width: auto; }
 .workspace { position: relative; min-height: 0; flex: 1; display: flex; }
+.workspace-panels { flex: 1; min-width: 0; min-height: 0; height: 100%; }
+.workspace-sidebar-panel { position: relative; height: 100%; min-height: 0; overflow: hidden; }
+.workspace-center-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
+.workbench-panels { flex: 1; min-width: 0; min-height: 0; }
+.workbench-main-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.workbench-main-panels { min-width: 0; min-height: 0; height: 100%; width: 100%; }
+.main-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
+.dock-panel-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
+.dock-panel-shell .dock-panel { width: 100%; height: 100%; flex: 1; transition: opacity 140ms ease-out; will-change: opacity; }
+.dock-panel-shell .dock-panel-inner { width: 100%; height: 100%; }
+.resizable-handle {
+  position: relative;
+  z-index: 3;
+  flex: 0 0 8px;
+  width: 8px;
+  margin-inline: -4px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.resizable-handle-horizontal {
+  width: auto;
+  height: 8px;
+  margin: -4px 0;
+  cursor: row-resize;
+}
+.resizable-handle-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--line-subtle);
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease;
+  pointer-events: none;
+}
+.resizable-handle-horizontal .resizable-handle-grip { width: 30px; height: 4px; }
+.resizable-handle:hover .resizable-handle-grip,
+.resizable-handle:focus-visible .resizable-handle-grip { opacity: 1; }
+.resizable-handle:focus-visible .resizable-handle-grip { background: var(--text-muted); }
 .workbench {
   min-width: 0;
   min-height: 0;
@@ -992,7 +1035,7 @@ kbd span { margin-left: 2px; }
   cursor: default;
 }
 .project-group-menu-button:hover,
-.project-group-menu-button:focus-visible { color: var(--text-muted); }
+.project-group-menu-button:focus-visible { color: var(--text-secondary); }
 .project-group-menu-button:disabled {
   color: var(--text-disabled);
   pointer-events: none;
@@ -1006,13 +1049,8 @@ kbd span { margin-left: 2px; }
   transform: rotate(100deg);
 }
 .anim-icon-nudge-left:hover,
-.settings-back-button:hover .anim-icon-nudge-left,
-.tab-history-button:hover .anim-icon-nudge-left {
+.settings-back-button:hover .anim-icon-nudge-left {
   transform: translateX(-2px);
-}
-.anim-icon-nudge-right:hover,
-.tab-history-button:hover .anim-icon-nudge-right {
-  transform: translateX(2px);
 }
 .anim-icon-pop:hover,
 .sidebar-search-row:hover .anim-icon-pop,
@@ -1028,22 +1066,12 @@ kbd span { margin-left: 2px; }
     transform: rotate(360deg);
   }
 }
-.sidebar-toggle-root svg {
-  transition: transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
-  transform-origin: center;
-}
-.sidebar-toggle-root:hover svg {
-  transform: scale(1.12);
-}
 @media (prefers-reduced-motion: reduce) {
   .anim-icon {
     transition: none;
   }
   .anim-icon-orbit {
     animation: none;
-  }
-  .sidebar-toggle-root svg {
-    transition: none;
   }
 }
 .project-folder-toggle-button {
@@ -1077,7 +1105,6 @@ kbd span { margin-left: 2px; }
 }
 .project-folder-toggle-button:hover,
 .project-folder-toggle-button:focus-visible {
-  background: var(--surface-subtle);
   color: var(--text-secondary);
   outline: none;
 }

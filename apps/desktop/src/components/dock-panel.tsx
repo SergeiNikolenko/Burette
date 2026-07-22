@@ -30,7 +30,6 @@ type DockPanelProps = {
   area: DockArea;
   state: ShellViewState;
   actions: ShellActions;
-  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   readOnly?: boolean;
 };
 
@@ -49,14 +48,13 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   review: Search01Icon,
 };
 
-export function DockPanel({ area, state, actions, onResizeStart, readOnly = false }: DockPanelProps) {
+export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
   const [dropActive, setDropActive] = useState(false);
   const configuredTabs = area === "right" ? state.rightDockTabs : state.bottomDockTabs;
   const rawTabs = readOnly && area === "right"
     ? [configuredTabs.find((tab) => tab.kind === "inspector") ?? createDockTab("inspector")]
     : configuredTabs;
   const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
-  const size = area === "right" ? state.rightDockWidth : state.bottomDockHeight;
   const dragging = area === "right" ? state.rightDockDragging : state.bottomDockDragging;
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
@@ -156,7 +154,6 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
       data-open={open ? "true" : "false"}
       data-dragging={dragging || undefined}
       data-drop-active={dropActive || undefined}
-      style={area === "right" ? { width: open ? size : 0 } : { height: open ? size : 0 }}
       aria-hidden={!open || undefined}
       inert={!open}
       onDragEnter={readOnly ? undefined : handleDrag}
@@ -168,17 +165,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
       onDrop={readOnly ? undefined : handleDrop}
       aria-label={`${area} dock`}
     >
-      <div
-        className="dock-resizer"
-        role="separator"
-        aria-orientation={area === "right" ? "vertical" : "horizontal"}
-        aria-label={`Resize ${area} dock`}
-        onPointerDown={onResizeStart}
-      />
-      <div
-        className="dock-panel-inner"
-        style={area === "right" ? { width: size } : { height: size }}
-      >
+      <div className="dock-panel-inner">
         <div className="dock-header">
           <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
             {visibleTabs.map((tab) => {
