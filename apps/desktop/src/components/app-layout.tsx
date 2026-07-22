@@ -18,6 +18,10 @@ import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/th
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
 
+// Smallest the viewer/content column may become before the right dock stops
+// squeezing it (the point where an overlay dock would take over).
+const MAIN_MIN_WIDTH = 420;
+
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
 }
@@ -317,7 +321,7 @@ export function AppLayout({
           <ResizablePanel id="center" className="workspace-center-panel">
             <section className="workbench">
               <ResizablePanelGroup orientation="horizontal" className="workbench-panels">
-                <ResizablePanel id="workbench-main" className="workbench-main-panel">
+                <ResizablePanel id="workbench-main" className="workbench-main-panel" minSize={`${MAIN_MIN_WIDTH}px`}>
                   <ResizablePanelGroup orientation="vertical" className="workbench-main-panels">
                     <ResizablePanel id="main" className="main-panel">
                       <section className="main-stage">
