@@ -15,6 +15,8 @@ const coordinator = source("apps/desktop/src-tauri/src/compute/coordinator.rs");
 const jobLifecycle = source("apps/desktop/src-tauri/src/compute/job_lifecycle.rs");
 const representativeExport = source("apps/desktop/src-tauri/src/compute/representative_export.rs");
 const artifactReader = source("apps/desktop/src-tauri/src/compute/artifact_reader.rs");
+const chemicalSpace = source("apps/desktop/src-tauri/src/compute/chemical_space.rs");
+const chemicalSpacePanel = source("apps/desktop/src/components/chemical-space-panel.tsx");
 
 for (const command of [
   "compute_submit_job",
@@ -24,6 +26,7 @@ for (const command of [
   "compute_publish_cluster",
   "compute_export_cluster_representatives",
   "compute_find_similar",
+  "compute_execute_chemical_space",
 ]) {
   assert.match(workflow, new RegExp(`invoke<[^>]+>\\(\"${command}\"`));
   assert.match(computePermission, new RegExp(`\"${command}\"`));
@@ -33,6 +36,17 @@ assert.match(workflow, /workflowTemplate: "cluster\.v1"/);
 assert.match(workflow, /backendPolicy: "gpuPreferred"/);
 assert.match(workflow, /stage\.stageId === "tanimotoNeighbors"/);
 assert.match(workflow, /numericStage\?\.effectiveBackend === "nativeMetal"/);
+assert.match(workflow, /export async function runChemicalSpaceWorkflow/);
+assert.match(workflow, /invoke<ChemicalSpaceResult>\("compute_execute_chemical_space"/);
+assert.match(chemicalSpace, /build_tanimoto_knn_profiled/);
+assert.match(chemicalSpace, /optimize_umap_profiled/);
+assert.match(chemicalSpacePanel, /isKnownViewerMessageSource\(event\.source, documentId\)/);
+assert.match(chemicalSpacePanel, /MAX_LASSO_POINTS = 4_096/);
+assert.match(chemicalSpacePanel, /GRID_SELECTION_BRIDGE_LIMIT = 100_000/);
+assert.match(gridViewer, /body\.type === 'chemicalSpaceRequestState'/);
+assert.match(gridViewer, /body\.type === 'chemicalSpaceSelectionChanged'/);
+assert.match(gridViewer, /body\.type === 'chemicalSpaceHoverChanged'/);
+assert.match(gridViewer, /svg\.slice\(0, 262144\)/);
 
 for (const baseline of [
   /rdkitVersion: "2025\.03\.4"/,

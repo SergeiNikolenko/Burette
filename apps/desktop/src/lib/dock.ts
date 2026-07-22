@@ -16,7 +16,8 @@ export type DockTabKind =
   | "logs"
   | "diagnostics"
   | "review"
-  | "compare";
+  | "compare"
+  | "chemical-space";
 
 export type DockTab = {
   id: string;
@@ -85,21 +86,25 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   diagnostics: "Diagnostics",
   review: "Review",
   compare: "Compare",
+  "chemical-space": "Chemical Space",
 };
 
 export const RIGHT_DOCK_DEFAULT_TABS: DockTabKind[] = [
   "inspector",
+  "chemical-space",
   "text",
   "files",
 ];
 
 export const BOTTOM_DOCK_DEFAULT_TABS: DockTabKind[] = [
   "files",
+  "chemical-space",
   "jobs",
 ];
 
 const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
   "xyzrender",
+  "chemical-space",
   "inspector",
   "text",
   "files",
@@ -107,6 +112,7 @@ const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
 
 const BOTTOM_DOCK_TAB_CATALOG: DockTabKind[] = [
   "files",
+  "chemical-space",
   "jobs",
   "folding",
   "spectrum",

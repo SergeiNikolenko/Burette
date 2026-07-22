@@ -20,6 +20,7 @@ import { useSourceEditing } from "../lib/source-editing/context";
 import { CloseIcon } from "./close-icon";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
+import { ChemicalSpacePanel } from "./chemical-space-panel";
 import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -47,6 +48,7 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   logs: File02Icon,
   diagnostics: Search01Icon,
   review: Search01Icon,
+  "chemical-space": Atom01Icon,
 };
 
 export function DockPanel({ area, state, actions, onResizeStart, readOnly = false }: DockPanelProps) {
@@ -65,6 +67,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
   const activeStructureDocument = dockDocument ?? state.activeDocument;
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
+  const chemicalSpaceDockAvailable = activeStructureDocument?.renderer === "grid2d";
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   const foldingState = useFoldingResult(area === "bottom" ? activeStructureDocument : null);
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
@@ -74,6 +77,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
     if (!catalog.includes(tab.kind)) return false;
     if (tab.kind === "spectrum") return spectrumDockAvailable;
     if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
+    if (tab.kind === "chemical-space") return chemicalSpaceDockAvailable;
     return true;
   });
   const activeTabKind = tabs.some((tab) => tab.kind === storedActiveTabKind) ? storedActiveTabKind : tabs[0]?.kind ?? "files";
@@ -111,6 +115,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
         if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
+        if (kind === "chemical-space") return chemicalSpaceDockAvailable;
         return true;
       }).map((kind) => ({
         kind: "item" as const,
@@ -392,6 +397,9 @@ function DockPanelContent({
         actions={actions}
       />
     );
+  }
+  if (activeTabKind === "chemical-space") {
+    return <ChemicalSpacePanel document={dockStructureDocument?.renderer === "grid2d" ? dockStructureDocument : null} />;
   }
   if (activeTabKind === "folding") {
     return <FoldingAnalysisPanel document={dockStructureDocument} actions={actions} />;

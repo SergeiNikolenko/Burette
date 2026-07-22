@@ -794,6 +794,12 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   background: color-mix(in srgb, var(--buret-accent) 16%, var(--buret-table-row-selected));
 }
 
+.buret-card.buret-chemical-space-hover,
+.buret-grid-table-row.buret-chemical-space-hover {
+  outline: 2px solid var(--buret-accent);
+  outline-offset: 2px;
+}
+
 .buret-grid-table th[data-column="molecule"],
 .buret-grid-table td[data-column="molecule"] {
   width: 74px;
