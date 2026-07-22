@@ -622,6 +622,8 @@ button:focus-visible > .shortcut-tooltip {
   cursor: col-resize;
   touch-action: none;
   outline: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .resizable-handle-horizontal {
   width: auto;
