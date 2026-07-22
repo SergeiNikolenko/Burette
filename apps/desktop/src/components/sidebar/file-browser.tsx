@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Search01Icon } from "@hugeicons/core-free-icons";
+import { AnimatedOrbitIcon } from "../ui/animated-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
@@ -225,7 +226,7 @@ export function FileBrowser({
         aria-label="Open Ketcher"
       >
         <span className="sidebar-tool-icon" aria-hidden="true">
-          <HugeiconsIcon icon={Atom01Icon} size={16} color="currentColor" strokeWidth={2} />
+          <AnimatedOrbitIcon size={16} />
         </span>
         <span className="sidebar-tool-label">Ketcher</span>
       </button>
