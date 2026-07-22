@@ -5771,6 +5771,7 @@ assert.match(previewViewer, /Time \$\{timeNs\} ns - \$\{indexText\}/);
 assert.match(previewViewer, /const structureLabel = prepared\?\.dockingSceneMode \? prepared\?\.poses\?\.\[activePose\]\?\.label : ''/);
 assert.match(previewViewer, /function alignStructureSceneEntries\(prepared\)/);
 assert.match(previewViewer, /function restoreStructureSceneEntries\(prepared\)/);
+assert.match(previewViewer, /value\.toFixed\(3\)\.padStart\(8, ' '\)/);
 assert.match(previewViewer, /label\.className = 'buret-docking-pose-current'/);
 assert.match(previewViewer, /fileList\.className = 'buret-docking-pose-files'/);
 assert.match(previewViewer, /align\.className = 'buret-docking-pose-align'/);

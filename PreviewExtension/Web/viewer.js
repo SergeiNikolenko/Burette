@@ -5135,7 +5135,7 @@
       const point = [Number(line.slice(30, 38)), Number(line.slice(38, 46)), Number(line.slice(46, 54))];
       if (!point.every(Number.isFinite)) return line;
       const aligned = apply(point);
-      const coordinates = aligned.map(value => value.toFixed(3).padStart(8, ''));
+      const coordinates = aligned.map(value => value.toFixed(3).padStart(8, ' '));
       return `${line.slice(0, 30)}${coordinates.join('')}${line.slice(54)}`;
     }).join('\n');
   }
@@ -10522,7 +10522,7 @@
           let result = null;
           if (enabling) result = alignStructureSceneEntries(prepared);
           else restoreStructureSceneEntries(prepared);
-          void applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false }).then(() => {
+          void applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: true }).then(() => {
             align.textContent = enabling ? 'Aligned' : 'Align';
             align.classList.toggle('active', enabling);
             align.setAttribute('aria-pressed', enabling ? 'true' : 'false');
