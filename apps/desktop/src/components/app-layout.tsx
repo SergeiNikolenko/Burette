@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowRight, PanelLeft } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
@@ -28,37 +28,24 @@ function clampRightDockWidth(width: number, viewportWidth: number, sidebarLayout
   return Math.max(minWidth, Math.min(maxWidth, Math.round(width)));
 }
 
-// Keeps an always-mounted Panel's size in sync with an external open/closed flag
-// by resizing it: open -> its stored size, closed -> 0. Panels are never
-// unmounted (changing a group's panel count throws "Invalid N panel layout" in
-// react-resizable-panels) and are never `collapsible`, so dragging a handle only
-// resizes between min/max and can never accidentally close a dock. minSize drops
-// to 0 while a panel is closed so it can be driven to 0. useLayoutEffect applies
-// the state before paint, so closed panels don't flash open on mount.
-function usePanelOpenSync(open: boolean, expandedSizePx: number) {
+// Keeps an always-mounted collapsible Panel in sync with an external open/closed
+// flag. Panels are never unmounted (changing a group's panel count throws
+// "Invalid N panel layout" in react-resizable-panels); instead they are
+// collapsed/expanded imperatively. useLayoutEffect applies the initial collapsed
+// state before paint, so closed panels don't flash open on mount.
+function useCollapsiblePanelSync(open: boolean, expandedSizePx: number) {
   const panelRef = useRef<PanelImperativeHandle | null>(null);
   useLayoutEffect(() => {
-    let raf = 0;
-    const apply = () => {
-      const panel = panelRef.current;
-      if (!panel) return;
-      if (open) {
-        if (panel.getSize().inPixels < 1) panel.resize(`${Math.max(expandedSizePx, 1)}px`);
-      } else if (panel.getSize().inPixels > 1) {
-        panel.resize("0px");
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (open) {
+      if (panel.isCollapsed()) {
+        panel.expand();
+        if (expandedSizePx > 1) panel.resize(`${expandedSizePx}px`);
       }
-    };
-    apply();
-    // When closing, minSize drops (e.g. 220px -> 0px) in this same commit, but the
-    // library may only register the new 0 minSize after this layout effect runs,
-    // so the resize("0px") above can be clamped back up to the old minSize and the
-    // panel never reaches 0. Re-apply next frame, once minSize has settled.
-    if (!open && panelRef.current && panelRef.current.getSize().inPixels > 1) {
-      raf = requestAnimationFrame(apply);
+    } else if (!panel.isCollapsed()) {
+      panel.collapse();
     }
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-    };
   }, [open, expandedSizePx]);
   return panelRef;
 }
@@ -134,9 +121,21 @@ export function AppLayout({
       : compactLeadingChrome ? 112 : 192;
   const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
   const bottomDockOpen = !settingsMode && !hostedMcpWidget && state.bottomDockOpen;
-  const sidebarPanelRef = usePanelOpenSync(sidebarVisible, sidebarWidth);
-  const rightDockPanelRef = usePanelOpenSync(rightDockOpen, rightDockWidth);
-  const bottomDockPanelRef = usePanelOpenSync(bottomDockOpen, state.bottomDockHeight);
+  const sidebarPanelRef = useCollapsiblePanelSync(sidebarVisible, sidebarWidth);
+  const rightDockPanelRef = useCollapsiblePanelSync(rightDockOpen, rightDockWidth);
+  const bottomDockPanelRef = useCollapsiblePanelSync(bottomDockOpen, state.bottomDockHeight);
+  // The sidebar store only exposes a toggle; wrap it as an idempotent setter so
+  // drag-to-collapse can sync the flag without double-toggling.
+  const sidebarOpenRef = useRef(sidebarVisible);
+  sidebarOpenRef.current = sidebarVisible;
+  const setSidebarOpen = useCallback(
+    (next: boolean) => {
+      if (sidebarOpenRef.current === next) return;
+      sidebarOpenRef.current = next;
+      onToggleSidebar();
+    },
+    [onToggleSidebar],
+  );
   const dockDragging = state.sidebarDragging || state.rightDockDragging || state.bottomDockDragging;
   const chromeTransition = dockDragging ? "none" : undefined;
   const systemThemeMode = useSystemThemeMode();
@@ -276,20 +275,27 @@ export function AppLayout({
             id="sidebar"
             className="workspace-sidebar-panel"
             panelRef={sidebarPanelRef}
+            collapsible
+            collapsedSize="0px"
             defaultSize={`${sidebarWidth}px`}
-            minSize={sidebarVisible ? "220px" : "0px"}
+            minSize="220px"
             maxSize={`${maxSidebarWidth}px`}
             onResize={(size) => {
               const px = Math.round(size.inPixels);
-              if (px > 1) onSidebarWidthChange(px);
+              if (px > 1) {
+                onSidebarWidthChange(px);
+                if (!settingsMode) setSidebarOpen(true);
+              } else if (!settingsMode) {
+                setSidebarOpen(false);
+              }
             }}
           >
             <div className="sidebar-shell-inner">
               <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
             </div>
           </ResizablePanel>
-          {(!settingsMode && !hostedMcpWidget && state.sidebarOpen) ? (
-            <ResizableHandle withHandle aria-label="Resize sidebar" />
+          {chromeVisible ? (
+            <ResizableHandle withHandle aria-label="Resize sidebar" data-collapsed={!state.sidebarOpen || undefined} />
           ) : null}
           <ResizablePanel id="center" className="workspace-center-panel">
             <section className="workbench">
@@ -301,38 +307,52 @@ export function AppLayout({
                         <ViewerArea state={layoutState} actions={actions} />
                       </section>
                     </ResizablePanel>
-                    {(!settingsMode && !hostedMcpWidget && state.bottomDockOpen) ? (
-                      <ResizableHandle withHandle className="resizable-handle-horizontal" aria-label="Resize bottom dock" />
+                    {chromeVisible ? (
+                      <ResizableHandle withHandle className="resizable-handle-horizontal" aria-label="Resize bottom dock" data-collapsed={!state.bottomDockOpen || undefined} />
                     ) : null}
                     <ResizablePanel
                       id="bottom-dock"
                       className="dock-panel-shell"
                       panelRef={bottomDockPanelRef}
+                      collapsible
+                      collapsedSize="0px"
                       defaultSize={`${state.bottomDockHeight}px`}
-                      minSize={bottomDockOpen ? "120px" : "0px"}
+                      minSize="120px"
                       maxSize="70%"
                       onResize={(size) => {
                         const px = Math.round(size.inPixels);
-                        if (px > 1) actions.setDockSize("bottom", px);
+                        if (px > 1) {
+                          actions.setDockSize("bottom", px);
+                          if (!bottomDockOpen) actions.setDockOpen("bottom", true);
+                        } else if (bottomDockOpen) {
+                          actions.setDockOpen("bottom", false);
+                        }
                       }}
                     >
                       {bottomDockOpen ? <DockPanel area="bottom" state={layoutState} actions={actions} /> : null}
                     </ResizablePanel>
                   </ResizablePanelGroup>
                 </ResizablePanel>
-                {(!settingsMode && !hostedMcpWidget && state.rightDockOpen) ? (
-                  <ResizableHandle withHandle aria-label="Resize right dock" />
+                {chromeVisible ? (
+                  <ResizableHandle withHandle aria-label="Resize right dock" data-collapsed={!state.rightDockOpen || undefined} />
                 ) : null}
                 <ResizablePanel
                   id="right-dock"
                   className="dock-panel-shell"
                   panelRef={rightDockPanelRef}
+                  collapsible
+                  collapsedSize="0px"
                   defaultSize={`${state.rightDockWidth}px`}
-                  minSize={rightDockOpen ? "180px" : "0px"}
+                  minSize="180px"
                   maxSize="70%"
                   onResize={(size) => {
                     const px = Math.round(size.inPixels);
-                    if (px > 1) actions.setDockSize("right", px);
+                    if (px > 1) {
+                      actions.setDockSize("right", px);
+                      if (!rightDockOpen) actions.setDockOpen("right", true);
+                    } else if (rightDockOpen) {
+                      actions.setDockOpen("right", false);
+                    }
                   }}
                 >
                   {rightDockOpen ? <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} /> : null}

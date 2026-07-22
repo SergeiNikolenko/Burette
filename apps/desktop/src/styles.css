@@ -634,7 +634,7 @@ button:focus-visible > .shortcut-tooltip {
   position: absolute;
   background: var(--line-subtle);
   pointer-events: none;
-  transition: background 120ms ease;
+  transition: background 120ms ease, opacity 120ms ease;
 }
 .resizable-handle:not(.resizable-handle-horizontal)::after {
   top: 0;
@@ -653,6 +653,12 @@ button:focus-visible > .shortcut-tooltip {
 .resizable-handle:hover::after,
 .resizable-handle:active::after,
 .resizable-handle:focus-visible::after { background: var(--line-strong); }
+/* A handle whose panel is collapsed stays mounted so the divider can be dragged
+   back open, but its line is hidden at rest for a clean edge and revealed on
+   hover/focus as a drag affordance. */
+.resizable-handle[data-collapsed]::after { opacity: 0; }
+.resizable-handle[data-collapsed]:hover::after,
+.resizable-handle[data-collapsed]:focus-visible::after { opacity: 1; }
 /* Grip: hidden at rest (only the divider line shows), fades in gray on
    hover/keyboard focus, then darkens to full contrast while actually dragging.
    react-resizable-panels exposes the drag state through the :active
