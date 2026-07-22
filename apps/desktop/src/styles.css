@@ -1005,9 +1005,6 @@ kbd span { margin-left: 2px; }
 .sidebar-settings-button:hover .anim-icon-spin {
   transform: rotate(100deg);
 }
-.anim-icon-rotate:hover {
-  transform: rotate(90deg);
-}
 .anim-icon-nudge-left:hover,
 .settings-back-button:hover .anim-icon-nudge-left {
   transform: translateX(-2px);

@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { PanelLeft } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
@@ -307,17 +308,5 @@ export function AppLayout({
 }
 
 function DockToggleIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="18"
-      height="18"
-      viewBox="0 0 18 18"
-      fill="none"
-      aria-hidden="true"
-    >
-      <rect x="2.25" y="2.25" width="13.5" height="13.5" rx="3.25" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M6.75 4.75V13.25" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
+  return <PanelLeft className={className} size={18} strokeWidth={1.8} aria-hidden />;
 }
