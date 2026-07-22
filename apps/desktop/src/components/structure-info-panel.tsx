@@ -299,7 +299,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
 
       <FoldingResultsPanel state={foldingResult} actions={actions} />
 
-      {!hostedMcpWidget && !trajectoryDocument ? <>
+      {!hostedMcpWidget && !trajectoryDocument && !virtualScene ? <>
         <ConformerWorkflowCard
           document={document}
           selectedEntity={selectedEntity}
@@ -1065,7 +1065,7 @@ function structureContextStyleCardFor(
 ): StructureContextStyleCardCopy | null {
   if (document.renderer !== "molstar") return null;
   if (structureOverlayMode !== "all") return null;
-  if (!summary && isVirtualMolstarScene(document)) {
+  if (isVirtualMolstarScene(document)) {
     return {
       title: "All background",
       detail: "Context structures",
