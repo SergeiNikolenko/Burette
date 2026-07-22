@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowRight, PanelLeft } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
@@ -10,7 +10,7 @@ import { QuickLookPreview } from "./quick-look-preview";
 import { Sidebar } from "./sidebar";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import { FileDropFeedback } from "./file-drop-feedback";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "./ui/resizable";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle, type PanelImperativeHandle } from "./ui/resizable";
 import type { ShellActions, ShellViewState } from "./types";
 import type { FileDropPreview } from "../lib/drop-preview";
 import { isTauriRuntime } from "../lib/tauri";
@@ -26,6 +26,28 @@ function clampRightDockWidth(width: number, viewportWidth: number, sidebarLayout
   const maxWidth = Math.max(0, Math.min(960, viewportWidth - sidebarLayoutWidth - 280));
   const minWidth = Math.min(180, maxWidth);
   return Math.max(minWidth, Math.min(maxWidth, Math.round(width)));
+}
+
+// Keeps an always-mounted collapsible Panel in sync with an external open/closed
+// flag. Panels are never unmounted (changing a group's panel count throws
+// "Invalid N panel layout" in react-resizable-panels); instead they are
+// collapsed/expanded imperatively. useLayoutEffect applies the initial collapsed
+// state before paint, so closed panels don't flash open on mount.
+function useCollapsiblePanelSync(open: boolean, expandedSizePx: number) {
+  const panelRef = useRef<PanelImperativeHandle | null>(null);
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (open) {
+      if (panel.isCollapsed()) {
+        panel.expand();
+        if (expandedSizePx > 1) panel.resize(`${expandedSizePx}px`);
+      }
+    } else if (!panel.isCollapsed()) {
+      panel.collapse();
+    }
+  }, [open, expandedSizePx]);
+  return panelRef;
 }
 
 export function AppLayout({
@@ -99,6 +121,21 @@ export function AppLayout({
       : compactLeadingChrome ? 112 : 192;
   const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
   const bottomDockOpen = !settingsMode && !hostedMcpWidget && state.bottomDockOpen;
+  const sidebarPanelRef = useCollapsiblePanelSync(sidebarVisible, sidebarWidth);
+  const rightDockPanelRef = useCollapsiblePanelSync(rightDockOpen, rightDockWidth);
+  const bottomDockPanelRef = useCollapsiblePanelSync(bottomDockOpen, state.bottomDockHeight);
+  // The sidebar store only exposes a toggle; wrap it as an idempotent setter so
+  // drag-to-collapse can sync the flag without double-toggling.
+  const sidebarOpenRef = useRef(sidebarVisible);
+  sidebarOpenRef.current = sidebarVisible;
+  const setSidebarOpen = useCallback(
+    (next: boolean) => {
+      if (sidebarOpenRef.current === next) return;
+      sidebarOpenRef.current = next;
+      onToggleSidebar();
+    },
+    [onToggleSidebar],
+  );
   const dockDragging = state.sidebarDragging || state.rightDockDragging || state.bottomDockDragging;
   const chromeTransition = dockDragging ? "none" : undefined;
   const systemThemeMode = useSystemThemeMode();
@@ -234,23 +271,29 @@ export function AppLayout({
       )}
       <section className="workspace">
         <ResizablePanelGroup orientation="horizontal" className="workspace-panels">
-          {(settingsMode || (!hostedMcpWidget && state.sidebarOpen)) ? (
-            <ResizablePanel
-              id="sidebar"
-              className="workspace-sidebar-panel"
-              defaultSize={`${sidebarWidth}px`}
-              minSize="220px"
-              maxSize={`${maxSidebarWidth}px`}
-              onResize={(size) => {
-                const px = Math.round(size.inPixels);
-                if (px > 1) onSidebarWidthChange(px);
-              }}
-            >
-              <div className="sidebar-shell-inner">
-                <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
-              </div>
-            </ResizablePanel>
-          ) : null}
+          <ResizablePanel
+            id="sidebar"
+            className="workspace-sidebar-panel"
+            panelRef={sidebarPanelRef}
+            collapsible
+            collapsedSize="0px"
+            defaultSize={`${sidebarWidth}px`}
+            minSize="220px"
+            maxSize={`${maxSidebarWidth}px`}
+            onResize={(size) => {
+              const px = Math.round(size.inPixels);
+              if (px > 1) {
+                onSidebarWidthChange(px);
+                if (!settingsMode) setSidebarOpen(true);
+              } else if (!settingsMode) {
+                setSidebarOpen(false);
+              }
+            }}
+          >
+            <div className="sidebar-shell-inner">
+              <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
+            </div>
+          </ResizablePanel>
           {(!settingsMode && !hostedMcpWidget && state.sidebarOpen) ? (
             <ResizableHandle withHandle aria-label="Resize sidebar" />
           ) : null}
@@ -267,41 +310,53 @@ export function AppLayout({
                     {(!settingsMode && !hostedMcpWidget && state.bottomDockOpen) ? (
                       <ResizableHandle withHandle className="resizable-handle-horizontal" aria-label="Resize bottom dock" />
                     ) : null}
-                    {(!settingsMode && !hostedMcpWidget && state.bottomDockOpen) ? (
-                      <ResizablePanel
-                        id="bottom-dock"
-                        className="dock-panel-shell"
-                        defaultSize={`${state.bottomDockHeight}px`}
-                        minSize="120px"
-                        maxSize="70%"
-                        onResize={(size) => {
-                          const px = Math.round(size.inPixels);
-                          if (px > 1) actions.setDockSize("bottom", px);
-                        }}
-                      >
-                        <DockPanel area="bottom" state={layoutState} actions={actions} />
-                      </ResizablePanel>
-                    ) : null}
+                    <ResizablePanel
+                      id="bottom-dock"
+                      className="dock-panel-shell"
+                      panelRef={bottomDockPanelRef}
+                      collapsible
+                      collapsedSize="0px"
+                      defaultSize={`${state.bottomDockHeight}px`}
+                      minSize="120px"
+                      maxSize="70%"
+                      onResize={(size) => {
+                        const px = Math.round(size.inPixels);
+                        if (px > 1) {
+                          actions.setDockSize("bottom", px);
+                          if (!bottomDockOpen) actions.setDockOpen("bottom", true);
+                        } else if (bottomDockOpen) {
+                          actions.setDockOpen("bottom", false);
+                        }
+                      }}
+                    >
+                      {bottomDockOpen ? <DockPanel area="bottom" state={layoutState} actions={actions} /> : null}
+                    </ResizablePanel>
                   </ResizablePanelGroup>
                 </ResizablePanel>
                 {(!settingsMode && !hostedMcpWidget && state.rightDockOpen) ? (
                   <ResizableHandle withHandle aria-label="Resize right dock" />
                 ) : null}
-                {(!settingsMode && !hostedMcpWidget && state.rightDockOpen) ? (
-                  <ResizablePanel
-                    id="right-dock"
-                    className="dock-panel-shell"
-                    defaultSize={`${state.rightDockWidth}px`}
-                    minSize="180px"
-                    maxSize="70%"
-                    onResize={(size) => {
-                      const px = Math.round(size.inPixels);
-                      if (px > 1) actions.setDockSize("right", px);
-                    }}
-                  >
-                    <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
-                  </ResizablePanel>
-                ) : null}
+                <ResizablePanel
+                  id="right-dock"
+                  className="dock-panel-shell"
+                  panelRef={rightDockPanelRef}
+                  collapsible
+                  collapsedSize="0px"
+                  defaultSize={`${state.rightDockWidth}px`}
+                  minSize="180px"
+                  maxSize="70%"
+                  onResize={(size) => {
+                    const px = Math.round(size.inPixels);
+                    if (px > 1) {
+                      actions.setDockSize("right", px);
+                      if (!rightDockOpen) actions.setDockOpen("right", true);
+                    } else if (rightDockOpen) {
+                      actions.setDockOpen("right", false);
+                    }
+                  }}
+                >
+                  {rightDockOpen ? <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} /> : null}
+                </ResizablePanel>
               </ResizablePanelGroup>
             </section>
           </ResizablePanel>
