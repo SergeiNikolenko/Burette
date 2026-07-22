@@ -160,8 +160,14 @@ bun scripts/burrete-agent.mjs open --mode desktop-app <file> --session-dir <dir>
 
 ## Handoff
 
-Report the mode, session directory or tokenized URL, active document title,
-viewer readiness, concise structure facts from `structureSummary`, and any
-typed errors. Do not describe a successful molecular load until the full
-readiness gate above passes. When the user wants to see the result, also require
-the nonblank central-canvas check from `visual-qa`; counts are not a substitute.
+Report the mode, session directory, active document title, viewer readiness,
+concise structure facts from `structureSummary`, and any typed errors. For
+every Browser mode, include the exact URL returned by `open` as a clickable
+Markdown link in the final handoff, for example
+`[Open Burrete in Browser](http://127.0.0.1:<port>/...)`. Include this link even
+when the in-app Browser tab is already open and visually verified. A link to
+the source file, bundle directory, report, or screenshot does not replace the
+Browser workspace link. Do not describe a successful molecular load until the
+full readiness gate above passes. When the user wants to see the result, also
+require the nonblank central-canvas check from `visual-qa`; counts are not a
+substitute.
