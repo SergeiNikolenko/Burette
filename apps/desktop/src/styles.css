@@ -322,7 +322,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   pointer-events: none;
   gap: 12px;
   padding: var(--chrome-control-padding) 0;
-  transition: left 140ms ease-out;
   container-type: inline-size;
 }
 .chrome-button,
