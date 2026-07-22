@@ -7274,8 +7274,13 @@ img.settings-open-destination-icon {
   background: var(--fg-base);
   box-shadow: 0 1px 6px color-mix(in srgb, black 22%, transparent);
 }
-.settings-range-control span {
-  width: 28px;
+/* Only the value readout beside the slider. It must stay scoped to the direct
+   child without a data-slot: the shadcn slider's track/range/thumb are spans
+   too, and a bare `.settings-range-control span` pinned the filled range to
+   28px so it never reached the thumb. min-width keeps short values aligned
+   while letting longer ones (e.g. "1024 MiB") fit. */
+.settings-range-control > span:not([data-slot]) {
+  min-width: 28px;
   color: var(--text-muted);
   text-align: right;
   font-size: 13px;
