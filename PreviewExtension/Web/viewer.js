@@ -8516,6 +8516,76 @@
     }
   }
 
+  function dockingSceneStructuresByPose(viewer, poseRefs) {
+    const byRef = new Map(Array.from(molstarCurrentStructures(viewer))
+      .map(structure => [structure?.cell?.transform?.ref, structure]));
+    return (poseRefs || []).map(refs => refs.map(ref => byRef.get(ref)).filter(Boolean));
+  }
+
+  async function styleDockingSceneOverlay(viewer, structuresByPose, activeIndex, params) {
+    if (params.uniform) {
+      const everything = structuresByPose.flat();
+      if (everything.length) await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, everything, 1, 'colored');
+      return;
+    }
+    const background = structuresByPose.filter((_, index) => index !== activeIndex).flat();
+    if (background.length) {
+      await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, background, params.contextOpacity, params.contextColor);
+    }
+    const active = structuresByPose[activeIndex] || [];
+    if (active.length) {
+      await applySdfCollectionMolstarStyle(viewer, normalizeMolstarStyle(params.style), active, 1, 'colored');
+    }
+  }
+
+  async function applyDockingSceneOverlayPoses(viewer, prepared, activePose, options) {
+    const plugin = viewer.plugin;
+    const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
+    const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
+    if (!poses[activeIndex]) return false;
+    const style = configuredMolstarStyle(activeConfig);
+    const resolvedContextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
+    const uniform = resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative';
+    const contextOpacity = uniform ? 1 : readSdfCollectionContextOpacity(activeConfig);
+    const contextColor = uniform ? 'colored' : readSdfCollectionContextColor(activeConfig);
+    const params = { style, resolvedContextStyle, contextOpacity, contextColor, uniform };
+    const stateKey = [dockingSceneStateKey(prepared, style), 'all', resolvedContextStyle, contextOpacity, contextColor].join('|');
+    const state = activeDockingSceneVisibilityState;
+    if (state && state.key === stateKey && dockingSceneVisibilityStateStillLoaded(viewer, state)) {
+      if (state.activeIndex !== activeIndex && !uniform) {
+        const structuresByPose = dockingSceneStructuresByPose(viewer, state.poseRefs);
+        await clearMolstarMainRepresentationsForStructures(viewer, structuresByPose.flat());
+        await styleDockingSceneOverlay(viewer, structuresByPose, activeIndex, params);
+        await applyMolstarWaterLineRepresentation(viewer);
+      }
+      state.activeIndex = activeIndex;
+      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
+      return true;
+    }
+    resetXyzFrameOverlayState(viewer);
+    resetSdfCollectionVisibilityState(viewer);
+    resetDockingPoseCollectionState(viewer);
+    resetDockingSceneVisibilityState(viewer);
+    if (typeof plugin.clear === 'function') await plugin.clear();
+    const poseRefs = [];
+    for (const entry of poses) {
+      const before = molstarStructureCellRefs(viewer);
+      await loadMolstarEntry(viewer, entry, { representationPreset: 'empty' });
+      poseRefs.push(Array.from(molstarStructureCellRefs(viewer)).filter(ref => !before.has(ref)));
+    }
+    if (!poseRefs.every(refs => refs.length)) {
+      activeDockingSceneVisibilityState = null;
+      return false;
+    }
+    await styleDockingSceneOverlay(viewer, dockingSceneStructuresByPose(viewer, poseRefs), activeIndex, params);
+    await applyMolstarWaterLineRepresentation(viewer);
+    activeDockingSceneVisibilityState = { viewer, key: stateKey, poseRefs, activeIndex };
+    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+    scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
+    return true;
+  }
+
   async function applyDockingSceneSinglePose(viewer, prepared, activePose, options) {
     const plugin = viewer.plugin;
     if (typeof plugin?.state?.data?.updateCellState !== 'function') return false;
@@ -8566,6 +8636,7 @@
     if (!viewer || prepared?.kind !== 'docking' || !prepared.dockingSceneMode) return;
     const plugin = viewer.plugin;
     if (activeSdfPoseMode !== 'all' && await applyDockingSceneSinglePose(viewer, prepared, activePose, options)) return;
+    if (activeSdfPoseMode === 'all' && await applyDockingSceneOverlayPoses(viewer, prepared, activePose, options)) return;
     resetXyzFrameOverlayState(viewer);
     resetSdfCollectionVisibilityState(viewer);
     resetDockingPoseCollectionState(viewer);
