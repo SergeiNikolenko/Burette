@@ -22,6 +22,12 @@ import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
 // squeezing it (the point where an overlay dock would take over).
 const MAIN_MIN_WIDTH = 420;
 
+// react-resizable-panels writes `overflow: auto` inline on every panel, which
+// beats the `overflow: hidden` in our panel classes — content with its own
+// min-size would scroll inside the panel instead of being clipped by it. The
+// caller's `style` is merged after the library's, so this restores clipping.
+const CLIPPED_PANEL_STYLE: CSSProperties = { overflow: "hidden" };
+
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
 }
@@ -294,6 +300,7 @@ export function AppLayout({
           <ResizablePanel
             id="sidebar"
             className="workspace-sidebar-panel"
+            style={CLIPPED_PANEL_STYLE}
             panelRef={sidebarPanelRef}
             collapsible
             collapsedSize="0px"
@@ -318,12 +325,12 @@ export function AppLayout({
           {chromeVisible ? (
             <ResizableHandle withHandle aria-label="Resize sidebar" data-collapsed={!state.sidebarOpen || undefined} />
           ) : null}
-          <ResizablePanel id="center" className="workspace-center-panel">
+          <ResizablePanel id="center" className="workspace-center-panel" style={CLIPPED_PANEL_STYLE}>
             <section className="workbench">
               <ResizablePanelGroup orientation="horizontal" className="workbench-panels">
-                <ResizablePanel id="workbench-main" className="workbench-main-panel" minSize={`${MAIN_MIN_WIDTH}px`}>
+                <ResizablePanel id="workbench-main" className="workbench-main-panel" minSize={`${MAIN_MIN_WIDTH}px`} style={CLIPPED_PANEL_STYLE}>
                   <ResizablePanelGroup orientation="vertical" className="workbench-main-panels">
-                    <ResizablePanel id="main" className="main-panel">
+                    <ResizablePanel id="main" className="main-panel" style={CLIPPED_PANEL_STYLE}>
                       <section className="main-stage">
                         <ViewerArea state={layoutState} actions={actions} />
                       </section>
@@ -334,6 +341,7 @@ export function AppLayout({
                     <ResizablePanel
                       id="bottom-dock"
                       className="dock-panel-shell"
+                      style={CLIPPED_PANEL_STYLE}
                       panelRef={bottomDockPanelRef}
                       collapsible
                       collapsedSize="0px"
@@ -365,6 +373,7 @@ export function AppLayout({
                 <ResizablePanel
                   id="right-dock"
                   className="dock-panel-shell"
+                  style={CLIPPED_PANEL_STYLE}
                   panelRef={rightDockPanelRef}
                   collapsible
                   collapsedSize="0px"

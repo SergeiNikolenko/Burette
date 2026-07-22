@@ -1825,17 +1825,15 @@ img.radix-menu-item-icon {
   max-height: 0;
   box-shadow: none;
 }
+/* Size limits live on the ResizablePanel (minSize/maxSize) now. The old
+   flex/max-width/min-height/max-height here came from the hand-rolled resizer
+   and, being later in the file at equal specificity, still won over
+   `.dock-panel-shell .dock-panel` — clamping the content narrower than its
+   panel and leaving an empty strip beside a wide dock. */
 .dock-panel[data-area="right"] {
-  flex: 0 0 auto;
   min-width: 0;
-  max-width: min(960px, max(0px, calc(100vw - var(--sidebar-layout-width, 0px) - 280px)));
   padding-top: var(--chrome-height);
   box-sizing: border-box;
-}
-.dock-panel[data-area="bottom"] {
-  flex: 0 0 auto;
-  min-height: 180px;
-  max-height: min(720px, calc(100vh - var(--chrome-height) - 180px));
 }
 .dock-panel-inner {
   min-width: 0;
