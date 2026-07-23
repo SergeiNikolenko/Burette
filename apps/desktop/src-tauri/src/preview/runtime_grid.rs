@@ -79,6 +79,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
             grid_store.database_path,
             collection.format,
             grid_store.cancel_token,
+            grid_store.ingest_worker,
         )?;
     let rdkit_wasm = runtime.join("RDKit_minimal.wasm");
     fs::copy(assets.join("rdkit").join("RDKit_minimal.wasm"), &rdkit_wasm)
@@ -213,7 +214,7 @@ fn grid_html(
 }
 
 fn versioned_asset_url(path: &Path) -> String {
-    format!("{}?v=grid-ui-v11", asset_url(path))
+    format!("{}?v=grid-ui-v12", asset_url(path))
 }
 
 fn grid_can_preview(extension: &str) -> bool {

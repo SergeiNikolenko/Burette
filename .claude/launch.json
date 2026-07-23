@@ -7,39 +7,11 @@
       "runtimeArgs": [
         "node_modules/.bin/vite",
         "--config",
-        "vite.config.ts",
+        "apps/desktop/vite.config.ts",
         "--host",
         "127.0.0.1"
       ],
       "port": 1420
-    },
-    {
-      "name": "burette-dev-worktree",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "node_modules/.bin/vite",
-        "--config",
-        "vite.config.ts",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "1421",
-        "--strictPort"
-      ],
-      "port": 1421
-    },
-    {
-      "name": "scene-tree-check",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "plugins/burette-agent/scripts/agent-preview.mjs",
-        "samples/structures/proteins/1htb.pdb",
-        "--port",
-        "8123",
-        "--host",
-        "127.0.0.1"
-      ],
-      "port": 8123
     }
   ]
 }

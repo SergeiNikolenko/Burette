@@ -10,6 +10,7 @@ export type DockTabKind =
   | "spectrum"
   | "text"
   | "inspector"
+  | "story"
   | "folding"
   | "structure-basket"
   | "jobs"
@@ -78,6 +79,7 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   spectrum: "Spectrum",
   text: "Text",
   inspector: "Info",
+  story: "Story",
   folding: "Folding",
   "structure-basket": "Structure Basket",
   jobs: "Jobs",
@@ -101,6 +103,7 @@ export const BOTTOM_DOCK_DEFAULT_TABS: DockTabKind[] = [
 const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
   "xyzrender",
   "inspector",
+  "story",
   "text",
   "files",
 ];

@@ -50,6 +50,7 @@ import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAppViewerBridgeController } from "./hooks/use-app-viewer-bridge-controller";
+import type { StructureStory } from "./lib/structure-story";
 import { useAppViewerReloadActions } from "./hooks/use-app-viewer-reload-actions";
 import { useAppViewerRuntimeRefs } from "./hooks/use-app-viewer-runtime-refs";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
@@ -256,7 +257,6 @@ export default function App() {
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
   const {
     clearDirtyGridDocuments,
-    confirmDiscardAllDirtyGridDocuments,
     confirmDiscardDirtyGridDocument,
     confirmDiscardDirtyGridDocuments,
     forgetDirtyGridDocument,
@@ -270,6 +270,7 @@ export default function App() {
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [viewerLigandSelections, setViewerLigandSelections] = useState<Record<string, ViewerLigandSelection | null>>({});
   const [structureOverlayModes, setStructureOverlayModes] = useState<Record<string, StructureOverlayMode>>({});
+  const [structureStories, setStructureStories] = useState<Record<string, StructureStory | null>>({});
   const {
     cancelConformerJob,
     cancelXtbJob,
@@ -430,22 +431,6 @@ export default function App() {
     if (!session?.editable || !session.dirty || session.saving || session.saveDisabledReason) return;
     await sourceEditing.save(activeDocument);
   }, [activeDocument, sourceEditing]);
-  const confirmCloseWindow = useCallback(async () => {
-    const sourceBefore = sourceEditing.getWindowDirtySnapshot();
-    if (!await sourceEditing.confirmCloseWindow()) return null;
-    const permit = await confirmDiscardAllDirtyGridDocuments();
-    if (!permit) return null;
-    try {
-      const sourceAfter = sourceEditing.getWindowDirtySnapshot();
-      if (sourceAfter.revision === sourceBefore.revision
-        || await sourceEditing.confirmCloseWindow()) return permit;
-      permit.release();
-      return null;
-    } catch (error) {
-      permit.release();
-      throw error;
-    }
-  }, [confirmDiscardAllDirtyGridDocuments, sourceEditing]);
   const combinedWindowDirtyRevisionRef = useRef({
     gridRevision: null as number | null,
     sourceRevision: null as number | null,
@@ -465,7 +450,6 @@ export default function App() {
       dirty: gridSnapshot.dirty || sourceSnapshot.dirty,
       revision: combined.revision,
       closeTransitionActive: sourceSnapshot.closeTransitionActive,
-      closeGuardRevision: sourceSnapshot.revision,
     };
   }, [getGridWindowDocumentDirtySnapshot, sourceEditing]);
   const {
@@ -839,6 +823,7 @@ export default function App() {
     setPreference,
     setPoseReviewSelections,
     setStructureOverlayModes,
+    setStructureStories,
     setViewerLigandSelections,
     skipNextPreferenceRefreshRef,
     toggleSidebar,
@@ -1040,6 +1025,7 @@ export default function App() {
     conformerSettings,
     conformerJobs,
     viewerLigandSelections,
+    structureStories,
     structureOverlayMode: activeDocument ? structureOverlayModes[activeDocument.id] ?? "single" : "single",
     xtbStatus,
     xtbSettings,
@@ -1053,7 +1039,6 @@ export default function App() {
     actions,
     gridMenuState: activeGridMenuState,
     openDocuments,
-    confirmCloseWindow,
     getWindowDocumentDirtySnapshot,
     windowDocumentDirty: hasDirtyGridDocuments || sourceEditing.hasUnsavedOrSavingSessions,
     sourceSaveEnabled,

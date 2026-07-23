@@ -7,44 +7,27 @@ export class ExitTransitionActiveError extends Error {
 
 export type WindowCloseMutationPermit = {
   release: () => void;
-  waitForPending: (documentIds?: Iterable<string>) => Promise<void>;
 };
 
 export function createExitMutationBarrier() {
   let exitSealed = false;
-  let closeTransitionActive = false;
+  // Counted rather than a boolean: close transitions overlap (a tab's unsaved
+  // prompt can still be open when the window close button is pressed), and
+  // beginCloseTransition must never refuse the second one — refusing it used to
+  // make the window close button silently do nothing.
+  let closeTransitionDepth = 0;
   let nextLeaseId = 0;
   const leases = new Map<number, string>();
-  const pendingWaiters = new Set<{
-    documentIds: Set<string> | null;
-    resolve: () => void;
-  }>();
-
-  const hasPendingLease = (documentIds: Set<string> | null) => {
-    if (documentIds === null) return leases.size > 0;
-    for (const documentId of leases.values()) {
-      if (documentIds.has(documentId)) return true;
-    }
-    return false;
-  };
-
-  const resolveSettledWaiters = () => {
-    for (const waiter of pendingWaiters) {
-      if (hasPendingLease(waiter.documentIds)) continue;
-      pendingWaiters.delete(waiter);
-      waiter.resolve();
-    }
-  };
 
   const snapshot = () => ({
-    closeTransitionActive,
+    closeTransitionActive: closeTransitionDepth > 0,
     pendingCount: leases.size,
     pendingDocumentIds: [...new Set(leases.values())],
   });
 
   return {
     begin(documentId: string) {
-      if (exitSealed || closeTransitionActive) throw new ExitTransitionActiveError();
+      if (exitSealed || closeTransitionDepth > 0) throw new ExitTransitionActiveError();
       const leaseId = nextLeaseId;
       nextLeaseId += 1;
       leases.set(leaseId, documentId);
@@ -53,26 +36,18 @@ export function createExitMutationBarrier() {
         if (released) return;
         released = true;
         leases.delete(leaseId);
-        resolveSettledWaiters();
       };
     },
     beginCloseTransition(): WindowCloseMutationPermit & ReturnType<typeof snapshot> {
-      if (exitSealed || closeTransitionActive) throw new ExitTransitionActiveError();
-      closeTransitionActive = true;
+      if (exitSealed) throw new ExitTransitionActiveError();
+      closeTransitionDepth += 1;
       let released = false;
       return {
         ...snapshot(),
         release() {
           if (released) return;
           released = true;
-          closeTransitionActive = false;
-        },
-        waitForPending(documentIds?: Iterable<string>) {
-          const targetIds = documentIds === undefined ? null : new Set(documentIds);
-          if (!hasPendingLease(targetIds)) return Promise.resolve();
-          return new Promise<void>((resolve) => {
-            pendingWaiters.add({ documentIds: targetIds, resolve });
-          });
+          closeTransitionDepth -= 1;
         },
       };
     },
@@ -231,21 +206,6 @@ export async function waitForGridDocumentCloseTransition(documentIds: Iterable<s
     }));
   }
   await Promise.all(acknowledgements);
-}
-
-export function sameWindowItemIds(before: Iterable<string>, after: Iterable<string>) {
-  const beforeIds = [...before];
-  const afterIds = [...after];
-  return beforeIds.length === afterIds.length
-    && beforeIds.every((itemId, index) => itemId === afterIds[index]);
-}
-
-export function setWindowShellCloseTransition(active: boolean) {
-  if (typeof document === "undefined") return;
-  const shell = document.querySelector<HTMLElement>(".app-shell");
-  if (!shell) return;
-  shell.inert = active;
-  shell.toggleAttribute("aria-busy", active);
 }
 
 export function resumeWindowMutations() {

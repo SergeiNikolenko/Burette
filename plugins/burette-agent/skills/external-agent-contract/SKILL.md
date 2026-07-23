@@ -58,6 +58,15 @@ that was opened before this contract existed.
    every mutation; never reuse a revision after a conflict or tab switch.
 7. For adjacent notes or review panels, call `burrete.render_panel`.
 
+## Handoff
+
+Keep transport details out of intermediate reasoning, but do not hide the
+user-facing Browser entry point. If `burrete.open_workspace` returned a Browser
+URL, include that exact live URL as a clickable Markdown link in the final
+handoff, even when the Browser tab is already open. The `workspaceSessionId`
+remains the handle for agent follow-up; file, bundle, report, and screenshot
+links do not replace the Browser workspace link.
+
 ## Boundaries
 
 - Do not read molecular file bytes merely to open the viewer.

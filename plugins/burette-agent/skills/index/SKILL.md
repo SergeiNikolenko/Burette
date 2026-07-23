@@ -90,6 +90,10 @@ external browser unless the user explicitly asks for an external browser.
 A Burrete workflow is complete only when:
 
 - the requested workspace or artifact is opened or a typed blocker is reported;
+- when a Browser workspace URL was created, the final handoff includes that
+  exact live URL as a clickable Markdown link, even when the Browser tab is
+  already open; a file or report link is not a substitute for the workspace
+  link;
 - `observe.activeDocument.ready` is true and the Mol* `viewerAgent` reports
   available/ready when the active renderer is Mol*;
 - when the active surface is Ketcher, `activeSurface.ready` is true and

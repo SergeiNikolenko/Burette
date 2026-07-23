@@ -37,6 +37,15 @@ pub(crate) fn window_destroyed<R: tauri::Runtime>(app: &tauri::AppHandle<R>, win
     }
 }
 
+/// Quit the whole application, exactly like the "Quit Burrete" menu item and
+/// Cmd+Q. The window close button routes here so it closes the app rather than
+/// leaving a windowless process alive (which macOS does by default and which
+/// this app previously recreated a window from).
+#[tauri::command]
+pub(crate) fn request_app_quit<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
+    quit::request_quit(&app);
+}
+
 #[tauri::command]
 pub(crate) fn register_exit_preflight_listener<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,

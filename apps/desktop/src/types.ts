@@ -71,7 +71,7 @@ export type ViewerReloadOptions = {
   sdfPoseControlLabel?: string | null;
   trajectoryAutoPlayOnce?: boolean | null;
   activeModel?: number | null;
-  molstarStyle?: "default" | "illustrative" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface" | null;
+  molstarStyle?: "default" | "illustrative" | "illustrative-surface" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface" | null;
 };
 
 export type DockingSceneMode = "structureAll" | "structurePoses";
@@ -422,7 +422,7 @@ export type ViewerPreferences = {
   canvasBackground: "auto" | "black" | "graphite" | "white" | "transparent";
   openInDefaultDestination: "default-app" | "finder" | `editor:${string}`;
   rendererMode: "auto" | "grid2d" | "molstar" | "xyzrender-external";
-  molstarStyle: "default" | "illustrative" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface";
+  molstarStyle: "default" | "illustrative" | "illustrative-surface" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface";
   desktopPreviewLimitMiB: number;
   conformerEngine: "datamol" | "rdkit";
   conformerCandidateCount: number;
