@@ -3,17 +3,24 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   computeErrorMessage,
   runChemicalSpaceWorkflow,
+  runChemicalSpaceStudyWorkflow,
+  type BrowserChemicalSpaceInputRecord,
   type ChemicalSpaceOptions,
   type ChemicalSpaceMethod,
   type ChemicalSpaceProgress,
   type ChemicalSpaceResult,
 } from "../lib/compute-cluster";
+import {
+  runBrowserDevChemicalSpace,
+  runBrowserDevChemicalSpaceStudy,
+} from "../lib/browser-dev-compute";
 import { isTauriRuntime } from "../lib/tauri";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
@@ -30,6 +37,17 @@ type MoleculePreview = {
   name: string;
   smiles: string;
   svgUrl: string | null;
+};
+type StudyParameter = "neighbors" | "minDist" | "learningRate";
+type StudyState = {
+  parameter: StudyParameter;
+  range: [number, number];
+  frames: number;
+};
+type CompletedStudy = {
+  parameter: StudyParameter;
+  values: number[];
+  results: ChemicalSpaceResult[];
 };
 
 const DEFAULT_OPTIONS: ChemicalSpaceOptions = {
@@ -57,6 +75,11 @@ const completedEmbeddings = new Map<string, ChemicalSpaceResult>();
 const GRID_SELECTION_BRIDGE_LIMIT = 100_000;
 const MAX_MOLECULE_PREVIEW_BASE64_BYTES = 350_000;
 const MAX_LASSO_POINTS = 4_096;
+const DEFAULT_STUDY: StudyState = {
+  parameter: "minDist",
+  range: [0.02, 0.6],
+  frames: 8,
+};
 
 export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [draft, setDraft] = useState(DEFAULT_OPTIONS);
@@ -68,7 +91,18 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
   const [tool, setTool] = useState<"navigate" | "lasso">("navigate");
+  const [study, setStudy] = useState(DEFAULT_STUDY);
+  const [completedStudy, setCompletedStudy] = useState<CompletedStudy | null>(null);
+  const [studyPosition, setStudyPosition] = useState(0);
+  const [studyPlaying, setStudyPlaying] = useState(false);
+  const studyControllerRef = useRef<AbortController | null>(null);
   const documentId = document?.renderer === "grid2d" ? document.id : null;
+  const commitOptions = (next: ChemicalSpaceOptions) => {
+    setCompletedStudy(null);
+    setStudyPlaying(false);
+    setStudyPosition(0);
+    setOptions(next);
+  };
 
   useEffect(() => {
     setResult(null);
@@ -77,10 +111,13 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setSelected(new Set());
     setHovered(null);
     setPreview(null);
+    setCompletedStudy(null);
+    setStudyPosition(0);
+    setStudyPlaying(false);
   }, [documentId]);
 
   useEffect(() => {
-    if (!documentId || !isTauriRuntime()) return;
+    if (!documentId) return;
     const key = embeddingCacheKey(documentId, options);
     const cached = completedEmbeddings.get(key);
     if (cached) {
@@ -93,7 +130,11 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setResult(null);
     setError(null);
     setProgress({ phase: "queued" });
-    void runChemicalSpaceWorkflow(documentId, options, setProgress, controller.signal)
+    const workflow = isTauriRuntime()
+      ? runChemicalSpaceWorkflow(documentId, options, setProgress, controller.signal)
+      : requestBrowserChemicalSpaceRecords(documentId, controller.signal)
+        .then((records) => runBrowserDevChemicalSpace(records, options, setProgress, controller.signal));
+    void workflow
       .then((next) => {
         if (controller.signal.aborted) return;
         completedEmbeddings.set(key, next);
@@ -107,6 +148,24 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       });
     return () => controller.abort();
   }, [documentId, options]);
+
+  useEffect(() => {
+    if (!studyPlaying || !completedStudy) return;
+    let animationFrame = 0;
+    let previousTime = performance.now();
+    const animate = (time: number) => {
+      const elapsed = Math.min(100, time - previousTime);
+      previousTime = time;
+      setStudyPosition((value) => (
+        value + elapsed / 900 >= completedStudy.results.length - 1
+          ? 0
+          : value + elapsed / 900
+      ));
+      animationFrame = requestAnimationFrame(animate);
+    };
+    animationFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [completedStudy, studyPlaying]);
 
   useEffect(() => {
     if (!documentId) return;
@@ -166,11 +225,40 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   if (!documentId) {
     return <ChemicalSpaceEmpty message="Open a molecular Grid to build its chemical-space map." />;
   }
-  if (!isTauriRuntime()) {
-    return <ChemicalSpaceEmpty message="Metal chemical space is available in the Burrete desktop app." />;
-  }
-
   const runningLabel = progressLabel(progress);
+  const displayedResult = completedStudy
+    ? interpolateStudyResult(completedStudy.results, studyPosition)
+    : result;
+  const runStudy = async () => {
+    studyControllerRef.current?.abort();
+    const controller = new AbortController();
+    studyControllerRef.current = controller;
+    const values = studyValues(study);
+    const frames = values.map((value) => ({
+      ...draft,
+      [study.parameter]: value,
+      randomSeed: draft.randomSeed,
+    }));
+    setError(null);
+    setProgress({ phase: "queued" });
+    setStudyPlaying(false);
+    try {
+      const results = isTauriRuntime()
+        ? await runChemicalSpaceStudyWorkflow(documentId, frames, setProgress, controller.signal)
+        : await requestBrowserChemicalSpaceRecords(documentId, controller.signal)
+          .then((records) => runBrowserDevChemicalSpaceStudy(records, frames, setProgress, controller.signal));
+      if (controller.signal.aborted) return;
+      const aligned = alignStudyResults(results);
+      setCompletedStudy({ parameter: study.parameter, values, results: aligned });
+      setStudyPosition(0);
+      setStudyPlaying(true);
+      setProgress(null);
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      setProgress(null);
+      setError(computeErrorMessage(cause));
+    }
+  };
   return (
     <TooltipProvider>
       <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="chemical-space-panel">
@@ -183,7 +271,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               const method = event.currentTarget.value as ChemicalSpaceMethod;
               const next = { ...draft, method };
               setDraft(next);
-              setOptions(next);
+              commitOptions(next);
             }}
           >
             {CHEMICAL_SPACE_METHODS.map((method) => (
@@ -202,7 +290,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               const dimensions = Number(value) as 2 | 3;
               const next = { ...draft, dimensions };
               setDraft(next);
-              setOptions(next);
+              commitOptions(next);
             }}
           >
             <ToggleGroupItem value="2" aria-label="2D embedding">2D</ToggleGroupItem>
@@ -223,14 +311,14 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
             </Tooltip>
           </div>
           <span className="ml-auto text-xs text-muted-foreground">
-            {result ? `${result.successfulRecords.toLocaleString()} molecules · Metal` : runningLabel}
+            {displayedResult ? `${displayedResult.successfulRecords.toLocaleString()} molecules · Metal` : runningLabel}
           </span>
         </div>
 
         <div className="relative min-h-0 flex-1">
-          {result ? (
+          {displayedResult ? (
             <ChemicalSpaceCanvas
-              result={result}
+              result={displayedResult}
               selected={selected}
               hovered={hovered}
               preview={preview}
@@ -247,10 +335,39 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               }}
             />
           ) : error ? (
-            <ChemicalSpaceEmpty message={error} actionLabel="Retry" onAction={() => setOptions({ ...draft })} />
+            <ChemicalSpaceEmpty message={error} actionLabel="Retry" onAction={() => commitOptions({ ...draft })} />
           ) : (
             <ChemicalSpaceEmpty message={runningLabel || "Preparing chemical space…"} />
           )}
+          {completedStudy && displayedResult ? (
+            <div className="absolute inset-x-3 bottom-3 flex items-center gap-2 rounded-lg border border-border bg-background/90 p-2 shadow-sm backdrop-blur">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setStudyPlaying((value) => !value)}
+              >
+                {studyPlaying ? "Pause" : "Play"}
+              </Button>
+              <Slider
+                tone="neutral"
+                min={0}
+                max={completedStudy.results.length - 1}
+                step={0.01}
+                value={[studyPosition]}
+                aria-label="Parameter study timeline"
+                onValueChange={([value]) => {
+                  setStudyPlaying(false);
+                  setStudyPosition(value);
+                }}
+              />
+              <span className="min-w-28 text-right font-mono text-xs text-muted-foreground">
+                {studyParameterLabel(completedStudy.parameter)} {formatStudyValue(
+                  completedStudy.parameter,
+                  interpolateStudyValue(completedStudy.values, studyPosition),
+                )}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         <Collapsible className="border-t border-border px-3 py-2">
@@ -277,8 +394,48 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                 <Slider tone="neutral" min={0.1} max={3} step={0.1} value={[draft.learningRate]} onValueChange={([learningRate]) => setDraft((value) => ({ ...value, learningRate }))} />
               </ParameterField>
             </FieldGroup>
-            <Button className="mt-4 w-full" variant="outline" size="sm" disabled={Boolean(progress)} onClick={() => setOptions({ ...draft })}>
+            <Button className="mt-4 w-full" variant="outline" size="sm" disabled={Boolean(progress)} onClick={() => commitOptions({ ...draft })}>
               Rebuild on Metal
+            </Button>
+            <Separator className="my-4" />
+            <FieldGroup className="gap-4">
+              <Field>
+                <FieldLabel htmlFor="chemical-space-study-parameter">Parameter study</FieldLabel>
+                <NativeSelect
+                  id="chemical-space-study-parameter"
+                  size="sm"
+                  value={study.parameter}
+                  onChange={(event) => setStudy(studyDefaults(event.currentTarget.value as StudyParameter))}
+                >
+                  <NativeSelectOption value="minDist">Minimum distance</NativeSelectOption>
+                  <NativeSelectOption value="neighbors">Neighbors</NativeSelectOption>
+                  <NativeSelectOption value="learningRate">Learning rate</NativeSelectOption>
+                </NativeSelect>
+              </Field>
+              <ParameterField
+                label="Sweep range"
+                value={`${formatStudyValue(study.parameter, study.range[0])}–${formatStudyValue(study.parameter, study.range[1])}`}
+              >
+                <Slider
+                  tone="neutral"
+                  {...studySliderBounds(study.parameter)}
+                  value={study.range}
+                  onValueChange={(range) => setStudy((value) => ({ ...value, range: range as [number, number] }))}
+                />
+              </ParameterField>
+              <ParameterField label="Frames" value={study.frames}>
+                <Slider
+                  tone="neutral"
+                  min={3}
+                  max={16}
+                  step={1}
+                  value={[study.frames]}
+                  onValueChange={([frames]) => setStudy((value) => ({ ...value, frames }))}
+                />
+              </ParameterField>
+            </FieldGroup>
+            <Button className="mt-4 w-full" variant="secondary" size="sm" disabled={Boolean(progress)} onClick={() => void runStudy()}>
+              Run animated study on Metal
             </Button>
           </CollapsibleContent>
         </Collapsible>
@@ -536,6 +693,9 @@ function progressLabel(progress: ChemicalSpaceProgress | null) {
     return `Fingerprints ${Math.min(progress.completedRecords ?? 0, progress.totalRecords ?? 0).toLocaleString()} / ${(progress.totalRecords ?? 0).toLocaleString()}`;
   }
   if (progress.phase === "embedding") return "Metal Tanimoto + embedding…";
+  if (progress.phase === "study") {
+    return `Metal study ${Math.min(progress.completedFrames ?? 0, progress.totalFrames ?? 0)} / ${progress.totalFrames ?? 0}`;
+  }
   return "Preparing snapshot…";
 }
 
@@ -588,4 +748,160 @@ function pointInPolygon(point: Point2, polygon: Point2[]) {
     if (crosses) inside = !inside;
   }
   return inside;
+}
+
+function studyDefaults(parameter: StudyParameter): StudyState {
+  if (parameter === "neighbors") return { parameter, range: [5, 40], frames: 8 };
+  if (parameter === "learningRate") return { parameter, range: [0.3, 2], frames: 8 };
+  return { ...DEFAULT_STUDY };
+}
+
+function studySliderBounds(parameter: StudyParameter) {
+  if (parameter === "neighbors") return { min: 2, max: 64, step: 1 };
+  if (parameter === "learningRate") return { min: 0.1, max: 3, step: 0.1 };
+  return { min: 0, max: 1, step: 0.01 };
+}
+
+function studyValues(study: StudyState) {
+  return Array.from({ length: study.frames }, (_, index) => {
+    const progress = study.frames === 1 ? 0 : index / (study.frames - 1);
+    const value = study.range[0] + (study.range[1] - study.range[0]) * progress;
+    return study.parameter === "neighbors" ? Math.round(value) : value;
+  });
+}
+
+function studyParameterLabel(parameter: StudyParameter) {
+  if (parameter === "neighbors") return "k";
+  if (parameter === "learningRate") return "rate";
+  return "min dist";
+}
+
+function formatStudyValue(parameter: StudyParameter, value: number) {
+  return parameter === "neighbors" ? Math.round(value).toString() : value.toFixed(2);
+}
+
+function interpolateStudyValue(values: number[], position: number) {
+  const left = Math.max(0, Math.min(values.length - 1, Math.floor(position)));
+  const right = Math.min(values.length - 1, left + 1);
+  const progress = position - left;
+  return values[left] + (values[right] - values[left]) * progress;
+}
+
+function interpolateStudyResult(results: ChemicalSpaceResult[], position: number) {
+  const leftIndex = Math.max(0, Math.min(results.length - 1, Math.floor(position)));
+  const rightIndex = Math.min(results.length - 1, leftIndex + 1);
+  const progress = position - leftIndex;
+  const left = results[leftIndex];
+  const right = results[rightIndex];
+  if (!right || right === left || progress <= 0) return left;
+  return {
+    ...left,
+    positions: left.positions.map((position, index) => {
+      const target = right.positions[index] ?? position;
+      return position.map((value, axis) => (
+        value + (target[axis] - value) * smoothStep(progress)
+      )) as [number, number, number];
+    }),
+  };
+}
+
+function alignStudyResults(results: ChemicalSpaceResult[]) {
+  const alignedResults: ChemicalSpaceResult[] = [];
+  for (const result of results) {
+    const positions = normalizePositions(result.positions);
+    if (alignedResults.length === 0) {
+      alignedResults.push({ ...result, positions });
+      continue;
+    }
+    const previousPositions = alignedResults.at(-1)?.positions ?? [];
+    const aligned = positions.map((position) => [...position] as [number, number, number]);
+    for (let axis = 0; axis < result.dimensions; axis += 1) {
+      const correlation = aligned.reduce(
+        (sum, position, positionIndex) => (
+          sum + position[axis] * (previousPositions[positionIndex]?.[axis] ?? 0)
+        ),
+        0,
+      );
+      if (correlation < 0) {
+        for (const position of aligned) position[axis] *= -1;
+      }
+    }
+    alignedResults.push({ ...result, positions: aligned });
+  }
+  return alignedResults;
+}
+
+function smoothStep(value: number) {
+  return value * value * (3 - 2 * value);
+}
+
+function requestBrowserChemicalSpaceRecords(
+  documentId: string,
+  signal: AbortSignal,
+): Promise<BrowserChemicalSpaceInputRecord[]> {
+  const requestId = `chemical-space-records-${crypto.randomUUID()}`;
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("The Grid did not provide molecular records for browser chemical space."));
+    }, 15_000);
+    const onAbort = () => {
+      cleanup();
+      const error = new Error("Chemical-space calculation was cancelled.");
+      error.name = "AbortError";
+      reject(error);
+    };
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data && typeof event.data === "object"
+        ? event.data as { source?: unknown; body?: Record<string, unknown> }
+        : null;
+      if (
+        data?.source !== "burrete-grid"
+        || data.body?.type !== "chemicalSpaceRecords"
+        || data.body.requestId !== requestId
+        || data.body.documentId !== documentId
+        || !isKnownViewerMessageSource(event.source, documentId)
+      ) return;
+      const records = Array.isArray(data.body.records)
+        ? data.body.records.filter(isBrowserChemicalSpaceRecord).slice(0, 20_000)
+        : [];
+      cleanup();
+      if (records.length < 2) {
+        reject(new Error("The Grid contains fewer than two molecules that RDKit can fingerprint."));
+      } else {
+        resolve(records);
+      }
+    };
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", onMessage);
+      signal.removeEventListener("abort", onAbort);
+    };
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    window.addEventListener("message", onMessage);
+    signal.addEventListener("abort", onAbort, { once: true });
+    const iframe = activeViewerIframeForDocument(documentId, "grid2d");
+    if (!iframe?.contentWindow) {
+      cleanup();
+      reject(new Error("Open the Grid viewer before calculating browser chemical space."));
+      return;
+    }
+    iframe.contentWindow.postMessage({
+      source: "burrete-grid-host",
+      body: { type: "chemicalSpaceRequestRecords", requestId, documentId },
+    }, "*");
+  });
+}
+
+function isBrowserChemicalSpaceRecord(value: unknown): value is BrowserChemicalSpaceInputRecord {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Partial<BrowserChemicalSpaceInputRecord>;
+  return Number.isSafeInteger(record.sourceRecordId)
+    && typeof record.moleculeContentSha256 === "string"
+    && (record.format === "smiles" || record.format === "molblock")
+    && typeof record.input === "string"
+    && record.input.length > 0;
 }

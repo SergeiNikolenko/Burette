@@ -24,6 +24,7 @@ type ChemicalSpace3DProps = {
 };
 
 type ThreeRuntime = {
+  updatePositions: (positions: Array<[number, number, number]>) => void;
   updateHovered: (sourceRecordId: number | null) => void;
   updateSelected: (sourceRecordIds: Set<number>) => void;
   updatePreview: (preview: MoleculePreview | null) => void;
@@ -50,12 +51,19 @@ export function ChemicalSpace3D({
   const onHoverRef = useRef(onHover);
   const onSelectRef = useRef(onSelect);
   const previewRef = useRef(preview);
+  const positionsRef = useRef(positions);
+  const selectedRef = useRef(selected);
+  const hoveredRef = useRef(hovered);
   const [lasso, setLasso] = useState<Point2[]>([]);
   const [previewAnchor, setPreviewAnchor] = useState<Point2 | null>(null);
 
   onHoverRef.current = onHover;
   onSelectRef.current = onSelect;
   previewRef.current = preview;
+  positionsRef.current = positions;
+  selectedRef.current = selected;
+  hoveredRef.current = hovered;
+  const sourceRecordIdsKey = sourceRecordIds.join(",");
 
   useEffect(() => {
     const host = hostRef.current;
@@ -122,7 +130,7 @@ export function ChemicalSpace3D({
     const projectPoints = () => {
       const width = Math.max(1, host.clientWidth);
       const height = Math.max(1, host.clientHeight);
-      projectedRef.current = positions.map((position, index) => {
+      projectedRef.current = positionsRef.current.map((position, index) => {
         const projected = new THREE.Vector3(...position).project(camera);
         return {
           x: (projected.x * 0.5 + 0.5) * width,
@@ -142,17 +150,25 @@ export function ChemicalSpace3D({
       projectPoints();
     };
 
-    const updateSelected = (sourceRecordIds: Set<number>) => {
+    const updateSelected = (sourceRecordIds: Set<number>, shouldRender = true) => {
       updateOverlayGeometry(
         selectedPoints.geometry,
         [...sourceRecordIds].map((sourceRecordId) => indexById.get(sourceRecordId)).filter((index): index is number => index !== undefined),
-        positions,
+        positionsRef.current,
       );
-      render();
+      if (shouldRender) render();
     };
-    const updateHovered = (sourceRecordId: number | null) => {
+    const updateHovered = (sourceRecordId: number | null, shouldRender = true) => {
       const index = sourceRecordId === null ? undefined : indexById.get(sourceRecordId);
-      updateOverlayGeometry(hoveredPoints.geometry, index === undefined ? [] : [index], positions);
+      updateOverlayGeometry(hoveredPoints.geometry, index === undefined ? [] : [index], positionsRef.current);
+      if (shouldRender) render();
+    };
+    const updatePositions = (nextPositions: Array<[number, number, number]>) => {
+      positionsRef.current = nextPositions;
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(nextPositions.flat(), 3));
+      geometry.computeBoundingSphere();
+      updateSelected(selectedRef.current, false);
+      updateHovered(hoveredRef.current, false);
       render();
     };
     const updatePreview = (nextPreview: MoleculePreview | null) => {
@@ -219,7 +235,7 @@ export function ChemicalSpace3D({
     });
     resizeObserver.observe(host);
 
-    runtimeRef.current = { updateHovered, updateSelected, updatePreview };
+    runtimeRef.current = { updatePositions, updateHovered, updateSelected, updatePreview };
     updateSelected(selected);
     updateHovered(hovered);
     render();
@@ -248,8 +264,9 @@ export function ChemicalSpace3D({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [methodLabel, positions, sourceRecordIds]);
+  }, [methodLabel, sourceRecordIdsKey]);
 
+  useEffect(() => runtimeRef.current?.updatePositions(positions), [positions]);
   useEffect(() => runtimeRef.current?.updateSelected(selected), [selected]);
   useEffect(() => runtimeRef.current?.updateHovered(hovered), [hovered]);
   useEffect(() => runtimeRef.current?.updatePreview(preview), [preview]);
