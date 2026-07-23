@@ -6216,6 +6216,7 @@
     const plugin = viewportPlugin();
     if (!bar || !rail) return;
     const active = plugin?.selectionMode === true && !rail.classList.contains('hidden');
+    const changed = bar.classList.contains('hidden') === active;
     bar.classList.toggle('hidden', !active);
     rail.querySelector('[data-buret-viewport-action="select-mode"]')
       ?.setAttribute('aria-pressed', active ? 'true' : 'false');
@@ -6226,7 +6227,10 @@
     const level = document.querySelector('[data-buret-selection-level]');
     const granularity = plugin?.managers?.interactivity?.props?.granularity;
     if (level && granularity && level.value !== granularity) level.value = granularity;
-    updateFloatingLayoutOffsets();
+    // The bar takes a row out of the viewport, so the rail below it has to be
+    // re-placed — but only when the bar actually came or went. This runs on every
+    // selection change, and a live atom count is no reason to measure the layout.
+    if (changed) updateFloatingLayoutOffsets();
   }
 
   function initViewportControls(viewer) {
