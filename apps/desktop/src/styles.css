@@ -1346,16 +1346,23 @@ kbd span { margin-left: 2px; }
   border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-secondary);
-  /* A file and a folder on the same level line up. The left inset and the icon gap
-     match .project-folder-row, or a file's name sat 6px right of its siblings'. */
-  padding: 5px 38px 5px 6px;
+  padding: 5px 38px 5px 10px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   text-align: left;
   cursor: default;
   line-height: 1.15;
   transition: background 140ms ease-out, color 140ms ease-out, box-shadow 140ms ease-out, transform 140ms ease-out;
+}
+/* Inside the tree a file sits on the same level as its sibling folders, so it takes
+   the folder row's inset and icon gap; left at the base 10px its name stood 6px
+   right of theirs. Scoped to the nesting containers so the flat Pinned list, which
+   lines up with the project rows instead, keeps its own inset. */
+.project-children .project,
+.project-folder-children .project {
+  padding-left: 6px;
+  gap: 4px;
 }
 .project:hover { background: var(--surface-subtle); }
 .project.active {
