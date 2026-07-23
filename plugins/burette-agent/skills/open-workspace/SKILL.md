@@ -61,6 +61,24 @@ Open that URL only through the Codex in-app Browser plugin. Do not start a
 separate tokenized agent preview only to get sidebars, the right dock, or the
 bottom dock.
 
+### Opening a folder as one Mol* scene
+
+By default every path becomes its own Burrete tab. When the user wants a set of
+related structures compared in a single viewer — a folder of simulation stages,
+docked poses, or model variants — pass `--scene` with a folder or with two or
+more files:
+
+```bash
+bun scripts/burrete-agent.mjs open --mode browser-agent-shell <folder> --scene structureAll
+```
+
+That returns a URL shaped like
+`http://127.0.0.1:<port>/?devDocking=<newline-separated paths>&devScene=structureAll&agentLayout=focus`,
+which opens one combined Mol* scene instead of one tab per file. Use
+`structureAll` to start with every structure overlaid and `structurePoses` to
+start on a single structure. In the scene the user can step through structures,
+pick one by file name, and press `Align` to superimpose them.
+
 Keep the returned `sessionDir`. In agent shell mode, `observe` and `act` use
 the same CLI session contract as desktop app mode:
 
@@ -160,8 +178,14 @@ bun scripts/burrete-agent.mjs open --mode desktop-app <file> --session-dir <dir>
 
 ## Handoff
 
-Report the mode, session directory or tokenized URL, active document title,
-viewer readiness, concise structure facts from `structureSummary`, and any
-typed errors. Do not describe a successful molecular load until the full
-readiness gate above passes. When the user wants to see the result, also require
-the nonblank central-canvas check from `visual-qa`; counts are not a substitute.
+Report the mode, session directory, active document title, viewer readiness,
+concise structure facts from `structureSummary`, and any typed errors. For
+every Browser mode, include the exact URL returned by `open` as a clickable
+Markdown link in the final handoff, for example
+`[Open Burrete in Browser](http://127.0.0.1:<port>/...)`. Include this link even
+when the in-app Browser tab is already open and visually verified. A link to
+the source file, bundle directory, report, or screenshot does not replace the
+Browser workspace link. Do not describe a successful molecular load until the
+full readiness gate above passes. When the user wants to see the result, also
+require the nonblank central-canvas check from `visual-qa`; counts are not a
+substitute.

@@ -1,6 +1,6 @@
 import { dockingRequestForDrop } from "./docking-documents";
 import { isTauriRuntime } from "./tauri";
-import type { DockingDocumentRequest } from "../types";
+import type { DockingDocumentRequest, DockingSceneMode } from "../types";
 import { initializeWebDemoWorkspace, isWebDemoWorkspace } from "./web-demo-workspace";
 
 export async function browserDevFilesFromLocation() {
@@ -61,6 +61,11 @@ export function browserDevAgentFocusLayout(
 ) {
   if (!isAgentShell) return false;
   return new URLSearchParams(search).get("agentLayout") === "focus";
+}
+
+export function browserDevSceneModeFromLocation(): DockingSceneMode | null {
+  const mode = new URLSearchParams(window.location.search).get("devScene")?.trim();
+  return mode === "structureAll" || mode === "structurePoses" ? mode : null;
 }
 
 export function browserDevDockingFromLocation(): DockingDocumentRequest | null {
