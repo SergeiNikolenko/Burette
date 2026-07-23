@@ -115,7 +115,6 @@
   // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
   // scene-tree menu at the same spot; and the first pick of a two-click distance.
   let molstarContextMenuLastPoint = null;
-  let molstarMeasureAnchor = null;
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
   let molstarLassoOverlay = null;
@@ -4657,7 +4656,9 @@
     trash: ['M3 6h18', 'M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6'],
     isolate: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
     focus: ['M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0', 'M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5'],
-    restore: ['M3 12a9 9 0 1 0 3-6.7L3 8', 'M3 3v5h5']
+    restore: ['M3 12a9 9 0 1 0 3-6.7L3 8', 'M3 3v5h5'],
+    collapseAll: ['m7 20 5-5 5 5', 'm7 4 5 5 5-5'],
+    expandAll: ['m7 15 5 5 5-5', 'm7 9 5-5 5 5']
   };
   // Apple system colours: the uniform tints offered next to the real colour themes.
   const SCENE_TREE_UNIFORM_COLORS = [
@@ -4995,6 +4996,7 @@
     if (!available) {
       setSceneTreeOpen(false);
       body.replaceChildren();
+      updateSceneTreeExpandButton();
       updateViewportCornerLayout();
       return;
     }
@@ -5010,6 +5012,7 @@
       ? root.querySelector(`.buret-tree-row[data-ref="${CSS.escape(sceneTreeHoverRef)}"]`)
       : null;
     moveSceneTreeHighlight(hovered, { instant: true });
+    updateSceneTreeExpandButton();
   }
 
   // One block slides between rows instead of every row painting its own hover fill.
@@ -5052,6 +5055,33 @@
       closeSceneTreeMenu();
     }
     updateViewportCornerLayout();
+  }
+
+  // Several structures at once make the tree run well past the panel; one control
+  // folds it back to the top level and opens it again.
+  function toggleSceneTreeExpandAll() {
+    if (sceneTreeExpandedRefs.size) {
+      sceneTreeExpandedRefs.clear();
+    } else {
+      const walk = list => {
+        for (const node of list) {
+          if (node.children.length) sceneTreeExpandedRefs.add(node.ref);
+          walk(node.children);
+        }
+      };
+      walk(sceneTreeNodes(activeMolstarViewer()));
+    }
+    renderSceneTree();
+  }
+
+  function updateSceneTreeExpandButton() {
+    const button = document.querySelector('[data-buret-action="scene-tree-expand-all"]');
+    if (!button) return;
+    const collapse = sceneTreeExpandedRefs.size > 0;
+    const label = collapse ? 'Collapse all' : 'Expand all';
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.replaceChildren(sceneTreeIconElement(collapse ? SCENE_TREE_ICON.collapseAll : SCENE_TREE_ICON.expandAll));
   }
 
   // Flips the row in place rather than re-rendering: a rebuilt node would start at
@@ -5858,6 +5888,8 @@
       toggle.addEventListener('click', () => setSceneTreeOpen(panel.classList.contains('hidden')));
       panel.querySelector('[data-buret-action="scene-tree-close"]')
         ?.addEventListener('click', () => setSceneTreeOpen(false));
+      panel.querySelector('[data-buret-action="scene-tree-expand-all"]')
+        ?.addEventListener('click', toggleSceneTreeExpandAll);
       // The context menu is portalled to <body> so the scrolling panel cannot clip
       // it, which means the click handler has to live on the document.
       document.addEventListener('click', onSceneTreeClick);
@@ -14477,6 +14509,57 @@
     return true;
   }
 
+  // A distance needs two atoms, and naming them by opening the menu twice reads as
+  // a bug. Choosing the action arms the viewer instead: the next two picks — in
+  // the 3D view or the sequence — become the ends. Selection mode is held for the
+  // duration so each pick marks itself rather than flying the camera at it.
+  let molstarMeasureSession = null;
+  function cancelDistanceMeasurement(message) {
+    const session = molstarMeasureSession;
+    if (!session) return;
+    molstarMeasureSession = null;
+    try { session.subscription?.unsubscribe?.(); } catch (_) {}
+    document.removeEventListener('keydown', session.onKeyDown, true);
+    const plugin = activeMolstarViewer()?.plugin;
+    if (plugin) plugin.selectionMode = session.restoreMode;
+    if (message) setStatus(message);
+  }
+
+  function beginDistanceMeasurement() {
+    const plugin = activeMolstarViewer()?.plugin;
+    const measurement = plugin?.managers?.structure?.measurement;
+    const clicks = plugin?.behaviors?.interaction?.click;
+    if (typeof measurement?.addDistance !== 'function' || typeof clicks?.subscribe !== 'function') return false;
+    cancelDistanceMeasurement();
+    const Loci = window.molstar?.lib?.loci?.Loci;
+    const session = { first: null, restoreMode: plugin.selectionMode === true, subscription: null, onKeyDown: null };
+    session.onKeyDown = event => {
+      if (event.key === 'Escape') cancelDistanceMeasurement('[web] Distance measurement cancelled.');
+    };
+    plugin.selectionMode = true;
+    document.addEventListener('keydown', session.onKeyDown, true);
+    session.subscription = clicks.subscribe(event => {
+      const loci = molstarContextElementLoci(event?.current?.loci);
+      if (!loci || molstarLociIsEmpty(loci)) return;
+      // Mol* hands the same pick over twice a few milliseconds apart; the repeat
+      // carries the same loci, so it is dropped rather than taken for a second end.
+      if (session.first && Loci?.areEqual?.(session.first, loci)) return;
+      if (!session.first) {
+        session.first = loci;
+        setStatus('[web] First point set. Pick the second one, Escape cancels.');
+        return;
+      }
+      const first = session.first;
+      cancelDistanceMeasurement();
+      Promise.resolve(measurement.addDistance(first, loci))
+        .then(() => setStatus('[web] Distance measured.'))
+        .catch(error => setStatus('[web] Measure distance failed.\n\n' + (error?.message || String(error)), 'error'));
+    });
+    molstarMeasureSession = session;
+    setStatus('[web] Pick two atoms to measure the distance. Escape cancels.');
+    return true;
+  }
+
   async function deleteMolstarContextLoci(target, loci, applyGranularity = true) {
     if (!loci || molstarLociIsEmpty(loci)) return false;
     const plugin = activeViewer?.plugin;
@@ -14679,7 +14762,7 @@
           actions.push(['analyze:surroundings', 'Select surroundings (5 Å)']);
         }
         actions.push(['analyze:label', `Label ${noun}`]);
-        actions.push(['analyze:distance', molstarMeasureAnchor ? 'Measure distance to anchor' : 'Measure distance']);
+        actions.push(['analyze:distance', 'Measure distance']);
       }
     }
     actions.push(['save-modified', 'Save modified structure']);
@@ -14831,20 +14914,7 @@
         await measurement.addLabel(loci);
         setStatus(`[web] Labelled ${targetLabel}.`);
       } else if (action === 'analyze:distance') {
-        const measurement = activeViewer?.plugin?.managers?.structure?.measurement;
-        const loci = molstarContextElementLoci(target.atomLoci || target.loci);
-        if (!loci) throw new Error('No Mol* atom is available to measure.');
-        if (!molstarMeasureAnchor) {
-          molstarMeasureAnchor = { loci, label: targetLabel };
-          setStatus(`[web] Distance anchor set at ${targetLabel}. Right-click another atom and choose Measure distance.`);
-        } else if (typeof measurement?.addDistance === 'function') {
-          await measurement.addDistance(molstarMeasureAnchor.loci, loci);
-          setStatus(`[web] Measured distance ${molstarMeasureAnchor.label} → ${targetLabel}.`);
-          molstarMeasureAnchor = null;
-        } else {
-          molstarMeasureAnchor = null;
-          throw new Error('No Mol* measurement manager is available.');
-        }
+        if (!beginDistanceMeasurement()) throw new Error('No Mol* measurement manager is available.');
       } else {
         setStatus(`[web] ${label} is unavailable.`);
       }

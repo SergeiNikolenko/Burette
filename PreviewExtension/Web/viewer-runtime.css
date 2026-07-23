@@ -2436,6 +2436,12 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   text-transform: uppercase;
   color: var(--buret-molstar-muted-text);
 }
+.buret-scene-tree-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
 .buret-scene-tree-header-action {
   display: grid;
   place-items: center;
