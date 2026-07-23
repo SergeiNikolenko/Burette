@@ -13,9 +13,24 @@ type XyzrenderPresetOption = {
 };
 
 type SemiempiricalMethod = "RM1" | "AM1" | "PM3" | "PM6" | "PM6_D" | "PM6_D3H4" | "PM6_SP" | "AM1_STAR";
+type ConformerVariant = "DG" | "KDG" | "ETDG" | "ETDGv2" | "ETKDG" | "ETKDGv2" | "ETKDGv3" | "srETKDGv3";
+type MmffVariant = "MMFF94" | "MMFF94s";
+
+const CONFORMER_VARIANTS: ConformerVariant[] = [
+  "DG", "KDG", "ETDG", "ETDGv2", "ETKDG", "ETKDGv2", "ETKDGv3", "srETKDGv3",
+];
+const MMFF_VARIANTS: MmffVariant[] = ["MMFF94", "MMFF94s"];
+const SEMIEMPIRICAL_METHODS: SemiempiricalMethod[] = [
+  "RM1", "AM1", "PM3", "PM6", "PM6_D", "PM6_D3H4", "PM6_SP", "AM1_STAR",
+];
+const CLUSTER_CUTOFFS = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9];
+
+function semiempiricalLabel(method: SemiempiricalMethod) {
+  return method === "AM1_STAR" ? "AM1*" : method;
+}
 
 type GridControlProps = {
-  format: "csv" | "sdf" | "smiles" | "tsv";
+  format: "csv" | "dwar" | "sdf" | "smiles" | "tsv";
   label: string;
   exportEnabled: boolean;
   selectionEnabled: boolean;
@@ -32,8 +47,8 @@ type GridControlProps = {
   evaluatingSemiempirical: boolean;
   semiempiricalEnabled: boolean;
   semiempiricalMethod: SemiempiricalMethod;
-  conformerVariant: "DG" | "KDG" | "ETDG" | "ETDGv2" | "ETKDG" | "ETKDGv2" | "ETKDGv3" | "srETKDGv3";
-  mmffVariant: "MMFF94" | "MMFF94s";
+  conformerVariant: ConformerVariant;
+  mmffVariant: MmffVariant;
   clusterEnabled: boolean;
   clustering: boolean;
   findingSimilar: boolean;
@@ -41,6 +56,7 @@ type GridControlProps = {
   clusterRepresentativesAvailable: boolean;
   similarityQuerySelected: boolean;
   clusterCutoff: number;
+  selectedCount: number;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
   onSortChange: (value: string) => void;
@@ -69,8 +85,8 @@ type GridControlProps = {
   onSemiempiricalMethodChange: (value: SemiempiricalMethod) => void;
   onGenerate3D: () => void;
   onOptimizeGeometry: () => void;
-  onConformerVariantChange: (value: GridControlProps["conformerVariant"]) => void;
-  onMmffVariantChange: (value: GridControlProps["mmffVariant"]) => void;
+  onConformerVariantChange: (value: ConformerVariant) => void;
+  onMmffVariantChange: (value: MmffVariant) => void;
   onRendererSwitch: (value: "molstar") => void;
   onRdkitUseInputCoordsChange: (checked: boolean) => void;
 };
@@ -97,6 +113,59 @@ function ControlTooltip({ label }: { label: string }) {
   return <span className="buret-control-tooltip" role="tooltip" aria-hidden="true">{label}</span>;
 }
 
+function Icon({ paths }: { paths: React.ReactNode }) {
+  return (
+    <svg
+      className="ab-ico"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths}
+    </svg>
+  );
+}
+
+const ICONS = {
+  generate3d: <Icon paths={<><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z" /><path d="M3 8l9 5 9-5" /><path d="M12 13v8" /></>} />,
+  optimize: <Icon paths={<><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></>} />,
+  energy: <Icon paths={<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />} />,
+  align: <Icon paths={<><path d="m12 2 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5" /></>} />,
+  cluster: <Icon paths={<><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>} />,
+  findSimilar: <Icon paths={<><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>} />,
+  exportDiverse: <Icon paths={<><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" /><path d="M12 3v13" /><path d="m7 8 5-5 5 5" /></>} />,
+  selectAll: <Icon paths={<><rect x="3" y="3" width="18" height="18" rx="3" /><path d="m8 12 3 3 5-6" /></>} />,
+  clearSelection: <Icon paths={<><rect x="3" y="3" width="18" height="18" rx="3" /><path d="m9 9 6 6M15 9l-6 6" /></>} />,
+  copy: <Icon paths={<><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></>} />,
+};
+
+function MiniSelect<T extends string>({ value, options, ariaLabel, disabled, formatOption, onChange }: {
+  value: T;
+  options: T[];
+  ariaLabel: string;
+  disabled?: boolean;
+  formatOption?: (option: T) => string;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <select
+      className="ab-mini"
+      aria-label={ariaLabel}
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onChange(event.currentTarget.value as T)}
+    >
+      {options.map((option) => (
+        <option key={option} value={option}>{formatOption ? formatOption(option) : option}</option>
+      ))}
+    </select>
+  );
+}
+
 function SegmentedControl<T extends string>({
   ariaLabel,
   options,
@@ -110,8 +179,19 @@ function SegmentedControl<T extends string>({
   dataAttribute: string;
   onChange: (value: T) => void;
 }) {
+  const trackRef = React.useRef<HTMLDivElement>(null);
+  const [thumb, setThumb] = React.useState<{ left: number; width: number } | null>(null);
+
+  React.useLayoutEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const active = track.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
+    if (active && active.offsetWidth > 0) setThumb({ left: active.offsetLeft, width: active.offsetWidth });
+  }, [value, options.length]);
+
   return (
-    <div className="buret-grid-segmented-control" role="group" aria-label={ariaLabel}>
+    <div className="ab-seg buret-grid-segmented-control" role="group" aria-label={ariaLabel} ref={trackRef}>
+      {thumb ? <span className="ab-thumb" style={{ left: thumb.left, width: thumb.width }} aria-hidden="true" /> : null}
       {options.map((option) => (
         <button
           key={option.value}
@@ -126,62 +206,6 @@ function SegmentedControl<T extends string>({
           {option.label}
         </button>
       ))}
-    </div>
-  );
-}
-
-function GridViewControls(props: GridControlProps) {
-  return (
-    <div className="buret-grid-control-group buret-grid-view-group">
-      <SegmentedControl
-        ariaLabel="Grid view mode"
-        dataAttribute="buret-grid-view-mode"
-        value={props.viewMode}
-        onChange={props.onViewModeChange}
-        options={[
-          { value: "cards", label: "Cards" },
-          { value: "table", label: "Table" },
-        ]}
-      />
-      <button
-        id="table-columns"
-        className="buret-toggle-button buret-table-columns-button"
-        type="button"
-        aria-pressed="false"
-        onClick={props.onToggleTableColumns}
-      >
-        Columns
-        <ControlTooltip label="Choose visible table columns" />
-      </button>
-      <button
-        id="show-properties"
-        className="buret-toggle-button"
-        type="button"
-        aria-pressed="false"
-        onClick={props.onShowProperties}
-      >
-        Properties
-        <ControlTooltip label="Show molecule properties in cards" />
-      </button>
-    </div>
-  );
-}
-
-function GridRenderControls(props: GridControlProps) {
-  if (!props.substructureSearch && !props.rendererSwitch) return null;
-  return (
-    <div className="buret-grid-control-group buret-grid-render-group">
-      <span className="buret-grid-control-label">Render</span>
-      <SegmentedControl
-        ariaLabel="Molecule renderer"
-        dataAttribute="buret-grid-card-renderer"
-        value={props.cardRenderer}
-        onChange={props.onSetCardRenderer}
-        options={[
-          { value: "rdkit", label: "RDKit" },
-          ...(props.supportsXyzrenderCards ? [{ value: "xyzrender" as const, label: "xyzrender" }] : []),
-        ]}
-      />
     </div>
   );
 }
@@ -218,168 +242,370 @@ function XyzrenderStyleControl(props: GridControlProps) {
   );
 }
 
-function SelectionControls(props: GridControlProps) {
+function ComputeSection(props: GridControlProps & { onRun: (action: () => void) => void }) {
+  const noSelection = props.selectedCount === 0;
   return (
-    <div className="buret-selection-actions" hidden={!props.selectionEnabled}>
-      <button id="select-all" className="buret-toggle-button" type="button" onClick={props.onSelectAll}>
-        Select all
-        <ControlTooltip label="Select all visible molecules" />
-      </button>
-      <button id="clear-selection" className="buret-toggle-button" type="button" onClick={props.onClearSelection}>
-        Clear selection
-        <ControlTooltip label="Clear selected molecules" />
-      </button>
-    </div>
+    <>
+      <div className="ab-group">Compute · <span className="ab-group-accent">Metal GPU</span></div>
+      <div className="ab-row">
+        <button
+          id="generate-3d-selected"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          disabled={props.generating3d || noSelection}
+          title="Generate and selected-MMFF-optimize conformers for selected molecules"
+          onClick={() => props.onRun(props.onGenerate3D)}
+        >
+          {ICONS.generate3d}
+          <span className="ab-item-title" data-buret-grid-generate-3d-label>
+            {props.generating3d ? "Generating..." : "Generate 3D"}
+          </span>
+        </button>
+        <MiniSelect
+          ariaLabel="Conformer generation method"
+          value={props.conformerVariant}
+          options={CONFORMER_VARIANTS}
+          disabled={props.generating3d}
+          onChange={props.onConformerVariantChange}
+        />
+      </div>
+      <div className="ab-row">
+        <button
+          id="optimize-geometry-selected"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          disabled={props.generating3d || noSelection}
+          title="Optimize selected input 3D coordinates with the chosen MMFF variant on Metal"
+          onClick={() => props.onRun(props.onOptimizeGeometry)}
+        >
+          {ICONS.optimize}
+          <span className="ab-item-title">{props.generating3d ? "Working..." : "Optimize geometry"}</span>
+        </button>
+        <MiniSelect
+          ariaLabel="MMFF optimization variant"
+          value={props.mmffVariant}
+          options={MMFF_VARIANTS}
+          disabled={props.generating3d}
+          onChange={props.onMmffVariantChange}
+        />
+      </div>
+      {props.semiempiricalEnabled ? (
+        <div className="ab-row">
+          <button
+            id="calculate-semiempirical-selected"
+            className="ab-item"
+            type="button"
+            role="menuitem"
+            disabled={props.evaluatingSemiempirical || noSelection}
+            aria-busy={props.evaluatingSemiempirical ? "true" : "false"}
+            title="Calculate native semi-empirical energies and atomic charges and write them to Grid"
+            onClick={() => props.onRun(props.onEvaluateSemiempirical)}
+          >
+            {ICONS.energy}
+            <span className="ab-item-title">
+              {props.evaluatingSemiempirical ? "Calculating..." : "Energy & charges"}
+            </span>
+          </button>
+          <MiniSelect
+            ariaLabel="Semi-empirical method"
+            value={props.semiempiricalMethod}
+            options={SEMIEMPIRICAL_METHODS}
+            disabled={props.evaluatingSemiempirical}
+            formatOption={semiempiricalLabel}
+            onChange={props.onSemiempiricalMethodChange}
+          />
+        </div>
+      ) : null}
+      <div className="ab-row">
+        <button
+          id="align-selected-poses"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          disabled={props.aligningPoses || props.selectedCount < 2}
+          aria-busy={props.aligningPoses ? "true" : "false"}
+          title="Align selected 3D poses to the first selected row on Metal and write scores to Grid"
+          onClick={() => props.onRun(props.onAlignSelectedPoses)}
+        >
+          {ICONS.align}
+          <span className="ab-item-title">{props.aligningPoses ? "Aligning..." : "Align & compare"}</span>
+        </button>
+      </div>
+    </>
   );
 }
 
-function ClusterControls(props: GridControlProps) {
+function CollectionSection(props: GridControlProps & { onRun: (action: () => void) => void }) {
   if (!props.clusterEnabled) return null;
+  const clusterBusy = props.clustering || props.findingSimilar;
   return (
-    <div className="buret-grid-control-group buret-grid-cluster-group" aria-label="Molecular clustering">
-      <label className="buret-grid-cluster-cutoff">
-        Similarity
+    <>
+      <div className="ab-separator" />
+      <div className="ab-group">Collection</div>
+      <div className="ab-row">
+        <button
+          id="cluster-molecules"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          disabled={props.findingSimilar}
+          aria-busy={props.clustering ? "true" : "false"}
+          title="Cluster selected, filtered, or all molecules"
+          onClick={() => props.onRun(props.onCluster)}
+        >
+          {ICONS.cluster}
+          <span className="ab-item-title" data-buret-grid-cluster-label>
+            {props.clustering
+              ? "Cancel clustering"
+              : props.selectedCount
+                ? `Cluster selected (${props.selectedCount.toLocaleString()})`
+                : "Cluster all"}
+          </span>
+        </button>
         <select
           id="cluster-cutoff"
+          className="ab-mini"
           aria-label="Tanimoto similarity cutoff"
           value={props.clusterCutoff.toFixed(2)}
-          disabled={props.clustering}
+          disabled={clusterBusy}
           onChange={(event) => props.onClusterCutoffChange(Number(event.currentTarget.value))}
         >
-          {[0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9].map((cutoff) => (
+          {CLUSTER_CUTOFFS.map((cutoff) => (
             <option key={cutoff} value={cutoff.toFixed(2)}>{cutoff.toFixed(2)}</option>
           ))}
         </select>
-      </label>
+      </div>
+      <div className="ab-row">
+        <button
+          id="find-similar-molecules"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          disabled={clusterBusy || !props.clusterRepresentativesAvailable || !props.similarityQuerySelected}
+          aria-busy={props.findingSimilar ? "true" : "false"}
+          title="Find the top 50 matches to the single selected molecule in the latest clustered snapshot"
+          onClick={() => props.onRun(props.onFindSimilar)}
+        >
+          {ICONS.findSimilar}
+          <span className="ab-item-title" data-buret-grid-similarity-label>
+            {props.findingSimilar ? "Searching..." : "Find similar"}
+          </span>
+        </button>
+      </div>
+      <div className="ab-row">
+        <button
+          id="export-cluster-representatives"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          disabled={
+            props.clustering
+            || props.exportingClusterRepresentatives
+            || !props.clusterRepresentativesAvailable
+          }
+          aria-busy={props.exportingClusterRepresentatives ? "true" : "false"}
+          title="Export the immutable representative subset, structures, table, and provenance report"
+          onClick={() => props.onRun(props.onExportClusterRepresentatives)}
+        >
+          {ICONS.exportDiverse}
+          <span className="ab-item-title" data-buret-grid-representative-export-label>
+            {props.exportingClusterRepresentatives ? "Exporting..." : "Export diverse"}
+          </span>
+        </button>
+      </div>
+    </>
+  );
+}
+
+function SelectionSection(props: GridControlProps & { onRun: (action: () => void) => void }) {
+  const noSelection = props.selectedCount === 0;
+  return (
+    <>
+      <div className="ab-separator" />
+      <div className="ab-group">Selection</div>
+      <div className="ab-row">
+        <button
+          id="select-all"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          title="Select all visible molecules"
+          onClick={() => props.onRun(props.onSelectAll)}
+        >
+          {ICONS.selectAll}
+          <span className="ab-item-title">Select all</span>
+        </button>
+      </div>
+      <div className="ab-row">
+        <button
+          id="clear-selection"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          disabled={noSelection}
+          title="Clear selected molecules"
+          onClick={() => props.onRun(props.onClearSelection)}
+        >
+          {ICONS.clearSelection}
+          <span className="ab-item-title">Clear selection</span>
+        </button>
+      </div>
+      <div className="ab-row">
+        <button
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          disabled={noSelection}
+          title="Copy selected molecule records"
+          onClick={() => props.onRun(props.onCopySelected)}
+        >
+          {ICONS.copy}
+          <span className="ab-item-title">Copy selected</span>
+        </button>
+      </div>
+    </>
+  );
+}
+
+function ActionsMenu(props: GridControlProps) {
+  const [open, setOpen] = React.useState(false);
+  const wrapRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const onRun = React.useCallback((action: () => void) => {
+    action();
+    setOpen(false);
+  }, []);
+
+  return (
+    <div className="ab-menu-wrap" ref={wrapRef}>
       <button
-        id="cluster-molecules"
-        className="buret-toggle-button buret-cluster-button"
+        className="ab-btn"
         type="button"
-        aria-busy={props.clustering ? "true" : "false"}
-        onClick={props.onCluster}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
       >
-        <span data-buret-grid-cluster-label>{props.clustering ? "Cancel clustering" : "Cluster all"}</span>
-        <ControlTooltip label={props.clustering
-          ? "Cancel the active clustering job at its current durable boundary"
-          : "Cluster selected, filtered, or all molecules"} />
+        Actions
       </button>
-      <button
-        id="find-similar-molecules"
-        className="buret-toggle-button buret-similarity-button"
-        type="button"
-        disabled={
-          props.clustering
-          || props.findingSimilar
-          || !props.clusterRepresentativesAvailable
-          || !props.similarityQuerySelected
-        }
-        aria-busy={props.findingSimilar ? "true" : "false"}
-        onClick={props.onFindSimilar}
-      >
-        <span data-buret-grid-similarity-label>
-          {props.findingSimilar ? "Searching..." : "Find similar"}
-        </span>
-        <ControlTooltip label="Find the top 50 matches to the single selected molecule in the latest clustered snapshot" />
-      </button>
-      <button
-        id="export-cluster-representatives"
-        className="buret-toggle-button buret-cluster-export-button"
-        type="button"
-        disabled={props.clustering || props.exportingClusterRepresentatives || !props.clusterRepresentativesAvailable}
-        aria-busy={props.exportingClusterRepresentatives ? "true" : "false"}
-        onClick={props.onExportClusterRepresentatives}
-      >
-        <span data-buret-grid-representative-export-label>
-          {props.exportingClusterRepresentatives ? "Exporting..." : "Export diverse"}
-        </span>
-        <ControlTooltip label="Export the immutable representative subset, structures, table, and provenance report" />
-      </button>
+      {open ? (
+        <div className="ab-menu" role="menu">
+          <ComputeSection {...props} onRun={onRun} />
+          <CollectionSection {...props} onRun={onRun} />
+          <SelectionSection {...props} onRun={onRun} />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function SelectedOpenActions(props: GridControlProps) {
-  if (!props.selectionEnabled) return null;
+function GridActionToolbar(props: GridControlProps) {
+  const showRendererSwitch = (props.substructureSearch || props.rendererSwitch) && props.supportsXyzrenderCards;
   return (
-    <div id="selected-open-actions" className="buret-selected-open-actions" hidden>
-      <select
-        aria-label="Conformer generation method"
-        value={props.conformerVariant}
-        disabled={props.generating3d}
-        onChange={(event) => props.onConformerVariantChange(event.currentTarget.value as GridControlProps["conformerVariant"])}
+    <div
+      className="buret-toolbar-row buret-toolbar-row-view buret-actionbar"
+      role="toolbar"
+      aria-label="Grid actions"
+    >
+      <SegmentedControl
+        ariaLabel="Grid view mode"
+        dataAttribute="buret-grid-view-mode"
+        value={props.viewMode}
+        onChange={props.onViewModeChange}
+        options={[
+          { value: "table", label: "Table" },
+          { value: "cards", label: "Cards" },
+        ]}
+      />
+      <span className="ab-divider" aria-hidden="true" />
+      {/* grid-viewer owns the `hidden` attribute on both: Columns in table view,
+          Properties in cards view. Never pass `hidden` here or React would
+          fight that sync. */}
+      <button
+        id="table-columns"
+        className="ab-btn"
+        type="button"
+        aria-pressed="false"
+        onClick={props.onToggleTableColumns}
       >
-        {["DG", "KDG", "ETDG", "ETDGv2", "ETKDG", "ETKDGv2", "ETKDGv3", "srETKDGv3"].map((variant) => (
-          <option key={variant} value={variant}>{variant}</option>
-        ))}
-      </select>
-      <select
-        aria-label="MMFF optimization variant"
-        value={props.mmffVariant}
-        disabled={props.generating3d}
-        onChange={(event) => props.onMmffVariantChange(event.currentTarget.value as GridControlProps["mmffVariant"])}
+        Columns
+        <ControlTooltip label="Choose visible table columns" />
+      </button>
+      <button
+        id="show-properties"
+        className="ab-btn"
+        type="button"
+        aria-pressed="false"
+        onClick={props.onShowProperties}
       >
-        <option value="MMFF94">MMFF94</option>
-        <option value="MMFF94s">MMFF94s</option>
-      </select>
-      <button id="generate-3d-selected" className="buret-toggle-button" type="button" disabled={props.generating3d} onClick={props.onGenerate3D}>
-        <span data-buret-grid-generate-3d-label>{props.generating3d ? "Generating..." : "Generate 3D"}</span>
-        <ControlTooltip label="Generate and selected-MMFF-optimize conformers for selected molecules" />
+        Properties
+        <ControlTooltip label="Show molecule properties in cards" />
       </button>
-      <button id="optimize-geometry-selected" className="buret-toggle-button" type="button" disabled={props.generating3d} onClick={props.onOptimizeGeometry}>
-        <span data-buret-grid-optimize-geometry-label>{props.generating3d ? "Working..." : "Optimize geometry"}</span>
-        <ControlTooltip label="Optimize selected input 3D coordinates with the chosen MMFF variant on Metal" />
-      </button>
-      <button id="open-selected-molstar" className="buret-toggle-button" type="button" onClick={() => props.onRendererSwitch("molstar")}>
-        Open in Molstar
-        <ControlTooltip label="Open selected molecules in Molstar" />
-      </button>
-      <button id="open-selected-ketcher" className="buret-toggle-button" type="button" onClick={props.onOpenKetcher}>
-        Open in Ketcher
-        <ControlTooltip label="Open selected molecule in Ketcher" />
-      </button>
-      {props.semiempiricalEnabled ? (
+      {showRendererSwitch ? (
         <>
-          <select
-            aria-label="Semi-empirical method"
-            value={props.semiempiricalMethod}
-            disabled={props.evaluatingSemiempirical}
-            onChange={(event) => props.onSemiempiricalMethodChange(event.currentTarget.value as SemiempiricalMethod)}
-          >
-            <option value="RM1">RM1</option>
-            <option value="AM1">AM1</option>
-            <option value="PM3">PM3</option>
-            <option value="PM6">PM6</option>
-            <option value="PM6_D">PM6_D</option>
-            <option value="PM6_D3H4">PM6_D3H4</option>
-            <option value="PM6_SP">PM6_SP</option>
-            <option value="AM1_STAR">AM1*</option>
-          </select>
-          <button
-            id="calculate-semiempirical-selected"
-            className="buret-toggle-button"
-            type="button"
-            disabled={props.evaluatingSemiempirical}
-            aria-busy={props.evaluatingSemiempirical ? "true" : "false"}
-            onClick={props.onEvaluateSemiempirical}
-          >
-            {props.evaluatingSemiempirical
-              ? "Calculating..."
-              : `${props.semiempiricalMethod === "AM1_STAR" ? "AM1*" : props.semiempiricalMethod} energy & charges`}
-            <ControlTooltip label="Calculate native semi-empirical energies and atomic charges and write them to Grid" />
-          </button>
+          <span className="ab-divider" aria-hidden="true" />
+          <span className="ab-label">Render</span>
+          <SegmentedControl
+            ariaLabel="Molecule renderer"
+            dataAttribute="buret-grid-card-renderer"
+            value={props.cardRenderer}
+            onChange={props.onSetCardRenderer}
+            options={[
+              { value: "rdkit", label: "RDKit" },
+              { value: "xyzrender", label: "xyzrender" },
+            ]}
+          />
         </>
       ) : null}
-      <button
-        id="align-selected-poses"
-        className="buret-toggle-button"
-        type="button"
-        disabled={props.aligningPoses}
-        aria-busy={props.aligningPoses ? "true" : "false"}
-        onClick={props.onAlignSelectedPoses}
-      >
-        {props.aligningPoses ? "Aligning..." : "Align & compare"}
-        <ControlTooltip label="Align selected 3D poses to the first selected row on Metal and write scores to Grid" />
+      <XyzrenderStyleControl {...props} />
+      <label id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
+        <input
+          id="rdkit-use-input-coords"
+          type="checkbox"
+          onChange={(event) => props.onRdkitUseInputCoordsChange(event.currentTarget.checked === true)}
+        />
+        <span>Use file coords</span>
+      </label>
+      <button id="clear-smarts" className="ab-btn buret-clear-smarts" type="button" hidden onClick={props.onClearSmarts}>
+        Clear search
+        <ControlTooltip label="Clear the SMARTS search" />
       </button>
+      <span className="ab-spacer" aria-hidden="true" />
+      {props.selectionEnabled ? (
+        <div id="selected-open-actions" className="buret-selected-open-actions" hidden>
+          <button
+            id="open-selected-molstar"
+            className="ab-btn"
+            type="button"
+            onClick={() => props.onRendererSwitch("molstar")}
+          >
+            Open in Molstar
+            <ControlTooltip label="Open selected molecules in Molstar" />
+          </button>
+          <button id="open-selected-ketcher" className="ab-btn" type="button" onClick={props.onOpenKetcher}>
+            Open in Ketcher
+            <ControlTooltip label="Open selected molecule in Ketcher" />
+          </button>
+        </div>
+      ) : null}
+      <ActionsMenu {...props} />
     </div>
   );
 }
@@ -391,7 +617,9 @@ function GridControls(props: GridControlProps) {
       ? "CSV table"
       : props.format === "tsv"
         ? "TSV table"
-        : "SMILES collection";
+        : props.format === "dwar"
+          ? "DataWarrior table"
+          : "SMILES collection";
   const searchPlaceholder = props.substructureSearch
     ? "name, SMILES, metadata, SMARTS"
     : "name or table value";
@@ -455,33 +683,7 @@ function GridControls(props: GridControlProps) {
           </label>
           <div id="load-status" className="buret-load-status" />
         </div>
-        <div className="buret-toolbar-row buret-toolbar-row-view">
-          <GridViewControls {...props} />
-          <button
-            id="clear-smarts"
-            className="buret-toggle-button buret-clear-smarts"
-            type="button"
-            hidden
-            onClick={props.onClearSmarts}
-          >
-            Clear search
-            <ControlTooltip label="Clear the SMARTS search" />
-          </button>
-          <GridRenderControls {...props} />
-          <XyzrenderStyleControl {...props} />
-          <ClusterControls {...props} />
-          <div className="buret-toolbar-spacer" aria-hidden="true" />
-          <SelectedOpenActions {...props} />
-          <SelectionControls {...props} />
-          <label id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
-            <input
-              id="rdkit-use-input-coords"
-              type="checkbox"
-              onChange={(event) => props.onRdkitUseInputCoordsChange(event.currentTarget.checked === true)}
-            />
-            <span>Use file coords</span>
-          </label>
-        </div>
+        <GridActionToolbar {...props} />
       </div>
     </>
   );
