@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, open as openFile, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open as openFile, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -77,6 +77,11 @@ function parseOptions(args) {
     }
     if (arg === '--kind') {
       out.kind = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--scene') {
+      out.scene = requireValue(args, index, arg);
       index += 1;
       continue;
     }
@@ -244,8 +249,44 @@ function canonicalMode(mode) {
   return mode === 'browser-dev-shell' ? 'browser-agent-shell' : mode;
 }
 
+const SCENE_STRUCTURE_EXTENSIONS = new Set([
+  'pdb', 'ent', 'pdbqt', 'pqr', 'xpdb',
+  'cif', 'mmcif', 'mcif', 'bcif', 'mmtf',
+  'sdf', 'sd', 'mol', 'mol2', 'xyz', 'gro',
+]);
+
+function sceneModeOption(options) {
+  const mode = String(options.scene ?? '').trim();
+  if (!mode) return null;
+  if (mode === 'structureAll' || mode === 'structurePoses') return mode;
+  fail('INVALID_ARGS', '--scene must be structureAll or structurePoses.', 2);
+  return null;
+}
+
+const SCENE_MAX_FILES = 64;
+
+async function sceneFilesFor(target, options) {
+  const info = await stat(target).catch(() => null);
+  if (info?.isDirectory()) {
+    const names = await readdir(target);
+    const files = names
+      .filter(name => SCENE_STRUCTURE_EXTENSIONS.has(name.split('.').pop()?.toLowerCase() ?? ''))
+      .sort()
+      .map(name => resolve(target, name));
+    if (files.length < 2) fail('INVALID_ARGS', `--scene needs at least two structure files in ${target}.`, 2);
+    if (files.length > SCENE_MAX_FILES) fail('INVALID_ARGS', `--scene folder holds ${files.length} structure files; the limit is ${SCENE_MAX_FILES}. Point --scene at a smaller folder or pass an explicit file list.`, 2);
+    return files;
+  }
+  const files = options.rest.map(path => resolve(path));
+  if (files.length < 2) fail('INVALID_ARGS', '--scene needs a folder or at least two structure files.', 2);
+  if (files.length > SCENE_MAX_FILES) fail('INVALID_ARGS', `--scene received ${files.length} files; the limit is ${SCENE_MAX_FILES}.`, 2);
+  return files;
+}
+
 async function openBrowserAgentShell(file, options) {
-  const initialFile = resolve(file);
+  const sceneMode = sceneModeOption(options);
+  const sceneFiles = sceneMode ? await sceneFilesFor(resolve(file), options) : null;
+  const initialFile = sceneFiles ? sceneFiles[0] : resolve(file);
   const sessionDir = options.sessionDir ? resolve(options.sessionDir) : await mkdtemp(resolve(tmpdir(), 'burrete-agent-shell-'));
   const token = randomUUID();
   if (options.sessionDir) await assertBrowserSessionDirectoryAvailable(sessionDir);
@@ -265,7 +306,12 @@ async function openBrowserAgentShell(file, options) {
   const port = options.port ? Number(options.port) : await allocatePort(host);
   if (!Number.isInteger(port) || port <= 0) fail('INVALID_ARGS', '--port must be a positive integer.', 2);
   const url = new URL(`http://${hostForUrl(host)}:${port}/`);
-  url.searchParams.set('devFiles', initialFile);
+  if (sceneFiles) {
+    url.searchParams.set('devDocking', sceneFiles.join('\n'));
+    url.searchParams.set('devScene', sceneMode);
+  } else {
+    url.searchParams.set('devFiles', initialFile);
+  }
   url.searchParams.set('agentLayout', 'focus');
   await writeJsonFile(resolve(sessionDir, 'session.json'), {
     apiVersion,
@@ -281,7 +327,7 @@ async function openBrowserAgentShell(file, options) {
   const env = {
     ...process.env,
     BURRETE_DEV_DEFAULT_FILES: initialFile,
-    BURRETE_DEV_FS_ALLOW: browserDevFsAllowRoots(initialFile).join(delimiter),
+    BURRETE_DEV_FS_ALLOW: browserDevFsAllowRoots(initialFile, sceneFiles ?? []).join(delimiter),
     BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT: browserDevGeneratedFilesRoot,
     BURRETE_AGENT_SHELL_SESSION_DIR: sessionDir,
     VITE_BURRETE_AGENT_SHELL: '1',
@@ -292,6 +338,7 @@ async function openBrowserAgentShell(file, options) {
   if (hasPrebuiltAgentShell() && process.env.BURRETE_AGENT_SHELL_FORCE_VP !== '1') {
     await openPrebuiltBrowserAgentShell({
       initialFile,
+      sceneFiles,
       sessionDir,
       host,
       port,
@@ -362,14 +409,14 @@ function defaultAgentShellDistDir() {
   return resolve(repoRoot, 'apps/desktop/dist');
 }
 
-async function openPrebuiltBrowserAgentShell({ initialFile, sessionDir, host, port, url, logPath, options }) {
+async function openPrebuiltBrowserAgentShell({ initialFile, sceneFiles, sessionDir, host, port, url, logPath, options }) {
   const logHandle = await openFile(logPath, 'a');
   let childExit = null;
   const child = spawn(process.execPath, [
     agentShellServerScript,
     '--dist', agentShellDistDir,
     '--session-dir', sessionDir,
-    ...browserDevFsAllowRoots(initialFile).flatMap((root) => ['--allow', root]),
+    ...browserDevFsAllowRoots(initialFile, sceneFiles ?? []).flatMap((root) => ['--allow', root]),
     '--host', host,
     '--port', String(port),
   ], {
@@ -420,9 +467,10 @@ async function openPrebuiltBrowserAgentShell({ initialFile, sessionDir, host, po
   }, null, 2));
 }
 
-function browserDevFsAllowRoots(initialFile) {
+function browserDevFsAllowRoots(initialFile, extraFiles = []) {
   const explicitRoots = (process.env.BURRETE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
-  const roots = explicitRoots.length > 0 ? explicitRoots : [dirname(initialFile)];
+  const fileRoots = [initialFile, ...extraFiles].filter(Boolean).map(path => dirname(path));
+  const roots = explicitRoots.length > 0 ? explicitRoots : fileRoots;
   return Array.from(new Set([...roots, browserDevGeneratedFilesRoot]));
 }
 
