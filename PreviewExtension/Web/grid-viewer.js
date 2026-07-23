@@ -5150,9 +5150,19 @@
       </div>`;
   }
 
+  // Mordred's own order is alphabetical, which opens the list on ABC and ABCGG
+  // and buries molecular weight sixteen hundred rows down. Lead with the
+  // descriptors the runner gave a human label to, and keep the rest behind them
+  // in that alphabetical order.
   function descriptorEntries(row) {
     return Object.entries(row.descriptors || {})
-      .filter(([, value]) => descriptorDisplayValue(value));
+      .filter(([, value]) => descriptorDisplayValue(value))
+      .sort(([leftId, left], [rightId, right]) => {
+        const leftNamed = Boolean(left?.label) && left.label !== leftId;
+        const rightNamed = Boolean(right?.label) && right.label !== rightId;
+        if (leftNamed !== rightNamed) return leftNamed ? -1 : 1;
+        return leftId.localeCompare(rightId);
+      });
   }
 
   function descriptorDetailRow(id, value) {
@@ -6302,11 +6312,24 @@
     return String(cell.value);
   }
 
+  // One decimal flattened most of the set: molecular weight lost its fraction
+  // and every topological index collapsed onto the same handful of values.
+  // Keep integers whole and give small magnitudes the digits that carry them.
+  function descriptorNumberText(value) {
+    if (!Number.isFinite(value)) return String(value);
+    if (Number.isInteger(value)) return String(value);
+    const magnitude = Math.abs(value);
+    const text = magnitude >= 1000 ? value.toFixed(1)
+      : magnitude >= 1 ? value.toFixed(3)
+      : value.toPrecision(3);
+    return text.includes('.') ? text.replace(/\.?0+$/u, '') : text;
+  }
+
   function descriptorDisplayValue(value) {
     if (!value) return '';
     if (value.errorText) return value.errorText;
     if (value.missingKind) return value.missingKind;
-    if (typeof value.value === 'number') return value.value.toFixed(1);
+    if (typeof value.value === 'number') return descriptorNumberText(value.value);
     if (typeof value.value === 'boolean') return value.value ? 'true' : 'false';
     if (value.value === null || value.value === undefined) return '';
     return String(value.value);

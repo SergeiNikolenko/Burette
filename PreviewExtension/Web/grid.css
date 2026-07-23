@@ -1796,7 +1796,10 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
 .buret-grid-molecule-detail-descriptor-head,
 .buret-grid-molecule-detail-descriptor-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 16px minmax(52px, auto);
+  /* Name and value sit next to each other instead of at opposite edges of a
+     500px row — across that gap the eye loses the pairing. */
+  grid-template-columns: minmax(0, 240px) 16px minmax(64px, max-content);
+  justify-content: start;
   gap: 8px;
   align-items: center;
   min-width: 0;
