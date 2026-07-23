@@ -590,6 +590,12 @@ body.burette-mobile-host #buret-scene-tree {
   color: var(--buret-molstar-accent);
   background: var(--buret-toolbar-hover);
 }
+/* A spinning scene is easy to miss on a still frame, so the camera button carries
+   the state while its menu is closed. */
+.buret-rail-button[data-motion="spin"],
+.buret-rail-button[data-motion="rock"] {
+  color: var(--buret-molstar-accent);
+}
 .buret-selection-bar {
   position: fixed;
   top: var(--buret-selection-controls-top, calc(var(--buret-toolbar-safe-top) + 48px));
@@ -3548,6 +3554,9 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   align-items: center;
   gap: 6px;
   padding: 2px 8px 6px;
+}
+.buret-tree-menu-field[hidden] {
+  display: none;
 }
 .buret-tree-menu-field > span {
   flex: 0 0 auto;

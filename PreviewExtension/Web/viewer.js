@@ -6307,6 +6307,18 @@
     ['remove', 'Remove'],
     ['intersect', 'Keep']
   ];
+  // Mol* keeps scene motion in the trackball section of its viewport settings, and
+  // the rail replaced that panel — so the camera menu carries it instead. The
+  // speeds are the library's own defaults and bounds for each animation.
+  const VIEWPORT_MOTIONS = [
+    ['off', 'Off'],
+    ['spin', 'Spin'],
+    ['rock', 'Rock']
+  ];
+  const VIEWPORT_MOTION_SPEEDS = {
+    spin: { value: 0.1, min: -2, max: 2, step: 0.01 },
+    rock: { value: 0.3, min: -5, max: 5, step: 0.1 }
+  };
   const VIEWPORT_ICON = {
     camera: ['M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z', 'M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'],
     layFlat: ['M3 8.5 12 4l9 4.5-9 4.5Z', 'm3 15 9 4.5L21 15'],
@@ -6413,6 +6425,81 @@
     viewportMenuItem(menu, 'Reset zoom', 'camera-reset', { icon: SCENE_TREE_ICON.focus });
     viewportMenuItem(menu, 'Lay flat', 'camera-orient', { icon: VIEWPORT_ICON.layFlat });
     viewportMenuItem(menu, 'Reset axes', 'camera-axes', { icon: SCENE_TREE_ICON.restore });
+    viewportMotionControls(menu);
+  }
+
+  function viewportMotionState() {
+    const animate = viewportPlugin()?.canvas3d?.props?.trackball?.animate;
+    const name = VIEWPORT_MOTION_SPEEDS[animate?.name] ? animate.name : 'off';
+    return { name, speed: Number(animate?.params?.speed) };
+  }
+
+  function viewportMotionControls(menu) {
+    const state = viewportMotionState();
+    sceneTreeMenuSection(menu, 'Motion');
+    const segment = document.createElement('div');
+    segment.className = 'buret-viewport-segment';
+    segment.setAttribute('role', 'group');
+    segment.setAttribute('aria-label', 'Scene motion');
+    for (const [name, label] of VIEWPORT_MOTIONS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-viewport-segment-button';
+      button.dataset.buretViewportMenu = 'camera-motion';
+      button.dataset.motion = name;
+      button.setAttribute('aria-pressed', name === state.name ? 'true' : 'false');
+      button.textContent = label;
+      segment.appendChild(button);
+    }
+    menu.appendChild(segment);
+
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
+    row.dataset.buretViewportMotionSpeed = '1';
+    const caption = document.createElement('span');
+    caption.textContent = 'Speed';
+    const control = document.createElement('input');
+    control.type = 'range';
+    control.className = 'buret-tree-menu-range';
+    control.dataset.buretViewportSlider = 'motion-speed';
+    const readout = document.createElement('span');
+    readout.className = 'buret-tree-menu-slider-value';
+    row.append(caption, control, readout);
+    menu.appendChild(row);
+    // The menu is still detached at this point, so the row has to be handed over
+    // rather than looked up in the document.
+    updateViewportMotionSpeed(state, row);
+  }
+
+  // Spin and rock do not share a speed range, so the slider is re-scaled to the
+  // running animation and hidden altogether once motion is off.
+  function updateViewportMotionSpeed(state, target) {
+    const row = target || document.querySelector('[data-buret-viewport-motion-speed]');
+    const limits = VIEWPORT_MOTION_SPEEDS[state.name];
+    if (!row) return;
+    row.hidden = !limits;
+    if (!limits) return;
+    const speed = Number.isFinite(state.speed) ? state.speed : limits.value;
+    const control = row.querySelector('input');
+    control.min = String(limits.min);
+    control.max = String(limits.max);
+    control.step = String(limits.step);
+    control.value = String(speed);
+    row.querySelector('.buret-tree-menu-slider-value').textContent = `${speed.toFixed(2)}/s`;
+  }
+
+  function setViewportMotion(name, speed) {
+    const plugin = viewportPlugin();
+    const trackball = plugin?.canvas3d?.props?.trackball;
+    const limits = VIEWPORT_MOTION_SPEEDS[name];
+    if (!trackball) return;
+    // Spin turns about an axis in camera space; rock only takes a speed.
+    const params = { speed: Number.isFinite(speed) ? speed : limits?.value };
+    if (name === 'spin') params.axis = [0, -1, 0];
+    const animate = limits ? { name, params } : { name: 'off', params: {} };
+    plugin.canvas3d.setProps({ trackball: { ...trackball, animate } });
+    document.querySelector('[data-buret-viewport-action="camera"]')
+      ?.setAttribute('data-motion', limits ? name : 'off');
   }
 
   // The registry ships seventy queries, twenty of which are single amino acids;
@@ -6553,7 +6640,15 @@
     if (action === 'camera-reset') plugin.canvas3d?.requestCameraReset?.({ durationMs: 250 });
     else if (action === 'camera-orient') plugin.managers.camera.orientAxes(undefined, 250);
     else if (action === 'camera-axes') plugin.managers.camera.resetAxes(250);
-    else if (action === 'modifier') {
+    else if (action === 'camera-motion') {
+      setViewportMotion(control.dataset.motion);
+      for (const button of control.parentElement?.children || []) {
+        button.setAttribute('aria-pressed', button === control ? 'true' : 'false');
+      }
+      updateViewportMotionSpeed(viewportMotionState());
+      // Motion is judged by watching it, so the menu stays up to be adjusted.
+      return true;
+    } else if (action === 'modifier') {
       selectionQueryModifier = control.dataset.modifier || 'set';
       for (const button of control.parentElement?.children || []) {
         button.setAttribute('aria-pressed', button === control ? 'true' : 'false');
@@ -6678,6 +6773,14 @@
       // While filtering, the headings and the fold-away groups get in the way, so
       // the menu flattens to just what matched and restores itself when cleared.
       document.addEventListener('input', event => {
+        const slider = event.target.closest('[data-buret-viewport-slider="motion-speed"]');
+        if (slider) {
+          const speed = Number(slider.value);
+          setViewportMotion(viewportMotionState().name, speed);
+          const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
+          if (readout) readout.textContent = `${speed.toFixed(2)}/s`;
+          return;
+        }
         const search = event.target.closest('[data-buret-viewport-search]');
         const menu = search?.closest('#buret-viewport-menu');
         if (!menu) return;
@@ -6715,6 +6818,8 @@
     }
     rail.querySelector('[data-buret-viewport-action="illumination"]')
       ?.setAttribute('aria-pressed', plugin?.canvas3d?.props?.illumination?.enabled === true ? 'true' : 'false');
+    rail.querySelector('[data-buret-viewport-action="camera"]')
+      ?.setAttribute('data-motion', viewportMotionState().name);
     updateSelectionBar();
   }
 
