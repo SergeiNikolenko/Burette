@@ -29,7 +29,7 @@ assert.match(gridViewer, /evaluateSemiempiricalGridSelection/);
 assert.match(gridViewer, /semiempiricalEnabled: caps\.cluster/);
 assert.match(gridViewer, /SEMIEMPIRICAL_METHOD_STORAGE_KEY/);
 assert.match(gridUi, /id="calculate-semiempirical-selected"/);
-assert.match(gridUi, /aria-label="Semi-empirical method"/);
-assert.match(gridUi, /<option value="PM6">PM6<\/option>/);
+assert.match(gridUi, /ariaLabel="Semi-empirical method"/);
+assert.match(gridUi, /SEMIEMPIRICAL_METHODS: SemiempiricalMethod\[\] = \[[^\]]*"PM6"[^\]]*\]/);
 
 console.log("semi-empirical Grid workflow contract tests passed");
