@@ -8,30 +8,36 @@ import type { OpenDocumentsResult, ViewerPreferences } from "../types";
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 type OpenDocuments = (paths: string[]) => Promise<OpenDocumentsResult | null | undefined>;
 
-// Preferences the mounted viewers can apply without being rebuilt. Everything
-// else is baked into the viewer runtime HTML, so changing it still reopens the
-// document. `theme` qualifies because the runtime already carries the token sets
-// for both themes and switches between them at runtime.
-const LIVE_APPLIED_PREFERENCE_KEYS = ["theme"] as const satisfies readonly (keyof ViewerPreferences)[];
+// Preferences the mounted viewers can apply without being rebuilt, each mapped to
+// the runtime message that applies it. Everything else is baked into the viewer
+// runtime HTML, so changing it still reopens the document. `theme` qualifies
+// because the runtime carries the token sets for both themes; `molstarStyle`
+// because the runtime can re-render into any style in place.
+const LIVE_APPLIED_PREFERENCE_MESSAGES = {
+  theme: "setViewerTheme",
+  molstarStyle: "setViewerStyle",
+} as const satisfies Partial<Record<keyof ViewerPreferences, string>>;
 
-function onlyLiveAppliedPreferencesChanged(previous: ViewerPreferences, next: ViewerPreferences) {
-  const live = new Set<string>(LIVE_APPLIED_PREFERENCE_KEYS);
-  const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
-  let liveChanged = false;
-  for (const key of keys) {
-    if (previous[key as keyof ViewerPreferences] === next[key as keyof ViewerPreferences]) continue;
-    if (!live.has(key)) return false;
-    liveChanged = true;
+type LiveAppliedPreferenceKey = keyof typeof LIVE_APPLIED_PREFERENCE_MESSAGES;
+
+function changedLiveAppliedKeys(previous: ViewerPreferences, next: ViewerPreferences) {
+  const changed: LiveAppliedPreferenceKey[] = [];
+  for (const key of Object.keys(next) as (keyof ViewerPreferences)[]) {
+    if (previous[key] === next[key]) continue;
+    if (!(key in LIVE_APPLIED_PREFERENCE_MESSAGES)) return null;
+    changed.push(key as LiveAppliedPreferenceKey);
   }
-  return liveChanged;
+  return changed.length ? changed : null;
 }
 
-function broadcastViewerTheme(theme: ViewerPreferences["theme"]) {
+function broadcastLiveAppliedPreferences(keys: LiveAppliedPreferenceKey[], preferences: ViewerPreferences) {
   for (const frame of document.querySelectorAll<HTMLIFrameElement>("iframe[data-document-id]")) {
-    frame.contentWindow?.postMessage({
-      source: "burrete-host",
-      body: { type: "setViewerTheme", value: theme },
-    }, "*");
+    for (const key of keys) {
+      frame.contentWindow?.postMessage({
+        source: "burrete-host",
+        body: { type: LIVE_APPLIED_PREFERENCE_MESSAGES[key], value: preferences[key] },
+      }, "*");
+    }
   }
 }
 
@@ -72,8 +78,9 @@ export function useAppPreferenceEffects({
     }
     // Reopening would drop the live Mol* scene (camera, components, selections),
     // so preferences the mounted viewers can apply themselves are pushed instead.
-    if (onlyLiveAppliedPreferencesChanged(previousPreferences, preferences)) {
-      broadcastViewerTheme(preferences.theme);
+    const liveKeys = changedLiveAppliedKeys(previousPreferences, preferences);
+    if (liveKeys) {
+      broadcastLiveAppliedPreferences(liveKeys, preferences);
       return;
     }
     const path = activeTab?.location.kind === "file" && !isTemporaryDocumentPath(activeTab.location.path)
