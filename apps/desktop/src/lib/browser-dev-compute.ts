@@ -5,11 +5,18 @@ import type {
   MmffVariant,
 } from "./compute-conformer";
 import type { ConformerGenerationResult } from "./conformer-generation";
+import {
+  fingerprintBrowserChemicalSpaceRecords,
+  type BrowserChemicalSpaceInputRecord,
+  type ChemicalSpaceOptions,
+  type ChemicalSpaceProgress,
+  type ChemicalSpaceResult,
+} from "./compute-cluster";
 import type { StandaloneAlignmentResult, StandaloneComputeSource, StandaloneSemiempiricalResult } from "./standalone-compute";
 import { stableTextDocumentId } from "./file-export";
 import type { TextFileDocument } from "../types";
 
-type BrowserDevNativeComputeOperation = "generate3d" | "generateEnsemble" | "optimizeGeometry" | "semiempiricalRm1" | "alignPoses";
+type BrowserDevNativeComputeOperation = "generate3d" | "generateEnsemble" | "optimizeGeometry" | "semiempiricalRm1" | "alignPoses" | "chemicalSpace";
 
 type BrowserDevNativeComputeResponse<T> = {
   provider: "nativeMetalDevBridge";
@@ -32,6 +39,93 @@ export function runBrowserDevAlignment(
   source: StandaloneComputeSource,
 ): Promise<StandaloneAlignmentResult> {
   return runBrowserDevNativeCompute(source, "alignPoses");
+}
+
+export async function runBrowserDevChemicalSpace(
+  records: BrowserChemicalSpaceInputRecord[],
+  options: ChemicalSpaceOptions,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+): Promise<ChemicalSpaceResult> {
+  const fingerprints = await prepareBrowserChemicalSpaceFingerprints(
+    records,
+    onProgress,
+    signal,
+  );
+  if (signal?.aborted) throw abortError();
+  onProgress({ phase: "embedding" });
+  return executeBrowserChemicalSpace(fingerprints, options);
+}
+
+export async function runBrowserDevChemicalSpaceStudy(
+  records: BrowserChemicalSpaceInputRecord[],
+  frames: ChemicalSpaceOptions[],
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+): Promise<ChemicalSpaceResult[]> {
+  const fingerprints = await prepareBrowserChemicalSpaceFingerprints(
+    records,
+    onProgress,
+    signal,
+  );
+  const results: ChemicalSpaceResult[] = [];
+  for (let index = 0; index < frames.length; index += 1) {
+    if (signal?.aborted) throw abortError();
+    onProgress({
+      phase: "study",
+      completedFrames: index,
+      totalFrames: frames.length,
+    });
+    results.push(await executeBrowserChemicalSpace(fingerprints, frames[index]));
+  }
+  onProgress({
+    phase: "study",
+    completedFrames: frames.length,
+    totalFrames: frames.length,
+  });
+  return results;
+}
+
+function prepareBrowserChemicalSpaceFingerprints(
+  records: BrowserChemicalSpaceInputRecord[],
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+) {
+  return fingerprintBrowserChemicalSpaceRecords(
+    records,
+    (completedRecords, totalRecords) => onProgress({
+      phase: "fingerprints",
+      completedRecords,
+      totalRecords,
+    }),
+    signal,
+  );
+}
+
+function executeBrowserChemicalSpace(
+  fingerprints: Awaited<ReturnType<typeof fingerprintBrowserChemicalSpaceRecords>>,
+  options: ChemicalSpaceOptions,
+) {
+  return runBrowserDevNativeCompute<ChemicalSpaceResult>(
+    {
+      title: "browser-chemical-space",
+      extension: "fingerprints",
+      text: "",
+    },
+    "chemicalSpace",
+    undefined,
+    {
+      options: {
+        ...options,
+        maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+      },
+      records: fingerprints.map((record) => ({
+        sourceRecordId: record.sourceRecordId,
+        fingerprintBase64: record.fingerprintBase64,
+        error: record.error,
+      })),
+    },
+  );
 }
 
 export async function runBrowserDevMetalConformer(
@@ -69,11 +163,12 @@ async function runBrowserDevNativeCompute<T>(
   source: StandaloneComputeSource,
   operation: BrowserDevNativeComputeOperation,
   conformer?: Record<string, unknown>,
+  chemicalSpace?: Record<string, unknown>,
 ): Promise<T> {
   const response = await fetch("/__burette/native-compute", {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ operation, source, conformer }),
+    body: JSON.stringify({ operation, source, conformer, chemicalSpace }),
   });
   const payload = await response.json().catch(() => null) as BrowserDevNativeComputeResponse<T> & { error?: unknown } | null;
   if (!response.ok) {
@@ -86,6 +181,12 @@ async function runBrowserDevNativeCompute<T>(
     throw new Error("Native Metal dev backend returned an invalid response.");
   }
   return payload.result;
+}
+
+function abortError() {
+  const error = new Error("Chemical-space calculation was cancelled.");
+  error.name = "AbortError";
+  return error;
 }
 
 function standaloneExtractionRecords(source: StandaloneComputeSource) {

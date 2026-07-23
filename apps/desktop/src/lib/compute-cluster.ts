@@ -139,10 +139,17 @@ export type ChemicalSpaceResult = {
 };
 
 export type ChemicalSpaceProgress = {
-  phase: "queued" | "fingerprints" | "embedding";
+  phase: "queued" | "fingerprints" | "embedding" | "study";
   completedRecords?: number;
   totalRecords?: number;
+  completedFrames?: number;
+  totalFrames?: number;
 };
+
+export type BrowserChemicalSpaceInputRecord = Pick<
+  FingerprintInputRecord,
+  "sourceRecordId" | "moleculeContentSha256" | "format" | "input"
+>;
 
 export type ClusterFilteredScope = {
   kind: "filtered";
@@ -355,45 +362,147 @@ export async function runChemicalSpaceWorkflow(
   let job: ComputeJob | null = null;
   const worker = new FingerprintWorkerClient();
   try {
-    throwIfAborted(signal);
-    job = await invoke<ComputeJob>("compute_submit_job", { request });
-    onProgress({ phase: "queued" });
-    let fingerprintStep = await invoke<FingerprintExecutionStep>("compute_begin_cluster_execution", {
-      jobId: job.jobId,
-      expectedRevision: job.revision,
-    });
-    job = fingerprintStep.job;
-    while (fingerprintStep.fingerprintChunk) {
-      throwIfAborted(signal);
-      const chunk = fingerprintStep.fingerprintChunk;
-      onProgress({
-        phase: "fingerprints",
-        completedRecords: chunk.completedRecords,
-        totalRecords: chunk.totalRecords,
-      });
-      const result = await worker.fingerprint(chunk, signal);
-      fingerprintStep = await invoke<FingerprintExecutionStep>("compute_submit_fingerprint_chunk", { result });
-      job = fingerprintStep.job;
-    }
-    if (!fingerprintStep.readyForCompute) {
-      throw new Error("The fingerprint stage completed without a compute-ready result.");
-    }
+    job = await prepareChemicalSpaceJob(request, worker, onProgress, signal);
     throwIfAborted(signal);
     onProgress({ phase: "embedding" });
-    return await invoke<ChemicalSpaceResult>("compute_execute_chemical_space", {
-      jobId: job.jobId,
-      expectedRevision: job.revision,
-      request: {
-        ...options,
-        maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
-      },
-    });
+    return await executePreparedChemicalSpace(job, options);
   } finally {
     worker.dispose();
     if (job && !["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(job.state)) {
       await cancelComputeJob(job.jobId).catch(() => undefined);
     }
   }
+}
+
+export async function runChemicalSpaceStudyWorkflow(
+  documentId: string,
+  frames: ChemicalSpaceOptions[],
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+): Promise<ChemicalSpaceResult[]> {
+  if (frames.length < 2 || frames.length > 24) {
+    throw new Error("A parameter study requires between 2 and 24 frames.");
+  }
+  const request = clusterPreparationRequest(
+    documentId,
+    [],
+    { numerator: 0, denominator: 1 },
+    null,
+    "gpuRequired",
+  );
+  let job: ComputeJob | null = null;
+  const worker = new FingerprintWorkerClient();
+  try {
+    job = await prepareChemicalSpaceJob(request, worker, onProgress, signal);
+    const results: ChemicalSpaceResult[] = [];
+    for (let index = 0; index < frames.length; index += 1) {
+      throwIfAborted(signal);
+      onProgress({
+        phase: "study",
+        completedFrames: index,
+        totalFrames: frames.length,
+      });
+      results.push(await executePreparedChemicalSpace(job, frames[index]));
+    }
+    onProgress({
+      phase: "study",
+      completedFrames: frames.length,
+      totalFrames: frames.length,
+    });
+    return results;
+  } finally {
+    worker.dispose();
+    if (job && !["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(job.state)) {
+      await cancelComputeJob(job.jobId).catch(() => undefined);
+    }
+  }
+}
+
+export async function fingerprintBrowserChemicalSpaceRecords(
+  records: BrowserChemicalSpaceInputRecord[],
+  onProgress: (completedRecords: number, totalRecords: number) => void,
+  signal?: AbortSignal,
+): Promise<FingerprintOutputRecord[]> {
+  if (records.length < 2 || records.length > 20_000) {
+    throw new Error("Browser chemical space requires between 2 and 20000 molecular records.");
+  }
+  const worker = new FingerprintWorkerClient();
+  const sessionId = `browser-chemical-space-${crypto.randomUUID()}`;
+  const output: FingerprintOutputRecord[] = [];
+  try {
+    for (let start = 0; start < records.length; start += 256) {
+      throwIfAborted(signal);
+      const chunkRecords = records.slice(start, start + 256).map((record, offset) => ({
+        ...record,
+        ordinal: start + offset,
+      }));
+      onProgress(start, records.length);
+      const result = await worker.fingerprint({
+        sessionId,
+        jobId: sessionId,
+        startOrdinal: start,
+        completedRecords: start,
+        totalRecords: records.length,
+        settings: {
+          rdkitVersion: "2025.03.4",
+          radius: 2,
+          bitCount: 2_048,
+          useChirality: true,
+          useFeatures: false,
+          sanitize: true,
+        },
+        records: chunkRecords,
+      }, signal);
+      output.push(...result.records);
+    }
+    onProgress(records.length, records.length);
+    return output;
+  } finally {
+    worker.dispose();
+  }
+}
+
+async function prepareChemicalSpaceJob(
+  request: ReturnType<typeof clusterPreparationRequest>,
+  worker: FingerprintWorkerClient,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+) {
+  throwIfAborted(signal);
+  let job = await invoke<ComputeJob>("compute_submit_job", { request });
+  onProgress({ phase: "queued" });
+  let fingerprintStep = await invoke<FingerprintExecutionStep>("compute_begin_cluster_execution", {
+    jobId: job.jobId,
+    expectedRevision: job.revision,
+  });
+  job = fingerprintStep.job;
+  while (fingerprintStep.fingerprintChunk) {
+    throwIfAborted(signal);
+    const chunk = fingerprintStep.fingerprintChunk;
+    onProgress({
+      phase: "fingerprints",
+      completedRecords: chunk.completedRecords,
+      totalRecords: chunk.totalRecords,
+    });
+    const result = await worker.fingerprint(chunk, signal);
+    fingerprintStep = await invoke<FingerprintExecutionStep>("compute_submit_fingerprint_chunk", { result });
+    job = fingerprintStep.job;
+  }
+  if (!fingerprintStep.readyForCompute) {
+    throw new Error("The fingerprint stage completed without a compute-ready result.");
+  }
+  return job;
+}
+
+function executePreparedChemicalSpace(job: ComputeJob, options: ChemicalSpaceOptions) {
+  return invoke<ChemicalSpaceResult>("compute_execute_chemical_space", {
+    jobId: job.jobId,
+    expectedRevision: job.revision,
+    request: {
+      ...options,
+      maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+    },
+  });
 }
 
 function clusterPreparationRequest(

@@ -18,6 +18,10 @@ const artifactReader = source("apps/desktop/src-tauri/src/compute/artifact_reade
 const chemicalSpace = source("apps/desktop/src-tauri/src/compute/chemical_space.rs");
 const chemicalSpacePanel = source("apps/desktop/src/components/chemical-space-panel.tsx");
 const chemicalSpace3d = source("apps/desktop/src/components/chemical-space-3d.tsx");
+const browserDevCompute = source("apps/desktop/src/lib/browser-dev-compute.ts");
+const browserDevRoute = source("apps/desktop/vite/browser-dev/native-compute.ts");
+const devComputeBackend = source("apps/desktop/src-tauri/src/compute/dev_backend.rs");
+const agentShellServer = source("scripts/agent-shell-server.mjs");
 
 for (const command of [
   "compute_submit_job",
@@ -38,6 +42,8 @@ assert.match(workflow, /backendPolicy: "gpuPreferred"/);
 assert.match(workflow, /stage\.stageId === "tanimotoNeighbors"/);
 assert.match(workflow, /numericStage\?\.effectiveBackend === "nativeMetal"/);
 assert.match(workflow, /export async function runChemicalSpaceWorkflow/);
+assert.match(workflow, /export async function runChemicalSpaceStudyWorkflow/);
+assert.match(workflow, /fingerprintBrowserChemicalSpaceRecords/);
 assert.match(workflow, /invoke<ChemicalSpaceResult>\("compute_execute_chemical_space"/);
 assert.match(chemicalSpace, /build_tanimoto_knn_profiled/);
 assert.match(chemicalSpace, /optimize_embedding_profiled/);
@@ -51,10 +57,20 @@ assert.match(chemicalSpace3d, /new THREE\.WebGLRenderer/);
 assert.match(chemicalSpace3d, /new THREE\.PerspectiveCamera/);
 assert.match(chemicalSpace3d, /new OrbitControls/);
 assert.match(chemicalSpace3d, /raycaster\.intersectObject/);
+assert.match(chemicalSpace3d, /updatePositions/);
 assert.match(gridViewer, /body\.type === 'chemicalSpaceRequestState'/);
+assert.match(gridViewer, /body\.type === 'chemicalSpaceRequestRecords'/);
+assert.match(gridViewer, /CHEMICAL_SPACE_RECORD_LIMIT = 20000/);
 assert.match(gridViewer, /body\.type === 'chemicalSpaceSelectionChanged'/);
 assert.match(gridViewer, /body\.type === 'chemicalSpaceHoverChanged'/);
 assert.match(gridViewer, /svg\.slice\(0, 262144\)/);
+assert.match(chemicalSpacePanel, /Run animated study on Metal/);
+assert.match(chemicalSpacePanel, /interpolateStudyResult/);
+assert.match(browserDevCompute, /runBrowserDevChemicalSpaceStudy/);
+assert.match(browserDevRoute, /"chemicalSpace"/);
+assert.match(agentShellServer, /'chemicalSpace'/);
+assert.match(devComputeBackend, /DevComputeOperation::ChemicalSpace/);
+assert.match(devComputeBackend, /execute_chemical_space_from_fingerprints/);
 
 for (const baseline of [
   /rdkitVersion: "2025\.03\.4"/,

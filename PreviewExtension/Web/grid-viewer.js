@@ -10,6 +10,8 @@
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
   const CLUSTER_CUTOFF_STORAGE_KEY = 'buret.grid.clusterCutoff';
   const GRID_SELECTION_BRIDGE_LIMIT = 100000;
+  const CHEMICAL_SPACE_RECORD_LIMIT = 20000;
+  const CHEMICAL_SPACE_INPUT_BYTES_LIMIT = 8 * 1024 * 1024;
   const CONFORMER_VARIANT_STORAGE_KEY = 'buret.grid.conformerVariant';
   const MMFF_VARIANT_STORAGE_KEY = 'buret.grid.mmffVariant';
   const SEMIEMPIRICAL_METHOD_STORAGE_KEY = 'buret.grid.semiempiricalMethod';
@@ -473,6 +475,10 @@
       if (body.type === 'chemicalSpaceRequestState') {
         state.menuStateSignature = '';
         notifyGridMenuState(config());
+        return;
+      }
+      if (body.type === 'chemicalSpaceRequestRecords') {
+        postChemicalSpaceRecords(body.requestId);
         return;
       }
       if (body.type === 'chemicalSpaceHoverChanged') {
@@ -4690,6 +4696,36 @@
         });
       }
     }
+  }
+
+  function postChemicalSpaceRecords(requestId) {
+    const pool = state.remoteMode ? state.rows : state.all;
+    const records = [];
+    let inputBytes = 0;
+    for (const row of pool) {
+      if (records.length >= CHEMICAL_SPACE_RECORD_LIMIT) break;
+      const sourceRecordId = Number(row?.index);
+      if (!Number.isSafeInteger(sourceRecordId) || sourceRecordId < 0) continue;
+      const molblock = String(row?.molblock || '').trim();
+      const smiles = String(row?.smiles || '').trim();
+      const input = molblock || smiles;
+      if (!input) continue;
+      const nextBytes = new TextEncoder().encode(input).byteLength;
+      if (inputBytes + nextBytes > CHEMICAL_SPACE_INPUT_BYTES_LIMIT) break;
+      inputBytes += nextBytes;
+      records.push({
+        sourceRecordId,
+        moleculeContentSha256: `browser-${sourceRecordId}-${hash(input)}`,
+        format: molblock ? 'molblock' : 'smiles',
+        input
+      });
+    }
+    post('chemicalSpaceRecords', '', {
+      requestId: String(requestId || ''),
+      records,
+      truncated: records.length >= CHEMICAL_SPACE_RECORD_LIMIT
+        || inputBytes >= CHEMICAL_SPACE_INPUT_BYTES_LIMIT
+    });
   }
 
   function toggleSelection(index, cfg) {

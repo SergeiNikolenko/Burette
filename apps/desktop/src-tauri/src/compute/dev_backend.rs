@@ -6,6 +6,7 @@ use std::{
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use burrete_compute_core::{
     decode_native_mmff_parameters, ConformerEnginePackBuilder, ExtractedConformerParameters,
+    Fingerprint2048, FINGERPRINT_BYTES,
 };
 use burrete_compute_metal::MetalTanimotoRuntime;
 use burrete_compute_protocol::{
@@ -23,6 +24,7 @@ use crate::preview::grid_store::GridAlignmentSourceRow;
 
 use super::{
     alignment_workflow::{execute_snapshot_alignment_with_run_id, GridAlignmentRequest},
+    chemical_space::{execute_chemical_space_from_fingerprints, ChemicalSpaceRequest},
     conformer_executor::execute_conformer_distance_geometry_with_service,
     conformer_plan::ConformerMoleculeIdentity,
     conformer_stereo_executor::execute_conformer_stereo_validation,
@@ -42,6 +44,7 @@ struct DevComputeRequest {
     operation: DevComputeOperation,
     source: DevComputeSource,
     conformer: Option<DevConformerRequest>,
+    chemical_space: Option<DevChemicalSpaceRequest>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -52,6 +55,7 @@ enum DevComputeOperation {
     OptimizeGeometry,
     SemiempiricalRm1,
     AlignPoses,
+    ChemicalSpace,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +80,21 @@ struct DevConformerRecord {
     template: Option<String>,
     conformer_base64: String,
     mmff_base64: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DevChemicalSpaceRequest {
+    options: ChemicalSpaceRequest,
+    records: Vec<DevChemicalSpaceRecord>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DevChemicalSpaceRecord {
+    source_record_id: u64,
+    fingerprint_base64: Option<String>,
+    error: Option<String>,
 }
 
 pub(crate) fn run() -> Result<(), String> {
@@ -127,8 +146,63 @@ pub(crate) fn run() -> Result<(), String> {
             .map_err(|error| error.to_string())?,
         )
         .map_err(|error| error.to_string())?,
+        DevComputeOperation::ChemicalSpace => execute_chemical_space(
+            &runtime,
+            request
+                .chemical_space
+                .as_ref()
+                .ok_or("native Metal chemical-space request is missing fingerprints")?,
+        )?,
     };
     write_response(result)
+}
+
+fn execute_chemical_space(
+    runtime: &MetalTanimotoRuntime,
+    input: &DevChemicalSpaceRequest,
+) -> Result<Value, String> {
+    if input.records.len() < 2 || input.records.len() > 20_000 {
+        return Err(
+            "native Metal chemical-space request accepts between 2 and 20000 records".into(),
+        );
+    }
+    let mut fingerprints = Vec::with_capacity(input.records.len());
+    let mut source_record_ids = Vec::with_capacity(input.records.len());
+    let mut failed_records = 0usize;
+    for record in &input.records {
+        match (&record.fingerprint_base64, &record.error) {
+            (Some(encoded), None) => {
+                let bytes = STANDARD
+                    .decode(encoded)
+                    .map_err(|_| "native chemical-space fingerprint is not valid base64")?;
+                let bytes: [u8; FINGERPRINT_BYTES] = bytes.try_into().map_err(|_| {
+                    format!(
+                        "native chemical-space fingerprint must contain {FINGERPRINT_BYTES} bytes"
+                    )
+                })?;
+                fingerprints.push(Fingerprint2048::from_le_bytes(bytes));
+                source_record_ids.push(record.source_record_id);
+            }
+            (None, Some(_)) => failed_records += 1,
+            _ => {
+                return Err(
+                    "native chemical-space record must contain either a fingerprint or an error"
+                        .into(),
+                )
+            }
+        }
+    }
+    serde_json::to_value(
+        execute_chemical_space_from_fingerprints(
+            &fingerprints,
+            &source_record_ids,
+            failed_records,
+            runtime,
+            input.options,
+        )
+        .map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())
 }
 
 fn source_indexes(source: &DevComputeSource) -> Result<Vec<usize>, String> {

@@ -1,9 +1,10 @@
 use std::{num::NonZeroUsize, time::Instant};
 
 use burrete_compute_core::{
-    build_tanimoto_umap_graph, ChemicalSpaceMethod as NativeChemicalSpaceMethod,
+    build_tanimoto_umap_graph, ChemicalSpaceMethod as NativeChemicalSpaceMethod, Fingerprint2048,
     TanimotoKnnOptions, UmapOptions,
 };
+use burrete_compute_metal::MetalTanimotoRuntime;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -81,11 +82,55 @@ pub(crate) fn execute_chemical_space(
     native_metal: &NativeMetalState,
     request: ChemicalSpaceRequest,
 ) -> ComputeResult<ChemicalSpaceResult> {
-    let started = Instant::now();
     let (fingerprints, valid_ordinals) = valid_fingerprints(batch)?;
+    let runtime = match native_metal {
+        NativeMetalState::Available(runtime) => runtime,
+        NativeMetalState::Unavailable { message, .. } => {
+            return Err(ComputeCoordinatorError::Unavailable(format!(
+                "Chemical-space Metal runtime is unavailable: {message}"
+            )))
+        }
+    };
+    let source_record_ids = valid_ordinals
+        .iter()
+        .map(|ordinal| {
+            usize::try_from(*ordinal)
+                .ok()
+                .and_then(|ordinal| batch.identities.get(ordinal))
+                .map(|identity| identity.source_record_id)
+                .ok_or_else(|| {
+                    ComputeCoordinatorError::Protocol(
+                        "Chemical-space fingerprint ordinal is outside its source identity map"
+                            .into(),
+                    )
+                })
+        })
+        .collect::<ComputeResult<Vec<_>>>()?;
+    execute_chemical_space_from_fingerprints(
+        &fingerprints,
+        &source_record_ids,
+        batch.errors.iter().filter(|error| error.is_some()).count(),
+        runtime,
+        request,
+    )
+}
+
+pub(crate) fn execute_chemical_space_from_fingerprints(
+    fingerprints: &[Fingerprint2048],
+    source_record_ids: &[u64],
+    failed_records: usize,
+    runtime: &MetalTanimotoRuntime,
+    request: ChemicalSpaceRequest,
+) -> ComputeResult<ChemicalSpaceResult> {
+    let started = Instant::now();
     if fingerprints.len() < 2 {
         return Err(ComputeCoordinatorError::Validation(
             "Chemical space requires at least two valid molecular fingerprints".into(),
+        ));
+    }
+    if fingerprints.len() != source_record_ids.len() {
+        return Err(ComputeCoordinatorError::Protocol(
+            "Chemical-space fingerprints differ from their source identity count".into(),
         ));
     }
     if request.neighbors == 0 || request.neighbors > MAX_NEIGHBORS {
@@ -109,16 +154,8 @@ pub(crate) fn execute_chemical_space(
         request.random_seed,
     )
     .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
-    let runtime = match native_metal {
-        NativeMetalState::Available(runtime) => runtime,
-        NativeMetalState::Unavailable { message, .. } => {
-            return Err(ComputeCoordinatorError::Unavailable(format!(
-                "Chemical-space Metal runtime is unavailable: {message}"
-            )))
-        }
-    };
     let knn = runtime
-        .build_tanimoto_knn_profiled(&fingerprints, knn_options)
+        .build_tanimoto_knn_profiled(fingerprints, knn_options)
         .map_err(metal_error)?;
     let graph = build_tanimoto_umap_graph(
         fingerprints.len(),
@@ -136,34 +173,19 @@ pub(crate) fn execute_chemical_space(
             request.max_memory_bytes,
         )
         .map_err(metal_error)?;
-    let source_record_ids = valid_ordinals
-        .iter()
-        .map(|ordinal| {
-            usize::try_from(*ordinal)
-                .ok()
-                .and_then(|ordinal| batch.identities.get(ordinal))
-                .map(|identity| identity.source_record_id)
-                .ok_or_else(|| {
-                    ComputeCoordinatorError::Protocol(
-                        "Chemical-space fingerprint ordinal is outside its source identity map"
-                            .into(),
-                    )
-                })
-        })
-        .collect::<ComputeResult<Vec<_>>>()?;
     let positions = embedding
         .positions
         .into_iter()
         .map(|position| [position[0], position[1], position[2]])
         .collect();
     Ok(ChemicalSpaceResult {
-        source_record_ids,
+        source_record_ids: source_record_ids.to_vec(),
         positions,
         dimensions: embedding.component_count,
         method: request.method,
         neighbors,
         successful_records: fingerprints.len(),
-        failed_records: batch.errors.iter().filter(|error| error.is_some()).count(),
+        failed_records,
         backend: "nativeMetal",
         tanimoto_gpu_time_ms: knn.gpu_time_ms,
         embedding_gpu_time_ms: embedding.gpu_time_ms,
