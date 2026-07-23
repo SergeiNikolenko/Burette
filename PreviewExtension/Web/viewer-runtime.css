@@ -2051,17 +2051,20 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
   background: var(--buret-molstar-accent);
   color: #fff;
 }
-body.buret-theme-light .buret-docking-poses button:not(.buret-docking-pose-file):not(.active) {
+body.buret-theme-light .buret-docking-poses,
+body.buret-theme-light .buret-docking-pose-files {
   background: #fff;
-  box-shadow: inset 0 0 0 1px var(--buret-menu-border);
+}
+body.buret-theme-light .buret-docking-poses button:not(.buret-docking-pose-file):not(.active) {
+  background: var(--buret-control-fill);
+  box-shadow: none;
 }
 body.buret-theme-light .buret-docking-poses button:not(.buret-docking-pose-file):not(.active):not(:disabled):hover {
-  background: #fff;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.24);
+  background: color-mix(in srgb, var(--buret-control-fill) 95%, var(--buret-toolbar-color));
 }
 body.buret-theme-light .buret-docking-poses .buret-docking-pose-file:not(:disabled):hover,
 body.buret-theme-light .buret-docking-poses .buret-docking-pose-file:focus-visible {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--buret-control-fill);
 }
 body.burette-mobile-host .buret-docking-poses {
   left: 12px;
