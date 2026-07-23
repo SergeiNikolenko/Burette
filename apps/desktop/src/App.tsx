@@ -256,7 +256,6 @@ export default function App() {
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
   const {
     clearDirtyGridDocuments,
-    confirmDiscardAllDirtyGridDocuments,
     confirmDiscardDirtyGridDocument,
     confirmDiscardDirtyGridDocuments,
     forgetDirtyGridDocument,
@@ -430,22 +429,6 @@ export default function App() {
     if (!session?.editable || !session.dirty || session.saving || session.saveDisabledReason) return;
     await sourceEditing.save(activeDocument);
   }, [activeDocument, sourceEditing]);
-  const confirmCloseWindow = useCallback(async () => {
-    const sourceBefore = sourceEditing.getWindowDirtySnapshot();
-    if (!await sourceEditing.confirmCloseWindow()) return null;
-    const permit = await confirmDiscardAllDirtyGridDocuments();
-    if (!permit) return null;
-    try {
-      const sourceAfter = sourceEditing.getWindowDirtySnapshot();
-      if (sourceAfter.revision === sourceBefore.revision
-        || await sourceEditing.confirmCloseWindow()) return permit;
-      permit.release();
-      return null;
-    } catch (error) {
-      permit.release();
-      throw error;
-    }
-  }, [confirmDiscardAllDirtyGridDocuments, sourceEditing]);
   const combinedWindowDirtyRevisionRef = useRef({
     gridRevision: null as number | null,
     sourceRevision: null as number | null,
@@ -1052,7 +1035,6 @@ export default function App() {
     actions,
     gridMenuState: activeGridMenuState,
     openDocuments,
-    confirmCloseWindow,
     getWindowDocumentDirtySnapshot,
     windowDocumentDirty: hasDirtyGridDocuments || sourceEditing.hasUnsavedOrSavingSessions,
     sourceSaveEnabled,
