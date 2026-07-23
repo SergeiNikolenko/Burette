@@ -79,12 +79,9 @@ assert.ok(normalizedPositions.flat().every(Number.isFinite));
 assert.ok(normalizedRadii[80] > 0.7, "the central chemical-space structure should fill the viewport");
 assert.ok(normalizedRadii.at(-1) > 1, "outliers should remain distinguishable from the bulk");
 assert.ok(normalizedRadii.at(-1) <= 1.45, "outliers should remain within the visible scene");
-assert.match(chemicalSpacePanel, /MOLECULE_PREVIEW_HOVER_DELAY_MS = 350/);
-assert.match(chemicalSpacePanel, /setPreviewHoverReadyFor\(hovered\)/);
-assert.match(
-  chemicalSpacePanel,
-  /preview=\{previewHoverReadyFor === preview\?\.sourceRecordId \? preview : null\}/,
-);
+assert.doesNotMatch(chemicalSpacePanel, /MOLECULE_PREVIEW_HOVER_DELAY_MS/);
+assert.doesNotMatch(chemicalSpacePanel, /previewHoverReadyFor/);
+assert.match(chemicalSpacePanel, /preview=\{preview\}/);
 assert.match(chemicalSpace3d, /new THREE\.WebGLRenderer/);
 assert.match(chemicalSpace3d, /new THREE\.PerspectiveCamera/);
 assert.match(chemicalSpace3d, /new OrbitControls/);
