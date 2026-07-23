@@ -7,7 +7,7 @@
 build/
 build-dev/
 DerivedData/
-node_modules/
+node_modules
 npm-cache/
 xcuserdata/
 *.xcuserstate
