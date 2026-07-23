@@ -66,8 +66,6 @@ type StudyState = {
   frames: number;
 };
 type CompletedStudy = {
-  parameter: StudyParameter;
-  values: number[];
   results: ChemicalSpaceResult[];
 };
 
@@ -283,7 +281,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           .then((records) => runBrowserDevChemicalSpaceStudy(records, frames, setProgress, controller.signal));
       if (controller.signal.aborted) return;
       const aligned = alignStudyResults(results);
-      setCompletedStudy({ parameter: study.parameter, values, results: aligned });
+      setCompletedStudy({ results: aligned });
       setStudyPosition(0);
       setStudyPlaying(true);
       setProgress(null);
@@ -563,12 +561,6 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                 setStudyPosition(value);
               }}
             />
-            <span className="min-w-28 text-right font-mono text-xs text-muted-foreground">
-              {studyParameterLabel(completedStudy.parameter)} {formatStudyValue(
-                completedStudy.parameter,
-                interpolateStudyValue(completedStudy.values, studyPosition),
-              )}
-            </span>
           </div>
         ) : null}
       </div>
@@ -1008,21 +1000,8 @@ function studyValues(study: StudyState) {
   });
 }
 
-function studyParameterLabel(parameter: StudyParameter) {
-  if (parameter === "neighbors") return "k";
-  if (parameter === "learningRate") return "rate";
-  return "min dist";
-}
-
 function formatStudyValue(parameter: StudyParameter, value: number) {
   return parameter === "neighbors" ? Math.round(value).toString() : value.toFixed(2);
-}
-
-function interpolateStudyValue(values: number[], position: number) {
-  const left = Math.max(0, Math.min(values.length - 1, Math.floor(position)));
-  const right = Math.min(values.length - 1, left + 1);
-  const progress = position - left;
-  return values[left] + (values[right] - values[left]) * progress;
 }
 
 function interpolateStudyResult(results: ChemicalSpaceResult[], position: number) {

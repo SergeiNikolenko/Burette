@@ -81,6 +81,7 @@ assert.match(chemicalSpacePanel, /interpolateStudyResult/);
 assert.match(chemicalSpacePanel, /data-testid="parameter-study-timeline"/);
 assert.match(chemicalSpacePanel, /studyRunning \? \(/);
 assert.match(chemicalSpacePanel, /value=\{progressPercent\(progress\) \?\? 0\}/);
+assert.doesNotMatch(chemicalSpacePanel, /studyParameterLabel/);
 assert.ok(
   chemicalSpacePanel.indexOf('data-testid="parameter-study-timeline"')
     > chemicalSpacePanel.indexOf("{methodLabel(draft.method)} parameters"),
