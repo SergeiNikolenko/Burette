@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { normalizeChemicalSpacePositions } from "../apps/desktop/src/lib/chemical-space-normalization.ts";
 
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -22,6 +23,7 @@ const browserDevCompute = source("apps/desktop/src/lib/browser-dev-compute.ts");
 const browserDevRoute = source("apps/desktop/vite/browser-dev/native-compute.ts");
 const devComputeBackend = source("apps/desktop/src-tauri/src/compute/dev_backend.rs");
 const agentShellServer = source("scripts/agent-shell-server.mjs");
+const normalization = source("apps/desktop/src/lib/chemical-space-normalization.ts");
 
 for (const command of [
   "compute_submit_job",
@@ -57,6 +59,26 @@ for (const method of ["Umap", "Tsne", "Pacmap", "Localmap", "Trimap", "Dreams", 
 assert.match(chemicalSpacePanel, /isKnownViewerMessageSource\(event\.source, documentId\)/);
 assert.match(chemicalSpacePanel, /MAX_LASSO_POINTS = 4_096/);
 assert.match(chemicalSpacePanel, /GRID_SELECTION_BRIDGE_LIMIT = 100_000/);
+assert.match(chemicalSpacePanel, /normalizeChemicalSpacePositions/);
+assert.match(normalization, /BULK_RADIUS_QUANTILE = 0\.9/);
+assert.match(normalization, /MAX_NORMALIZED_RADIUS = 1\.45/);
+assert.match(normalization, /Math\.log1p\(radius - 1\)/);
+const corePositions = Array.from({ length: 92 }, (_, index) => {
+  const angle = index / 92 * Math.PI * 2;
+  return [Math.cos(angle), Math.sin(angle), Math.sin(angle * 3) * 0.4];
+});
+const outlierPositions = Array.from({ length: 8 }, (_, index) => {
+  const angle = index / 8 * Math.PI * 2;
+  return [Math.cos(angle) * 100, Math.sin(angle) * 100, index % 2 === 0 ? 60 : -60];
+});
+const normalizedPositions = normalizeChemicalSpacePositions([...corePositions, ...outlierPositions]);
+const normalizedRadii = normalizedPositions
+  .map((position) => Math.hypot(...position))
+  .sort((left, right) => left - right);
+assert.ok(normalizedPositions.flat().every(Number.isFinite));
+assert.ok(normalizedRadii[80] > 0.7, "the central chemical-space structure should fill the viewport");
+assert.ok(normalizedRadii.at(-1) > 1, "outliers should remain distinguishable from the bulk");
+assert.ok(normalizedRadii.at(-1) <= 1.45, "outliers should remain within the visible scene");
 assert.match(chemicalSpacePanel, /MOLECULE_PREVIEW_HOVER_DELAY_MS = 350/);
 assert.match(chemicalSpacePanel, /setPreviewHoverReadyFor\(hovered\)/);
 assert.match(
@@ -101,7 +123,7 @@ assert.match(chemicalSpacePanel, /from "@\/components\/ui\/progress"/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/spinner"/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/badge"/);
 assert.match(chemicalSpacePanel, /data\.body\.type === "gridDirtyChanged"/);
-assert.match(chemicalSpacePanel, /radii\.length \* 0\.98/);
+assert.doesNotMatch(chemicalSpacePanel, /radii\.length \* 0\.98/);
 assert.match(chemicalSpacePanel, /adaptivePointRadius/);
 assert.match(chemicalSpace3d, /adaptivePointScale/);
 assert.match(browserDevCompute, /runBrowserDevChemicalSpaceStudy/);

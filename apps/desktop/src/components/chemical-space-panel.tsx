@@ -41,6 +41,7 @@ import {
   runBrowserDevChemicalSpace,
   runBrowserDevChemicalSpaceStudy,
 } from "../lib/browser-dev-compute";
+import { normalizeChemicalSpacePositions } from "../lib/chemical-space-normalization";
 import { isTauriRuntime } from "../lib/tauri";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
@@ -603,7 +604,10 @@ type ChemicalSpaceCanvasProps = {
 };
 
 function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
-  const normalized = useMemo(() => normalizePositions(props.result.positions), [props.result.positions]);
+  const normalized = useMemo(
+    () => normalizeChemicalSpacePositions(props.result.positions),
+    [props.result.positions],
+  );
   if (props.result.dimensions === 3) {
     return (
       <ChemicalSpace3D
@@ -935,15 +939,6 @@ function methodLabel(method: ChemicalSpaceMethod) {
   return CHEMICAL_SPACE_METHODS.find((entry) => entry.value === method)?.label ?? method;
 }
 
-function normalizePositions(positions: Array<[number, number, number]>) {
-  if (!positions.length) return [];
-  const center = [0, 1, 2].map((axis) => positions.reduce((sum, position) => sum + position[axis], 0) / positions.length);
-  const centered = positions.map((position) => [position[0] - center[0], position[1] - center[1], position[2] - center[2]] as [number, number, number]);
-  const radii = centered.map((position) => Math.hypot(...position)).sort((left, right) => left - right);
-  const radius = Math.max(1e-6, radii[Math.min(radii.length - 1, Math.floor(radii.length * 0.98))]);
-  return centered.map((position) => position.map((value) => value / radius) as [number, number, number]);
-}
-
 function adaptivePointRadius(recordCount: number) {
   return Math.max(1.1, Math.min(2.6, 2.6 * Math.sqrt(1_000 / Math.max(1_000, recordCount))));
 }
@@ -1036,7 +1031,7 @@ function interpolateStudyResult(results: ChemicalSpaceResult[], position: number
 function alignStudyResults(results: ChemicalSpaceResult[]) {
   const alignedResults: ChemicalSpaceResult[] = [];
   for (const result of results) {
-    const positions = normalizePositions(result.positions);
+    const positions = normalizeChemicalSpacePositions(result.positions);
     if (alignedResults.length === 0) {
       alignedResults.push({ ...result, positions });
       continue;
