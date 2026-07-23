@@ -1782,24 +1782,27 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   white-space: nowrap;
 }
 
+/* The descriptor list follows the viewer overlay's list geometry rather than a
+   ruled table: rows carry no borders, the pointed-at row gets a rounded fill,
+   and nothing forces a horizontal scrollbar inside the panel. */
 .buret-grid-molecule-detail-descriptor-table {
   flex: 1 1 auto;
   max-height: min(340px, calc(100vh - 360px));
   min-height: 0;
-  overflow: auto;
-  border: 1px solid var(--buret-border);
-  border-radius: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .buret-grid-molecule-detail-descriptor-head,
 .buret-grid-molecule-detail-descriptor-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) 24px minmax(86px, 0.55fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 16px minmax(52px, auto);
+  gap: 8px;
   align-items: center;
-  min-width: 420px;
-  border-bottom: 1px solid var(--buret-border);
-  padding: 8px 10px;
+  min-width: 0;
+  min-height: 28px;
+  border-radius: 6px;
+  padding: 4px 8px;
   font-size: 13px;
   line-height: 1.25;
 }
@@ -1808,18 +1811,25 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   position: sticky;
   top: 0;
   z-index: 1;
+  margin-bottom: 2px;
+  border-radius: 0;
+  border-bottom: 1px solid var(--buret-border);
+  padding-bottom: 7px;
   color: var(--buret-muted);
   background: var(--buret-detail-surface);
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.buret-grid-molecule-detail-descriptor-row:last-child {
-  border-bottom: 0;
+.buret-grid-molecule-detail-descriptor-row:hover,
+.buret-grid-molecule-detail-descriptor-row:focus-within {
+  background: var(--buret-control-hover);
 }
 
 .buret-grid-molecule-detail-descriptor-row span {
   min-width: 0;
-  overflow-wrap: anywhere;
 }
 
 .buret-grid-molecule-detail-descriptor-name {
@@ -1827,16 +1837,31 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   gap: 2px;
 }
 
-.buret-grid-molecule-detail-descriptor-row strong {
+/* One line per part: a 1,600-row list is only readable if every row is the
+   same height. */
+.buret-grid-molecule-detail-descriptor-name > * {
   min-width: 0;
-  font-weight: 600;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.buret-grid-molecule-detail-descriptor-row strong {
+  font-weight: 500;
 }
 
 .buret-grid-molecule-detail-descriptor-row small {
   color: var(--buret-muted);
   font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  overflow-wrap: anywhere;
+}
+
+.buret-grid-molecule-detail-descriptor-value {
+  overflow: hidden;
+  color: var(--buret-text);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .buret-grid-molecule-detail-descriptor-info-cell {
@@ -1844,19 +1869,29 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   place-items: center;
 }
 
+/* Quiet until the row is pointed at, the way the viewer's file list only marks
+   the row under the cursor. */
 .buret-grid-molecule-detail-descriptor-info {
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
-  min-width: 18px;
-  min-height: 18px;
-  border: 1px solid var(--buret-border);
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  border: 0;
   border-radius: 50%;
   padding: 0;
   color: var(--buret-muted);
-  background: var(--buret-control-surface);
+  background: transparent;
+  opacity: 0;
   font: 600 10px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  transition: opacity 120ms ease-out;
+}
+
+.buret-grid-molecule-detail-descriptor-row:hover .buret-grid-molecule-detail-descriptor-info,
+.buret-grid-molecule-detail-descriptor-info:focus-visible {
+  opacity: 1;
+  background: var(--buret-control-surface);
 }
 
 .buret-grid-molecule-detail-json,
