@@ -1189,21 +1189,26 @@ function ConformerInlineSettings({
       </div>
       <div className="structure-inspector-settings-status">{conformerStatusSummary(status)}</div>
       {showCrest ? (
-        <div className="structure-inspector-settings-category">
-          <h5>CREST</h5>
+        <InlineSettingsSection title="CREST">
           <InlineXtbSetting label="Method">
-            <SelectControl value={settings.method} options={["gfn2", "gfn1", "gfn0", "gfnff"]} onChange={(value) => updateSettings({ method: value as ConformerSettings["method"] })} />
+            <InlineSegmentedControl
+              value={settings.method}
+              options={["gfn2", "gfn1", "gfn0", "gfnff"]}
+              labels={XTB_METHOD_LABELS}
+              ariaLabel="CREST method"
+              onChange={(value) => updateSettings({ method: value as ConformerSettings["method"] })}
+            />
           </InlineXtbSetting>
           <InlineXtbSetting label="Sampling">
-            <SelectControl value={settings.samplingMode} options={["auto", "normal", "quick", "squick", "mquick"]} onChange={(value) => updateSettings({ samplingMode: value as ConformerSettings["samplingMode"] })} />
+            <SelectControl value={settings.samplingMode} options={["auto", "normal", "quick", "squick", "mquick"]} labels={CONFORMER_SAMPLING_LABELS} onChange={(value) => updateSettings({ samplingMode: value as ConformerSettings["samplingMode"] })} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Solvent">
-            <SelectControl value={settings.solvent} options={["none", "water", "methanol", "acetonitrile", "dmso", "chloroform"]} onChange={(value) => updateSettings({ solvent: value as ConformerSettings["solvent"] })} />
+            <SelectControl value={settings.solvent} options={["none", "water", "methanol", "acetonitrile", "dmso", "chloroform"]} labels={CONFORMER_SOLVENT_LABELS} onChange={(value) => updateSettings({ solvent: value as ConformerSettings["solvent"] })} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Charge">
             <RangeControl value={settings.charge} min={-8} max={8} step={1} onChange={(value) => updateSettings({ charge: value })} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="UHF">
+          <InlineXtbSetting label="Unpaired electrons">
             <RangeControl value={settings.uhf} min={0} max={12} step={1} onChange={(value) => updateSettings({ uhf: value })} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Threads">
@@ -1212,21 +1217,20 @@ function ConformerInlineSettings({
           <InlineXtbSetting label="Energy window">
             <NumberXtbControl value={settings.energyWindowKcalMol} min={1} max={60} step={0.5} suffix="kcal/mol" onChange={(value) => updateSettings({ energyWindowKcalMol: value })} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="RMSD">
-            <NumberXtbControl value={settings.rmsdThresholdAngstrom} min={0.01} max={2} step={0.005} suffix="A" onChange={(value) => updateSettings({ rmsdThresholdAngstrom: value })} />
+          <InlineXtbSetting label="RMSD threshold">
+            <NumberXtbControl value={settings.rmsdThresholdAngstrom} min={0.01} max={2} step={0.005} suffix="Å" onChange={(value) => updateSettings({ rmsdThresholdAngstrom: value })} />
           </InlineXtbSetting>
-        </div>
+        </InlineSettingsSection>
       ) : null}
       {showPrism ? (
-        <div className="structure-inspector-settings-category">
-          <h5>PRISM</h5>
+        <InlineSettingsSection title="PRISM">
           <InlineXtbSetting label="Timeout">
-            <RangeControl value={settings.prismTimeoutSeconds} min={5} max={86400} step={5} onChange={(value) => updateSettings({ prismTimeoutSeconds: value })} />
+            <RangeControl value={settings.prismTimeoutSeconds} min={5} max={86400} step={5} suffix="s" onChange={(value) => updateSettings({ prismTimeoutSeconds: value })} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="Energy sort">
+          <InlineXtbSetting label="Sort by energy">
             <ToggleControl label="Sort by energy" checked={settings.prismEnergySort} onChange={(value) => updateSettings({ prismEnergySort: value })} />
           </InlineXtbSetting>
-        </div>
+        </InlineSettingsSection>
       ) : null}
     </div>
   );
@@ -2039,19 +2043,31 @@ function XtbInlineSettings({
       </div>
       {showCategories ? <XtbSettingsCategoryBar category={category} setCategory={setCategory} /> : null}
       {showCore ? (
-        <>
+        <XtbSettingsGroup title="Calculation" labelled={!showCategories}>
           <InlineXtbSetting label="Method" tooltip={XTB_SETTING_TOOLTIPS.method} reset={() => update("method", defaultXtbSettings.method)} modified={settings.method !== defaultXtbSettings.method}>
-            <SelectControl value={settings.method} options={["gfn2", "gfn1", "gfn0", "gfnff"]} onChange={(method) => update("method", method as XtbSettings["method"])} />
+            <InlineSegmentedControl
+              value={settings.method}
+              options={["gfn2", "gfn1", "gfn0", "gfnff"]}
+              labels={XTB_METHOD_LABELS}
+              ariaLabel="xTB method"
+              onChange={(method) => update("method", method as XtbSettings["method"])}
+            />
           </InlineXtbSetting>
           {showOptLevel ? (
-            <InlineXtbSetting label="Opt level" tooltip={XTB_SETTING_TOOLTIPS.optLevel} reset={() => update("optLevel", defaultXtbSettings.optLevel)} modified={settings.optLevel !== defaultXtbSettings.optLevel}>
-              <SelectControl value={settings.optLevel} options={["loose", "normal", "tight", "verytight"]} onChange={(optLevel) => update("optLevel", optLevel as XtbSettings["optLevel"])} />
+            <InlineXtbSetting label="Convergence" tooltip={XTB_SETTING_TOOLTIPS.optLevel} reset={() => update("optLevel", defaultXtbSettings.optLevel)} modified={settings.optLevel !== defaultXtbSettings.optLevel}>
+              <InlineSegmentedControl
+                value={settings.optLevel}
+                options={["loose", "normal", "tight", "verytight"]}
+                labels={XTB_OPT_LEVEL_LABELS}
+                ariaLabel="Optimization convergence"
+                onChange={(optLevel) => update("optLevel", optLevel as XtbSettings["optLevel"])}
+              />
             </InlineXtbSetting>
           ) : null}
           <InlineXtbSetting label="Charge" tooltip={XTB_SETTING_TOOLTIPS.charge} reset={() => update("charge", defaultXtbSettings.charge)} modified={settings.charge !== defaultXtbSettings.charge}>
             <RangeControl value={settings.charge} min={-5} max={5} step={1} onChange={(charge) => update("charge", charge)} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="UHF" tooltip={XTB_SETTING_TOOLTIPS.uhf} reset={() => update("uhf", defaultXtbSettings.uhf)} modified={settings.uhf !== defaultXtbSettings.uhf}>
+          <InlineXtbSetting label="Unpaired electrons" tooltip={XTB_SETTING_TOOLTIPS.uhf} reset={() => update("uhf", defaultXtbSettings.uhf)} modified={settings.uhf !== defaultXtbSettings.uhf}>
             <RangeControl value={settings.uhf} min={0} max={10} step={1} onChange={(uhf) => update("uhf", uhf)} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Threads" tooltip={XTB_SETTING_TOOLTIPS.threads} reset={() => update("threads", defaultXtbSettings.threads)} modified={settings.threads !== defaultXtbSettings.threads}>
@@ -2060,22 +2076,29 @@ function XtbInlineSettings({
           <InlineXtbSetting label="Accuracy" tooltip={XTB_SETTING_TOOLTIPS.accuracy} reset={() => update("accuracy", defaultXtbSettings.accuracy)} modified={settings.accuracy !== defaultXtbSettings.accuracy}>
             <NumberXtbControl value={settings.accuracy} min={0.05} max={10} step={0.05} onChange={(accuracy) => update("accuracy", accuracy)} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="E-temp" tooltip={XTB_SETTING_TOOLTIPS.electronicTemperature} reset={() => update("electronicTemperature", defaultXtbSettings.electronicTemperature)} modified={settings.electronicTemperature !== defaultXtbSettings.electronicTemperature}>
-            <RangeControl value={settings.electronicTemperature} min={50} max={5000} step={50} onChange={(electronicTemperature) => update("electronicTemperature", electronicTemperature)} />
+          <InlineXtbSetting label="Electronic temp" tooltip={XTB_SETTING_TOOLTIPS.electronicTemperature} reset={() => update("electronicTemperature", defaultXtbSettings.electronicTemperature)} modified={settings.electronicTemperature !== defaultXtbSettings.electronicTemperature}>
+            <RangeControl value={settings.electronicTemperature} min={50} max={5000} step={50} suffix="K" onChange={(electronicTemperature) => update("electronicTemperature", electronicTemperature)} />
           </InlineXtbSetting>
-        </>
+        </XtbSettingsGroup>
       ) : null}
       {showSolvation ? (
-        <>
-          <InlineXtbSetting label="Solvation" tooltip={XTB_SETTING_TOOLTIPS.solvation} reset={() => update("solvationModel", defaultXtbSettings.solvationModel)} modified={settings.solvationModel !== defaultXtbSettings.solvationModel}>
-            <SelectControl value={settings.solvationModel} options={["none", "alpb", "gbsa", "cosmo", "cpcmx"]} onChange={(solvationModel) => update("solvationModel", solvationModel as XtbSettings["solvationModel"])} />
+        <XtbSettingsGroup title="Solvation" labelled={!showCategories}>
+          <InlineXtbSetting label="Model" tooltip={XTB_SETTING_TOOLTIPS.solvation} reset={() => update("solvationModel", defaultXtbSettings.solvationModel)} modified={settings.solvationModel !== defaultXtbSettings.solvationModel}>
+            <InlineSegmentedControl
+              value={settings.solvationModel}
+              options={["none", "alpb", "gbsa", "cosmo", "cpcmx"]}
+              labels={XTB_SOLVATION_LABELS}
+              ariaLabel="Solvation model"
+              onChange={(solvationModel) => update("solvationModel", solvationModel as XtbSettings["solvationModel"])}
+            />
           </InlineXtbSetting>
           <InlineXtbSetting label="Solvent" tooltip={XTB_SETTING_TOOLTIPS.solvent} reset={() => update("solvent", defaultXtbSettings.solvent)} modified={settings.solvent !== defaultXtbSettings.solvent}>
-            <SelectControl value={settings.solvent} options={XTB_SOLVENT_OPTIONS} onChange={(solvent) => update("solvent", solvent)} />
+            <SelectControl value={settings.solvent} options={XTB_SOLVENT_OPTIONS} labels={XTB_SOLVENT_LABELS} onChange={(solvent) => update("solvent", solvent)} />
           </InlineXtbSetting>
-        </>
+        </XtbSettingsGroup>
       ) : null}
       {showProperties ? (
+        <XtbSettingsGroup title="Properties" labelled={!showCategories}>
         <div className="structure-inspector-xtb-toggle-grid" aria-label="xTB property outputs" data-xtb-tooltip={XTB_SETTING_TOOLTIPS.properties}>
           <XtbToggle label="Dipole" tooltip={XTB_PROPERTY_TOOLTIPS.dipole} checked={settings.properties.dipole} onChange={(value) => updateProperty("dipole", value)} />
           <XtbToggle label="WBO" tooltip={XTB_PROPERTY_TOOLTIPS.wbo} checked={settings.properties.wbo} onChange={(value) => updateProperty("wbo", value)} />
@@ -2086,35 +2109,44 @@ function XtbInlineSettings({
           <XtbToggle label="ESP" tooltip={XTB_PROPERTY_TOOLTIPS.esp} checked={settings.properties.esp} onChange={(value) => updateProperty("esp", value)} />
           <XtbToggle label="Fukui" tooltip={XTB_PROPERTY_TOOLTIPS.fukui} checked={settings.properties.fukui} onChange={(value) => updateProperty("fukui", value)} />
         </div>
+        </XtbSettingsGroup>
       ) : null}
       {showMd ? (
-        <>
-          <InlineXtbSetting label="MD temp" tooltip={XTB_SETTING_TOOLTIPS.mdTemperature} reset={() => update("mdTemperature", defaultXtbSettings.mdTemperature)} modified={settings.mdTemperature !== defaultXtbSettings.mdTemperature}>
-            <RangeControl value={settings.mdTemperature} min={50} max={2000} step={10} onChange={(mdTemperature) => update("mdTemperature", mdTemperature)} />
+        <XtbSettingsGroup title="Dynamics" labelled={!showCategories}>
+          <InlineXtbSetting label="Temperature" tooltip={XTB_SETTING_TOOLTIPS.mdTemperature} reset={() => update("mdTemperature", defaultXtbSettings.mdTemperature)} modified={settings.mdTemperature !== defaultXtbSettings.mdTemperature}>
+            <RangeControl value={settings.mdTemperature} min={50} max={2000} step={10} suffix="K" onChange={(mdTemperature) => update("mdTemperature", mdTemperature)} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="MD time" tooltip={XTB_SETTING_TOOLTIPS.mdTime} reset={() => update("mdTimePs", defaultXtbSettings.mdTimePs)} modified={settings.mdTimePs !== defaultXtbSettings.mdTimePs}>
+          <InlineXtbSetting label="Duration" tooltip={XTB_SETTING_TOOLTIPS.mdTime} reset={() => update("mdTimePs", defaultXtbSettings.mdTimePs)} modified={settings.mdTimePs !== defaultXtbSettings.mdTimePs}>
             <NumberXtbControl value={settings.mdTimePs} min={0.05} max={100} step={0.05} onChange={(mdTimePs) => update("mdTimePs", mdTimePs)} suffix="ps" />
           </InlineXtbSetting>
-          <InlineXtbSetting label="MD step" tooltip={XTB_SETTING_TOOLTIPS.mdStep} reset={() => update("mdStepFs", defaultXtbSettings.mdStepFs)} modified={settings.mdStepFs !== defaultXtbSettings.mdStepFs}>
+          <InlineXtbSetting label="Time step" tooltip={XTB_SETTING_TOOLTIPS.mdStep} reset={() => update("mdStepFs", defaultXtbSettings.mdStepFs)} modified={settings.mdStepFs !== defaultXtbSettings.mdStepFs}>
             <NumberXtbControl value={settings.mdStepFs} min={0.1} max={10} step={0.1} onChange={(mdStepFs) => update("mdStepFs", mdStepFs)} suffix="fs" />
           </InlineXtbSetting>
           <InlineXtbSetting label="Snapshots" tooltip={XTB_SETTING_TOOLTIPS.mdSnapshots} reset={() => update("mdSnapshots", defaultXtbSettings.mdSnapshots)} modified={settings.mdSnapshots !== defaultXtbSettings.mdSnapshots}>
             <RangeControl value={settings.mdSnapshots} min={1} max={1000} step={1} onChange={(mdSnapshots) => update("mdSnapshots", mdSnapshots)} />
           </InlineXtbSetting>
-        </>
+        </XtbSettingsGroup>
       ) : null}
       {showOutput ? (
-        <>
-          <InlineXtbSetting label="Save files" tooltip={XTB_SETTING_TOOLTIPS.saveRunFiles} reset={() => update("saveRunFiles", defaultXtbSettings.saveRunFiles)} modified={settings.saveRunFiles !== defaultXtbSettings.saveRunFiles}>
+        <XtbSettingsGroup title="Output" labelled={!showCategories}>
+          <InlineXtbSetting label="Keep run files" tooltip={XTB_SETTING_TOOLTIPS.saveRunFiles} reset={() => update("saveRunFiles", defaultXtbSettings.saveRunFiles)} modified={settings.saveRunFiles !== defaultXtbSettings.saveRunFiles}>
             <ToggleControl label="Save xTB run files" checked={settings.saveRunFiles} onChange={(saveRunFiles) => update("saveRunFiles", saveRunFiles)} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Timeout" tooltip={XTB_SETTING_TOOLTIPS.timeout} reset={() => update("timeoutSeconds", defaultXtbSettings.timeoutSeconds)} modified={settings.timeoutSeconds !== defaultXtbSettings.timeoutSeconds}>
-            <RangeControl value={settings.timeoutSeconds} min={30} max={1200} step={30} onChange={(timeoutSeconds) => update("timeoutSeconds", timeoutSeconds)} />
+            <RangeControl value={settings.timeoutSeconds} min={30} max={1200} step={30} suffix="s" onChange={(timeoutSeconds) => update("timeoutSeconds", timeoutSeconds)} />
           </InlineXtbSetting>
-        </>
+        </XtbSettingsGroup>
       ) : null}
     </div>
   );
+}
+
+// In category mode the bar above already says which group you are in, so the
+// heading would only repeat it. Scoped mode stacks several groups at once and
+// needs them.
+function XtbSettingsGroup({ title, labelled, children }: { title: string; labelled: boolean; children: ReactNode }) {
+  if (!labelled) return <>{children}</>;
+  return <InlineSettingsSection title={title}>{children}</InlineSettingsSection>;
 }
 
 const XTB_SOLVENT_OPTIONS = [
@@ -2142,6 +2174,23 @@ const XTB_SOLVENT_OPTIONS = [
   "toluene",
   "thf",
 ];
+
+// Only the tokens whose spelling is not already the chemical name.
+const XTB_SOLVENT_LABELS: Record<string, string> = {
+  none: "Gas phase",
+  ch2cl2: "Dichloromethane",
+  chcl3: "Chloroform",
+  cs2: "Carbon disulfide",
+  dmf: "DMF",
+  dmso: "DMSO",
+  ether: "Diethyl ether",
+  ethylacetate: "Ethyl acetate",
+  furane: "Furan",
+  nitromethane: "Nitromethane",
+  thf: "THF",
+  ...Object.fromEntries(["water", "acetone", "acetonitrile", "aniline", "benzaldehyde", "benzene", "dioxane", "hexane", "methanol", "octanol", "phenol", "toluene"]
+    .map((solvent) => [solvent, solvent.charAt(0).toUpperCase() + solvent.slice(1)])),
+};
 
 function XtbToggle({ label, tooltip, checked, onChange }: { label: string; tooltip: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
@@ -2924,6 +2973,65 @@ function formatMaybeNumber(value: unknown, suffix: string) {
 function formatDipole(value: unknown) {
   const rows = numericArray(value);
   return rows.length >= 3 ? rows.slice(0, 3).map((number) => number.toFixed(3)).join(", ") : "n/a";
+}
+
+// Engine tokens are what the executable wants; these are what a reader wants.
+const XTB_METHOD_LABELS: Record<string, string> = {
+  gfn2: "GFN2", gfn1: "GFN1", gfn0: "GFN0", gfnff: "GFN-FF",
+};
+const XTB_OPT_LEVEL_LABELS: Record<string, string> = {
+  loose: "Loose", normal: "Normal", tight: "Tight", verytight: "Very tight",
+};
+const XTB_SOLVATION_LABELS: Record<string, string> = {
+  none: "None", alpb: "ALPB", gbsa: "GBSA", cosmo: "COSMO", cpcmx: "CPCM-X",
+};
+const CONFORMER_SAMPLING_LABELS: Record<string, string> = {
+  auto: "Auto", normal: "Normal", quick: "Quick", squick: "Super quick", mquick: "Micro quick",
+};
+const CONFORMER_SOLVENT_LABELS: Record<string, string> = {
+  none: "Gas phase", water: "Water", methanol: "Methanol",
+  acetonitrile: "Acetonitrile", dmso: "DMSO", chloroform: "Chloroform",
+};
+
+// Small mutually exclusive sets read far better as one switch than as a dropdown
+// you have to open to see the alternatives - the same trade the viewport menus make.
+function InlineSegmentedControl({
+  value,
+  options,
+  labels,
+  ariaLabel,
+  onChange,
+}: {
+  value: string;
+  options: readonly string[];
+  labels: Record<string, string>;
+  ariaLabel: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="structure-inspector-segment" role="group" aria-label={ariaLabel}>
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          className="structure-inspector-segment-button"
+          aria-pressed={option === value}
+          onClick={() => onChange(option)}
+        >
+          {labels[option] ?? option}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function InlineSettingsSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="structure-inspector-settings-group">
+      <h5 className="structure-inspector-settings-group-title">{title}</h5>
+      {children}
+    </div>
+  );
 }
 
 function InlineXtbSetting({

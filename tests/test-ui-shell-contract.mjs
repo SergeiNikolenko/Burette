@@ -2452,6 +2452,17 @@ assert.match(structureInfoPanel, /const xtbMissing = xtbStatus\?\.installed === 
 assert.match(structureInfoPanel, /install: \(\) => void actions\.installXtb\(\)/);
 assert.match(structureInfoPanel, /function conformerTools\(status: ShellViewState\["conformerStatus"\]\): EngineTool\[\]/);
 assert.match(structureInfoPanel, /const XTB_MORE_OPERATIONS = \[/);
+// Short mutually exclusive sets are switches, not dropdowns, and the engine's own
+// tokens ("gfnff", "verytight", "ch2cl2") never reach the reader untranslated.
+assert.match(structureInfoPanel, /function InlineSegmentedControl\(\{/);
+assert.match(structureInfoPanel, /function InlineSettingsSection\(\{ title, children \}/);
+assert.match(structureInfoPanel, /gfnff: "GFN-FF"/);
+assert.match(structureInfoPanel, /verytight: "Very tight"/);
+assert.match(structureInfoPanel, /ch2cl2: "Dichloromethane"/);
+assert.match(structureInfoPanel, /none: "Gas phase"/);
+assert.match(structureInfoPanel, /function XtbSettingsGroup\(\{ title, labelled, children \}/);
+assert.match(settingControl, /labels\?: Record<string, string>/);
+assert.match(settingControl, /\{labels\?\.\[option\] \?\? option\}/);
 assert.match(structureInfoPanel, /key: "maestro"/);
 assert.match(structureInfoPanel, /label: "Maestro entries"/);
 assert.match(structureInfoPanel, /\["Maestro entry", summary\.maestroRows \?\? \[\]\]/);

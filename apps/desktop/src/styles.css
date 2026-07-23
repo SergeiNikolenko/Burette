@@ -3109,17 +3109,26 @@ img.radix-menu-item-icon {
   position: relative;
   min-width: 0;
   display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
+  /* 74px ellipsized "Energy window" into "Energy win...". The label now gets room
+     to wrap instead, and the row keeps one height so sliders and selects line up. */
+  grid-template-columns: minmax(92px, 0.42fr) minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 4px 10px;
+  min-height: 32px;
+  border-radius: 7px;
+  padding: 2px 4px;
+  margin: 0 -4px;
+  transition: background 120ms ease-out;
+}
+.structure-inspector-xtb-setting-row:hover {
+  background: var(--surface-subtle);
 }
 .structure-inspector-xtb-setting-row > span {
   min-width: 0;
   color: var(--text-secondary);
   font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+  overflow-wrap: break-word;
 }
 .structure-inspector-xtb-setting-control {
   min-width: 0;
@@ -3127,6 +3136,89 @@ img.radix-menu-item-icon {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+/* Slider readouts sit in their own column so the numbers form a straight edge
+   down the panel instead of drifting with each track. */
+.structure-inspector-xtb-setting-control .settings-range-control {
+  gap: 8px;
+}
+.structure-inspector-xtb-setting-control .settings-range-control > span:not([data-slot]) {
+  min-width: 42px;
+  font-variant-numeric: tabular-nums;
+}
+/* Unit widths differ wildly ("A" vs "kcal/mol"). Reserving the same trailing
+   column keeps the input boxes themselves the same width down the panel. */
+.structure-inspector-xtb-setting-control .structure-inspector-number-control {
+  width: 100%;
+  max-width: 176px;
+}
+.structure-inspector-xtb-setting-control .structure-inspector-number-control > span {
+  min-width: 42px;
+}
+.structure-inspector-settings-group {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.structure-inspector-settings-group + .structure-inspector-settings-group {
+  margin-top: 4px;
+}
+/* Same small-caps heading with a hairline the viewport menus use to break a long
+   list into readable groups. */
+.structure-inspector-settings-group-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin: 2px 0 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.structure-inspector-settings-group-title::after {
+  content: "";
+  height: 1px;
+  background: var(--line-subtler);
+}
+.structure-inspector-segment {
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  gap: 1px;
+  border-radius: 7px;
+  padding: 2px;
+  background: var(--surface-input);
+}
+.structure-inspector-segment-button {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  padding: 0 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+.structure-inspector-segment-button:hover {
+  color: var(--text-secondary);
+}
+.structure-inspector-segment-button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface-card));
+  color: var(--text-primary);
+}
+.structure-inspector-segment-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: -2px;
 }
 .structure-inspector-xtb-setting-control .settings-select {
   width: 100%;
