@@ -8366,7 +8366,7 @@
     const label = activeConfig?.label || prepared?.label || 'XYZ frames';
     const style = configuredMolstarStyle(activeConfig);
     const foregroundStyle = xyzFrameForegroundStyle(style);
-    if (activeSdfPoseMode !== 'all') {
+    if (activeSdfPoseMode !== 'all' || !structureOverlayToggleAvailable(prepared)) {
       resetXyzFrameOverlayState(viewer);
       resetSdfCollectionVisibilityState(viewer);
       resetDockingPoseCollectionState(viewer);

@@ -5585,7 +5585,7 @@ for (const runtimeSource of [previewViewer]) {
   assert.match(runtimeSource, /const foregroundStyle = xyzFrameForegroundStyle\(style\)/);
   assert.match(runtimeSource, /const resolvedContextStyle = xyzFrameBackgroundStyle\(contextStyle, foregroundStyle\)/);
   assert.match(runtimeSource, /async function applyXyzFrameOverlayVisibility\(viewer, prepared, activePose = 0, options = \{\}\)[\s\S]*?const contextColor = options\.contextColor \?\? readXyzFrameContextColor\(activeConfig\)/);
-  assert.match(runtimeSource, /if \(activeSdfPoseMode !== 'all'\) \{[\s\S]*?resetXyzFrameOverlayState\(viewer\);[\s\S]*?const activeEntry = xyzFrameEntry\(frames\[activeIndex\]/);
+  assert.match(runtimeSource, /if \(activeSdfPoseMode !== 'all' \|\| !structureOverlayToggleAvailable\(prepared\)\) \{[\s\S]*?resetXyzFrameOverlayState\(viewer\);[\s\S]*?const activeEntry = xyzFrameEntry\(frames\[activeIndex\]/);
   assert.match(runtimeSource, /await loadMolstarEntryWithStructureRefs\(viewer, activeEntry, \{ representationPreset: 'empty' \}\)/);
   assert.match(runtimeSource, /await applyXyzFrameMolstarStyle\(viewer, foregroundStyle, activeStructures, 1, 'colored'\)/);
   assert.match(runtimeSource, /if \(options\.installControls !== false\) installDockingPoseControls\(viewer, trajectoryControlsForPrepared\(prepared\)\)/);
