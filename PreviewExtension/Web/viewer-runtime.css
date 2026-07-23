@@ -2767,6 +2767,39 @@ body .msp-plugin .msp-layout-region.msp-layout-top {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+/* Mol* pins the region to a fixed 100px; the grip below drives this instead. */
+body:not(.burette-mobile-host) .msp-plugin .msp-layout-region.msp-layout-top {
+  height: var(--buret-sequence-height, 100px) !important;
+}
+.buret-sequence-resize {
+  position: absolute;
+  left: var(--buret-control-island-right);
+  right: var(--buret-control-island-right);
+  top: calc(var(--buret-viewport-top-inset, 0px) - 9px);
+  z-index: 37;
+  height: 12px;
+  display: none;
+  cursor: ns-resize;
+  touch-action: none;
+}
+body.buret-sequence-open .buret-sequence-resize {
+  display: block;
+}
+.buret-sequence-resize::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 5px;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 130ms ease;
+}
+.buret-sequence-resize:hover::after,
+.buret-sequence-resize.buret-sequence-resizing::after {
+  background: var(--buret-molstar-accent);
+}
 body .msp-plugin .msp-sequence {
   position: absolute;
   inset: 6px var(--buret-control-island-right) 6px var(--buret-control-island-right);

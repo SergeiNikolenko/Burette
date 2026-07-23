@@ -3672,6 +3672,7 @@
     installToolbarAutoLayoutTracking(toolbar);
     installMolstarFloatingPanelTracking();
     initSceneTree(viewer);
+    initSequenceResize();
     updateToolbarVisibility();
     updateSdfPoseButton();
     updatePreviewDockButtons();
@@ -4578,6 +4579,7 @@
     leftPanelVisibilityGuardInstalled = true;
     const observer = new MutationObserver(() => {
       if (layoutState.left === 'hidden') syncLeftPanelVisibility();
+      stripMolstarSequenceTooltips();
       scheduleViewportCornerLayout();
     });
     observer.observe(document.body, {
@@ -5323,6 +5325,7 @@
     // — the corner button, its panel and the toolbar — steps below it.
     const topRegion = document.querySelector('.msp-layout-region.msp-layout-top');
     const topRect = topRegion?.offsetParent === null ? null : topRegion?.getBoundingClientRect();
+    document.body?.classList.toggle('buret-sequence-open', !!topRect?.height);
     const topInset = topRect?.height ? `${Math.round(topRect.height)}px` : '';
     if (style.getPropertyValue('--buret-viewport-top-inset') !== topInset) {
       if (topInset) style.setProperty('--buret-viewport-top-inset', topInset);
@@ -5356,6 +5359,48 @@
     // that region rather than from the window.
     const origin = controls.offsetParent?.getBoundingClientRect().left ?? 0;
     style.setProperty('--buret-corner-inset', `${Math.round(Math.max(10, edge - origin))}px`);
+  }
+
+  // Mol* hangs a `title` on every sequence control, so hovering the strip fires a
+  // native tooltip over the structure. The controls read clearly without them.
+  function stripMolstarSequenceTooltips() {
+    document.querySelectorAll('.msp-sequence-select [title]').forEach(element => element.removeAttribute('title'));
+  }
+
+  // Mol* pins the sequence region to a fixed height; this drags it, in the same
+  // shape as the molecule preview's resize edges.
+  function initSequenceResize() {
+    const grip = document.getElementById('buret-sequence-resize');
+    if (!grip || grip.dataset.bound === '1') return;
+    grip.dataset.bound = '1';
+    let drag = null;
+    const onPointerDown = event => {
+      if (event.button !== 0) return;
+      const region = document.querySelector('.msp-layout-region.msp-layout-top');
+      if (!region) return;
+      drag = { pointerId: event.pointerId, top: region.getBoundingClientRect().top };
+      try { grip.setPointerCapture(event.pointerId); } catch (_) {}
+      grip.classList.add('buret-sequence-resizing');
+      event.preventDefault();
+    };
+    const onPointerMove = event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const height = Math.max(64, Math.min(event.clientY - drag.top + 6, window.innerHeight * 0.6));
+      document.documentElement.style.setProperty('--buret-sequence-height', `${Math.round(height)}px`);
+      updateViewportCornerLayout();
+      event.preventDefault();
+    };
+    const finishResize = event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      try { grip.releasePointerCapture(event.pointerId); } catch (_) {}
+      grip.classList.remove('buret-sequence-resizing');
+      drag = null;
+      scheduleViewerResize(activeMolstarViewer(), 40);
+    };
+    grip.addEventListener('pointerdown', onPointerDown);
+    grip.addEventListener('pointermove', onPointerMove);
+    grip.addEventListener('pointerup', finishResize);
+    grip.addEventListener('pointercancel', finishResize);
   }
 
   function initViewportPanelDrag(panel) {

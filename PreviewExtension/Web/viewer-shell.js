@@ -138,6 +138,7 @@
           <span class="buret-tooltip" role="tooltip">Scene tree</span>
         </button>
       </div>
+      <div id="buret-sequence-resize" class="buret-sequence-resize" data-buret-sequence-resize role="separator" aria-orientation="horizontal" aria-label="Resize sequence"></div>
       <aside id="buret-scene-tree" class="buret-scene-tree hidden" data-buret-scene-tree role="dialog" aria-label="Scene tree" aria-hidden="true">
         <div class="buret-scene-tree-header" data-buret-panel-handle>
           <span class="buret-scene-tree-title">Scene</span>
