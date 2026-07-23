@@ -484,7 +484,6 @@
       if (body.type === 'chemicalSpaceHoverChanged') {
         const index = Number(body.sourceRecordId);
         const normalizedIndex = Number.isSafeInteger(index) && index >= 0 ? index : null;
-        syncChemicalSpaceHover(normalizedIndex);
         if (state.chemicalSpacePreviewTimer) clearTimeout(state.chemicalSpacePreviewTimer);
         state.chemicalSpacePreviewTimer = null;
         if (normalizedIndex === null) {
@@ -4630,13 +4629,6 @@
       const selected = state.selected.has(index);
       card.classList.toggle('selected', selected);
       card.setAttribute('aria-selected', selected ? 'true' : 'false');
-    });
-  }
-
-  function syncChemicalSpaceHover(index) {
-    root.querySelectorAll('.buret-card[data-index], .buret-grid-table-row[data-index]').forEach(element => {
-      const elementIndex = Number(element.getAttribute('data-index'));
-      element.classList.toggle('buret-chemical-space-hover', index !== null && elementIndex === index);
     });
   }
 

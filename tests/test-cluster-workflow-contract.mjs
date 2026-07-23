@@ -63,6 +63,8 @@ assert.match(gridViewer, /body\.type === 'chemicalSpaceRequestRecords'/);
 assert.match(gridViewer, /CHEMICAL_SPACE_RECORD_LIMIT = 20000/);
 assert.match(gridViewer, /body\.type === 'chemicalSpaceSelectionChanged'/);
 assert.match(gridViewer, /body\.type === 'chemicalSpaceHoverChanged'/);
+assert.doesNotMatch(gridViewer, /syncChemicalSpaceHover/);
+assert.doesNotMatch(gridCss, /buret-chemical-space-hover/);
 assert.match(gridViewer, /svg\.slice\(0, 262144\)/);
 assert.match(chemicalSpacePanel, /Run animated study on Metal/);
 assert.match(chemicalSpacePanel, /interpolateStudyResult/);
