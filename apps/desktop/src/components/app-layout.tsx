@@ -73,6 +73,85 @@ function useInitialSize(sizePx: number) {
   return useRef(sizePx).current;
 }
 
+// Marks a group as animating for the duration of an open/close toggle. The CSS
+// flex transition on `[data-panels-animating] > [data-panel]` must apply only
+// then: react-resizable-panels rewrites flex-grow every frame during drags and
+// window resizes, and a standing transition would rubber-band both.
+function usePanelToggleAnimation(open: boolean) {
+  const [animating, setAnimating] = useState(false);
+  const animatingRef = useRef(false);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    animatingRef.current = true;
+    setAnimating(true);
+    const timer = window.setTimeout(() => {
+      animatingRef.current = false;
+      setAnimating(false);
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+  return { animating, animatingRef };
+}
+
+// True while one of the group's own separators is being dragged. Nested groups
+// carry their own separators, so only direct children count.
+function groupHasActiveSeparator(element: HTMLElement | null) {
+  return Boolean(element?.querySelector(':scope > [data-separator="active"]'));
+}
+
+type PixelGuardEntry = {
+  panelRef: React.RefObject<PanelImperativeHandle | null>;
+  openRef: React.RefObject<boolean>;
+  sizePxRef: React.RefObject<number>;
+};
+
+// groupResizeBehavior="preserve-pixel-size" is inert in react-resizable-panels
+// 4.12.2: any container resize (window resize, or the sidebar moving the
+// workbench) redistributes panel sizes proportionally, so the right dock used
+// to drift through the 360px tab-label container-query threshold and flicker.
+// Re-assert the stored pixel size of fixed panels whenever the group's element
+// resizes. The observer fires between layout and paint, so the proportional
+// intermediate state is corrected before it becomes visible, and correcting the
+// group's inner layout does not resize the group element again (no loop).
+function useGroupPixelGuard(entries: PixelGuardEntry[]) {
+  const elementRef = useRef<HTMLDivElement | null>(null);
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  useEffect(() => {
+    const element = elementRef.current;
+    if (!element) return;
+    let frame = 0;
+    const correct = () => {
+      frame = 0;
+      for (const { panelRef, openRef, sizePxRef } of entriesRef.current) {
+        const panel = panelRef.current;
+        if (!panel || !openRef.current || panel.isCollapsed()) continue;
+        const want = sizePxRef.current;
+        if (want <= 1) continue;
+        if (Math.abs(panel.getSize().inPixels - want) > 0.75) panel.resize(`${want}px`);
+      }
+    };
+    // Correct on the next frame, not inside the observer callback: the library
+    // processes the same container resize in its own observer and converts
+    // px→% through a cached group size, so a same-frame resize() races it and
+    // lands on a stale conversion. By the rAF the library has settled; if the
+    // container moves again the observer refires and schedules another pass.
+    const observer = new ResizeObserver(() => {
+      if (!frame) frame = requestAnimationFrame(correct);
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
+  return elementRef;
+}
+
 export function AppLayout({
   state,
   actions,
@@ -138,12 +217,31 @@ export function AppLayout({
       : compactLeadingChrome ? 112 : 192;
   const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
   const bottomDockOpen = !settingsMode && !hostedMcpWidget && state.bottomDockOpen;
+  // Toggle-animation hooks must come before the collapse/expand sync hooks:
+  // layout effects run in hook order, and collapse() reports a synchronous
+  // onResize that the handlers below gate on animatingRef — registered after
+  // the collapse, the flag would still be false and the closing panel would
+  // immediately flip its open flag (and itself) back.
+  const sidebarToggle = usePanelToggleAnimation(sidebarVisible);
+  const rightDockToggle = usePanelToggleAnimation(rightDockOpen);
+  const bottomDockToggle = usePanelToggleAnimation(bottomDockOpen);
   const sidebarPanelRef = useCollapsiblePanelSync(sidebarVisible, sidebarWidth);
   const rightDockPanelRef = useCollapsiblePanelSync(rightDockOpen, rightDockWidth);
   const bottomDockPanelRef = useCollapsiblePanelSync(bottomDockOpen, state.bottomDockHeight);
   const initialSidebarSize = useInitialSize(sidebarWidth);
   const initialRightDockSize = useInitialSize(rightDockWidth);
   const initialBottomDockSize = useInitialSize(state.bottomDockHeight);
+  // Latest open flags / stored pixel sizes, readable from observer callbacks.
+  const rightDockOpenRef = useRef(rightDockOpen);
+  rightDockOpenRef.current = rightDockOpen;
+  const bottomDockOpenRef = useRef(bottomDockOpen);
+  bottomDockOpenRef.current = bottomDockOpen;
+  const sidebarWidthRef = useRef(sidebarWidth);
+  sidebarWidthRef.current = sidebarWidth;
+  const rightDockWidthRef = useRef(rightDockWidth);
+  rightDockWidthRef.current = rightDockWidth;
+  const bottomDockHeightRef = useRef(state.bottomDockHeight);
+  bottomDockHeightRef.current = state.bottomDockHeight;
   // The sidebar store only exposes a toggle; wrap it as an idempotent setter so
   // drag-to-collapse can sync the flag without double-toggling.
   const sidebarOpenRef = useRef(sidebarVisible);
@@ -156,6 +254,15 @@ export function AppLayout({
     },
     [onToggleSidebar],
   );
+  const workspaceGroupRef = useGroupPixelGuard([
+    { panelRef: sidebarPanelRef, openRef: sidebarOpenRef, sizePxRef: sidebarWidthRef },
+  ]);
+  const workbenchGroupRef = useGroupPixelGuard([
+    { panelRef: rightDockPanelRef, openRef: rightDockOpenRef, sizePxRef: rightDockWidthRef },
+  ]);
+  const workbenchMainGroupRef = useGroupPixelGuard([
+    { panelRef: bottomDockPanelRef, openRef: bottomDockOpenRef, sizePxRef: bottomDockHeightRef },
+  ]);
   const systemThemeMode = useSystemThemeMode();
   const shellStyle = {
     ...buildThemeStyle(state.preferences, systemThemeMode),
@@ -297,6 +404,8 @@ export function AppLayout({
         <ResizablePanelGroup
           orientation="horizontal"
           className="workspace-panels"
+          elementRef={workspaceGroupRef}
+          data-panels-animating={sidebarToggle.animating || undefined}
           onLayoutChanged={(_layout, meta) => {
             if (!meta.isUserInteraction) return;
             const px = Math.round(sidebarPanelRef.current?.getSize().inPixels ?? 0);
@@ -315,7 +424,12 @@ export function AppLayout({
             maxSize={`${maxSidebarWidth}px`}
             groupResizeBehavior="preserve-pixel-size"
             onResize={(size) => {
-              if (!settingsMode) setSidebarOpen(Math.round(size.inPixels) > 1);
+              if (settingsMode) return;
+              // While the toggle transition animates through intermediate
+              // sizes, only a real drag on this group's separator may flip the
+              // open flag — otherwise closing would re-open itself mid-animation.
+              if (sidebarToggle.animatingRef.current && !groupHasActiveSeparator(workspaceGroupRef.current)) return;
+              setSidebarOpen(Math.round(size.inPixels) > 1);
             }}
           >
             <div className="sidebar-shell-inner">
@@ -323,13 +437,15 @@ export function AppLayout({
             </div>
           </ResizablePanel>
           {chromeVisible ? (
-            <ResizableHandle withHandle aria-label="Resize sidebar" data-collapsed={!state.sidebarOpen || undefined} />
+            <ResizableHandle withHandle className="workspace-sidebar-handle" aria-label="Resize sidebar" data-collapsed={!state.sidebarOpen || undefined} />
           ) : null}
           <ResizablePanel id="center" className="workspace-center-panel" style={CLIPPED_PANEL_STYLE}>
             <section className="workbench">
               <ResizablePanelGroup
                 orientation="horizontal"
                 className="workbench-panels"
+                elementRef={workbenchGroupRef}
+                data-panels-animating={rightDockToggle.animating || undefined}
                 onLayoutChanged={(_layout, meta) => {
                   if (!meta.isUserInteraction) return;
                   const px = Math.round(rightDockPanelRef.current?.getSize().inPixels ?? 0);
@@ -340,6 +456,8 @@ export function AppLayout({
                   <ResizablePanelGroup
                     orientation="vertical"
                     className="workbench-main-panels"
+                    elementRef={workbenchMainGroupRef}
+                    data-panels-animating={bottomDockToggle.animating || undefined}
                     onLayoutChanged={(_layout, meta) => {
                       if (!meta.isUserInteraction) return;
                       const px = Math.round(bottomDockPanelRef.current?.getSize().inPixels ?? 0);
@@ -366,8 +484,9 @@ export function AppLayout({
                       maxSize="70%"
                       groupResizeBehavior="preserve-pixel-size"
                       onResize={(size) => {
+                        if (bottomDockToggle.animatingRef.current && !groupHasActiveSeparator(workbenchMainGroupRef.current)) return;
                         const open = Math.round(size.inPixels) > 1;
-                        if (open !== bottomDockOpen) actions.setDockOpen("bottom", open);
+                        if (open !== bottomDockOpenRef.current) actions.setDockOpen("bottom", open);
                       }}
                     >
                       {/* Always mounted: DockPanel renders its own closed state
@@ -393,8 +512,9 @@ export function AppLayout({
                   maxSize="70%"
                   groupResizeBehavior="preserve-pixel-size"
                   onResize={(size) => {
+                    if (rightDockToggle.animatingRef.current && !groupHasActiveSeparator(workbenchGroupRef.current)) return;
                     const open = Math.round(size.inPixels) > 1;
-                    if (open !== rightDockOpen) actions.setDockOpen("right", open);
+                    if (open !== rightDockOpenRef.current) actions.setDockOpen("right", open);
                   }}
                 >
                   <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
