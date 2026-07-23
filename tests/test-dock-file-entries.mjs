@@ -101,7 +101,7 @@ assert.deepEqual(resolveDockDropPaths(
 
 assert.deepEqual(defaultDockTabs("right").map((tab) => tab.kind), ["inspector", "text", "files"]);
 assert.deepEqual(defaultDockTabs("bottom").map((tab) => tab.kind), ["files", "chemical-space", "jobs"]);
-assert.deepEqual(dockTabCatalog("right"), ["xyzrender", "inspector", "story", "text", "files"]);
+assert.deepEqual(dockTabCatalog("right"), ["xyzrender", "chemical-space", "inspector", "story", "text", "files"]);
 assert.deepEqual(dockTabCatalog("bottom"), ["files", "chemical-space", "jobs", "folding", "spectrum", "logs"]);
 for (const kind of ["xyzrender", "inspector", "text", "files", "folding", "spectrum"]) {
   assert.equal(dockTabLoadsDroppedDocument(kind), true, kind);

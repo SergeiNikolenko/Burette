@@ -1833,7 +1833,10 @@ assert.match(gridViewer, /function svgDataImageHTML\(svg, className, label\)/);
 assert.match(gridViewer, /data-buret-rdkit-svg/);
 assert.match(gridViewer, /function resetDocumentRuntimeState\(\)/);
 assert.match(gridViewer, /state\.query = '';\s*state\.smarts = '';/);
-assert.match(gridViewer, /state\.selected = new Set\(\);\s*state\.hiddenRows = new Set\(\);/);
+assert.match(
+  gridViewer,
+  /state\.selected = new Set\(\);\s*state\.chemicalSpaceFilterActive = false;\s*state\.hiddenRows = new Set\(\);/,
+);
 assert.match(gridViewer, /resetDocumentRuntimeState\(\);\s*state\.remoteMode = isRemoteMode\(cfg\);/);
 assert.match(gridViewer, /el\.addEventListener\('click', event => handleCardSelection\(event, row, cfg, el\)\);/);
 assert.match(gridViewer, /if \(event\.key === ' ' \|\| event\.key === 'Enter'\) \{\s*handleCardSelection\(event, row, cfg, el\);\s*\}/);
@@ -4266,7 +4269,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v142"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v143"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v66"/);
 assert.match(browserDevDocuments, /const XYZRENDER_LARGE_STRUCTURE_ATOM_LIMIT = 1500/);
 assert.match(viteConfig, /registerBrowserDevAgentSessionRoute\(server\)/);
@@ -6862,7 +6865,10 @@ assert.match(gridCss, /\.buret-molecule-picture img\.buret-rdkit-card-image,\s*\
 assert.match(gridViewer, /el\.dataset\.buretCardTooltip = cardTooltip\(row\)/);
 assert.match(gridViewer, /function cardTooltip\(row\)/);
 assert.match(gridViewer, /function installCardHover\(card\)/);
-assert.match(gridViewer, /pointerenter', \(\) => card\.classList\.add\('buret-card-hovering-molecule'\)/);
+assert.match(
+  gridViewer,
+  /pointerenter', \(\) => \{\s*card\.classList\.add\('buret-card-hovering-molecule'\);\s*postChemicalSpaceHover\(index\);/,
+);
 assert.match(gridViewer, /pointermove', \(\) => card\.classList\.add\('buret-card-hovering-molecule'\)/);
 assert.match(gridViewer, /el\.addEventListener\('contextmenu', event => showMoleculeContextMenu\(event, row\)\)/);
 assert.match(gridViewer, /if \(event instanceof MouseEvent && event\.button !== 0\) return;/);

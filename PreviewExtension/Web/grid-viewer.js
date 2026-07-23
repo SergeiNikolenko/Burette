@@ -102,6 +102,7 @@
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     hiddenRows: new Set(),
     selected: new Set(),
+    chemicalSpaceFilterActive: false,
     ketcherOpenPendingUntil: 0,
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
@@ -467,9 +468,9 @@
             .filter(index => Number.isSafeInteger(index) && index >= 0)
           : [];
         state.selected = new Set(indexes);
+        state.chemicalSpaceFilterActive = body.filterToSelection === true && indexes.length > 0;
         state.selectionAnchorIndex = indexes.length ? indexes[indexes.length - 1] : null;
-        syncRenderedSelection();
-        updateChrome(config());
+        refresh(config());
         return;
       }
       if (body.type === 'chemicalSpaceRequestState') {
@@ -501,6 +502,7 @@
         if (!capabilities(config()).editing) return;
         state.hiddenRows.clear();
         state.selected.clear();
+        state.chemicalSpaceFilterActive = false;
         state.undoStack = [];
         state.redoStack = [];
         state.svgCache.clear();
@@ -2411,6 +2413,12 @@
   function refresh(cfg) {
     resetGridWindowForNewResultSet();
     if (state.remoteMode) {
+      if (state.chemicalSpaceFilterActive) {
+        state.rows = filterByChemicalSpaceSelection(state.rows);
+        state.totalRows = state.rows.length;
+        render(cfg);
+        return;
+      }
       void refreshRemote(cfg);
       return;
     }
@@ -2419,7 +2427,9 @@
     const textRows = query
       ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
       : allRows.slice();
-    state.rows = filterByTableColumnControls(filterByDescriptorControls(filterBySMARTS(textRows)));
+    state.rows = filterByChemicalSpaceSelection(
+      filterByTableColumnControls(filterByDescriptorControls(filterBySMARTS(textRows)))
+    );
     if (shouldFallbackSMARTSToTextSearch()) {
       const fallbackQuery = normalize(state.query);
       state.smartsError = '';
@@ -2427,11 +2437,18 @@
       state.rows = fallbackQuery
         ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(fallbackQuery))
         : allRows.slice();
-      state.rows = filterByTableColumnControls(filterByDescriptorControls(state.rows));
+      state.rows = filterByChemicalSpaceSelection(
+        filterByTableColumnControls(filterByDescriptorControls(state.rows))
+      );
     }
     state.rows.sort((a, b) => compareWithDescriptorSort(a, b));
     state.totalRows = state.rows.length;
     render(cfg);
+  }
+
+  function filterByChemicalSpaceSelection(rows) {
+    if (!state.chemicalSpaceFilterActive) return rows;
+    return rows.filter(row => state.selected.has(Number(row.index)));
   }
 
   function resetGridWindowForNewResultSet() {
@@ -4248,6 +4265,7 @@
     state.all.push(...appendedRows);
     window.BurreteGridRecords = state.all;
     state.selected.clear();
+    state.chemicalSpaceFilterActive = false;
     state.selectionAnchorIndex = null;
     state.svgCache.clear();
     state.xyzrenderCardCache.clear();
@@ -4772,8 +4790,14 @@
   }
 
   function clearSelection(cfg) {
+    const wasFilteringChemicalSpace = state.chemicalSpaceFilterActive;
     state.selected.clear();
+    state.chemicalSpaceFilterActive = false;
     state.selectionAnchorIndex = null;
+    if (wasFilteringChemicalSpace) {
+      refresh(cfg);
+      return;
+    }
     syncRenderedSelection();
     updateChrome(cfg);
   }
@@ -5990,6 +6014,7 @@
     state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
     state.remoteAnalysisColumns = [];
     state.selected = new Set();
+    state.chemicalSpaceFilterActive = false;
     state.hiddenRows = new Set();
     state.findingSimilar = false;
     state.exportingClusterRepresentatives = false;

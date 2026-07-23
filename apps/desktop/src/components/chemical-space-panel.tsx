@@ -362,7 +362,11 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               onSelect={(sourceRecordIds) => {
                 const bounded = sourceRecordIds.slice(0, GRID_SELECTION_BRIDGE_LIMIT);
                 setSelected(new Set(bounded));
-                postToGrid({ type: "chemicalSpaceSelectionChanged", sourceRecordIds: bounded });
+                postToGrid({
+                  type: "chemicalSpaceSelectionChanged",
+                  sourceRecordIds: bounded,
+                  filterToSelection: tool === "lasso",
+                });
               }}
             />
           ) : error ? (

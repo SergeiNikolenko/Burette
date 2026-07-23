@@ -52,6 +52,30 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   "chemical-space": Atom01Icon,
 };
 
+function resolveChemicalSpaceDocument(
+  state: ShellViewState,
+  dockDocument: ViewerDocument | null,
+) {
+  const supportsChemicalSpace = (document: ViewerDocument | null): document is ViewerDocument => (
+    document?.renderer === "grid2d"
+    || ["csv", "tsv", "dwar", "smi", "smiles"].includes(document?.extension.toLowerCase() ?? "")
+  );
+  if (supportsChemicalSpace(dockDocument)) return dockDocument;
+  if (supportsChemicalSpace(state.activeDocument)) return state.activeDocument;
+  if (supportsChemicalSpace(state.quickLookDocument)) return state.quickLookDocument;
+  const location = state.activeTab?.location;
+  if (location?.kind === "file") {
+    const locationDocument = state.documents.find((document) => (
+      supportsChemicalSpace(document)
+      && (document.id === location.documentId || document.path === location.path)
+    ));
+    if (locationDocument) return locationDocument;
+  }
+  return state.visibleDocuments.find(supportsChemicalSpace)
+    ?? state.documents.find(supportsChemicalSpace)
+    ?? null;
+}
+
 export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
   const [dropActive, setDropActive] = useState(false);
   const configuredTabs = area === "right" ? state.rightDockTabs : state.bottomDockTabs;
@@ -66,7 +90,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const activeStructureDocument = dockDocument ?? state.activeDocument;
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
-  const chemicalSpaceDockAvailable = activeStructureDocument?.renderer === "grid2d";
+  const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   const foldingState = useFoldingResult(area === "bottom" ? activeStructureDocument : null);
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
@@ -262,6 +286,7 @@ function DockPanelContent({
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockStructureDocument = dockDocument ?? activeDocument;
+  const chemicalSpaceDocument = resolveChemicalSpaceDocument(state, dockDocument);
   const activeTextDocument = activeTextDocumentFromState(state);
   const fileEntries = activeTabKind === "files"
     ? dockFileEntries({
@@ -396,7 +421,7 @@ function DockPanelContent({
     );
   }
   if (activeTabKind === "chemical-space") {
-    return <ChemicalSpacePanel document={dockStructureDocument?.renderer === "grid2d" ? dockStructureDocument : null} />;
+    return <ChemicalSpacePanel document={chemicalSpaceDocument} />;
   }
   if (activeTabKind === "folding") {
     return <FoldingAnalysisPanel document={dockStructureDocument} actions={actions} />;
