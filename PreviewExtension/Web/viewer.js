@@ -11076,7 +11076,9 @@
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
     mainRow.append(animation, previous, label, next);
-    if (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls) mainRow.append(smooth);
+    const smoothAvailable = !xyzAlignFrames
+      && (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
+    if (smoothAvailable) mainRow.append(smooth);
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
     if (toggleRow) {
       toggleRow.className = 'buret-docking-pose-toggles';
