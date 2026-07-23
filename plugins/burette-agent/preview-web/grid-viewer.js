@@ -5234,6 +5234,7 @@
   }
 
   function showMoleculeContextMenu(event, row) {
+    const cfg = config();
     if (event.target?.closest?.('[data-buret-card-resize]')) return;
     if (!isMoleculeContextTarget(event.target)) {
       event.preventDefault();
@@ -5257,7 +5258,7 @@
     const subtitle = document.createElement('div');
     subtitle.className = 'buret-grid-molecule-context-menu-subtitle';
     subtitle.textContent = row.smiles || 'SDF molecule';
-    const editing = capabilities(config()).editing;
+    const editing = capabilities(cfg).editing;
     const actions = [
       ['open', 'Preview molecule'],
       ['molstar', 'Open in Mol*'],
