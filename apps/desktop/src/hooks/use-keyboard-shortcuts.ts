@@ -98,7 +98,7 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         }
         return;
       }
-      if (commandKey && !event.altKey && event.shiftKey && key === "p") {
+      if (commandKey && !event.altKey && key === "p") {
         event.preventDefault();
         actions.openCommandPalette();
         return;

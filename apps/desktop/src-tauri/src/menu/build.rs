@@ -205,7 +205,7 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .items(&[&rdkit, &xyzrender])
         .build()?;
     let command_palette = MenuItemBuilder::with_id("view.command-palette", "Command Palette…")
-        .accelerator("CmdOrCtrl+Shift+P")
+        .accelerator("CmdOrCtrl+P")
         .build(app)?;
     let view_menu = SubmenuBuilder::new(app, "View")
         .items(&[

@@ -121,6 +121,7 @@ const [
   dropActionExecutor,
   componentsTypes,
   commandPalette,
+  shellCommands,
   editorArea,
   editorTabs,
   editorScrollContainer,
@@ -323,6 +324,7 @@ const [
   source('apps/desktop/src/components/drop-action-executor.ts'),
   source('apps/desktop/src/components/types.ts'),
   source('apps/desktop/src/components/command-palette/index.tsx'),
+  source('apps/desktop/src/lib/shell-commands.ts'),
   source('apps/desktop/src/components/editor-area/index.tsx'),
   source('apps/desktop/src/components/editor-area/editor-tabs.tsx'),
   source('apps/desktop/src/components/editor-area/editor-scroll-container.tsx'),
@@ -1181,7 +1183,7 @@ assert.match(appShellActionsHook, /runExternalRuntimeDoctor: ShellActions\["runE
 assert.match(appShellActionsHook, /runExternalRuntimeDoctor,/);
 assert.match(componentsTypes, /runExternalRuntimeDoctor: \(\) => void \| Promise<void>;/);
 assert.match(settingsPanel, /actionRow\("Runtime doctor"/);
-assert.match(commandPalette, /id: "runtime-doctor"/);
+assert.match(shellCommands, /id: "runtime-doctor"/);
 assert.match(app, /useAppDiagnostics\(\{\s*pushErrorStatus,\s*pushStatus,\s*recentErrorsRef,\s*\}\)/s);
 assert.doesNotMatch(app, /collectPerformanceMarks/);
 assert.doesNotMatch(app, /measureAsync\("ipc:export-diagnostics"/);
@@ -3361,7 +3363,7 @@ assert.match(welcome, /Command Palette/);
 assert.match(welcome, /Settings/);
 assert.match(welcome, /from "\.\.\/shortcut-tooltip"/);
 assert.match(welcome, /<ShortcutTooltip label="Open Structure" shortcut="⌘O" \/>/);
-assert.match(welcome, /<ShortcutTooltip label="Command Palette" shortcut="⇧⌘P \/" \/>/);
+assert.match(welcome, /<ShortcutTooltip label="Command Palette" shortcut="⌘P \/" \/>/);
 assert.match(welcome, /<ShortcutTooltip label="Settings" shortcut="⌘," \/>/);
 assert.doesNotMatch(welcome, /Open molecular structures/);
 assert.match(errorBoundary, /export class ErrorBoundary/);
@@ -3649,22 +3651,22 @@ assert.match(styles, /\.page-surface:not\(\[data-active\]\) \{[^}]*display: none
 assert.doesNotMatch(editorScrollContainer, /ProgressiveBlur|editor-progressive-blur/);
 assert.doesNotMatch(styles, /\.editor-progressive-blur/);
 assert.match(commandPalette, /group: "Projects"/);
-assert.match(commandPalette, /id: "open-clipboard"/);
-assert.match(commandPalette, /parsePdbFetchCommand/);
-assert.match(commandPalette, /parseSmilesCommand/);
-assert.match(commandPalette, /actions\.fetchPdbStructure\(fetchCommand\.pdbId\)/);
-assert.match(commandPalette, /actions\.openKetcherWithStructures\(\[\], \[\{/);
-assert.match(commandPalette, /Fetch \$\{fetchCommand\.pdbId\} from RCSB PDB/);
-assert.match(commandPalette, /Draw SMILES in Ketcher/);
-assert.match(commandPalette, /id: "open-agent-integration"/);
-assert.match(commandPalette, /label: "Codex Agent"/);
-assert.match(commandPalette, /run: \(\) => actions\.openSettingsSection\("agent"\)/);
-assert.match(commandPalette, /Open from Clipboard/);
-assert.match(commandPalette, /run: actions\.openClipboard/);
-assert.match(commandPalette, /Clear Recent Structures/);
-assert.match(commandPalette, /group: "Suggested"/);
-assert.doesNotMatch(commandPalette, /renderer-xyz-fast/);
-assert.match(commandPalette, /group: "Renderer"/);
+assert.match(shellCommands, /id: "open-clipboard"/);
+assert.match(shellCommands, /parsePdbFetchCommand/);
+assert.match(shellCommands, /parseSmilesCommand/);
+assert.match(shellCommands, /actions\.fetchPdbStructure\(fetchCommand\.pdbId\)/);
+assert.match(shellCommands, /actions\.openKetcherWithStructures\(\[\], \[\{/);
+assert.match(shellCommands, /Fetch \$\{fetchCommand\.pdbId\} from RCSB PDB/);
+assert.match(shellCommands, /Draw SMILES in Ketcher/);
+assert.match(shellCommands, /id: "open-agent-integration"/);
+assert.match(shellCommands, /label: "Codex Agent"/);
+assert.match(shellCommands, /run: \(\) => actions\.openSettingsSection\("agent"\)/);
+assert.match(shellCommands, /Open from Clipboard/);
+assert.match(shellCommands, /run: actions\.openClipboard/);
+assert.match(shellCommands, /Clear Recent Structures/);
+assert.match(shellCommands, /group: "Suggested"/);
+assert.doesNotMatch(shellCommands, /renderer-xyz-fast/);
+assert.match(shellCommands, /group: "Renderer"/);
 assert.match(commandPalette, /from "cmdk"/);
 assert.match(commandPalette, /from "@radix-ui\/react-dialog"/);
 assert.doesNotMatch(commandPalette, /CommandDialog/);
@@ -5854,7 +5856,7 @@ assert.match(keyboardShortcutsSection, /command: "Undo"[\s\S]*?keybindings: \["�
 assert.match(keyboardShortcutsSection, /command: "Redo"[\s\S]*?keybindings: \["⇧⌘Z"\]/);
 assert.match(shortcutDocs, /\| Cmd\+Z \| Undo the latest workspace or focused preview edit \|/);
 assert.match(shortcutDocs, /\| Cmd\+Shift\+Z \| Redo the latest workspace or focused preview edit when available \|/);
-assert.match(shortcuts, /commandKey && !event\.altKey && event\.shiftKey && key === "p"/);
+assert.match(shortcuts, /commandKey && !event\.altKey && key === "p"/);
 assert.match(shortcuts, /if \(isTauriRuntime\(\)\) return/);
 assert.match(shortcuts, /commandKey && !event\.altKey && !event\.shiftKey && key === "n"/);
 assert.match(shortcuts, /commandKey && !event\.altKey && !event\.shiftKey && key === "t"/);
@@ -6094,13 +6096,13 @@ const gridSelectionKeydown = gridViewer.match(/function handleGridSelectionKeydo
 assert.match(gridSelectionKeydown, /isEditableShortcutTarget\(target\)/);
 assert.match(gridSelectionKeydown, /event\.shiftKey\) redoLastGridEdit\(cfg\)/);
 assert.match(gridSelectionKeydown, /else undoLastGridEdit\(cfg\)/);
-assert.match(commandPalette, /id: "open-recent"/);
-assert.match(commandPalette, /id: "search-projects"/);
-assert.match(commandPalette, /id: "reveal-active"/);
-assert.match(commandPalette, /id: "copy-active-path"/);
-assert.match(commandPalette, /id: "show-active-metadata"/);
-assert.match(commandPalette, /id: "export-preview-png"/);
-assert.match(commandPalette, /id: "export-preview-svg"/);
+assert.match(shellCommands, /id: "open-recent"/);
+assert.match(shellCommands, /id: "search-projects"/);
+assert.match(shellCommands, /id: "reveal-active"/);
+assert.match(shellCommands, /id: "copy-active-path"/);
+assert.match(shellCommands, /id: "show-active-metadata"/);
+assert.match(shellCommands, /id: "export-preview-png"/);
+assert.match(shellCommands, /id: "export-preview-svg"/);
 assert.match(editorTabs, /id: "reveal-tab-document"/);
 assert.match(editorTabs, /id: "copy-tab-document-path"/);
 assert.match(editorTabs, /id: "show-tab-document-metadata"/);
@@ -6348,7 +6350,7 @@ assert.match(appMaintenanceHook, /Quick Look reset completed/);
 assert.match(appMaintenanceHook, /Quick Look reset reported issues/);
 assert.doesNotMatch(app, /Quick Look reset requested/);
 
-assert.match(shortcutDocs, /\| Cmd\+Shift\+P or \/ \| Open command palette \|/);
+assert.match(shortcutDocs, /\| Cmd\+P or \/ \| Open command palette \|/);
 assert.match(shortcutDocs, /\| Cmd\+N \| Open a new Burrete window \|/);
 assert.match(shortcutDocs, /\| Cmd\+T \| Open a new launcher tab \|/);
 assert.match(shortcutDocs, /\| Cmd\+B \| Toggle sidebar \|/);
