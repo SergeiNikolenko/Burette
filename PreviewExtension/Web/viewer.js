@@ -2065,6 +2065,13 @@
       setViewerTheme(nextTheme, activeViewer);
       return;
     }
+    // Applied in place so the default-style preference never rebuilds the viewer.
+    // requestMolstarStyle updates the config, the toolbar selector, and re-renders
+    // through the same path the toolbar dropdown uses.
+    if (body.type === 'setViewerStyle') {
+      requestMolstarStyle(body.value);
+      return;
+    }
     if (body.type === 'setXyzrenderControls') {
       const config = activeConfig || window.BurreteConfig || {};
       const documentId = String(config.documentId || '');
