@@ -49,6 +49,11 @@
   --line: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 24%), transparent);
   --line-subtle: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 24%), transparent);
   --line-subtler: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 15%), transparent);
+  /* One step of file-tree nesting, and where that step's guide line sits inside it.
+     The tree nests in the DOM, so this compounds with depth — the sidebar is narrow,
+     and a wider step buys clarity at one level while truncating names at five. */
+  --project-tree-indent: 12px;
+  --project-tree-guide-left: 5px;
   --focus-border: #0a84ff;
   /* Neutral, never blue. Every consumer is a :focus-visible rule, so this shows
      for keyboard navigation only and a mouse click still leaves no ring. */
@@ -1208,12 +1213,26 @@ kbd span { margin-left: 2px; }
   color: var(--text-secondary);
   outline: none;
 }
+/* The first level under a project is a nesting level like any other. It used to
+   indent by 2px and draw no guide, so a tree read as "flat, then suddenly nested"
+   and the first branch had nothing to trace back to its parent. */
 .project-children {
+  position: relative;
   display: grid;
   gap: 1px;
-  padding-left: 2px;
+  padding-left: var(--project-tree-indent);
   min-height: 0;
   overflow: hidden;
+}
+.project-children::before {
+  content: "";
+  position: absolute;
+  left: var(--project-tree-guide-left);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line-subtler);
+  pointer-events: none;
 }
 .project-folder-node {
   display: grid;
@@ -1304,7 +1323,7 @@ kbd span { margin-left: 2px; }
   gap: 1px;
   /* One nesting level of indent. Because the tree nests in the DOM, this
      compounds naturally with depth and needs no per-row depth arithmetic. */
-  padding-left: 14px;
+  padding-left: var(--project-tree-indent);
 }
 /* Guide line for this nesting level, same idea as the Files component's
    `before:w-px` rule. Kept inside the padding box so the container's own
@@ -1312,7 +1331,7 @@ kbd span { margin-left: 2px; }
 .project-folder-children::before {
   content: "";
   position: absolute;
-  left: 6px;
+  left: var(--project-tree-guide-left);
   top: 0;
   bottom: 0;
   width: 1px;
@@ -1335,6 +1354,15 @@ kbd span { margin-left: 2px; }
   cursor: default;
   line-height: 1.15;
   transition: background 140ms ease-out, color 140ms ease-out, box-shadow 140ms ease-out, transform 140ms ease-out;
+}
+/* Inside the tree a file sits on the same level as its sibling folders, so it takes
+   the folder row's inset and icon gap; left at the base 10px its name stood 6px
+   right of theirs. Scoped to the nesting containers so the flat Pinned list, which
+   lines up with the project rows instead, keeps its own inset. */
+.project-children .project,
+.project-folder-children .project {
+  padding-left: 6px;
+  gap: 4px;
 }
 .project:hover { background: var(--surface-subtle); }
 .project.active {
