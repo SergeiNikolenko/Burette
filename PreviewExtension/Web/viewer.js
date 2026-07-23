@@ -15546,6 +15546,16 @@
       height: Math.round(rect.height)
     };
     popover.dataset.compact = rect.width < 190 ? 'true' : 'false';
+    // Dragging an edge lands on a size no preset describes, so S/M/L reflects the
+    // card rather than the last button pressed — none of them is lit for a custom
+    // size instead of one of them claiming it.
+    for (const button of popover.querySelectorAll('[data-buret-molecule-preview-action="size"]')) {
+      const preset = MOLECULE_PREVIEW_SIZES[button.dataset.size];
+      const matches = preset
+        && Math.abs(preset.width - rect.width) < 2
+        && Math.abs(preset.height - rect.height) < 2;
+      button.setAttribute('aria-pressed', matches ? 'true' : 'false');
+    }
   }
 
   function applyMolstarMoleculePreviewGeometry(popover) {
@@ -15569,9 +15579,30 @@
     popover.style.height = `${preset.height}px`;
     molstarMoleculePreviewClamp(popover);
     rememberMolstarMoleculePreviewGeometry(popover);
-    for (const button of popover.querySelectorAll('[data-buret-molecule-preview-action="size"]')) {
-      button.setAttribute('aria-pressed', button.dataset.size === size ? 'true' : 'false');
-    }
+  }
+
+  // The status line sits at the far edge of the window, so a copy started from the
+  // card is answered on the card: the button itself reports copied or failed and
+  // settles back after a moment.
+  let molstarMoleculePreviewCopyTimer = 0;
+  function reportMolstarMoleculePreviewCopy(state, label) {
+    const button = molstarMoleculePreview?.querySelector('[data-buret-molecule-preview-action="copy-smiles"]');
+    if (!button) return;
+    const caption = button.querySelector('span');
+    if (caption && !button.dataset.restLabel) button.dataset.restLabel = caption.textContent;
+    if (caption) caption.textContent = label;
+    button.dataset.copyState = state;
+    button.title = label;
+    if (molstarMoleculePreviewCopyTimer) clearTimeout(molstarMoleculePreviewCopyTimer);
+    molstarMoleculePreviewCopyTimer = setTimeout(() => {
+      molstarMoleculePreviewCopyTimer = 0;
+      const current = molstarMoleculePreview?.querySelector('[data-buret-molecule-preview-action="copy-smiles"]');
+      if (!current) return;
+      const text = current.querySelector('span');
+      if (text) text.textContent = current.dataset.restLabel || 'SMILES';
+      delete current.dataset.copyState;
+      current.title = 'Copy SMILES';
+    }, 1800);
   }
 
   async function copyMolstarMoleculePreviewSmiles(target) {
@@ -15579,6 +15610,7 @@
     const molblock = splitSdfRecords(String(entry?.data || ''))[0] || String(entry?.data || '');
     if (!molblock.trim()) {
       setStatus('[web] This molecule has no structure to read a SMILES from.', 'error');
+      reportMolstarMoleculePreviewCopy('error', 'No structure');
       return;
     }
     let molecule = null;
@@ -15589,8 +15621,10 @@
       if (!smiles) throw new Error('RDKit returned no SMILES.');
       await writeTextToClipboard(smiles);
       setStatus(`[web] Copied SMILES: ${smiles}`);
+      reportMolstarMoleculePreviewCopy('done', 'Copied');
     } catch (error) {
       setStatus(`[web] Copy SMILES failed. ${error?.message || error}`, 'error');
+      reportMolstarMoleculePreviewCopy('error', 'Failed');
     } finally {
       try { molecule?.delete?.(); } catch (_) {}
     }
@@ -15643,7 +15677,6 @@
     };
     popover.addEventListener('pointerdown', event => {
       const handle = event.target instanceof Element ? event.target.closest('[data-buret-molecule-preview-resize]') : null;
-      if (handle && !popover.contains(handle)) return;
       if (event.button !== 0) return;
       // Only the header and the drawing move the card; the footer buttons and the
       // title are ordinary controls, so a press there must not start a drag.
@@ -15995,10 +16028,18 @@
       molstarMoleculePreview = popover;
     }
     popover.setAttribute('aria-label', `${label} preview`);
-    popover.innerHTML = molstarMoleculePreviewCardHTML(label, subtitle, image || escapeHTML('Rendering 2D preview...'));
-    popover.dataset.buretPreviewKey = key;
-    if (created) applyMolstarMoleculePreviewGeometry(popover);
-    rememberMolstarMoleculePreviewGeometry(popover);
+    // Every pointer move over the 3D view asks for this card again. Rewriting the
+    // markup each time destroys the button under the cursor between pointerdown and
+    // click, so nothing in the footer can be pressed and a resize handle grabbed
+    // mid-rebuild belongs to no card. Only redraw when the card would differ.
+    const signature = `${key}\n${label}\n${subtitle}`;
+    if (popover.dataset.buretPreviewSignature !== signature) {
+      popover.innerHTML = molstarMoleculePreviewCardHTML(label, subtitle, image || escapeHTML('Rendering 2D preview...'));
+      popover.dataset.buretPreviewSignature = signature;
+      popover.dataset.buretPreviewKey = key;
+      if (created) applyMolstarMoleculePreviewGeometry(popover);
+      rememberMolstarMoleculePreviewGeometry(popover);
+    }
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
         if (!svg || !molstarMoleculePreview || molstarMoleculePreview.dataset.buretPreviewKey !== key) return;
@@ -16355,6 +16396,14 @@
       }
       const target = event.target;
       if (target instanceof Element && target.closest('.buret-molecule-context-menu')) return;
+      // Pressing the preview card is not a press on the view behind it. The plain
+      // dismissal below re-derives the preview from the current pick, which tears
+      // the card down mid-press and takes its buttons with it.
+      if (target instanceof Element && target.closest('.buret-molstar-molecule-preview')) {
+        contextPointer = null;
+        hideMolstarContextMenu({ keepMoleculePreview: true });
+        return;
+      }
       if (event.button === 0 && menuIsInAtomMode() && isMolstarContextMenuTarget(target)) {
         event.preventDefault();
         event.stopPropagation();

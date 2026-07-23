@@ -897,6 +897,15 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The edge handles are laid over the whole card, so the controls take a stacking
+   context of their own — the border stays grabbable right up to a button, and the
+   button itself is never swallowed by the handle crossing it. */
+.buret-molecule-card-icon,
+.buret-molecule-card-button,
+.buret-molecule-card-sizes {
+  position: relative;
+  z-index: 3;
+}
 .buret-molecule-card-icon {
   display: grid;
   place-items: center;
@@ -1002,6 +1011,22 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
    longer fit — the icons alone still say Ketcher and copy. */
 .buret-molstar-molecule-preview[data-compact="true"] .buret-molecule-card-button > span {
   display: none;
+}
+/* A copy answers on the button rather than in the status line at the far edge of
+   the window, so the word comes back even on a card too narrow for labels. */
+.buret-molstar-molecule-preview[data-compact="true"] .buret-molecule-card-button[data-copy-state] > span {
+  display: inline;
+}
+.buret-molecule-card-button[data-copy-state] {
+  flex: 1 1 auto;
+}
+.buret-molecule-card-button[data-copy-state="done"],
+.buret-molecule-card-button[data-copy-state="done"] > svg {
+  color: #32d74b;
+}
+.buret-molecule-card-button[data-copy-state="error"],
+.buret-molecule-card-button[data-copy-state="error"] > svg {
+  color: #ff453a;
 }
 .buret-molstar-molecule-preview-resize {
   position: absolute;
