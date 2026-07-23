@@ -16763,7 +16763,7 @@
     showMolstarMoleculePreview(molstarPreviewLigandTarget(entry));
   }
 
-  function molstarMoleculePreviewNavHTML(label) {
+  function molstarMoleculePreviewNavHTML() {
     const entries = molstarPreviewLigandEntries();
     if (entries.length < 2) return '';
     const position = molstarPreviewLigandIndex(entries) + 1;
@@ -16786,7 +16786,7 @@
           <span class="buret-molecule-card-title" title="${escapeHTML(label)}">${escapeHTML(label)}</span>
           <span class="buret-molecule-card-subtitle">${escapeHTML(subtitle)}</span>
         </span>
-        ${molstarMoleculePreviewNavHTML(label)}
+        ${molstarMoleculePreviewNavHTML()}
         <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
       <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
