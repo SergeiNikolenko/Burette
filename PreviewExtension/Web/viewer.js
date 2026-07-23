@@ -5640,9 +5640,12 @@
       });
       initViewportPanelDrag(panel);
       window.addEventListener('resize', updateViewportCornerLayout);
+      // Clicking the 3D view leaves the menu alone — you usually want to look at
+      // what it is about before choosing. Going back to the tree dismisses it.
       document.addEventListener('click', event => {
         const menu = document.getElementById('buret-scene-tree-menu');
-        if (menu && !menu.contains(event.target)) closeSceneTreeMenu();
+        if (!menu || menu.contains(event.target)) return;
+        if (event.target?.closest?.('#buret-scene-tree, #buret-viewport-corner')) closeSceneTreeMenu();
       }, true);
       document.addEventListener('change', event => {
         const select = event.target.closest('[data-scene-tree-select]');
@@ -14217,6 +14220,37 @@
     return atom ? `${residue} atom ${atom}` : `${residue} atom`;
   }
 
+  // The molecule menu is rendered in the same shape as the scene tree menu: a few
+  // named actions up top, the bulky export/search/compute lists as titled sections,
+  // and the deletions last where a stray click is least likely to reach them.
+  const MOLECULE_MENU_GROUPS = [
+    { id: 'primary', title: '' },
+    { id: 'export', title: 'Export' },
+    { id: 'search', title: 'Search' },
+    { id: 'compute', title: 'Compute' },
+    { id: 'danger', title: '' }
+  ];
+
+  function moleculeContextActionGroup(action) {
+    const name = String(action || '');
+    if (name.startsWith('remove')) return 'danger';
+    if (name.startsWith('save')) return 'export';
+    if (name.startsWith('pubchem')) return 'search';
+    if (name.startsWith('compute')) return 'compute';
+    return 'primary';
+  }
+
+  function moleculeContextActionIcon(action) {
+    const name = String(action || '');
+    if (name.startsWith('remove')) return SCENE_TREE_ICON.trash;
+    if (name.startsWith('focus')) return SCENE_TREE_ICON.focus;
+    if (name.startsWith('select')) return ['M20 6 9 17l-5-5'];
+    if (name === 'molstar') {
+      return ['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'];
+    }
+    return null;
+  }
+
   function molstarContextMenuActions(target, mode = 'molecule') {
     if (mode === 'atom' && target?.scope === 'ligand') {
       const actions = [
@@ -15043,15 +15077,44 @@
     actionContainer.className = 'buret-molecule-context-menu-actions';
     const renderActions = () => {
       actionContainer.replaceChildren();
-      molstarContextMenuActions(menuTarget, mode).forEach(([action, label]) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.setAttribute('role', 'menuitem');
-        button.dataset.buretMoleculeAction = action;
-        button.textContent = label;
-        button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
-        actionContainer.appendChild(button);
+      const grouped = new Map();
+      molstarContextMenuActions(menuTarget, mode).forEach(entry => {
+        const group = moleculeContextActionGroup(entry[0]);
+        if (!grouped.has(group)) grouped.set(group, []);
+        grouped.get(group).push(entry);
       });
+      for (const { id, title } of MOLECULE_MENU_GROUPS) {
+        const entries = grouped.get(id);
+        if (!entries?.length) continue;
+        if (actionContainer.childElementCount) {
+          const divider = document.createElement('div');
+          divider.className = 'buret-tree-menu-divider';
+          actionContainer.appendChild(divider);
+        }
+        if (title) {
+          const heading = document.createElement('div');
+          heading.className = 'buret-tree-menu-title';
+          heading.textContent = title;
+          actionContainer.appendChild(heading);
+        }
+        for (const [action, label] of entries) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.setAttribute('role', 'menuitem');
+          button.className = `buret-tree-menu-item${id === 'danger' ? ' buret-tree-menu-item-destructive' : ''}`;
+          button.dataset.buretMoleculeAction = action;
+          const icon = document.createElement('span');
+          icon.className = 'buret-tree-menu-icon';
+          const paths = moleculeContextActionIcon(action);
+          if (paths) icon.appendChild(sceneTreeIconElement(paths));
+          const text = document.createElement('span');
+          text.className = 'buret-tree-menu-label';
+          text.textContent = label;
+          button.append(icon, text);
+          button.addEventListener('click', () => { void moleculeContextMenuAction(action, label); });
+          actionContainer.appendChild(button);
+        }
+      }
     };
     if (menuTarget.scope === 'ligand' && menuTarget.atomLoci) {
       const modeGroup = document.createElement('div');

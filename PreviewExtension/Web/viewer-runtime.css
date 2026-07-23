@@ -2986,3 +2986,68 @@ body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-present {
 body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-missing {
   opacity: 0.5;
 }
+
+/* Molecule context menu.
+   Shares the scene tree menu's chrome so the two right-click menus in the viewer
+   read as one thing. Scoped away from the mobile host, which keeps its own
+   touch-sized treatment defined earlier in this file. */
+body:not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu) {
+  min-width: 224px;
+  max-width: 300px;
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: var(--buret-molstar-panel-radius);
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-panel-background);
+  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-menu-title {
+  padding: 6px 8px 0;
+  font-size: 12px;
+  font-weight: 590;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-menu-subtitle {
+  padding: 0 8px 8px;
+  font-size: 10.5px;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item {
+  min-height: 26px;
+  padding: 0 8px;
+  gap: 8px;
+  border-radius: 6px;
+  font: inherit;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item:hover,
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item:focus {
+  background: var(--buret-molstar-hover-background);
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:hover,
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-tree-menu-item-destructive:hover > .buret-tree-menu-icon {
+  color: #ff6b5e;
+}
+/* Segmented Molecule / Atom switch, in the shape the app uses elsewhere. */
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-mode {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+  margin: 0 6px 4px;
+  border-radius: 7px;
+  padding: 2px;
+  background: var(--buret-molstar-row-background);
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-mode-button {
+  min-height: 22px;
+  border-radius: 5px;
+  color: var(--buret-molstar-muted-text);
+  font-size: 11px;
+}
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-mode-button[aria-pressed="true"] {
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-hover-background);
+  font-weight: 590;
+}
