@@ -31,11 +31,20 @@ struct RegisteredGridRuntime {
     database_path: PathBuf,
     format: &'static str,
     cancel_token: Arc<AtomicBool>,
+    ingest_worker: Option<thread::JoinHandle<()>>,
 }
 
 impl Drop for RegisteredGridRuntime {
     fn drop(&mut self) {
+        // Signal cancellation, then wait for the ingest worker to stop before
+        // deleting the runtime directory. The worker holds a WAL-mode SQLite
+        // connection, so removing the directory while it is still writing races
+        // its `-wal`/`-shm` files: `remove_dir_all` can lose to a concurrently
+        // re-created file and silently leave the directory behind.
         self.cancel_token.store(true, Ordering::Relaxed);
+        if let Some(worker) = self.ingest_worker.take() {
+            let _ = worker.join();
+        }
         if let Some(runtime_dir) = self.database_path.parent() {
             let _ = std::fs::remove_dir_all(runtime_dir);
         }
@@ -74,6 +83,7 @@ pub(crate) struct GridCollectionSummary {
 pub(crate) struct GridStoreHandle {
     pub(crate) database_path: PathBuf,
     pub(crate) cancel_token: Arc<AtomicBool>,
+    pub(crate) ingest_worker: Option<thread::JoinHandle<()>>,
     pub(crate) summary: GridCollectionSummary,
 }
 
@@ -252,11 +262,13 @@ impl GridRuntimeRegistry {
         database_path: PathBuf,
         format: &'static str,
         cancel_token: Arc<AtomicBool>,
+        ingest_worker: Option<thread::JoinHandle<()>>,
     ) -> Result<(), String> {
         let runtime = Arc::new(RegisteredGridRuntime {
             database_path,
             format,
             cancel_token,
+            ingest_worker,
         });
         let existing = self
             .entries
@@ -433,10 +445,11 @@ pub(crate) fn build_grid_store_with_options(
         let _ = std::fs::remove_file(&database_path);
         return Ok(None);
     }
-    if first_batch.complete {
+    let ingest_worker = if first_batch.complete {
         grid_identity::finalize_source_revision(&connection)?;
+        None
     } else {
-        spawn_grid_ingest_worker(
+        Some(spawn_grid_ingest_worker(
             database_path.clone(),
             extension.to_string(),
             text,
@@ -444,11 +457,12 @@ pub(crate) fn build_grid_store_with_options(
             first_batch.next_index,
             options.smiles_column.clone(),
             cancel_token.clone(),
-        );
-    }
+        ))
+    };
     Ok(Some(GridStoreHandle {
         database_path,
         cancel_token,
+        ingest_worker,
         summary: GridCollectionSummary {
             format,
             records_total: records_indexed,
@@ -982,7 +996,7 @@ fn spawn_grid_ingest_worker(
     mut next_index: usize,
     smiles_column: Option<String>,
     cancel_token: Arc<AtomicBool>,
-) {
+) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let Ok(connection) = open_grid_database(&database_path) else {
             return;
@@ -1029,7 +1043,7 @@ fn spawn_grid_ingest_worker(
                 return;
             }
         }
-    });
+    })
 }
 
 fn initialize_schema(connection: &Connection) -> Result<(), String> {
@@ -3846,6 +3860,7 @@ mod tests {
                 handle.database_path.clone(),
                 handle.summary.format,
                 handle.cancel_token.clone(),
+                handle.ingest_worker,
             )
             .expect("register grid runtime");
         registry
@@ -3886,6 +3901,7 @@ mod tests {
                 handle.database_path,
                 handle.summary.format,
                 handle.cancel_token,
+                handle.ingest_worker,
             )
             .expect("register grid runtime");
         let lease = registry
@@ -3929,6 +3945,7 @@ mod tests {
                 old_handle.database_path,
                 old_handle.summary.format,
                 old_handle.cancel_token,
+                old_handle.ingest_worker,
             )
             .expect("register old grid runtime");
         let old_lease = registry
@@ -3947,6 +3964,7 @@ mod tests {
                 new_handle.database_path,
                 new_handle.summary.format,
                 new_handle.cancel_token,
+                new_handle.ingest_worker,
             )
             .expect("replace grid runtime");
 
@@ -3989,6 +4007,7 @@ mod tests {
                 handle.database_path,
                 handle.summary.format,
                 handle.cancel_token,
+                handle.ingest_worker,
             )
             .expect("register namespaced grid runtime");
 

@@ -120,6 +120,7 @@ pub(crate) fn compute_register_inline_source<R: Runtime>(
         grid_store.database_path,
         grid_store.summary.format,
         grid_store.cancel_token,
+        grid_store.ingest_worker,
     ) {
         let _ = fs::remove_dir_all(&runtime_dir);
         return Err(error);
