@@ -5389,7 +5389,13 @@
 
   function closeSceneTreeMenu() {
     sceneTreeMenuRef = '';
-    document.getElementById('buret-scene-tree-menu')?.remove();
+    const menu = document.getElementById('buret-scene-tree-menu');
+    // Dismissing the menu mid-hover must not leave the previewed theme behind: the
+    // pointer never reached a row to click, so nothing was chosen.
+    for (const list of menu?.querySelectorAll('[data-scene-tree-picker-list]') || []) {
+      closeSceneTreePicker(list, { restore: true });
+    }
+    menu?.remove();
   }
 
   function sceneTreeNodeByRef(nodes, ref) {
@@ -5458,6 +5464,45 @@
     else control.selectedIndex = -1;
     row.append(caption, control);
     menu.appendChild(row);
+  }
+
+  // A native <select> cannot preview: its popup is drawn by the OS, its <option>
+  // elements have no layout box, and no pointer event ever reaches them. Colour
+  // themes are the one list here worth seeing before committing to, so this row is
+  // a list of our own — hovering paints the scene, leaving puts it back.
+  function sceneTreeMenuThemePicker(menu, label, action, options, current) {
+    const row = document.createElement('div');
+    row.className = 'buret-tree-menu-field buret-tree-menu-picker';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'buret-tree-picker-trigger';
+    trigger.dataset.sceneTreePicker = action;
+    trigger.setAttribute('aria-expanded', 'false');
+    const chosen = options.find(option => option.name === current);
+    trigger.textContent = chosen ? chosen.label : 'Mixed';
+    trigger.title = trigger.textContent;
+    row.append(caption, trigger);
+    menu.appendChild(row);
+
+    const list = document.createElement('div');
+    list.className = 'buret-tree-picker-list';
+    list.dataset.sceneTreePickerList = action;
+    list.dataset.current = current || '';
+    list.hidden = true;
+    list.setAttribute('role', 'listbox');
+    for (const option of options) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'buret-tree-picker-item';
+      item.setAttribute('role', 'option');
+      item.dataset.sceneTreePickerValue = option.name;
+      item.setAttribute('aria-selected', option.name === current ? 'true' : 'false');
+      item.textContent = option.label;
+      list.appendChild(item);
+    }
+    menu.appendChild(list);
   }
 
   function sceneTreeMenuSlider(menu, label, slider, value) {
@@ -5796,6 +5841,39 @@
     ], active);
   }
 
+  // Painting a whole structure is a state commit, and a pointer crossing a list
+  // asks for one per row. Newer hovers fold into the one in flight, the same way
+  // the opacity drag does, so the scene follows the cursor instead of a backlog.
+  let sceneTreeThemeInFlight = false;
+  let sceneTreePendingTheme = null;
+  async function streamSceneTreeTheme(ref, action, name) {
+    sceneTreePendingTheme = { ref, action, name };
+    if (sceneTreeThemeInFlight) return;
+    sceneTreeThemeInFlight = true;
+    try {
+      while (sceneTreePendingTheme) {
+        const next = sceneTreePendingTheme;
+        sceneTreePendingTheme = null;
+        await (next.action === 'representation-color'
+          ? applySceneTreeReprColor(next.ref, next.name, null)
+          : applySceneTreeColorTheme(next.ref, next.name, null));
+      }
+    } finally {
+      sceneTreeThemeInFlight = false;
+    }
+  }
+
+  function closeSceneTreePicker(list, { restore } = {}) {
+    if (!list || list.hidden) return;
+    const trigger = list.parentElement?.querySelector(`[data-scene-tree-picker="${list.dataset.sceneTreePickerList}"]`);
+    if (restore && list.dataset.current) {
+      const ref = list.closest('[data-ref]')?.dataset.ref;
+      if (ref) streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, list.dataset.current);
+    }
+    list.hidden = true;
+    trigger?.setAttribute('aria-expanded', 'false');
+  }
+
   function applySceneTreeReprParam(ref, name, value) {
     return updateSceneTreeRepresentation(ref, old => ({
       ...old, type: { ...old.type, params: { ...old.type.params, [name]: value } }
@@ -5821,7 +5899,7 @@
     sceneTreeMenuSlider(menu, 'Opacity', 'opacity', Math.round(alpha * 100));
 
     sceneTreeMenuSection(menu, 'Colour');
-    sceneTreeMenuSelect(menu, 'Theme', 'representation-color',
+    sceneTreeMenuThemePicker(menu, 'Theme', 'representation-color',
       sceneTreeColorThemes(viewer, [target.component]), String(params?.colorTheme?.name || ''));
     sceneTreeMenuSwatches(menu, node.label, 'rep-tint-color', sceneTreeRepresentationTint(target.representation));
 
@@ -5885,7 +5963,7 @@
       }
       if (components.length) {
         sceneTreeMenuSection(menu, 'Colour');
-        sceneTreeMenuSelect(menu, 'Theme', 'color-theme', sceneTreeColorThemes(viewer, components), node.theme);
+        sceneTreeMenuThemePicker(menu, 'Theme', 'color-theme', sceneTreeColorThemes(viewer, components), node.theme);
         sceneTreeMenuSwatches(menu, node.label, 'tint-color', node.value);
       }
     }
@@ -5937,6 +6015,42 @@
   }
 
   function onSceneTreeClick(event) {
+    const menu = document.getElementById('buret-scene-tree-menu');
+    const trigger = event.target.closest?.('[data-scene-tree-picker]');
+    if (trigger && menu?.contains(trigger)) {
+      const list = menu.querySelector(`[data-scene-tree-picker-list="${trigger.dataset.sceneTreePicker}"]`);
+      if (!list) return;
+      const opening = list.hidden;
+      // Only one list open at a time, and the one being closed goes back to the
+      // theme it started from — a hover that was never clicked is not a choice.
+      for (const other of menu.querySelectorAll('[data-scene-tree-picker-list]')) {
+        if (other !== list) closeSceneTreePicker(other, { restore: true });
+      }
+      if (opening) {
+        list.hidden = false;
+        trigger.setAttribute('aria-expanded', 'true');
+      } else {
+        closeSceneTreePicker(list, { restore: true });
+      }
+      return;
+    }
+    const picked = event.target.closest?.('[data-scene-tree-picker-value]');
+    if (picked && menu?.contains(picked)) {
+      const list = picked.closest('[data-scene-tree-picker-list]');
+      const ref = picked.closest('[data-ref]')?.dataset.ref;
+      const name = picked.dataset.sceneTreePickerValue;
+      if (list && ref) {
+        list.dataset.current = name;
+        streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, name);
+        closeSceneTreePicker(list);
+        const owner = menu.querySelector(`[data-scene-tree-picker="${list.dataset.sceneTreePickerList}"]`);
+        if (owner) { owner.textContent = picked.textContent; owner.title = picked.textContent; }
+        for (const item of list.children) {
+          item.setAttribute('aria-selected', item === picked ? 'true' : 'false');
+        }
+      }
+      return;
+    }
     const control = event.target.closest('[data-scene-tree-action]');
     if (!control) return;
     const ref = control.closest('[data-ref]')?.dataset.ref;
@@ -6672,6 +6786,27 @@
         if (!control || !ref || control.dataset.sceneTreeParamType === 'number') return;
         const value = control.dataset.sceneTreeParamType === 'boolean' ? control.checked : control.value;
         applySceneTreeReprParam(ref, control.dataset.sceneTreeParam, value);
+      });
+      // The point of the theme list: the scene takes each theme as the pointer
+      // passes over it, and gets its own back when the pointer leaves without
+      // choosing. Bound on the document because the menu is portalled to <body>.
+      document.addEventListener('pointerover', event => {
+        const item = event.target.closest?.('[data-scene-tree-picker-value]');
+        const list = item?.closest('[data-scene-tree-picker-list]');
+        const ref = list?.closest('[data-ref]')?.dataset.ref;
+        if (!list || list.hidden || !ref) return;
+        streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, item.dataset.sceneTreePickerValue);
+      });
+      document.addEventListener('pointerout', event => {
+        const list = event.target.closest?.('[data-scene-tree-picker-list]');
+        if (!list || list.hidden) return;
+        // Only when the pointer has actually left the list, not on the way between
+        // two of its rows.
+        if (event.relatedTarget && list.contains(event.relatedTarget)) return;
+        const ref = list.closest('[data-ref]')?.dataset.ref;
+        if (ref && list.dataset.current) {
+          streamSceneTreeTheme(ref, list.dataset.sceneTreePickerList, list.dataset.current);
+        }
       });
       // Opacity streams as the thumb moves; the slider sits inside the menu, so the
       // outside-click dismissal never sees these events and the menu stays open.
