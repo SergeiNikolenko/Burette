@@ -8516,7 +8516,7 @@
         alpha: 0.11,
         transparentBackfaces: 'on',
         ignoreLight: false,
-        material: { roughness: 0.08, metalness: 0, reflectivity: 1 }
+        material: { roughness: 0.08, metalness: 0 }
       },
       color: 'uniform',
       colorParams: { value: 0xc8d0d8 }
