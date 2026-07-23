@@ -3671,6 +3671,7 @@
     installToolbarAutoLayoutTracking(toolbar);
     installMolstarFloatingPanelTracking();
     initSceneTree(viewer);
+    initSequencePanel(viewer);
     updateToolbarVisibility();
     updateSdfPoseButton();
     updatePreviewDockButtons();
@@ -4422,9 +4423,9 @@
     syncLeftPanelVisibility();
     // Mol* re-renders its regions after this call, so the second pass is the one
     // that sees the real left-panel width.
-    updateSceneTreeLayoutOffset();
-    requestAnimationFrame(updateSceneTreeLayoutOffset);
-    setTimeout(updateSceneTreeLayoutOffset, 120);
+    updateViewportCornerLayout();
+    requestAnimationFrame(updateViewportCornerLayout);
+    setTimeout(updateViewportCornerLayout, 120);
 
     updateToolbarButtons();
     scheduleViewerResize(viewer, 40);
@@ -4887,12 +4888,15 @@
     return item;
   }
 
+  // Coalesced with a timer rather than an animation frame: a preview can be laid out
+  // while its tab is hidden, and requestAnimationFrame never fires there, which
+  // would leave the panel empty until the tab was looked at.
   function scheduleSceneTreeRender() {
     if (sceneTreeRenderHandle) return;
-    sceneTreeRenderHandle = requestAnimationFrame(() => {
+    sceneTreeRenderHandle = window.setTimeout(() => {
       sceneTreeRenderHandle = 0;
       renderSceneTree();
-    });
+    }, 0);
   }
 
   function renderSceneTree() {
@@ -4904,11 +4908,10 @@
     reconcileSceneTreeExpansion(nodes);
     const available = nodes.length > 0;
     toggle.classList.toggle('hidden', !available);
-    document.body?.classList.toggle('buret-scene-tree-available', available);
     if (!available) {
       setSceneTreeOpen(false);
       body.replaceChildren();
-      updateSceneTreeLayoutOffset();
+      updateViewportCornerLayout();
       return;
     }
     const root = document.createElement('div');
@@ -4964,7 +4967,7 @@
       moveSceneTreeHighlight(null);
       closeSceneTreeMenu();
     }
-    updateSceneTreeLayoutOffset();
+    updateViewportCornerLayout();
   }
 
   // Flips the row in place rather than re-rendering: a rebuilt node would start at
@@ -5242,70 +5245,81 @@
     openSceneTreeMenu(row.dataset.ref, event.clientX, event.clientY);
   }
 
-  function moveSceneTreePanel(panel, left, top) {
+  function moveViewportPanel(panel, left, top) {
     const rect = panel.getBoundingClientRect();
     const maxLeft = Math.max(6, window.innerWidth - rect.width - 6);
     const maxTop = Math.max(6, window.innerHeight - rect.height - 6);
     panel.style.left = `${Math.round(Math.max(6, Math.min(left, maxLeft)))}px`;
     panel.style.top = `${Math.round(Math.max(6, Math.min(top, maxTop)))}px`;
-    updateSceneTreeLayoutOffset();
+    updateViewportCornerLayout();
   }
 
-  // Three things want the top-left corner: the Mol* left panel, our toggle plus its
-  // panel, and the Mol* trajectory/animation controls. They queue up left to right,
-  // and each one that disappears gives its space back.
-  function updateSceneTreeLayoutOffset() {
+  // Four things want the top-left corner: the Mol* left panel, our corner buttons,
+  // the panels they open, and the Mol* trajectory/animation controls. They queue up
+  // left to right, and each one that disappears gives its space back.
+  function updateViewportCornerLayout() {
     const style = document.documentElement.style;
-    const toggle = document.getElementById('buret-scene-tree-toggle');
-    const panel = document.getElementById('buret-scene-tree');
+    const corner = document.getElementById('buret-viewport-corner');
+    const sceneTree = document.getElementById('buret-scene-tree');
+    const sequence = document.getElementById('buret-sequence');
+
+    const cornerWidth = corner?.getBoundingClientRect().width || 0;
+    document.body?.classList.toggle('buret-viewport-corner-active', cornerWidth > 0);
 
     const leftPanel = document.querySelector('.msp-layout-region.msp-layout-left');
     const leftRect = leftPanel?.offsetParent === null ? null : leftPanel?.getBoundingClientRect();
-    if (leftRect?.width) style.setProperty('--buret-scene-tree-left', `${Math.round(leftRect.right + 12)}px`);
-    else style.removeProperty('--buret-scene-tree-left');
+    if (leftRect?.width) style.setProperty('--buret-corner-left', `${Math.round(leftRect.right + 12)}px`);
+    else style.removeProperty('--buret-corner-left');
+
+    // The sequence strip is long, so it starts after the scene tree rather than
+    // underneath it whenever both are open in the corner.
+    const treeOpen = sceneTree && !sceneTree.classList.contains('hidden');
+    const treeRect = treeOpen ? sceneTree.getBoundingClientRect() : null;
+    if (treeRect && treeRect.top < 56) style.setProperty('--buret-sequence-left', `${Math.round(treeRect.right + 10)}px`);
+    else style.removeProperty('--buret-sequence-left');
 
     const controls = document.querySelector('.msp-plugin .msp-viewport-top-left-controls');
     if (!controls) {
-      style.removeProperty('--buret-scene-tree-inset');
+      style.removeProperty('--buret-corner-inset');
       return;
     }
-    let edge = null;
-    if (toggle && !toggle.classList.contains('hidden')) edge = toggle.getBoundingClientRect().right + 8;
-    if (panel && !panel.classList.contains('hidden')) {
+    let edge = cornerWidth ? corner.getBoundingClientRect().right + 8 : null;
+    for (const panel of [sceneTree, sequence]) {
+      if (!panel || panel.classList.contains('hidden')) continue;
       const rect = panel.getBoundingClientRect();
       if (rect.top < 56) edge = Math.max(edge ?? 0, rect.right + 10);
     }
     if (edge === null) {
-      style.removeProperty('--buret-scene-tree-inset');
+      style.removeProperty('--buret-corner-inset');
       return;
     }
     // The controls sit inside the Mol* main region, so the offset is measured from
     // that region rather than from the window.
     const origin = controls.offsetParent?.getBoundingClientRect().left ?? 0;
-    style.setProperty('--buret-scene-tree-inset', `${Math.round(Math.max(10, edge - origin))}px`);
+    style.setProperty('--buret-corner-inset', `${Math.round(Math.max(10, edge - origin))}px`);
   }
 
-  function initSceneTreeDrag(panel) {
-    const handle = panel.querySelector('.buret-scene-tree-header');
+  function initViewportPanelDrag(panel) {
+    const handle = panel.querySelector('[data-buret-panel-handle]');
     if (!handle) return;
     let drag = null;
     const onPointerDown = event => {
       if (event.button !== 0 || event.target.closest('button, input, select')) return;
       const rect = panel.getBoundingClientRect();
       drag = { pointerId: event.pointerId, dx: event.clientX - rect.left, dy: event.clientY - rect.top };
-      handle.setPointerCapture(event.pointerId);
-      panel.classList.add('buret-scene-tree-dragging');
+      try { handle.setPointerCapture(event.pointerId); } catch (_) {}
+      panel.classList.add('buret-viewport-panel-dragging');
       event.preventDefault();
     };
     const onPointerMove = event => {
       if (!drag || event.pointerId !== drag.pointerId) return;
-      moveSceneTreePanel(panel, event.clientX - drag.dx, event.clientY - drag.dy);
+      moveViewportPanel(panel, event.clientX - drag.dx, event.clientY - drag.dy);
       event.preventDefault();
     };
     const finishDrag = event => {
       if (!drag || event.pointerId !== drag.pointerId) return;
       try { handle.releasePointerCapture(event.pointerId); } catch (_) {}
-      panel.classList.remove('buret-scene-tree-dragging');
+      panel.classList.remove('buret-viewport-panel-dragging');
       drag = null;
     };
     handle.addEventListener('pointerdown', onPointerDown);
@@ -5334,8 +5348,8 @@
       panel.addEventListener('focusin', event => {
         moveSceneTreeHighlight(event.target.closest('.buret-tree-row'));
       });
-      initSceneTreeDrag(panel);
-      window.addEventListener('resize', updateSceneTreeLayoutOffset);
+      initViewportPanelDrag(panel);
+      window.addEventListener('resize', updateViewportCornerLayout);
       document.addEventListener('click', event => {
         const menu = document.getElementById('buret-scene-tree-menu');
         if (menu && !menu.contains(event.target)) closeSceneTreeMenu();
@@ -5362,6 +5376,234 @@
       sceneTreeStateDisposer = () => subscriptions.forEach(subscription => subscription?.unsubscribe?.());
     }
     scheduleSceneTreeRender();
+  }
+
+
+  // Sequence: the Mol* sequence strip restated in the same overlay language. It
+  // lists the polymer chains of the loaded structures and renders the active one as
+  // residue chips that highlight and focus in the 3D view.
+  const SEQUENCE_RULER_STEP = 10;
+  let sequencePanelChains = [];
+  let sequencePanelChainKey = '';
+  let sequencePanelStateDisposer = null;
+  let sequencePanelRenderHandle = 0;
+
+  // Walks the units of every loaded structure and keeps the ones that carry a
+  // polymer sequence — `model.sequence.byEntityKey` only holds polymer entities, so
+  // ligands, ions and water drop out without needing a molecule-type table.
+  function readSequenceChains(viewer) {
+    const chains = [];
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const data = structure?.cell?.obj?.data;
+      const structureRef = structure?.cell?.transform?.ref || '';
+      const structureLabel = structure?.cell?.obj?.label || 'Structure';
+      for (const unit of data?.units || []) {
+        if (unit.kind !== 0) continue;
+        const model = unit.model;
+        const hierarchy = model?.atomicHierarchy;
+        const elements = unit.elements;
+        if (!hierarchy?.chains || !elements?.length) continue;
+        const chainIndex = hierarchy.chainAtomSegments.index[elements[0]];
+        const entityId = hierarchy.chains.label_entity_id.value(chainIndex);
+        const entityKey = model.entities?.getEntityIndex?.(entityId);
+        const sequence = model.sequence?.byEntityKey?.[entityKey]?.sequence;
+        if (!sequence?.code) continue;
+        const residues = readSequenceResidues(hierarchy, elements, sequence);
+        if (residues.length < 2) continue;
+        chains.push({
+          key: `${structureRef}:${unit.id}`,
+          label: String(hierarchy.chains.auth_asym_id.value(chainIndex)
+            || hierarchy.chains.label_asym_id.value(chainIndex) || '?'),
+          structureLabel,
+          structure: data,
+          unit,
+          residues
+        });
+      }
+    }
+    return chains;
+  }
+
+  function readSequenceResidues(hierarchy, elements, sequence) {
+    const residueIndex = hierarchy.residueAtomSegments.index;
+    const residues = [];
+    let current = null;
+    for (let i = 0; i < elements.length; i += 1) {
+      const residue = residueIndex[elements[i]];
+      if (current && current.residue === residue) {
+        current.count += 1;
+        continue;
+      }
+      const seqId = hierarchy.residues.label_seq_id.value(residue);
+      const codeIndex = sequence.indexMap?.get(seqId);
+      current = {
+        residue,
+        seqId,
+        authSeqId: hierarchy.residues.auth_seq_id.value(residue),
+        code: Number.isInteger(codeIndex) ? String(sequence.code.value(codeIndex) || 'X') : 'X',
+        start: i,
+        count: 1
+      };
+      residues.push(current);
+    }
+    return residues;
+  }
+
+  // Mol* takes an element loci as `{ unit, indices }`; a typed array is used because
+  // a two-element plain array reads as an interval rather than a set of two atoms.
+  function sequenceResidueLoci(chain, residue) {
+    const indices = new Int32Array(residue.count);
+    for (let i = 0; i < residue.count; i += 1) indices[i] = residue.start + i;
+    return { kind: 'element-loci', structure: chain.structure, elements: [{ unit: chain.unit, indices }] };
+  }
+
+  function activeSequenceChain() {
+    return sequencePanelChains.find(chain => chain.key === sequencePanelChainKey)
+      || sequencePanelChains[0]
+      || null;
+  }
+
+  function highlightSequenceResidue(index) {
+    const chain = activeSequenceChain();
+    const residue = chain?.residues[index];
+    const highlights = activeMolstarViewer()?.plugin?.managers?.interactivity?.lociHighlights;
+    if (!residue || typeof highlights?.highlightOnly !== 'function') return;
+    try {
+      highlights.highlightOnly({ loci: sequenceResidueLoci(chain, residue) });
+    } catch (error) {
+      debug('sequence highlight failed: ' + (error && error.message || String(error)));
+    }
+  }
+
+  function clearSequenceHighlight() {
+    const highlights = activeMolstarViewer()?.plugin?.managers?.interactivity?.lociHighlights;
+    try { highlights?.clearHighlights?.(); } catch (_) {}
+  }
+
+  function focusSequenceResidue(index) {
+    const chain = activeSequenceChain();
+    const residue = chain?.residues[index];
+    const camera = activeMolstarViewer()?.plugin?.managers?.camera;
+    if (!residue || typeof camera?.focusLoci !== 'function') return;
+    try {
+      camera.focusLoci(sequenceResidueLoci(chain, residue), { durationMs: 250 });
+    } catch (error) {
+      debug('sequence focus failed: ' + (error && error.message || String(error)));
+    }
+  }
+
+  function setSequencePanelOpen(open) {
+    const toggle = document.getElementById('buret-sequence-toggle');
+    const panel = document.getElementById('buret-sequence');
+    if (!toggle || !panel) return;
+    panel.classList.toggle('hidden', !open);
+    panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      panel.style.removeProperty('left');
+      panel.style.removeProperty('top');
+    } else {
+      clearSequenceHighlight();
+    }
+    updateViewportCornerLayout();
+  }
+
+  function scheduleSequencePanelRender() {
+    if (sequencePanelRenderHandle) return;
+    sequencePanelRenderHandle = window.setTimeout(() => {
+      sequencePanelRenderHandle = 0;
+      renderSequencePanel();
+    }, 0);
+  }
+
+  function renderSequencePanel() {
+    const toggle = document.getElementById('buret-sequence-toggle');
+    const panel = document.getElementById('buret-sequence');
+    const body = panel?.querySelector('[data-buret-sequence-body]');
+    const chainBar = panel?.querySelector('[data-buret-sequence-chains]');
+    if (!toggle || !panel || !body || !chainBar) return;
+    sequencePanelChains = readSequenceChains(activeMolstarViewer());
+    const available = sequencePanelChains.length > 0;
+    toggle.classList.toggle('hidden', !available);
+    if (!available) {
+      setSequencePanelOpen(false);
+      body.replaceChildren();
+      chainBar.replaceChildren();
+      return;
+    }
+    const active = activeSequenceChain();
+    sequencePanelChainKey = active.key;
+
+    chainBar.replaceChildren(...sequencePanelChains.map(chain => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-sequence-chain';
+      button.dataset.sequenceChain = chain.key;
+      button.textContent = chain.label;
+      button.title = `${chain.structureLabel} · chain ${chain.label} · ${chain.residues.length} residues`;
+      button.setAttribute('aria-pressed', chain === active ? 'true' : 'false');
+      return button;
+    }));
+
+    const track = document.createElement('div');
+    track.className = 'buret-sequence-track';
+    active.residues.forEach((residue, index) => {
+      if (index % SEQUENCE_RULER_STEP === 0) {
+        const ruler = document.createElement('span');
+        ruler.className = 'buret-sequence-ruler';
+        ruler.textContent = String(residue.authSeqId);
+        track.appendChild(ruler);
+      }
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'buret-sequence-residue';
+      chip.dataset.sequenceResidue = String(index);
+      chip.textContent = residue.code;
+      chip.title = `${residue.code} ${residue.authSeqId}`;
+      track.appendChild(chip);
+    });
+    body.replaceChildren(track);
+    updateViewportCornerLayout();
+  }
+
+  function onSequencePanelClick(event) {
+    const chainButton = event.target.closest('[data-sequence-chain]');
+    if (chainButton) {
+      sequencePanelChainKey = chainButton.dataset.sequenceChain;
+      renderSequencePanel();
+      return;
+    }
+    const residue = event.target.closest('[data-sequence-residue]');
+    if (residue) focusSequenceResidue(Number(residue.dataset.sequenceResidue));
+  }
+
+  function initSequencePanel(viewer) {
+    const toggle = document.getElementById('buret-sequence-toggle');
+    const panel = document.getElementById('buret-sequence');
+    if (!toggle || !panel) return;
+    if (toggle.dataset.sequenceBound !== '1') {
+      toggle.dataset.sequenceBound = '1';
+      toggle.addEventListener('click', () => setSequencePanelOpen(panel.classList.contains('hidden')));
+      panel.querySelector('[data-buret-action="sequence-close"]')
+        ?.addEventListener('click', () => setSequencePanelOpen(false));
+      panel.addEventListener('click', onSequencePanelClick);
+      panel.addEventListener('pointerover', event => {
+        const residue = event.target.closest('[data-sequence-residue]');
+        if (residue) highlightSequenceResidue(Number(residue.dataset.sequenceResidue));
+      });
+      panel.addEventListener('pointerleave', clearSequenceHighlight);
+      initViewportPanelDrag(panel);
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !panel.classList.contains('hidden')) setSequencePanelOpen(false);
+      });
+    }
+    sequencePanelStateDisposer?.();
+    sequencePanelStateDisposer = null;
+    // Only structural changes matter here; visibility flips leave the sequence alone
+    // and rebuilding it walks every atom of every unit.
+    const subscription = viewer?.plugin?.state?.data?.events?.changed?.subscribe?.(scheduleSequencePanelRender);
+    if (subscription) sequencePanelStateDisposer = () => subscription.unsubscribe?.();
+    scheduleSequencePanelRender();
   }
 
   function updateThemeButton() {

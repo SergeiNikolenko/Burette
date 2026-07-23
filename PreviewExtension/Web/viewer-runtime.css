@@ -2309,13 +2309,20 @@ body .msp-plugin .msp-selection-viewport-controls-actions {
    type-coloured left edge, label plus a muted description, then visibility and
    remove. Focus and colouring live in the right-click menu so the row stays
    compact. */
-.buret-scene-tree-toggle {
+.buret-viewport-corner {
   position: absolute;
   top: var(--buret-toolbar-safe-top);
-  left: var(--buret-scene-tree-left, var(--buret-control-island-right));
+  left: var(--buret-corner-left, var(--buret-control-island-right));
   z-index: 36;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.buret-corner-toggle {
+  position: relative;
   display: grid;
   place-items: center;
+  flex: 0 0 auto;
   width: 30px;
   height: 30px;
   box-sizing: border-box;
@@ -2327,73 +2334,74 @@ body .msp-plugin .msp-selection-viewport-controls-actions {
   box-shadow: 0 8px 22px var(--buret-molstar-shadow);
   transition: background 150ms ease, color 150ms ease;
 }
-.buret-scene-tree-toggle > svg {
+.buret-corner-toggle > svg {
   width: 16px;
   height: 16px;
 }
 /* The layers fan apart on hover and stay apart while the panel is open — the same
    motion animate-ui gives its Lucide icons, expressed as a transform because this
    document has no React and no motion library. */
-.buret-scene-tree-toggle > svg > path {
+.buret-corner-toggle > svg > path {
   transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1);
 }
-.buret-scene-tree-toggle:hover > svg > path:first-child,
-.buret-scene-tree-toggle:focus-visible > svg > path:first-child,
-.buret-scene-tree-toggle[aria-expanded="true"] > svg > path:first-child {
+.buret-corner-toggle:hover > svg > path:first-child,
+.buret-corner-toggle:focus-visible > svg > path:first-child,
+.buret-corner-toggle[aria-expanded="true"] > svg > path:first-child {
   transform: translateY(-1.6px);
 }
-.buret-scene-tree-toggle:hover > svg > path:last-child,
-.buret-scene-tree-toggle:focus-visible > svg > path:last-child,
-.buret-scene-tree-toggle[aria-expanded="true"] > svg > path:last-child {
+.buret-corner-toggle:hover > svg > path:last-child,
+.buret-corner-toggle:focus-visible > svg > path:last-child,
+.buret-corner-toggle[aria-expanded="true"] > svg > path:last-child {
   transform: translateY(1.6px);
 }
-.buret-scene-tree-toggle:hover {
+.buret-corner-toggle:hover {
   background: var(--buret-molstar-hover-background);
 }
-.buret-scene-tree-toggle:focus-visible {
+.buret-corner-toggle:focus-visible {
   outline: none;
   box-shadow: 0 8px 22px var(--buret-molstar-shadow), 0 0 0 2px var(--buret-molstar-accent);
 }
-.buret-scene-tree-toggle[aria-expanded="true"] {
+.buret-corner-toggle[aria-expanded="true"] {
   background: var(--buret-molstar-hover-background);
 }
-.buret-scene-tree-toggle .buret-tooltip {
+.buret-corner-toggle .buret-tooltip {
   left: 0;
   transform: translate(0, -4px) scale(0.98);
 }
-.buret-scene-tree-toggle:hover > .buret-tooltip,
-.buret-scene-tree-toggle:focus-visible > .buret-tooltip {
+.buret-corner-toggle:hover > .buret-tooltip,
+.buret-corner-toggle:focus-visible > .buret-tooltip {
   opacity: 1;
   visibility: visible;
   transform: translate(0, 0) scale(1);
   transition-delay: 180ms, 180ms, 0s;
 }
-.buret-scene-tree-toggle[aria-expanded="true"] > .buret-tooltip {
+.buret-corner-toggle[aria-expanded="true"] > .buret-tooltip {
   opacity: 0;
   visibility: hidden;
   transition-delay: 0s;
 }
-.buret-scene-tree-toggle.hidden,
-.buret-scene-tree.hidden {
+.buret-corner-toggle.hidden,
+.buret-scene-tree.hidden,
+.buret-sequence.hidden {
   display: none;
 }
 /* Keep the native Mol* top-left controls — the animation button and, for a
-   trajectory, the frame stepper — clear of the toggle, and of the panel itself
-   while it sits open in that corner. */
-body.buret-scene-tree-available .msp-plugin .msp-viewport-top-left-controls {
-  left: var(--buret-scene-tree-inset, calc(var(--buret-control-island-right) + 38px));
+   trajectory, the frame stepper — clear of the corner buttons, and of whichever
+   panels are open in that corner. */
+body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
+  left: var(--buret-corner-inset, calc(var(--buret-control-island-right) + 38px));
   transition: left 160ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.buret-scene-tree {
+.buret-scene-tree,
+.buret-sequence {
   position: absolute;
   top: calc(var(--buret-toolbar-safe-top) + 38px);
-  left: var(--buret-scene-tree-left, var(--buret-control-island-right));
+  left: var(--buret-corner-left, var(--buret-control-island-right));
   z-index: 36;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  width: min(272px, calc(100vw - 24px));
   max-height: var(--buret-viewport-panel-max-height);
   overflow: hidden;
   border: 1px solid var(--buret-molstar-border);
@@ -2402,6 +2410,16 @@ body.buret-scene-tree-available .msp-plugin .msp-viewport-top-left-controls {
   background: var(--buret-molstar-panel-background);
   box-shadow: 0 18px 44px var(--buret-molstar-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-scene-tree {
+  width: min(272px, calc(100vw - 24px));
+}
+/* A sequence is long, so it gets a wide strip rather than the tree's column, and
+   it starts after the tree whenever both are open in the corner. */
+.buret-sequence {
+  left: var(--buret-sequence-left, var(--buret-corner-left, var(--buret-control-island-right)));
+  width: min(680px, calc(100vw - var(--buret-sequence-left, var(--buret-control-island-right)) - 24px));
+  max-height: min(240px, var(--buret-viewport-panel-max-height));
 }
 .buret-scene-tree-header {
   display: flex;
@@ -2416,7 +2434,7 @@ body.buret-scene-tree-available .msp-plugin .msp-viewport-top-left-controls {
   user-select: none;
   touch-action: none;
 }
-.buret-scene-tree.buret-scene-tree-dragging .buret-scene-tree-header {
+.buret-viewport-panel-dragging .buret-scene-tree-header {
   cursor: grabbing;
 }
 .buret-scene-tree-title {
@@ -2454,6 +2472,90 @@ body.buret-scene-tree-available .msp-plugin .msp-viewport-top-left-controls {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.buret-sequence-chains {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.buret-sequence-chains::-webkit-scrollbar {
+  display: none;
+}
+.buret-sequence-chain {
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 18px;
+  border: 0;
+  border-radius: 5px;
+  padding: 0 6px;
+  color: var(--buret-molstar-muted-text);
+  background: var(--buret-molstar-row-background);
+  font: 500 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.buret-sequence-chain:hover {
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-hover-background);
+}
+.buret-sequence-chain[aria-pressed="true"] {
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-hover-background);
+  box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
+}
+.buret-sequence-chain:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
+}
+.buret-sequence-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 8px 8px;
+}
+.buret-sequence-track {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  font: 400 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.buret-sequence-ruler {
+  flex: 0 0 auto;
+  padding: 0 5px 0 2px;
+  color: var(--buret-molstar-muted-text);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.buret-sequence-ruler:first-child {
+  padding-left: 0;
+}
+.buret-sequence-residue {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 18px;
+  border: 0;
+  border-radius: 3px;
+  padding: 0;
+  color: var(--buret-molstar-text);
+  background: transparent;
+  font: inherit;
+  line-height: 18px;
+  text-align: center;
+  transition: background 100ms ease, color 100ms ease;
+}
+.buret-sequence-residue:hover {
+  color: var(--buret-molstar-panel-background);
+  background: var(--buret-molstar-accent);
+}
+.buret-sequence-residue:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
 }
 
 .buret-tree {

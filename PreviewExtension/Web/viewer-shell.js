@@ -19,7 +19,6 @@
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L<span class="buret-tooltip" role="tooltip">Toggle Mol* left object tree</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R<span class="buret-tooltip" role="tooltip">Toggle Mol* right properties panel</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq<span class="buret-tooltip" role="tooltip">Toggle sequence panel</span></button>
-          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log<span class="buret-tooltip" role="tooltip">Toggle Mol* log panel</span></button>
           <div class="buret-molstar-style-slot" data-buret-molstar-style-slot>
             <select class="buret-select" data-buret-molstar-style aria-label="Mol* preview style" title="Mol* preview style"></select>
             <span class="buret-tooltip" role="tooltip">Choose Mol* representation style</span>
@@ -133,18 +132,34 @@
           </details>
         </div>
       </div>
-      <button id="buret-scene-tree-toggle" class="buret-scene-tree-toggle hidden" type="button" data-buret-action="scene-tree" aria-label="Toggle scene tree" aria-haspopup="dialog" aria-controls="buret-scene-tree" aria-expanded="false" title="Scene tree">
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
-        <span class="buret-tooltip" role="tooltip">Scene tree</span>
-      </button>
+      <div id="buret-viewport-corner" class="buret-viewport-corner">
+        <button id="buret-scene-tree-toggle" class="buret-corner-toggle hidden" type="button" data-buret-action="scene-tree" aria-label="Toggle scene tree" aria-haspopup="dialog" aria-controls="buret-scene-tree" aria-expanded="false" title="Scene tree">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+          <span class="buret-tooltip" role="tooltip">Scene tree</span>
+        </button>
+        <button id="buret-sequence-toggle" class="buret-corner-toggle hidden" type="button" data-buret-action="sequence-panel" aria-label="Toggle sequence" aria-haspopup="dialog" aria-controls="buret-sequence" aria-expanded="false" title="Sequence">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H3"/><path d="M15 12H3"/><path d="M17 18H3"/></svg>
+          <span class="buret-tooltip" role="tooltip">Sequence</span>
+        </button>
+      </div>
       <aside id="buret-scene-tree" class="buret-scene-tree hidden" data-buret-scene-tree role="dialog" aria-label="Scene tree" aria-hidden="true">
-        <div class="buret-scene-tree-header">
+        <div class="buret-scene-tree-header" data-buret-panel-handle>
           <span class="buret-scene-tree-title">Scene</span>
           <button class="buret-scene-tree-header-action" type="button" data-buret-action="scene-tree-close" aria-label="Close scene tree" title="Close scene tree">
             <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
         <div class="buret-scene-tree-body" data-buret-scene-tree-body></div>
+      </aside>
+      <aside id="buret-sequence" class="buret-sequence hidden" data-buret-sequence role="dialog" aria-label="Sequence" aria-hidden="true">
+        <div class="buret-scene-tree-header" data-buret-panel-handle>
+          <span class="buret-scene-tree-title">Sequence</span>
+          <span class="buret-sequence-chains" data-buret-sequence-chains></span>
+          <button class="buret-scene-tree-header-action" type="button" data-buret-action="sequence-close" aria-label="Close sequence" title="Close sequence">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="buret-sequence-body" data-buret-sequence-body></div>
       </aside>
       <button id="buret-compute-menu-trigger" class="buret-generate-3d-control hidden" type="button" data-buret-action="generate-3d-conformer" aria-label="Open molecular compute menu" aria-haspopup="menu" aria-controls="buret-compute-menu" aria-expanded="false">
         <span data-buret-generate-3d-label>Compute</span>
