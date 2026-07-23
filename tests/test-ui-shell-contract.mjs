@@ -5589,14 +5589,14 @@ for (const runtimeSource of [previewViewer]) {
   assert.match(runtimeSource, /await loadMolstarEntryWithStructureRefs\(viewer, activeEntry, \{ representationPreset: 'empty' \}\)/);
   assert.match(runtimeSource, /await applyXyzFrameMolstarStyle\(viewer, foregroundStyle, activeStructures, 1, 'colored'\)/);
   assert.match(runtimeSource, /if \(options\.installControls !== false\) installDockingPoseControls\(viewer, trajectoryControlsForPrepared\(prepared\)\)/);
-  assert.match(runtimeSource, /const backgroundIndexes = sampledXyzFrameBackgroundIndexes\(frames\.length, activeIndex\)/);
-  assert.match(runtimeSource, /const stateKey = xyzFrameOverlayStateKey\(rawSignature, frames, prepared, foregroundStyle, resolvedContextStyle, contextOpacity, contextColor, backgroundIndexes\)/);
+  assert.match(runtimeSource, /const sampledIndexes = sampledXyzFrameIndexes\(frames\.length\)/);
+  assert.match(runtimeSource, /const stateKey = xyzFrameOverlayStateKey\(rawSignature, frames, prepared, foregroundStyle, resolvedContextStyle, contextOpacity, contextColor, sampledIndexes\)/);
   assert.match(runtimeSource, /if \(!state \|\| state\.key !== stateKey \|\| !xyzFrameOverlayStateStillLoaded\(viewer, state\)\) \{/);
-  assert.match(runtimeSource, /const backgroundOpacity = xyzFrameBackgroundLayerOpacity\(contextOpacity, contextStructures\.length\)/);
-  assert.match(runtimeSource, /await applyXyzFrameMolstarStyle\(viewer, resolvedContextStyle, contextStructures, backgroundOpacity, contextColor, XYZ_FRAME_BACKGROUND_MIN_ALPHA\)/);
-  assert.match(runtimeSource, /await removeMolstarStructures\(viewer, molstarStructuresByRefs\(viewer, state\.activeRefs\)\)/);
-  assert.match(runtimeSource, /await applyXyzFrameMolstarStyle\(viewer, resolvedContextStyle, scopedActiveStructures, 1, 'colored'\)/);
-  assert.match(runtimeSource, /state\.activeRefs = molstarStructureRefsOf\(scopedActiveStructures\);\s*state\.activeIndex = activeIndex;/);
+  assert.match(runtimeSource, /function sampledXyzFrameIndexes\(frameCount\)/);
+  assert.match(runtimeSource, /const activePosition = state\.sampledIndexes\.indexOf\(activeIndex\)/);
+  assert.match(runtimeSource, /const previousPosition = state\.sampledIndexes\.indexOf\(state\.activeIndex\)/);
+  assert.match(runtimeSource, /await applyXyzFrameMolstarStyle\(viewer, resolvedContextStyle, activeStructures, 1, 'colored'\)/);
+  assert.match(runtimeSource, /state\.activeRefs = molstarStructureRefsOf\(activeStructures\);\s*state\.activeIndex = activeIndex;/);
   assert.match(runtimeSource, /function molstarRefsStillLoaded\(viewer, refs\)/);
   assert.match(runtimeSource, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default', \{ representationPreset: 'empty' \}\);\s*return Array\.from\(molstarCurrentStructures\(viewer\)\)/);
 }

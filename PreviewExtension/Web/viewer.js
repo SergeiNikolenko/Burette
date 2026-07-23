@@ -7914,21 +7914,14 @@
     };
   }
 
-  function sampledXyzFrameBackgroundIndexes(frameCount, activeIndex) {
+  function sampledXyzFrameIndexes(frameCount) {
     const count = Math.max(0, Math.trunc(Number(frameCount) || 0));
-    if (count <= 1) return [];
-    const all = Array.from({ length: count }, (_, index) => index).filter(index => index !== activeIndex);
-    if (all.length <= XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT) return all;
-    const picked = new Set();
+    if (count <= 0) return [];
+    if (count <= XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT) return Array.from({ length: count }, (_, index) => index);
     const last = count - 1;
+    const picked = new Set();
     for (let slot = 0; slot < XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT; slot += 1) {
-      const rawIndex = Math.round((slot * last) / Math.max(1, XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT - 1));
-      const candidates = [rawIndex];
-      for (let delta = 1; delta < count && candidates.length < count; delta += 1) {
-        candidates.push(rawIndex - delta, rawIndex + delta);
-      }
-      const next = candidates.find(index => index >= 0 && index < count && index !== activeIndex && !picked.has(index));
-      if (next !== undefined) picked.add(next);
+      picked.add(Math.round((slot * last) / Math.max(1, XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT - 1)));
     }
     return Array.from(picked).sort((left, right) => left - right);
   }
@@ -8394,31 +8387,38 @@
     const resolvedContextStyle = xyzFrameBackgroundStyle(contextStyle, foregroundStyle);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readXyzFrameContextColor(activeConfig);
-    const backgroundIndexes = sampledXyzFrameBackgroundIndexes(frames.length, activeIndex);
-    const stateKey = xyzFrameOverlayStateKey(rawSignature, frames, prepared, foregroundStyle, resolvedContextStyle, contextOpacity, contextColor, backgroundIndexes);
+    const sampledIndexes = sampledXyzFrameIndexes(frames.length);
+    const stateKey = xyzFrameOverlayStateKey(rawSignature, frames, prepared, foregroundStyle, resolvedContextStyle, contextOpacity, contextColor, sampledIndexes);
+    const backgroundLayerOpacity = (activePosition) => xyzFrameBackgroundLayerOpacity(
+      contextOpacity,
+      Math.max(1, sampledIndexes.length - (activePosition >= 0 ? 1 : 0))
+    );
     let state = activeXyzFrameOverlayState;
     if (!state || state.key !== stateKey || !xyzFrameOverlayStateStillLoaded(viewer, state)) {
       resetSdfCollectionVisibilityState(viewer);
       resetDockingPoseCollectionState(viewer);
       resetDockingSceneVisibilityState(viewer);
       if (typeof plugin.clear === 'function') await plugin.clear();
-      const contextStructures = [];
-      for (const index of backgroundIndexes) {
-        const entry = xyzFrameEntry(frames[index], `${label} (background frame ${index + 1})`);
-        if (!entry) continue;
-        contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
+      const frameRefs = [];
+      for (const index of sampledIndexes) {
+        const entry = xyzFrameEntry(frames[index], `${label} (${prepared.controlLabel || 'Frame'} ${index + 1})`);
+        if (!entry) { frameRefs.push([]); continue; }
+        frameRefs.push(molstarStructureRefsOf(await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' })));
       }
-      if (contextStructures.length) {
-        const backgroundOpacity = xyzFrameBackgroundLayerOpacity(contextOpacity, contextStructures.length);
-        await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, contextStructures, backgroundOpacity, contextColor, XYZ_FRAME_BACKGROUND_MIN_ALPHA);
+      const loaded = molstarStructuresByRefs(viewer, frameRefs.flat());
+      if (loaded.length) {
+        await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, loaded, backgroundLayerOpacity(0), contextColor, XYZ_FRAME_BACKGROUND_MIN_ALPHA);
       }
       state = {
         viewer,
         key: stateKey,
         rawSignature,
         frames,
-        backgroundRefs: molstarStructureRefsOf(contextStructures),
+        sampledIndexes,
+        frameRefs,
+        backgroundRefs: frameRefs.flat(),
         activeRefs: [],
+        extraActiveRefs: [],
         activeIndex: -1
       };
       activeXyzFrameOverlayState = state;
@@ -8429,18 +8429,30 @@
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       return;
     }
-    await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.activeRefs));
-    state.activeRefs = [];
-    const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
-    if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
-    const refsBeforeActive = molstarStructureCellRefs(viewer);
-    const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
-    const scopedActiveStructures = activeStructures.length
-      ? activeStructures
-      : Array.from(molstarCurrentStructures(viewer)).filter(structure => !refsBeforeActive.has(structure?.cell?.transform?.ref));
-    if (!scopedActiveStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
-    await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, scopedActiveStructures, 1, 'colored');
-    state.activeRefs = molstarStructureRefsOf(scopedActiveStructures);
+    if (state.extraActiveRefs?.length) {
+      await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.extraActiveRefs));
+      state.extraActiveRefs = [];
+    }
+    const activePosition = state.sampledIndexes.indexOf(activeIndex);
+    const previousPosition = state.sampledIndexes.indexOf(state.activeIndex);
+    if (previousPosition >= 0 && previousPosition !== activePosition) {
+      const previous = molstarStructuresByRefs(viewer, state.frameRefs[previousPosition]);
+      if (previous.length) {
+        await clearMolstarMainRepresentationsForStructures(viewer, previous);
+        await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, previous, backgroundLayerOpacity(activePosition), contextColor, XYZ_FRAME_BACKGROUND_MIN_ALPHA);
+      }
+    }
+    let activeStructures = activePosition >= 0 ? molstarStructuresByRefs(viewer, state.frameRefs[activePosition]) : [];
+    if (!activeStructures.length) {
+      const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
+      if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
+      activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
+      state.extraActiveRefs = molstarStructureRefsOf(activeStructures);
+    }
+    if (!activeStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
+    await clearMolstarMainRepresentationsForStructures(viewer, activeStructures);
+    await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, activeStructures, 1, 'colored');
+    state.activeRefs = molstarStructureRefsOf(activeStructures);
     state.activeIndex = activeIndex;
     if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
