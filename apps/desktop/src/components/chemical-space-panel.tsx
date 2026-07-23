@@ -213,13 +213,13 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               <TooltipTrigger asChild>
                 <Button size="sm" variant={tool === "navigate" ? "secondary" : "ghost"} onClick={() => setTool("navigate")}>Explore</Button>
               </TooltipTrigger>
-              <TooltipContent>Pan, orbit, zoom, and inspect molecules</TooltipContent>
+              <TooltipContent showArrow={false}>Pan, orbit, zoom, and inspect molecules</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button size="sm" variant={tool === "lasso" ? "secondary" : "ghost"} onClick={() => setTool("lasso")}>Lasso</Button>
               </TooltipTrigger>
-              <TooltipContent>Draw a free-form selection linked to Grid</TooltipContent>
+              <TooltipContent showArrow={false}>Draw a free-form selection linked to Grid</TooltipContent>
             </Tooltip>
           </div>
           <span className="ml-auto text-xs text-muted-foreground">
@@ -265,19 +265,19 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           <CollapsibleContent className="pt-3">
             <FieldGroup className="gap-4">
               <ParameterField label="Neighbors" value={draft.neighbors}>
-                <Slider min={2} max={64} step={1} value={[draft.neighbors]} onValueChange={([neighbors]) => setDraft((value) => ({ ...value, neighbors }))} />
+                <Slider tone="neutral" min={2} max={64} step={1} value={[draft.neighbors]} onValueChange={([neighbors]) => setDraft((value) => ({ ...value, neighbors }))} />
               </ParameterField>
               <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
-                <Slider min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
+                <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
               </ParameterField>
               <ParameterField label="Epochs" value={draft.epochs}>
-                <Slider min={100} max={1500} step={100} value={[draft.epochs]} onValueChange={([epochs]) => setDraft((value) => ({ ...value, epochs }))} />
+                <Slider tone="neutral" min={100} max={1500} step={100} value={[draft.epochs]} onValueChange={([epochs]) => setDraft((value) => ({ ...value, epochs }))} />
               </ParameterField>
               <ParameterField label="Learning rate" value={draft.learningRate.toFixed(1)}>
-                <Slider min={0.1} max={3} step={0.1} value={[draft.learningRate]} onValueChange={([learningRate]) => setDraft((value) => ({ ...value, learningRate }))} />
+                <Slider tone="neutral" min={0.1} max={3} step={0.1} value={[draft.learningRate]} onValueChange={([learningRate]) => setDraft((value) => ({ ...value, learningRate }))} />
               </ParameterField>
             </FieldGroup>
-            <Button className="mt-4 w-full" size="sm" disabled={Boolean(progress)} onClick={() => setOptions({ ...draft })}>
+            <Button className="mt-4 w-full" variant="outline" size="sm" disabled={Boolean(progress)} onClick={() => setOptions({ ...draft })}>
               Rebuild on Metal
             </Button>
           </CollapsibleContent>
