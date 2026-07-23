@@ -342,6 +342,14 @@ assert.match(indexSkill, /workflow-results/);
 assert.match(indexSkill, /molecular-report/);
 assert.match(indexSkill, /visual-qa/);
 assert.match(indexSkill, /Completion Gate/);
+assert.match(indexSkill, /exact live URL as a clickable Markdown link/);
+
+const openWorkspaceSkill = await read("skills/open-workspace/SKILL.md");
+assert.match(openWorkspaceSkill, /\[Open Burrete in Browser\]/);
+assert.match(openWorkspaceSkill, /bundle directory, report, or screenshot does not replace/);
+
+const externalAgentContractSkill = await read("skills/external-agent-contract/SKILL.md");
+assert.match(externalAgentContractSkill, /include that exact live URL as a clickable Markdown link/);
 
 const userContextSkill = await read("skills/user-context/SKILL.md");
 assert.match(userContextSkill, /burette_agent_preflight/);
