@@ -974,7 +974,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   }
 }
 #buret-toolbar {
-  position: absolute; top: var(--buret-toolbar-safe-top); right: var(--buret-control-island-right); left: auto; z-index: 2147483646;
+  position: absolute; top: calc(var(--buret-toolbar-safe-top) + var(--buret-viewport-top-inset, 0px)); right: var(--buret-control-island-right); left: auto; z-index: 2147483646;
   display: flex; align-items: center; flex-wrap: nowrap; max-width: calc(100vw - (var(--buret-control-island-right) * 2)); gap: var(--buret-control-island-gap); padding: 6px 0;
   border: 1px solid var(--buret-toolbar-border);
   border-radius: 12px; color: var(--buret-toolbar-color);
@@ -2311,7 +2311,7 @@ body .msp-plugin .msp-selection-viewport-controls-actions {
    compact. */
 .buret-viewport-corner {
   position: absolute;
-  top: var(--buret-toolbar-safe-top);
+  top: calc(var(--buret-toolbar-safe-top) + var(--buret-viewport-top-inset, 0px));
   left: var(--buret-corner-left, var(--buret-control-island-right));
   z-index: 36;
   display: flex;
@@ -2381,27 +2381,26 @@ body .msp-plugin .msp-selection-viewport-controls-actions {
   transition-delay: 0s;
 }
 .buret-corner-toggle.hidden,
-.buret-scene-tree.hidden,
-.buret-sequence.hidden {
+.buret-scene-tree.hidden {
   display: none;
 }
 /* Keep the native Mol* top-left controls — the animation button and, for a
-   trajectory, the frame stepper — clear of the corner buttons, and of whichever
-   panels are open in that corner. */
+   trajectory, the frame stepper — clear of the corner buttons, and of the panel
+   while it is open in that corner. */
 body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   left: var(--buret-corner-inset, calc(var(--buret-control-island-right) + 38px));
   transition: left 160ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.buret-scene-tree,
-.buret-sequence {
+.buret-scene-tree {
   position: absolute;
-  top: calc(var(--buret-toolbar-safe-top) + 38px);
+  top: calc(var(--buret-toolbar-safe-top) + 38px + var(--buret-viewport-top-inset, 0px));
   left: var(--buret-corner-left, var(--buret-control-island-right));
   z-index: 36;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  width: min(272px, calc(100vw - 24px));
   max-height: var(--buret-viewport-panel-max-height);
   overflow: hidden;
   border: 1px solid var(--buret-molstar-border);
@@ -2410,16 +2409,6 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   background: var(--buret-molstar-panel-background);
   box-shadow: 0 18px 44px var(--buret-molstar-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-}
-.buret-scene-tree {
-  width: min(272px, calc(100vw - 24px));
-}
-/* A sequence is long, so it gets a wide strip rather than the tree's column, and
-   it starts after the tree whenever both are open in the corner. */
-.buret-sequence {
-  left: var(--buret-sequence-left, var(--buret-corner-left, var(--buret-control-island-right)));
-  width: min(680px, calc(100vw - var(--buret-sequence-left, var(--buret-control-island-right)) - 24px));
-  max-height: min(240px, var(--buret-viewport-panel-max-height));
 }
 .buret-scene-tree-header {
   display: flex;
@@ -2472,90 +2461,6 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-
-.buret-sequence-chains {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.buret-sequence-chains::-webkit-scrollbar {
-  display: none;
-}
-.buret-sequence-chain {
-  flex: 0 0 auto;
-  min-width: 20px;
-  height: 18px;
-  border: 0;
-  border-radius: 5px;
-  padding: 0 6px;
-  color: var(--buret-molstar-muted-text);
-  background: var(--buret-molstar-row-background);
-  font: 500 11px ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.buret-sequence-chain:hover {
-  color: var(--buret-molstar-text);
-  background: var(--buret-molstar-hover-background);
-}
-.buret-sequence-chain[aria-pressed="true"] {
-  color: var(--buret-molstar-text);
-  background: var(--buret-molstar-hover-background);
-  box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
-}
-.buret-sequence-chain:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
-}
-.buret-sequence-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 6px 8px 8px;
-}
-.buret-sequence-track {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0;
-  font: 400 12px ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.buret-sequence-ruler {
-  flex: 0 0 auto;
-  padding: 0 5px 0 2px;
-  color: var(--buret-molstar-muted-text);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  user-select: none;
-}
-.buret-sequence-ruler:first-child {
-  padding-left: 0;
-}
-.buret-sequence-residue {
-  flex: 0 0 auto;
-  width: 13px;
-  height: 18px;
-  border: 0;
-  border-radius: 3px;
-  padding: 0;
-  color: var(--buret-molstar-text);
-  background: transparent;
-  font: inherit;
-  line-height: 18px;
-  text-align: center;
-  transition: background 100ms ease, color 100ms ease;
-}
-.buret-sequence-residue:hover {
-  color: var(--buret-molstar-panel-background);
-  background: var(--buret-molstar-accent);
-}
-.buret-sequence-residue:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
 }
 
 .buret-tree {
@@ -2849,4 +2754,102 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   .buret-tree-swatch {
     transition: none;
   }
+}
+
+/* Sequence strip.
+   Mol* renders it edge to edge across the top region with hard dividers; this
+   reshapes it into the same floating card as the scene tree. The region keeps its
+   layout height — that is what pushes the 3D view down — while the card floats
+   inside it. */
+body .msp-plugin .msp-layout-region.msp-layout-top {
+  background: transparent !important;
+  border: 0 !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+body .msp-plugin .msp-sequence {
+  position: absolute;
+  inset: 6px var(--buret-control-island-right) 6px var(--buret-control-island-right);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: none !important;
+  border: 1px solid var(--buret-molstar-border) !important;
+  border-radius: var(--buret-molstar-panel-radius);
+  background: var(--buret-molstar-panel-background) !important;
+  box-shadow: 0 18px 44px var(--buret-molstar-shadow) !important;
+}
+body .msp-plugin .msp-sequence .msp-sequence-select {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 7px;
+  border-bottom: 1px solid var(--buret-molstar-border) !important;
+  background: var(--buret-molstar-row-background) !important;
+  font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  white-space: nowrap;
+}
+/* The leading material icon carries no meaning next to the label. */
+body .msp-plugin .msp-sequence .msp-sequence-select > .msp-icon {
+  display: none;
+}
+body .msp-plugin .msp-sequence .msp-sequence-select > span {
+  flex: 0 0 auto;
+  padding: 0 3px 0 3px;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--buret-molstar-muted-text) !important;
+  font-size: 10px;
+  font-weight: 590;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 20px;
+  border: 0 !important;
+  border-radius: 5px;
+  padding: 0 18px 0 7px;
+  color: var(--buret-molstar-text) !important;
+  background-color: var(--buret-molstar-field-background) !important;
+  background-image: var(--buret-select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  font: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
+body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control:hover {
+  background-color: var(--buret-molstar-hover-background) !important;
+  outline: none !important;
+}
+body .msp-plugin .msp-sequence .msp-sequence-wrapper-non-empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 10px 10px;
+  border-top: 0 !important;
+  background: transparent !important;
+  box-shadow: none;
+}
+body .msp-plugin .msp-sequence .msp-sequence-wrapper {
+  background: transparent !important;
+  font: 400 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  letter-spacing: 0.04em;
+  word-break: break-all;
+}
+body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-number {
+  color: var(--buret-molstar-muted-text) !important;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-present {
+  border-radius: 3px;
+}
+body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-missing {
+  opacity: 0.5;
 }

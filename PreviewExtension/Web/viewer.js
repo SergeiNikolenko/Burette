@@ -997,6 +997,7 @@
     timer: 0
   };
   let leftPanelVisibilityGuardInstalled = false;
+  let viewportCornerLayoutHandle = 0;
   let molstarStructureDirty = false;
 
   function scheduleViewerResize(viewer, delayMs = 80) {
@@ -3671,7 +3672,6 @@
     installToolbarAutoLayoutTracking(toolbar);
     installMolstarFloatingPanelTracking();
     initSceneTree(viewer);
-    initSequencePanel(viewer);
     updateToolbarVisibility();
     updateSdfPoseButton();
     updatePreviewDockButtons();
@@ -4384,9 +4384,11 @@
   }
 
   function toolbarSafeTop() {
-    const raw = window.getComputedStyle(document.documentElement).getPropertyValue('--buret-toolbar-safe-top');
-    const parsed = Number.parseFloat(raw);
-    return Number.isFinite(parsed) ? Math.max(TOOLBAR_MARGIN, parsed) : TOOLBAR_MARGIN;
+    const styles = window.getComputedStyle(document.documentElement);
+    const parsed = Number.parseFloat(styles.getPropertyValue('--buret-toolbar-safe-top'));
+    const inset = Number.parseFloat(styles.getPropertyValue('--buret-viewport-top-inset'));
+    const base = Number.isFinite(parsed) ? Math.max(TOOLBAR_MARGIN, parsed) : TOOLBAR_MARGIN;
+    return base + (Number.isFinite(inset) ? inset : 0);
   }
 
   function saveToolbarPosition(toolbar) {
@@ -4421,11 +4423,7 @@
       root.classList.toggle('msp-layout-hide-bottom', layoutState.bottom === 'hidden');
     }
     syncLeftPanelVisibility();
-    // Mol* re-renders its regions after this call, so the second pass is the one
-    // that sees the real left-panel width.
-    updateViewportCornerLayout();
-    requestAnimationFrame(updateViewportCornerLayout);
-    setTimeout(updateViewportCornerLayout, 120);
+    scheduleViewportCornerLayout();
 
     updateToolbarButtons();
     scheduleViewerResize(viewer, 40);
@@ -4580,6 +4578,7 @@
     leftPanelVisibilityGuardInstalled = true;
     const observer = new MutationObserver(() => {
       if (layoutState.left === 'hidden') syncLeftPanelVisibility();
+      scheduleViewportCornerLayout();
     });
     observer.observe(document.body, {
       attributes: true,
@@ -5257,26 +5256,44 @@
   // Four things want the top-left corner: the Mol* left panel, our corner buttons,
   // the panels they open, and the Mol* trajectory/animation controls. They queue up
   // left to right, and each one that disappears gives its space back.
+  // Mol* re-renders its regions asynchronously after a layout change, so rather than
+  // guessing a delay the measurement is driven by the DOM guard's observer below.
+  // Timers rather than animation frames: a preview can be laid out while its tab is
+  // hidden, where frames never run.
+  function scheduleViewportCornerLayout() {
+    if (viewportCornerLayoutHandle) return;
+    viewportCornerLayoutHandle = window.setTimeout(() => {
+      viewportCornerLayoutHandle = 0;
+      updateViewportCornerLayout();
+    }, 0);
+  }
+
   function updateViewportCornerLayout() {
     const style = document.documentElement.style;
     const corner = document.getElementById('buret-viewport-corner');
     const sceneTree = document.getElementById('buret-scene-tree');
-    const sequence = document.getElementById('buret-sequence');
 
     const cornerWidth = corner?.getBoundingClientRect().width || 0;
     document.body?.classList.toggle('buret-viewport-corner-active', cornerWidth > 0);
+
+    // The Mol* sequence strip owns the whole top edge, so everything anchored there
+    // — the corner button, its panel and the toolbar — steps below it.
+    const topRegion = document.querySelector('.msp-layout-region.msp-layout-top');
+    const topRect = topRegion?.offsetParent === null ? null : topRegion?.getBoundingClientRect();
+    const topInset = topRect?.height ? `${Math.round(topRect.height)}px` : '';
+    if (style.getPropertyValue('--buret-viewport-top-inset') !== topInset) {
+      if (topInset) style.setProperty('--buret-viewport-top-inset', topInset);
+      else style.removeProperty('--buret-viewport-top-inset');
+      // The toolbar carries an inline position, so the CSS variable alone cannot
+      // move it; re-place it whenever it still sits where we put it.
+      const toolbar = document.getElementById('buret-toolbar');
+      if (toolbar?.dataset.defaultPosition === '1') applyDefaultToolbarPosition(toolbar);
+    }
 
     const leftPanel = document.querySelector('.msp-layout-region.msp-layout-left');
     const leftRect = leftPanel?.offsetParent === null ? null : leftPanel?.getBoundingClientRect();
     if (leftRect?.width) style.setProperty('--buret-corner-left', `${Math.round(leftRect.right + 12)}px`);
     else style.removeProperty('--buret-corner-left');
-
-    // The sequence strip is long, so it starts after the scene tree rather than
-    // underneath it whenever both are open in the corner.
-    const treeOpen = sceneTree && !sceneTree.classList.contains('hidden');
-    const treeRect = treeOpen ? sceneTree.getBoundingClientRect() : null;
-    if (treeRect && treeRect.top < 56) style.setProperty('--buret-sequence-left', `${Math.round(treeRect.right + 10)}px`);
-    else style.removeProperty('--buret-sequence-left');
 
     const controls = document.querySelector('.msp-plugin .msp-viewport-top-left-controls');
     if (!controls) {
@@ -5284,9 +5301,8 @@
       return;
     }
     let edge = cornerWidth ? corner.getBoundingClientRect().right + 8 : null;
-    for (const panel of [sceneTree, sequence]) {
-      if (!panel || panel.classList.contains('hidden')) continue;
-      const rect = panel.getBoundingClientRect();
+    if (sceneTree && !sceneTree.classList.contains('hidden')) {
+      const rect = sceneTree.getBoundingClientRect();
       if (rect.top < 56) edge = Math.max(edge ?? 0, rect.right + 10);
     }
     if (edge === null) {
@@ -5378,233 +5394,6 @@
     scheduleSceneTreeRender();
   }
 
-
-  // Sequence: the Mol* sequence strip restated in the same overlay language. It
-  // lists the polymer chains of the loaded structures and renders the active one as
-  // residue chips that highlight and focus in the 3D view.
-  const SEQUENCE_RULER_STEP = 10;
-  let sequencePanelChains = [];
-  let sequencePanelChainKey = '';
-  let sequencePanelStateDisposer = null;
-  let sequencePanelRenderHandle = 0;
-
-  // Walks the units of every loaded structure and keeps the ones that carry a
-  // polymer sequence — `model.sequence.byEntityKey` only holds polymer entities, so
-  // ligands, ions and water drop out without needing a molecule-type table.
-  function readSequenceChains(viewer) {
-    const chains = [];
-    for (const structure of molstarCurrentStructures(viewer)) {
-      const data = structure?.cell?.obj?.data;
-      const structureRef = structure?.cell?.transform?.ref || '';
-      const structureLabel = structure?.cell?.obj?.label || 'Structure';
-      for (const unit of data?.units || []) {
-        if (unit.kind !== 0) continue;
-        const model = unit.model;
-        const hierarchy = model?.atomicHierarchy;
-        const elements = unit.elements;
-        if (!hierarchy?.chains || !elements?.length) continue;
-        const chainIndex = hierarchy.chainAtomSegments.index[elements[0]];
-        const entityId = hierarchy.chains.label_entity_id.value(chainIndex);
-        const entityKey = model.entities?.getEntityIndex?.(entityId);
-        const sequence = model.sequence?.byEntityKey?.[entityKey]?.sequence;
-        if (!sequence?.code) continue;
-        const residues = readSequenceResidues(hierarchy, elements, sequence);
-        if (residues.length < 2) continue;
-        chains.push({
-          key: `${structureRef}:${unit.id}`,
-          label: String(hierarchy.chains.auth_asym_id.value(chainIndex)
-            || hierarchy.chains.label_asym_id.value(chainIndex) || '?'),
-          structureLabel,
-          structure: data,
-          unit,
-          residues
-        });
-      }
-    }
-    return chains;
-  }
-
-  function readSequenceResidues(hierarchy, elements, sequence) {
-    const residueIndex = hierarchy.residueAtomSegments.index;
-    const residues = [];
-    let current = null;
-    for (let i = 0; i < elements.length; i += 1) {
-      const residue = residueIndex[elements[i]];
-      if (current && current.residue === residue) {
-        current.count += 1;
-        continue;
-      }
-      const seqId = hierarchy.residues.label_seq_id.value(residue);
-      const codeIndex = sequence.indexMap?.get(seqId);
-      current = {
-        residue,
-        seqId,
-        authSeqId: hierarchy.residues.auth_seq_id.value(residue),
-        code: Number.isInteger(codeIndex) ? String(sequence.code.value(codeIndex) || 'X') : 'X',
-        start: i,
-        count: 1
-      };
-      residues.push(current);
-    }
-    return residues;
-  }
-
-  // Mol* takes an element loci as `{ unit, indices }`; a typed array is used because
-  // a two-element plain array reads as an interval rather than a set of two atoms.
-  function sequenceResidueLoci(chain, residue) {
-    const indices = new Int32Array(residue.count);
-    for (let i = 0; i < residue.count; i += 1) indices[i] = residue.start + i;
-    return { kind: 'element-loci', structure: chain.structure, elements: [{ unit: chain.unit, indices }] };
-  }
-
-  function activeSequenceChain() {
-    return sequencePanelChains.find(chain => chain.key === sequencePanelChainKey)
-      || sequencePanelChains[0]
-      || null;
-  }
-
-  function highlightSequenceResidue(index) {
-    const chain = activeSequenceChain();
-    const residue = chain?.residues[index];
-    const highlights = activeMolstarViewer()?.plugin?.managers?.interactivity?.lociHighlights;
-    if (!residue || typeof highlights?.highlightOnly !== 'function') return;
-    try {
-      highlights.highlightOnly({ loci: sequenceResidueLoci(chain, residue) });
-    } catch (error) {
-      debug('sequence highlight failed: ' + (error && error.message || String(error)));
-    }
-  }
-
-  function clearSequenceHighlight() {
-    const highlights = activeMolstarViewer()?.plugin?.managers?.interactivity?.lociHighlights;
-    try { highlights?.clearHighlights?.(); } catch (_) {}
-  }
-
-  function focusSequenceResidue(index) {
-    const chain = activeSequenceChain();
-    const residue = chain?.residues[index];
-    const camera = activeMolstarViewer()?.plugin?.managers?.camera;
-    if (!residue || typeof camera?.focusLoci !== 'function') return;
-    try {
-      camera.focusLoci(sequenceResidueLoci(chain, residue), { durationMs: 250 });
-    } catch (error) {
-      debug('sequence focus failed: ' + (error && error.message || String(error)));
-    }
-  }
-
-  function setSequencePanelOpen(open) {
-    const toggle = document.getElementById('buret-sequence-toggle');
-    const panel = document.getElementById('buret-sequence');
-    if (!toggle || !panel) return;
-    panel.classList.toggle('hidden', !open);
-    panel.setAttribute('aria-hidden', open ? 'false' : 'true');
-    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) {
-      panel.style.removeProperty('left');
-      panel.style.removeProperty('top');
-    } else {
-      clearSequenceHighlight();
-    }
-    updateViewportCornerLayout();
-  }
-
-  function scheduleSequencePanelRender() {
-    if (sequencePanelRenderHandle) return;
-    sequencePanelRenderHandle = window.setTimeout(() => {
-      sequencePanelRenderHandle = 0;
-      renderSequencePanel();
-    }, 0);
-  }
-
-  function renderSequencePanel() {
-    const toggle = document.getElementById('buret-sequence-toggle');
-    const panel = document.getElementById('buret-sequence');
-    const body = panel?.querySelector('[data-buret-sequence-body]');
-    const chainBar = panel?.querySelector('[data-buret-sequence-chains]');
-    if (!toggle || !panel || !body || !chainBar) return;
-    sequencePanelChains = readSequenceChains(activeMolstarViewer());
-    const available = sequencePanelChains.length > 0;
-    toggle.classList.toggle('hidden', !available);
-    if (!available) {
-      setSequencePanelOpen(false);
-      body.replaceChildren();
-      chainBar.replaceChildren();
-      return;
-    }
-    const active = activeSequenceChain();
-    sequencePanelChainKey = active.key;
-
-    chainBar.replaceChildren(...sequencePanelChains.map(chain => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-sequence-chain';
-      button.dataset.sequenceChain = chain.key;
-      button.textContent = chain.label;
-      button.title = `${chain.structureLabel} · chain ${chain.label} · ${chain.residues.length} residues`;
-      button.setAttribute('aria-pressed', chain === active ? 'true' : 'false');
-      return button;
-    }));
-
-    const track = document.createElement('div');
-    track.className = 'buret-sequence-track';
-    active.residues.forEach((residue, index) => {
-      if (index % SEQUENCE_RULER_STEP === 0) {
-        const ruler = document.createElement('span');
-        ruler.className = 'buret-sequence-ruler';
-        ruler.textContent = String(residue.authSeqId);
-        track.appendChild(ruler);
-      }
-      const chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'buret-sequence-residue';
-      chip.dataset.sequenceResidue = String(index);
-      chip.textContent = residue.code;
-      chip.title = `${residue.code} ${residue.authSeqId}`;
-      track.appendChild(chip);
-    });
-    body.replaceChildren(track);
-    updateViewportCornerLayout();
-  }
-
-  function onSequencePanelClick(event) {
-    const chainButton = event.target.closest('[data-sequence-chain]');
-    if (chainButton) {
-      sequencePanelChainKey = chainButton.dataset.sequenceChain;
-      renderSequencePanel();
-      return;
-    }
-    const residue = event.target.closest('[data-sequence-residue]');
-    if (residue) focusSequenceResidue(Number(residue.dataset.sequenceResidue));
-  }
-
-  function initSequencePanel(viewer) {
-    const toggle = document.getElementById('buret-sequence-toggle');
-    const panel = document.getElementById('buret-sequence');
-    if (!toggle || !panel) return;
-    if (toggle.dataset.sequenceBound !== '1') {
-      toggle.dataset.sequenceBound = '1';
-      toggle.addEventListener('click', () => setSequencePanelOpen(panel.classList.contains('hidden')));
-      panel.querySelector('[data-buret-action="sequence-close"]')
-        ?.addEventListener('click', () => setSequencePanelOpen(false));
-      panel.addEventListener('click', onSequencePanelClick);
-      panel.addEventListener('pointerover', event => {
-        const residue = event.target.closest('[data-sequence-residue]');
-        if (residue) highlightSequenceResidue(Number(residue.dataset.sequenceResidue));
-      });
-      panel.addEventListener('pointerleave', clearSequenceHighlight);
-      initViewportPanelDrag(panel);
-      document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && !panel.classList.contains('hidden')) setSequencePanelOpen(false);
-      });
-    }
-    sequencePanelStateDisposer?.();
-    sequencePanelStateDisposer = null;
-    // Only structural changes matter here; visibility flips leave the sequence alone
-    // and rebuilding it walks every atom of every unit.
-    const subscription = viewer?.plugin?.state?.data?.events?.changed?.subscribe?.(scheduleSequencePanelRender);
-    if (subscription) sequencePanelStateDisposer = () => subscription.unsubscribe?.();
-    scheduleSequencePanelRender();
-  }
 
   function updateThemeButton() {
     const button = document.querySelector('#buret-toolbar [data-buret-action="theme"]');
