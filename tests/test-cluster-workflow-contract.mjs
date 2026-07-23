@@ -85,6 +85,8 @@ assert.ok(
   chemicalSpacePanel.indexOf('data-testid="parameter-study-timeline"')
     > chemicalSpacePanel.indexOf("{methodLabel(draft.method)} parameters"),
 );
+assert.match(chemicalSpacePanel, /label="Cluster spread" value=\{draft\.spread\.toFixed\(1\)\}/);
+assert.match(chemicalSpacePanel, /min=\{1\} max=\{3\} step=\{0\.1\} value=\{\[draft\.spread\]\}/);
 assert.match(chemicalSpacePanel, />\s*Reset\s*<\/Button>/);
 assert.match(chemicalSpacePanel, /method: current\.method,\s*dimensions: current\.dimensions/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/empty"/);

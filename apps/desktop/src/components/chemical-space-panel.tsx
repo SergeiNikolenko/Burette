@@ -468,6 +468,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                 <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
                   <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
                 </ParameterField>
+                <ParameterField label="Cluster spread" value={draft.spread.toFixed(1)}>
+                  <Slider tone="neutral" min={1} max={3} step={0.1} value={[draft.spread]} onValueChange={([spread]) => setDraft((value) => ({ ...value, spread }))} />
+                </ParameterField>
                 <ParameterField label="Epochs" value={draft.epochs}>
                   <Slider tone="neutral" min={100} max={1500} step={100} value={[draft.epochs]} onValueChange={([epochs]) => setDraft((value) => ({ ...value, epochs }))} />
                 </ParameterField>
