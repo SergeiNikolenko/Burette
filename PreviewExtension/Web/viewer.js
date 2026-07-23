@@ -5480,6 +5480,23 @@
     }
   }
 
+  let sceneTreeParamInFlight = false;
+  let sceneTreePendingParam = null;
+  async function streamSceneTreeReprParam(ref, name, value) {
+    sceneTreePendingParam = { ref, name, value };
+    if (sceneTreeParamInFlight) return;
+    sceneTreeParamInFlight = true;
+    try {
+      while (sceneTreePendingParam) {
+        const next = sceneTreePendingParam;
+        sceneTreePendingParam = null;
+        await applySceneTreeReprParam(next.ref, next.name, next.value);
+      }
+    } finally {
+      sceneTreeParamInFlight = false;
+    }
+  }
+
   // Shows one component and hides its siblings — the quickest way to look at a
   // ligand or a chain without walking the tree turning eyes off one by one.
   // Isolate needs an inverse, or hiding everything but one component leaves no way
@@ -5543,6 +5560,141 @@
     menu.appendChild(swatches);
   }
 
+  // A representation carries 30–55 parameters; all but a handful are renderer
+  // plumbing. These are the ones that change how a drawing reads, named for what
+  // they do rather than for the field behind them. Each is offered only when the
+  // current type actually declares it, so the list shapes itself to the drawing.
+  const SCENE_TREE_ADVANCED_PARAMS = [
+    ['sizeFactor', 'Scale'],
+    ['sizeAspectRatio', 'Bond thickness'],
+    ['probeRadius', 'Probe radius'],
+    ['resolution', 'Detail'],
+    ['aspectRatio', 'Ribbon width'],
+    ['thicknessFactor', 'Ribbon thickness'],
+    ['linearSegments', 'Smoothness'],
+    ['emissive', 'Glow'],
+    ['multipleBonds', 'Multiple bonds'],
+    ['floodfill', 'Fill cavities'],
+    ['quality', 'Quality'],
+    ['xrayShaded', 'X-ray shading'],
+    ['aromaticBonds', 'Aromatic bonds'],
+    ['tubularHelices', 'Helices as tubes'],
+    ['ignoreLight', 'Flat colour'],
+    ['celShaded', 'Cel shading'],
+    ['ignoreHydrogens', 'Hide hydrogens']
+  ];
+
+  function sceneTreeReprParamSchema(viewer, target) {
+    const plugin = viewer?.plugin;
+    const type = String(target?.representation?.cell?.transform?.params?.type?.name || '');
+    const provider = type ? plugin?.representation?.structure?.registry?.get?.(type) : null;
+    const themes = plugin?.representation?.structure?.themes;
+    if (typeof provider?.getParams !== 'function' || !themes) return null;
+    try {
+      return provider.getParams({
+        webgl: plugin.canvas3dContext?.webgl,
+        colorThemeRegistry: themes.colorThemeRegistry,
+        sizeThemeRegistry: themes.sizeThemeRegistry
+      }, target.component?.cell?.obj?.data);
+    } catch (error) {
+      debug('scene tree advanced params failed: ' + (error && error.message || String(error)));
+      return null;
+    }
+  }
+
+  function sceneTreeAdvancedControl(parent, name, label, definition, value) {
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    let control;
+    if (definition.type === 'boolean') {
+      control = document.createElement('input');
+      control.type = 'checkbox';
+      control.className = 'buret-tree-menu-check';
+      control.checked = value === true;
+    } else if (definition.type === 'select') {
+      control = document.createElement('select');
+      control.className = 'buret-select';
+      for (const option of definition.options || []) {
+        const item = document.createElement('option');
+        item.value = String(option[0]);
+        item.textContent = String(option[1] ?? option[0]);
+        control.appendChild(item);
+      }
+      control.value = String(value ?? definition.defaultValue);
+    } else {
+      control = document.createElement('input');
+      control.type = 'range';
+      control.className = 'buret-tree-menu-range';
+      control.min = String(definition.min ?? 0);
+      control.max = String(definition.max ?? 1);
+      control.step = String(definition.step ?? 0.01);
+      control.value = String(Number.isFinite(value) ? value : definition.defaultValue);
+      row.classList.add('buret-tree-menu-slider');
+    }
+    control.dataset.sceneTreeParam = name;
+    control.dataset.sceneTreeParamType = definition.type;
+    row.append(caption, control);
+    if (control.type === 'range') {
+      const readout = document.createElement('span');
+      readout.className = 'buret-tree-menu-slider-value';
+      readout.textContent = control.value;
+      row.appendChild(readout);
+    }
+    parent.appendChild(row);
+  }
+
+  function sceneTreeAdvancedSection(menu, viewer, target) {
+    const schema = sceneTreeReprParamSchema(viewer, target);
+    if (!schema) return;
+    const current = target.representation?.cell?.transform?.params?.type?.params || {};
+    const rows = SCENE_TREE_ADVANCED_PARAMS
+      .filter(([name]) => schema[name] && ['number', 'boolean', 'select'].includes(schema[name].type));
+    const sizeThemes = viewer?.plugin?.representation?.structure?.themes?.sizeThemeRegistry;
+    if (!rows.length && !sizeThemes) return;
+    sceneTreeMenuSection(menu);
+    const disclosure = document.createElement('details');
+    disclosure.className = 'buret-tree-menu-actions buret-tree-menu-advanced';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Advanced';
+    disclosure.appendChild(summary);
+    for (const [name, label] of rows) {
+      sceneTreeAdvancedControl(disclosure, name, label, schema[name], current[name]);
+    }
+    // Size is a theme of its own, alongside colour rather than inside the type.
+    const sizeOptions = sizeThemes?.getApplicableTypes?.({ structure: target.component?.cell?.obj?.data }) || [];
+    if (sizeOptions.length > 1) {
+      const row = document.createElement('label');
+      row.className = 'buret-tree-menu-field';
+      const caption = document.createElement('span');
+      caption.textContent = 'Size by';
+      const control = document.createElement('select');
+      control.className = 'buret-select';
+      control.dataset.sceneTreeSelect = 'representation-size';
+      for (const option of sizeOptions) {
+        const item = document.createElement('option');
+        item.value = String(option[0]);
+        item.textContent = String(option[1] ?? option[0]);
+        control.appendChild(item);
+      }
+      control.value = String(target.representation?.cell?.transform?.params?.sizeTheme?.name || '');
+      row.append(caption, control);
+      disclosure.appendChild(row);
+    }
+    menu.appendChild(disclosure);
+  }
+
+  function applySceneTreeReprParam(ref, name, value) {
+    return updateSceneTreeRepresentation(ref, old => ({
+      ...old, type: { ...old.type, params: { ...old.type.params, [name]: value } }
+    }));
+  }
+
+  function applySceneTreeReprSize(ref, name) {
+    return updateSceneTreeRepresentation(ref, old => ({ ...old, sizeTheme: { name, params: {} } }));
+  }
+
   // The leaf menu edits one representation on its own: what it is, how solid it is,
   // and how it is coloured. Type and opacity sit together because they describe the
   // same drawing; colour keeps the structure row's theme picker and swatches.
@@ -5560,6 +5712,8 @@
     sceneTreeMenuSelect(menu, 'Theme', 'representation-color',
       sceneTreeColorThemes(viewer, [target.component]), String(params?.colorTheme?.name || ''));
     sceneTreeMenuSwatches(menu, node.label, 'rep-tint-color', sceneTreeRepresentationTint(target.representation));
+
+    sceneTreeAdvancedSection(menu, viewer, target);
   }
 
   function openSceneTreeMenu(ref, clientX, clientY) {
@@ -6054,6 +6208,17 @@
     }
     menu.appendChild(segment);
 
+    // Seventy queries do not fit a menu, and category headings only help if you
+    // already know which category a thing lives in. Typing narrows the whole list
+    // at once, so "lig", "helix" or "surround" get there without the hunt.
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'buret-input buret-viewport-search';
+    search.placeholder = 'Filter…';
+    search.setAttribute('aria-label', 'Filter selections');
+    search.dataset.buretViewportSearch = 'query';
+    menu.appendChild(search);
+
     const groups = new Map();
     queries.forEach((query, index) => {
       if (query?.isHidden || !query?.label) return;
@@ -6281,6 +6446,32 @@
       document.addEventListener('keydown', event => {
         if (event.key === 'Escape' && document.getElementById('buret-viewport-menu')) closeViewportMenu();
       });
+      // While filtering, the headings and the fold-away groups get in the way, so
+      // the menu flattens to just what matched and restores itself when cleared.
+      document.addEventListener('input', event => {
+        const search = event.target.closest('[data-buret-viewport-search]');
+        const menu = search?.closest('#buret-viewport-menu');
+        if (!menu) return;
+        const query = search.value.trim().toLowerCase();
+        menu.dataset.filtering = query ? 'true' : 'false';
+        for (const item of menu.querySelectorAll('[data-buret-viewport-menu="query"]')) {
+          const matches = !query || item.textContent.toLowerCase().includes(query);
+          item.classList.toggle('buret-tree-menu-item-filtered', !matches);
+          const group = matches && query ? item.closest('details') : null;
+          if (group && !group.open) {
+            group.open = true;
+            group.dataset.filterOpened = 'true';
+          }
+        }
+        // A group the filter pulled open belongs closed again once the field is
+        // cleared, or clearing leaves the menu longer than it was to begin with.
+        if (!query) {
+          for (const group of menu.querySelectorAll('details[data-filter-opened]')) {
+            group.open = false;
+            delete group.dataset.filterOpened;
+          }
+        }
+      });
     }
     for (const disposer of viewportControlsDisposers) disposer();
     viewportControlsDisposers = [];
@@ -6349,9 +6540,21 @@
           applySceneTreeReprType(ref, select.value);
         } else if (kind === 'representation-color') {
           applySceneTreeReprColor(ref, select.value, null);
+        } else if (kind === 'representation-size') {
+          applySceneTreeReprSize(ref, select.value);
         } else {
           applySceneTreeColorTheme(ref, select.value, null);
         }
+      });
+      // The advanced rows are built from the type's own schema, so one handler
+      // covers every one of them: the control carries its parameter name and how
+      // to read its value.
+      document.addEventListener('change', event => {
+        const control = event.target.closest('[data-scene-tree-param]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref || control.dataset.sceneTreeParamType === 'number') return;
+        const value = control.dataset.sceneTreeParamType === 'boolean' ? control.checked : control.value;
+        applySceneTreeReprParam(ref, control.dataset.sceneTreeParam, value);
       });
       // Opacity streams as the thumb moves; the slider sits inside the menu, so the
       // outside-click dismissal never sees these events and the menu stays open.
@@ -6363,6 +6566,18 @@
         const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
         if (readout) readout.textContent = `${percent}%`;
         streamSceneTreeReprAlpha(ref, percent / 100);
+      });
+      // Numeric advanced rows follow the thumb like opacity does. Surfaces rebuild
+      // their mesh on every commit, so these share the same latest-wins queue
+      // rather than piling a rebuild on each pixel of the drag.
+      document.addEventListener('input', event => {
+        const slider = event.target.closest('[data-scene-tree-param]');
+        const ref = slider?.closest('[data-ref]')?.dataset.ref;
+        if (!slider || !ref || slider.dataset.sceneTreeParamType !== 'number') return;
+        const value = Number(slider.value);
+        const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
+        if (readout) readout.textContent = slider.value;
+        streamSceneTreeReprParam(ref, slider.dataset.sceneTreeParam, value);
       });
       document.addEventListener('keydown', event => {
         // Cmd/Ctrl+T opens the tree. The viewer runs in a webview, so the browser

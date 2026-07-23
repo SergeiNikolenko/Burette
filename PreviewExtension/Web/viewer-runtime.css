@@ -694,6 +694,35 @@ body.buret-selection-toolbar-open .buret-selection-bar {
   opacity: 0.4;
   pointer-events: none;
 }
+.buret-viewport-search {
+  box-sizing: border-box;
+  width: calc(100% - 8px);
+  height: 24px;
+  margin: 0 4px 3px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 6px;
+  padding: 0 7px;
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-field-background);
+  font: inherit;
+  font-size: 11px;
+}
+.buret-viewport-search:focus-visible {
+  outline: 2px solid var(--buret-molstar-accent);
+  outline-offset: -1px;
+}
+/* Scoped past `.buret-tree-menu-item`, which is declared later in this file and
+   would otherwise win the tie and keep filtered-out rows holding their height. */
+.buret-tree-menu .buret-tree-menu-item.buret-tree-menu-item-filtered {
+  display: none;
+}
+/* A filtered list is one flat set of hits, so the headings, the dividers and the
+   fold-away group summaries step out of the way until the field is cleared. */
+.buret-viewport-menu[data-filtering="true"] .buret-tree-menu-title,
+.buret-viewport-menu[data-filtering="true"] .buret-tree-menu-divider,
+.buret-viewport-menu[data-filtering="true"] .buret-tree-menu-actions > summary {
+  display: none;
+}
 .buret-viewport-segment {
   display: flex;
   gap: 1px;
