@@ -6319,13 +6319,21 @@
     spin: { value: 0.1, min: -2, max: 2, step: 0.01 },
     rock: { value: 0.3, min: -5, max: 5, step: 0.1 }
   };
+  // The plugin ships timed camera spin and rock too; the Motion switch covers the
+  // same ground without a stopwatch, so they are not listed twice.
+  const VIEWPORT_MOTION_ANIMATIONS = new Set([
+    'built-in.animate-camera-spin',
+    'built-in.animate-camera-rock'
+  ]);
   const VIEWPORT_ICON = {
     camera: ['M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z', 'M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'],
     layFlat: ['M3 8.5 12 4l9 4.5-9 4.5Z', 'm3 15 9 4.5L21 15'],
     paint: ['M4 8.5A2.5 2.5 0 0 1 6.5 6H16a3 3 0 0 1 3 3v1.5H8.5A2.5 2.5 0 0 0 6 13v1', 'M9 14h4v4a2 2 0 0 1-4 0Z'],
     cube: ['M12 3 4.5 7v10L12 21l7.5-4V7Z', 'M4.5 7 12 11l7.5-4', 'M12 11v10'],
     scissors: ['M6.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'M6.5 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'm8.7 7.2 10.8 10.6', 'M19.5 6.2 8.7 16.8'],
-    undo: ['M4 9h11a5 5 0 0 1 0 10h-7', 'm8 5-4 4 4 4']
+    undo: ['M4 9h11a5 5 0 0 1 0 10h-7', 'm8 5-4 4 4 4'],
+    play: ['m8 5 11 7-11 7Z'],
+    stop: ['M6.5 6.5h11v11h-11Z']
   };
   let selectionQueryModifier = 'set';
   let viewportControlsDisposers = [];
@@ -6370,6 +6378,7 @@
     button.dataset.buretViewportMenu = action;
     Object.assign(button.dataset, options.data || {});
     if (options.disabled) button.disabled = true;
+    if (options.title) button.title = options.title;
     const icon = document.createElement('span');
     icon.className = 'buret-tree-menu-icon';
     if (options.icon) icon.appendChild(sceneTreeIconElement(options.icon));
@@ -6425,7 +6434,71 @@
     viewportMenuItem(menu, 'Reset zoom', 'camera-reset', { icon: SCENE_TREE_ICON.focus });
     viewportMenuItem(menu, 'Lay flat', 'camera-orient', { icon: VIEWPORT_ICON.layFlat });
     viewportMenuItem(menu, 'Reset axes', 'camera-axes', { icon: SCENE_TREE_ICON.restore });
+  }
+
+  // Mol*'s own animation button offered both a trackball that keeps turning and
+  // the plugin's timed animations. The rail keeps both, split by how they end:
+  // motion runs until it is switched off, the rest play once and stop themselves.
+  function viewportAnimateMenu(menu) {
     viewportMotionControls(menu);
+    const plugin = viewportPlugin();
+    const manager = plugin?.managers?.animation;
+    const playing = manager?.state?.animationState === 'playing';
+    const animations = (manager?.animations || [])
+      .map((animation, index) => ({ animation, index }))
+      // Camera spin and rock are the Motion switch above, only on a timer.
+      .filter(entry => !VIEWPORT_MOTION_ANIMATIONS.has(entry.animation?.name))
+      .map(entry => ({ ...entry, applicability: viewportAnimationApplicability(entry.animation, plugin) }))
+      .filter(entry => entry.animation?.display?.name)
+      // A greyed row earns its place by saying why it is greyed. One that cannot
+      // is just an entry you will never be able to use.
+      .filter(entry => entry.applicability.canApply || entry.applicability.reason);
+    if (!animations.length) return;
+    sceneTreeMenuSection(menu, 'Play once');
+    for (const entry of animations) {
+      viewportMenuItem(menu, entry.animation.display.name, 'animation-play', {
+        icon: VIEWPORT_ICON.play,
+        data: { animationIndex: String(entry.index) },
+        disabled: !entry.applicability.canApply,
+        // Mol* explains why an animation does not apply; a greyed row that keeps
+        // its reason to itself is the thing this rail set out to replace.
+        title: entry.applicability.reason || entry.animation.display.description
+      });
+    }
+    if (!playing) return;
+    sceneTreeMenuSection(menu);
+    viewportMenuItem(menu, 'Stop', 'animation-stop', { icon: VIEWPORT_ICON.stop });
+  }
+
+  function viewportAnimationApplicability(animation, plugin) {
+    if (typeof animation?.canApply !== 'function') return { canApply: true };
+    try {
+      return animation.canApply(plugin) || { canApply: true };
+    } catch (error) {
+      debug('animation applicability failed: ' + (error && error.message || String(error)));
+      return { canApply: false, reason: 'Unavailable for this scene' };
+    }
+  }
+
+  function playViewportAnimation(index) {
+    const plugin = viewportPlugin();
+    const manager = plugin?.managers?.animation;
+    const animation = manager?.animations?.[index];
+    if (!animation) return;
+    const params = manager.getParams?.()?.params?.[animation.name];
+    Promise.resolve(manager.play(animation, params?.defaultValue ?? {}))
+      .then(() => updateViewportAnimateState())
+      .catch(error => setStatus(`[web] Animation failed. ${error?.message || error}`, 'error'));
+  }
+
+  // The button carries whatever is moving - a running animation or the trackball -
+  // because a still frame cannot tell you the scene is in motion.
+  function updateViewportAnimateState() {
+    const plugin = viewportPlugin();
+    const playing = plugin?.managers?.animation?.state?.animationState === 'playing';
+    const motion = viewportMotionState().name;
+    document.querySelector('[data-buret-viewport-action="animate"]')
+      ?.setAttribute('data-motion', playing ? 'playing' : motion);
   }
 
   function viewportMotionState() {
@@ -6498,8 +6571,7 @@
     if (name === 'spin') params.axis = [0, -1, 0];
     const animate = limits ? { name, params } : { name: 'off', params: {} };
     plugin.canvas3d.setProps({ trackball: { ...trackball, animate } });
-    document.querySelector('[data-buret-viewport-action="camera"]')
-      ?.setAttribute('data-motion', limits ? name : 'off');
+    updateViewportAnimateState();
   }
 
   // The registry ships seventy queries, twenty of which are single amino acids;
@@ -6648,6 +6720,11 @@
       updateViewportMotionSpeed(viewportMotionState());
       // Motion is judged by watching it, so the menu stays up to be adjusted.
       return true;
+    } else if (action === 'animation-play') {
+      playViewportAnimation(Number(control.dataset.animationIndex));
+    } else if (action === 'animation-stop') {
+      plugin.managers.animation.stop();
+      updateViewportAnimateState();
     } else if (action === 'modifier') {
       selectionQueryModifier = control.dataset.modifier || 'set';
       for (const button of control.parentElement?.children || []) {
@@ -6679,6 +6756,8 @@
     if (!plugin) return;
     if (action === 'camera') {
       openViewportMenu(control, 'Camera', viewportCameraMenu);
+    } else if (action === 'animate') {
+      openViewportMenu(control, 'Animate', viewportAnimateMenu);
     } else if (action === 'screenshot') {
       Promise.resolve(plugin.helpers.viewportScreenshot?.download())
         .then(() => setStatus('[web] Screenshot saved.'))
@@ -6811,15 +6890,17 @@
     const subscriptions = [
       plugin?.behaviors?.interaction?.selectionMode?.subscribe?.(updateSelectionBar),
       plugin?.managers?.structure?.selection?.events?.changed?.subscribe?.(updateSelectionBar),
-      plugin?.managers?.interactivity?.events?.propsUpdated?.subscribe?.(updateSelectionBar)
+      plugin?.managers?.interactivity?.events?.propsUpdated?.subscribe?.(updateSelectionBar),
+      // Timed animations end on their own, so the button cannot be left holding a
+      // state nobody switched off.
+      plugin?.behaviors?.state?.isAnimating?.subscribe?.(updateViewportAnimateState)
     ].filter(Boolean);
     if (subscriptions.length) {
       viewportControlsDisposers.push(() => subscriptions.forEach(item => item?.unsubscribe?.()));
     }
     rail.querySelector('[data-buret-viewport-action="illumination"]')
       ?.setAttribute('aria-pressed', plugin?.canvas3d?.props?.illumination?.enabled === true ? 'true' : 'false');
-    rail.querySelector('[data-buret-viewport-action="camera"]')
-      ?.setAttribute('data-motion', viewportMotionState().name);
+    updateViewportAnimateState();
     updateSelectionBar();
   }
 

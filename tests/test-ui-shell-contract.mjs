@@ -4876,6 +4876,21 @@ assert.match(previewRuntimeCss, /body:has\(\.msp-viewport-controls-buttons \.msp
 assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*hideGenerate3DMenu\(\);/);
 assert.match(previewViewer, /const viewportControlRailRect = visibleRect\('\.msp-plugin \.msp-viewport-controls-buttons'\);/);
 assert.match(previewViewer, /const railRect = visibleRect\('#buret-viewport-rail'\) \|\| viewportControlRailRect;/);
+// The rail carries its own animation button, the way Mol*'s viewport controls did:
+// a trackball that keeps turning plus the plugin's timed animations, each listed
+// once and each able to say why it is unavailable.
+assert.match(viewerShell, /data-buret-viewport-action="animate"/);
+assert.match(previewViewer, /openViewportMenu\(control, 'Animate', viewportAnimateMenu\)/);
+assert.match(previewViewer, /function viewportAnimateMenu\(menu\) \{/);
+assert.match(previewViewer, /const VIEWPORT_MOTION_ANIMATIONS = new Set\(\[/);
+assert.match(previewViewer, /'built-in\.animate-camera-spin'/);
+assert.match(previewViewer, /\.filter\(entry => entry\.applicability\.canApply \|\| entry\.applicability\.reason\)/);
+assert.match(previewViewer, /plugin\?\.behaviors\?\.state\?\.isAnimating\?\.subscribe\?\.\(updateViewportAnimateState\)/);
+// Motion lives on the animate button now, so the camera menu must not offer it too.
+assert.doesNotMatch(
+  previewViewer.slice(previewViewer.indexOf("function viewportCameraMenu"), previewViewer.indexOf("function viewportAnimateMenu")),
+  /viewportMotionControls/,
+);
 assert.match(previewViewer, /window\.innerWidth - railRect\.left \+ FLOATING_LAYOUT_GAP \* 2/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-generate-3d-control-right', generate3DControlRight \+ 'px'\);/);
 assert.match(previewRuntimeCss, /background: color-mix\(in srgb, var\(--buret-toolbar-background\) 92%/);

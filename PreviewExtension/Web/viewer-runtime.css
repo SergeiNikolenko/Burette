@@ -590,10 +590,11 @@ body.burette-mobile-host #buret-scene-tree {
   color: var(--buret-molstar-accent);
   background: var(--buret-toolbar-hover);
 }
-/* A spinning scene is easy to miss on a still frame, so the camera button carries
+/* A moving scene is easy to miss on a still frame, so the animate button carries
    the state while its menu is closed. */
 .buret-rail-button[data-motion="spin"],
-.buret-rail-button[data-motion="rock"] {
+.buret-rail-button[data-motion="rock"],
+.buret-rail-button[data-motion="playing"] {
   color: var(--buret-molstar-accent);
 }
 .buret-selection-bar {

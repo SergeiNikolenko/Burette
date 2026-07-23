@@ -151,6 +151,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"/><path d="M12 1.8V4M12 20v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M1.8 12H4M20 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg>
           <span class="buret-tooltip" role="tooltip">Realistic lighting</span>
         </button>
+        <button class="buret-rail-button" type="button" data-buret-viewport-action="animate" aria-haspopup="menu" aria-expanded="false" data-motion="off" aria-label="Animate the scene" title="Animate the scene">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.8 3.9v4.3h-4.3"/><path d="m10.4 9.2 4.8 2.8-4.8 2.8Z"/></svg>
+          <span class="buret-tooltip" role="tooltip">Animate the scene</span>
+        </button>
         <button class="buret-rail-button" type="button" data-buret-viewport-action="select-mode" aria-pressed="false" aria-label="Selection mode" title="Selection mode">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 7.2-6 1.6-1.6 6L5 3Z"/></svg>
           <span class="buret-tooltip" role="tooltip">Selection mode</span>
