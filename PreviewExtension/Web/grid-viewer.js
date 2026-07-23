@@ -3937,11 +3937,34 @@
       </button>`;
   }
 
+  // The panel is fixed, so it has to be placed against its trigger rather than
+  // against the table it is rendered inside — that box scrolls and would clip
+  // the panel to the height of the table.
+  function positionTableColumnPanel(panel) {
+    const margin = 8;
+    const trigger = document.getElementById('table-columns');
+    const rect = trigger?.getBoundingClientRect();
+    const width = panel.offsetWidth || 340;
+    const top = rect ? rect.bottom + 6 : margin;
+    const left = rect ? rect.right - width : margin;
+    panel.style.top = `${Math.round(Math.max(margin, top))}px`;
+    panel.style.left = `${Math.round(Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin)))}px`;
+  }
+
   function bindTableColumnPanel(wrapper, cfg, catalog) {
     const panel = wrapper.querySelector('.buret-table-column-panel');
     if (!panel) return;
+    positionTableColumnPanel(panel);
     state.tableColumnPanelOutsideController?.abort();
     state.tableColumnPanelOutsideController = new AbortController();
+    const closeOnViewportChange = () => closeTableColumnPanel(cfg);
+    window.addEventListener('resize', closeOnViewportChange, {
+      signal: state.tableColumnPanelOutsideController.signal
+    });
+    window.addEventListener('scroll', closeOnViewportChange, {
+      capture: true,
+      signal: state.tableColumnPanelOutsideController.signal
+    });
     const handleOutsidePointerDown = event => {
       const target = event.target;
       if (!(target instanceof Element)) return;

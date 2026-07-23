@@ -871,70 +871,78 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   background-clip: padding-box;
 }
 
+/* The columns picker follows the viewer's menu language: a floating, opaque
+   sheet with borderless rows, a quiet section label and a trailing check on the
+   rows that are on. It is fixed rather than absolute because its own container
+   is the table's scroll box, which used to clip it to the height of the table. */
 .buret-table-column-panel {
-  position: absolute;
+  position: fixed;
   top: 0;
-  right: var(--buret-grid-content-padding-inline);
-  z-index: 20;
+  left: 0;
+  z-index: 60;
   box-sizing: border-box;
   display: grid;
+  gap: 2px;
   width: min(340px, calc(100vw - 48px));
   max-height: min(560px, calc(100vh - 180px));
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--buret-accent) 42%, var(--buret-table-panel-border));
-  border-radius: 9px;
+  padding: 6px;
+  border: 1px solid var(--buret-table-panel-border);
+  border-radius: 12px;
   background: var(--buret-panel);
-  box-shadow: 0 18px 44px rgba(29, 29, 31, 0.16);
-  -webkit-backdrop-filter: blur(26px) saturate(1.16);
-  backdrop-filter: blur(26px) saturate(1.16);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
 }
 
 .buret-table-column-select-all {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  gap: 8px;
   align-items: center;
-  min-height: 46px;
+  min-height: 32px;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--buret-accent) 70%, transparent);
-  border-radius: 0;
-  padding: 8px 16px;
+  border-radius: 6px;
+  padding: 4px 8px;
   color: var(--buret-text);
   background: transparent;
   text-align: left;
-  font: 500 15px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 .buret-table-column-select-all:hover,
 .buret-table-column-select-all:focus-visible {
-  background: color-mix(in srgb, var(--buret-accent) 7%, transparent);
+  background: var(--buret-control-hover);
   outline: none;
+}
+
+.buret-table-column-select-all > span:first-child {
+  order: 2;
 }
 
 .buret-table-column-checkbox {
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
-  box-sizing: border-box;
-  border: 1px solid color-mix(in srgb, var(--buret-accent) 62%, var(--buret-border));
-  border-radius: 7px;
+  width: 16px;
+  height: 16px;
   color: var(--buret-accent);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
+  opacity: 0;
+}
+
+.buret-table-column-select-all[aria-pressed="true"] .buret-table-column-checkbox {
+  opacity: 1;
 }
 
 .buret-table-column-search {
   box-sizing: border-box;
   width: 100%;
-  min-height: 42px;
+  min-height: 30px;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--buret-accent) 70%, transparent);
-  border-radius: 0;
-  padding: 0 16px;
-  background: color-mix(in srgb, var(--buret-control-surface) 78%, transparent);
+  border-radius: 7px;
+  padding: 0 9px;
+  background: var(--buret-control-surface);
   color: var(--buret-text);
-  font: 400 15px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   outline: none;
 }
 
@@ -942,75 +950,112 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   color: var(--buret-muted);
 }
 
+/* A sentence, not a section heading — the viewer sets these in plain muted
+   text rather than the tracked capitals used for group labels. */
 .buret-table-column-summary {
-  padding: 7px 16px 6px;
-  border-bottom: 1px solid var(--buret-table-panel-border);
+  padding: 7px 8px 4px;
   color: var(--buret-muted);
   font-size: 11px;
 }
 
 .buret-table-column-list {
   display: grid;
+  align-content: start;
   max-height: min(430px, calc(100vh - 310px));
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
+/* One row per column, marked by a trailing check rather than a checkbox the
+   size of the label. */
 .buret-table-column-item {
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 2px 10px;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  gap: 0 8px;
   align-items: center;
   min-width: 0;
-  padding: 8px 16px;
-  border-bottom: 1px solid color-mix(in srgb, var(--buret-table-panel-border) 72%, transparent);
+  min-height: 32px;
+  border-radius: 6px;
+  padding: 3px 8px;
   background: transparent;
   text-transform: none;
+}
+
+.buret-table-column-item:hover,
+.buret-table-column-item:focus-within {
+  background: var(--buret-control-hover);
 }
 
 .buret-table-column-item[hidden] {
   display: none;
 }
 
+/* The native box stays for keyboard and assistive use, out of the layout. */
 .buret-table-column-item input {
-  grid-row: 1 / span 2;
-  width: 22px;
-  height: 22px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
   margin: 0;
-  accent-color: var(--buret-accent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.buret-table-column-item::after {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: center;
+  width: 4px;
+  height: 8px;
+  border-right: 1.5px solid var(--buret-accent);
+  border-bottom: 1.5px solid var(--buret-accent);
+  opacity: 0;
+  transform: translateY(-1px) rotate(45deg);
+  content: "";
+}
+
+.buret-table-column-item:has(input:checked)::after {
+  opacity: 1;
+}
+
+.buret-table-column-item:has(input:focus-visible) {
+  outline: 1px solid var(--buret-accent);
+  outline-offset: -1px;
 }
 
 .buret-table-column-item span {
+  grid-column: 1;
   min-width: 0;
   overflow: hidden;
   color: var(--buret-text);
-  font-size: 14px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .buret-table-column-item small {
+  grid-column: 1;
   min-width: 0;
   overflow: hidden;
   color: var(--buret-muted);
-  font-size: 10.5px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .buret-table-column-more {
-  min-height: 38px;
+  min-height: 30px;
   border: 0;
-  border-top: 1px solid var(--buret-table-panel-border);
-  border-radius: 0;
+  border-radius: 6px;
   color: var(--buret-muted);
   background: transparent;
+  font-size: 12px;
 }
 
 .buret-table-column-more:hover,
 .buret-table-column-more:focus-visible {
   color: var(--buret-text);
-  background: var(--buret-control-surface);
+  background: var(--buret-control-hover);
 }
 
 .buret-grid-table {
