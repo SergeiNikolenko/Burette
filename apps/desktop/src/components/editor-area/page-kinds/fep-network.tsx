@@ -54,7 +54,7 @@ const rdkitScriptUrl = new URL("../../../../../../PreviewExtension/Web/rdkit/RDK
 const rdkitWasmUrl = new URL("../../../../../../PreviewExtension/Web/rdkit/RDKit_minimal.wasm", import.meta.url).href;
 const sampleGraphmlUrl = new URL("../../../../../../samples/fep/ligand_network.graphml", import.meta.url).href;
 const gridAssetsBaseUrl = `${new URL("../../../../../../PreviewExtension/Web/", import.meta.url).href.replace(/\/?$/u, "/")}`;
-const gridAssetVersion = "grid-ui-v100";
+const gridAssetVersion = "grid-ui-v101";
 const cardSize = { width: 16.4, height: 25.8 };
 const edgeLabelAvoidanceCardSize = { width: 17.4, height: 29.2 };
 
