@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
@@ -281,20 +281,15 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
       ) : null}
 
       {(compositionSummary || compositionPending || compositionError) ? (
-        <section className="structure-brief-card">
-          <StructureSectionHeader title="Components" detail="Primary groups" />
-          {compositionSummary ? (
-            <StructureActionList
-              rows={visibleComponentRows(compositionSummary.componentRows)}
-              document={document}
-              actions={actions}
-              activeActionKey={activeActionKey}
-              setActiveActionKey={setActiveActionKey}
-            />
-          ) : (
-            <div className="dock-empty">{compositionPending ? "Reading structure text..." : `Composition unavailable: ${compositionError}`}</div>
-          )}
-        </section>
+        <StructureCompositionCard
+          summary={compositionSummary}
+          pending={compositionPending}
+          error={compositionError}
+          document={document}
+          actions={actions}
+          activeActionKey={activeActionKey}
+          setActiveActionKey={setActiveActionKey}
+        />
       ) : null}
 
       <FoldingResultsPanel state={foldingResult} actions={actions} />
@@ -431,61 +426,6 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           selectedEntity={selectedEntity}
           clearSelection={clearSelection}
         />
-      ) : null}
-
-      {compositionSummary?.maestroRows?.length ? (
-        <section className="structure-brief-card">
-          <StructureSectionHeader title="Maestro entries" detail={`${compositionSummary.maestroRows.length} CT ${plural(compositionSummary.maestroRows.length, "block")}`} />
-          <StructureActionList
-            rows={compositionSummary.maestroRows}
-            document={document}
-            actions={actions}
-            activeActionKey={activeActionKey}
-            setActiveActionKey={setActiveActionKey}
-            compact
-          />
-        </section>
-      ) : null}
-
-      {compositionSummary?.ligandRows.length ? (
-        <section className="structure-brief-card">
-          <StructureSectionHeader title="Ligands" detail={`${compositionSummary.ligandRows.length} ${plural(compositionSummary.ligandRows.length, "instance")}`} />
-          <StructureActionList
-            rows={compositionSummary.ligandRows}
-            document={document}
-            actions={actions}
-            activeActionKey={activeActionKey}
-            setActiveActionKey={setActiveActionKey}
-            compact
-          />
-        </section>
-      ) : null}
-
-      {compositionSummary?.polymerRows.length ? (
-        <section className="structure-brief-card">
-          <StructureSectionHeader title="Chains" detail={`${compositionSummary.polymerRows.length} ${plural(compositionSummary.polymerRows.length, "chain")}`} />
-          <StructureActionList
-            rows={compositionSummary.polymerRows}
-            document={document}
-            actions={actions}
-            activeActionKey={activeActionKey}
-            setActiveActionKey={setActiveActionKey}
-            compact
-          />
-        </section>
-      ) : null}
-
-      {compositionSummary?.solventRows.length ? (
-        <section className="structure-brief-card">
-          <StructureSectionHeader title="Water / ions" />
-          <StructureActionList
-            rows={compositionSummary.solventRows}
-            document={document}
-            actions={actions}
-            activeActionKey={activeActionKey}
-            setActiveActionKey={setActiveActionKey}
-          />
-        </section>
       ) : null}
 
       <StructureDetailsSection
@@ -3016,54 +2956,154 @@ function plural(count: number, noun: string) {
   return count === 1 ? noun : `${noun}s`;
 }
 
-function StructureActionList({
-  rows,
+// Arrow keys walk the rows of a list — and of the composition tree, where the
+// walk crosses group boundaries because the buttons are collected from the
+// container rather than from any one group.
+function structureRowsKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  const button = target?.closest<HTMLButtonElement>("button.structure-brief-action-row, button.structure-brief-chip-button");
+  if (!button || !event.currentTarget.contains(button)) return;
+  const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button.structure-brief-action-row, button.structure-brief-chip-button"))
+    .filter((candidate) => !candidate.disabled);
+  const index = buttons.indexOf(button);
+  if (index < 0) return;
+  const nextIndex = event.key === "ArrowDown"
+    ? Math.min(buttons.length - 1, index + 1)
+    : Math.max(0, index - 1);
+  if (nextIndex === index) return;
+  event.preventDefault();
+  event.stopPropagation();
+  buttons[nextIndex].focus();
+  buttons[nextIndex].click();
+}
+
+type CompositionGroup = {
+  key: string;
+  row: StructureSummaryRow;
+  children: StructureSummaryRow[];
+};
+
+// The parser reports each group twice: once as a summary line and once as the
+// members behind it, and the panel used to render those as separate cards. They
+// are one hierarchy, so they are shown as one.
+function compositionGroups(summary: StructureCompositionSummary): CompositionGroup[] {
+  const ionRows = summary.solventRows.filter((row) => row.label !== "Water" && row.label !== "Ions");
+  const groups = visibleComponentRows(summary.componentRows).map((row) => ({
+    key: `component:${row.label}`,
+    row,
+    children: row.label === "Polymers" ? summary.polymerRows
+      : row.label === "Ligands" ? summary.ligandRows
+      : row.label === "Ions" ? ionRows
+      : [],
+  }));
+  const maestroRows = summary.maestroRows ?? [];
+  if (maestroRows.length === 0) return groups;
+  return [...groups, {
+    key: "maestro",
+    row: { label: "Maestro entries", value: `${maestroRows.length} CT ${plural(maestroRows.length, "block")}` },
+    children: maestroRows,
+  }];
+}
+
+// A handful of chains or ligands is what people open a structure to look at, so
+// those groups start open; a hundred of them would just be the old wall of rows.
+const COMPOSITION_AUTO_EXPAND_LIMIT = 8;
+
+function defaultExpandedCompositionGroups(groups: CompositionGroup[]) {
+  return new Set(groups
+    .filter((group) => group.children.length > 0 && group.children.length <= COMPOSITION_AUTO_EXPAND_LIMIT)
+    .map((group) => group.key));
+}
+
+function StructureCompositionCard({
+  summary,
+  pending,
+  error,
   document,
   actions,
   activeActionKey,
   setActiveActionKey,
-  compact = false,
 }: {
-  rows: StructureSummaryRow[];
+  summary: StructureCompositionSummary | null;
+  pending: boolean;
+  error: string | null;
   document: ViewerDocument;
   actions: ShellActions;
   activeActionKey: string | null;
   setActiveActionKey: (key: string | null) => void;
-  compact?: boolean;
 }) {
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    const target = event.target instanceof HTMLElement ? event.target : null;
-    const button = target?.closest<HTMLButtonElement>("button.structure-brief-action-row, button.structure-brief-chip-button");
-    if (!button || !event.currentTarget.contains(button)) return;
-    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button.structure-brief-action-row, button.structure-brief-chip-button"))
-      .filter((candidate) => !candidate.disabled);
-    const index = buttons.indexOf(button);
-    if (index < 0) return;
-    const nextIndex = event.key === "ArrowDown"
-      ? Math.min(buttons.length - 1, index + 1)
-      : Math.max(0, index - 1);
-    if (nextIndex === index) return;
-    event.preventDefault();
-    event.stopPropagation();
-    buttons[nextIndex].focus();
-    buttons[nextIndex].click();
-  };
+  const groups = useMemo(() => summary ? compositionGroups(summary) : [], [summary]);
+  const [expanded, setExpanded] = useState<Set<string>>(() => defaultExpandedCompositionGroups(groups));
+  useEffect(() => {
+    setExpanded(defaultExpandedCompositionGroups(groups));
+  }, [groups]);
+  const toggle = (key: string) => setExpanded((current) => {
+    const next = new Set(current);
+    if (!next.delete(key)) next.add(key);
+    return next;
+  });
 
   return (
-    <div className={compact ? "structure-brief-chip-list" : "structure-brief-rows"} onKeyDown={handleKeyDown}>
-      {rows.map((row, index) => (
-        <StructureActionRow
-          key={structureActionRowKey(row, index)}
-          row={row}
-          document={document}
-          actions={actions}
-          activeActionKey={activeActionKey}
-          setActiveActionKey={setActiveActionKey}
-          compact={compact}
-        />
-      ))}
-    </div>
+    <section className="structure-brief-card">
+      <StructureSectionHeader title="Composition" detail={groups.length ? `${groups.length} ${plural(groups.length, "group")}` : undefined} />
+      {summary ? (
+        <div className="structure-brief-rows structure-inspector-tree" onKeyDown={structureRowsKeyDown}>
+          {groups.map((group) => {
+            const open = expanded.has(group.key);
+            return (
+              <div className="structure-inspector-tree-group" key={group.key}>
+                <StructureActionRow
+                  row={group.row}
+                  document={document}
+                  actions={actions}
+                  activeActionKey={activeActionKey}
+                  setActiveActionKey={setActiveActionKey}
+                  compact={false}
+                  leading={group.children.length > 0 ? (
+                    <button
+                      type="button"
+                      className="structure-inspector-tree-toggle"
+                      aria-expanded={open}
+                      aria-label={`${open ? "Collapse" : "Expand"} ${group.row.label}`}
+                      title={open ? "Collapse" : "Expand"}
+                      onClick={() => toggle(group.key)}
+                    >
+                      <TreeDisclosureIcon />
+                    </button>
+                  ) : <span className="structure-inspector-tree-spacer" aria-hidden="true" />}
+                />
+                {open && group.children.length > 0 ? (
+                  <div className="structure-inspector-tree-children">
+                    {group.children.map((child, index) => (
+                      <StructureActionRow
+                        key={structureActionRowKey(child, index)}
+                        row={child}
+                        document={document}
+                        actions={actions}
+                        activeActionKey={activeActionKey}
+                        setActiveActionKey={setActiveActionKey}
+                        compact
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="dock-empty">{pending ? "Reading structure text..." : `Composition unavailable: ${error}`}</div>
+      )}
+    </section>
+  );
+}
+
+function TreeDisclosureIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M4.5 2.5 8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -3079,6 +3119,7 @@ function StructureActionRow({
   activeActionKey,
   setActiveActionKey,
   compact,
+  leading,
 }: {
   row: StructureSummaryRow;
   document: ViewerDocument;
@@ -3086,6 +3127,7 @@ function StructureActionRow({
   activeActionKey: string | null;
   setActiveActionKey: (key: string | null) => void;
   compact: boolean;
+  leading?: ReactNode;
 }) {
   const content = () => (
     <span className="structure-inspector-row-content">
@@ -3094,6 +3136,19 @@ function StructureActionRow({
     </span>
   );
   if (!row.action) {
+    // A group heading with no action of its own still has to line up with the
+    // rows around it, so it keeps the entry layout instead of falling back to a
+    // plain row.
+    if (leading) {
+      return (
+        <div className="structure-brief-action-entry" data-leading="true">
+          {leading}
+          <div className="structure-brief-action-summary" title={`${row.label}: ${row.value}`}>
+            {content()}
+          </div>
+        </div>
+      );
+    }
     return compact ? (
       <span title={`${row.label}: ${row.value}`}>
         <strong>{row.label}</strong>
@@ -3137,7 +3192,8 @@ function StructureActionRow({
 
   if (secondaryAction) {
     return (
-      <div className="structure-brief-action-entry" data-actions="pair" data-selected={selected || undefined} onContextMenu={showContextMenu}>
+      <div className="structure-brief-action-entry" data-actions="pair" data-leading={leading ? "true" : undefined} data-selected={selected || undefined} onContextMenu={showContextMenu}>
+        {leading}
         <div
           className={compact ? "structure-brief-chip-summary" : "structure-brief-action-summary"}
           title={`${row.label}: ${row.value}`}
@@ -3165,7 +3221,8 @@ function StructureActionRow({
   }
 
   return (
-    <div className="structure-brief-action-entry" data-selected={selected || undefined} onContextMenu={showContextMenu}>
+    <div className="structure-brief-action-entry" data-leading={leading ? "true" : undefined} data-selected={selected || undefined} onContextMenu={showContextMenu}>
+      {leading}
       <button
         type="button"
         className={compact ? "structure-brief-chip-button" : "structure-brief-action-row"}

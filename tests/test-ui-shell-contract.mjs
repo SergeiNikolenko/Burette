@@ -2435,11 +2435,16 @@ assert.match(structureInfoPanel, /actions\.revealDocument\(document\)/);
 assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
 assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.path\)/);
-assert.match(structureInfoPanel, /compositionSummary\?\.maestroRows\?\.length/);
-assert.match(structureInfoPanel, /StructureSectionHeader title="Maestro entries"/);
+assert.match(structureInfoPanel, /StructureSectionHeader title="Composition"/);
+assert.match(structureInfoPanel, /key: "maestro"/);
+assert.match(structureInfoPanel, /label: "Maestro entries"/);
 assert.match(structureInfoPanel, /\["Maestro entry", summary\.maestroRows \?\? \[\]\]/);
 assert.match(structureInfoPanel, /valueForLabel\(summary\.rows, "Preview atoms"\)/);
-assert.match(structureInfoPanel, /StructureSectionHeader title="Chains"/);
+// Chains, ligands and ions hang off their own summary row rather than getting a
+// card each, which is what stops the panel repeating itself.
+assert.match(structureInfoPanel, /row\.label === "Polymers" \? summary\.polymerRows/);
+assert.match(structureInfoPanel, /row\.label === "Ligands" \? summary\.ligandRows/);
+assert.match(structureInfoPanel, /const COMPOSITION_AUTO_EXPAND_LIMIT = 8/);
 assert.match(structureInfoPanel, /StructureSectionHeader title="Selected entity"/);
 assert.match(structureInfoPanel, /const SDF_CONTEXT_STYLE_OPTIONS = \[/);
 assert.match(structureInfoPanel, /\{ value: "line", label: "Line" \}/);
@@ -2563,8 +2568,8 @@ assert.doesNotMatch(structureInfoPanel, /opacityDisabled/);
 assert.match(structureInfoPanel, /onInput=\{\(event\) => applyOpacity\(Number\(event\.currentTarget\.value\)\)\}/);
 assert.match(structureInfoPanel, /Math\.round\(opacity \* 100\)/);
 assert.ok(
-  structureInfoPanel.indexOf("<SdfContextStyleCard") < structureInfoPanel.indexOf('StructureSectionHeader title="Components"'),
-  "SDF all-background controls should appear above Components"
+  structureInfoPanel.indexOf("<SdfContextStyleCard") < structureInfoPanel.indexOf("<StructureCompositionCard"),
+  "SDF all-background controls should appear above the composition tree"
 );
 assert.match(styles, /\.structure-inspector-style-options \{/);
 assert.match(styles, /\.structure-brief \{[\s\S]*?grid-auto-rows: max-content/);
@@ -2588,13 +2593,13 @@ assert.match(structureInfoPanel, /const virtualText = source\.virtual \? readBro
 assert.match(structureInfoPanel, /return readStructureText\(source\.path, \{ maxBytes \}\)/);
 assert.match(structureInfoPanel, /return 12 \* 1024 \* 1024/);
 assert.match(structureInfoPanel, /const primaryAction = row\.action/);
-assert.match(structureInfoPanel, /key=\{structureActionRowKey\(row, index\)\}/);
+assert.match(structureInfoPanel, /key=\{structureActionRowKey\(child, index\)\}/);
 assert.match(structureInfoPanel, /function structureActionRowKey\(row: StructureSummaryRow, index: number\)/);
-assert.match(structureInfoPanel, /const handleKeyDown = \(event: KeyboardEvent<HTMLDivElement>\) => \{/);
+assert.match(structureInfoPanel, /function structureRowsKeyDown\(event: KeyboardEvent<HTMLDivElement>\) \{/);
 assert.match(structureInfoPanel, /event\.key !== "ArrowDown" && event\.key !== "ArrowUp"/);
 assert.match(structureInfoPanel, /buttons\[nextIndex\]\.focus\(\)/);
 assert.match(structureInfoPanel, /buttons\[nextIndex\]\.click\(\)/);
-assert.match(structureInfoPanel, /onKeyDown=\{handleKeyDown\}/);
+assert.match(structureInfoPanel, /onKeyDown=\{structureRowsKeyDown\}/);
 assert.match(structureInfoPanel, /const primaryActionKey = selectionActionKey\(document, primaryAction\)/);
 assert.match(structureInfoPanel, /primaryActionKey !== null && primaryActionKey === activeActionKey/);
 assert.match(structureInfoPanel, /data-selected=\{selected \|\| undefined\}/);
@@ -2608,7 +2613,9 @@ assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) ret
 assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) return "Show molecule"/);
 assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) return `Molecule \$\{action\.index \+ 1\}`/);
 assert.match(structureInfoPanel, /navigator\.clipboard\?\.writeText/);
-assert.match(structureInfoPanel, /Water \/ ions/);
+// Water and Ions already have summary rows, so the solvent list contributes only
+// the individual ions rather than repeating its own headings.
+assert.match(structureInfoPanel, /summary\.solventRows\.filter\(\(row\) => row\.label !== "Water" && row\.label !== "Ions"\)/);
 assert.match(structureInfoPanel, /structure-brief-mini-action/);
 assert.match(structureInfoPanel, /function visibleComponentRows\(rows: StructureSummaryRow\[\]\)/);
 assert.match(structureInfoPanel, /row\.value !== "None detected" \|\| row\.action/);

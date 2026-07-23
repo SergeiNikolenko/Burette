@@ -3496,6 +3496,60 @@ img.radix-menu-item-icon {
 .structure-brief-action-entry[data-actions="pair"] {
   grid-template-columns: minmax(0, 1fr) auto auto;
 }
+.structure-brief-action-entry[data-leading] {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.structure-brief-action-entry[data-leading][data-actions="pair"] {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+/* The composition tree stacks each group with its members, so the separator has
+   to move from the rows to the groups. */
+.structure-inspector-tree-group + .structure-inspector-tree-group {
+  border-top: 1px solid var(--line-subtler);
+}
+.structure-inspector-tree-toggle,
+.structure-inspector-tree-spacer {
+  width: 18px;
+  height: 18px;
+}
+.structure-inspector-tree-toggle {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0;
+  cursor: default;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+.structure-inspector-tree-toggle:hover {
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+}
+.structure-inspector-tree-toggle svg {
+  transition: transform 140ms ease-out;
+}
+.structure-inspector-tree-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.structure-inspector-tree-children {
+  position: relative;
+  padding: 0 0 2px 22px;
+}
+/* Same guide the sidebar tree uses, so nesting reads the same in both panels. */
+.structure-inspector-tree-children::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 4px;
+  left: 13px;
+  width: 1px;
+  background: var(--line-subtler);
+}
+.structure-inspector-tree-children .structure-brief-action-entry + .structure-brief-action-entry {
+  border-top: 0;
+}
 .structure-brief-action-row,
 .structure-brief-action-summary,
 .structure-brief-chip-button,
