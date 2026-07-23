@@ -92,22 +92,11 @@ function usePanelToggleAnimation(open: boolean) {
   return animating;
 }
 
-// Whether a collapsible panel reads as open after a resize.
-function isPanelOpen(panel: PanelImperativeHandle | null, size: { inPixels: number }) {
-  return panel ? !panel.isCollapsed() : Math.round(size.inPixels) > 1;
-}
-
-// True while the user is driving one of the group's own separators, by pointer
-// ("active") or by keyboard on the focused separator ("focus"). Nested groups
-// carry their own separators, so only direct children count.
-//
-// This is what tells a real close from a squeeze: when a group runs out of room
-// it collapses the panel itself (dragging the sidebar leaves the workbench too
-// narrow for the right dock's 260px, as does a narrow window), and persisting
-// that as "closed" lost the dock for good — it stayed closed once the room came
-// back, which is why docks seemed to randomly disappear while resizing.
-function groupIsUserResizing(element: HTMLElement | null) {
-  return Boolean(element?.querySelector(':scope > [data-separator="active"], :scope > [data-separator="focus"]'));
+// Whether a collapsible panel reads as open. Collapsed is the library's own
+// state, which a user drag past the snap threshold sets; the pixel size is only
+// a fallback for the mount pass, before the imperative handle is attached.
+function isPanelOpen(panel: PanelImperativeHandle | null, sizePx: number) {
+  return panel ? !panel.isCollapsed() : sizePx > 1;
 }
 
 // Publishes the panels' measured edges as CSS variables on the shell. The tab
@@ -449,13 +438,18 @@ export function AppLayout({
         </>
       )}
       <section className="workspace">
-        {/* Sizes are persisted from onLayoutChanged, not onResize: onResize is
-            driven by a ResizeObserver and also fires for window resizes,
-            constraint re-clamps and imperative collapse()/expand(), so writing
-            from there overwrote the user's stored size with a clamped one (a
-            400px sidebar became 280px for good after shrinking the window).
-            onLayoutChanged reports isUserInteraction for exactly the pointer and
-            keyboard resizes we want to remember. */}
+        {/* Sizes AND open flags are persisted from onLayoutChanged, not
+            onResize: onResize is driven by a ResizeObserver and also fires for
+            window resizes, constraint re-clamps and imperative
+            collapse()/expand(), so writing from there overwrote the user's
+            stored size with a clamped one (a 400px sidebar became 280px for
+            good after shrinking the window) and, worse, persisted a collapse
+            the group had forced for lack of room — the dock then stayed closed
+            once the room came back, which is why docks seemed to randomly
+            disappear while resizing. onLayoutChanged reports isUserInteraction
+            for exactly the pointer and keyboard resizes we want to remember;
+            the separator's own state cannot stand in for it, since
+            `data-separator="focus"` outlives the keystrokes that caused it. */}
         <ResizablePanelGroup
           orientation="horizontal"
           className="workspace-panels"
@@ -463,8 +457,10 @@ export function AppLayout({
           data-panels-animating={sidebarAnimating || undefined}
           onLayoutChanged={(_layout, meta) => {
             if (!meta.isUserInteraction) return;
-            const px = Math.round(sidebarPanelRef.current?.getSize().inPixels ?? 0);
+            const panel = sidebarPanelRef.current;
+            const px = Math.round(panel?.getSize().inPixels ?? 0);
             if (px > 1) onSidebarWidthChange(px);
+            if (!settingsMode) setSidebarOpen(isPanelOpen(panel, px));
           }}
         >
           <ResizablePanel
@@ -479,12 +475,6 @@ export function AppLayout({
             minSize="220px"
             maxSize={`${maxSidebarWidth}px`}
             groupResizeBehavior="preserve-pixel-size"
-            onResize={(size) => {
-              if (settingsMode) return;
-              const open = isPanelOpen(sidebarPanelRef.current, size);
-              if (!open && !groupIsUserResizing(workspaceGroupRef.current)) return;
-              setSidebarOpen(open);
-            }}
           >
             <div className="sidebar-shell-inner">
               <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
@@ -502,8 +492,11 @@ export function AppLayout({
                 data-panels-animating={rightDockAnimating || undefined}
                 onLayoutChanged={(_layout, meta) => {
                   if (!meta.isUserInteraction) return;
-                  const px = Math.round(rightDockPanelRef.current?.getSize().inPixels ?? 0);
+                  const panel = rightDockPanelRef.current;
+                  const px = Math.round(panel?.getSize().inPixels ?? 0);
                   if (px > 1) actions.setDockSize("right", px);
+                  const open = isPanelOpen(panel, px);
+                  if (open !== rightDockOpenRef.current) actions.setDockOpen("right", open);
                 }}
               >
                 <ResizablePanel id="workbench-main" className="workbench-main-panel" minSize={`${MAIN_MIN_WIDTH}px`} style={CLIPPED_PANEL_STYLE}>
@@ -514,8 +507,11 @@ export function AppLayout({
                     data-panels-animating={bottomDockAnimating || undefined}
                     onLayoutChanged={(_layout, meta) => {
                       if (!meta.isUserInteraction) return;
-                      const px = Math.round(bottomDockPanelRef.current?.getSize().inPixels ?? 0);
+                      const panel = bottomDockPanelRef.current;
+                      const px = Math.round(panel?.getSize().inPixels ?? 0);
                       if (px > 1) actions.setDockSize("bottom", px);
+                      const open = isPanelOpen(panel, px);
+                      if (open !== bottomDockOpenRef.current) actions.setDockOpen("bottom", open);
                     }}
                   >
                     <ResizablePanel id="main" className="main-panel" style={CLIPPED_PANEL_STYLE}>
@@ -537,12 +533,6 @@ export function AppLayout({
                       minSize="180px"
                       maxSize="70%"
                       groupResizeBehavior="preserve-pixel-size"
-                      onResize={(size) => {
-                        const open = isPanelOpen(bottomDockPanelRef.current, size);
-                        if (open === bottomDockOpenRef.current) return;
-                        if (!open && !groupIsUserResizing(workbenchMainGroupRef.current)) return;
-                        actions.setDockOpen("bottom", open);
-                      }}
                     >
                       {/* Always mounted: DockPanel renders its own closed state
                           (data-open / aria-hidden / inert) and unmounting it on
@@ -567,12 +557,6 @@ export function AppLayout({
                   minSize="260px"
                   maxSize="70%"
                   groupResizeBehavior="preserve-pixel-size"
-                  onResize={(size) => {
-                    const open = isPanelOpen(rightDockPanelRef.current, size);
-                    if (open === rightDockOpenRef.current) return;
-                    if (!open && !groupIsUserResizing(workbenchGroupRef.current)) return;
-                    actions.setDockOpen("right", open);
-                  }}
                 >
                   <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
                 </ResizablePanel>

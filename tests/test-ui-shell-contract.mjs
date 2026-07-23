@@ -2165,12 +2165,16 @@ assert.match(styles, /\.workbench-main-panels\[data-panels-animating\] > \[data-
 // docks that never reopened.
 assert.doesNotMatch(styles, /\.topbar \{[^}]*transition:/s);
 assert.match(appLayout, /function isPanelOpen/);
-assert.match(appLayout, /return panel \? !panel\.isCollapsed\(\) : Math\.round\(size\.inPixels\) > 1;/);
-assert.match(appLayout, /function groupIsUserResizing/);
-assert.match(appLayout, /'\:scope > \[data-separator="active"\], \:scope > \[data-separator="focus"\]'/);
-assert.match(appLayout, /if \(!open && !groupIsUserResizing\(workspaceGroupRef\.current\)\) return;/);
-assert.match(appLayout, /if \(!open && !groupIsUserResizing\(workbenchGroupRef\.current\)\) return;/);
-assert.match(appLayout, /if \(!open && !groupIsUserResizing\(workbenchMainGroupRef\.current\)\) return;/);
+assert.match(appLayout, /return panel \? !panel\.isCollapsed\(\) : sizePx > 1;/);
+// Open flags are written ONLY from onLayoutChanged behind meta.isUserInteraction.
+// onResize is ResizeObserver-driven and fires for forced collapses too, and the
+// separator's own state is no substitute: `data-separator="focus"` outlives the
+// keystrokes, so a later window resize would look like a user close.
+assert.doesNotMatch(appLayout, /onResize=/);
+assert.doesNotMatch(appLayout, /\[data-separator=/);
+assert.match(appLayout, /if \(!settingsMode\) setSidebarOpen\(isPanelOpen\(panel, px\)\);/);
+assert.match(appLayout, /if \(open !== rightDockOpenRef\.current\) actions\.setDockOpen\("right", open\);/);
+assert.match(appLayout, /if \(open !== bottomDockOpenRef\.current\) actions\.setDockOpen\("bottom", open\);/);
 // The other half: a panel the group collapsed under pressure keeps its open
 // flag, so the pixel guard has to expand it again once the room is back.
 assert.match(appLayout, /if \(panel\.isCollapsed\(\)\) panel\.expand\(\);/);
