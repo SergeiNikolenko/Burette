@@ -412,6 +412,14 @@
       const data = event.data;
       if (!data || (data.source !== 'burrete-grid-host' && data.source !== 'burrete-host')) return;
       const body = data.body || {};
+      if (body.type === 'gridSetColumnFilter') {
+        applyGridColumnFilter(config(), String(body.columnId || ''), String(body.part || ''), body.value);
+        return;
+      }
+      if (body.type === 'gridClearColumnFilters') {
+        clearGridColumnFilters(config(), body.columnId ? String(body.columnId) : null);
+        return;
+      }
       if (body.type === 'workspaceHistoryCommand') {
         const direction = body.direction === 'redo' ? 'redo' : 'undo';
         let handled = false;
@@ -2896,7 +2904,7 @@
       const cards = [];
       const rows = state.rows.slice(range.start, range.end);
       if (state.viewMode === 'table') {
-        fragment.appendChild(gridTableLayout(rows, cfg, range));
+        fragment.appendChild(gridTable(rows, cfg, range));
         grid.replaceChildren(fragment);
         restoreTableScrollPosition(grid);
         state.windowStart = range.start;
@@ -3064,6 +3072,7 @@
   }
 
   function updateChrome(cfg) {
+    postGridFilterModel(cfg);
     const total = state.remoteMode
       ? (state.recordsTotalHint || state.recordsIndexed || state.totalRows)
       : Number(cfg.recordsTotal || state.all.length);
@@ -3502,41 +3511,21 @@
     return el;
   }
 
-  // With filters open the table shares the row with a filter rail, the way a
-  // data browser puts its filters beside the data rather than in its header.
-  function gridTableLayout(rows, cfg, range) {
-    const table = gridTable(rows, cfg, range);
-    if (!state.tableFiltersOpen) return table;
-    const layout = document.createElement('div');
-    layout.className = 'buret-grid-table-layout';
-    layout.append(gridFilterRail(cfg), table);
-    return layout;
-  }
 
-  const FILTER_RAIL_BINS = 14;
-  const FILTER_RAIL_MAX_COLUMNS = 40;
+  const FILTER_BINS = 14;
 
-  function makeElement(tag, className, text) {
-    const element = document.createElement(tag);
-    if (className) element.className = className;
-    if (text !== undefined) element.textContent = text;
-    return element;
-  }
-
-  function filterRailColumns() {
+  function filterModelColumns() {
     const catalog = tableColumnCatalog();
     const visible = new Set(tableVisibleColumns(catalog).map(column => column.id));
-    const query = normalize(state.filterRailQuery || '');
     return catalog.filter(column => {
       if (column.spacer || column.type === 'none' || column.id === 'index') return false;
-      if (!visible.has(column.id) && !state.tableColumnFilters[column.id]) return false;
-      return !query || normalize(column.label).includes(query);
+      return visible.has(column.id) || Boolean(state.tableColumnFilters[column.id]);
     });
   }
 
-  // The distribution is drawn from every loaded row, not the filtered ones, so
-  // the shape stays put while the selected range moves across it.
-  function filterRailHistogram(column, filter) {
+  // The distribution is measured over every loaded row rather than the filtered
+  // ones, so its shape stays put while a range moves across it.
+  function filterColumnStats(column) {
     const rows = state.all.length ? state.all : state.rows;
     const values = [];
     for (const row of rows) {
@@ -3547,130 +3536,56 @@
     const min = Math.min(...values);
     const max = Math.max(...values);
     if (!(max > min)) return null;
-    const bins = new Array(FILTER_RAIL_BINS).fill(0);
+    const bins = new Array(FILTER_BINS).fill(0);
     for (const value of values) {
-      bins[Math.min(FILTER_RAIL_BINS - 1, Math.floor(((value - min) / (max - min)) * FILTER_RAIL_BINS))] += 1;
+      bins[Math.min(FILTER_BINS - 1, Math.floor(((value - min) / (max - min)) * FILTER_BINS))] += 1;
     }
-    const peak = Math.max(...bins);
-    const low = Number.isFinite(Number(filter?.min)) ? Number(filter.min) : -Infinity;
-    const high = Number.isFinite(Number(filter?.max)) ? Number(filter.max) : Infinity;
-    const chart = makeElement('div', 'buret-filter-histogram');
-    bins.forEach((count, index) => {
-      const start = min + ((max - min) * index) / FILTER_RAIL_BINS;
-      const end = min + ((max - min) * (index + 1)) / FILTER_RAIL_BINS;
-      const bar = makeElement('span', end >= low && start <= high ? 'buret-filter-bin in-range' : 'buret-filter-bin');
-      bar.style.height = `${peak ? Math.max(count ? 8 : 0, Math.round((count / peak) * 100)) : 0}%`;
-      bar.setAttribute('aria-hidden', 'true');
-      chart.appendChild(bar);
-    });
-    const scale = makeElement('div', 'buret-filter-range');
-    scale.append(makeElement('span', '', descriptorNumberText(min)), makeElement('span', '', descriptorNumberText(max)));
-    return { chart, scale };
+    return { min, max, bins };
   }
 
-  function filterInput(column, part, value, placeholder) {
-    const input = document.createElement('input');
-    input.type = part === 'text' ? 'search' : 'number';
-    if (part !== 'text') input.inputMode = 'decimal';
-    input.value = value ?? '';
-    input.placeholder = placeholder;
-    input.setAttribute('data-buret-table-filter', column.id);
-    input.setAttribute('data-buret-table-filter-part', part);
-    input.setAttribute('aria-label', `${placeholder} ${column.label}`);
-    return input;
+  function gridFilterModel(cfg) {
+    const columns = filterModelColumns().map(column => {
+      const filter = state.tableColumnFilters[column.id] || null;
+      const entry = { id: column.id, label: column.label, type: column.type === 'number' ? 'number' : 'text' };
+      if (filter) entry.filter = { min: filter.min ?? '', max: filter.max ?? '', text: filter.text ?? '' };
+      if (column.type === 'number') {
+        const stats = filterColumnStats(column);
+        if (stats) Object.assign(entry, stats);
+      }
+      return entry;
+    });
+    return {
+      documentId: cfg?.documentId || null,
+      visible: state.rows.length,
+      total: state.all.length || state.rows.length,
+      columns,
+    };
   }
 
-  function filterRailCard(column) {
-    const filter = state.tableColumnFilters[column.id];
-    const active = !tableColumnFilterEmpty(filter);
-    const card = makeElement('section', active ? 'buret-filter-card active' : 'buret-filter-card');
-    const header = makeElement('header');
-    header.appendChild(makeElement('span', '', column.label));
-    if (active) {
-      const clear = makeElement('button', 'buret-filter-clear', 'Clear');
-      clear.type = 'button';
-      clear.setAttribute('data-buret-filter-clear', column.id);
-      clear.setAttribute('aria-label', `Clear the ${column.label} filter`);
-      header.appendChild(clear);
-    }
-    card.appendChild(header);
-    if (column.type !== 'number') {
-      card.appendChild(filterInput(column, 'text', filter?.text, 'contains'));
-      return card;
-    }
-    const histogram = filterRailHistogram(column, filter);
-    if (histogram) card.append(histogram.chart, histogram.scale);
-    const inputs = makeElement('div', 'buret-filter-inputs');
-    inputs.append(filterInput(column, 'min', filter?.min, 'min'), filterInput(column, 'max', filter?.max, 'max'));
-    card.appendChild(inputs);
-    return card;
+  // Published to the host so the Info panel can render the filters; the model is
+  // only sent when it actually changes, since it rides every chrome update.
+  function postGridFilterModel(cfg) {
+    const model = gridFilterModel(cfg);
+    const signature = JSON.stringify(model);
+    if (signature === state.gridFilterModelSignature) return;
+    state.gridFilterModelSignature = signature;
+    post('gridFilterModel', '[grid] Column filter model.', { model });
   }
 
-  function gridFilterRail(cfg) {
-    const rail = makeElement('aside', 'buret-grid-filter-rail');
-    rail.setAttribute('aria-label', 'Column filters');
-    const columns = filterRailColumns();
-    const shown = columns.slice(0, FILTER_RAIL_MAX_COLUMNS);
-    const head = makeElement('div', 'buret-filter-rail-head');
-    head.appendChild(makeElement('span', 'buret-filter-rail-title', 'Filters'));
-    if (Object.keys(state.tableColumnFilters).length) {
-      const clearAll = makeElement('button', 'buret-filter-clear', 'Clear all');
-      clearAll.type = 'button';
-      clearAll.setAttribute('data-buret-filter-clear-all', '');
-      head.appendChild(clearAll);
-    }
-    const total = state.all.length || state.rows.length;
-    const count = makeElement(
-      'div',
-      'buret-filter-rail-count',
-      `${state.rows.length.toLocaleString()} of ${total.toLocaleString()} molecules`,
-    );
-    const search = document.createElement('input');
-    search.type = 'search';
-    search.className = 'buret-filter-rail-search';
-    search.value = state.filterRailQuery || '';
-    search.placeholder = 'Find a column';
-    search.setAttribute('aria-label', 'Find a column to filter');
-    search.setAttribute('data-buret-filter-rail-search', '');
-    const list = makeElement('div', 'buret-filter-rail-list');
-    shown.forEach(column => list.appendChild(filterRailCard(column)));
-    if (columns.length > shown.length) {
-      list.appendChild(makeElement(
-        'div',
-        'buret-filter-rail-more',
-        `${(columns.length - shown.length).toLocaleString()} more columns — narrow the search`,
-      ));
-    }
-    if (!columns.length) list.appendChild(makeElement('div', 'buret-no-metadata', 'No filterable columns'));
-    rail.append(head, count, search, list);
-    bindFilterRail(rail, cfg);
-    return rail;
+  function applyGridColumnFilter(cfg, columnId, part, value) {
+    if (!columnId || !['min', 'max', 'text'].includes(part)) return;
+    const current = { ...state.tableColumnFilters[columnId] };
+    current.type = part === 'text' ? 'text' : 'number';
+    current[part] = String(value ?? '');
+    if (tableColumnFilterEmpty(current)) delete state.tableColumnFilters[columnId];
+    else state.tableColumnFilters[columnId] = current;
+    void refresh(cfg);
   }
 
-  function bindFilterRail(rail, cfg) {
-    bindTableFilterControls(rail, cfg);
-    rail.querySelectorAll('[data-buret-filter-clear]').forEach(button => {
-      button.addEventListener('click', () => {
-        delete state.tableColumnFilters[button.getAttribute('data-buret-filter-clear')];
-        void refresh(cfg);
-      });
-    });
-    rail.querySelector('[data-buret-filter-clear-all]')?.addEventListener('click', () => {
-      state.tableColumnFilters = {};
-      void refresh(cfg);
-    });
-    // The rail is rebuilt on every refresh, so the caret has to be carried over
-    // or typing a column name would lose focus after the first character.
-    rail.querySelector('[data-buret-filter-rail-search]')?.addEventListener('input', event => {
-      const caret = event.currentTarget.selectionStart;
-      state.filterRailQuery = String(event.currentTarget.value || '');
-      void Promise.resolve(refresh(cfg)).then(() => {
-        const next = document.querySelector('[data-buret-filter-rail-search]');
-        if (!next) return;
-        next.focus();
-        next.setSelectionRange(caret, caret);
-      });
-    });
+  function clearGridColumnFilters(cfg, columnId) {
+    if (columnId) delete state.tableColumnFilters[columnId];
+    else state.tableColumnFilters = {};
+    void refresh(cfg);
   }
 
   function gridTable(rows, cfg, range) {
