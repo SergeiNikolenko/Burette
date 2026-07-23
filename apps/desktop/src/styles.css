@@ -933,6 +933,31 @@ button:focus-visible > .shortcut-tooltip {
   box-shadow: inset 0 0 0 1px var(--line-subtle);
 }
 .sidebar-tool-row:active { transform: scale(0.99); }
+.sidebar-command-section { margin-bottom: 10px; }
+.sidebar-command-row {
+  width: 100%;
+  border-radius: var(--control-radius);
+  border: 0;
+  background: transparent;
+  display: grid;
+  gap: 1px;
+  padding: 4px 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: left;
+  transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+}
+.sidebar-command-label,
+.sidebar-command-description {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-command-description { color: var(--text-faint); font-size: 11px; }
+.sidebar-command-row:hover,
+.sidebar-command-row:focus-visible { background: var(--surface-subtle); color: var(--text-secondary); outline: none; }
+.sidebar-command-row:active { transform: scale(0.99); }
 kbd { color: var(--text-faint); font-size: 11px; font-family: inherit; font-weight: 400; }
 kbd span { margin-left: 2px; }
 .sidebar-section { display: grid; gap: 0; margin-top: 0; }

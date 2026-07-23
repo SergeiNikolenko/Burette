@@ -11,7 +11,7 @@ const keyboardShortcutRows: ShortcutRow[] = [
   {
     command: "Open command palette",
     description: "Search commands, settings, projects, and structures.",
-    keybindings: ["⇧⌘P", "/"],
+    keybindings: ["⌘P", "/"],
   },
   {
     command: "New window",
