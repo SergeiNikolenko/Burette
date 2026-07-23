@@ -4812,7 +4812,9 @@
   function isMoleculeContextTarget(target) {
     if (!(target instanceof Element)) return false;
     if (target.closest('[data-buret-card-resize], button, input, select, textarea, [contenteditable="true"]')) return false;
-    return !!target.closest('[data-buret-molecule-picture], .buret-card');
+    // The whole row is the molecule, not just its picture: right-clicking a
+    // name, a SMILES or a property cell has to reach the same menu.
+    return !!target.closest('[data-buret-molecule-picture], .buret-card, .buret-grid-table-row');
   }
 
   function removeGridRow(row, options = {}) {
