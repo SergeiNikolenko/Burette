@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import {
@@ -10,12 +18,16 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
+import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   computeErrorMessage,
+  invalidateChemicalSpaceFingerprintCache,
   runChemicalSpaceWorkflow,
   runChemicalSpaceStudyWorkflow,
   type BrowserChemicalSpaceInputRecord,
@@ -196,6 +208,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           .map(Number)
           .filter((index) => Number.isSafeInteger(index) && index >= 0)));
       }
+      if (data.body.type === "gridDirtyChanged" && data.body.dirty === true) {
+        invalidateChemicalSpaceFingerprintCache(documentId);
+        invalidateCompletedEmbeddings(documentId);
+      }
       if (data.body.type === "gridHoverChanged") {
         const index = Number(data.body.sourceRecordId);
         const nextHovered = Number.isSafeInteger(index) && index >= 0 ? index : null;
@@ -310,20 +326,30 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
             <ToggleGroupItem value="2" aria-label="2D embedding">2D</ToggleGroupItem>
             <ToggleGroupItem value="3" aria-label="3D embedding">3D</ToggleGroupItem>
           </ToggleGroup>
-          <div className="flex items-center rounded-lg border border-border p-0.5">
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            spacing={0}
+            value={tool}
+            aria-label="Chemical-space interaction"
+            onValueChange={(value) => {
+              if (value === "navigate" || value === "lasso") setTool(value);
+            }}
+          >
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button size="sm" variant={tool === "navigate" ? "secondary" : "ghost"} onClick={() => setTool("navigate")}>Explore</Button>
+                <ToggleGroupItem value="navigate">Explore</ToggleGroupItem>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Pan, orbit, zoom, and inspect molecules</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button size="sm" variant={tool === "lasso" ? "secondary" : "ghost"} onClick={() => setTool("lasso")}>Lasso</Button>
+                <ToggleGroupItem value="lasso">Lasso</ToggleGroupItem>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Draw a free-form selection linked to Grid</TooltipContent>
             </Tooltip>
-          </div>
+          </ToggleGroup>
           <Field orientation="horizontal" className="w-44 shrink-0 gap-2">
             <FieldLabel className="text-xs text-muted-foreground">Size</FieldLabel>
             <Slider
@@ -340,7 +366,8 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               {Math.round(pointScale * 100)}%
             </span>
           </Field>
-          <span className="ml-auto text-xs text-muted-foreground">
+          <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+            {!displayedResult && progress ? <Spinner className="size-3.5" /> : null}
             {displayedResult ? `${displayedResult.successfulRecords.toLocaleString()} molecules · Metal` : runningLabel}
           </span>
         </div>
@@ -372,7 +399,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           ) : error ? (
             <ChemicalSpaceEmpty message={error} actionLabel="Retry" onAction={() => commitOptions({ ...draft })} />
           ) : (
-            <ChemicalSpaceEmpty message={runningLabel || "Preparing chemical space…"} />
+            <ChemicalSpaceLoading
+              message={runningLabel || "Preparing chemical space…"}
+              progress={progress}
+            />
           )}
         </div>
 
@@ -746,15 +776,73 @@ function ChemicalSpace2D({
 
 function ChemicalSpaceEmpty({ message, actionLabel, onAction }: { message: string; actionLabel?: string; onAction?: () => void }) {
   return (
-    <div className="flex h-full min-h-40 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
-      <span>{message}</span>
-      {actionLabel && onAction ? <Button size="sm" variant="outline" onClick={onAction}>{actionLabel}</Button> : null}
+    <Empty className="h-full min-h-40">
+      <EmptyHeader>
+        <EmptyTitle>Chemical space</EmptyTitle>
+        <EmptyDescription>{message}</EmptyDescription>
+      </EmptyHeader>
+      {actionLabel && onAction ? (
+        <EmptyContent>
+          <Button size="sm" variant="outline" onClick={onAction}>{actionLabel}</Button>
+        </EmptyContent>
+      ) : null}
+    </Empty>
+  );
+}
+
+function ChemicalSpaceLoading({
+  message,
+  progress,
+}: {
+  message: string;
+  progress: ChemicalSpaceProgress | null;
+}) {
+  const value = progressPercent(progress);
+  return (
+    <div className="relative flex h-full min-h-40 items-center justify-center overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 opacity-45" aria-hidden="true">
+        <Skeleton className="absolute left-[18%] top-[28%] size-2 rounded-full" />
+        <Skeleton className="absolute left-[35%] top-[61%] size-3 rounded-full" />
+        <Skeleton className="absolute right-[31%] top-[38%] size-2.5 rounded-full" />
+        <Skeleton className="absolute bottom-[22%] right-[18%] size-2 rounded-full" />
+      </div>
+      <Empty className="z-10 max-w-md">
+        <EmptyHeader>
+          <EmptyMedia variant="icon"><Spinner /></EmptyMedia>
+          <EmptyTitle>Building chemical space</EmptyTitle>
+          <EmptyDescription>{message}</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Progress
+            className="w-56"
+            value={value ?? undefined}
+            aria-label={value === null ? "Chemical-space calculation in progress" : `Chemical-space calculation ${Math.round(value)}% complete`}
+          />
+        </EmptyContent>
+      </Empty>
     </div>
   );
 }
 
 function embeddingCacheKey(documentId: string, options: ChemicalSpaceOptions) {
   return `${documentId}:${JSON.stringify(options)}`;
+}
+
+function invalidateCompletedEmbeddings(documentId: string) {
+  const prefix = `${documentId}:`;
+  for (const key of completedEmbeddings.keys()) {
+    if (key.startsWith(prefix)) completedEmbeddings.delete(key);
+  }
+}
+
+function progressPercent(progress: ChemicalSpaceProgress | null) {
+  if (progress?.phase === "fingerprints" && progress.totalRecords) {
+    return Math.min(100, ((progress.completedRecords ?? 0) / progress.totalRecords) * 100);
+  }
+  if (progress?.phase === "study" && progress.totalFrames) {
+    return Math.min(100, ((progress.completedFrames ?? 0) / progress.totalFrames) * 100);
+  }
+  return null;
 }
 
 function progressLabel(progress: ChemicalSpaceProgress | null) {

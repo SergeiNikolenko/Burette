@@ -11,6 +11,7 @@ import {
   type ChemicalSpaceOptions,
   type ChemicalSpaceProgress,
   type ChemicalSpaceResult,
+  type FingerprintOutputRecord,
 } from "./compute-cluster";
 import type { StandaloneAlignmentResult, StandaloneComputeSource, StandaloneSemiempiricalResult } from "./standalone-compute";
 import { stableTextDocumentId } from "./file-export";
@@ -22,6 +23,9 @@ type BrowserDevNativeComputeResponse<T> = {
   provider: "nativeMetalDevBridge";
   result: T;
 };
+
+const MAX_BROWSER_FINGERPRINT_CACHE_ENTRIES = 4;
+const browserFingerprintCache = new Map<string, Promise<FingerprintOutputRecord[]>>();
 
 export function runBrowserDevSemiempirical(
   source: StandaloneComputeSource,
@@ -91,7 +95,14 @@ function prepareBrowserChemicalSpaceFingerprints(
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
 ) {
-  return fingerprintBrowserChemicalSpaceRecords(
+  const key = browserFingerprintCacheKey(records);
+  const cached = browserFingerprintCache.get(key);
+  if (cached) {
+    browserFingerprintCache.delete(key);
+    browserFingerprintCache.set(key, cached);
+    return cached;
+  }
+  const pending = fingerprintBrowserChemicalSpaceRecords(
     records,
     (completedRecords, totalRecords) => onProgress({
       phase: "fingerprints",
@@ -100,6 +111,28 @@ function prepareBrowserChemicalSpaceFingerprints(
     }),
     signal,
   );
+  browserFingerprintCache.set(key, pending);
+  trimBrowserFingerprintCache();
+  void pending.catch(() => {
+    if (browserFingerprintCache.get(key) === pending) {
+      browserFingerprintCache.delete(key);
+    }
+  });
+  return pending;
+}
+
+function browserFingerprintCacheKey(records: BrowserChemicalSpaceInputRecord[]) {
+  return records
+    .map((record) => `${record.sourceRecordId}:${record.moleculeContentSha256}:${record.format}`)
+    .join("|");
+}
+
+function trimBrowserFingerprintCache() {
+  while (browserFingerprintCache.size > MAX_BROWSER_FINGERPRINT_CACHE_ENTRIES) {
+    const oldestKey = browserFingerprintCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    browserFingerprintCache.delete(oldestKey);
+  }
 }
 
 function executeBrowserChemicalSpace(

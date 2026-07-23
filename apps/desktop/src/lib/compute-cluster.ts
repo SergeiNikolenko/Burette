@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 const FINGERPRINT_WORKER_TIMEOUT_MS = 120_000;
+const MAX_PREPARED_CHEMICAL_SPACE_JOBS = 4;
+const preparedChemicalSpaceJobs = new Map<string, Promise<ComputeJob>>();
 
 export type FingerprintInputFormat = "smiles" | "molblock" | "unsupportedIdcode";
 
@@ -352,26 +354,10 @@ export async function runChemicalSpaceWorkflow(
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
 ): Promise<ChemicalSpaceResult> {
-  const request = clusterPreparationRequest(
-    documentId,
-    [],
-    { numerator: 0, denominator: 1 },
-    null,
-    "gpuRequired",
-  );
-  let job: ComputeJob | null = null;
-  const worker = new FingerprintWorkerClient();
-  try {
-    job = await prepareChemicalSpaceJob(request, worker, onProgress, signal);
-    throwIfAborted(signal);
-    onProgress({ phase: "embedding" });
-    return await executePreparedChemicalSpace(job, options);
-  } finally {
-    worker.dispose();
-    if (job && !["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(job.state)) {
-      await cancelComputeJob(job.jobId).catch(() => undefined);
-    }
-  }
+  const job = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  throwIfAborted(signal);
+  onProgress({ phase: "embedding" });
+  return executePreparedChemicalSpace(job, options);
 }
 
 export async function runChemicalSpaceStudyWorkflow(
@@ -383,39 +369,32 @@ export async function runChemicalSpaceStudyWorkflow(
   if (frames.length < 2 || frames.length > 24) {
     throw new Error("A parameter study requires between 2 and 24 frames.");
   }
-  const request = clusterPreparationRequest(
-    documentId,
-    [],
-    { numerator: 0, denominator: 1 },
-    null,
-    "gpuRequired",
-  );
-  let job: ComputeJob | null = null;
-  const worker = new FingerprintWorkerClient();
-  try {
-    job = await prepareChemicalSpaceJob(request, worker, onProgress, signal);
-    const results: ChemicalSpaceResult[] = [];
-    for (let index = 0; index < frames.length; index += 1) {
-      throwIfAborted(signal);
-      onProgress({
-        phase: "study",
-        completedFrames: index,
-        totalFrames: frames.length,
-      });
-      results.push(await executePreparedChemicalSpace(job, frames[index]));
-    }
+  const job = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
+  const results: ChemicalSpaceResult[] = [];
+  for (let index = 0; index < frames.length; index += 1) {
+    throwIfAborted(signal);
     onProgress({
       phase: "study",
-      completedFrames: frames.length,
+      completedFrames: index,
       totalFrames: frames.length,
     });
-    return results;
-  } finally {
-    worker.dispose();
-    if (job && !["succeeded", "succeededWithFailures", "failed", "cancelled"].includes(job.state)) {
-      await cancelComputeJob(job.jobId).catch(() => undefined);
-    }
+    results.push(await executePreparedChemicalSpace(job, frames[index]));
   }
+  onProgress({
+    phase: "study",
+    completedFrames: frames.length,
+    totalFrames: frames.length,
+  });
+  return results;
+}
+
+export function invalidateChemicalSpaceFingerprintCache(documentId: string) {
+  const pending = preparedChemicalSpaceJobs.get(documentId);
+  if (!pending) return;
+  preparedChemicalSpaceJobs.delete(documentId);
+  void pending
+    .then((job) => cancelComputeJob(job.jobId))
+    .catch(() => undefined);
 }
 
 export async function fingerprintBrowserChemicalSpaceRecords(
@@ -492,6 +471,62 @@ async function prepareChemicalSpaceJob(
     throw new Error("The fingerprint stage completed without a compute-ready result.");
   }
   return job;
+}
+
+async function getPreparedChemicalSpaceJob(
+  documentId: string,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+) {
+  const cached = preparedChemicalSpaceJobs.get(documentId);
+  if (cached) {
+    preparedChemicalSpaceJobs.delete(documentId);
+    preparedChemicalSpaceJobs.set(documentId, cached);
+    return cached;
+  }
+  const request = clusterPreparationRequest(
+    documentId,
+    [],
+    { numerator: 0, denominator: 1 },
+    null,
+    "gpuRequired",
+  );
+  const pending = prepareChemicalSpaceJobForDocument(request, onProgress, signal);
+  preparedChemicalSpaceJobs.set(documentId, pending);
+  trimPreparedChemicalSpaceJobs();
+  void pending.catch(() => {
+    if (preparedChemicalSpaceJobs.get(documentId) === pending) {
+      preparedChemicalSpaceJobs.delete(documentId);
+    }
+  });
+  return pending;
+}
+
+async function prepareChemicalSpaceJobForDocument(
+  request: ReturnType<typeof clusterPreparationRequest>,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+) {
+  const worker = new FingerprintWorkerClient();
+  try {
+    return await prepareChemicalSpaceJob(request, worker, onProgress, signal);
+  } finally {
+    worker.dispose();
+  }
+}
+
+function trimPreparedChemicalSpaceJobs() {
+  while (preparedChemicalSpaceJobs.size > MAX_PREPARED_CHEMICAL_SPACE_JOBS) {
+    const oldestKey = preparedChemicalSpaceJobs.keys().next().value;
+    if (oldestKey === undefined) break;
+    const pending = preparedChemicalSpaceJobs.get(oldestKey);
+    preparedChemicalSpaceJobs.delete(oldestKey);
+    if (pending) {
+      void pending
+        .then((job) => cancelComputeJob(job.jobId))
+        .catch(() => undefined);
+    }
+  }
 }
 
 function executePreparedChemicalSpace(job: ComputeJob, options: ChemicalSpaceOptions) {
