@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -25,6 +32,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
 import { ChemicalSpace3D } from "./chemical-space-3d";
+import { useThemePortalContainer } from "./radix-menu";
 
 type ChemicalSpacePanelProps = {
   document: ViewerDocument | null;
@@ -82,6 +90,7 @@ const DEFAULT_STUDY: StudyState = {
 };
 
 export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
+  const portalContainer = useThemePortalContainer();
   const [draft, setDraft] = useState(DEFAULT_OPTIONS);
   const [options, setOptions] = useState(DEFAULT_OPTIONS);
   const [result, setResult] = useState<ChemicalSpaceResult | null>(null);
@@ -393,75 +402,84 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           </div>
         ) : null}
 
-        <Collapsible className="border-t border-border px-3 py-2">
-          <div className="flex items-center justify-between gap-2">
-            <CollapsibleTrigger asChild>
+        <div className="flex shrink-0 items-center border-t border-border px-3 py-2">
+          <Popover>
+            <PopoverTrigger asChild>
               <Button variant="ghost" size="sm">{methodLabel(draft.method)} parameters</Button>
-            </CollapsibleTrigger>
-            <span className="text-xs text-muted-foreground">
-              k={draft.neighbors} · min dist={draft.minDist.toFixed(2)}
-            </span>
-          </div>
-          <CollapsibleContent className="pt-3">
-            <FieldGroup className="gap-4">
-              <ParameterField label="Neighbors" value={draft.neighbors}>
-                <Slider tone="neutral" min={2} max={64} step={1} value={[draft.neighbors]} onValueChange={([neighbors]) => setDraft((value) => ({ ...value, neighbors }))} />
-              </ParameterField>
-              <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
-                <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
-              </ParameterField>
-              <ParameterField label="Epochs" value={draft.epochs}>
-                <Slider tone="neutral" min={100} max={1500} step={100} value={[draft.epochs]} onValueChange={([epochs]) => setDraft((value) => ({ ...value, epochs }))} />
-              </ParameterField>
-              <ParameterField label="Learning rate" value={draft.learningRate.toFixed(1)}>
-                <Slider tone="neutral" min={0.1} max={3} step={0.1} value={[draft.learningRate]} onValueChange={([learningRate]) => setDraft((value) => ({ ...value, learningRate }))} />
-              </ParameterField>
-            </FieldGroup>
-            <Button className="mt-4 w-full" variant="outline" size="sm" disabled={Boolean(progress)} onClick={() => commitOptions({ ...draft })}>
-              Rebuild on Metal
-            </Button>
-            <Separator className="my-4" />
-            <FieldGroup className="gap-4">
-              <Field>
-                <FieldLabel htmlFor="chemical-space-study-parameter">Parameter study</FieldLabel>
-                <NativeSelect
-                  id="chemical-space-study-parameter"
-                  size="sm"
-                  value={study.parameter}
-                  onChange={(event) => setStudy(studyDefaults(event.currentTarget.value as StudyParameter))}
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              side="top"
+              sideOffset={8}
+              container={portalContainer}
+              className="max-h-[min(70vh,32rem)] w-80 overflow-y-auto"
+            >
+              <PopoverHeader>
+                <PopoverTitle>{methodLabel(draft.method)} parameters</PopoverTitle>
+                <PopoverDescription>
+                  k={draft.neighbors} · min dist={draft.minDist.toFixed(2)}
+                </PopoverDescription>
+              </PopoverHeader>
+              <FieldGroup className="gap-4">
+                <ParameterField label="Neighbors" value={draft.neighbors}>
+                  <Slider tone="neutral" min={2} max={64} step={1} value={[draft.neighbors]} onValueChange={([neighbors]) => setDraft((value) => ({ ...value, neighbors }))} />
+                </ParameterField>
+                <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
+                  <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
+                </ParameterField>
+                <ParameterField label="Epochs" value={draft.epochs}>
+                  <Slider tone="neutral" min={100} max={1500} step={100} value={[draft.epochs]} onValueChange={([epochs]) => setDraft((value) => ({ ...value, epochs }))} />
+                </ParameterField>
+                <ParameterField label="Learning rate" value={draft.learningRate.toFixed(1)}>
+                  <Slider tone="neutral" min={0.1} max={3} step={0.1} value={[draft.learningRate]} onValueChange={([learningRate]) => setDraft((value) => ({ ...value, learningRate }))} />
+                </ParameterField>
+              </FieldGroup>
+              <Button className="mt-4 w-full" variant="outline" size="sm" disabled={Boolean(progress)} onClick={() => commitOptions({ ...draft })}>
+                Rebuild on Metal
+              </Button>
+              <Separator className="my-4" />
+              <FieldGroup className="gap-4">
+                <Field>
+                  <FieldLabel htmlFor="chemical-space-study-parameter">Parameter study</FieldLabel>
+                  <NativeSelect
+                    id="chemical-space-study-parameter"
+                    size="sm"
+                    value={study.parameter}
+                    onChange={(event) => setStudy(studyDefaults(event.currentTarget.value as StudyParameter))}
+                  >
+                    <NativeSelectOption value="minDist">Minimum distance</NativeSelectOption>
+                    <NativeSelectOption value="neighbors">Neighbors</NativeSelectOption>
+                    <NativeSelectOption value="learningRate">Learning rate</NativeSelectOption>
+                  </NativeSelect>
+                </Field>
+                <ParameterField
+                  label="Sweep range"
+                  value={`${formatStudyValue(study.parameter, study.range[0])}–${formatStudyValue(study.parameter, study.range[1])}`}
                 >
-                  <NativeSelectOption value="minDist">Minimum distance</NativeSelectOption>
-                  <NativeSelectOption value="neighbors">Neighbors</NativeSelectOption>
-                  <NativeSelectOption value="learningRate">Learning rate</NativeSelectOption>
-                </NativeSelect>
-              </Field>
-              <ParameterField
-                label="Sweep range"
-                value={`${formatStudyValue(study.parameter, study.range[0])}–${formatStudyValue(study.parameter, study.range[1])}`}
-              >
-                <Slider
-                  tone="neutral"
-                  {...studySliderBounds(study.parameter)}
-                  value={study.range}
-                  onValueChange={(range) => setStudy((value) => ({ ...value, range: range as [number, number] }))}
-                />
-              </ParameterField>
-              <ParameterField label="Frames" value={study.frames}>
-                <Slider
-                  tone="neutral"
-                  min={3}
-                  max={16}
-                  step={1}
-                  value={[study.frames]}
-                  onValueChange={([frames]) => setStudy((value) => ({ ...value, frames }))}
-                />
-              </ParameterField>
-            </FieldGroup>
-            <Button className="mt-4 w-full" variant="secondary" size="sm" disabled={Boolean(progress)} onClick={() => void runStudy()}>
-              Run animated study on Metal
-            </Button>
-          </CollapsibleContent>
-        </Collapsible>
+                  <Slider
+                    tone="neutral"
+                    {...studySliderBounds(study.parameter)}
+                    value={study.range}
+                    onValueChange={(range) => setStudy((value) => ({ ...value, range: range as [number, number] }))}
+                  />
+                </ParameterField>
+                <ParameterField label="Frames" value={study.frames}>
+                  <Slider
+                    tone="neutral"
+                    min={3}
+                    max={16}
+                    step={1}
+                    value={[study.frames]}
+                    onValueChange={([frames]) => setStudy((value) => ({ ...value, frames }))}
+                  />
+                </ParameterField>
+              </FieldGroup>
+              <Button className="mt-4 w-full" variant="secondary" size="sm" disabled={Boolean(progress)} onClick={() => void runStudy()}>
+                Run animated study on Metal
+              </Button>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
     </TooltipProvider>
   );

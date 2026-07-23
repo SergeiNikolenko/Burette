@@ -230,16 +230,16 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
                 </div>
               );
             })}
-          </div>
-          {!readOnly ? (
-            <>
+            {!readOnly ? (
               <button type="button" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
                 +
               </button>
-              <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
-                <CloseIcon size={15} />
-              </button>
-            </>
+            ) : null}
+          </div>
+          {!readOnly ? (
+            <button type="button" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
+              <CloseIcon size={15} />
+            </button>
           ) : null}
         </div>
         <DockPanelContent
