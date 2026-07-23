@@ -31,6 +31,7 @@ assert.deepEqual(initial.rightDockTabs.map((tab) => tab.kind), [
 ]);
 assert.deepEqual(initial.bottomDockTabs.map((tab) => tab.kind), [
   "files",
+  "chemical-space",
   "jobs",
 ]);
 useShellStore.getState().openDockTab("right", "descriptors");
@@ -47,6 +48,7 @@ useShellStore.setState({
 useShellStore.getState().setDockOpen("bottom", true);
 assert.deepEqual(useShellStore.getState().bottomDockTabs.map((tab) => tab.kind), [
   "files",
+  "chemical-space",
   "jobs",
 ]);
 

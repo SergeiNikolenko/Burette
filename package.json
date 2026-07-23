@@ -91,6 +91,7 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tailwind-merge": "^3.6.0",
+    "three": "0.153.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -100,6 +101,7 @@
     "@tauri-apps/cli": "^2.11.4",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@types/three": "0.153.0",
     "@vitejs/plugin-react": "^4.6.0",
     "lefthook": "^2.1.9",
     "shadcn": "^4.13.1",

@@ -19,6 +19,7 @@ Euclidean input graph.
 The MMAE option maps the manifold-matching distance objective; it does not
 expose mlx-vis's reusable neural encoder or out-of-sample transform. NNDescent
 is not used in this first product surface because Burrete already computes an
-exact deterministic Tanimoto top-k graph on Metal. The interactive 2D/3D point
-renderer is implemented in the desktop canvas, with GPU coordinate generation
-and CPU/GPU-times reported separately.
+exact deterministic Tanimoto top-k graph on Metal. The interactive 2D renderer
+uses the desktop canvas, while the rotatable 3D viewport uses Three.js/WebGL
+with orbit controls and raycast picking. Embedding coordinate generation stays
+on Metal, with CPU/GPU times reported separately.

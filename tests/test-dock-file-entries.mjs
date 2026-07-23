@@ -99,9 +99,9 @@ assert.deepEqual(resolveDockDropPaths(
   unopenedPaths: ["/tmp/new.sdf"],
 });
 
-assert.deepEqual(defaultDockTabs("right").map((tab) => tab.kind), ["inspector", "chemical-space", "text", "files"]);
+assert.deepEqual(defaultDockTabs("right").map((tab) => tab.kind), ["inspector", "text", "files"]);
 assert.deepEqual(defaultDockTabs("bottom").map((tab) => tab.kind), ["files", "chemical-space", "jobs"]);
-assert.deepEqual(dockTabCatalog("right"), ["xyzrender", "chemical-space", "inspector", "text", "files"]);
+assert.deepEqual(dockTabCatalog("right"), ["xyzrender", "inspector", "text", "files"]);
 assert.deepEqual(dockTabCatalog("bottom"), ["files", "chemical-space", "jobs", "folding", "spectrum", "logs"]);
 for (const kind of ["xyzrender", "inspector", "text", "files", "folding", "spectrum"]) {
   assert.equal(dockTabLoadsDroppedDocument(kind), true, kind);
@@ -112,12 +112,12 @@ for (const kind of ["chemical-space", "jobs", "logs", "diagnostics", "review", "
 assert.deepEqual(
   ensureDefaultDockTabs("right", [{ id: "dock-inspector", kind: "inspector" }, { id: "dock-files", kind: "files" }])
     .map((tab) => tab.kind),
-  ["inspector", "chemical-space", "text", "files"],
+  ["inspector", "text", "files"],
 );
 assert.deepEqual(
   ensureDefaultDockTabs("right", [{ id: "dock-descriptors", kind: "descriptors" }])
     .map((tab) => tab.kind),
-  ["inspector", "chemical-space", "text", "files"],
+  ["inspector", "text", "files"],
 );
 assert.deepEqual(
   persistentDockTabs("bottom", [{ id: "dock-folding", kind: "folding" }, { id: "dock-files", kind: "files" }])

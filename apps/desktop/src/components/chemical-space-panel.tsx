@@ -17,6 +17,7 @@ import {
 import { isTauriRuntime } from "../lib/tauri";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
+import { ChemicalSpace3D } from "./chemical-space-3d";
 
 type ChemicalSpacePanelProps = {
   document: ViewerDocument | null;
@@ -298,15 +299,7 @@ function ParameterField({ label, value, children }: { label: string; value: stri
   );
 }
 
-function ChemicalSpaceCanvas({
-  result,
-  selected,
-  hovered,
-  preview,
-  tool,
-  onHover,
-  onSelect,
-}: {
+type ChemicalSpaceCanvasProps = {
   result: ChemicalSpaceResult;
   selected: Set<number>;
   hovered: number | null;
@@ -314,7 +307,38 @@ function ChemicalSpaceCanvas({
   tool: "navigate" | "lasso";
   onHover: (sourceRecordId: number | null) => void;
   onSelect: (sourceRecordIds: number[]) => void;
-}) {
+};
+
+function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
+  const normalized = useMemo(() => normalizePositions(props.result.positions), [props.result.positions]);
+  if (props.result.dimensions === 3) {
+    return (
+      <ChemicalSpace3D
+        positions={normalized}
+        sourceRecordIds={props.result.sourceRecordIds}
+        selected={props.selected}
+        hovered={props.hovered}
+        preview={props.preview}
+        tool={props.tool}
+        methodLabel={methodLabel(props.result.method)}
+        onHover={props.onHover}
+        onSelect={props.onSelect}
+      />
+    );
+  }
+  return <ChemicalSpace2D {...props} normalized={normalized} />;
+}
+
+function ChemicalSpace2D({
+  result,
+  selected,
+  hovered,
+  preview,
+  tool,
+  onHover,
+  onSelect,
+  normalized,
+}: ChemicalSpaceCanvasProps & { normalized: Array<[number, number, number]> }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const projectedRef = useRef<ProjectedPoint[]>([]);
   const pointerRef = useRef<{ start: Point2; last: Point2; moved: boolean } | null>(null);
@@ -323,7 +347,6 @@ function ChemicalSpaceCanvas({
   const [viewport, setViewport] = useState({ width: 1, height: 1, pixelRatio: 1 });
   const [camera, setCamera] = useState({ yaw: -0.45, pitch: 0.35, zoom: 1, panX: 0, panY: 0 });
   const [lasso, setLasso] = useState<Point2[]>([]);
-  const normalized = useMemo(() => normalizePositions(result.positions), [result.positions]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -347,7 +370,7 @@ function ChemicalSpaceCanvas({
     context.setTransform(viewport.pixelRatio, 0, 0, viewport.pixelRatio, 0, 0);
     const styles = getComputedStyle(canvas);
     context.clearRect(0, 0, viewport.width, viewport.height);
-    const projected = projectPositions(normalized, result.sourceRecordIds, viewport, camera, result.dimensions);
+    const projected = projectPositions(normalized, result.sourceRecordIds, viewport, camera, 2);
     projectedRef.current = projected;
     const selectedColor = styles.getPropertyValue("--primary").trim() || "#af52de";
     const pointColor = styles.getPropertyValue("--muted-foreground").trim() || "#8e8e93";
@@ -377,7 +400,7 @@ function ChemicalSpaceCanvas({
       context.stroke();
       context.setLineDash([]);
     }
-  }, [camera, hovered, lasso, normalized, result.dimensions, result.sourceRecordIds, selected, viewport]);
+  }, [camera, hovered, lasso, normalized, result.sourceRecordIds, selected, viewport]);
 
   const localPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -443,8 +466,6 @@ function ChemicalSpaceCanvas({
               lassoRef.current = [...lassoRef.current, point];
               setLasso(lassoRef.current);
             }
-          } else if (result.dimensions === 3) {
-            setCamera((value) => ({ ...value, yaw: value.yaw + dx * 0.008, pitch: Math.max(-1.4, Math.min(1.4, value.pitch + dy * 0.008)) }));
           } else {
             setCamera((value) => ({ ...value, panX: value.panX + dx, panY: value.panY + dy }));
           }
@@ -490,7 +511,7 @@ function ChemicalSpaceCanvas({
         </div>
       ) : null}
       <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
-        {selected.size.toLocaleString()} selected · wheel to zoom{result.dimensions === 3 ? " · drag to orbit" : " · drag to pan"}
+        {selected.size.toLocaleString()} selected · wheel to zoom · drag to pan
       </div>
     </div>
   );
