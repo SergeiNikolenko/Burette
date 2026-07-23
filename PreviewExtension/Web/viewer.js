@@ -5305,6 +5305,54 @@
     prepared.structureAlignmentEnabled = false;
   }
 
+  function structureSceneStoryStage(label, index) {
+    const name = String(label || '').toLowerCase();
+    if (/(^|[_\s-])input|start/.test(name)) return 'Starting complex';
+    if (/orient|plusy|\+y/.test(name)) return 'Orientation';
+    if (/minimi[sz]/.test(name)) return 'Energy minimization';
+    if (/nvt/.test(name)) return 'Temperature equilibration';
+    if (/npt/.test(name)) return 'Pressure equilibration';
+    if (/smd.*forward|forward.*smd/.test(name)) return 'Forward steering';
+    if (/reverse|return/.test(name)) return 'Reverse steering';
+    if (/relax/.test(name)) return 'Selected state relaxation';
+    return `Structure ${index + 1}`;
+  }
+
+  function structureSceneStoryComparison(prepared, index) {
+    if (index <= 0) return null;
+    const current = prepared?.poses?.[index];
+    const previous = prepared?.poses?.[index - 1];
+    if (normalizeFormat(current?.format) !== 'pdb' || normalizeFormat(previous?.format) !== 'pdb') return null;
+    const currentChains = pdbAlphaCarbonChains(current.unalignedData || current.data);
+    const previousChains = pdbAlphaCarbonChains(previous.unalignedData || previous.data);
+    const candidates = Array.from(currentChains.entries()).map(([chain, residues]) => {
+      const previousResidues = previousChains.get(chain);
+      const keys = previousResidues ? Array.from(residues.keys()).filter(key => previousResidues.has(key)) : [];
+      return { chain, residues, previousResidues, keys };
+    }).filter(candidate => candidate.keys.length >= 3)
+      .sort((left, right) => right.keys.length - left.keys.length);
+    const candidate = candidates[0];
+    if (!candidate) return null;
+    const alignment = pdbRigidAlignment(
+      candidate.keys.map(key => candidate.residues.get(key)),
+      candidate.keys.map(key => candidate.previousResidues.get(key))
+    );
+    if (!alignment) return null;
+    return {
+      rmsd: alignment.rmsd,
+      residueCount: alignment.count,
+      chain: candidate.chain === '_' ? '(blank)' : candidate.chain
+    };
+  }
+
+  function structureSceneStoryChange(comparison) {
+    if (!comparison) return 'Cα-chain comparison is unavailable for this pair';
+    if (comparison.rmsd < 0.5) return 'Largest shared Cα chain remains closely aligned';
+    if (comparison.rmsd < 2) return 'Largest shared Cα chain shows a small adjustment';
+    if (comparison.rmsd < 5) return 'Largest shared Cα chain shows a noticeable change';
+    return 'Largest shared Cα chain shows a large change';
+  }
+
   function dockingPoseStorageKey(config) {
     const documentId = String(config?.documentId || '').trim();
     if (documentId) return `burrete.dockingPose.${documentId}`;
@@ -9950,7 +9998,7 @@
     let drag = null;
     const onPointerDown = (event) => {
       if (event.button !== 0) return;
-      if (event.target.closest('button, input, select, textarea, [contenteditable="true"], .buret-docking-pose-files')) return;
+      if (event.target.closest('button, input, select, textarea, [contenteditable="true"], .buret-docking-pose-files, .buret-docking-pose-story-panel')) return;
       const rect = root.getBoundingClientRect();
       drag = {
         pointerId: event.pointerId,
@@ -10690,6 +10738,36 @@
       ? xyzCandidateFrames
       : null;
     const align = prepared.dockingSceneMode || xyzAlignFrames ? document.createElement('button') : null;
+    const story = prepared.dockingSceneMode ? document.createElement('button') : null;
+    const storyPanel = prepared.dockingSceneMode ? document.createElement('aside') : null;
+    const storyStep = storyPanel ? document.createElement('div') : null;
+    const storyTitle = storyPanel ? document.createElement('div') : null;
+    const storySummary = storyPanel ? document.createElement('div') : null;
+    const storyComparisons = new Map();
+    const storyComparison = (index) => {
+      if (!story) return null;
+      if (!storyComparisons.has(index)) {
+        storyComparisons.set(index, structureSceneStoryComparison(prepared, index));
+      }
+      return storyComparisons.get(index);
+    };
+    if (story && storyPanel && storyStep && storyTitle && storySummary) {
+      story.type = 'button';
+      story.className = 'buret-docking-pose-story active';
+      story.textContent = 'Story';
+      story.title = 'Explain the current structure in this sequence';
+      story.setAttribute('aria-controls', 'buret-docking-pose-story-panel');
+      story.setAttribute('aria-expanded', 'true');
+      story.setAttribute('aria-pressed', 'true');
+      storyPanel.id = 'buret-docking-pose-story-panel';
+      storyPanel.className = 'buret-docking-pose-story-panel';
+      storyPanel.setAttribute('aria-label', 'Structure story');
+      storyPanel.setAttribute('aria-live', 'polite');
+      storyStep.className = 'buret-docking-pose-story-step';
+      storyTitle.className = 'buret-docking-pose-story-title';
+      storySummary.className = 'buret-docking-pose-story-summary';
+      storyPanel.append(storyStep, storyTitle, storySummary);
+    }
     const alignmentSupported = Boolean(align) && (xyzAlignFrames
       ? xyzFramesAlignable(xyzAlignFrames)
       : prepared.poses.every(entry => normalizeFormat(entry?.format) === 'pdb'));
@@ -10773,6 +10851,19 @@
         button.classList.toggle('active', active);
         button.setAttribute('aria-selected', active ? 'true' : 'false');
       });
+      if (storyStep && storyTitle && storySummary) {
+        const entry = prepared?.poses?.[activePose];
+        const comparison = storyComparison(activePose);
+        storyStep.textContent = `Step ${activePose + 1} of ${prepared.poseCount}`;
+        storyTitle.textContent = structureSceneStoryStage(entry?.label, activePose);
+        if (comparison) {
+          storySummary.textContent = `Stage inferred from filename · ${structureSceneStoryChange(comparison)} · ${comparison.rmsd.toFixed(2)} Å Cα RMSD vs previous · chain ${comparison.chain} · ${comparison.residueCount} residues`;
+        } else if (activePose === 0) {
+          storySummary.textContent = 'Stage inferred from filename · Reference state for later Cα-chain comparisons';
+        } else {
+          storySummary.textContent = `Stage inferred from filename · ${structureSceneStoryChange(null)}`;
+        }
+      }
       refreshNativeTrajectoryStandalonePreview();
       postHostMessage({
         type: 'trajectoryFrameChanged',
@@ -10948,6 +11039,15 @@
       };
       window.addEventListener('pointerdown', onOutsidePointerDown, true);
       fileListDisposer = () => window.removeEventListener('pointerdown', onOutsidePointerDown, true);
+    }
+    if (story && storyPanel) {
+      story.addEventListener('click', () => {
+        const open = root.classList.toggle('buret-docking-poses-story-closed') === false;
+        story.classList.toggle('active', open);
+        story.setAttribute('aria-expanded', open ? 'true' : 'false');
+        story.setAttribute('aria-pressed', open ? 'true' : 'false');
+        window.requestAnimationFrame(() => repositionDockingPoseControls(root));
+      });
     }
     if (align && alignmentSupported && xyzAlignFrames) {
       const toggleXyzAlignment = () => {
@@ -11197,6 +11297,7 @@
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
     if (toggleRow) {
       toggleRow.className = 'buret-docking-pose-toggles';
+      if (story) toggleRow.append(story);
       if (align) toggleRow.append(align);
       if (all) toggleRow.append(all);
     } else {
@@ -11207,6 +11308,7 @@
     root.append(mainRow);
     if (toggleRow) root.append(toggleRow);
     if (fileList) root.append(fileList);
+    if (storyPanel) root.append(storyPanel);
     if (!toggleRow) root.append(animationRow);
     document.body.appendChild(root);
     restoreDockingPoseControlsPosition(root);
