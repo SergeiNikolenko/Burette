@@ -25,7 +25,6 @@ import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
 import {
   resumeWindowMutations,
   sealWindowMutations,
-  type WindowCloseMutationPermit,
 } from "../lib/window-mutation-barrier";
 import type { ViewerPreferences, ViewerReloadOptions } from "../types";
 import { useMenuEvents } from "./use-menu-events";
@@ -49,7 +48,6 @@ type UseAppNativeMenuOptions = {
   actions: ShellActions;
   gridMenuState: GridNativeMenuState | null;
   openDocuments: OpenDocuments;
-  confirmCloseWindow: () => Promise<WindowCloseMutationPermit | null>;
   getWindowDocumentDirtySnapshot: () => {
     dirty: boolean;
     revision: number;
@@ -76,7 +74,6 @@ export function useAppNativeMenu({
   actions,
   gridMenuState,
   openDocuments,
-  confirmCloseWindow,
   getWindowDocumentDirtySnapshot,
   windowDocumentDirty,
   sourceSaveEnabled,
@@ -226,12 +223,9 @@ export function useAppNativeMenu({
     recentDocuments: null,
   }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closableTabCount, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
   const nativeStateRef = useRef<NativeMenuState>({ ...nativeState, recentDocuments });
-  const confirmCloseWindowRef = useRef(confirmCloseWindow);
-  const closeConfirmationPendingRef = useRef(false);
   const closingWindowRef = useRef(false);
   const getWindowDocumentDirtySnapshotRef = useRef(getWindowDocumentDirtySnapshot);
   nativeStateRef.current = { ...nativeState, recentDocuments };
-  confirmCloseWindowRef.current = confirmCloseWindow;
   getWindowDocumentDirtySnapshotRef.current = getWindowDocumentDirtySnapshot;
 
   useEffect(() => {
@@ -263,30 +257,16 @@ export function useAppNativeMenu({
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     return trackTauriListener(getCurrentWindow().onCloseRequested((event) => {
-      if (closingWindowRef.current) return;
+      // The close button quits the whole application, matching Cmd+Q and the
+      // "Quit Burrete" menu item. Preventing the default window close and
+      // routing through request_app_quit is deliberate: a plain window close
+      // left a windowless process alive (macOS default) that then recreated a
+      // window, so the button looked like it did nothing. request_quit runs the
+      // unsaved-changes preflight before it exits.
       event.preventDefault();
-      if (closeConfirmationPendingRef.current) return;
-      closeConfirmationPendingRef.current = true;
-      void (async () => {
-        let permit: WindowCloseMutationPermit | null = null;
-        try {
-          permit = await confirmCloseWindowRef.current();
-          // Only an explicit "cancel" in the unsaved-changes prompt stops the
-          // close. Past this point nothing may gate it: the window shuts down
-          // immediately rather than waiting on in-flight work, because that
-          // wait was unbounded and left the shell frozen when it never settled.
-          if (!permit) return;
-          permit.release();
-          closingWindowRef.current = true;
-          await getCurrentWindow().close();
-        } catch (error) {
-          closingWindowRef.current = false;
-          permit?.release();
-          console.warn("Native window close failed", error);
-        } finally {
-          closeConfirmationPendingRef.current = false;
-        }
-      })();
+      void invoke("request_app_quit").catch((error) => {
+        console.warn("App quit request failed", error);
+      });
     }), "native window close guard");
   }, []);
 

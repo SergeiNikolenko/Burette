@@ -22,7 +22,9 @@ assert.match(sourceEditingHook, /if \(!hasUnsavedOrSavingSessions \|\| isTauriRu
 assert.match(sourceEditingContext, /confirmCloseWindow: \(\) => Promise<boolean>/u);
 assert.match(sourceEditingContext, /getWindowDirtySnapshot: \(\) => SourceEditingWindowDirtySnapshot/u);
 
-assert.match(app, /const confirmCloseWindow = useCallback[\s\S]*sourceEditing\.confirmCloseWindow\(\)[\s\S]*confirmDiscardAllDirtyGridDocuments\(\)[\s\S]*try \{[\s\S]*return permit;[\s\S]*catch \(error\) \{\s*permit\.release\(\);/u);
+// Unsaved-changes protection on quit now lives entirely in the Rust exit
+// preflight, which reads this combined dirty snapshot; the window-close button
+// no longer runs its own confirm.
 assert.match(app, /dirty: gridSnapshot\.dirty \|\| sourceSnapshot\.dirty/u);
 assert.match(app, /closeTransitionActive: sourceSnapshot\.closeTransitionActive/u);
 assert.match(app, /windowDocumentDirty: hasDirtyGridDocuments \|\| sourceEditing\.hasUnsavedOrSavingSessions/u);
@@ -30,7 +32,7 @@ assert.match(app, /windowDocumentDirty: hasDirtyGridDocuments \|\| sourceEditing
 assert.match(nativeMenuHook, /canSave: sourceSaveEnabled\s*\|\| Boolean\(isGrid/u);
 assert.match(nativeMenuHook, /case "file\.save":\s*if \(sourceSaveEnabled\) await saveActiveSource\(\);\s*else gridCommand\(\);/su);
 assert.match(nativeMenuHook, /closeTransitionActive: snapshot\.closeTransitionActive\s*\|\| barrier\.closeTransitionActive/su);
-// A failed close must hand the permit back, otherwise the next one is refused.
-assert.match(nativeMenuHook, /catch \(error\) \{\s*closingWindowRef\.current = false;\s*permit\?\.release\(\);/u);
+// The close button quits the app through the shared quit command.
+assert.match(nativeMenuHook, /onCloseRequested\(\(event\) => \{[\s\S]*event\.preventDefault\(\);\s*void invoke\("request_app_quit"\)/su);
 
 console.log("source editing window lifecycle tests passed");
