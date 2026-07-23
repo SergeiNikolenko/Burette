@@ -1334,7 +1334,19 @@ assert.match(appLayout, /const sidebarLayoutWidth = sidebarVisible \? sidebarWid
 assert.match(appLayout, /const rightDockWidth = clampRightDockWidth\(state\.rightDockWidth, viewportWidth, sidebarLayoutWidth\)/);
 assert.doesNotMatch(appLayout, /Math\.max\(360, clampedSidebarWidth\)/);
 assert.match(appLayout, /const compactLeadingChrome = !tauriRuntime \|\| windowFullscreen/);
-assert.match(appLayout, /const tabChromeLeft = hostedMcpWidget[\s\S]*\? sidebarLayoutWidth \+ 12[\s\S]*: compactLeadingChrome \? 112 : 192;/);
+// The tab strip is placed from the panels' measured edges, not from the stored
+// sizes: a squeezed panel keeps reporting the size it wants, and a stored size
+// only reaches the DOM a render after the drag frame that produced it. React
+// contributes the leading-chrome inset (traffic lights) and the first-paint
+// seeds; `--sidebar-edge` / `--right-dock-edge` come from the observer.
+assert.match(appLayout, /const chromeLeadingInset = compactLeadingChrome \? 112 : 192;/);
+assert.match(appLayout, /"--chrome-leading-inset": `\$\{chromeLeadingInset\}px`/);
+assert.doesNotMatch(appLayout, /tabChromeLeft/);
+assert.match(appLayout, /function usePanelEdgeVariables/);
+assert.match(appLayout, /\{ elementRef: sidebarElementRef, property: "--sidebar-edge" \}/);
+assert.match(appLayout, /\{ elementRef: rightDockElementRef, property: "--right-dock-edge" \}/);
+assert.match(appLayout, /shell\.style\.setProperty\(entry\.property, `\$\{width\}px`\)/);
+assert.match(appLayout, /<header className="topbar">/);
 assert.match(appLayout, /const rightDockOpen = !settingsMode && !hostedMcpWidget && state\.rightDockOpen/);
 assert.match(appLayout, /const bottomDockOpen = !settingsMode && !hostedMcpWidget && state\.bottomDockOpen/);
 assert.match(appLayout, /"--right-dock-width": `\$\{rightDockOpen \? rightDockWidth : 0\}px`/);
@@ -2139,16 +2151,30 @@ assert.match(appLayout, /if \(!meta\.isUserInteraction\) return;/);
 // library's [data-panel] wrappers. The transition must exist only while a
 // toggle is animating (drags and window resizes rewrite flex-grow every frame
 // and would rubber-band), and the animation hooks must register their layout
-// effects before the collapse/expand sync hooks: collapse() reports a
-// synchronous onResize that the handlers gate on animatingRef.
+// effects before the collapse/expand sync hooks.
 assert.match(appLayout, /function usePanelToggleAnimation/);
 assert.ok(appLayout.indexOf("usePanelToggleAnimation(sidebarVisible)") < appLayout.indexOf("useCollapsiblePanelSync(sidebarVisible"), "toggle-animation hooks must be called before the collapse/expand sync hooks");
-assert.match(appLayout, /data-panels-animating=\{sidebarToggle\.animating \|\| undefined\}/);
-assert.match(appLayout, /sidebarToggle\.animatingRef\.current && !groupHasActiveSeparator\(workspaceGroupRef\.current\)/);
+assert.match(appLayout, /data-panels-animating=\{sidebarAnimating \|\| undefined\}/);
 assert.match(styles, /\.workspace-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 140ms ease-out;/);
 assert.match(styles, /\.workbench-main-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 180ms cubic-bezier\(0\.2, 0, 0, 1\);/);
-// The tab strip follows the sidebar edge through the same easing.
-assert.match(styles, /\.topbar \{[^}]*transition: left 140ms ease-out;/s);
+// The tab strip rides the measured panel edges, so it must not ease `left` on
+// its own — that eased every drag frame and dragged the strip behind the
+// sidebar. Only the library's collapsed state closes a collapsible panel: a
+// panel squeezed by its group (dragging the sidebar can leave the workbench too
+// narrow for the right dock) still reports pixels, and closing on that auto-hid
+// docks that never reopened.
+assert.doesNotMatch(styles, /\.topbar \{[^}]*transition:/s);
+assert.match(appLayout, /function isPanelOpen/);
+assert.match(appLayout, /return panel \? !panel\.isCollapsed\(\) : Math\.round\(size\.inPixels\) > 1;/);
+assert.match(appLayout, /function groupIsUserResizing/);
+assert.match(appLayout, /'\:scope > \[data-separator="active"\], \:scope > \[data-separator="focus"\]'/);
+assert.match(appLayout, /if \(!open && !groupIsUserResizing\(workspaceGroupRef\.current\)\) return;/);
+assert.match(appLayout, /if \(!open && !groupIsUserResizing\(workbenchGroupRef\.current\)\) return;/);
+assert.match(appLayout, /if \(!open && !groupIsUserResizing\(workbenchMainGroupRef\.current\)\) return;/);
+// The other half: a panel the group collapsed under pressure keeps its open
+// flag, so the pixel guard has to expand it again once the room is back.
+assert.match(appLayout, /if \(panel\.isCollapsed\(\)\) panel\.expand\(\);/);
+assert.doesNotMatch(appLayout, /animatingRef/);
 // groupResizeBehavior="preserve-pixel-size" is inert in react-resizable-panels
 // 4.12.2, so fixed panels re-assert their stored pixel size when the group's
 // container resizes — deferred to the next frame because a resize() inside the
@@ -2524,7 +2550,7 @@ assert.match(styles, /\.structure-inspector-style-options \{/);
 assert.match(styles, /\.structure-brief \{[\s\S]*?grid-auto-rows: max-content/);
 assert.match(styles, /\.structure-inspector-details:not\(\[open\]\) > \.structure-inspector-details-body/);
 assert.match(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
-assert.match(styles, /right: max\(146px, var\(--right-dock-width, 0px\)\)/);
+assert.match(styles, /right: max\(146px, var\(--right-dock-edge, var\(--right-dock-width, 0px\)\)\)/);
 assert.match(styles, /@container \(max-width: 320px\)/);
 assert.match(previewRuntimeCss, /@media \(max-width: 360px\)[\s\S]*?top: 64px;[\s\S]*?width: calc\(100vw - 24px\)/);
 assert.match(previewRuntimeCss, /grid-template-columns: 28px auto minmax\(62px, 1fr\) auto auto/);

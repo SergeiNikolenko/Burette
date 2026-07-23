@@ -316,7 +316,16 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .topbar {
   position: absolute;
   top: 0;
-  right: max(146px, var(--right-dock-width, 0px));
+  /* Both edges follow the panels' measured widths (`--sidebar-edge` /
+     `--right-dock-edge`, published by a ResizeObserver on the panels), falling
+     back to the stored layout widths for the first paint. Measuring is what
+     keeps the strip glued to the panels: a right dock the group had to squeeze
+     below its 260px still stores 260, and a dragged sidebar only reaches the
+     DOM a render later. No transition on `left` either — the sidebar's own
+     toggle animation moves the measured edge, so easing it here again would
+     rubber-band the strip behind every drag frame. */
+  left: max(var(--chrome-leading-inset, 192px), calc(var(--sidebar-edge, var(--sidebar-layout-width, 0px)) + 12px));
+  right: max(146px, var(--right-dock-edge, var(--right-dock-width, 0px)));
   z-index: 4;
   height: var(--chrome-height);
   display: flex;
@@ -324,9 +333,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   pointer-events: none;
   gap: 12px;
   padding: var(--chrome-control-padding) 0;
-  /* `left` is set inline from the sidebar width; ease it so the tab strip
-     travels with the sidebar edge instead of teleporting on toggle. */
-  transition: left 140ms ease-out;
   container-type: inline-size;
 }
 .chrome-button,
