@@ -4643,6 +4643,7 @@
   let sceneTreeHoverRef = '';
   let sceneTreeMenuRef = '';
   let sceneTreeSelectedRef = '';
+  let sceneTreeMenuPointerStart = null;
 
   function sceneTreeIconElement(paths) {
     const svg = document.createElementNS(SCENE_TREE_SVG_NS, 'svg');
@@ -5640,12 +5641,19 @@
       });
       initViewportPanelDrag(panel);
       window.addEventListener('resize', updateViewportCornerLayout);
-      // Clicking the 3D view leaves the menu alone — you usually want to look at
-      // what it is about before choosing. Going back to the tree dismisses it.
+      // Any click outside dismisses it, the 3D view included — but rotating the
+      // structure must not. Whether a drag still emits a click is up to Mol*'s
+      // input handling, so the two are told apart here by how far the pointer
+      // travelled, using the same threshold the draggable panels use.
+      document.addEventListener('pointerdown', event => {
+        sceneTreeMenuPointerStart = { x: event.clientX, y: event.clientY };
+      }, true);
       document.addEventListener('click', event => {
         const menu = document.getElementById('buret-scene-tree-menu');
         if (!menu || menu.contains(event.target)) return;
-        if (event.target?.closest?.('#buret-scene-tree, #buret-viewport-corner')) closeSceneTreeMenu();
+        const start = sceneTreeMenuPointerStart;
+        const dragged = start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4;
+        if (!dragged) closeSceneTreeMenu();
       }, true);
       document.addEventListener('change', event => {
         const select = event.target.closest('[data-scene-tree-select]');
