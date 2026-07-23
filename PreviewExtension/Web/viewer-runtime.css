@@ -525,8 +525,13 @@ body:not(.burette-mobile-host) .msp-plugin .msp-viewport-controls-buttons,
 body:not(.burette-mobile-host) .msp-plugin .msp-selection-viewport-controls {
   display: none !important;
 }
+/* The mobile host draws its own chrome over the viewport, so none of the desktop
+   overlay belongs there — the scene tree included, or an iPhone gets a corner
+   button opening a draggable desktop panel on top of the native UI. */
 body.burette-mobile-host #buret-viewport-rail,
-body.burette-mobile-host #buret-selection-bar {
+body.burette-mobile-host #buret-selection-bar,
+body.burette-mobile-host #buret-viewport-corner,
+body.burette-mobile-host #buret-scene-tree {
   display: none !important;
 }
 .buret-viewport-rail {

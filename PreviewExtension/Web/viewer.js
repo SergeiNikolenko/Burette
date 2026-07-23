@@ -4922,7 +4922,7 @@
             label: String(cell.obj.label || 'Node'),
             note: String(cell.obj.description || ''),
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
-            hidden: cell.state?.isHidden === true,
+            hidden: sceneTreeCellHidden(state, nodeRef),
             colorable: !!components,
             ...(components ? sceneTreeColorState(components) : { theme: '', value: null }),
             children: build(chain)
@@ -5967,7 +5967,10 @@
     openSceneTreeMenu(row.dataset.ref, event.clientX, event.clientY);
   }
 
-  function moveViewportPanel(panel, left, top) {
+  // Named apart from moveViewportPanel: that one places Mol*'s own panels and
+  // takes the offsetParent origin, and two declarations of one name in this scope
+  // meant the later hoisted over the earlier and dropped those coordinates.
+  function moveSceneTreePanel(panel, left, top) {
     const rect = panel.getBoundingClientRect();
     const maxLeft = Math.max(6, window.innerWidth - rect.width - 6);
     const maxTop = Math.max(6, window.innerHeight - rect.height - 6);
@@ -6150,7 +6153,7 @@
     };
     const onPointerMove = event => {
       if (!drag || event.pointerId !== drag.pointerId) return;
-      moveViewportPanel(panel, event.clientX - drag.dx, event.clientY - drag.dy);
+      moveSceneTreePanel(panel, event.clientX - drag.dx, event.clientY - drag.dy);
       event.preventDefault();
     };
     const finishDrag = event => {
