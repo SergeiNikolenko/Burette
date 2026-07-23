@@ -720,12 +720,16 @@ button:focus-visible > .shortcut-tooltip {
 .resizable-handle:active .resizable-handle-grip { height: 56px; }
 .resizable-handle-horizontal:hover .resizable-handle-grip,
 .resizable-handle-horizontal:active .resizable-handle-grip { height: 4px; width: 56px; }
+/* The workbench card, the stage and the docks paint `--bg`, not `--bg-base`:
+   `--bg-base` is the raw theme color and ignores the Translucent preference, so
+   using it here covered the whole window with an opaque sheet and left the
+   slider affecting only the sidebar strip. */
 .workbench {
   min-width: 0;
   min-height: 0;
   flex: 1;
   display: flex;
-  background: var(--bg-base);
+  background: var(--bg);
   overflow: hidden;
   border-left: 1px solid var(--workspace-edge-border);
   border-radius: 20px 0 0 20px;
@@ -1821,7 +1825,7 @@ img.radix-menu-item-icon {
   min-height: 0;
   flex: 1;
   display: grid;
-  background: var(--bg-base);
+  background: var(--bg);
   overflow: hidden;
 }
 .dock-panel {
@@ -1833,7 +1837,7 @@ img.radix-menu-item-icon {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-base);
+  background: var(--bg);
   color: var(--text-primary);
   overflow: hidden;
   opacity: 1;
