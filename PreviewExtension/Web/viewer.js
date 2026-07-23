@@ -1042,6 +1042,7 @@
   let activeSdfPoseMode = 'single';
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
+  let xyzFrameAlignment = null;
   let activeDockingPoseCollectionState = null;
   let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
@@ -5191,6 +5192,43 @@
     };
   }
 
+  function xyzFrameElementSignature(frame) {
+    return (frame?.atoms || []).map(atom => atom.symbol).join(',');
+  }
+
+  function xyzFramesAlignable(frames) {
+    if (!Array.isArray(frames) || frames.length < 2) return false;
+    const signature = xyzFrameElementSignature(frames[0]);
+    if (!signature || (frames[0].atoms || []).length < 3) return false;
+    return frames.every(frame => xyzFrameElementSignature(frame) === signature);
+  }
+
+  function alignXyzFramesToFirst(frames) {
+    if (!xyzFramesAlignable(frames)) {
+      throw new Error('Alignment needs every structure to list the same atoms in the same order.');
+    }
+    const referencePoints = frames[0].atoms.map(atom => [atom.x, atom.y, atom.z]);
+    let rmsdTotal = 0;
+    const aligned = frames.map((frame, index) => {
+      if (index === 0) return frame;
+      const alignment = pdbRigidAlignment(frame.atoms.map(atom => [atom.x, atom.y, atom.z]), referencePoints);
+      if (!alignment) throw new Error('Not enough atoms to align these structures.');
+      rmsdTotal += alignment.rmsd;
+      return {
+        ...frame,
+        atoms: frame.atoms.map(atom => {
+          const [x, y, z] = alignment.apply([atom.x, atom.y, atom.z]);
+          return { ...atom, x, y, z };
+        })
+      };
+    });
+    return {
+      frames: aligned,
+      averageRmsd: rmsdTotal / Math.max(1, frames.length - 1),
+      atomCount: frames[0].atoms.length
+    };
+  }
+
   function restoreStructureSceneEntries(prepared) {
     for (const entry of Array.isArray(prepared?.poses) ? prepared.poses : []) {
       if (typeof entry.unalignedData === 'string') entry.data = entry.unalignedData;
@@ -8355,10 +8393,13 @@
     }
     const raw = rawStructureData(activeConfig);
     const rawSignature = xyzFrameOverlayRawSignature(raw);
-    let frames = activeXyzFrameOverlayState?.viewer === viewer && activeXyzFrameOverlayState.rawSignature === rawSignature
+    const framesAligned = xyzFrameAlignment?.signature === rawSignature;
+    let frames = activeXyzFrameOverlayState?.viewer === viewer
+      && activeXyzFrameOverlayState.rawSignature === rawSignature
+      && activeXyzFrameOverlayState.aligned === framesAligned
       ? activeXyzFrameOverlayState.frames
       : null;
-    if (!Array.isArray(frames)) frames = splitXyzFrames(raw);
+    if (!Array.isArray(frames)) frames = framesAligned ? xyzFrameAlignment.frames : splitXyzFrames(raw);
     if (frames.length <= 1) {
       resetXyzFrameOverlayState(viewer);
       await reloadActiveMolstarStructure();
@@ -8390,7 +8431,7 @@
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readXyzFrameContextColor(activeConfig);
     const sampledIndexes = sampledXyzFrameIndexes(frames.length);
-    const stateKey = xyzFrameOverlayStateKey(rawSignature, frames, prepared, foregroundStyle, resolvedContextStyle, contextOpacity, contextColor, sampledIndexes);
+    const stateKey = `${xyzFrameOverlayStateKey(rawSignature, frames, prepared, foregroundStyle, resolvedContextStyle, contextOpacity, contextColor, sampledIndexes)}|${framesAligned ? 'aligned' : 'raw'}`;
     const backgroundLayerOpacity = (activePosition) => xyzFrameBackgroundLayerOpacity(
       contextOpacity,
       Math.max(1, sampledIndexes.length - (activePosition >= 0 ? 1 : 0))
@@ -8416,6 +8457,7 @@
         key: stateKey,
         rawSignature,
         frames,
+        aligned: framesAligned,
         sampledIndexes,
         frameRefs,
         backgroundRefs: frameRefs.flat(),
@@ -10503,17 +10545,31 @@
     next.type = 'button';
     next.textContent = 'Next';
     next.setAttribute('aria-label', `Next ${controlLabelLower}`);
-    const align = prepared.dockingSceneMode ? document.createElement('button') : null;
-    const alignmentSupported = Boolean(align) && prepared.poses.every(entry => normalizeFormat(entry?.format) === 'pdb');
+    const xyzAlignSignature = prepared.xyzFrameOverlayAvailable === true
+      ? xyzFrameOverlayRawSignature(rawStructureData(activeConfig))
+      : '';
+    const xyzAlignFrames = xyzAlignSignature ? splitXyzFrames(rawStructureData(activeConfig)) : null;
+    const align = prepared.dockingSceneMode || xyzAlignFrames ? document.createElement('button') : null;
+    const alignmentSupported = Boolean(align) && (xyzAlignFrames
+      ? xyzFramesAlignable(xyzAlignFrames)
+      : prepared.poses.every(entry => normalizeFormat(entry?.format) === 'pdb'));
+    const alignmentOn = xyzAlignFrames
+      ? xyzFrameAlignment?.signature === xyzAlignSignature
+      : prepared.structureAlignmentEnabled === true;
     if (align) {
       align.type = 'button';
       align.className = 'buret-docking-pose-align';
-      align.textContent = prepared.structureAlignmentEnabled ? 'Aligned' : 'Align';
-      align.title = alignmentSupported
-        ? 'Align every structure to the first file using Cα atoms from the largest common chain'
-        : 'One-click alignment currently supports PDB structure scenes';
+      align.textContent = alignmentOn ? 'Aligned' : 'Align';
+      align.classList.toggle('active', alignmentOn);
+      align.title = !alignmentSupported
+        ? (xyzAlignFrames
+          ? 'Alignment needs every structure to list the same atoms in the same order'
+          : 'One-click alignment currently supports PDB structure scenes')
+        : xyzAlignFrames
+          ? 'Superimpose every structure onto the first one by atom order'
+          : 'Align every structure to the first file using Cα atoms from the largest common chain';
       align.disabled = !alignmentSupported;
-      align.setAttribute('aria-pressed', prepared.structureAlignmentEnabled ? 'true' : 'false');
+      align.setAttribute('aria-pressed', alignmentOn ? 'true' : 'false');
     }
     const loop = document.createElement('button');
     loop.type = 'button';
@@ -10753,7 +10809,43 @@
       window.addEventListener('pointerdown', onOutsidePointerDown, true);
       fileListDisposer = () => window.removeEventListener('pointerdown', onOutsidePointerDown, true);
     }
-    if (align && alignmentSupported) {
+    if (align && alignmentSupported && xyzAlignFrames) {
+      const toggleXyzAlignment = () => {
+        align.disabled = true;
+        const enabling = xyzFrameAlignment?.signature !== xyzAlignSignature;
+        try {
+          let result = null;
+          if (enabling) {
+            result = alignXyzFramesToFirst(xyzAlignFrames);
+            xyzFrameAlignment = { signature: xyzAlignSignature, frames: result.frames };
+          } else {
+            xyzFrameAlignment = null;
+          }
+          return applyXyzFrameOverlayVisibility(viewer, prepared, activePose, { focus: true, installControls: false }).then(() => {
+            align.textContent = enabling ? 'Aligned' : 'Align';
+            align.classList.toggle('active', enabling);
+            align.setAttribute('aria-pressed', enabling ? 'true' : 'false');
+            if (result) {
+              align.title = `Superimposed onto the first structure by atom order · ${result.atomCount} atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
+              setStatus(`[web] Aligned ${xyzAlignFrames.length} structures onto the first one by atom order (${result.atomCount} atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+            } else {
+              align.title = 'Superimpose every structure onto the first one by atom order';
+              setStatus('[web] Restored original structure coordinates.');
+            }
+            setTimeout(hideStatus, 2200);
+          }).catch(error => {
+            if (enabling) xyzFrameAlignment = null;
+            setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
+          }).finally(() => { align.disabled = false; });
+        } catch (error) {
+          if (enabling) xyzFrameAlignment = null;
+          align.disabled = false;
+          setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
+          return Promise.resolve();
+        }
+      };
+      align.addEventListener('click', () => { void toggleXyzAlignment(); });
+    } else if (align && alignmentSupported) {
       const toggleAlignment = () => {
         align.disabled = true;
         const enabling = prepared.structureAlignmentEnabled !== true;
@@ -10966,6 +11058,7 @@
       if (align) toggleRow.append(align);
       if (all) toggleRow.append(all);
     } else {
+      if (align) mainRow.append(align);
       if (all) mainRow.append(all);
       animationRow.append(speed, loop, slider);
     }
