@@ -4833,7 +4833,8 @@ assert.match(previewRuntimeCss, /body\.buret-toolbar-collapsed \.buret-generate-
 assert.match(previewRuntimeCss, /body:has\(\.msp-viewport-controls-buttons \.msp-hover-box-wrapper:hover\) \.buret-generate-3d-menu/);
 assert.match(previewViewer, /if \(collapsed\) \{[\s\S]*hideGenerate3DMenu\(\);/);
 assert.match(previewViewer, /const viewportControlRailRect = visibleRect\('\.msp-plugin \.msp-viewport-controls-buttons'\);/);
-assert.match(previewViewer, /window\.innerWidth - viewportControlRailRect\.left \+ FLOATING_LAYOUT_GAP \* 2/);
+assert.match(previewViewer, /const railRect = visibleRect\('#buret-viewport-rail'\) \|\| viewportControlRailRect;/);
+assert.match(previewViewer, /window\.innerWidth - railRect\.left \+ FLOATING_LAYOUT_GAP \* 2/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-generate-3d-control-right', generate3DControlRight \+ 'px'\);/);
 assert.match(previewRuntimeCss, /background: color-mix\(in srgb, var\(--buret-toolbar-background\) 92%/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot \{ display: none; align-items: center; \}/);
@@ -5473,7 +5474,7 @@ assert.match(previewViewer, /normalizeFormat\(target\.sourceEntry\?\.format\) ==
 assert.match(previewViewer, /format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf'/);
 assert.match(previewViewer, /const activePose = Math\.max\(0, Math\.min\(records\.length - 1, Number\(activeMolstarPrepared\?\.activePose\) \|\| 0\)\)/);
 assert.doesNotMatch(previewViewer, /if \(!image\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
-assert.match(previewViewer, /\$\{image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\}/);
+assert.match(previewViewer, /molstarMoleculePreviewCardHTML\(label, subtitle, image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\)/);
 assert.match(previewViewer, /function molstarPreviewLoadRDKitScript\(\)/);
 assert.match(previewViewer, /runtimeURL\('BurreteRDKitJSURL', '\.\.\/assets\/rdkit\/RDKit_minimal\.js'\)/);
 assert.match(previewViewer, /function molstarPreviewRDKitWasmCandidates\(\)/);
