@@ -8507,11 +8507,19 @@
   async function addMolstarGhostSurfaceRepresentation(viewer) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
+    // Glass look: the envelope stays lit while the illustrative cartoon under it
+    // keeps its flat shading, so the specular highlight reads as a surface rather
+    // than as a grey wash.
     const representation = {
       type: 'molecular-surface',
-      typeParams: { alpha: 0.24, transparentBackfaces: 'on' },
+      typeParams: {
+        alpha: 0.11,
+        transparentBackfaces: 'on',
+        ignoreLight: false,
+        material: { roughness: 0.08, metalness: 0, reflectivity: 1 }
+      },
       color: 'uniform',
-      colorParams: { value: 0x9aa3ad }
+      colorParams: { value: 0xc8d0d8 }
     };
     for (const structure of molstarCurrentStructures(viewer)) {
       const polymer = await tryCreateMolstarComponent(plugin, structure, 'polymer');
@@ -8699,6 +8707,33 @@
     };
   }
 
+  // Crystallographic waters are lone oxygens, so the bond-only line visual has
+  // nothing to draw for them. Dots keep those waters visible without changing how
+  // bonded MD solvent (GRO/Desmond) renders.
+  function molstarWaterPointRepresentation() {
+    return {
+      type: 'point',
+      typeParams: {
+        alpha: 0.5,
+        sizeFactor: 1,
+        pointSizeAttenuation: true,
+        pointStyle: 'circle'
+      },
+      color: 'uniform',
+      colorParams: { value: 0x4db6ff },
+      size: 'uniform',
+      sizeParams: { value: 0.22 }
+    };
+  }
+
+  function molstarWaterRepresentationFor(component) {
+    const structure = component?.cell?.obj?.data || component?.obj?.data || null;
+    for (const unit of structure?.units || []) {
+      if (unit.bonds?.edgeCount > 0) return molstarWaterLineRepresentation();
+    }
+    return molstarWaterPointRepresentation();
+  }
+
   async function applyMolstarWaterLineRepresentation(viewer) {
     if (!shouldUseMolstarWaterLines(activeConfig)) return;
     const plugin = viewer?.plugin;
@@ -8723,10 +8758,10 @@
       await plugin.managers.structure.component.removeRepresentations(waterComponents);
     }
     for (const component of waterComponents) {
-      await plugin.builders.structure.representation.addRepresentation(component.cell, molstarWaterLineRepresentation(), { tag: 'water' });
+      await plugin.builders.structure.representation.addRepresentation(component.cell, molstarWaterRepresentationFor(component), { tag: 'water' });
     }
     for (const component of createdWaterComponents) {
-      await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarWaterLineRepresentation(), { tag: 'water' });
+      await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarWaterRepresentationFor(component), { tag: 'water' });
     }
     return waterComponents.length;
   }
