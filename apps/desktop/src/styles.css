@@ -2633,6 +2633,34 @@ img.radix-menu-item-icon {
 .structure-inspector-section-title-button:focus-visible {
   color: var(--text-primary);
 }
+.structure-inspector-engine-notice {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line-subtler));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-subtle));
+  padding: 7px 8px;
+  justify-items: start;
+}
+.structure-inspector-engine-notice-row {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.structure-inspector-engine-notice-row span {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.structure-inspector-engine-notice-row strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
 .structure-inspector-xtb-card[data-collapsed] {
   gap: 0;
 }

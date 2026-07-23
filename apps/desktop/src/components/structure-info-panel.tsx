@@ -204,9 +204,22 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
     actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
     setActiveActionKey(null);
   };
+  // Only a checked-and-missing binary disables the run buttons; an unchecked one
+  // is not yet known to be missing.
+  const xtbMissing = xtbStatus?.installed === false;
   const openXtbSettingsFor = (scope: XtbSettingsScope) => {
     setXtbSettingsScope(scope);
     setXtbSettingsOpen(true);
+  };
+  const showXtbMoreMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    void showNativeContextMenu(XTB_MORE_OPERATIONS.map(([operation, text]) => ({
+      kind: "item" as const,
+      id: operation,
+      text,
+      detail: XTB_ACTION_TOOLTIPS[operation],
+      action: () => void actions.runXtbActiveOperation(operation),
+    })), { x: rect.left, y: rect.bottom + 6 }, { forceWeb: true });
   };
   const showXtbSettingsFor = (scope: XtbSettingsScope) => (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -306,69 +319,64 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           actions={actions}
         />
 
-        <section className="structure-brief-card structure-inspector-xtb-card" data-collapsed={!xtbOpen || undefined}>
-        <div className="structure-inspector-section-header">
-          <button
-            type="button"
-            className="structure-inspector-section-title-button"
-            aria-expanded={xtbOpen}
-            onClick={() => setXtbOpen((open) => !open)}
-          >
-            xTB
-            <ShortcutTooltip label="Semiempirical quantum calculations for the current molecular scope." />
-          </button>
-          <span>{xtbStatusLine(xtbStatus, isBrowserDev)}</span>
-        </div>
-        {xtbOpen ? (
-          <>
-            <div
-              className="structure-inspector-xtb-summary"
-              data-modified={xtbSettingsModified(xtbSettings) || undefined}
-              data-xtb-tooltip="Hamiltonian, convergence, charge, spin, solvation, and parallelism for xTB calculations."
+        <InspectorEngineCard
+          className="structure-inspector-xtb-card"
+          title="xTB"
+          tooltip="Semiempirical quantum calculations for the current molecular scope."
+          status={xtbStatusLine(xtbStatus, isBrowserDev)}
+          open={xtbOpen}
+          onToggle={() => setXtbOpen((open) => !open)}
+          summary={xtbSettingsSummary(xtbSettings)}
+          summaryTooltip="Hamiltonian, convergence, charge, spin, solvation, and parallelism for xTB calculations."
+          summaryModified={xtbSettingsModified(xtbSettings)}
+          onReset={xtbSettingsModified(xtbSettings) ? () => actions.setXtbSettings(defaultXtbSettings) : undefined}
+          notice={(
+            <EngineToolNotice
+              tools={[{
+                name: "xTB",
+                installed: xtbStatus?.installed !== false,
+                hint: xtbStatus?.installHint ?? "",
+                install: () => void actions.installXtb(),
+              }]}
+              onCheck={() => void actions.checkXtbStatus()}
+            />
+          )}
+        >
+          <div className="structure-brief-actions structure-brief-actions-grid">
+            <XtbActionButton label="Optimize" tooltip={XTB_ACTION_TOOLTIPS.optimize} disabled={xtbMissing} onClick={() => void actions.runXtbActiveOperation("optimize")} onContextMenu={showXtbSettingsFor("optimize")} />
+            <XtbActionButton label="Properties" tooltip={XTB_ACTION_TOOLTIPS.properties} disabled={xtbMissing} onClick={() => void actions.runXtbActiveOperation("properties")} onContextMenu={showXtbSettingsFor("properties")} />
+            <XtbActionButton label="Frequencies" tooltip={XTB_ACTION_TOOLTIPS["optimized-hessian"]} disabled={xtbMissing} onClick={() => void actions.runXtbActiveOperation("optimized-hessian")} onContextMenu={showXtbSettingsFor("optimized-hessian")} />
+            {/* Four of the seven operations are specialist runs, and giving them the
+                same weight as Optimize made the card read as a wall of buttons. */}
+            <button type="button" className="dock-action" disabled={xtbMissing} onClick={showXtbMoreMenu}>
+              More
+              <ShortcutTooltip label="IP/EA, Fukui, molecular dynamics, and metadynamics runs." />
+            </button>
+            <button
+              type="button"
+              className="dock-action"
+              aria-expanded={xtbSettingsOpen}
+              onClick={toggleGeneralXtbSettings}
             >
-              <span>{xtbSettingsSummary(xtbSettings)}</span>
-              {xtbSettingsModified(xtbSettings) ? (
-                <button type="button" className="structure-inspector-inline-action" onClick={() => actions.setXtbSettings(defaultXtbSettings)}>
-                  Reset
-                <ShortcutTooltip label="Restore the default GFN2 gas-phase calculation settings." />
-                </button>
-              ) : null}
-            </div>
-            <div className="structure-brief-actions structure-brief-actions-grid">
-              <XtbActionButton label="Optimize" tooltip={XTB_ACTION_TOOLTIPS.optimize} onClick={() => void actions.runXtbActiveOperation("optimize")} onContextMenu={showXtbSettingsFor("optimize")} />
-              <XtbActionButton label="Properties" tooltip={XTB_ACTION_TOOLTIPS.properties} onClick={() => void actions.runXtbActiveOperation("properties")} onContextMenu={showXtbSettingsFor("properties")} />
-              <XtbActionButton label="Frequencies" tooltip={XTB_ACTION_TOOLTIPS["optimized-hessian"]} onClick={() => void actions.runXtbActiveOperation("optimized-hessian")} onContextMenu={showXtbSettingsFor("optimized-hessian")} />
-              <XtbActionButton label="IP/EA" tooltip={XTB_ACTION_TOOLTIPS.vipea} onClick={() => void actions.runXtbActiveOperation("vipea")} onContextMenu={showXtbSettingsFor("vipea")} />
-              <XtbActionButton label="Fukui" tooltip={XTB_ACTION_TOOLTIPS.vfukui} onClick={() => void actions.runXtbActiveOperation("vfukui")} onContextMenu={showXtbSettingsFor("vfukui")} />
-              <XtbActionButton label="MD" tooltip={XTB_ACTION_TOOLTIPS.md} onClick={() => void actions.runXtbActiveOperation("md")} onContextMenu={showXtbSettingsFor("md")} />
-              <XtbActionButton label="Metadyn" tooltip={XTB_ACTION_TOOLTIPS.metadyn} onClick={() => void actions.runXtbActiveOperation("metadyn")} onContextMenu={showXtbSettingsFor("metadyn")} />
-              <button
-                type="button"
-                className="dock-action"
-                aria-expanded={xtbSettingsOpen}
-                onClick={toggleGeneralXtbSettings}
-              >
-                Settings
-                <ShortcutTooltip label="Hamiltonian, charge, spin, solvation, accuracy, property, and dynamics parameters." />
-              </button>
-              <button type="button" className="dock-action" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
-                Jobs
-                <ShortcutTooltip label="xTB calculation history, energies, properties, trajectories, and output artifacts." />
-              </button>
-            </div>
-            {xtbSettingsOpen ? (
-              <XtbInlineSettings
-                settings={xtbSettings}
-                scope={xtbSettingsScope}
-                xtbStatus={xtbStatus}
-                isBrowserDev={isBrowserDev}
-                actions={actions}
-                onClose={() => setXtbSettingsOpen(false)}
-              />
-            ) : null}
-          </>
-        ) : null}
-        </section>
+              Settings
+              <ShortcutTooltip label="Hamiltonian, charge, spin, solvation, accuracy, property, and dynamics parameters." />
+            </button>
+            <button type="button" className="dock-action" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
+              Jobs
+              <ShortcutTooltip label="xTB calculation history, energies, properties, trajectories, and output artifacts." />
+            </button>
+          </div>
+          {xtbSettingsOpen ? (
+            <XtbInlineSettings
+              settings={xtbSettings}
+              scope={xtbSettingsScope}
+              xtbStatus={xtbStatus}
+              isBrowserDev={isBrowserDev}
+              actions={actions}
+              onClose={() => setXtbSettingsOpen(false)}
+            />
+          ) : null}
+        </InspectorEngineCard>
 
         {latestXtbJob?.result ? (
           <XtbResultsPanel document={document} job={latestXtbJob} actions={actions} />
@@ -1104,47 +1112,57 @@ function ConformerWorkflowCard({
     setSettingsPanel((current) => current === panel ? null : panel);
   };
   return (
-    <section className="structure-brief-card conformer-inspector-card" data-collapsed={!open || undefined}>
-      <div className="structure-inspector-section-header">
-        <button type="button" className="structure-inspector-section-title-button" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-          Conformers
-          <ShortcutTooltip label="Conformer search and ensemble pruning for small molecules or selected objects." />
+    <InspectorEngineCard
+      className="conformer-inspector-card"
+      title="Conformers"
+      tooltip="Conformer search and ensemble pruning for small molecules or selected objects."
+      status={conformerStatusSummary(status)}
+      open={open}
+      onToggle={() => setOpen((current) => !current)}
+      summary={conformerSettingsSummary(settings)}
+      scope={selectedConformerAction ? "Scope: selected object" : undefined}
+      notice={(
+        <EngineToolNotice
+          tools={conformerTools(status)}
+          onCheck={() => void actions.checkConformerStatus()}
+        />
+      )}
+    >
+      <div className="structure-brief-actions structure-brief-actions-grid">
+        <button type="button" className="dock-action" disabled={crestDisabled} onClick={() => void actions.runConformerOperation("crest-generate", document, selectedConformerAction)} onContextMenu={showSettingsFor("crest")}>
+          CREST
+          <ShortcutTooltip label="Sample low-energy conformers with CREST." />
         </button>
-        <span>{conformerStatusSummary(status)}</span>
+        <button type="button" className="dock-action" disabled={prismDisabled} onClick={() => void actions.runConformerOperation("prism-prune", document)} onContextMenu={showSettingsFor("prism")}>
+          PRISM
+          <ShortcutTooltip label="Prune duplicate or redundant conformers." />
+        </button>
+        <button type="button" className="dock-action" aria-expanded={settingsPanel !== null} onClick={() => setSettingsPanel((current) => current === "all" ? null : "all")}>
+          Settings
+          <ShortcutTooltip label="CREST and PRISM run parameters." />
+        </button>
+        <button type="button" className="dock-action" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
+          Jobs
+          <ShortcutTooltip label="Calculation history and output artifacts." />
+        </button>
       </div>
-      {open ? (
-        <>
-          <div className="structure-inspector-xtb-summary">
-            <span>{conformerSettingsSummary(settings)}</span>
-          </div>
-          {selectedConformerAction ? (
-            <div className="structure-brief-notes">
-              <span>Scope: selected object</span>
-            </div>
-          ) : null}
-          <div className="structure-brief-actions structure-brief-actions-grid">
-            <button type="button" className="dock-action" disabled={crestDisabled} onClick={() => void actions.runConformerOperation("crest-generate", document, selectedConformerAction)} onContextMenu={showSettingsFor("crest")}>
-              CREST
-              <ShortcutTooltip label="Sample low-energy conformers with CREST." />
-            </button>
-            <button type="button" className="dock-action" disabled={prismDisabled} onClick={() => void actions.runConformerOperation("prism-prune", document)} onContextMenu={showSettingsFor("prism")}>
-              PRISM
-              <ShortcutTooltip label="Prune duplicate or redundant conformers." />
-            </button>
-            <button type="button" className="dock-action" aria-expanded={settingsPanel !== null} onClick={() => setSettingsPanel((current) => current === "all" ? null : "all")}>
-              Settings
-              <ShortcutTooltip label="CREST and PRISM run parameters." />
-            </button>
-            <button type="button" className="dock-action" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
-              Jobs
-              <ShortcutTooltip label="Calculation history and output artifacts." />
-            </button>
-          </div>
-          {settingsPanel ? <ConformerInlineSettings panel={settingsPanel} settings={settings} status={status} actions={actions} /> : null}
-        </>
-      ) : null}
-    </section>
+      {settingsPanel ? <ConformerInlineSettings panel={settingsPanel} settings={settings} status={status} actions={actions} /> : null}
+    </InspectorEngineCard>
   );
+}
+
+// Open Babel only appears once the backend has reported on it; the older status
+// payloads leave it out entirely.
+function conformerTools(status: ShellViewState["conformerStatus"]): EngineTool[] {
+  if (!status) return [];
+  const tools: EngineTool[] = [
+    { name: "CREST", installed: status.crest.installed, hint: status.crest.installHint },
+    { name: "PRISM Pruner", installed: status.prism.installed, hint: status.prism.installHint },
+  ];
+  if (status.openbabel) {
+    tools.push({ name: "Open Babel", installed: status.openbabel.installed, hint: status.openbabel.installHint });
+  }
+  return tools;
 }
 
 function ConformerInlineSettings({
@@ -1754,6 +1772,13 @@ const XTB_ACTION_TOOLTIPS = {
   metadyn: "Bias the xTB dynamics to explore conformational space beyond local minima.",
 } satisfies Record<string, string>;
 
+const XTB_MORE_OPERATIONS = [
+  ["vipea", "IP/EA"],
+  ["vfukui", "Fukui"],
+  ["md", "MD"],
+  ["metadyn", "Metadyn"],
+] as const satisfies readonly (readonly [keyof typeof XTB_ACTION_TOOLTIPS, string])[];
+
 const XTB_SETTING_TOOLTIPS = {
   method: "Choose the xTB Hamiltonian. GFN2 is the default balanced method; GFNFF is faster for large systems.",
   optLevel: "Controls geometry optimization convergence. Loose is faster; tight and verytight are more conservative.",
@@ -1847,19 +1872,123 @@ function XtbSettingsCategoryBar({
 function XtbActionButton({
   label,
   tooltip,
+  disabled,
   onClick,
   onContextMenu,
 }: {
   label: string;
   tooltip: string;
+  disabled?: boolean;
   onClick: () => void;
   onContextMenu: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
-    <button type="button" className="dock-action structure-inspector-xtb-action" onClick={onClick} onContextMenu={onContextMenu}>
+    <button type="button" className="dock-action structure-inspector-xtb-action" disabled={disabled} onClick={onClick} onContextMenu={onContextMenu}>
       {label}
       <ShortcutTooltip label={tooltip} />
     </button>
+  );
+}
+
+// The conformer and xTB cards were the same card written twice: a collapsible
+// header with a status, a settings summary, a grid of runs and an inline
+// settings body. They now share one.
+function InspectorEngineCard({
+  className,
+  title,
+  tooltip,
+  status,
+  open,
+  onToggle,
+  summary,
+  summaryTooltip,
+  summaryModified,
+  onReset,
+  notice,
+  scope,
+  children,
+}: {
+  className: string;
+  title: string;
+  tooltip: string;
+  status: string;
+  open: boolean;
+  onToggle: () => void;
+  summary: string;
+  summaryTooltip?: string;
+  summaryModified?: boolean;
+  onReset?: () => void;
+  notice?: ReactNode;
+  scope?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className={`structure-brief-card ${className}`} data-collapsed={!open || undefined}>
+      <div className="structure-inspector-section-header">
+        <button type="button" className="structure-inspector-section-title-button" aria-expanded={open} onClick={onToggle}>
+          {title}
+          <ShortcutTooltip label={tooltip} />
+        </button>
+        <span>{status}</span>
+      </div>
+      {open ? (
+        <>
+          <div
+            className="structure-inspector-xtb-summary"
+            data-modified={summaryModified || undefined}
+            data-xtb-tooltip={summaryTooltip}
+          >
+            <span>{summary}</span>
+            {onReset ? (
+              <button type="button" className="structure-inspector-inline-action" onClick={onReset}>
+                Reset
+                <ShortcutTooltip label="Restore the default settings." />
+              </button>
+            ) : null}
+          </div>
+          {scope ? (
+            <div className="structure-brief-notes">
+              <span>{scope}</span>
+            </div>
+          ) : null}
+          {notice}
+          {children}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+type EngineTool = {
+  name: string;
+  installed: boolean;
+  hint: string;
+  install?: () => void;
+};
+
+// A disabled button with no explanation is a dead end. The backend already says
+// how to install each tool, so the card repeats that instead of swallowing it.
+function EngineToolNotice({ tools, onCheck }: { tools: EngineTool[]; onCheck: () => void }) {
+  const missing = tools.filter((tool) => !tool.installed);
+  if (missing.length === 0) return null;
+  return (
+    <div className="structure-inspector-engine-notice">
+      {missing.map((tool) => (
+        <div key={tool.name} className="structure-inspector-engine-notice-row">
+          {/* Every hint the backend writes already names its own tool, so repeating
+              the name here would only read as a stutter. */}
+          <span>{tool.hint || `${tool.name} is not installed.`}</span>
+          {tool.install ? (
+            <button type="button" className="structure-inspector-inline-action" onClick={tool.install}>
+              Install {tool.name}
+            </button>
+          ) : null}
+        </div>
+      ))}
+      <button type="button" className="structure-inspector-inline-action structure-inspector-engine-notice-check" onClick={onCheck}>
+        Check again
+      </button>
+    </div>
   );
 }
 

@@ -790,6 +790,9 @@ assert.match(browserDevDescriptors, /server\.middlewares\.use\("\/__burette\/des
 assert.match(browserDevDescriptors, /sendJsonError\(res, 500, error, "no-cache"\)/);
 assert.match(viteConfig, /registerBrowserDevConformerJobRoutes\(server,/);
 assert.match(browserDevConformerJobs, /server\.middlewares\.use\("\/__burette\/conformer-status"/);
+// Browser dev prepares CREST input with obabel, so its status payload reports on
+// it the same way the Tauri command does.
+assert.match(viteConfig, /const obabel = resolveExecutable\("obabel"\);\s*return \{\s*openbabel: obabel/);
 assert.match(browserDevConformerJobs, /server\.middlewares\.use\("\/__burette\/prepare-conformer-job"/);
 assert.match(viteConfig, /registerBrowserDevXtbRoutes\(server,/);
 assert.match(browserDevXtb, /server\.middlewares\.use\("\/__burette\/xtb-status"/);
@@ -1216,6 +1219,10 @@ assert.match(appChemistryJobsHook, /normalizeXtbSettings\(settings\)/);
 assert.match(appChemistryJobsHook, /saveXtbSettings\(normalized\)/);
 assert.match(appChemistryJobsHook, /requestConformerStatus\(\)/);
 assert.match(appChemistryJobsHook, /pushStatus\(conformerStatusLine\(status\)\)/);
+// Both statuses are probed at startup, silently - the inspector decides what it
+// can offer from them, so "not checked" is not a useful starting state.
+assert.match(appChemistryJobsHook, /let cancelled = false;\s*void requestConformerStatus\(\)\.then\(\(status\) => \{ if \(!cancelled\) setConformerStatus\(status\); \}\)/);
+assert.match(appChemistryJobsHook, /void requestXtbStatus\(\)\.then\(\(status\) => \{ if \(!cancelled\) setXtbStatus\(status\); \}\)/);
 assert.match(appChemistryJobsHook, /requestXtbStatus\(\)/);
 assert.match(appChemistryJobsHook, /installXtbRequest\(\)/);
 assert.match(appChemistryJobsHook, /cancelConformerRequest\(jobId\)/);
@@ -2436,6 +2443,15 @@ assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
 assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.path\)/);
 assert.match(structureInfoPanel, /StructureSectionHeader title="Composition"/);
+// Conformers and xTB share one card shell, and a missing binary has to say what
+// it is and how to get it rather than leaving a dead disabled button.
+assert.match(structureInfoPanel, /function InspectorEngineCard\(\{/);
+assert.match(structureInfoPanel, /function EngineToolNotice\(\{ tools, onCheck \}/);
+assert.match(structureInfoPanel, /const missing = tools\.filter\(\(tool\) => !tool\.installed\)/);
+assert.match(structureInfoPanel, /const xtbMissing = xtbStatus\?\.installed === false/);
+assert.match(structureInfoPanel, /install: \(\) => void actions\.installXtb\(\)/);
+assert.match(structureInfoPanel, /function conformerTools\(status: ShellViewState\["conformerStatus"\]\): EngineTool\[\]/);
+assert.match(structureInfoPanel, /const XTB_MORE_OPERATIONS = \[/);
 assert.match(structureInfoPanel, /key: "maestro"/);
 assert.match(structureInfoPanel, /label: "Maestro entries"/);
 assert.match(structureInfoPanel, /\["Maestro entry", summary\.maestroRows \?\? \[\]\]/);
