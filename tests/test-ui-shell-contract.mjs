@@ -5866,7 +5866,7 @@ const closeTabShortcutIndex = shortcuts.indexOf('if (commandKey && !event.altKey
 assert.ok(nativeShortcutGuardIndex >= 0 && nativeShortcutGuardIndex < closeTabShortcutIndex);
 assert.doesNotMatch(shortcuts, /commandKey && key === "w"/);
 for (const embeddedViewer of [previewViewer, gridViewer, agentPreviewViewer, agentGridViewer]) {
-  assert.match(embeddedViewer, /commandKey && event\.shiftKey && key === 'p'/);
+  assert.match(embeddedViewer, /commandKey && !event\.altKey && key === 'p'/);
   assert.match(embeddedViewer, /!commandKey && !event\.altKey && key === '\/'/);
 }
 for (const embeddedGridViewer of [gridViewer, agentGridViewer]) {

@@ -31,6 +31,14 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         actions.openCommandPalette();
         return;
       }
+      // Kept above the Tauri gate so the webview default (macOS print) is
+      // suppressed even when the native menu accelerator owns the shortcut;
+      // otherwise the print sheet steals focus and dismisses the palette.
+      if (commandKey && !event.altKey && key === "p") {
+        event.preventDefault();
+        actions.openCommandPalette();
+        return;
+      }
       if (commandKey && !event.altKey && !event.shiftKey && /^[1-9]$/.test(event.key)) {
         const tab = state.tabs[Number(event.key) - 1];
         if (tab) {
@@ -96,11 +104,6 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         } else {
           void actions.exportActivePreviewAsPng();
         }
-        return;
-      }
-      if (commandKey && !event.altKey && key === "p") {
-        event.preventDefault();
-        actions.openCommandPalette();
         return;
       }
       if (commandKey && !event.altKey && !event.shiftKey && key === "j") {
