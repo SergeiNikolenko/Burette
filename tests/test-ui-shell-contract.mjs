@@ -4885,6 +4885,14 @@ assert.match(previewViewer, /function viewportAnimateMenu\(menu\) \{/);
 assert.match(previewViewer, /const VIEWPORT_MOTION_ANIMATIONS = new Set\(\[/);
 assert.match(previewViewer, /'built-in\.animate-camera-spin'/);
 assert.match(previewViewer, /\.filter\(entry => entry\.applicability\.canApply \|\| entry\.applicability\.reason\)/);
+// Rock reads an angle and an axis besides its speed; a partial payload leaves the
+// maths on undefined and the scene simply never moves.
+assert.match(previewViewer, /rock: \{ value: 0\.3, min: -5, max: 5, step: 0\.1, params: \{ angle: 10, axis: \[0, -1, 0\] \} \}/);
+assert.match(previewViewer, /spin: \{ value: 0\.1, min: -2, max: 2, step: 0\.01, params: \{ axis: \[0, -1, 0\] \} \}/);
+// Mol* defaults Unwind Assembly to looping, so an animation started from here has
+// to be told to finish.
+assert.match(previewViewer, /if \('playOnce' in params\) params\.playOnce = true;/);
+assert.match(previewViewer, /manager\.play\(animation, viewportAnimationParams\(animation, plugin\)\)/);
 assert.match(previewViewer, /plugin\?\.behaviors\?\.state\?\.isAnimating\?\.subscribe\?\.\(updateViewportAnimateState\)/);
 // Motion lives on the animate button now, so the camera menu must not offer it too.
 assert.doesNotMatch(

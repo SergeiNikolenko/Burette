@@ -6315,9 +6315,12 @@
     ['spin', 'Spin'],
     ['rock', 'Rock']
   ];
+  // Each animation reads more than a speed - spin needs an axis, rock an axis and
+  // a sweep angle - and a missing one leaves the maths on undefined, which is a
+  // scene that simply never moves. The rest of the payload travels with the speed.
   const VIEWPORT_MOTION_SPEEDS = {
-    spin: { value: 0.1, min: -2, max: 2, step: 0.01 },
-    rock: { value: 0.3, min: -5, max: 5, step: 0.1 }
+    spin: { value: 0.1, min: -2, max: 2, step: 0.01, params: { axis: [0, -1, 0] } },
+    rock: { value: 0.3, min: -5, max: 5, step: 0.1, params: { angle: 10, axis: [0, -1, 0] } }
   };
   // The plugin ships timed camera spin and rock too; the Motion switch covers the
   // same ground without a stopwatch, so they are not listed twice.
@@ -6454,7 +6457,13 @@
       // is just an entry you will never be able to use.
       .filter(entry => entry.applicability.canApply || entry.applicability.reason);
     if (!animations.length) return;
-    sceneTreeMenuSection(menu, 'Play once');
+    // Stop leads, because the thing you most need from this menu while something
+    // is moving is the way to make it stop.
+    if (playing) {
+      sceneTreeMenuSection(menu, 'Running');
+      viewportMenuItem(menu, 'Stop', 'animation-stop', { icon: VIEWPORT_ICON.stop });
+    }
+    sceneTreeMenuSection(menu, 'Animations');
     for (const entry of animations) {
       viewportMenuItem(menu, entry.animation.display.name, 'animation-play', {
         icon: VIEWPORT_ICON.play,
@@ -6465,9 +6474,17 @@
         title: entry.applicability.reason || entry.animation.display.description
       });
     }
-    if (!playing) return;
-    sceneTreeMenuSection(menu);
-    viewportMenuItem(menu, 'Stop', 'animation-stop', { icon: VIEWPORT_ICON.stop });
+  }
+
+  // play() with no params leaves each animation on its own defaults, and Mol*
+  // defaults Unwind Assembly to looping - a scene that keeps rebuilding itself
+  // under every click until someone finds the stop button.
+  function viewportAnimationParams(animation, plugin) {
+    const schema = typeof animation.params === 'function' ? animation.params(plugin) : animation.params;
+    const params = {};
+    for (const [key, value] of Object.entries(schema || {})) params[key] = value?.defaultValue;
+    if ('playOnce' in params) params.playOnce = true;
+    return params;
   }
 
   function viewportAnimationApplicability(animation, plugin) {
@@ -6485,8 +6502,7 @@
     const manager = plugin?.managers?.animation;
     const animation = manager?.animations?.[index];
     if (!animation) return;
-    const params = manager.getParams?.()?.params?.[animation.name];
-    Promise.resolve(manager.play(animation, params?.defaultValue ?? {}))
+    Promise.resolve(manager.play(animation, viewportAnimationParams(animation, plugin)))
       .then(() => updateViewportAnimateState())
       .catch(error => setStatus(`[web] Animation failed. ${error?.message || error}`, 'error'));
   }
@@ -6566,10 +6582,9 @@
     const trackball = plugin?.canvas3d?.props?.trackball;
     const limits = VIEWPORT_MOTION_SPEEDS[name];
     if (!trackball) return;
-    // Spin turns about an axis in camera space; rock only takes a speed.
-    const params = { speed: Number.isFinite(speed) ? speed : limits?.value };
-    if (name === 'spin') params.axis = [0, -1, 0];
-    const animate = limits ? { name, params } : { name: 'off', params: {} };
+    const animate = limits
+      ? { name, params: { ...limits.params, speed: Number.isFinite(speed) ? speed : limits.value } }
+      : { name: 'off', params: {} };
     plugin.canvas3d.setProps({ trackball: { ...trackball, animate } });
     updateViewportAnimateState();
   }
