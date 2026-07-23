@@ -34,8 +34,6 @@ type ThreeRuntime = {
 
 const MAX_LASSO_POINTS = 4_096;
 const BASE_POINT_SIZE = 0.055;
-const BASE_SELECTED_POINT_SIZE = 0.09;
-const BASE_HOVERED_POINT_SIZE = 0.13;
 const POINT_HIT_RADIUS_PX = 6;
 
 export function ChemicalSpace3D({
@@ -117,8 +115,8 @@ export function ChemicalSpace3D({
     }));
     scene.add(points);
 
-    const selectedPoints = overlayPoints(primaryColor, pointTexture, BASE_SELECTED_POINT_SIZE * pointScale);
-    const hoveredPoints = overlayPoints(foregroundColor, pointTexture, BASE_HOVERED_POINT_SIZE * pointScale);
+    const selectedPoints = overlayPoints(primaryColor, pointTexture, BASE_POINT_SIZE * pointScale * densityScale);
+    const hoveredPoints = overlayPoints(primaryColor, pointTexture, BASE_POINT_SIZE * pointScale * densityScale);
     scene.add(selectedPoints, hoveredPoints);
 
     const grid = new THREE.GridHelper(2.5, 10, primaryColor, foregroundColor);
@@ -187,8 +185,8 @@ export function ChemicalSpace3D({
     };
     const updatePointScale = (nextPointScale: number) => {
       points.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
-      selectedPoints.material.size = BASE_SELECTED_POINT_SIZE * nextPointScale;
-      hoveredPoints.material.size = BASE_HOVERED_POINT_SIZE * nextPointScale;
+      selectedPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
+      hoveredPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
       render();
     };
 

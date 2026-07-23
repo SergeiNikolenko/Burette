@@ -638,7 +638,7 @@ function ChemicalSpace2D({
       context.arc(
         point.x,
         point.y,
-        (hot ? 5.5 : active ? 4.5 : basePointRadius) * pointScale,
+        basePointRadius * pointScale,
         0,
         Math.PI * 2,
       );
