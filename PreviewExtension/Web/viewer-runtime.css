@@ -2409,6 +2409,9 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   background: var(--buret-molstar-panel-background);
   box-shadow: 0 18px 44px var(--buret-molstar-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  /* Rows are controls, not prose: dragging across one used to leave a stray text
+     highlight over the label. */
+  user-select: none;
 }
 .buret-scene-tree-header {
   display: flex;
@@ -2683,6 +2686,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   max-height: min(70vh, 440px);
   overflow-y: auto;
   overscroll-behavior: contain;
+  user-select: none;
   padding: 4px;
   border: 1px solid var(--buret-molstar-border);
   border-radius: 9px;
@@ -3036,6 +3040,16 @@ body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-present {
 body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-missing {
   opacity: 0.5;
 }
+/* Dark gets its header strip for free — panel and row fills differ there. Light
+   maps both onto the same tint, so the controls melt into the sequence and the
+   whole card reads as one flat slab. Put the reading surface on the brighter
+   fill and leave the strip on the panel tint, which restores the same split. */
+body.buret-theme-light .msp-plugin .msp-sequence .msp-sequence-wrapper-non-empty {
+  background: var(--buret-molstar-field-background) !important;
+}
+body.buret-theme-light .msp-plugin .msp-sequence .msp-sequence-select {
+  background: var(--buret-control-fill) !important;
+}
 
 /* Molecule context menu.
    Shares the scene tree menu's chrome so the two right-click menus in the viewer
@@ -3047,6 +3061,7 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender
   max-height: min(70vh, 460px);
   overflow-y: auto;
   overscroll-behavior: contain;
+  user-select: none;
   padding: 4px;
   border: 1px solid var(--buret-molstar-border);
   border-radius: var(--buret-molstar-panel-radius);

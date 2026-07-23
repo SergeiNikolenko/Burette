@@ -3700,6 +3700,7 @@
     installMolstarFloatingPanelTracking();
     initSceneTree(viewer);
     initSequenceResize();
+    installSequenceSelectionMode();
     installViewerResizeObserver(viewer);
     updateToolbarVisibility();
     updateSdfPoseButton();
@@ -5727,6 +5728,43 @@
     document.querySelectorAll('.msp-sequence-select [title]').forEach(element => element.removeAttribute('title'));
   }
 
+  // Mol* reads a plain click on the sequence as "focus", which sets a focus
+  // representation and flies the camera into the residue — picking a stretch of
+  // sequence should just mark it. Its own selection mode makes the same click
+  // select instead, so it is switched on for the length of a sequence interaction
+  // and put back afterwards, leaving clicks on the 3D view to focus as before.
+  function installSequenceSelectionMode() {
+    if (document.body.dataset.buretSequenceSelectBound === '1') return;
+    document.body.dataset.buretSequenceSelectBound = '1';
+    let previousMode = null;
+    const leave = () => {
+      if (previousMode === null) return;
+      const restored = previousMode;
+      previousMode = null;
+      const plugin = activeMolstarViewer()?.plugin;
+      if (plugin) plugin.selectionMode = restored;
+    };
+    // Held for as long as the strip is being worked in, and handed back on the
+    // first press elsewhere. Releasing on pointerup instead looks tidier but is
+    // wrong: Mol* applies a sequence pick twice, a few milliseconds apart, and a
+    // release landing between the two makes the second one wipe the selection the
+    // first just made. The press that ends the run arrives here before Mol* has
+    // acted on it, so the 3D view still gets its usual focus-on-click.
+    const enter = event => {
+      if (!event.target?.closest?.('.msp-sequence')) {
+        leave();
+        return;
+      }
+      if (previousMode !== null) return;
+      const plugin = activeMolstarViewer()?.plugin;
+      if (!plugin) return;
+      previousMode = plugin.selectionMode === true;
+      plugin.selectionMode = true;
+    };
+    document.addEventListener('pointerdown', enter, true);
+    window.addEventListener('blur', leave);
+  }
+
   // Mol* pins the sequence region to a fixed height; this drags it, in the same
   // shape as the molecule preview's resize edges.
   function initSequenceResize() {
@@ -5857,6 +5895,15 @@
         streamSceneTreeReprAlpha(ref, percent / 100);
       });
       document.addEventListener('keydown', event => {
+        // Cmd/Ctrl+T opens the tree. The viewer runs in a webview, so the browser
+        // keeps none of its own claim on the combination.
+        if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey
+          && String(event.key).toLowerCase() === 't') {
+          if (toggle.classList.contains('hidden')) return;
+          event.preventDefault();
+          setSceneTreeOpen(panel.classList.contains('hidden'));
+          return;
+        }
         if (event.key !== 'Escape') return;
         if (document.getElementById('buret-scene-tree-menu')) closeSceneTreeMenu();
         else if (!panel.classList.contains('hidden')) setSceneTreeOpen(false);
