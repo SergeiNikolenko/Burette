@@ -664,14 +664,14 @@ function ChemicalSpace2D({
     }
   }, [camera, hovered, lasso, normalized, pointScale, result.sourceRecordIds, selected, viewport]);
 
-  const localPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
+  const localPoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
 
   const hoverNearest = (point: Point2) => {
     let nearest: ProjectedPoint | null = null;
-    let distanceSquared = Math.max(8, pointScale * 5.5) ** 2;
+    let distanceSquared = Math.max(4, adaptivePointRadius(result.successfulRecords) * pointScale + 3) ** 2;
     for (const candidate of projectedRef.current) {
       const nextDistance = (candidate.x - point.x) ** 2 + (candidate.y - point.y) ** 2;
       if (nextDistance < distanceSquared) {
@@ -710,7 +710,19 @@ function ChemicalSpace2D({
         onWheel={(event) => {
           event.preventDefault();
           const factor = event.deltaY > 0 ? 0.9 : 1.1;
-          setCamera((value) => ({ ...value, zoom: Math.max(0.35, Math.min(5, value.zoom * factor)) }));
+          const cursor = localPoint(event);
+          setCamera((value) => {
+            const zoom = Math.max(0.35, Math.min(5, value.zoom * factor));
+            const ratio = zoom / value.zoom;
+            const centerX = viewport.width / 2;
+            const centerY = viewport.height / 2;
+            return {
+              ...value,
+              zoom,
+              panX: cursor.x - centerX - (cursor.x - centerX - value.panX) * ratio,
+              panY: cursor.y - centerY - (cursor.y - centerY - value.panY) * ratio,
+            };
+          });
         }}
         onPointerDown={(event) => {
           event.currentTarget.focus({ preventScroll: true });

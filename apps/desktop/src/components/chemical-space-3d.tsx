@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 type Point2 = { x: number; y: number };
-type ProjectedPoint = Point2 & { sourceRecordId: number };
+type ProjectedPoint = Point2 & { sourceRecordId: number; depth: number };
 type MoleculePreview = {
   sourceRecordId: number;
   name: string;
@@ -36,6 +36,7 @@ const MAX_LASSO_POINTS = 4_096;
 const BASE_POINT_SIZE = 0.055;
 const BASE_SELECTED_POINT_SIZE = 0.09;
 const BASE_HOVERED_POINT_SIZE = 0.13;
+const POINT_HIT_RADIUS_PX = 6;
 
 export function ChemicalSpace3D({
   positions,
@@ -91,6 +92,7 @@ export function ChemicalSpace3D({
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = false;
     controls.enablePan = true;
+    controls.enableZoom = false;
     controls.minDistance = 1.1;
     controls.maxDistance = 12;
     controls.target.set(0, 0, 0);
@@ -130,22 +132,21 @@ export function ChemicalSpace3D({
     scene.add(axes);
 
     const indexById = new Map(sourceRecordIds.map((sourceRecordId, index) => [sourceRecordId, index]));
-    const raycaster = new THREE.Raycaster();
-    raycaster.params.Points = { threshold: 0.075 };
-    const pointer = new THREE.Vector2();
     let pointerDown: Point2 | null = null;
     let pointerMoved = false;
 
     const projectPoints = () => {
       const width = Math.max(1, host.clientWidth);
       const height = Math.max(1, host.clientHeight);
-      projectedRef.current = positionsRef.current.map((position, index) => {
+      projectedRef.current = positionsRef.current.flatMap((position, index) => {
         const projected = new THREE.Vector3(...position).project(camera);
-        return {
+        if (projected.z < -1 || projected.z > 1) return [];
+        return [{
           x: (projected.x * 0.5 + 0.5) * width,
           y: (-projected.y * 0.5 + 0.5) * height,
+          depth: projected.z,
           sourceRecordId: sourceRecordIds[index],
-        };
+        }];
       });
       const activePreview = previewRef.current;
       const anchor = activePreview
@@ -195,14 +196,50 @@ export function ChemicalSpace3D({
       const rect = renderer.domElement.getBoundingClientRect();
       return { x: event.clientX - rect.left, y: event.clientY - rect.top };
     };
+    const nearestProjectedPoint = (point: Point2) => {
+      let nearest: ProjectedPoint | null = null;
+      let distanceSquared = POINT_HIT_RADIUS_PX ** 2;
+      for (const candidate of projectedRef.current) {
+        const nextDistance = (candidate.x - point.x) ** 2 + (candidate.y - point.y) ** 2;
+        if (
+          nextDistance < distanceSquared
+          || (nextDistance === distanceSquared && nearest !== null && candidate.depth < nearest.depth)
+        ) {
+          nearest = candidate;
+          distanceSquared = nextDistance;
+        }
+      }
+      return nearest;
+    };
     const hoverNearest = (event: PointerEvent) => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(pointer, camera);
-      const intersection = raycaster.intersectObject(points, false)[0];
-      const sourceRecordId = intersection?.index === undefined ? null : sourceRecordIds[intersection.index] ?? null;
+      const sourceRecordId = nearestProjectedPoint(localPoint(event))?.sourceRecordId ?? null;
       onHoverRef.current(sourceRecordId);
+      return sourceRecordId;
+    };
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = renderer.domElement.getBoundingClientRect();
+      const pointer = new THREE.Vector3(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+        0.5,
+      ).unproject(camera);
+      const rayDirection = pointer.sub(camera.position).normalize();
+      const viewDirection = new THREE.Vector3();
+      camera.getWorldDirection(viewDirection);
+      const denominator = rayDirection.dot(viewDirection);
+      if (Math.abs(denominator) < Number.EPSILON) return;
+
+      const anchorDistance = controls.target.clone().sub(camera.position).dot(viewDirection) / denominator;
+      const anchor = camera.position.clone().addScaledVector(rayDirection, anchorDistance);
+      const currentDistance = camera.position.distanceTo(controls.target);
+      const factor = event.deltaY > 0 ? 1.1 : 0.9;
+      const nextDistance = Math.max(controls.minDistance, Math.min(controls.maxDistance, currentDistance * factor));
+      const ratio = nextDistance / currentDistance;
+      camera.position.sub(anchor).multiplyScalar(ratio).add(anchor);
+      controls.target.sub(anchor).multiplyScalar(ratio).add(anchor);
+      controls.update();
+      render();
     };
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
@@ -225,9 +262,8 @@ export function ChemicalSpace3D({
         return;
       }
       pointerDown = null;
-      hoverNearest(event);
-      const nextHovered = raycaster.intersectObject(points, false)[0]?.index;
-      onSelectRef.current(nextHovered === undefined ? [] : [sourceRecordIds[nextHovered]]);
+      const sourceRecordId = hoverNearest(event);
+      onSelectRef.current(sourceRecordId === null ? [] : [sourceRecordId]);
     };
     const onPointerLeave = () => {
       pointerDown = null;
@@ -259,6 +295,7 @@ export function ChemicalSpace3D({
     renderer.domElement.addEventListener("pointermove", onPointerMove);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
     renderer.domElement.addEventListener("pointerleave", onPointerLeave);
+    renderer.domElement.addEventListener("wheel", onWheel, { passive: false });
     renderer.domElement.addEventListener("keydown", onKeyDown);
     renderer.domElement.addEventListener("contextmenu", onContextMenu);
     controls.addEventListener("change", render);
@@ -293,6 +330,7 @@ export function ChemicalSpace3D({
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
       renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
+      renderer.domElement.removeEventListener("wheel", onWheel);
       renderer.domElement.removeEventListener("keydown", onKeyDown);
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       geometry.dispose();
