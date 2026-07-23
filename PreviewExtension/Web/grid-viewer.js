@@ -1203,7 +1203,7 @@
       root.addEventListener('contextmenu', handleGridShellContextMenu);
       root.dataset.contextMenuBound = '1';
     }
-    initRdkitCoordinatesControl(cfg);
+    initRdkitCoordinatesControl();
     if (state.selectionKeydownHandler) {
       document.removeEventListener('keydown', state.selectionKeydownHandler);
     }
@@ -1247,6 +1247,7 @@
       similarityQuerySelected: state.selected.size === 1,
       clusterCutoff: state.clusterCutoff,
       selectedCount: state.selected.size,
+      ...gridEditState(),
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
         setUnifiedSearchQuery(value || '', cfg);
@@ -1369,31 +1370,47 @@
     notifyGridMenuState(currentCfg);
   }
 
-  function syncGridEditControls() {
+  function gridEditState() {
     const cfg = safeConfig();
     const editing = cfg ? capabilities(cfg).editing : !state.hostReadOnly;
     const saveReady = collectionIndexReady();
-    const saveButton = document.getElementById('save-grid');
-    if (saveButton) {
-      saveButton.disabled = !editing || !state.dirty || !saveReady;
-      saveButton.title = !editing
-        ? 'This embedded collection preview is read-only'
+    const readOnlyTitle = 'This embedded collection preview is read-only';
+    return {
+      saveEnabled: editing && state.dirty && saveReady,
+      saveAsEnabled: editing && saveReady,
+      undoEnabled: editing && state.undoStack.length > 0,
+      saveTitle: !editing
+        ? readOnlyTitle
         : !saveReady ? 'Wait for collection indexing to finish before saving'
-        : state.dirty ? 'Overwrite the source collection file' : 'No unsaved changes';
-    }
-    const undoButton = document.getElementById('undo-grid-edit');
-    if (undoButton) {
-      undoButton.disabled = !editing || state.undoStack.length === 0;
-      undoButton.title = !editing
-        ? 'This embedded collection preview is read-only'
-        : state.undoStack.length ? 'Undo the last collection edit' : 'Nothing to undo';
-    }
-    const saveAsButton = document.getElementById('save-grid-as');
-    if (saveAsButton) {
-      saveAsButton.disabled = !editing || !saveReady;
-      saveAsButton.title = !editing
-        ? 'This embedded collection preview is read-only'
-        : saveReady ? 'Save this collection as a new file' : 'Wait for collection indexing to finish before saving';
+        : state.dirty ? 'Overwrite the source collection file' : 'No unsaved changes',
+      saveAsTitle: !editing
+        ? readOnlyTitle
+        : saveReady ? 'Save this collection as a new file' : 'Wait for collection indexing to finish before saving',
+      undoTitle: !editing
+        ? readOnlyTitle
+        : state.undoStack.length ? 'Undo the last collection edit' : 'Nothing to undo'
+    };
+  }
+
+  function syncGridEditControls() {
+    const edit = gridEditState();
+    const apply = (id, enabled, title) => {
+      const button = document.getElementById(id);
+      if (!button) return;
+      button.disabled = !enabled;
+      button.title = title;
+    };
+    apply('save-grid', edit.saveEnabled, edit.saveTitle);
+    apply('undo-grid-edit', edit.undoEnabled, edit.undoTitle);
+    apply('save-grid-as', edit.saveAsEnabled, edit.saveAsTitle);
+    // Save As and Undo live in the header's overflow menu, which is absent from
+    // the DOM until it opens. Re-render the controls whenever the edit state
+    // changes so the menu is built from fresh props rather than stale markup.
+    const signature = `${edit.saveEnabled}|${edit.saveAsEnabled}|${edit.undoEnabled}`;
+    if (state.gridEditSignature !== signature) {
+      state.gridEditSignature = signature;
+      const cfg = safeConfig();
+      if (cfg) refreshGridControls(cfg);
     }
   }
 
@@ -1692,23 +1709,19 @@
     select.value = currentXyzrenderPreset(cfg);
   }
 
-  function initRdkitCoordinatesControl(cfg) {
-    const input = document.getElementById('rdkit-use-input-coords');
-    if (!input) return;
-    input.checked = state.rdkitUseInputCoords;
+  function initRdkitCoordinatesControl() {
     syncRdkitCoordinatesControl();
   }
 
   function syncRdkitCoordinatesControl() {
     const control = document.getElementById('rdkit-use-input-coords-control');
-    const input = document.getElementById('rdkit-use-input-coords');
-    if (!control || !input) return;
+    const toggle = document.getElementById('rdkit-use-input-coords');
+    if (!control || !toggle) return;
     const hasInputCoordinates = hasInputCoordinateRows();
     control.hidden = state.cardRenderer !== 'rdkit' || !hasInputCoordinates;
-    control.toggleAttribute('aria-disabled', !hasInputCoordinates);
-    control.title = hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
-    input.disabled = !hasInputCoordinates;
-    input.checked = hasInputCoordinates && state.rdkitUseInputCoords;
+    toggle.disabled = !hasInputCoordinates;
+    toggle.title = hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
+    toggle.setAttribute('aria-pressed', hasInputCoordinates && state.rdkitUseInputCoords ? 'true' : 'false');
   }
 
   function hasInputCoordinateRows() {
@@ -3480,6 +3493,7 @@
         }
       });
     }
+    el.addEventListener('dblclick', event => handleTableRowOpen(event, row, cfg));
     el.addEventListener('contextmenu', event => showMoleculeContextMenu(event, row));
     installCardHover(el);
     installCardResizeHandle(el);
@@ -3511,7 +3525,8 @@
           ${rows.map(row => tableRowHTML(row, columns, cfg)).join('')}
           ${range.bottomHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan}" style="height:${Math.max(0, Math.round(range.bottomHeight))}px"></td></tr>` : ''}
         </tbody>
-      </table>`;
+      </table>
+      ${tableTotalsHTML(state.rows, columnWindow)}`;
     wrapper.scrollLeft = state.tableScrollLeft;
     wrapper.addEventListener('scroll', () => handleTableColumnScroll(wrapper, cfg), { passive: true });
     wrapper.addEventListener('wheel', event => handleTableWheel(event, wrapper, cfg), { passive: false });
@@ -3739,10 +3754,38 @@
         ? ` data-buret-table-filter-toggle aria-pressed="${state.tableFiltersOpen ? 'true' : 'false'}" title="Show table filters" aria-label="Show table filters for ${escapeAttr(column.label)}"`
         : '';
       if (column.id === 'index') {
-        return `<th scope="col" data-column="${escapeHTML(column.id)}"${className}${filterToggle}>${escapeHTML(column.label)}</th>`;
+        return `<th scope="col" data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${className}${filterToggle}>${escapeHTML(column.label)}</th>`;
       }
-      return `<th scope="col" data-column="${escapeHTML(column.id)}"${className}${filterToggle}${column.title ? ` title="${escapeAttr(column.title)}"` : ''}>${escapeHTML(column.label)}</th>`;
+      return `<th scope="col" data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${className}${filterToggle}${column.title ? ` title="${escapeAttr(column.title)}"` : ''}>${escapeHTML(column.label)}</th>`;
     }).join('');
+  }
+
+  // Numeric columns are right-aligned and tabular, so a column's cells line up
+  // digit by digit down the table.
+  function tableNumericAttr(column) {
+    return column.type === 'number' ? ' data-buret-grid-numeric="1"' : '';
+  }
+
+  // Running totals for the visible rows, mirroring the collection summary that
+  // the table view otherwise leaves to the status footer.
+  function tableTotalsHTML(rows, columnWindow) {
+    const numericColumns = tableRenderedColumns(columnWindow)
+      .filter(column => !column.spacer && column.type === 'number' && column.id !== 'index' && column.get)
+      .slice(0, 4);
+    const means = numericColumns.map(column => {
+      const values = rows
+        .map(row => Number.parseFloat(String(column.get(row) ?? '')))
+        .filter(value => Number.isFinite(value));
+      if (!values.length) return '';
+      const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+      const decimals = Math.abs(mean) >= 100 ? 1 : 2;
+      return `<span>Mean ${escapeHTML(column.label)}<strong>${mean.toFixed(decimals)}</strong></span>`;
+    }).filter(Boolean);
+    return `
+      <div class="buret-grid-table-totals" role="status">
+        <span class="buret-grid-table-totals-count">${rows.length.toLocaleString()} ${rows.length === 1 ? 'molecule' : 'molecules'}</span>
+        ${means.join('')}
+      </div>`;
   }
 
   function tableFilterCellsHTML(columnWindow, searchColumns = new Set()) {
@@ -3766,7 +3809,7 @@
           if (column.spacer) return tableSpacerCellHTML('td', column);
           const searchMatch = tableColumnMatchesSearch(row, column) || (column.id === 'molecule' && rowSearchMatch);
           const searchClass = searchMatch ? ' class="buret-grid-table-search-match"' : '';
-          return `<td data-column="${escapeHTML(column.id)}"${searchClass}>${tableCellHTML(row, column, cfg)}</td>`;
+          return `<td data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${searchClass}>${tableCellHTML(row, column, cfg)}</td>`;
         }).join('')}
       </tr>`;
   }

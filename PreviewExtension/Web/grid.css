@@ -208,12 +208,21 @@ button:disabled {
 }
 
 .buret-actions {
-  flex-wrap: wrap;
+  position: relative;
+  flex-wrap: nowrap;
   justify-content: flex-end;
 }
 
 .buret-actions button {
   background: var(--buret-control-surface);
+}
+
+/* The overflow trigger stays square so the header keeps one row whatever the
+   collection's file actions are called. */
+.buret-actions-more {
+  min-width: 36px;
+  justify-content: center;
+  padding: 0 8px;
 }
 
 .buret-grid-toolbar {
@@ -316,7 +325,7 @@ button:disabled {
   transition: left 220ms cubic-bezier(0.34, 1.4, 0.5, 1), width 220ms cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 
-.buret-actionbar .ab-btn {
+#grid-controls .ab-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -324,20 +333,20 @@ button:disabled {
   white-space: nowrap;
 }
 
-.buret-actionbar .ab-btn[aria-pressed="true"] {
+#grid-controls .ab-btn[aria-pressed="true"] {
   background: var(--buret-control-active);
 }
 
-.buret-actionbar .ab-btn[hidden] {
+#grid-controls .ab-btn[hidden] {
   display: none;
 }
 
-.buret-actionbar .ab-menu-wrap {
+#grid-controls .ab-menu-wrap {
   position: relative;
   display: inline-flex;
 }
 
-.buret-actionbar .ab-menu {
+#grid-controls .ab-menu {
   position: absolute;
   z-index: 60;
   top: calc(100% + 8px);
@@ -355,7 +364,7 @@ button:disabled {
   -webkit-backdrop-filter: blur(20px) saturate(1.3);
 }
 
-.buret-actionbar .ab-group {
+#grid-controls .ab-group {
   padding: 8px 8px 4px;
   color: var(--buret-muted);
   font-size: 11px;
@@ -364,24 +373,24 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.buret-actionbar .ab-group-accent {
+#grid-controls .ab-group-accent {
   color: var(--buret-accent);
 }
 
-.buret-actionbar .ab-separator {
+#grid-controls .ab-separator {
   height: 1px;
   margin: 5px 4px;
   background: var(--buret-border);
 }
 
-.buret-actionbar .ab-row {
+#grid-controls .ab-row {
   display: flex;
   align-items: center;
   gap: 8px;
   padding-right: 4px;
 }
 
-.buret-actionbar .ab-item {
+#grid-controls .ab-item {
   flex: 1;
   display: flex;
   align-items: center;
@@ -395,31 +404,31 @@ button:disabled {
   text-align: left;
 }
 
-.buret-actionbar .ab-item:not(:disabled):hover {
+#grid-controls .ab-item:not(:disabled):hover {
   background: var(--buret-control-hover);
 }
 
-.buret-actionbar .ab-item:disabled {
+#grid-controls .ab-item:disabled {
   color: var(--buret-faint);
   background: transparent;
 }
 
-.buret-actionbar .ab-ico {
+#grid-controls .ab-ico {
   flex: 0 0 16px;
   width: 16px;
   height: 16px;
   color: var(--buret-muted);
 }
 
-.buret-actionbar .ab-item:not(:disabled):hover .ab-ico {
+#grid-controls .ab-item:not(:disabled):hover .ab-ico {
   color: var(--buret-text);
 }
 
-.buret-actionbar .ab-item:disabled .ab-ico {
+#grid-controls .ab-item:disabled .ab-ico {
   color: var(--buret-faint);
 }
 
-.buret-actionbar .ab-item-title {
+#grid-controls .ab-item-title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -429,8 +438,28 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* Trailing hint on a menu item — the file extension an export writes. */
+#grid-controls .ab-item-meta {
+  flex: 0 0 auto;
+  color: var(--buret-muted);
+  font-size: 11px;
+}
+
+/* What the selection-dependent entries below it act on. */
+#grid-controls .ab-selhead {
+  padding: 8px 8px 6px;
+  color: var(--buret-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+#grid-controls .ab-selhead.has-selection {
+  color: var(--buret-accent);
+  font-weight: 600;
+}
+
 /* Scoped past `.buret-grid-toolbar select`, which forces width: 100% and its own padding. */
-.buret-grid-toolbar .buret-actionbar .ab-mini {
+#grid-controls .ab-mini {
   flex: 0 0 auto;
   box-sizing: border-box;
   width: auto;
@@ -452,7 +481,7 @@ button:disabled {
   appearance: none;
 }
 
-.buret-grid-toolbar .buret-actionbar .ab-mini:hover {
+#grid-controls .ab-mini:hover {
   background-color: var(--buret-control-hover);
   border-color: var(--buret-border-strong);
 }
@@ -779,6 +808,47 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 
 .buret-grid-table-wrap:focus-visible {
   outline: none;
+}
+
+/* Numeric columns line up on the right with tabular figures, so digits stack
+   down the column. */
+.buret-grid-table th[data-buret-grid-numeric="1"],
+.buret-grid-table td[data-buret-grid-numeric="1"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Running totals for the rows the table is currently showing. It sits inside
+   the table's horizontal scroll container, so it stays put while columns move
+   under it. */
+.buret-grid-table-totals {
+  position: sticky;
+  left: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 22px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--buret-table-panel-border);
+  border-radius: 10px;
+  background: var(--buret-table-header-surface);
+  color: var(--buret-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.buret-grid-table-totals-count {
+  margin-right: auto;
+  color: var(--buret-text);
+  font-weight: 600;
+}
+
+.buret-grid-table-totals strong {
+  margin-left: 6px;
+  color: var(--buret-text);
+  font-weight: 600;
 }
 
 .buret-grid-table-wrap::-webkit-scrollbar {

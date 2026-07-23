@@ -57,6 +57,15 @@ type GridControlProps = {
   similarityQuerySelected: boolean;
   clusterCutoff: number;
   selectedCount: number;
+  // Collection edit state. grid-viewer also writes these onto the buttons by id,
+  // but the overflow menu only exists in the DOM while it is open, so its items
+  // have to render the right state from props on the way in.
+  saveEnabled: boolean;
+  saveAsEnabled: boolean;
+  undoEnabled: boolean;
+  saveTitle: string;
+  saveAsTitle: string;
+  undoTitle: string;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
   onSortChange: (value: string) => void;
@@ -462,7 +471,8 @@ function SelectionSection(props: GridControlProps & { onRun: (action: () => void
   );
 }
 
-function ActionsMenu(props: GridControlProps) {
+// Shared open/close behaviour for the toolbar's dropdowns.
+function useMenu() {
   const [open, setOpen] = React.useState(false);
   const wrapRef = React.useRef<HTMLDivElement>(null);
 
@@ -487,6 +497,13 @@ function ActionsMenu(props: GridControlProps) {
     setOpen(false);
   }, []);
 
+  return { open, setOpen, wrapRef, onRun };
+}
+
+function ActionsMenu(props: GridControlProps) {
+  const { open, setOpen, wrapRef, onRun } = useMenu();
+  const selectedCount = props.selectedCount;
+
   return (
     <div className="ab-menu-wrap" ref={wrapRef}>
       <button
@@ -500,12 +517,133 @@ function ActionsMenu(props: GridControlProps) {
       </button>
       {open ? (
         <div className="ab-menu" role="menu">
+          <div className={selectedCount > 0 ? "ab-selhead has-selection" : "ab-selhead"}>
+            {selectedCount > 0
+              ? `${selectedCount.toLocaleString()} selected`
+              : "Select molecules to enable actions"}
+          </div>
           <ComputeSection {...props} onRun={onRun} />
           <CollectionSection {...props} onRun={onRun} />
           <SelectionSection {...props} onRun={onRun} />
         </div>
       ) : null}
     </div>
+  );
+}
+
+// The collection's file actions: Save stays on the surface, everything else
+// moves into an overflow menu so the header keeps one row on narrow grids.
+function HeaderActions(props: GridControlProps) {
+  const { open, setOpen, wrapRef, onRun } = useMenu();
+  return (
+    <div className="buret-actions" hidden={!props.exportEnabled}>
+      <button
+        id="save-grid"
+        className="ab-btn"
+        type="button"
+        disabled={!props.saveEnabled}
+        title={props.saveTitle}
+        onClick={props.onSaveGrid}
+      >
+        Save
+      </button>
+      <div className="ab-menu-wrap" ref={wrapRef}>
+        <button
+          className="ab-btn buret-actions-more"
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label="More collection actions"
+          onClick={() => setOpen((value) => !value)}
+        >
+          <MoreIcon />
+        </button>
+        {open ? (
+          <div className="ab-menu" role="menu">
+            <div className="ab-group">File</div>
+            <div className="ab-row">
+              <button
+                id="save-grid-as"
+                className="ab-item"
+                type="button"
+                role="menuitem"
+                disabled={!props.saveAsEnabled}
+                title={props.saveAsTitle}
+                onClick={() => onRun(props.onSaveGridAs)}
+              >
+                <span className="ab-item-title">Save As...</span>
+              </button>
+            </div>
+            <div className="ab-row">
+              <button
+                id="undo-grid-edit"
+                className="ab-item"
+                type="button"
+                role="menuitem"
+                disabled={!props.undoEnabled}
+                title={props.undoTitle}
+                onClick={() => onRun(props.onUndoGridEdit)}
+              >
+                <span className="ab-item-title">Undo</span>
+              </button>
+            </div>
+            <div className="ab-separator" />
+            <div className="ab-group">Export</div>
+            <div className="ab-row">
+              <button
+                id="export-smi"
+                className="ab-item"
+                type="button"
+                role="menuitem"
+                title="Export visible molecules as SMILES"
+                onClick={() => onRun(props.onExportSmiles)}
+              >
+                <span className="ab-item-title">Export SMILES</span>
+                <span className="ab-item-meta">.smi</span>
+              </button>
+            </div>
+            <div className="ab-row">
+              <button
+                id="export-csv"
+                className="ab-item"
+                type="button"
+                role="menuitem"
+                title="Export visible table data as CSV"
+                onClick={() => onRun(props.onExportCSV)}
+              >
+                <span className="ab-item-title">Export CSV</span>
+                <span className="ab-item-meta">.csv</span>
+              </button>
+            </div>
+            <div className="ab-separator" />
+            <div className="ab-group">Clipboard</div>
+            <div className="ab-row">
+              <button
+                id="copy-selected"
+                className="ab-item"
+                type="button"
+                role="menuitem"
+                disabled={props.selectedCount === 0}
+                title="Copy selected molecule records"
+                onClick={() => onRun(props.onCopySelected)}
+              >
+                <span className="ab-item-title">Copy selected</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg className="ab-ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <circle cx="5" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="19" cy="12" r="1.6" />
+    </svg>
   );
 }
 
@@ -568,14 +706,21 @@ function GridActionToolbar(props: GridControlProps) {
         </>
       ) : null}
       <XyzrenderStyleControl {...props} />
-      <label id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
-        <input
+      {/* A pressed-state button rather than a checkbox: grid-viewer owns both the
+          `hidden` on the wrapper and the pressed state on the button by id. */}
+      <span id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
+        <button
           id="rdkit-use-input-coords"
-          type="checkbox"
-          onChange={(event) => props.onRdkitUseInputCoordsChange(event.currentTarget.checked === true)}
-        />
-        <span>Use file coords</span>
-      </label>
+          className="ab-btn"
+          type="button"
+          aria-pressed="false"
+          onClick={(event) => props.onRdkitUseInputCoordsChange(
+            event.currentTarget.getAttribute("aria-pressed") !== "true",
+          )}
+        >
+          Use file coords
+        </button>
+      </span>
       <button id="clear-smarts" className="ab-btn buret-clear-smarts" type="button" hidden onClick={props.onClearSmarts}>
         Clear search
         <ControlTooltip label="Clear the SMARTS search" />
@@ -625,32 +770,7 @@ function GridControls(props: GridControlProps) {
           <h1>{props.label || "Molecule collection"}</h1>
           <div id="summary" className="buret-summary" />
         </div>
-        <div className="buret-actions" hidden={!props.exportEnabled}>
-          <button id="copy-selected" type="button" onClick={props.onCopySelected}>
-            Copy selected
-            <ControlTooltip label="Copy selected molecule records" />
-          </button>
-          <button id="save-grid" type="button" disabled onClick={props.onSaveGrid}>
-            Save
-            <ControlTooltip label="Save changes back to this collection" />
-          </button>
-          <button id="save-grid-as" type="button" onClick={props.onSaveGridAs}>
-            Save As...
-            <ControlTooltip label="Save this collection as a new file" />
-          </button>
-          <button id="undo-grid-edit" type="button" disabled onClick={props.onUndoGridEdit}>
-            Undo
-            <ControlTooltip label="Undo the last grid edit" />
-          </button>
-          <button id="export-smi" type="button" onClick={props.onExportSmiles}>
-            Export SMILES
-            <ControlTooltip label="Export visible molecules as SMILES" />
-          </button>
-          <button id="export-csv" type="button" onClick={props.onExportCSV}>
-            Export CSV
-            <ControlTooltip label="Export visible table data as CSV" />
-          </button>
-        </div>
+        <HeaderActions {...props} />
       </header>
       <div className="buret-grid-toolbar">
         <div className="buret-toolbar-row buret-toolbar-row-main">
