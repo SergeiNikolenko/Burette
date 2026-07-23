@@ -96,17 +96,16 @@ export function ChemicalSpace3D({
     controls.target.set(0, 0, 0);
 
     const primaryColor = semanticColor(host, "text-primary", "#af52de");
-    const mutedColor = semanticColor(host, "text-muted-foreground", "#8e8e93");
     const foregroundColor = semanticColor(host, "text-foreground", "#f5f5f7");
     const pointTexture = circleTexture();
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions.flat(), 3));
     const points = new THREE.Points(geometry, new THREE.PointsMaterial({
-      color: mutedColor,
+      color: foregroundColor,
       map: pointTexture,
       alphaTest: 0.15,
-      opacity: 0.68,
+      opacity: 0.82,
       size: BASE_POINT_SIZE * pointScale,
       sizeAttenuation: true,
       transparent: true,
@@ -117,9 +116,9 @@ export function ChemicalSpace3D({
     const hoveredPoints = overlayPoints(foregroundColor, pointTexture, BASE_HOVERED_POINT_SIZE * pointScale);
     scene.add(selectedPoints, hoveredPoints);
 
-    const grid = new THREE.GridHelper(2.5, 10, primaryColor, mutedColor);
+    const grid = new THREE.GridHelper(2.5, 10, primaryColor, foregroundColor);
     grid.position.y = -1.08;
-    grid.material.opacity = 0.18;
+    grid.material.opacity = 0.3;
     grid.material.transparent = true;
     scene.add(grid);
 

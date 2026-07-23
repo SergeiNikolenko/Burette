@@ -574,8 +574,8 @@ function ChemicalSpace2D({
     const projected = projectPositions(normalized, result.sourceRecordIds, viewport, camera, 2);
     projectedRef.current = projected;
     const selectedColor = styles.getPropertyValue("--primary").trim() || "#af52de";
-    const pointColor = styles.getPropertyValue("--muted-foreground").trim() || "#8e8e93";
-    const ringColor = styles.getPropertyValue("--foreground").trim() || "#f5f5f7";
+    const pointColor = styles.color || "#f5f5f7";
+    const ringColor = pointColor;
     for (const point of [...projected].sort((left, right) => left.depth - right.depth)) {
       const active = selected.has(point.sourceRecordId);
       const hot = hovered === point.sourceRecordId;
@@ -588,7 +588,7 @@ function ChemicalSpace2D({
         Math.PI * 2,
       );
       context.fillStyle = active || hot ? selectedColor : pointColor;
-      context.globalAlpha = active || hot ? 1 : 0.62;
+      context.globalAlpha = active || hot ? 1 : 0.78;
       context.fill();
       if (hot) {
         context.lineWidth = 1.5;
@@ -637,7 +637,7 @@ function ChemicalSpace2D({
     <div className="absolute inset-0 overflow-hidden bg-muted/20">
       <canvas
         ref={canvasRef}
-        className="size-full touch-none outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-foreground/30"
+        className="size-full touch-none text-foreground outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-foreground/30"
         tabIndex={0}
         aria-label={`${result.dimensions}D ${methodLabel(result.method)} chemical-space map`}
         aria-keyshortcuts="W A S D"
