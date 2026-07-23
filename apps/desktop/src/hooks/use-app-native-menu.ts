@@ -24,11 +24,7 @@ import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
 import {
   resumeWindowMutations,
-  sameWindowItemIds,
   sealWindowMutations,
-  setGridDocumentCloseTransition,
-  setWindowShellCloseTransition,
-  type WindowCloseMutationPermit,
 } from "../lib/window-mutation-barrier";
 import type { ViewerPreferences, ViewerReloadOptions } from "../types";
 import { useMenuEvents } from "./use-menu-events";
@@ -52,12 +48,10 @@ type UseAppNativeMenuOptions = {
   actions: ShellActions;
   gridMenuState: GridNativeMenuState | null;
   openDocuments: OpenDocuments;
-  confirmCloseWindow: () => Promise<WindowCloseMutationPermit | null>;
   getWindowDocumentDirtySnapshot: () => {
     dirty: boolean;
     revision: number;
     closeTransitionActive: boolean;
-    closeGuardRevision: number;
   };
   windowDocumentDirty: boolean;
   sourceSaveEnabled: boolean;
@@ -80,7 +74,6 @@ export function useAppNativeMenu({
   actions,
   gridMenuState,
   openDocuments,
-  confirmCloseWindow,
   getWindowDocumentDirtySnapshot,
   windowDocumentDirty,
   sourceSaveEnabled,
@@ -230,17 +223,10 @@ export function useAppNativeMenu({
     recentDocuments: null,
   }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closableTabCount, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
   const nativeStateRef = useRef<NativeMenuState>({ ...nativeState, recentDocuments });
-  const confirmCloseWindowRef = useRef(confirmCloseWindow);
-  const closeConfirmationPendingRef = useRef(false);
   const closingWindowRef = useRef(false);
   const getWindowDocumentDirtySnapshotRef = useRef(getWindowDocumentDirtySnapshot);
-  const windowDocumentIdsRef = useRef(state.documents.map((document) => document.id));
-  const windowTabIdsRef = useRef(state.tabs.map((tab) => tab.id));
   nativeStateRef.current = { ...nativeState, recentDocuments };
-  confirmCloseWindowRef.current = confirmCloseWindow;
   getWindowDocumentDirtySnapshotRef.current = getWindowDocumentDirtySnapshot;
-  windowDocumentIdsRef.current = state.documents.map((document) => document.id);
-  windowTabIdsRef.current = state.tabs.map((tab) => tab.id);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -271,69 +257,16 @@ export function useAppNativeMenu({
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     return trackTauriListener(getCurrentWindow().onCloseRequested((event) => {
-      if (closingWindowRef.current) return;
+      // The close button quits the whole application, matching Cmd+Q and the
+      // "Quit Burrete" menu item. Preventing the default window close and
+      // routing through request_app_quit is deliberate: a plain window close
+      // left a windowless process alive (macOS default) that then recreated a
+      // window, so the button looked like it did nothing. request_quit runs the
+      // unsaved-changes preflight before it exits.
       event.preventDefault();
-      if (closeConfirmationPendingRef.current) return;
-      closeConfirmationPendingRef.current = true;
-      void (async () => {
-        let permit: WindowCloseMutationPermit | null = null;
-        let closeTransitionStarted = false;
-        let windowInteractionPaused = false;
-        let documentIds: string[] = [];
-        let tabIds: string[] = [];
-        let closeGuardRevision = 0;
-        const currentWindow = getCurrentWindow();
-        try {
-          permit = await confirmCloseWindowRef.current();
-          if (!permit) return;
-          const dirtySnapshot = getWindowDocumentDirtySnapshotRef.current();
-          if (dirtySnapshot.closeTransitionActive) {
-            permit.release();
-            return;
-          }
-          closeGuardRevision = dirtySnapshot.closeGuardRevision;
-          documentIds = [...windowDocumentIdsRef.current];
-          tabIds = [...windowTabIdsRef.current];
-          closeTransitionStarted = true;
-          closingWindowRef.current = true;
-          setWindowShellCloseTransition(true);
-          setGridDocumentCloseTransition(documentIds, true);
-          if (await currentWindow.isEnabled()) {
-            await currentWindow.setEnabled(false);
-            windowInteractionPaused = true;
-          }
-          await permit.waitForPending();
-          const finalDirtySnapshot = getWindowDocumentDirtySnapshotRef.current();
-          if (!sameWindowItemIds(documentIds, windowDocumentIdsRef.current)
-            || !sameWindowItemIds(tabIds, windowTabIdsRef.current)
-            || finalDirtySnapshot.closeTransitionActive
-            || finalDirtySnapshot.closeGuardRevision !== closeGuardRevision) {
-            throw new Error("Window contents changed while closing.");
-          }
-          if (windowInteractionPaused) {
-            await currentWindow.setEnabled(true);
-            windowInteractionPaused = false;
-          }
-          await currentWindow.close();
-        } catch (error) {
-          if (closeTransitionStarted) {
-            closingWindowRef.current = false;
-            setGridDocumentCloseTransition(documentIds, false);
-            setWindowShellCloseTransition(false);
-            permit?.release();
-            if (windowInteractionPaused) {
-              await currentWindow.setEnabled(true).catch((restoreError) => {
-                console.warn("Native window interaction restore failed", restoreError);
-              });
-            }
-          } else {
-            permit?.release();
-          }
-          console.warn("Native window close failed", error);
-        } finally {
-          closeConfirmationPendingRef.current = false;
-        }
-      })();
+      void invoke("request_app_quit").catch((error) => {
+        console.warn("App quit request failed", error);
+      });
     }), "native window close guard");
   }, []);
 

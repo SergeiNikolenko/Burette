@@ -1264,7 +1264,7 @@ export function KetcherPage({
               },
             ]}
             trigger={(
-              <button type="button" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch}>
+              <button type="button" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
                 Add to collection
                 <ShortcutTooltip label="Add sketch to SDF collection" />
               </button>

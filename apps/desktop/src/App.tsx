@@ -41,7 +41,6 @@ import { useAppOpenDropController } from "./hooks/use-app-open-drop-controller";
 import { useAppPreferenceEffects } from "./hooks/use-app-preference-effects";
 import { useAppQuickLook } from "./hooks/use-app-quick-look";
 import { useAppQuickLookDocumentOpen } from "./hooks/use-app-quick-look-document-open";
-import { useAppResize } from "./hooks/use-app-resize";
 import { useAppSidebarProjects } from "./hooks/use-app-sidebar-projects";
 import { useAppShellActions } from "./hooks/use-app-shell-actions";
 import { useAppShellNavigationActions } from "./hooks/use-app-shell-navigation-actions";
@@ -51,6 +50,7 @@ import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAppViewerBridgeController } from "./hooks/use-app-viewer-bridge-controller";
+import type { StructureStory } from "./lib/structure-story";
 import { useAppViewerReloadActions } from "./hooks/use-app-viewer-reload-actions";
 import { useAppViewerRuntimeRefs } from "./hooks/use-app-viewer-runtime-refs";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
@@ -223,24 +223,6 @@ export default function App() {
     setDockTool,
     addDockDrop,
   } = useDockLayout();
-  const {
-    bottomDockDragging,
-    rightDockDragging,
-    sidebarDragging,
-    startBottomDockResize,
-    startRightDockResize,
-    startSidebarResize,
-  } = useAppResize({
-    beginWorkspaceHistoryGroup,
-    bottomDockHeight,
-    closeSidebar,
-    commitWorkspaceHistoryGroup,
-    rightDockWidth,
-    setDockOpen,
-    setDockSize,
-    setSidebarWidth,
-    sidebarWidth,
-  });
   const { toggleDockTab } = useAppDockActions({
     bottomDockActiveTab,
     bottomDockOpen,
@@ -275,7 +257,6 @@ export default function App() {
   const { status, pushStatus, pushErrorStatus, clearStatus, recentErrorsRef } = useAppStatus();
   const {
     clearDirtyGridDocuments,
-    confirmDiscardAllDirtyGridDocuments,
     confirmDiscardDirtyGridDocument,
     confirmDiscardDirtyGridDocuments,
     forgetDirtyGridDocument,
@@ -289,6 +270,7 @@ export default function App() {
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [viewerLigandSelections, setViewerLigandSelections] = useState<Record<string, ViewerLigandSelection | null>>({});
   const [structureOverlayModes, setStructureOverlayModes] = useState<Record<string, StructureOverlayMode>>({});
+  const [structureStories, setStructureStories] = useState<Record<string, StructureStory | null>>({});
   const {
     cancelConformerJob,
     cancelXtbJob,
@@ -449,22 +431,6 @@ export default function App() {
     if (!session?.editable || !session.dirty || session.saving || session.saveDisabledReason) return;
     await sourceEditing.save(activeDocument);
   }, [activeDocument, sourceEditing]);
-  const confirmCloseWindow = useCallback(async () => {
-    const sourceBefore = sourceEditing.getWindowDirtySnapshot();
-    if (!await sourceEditing.confirmCloseWindow()) return null;
-    const permit = await confirmDiscardAllDirtyGridDocuments();
-    if (!permit) return null;
-    try {
-      const sourceAfter = sourceEditing.getWindowDirtySnapshot();
-      if (sourceAfter.revision === sourceBefore.revision
-        || await sourceEditing.confirmCloseWindow()) return permit;
-      permit.release();
-      return null;
-    } catch (error) {
-      permit.release();
-      throw error;
-    }
-  }, [confirmDiscardAllDirtyGridDocuments, sourceEditing]);
   const combinedWindowDirtyRevisionRef = useRef({
     gridRevision: null as number | null,
     sourceRevision: null as number | null,
@@ -484,7 +450,6 @@ export default function App() {
       dirty: gridSnapshot.dirty || sourceSnapshot.dirty,
       revision: combined.revision,
       closeTransitionActive: sourceSnapshot.closeTransitionActive,
-      closeGuardRevision: sourceSnapshot.revision,
     };
   }, [getGridWindowDocumentDirtySnapshot, sourceEditing]);
   const {
@@ -733,7 +698,6 @@ export default function App() {
     closeTab,
     documents,
     isDirtyGridDocument,
-    mergeMoleculeCollections,
     openDocuments,
     openDocumentsInActiveTab,
     openTextDocuments,
@@ -859,6 +823,7 @@ export default function App() {
     setPreference,
     setPoseReviewSelections,
     setStructureOverlayModes,
+    setStructureStories,
     setViewerLigandSelections,
     skipNextPreferenceRefreshRef,
     toggleSidebar,
@@ -1034,21 +999,18 @@ export default function App() {
     page,
     sidebarOpen,
     sidebarWidth,
-    sidebarDragging,
     rightDockOpen,
     rightDockWidth,
     rightDockTabs,
     rightDockActiveTab,
     rightDockDocumentId,
     rightDockTool,
-    rightDockDragging,
     bottomDockOpen,
     bottomDockHeight,
     bottomDockTabs,
     bottomDockActiveTab,
     bottomDockDocumentId,
     bottomDockTool,
-    bottomDockDragging,
     dockDroppedStructures,
     structureDragActive,
     poseReviewSelections,
@@ -1063,6 +1025,7 @@ export default function App() {
     conformerSettings,
     conformerJobs,
     viewerLigandSelections,
+    structureStories,
     structureOverlayMode: activeDocument ? structureOverlayModes[activeDocument.id] ?? "single" : "single",
     xtbStatus,
     xtbSettings,
@@ -1076,7 +1039,6 @@ export default function App() {
     actions,
     gridMenuState: activeGridMenuState,
     openDocuments,
-    confirmCloseWindow,
     getWindowDocumentDirtySnapshot,
     windowDocumentDirty: hasDirtyGridDocuments || sourceEditing.hasUnsavedOrSavingSessions,
     sourceSaveEnabled,
@@ -1098,9 +1060,7 @@ export default function App() {
         actions={actions}
         onDismissStatus={clearStatus}
         onToggleSidebar={toggleSidebar}
-        onResizeStart={startSidebarResize}
-        onRightDockResizeStart={startRightDockResize}
-        onBottomDockResizeStart={startBottomDockResize}
+        onSidebarWidthChange={setSidebarWidth}
         dropPreview={dropPreview}
         onDragEnter={handleBrowserDrag}
         onDragOver={handleBrowserDrag}

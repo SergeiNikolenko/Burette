@@ -54,7 +54,7 @@ const [
   performanceSource,
   shellActionsSource,
   settingsPanelSource,
-  commandPaletteSource,
+  shellCommandsSource,
   quickLookCommand,
   updaterCommand,
   tray,
@@ -139,7 +139,7 @@ const [
   source('apps/desktop/src/lib/performance.ts'),
   source('apps/desktop/src/components/types.ts'),
   source('apps/desktop/src/components/settings-panel/index.tsx'),
-  source('apps/desktop/src/components/command-palette/index.tsx'),
+  source('apps/desktop/src/lib/shell-commands.ts'),
   source('apps/desktop/src-tauri/src/commands/quicklook.rs'),
   source('apps/desktop/src-tauri/src/commands/updater.rs'),
   source('apps/desktop/src-tauri/src/tray.rs'),
@@ -582,7 +582,7 @@ assert.match(performanceSource, /export function collectPerformanceMarks/);
 assert.match(performanceSource, /export async function measureAsync/);
 assert.match(shellActionsSource, /exportDiagnostics: \(\) => void \| Promise<void>;/);
 assert.match(settingsPanelSource, /actionRow\("Diagnostics"/);
-assert.match(commandPaletteSource, /id: "export-diagnostics"/);
+assert.match(shellCommandsSource, /id: "export-diagnostics"/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_logs_folder/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_external_url/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_external_preview_svg/);
@@ -1161,7 +1161,7 @@ for (const [id, accelerator] of [
   assertMenuItemAccelerator(nativeMenuSource, id, accelerator);
 }
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+Shift\+N"\)/);
-assert.match(nativeMenuSource, /accelerator\("CmdOrCtrl\+Shift\+P"\)/);
+assert.match(nativeMenuSource, /accelerator\("CmdOrCtrl\+P"\)/);
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+U"\)/);
 assert.match(nativeMenuSource, /const MENU_COMMAND_EVENT/);
 assert.match(nativeMenuSource, /pub\(crate\) fn emit_command_to_focused_window/);
@@ -1360,7 +1360,7 @@ assert.match(previewRuntimeGrid, /build_grid_store/);
 assert.match(previewRuntimeGrid, /include_single_sdf: options\.include_single_sdf\s*\|\|\s*normalize_renderer_mode\(&preferences\.renderer_mode\) == "grid2d"/);
 assert.match(previewGridStore, /!options\.include_single_sdf\s*&& \(\(extension == "sdf" \|\| extension == "sd"\) && records_indexed <= 1\)/);
 assert.match(previewRuntimeGrid, /"sourcePath": file_path\.to_string_lossy\(\)/);
-assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*\)/);
+assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*grid_store\.ingest_worker,\s*\)/);
 assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
 assert.match(previewRuntimeGrid, /"recordsIndexed": collection\.records_indexed/);
 assert.match(previewRuntimeGrid, /"indexReady": collection\.index_ready/);

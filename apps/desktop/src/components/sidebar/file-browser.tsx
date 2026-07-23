@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { Atom01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { Search01Icon } from "@hugeicons/core-free-icons";
+import { AnimatedOrbitIcon } from "../ui/animated-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { isRemoteStructureUrl } from "../../lib/remote-structure";
 import { filterSidebarProjects } from "../../lib/sidebar-projects";
+import { buildShellCommands, filterShellCommands } from "../../lib/shell-commands";
 import { hasStructureDrag, readStructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { RadixDropdownMenu } from "../radix-menu";
@@ -10,6 +12,59 @@ import { ScrollFade } from "../scroll-fade";
 import type { ShellActions, ShellViewState } from "../types";
 import { ProjectGroup, ProjectItem } from "./file-tree-node";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
+
+const SIDEBAR_TREE_ROW_SELECTOR = ".project-group-row, .project-folder-row, [data-sidebar-structure-path]";
+const SIDEBAR_COMMAND_LIMIT = 6;
+
+// DOM-based tree keyboard navigation: move focus across visible rows with the
+// arrow keys, expand/collapse the focused folder with Right/Left, and jump with
+// Home/End. Rows inside a collapsed subtree ([data-expanded="false"]) are skipped.
+function handleSidebarTreeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+  if (!["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+  const rows = Array.from(
+    event.currentTarget.querySelectorAll<HTMLElement>(SIDEBAR_TREE_ROW_SELECTOR),
+  ).filter((row) => !row.closest('[data-expanded="false"]'));
+  if (rows.length === 0) return;
+  const active = document.activeElement as HTMLElement | null;
+  const currentIndex = active ? rows.indexOf(active) : -1;
+
+  if (active && active.hasAttribute("aria-expanded")) {
+    const isExpanded = active.getAttribute("aria-expanded") === "true";
+    if (event.key === "ArrowRight" && !isExpanded) {
+      event.preventDefault();
+      active.click();
+      return;
+    }
+    if (event.key === "ArrowLeft" && isExpanded) {
+      event.preventDefault();
+      active.click();
+      return;
+    }
+  }
+
+  let nextIndex = currentIndex;
+  switch (event.key) {
+    case "ArrowDown":
+    case "ArrowRight":
+      nextIndex = currentIndex < 0 ? 0 : Math.min(rows.length - 1, currentIndex + 1);
+      break;
+    case "ArrowUp":
+    case "ArrowLeft":
+      nextIndex = currentIndex < 0 ? 0 : Math.max(0, currentIndex - 1);
+      break;
+    case "Home":
+      nextIndex = 0;
+      break;
+    case "End":
+      nextIndex = rows.length - 1;
+      break;
+  }
+  const nextRow = rows[nextIndex];
+  if (nextRow && nextRow !== active) {
+    event.preventDefault();
+    nextRow.focus();
+  }
+}
 
 export function FileBrowser({
   state,
@@ -27,6 +82,9 @@ export function FileBrowser({
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
   const canFetchRemoteStructure = isRemoteStructureUrl(sidebarQuery);
+  const matchingCommands = hasSidebarQuery
+    ? filterShellCommands(buildShellCommands(state, actions, sidebarQuery), sidebarQuery).slice(0, SIDEBAR_COMMAND_LIMIT)
+    : [];
   const visibleProjects = hideProjectPreviews ? [] : filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
   const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
   const pinnedExpanded = pinnedOpen || hasSidebarQuery;
@@ -148,6 +206,28 @@ export function FileBrowser({
           <kbd>⌘<span>P</span></kbd>
         </label>
       ) : null}
+      {matchingCommands.length > 0 && (
+        <section className="sidebar-section sidebar-command-section" aria-label="Matching commands">
+          <div className="sidebar-section-header">
+            <span className="sidebar-section-title">Commands</span>
+          </div>
+          {matchingCommands.map((command) => (
+            <button
+              key={command.id}
+              type="button"
+              className="sidebar-command-row"
+              title={command.description}
+              onClick={() => {
+                actions.setSidebarQuery("");
+                void command.run();
+              }}
+            >
+              <span className="sidebar-command-label">{command.label}</span>
+              <span className="sidebar-command-description">{command.description}</span>
+            </button>
+          ))}
+        </section>
+      )}
       {canFetchRemoteStructure && (
         <button
           type="button"
@@ -173,7 +253,7 @@ export function FileBrowser({
         aria-label="Open Ketcher"
       >
         <span className="sidebar-tool-icon" aria-hidden="true">
-          <HugeiconsIcon icon={Atom01Icon} size={16} color="currentColor" strokeWidth={2} />
+          <AnimatedOrbitIcon size={16} />
         </span>
         <span className="sidebar-tool-label">Ketcher</span>
       </button>
@@ -261,7 +341,7 @@ export function FileBrowser({
               {hasSidebarQuery ? "No matching projects or structures" : "No project structures yet"}
             </div>
           ) : (
-            <div className="project-tree" role="list" id="sidebar-projects-tree">
+            <div className="project-tree" role="tree" id="sidebar-projects-tree" onKeyDown={handleSidebarTreeKeyDown}>
               {visibleProjects.map((project) => (
                 <ProjectGroup
                   key={project.id}

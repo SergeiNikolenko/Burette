@@ -50,7 +50,9 @@
   --line-subtle: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 24%), transparent);
   --line-subtler: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 15%), transparent);
   --focus-border: #0a84ff;
-  --focus-ring: #0a84ff;
+  /* Neutral, never blue. Every consumer is a :focus-visible rule, so this shows
+     for keyboard navigation only and a mouse click still leaves no ring. */
+  --focus-ring: color-mix(in srgb, var(--fg-base) 55%, transparent);
   --line-strong: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 65%), transparent);
   --sidebar-divider-right: transparent;
   --workspace-edge-border: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 22%), transparent);
@@ -162,7 +164,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --line-subtle: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
   --line-subtler: color-mix(in srgb, black calc(var(--contrast) * 15%), transparent);
   --focus-border: #0a84ff;
-  --focus-ring: #0a84ff;
+  --focus-ring: color-mix(in srgb, black 55%, transparent);
   --line-strong: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
   --border-color: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
   --surface-primary: var(--bg-base);
@@ -218,7 +220,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
     --line-subtle: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
     --line-subtler: color-mix(in srgb, black calc(var(--contrast) * 15%), transparent);
     --focus-border: #0a84ff;
-    --focus-ring: #0a84ff;
+    --focus-ring: color-mix(in srgb, black 55%, transparent);
     --line-strong: color-mix(in srgb, black calc(var(--contrast) * 65%), transparent);
     --border-color: color-mix(in srgb, black calc(var(--contrast) * 24%), transparent);
     --surface-primary: var(--bg-base);
@@ -314,7 +316,16 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .topbar {
   position: absolute;
   top: 0;
-  right: max(146px, var(--right-dock-width, 0px));
+  /* Both edges follow the panels' measured widths (`--sidebar-edge` /
+     `--right-dock-edge`, published by a ResizeObserver on the panels), falling
+     back to the stored layout widths for the first paint. Measuring is what
+     keeps the strip glued to the panels: a right dock the group had to squeeze
+     below its 260px still stores 260, and a dragged sidebar only reaches the
+     DOM a render later. No transition on `left` either — the sidebar's own
+     toggle animation moves the measured edge, so easing it here again would
+     rubber-band the strip behind every drag frame. */
+  left: max(var(--chrome-leading-inset, 192px), calc(var(--sidebar-edge, var(--sidebar-layout-width, 0px)) + 12px));
+  right: max(146px, var(--right-dock-edge, var(--right-dock-width, 0px)));
   z-index: 4;
   height: var(--chrome-height);
   display: flex;
@@ -322,7 +333,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   pointer-events: none;
   gap: 12px;
   padding: var(--chrome-control-padding) 0;
-  transition: left 140ms ease-out;
   container-type: inline-size;
 }
 .chrome-button,
@@ -604,6 +614,121 @@ button:focus-visible > .shortcut-tooltip {
 }
 .utility-tab { min-width: auto; }
 .workspace { position: relative; min-height: 0; flex: 1; display: flex; }
+.workspace-panels { flex: 1; min-width: 0; min-height: 0; height: 100%; }
+/* Open/close animation for the sidebar and the docks. Panels are sized through
+   flex-grow on the library's `[data-panel]` wrappers, and collapse()/expand()
+   swap that value instantly; easing it recreates the pre-refactor slide. The
+   transition only exists while the app marks the group as animating a toggle —
+   a standing one would rubber-band pointer drags and window resizes, where the
+   library rewrites flex-grow every frame. Timings match the old .sidebar-shell
+   (140ms ease-out) and .dock-panel (180ms) rules. */
+.workspace-panels[data-panels-animating] > [data-panel] {
+  transition: flex-grow 140ms ease-out;
+}
+.workbench-panels[data-panels-animating] > [data-panel],
+.workbench-main-panels[data-panels-animating] > [data-panel] {
+  transition: flex-grow 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+.workspace-sidebar-panel { position: relative; height: 100%; min-height: 0; overflow: hidden; }
+.workspace-center-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
+.workbench-panels { flex: 1; min-width: 0; min-height: 0; }
+.workbench-main-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.workbench-main-panels { min-width: 0; min-height: 0; height: 100%; width: 100%; }
+.main-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
+.dock-panel-shell { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
+.dock-panel-shell .dock-panel { width: 100%; height: 100%; flex: 1; transition: opacity 140ms ease-out; will-change: opacity; }
+.dock-panel-shell .dock-panel-inner { width: 100%; height: 100%; }
+.resizable-handle {
+  position: relative;
+  z-index: 3;
+  flex: 0 0 14px;
+  width: 14px;
+  margin-inline: -7px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.resizable-handle-horizontal {
+  width: auto;
+  height: 14px;
+  margin: -7px 0;
+  cursor: row-resize;
+}
+/* The workbench card's soft shadow over the glass sidebar. It sits on this
+   handle (centered on the sidebar/workbench boundary) because the handle rides
+   the animated edge and is never clipped, unlike the center panel's children.
+   With the sidebar collapsed the boundary is at the window edge and the
+   leftward shadow lands off-screen, matching the old .workbench behavior. */
+.workspace-sidebar-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  box-shadow: -12px 0 28px var(--workspace-edge-shadow);
+  pointer-events: none;
+}
+.resizable-handle::after {
+  content: "";
+  position: absolute;
+  background: var(--line-subtle);
+  pointer-events: none;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+.resizable-handle:not(.resizable-handle-horizontal)::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+.resizable-handle-horizontal::after {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+}
+.resizable-handle:hover::after,
+.resizable-handle:active::after,
+.resizable-handle:focus-visible::after { background: var(--line-strong); }
+/* A handle whose panel is collapsed stays mounted so the divider can be dragged
+   back open, but its line is hidden at rest for a clean edge and revealed on
+   hover/focus as a drag affordance. */
+.resizable-handle[data-collapsed]::after { opacity: 0; }
+.resizable-handle[data-collapsed]:hover::after,
+.resizable-handle[data-collapsed]:focus-visible::after { opacity: 1; }
+/* Grip: hidden at rest (only the divider line shows), fades in gray on
+   hover/keyboard focus, then darkens to full contrast while actually dragging.
+   react-resizable-panels exposes the drag state through the :active
+   pseudo-class (button held on the Separator), not a data attribute. */
+.resizable-handle-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 44px;
+  border-radius: 999px;
+  background: var(--text-muted);
+  opacity: 0;
+  transition: background 120ms ease, height 120ms ease, width 120ms ease, opacity 120ms ease;
+  pointer-events: none;
+}
+.resizable-handle-horizontal .resizable-handle-grip { width: 44px; height: 4px; }
+.resizable-handle:hover .resizable-handle-grip,
+.resizable-handle:focus-visible .resizable-handle-grip { opacity: 1; }
+.resizable-handle:active .resizable-handle-grip { opacity: 1; background: var(--text-primary); }
+.resizable-handle:hover .resizable-handle-grip,
+.resizable-handle:active .resizable-handle-grip { height: 56px; }
+.resizable-handle-horizontal:hover .resizable-handle-grip,
+.resizable-handle-horizontal:active .resizable-handle-grip { height: 4px; width: 56px; }
+/* The workbench card, the stage and the docks stay opaque (`--bg-base`): only
+   the sidebar is translucent, which it gets from the shell's own `--bg`
+   showing through. The Translucent preference is a sidebar-only effect. */
 .workbench {
   min-width: 0;
   min-height: 0;
@@ -613,7 +738,9 @@ button:focus-visible > .shortcut-tooltip {
   overflow: hidden;
   border-left: 1px solid var(--workspace-edge-border);
   border-radius: 20px 0 0 20px;
-  box-shadow: -12px 0 28px var(--workspace-edge-shadow);
+  /* The soft edge shadow this card used to cast over the glass sidebar lives on
+     .workspace-sidebar-handle::before now: the center ResizablePanel clips its
+     children (overflow: hidden), so a box-shadow here can never reach out. */
 }
 .app-shell[data-settings-mode="true"] .workbench {
   border-radius: 0;
@@ -629,15 +756,6 @@ button:focus-visible > .shortcut-tooltip {
   flex: 1;
   display: flex;
   flex-direction: column;
-}
-.sidebar-shell {
-  width: var(--sidebar-layout-width, 0px);
-  min-width: 0;
-  max-width: 420px;
-  flex: 0 0 auto;
-  overflow: hidden;
-  transition: width 140ms ease-out;
-  will-change: width;
 }
 .sidebar-shell-inner {
   height: 100%;
@@ -824,6 +942,31 @@ button:focus-visible > .shortcut-tooltip {
   box-shadow: inset 0 0 0 1px var(--line-subtle);
 }
 .sidebar-tool-row:active { transform: scale(0.99); }
+.sidebar-command-section { margin-bottom: 10px; }
+.sidebar-command-row {
+  width: 100%;
+  border-radius: var(--control-radius);
+  border: 0;
+  background: transparent;
+  display: grid;
+  gap: 1px;
+  padding: 4px 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: left;
+  transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+}
+.sidebar-command-label,
+.sidebar-command-description {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-command-description { color: var(--text-faint); font-size: 11px; }
+.sidebar-command-row:hover,
+.sidebar-command-row:focus-visible { background: var(--surface-subtle); color: var(--text-secondary); outline: none; }
+.sidebar-command-row:active { transform: scale(0.99); }
 kbd { color: var(--text-faint); font-size: 11px; font-family: inherit; font-weight: 400; }
 kbd span { margin-left: 2px; }
 .sidebar-section { display: grid; gap: 0; margin-top: 0; }
@@ -992,10 +1135,44 @@ kbd span { margin-left: 2px; }
   cursor: default;
 }
 .project-group-menu-button:hover,
-.project-group-menu-button:focus-visible { color: var(--text-muted); }
+.project-group-menu-button:focus-visible { color: var(--text-secondary); }
 .project-group-menu-button:disabled {
   color: var(--text-disabled);
   pointer-events: none;
+}
+.anim-icon {
+  transition: transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-origin: center;
+}
+.anim-icon-spin:hover,
+.sidebar-settings-button:hover .anim-icon-spin {
+  transform: rotate(100deg);
+}
+.anim-icon-nudge-left:hover,
+.settings-back-button:hover .anim-icon-nudge-left {
+  transform: translateX(-2px);
+}
+.anim-icon-pop:hover,
+.sidebar-search-row:hover .anim-icon-pop,
+.settings-search:hover .anim-icon-pop {
+  transform: scale(1.12);
+}
+.sidebar-tool-row:hover .anim-icon-orbit,
+.anim-icon-orbit:hover {
+  animation: anim-icon-orbit-spin 2.4s linear infinite;
+}
+@keyframes anim-icon-orbit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-icon {
+    transition: none;
+  }
+  .anim-icon-orbit {
+    animation: none;
+  }
 }
 .project-folder-toggle-button {
   position: absolute;
@@ -1028,7 +1205,6 @@ kbd span { margin-left: 2px; }
 }
 .project-folder-toggle-button:hover,
 .project-folder-toggle-button:focus-visible {
-  background: var(--surface-subtle);
   color: var(--text-secondary);
   outline: none;
 }
@@ -1036,6 +1212,8 @@ kbd span { margin-left: 2px; }
   display: grid;
   gap: 1px;
   padding-left: 2px;
+  min-height: 0;
+  overflow: hidden;
 }
 .project-folder-node {
   display: grid;
@@ -1047,7 +1225,9 @@ kbd span { margin-left: 2px; }
   min-height: 28px;
   border-radius: var(--control-radius);
   color: var(--text-secondary);
-  padding: 5px 40px 5px calc(6px + (var(--project-depth, 0) * 6px));
+  /* Indentation comes from the nesting of .project-folder-children now, not from
+     a per-row depth multiplier, so every level also gets a guide line for free. */
+  padding: 5px 40px 5px 6px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1103,11 +1283,41 @@ kbd span { margin-left: 2px; }
   opacity: 1;
   pointer-events: auto;
 }
+.project-group-children-shell {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;
+}
+.project-group-children-shell[data-expanded="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+}
 .project-folder-children {
+  position: relative;
   min-height: 0;
   overflow: hidden;
   display: grid;
   gap: 1px;
+  /* One nesting level of indent. Because the tree nests in the DOM, this
+     compounds naturally with depth and needs no per-row depth arithmetic. */
+  padding-left: 14px;
+}
+/* Guide line for this nesting level, same idea as the Files component's
+   `before:w-px` rule. Kept inside the padding box so the container's own
+   overflow: hidden (used by the expand/collapse animation) can't clip it. */
+.project-folder-children::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line-subtler);
+  pointer-events: none;
 }
 .project {
   position: relative;
@@ -1157,7 +1367,7 @@ kbd span { margin-left: 2px; }
 .project-group-row:active,
 .project-show-more:active,
 .project:active { transform: none; }
-.nested-project { padding-left: calc(6px + (var(--project-depth, 0) * 6px)); }
+.nested-project { padding-left: 6px; }
 .project-icon {
   width: 20px;
   height: 16px;
@@ -1579,7 +1789,6 @@ img.radix-menu-item-icon {
   outline: 1px solid var(--focus-ring);
   outline-offset: -1px;
 }
-.sidebar-search-row:focus-within,
 .sidebar-search-toggle:focus-visible,
 .sidebar-search-action-row:focus-visible,
 .sidebar-tool-row:focus-visible,
@@ -1615,19 +1824,6 @@ img.radix-menu-item-icon {
 .pin-hit:focus-visible {
   box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
-.splitter {
-  width: 8px;
-  flex: 0 0 8px;
-  margin-left: -4px;
-  margin-right: -4px;
-  position: relative;
-  z-index: 3;
-  cursor: col-resize;
-  touch-action: none;
-}
-.splitter::before { content: ""; position: absolute; inset: 0; }
-.splitter::after { content: ""; position: absolute; inset: 0 auto 0 3px; width: 1px; background: transparent; transition: background 120ms ease; }
-.splitter:hover::after, .splitter[data-dragging]::after { background: var(--line-subtle); }
 .main-stage {
   position: relative;
   min-width: 0;
@@ -1656,9 +1852,6 @@ img.radix-menu-item-icon {
 .app-shell[data-effective-theme="dark"] .dock-panel {
   --dock-divider-active-color: color-mix(in srgb, var(--accent) 70%, var(--text-primary));
 }
-.dock-panel[data-dragging] {
-  transition: width 90ms linear, height 90ms linear, opacity 90ms linear;
-}
 .dock-panel[data-open="false"] {
   opacity: 0;
   pointer-events: none;
@@ -1677,17 +1870,15 @@ img.radix-menu-item-icon {
   max-height: 0;
   box-shadow: none;
 }
+/* Size limits live on the ResizablePanel (minSize/maxSize) now. The old
+   flex/max-width/min-height/max-height here came from the hand-rolled resizer
+   and, being later in the file at equal specificity, still won over
+   `.dock-panel-shell .dock-panel` — clamping the content narrower than its
+   panel and leaving an empty strip beside a wide dock. */
 .dock-panel[data-area="right"] {
-  flex: 0 0 auto;
   min-width: 0;
-  max-width: min(960px, max(0px, calc(100vw - var(--sidebar-layout-width, 0px) - 280px)));
   padding-top: var(--chrome-height);
   box-sizing: border-box;
-}
-.dock-panel[data-area="bottom"] {
-  flex: 0 0 auto;
-  min-height: 180px;
-  max-height: min(720px, calc(100vh - var(--chrome-height) - 180px));
 }
 .dock-panel-inner {
   min-width: 0;
@@ -1711,11 +1902,6 @@ img.radix-menu-item-icon {
 .app-shell[data-structure-drag-active="true"] .dock-panel[data-open="true"]:hover {
   background: color-mix(in srgb, var(--accent) 8%, var(--bg-base));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent);
-}
-.dock-resizer {
-  position: absolute;
-  z-index: 2;
-  background: transparent;
 }
 .dock-panel[data-area="right"] .dock-resizer {
   left: -5px;
@@ -1891,6 +2077,13 @@ img.radix-menu-item-icon {
     max-width: none;
     justify-content: flex-start;
     padding: 0 9px;
+  }
+
+  /* The padding shorthand above also resets the room reserved for the close
+     button (which is absolutely positioned at the tab's right edge), so the
+     active tab's label would run underneath it. Restore that room. */
+  .dock-panel[data-area="right"] .dock-tab-shell[data-active] .dock-tab {
+    padding-right: 34px;
   }
 
   .dock-panel[data-area="right"] .dock-tab:not([data-active]) span {
@@ -2251,6 +2444,22 @@ img.radix-menu-item-icon {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.35;
+}
+.structure-story-dock {
+  gap: 8px;
+}
+.structure-story-card {
+  gap: 8px;
+}
+.structure-story-card .structure-story-file {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.structure-story-card .structure-story-summary {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  line-height: 1.5;
 }
 .structure-brief-kicker {
   color: var(--text-muted);
@@ -4296,6 +4505,9 @@ img.radix-menu-item-icon {
 .ketcher-page-actions button:focus-visible:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text-primary);
+}
+/* Ring is keyboard-only; hover shares the rule above but must not get one. */
+.ketcher-page-actions button:focus-visible:not(:disabled) {
   outline: 1px solid var(--focus-ring);
   outline-offset: -1px;
 }
@@ -5246,6 +5458,9 @@ img.radix-menu-item-icon {
 .ketcher-dock-actions button:focus-visible:not(:disabled) {
   background: var(--surface-hover);
   color: var(--text-primary);
+}
+/* Ring is keyboard-only; hover shares the rule above but must not get one. */
+.ketcher-dock-actions button:focus-visible:not(:disabled) {
   outline: 1px solid var(--focus-ring);
   outline-offset: -1px;
 }
@@ -6745,7 +6960,11 @@ img.radix-menu-item-icon {
   overflow: hidden;
   color: var(--text-primary);
 }
-.settings-panel-content { width: min(672px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 96px 32px 80px; container-type: inline-size; }
+/* Named so the settings breakpoint below resolves against this column. Without a
+   name it would bind to the nearest inline-size container, which is now the
+   settings card (it declares `field-group` for shadcn's responsive Field), and
+   the rows would switch layout ~26px before the column actually got narrow. */
+.settings-panel-content { width: min(672px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 96px 32px 80px; container: settings-panel / inline-size; }
 .agent-integration-content { width: min(760px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 96px 32px 80px; container-type: inline-size; }
 .settings-panel[data-settings-section="agent"] .settings-panel-content { width: min(760px, calc(100% - 64px)); }
 .agent-integration-panel[data-embedded] .agent-integration-content { width: 100%; margin: 0; padding: 0; }
@@ -6777,7 +6996,12 @@ img.radix-menu-item-icon {
 .agent-integration-section { margin: 0 0 28px; }
 .settings-section h2 { margin: 0 0 12px; color: var(--text-muted); font-size: 13px; font-weight: 400; }
 .agent-integration-section h2 { margin: 0 0 12px; color: var(--text-muted); font-size: 13px; font-weight: 400; }
-.settings-card { margin: 0 -14px; gap: 0; overflow: hidden; border: 1px solid var(--line-subtler); border-radius: var(--control-radius); background: var(--surface-card); padding: 0; box-shadow: none; }
+/* shadcn's Field orientation="responsive" only lays a row out side-by-side
+   inside a container *named* field-group (its @md/field-group: classes). The
+   settings rows sit directly in this card rather than in a <FieldGroup>, so
+   name the container here; without it the query never matches and every row
+   stays stacked no matter how much width is available. */
+.settings-card { margin: 0 -14px; gap: 0; overflow: hidden; border: 1px solid var(--line-subtler); border-radius: var(--control-radius); background: var(--surface-card); padding: 0; box-shadow: none; container: field-group / inline-size; }
 .settings-control {
   display: flex;
   align-items: flex-start;
@@ -7114,8 +7338,13 @@ img.settings-open-destination-icon {
   background: var(--fg-base);
   box-shadow: 0 1px 6px color-mix(in srgb, black 22%, transparent);
 }
-.settings-range-control span {
-  width: 28px;
+/* Only the value readout beside the slider. It must stay scoped to the direct
+   child without a data-slot: the shadcn slider's track/range/thumb are spans
+   too, and a bare `.settings-range-control span` pinned the filled range to
+   28px so it never reached the thumb. min-width keeps short values aligned
+   while letting longer ones (e.g. "1024 MiB") fit. */
+.settings-range-control > span:not([data-slot]) {
+  min-width: 28px;
   color: var(--text-muted);
   text-align: right;
   font-size: 13px;
@@ -7133,7 +7362,11 @@ img.settings-open-destination-icon {
 }
 .settings-toggle[data-checked],
 .settings-toggle[data-state="checked"] { background: var(--accent); }
-.settings-toggle span {
+/* Target the thumb itself rather than any span: shadcn's Switch happens to
+   render exactly one today, but a second (an sr-only label, a ripple) would
+   silently inherit these absolute-positioned thumb styles — the same trap that
+   froze the slider's filled range. */
+.settings-toggle > [data-slot="switch-thumb"] {
   position: absolute;
   left: 2px;
   top: 2px;
@@ -7160,7 +7393,7 @@ img.settings-open-destination-icon {
 }
 .settings-action-button:hover:not(:disabled) { background: var(--surface-subtle-strong); color: var(--text-primary); }
 .settings-action-button:disabled { opacity: 0.48; }
-@container (max-width: 520px) {
+@container settings-panel (max-width: 520px) {
   .settings-card { margin: 0; }
   .settings-control { display: grid; gap: 10px; }
   .agent-integration-header { display: grid; gap: 16px; }

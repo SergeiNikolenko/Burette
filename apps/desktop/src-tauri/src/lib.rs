@@ -139,6 +139,7 @@ pub fn run() {
             compute::commands::compute_purge_job,
             menu::sync_native_menu,
             menu::drain_native_menu_commands,
+            menu::request_app_quit,
             menu::register_exit_preflight_listener,
             menu::unregister_exit_preflight_listener,
             menu::respond_to_exit_preflight,

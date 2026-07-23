@@ -11,6 +11,7 @@ import { join, resourceDir } from "@tauri-apps/api/path";
 import { DOCK_TAB_LABELS, createDockTab, dockFileEntries, dockTabCatalog, type DockArea, type DockFileEntry, type DockTabKind } from "../lib/dock";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../lib/structure-drag";
 import type { StructureDragPayload } from "../lib/structure-drag";
+import type { StructureStory } from "../lib/structure-story";
 import { isTauriRuntime } from "../lib/tauri";
 import type { ShellActions, ShellViewState } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
@@ -31,7 +32,6 @@ type DockPanelProps = {
   area: DockArea;
   state: ShellViewState;
   actions: ShellActions;
-  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
   readOnly?: boolean;
 };
 
@@ -40,6 +40,7 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   files: Folder01Icon,
   spectrum: Atom01Icon,
   text: File02Icon,
+  story: File02Icon,
   inspector: Search01Icon,
   folding: Atom01Icon,
   "structure-basket": Atom01Icon,
@@ -51,15 +52,13 @@ const dockTabIcons: Record<DockTabKind, typeof File02Icon> = {
   "chemical-space": Atom01Icon,
 };
 
-export function DockPanel({ area, state, actions, onResizeStart, readOnly = false }: DockPanelProps) {
+export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
   const [dropActive, setDropActive] = useState(false);
   const configuredTabs = area === "right" ? state.rightDockTabs : state.bottomDockTabs;
   const rawTabs = readOnly && area === "right"
     ? [configuredTabs.find((tab) => tab.kind === "inspector") ?? createDockTab("inspector")]
     : configuredTabs;
   const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
-  const size = area === "right" ? state.rightDockWidth : state.bottomDockHeight;
-  const dragging = area === "right" ? state.rightDockDragging : state.bottomDockDragging;
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
@@ -116,6 +115,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
         if (kind === "folding") return foldingDockAvailable;
         if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
         if (kind === "chemical-space") return chemicalSpaceDockAvailable;
+        if (kind === "story") return Boolean(state.structureStory);
         return true;
       }).map((kind) => ({
         kind: "item" as const,
@@ -159,9 +159,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
       data-area={area}
       data-active-tab={activeTab.kind}
       data-open={open ? "true" : "false"}
-      data-dragging={dragging || undefined}
       data-drop-active={dropActive || undefined}
-      style={area === "right" ? { width: open ? size : 0 } : { height: open ? size : 0 }}
       aria-hidden={!open || undefined}
       inert={!open}
       onDragEnter={readOnly ? undefined : handleDrag}
@@ -173,17 +171,7 @@ export function DockPanel({ area, state, actions, onResizeStart, readOnly = fals
       onDrop={readOnly ? undefined : handleDrop}
       aria-label={`${area} dock`}
     >
-      <div
-        className="dock-resizer"
-        role="separator"
-        aria-orientation={area === "right" ? "vertical" : "horizontal"}
-        aria-label={`Resize ${area} dock`}
-        onPointerDown={onResizeStart}
-      />
-      <div
-        className="dock-panel-inner"
-        style={area === "right" ? { width: size } : { height: size }}
-      >
+      <div className="dock-panel-inner">
         <div className="dock-header">
           <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
             {visibleTabs.map((tab) => {
@@ -375,6 +363,15 @@ function DockPanelContent({
         <div className="dock-empty dock-empty-large">xyzrender controls are available for xyzr previews</div>
       </div>
     );
+  }
+  if (activeTabKind === "story") {
+    return state.structureStory
+      ? <StructureStoryPanel story={state.structureStory} />
+      : (
+          <div className="dock-content dock-content-empty">
+            <div className="dock-empty dock-empty-large">Open Story from a structure sequence</div>
+          </div>
+        );
   }
   if (activeTabKind === "inspector") {
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
@@ -1766,6 +1763,32 @@ function dockFilesDragPayload(
     };
   }
   return null;
+}
+
+function StructureStoryPanel({ story }: { story: StructureStory }) {
+  return (
+    <div className="dock-content structure-story-dock">
+      <section className="structure-brief-card structure-story-card">
+        <div className="structure-brief-card-header">
+          <div>
+            <small>Step {story.stepIndex + 1} of {story.stepCount}</small>
+            <h3>{story.stage}</h3>
+          </div>
+        </div>
+        <p className="structure-story-file" title={story.fileName}>{story.fileName}</p>
+        <p className="structure-story-summary">{story.summary}</p>
+      </section>
+      {story.comparison ? (
+        <>
+          <Metric label="Cα RMSD vs previous" value={`${story.comparison.rmsd.toFixed(2)} Å`} />
+          <Metric label="Largest shared chain" value={story.comparison.chain} />
+          <Metric label="Compared residues" value={String(story.comparison.residueCount)} />
+        </>
+      ) : (
+        <Metric label="Comparison" value={story.stepIndex === 0 ? "Reference state" : "Unavailable"} />
+      )}
+    </div>
+  );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
