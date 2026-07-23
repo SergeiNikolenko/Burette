@@ -227,7 +227,7 @@
       const key = event.key?.toLowerCase();
       const commandKey = event.metaKey || event.ctrlKey;
       const togglesSidebar = commandKey && !event.altKey && !event.shiftKey && key === 'b';
-      const opensCommandPalette = (commandKey && event.shiftKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
+      const opensCommandPalette = (commandKey && !event.altKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
       if (!opensCommandPalette && !togglesSidebar) return;
       event.preventDefault();
       post(togglesSidebar ? 'toggleSidebar' : 'openCommandPalette');
