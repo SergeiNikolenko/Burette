@@ -14,35 +14,48 @@ const EXPECTED_RDKIT_VERSION = "2025.03.4";
 const DEFAULT_RECORD_COUNT = 10_000;
 
 const options = parseArguments(process.argv.slice(2));
-const inputPath = resolve(options.input);
+const inputPaths = [options.input, ...options.supplements].map((path) => resolve(path));
 const runtimeRoot = resolve(options.runtimeRoot);
 const backendPath = resolve(options.backend);
 const outputPath = resolve(options.output);
 
-const sourceBytes = await readFile(inputPath);
-const rows = csvParse(sourceBytes.toString("utf8"));
-if (!rows.columns.includes("smiles")) {
-  throw new Error("Chemical-space benchmark input must contain a smiles column.");
+const sources = await Promise.all(inputPaths.map(async (path) => {
+  const bytes = await readFile(path);
+  const rows = csvParse(bytes.toString("utf8"));
+  if (!rows.columns.includes("smiles")) {
+    throw new Error(`Chemical-space benchmark input ${path} must contain a smiles column.`);
+  }
+  return { path, bytes, rows };
+}));
+const availableRows = sources.flatMap((source) => source.rows);
+if (availableRows.length < options.recordCount) {
+  throw new Error(
+    `Chemical-space benchmark requires ${options.recordCount} valid rows; inputs have ${availableRows.length} total rows.`,
+  );
 }
-if (rows.length < options.recordCount) {
-  throw new Error(`Chemical-space benchmark requires ${options.recordCount} rows; input has ${rows.length}.`);
-}
-
 const rdkit = await initRDKitModule();
 if (rdkit.version() !== EXPECTED_RDKIT_VERSION) {
   throw new Error(`RDKit ${rdkit.version()} does not match ${EXPECTED_RDKIT_VERSION}.`);
 }
 
 const fingerprintStarted = performance.now();
-const records = rows.slice(0, options.recordCount).map((row, index) => fingerprintRecord(rdkit, row.smiles, index));
+const records = [];
+let successfulRecords = 0;
+for (const row of availableRows) {
+  const record = fingerprintRecord(rdkit, row.smiles, records.length);
+  records.push(record);
+  if (record.fingerprintBase64) successfulRecords += 1;
+  if (successfulRecords === options.recordCount) break;
+}
 const fingerprintHostTimeMs = performance.now() - fingerprintStarted;
-const successfulRecords = records.filter((record) => record.fingerprintBase64).length;
 const failedRecords = records.length - successfulRecords;
-if (successfulRecords < 2) {
-  throw new Error("RDKit produced fewer than two valid fingerprints.");
+if (successfulRecords !== options.recordCount) {
+  throw new Error(
+    `RDKit produced ${successfulRecords} valid fingerprints; ${options.recordCount} were requested.`,
+  );
 }
 process.stderr.write(
-  `RDKit Morgan fingerprints: ${successfulRecords}/${records.length} valid in ${fingerprintHostTimeMs.toFixed(1)} ms\n`,
+  `RDKit Morgan fingerprints: ${successfulRecords} valid, ${failedRecords} rejected, in ${fingerprintHostTimeMs.toFixed(1)} ms\n`,
 );
 
 const runs = [];
@@ -51,7 +64,7 @@ for (const dimensions of options.dimensions) {
     const request = {
       operation: "chemicalSpace",
       source: {
-        title: basename(inputPath),
+        title: basename(inputPaths[0]),
         extension: "fingerprints",
         text: "",
       },
@@ -101,9 +114,12 @@ const report = {
   schemaVersion: "burrete.chemical-space-benchmark.v1",
   generatedAt: new Date().toISOString(),
   input: {
-    path: inputPath,
-    sha256: createHash("sha256").update(sourceBytes).digest("hex"),
+    sources: sources.map((source) => ({
+      path: source.path,
+      sha256: createHash("sha256").update(source.bytes).digest("hex"),
+    })),
     requestedRecords: options.recordCount,
+    attemptedRecords: records.length,
   },
   fingerprint: {
     rdkitVersion: rdkit.version(),
@@ -213,6 +229,7 @@ function parseArguments(args) {
   }
   return {
     input,
+    supplements: (values.get("supplement") || "").split(",").filter(Boolean),
     runtimeRoot,
     backend: values.get("backend") || "target/debug/burrete-compute-dev-backend",
     output: values.get("output") || "build/reports/chemical-space-10k.json",
