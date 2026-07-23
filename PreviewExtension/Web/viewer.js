@@ -10675,18 +10675,24 @@
     return value === 'line' || value === 'lines' || value === 'solvent-lines';
   }
 
+  // Crystallographic water is a lone oxygen: the file carries no hydrogens and
+  // nothing bonds it to anything. Drawing it with `intra-bond` alone therefore
+  // rendered nothing at all — the component was present, visible and empty. Crosses
+  // mark the lone oxygens, and the bond visual stays for solvent that does come with
+  // hydrogens, as an MD topology does.
   function molstarWaterLineRepresentation() {
     return {
       type: 'line',
       typeParams: {
-        alpha: 0.32,
-        sizeFactor: 0.035,
-        visuals: ['intra-bond']
+        alpha: 0.55,
+        sizeFactor: 2,
+        crossSize: 0.35,
+        visuals: ['element-cross', 'intra-bond']
       },
       color: 'uniform',
       colorParams: { value: 0x4db6ff },
       size: 'uniform',
-      sizeParams: { value: 0.03 }
+      sizeParams: { value: 0.4 }
     };
   }
 

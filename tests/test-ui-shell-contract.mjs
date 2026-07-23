@@ -4912,7 +4912,9 @@ assert.match(previewViewer, /async function applyMolstarWaterLineRepresentation\
 assert.match(previewViewer, /function molstarWaterLineRepresentation\(\)/);
 assert.match(buretteAgent, /'SPC', 'SPCE', 'SOL'/);
 assert.match(previewViewer, /await plugin\.managers\.structure\.component\.removeRepresentations\(waterComponents\)/);
-assert.match(previewViewer, /type: 'line',\s*typeParams: \{\s*alpha: 0\.32,\s*sizeFactor: 0\.035,\s*visuals: \['intra-bond'\]\s*\},\s*color: 'uniform',\s*colorParams: \{ value: 0x4db6ff \},\s*size: 'uniform',\s*sizeParams: \{ value: 0\.03 \}/s);
+// `intra-bond` on its own draws nothing for crystallographic water, which has no
+// hydrogens and no bonds — the crosses are what actually marks the oxygens.
+assert.match(previewViewer, /type: 'line',\s*typeParams: \{\s*alpha: 0\.55,\s*sizeFactor: 2,\s*crossSize: 0\.35,\s*visuals: \['element-cross', 'intra-bond'\]\s*\},\s*color: 'uniform',\s*colorParams: \{ value: 0x4db6ff \},\s*size: 'uniform',\s*sizeParams: \{ value: 0\.4 \}/s);
 assert.match(previewViewer, /async function loadMolstarEntryAsUnitCell\(viewer, entry\)/);
 assert.match(previewViewer, /StateTransforms\?\.Representation\?\.StructureBoundingBox3D/);
 assert.match(previewViewer, /async function applyMolstarStructureBoundingBoxGeometry\(viewer, options = \{\}\)/);
