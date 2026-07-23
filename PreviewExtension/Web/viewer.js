@@ -5257,7 +5257,7 @@
   }
 
   function minimumTrajectoryLoopDelay(prepared) {
-    return prepared?.nativeTrajectoryControls ? 0 : 300;
+    return prepared?.nativeTrajectoryControls ? 0 : minimumTrajectoryLoopTimerDelay(prepared);
   }
 
   function minimumTrajectoryLoopTimerDelay(prepared) {

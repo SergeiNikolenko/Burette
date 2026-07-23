@@ -5613,7 +5613,7 @@ assert.match(previewViewer, /const sceneStructures = \[\];[\s\S]*sceneStructures
 assert.match(previewViewer, /function minimumTrajectoryLoopDelay\(prepared\)/);
 assert.match(previewViewer, /const NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD = 25/);
 assert.doesNotMatch(previewViewer, /NATIVE_TRAJECTORY_LOOP_MAX_FPS/);
-assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 0 : 300/);
+assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 0 : minimumTrajectoryLoopTimerDelay\(prepared\)/);
 assert.match(previewViewer, /function minimumTrajectoryLoopTimerDelay\(prepared\)/);
 assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 0 : 60/);
 assert.match(previewViewer, /const DEFAULT_TRAJECTORY_LOOP_FPS = 20/);
