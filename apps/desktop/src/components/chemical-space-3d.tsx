@@ -17,6 +17,7 @@ type ChemicalSpace3DProps = {
   selected: Set<number>;
   hovered: number | null;
   preview: MoleculePreview | null;
+  pointScale: number;
   tool: "navigate" | "lasso";
   methodLabel: string;
   onHover: (sourceRecordId: number | null) => void;
@@ -28,9 +29,13 @@ type ThreeRuntime = {
   updateHovered: (sourceRecordId: number | null) => void;
   updateSelected: (sourceRecordIds: Set<number>) => void;
   updatePreview: (preview: MoleculePreview | null) => void;
+  updatePointScale: (pointScale: number) => void;
 };
 
 const MAX_LASSO_POINTS = 4_096;
+const BASE_POINT_SIZE = 0.055;
+const BASE_SELECTED_POINT_SIZE = 0.09;
+const BASE_HOVERED_POINT_SIZE = 0.13;
 
 export function ChemicalSpace3D({
   positions,
@@ -38,6 +43,7 @@ export function ChemicalSpace3D({
   selected,
   hovered,
   preview,
+  pointScale,
   tool,
   methodLabel,
   onHover,
@@ -76,8 +82,9 @@ export function ChemicalSpace3D({
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.domElement.className = "size-full touch-none";
+    renderer.domElement.className = "size-full touch-none outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-foreground/30";
     renderer.domElement.setAttribute("aria-label", `Interactive 3D ${methodLabel} chemical-space map`);
+    renderer.domElement.setAttribute("aria-keyshortcuts", "W A S D");
     renderer.domElement.setAttribute("role", "application");
     host.append(renderer.domElement);
 
@@ -100,14 +107,14 @@ export function ChemicalSpace3D({
       map: pointTexture,
       alphaTest: 0.15,
       opacity: 0.68,
-      size: 0.055,
+      size: BASE_POINT_SIZE * pointScale,
       sizeAttenuation: true,
       transparent: true,
     }));
     scene.add(points);
 
-    const selectedPoints = overlayPoints(primaryColor, pointTexture, 0.09);
-    const hoveredPoints = overlayPoints(foregroundColor, pointTexture, 0.13);
+    const selectedPoints = overlayPoints(primaryColor, pointTexture, BASE_SELECTED_POINT_SIZE * pointScale);
+    const hoveredPoints = overlayPoints(foregroundColor, pointTexture, BASE_HOVERED_POINT_SIZE * pointScale);
     scene.add(selectedPoints, hoveredPoints);
 
     const grid = new THREE.GridHelper(2.5, 10, primaryColor, mutedColor);
@@ -175,6 +182,12 @@ export function ChemicalSpace3D({
       previewRef.current = nextPreview;
       projectPoints();
     };
+    const updatePointScale = (nextPointScale: number) => {
+      points.material.size = BASE_POINT_SIZE * nextPointScale;
+      selectedPoints.material.size = BASE_SELECTED_POINT_SIZE * nextPointScale;
+      hoveredPoints.material.size = BASE_HOVERED_POINT_SIZE * nextPointScale;
+      render();
+    };
 
     const localPoint = (event: PointerEvent): Point2 => {
       const rect = renderer.domElement.getBoundingClientRect();
@@ -191,6 +204,8 @@ export function ChemicalSpace3D({
     };
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
+      renderer.domElement.focus({ preventScroll: true });
+      onHoverRef.current(null);
       pointerDown = localPoint(event);
       pointerMoved = false;
     };
@@ -216,12 +231,33 @@ export function ChemicalSpace3D({
       pointerDown = null;
       onHoverRef.current(null);
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if (!["w", "a", "s", "d"].includes(key)) return;
+      event.preventDefault();
+      const distance = camera.position.distanceTo(controls.target);
+      const step = Math.max(0.025, distance * (event.shiftKey ? 0.08 : 0.035));
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+      const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
+      const up = new THREE.Vector3().crossVectors(right, forward).normalize();
+      const delta = new THREE.Vector3();
+      if (key === "w") delta.addScaledVector(up, step);
+      if (key === "s") delta.addScaledVector(up, -step);
+      if (key === "a") delta.addScaledVector(right, -step);
+      if (key === "d") delta.addScaledVector(right, step);
+      camera.position.add(delta);
+      controls.target.add(delta);
+      render();
+    };
     const onContextMenu = (event: MouseEvent) => event.preventDefault();
 
+    renderer.domElement.tabIndex = 0;
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
     renderer.domElement.addEventListener("pointerleave", onPointerLeave);
+    renderer.domElement.addEventListener("keydown", onKeyDown);
     renderer.domElement.addEventListener("contextmenu", onContextMenu);
     controls.addEventListener("change", render);
 
@@ -235,7 +271,13 @@ export function ChemicalSpace3D({
     });
     resizeObserver.observe(host);
 
-    runtimeRef.current = { updatePositions, updateHovered, updateSelected, updatePreview };
+    runtimeRef.current = {
+      updatePositions,
+      updateHovered,
+      updateSelected,
+      updatePreview,
+      updatePointScale,
+    };
     updateSelected(selected);
     updateHovered(hovered);
     render();
@@ -249,6 +291,7 @@ export function ChemicalSpace3D({
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
       renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
+      renderer.domElement.removeEventListener("keydown", onKeyDown);
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       geometry.dispose();
       points.material.dispose();
@@ -270,6 +313,7 @@ export function ChemicalSpace3D({
   useEffect(() => runtimeRef.current?.updateSelected(selected), [selected]);
   useEffect(() => runtimeRef.current?.updateHovered(hovered), [hovered]);
   useEffect(() => runtimeRef.current?.updatePreview(preview), [preview]);
+  useEffect(() => runtimeRef.current?.updatePointScale(pointScale), [pointScale]);
 
   useEffect(() => {
     const canvas = lassoCanvasRef.current;
@@ -332,7 +376,7 @@ export function ChemicalSpace3D({
           setLasso([]);
         }}
       />
-      {preview && previewAnchor ? (
+      {preview && hovered === preview.sourceRecordId && previewAnchor ? (
         <div
           className="pointer-events-none absolute w-52 overflow-hidden rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg"
           style={{
@@ -346,7 +390,7 @@ export function ChemicalSpace3D({
         </div>
       ) : null}
       <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
-        {selected.size.toLocaleString()} selected · drag to orbit · wheel to zoom · right-drag to pan
+        {selected.size.toLocaleString()} selected · drag to orbit · WASD to pan · wheel to zoom
       </div>
     </div>
   );

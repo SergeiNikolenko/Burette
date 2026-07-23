@@ -90,13 +90,16 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
+  const [pointScale, setPointScale] = useState(1);
   const [tool, setTool] = useState<"navigate" | "lasso">("navigate");
   const [study, setStudy] = useState(DEFAULT_STUDY);
   const [completedStudy, setCompletedStudy] = useState<CompletedStudy | null>(null);
   const [studyPosition, setStudyPosition] = useState(0);
   const [studyPlaying, setStudyPlaying] = useState(false);
   const studyControllerRef = useRef<AbortController | null>(null);
+  const hoveredRef = useRef<number | null>(null);
   const documentId = document?.renderer === "grid2d" ? document.id : null;
+  hoveredRef.current = hovered;
   const commitOptions = (next: ChemicalSpaceOptions) => {
     setCompletedStudy(null);
     setStudyPlaying(false);
@@ -186,11 +189,13 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       }
       if (data.body.type === "gridHoverChanged") {
         const index = Number(data.body.sourceRecordId);
-        setHovered(Number.isSafeInteger(index) && index >= 0 ? index : null);
+        const nextHovered = Number.isSafeInteger(index) && index >= 0 ? index : null;
+        setHovered(nextHovered);
+        setPreview((current) => current?.sourceRecordId === nextHovered ? current : null);
       }
       if (data.body.type === "chemicalSpaceMoleculePreview") {
         const index = Number(data.body.sourceRecordId);
-        if (!Number.isSafeInteger(index) || index < 0) {
+        if (!Number.isSafeInteger(index) || index < 0 || index !== hoveredRef.current) {
           setPreview(null);
           return;
         }
@@ -310,6 +315,22 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               <TooltipContent showArrow={false}>Draw a free-form selection linked to Grid</TooltipContent>
             </Tooltip>
           </div>
+          <Field orientation="horizontal" className="w-44 shrink-0 gap-2">
+            <FieldLabel className="text-xs text-muted-foreground">Size</FieldLabel>
+            <Slider
+              className="w-20"
+              tone="neutral"
+              min={0.5}
+              max={3}
+              step={0.1}
+              value={[pointScale]}
+              aria-label="Point size"
+              onValueChange={([value]) => setPointScale(value)}
+            />
+            <span className="w-9 text-right font-mono text-[10px] text-muted-foreground">
+              {Math.round(pointScale * 100)}%
+            </span>
+          </Field>
           <span className="ml-auto text-xs text-muted-foreground">
             {displayedResult ? `${displayedResult.successfulRecords.toLocaleString()} molecules · Metal` : runningLabel}
           </span>
@@ -322,10 +343,11 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               selected={selected}
               hovered={hovered}
               preview={preview}
+              pointScale={pointScale}
               tool={tool}
               onHover={(sourceRecordId) => {
                 setHovered(sourceRecordId);
-                if (sourceRecordId === null) setPreview(null);
+                setPreview((current) => current?.sourceRecordId === sourceRecordId ? current : null);
                 postToGrid({ type: "chemicalSpaceHoverChanged", sourceRecordId });
               }}
               onSelect={(sourceRecordIds) => {
@@ -461,6 +483,7 @@ type ChemicalSpaceCanvasProps = {
   selected: Set<number>;
   hovered: number | null;
   preview: MoleculePreview | null;
+  pointScale: number;
   tool: "navigate" | "lasso";
   onHover: (sourceRecordId: number | null) => void;
   onSelect: (sourceRecordIds: number[]) => void;
@@ -476,6 +499,7 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
         selected={props.selected}
         hovered={props.hovered}
         preview={props.preview}
+        pointScale={props.pointScale}
         tool={props.tool}
         methodLabel={methodLabel(props.result.method)}
         onHover={props.onHover}
@@ -491,6 +515,7 @@ function ChemicalSpace2D({
   selected,
   hovered,
   preview,
+  pointScale,
   tool,
   onHover,
   onSelect,
@@ -536,7 +561,13 @@ function ChemicalSpace2D({
       const active = selected.has(point.sourceRecordId);
       const hot = hovered === point.sourceRecordId;
       context.beginPath();
-      context.arc(point.x, point.y, hot ? 5.5 : active ? 4.5 : 2.6, 0, Math.PI * 2);
+      context.arc(
+        point.x,
+        point.y,
+        (hot ? 5.5 : active ? 4.5 : 2.6) * pointScale,
+        0,
+        Math.PI * 2,
+      );
       context.fillStyle = active || hot ? selectedColor : pointColor;
       context.globalAlpha = active || hot ? 1 : 0.62;
       context.fill();
@@ -557,7 +588,7 @@ function ChemicalSpace2D({
       context.stroke();
       context.setLineDash([]);
     }
-  }, [camera, hovered, lasso, normalized, result.sourceRecordIds, selected, viewport]);
+  }, [camera, hovered, lasso, normalized, pointScale, result.sourceRecordIds, selected, viewport]);
 
   const localPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -566,7 +597,7 @@ function ChemicalSpace2D({
 
   const hoverNearest = (point: Point2) => {
     let nearest: ProjectedPoint | null = null;
-    let distanceSquared = 64;
+    let distanceSquared = Math.max(8, pointScale * 5.5) ** 2;
     for (const candidate of projectedRef.current) {
       const nextDistance = (candidate.x - point.x) ** 2 + (candidate.y - point.y) ** 2;
       if (nextDistance < distanceSquared) {
@@ -587,16 +618,32 @@ function ChemicalSpace2D({
     <div className="absolute inset-0 overflow-hidden bg-muted/20">
       <canvas
         ref={canvasRef}
-        className="size-full touch-none"
+        className="size-full touch-none outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-foreground/30"
+        tabIndex={0}
         aria-label={`${result.dimensions}D ${methodLabel(result.method)} chemical-space map`}
+        aria-keyshortcuts="W A S D"
+        onKeyDown={(event) => {
+          const key = event.key.toLowerCase();
+          if (!["w", "a", "s", "d"].includes(key) || tool !== "navigate") return;
+          event.preventDefault();
+          const step = (event.shiftKey ? 64 : 28) / Math.max(0.35, camera.zoom);
+          setCamera((value) => ({
+            ...value,
+            panX: value.panX + (key === "a" ? step : key === "d" ? -step : 0),
+            panY: value.panY + (key === "w" ? step : key === "s" ? -step : 0),
+          }));
+        }}
         onWheel={(event) => {
           event.preventDefault();
           const factor = event.deltaY > 0 ? 0.9 : 1.1;
           setCamera((value) => ({ ...value, zoom: Math.max(0.35, Math.min(5, value.zoom * factor)) }));
         }}
         onPointerDown={(event) => {
+          event.currentTarget.focus({ preventScroll: true });
           event.currentTarget.setPointerCapture(event.pointerId);
           const point = localPoint(event);
+          hoverRef.current = null;
+          onHover(null);
           pointerRef.current = { start: point, last: point, moved: false };
           if (tool === "lasso") {
             lassoRef.current = [point];
@@ -654,7 +701,7 @@ function ChemicalSpace2D({
           onHover(null);
         }}
       />
-      {preview && previewPoint ? (
+      {preview && hovered === preview.sourceRecordId && previewPoint ? (
         <div
           className="pointer-events-none absolute z-10 w-52 overflow-hidden rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg"
           style={{
@@ -668,7 +715,7 @@ function ChemicalSpace2D({
         </div>
       ) : null}
       <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
-        {selected.size.toLocaleString()} selected · wheel to zoom · drag to pan
+        {selected.size.toLocaleString()} selected · WASD or drag to pan · wheel to zoom
       </div>
     </div>
   );
