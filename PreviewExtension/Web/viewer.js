@@ -4697,6 +4697,23 @@
     return targets;
   }
 
+  // Each representation leaf maps back to its owning component and the
+  // representation itself, which is what the per-representation edits need: Mol*
+  // addresses a single representation by its component plus the representation as a
+  // pivot, never by the representation's ref alone.
+  function sceneTreeRepresentationTargets(viewer) {
+    const targets = new Map();
+    for (const structure of molstarCurrentStructures(viewer)) {
+      for (const component of structure?.components || []) {
+        for (const representation of component?.representations || []) {
+          const repRef = representation?.cell?.transform?.ref;
+          if (repRef) targets.set(repRef, { component, representation });
+        }
+      }
+    }
+    return targets;
+  }
+
   // A row reports a colour theme only when every representation under it agrees;
   // mixed rows show nothing rather than lying about the scene.
   // A tint reads back either from a flat uniform theme or from the carbon colour of
@@ -5102,6 +5119,15 @@
     };
   }
 
+  // The same smart tint, shaped for updateRepresentations rather than
+  // updateRepresentationsTheme: editing one representation goes through the pivot
+  // form, and its params carry the colour theme as { name, params }.
+  function sceneTreeReprTintTheme(type, value) {
+    return SCENE_TREE_FLAT_REPRESENTATIONS.has(type)
+      ? { name: 'uniform', params: { value } }
+      : { name: 'element-symbol', params: { carbonColor: { name: 'uniform', params: { value } } } };
+  }
+
   async function applySceneTreeColorTheme(ref, theme, value) {
     const viewer = activeMolstarViewer();
     const manager = viewer?.plugin?.managers?.structure?.component;
@@ -5224,7 +5250,7 @@
     menu.appendChild(heading);
   }
 
-  function sceneTreeMenuSelect(menu, label, select, options, current) {
+  function sceneTreeMenuSelect(menu, label, select, options, current, placeholder) {
     const row = document.createElement('label');
     row.className = 'buret-tree-menu-field';
     const caption = document.createElement('span');
@@ -5232,17 +5258,46 @@
     const control = document.createElement('select');
     control.className = 'buret-select';
     control.dataset.sceneTreeSelect = select;
+    if (placeholder) {
+      const item = document.createElement('option');
+      item.value = '';
+      item.textContent = placeholder;
+      control.appendChild(item);
+    }
     for (const option of options) {
       const item = document.createElement('option');
       item.value = option.name;
       item.textContent = option.label;
       control.appendChild(item);
     }
-    // An empty selection is honest when the representations disagree, which is what
-    // a structure row with a cartoon and a ball-and-stick under it looks like.
-    if (current && options.some(option => option.name === current)) control.value = current;
+    // A placeholder select is an action list that always sits back on its prompt;
+    // the others reflect the current value, and an empty selection is honest when
+    // the representations disagree — a structure row with a cartoon and a
+    // ball-and-stick under it has no single type to show.
+    if (placeholder) control.value = '';
+    else if (current && options.some(option => option.name === current)) control.value = current;
     else control.selectedIndex = -1;
     row.append(caption, control);
+    menu.appendChild(row);
+  }
+
+  function sceneTreeMenuSlider(menu, label, slider, value) {
+    const row = document.createElement('div');
+    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const control = document.createElement('input');
+    control.type = 'range';
+    control.className = 'buret-tree-menu-range';
+    control.min = '0';
+    control.max = '100';
+    control.step = '1';
+    control.value = String(value);
+    control.dataset.sceneTreeSlider = slider;
+    const readout = document.createElement('span');
+    readout.className = 'buret-tree-menu-slider-value';
+    readout.textContent = `${value}%`;
+    row.append(caption, control, readout);
     menu.appendChild(row);
   }
 
@@ -5264,30 +5319,79 @@
       .filter(entry => entry.name);
   }
 
-  function sceneTreeCurrentRepresentation(components) {
-    let type = null;
-    for (const component of components) {
-      for (const representation of component?.representations || []) {
-        const name = String(representation?.cell?.transform?.params?.type?.name || '');
-        if (type === null) type = name;
-        else if (type !== name) return '';
-      }
-    }
-    return type || '';
-  }
-
-  async function applySceneTreeRepresentation(ref, type) {
+  // Adds another representation to a component without disturbing the ones already
+  // there — a ligand can carry its ball-and-stick and a translucent surface at once.
+  async function addSceneTreeRepresentation(ref, type) {
     const viewer = activeMolstarViewer();
     const manager = viewer?.plugin?.managers?.structure?.component;
     const components = sceneTreeColorTargets(viewer).get(ref) || [];
-    if (!components.length || typeof manager?.addRepresentation !== 'function') return;
+    if (!type || !components.length || typeof manager?.addRepresentation !== 'function') return;
     try {
-      if (typeof manager.removeRepresentations === 'function') await manager.removeRepresentations(components);
       await manager.addRepresentation(components, type);
     } catch (error) {
-      debug('scene tree representation failed: ' + (error && error.message || String(error)));
+      debug('scene tree add representation failed: ' + (error && error.message || String(error)));
     }
     scheduleSceneTreeRender();
+  }
+
+  // Per-representation edits all ride the same pivot update. Returning a fresh params
+  // object from the updater lets one field change while Mol* keeps the rest of the
+  // transform, which is why colour and opacity can be set without clobbering each
+  // other or the size theme.
+  async function updateSceneTreeRepresentation(ref, update) {
+    const viewer = activeMolstarViewer();
+    const manager = viewer?.plugin?.managers?.structure?.component;
+    const target = sceneTreeRepresentationTargets(viewer).get(ref);
+    if (!target || typeof manager?.updateRepresentations !== 'function') return;
+    try {
+      await manager.updateRepresentations([target.component], target.representation, update);
+    } catch (error) {
+      debug('scene tree representation update failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  function applySceneTreeReprType(ref, type) {
+    // A new type brings its own parameter schema, so the params reset to defaults
+    // rather than carrying keys the new type would not understand.
+    return updateSceneTreeRepresentation(ref, old => ({ ...old, type: { name: type, params: {} } }));
+  }
+
+  function applySceneTreeReprAlpha(ref, alpha) {
+    return updateSceneTreeRepresentation(ref, old => ({
+      ...old, type: { ...old.type, params: { ...old.type.params, alpha } }
+    }));
+  }
+
+  function applySceneTreeReprColor(ref, choice, value) {
+    const viewer = activeMolstarViewer();
+    const target = sceneTreeRepresentationTargets(viewer).get(ref);
+    if (!target) return;
+    const type = String(target.representation?.cell?.transform?.params?.type?.name || '');
+    const colorTheme = choice === 'tint'
+      ? sceneTreeReprTintTheme(type, value)
+      : { name: choice, params: {} };
+    return updateSceneTreeRepresentation(ref, old => ({ ...old, colorTheme }));
+  }
+
+  // The opacity slider fires on every pixel of the drag; each apply is a state
+  // commit, so newer moves are folded into the one in flight rather than queued
+  // behind it — the representation follows the thumb and never lags a backlog.
+  let sceneTreeAlphaInFlight = false;
+  let sceneTreePendingAlpha = null;
+  async function streamSceneTreeReprAlpha(ref, alpha) {
+    sceneTreePendingAlpha = { ref, alpha };
+    if (sceneTreeAlphaInFlight) return;
+    sceneTreeAlphaInFlight = true;
+    try {
+      while (sceneTreePendingAlpha) {
+        const next = sceneTreePendingAlpha;
+        sceneTreePendingAlpha = null;
+        await applySceneTreeReprAlpha(next.ref, next.alpha);
+      }
+    } finally {
+      sceneTreeAlphaInFlight = false;
+    }
   }
 
   // Shows one component and hides its siblings — the quickest way to look at a
@@ -5335,12 +5439,50 @@
     scheduleSceneTreeRender();
   }
 
+  function sceneTreeMenuSwatches(menu, label, action, currentValue) {
+    const swatches = document.createElement('div');
+    swatches.className = 'buret-tree-swatches';
+    for (const entry of SCENE_TREE_UNIFORM_COLORS) {
+      const swatch = document.createElement('button');
+      swatch.type = 'button';
+      swatch.className = 'buret-tree-swatch';
+      swatch.dataset.sceneTreeAction = action;
+      swatch.dataset.sceneTreeColor = String(entry.value);
+      swatch.style.background = sceneTreeColorHex(entry.value);
+      swatch.setAttribute('aria-label', `Tint ${label} ${entry.label.toLowerCase()}`);
+      swatch.setAttribute('aria-pressed', currentValue === entry.value ? 'true' : 'false');
+      swatch.title = entry.label;
+      swatches.appendChild(swatch);
+    }
+    menu.appendChild(swatches);
+  }
+
+  // The leaf menu edits one representation on its own: what it is, how solid it is,
+  // and how it is coloured. Type and opacity sit together because they describe the
+  // same drawing; colour keeps the structure row's theme picker and swatches.
+  function sceneTreeRepresentationMenu(menu, viewer, node, target) {
+    const params = target.representation?.cell?.transform?.params;
+    const currentType = String(params?.type?.name || '');
+    const alpha = Number.isFinite(params?.type?.params?.alpha) ? params.type.params.alpha : 1;
+
+    const types = sceneTreeRepresentationTypes(viewer, [target.component]);
+    sceneTreeMenuSection(menu, 'Representation');
+    if (types.length) sceneTreeMenuSelect(menu, 'Type', 'representation-type', types, currentType);
+    sceneTreeMenuSlider(menu, 'Opacity', 'opacity', Math.round(alpha * 100));
+
+    sceneTreeMenuSection(menu, 'Colour');
+    sceneTreeMenuSelect(menu, 'Theme', 'representation-color',
+      sceneTreeColorThemes(viewer, [target.component]), String(params?.colorTheme?.name || ''));
+    sceneTreeMenuSwatches(menu, node.label, 'rep-tint-color', sceneTreeRepresentationTint(target.representation));
+  }
+
   function openSceneTreeMenu(ref, clientX, clientY) {
     closeSceneTreeMenu();
     const viewer = activeMolstarViewer();
     const node = sceneTreeNodeByRef(sceneTreeNodes(viewer), ref);
     if (!node) return;
     sceneTreeMenuRef = ref;
+    const repTarget = sceneTreeRepresentationTargets(viewer).get(ref);
     const components = sceneTreeColorTargets(viewer).get(ref) || [];
     const isComponent = components.length === 1 && components[0]?.cell?.transform?.ref === ref;
 
@@ -5370,37 +5512,30 @@
     menu.appendChild(sceneTreeMenuItem(node.hidden ? 'Show' : 'Hide', 'visibility', {
       icon: node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
     }));
-    if (isComponent) {
-      menu.appendChild(sceneTreeMenuItem('Isolate', 'isolate', { icon: SCENE_TREE_ICON.isolate }));
-    }
-    if (components.length) {
-      menu.appendChild(sceneTreeMenuItem('Show all', 'show-all', { icon: SCENE_TREE_ICON.restore }));
-    }
 
-    if (components.length) {
-      const representations = sceneTreeRepresentationTypes(viewer, components);
-      if (representations.length) {
-        sceneTreeMenuSection(menu, 'Representation');
-        sceneTreeMenuSelect(menu, 'Type', 'representation', representations, sceneTreeCurrentRepresentation(components));
+    if (repTarget) {
+      sceneTreeRepresentationMenu(menu, viewer, node, repTarget);
+    } else {
+      if (isComponent) {
+        menu.appendChild(sceneTreeMenuItem('Isolate', 'isolate', { icon: SCENE_TREE_ICON.isolate }));
       }
-
-      sceneTreeMenuSection(menu, 'Colour');
-      sceneTreeMenuSelect(menu, 'Theme', 'color-theme', sceneTreeColorThemes(viewer, components), node.theme);
-      const swatches = document.createElement('div');
-      swatches.className = 'buret-tree-swatches';
-      for (const entry of SCENE_TREE_UNIFORM_COLORS) {
-        const swatch = document.createElement('button');
-        swatch.type = 'button';
-        swatch.className = 'buret-tree-swatch';
-        swatch.dataset.sceneTreeAction = 'tint-color';
-        swatch.dataset.sceneTreeColor = String(entry.value);
-        swatch.style.background = sceneTreeColorHex(entry.value);
-        swatch.setAttribute('aria-label', `Tint ${node.label} ${entry.label.toLowerCase()}`);
-        swatch.setAttribute('aria-pressed', node.value === entry.value ? 'true' : 'false');
-        swatch.title = entry.label;
-        swatches.appendChild(swatch);
+      if (components.length) {
+        menu.appendChild(sceneTreeMenuItem('Show all', 'show-all', { icon: SCENE_TREE_ICON.restore }));
       }
-      menu.appendChild(swatches);
+      // Adding a representation only makes sense on a single component; a structure
+      // row would fan the same type across every component under it.
+      if (isComponent) {
+        const representations = sceneTreeRepresentationTypes(viewer, components);
+        if (representations.length) {
+          sceneTreeMenuSection(menu, 'Representation');
+          sceneTreeMenuSelect(menu, 'Add', 'add-representation', representations, '', 'Representation…');
+        }
+      }
+      if (components.length) {
+        sceneTreeMenuSection(menu, 'Colour');
+        sceneTreeMenuSelect(menu, 'Theme', 'color-theme', sceneTreeColorThemes(viewer, components), node.theme);
+        sceneTreeMenuSwatches(menu, node.label, 'tint-color', node.value);
+      }
     }
 
     // Mol*'s own actions are many and rarely the reason the menu was opened, so they
@@ -5442,6 +5577,8 @@
     else if (action === 'remove') removeSceneTreeNode(ref);
     else if (action === 'tint-color') {
       applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
+    } else if (action === 'rep-tint-color') {
+      applySceneTreeReprColor(ref, 'tint', Number(control.dataset.sceneTreeColor));
     } else if (action === 'apply-action') {
       applySceneTreeAction(ref, Number(control.dataset.sceneTreeActionIndex));
     }
@@ -5459,7 +5596,10 @@
       return;
     }
     runSceneTreeAction(action, ref, control);
-    if (control.closest('#buret-scene-tree-menu') && action !== 'tint-color') closeSceneTreeMenu();
+    // The swatches let you try colours in place, so a pick keeps the menu open;
+    // everything else is a one-shot and dismisses it.
+    const persistent = action === 'tint-color' || action === 'rep-tint-color';
+    if (control.closest('#buret-scene-tree-menu') && !persistent) closeSceneTreeMenu();
   }
 
   function onSceneTreeDoubleClick(event) {
@@ -5659,8 +5799,28 @@
         const select = event.target.closest('[data-scene-tree-select]');
         const ref = select?.closest('[data-ref]')?.dataset.ref;
         if (!select || !ref) return;
-        if (select.dataset.sceneTreeSelect === 'representation') applySceneTreeRepresentation(ref, select.value);
-        else applySceneTreeColorTheme(ref, select.value, null);
+        const kind = select.dataset.sceneTreeSelect;
+        if (kind === 'add-representation') {
+          addSceneTreeRepresentation(ref, select.value);
+          select.value = '';
+        } else if (kind === 'representation-type') {
+          applySceneTreeReprType(ref, select.value);
+        } else if (kind === 'representation-color') {
+          applySceneTreeReprColor(ref, select.value, null);
+        } else {
+          applySceneTreeColorTheme(ref, select.value, null);
+        }
+      });
+      // Opacity streams as the thumb moves; the slider sits inside the menu, so the
+      // outside-click dismissal never sees these events and the menu stays open.
+      document.addEventListener('input', event => {
+        const slider = event.target.closest('[data-scene-tree-slider="opacity"]');
+        const ref = slider?.closest('[data-ref]')?.dataset.ref;
+        if (!slider || !ref) return;
+        const percent = Number(slider.value);
+        const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
+        if (readout) readout.textContent = `${percent}%`;
+        streamSceneTreeReprAlpha(ref, percent / 100);
       });
       document.addEventListener('keydown', event => {
         if (event.key !== 'Escape') return;
