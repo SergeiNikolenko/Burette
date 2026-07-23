@@ -112,6 +112,10 @@
   let molstarSelectionPreviewCleanup = null;
   let molstarContextMenuPick = null;
   let molstarContextMenuMode = 'molecule';
+  // Where the last 3D menu opened, so "Representation & colour…" can hand off to the
+  // scene-tree menu at the same spot; and the first pick of a two-click distance.
+  let molstarContextMenuLastPoint = null;
+  let molstarMeasureAnchor = null;
   let molstarLassoEnabled = false;
   let molstarLassoStroke = null;
   let molstarLassoOverlay = null;
@@ -14265,6 +14269,113 @@
     return components.filter(component => componentManager.canBeModified(component));
   }
 
+  function molstarSortedIndexOf(sortedElements, value) {
+    let lo = 0;
+    let hi = sortedElements.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const current = sortedElements[mid];
+      if (current === value) return mid;
+      if (current < value) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    return -1;
+  }
+
+  // A click on a bond gives a bond loci, not an element loci; the element-based
+  // helpers below all want atoms, so bonds are unwrapped to their two ends first.
+  function molstarContextElementLoci(loci) {
+    const S = window.molstar?.lib?.structure;
+    if (!S) return null;
+    if (S.StructureElement?.Loci?.is?.(loci)) return loci;
+    if (S.Bond?.isLoci?.(loci)) return S.Bond.toStructureElementLoci(loci);
+    return null;
+  }
+
+  // Which component owns a picked molecule. The scene-tree actions all address a
+  // component by ref, so the 3D right click resolves its pick to the same ref by
+  // finding the component whose sub-structure contains the picked atom.
+  function molstarContextComponentRef(target) {
+    const structRef = target?.structure;
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const loci = molstarContextElementLoci(target?.loci);
+    if (!Array.isArray(structRef?.components) || !loci) return null;
+    const location = StructureElement.Loci.getFirstLocation(loci);
+    if (!location) return null;
+    const modelElement = location.element;
+    const unit = location.unit;
+    for (const component of structRef.components) {
+      const sub = component?.cell?.obj?.data;
+      if (!Array.isArray(sub?.units)) continue;
+      for (const subUnit of sub.units) {
+        if (subUnit.invariantId !== unit.invariantId && subUnit.id !== unit.id) continue;
+        if (molstarSortedIndexOf(subUnit.elements, modelElement) >= 0) {
+          return component.cell?.transform?.ref || null;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Residues within a radius of the pick, as a whole-residue loci. Positions come
+  // from the pick, the neighbour search runs against the full structure's spatial
+  // index, and Mol* rounds the hit atoms out to their residues so the selection
+  // never cuts a side chain in half.
+  function molstarSurroundingsLoci(target, radius) {
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const pickLoci = molstarContextElementLoci(target?.loci);
+    const fullStructure = target?.structure?.cell?.obj?.data;
+    const lookup = fullStructure?.lookup3d;
+    if (!pickLoci || typeof lookup?.find !== 'function') return null;
+    const perUnit = new Map();
+    StructureElement.Loci.forEachLocation(pickLoci, location => {
+      const conformation = location.unit.conformation;
+      const element = location.element;
+      const found = lookup.find(conformation.x(element), conformation.y(element), conformation.z(element), radius);
+      for (let i = 0; i < found.count; i++) {
+        const unit = found.units[i];
+        let entry = perUnit.get(unit.id);
+        if (!entry) {
+          entry = { unit, indices: new Set() };
+          perUnit.set(unit.id, entry);
+        }
+        entry.indices.add(found.indices[i]);
+      }
+    });
+    const elements = [];
+    for (const { unit, indices } of perUnit.values()) {
+      elements.push({ unit, indices: Int32Array.from(indices).sort() });
+    }
+    if (!elements.length) return null;
+    const raw = StructureElement.Loci(fullStructure, elements);
+    return StructureElement.Loci.extendToWholeResidues(raw);
+  }
+
+  // The 3D menu keeps its representation additions to one click; a grey, translucent
+  // surface is the common case (an envelope around a ligand), and the tree menu is
+  // where its type, opacity, and colour are tuned afterwards.
+  async function addGreySurfaceToComponent(componentRef) {
+    const viewer = activeMolstarViewer();
+    const manager = viewer?.plugin?.managers?.structure?.component;
+    const components = sceneTreeColorTargets(viewer).get(componentRef) || [];
+    if (!components.length || typeof manager?.addRepresentation !== 'function') return false;
+    await manager.addRepresentation(components, 'molecular-surface');
+    // addRepresentation rebuilds the hierarchy, so the component captured above no
+    // longer lists the new surface; re-resolve it before reaching for the pivot.
+    const fresh = sceneTreeColorTargets(viewer).get(componentRef) || components;
+    const surface = [...(fresh[0]?.representations || [])].reverse()
+      .find(representation => representation?.cell?.transform?.params?.type?.name === 'molecular-surface');
+    if (surface && typeof manager.updateRepresentations === 'function') {
+      await manager.updateRepresentations(fresh, surface, old => ({
+        ...old,
+        type: { ...old.type, params: { ...old.type.params, alpha: 0.35 } },
+        colorTheme: { name: 'uniform', params: { value: 0x98989d } }
+      }));
+    }
+    scheduleSceneTreeRender();
+    return true;
+  }
+
   async function deleteMolstarContextLoci(target, loci, applyGranularity = true) {
     if (!loci || molstarLociIsEmpty(loci)) return false;
     const plugin = activeViewer?.plugin;
@@ -14393,6 +14504,9 @@
   // and the deletions last where a stray click is least likely to reach them.
   const MOLECULE_MENU_GROUPS = [
     { id: 'primary', title: '' },
+    { id: 'view', title: '' },
+    { id: 'represent', title: 'Representation' },
+    { id: 'analyze', title: 'Analyze' },
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
     { id: 'compute', title: 'Compute' },
@@ -14405,6 +14519,9 @@
     if (name.startsWith('save')) return 'export';
     if (name.startsWith('pubchem')) return 'search';
     if (name.startsWith('compute')) return 'compute';
+    if (name.startsWith('view:')) return 'view';
+    if (name.startsWith('represent:')) return 'represent';
+    if (name.startsWith('analyze:')) return 'analyze';
     return 'primary';
   }
 
@@ -14412,6 +14529,13 @@
     const name = String(action || '');
     if (name.startsWith('remove')) return SCENE_TREE_ICON.trash;
     if (name.startsWith('focus')) return SCENE_TREE_ICON.focus;
+    if (name === 'view:hide') return SCENE_TREE_ICON.eye;
+    if (name === 'view:isolate') return SCENE_TREE_ICON.isolate;
+    if (name === 'represent:surface') return ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
+    if (name === 'represent:menu') return ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'];
+    if (name === 'analyze:surroundings') return ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
+    if (name === 'analyze:label') return ['M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z', 'M7 7h.01'];
+    if (name === 'analyze:distance') return ['M21.3 15.3 8.7 2.7a1 1 0 0 0-1.4 0L2.7 7.3a1 1 0 0 0 0 1.4l12.6 12.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4Z', 'M14.5 12.5 12 15', 'M11.5 9.5 9 12', 'M8.5 6.5 6 9', 'M17.5 15.5 15 18'];
     if (name.startsWith('select')) return ['M20 6 9 17l-5-5'];
     if (name === 'molstar') {
       return ['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'];
@@ -14440,6 +14564,23 @@
     if (molstarContextCanBulkDelete(target)) actions.push(['remove-type', `Delete ${molstarContextBulkDeleteLabel(target)}`]);
     if (target?.scope === 'residue') actions.push(['remove-chain', 'Delete chain']);
     if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
+    // The desktop overlay carries the scene-tree powers into the 3D right click.
+    // These stay off the mobile host, which renders its own native sheet.
+    if (document.body?.classList.contains('burette-mobile-host') !== true) {
+      if (molstarContextComponentRef(target)) {
+        actions.push(['view:hide', `Hide ${noun}`]);
+        actions.push(['view:isolate', `Isolate ${noun}`]);
+        actions.push(['represent:surface', 'Add grey surface']);
+        actions.push(['represent:menu', 'Representation & colour…']);
+      }
+      if (target?.atom && target?.loci) {
+        if (target.scope === 'ligand' || target.scope === 'ion' || target.scope === 'residue') {
+          actions.push(['analyze:surroundings', 'Select surroundings (5 Å)']);
+        }
+        actions.push(['analyze:label', `Label ${noun}`]);
+        actions.push(['analyze:distance', molstarMeasureAnchor ? 'Measure distance to anchor' : 'Measure distance']);
+      }
+    }
     actions.push(['save-modified', 'Save modified structure']);
     actions.push(['save-format:mmcif', 'Save as mmCIF']);
     if (molstarModifiedPdbExportAvailable()) actions.push(['save-format:pdb', 'Save as PDB']);
@@ -14555,6 +14696,54 @@
         const handled = focusMolstarContextPick({ ...target, loci: target.atomLoci }) || await resetMolstarCameraForContext();
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(handled ? `[web] Focused ${molstarContextAtomLabel(target)} in the current Mol* view.` : `[web] ${molstarContextAtomLabel(target)} is already visible in Mol*.`);
+      } else if (action === 'view:hide') {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef) throw new Error('No Mol* component is available to hide.');
+        toggleSceneTreeVisibility(componentRef);
+        setStatus(`[web] Toggled ${targetLabel} visibility.`);
+      } else if (action === 'view:isolate') {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef) throw new Error('No Mol* component is available to isolate.');
+        isolateSceneTreeNode(componentRef);
+        setStatus(`[web] Isolated ${targetLabel}.`);
+      } else if (action === 'represent:surface') {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef || !await addGreySurfaceToComponent(componentRef)) throw new Error('No Mol* component is available for a surface.');
+        setStatus(`[web] Added a translucent surface to ${targetLabel}.`);
+      } else if (action === 'represent:menu') {
+        const componentRef = molstarContextComponentRef(target);
+        if (!componentRef) throw new Error('No Mol* component is available to edit.');
+        const point = molstarContextMenuLastPoint || { x: 80, y: 120 };
+        window.setTimeout(() => openSceneTreeMenu(componentRef, point.x, point.y), 0);
+        setStatus(`[web] Editing ${targetLabel} representation.`);
+      } else if (action === 'analyze:surroundings') {
+        const surroundings = molstarSurroundingsLoci(target, 5);
+        if (!surroundings || !selectMolstarContextPick({ ...target, loci: surroundings }, { applyGranularity: false })) {
+          throw new Error('No residues were found within 5 Å.');
+        }
+        focusMolstarContextPick({ ...target, loci: surroundings });
+        setStatus(`[web] Selected residues within 5 Å of ${targetLabel}.`);
+      } else if (action === 'analyze:label') {
+        const measurement = activeViewer?.plugin?.managers?.structure?.measurement;
+        const loci = molstarContextElementLoci(target.loci);
+        if (typeof measurement?.addLabel !== 'function' || !loci) throw new Error('No Mol* label is available for this pick.');
+        await measurement.addLabel(loci);
+        setStatus(`[web] Labelled ${targetLabel}.`);
+      } else if (action === 'analyze:distance') {
+        const measurement = activeViewer?.plugin?.managers?.structure?.measurement;
+        const loci = molstarContextElementLoci(target.atomLoci || target.loci);
+        if (!loci) throw new Error('No Mol* atom is available to measure.');
+        if (!molstarMeasureAnchor) {
+          molstarMeasureAnchor = { loci, label: targetLabel };
+          setStatus(`[web] Distance anchor set at ${targetLabel}. Right-click another atom and choose Measure distance.`);
+        } else if (typeof measurement?.addDistance === 'function') {
+          await measurement.addDistance(molstarMeasureAnchor.loci, loci);
+          setStatus(`[web] Measured distance ${molstarMeasureAnchor.label} → ${targetLabel}.`);
+          molstarMeasureAnchor = null;
+        } else {
+          molstarMeasureAnchor = null;
+          throw new Error('No Mol* measurement manager is available.');
+        }
       } else {
         setStatus(`[web] ${label} is unavailable.`);
       }
@@ -15312,6 +15501,7 @@
     menu.appendChild(actionContainer);
     document.body.appendChild(menu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
+    molstarContextMenuLastPoint = { x: event.clientX, y: event.clientY };
   }
 
   function installMolstarContextMenu(viewer) {
