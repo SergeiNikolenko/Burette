@@ -53,6 +53,7 @@ fn semiempirical_grid_workflow_fails_closed_without_native_metal_runtime() {
             handle.database_path,
             "sdf",
             handle.cancel_token,
+            handle.ingest_worker,
         )
         .expect("register Grid fixture");
     let viewer_root =
@@ -98,6 +99,7 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             handle.database_path,
             "csv",
             handle.cancel_token,
+            handle.ingest_worker,
         )
         .expect("register Grid fixture");
     let viewer_root =
@@ -424,6 +426,7 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
             handle.database_path,
             "csv",
             handle.cancel_token,
+            handle.ingest_worker,
         )
         .expect("register Grid fixture");
 
