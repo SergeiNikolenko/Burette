@@ -8516,16 +8516,17 @@
   async function addMolstarGhostSurfaceRepresentation(viewer) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    // Glass look: the envelope stays lit while the illustrative cartoon under it
-    // keeps its flat shading, so the specular highlight reads as a surface rather
-    // than as a grey wash.
+    // Cel shading banks the envelope into flat tones, and the caller switches the
+    // outline pass onto transparent geometry, so it reads as a drawn shell with
+    // edges rather than as a featureless grey wash.
     const representation = {
       type: 'molecular-surface',
       typeParams: {
-        alpha: 0.11,
+        alpha: 0.12,
         transparentBackfaces: 'on',
         ignoreLight: false,
-        material: { roughness: 0.08, metalness: 0 }
+        celShaded: true,
+        material: { roughness: 0.2, metalness: 0 }
       },
       color: 'uniform',
       colorParams: { value: 0xc8d0d8 }
@@ -8560,7 +8561,10 @@
     resetMolstarPostprocessing(viewer);
   }
 
-  async function applyMolstarIllustrativePostprocessing(viewer) {
+  // `includeTransparent` is always written out: the outline otherwise skips
+  // translucent geometry, and leaving the previous value in place would leak the
+  // surface preset's outlining into the plain illustrative style.
+  async function applyMolstarIllustrativePostprocessing(viewer, options = {}) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
     await plugin.managers.structure.component.setOptions({
@@ -8573,14 +8577,16 @@
       postprocessing: {
         outline: {
           name: 'on',
-          params: postprocessing.outline.name === 'on'
-            ? postprocessing.outline.params
-            : {
-                scale: 1,
-                color: 0x000000,
-                threshold: 0.33,
-                includeTransparent: false
-              }
+          params: {
+            ...(postprocessing.outline.name === 'on'
+              ? postprocessing.outline.params
+              : {
+                  scale: 1,
+                  color: 0x000000,
+                  threshold: 0.33
+                }),
+            includeTransparent: options.includeTransparent === true
+          }
         },
         occlusion: {
           name: 'on',
@@ -8649,7 +8655,7 @@
       return;
     }
     if (normalized === 'illustrative-surface') {
-      await applyMolstarIllustrativePostprocessing(viewer);
+      await applyMolstarIllustrativePostprocessing(viewer, { includeTransparent: true });
       await addMolstarGhostSurfaceRepresentation(viewer);
       return;
     }
