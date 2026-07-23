@@ -171,7 +171,6 @@
     pendingGridRailPosition: null,
     menuStateSignature: '',
     chemicalSpaceHoverToken: 0,
-    chemicalSpacePreviewTimer: null
   };
 
   function post(type, message, payload = {}) {
@@ -485,16 +484,11 @@
       if (body.type === 'chemicalSpaceHoverChanged') {
         const index = Number(body.sourceRecordId);
         const normalizedIndex = Number.isSafeInteger(index) && index >= 0 ? index : null;
-        if (state.chemicalSpacePreviewTimer) clearTimeout(state.chemicalSpacePreviewTimer);
-        state.chemicalSpacePreviewTimer = null;
         if (normalizedIndex === null) {
           state.chemicalSpaceHoverToken += 1;
           post('chemicalSpaceMoleculePreview', '', { sourceRecordId: null });
         } else {
-          state.chemicalSpacePreviewTimer = setTimeout(() => {
-            state.chemicalSpacePreviewTimer = null;
-            void postChemicalSpaceMoleculePreview(normalizedIndex, config());
-          }, 80);
+          void postChemicalSpaceMoleculePreview(normalizedIndex, config());
         }
         return;
       }

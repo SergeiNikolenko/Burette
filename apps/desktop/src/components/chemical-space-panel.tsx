@@ -1053,10 +1053,43 @@ function requestBrowserChemicalSpaceRecords(
 ): Promise<BrowserChemicalSpaceInputRecord[]> {
   const requestId = `chemical-space-records-${crypto.randomUUID()}`;
   return new Promise((resolve, reject) => {
+    const retryDelays = [0, 250, 1_000, 3_000, 7_000];
+    const retryTimers: number[] = [];
+    const iframeLoadListeners = new Map<HTMLIFrameElement, () => void>();
     const timeout = window.setTimeout(() => {
       cleanup();
       reject(new Error("The Grid did not provide molecular records for browser chemical space."));
     }, 15_000);
+    const requestPayload = {
+      source: "burrete-grid-host",
+      body: { type: "chemicalSpaceRequestRecords", requestId, documentId },
+    };
+    const postRequest = (target?: MessageEventSource | null) => {
+      if (signal.aborted) return;
+      if (target && typeof target === "object" && "postMessage" in target) {
+        (target as Window).postMessage(requestPayload, "*");
+        return;
+      }
+      const escapedId = CSS.escape(documentId);
+      const candidates = [
+        activeViewerIframeForDocument(documentId, "grid2d"),
+        ...document.querySelectorAll<HTMLIFrameElement>(
+          `.viewer-iframe[data-document-id="${escapedId}"][data-renderer="grid2d"]`,
+        ),
+      ];
+      const targets = new Set<Window>();
+      for (const iframe of candidates) {
+        if (!iframe) continue;
+        const contentWindow = iframe.contentWindow;
+        if (contentWindow) targets.add(contentWindow);
+        if (!iframeLoadListeners.has(iframe)) {
+          const onLoad = () => postRequest(iframe.contentWindow);
+          iframeLoadListeners.set(iframe, onLoad);
+          iframe.addEventListener("load", onLoad);
+        }
+      }
+      for (const contentWindow of targets) contentWindow.postMessage(requestPayload, "*");
+    };
     const onAbort = () => {
       cleanup();
       const error = new Error("Chemical-space calculation was cancelled.");
@@ -1069,10 +1102,16 @@ function requestBrowserChemicalSpaceRecords(
         : null;
       if (
         data?.source !== "burrete-grid"
-        || data.body?.type !== "chemicalSpaceRecords"
-        || data.body.requestId !== requestId
-        || data.body.documentId !== documentId
+        || data.body?.documentId !== documentId
         || !isKnownViewerMessageSource(event.source, documentId)
+      ) return;
+      if (data.body.type === "ready") {
+        postRequest(event.source);
+        return;
+      }
+      if (
+        data.body.type !== "chemicalSpaceRecords"
+        || data.body.requestId !== requestId
       ) return;
       const records = Array.isArray(data.body.records)
         ? data.body.records.filter(isBrowserChemicalSpaceRecord).slice(0, 20_000)
@@ -1086,6 +1125,8 @@ function requestBrowserChemicalSpaceRecords(
     };
     const cleanup = () => {
       window.clearTimeout(timeout);
+      for (const timer of retryTimers) window.clearTimeout(timer);
+      for (const [iframe, onLoad] of iframeLoadListeners) iframe.removeEventListener("load", onLoad);
       window.removeEventListener("message", onMessage);
       signal.removeEventListener("abort", onAbort);
     };
@@ -1095,16 +1136,9 @@ function requestBrowserChemicalSpaceRecords(
     }
     window.addEventListener("message", onMessage);
     signal.addEventListener("abort", onAbort, { once: true });
-    const iframe = activeViewerIframeForDocument(documentId, "grid2d");
-    if (!iframe?.contentWindow) {
-      cleanup();
-      reject(new Error("Open the Grid viewer before calculating browser chemical space."));
-      return;
+    for (const delay of retryDelays) {
+      retryTimers.push(window.setTimeout(postRequest, delay));
     }
-    iframe.contentWindow.postMessage({
-      source: "burrete-grid-host",
-      body: { type: "chemicalSpaceRequestRecords", requestId, documentId },
-    }, "*");
   });
 }
 
