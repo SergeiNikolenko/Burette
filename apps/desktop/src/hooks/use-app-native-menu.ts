@@ -24,10 +24,7 @@ import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
 import {
   resumeWindowMutations,
-  sameWindowItemIds,
   sealWindowMutations,
-  setGridDocumentCloseTransition,
-  setWindowShellCloseTransition,
   type WindowCloseMutationPermit,
 } from "../lib/window-mutation-barrier";
 import type { ViewerPreferences, ViewerReloadOptions } from "../types";
@@ -57,7 +54,6 @@ type UseAppNativeMenuOptions = {
     dirty: boolean;
     revision: number;
     closeTransitionActive: boolean;
-    closeGuardRevision: number;
   };
   windowDocumentDirty: boolean;
   sourceSaveEnabled: boolean;
@@ -234,13 +230,9 @@ export function useAppNativeMenu({
   const closeConfirmationPendingRef = useRef(false);
   const closingWindowRef = useRef(false);
   const getWindowDocumentDirtySnapshotRef = useRef(getWindowDocumentDirtySnapshot);
-  const windowDocumentIdsRef = useRef(state.documents.map((document) => document.id));
-  const windowTabIdsRef = useRef(state.tabs.map((tab) => tab.id));
   nativeStateRef.current = { ...nativeState, recentDocuments };
   confirmCloseWindowRef.current = confirmCloseWindow;
   getWindowDocumentDirtySnapshotRef.current = getWindowDocumentDirtySnapshot;
-  windowDocumentIdsRef.current = state.documents.map((document) => document.id);
-  windowTabIdsRef.current = state.tabs.map((tab) => tab.id);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -277,58 +269,19 @@ export function useAppNativeMenu({
       closeConfirmationPendingRef.current = true;
       void (async () => {
         let permit: WindowCloseMutationPermit | null = null;
-        let closeTransitionStarted = false;
-        let windowInteractionPaused = false;
-        let documentIds: string[] = [];
-        let tabIds: string[] = [];
-        let closeGuardRevision = 0;
-        const currentWindow = getCurrentWindow();
         try {
           permit = await confirmCloseWindowRef.current();
+          // Only an explicit "cancel" in the unsaved-changes prompt stops the
+          // close. Past this point nothing may gate it: the window shuts down
+          // immediately rather than waiting on in-flight work, because that
+          // wait was unbounded and left the shell frozen when it never settled.
           if (!permit) return;
-          const dirtySnapshot = getWindowDocumentDirtySnapshotRef.current();
-          if (dirtySnapshot.closeTransitionActive) {
-            permit.release();
-            return;
-          }
-          closeGuardRevision = dirtySnapshot.closeGuardRevision;
-          documentIds = [...windowDocumentIdsRef.current];
-          tabIds = [...windowTabIdsRef.current];
-          closeTransitionStarted = true;
+          permit.release();
           closingWindowRef.current = true;
-          setWindowShellCloseTransition(true);
-          setGridDocumentCloseTransition(documentIds, true);
-          if (await currentWindow.isEnabled()) {
-            await currentWindow.setEnabled(false);
-            windowInteractionPaused = true;
-          }
-          await permit.waitForPending();
-          const finalDirtySnapshot = getWindowDocumentDirtySnapshotRef.current();
-          if (!sameWindowItemIds(documentIds, windowDocumentIdsRef.current)
-            || !sameWindowItemIds(tabIds, windowTabIdsRef.current)
-            || finalDirtySnapshot.closeTransitionActive
-            || finalDirtySnapshot.closeGuardRevision !== closeGuardRevision) {
-            throw new Error("Window contents changed while closing.");
-          }
-          if (windowInteractionPaused) {
-            await currentWindow.setEnabled(true);
-            windowInteractionPaused = false;
-          }
-          await currentWindow.close();
+          await getCurrentWindow().close();
         } catch (error) {
-          if (closeTransitionStarted) {
-            closingWindowRef.current = false;
-            setGridDocumentCloseTransition(documentIds, false);
-            setWindowShellCloseTransition(false);
-            permit?.release();
-            if (windowInteractionPaused) {
-              await currentWindow.setEnabled(true).catch((restoreError) => {
-                console.warn("Native window interaction restore failed", restoreError);
-              });
-            }
-          } else {
-            permit?.release();
-          }
+          closingWindowRef.current = false;
+          permit?.release();
           console.warn("Native window close failed", error);
         } finally {
           closeConfirmationPendingRef.current = false;

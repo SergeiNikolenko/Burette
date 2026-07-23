@@ -465,7 +465,6 @@ export default function App() {
       dirty: gridSnapshot.dirty || sourceSnapshot.dirty,
       revision: combined.revision,
       closeTransitionActive: sourceSnapshot.closeTransitionActive,
-      closeGuardRevision: sourceSnapshot.revision,
     };
   }, [getGridWindowDocumentDirtySnapshot, sourceEditing]);
   const {
