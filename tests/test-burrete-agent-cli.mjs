@@ -418,6 +418,14 @@ try {
     const invalidPanelError = JSON.parse(invalidPanel.stderr);
     assert.equal(invalidPanelError.error.code, 'INVALID_ARGS');
 
+    const badScene = runCli(['open', '--mode', 'browser-agent-shell', 'README.md', '--scene', 'bogus']);
+    assert.equal(badScene.status, 2);
+    assert.equal(JSON.parse(badScene.stderr).error.code, 'INVALID_ARGS');
+
+    const tooFewScene = runCli(['open', '--mode', 'browser-agent-shell', 'samples/mini.pdb', '--scene', 'structureAll']);
+    assert.equal(tooFewScene.status, 2);
+    assert.equal(JSON.parse(tooFewScene.stderr).error.code, 'INVALID_ARGS');
+
     const actionsFile = JSON.parse(await readFile(resolve(sessionDir, 'actions.json'), 'utf8'));
     const queued = actionsFile.actions[0];
     queued.status = 'completed';

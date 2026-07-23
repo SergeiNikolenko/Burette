@@ -1015,13 +1015,13 @@ assert.match(appSidebarProjectsHook, /recentStructures: sidebarRecentStructures,
 assert.match(browserDevStartup, /return \[\];\s*}\s*export function browserDevFoldersFromLocation/);
 assert.match(browserDevStartup, /export function splitDevFiles\(rawFiles: string\)/);
 assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
-assert.match(burreteAgentCli, /function browserDevFsAllowRoots\(initialFile\)/);
+assert.match(burreteAgentCli, /function browserDevFsAllowRoots\(initialFile, extraFiles = \[\]\)/);
 assert.match(burreteAgentCli, /const browserDevGeneratedFilesRoot = process\.env\.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT/);
 assert.match(burreteAgentCli, /const explicitRoots = \(process\.env\.BURRETE_DEV_FS_ALLOW \?\? ""\)\.split\(delimiter\)\.filter\(Boolean\);/);
 assert.match(burreteAgentCli, /return Array\.from\(new Set\(\[\.\.\.roots, browserDevGeneratedFilesRoot\]\)\);/);
-assert.match(burreteAgentCli, /BURRETE_DEV_FS_ALLOW: browserDevFsAllowRoots\(initialFile\)\.join\(delimiter\)/);
+assert.match(burreteAgentCli, /BURRETE_DEV_FS_ALLOW: browserDevFsAllowRoots\(initialFile, sceneFiles \?\? \[\]\)\.join\(delimiter\)/);
 assert.match(burreteAgentCli, /BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT: browserDevGeneratedFilesRoot/);
-assert.match(burreteAgentCli, /\.\.\.browserDevFsAllowRoots\(initialFile\)\.flatMap\(\(root\) => \['--allow', root\]\)/);
+assert.match(burreteAgentCli, /\.\.\.browserDevFsAllowRoots\(initialFile, sceneFiles \?\? \[\]\)\.flatMap\(\(root\) => \['--allow', root\]\)/);
 assert.match(fileRouting, /export const NOT_RENDERABLE_RENDERER = "not-renderable";/);
 assert.match(fileRouting, /export function summarizeErrorText\(message: string\)/);
 assert.match(app, /from "\.\/lib\/file-routing"/);
