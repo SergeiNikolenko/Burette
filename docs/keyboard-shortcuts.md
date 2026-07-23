@@ -9,7 +9,7 @@ open.
 
 | Shortcut | Action |
 | --- | --- |
-| Cmd+Shift+P or / | Open command palette |
+| Cmd+P or / | Open command palette |
 | Cmd+N | Open a new Burrete window |
 | Cmd+T | Open a new launcher tab |
 | Cmd+O | Open molecular structure files |
