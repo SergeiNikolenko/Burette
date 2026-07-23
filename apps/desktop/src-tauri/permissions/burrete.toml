@@ -60,6 +60,7 @@ commands.allow = [
   "render_xyzrender_sheet_items",
   "sync_native_menu",
   "drain_native_menu_commands",
+  "request_app_quit",
   "register_exit_preflight_listener",
   "unregister_exit_preflight_listener",
   "respond_to_exit_preflight",

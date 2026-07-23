@@ -2061,11 +2061,11 @@ assert.doesNotMatch(styles, /\.splitter::after \{ background: var\(--sidebar-div
 // The workbench card's edge shadow lives on the sidebar handle now: the center
 // ResizablePanel clips its children (overflow: hidden), so a box-shadow on
 // .workbench itself can never reach over the sidebar.
-assert.match(styles, /\.workbench \{[^}]*background: var\(--bg\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 20px 0 0 20px;/s);
-// The surfaces that tile the window follow the Translucent preference. Painting
-// `--bg-base` here covers the translucent shell with an opaque sheet.
-assert.match(styles, /\.main-stage \{[^}]*background: var\(--bg\);/s);
-assert.match(styles, /\.dock-panel \{[^}]*background: var\(--bg\);/s);
+assert.match(styles, /\.workbench \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 20px 0 0 20px;/s);
+// The workbench, stage and docks stay opaque (`--bg-base`); only the sidebar is
+// translucent, which it gets from the shell's own `--bg` showing through.
+assert.match(styles, /\.main-stage \{[^}]*background: var\(--bg-base\);/s);
+assert.match(styles, /\.dock-panel \{[^}]*background: var\(--bg-base\);/s);
 assert.doesNotMatch(styles, /\.workbench \{[^}]*box-shadow: -12px 0 28px/s);
 assert.match(styles, /\.workspace-sidebar-handle::before \{[^}]*box-shadow: -12px 0 28px var\(--workspace-edge-shadow\);[^}]*pointer-events: none;/s);
 assert.match(appLayout, /className="workspace-sidebar-handle"/);
@@ -3896,7 +3896,7 @@ assert.match(appOpenActionsHook, /No recent structures to open/);
 assert.match(appOpenActionsHook, /const chooseFiles = useCallback/);
 assert.match(
   app,
-  /useAppNativeMenu\(\{\s*state,\s*actions,\s*gridMenuState:\s*activeGridMenuState,\s*openDocuments,\s*confirmCloseWindow,\s*getWindowDocumentDirtySnapshot,\s*windowDocumentDirty:\s*hasDirtyGridDocuments \|\| sourceEditing\.hasUnsavedOrSavingSessions,\s*sourceSaveEnabled,\s*saveActiveSource,\s*\}\)/s,
+  /useAppNativeMenu\(\{\s*state,\s*actions,\s*gridMenuState:\s*activeGridMenuState,\s*openDocuments,\s*getWindowDocumentDirtySnapshot,\s*windowDocumentDirty:\s*hasDirtyGridDocuments \|\| sourceEditing\.hasUnsavedOrSavingSessions,\s*sourceSaveEnabled,\s*saveActiveSource,\s*\}\)/s,
 );
 assert.match(app, /from "\.\/hooks\/use-app-host-runtime-operations"/);
 assert.match(app, /from "\.\/hooks\/use-app-preference-effects"/);
@@ -5970,19 +5970,20 @@ assert.match(appNativeMenuHook, /hasActiveFile: activeDocumentFileBacked \|\| ac
 assert.match(appNativeMenuHook, /canExportExternalPreview: activeDocument\?\.renderer === "xyzrender-external"/);
 assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onFocusChanged/);
 assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onCloseRequested/);
-assert.match(appNativeMenuHook, /event\.preventDefault\(\);[\s\S]*await confirmCloseWindowRef\.current\(\)/);
-assert.match(appNativeMenuHook, /confirmCloseWindowRef\.current\(\)/);
-// The close button always closes. Nothing between the prompt and close() may
-// wait on other work, freeze the shell, or disable the window.
+// The close button quits the whole app (same as Cmd+Q): prevent the plain
+// window close and route through request_app_quit, whose Rust flow runs the
+// unsaved-changes preflight before it exits. A plain window close left a
+// windowless process alive that recreated a window, so the button did nothing.
 assert.match(
   appNativeMenuHook,
-  /if \(!permit\) return;\s*permit\.release\(\);\s*closingWindowRef\.current = true;\s*await getCurrentWindow\(\)\.close\(\)/s,
+  /onCloseRequested\(\(event\) => \{[\s\S]*event\.preventDefault\(\);\s*void invoke\("request_app_quit"\)/s,
 );
+assert.doesNotMatch(appNativeMenuHook, /confirmCloseWindowRef/);
 assert.doesNotMatch(appNativeMenuHook, /waitForPending/);
 assert.doesNotMatch(appNativeMenuHook, /setEnabled/);
+assert.doesNotMatch(appNativeMenuHook, /getCurrentWindow\(\)\.destroy/);
 assert.doesNotMatch(appNativeMenuHook, /setWindowShellCloseTransition/);
 assert.doesNotMatch(appNativeMenuHook, /setGridDocumentCloseTransition/);
-assert.match(appNativeMenuHook, /if \(closingWindowRef\.current\) return;/);
 assert.match(appNativeMenuHook, /listen<ExitPreflightRequest>\(EXIT_PREFLIGHT_EVENT/);
 assert.match(appNativeMenuHook, /invoke<string>\("register_exit_preflight_listener"\)/);
 assert.match(appNativeMenuHook, /invoke\("unregister_exit_preflight_listener", \{ registrationId/);
