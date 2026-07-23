@@ -5203,6 +5203,26 @@
     return frames.every(frame => xyzFrameElementSignature(frame) === signature);
   }
 
+  const XYZ_ALIGNMENT_GAIN_THRESHOLD = 0.5;
+
+  function xyzFrameAlignmentGain(frames) {
+    if (!xyzFramesAlignable(frames)) return 0;
+    const step = Math.max(1, Math.floor((frames.length - 1) / 7));
+    const referencePoints = frames[0].atoms.map(atom => [atom.x, atom.y, atom.z]);
+    let best = 0;
+    for (let index = step; index < frames.length; index += step) {
+      const movingPoints = frames[index].atoms.map(atom => [atom.x, atom.y, atom.z]);
+      const squared = movingPoints.reduce((sum, point, atom) => (
+        sum + point.reduce((axisSum, value, axis) => axisSum + (value - referencePoints[atom][axis]) ** 2, 0)
+      ), 0);
+      const rawRmsd = Math.sqrt(squared / movingPoints.length);
+      const alignment = pdbRigidAlignment(movingPoints, referencePoints);
+      if (!alignment) continue;
+      best = Math.max(best, rawRmsd - alignment.rmsd);
+    }
+    return best;
+  }
+
   function alignXyzFramesToFirst(frames) {
     if (!xyzFramesAlignable(frames)) {
       throw new Error('Alignment needs every structure to list the same atoms in the same order.');
@@ -10548,7 +10568,12 @@
     const xyzAlignSignature = prepared.xyzFrameOverlayAvailable === true
       ? xyzFrameOverlayRawSignature(rawStructureData(activeConfig))
       : '';
-    const xyzAlignFrames = xyzAlignSignature ? splitXyzFrames(rawStructureData(activeConfig)) : null;
+    const xyzCandidateFrames = xyzAlignSignature ? splitXyzFrames(rawStructureData(activeConfig)) : null;
+    const xyzAlignFrames = xyzCandidateFrames
+      && (xyzFrameAlignment?.signature === xyzAlignSignature
+        || xyzFrameAlignmentGain(xyzCandidateFrames) > XYZ_ALIGNMENT_GAIN_THRESHOLD)
+      ? xyzCandidateFrames
+      : null;
     const align = prepared.dockingSceneMode || xyzAlignFrames ? document.createElement('button') : null;
     const alignmentSupported = Boolean(align) && (xyzAlignFrames
       ? xyzFramesAlignable(xyzAlignFrames)
