@@ -964,11 +964,13 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 .buret-table-column-item {
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 16px;
+  /* Label, an optional source tag, the check — all on one line, so the list
+     scans at one row per column. */
+  grid-template-columns: minmax(0, 1fr) auto 16px;
   gap: 0 8px;
   align-items: center;
   min-width: 0;
-  min-height: 32px;
+  min-height: 30px;
   border-radius: 6px;
   padding: 3px 8px;
   background: transparent;
@@ -995,8 +997,7 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 }
 
 .buret-table-column-item::after {
-  grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-column: 3;
   justify-self: center;
   width: 4px;
   height: 8px;
@@ -1027,7 +1028,7 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 }
 
 .buret-table-column-item small {
-  grid-column: 1;
+  grid-column: 2;
   min-width: 0;
   overflow: hidden;
   color: var(--buret-muted);

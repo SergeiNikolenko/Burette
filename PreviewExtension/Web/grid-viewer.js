@@ -3926,7 +3926,9 @@
       <label class="buret-table-column-item" data-column-search="${escapeAttr(tableColumnPickerSearchText(column))}">
         <input type="checkbox" ${visible.has(column.id) ? 'checked' : ''} data-buret-table-column="${escapeAttr(column.id)}">
         <span>${escapeHTML(column.label)}</span>
-        <small>${column.kind === 'descriptor' ? 'descriptor' : column.kind === 'analysis' ? 'analysis' : 'property'} / ${column.type}</small>
+        ${column.kind === 'descriptor' || column.kind === 'analysis'
+          ? `<small>${escapeHTML(column.kind)}</small>`
+          : ''}
       </label>
     `).join('');
     const remaining = Math.max(0, matchCount - columns.length);
