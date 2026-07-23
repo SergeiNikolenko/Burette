@@ -93,6 +93,7 @@ const CHEMICAL_SPACE_METHODS: Array<{ value: ChemicalSpaceMethod; label: string 
 const completedEmbeddings = new Map<string, ChemicalSpaceResult>();
 const GRID_SELECTION_BRIDGE_LIMIT = 100_000;
 const MAX_MOLECULE_PREVIEW_BASE64_BYTES = 350_000;
+const MOLECULE_PREVIEW_HOVER_DELAY_MS = 350;
 const MAX_LASSO_POINTS = 4_096;
 const DEFAULT_STUDY: StudyState = {
   parameter: "minDist",
@@ -110,6 +111,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [hovered, setHovered] = useState<number | null>(null);
   const [preview, setPreview] = useState<MoleculePreview | null>(null);
+  const [previewHoverReadyFor, setPreviewHoverReadyFor] = useState<number | null>(null);
   const [pointScale, setPointScale] = useState(1);
   const [tool, setTool] = useState<"navigate" | "lasso">("navigate");
   const [study, setStudy] = useState(DEFAULT_STUDY);
@@ -140,6 +142,15 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setStudyPlaying(false);
     setStudyRunning(false);
   }, [documentId]);
+
+  useEffect(() => {
+    setPreviewHoverReadyFor(null);
+    if (hovered === null) return;
+    const timeoutId = window.setTimeout(() => {
+      setPreviewHoverReadyFor(hovered);
+    }, MOLECULE_PREVIEW_HOVER_DELAY_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [hovered]);
 
   useEffect(() => {
     if (!documentId) return;
@@ -400,7 +411,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               result={displayedResult}
               selected={selected}
               hovered={hovered}
-              preview={preview}
+              preview={previewHoverReadyFor === preview?.sourceRecordId ? preview : null}
               pointScale={pointScale}
               tool={tool}
               onHover={(sourceRecordId) => {

@@ -57,6 +57,12 @@ for (const method of ["Umap", "Tsne", "Pacmap", "Localmap", "Trimap", "Dreams", 
 assert.match(chemicalSpacePanel, /isKnownViewerMessageSource\(event\.source, documentId\)/);
 assert.match(chemicalSpacePanel, /MAX_LASSO_POINTS = 4_096/);
 assert.match(chemicalSpacePanel, /GRID_SELECTION_BRIDGE_LIMIT = 100_000/);
+assert.match(chemicalSpacePanel, /MOLECULE_PREVIEW_HOVER_DELAY_MS = 350/);
+assert.match(chemicalSpacePanel, /setPreviewHoverReadyFor\(hovered\)/);
+assert.match(
+  chemicalSpacePanel,
+  /preview=\{previewHoverReadyFor === preview\?\.sourceRecordId \? preview : null\}/,
+);
 assert.match(chemicalSpace3d, /new THREE\.WebGLRenderer/);
 assert.match(chemicalSpace3d, /new THREE\.PerspectiveCamera/);
 assert.match(chemicalSpace3d, /new OrbitControls/);
