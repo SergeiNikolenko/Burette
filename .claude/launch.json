@@ -7,7 +7,7 @@
       "runtimeArgs": [
         "node_modules/.bin/vite",
         "--config",
-        "vite.config.ts",
+        "apps/desktop/vite.config.ts",
         "--host",
         "127.0.0.1"
       ],
