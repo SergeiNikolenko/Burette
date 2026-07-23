@@ -467,11 +467,24 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               container={portalContainer}
               className="max-h-[min(70vh,32rem)] w-80 overflow-y-auto"
             >
-              <PopoverHeader>
-                <PopoverTitle>{methodLabel(draft.method)} parameters</PopoverTitle>
-                <PopoverDescription>
-                  k={draft.neighbors} · min dist={draft.minDist.toFixed(2)}
-                </PopoverDescription>
+              <PopoverHeader className="flex-row items-start justify-between gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <PopoverTitle>{methodLabel(draft.method)} parameters</PopoverTitle>
+                  <PopoverDescription>
+                    k={draft.neighbors} · min dist={draft.minDist.toFixed(2)}
+                  </PopoverDescription>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setDraft((current) => ({
+                    ...DEFAULT_OPTIONS,
+                    method: current.method,
+                    dimensions: current.dimensions,
+                  }))}
+                >
+                  Reset
+                </Button>
               </PopoverHeader>
               <FieldGroup className="gap-4">
                 <ParameterField label="Neighbors" value={draft.neighbors}>

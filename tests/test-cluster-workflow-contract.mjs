@@ -78,6 +78,8 @@ assert.doesNotMatch(gridCss, /buret-chemical-space-hover/);
 assert.match(gridViewer, /svg\.slice\(0, 262144\)/);
 assert.match(chemicalSpacePanel, /Run animated study on Metal/);
 assert.match(chemicalSpacePanel, /interpolateStudyResult/);
+assert.match(chemicalSpacePanel, />\s*Reset\s*<\/Button>/);
+assert.match(chemicalSpacePanel, /method: current\.method,\s*dimensions: current\.dimensions/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/empty"/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/progress"/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/spinner"/);
