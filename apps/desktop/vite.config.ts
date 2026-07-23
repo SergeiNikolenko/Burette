@@ -1106,10 +1106,18 @@ function browserDevMsbuddyPythonCandidates() {
   });
 }
 
-async function browserDevDescriptorStatus() {
+// The first interpreter that exists is not the one to run: a plain system
+// python3 shadows an installed runtime and fails with a bare import error.
+// Only the status probe knows which candidate actually has RDKit.
+async function browserDevDescriptorPython() {
+  const status = await browserDevDescriptorStatus();
+  return status.available ? status.pythonPath : null;
+}
+
+async function browserDevDescriptorStatus(timeoutMs = DESCRIPTOR_STATUS_TIMEOUT_MS) {
   for (const pythonPath of browserDevDescriptorPythonCandidates()) {
     try {
-      const output = await runBrowserDevDescriptorRunner(pythonPath, { mode: "status" }, DESCRIPTOR_STATUS_TIMEOUT_MS);
+      const output = await runBrowserDevDescriptorRunner(pythonPath, { mode: "status" }, timeoutMs);
       const payload = parseBrowserDevDescriptorRunnerOutput(output);
       if (payload.ok === true) {
         return {
@@ -1148,7 +1156,9 @@ async function installBrowserDevDescriptorRuntime() {
     timeout: DESCRIPTOR_INSTALL_TIMEOUT_MS,
     maxBuffer: 4 * 1024 * 1024,
   });
-  const status = await browserDevDescriptorStatus();
+  // A freshly created venv compiles RDKit and mordred on their first import,
+  // which outruns the probe budget used for ordinary status checks.
+  const status = await browserDevDescriptorStatus(DESCRIPTOR_INSTALL_TIMEOUT_MS);
   return {
     ok: status.available,
     pythonPath,
@@ -1417,7 +1427,7 @@ async function calculateBrowserDevDescriptors(body: Record<string, unknown>) {
   if (Buffer.byteLength(text, "utf8") > DESCRIPTOR_INPUT_LIMIT_BYTES) {
     throw new Error("Descriptor input is too large for browser-dev calculation.");
   }
-  const pythonPath = browserDevDescriptorPythonCandidates()[0];
+  const pythonPath = await browserDevDescriptorPython();
   if (!pythonPath) throw new Error(browserDevDescriptorInstallHint());
   return parseBrowserDevDescriptorRunnerOutput(await runBrowserDevDescriptorRunner(pythonPath, {
     format,
@@ -1436,7 +1446,7 @@ async function calculateBrowserDevGridDescriptors(body: Record<string, unknown>)
   const selectedRecords = rowIndexes.length > 0
     ? allRecords.filter((record) => rowIndexes.includes(record.index))
     : allRecords;
-  const pythonPath = browserDevDescriptorPythonCandidates()[0];
+  const pythonPath = await browserDevDescriptorPython();
   if (!pythonPath) {
     const failed = browserDevDescriptorJobStatus(
       documentId,
