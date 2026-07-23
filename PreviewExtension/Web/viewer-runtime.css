@@ -902,9 +902,51 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
    button itself is never swallowed by the handle crossing it. */
 .buret-molecule-card-icon,
 .buret-molecule-card-button,
-.buret-molecule-card-sizes {
+.buret-molecule-card-sizes,
+.buret-molecule-card-nav {
   position: relative;
   z-index: 3;
+}
+.buret-molecule-card-nav {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  padding: 1px;
+  background: var(--buret-molstar-field-background);
+}
+.buret-molecule-card-step {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 18px;
+  border: 0;
+  border-radius: 5px;
+  padding: 0;
+  color: var(--buret-molstar-muted-text);
+  background: transparent;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.buret-molecule-card-step > svg {
+  width: 11px;
+  height: 11px;
+}
+.buret-molecule-card-step:hover {
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-hover-background);
+}
+.buret-molecule-card-step:focus-visible {
+  outline: 2px solid var(--buret-molstar-accent);
+  outline-offset: 1px;
+}
+.buret-molecule-card-position {
+  padding: 0 2px;
+  color: var(--buret-molstar-muted-text);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .buret-molecule-card-icon {
   display: grid;

@@ -145,6 +145,7 @@
   // and the corner the user dragged it to live out here instead of on the element.
   let molstarMoleculePreviewGeometry = null;
   let molstarMoleculePreviewSize = 's';
+  let molstarMoleculePreviewDismissedKey = '';
   let molstarSelectionHostSignature = '';
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
@@ -15484,6 +15485,91 @@
     return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
   }
 
+  // Every ligand and ion in the structure, in the order they sit in the model, so
+  // the card can be stepped through instead of only ever showing what was picked.
+  function molstarPreviewLigandEntries() {
+    const entries = [];
+    for (const structureRef of molstarContextStructures()) {
+      const structure = molstarStructureFromRef(structureRef) || structureRef;
+      for (const unit of Array.isArray(structure?.units) ? structure.units : []) {
+        const segments = unit?.model?.atomicHierarchy?.residueAtomSegments;
+        if (!segments || !unit.elements?.length) continue;
+        const residues = new Map();
+        for (let i = 0; i < unit.elements.length; i++) {
+          const residueIndex = segments.index[unit.elements[i]];
+          if (!residues.has(residueIndex)) residues.set(residueIndex, []);
+          residues.get(residueIndex).push(i);
+        }
+        for (const indices of residues.values()) {
+          const loci = { kind: 'element-loci', structure, elements: [{ unit, indices: new Int32Array(indices) }] };
+          const atom = molstarContextAtomFromLoci(loci);
+          const scope = molstarContextScopeForAtom(atom);
+          if (scope !== 'ligand' && scope !== 'ion') continue;
+          entries.push({ structureRef, loci, atom, scope, label: molstarContextResidueLabel(atom) });
+        }
+      }
+    }
+    return entries;
+  }
+
+  function molstarPreviewLigandTarget(entry) {
+    const sourceEntry = molstarContextSourceEntryForActiveConfig();
+    const selectedEntry = sourceEntry ? pdbEntryForResidue(sourceEntry, entry.atom) : null;
+    return {
+      structures: [entry.structureRef],
+      structure: entry.structureRef,
+      loci: entry.loci,
+      atomLoci: entry.loci,
+      atom: entry.atom,
+      selectionBased: true,
+      label: selectedEntry?.label || entry.label,
+      scope: entry.scope,
+      sourceEntry,
+      selectedEntry
+    };
+  }
+
+  // Matched on the residue the card is showing, not on its heading — the heading
+  // may come from the source file's own name for the molecule and would never line
+  // up with the list, leaving every step measured from the first entry.
+  function molstarPreviewLigandIndex(entries) {
+    const atom = molstarMoleculePreviewTarget?.atom;
+    const key = atom ? molstarContextResidueLabel(atom) : '';
+    const index = key ? entries.findIndex(entry => entry.label === key) : -1;
+    return index >= 0 ? index : 0;
+  }
+
+  // Stepping selects and frames the ligand as well as drawing it, so the card acts
+  // as a way to walk the structure rather than a passive readout.
+  function stepMolstarMoleculePreview(delta) {
+    const entries = molstarPreviewLigandEntries();
+    if (entries.length < 2) return;
+    const next = (molstarPreviewLigandIndex(entries) + delta + entries.length) % entries.length;
+    const entry = entries[next];
+    const plugin = activeMolstarViewer()?.plugin;
+    try {
+      plugin?.managers?.structure?.selection?.fromLoci?.('set', entry.loci, false);
+      plugin?.managers?.interactivity?.lociSelects?.select?.({ loci: entry.loci }, false);
+      plugin?.managers?.camera?.focusLoci?.(entry.loci, { durationMs: 250 });
+    } catch (error) {
+      debug('molecule preview step failed: ' + (error && error.message || String(error)));
+    }
+    showMolstarMoleculePreview(molstarPreviewLigandTarget(entry));
+  }
+
+  function molstarMoleculePreviewNavHTML(label) {
+    const entries = molstarPreviewLigandEntries();
+    if (entries.length < 2) return '';
+    const position = molstarPreviewLigandIndex(entries) + 1;
+    const arrow = (action, path, text) =>
+      `<button type="button" class="buret-molecule-card-step" data-buret-molecule-preview-action="${action}" aria-label="${text}" title="${text}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg></button>`;
+    return `<span class="buret-molecule-card-nav" role="group" aria-label="Browse ligands">
+        ${arrow('prev', 'm14 6-6 6 6 6', 'Previous ligand')}
+        <span class="buret-molecule-card-position">${position} / ${entries.length}</span>
+        ${arrow('next', 'm10 6 6 6-6 6', 'Next ligand')}
+      </span>`;
+  }
+
   function molstarMoleculePreviewCardHTML(label, subtitle, image) {
     const sizes = Object.entries(MOLECULE_PREVIEW_SIZES).map(([key, preset]) =>
       `<button type="button" class="buret-molecule-card-size" data-buret-molecule-preview-action="size" data-size="${key}" aria-pressed="${key === molstarMoleculePreviewSize}" aria-label="${escapeHTML(preset.label)} preview" title="${escapeHTML(preset.label)}">${key.toUpperCase()}</button>`
@@ -15494,6 +15580,7 @@
           <span class="buret-molecule-card-title" title="${escapeHTML(label)}">${escapeHTML(label)}</span>
           <span class="buret-molecule-card-subtitle">${escapeHTML(subtitle)}</span>
         </span>
+        ${molstarMoleculePreviewNavHTML(label)}
         <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
       <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
@@ -15651,10 +15738,20 @@
   }
 
   function runMolstarMoleculePreviewAction(action, control) {
-    if (action === 'close') hideMolstarMoleculePreview({ force: true });
+    if (action === 'close') dismissMolstarMoleculePreview();
     else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
     else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
     else if (action === 'size') setMolstarMoleculePreviewSize(control.dataset.size);
+    else if (action === 'prev') stepMolstarMoleculePreview(-1);
+    else if (action === 'next') stepMolstarMoleculePreview(1);
+  }
+
+  // Closing the card is about the card, not the structure: the selection stays, and
+  // the same molecule simply stops asking to be drawn until a different one comes
+  // along — otherwise the next pointer move over the view brings it straight back.
+  function dismissMolstarMoleculePreview() {
+    molstarMoleculePreviewDismissedKey = molstarMoleculePreview?.dataset?.buretPreviewKey || '';
+    hideMolstarMoleculePreview({ force: true });
   }
 
   function installMolstarMoleculePreviewResize(popover) {
@@ -16012,6 +16109,8 @@
       return;
     }
     const key = molstarPreviewKey(entry);
+    if (key === molstarMoleculePreviewDismissedKey) return;
+    molstarMoleculePreviewDismissedKey = '';
     const image = molstarPreviewSvgCache.get(key) || '';
     const label = target?.label || entry?.label || (target?.scope === 'ion' ? 'Ion' : 'Ligand');
     const subtitle = target?.scope === 'ion' ? 'Ion' : 'Small molecule';
@@ -16497,7 +16596,19 @@
       if (event.key === 'Escape') {
         hideMolstarContextMenu();
         clearMolstarPersistentMoleculePreview();
+        return;
       }
+      // Arrows walk the ligands while the card is up. Typing anywhere — a field, the
+      // sequence, a menu — keeps its own arrow behaviour.
+      if (!molstarMoleculePreview) return;
+      const step = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1
+        : event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1
+        : 0;
+      if (!step || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.target instanceof Element
+        && event.target.closest('input, select, textarea, [contenteditable="true"], .msp-sequence')) return;
+      event.preventDefault();
+      stepMolstarMoleculePreview(step);
     };
     const onResize = () => {
       hideMolstarContextMenu();
