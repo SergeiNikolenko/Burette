@@ -5685,6 +5685,24 @@
     menu.appendChild(disclosure);
   }
 
+  // Both surface types can draw themselves as a mesh or as bare wireframe. That is
+  // a choice about what the drawing is, not a tuning knob, so it sits beside Type
+  // rather than under Advanced — and it only appears for a type that offers both.
+  function sceneTreeSurfaceFillRow(menu, viewer, target) {
+    const schema = sceneTreeReprParamSchema(viewer, target);
+    const options = (schema?.visuals?.options || []).map(option => String(option[0]));
+    const own = name => !name.startsWith('structure-');
+    const solid = options.find(name => own(name) && name.endsWith('-mesh'));
+    const wireframe = options.find(name => own(name) && name.endsWith('-wireframe'));
+    if (!solid || !wireframe) return;
+    const current = target.representation?.cell?.transform?.params?.type?.params?.visuals;
+    const active = Array.isArray(current) && current.includes(wireframe) ? wireframe : solid;
+    sceneTreeMenuSelect(menu, 'Fill', 'representation-visual', [
+      { name: solid, label: 'Solid' },
+      { name: wireframe, label: 'Wireframe' }
+    ], active);
+  }
+
   function applySceneTreeReprParam(ref, name, value) {
     return updateSceneTreeRepresentation(ref, old => ({
       ...old, type: { ...old.type, params: { ...old.type.params, [name]: value } }
@@ -5706,6 +5724,7 @@
     const types = sceneTreeRepresentationTypes(viewer, [target.component]);
     sceneTreeMenuSection(menu, 'Representation');
     if (types.length) sceneTreeMenuSelect(menu, 'Type', 'representation-type', types, currentType);
+    sceneTreeSurfaceFillRow(menu, viewer, target);
     sceneTreeMenuSlider(menu, 'Opacity', 'opacity', Math.round(alpha * 100));
 
     sceneTreeMenuSection(menu, 'Colour');
@@ -6542,6 +6561,8 @@
           applySceneTreeReprColor(ref, select.value, null);
         } else if (kind === 'representation-size') {
           applySceneTreeReprSize(ref, select.value);
+        } else if (kind === 'representation-visual') {
+          applySceneTreeReprParam(ref, 'visuals', [select.value]);
         } else {
           applySceneTreeColorTheme(ref, select.value, null);
         }
