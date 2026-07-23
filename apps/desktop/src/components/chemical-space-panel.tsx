@@ -361,36 +361,37 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           ) : (
             <ChemicalSpaceEmpty message={runningLabel || "Preparing chemical space…"} />
           )}
-          {completedStudy && displayedResult ? (
-            <div className="absolute inset-x-3 bottom-3 flex items-center gap-2 rounded-lg border border-border bg-background/90 p-2 shadow-sm backdrop-blur">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setStudyPlaying((value) => !value)}
-              >
-                {studyPlaying ? "Pause" : "Play"}
-              </Button>
-              <Slider
-                tone="neutral"
-                min={0}
-                max={completedStudy.results.length - 1}
-                step={0.01}
-                value={[studyPosition]}
-                aria-label="Parameter study timeline"
-                onValueChange={([value]) => {
-                  setStudyPlaying(false);
-                  setStudyPosition(value);
-                }}
-              />
-              <span className="min-w-28 text-right font-mono text-xs text-muted-foreground">
-                {studyParameterLabel(completedStudy.parameter)} {formatStudyValue(
-                  completedStudy.parameter,
-                  interpolateStudyValue(completedStudy.values, studyPosition),
-                )}
-              </span>
-            </div>
-          ) : null}
         </div>
+
+        {completedStudy && displayedResult ? (
+          <div className="flex shrink-0 items-center gap-2 border-t border-border bg-background px-3 py-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setStudyPlaying((value) => !value)}
+            >
+              {studyPlaying ? "Pause" : "Play"}
+            </Button>
+            <Slider
+              tone="neutral"
+              min={0}
+              max={completedStudy.results.length - 1}
+              step={0.01}
+              value={[studyPosition]}
+              aria-label="Parameter study timeline"
+              onValueChange={([value]) => {
+                setStudyPlaying(false);
+                setStudyPosition(value);
+              }}
+            />
+            <span className="min-w-28 text-right font-mono text-xs text-muted-foreground">
+              {studyParameterLabel(completedStudy.parameter)} {formatStudyValue(
+                completedStudy.parameter,
+                interpolateStudyValue(completedStudy.values, studyPosition),
+              )}
+            </span>
+          </div>
+        ) : null}
 
         <Collapsible className="border-t border-border px-3 py-2">
           <div className="flex items-center justify-between gap-2">
