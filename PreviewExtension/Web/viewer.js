@@ -5252,6 +5252,25 @@
       .filter(entry => entry.name);
   }
 
+  // These run on their own defaults, and for a good half of Mol*'s actions the
+  // default is a no-op: an identity matrix, an empty transform list, t = 0, every
+  // strength already at 1. Applying one inserts a state node and changes nothing on
+  // screen, which reads as a menu of dead entries. They are hidden rather than left
+  // to disappoint — each needs a parameter form to mean anything, and there is none.
+  const SCENE_TREE_INERT_ACTIONS = new Set([
+    'Transform Conformation',
+    'Structure Instances',
+    'Custom Structure Properties',
+    'Explode 3D Representation',
+    'Spin 3D Representation',
+    'Unwind Assembly 3D Representation',
+    'Overpaint 3D Representation',
+    'Transparency 3D Representation',
+    'Clipping 3D Representation',
+    'Substance 3D Representation',
+    'Theme Strength 3D Representation'
+  ]);
+
   function sceneTreeCellActions(viewer, ref) {
     const state = viewer?.plugin?.state?.data;
     const cell = state?.cells?.get(ref);
@@ -5259,7 +5278,7 @@
     try {
       return state.actions.fromCell(cell, viewer.plugin)
         .map(action => ({ action, label: String(action?.definition?.display?.name || '') }))
-        .filter(entry => entry.label);
+        .filter(entry => entry.label && !SCENE_TREE_INERT_ACTIONS.has(entry.label));
     } catch (error) {
       debug('scene tree actions failed: ' + (error && error.message || String(error)));
       return [];
