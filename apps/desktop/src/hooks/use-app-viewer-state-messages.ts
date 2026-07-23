@@ -3,6 +3,7 @@ import type { StructureOverlayMode, ViewerLigandSelection } from "../components/
 import type { ViewerDocument, ViewerPreferences } from "../types";
 import type { DockTabKind } from "../lib/dock";
 import { updateHostedMcpSelectionContext } from "../lib/hosted-mcp-widget";
+import { structureStoryFromViewerMessage, type StructureStory } from "../lib/structure-story";
 
 type ViewerStateMessageBody = Record<string, unknown> | null | undefined;
 type SetViewerLigandSelections = (
@@ -15,6 +16,11 @@ type SetStructureOverlayModes = (
     previous: Record<string, StructureOverlayMode>,
   ) => Record<string, StructureOverlayMode>,
 ) => void;
+type SetStructureStories = (
+  updater: (
+    previous: Record<string, StructureStory | null>,
+  ) => Record<string, StructureStory | null>,
+) => void;
 
 type UseAppViewerStateMessagesOptions = {
   activeDocument: ViewerDocument | null;
@@ -25,6 +31,7 @@ type UseAppViewerStateMessagesOptions = {
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setViewerLigandSelections: SetViewerLigandSelections;
   setStructureOverlayModes: SetStructureOverlayModes;
+  setStructureStories: SetStructureStories;
   toggleSidebar: () => void;
 };
 
@@ -46,6 +53,7 @@ export function useAppViewerStateMessages({
   setPreference,
   setViewerLigandSelections,
   setStructureOverlayModes,
+  setStructureStories,
   toggleSidebar,
 }: UseAppViewerStateMessagesOptions) {
   const handleViewerStateMessage = useCallback((sourceName: unknown, body: ViewerStateMessageBody) => {
@@ -80,6 +88,17 @@ export function useAppViewerStateMessages({
 
     if (sourceName === "burrete-viewer" && body?.type === "trajectoryFrameChanged") {
       window.dispatchEvent(new CustomEvent("burrete:trajectory-frame-changed", { detail: body }));
+      return true;
+    }
+
+    if (
+      sourceName === "burrete-viewer"
+      && (body?.type === "structureStoryChanged" || body?.type === "openStructureStory")
+    ) {
+      const story = structureStoryFromViewerMessage(body);
+      if (!story) return true;
+      setStructureStories((previous) => ({ ...previous, [story.documentId]: story }));
+      if (body.type === "openStructureStory") openDockTab("right", "story");
       return true;
     }
 
@@ -142,7 +161,7 @@ export function useAppViewerStateMessages({
     }
 
     return false;
-  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, setPreference, setStructureOverlayModes, setViewerLigandSelections, toggleSidebar]);
+  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar]);
 
   return { handleViewerStateMessage };
 }

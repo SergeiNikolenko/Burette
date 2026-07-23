@@ -10743,6 +10743,7 @@
     const storyStep = storyPanel ? document.createElement('div') : null;
     const storyTitle = storyPanel ? document.createElement('div') : null;
     const storySummary = storyPanel ? document.createElement('div') : null;
+    const storyOpenRight = storyPanel ? document.createElement('button') : null;
     const storyComparisons = new Map();
     const storyComparison = (index) => {
       if (!story) return null;
@@ -10751,7 +10752,27 @@
       }
       return storyComparisons.get(index);
     };
-    if (story && storyPanel && storyStep && storyTitle && storySummary) {
+    const structureStoryPayload = () => {
+      const entry = prepared?.poses?.[activePose];
+      const comparison = storyComparison(activePose);
+      let summary = '';
+      if (comparison) {
+        summary = `Stage inferred from filename · ${structureSceneStoryChange(comparison)} · ${comparison.rmsd.toFixed(2)} Å Cα RMSD vs previous · chain ${comparison.chain} · ${comparison.residueCount} residues`;
+      } else if (activePose === 0) {
+        summary = 'Stage inferred from filename · Reference state for later Cα-chain comparisons';
+      } else {
+        summary = `Stage inferred from filename · ${structureSceneStoryChange(null)}`;
+      }
+      return {
+        stepIndex: activePose,
+        stepCount: prepared.poseCount,
+        fileName: entry?.label || `Structure ${activePose + 1}`,
+        stage: structureSceneStoryStage(entry?.label, activePose),
+        summary,
+        comparison
+      };
+    };
+    if (story && storyPanel && storyStep && storyTitle && storySummary && storyOpenRight) {
       story.type = 'button';
       story.className = 'buret-docking-pose-story active';
       story.textContent = 'Story';
@@ -10766,7 +10787,12 @@
       storyStep.className = 'buret-docking-pose-story-step';
       storyTitle.className = 'buret-docking-pose-story-title';
       storySummary.className = 'buret-docking-pose-story-summary';
-      storyPanel.append(storyStep, storyTitle, storySummary);
+      storyOpenRight.type = 'button';
+      storyOpenRight.className = 'buret-docking-pose-story-open';
+      storyOpenRight.textContent = '↗';
+      storyOpenRight.title = 'Open Story in right sidebar';
+      storyOpenRight.setAttribute('aria-label', 'Open Story in right sidebar');
+      storyPanel.append(storyStep, storyTitle, storySummary, storyOpenRight);
     }
     const alignmentSupported = Boolean(align) && (xyzAlignFrames
       ? xyzFramesAlignable(xyzAlignFrames)
@@ -10852,17 +10878,11 @@
         button.setAttribute('aria-selected', active ? 'true' : 'false');
       });
       if (storyStep && storyTitle && storySummary) {
-        const entry = prepared?.poses?.[activePose];
-        const comparison = storyComparison(activePose);
-        storyStep.textContent = `Step ${activePose + 1} of ${prepared.poseCount}`;
-        storyTitle.textContent = structureSceneStoryStage(entry?.label, activePose);
-        if (comparison) {
-          storySummary.textContent = `Stage inferred from filename · ${structureSceneStoryChange(comparison)} · ${comparison.rmsd.toFixed(2)} Å Cα RMSD vs previous · chain ${comparison.chain} · ${comparison.residueCount} residues`;
-        } else if (activePose === 0) {
-          storySummary.textContent = 'Stage inferred from filename · Reference state for later Cα-chain comparisons';
-        } else {
-          storySummary.textContent = `Stage inferred from filename · ${structureSceneStoryChange(null)}`;
-        }
+        const storyPayload = structureStoryPayload();
+        storyStep.textContent = `Step ${storyPayload.stepIndex + 1} of ${storyPayload.stepCount}`;
+        storyTitle.textContent = storyPayload.stage;
+        storySummary.textContent = storyPayload.summary;
+        postHostMessage({ type: 'structureStoryChanged', ...storyPayload });
       }
       refreshNativeTrajectoryStandalonePreview();
       postHostMessage({
@@ -11047,6 +11067,14 @@
         story.setAttribute('aria-expanded', open ? 'true' : 'false');
         story.setAttribute('aria-pressed', open ? 'true' : 'false');
         window.requestAnimationFrame(() => repositionDockingPoseControls(root));
+      });
+    }
+    if (storyOpenRight) {
+      storyOpenRight.addEventListener('click', () => {
+        const posted = postHostMessage({ type: 'openStructureStory', ...structureStoryPayload() });
+        if (!posted) {
+          setStatus('[web] The Story sidebar is available in the full Burrete workspace.', 'error');
+        }
       });
     }
     if (align && alignmentSupported && xyzAlignFrames) {

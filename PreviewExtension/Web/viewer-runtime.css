@@ -2141,12 +2141,23 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-pose-align {
   min-width: 58px;
 }
+.buret-docking-poses-structure-scene {
+  width: min(420px, calc(100vw - 24px));
+}
+.buret-docking-poses-structure-scene .buret-docking-pose-main {
+  width: 100%;
+}
+.buret-docking-poses-structure-scene .buret-docking-pose-current {
+  min-width: 0;
+  flex: 1 1 0;
+  width: auto;
+}
 .buret-docking-pose-story-panel {
-  position: static;
+  position: relative;
   box-sizing: border-box;
   width: auto;
   margin-top: 6px;
-  padding: 11px 12px 12px;
+  padding: 11px 38px 12px 12px;
   border: 1px solid var(--buret-menu-border);
   border-radius: 8px;
   background: var(--buret-menu-background);
@@ -2174,8 +2185,24 @@ body.burette-mobile-host .buret-docking-poses button {
 }
 .buret-docking-pose-story-summary {
   color: color-mix(in srgb, var(--buret-toolbar-color) 72%, transparent);
+  display: -webkit-box;
+  overflow: hidden;
   font-size: 11px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.buret-docking-poses .buret-docking-pose-story-open {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0;
+  color: color-mix(in srgb, var(--buret-toolbar-color) 72%, transparent);
+  font-size: 13px;
 }
 .buret-docking-pose-toggles {
   display: flex;
