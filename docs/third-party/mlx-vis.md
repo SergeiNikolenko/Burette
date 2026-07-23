@@ -10,7 +10,15 @@ file. Authorization to adapt the source was additionally confirmed directly
 with the upstream author by the Burrete product owner.
 
 Production Burrete does not bundle Python, NumPy, or MLX. The relevant
-algorithms are adapted into bounded Rust reference code and native Metal
-kernels, with parity tests against pinned upstream fixtures. The initial port
-covers UMAP; the same provenance applies as PaCMAP, LocalMAP, t-SNE, TriMap,
-DREAMS, CNE, MMAE, NNDescent, and GPU rendering are introduced.
+objectives are adapted into bounded Rust graph preparation and native Metal
+kernels. Chemical Space exposes UMAP, t-SNE, PaCMAP, LocalMAP, TriMap, DREAMS,
+CNE, and MMAE-style manifold matching. All methods deliberately consume the
+same exact Morgan-fingerprint Tanimoto neighbor graph instead of mlx-vis's
+Euclidean input graph.
+
+The MMAE option maps the manifold-matching distance objective; it does not
+expose mlx-vis's reusable neural encoder or out-of-sample transform. NNDescent
+is not used in this first product surface because Burrete already computes an
+exact deterministic Tanimoto top-k graph on Metal. The interactive 2D/3D point
+renderer is implemented in the desktop canvas, with GPU coordinate generation
+and CPU/GPU-times reported separately.

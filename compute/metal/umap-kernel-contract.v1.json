@@ -25,7 +25,7 @@
         { "name": "alpha", "type": "float32", "offsetBytes": 40 },
         { "name": "curveA", "type": "float32", "offsetBytes": 44 },
         { "name": "curveB", "type": "float32", "offsetBytes": 48 },
-        { "name": "reserved", "type": "uint32", "offsetBytes": 52 }
+        { "name": "method", "type": "uint32", "offsetBytes": 52, "values": ["umap", "tsne", "pacmap", "localmap", "trimap", "dreams", "cne", "mmae"] }
       ]
     }
   },

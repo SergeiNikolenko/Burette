@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -9,6 +10,7 @@ import {
   computeErrorMessage,
   runChemicalSpaceWorkflow,
   type ChemicalSpaceOptions,
+  type ChemicalSpaceMethod,
   type ChemicalSpaceProgress,
   type ChemicalSpaceResult,
 } from "../lib/compute-cluster";
@@ -30,6 +32,7 @@ type MoleculePreview = {
 };
 
 const DEFAULT_OPTIONS: ChemicalSpaceOptions = {
+  method: "umap",
   dimensions: 2,
   neighbors: 15,
   epochs: 500,
@@ -39,6 +42,16 @@ const DEFAULT_OPTIONS: ChemicalSpaceOptions = {
   negativeSampleRate: 5,
   randomSeed: 42,
 };
+const CHEMICAL_SPACE_METHODS: Array<{ value: ChemicalSpaceMethod; label: string }> = [
+  { value: "umap", label: "UMAP" },
+  { value: "tsne", label: "t-SNE" },
+  { value: "pacmap", label: "PaCMAP" },
+  { value: "localmap", label: "LocalMAP" },
+  { value: "trimap", label: "TriMap" },
+  { value: "dreams", label: "DREAMS" },
+  { value: "cne", label: "CNE" },
+  { value: "mmae", label: "MMAE" },
+];
 const completedEmbeddings = new Map<string, ChemicalSpaceResult>();
 const GRID_SELECTION_BRIDGE_LIMIT = 100_000;
 const MAX_MOLECULE_PREVIEW_BASE64_BYTES = 350_000;
@@ -161,13 +174,28 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     <TooltipProvider>
       <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-testid="chemical-space-panel">
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+          <NativeSelect
+            size="sm"
+            aria-label="Chemical-space method"
+            value={draft.method}
+            onChange={(event) => {
+              const method = event.currentTarget.value as ChemicalSpaceMethod;
+              const next = { ...draft, method };
+              setDraft(next);
+              setOptions(next);
+            }}
+          >
+            {CHEMICAL_SPACE_METHODS.map((method) => (
+              <NativeSelectOption key={method.value} value={method.value}>{method.label}</NativeSelectOption>
+            ))}
+          </NativeSelect>
           <ToggleGroup
             type="single"
             variant="outline"
             size="sm"
             spacing={0}
             value={draft.dimensions.toString()}
-            aria-label="UMAP dimensions"
+            aria-label="Embedding dimensions"
             onValueChange={(value) => {
               if (value !== "2" && value !== "3") return;
               const dimensions = Number(value) as 2 | 3;
@@ -176,8 +204,8 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               setOptions(next);
             }}
           >
-            <ToggleGroupItem value="2" aria-label="2D UMAP">2D</ToggleGroupItem>
-            <ToggleGroupItem value="3" aria-label="3D UMAP">3D</ToggleGroupItem>
+            <ToggleGroupItem value="2" aria-label="2D embedding">2D</ToggleGroupItem>
+            <ToggleGroupItem value="3" aria-label="3D embedding">3D</ToggleGroupItem>
           </ToggleGroup>
           <div className="flex items-center rounded-lg border border-border p-0.5">
             <Tooltip>
@@ -227,7 +255,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         <Collapsible className="border-t border-border px-3 py-2">
           <div className="flex items-center justify-between gap-2">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm">UMAP parameters</Button>
+              <Button variant="ghost" size="sm">{methodLabel(draft.method)} parameters</Button>
             </CollapsibleTrigger>
             <span className="text-xs text-muted-foreground">
               k={draft.neighbors} · min dist={draft.minDist.toFixed(2)}
@@ -380,7 +408,7 @@ function ChemicalSpaceCanvas({
       <canvas
         ref={canvasRef}
         className="size-full touch-none"
-        aria-label={`${result.dimensions}D UMAP chemical-space map`}
+        aria-label={`${result.dimensions}D ${methodLabel(result.method)} chemical-space map`}
         onWheel={(event) => {
           event.preventDefault();
           const factor = event.deltaY > 0 ? 0.9 : 1.1;
@@ -486,8 +514,12 @@ function progressLabel(progress: ChemicalSpaceProgress | null) {
   if (progress.phase === "fingerprints") {
     return `Fingerprints ${Math.min(progress.completedRecords ?? 0, progress.totalRecords ?? 0).toLocaleString()} / ${(progress.totalRecords ?? 0).toLocaleString()}`;
   }
-  if (progress.phase === "embedding") return "Metal Tanimoto + UMAP…";
+  if (progress.phase === "embedding") return "Metal Tanimoto + embedding…";
   return "Preparing snapshot…";
+}
+
+function methodLabel(method: ChemicalSpaceMethod) {
+  return CHEMICAL_SPACE_METHODS.find((entry) => entry.value === method)?.label ?? method;
 }
 
 function normalizePositions(positions: Array<[number, number, number]>) {

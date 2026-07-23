@@ -17,7 +17,7 @@ struct UmapEpochConfigV1 {
     float alpha;
     float curveA;
     float curveB;
-    uint reserved;
+    uint method;
 };
 
 inline ulong umap_mix_v1(ulong value) {
@@ -90,10 +90,49 @@ kernel void burrete_umap_epoch_v1(
         }
         const float distanceSquared = max(dot(difference, difference), 1e-6f);
         const float distancePower = powr(distanceSquared, config.curveB);
-        const float coefficient =
+        float coefficient =
             -2.0f * config.curveA * config.curveB *
             powr(distanceSquared, config.curveB - 1.0f) /
             (1.0f + config.curveA * distancePower);
+        const float student = 1.0f / (1.0f + distanceSquared);
+        const float progress = static_cast<float>(config.epoch) /
+            max(1.0f, static_cast<float>(config.epochCount));
+        switch (config.method) {
+            case 1: // t-SNE sparse attractive term
+                coefficient = -4.0f * weight * student;
+                break;
+            case 2: { // PaCMAP phased neighbor objective
+                const float phaseWeight = progress < 0.2f ? 2.0f :
+                    (progress < 0.6f ? 3.0f : 1.0f);
+                coefficient = -phaseWeight * weight * 20.0f /
+                    powr(10.0f + distanceSquared, 2.0f);
+                break;
+            }
+            case 3: { // LocalMAP sharpens the late local phase
+                const float localScale = progress < 0.6f ? 3.0f : 6.0f;
+                coefficient = -localScale * weight /
+                    (1.0f + distanceSquared);
+                break;
+            }
+            case 4: // TriMap inlier side of the sampled triplet loss
+                coefficient = -2.0f * weight * student * student;
+                break;
+            case 5: // DREAMS local t-SNE term; stable graph weights retain global scales
+                coefficient = -4.0f * weight * student * 0.85f;
+                break;
+            case 6: // CNE negative-sampling contrastive positive term
+                coefficient = -2.0f * weight * student;
+                break;
+            case 7: { // MMAE manifold-distance matching on Tanimoto distances
+                const float target = max(0.02f, 1.0f - weight);
+                const float distance = sqrt(distanceSquared);
+                coefficient = -2.0f * (distance - target) /
+                    max(distance, 1e-3f);
+                break;
+            }
+            default:
+                break;
+        }
         delta += clamp(coefficient * difference, -4.0f, 4.0f) * config.alpha;
 
         for (uint sample = 0; sample < config.negativeSampleRate; ++sample) {
@@ -115,10 +154,39 @@ kernel void burrete_umap_epoch_v1(
                 max(dot(negativeDifference, negativeDifference), 1e-6f);
             const float negativePower =
                 powr(negativeDistanceSquared, config.curveB);
-            const float negativeCoefficient =
+            float negativeCoefficient =
                 2.0f * config.curveB /
                 ((0.001f + negativeDistanceSquared) *
                  (1.0f + config.curveA * negativePower));
+            const float negativeStudent = 1.0f / (1.0f + negativeDistanceSquared);
+            switch (config.method) {
+                case 1: // t-SNE sampled repulsion
+                    negativeCoefficient = 4.0f * negativeStudent * negativeStudent;
+                    break;
+                case 2: // PaCMAP further-pair loss
+                    negativeCoefficient = 2.0f /
+                        powr(1.0f + negativeDistanceSquared, 2.0f);
+                    break;
+                case 3: // LocalMAP local far-pair repulsion
+                    negativeCoefficient = progress < 0.6f
+                        ? 2.0f * negativeStudent * negativeStudent
+                        : 4.0f * negativeStudent * negativeStudent;
+                    break;
+                case 4: // TriMap outlier side of the sampled triplet loss
+                    negativeCoefficient = 2.0f * weight * negativeStudent * negativeStudent;
+                    break;
+                case 5: // DREAMS leaves room for its global graph regularizer
+                    negativeCoefficient = 3.4f * negativeStudent * negativeStudent;
+                    break;
+                case 6: // CNE NEG objective
+                    negativeCoefficient = 2.0f * negativeStudent * negativeStudent;
+                    break;
+                case 7: // MMAE samples non-neighbor distances toward the graph diameter
+                    negativeCoefficient = 0.25f * negativeStudent;
+                    break;
+                default:
+                    break;
+            }
             delta += clamp(
                 negativeCoefficient * negativeDifference,
                 -4.0f,

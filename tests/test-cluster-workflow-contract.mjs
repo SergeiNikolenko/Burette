@@ -39,7 +39,10 @@ assert.match(workflow, /numericStage\?\.effectiveBackend === "nativeMetal"/);
 assert.match(workflow, /export async function runChemicalSpaceWorkflow/);
 assert.match(workflow, /invoke<ChemicalSpaceResult>\("compute_execute_chemical_space"/);
 assert.match(chemicalSpace, /build_tanimoto_knn_profiled/);
-assert.match(chemicalSpace, /optimize_umap_profiled/);
+assert.match(chemicalSpace, /optimize_embedding_profiled/);
+for (const method of ["Umap", "Tsne", "Pacmap", "Localmap", "Trimap", "Dreams", "Cne", "Mmae"]) {
+  assert.match(chemicalSpace, new RegExp(`ChemicalSpaceMethod::${method}`));
+}
 assert.match(chemicalSpacePanel, /isKnownViewerMessageSource\(event\.source, documentId\)/);
 assert.match(chemicalSpacePanel, /MAX_LASSO_POINTS = 4_096/);
 assert.match(chemicalSpacePanel, /GRID_SELECTION_BRIDGE_LIMIT = 100_000/);

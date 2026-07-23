@@ -12,6 +12,30 @@ use std::{
 const MAX_UMAP_EPOCHS: u32 = 2_000;
 const MAX_NEGATIVE_SAMPLE_RATE: u32 = 64;
 
+/// Native chemical-space objectives adapted from mlx-vis 0.7.0.
+///
+/// Every objective consumes the same exact Tanimoto k-nearest-neighbor graph.
+/// This is intentional: mlx-vis normally constructs Euclidean neighbors, which
+/// would change the requested chemical similarity metric.
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ChemicalSpaceMethod {
+    Umap = 0,
+    Tsne = 1,
+    Pacmap = 2,
+    Localmap = 3,
+    Trimap = 4,
+    Dreams = 5,
+    Cne = 6,
+    Mmae = 7,
+}
+
+impl ChemicalSpaceMethod {
+    pub const fn metal_discriminant(self) -> u32 {
+        self as u32
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct UmapOptions {
     n_components: u32,

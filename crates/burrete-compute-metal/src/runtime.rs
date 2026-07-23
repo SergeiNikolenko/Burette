@@ -13,7 +13,8 @@ use burrete_compute_core::{
     MmffOptimizerKind, MmffOutOfPlaneTerm, MmffParameters, MmffStretchBendTerm, MmffTorsionTerm,
     MmffVanDerWaalsTerm, MmffVariant, Pm6FockPair, RigidTransform, Rm1FockPair, SemiempiricalAtom,
     SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoKnnOptions, TanimotoQueryOptions,
-    TanimotoUmapGraph, TetrahedralConstraint, UmapOptions, FINGERPRINT_WORDS,
+    ChemicalSpaceMethod, TanimotoUmapGraph, TetrahedralConstraint, UmapOptions,
+    FINGERPRINT_WORDS,
 };
 use burrete_compute_protocol::{
     CapabilityLimits, GpuDeviceIdentity, ResourceLimits, RuntimeIdentity, SimilarityCutoff,
@@ -378,9 +379,25 @@ impl MetalComputeRuntime {
         options: UmapOptions,
         max_memory_bytes: u64,
     ) -> Result<MetalUmapExecution, MetalRuntimeError> {
-        let dispatch = self.host.optimize_umap_profiled(
+        self.optimize_embedding_profiled(
             graph,
             options,
+            ChemicalSpaceMethod::Umap,
+            max_memory_bytes,
+        )
+    }
+
+    pub fn optimize_embedding_profiled(
+        &self,
+        graph: &TanimotoUmapGraph,
+        options: UmapOptions,
+        method: ChemicalSpaceMethod,
+        max_memory_bytes: u64,
+    ) -> Result<MetalUmapExecution, MetalRuntimeError> {
+        let dispatch = self.host.optimize_embedding_profiled(
+            graph,
+            options,
+            method,
             max_memory_bytes.min(self.limits.max_memory_bytes),
         )?;
         Ok(MetalUmapExecution {
@@ -2100,6 +2117,31 @@ mod tests {
             .positions
             .iter()
             .all(|position| position[2] == 0.0));
+
+        for method in [
+            ChemicalSpaceMethod::Tsne,
+            ChemicalSpaceMethod::Pacmap,
+            ChemicalSpaceMethod::Localmap,
+            ChemicalSpaceMethod::Trimap,
+            ChemicalSpaceMethod::Dreams,
+            ChemicalSpaceMethod::Cne,
+            ChemicalSpaceMethod::Mmae,
+        ] {
+            let embedding = runtime
+                .optimize_embedding_profiled(
+                    &graph,
+                    options_2d,
+                    method,
+                    MIN_COMPUTE_MEMORY_BYTES,
+                )
+                .expect("Metal chemical-space objective");
+            assert_eq!(embedding.positions.len(), fingerprints.len());
+            assert!(embedding
+                .positions
+                .iter()
+                .flatten()
+                .all(|value| value.is_finite()));
+        }
 
         let options_3d =
             UmapOptions::try_new(3, 20, 0.1, 1.0, 1.0, 5, 42).expect("3D UMAP options");

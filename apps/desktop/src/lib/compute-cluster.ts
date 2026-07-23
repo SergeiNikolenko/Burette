@@ -103,6 +103,7 @@ export type ClusterProgress = {
 };
 
 export type ChemicalSpaceOptions = {
+  method: ChemicalSpaceMethod;
   dimensions: 2 | 3;
   neighbors: number;
   epochs: number;
@@ -113,16 +114,27 @@ export type ChemicalSpaceOptions = {
   randomSeed: number;
 };
 
+export type ChemicalSpaceMethod =
+  | "umap"
+  | "tsne"
+  | "pacmap"
+  | "localmap"
+  | "trimap"
+  | "dreams"
+  | "cne"
+  | "mmae";
+
 export type ChemicalSpaceResult = {
   sourceRecordIds: number[];
   positions: Array<[number, number, number]>;
   dimensions: 2 | 3;
+  method: ChemicalSpaceMethod;
   neighbors: number;
   successfulRecords: number;
   failedRecords: number;
   backend: "nativeMetal";
   tanimotoGpuTimeMs: number;
-  umapGpuTimeMs: number;
+  embeddingGpuTimeMs: number;
   hostTimeMs: number;
 };
 

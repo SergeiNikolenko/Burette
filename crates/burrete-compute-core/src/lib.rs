@@ -87,7 +87,8 @@ pub use semiempirical::{
     SemiempiricalScfOptions, SemiempiricalScfResult, SemiempiricalScfStatus,
 };
 pub use umap::{
-    build_tanimoto_umap_graph, fit_umap_curve, TanimotoUmapGraph, UmapError, UmapOptions,
+    build_tanimoto_umap_graph, fit_umap_curve, ChemicalSpaceMethod, TanimotoUmapGraph, UmapError,
+    UmapOptions,
 };
 
 use std::{cmp::Ordering, fmt, mem::size_of, num::NonZeroUsize};

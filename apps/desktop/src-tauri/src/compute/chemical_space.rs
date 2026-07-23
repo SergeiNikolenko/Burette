@@ -1,6 +1,9 @@
 use std::{num::NonZeroUsize, time::Instant};
 
-use burrete_compute_core::{build_tanimoto_umap_graph, TanimotoKnnOptions, UmapOptions};
+use burrete_compute_core::{
+    build_tanimoto_umap_graph, ChemicalSpaceMethod as NativeChemicalSpaceMethod,
+    TanimotoKnnOptions, UmapOptions,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -13,9 +16,38 @@ use super::{
 const MAX_NEIGHBORS: usize = 64;
 const DEFAULT_MAX_MEMORY_BYTES: u64 = 4 * 1_024 * 1_024 * 1_024;
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum ChemicalSpaceMethod {
+    Umap,
+    Tsne,
+    Pacmap,
+    Localmap,
+    Trimap,
+    Dreams,
+    Cne,
+    Mmae,
+}
+
+impl From<ChemicalSpaceMethod> for NativeChemicalSpaceMethod {
+    fn from(value: ChemicalSpaceMethod) -> Self {
+        match value {
+            ChemicalSpaceMethod::Umap => Self::Umap,
+            ChemicalSpaceMethod::Tsne => Self::Tsne,
+            ChemicalSpaceMethod::Pacmap => Self::Pacmap,
+            ChemicalSpaceMethod::Localmap => Self::Localmap,
+            ChemicalSpaceMethod::Trimap => Self::Trimap,
+            ChemicalSpaceMethod::Dreams => Self::Dreams,
+            ChemicalSpaceMethod::Cne => Self::Cne,
+            ChemicalSpaceMethod::Mmae => Self::Mmae,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ChemicalSpaceRequest {
+    method: ChemicalSpaceMethod,
     dimensions: u32,
     neighbors: usize,
     epochs: u32,
@@ -34,12 +66,13 @@ pub(crate) struct ChemicalSpaceResult {
     pub(crate) source_record_ids: Vec<u64>,
     pub(crate) positions: Vec<[f32; 3]>,
     pub(crate) dimensions: u32,
+    pub(crate) method: ChemicalSpaceMethod,
     pub(crate) neighbors: usize,
     pub(crate) successful_records: usize,
     pub(crate) failed_records: usize,
     pub(crate) backend: &'static str,
     pub(crate) tanimoto_gpu_time_ms: u64,
-    pub(crate) umap_gpu_time_ms: u64,
+    pub(crate) embedding_gpu_time_ms: u64,
     pub(crate) host_time_ms: f64,
 }
 
@@ -96,7 +129,12 @@ pub(crate) fn execute_chemical_space(
     )
     .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
     let embedding = runtime
-        .optimize_umap_profiled(&graph, umap_options, request.max_memory_bytes)
+        .optimize_embedding_profiled(
+            &graph,
+            umap_options,
+            request.method.into(),
+            request.max_memory_bytes,
+        )
         .map_err(metal_error)?;
     let source_record_ids = valid_ordinals
         .iter()
@@ -122,12 +160,13 @@ pub(crate) fn execute_chemical_space(
         source_record_ids,
         positions,
         dimensions: embedding.component_count,
+        method: request.method,
         neighbors,
         successful_records: fingerprints.len(),
         failed_records: batch.errors.iter().filter(|error| error.is_some()).count(),
         backend: "nativeMetal",
         tanimoto_gpu_time_ms: knn.gpu_time_ms,
-        umap_gpu_time_ms: embedding.gpu_time_ms,
+        embedding_gpu_time_ms: embedding.gpu_time_ms,
         host_time_ms: started.elapsed().as_secs_f64() * 1_000.0,
     })
 }

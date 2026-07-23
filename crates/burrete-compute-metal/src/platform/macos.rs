@@ -7,7 +7,7 @@ use burrete_compute_core::{
     EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
     Fingerprint2048, GraphBuildOptions, MmffParameters, Pm6FockPair, Rm1FockPair,
     SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoKnnOptions, TanimotoQueryOptions,
-    TanimotoUmapGraph, TetrahedralConstraint, UmapOptions,
+    ChemicalSpaceMethod, TanimotoUmapGraph, TetrahedralConstraint, UmapOptions,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use metal::{
@@ -77,7 +77,7 @@ struct UmapEpochConfigV1 {
     alpha: f32,
     curve_a: f32,
     curve_b: f32,
-    reserved: u32,
+    method: u32,
 }
 
 #[repr(C, align(8))]
@@ -752,10 +752,11 @@ impl MetalHost {
         })
     }
 
-    pub(crate) fn optimize_umap_profiled(
+    pub(crate) fn optimize_embedding_profiled(
         &self,
         graph: &TanimotoUmapGraph,
         options: UmapOptions,
+        method: ChemicalSpaceMethod,
         max_memory_bytes: u64,
     ) -> Result<MetalUmapDispatch, MetalRuntimeError> {
         let vertex_count = graph.vertex_count();
@@ -802,7 +803,7 @@ impl MetalHost {
             alpha: options.learning_rate(),
             curve_a,
             curve_b,
-            reserved: 0,
+            method: method.metal_discriminant(),
         };
         let mut gpu_time_seconds = autoreleasepool(|| {
             let command = self.queue.new_command_buffer();
@@ -3627,7 +3628,7 @@ mod tests {
         assert_eq!(std::mem::align_of::<UmapEpochConfigV1>(), 8);
         assert_eq!(std::mem::offset_of!(UmapEpochConfigV1, component_count), 24);
         assert_eq!(std::mem::offset_of!(UmapEpochConfigV1, alpha), 40);
-        assert_eq!(std::mem::offset_of!(UmapEpochConfigV1, reserved), 52);
+        assert_eq!(std::mem::offset_of!(UmapEpochConfigV1, method), 52);
         assert_eq!(std::mem::size_of::<ConformerInitializeBatchV1>(), 16);
         assert_eq!(std::mem::align_of::<ConformerInitializeBatchV1>(), 8);
         assert_eq!(
