@@ -141,7 +141,10 @@
   let molstarMoleculePreviewFrame = 0;
   let molstarMoleculePreviewDrag = null;
   let molstarMoleculePreviewTarget = null;
-  let molstarMoleculePreviewSuppressClickUntil = 0;
+  // The card is destroyed and rebuilt whenever the selection changes, so the size
+  // and the corner the user dragged it to live out here instead of on the element.
+  let molstarMoleculePreviewGeometry = null;
+  let molstarMoleculePreviewSize = 's';
   let molstarSelectionHostSignature = '';
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
@@ -15050,6 +15053,43 @@
     ).join('');
   }
 
+  const MOLECULE_PREVIEW_SIZES = {
+    s: { label: 'Small', width: 148, height: 196 },
+    m: { label: 'Medium', width: 208, height: 268 },
+    l: { label: 'Large', width: 288, height: 364 }
+  };
+  const MOLECULE_PREVIEW_ICON = {
+    close: ['M18 6 6 18', 'm6 6 12 12'],
+    ketcher: ['M12 3v4.5', 'm12 7.5 3.9 2.25', 'm12 7.5-3.9 2.25', 'M15.9 9.75v4.5L12 16.5l-3.9-2.25v-4.5', 'M4.2 6.75 12 2.25l7.8 4.5v9L12 20.25l-7.8-4.5Z'],
+    copy: ['M9 9h9a1.5 1.5 0 0 1 1.5 1.5V19a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 19v-8.5A1.5 1.5 0 0 1 9 9Z', 'M4.5 15A1.5 1.5 0 0 1 3 13.5V5a1.5 1.5 0 0 1 1.5-1.5H13A1.5 1.5 0 0 1 14.5 5']
+  };
+
+  function molstarMoleculePreviewIconHTML(paths) {
+    const body = paths.map(definition => `<path d="${definition}" />`).join('');
+    return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+  }
+
+  function molstarMoleculePreviewCardHTML(label, subtitle, image) {
+    const sizes = Object.entries(MOLECULE_PREVIEW_SIZES).map(([key, preset]) =>
+      `<button type="button" class="buret-molecule-card-size" data-buret-molecule-preview-action="size" data-size="${key}" aria-pressed="${key === molstarMoleculePreviewSize}" aria-label="${escapeHTML(preset.label)} preview" title="${escapeHTML(preset.label)}">${key.toUpperCase()}</button>`
+    ).join('');
+    return `
+      <div class="buret-molecule-card-header" data-buret-molecule-preview-drag>
+        <span class="buret-molecule-card-heading">
+          <span class="buret-molecule-card-title" title="${escapeHTML(label)}">${escapeHTML(label)}</span>
+          <span class="buret-molecule-card-subtitle">${escapeHTML(subtitle)}</span>
+        </span>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
+      </div>
+      <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
+      <div class="buret-molecule-card-footer">
+        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Ketcher</span></button>
+        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
+        <span class="buret-molecule-card-sizes" role="group" aria-label="Preview size">${sizes}</span>
+      </div>
+      ${molstarMoleculePreviewResizeHandlesHTML()}`;
+  }
+
   function openMolstarMoleculePreviewInKetcher(target) {
     const entry = molstarMoleculePreviewEntry(target);
     const text = String(entry?.data || '').trim();
@@ -15069,6 +15109,105 @@
     if (!ok) setStatus('[web] Ketcher is unavailable in this preview host.', 'error');
   }
 
+  function molstarMoleculePreviewClamp(popover) {
+    const margin = 8;
+    const rect = popover.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+    const maxBottom = Math.max(margin, viewportHeight - rect.height - margin);
+    popover.style.left = `${Math.round(Math.max(margin, Math.min(rect.left, maxLeft)))}px`;
+    popover.style.bottom = `${Math.round(Math.max(margin, Math.min(viewportHeight - rect.bottom, maxBottom)))}px`;
+    popover.style.right = 'auto';
+    popover.style.top = 'auto';
+  }
+
+  function rememberMolstarMoleculePreviewGeometry(popover) {
+    const rect = popover.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    molstarMoleculePreviewGeometry = {
+      left: Math.round(rect.left),
+      bottom: Math.round(viewportHeight - rect.bottom),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
+    };
+    popover.dataset.compact = rect.width < 190 ? 'true' : 'false';
+  }
+
+  function applyMolstarMoleculePreviewGeometry(popover) {
+    const geometry = molstarMoleculePreviewGeometry;
+    if (!geometry) return;
+    popover.style.width = `${geometry.width}px`;
+    popover.style.height = `${geometry.height}px`;
+    popover.style.left = `${geometry.left}px`;
+    popover.style.bottom = `${geometry.bottom}px`;
+    popover.style.right = 'auto';
+    popover.style.top = 'auto';
+    molstarMoleculePreviewClamp(popover);
+  }
+
+  function setMolstarMoleculePreviewSize(size) {
+    const preset = MOLECULE_PREVIEW_SIZES[size];
+    const popover = molstarMoleculePreview;
+    if (!preset || !popover) return;
+    molstarMoleculePreviewSize = size;
+    popover.style.width = `${preset.width}px`;
+    popover.style.height = `${preset.height}px`;
+    molstarMoleculePreviewClamp(popover);
+    rememberMolstarMoleculePreviewGeometry(popover);
+    for (const button of popover.querySelectorAll('[data-buret-molecule-preview-action="size"]')) {
+      button.setAttribute('aria-pressed', button.dataset.size === size ? 'true' : 'false');
+    }
+  }
+
+  async function copyMolstarMoleculePreviewSmiles(target) {
+    const entry = molstarMoleculePreviewEntry(target);
+    const molblock = splitSdfRecords(String(entry?.data || ''))[0] || String(entry?.data || '');
+    if (!molblock.trim()) {
+      setStatus('[web] This molecule has no structure to read a SMILES from.', 'error');
+      return;
+    }
+    let molecule = null;
+    try {
+      const rdkit = await molstarPreviewInitRDKit();
+      molecule = rdkit.get_mol(molblock);
+      const smiles = String(molecule?.get_smiles?.() || '').trim();
+      if (!smiles) throw new Error('RDKit returned no SMILES.');
+      await writeTextToClipboard(smiles);
+      setStatus(`[web] Copied SMILES: ${smiles}`);
+    } catch (error) {
+      setStatus(`[web] Copy SMILES failed. ${error?.message || error}`, 'error');
+    } finally {
+      try { molecule?.delete?.(); } catch (_) {}
+    }
+  }
+
+  // The preview runs from a file:// document in the extension host, where the async
+  // clipboard API is not always granted; the textarea path is the fallback that is.
+  async function writeTextToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (error) {
+      debug(`clipboard write failed, using the textarea fallback: ${error?.message || error}`);
+    }
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('aria-hidden', 'true');
+    field.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(field);
+    field.select();
+    const copied = document.execCommand('copy');
+    field.remove();
+    if (!copied) throw new Error('The clipboard is unavailable in this host.');
+  }
+
+  function runMolstarMoleculePreviewAction(action, control) {
+    if (action === 'close') hideMolstarMoleculePreview({ force: true });
+    else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
+    else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
+    else if (action === 'size') setMolstarMoleculePreviewSize(control.dataset.size);
+  }
+
   function installMolstarMoleculePreviewResize(popover) {
     if (!popover || popover.dataset.buretResizeInstalled === '1') return;
     popover.dataset.buretResizeInstalled = '1';
@@ -15080,16 +15219,10 @@
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
     const finish = (event) => {
       if (!molstarMoleculePreviewDrag || molstarMoleculePreviewDrag.popover !== popover) return;
-      const drag = molstarMoleculePreviewDrag;
       try { popover.releasePointerCapture?.(molstarMoleculePreviewDrag.pointerId); } catch (_) {}
       popover.classList.remove('buret-molstar-molecule-preview-resizing');
       popover.classList.remove('buret-molstar-molecule-preview-moving');
-      if (drag.moved) {
-        molstarMoleculePreviewSuppressClickUntil = Date.now() + 450;
-      } else if (drag.action === 'move') {
-        molstarMoleculePreviewSuppressClickUntil = Date.now() + 450;
-        openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
-      }
+      rememberMolstarMoleculePreviewGeometry(popover);
       molstarMoleculePreviewDrag = null;
       event?.preventDefault?.();
     };
@@ -15097,6 +15230,9 @@
       const handle = event.target instanceof Element ? event.target.closest('[data-buret-molecule-preview-resize]') : null;
       if (handle && !popover.contains(handle)) return;
       if (event.button !== 0) return;
+      // Only the header and the drawing move the card; the footer buttons and the
+      // title are ordinary controls, so a press there must not start a drag.
+      if (!handle && !event.target.closest?.('[data-buret-molecule-preview-drag]')) return;
       const direction = handle?.getAttribute('data-buret-molecule-preview-resize') || '';
       const rect = popover.getBoundingClientRect();
       const viewportWidth = window.innerWidth || document.documentElement.clientWidth || rect.right + margin;
@@ -15170,15 +15306,15 @@
     popover.addEventListener('pointerup', finish);
     popover.addEventListener('pointercancel', finish);
     popover.addEventListener('click', event => {
-      if (event.target instanceof Element && event.target.closest('[data-buret-molecule-preview-resize]')) return;
-      if (Date.now() < molstarMoleculePreviewSuppressClickUntil) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-      openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
-      event.preventDefault();
+      const control = event.target instanceof Element
+        ? event.target.closest('[data-buret-molecule-preview-action]')
+        : null;
+      // Everything the card does now has a button; a click on the drawing or the
+      // header is only ever the tail of a drag and must stay inert.
       event.stopPropagation();
+      if (!control) return;
+      event.preventDefault();
+      runMolstarMoleculePreviewAction(control.dataset.buretMoleculePreviewAction, control);
     });
   }
 
@@ -15433,21 +15569,21 @@
     const subtitle = target?.scope === 'ion' ? 'Ion' : 'Small molecule';
     let popover = molstarMoleculePreview;
     molstarMoleculePreviewTarget = target || null;
+    const created = !popover;
     if (!popover) {
       popover = document.createElement('div');
       popover.className = 'buret-molstar-molecule-preview';
-      popover.setAttribute('role', 'tooltip');
+      popover.setAttribute('role', 'dialog');
       popover.tabIndex = 0;
       installMolstarMoleculePreviewResize(popover);
       document.body.appendChild(popover);
       molstarMoleculePreview = popover;
     }
-    popover.innerHTML = `
-      <div class="buret-molstar-molecule-preview-image">${image || escapeHTML('Rendering 2D preview...')}</div>
-      <div class="buret-molstar-molecule-preview-title">${escapeHTML(label)}</div>
-      <div class="buret-molstar-molecule-preview-subtitle">${escapeHTML(subtitle)}</div>
-      ${molstarMoleculePreviewResizeHandlesHTML()}`;
+    popover.setAttribute('aria-label', `${label} preview`);
+    popover.innerHTML = molstarMoleculePreviewCardHTML(label, subtitle, image || escapeHTML('Rendering 2D preview...'));
     popover.dataset.buretPreviewKey = key;
+    if (created) applyMolstarMoleculePreviewGeometry(popover);
+    rememberMolstarMoleculePreviewGeometry(popover);
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
         if (!svg || !molstarMoleculePreview || molstarMoleculePreview.dataset.buretPreviewKey !== key) return;
@@ -15560,6 +15696,7 @@
       molstarMoleculePreviewFrame = 0;
     }
     if (!molstarMoleculePreview) return;
+    rememberMolstarMoleculePreviewGeometry(molstarMoleculePreview);
     molstarMoleculePreview.remove();
     molstarMoleculePreview = null;
     molstarMoleculePreviewTarget = null;

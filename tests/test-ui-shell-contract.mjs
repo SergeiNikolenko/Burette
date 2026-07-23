@@ -5379,7 +5379,7 @@ assert.match(previewViewer, /normalizeFormat\(target\.sourceEntry\?\.format\) ==
 assert.match(previewViewer, /format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf'/);
 assert.match(previewViewer, /const activePose = Math\.max\(0, Math\.min\(records\.length - 1, Number\(activeMolstarPrepared\?\.activePose\) \|\| 0\)\)/);
 assert.doesNotMatch(previewViewer, /if \(!image\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
-assert.match(previewViewer, /\$\{image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\}/);
+assert.match(previewViewer, /molstarMoleculePreviewCardHTML\(label, subtitle, image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\)/);
 assert.match(previewViewer, /function molstarPreviewLoadRDKitScript\(\)/);
 assert.match(previewViewer, /runtimeURL\('BurreteRDKitJSURL', '\.\.\/assets\/rdkit\/RDKit_minimal\.js'\)/);
 assert.match(previewViewer, /function molstarPreviewRDKitWasmCandidates\(\)/);
