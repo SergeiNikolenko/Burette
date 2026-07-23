@@ -3670,6 +3670,7 @@
     restoreToolbarCollapsed(toolbar, viewer);
     installToolbarAutoLayoutTracking(toolbar);
     installMolstarFloatingPanelTracking();
+    initSceneTree(viewer);
     updateToolbarVisibility();
     updateSdfPoseButton();
     updatePreviewDockButtons();
@@ -4419,6 +4420,11 @@
       root.classList.toggle('msp-layout-hide-bottom', layoutState.bottom === 'hidden');
     }
     syncLeftPanelVisibility();
+    // Mol* re-renders its regions after this call, so the second pass is the one
+    // that sees the real left-panel width.
+    updateSceneTreeLayoutOffset();
+    requestAnimationFrame(updateSceneTreeLayoutOffset);
+    setTimeout(updateSceneTreeLayoutOffset, 120);
 
     updateToolbarButtons();
     scheduleViewerResize(viewer, 40);
@@ -4589,6 +4595,773 @@
     toolbar.querySelector('[data-buret-toggle="right"]')?.classList.toggle('active', layoutState.right === 'full');
     toolbar.querySelector('[data-buret-toggle="sequence"]')?.classList.toggle('active', layoutState.top === 'full');
     toolbar.querySelector('[data-buret-toggle="log"]')?.classList.toggle('active', layoutState.bottom === 'full');
+  }
+
+  // Scene tree: a Burrete-styled stand-in for the Mol* left object tree. It mirrors
+  // the same hierarchy Mol* shows — data, model, assembly, components, their
+  // representations — but as a compact draggable overlay. Rows carry only the two
+  // controls Mol* puts there (visibility, remove); focus and colouring live in the
+  // right-click menu. The Mol* panel itself stays reachable under the `L` button.
+  const SCENE_TREE_SVG_NS = 'http://www.w3.org/2000/svg';
+  // Same left-edge type colours Mol* paints on `.msp-type-class-*` tree rows.
+  const SCENE_TREE_TYPE_COLOR = {
+    Root: '#eeece7',
+    Group: '#e98b39',
+    Data: '#bfc8c9',
+    Object: '#54d98c',
+    Representation3D: '#4aa3df',
+    Behavior: '#b07cc6'
+  };
+  const SCENE_TREE_ICON = {
+    chevron: ['m9 6 6 6-6 6'],
+    eye: ['M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
+    eyeOff: ['M9.88 9.88a3 3 0 1 0 4.24 4.24', 'M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68', 'M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61', 'm2 2 20 20'],
+    trash: ['M3 6h18', 'M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6']
+  };
+  // Apple system colours: the uniform tints offered next to the real colour themes.
+  const SCENE_TREE_UNIFORM_COLORS = [
+    { label: 'Purple', value: 0xaf52de },
+    { label: 'Blue', value: 0x0a84ff },
+    { label: 'Cyan', value: 0x40c8e0 },
+    { label: 'Green', value: 0x32d74b },
+    { label: 'Yellow', value: 0xffd60a },
+    { label: 'Orange', value: 0xff9f0a },
+    { label: 'Red', value: 0xff453a },
+    { label: 'Pink', value: 0xff6482 },
+    { label: 'Grey', value: 0x98989d },
+    { label: 'White', value: 0xf2f2f7 }
+  ];
+  const sceneTreeExpandedRefs = new Set();
+  const sceneTreeKnownRefs = new Set();
+  let sceneTreeStateDisposer = null;
+  let sceneTreeRenderHandle = 0;
+  let sceneTreeHoverRef = '';
+  let sceneTreeMenuRef = '';
+
+  function sceneTreeIconElement(paths) {
+    const svg = document.createElementNS(SCENE_TREE_SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.8');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    for (const definition of paths) {
+      const path = document.createElementNS(SCENE_TREE_SVG_NS, 'path');
+      path.setAttribute('d', definition);
+      svg.appendChild(path);
+    }
+    return svg;
+  }
+
+  function sceneTreeColorHex(value) {
+    return `#${Number(value).toString(16).padStart(6, '0')}`;
+  }
+
+  function sceneTreeChildRefs(state) {
+    const children = new Map();
+    let rootRef = null;
+    state.cells.forEach((cell, ref) => {
+      const parent = cell?.transform?.parent;
+      if (parent === undefined || parent === ref) {
+        if (rootRef === null) rootRef = ref;
+        return;
+      }
+      if (!children.has(parent)) children.set(parent, []);
+      children.get(parent).push(ref);
+    });
+    return { children, rootRef };
+  }
+
+  // Only structures and their components accept a colour: Mol* applies themes per
+  // component, and a structure row simply forwards the pick to all of its own.
+  function sceneTreeColorTargets(viewer) {
+    const targets = new Map();
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const components = structure?.components || [];
+      const structureRef = structure?.cell?.transform?.ref;
+      if (structureRef) targets.set(structureRef, components);
+      for (const component of components) {
+        const componentRef = component?.cell?.transform?.ref;
+        if (componentRef) targets.set(componentRef, [component]);
+      }
+    }
+    return targets;
+  }
+
+  // A row reports a colour theme only when every representation under it agrees;
+  // mixed rows show nothing rather than lying about the scene.
+  function sceneTreeColorState(components) {
+    let theme = null;
+    let value = null;
+    let seen = false;
+    for (const component of components) {
+      for (const representation of component?.representations || []) {
+        const colorTheme = representation?.cell?.transform?.params?.colorTheme;
+        const name = colorTheme?.name || '';
+        const uniform = name === 'uniform' ? colorTheme?.params?.value : null;
+        if (!seen) {
+          theme = name;
+          value = Number.isFinite(uniform) ? uniform : null;
+          seen = true;
+          continue;
+        }
+        if (theme !== name) return { theme: '', value: null };
+        if (value !== (Number.isFinite(uniform) ? uniform : null)) value = null;
+      }
+    }
+    return { theme: theme || '', value };
+  }
+
+  function isSceneTreeDecorator(cell) {
+    return cell?.transform?.transformer?.definition?.isDecorator === true;
+  }
+
+  function sceneTreeNodes(viewer) {
+    const state = viewer?.plugin?.state?.data;
+    if (!state?.cells) return [];
+    const { children, rootRef } = sceneTreeChildRefs(state);
+    if (rootRef === null) return [];
+    const colorTargets = sceneTreeColorTargets(viewer);
+    // Decorators such as custom-model-properties re-wrap their parent under the
+    // same label. Mol* shows one row for the whole chain, and the managers address
+    // the deepest cell, so the chain collapses onto that ref.
+    const decoratorChain = ref => {
+      const chain = [ref];
+      let current = ref;
+      for (;;) {
+        const decorators = (children.get(current) || [])
+          .filter(childRef => isSceneTreeDecorator(state.cells.get(childRef)));
+        if (decorators.length !== 1) break;
+        current = decorators[0];
+        chain.push(current);
+      }
+      return chain;
+    };
+    const build = refs => {
+      const nodes = [];
+      for (const parentRef of refs) {
+        for (const childRef of children.get(parentRef) || []) {
+          const cell = state.cells.get(childRef);
+          if (!cell || isSceneTreeDecorator(cell)) continue;
+          // Mol* hides ghost and pending cells but keeps showing their children.
+          if (cell.state?.isGhost === true || !cell.obj) {
+            nodes.push(...build(decoratorChain(childRef)));
+            continue;
+          }
+          const chain = decoratorChain(childRef);
+          const nodeRef = chain[chain.length - 1];
+          const components = colorTargets.get(nodeRef) || null;
+          nodes.push({
+            ref: nodeRef,
+            label: String(cell.obj.label || 'Node'),
+            note: String(cell.obj.description || ''),
+            typeClass: String(cell.obj.type?.typeClass || 'Object'),
+            hidden: cell.state?.isHidden === true,
+            colorable: !!components,
+            ...(components ? sceneTreeColorState(components) : { theme: '', value: null }),
+            children: build(chain)
+          });
+        }
+      }
+      return nodes;
+    };
+    return build([rootRef]);
+  }
+
+  // Everything opens on first sight, the way the Mol* tree does; rows are compact
+  // enough that a whole structure still fits without scrolling.
+  function reconcileSceneTreeExpansion(nodes) {
+    const present = new Set();
+    // Gate on the first render where a node actually has children: Mol* builds the
+    // hierarchy in passes, so a node seen while still childless would otherwise be
+    // recorded as "already handled" and never open.
+    const walk = list => {
+      for (const node of list) {
+        present.add(node.ref);
+        if (node.children.length && !sceneTreeKnownRefs.has(node.ref)) {
+          sceneTreeKnownRefs.add(node.ref);
+          sceneTreeExpandedRefs.add(node.ref);
+        }
+        walk(node.children);
+      }
+    };
+    walk(nodes);
+    for (const ref of Array.from(sceneTreeKnownRefs)) {
+      if (!present.has(ref)) sceneTreeKnownRefs.delete(ref);
+    }
+    for (const ref of Array.from(sceneTreeExpandedRefs)) {
+      if (!present.has(ref)) sceneTreeExpandedRefs.delete(ref);
+    }
+    if (sceneTreeMenuRef && !present.has(sceneTreeMenuRef)) closeSceneTreeMenu();
+  }
+
+  function sceneTreeActionButton(action, label, icon) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `buret-tree-action buret-tree-action-${action}`;
+    button.dataset.sceneTreeAction = action;
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.appendChild(sceneTreeIconElement(icon));
+    return button;
+  }
+
+  function sceneTreeNodeElement(node) {
+    const item = document.createElement('div');
+    item.className = 'buret-tree-item';
+    item.dataset.ref = node.ref;
+    const expandable = node.children.length > 0;
+    const open = expandable && sceneTreeExpandedRefs.has(node.ref);
+    if (expandable) item.dataset.open = open ? 'true' : 'false';
+    if (node.hidden) item.dataset.hidden = 'true';
+
+    const row = document.createElement('div');
+    row.className = 'buret-tree-row';
+    row.dataset.ref = node.ref;
+
+    if (expandable) {
+      const twisty = document.createElement('button');
+      twisty.type = 'button';
+      twisty.className = 'buret-tree-twisty';
+      twisty.dataset.sceneTreeAction = 'expand';
+      twisty.setAttribute('aria-expanded', open ? 'true' : 'false');
+      twisty.setAttribute('aria-label', open ? `Collapse ${node.label}` : `Expand ${node.label}`);
+      twisty.appendChild(sceneTreeIconElement(SCENE_TREE_ICON.chevron));
+      row.appendChild(twisty);
+    } else {
+      const spacer = document.createElement('span');
+      spacer.className = 'buret-tree-twisty buret-tree-twisty-empty';
+      row.appendChild(spacer);
+    }
+
+    const bar = document.createElement('span');
+    bar.className = 'buret-tree-bar';
+    bar.style.background = SCENE_TREE_TYPE_COLOR[node.typeClass] || SCENE_TREE_TYPE_COLOR.Object;
+    row.appendChild(bar);
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'buret-tree-trigger';
+    trigger.dataset.sceneTreeAction = 'focus';
+    const label = document.createElement('span');
+    label.className = 'buret-tree-label';
+    label.textContent = node.label;
+    trigger.appendChild(label);
+    if (node.note) {
+      const note = document.createElement('span');
+      note.className = 'buret-tree-note';
+      note.textContent = node.note;
+      trigger.appendChild(note);
+    }
+    trigger.title = node.note ? `${node.label} — ${node.note}` : node.label;
+    row.appendChild(trigger);
+
+    const actions = document.createElement('span');
+    actions.className = 'buret-tree-actions';
+    if (node.colorable && node.value !== null) {
+      const dot = document.createElement('span');
+      dot.className = 'buret-tree-dot';
+      dot.style.background = sceneTreeColorHex(node.value);
+      actions.appendChild(dot);
+    }
+    actions.appendChild(sceneTreeActionButton('remove', `Remove ${node.label}`, SCENE_TREE_ICON.trash));
+    actions.appendChild(sceneTreeActionButton(
+      'visibility',
+      node.hidden ? `Show ${node.label}` : `Hide ${node.label}`,
+      node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
+    ));
+    row.appendChild(actions);
+    item.appendChild(row);
+
+    if (expandable) {
+      const content = document.createElement('div');
+      content.className = 'buret-tree-content';
+      const inner = document.createElement('div');
+      inner.className = 'buret-tree-content-inner';
+      for (const child of node.children) inner.appendChild(sceneTreeNodeElement(child));
+      content.appendChild(inner);
+      item.appendChild(content);
+    }
+    return item;
+  }
+
+  function scheduleSceneTreeRender() {
+    if (sceneTreeRenderHandle) return;
+    sceneTreeRenderHandle = requestAnimationFrame(() => {
+      sceneTreeRenderHandle = 0;
+      renderSceneTree();
+    });
+  }
+
+  function renderSceneTree() {
+    const toggle = document.getElementById('buret-scene-tree-toggle');
+    const panel = document.getElementById('buret-scene-tree');
+    const body = panel?.querySelector('[data-buret-scene-tree-body]');
+    if (!toggle || !panel || !body) return;
+    const nodes = sceneTreeNodes(activeMolstarViewer());
+    reconcileSceneTreeExpansion(nodes);
+    const available = nodes.length > 0;
+    toggle.classList.toggle('hidden', !available);
+    document.body?.classList.toggle('buret-scene-tree-available', available);
+    if (!available) {
+      setSceneTreeOpen(false);
+      body.replaceChildren();
+      updateSceneTreeLayoutOffset();
+      return;
+    }
+    const root = document.createElement('div');
+    root.className = 'buret-tree';
+    const highlight = document.createElement('div');
+    highlight.className = 'buret-tree-highlight';
+    root.appendChild(highlight);
+    for (const node of nodes) root.appendChild(sceneTreeNodeElement(node));
+    body.replaceChildren(root);
+    requestAnimationFrame(() => root.classList.add('buret-tree-animate'));
+    const hovered = sceneTreeHoverRef
+      ? root.querySelector(`.buret-tree-row[data-ref="${CSS.escape(sceneTreeHoverRef)}"]`)
+      : null;
+    moveSceneTreeHighlight(hovered, { instant: true });
+  }
+
+  // One block slides between rows instead of every row painting its own hover fill.
+  function moveSceneTreeHighlight(row, options = {}) {
+    const highlight = document.querySelector('#buret-scene-tree .buret-tree-highlight');
+    if (!highlight) return;
+    const root = highlight.parentElement;
+    if (!row || !root) {
+      sceneTreeHoverRef = '';
+      highlight.classList.remove('buret-tree-highlight-active');
+      return;
+    }
+    sceneTreeHoverRef = row.dataset.ref || '';
+    const rootRect = root.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    highlight.classList.toggle('buret-tree-highlight-instant', options.instant === true);
+    highlight.style.width = `${rowRect.width}px`;
+    highlight.style.height = `${rowRect.height}px`;
+    highlight.style.transform = `translate(${rowRect.left - rootRect.left}px, ${rowRect.top - rootRect.top}px)`;
+    highlight.classList.add('buret-tree-highlight-active');
+    if (options.instant === true) {
+      requestAnimationFrame(() => highlight.classList.remove('buret-tree-highlight-instant'));
+    }
+  }
+
+  function setSceneTreeOpen(open) {
+    const toggle = document.getElementById('buret-scene-tree-toggle');
+    const panel = document.getElementById('buret-scene-tree');
+    if (!toggle || !panel) return;
+    panel.classList.toggle('hidden', !open);
+    panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      // Always reopens anchored under the toggle; dragging moves it for as long as
+      // it stays open, it does not become the panel's new home.
+      panel.style.removeProperty('left');
+      panel.style.removeProperty('top');
+    } else {
+      moveSceneTreeHighlight(null);
+      closeSceneTreeMenu();
+    }
+    updateSceneTreeLayoutOffset();
+  }
+
+  // Flips the row in place rather than re-rendering: a rebuilt node would start at
+  // its final height and the expand transition would never run.
+  function toggleSceneTreeNode(ref) {
+    const open = !sceneTreeExpandedRefs.has(ref);
+    if (open) sceneTreeExpandedRefs.add(ref);
+    else sceneTreeExpandedRefs.delete(ref);
+    const item = document.querySelector(`#buret-scene-tree .buret-tree-item[data-ref="${CSS.escape(ref)}"]`);
+    if (!item) {
+      renderSceneTree();
+      return;
+    }
+    item.dataset.open = open ? 'true' : 'false';
+    const twisty = item.querySelector(':scope > .buret-tree-row > .buret-tree-twisty');
+    const label = item.querySelector(':scope > .buret-tree-row .buret-tree-label')?.textContent || '';
+    twisty?.setAttribute('aria-expanded', open ? 'true' : 'false');
+    twisty?.setAttribute('aria-label', `${open ? 'Collapse' : 'Expand'} ${label}`);
+  }
+
+  // Mol* hides a cell by walking its subtree, so a representation stays hidden
+  // while its component is hidden and comes back with it.
+  function sceneTreeSubtreeRefs(state, ref) {
+    const { children } = sceneTreeChildRefs(state);
+    const refs = [];
+    const stack = [ref];
+    while (stack.length) {
+      const current = stack.pop();
+      refs.push(current);
+      for (const child of children.get(current) || []) stack.push(child);
+    }
+    return refs;
+  }
+
+  function sceneTreeCellHidden(state, ref) {
+    return state?.cells?.get(ref)?.state?.isHidden === true;
+  }
+
+  function toggleSceneTreeVisibility(ref) {
+    const state = activeMolstarViewer()?.plugin?.state?.data;
+    if (typeof state?.updateCellState !== 'function') return;
+    const hidden = !sceneTreeCellHidden(state, ref);
+    for (const target of sceneTreeSubtreeRefs(state, ref)) {
+      state.updateCellState(target, { isHidden: hidden });
+    }
+    scheduleSceneTreeRender();
+  }
+
+  async function removeSceneTreeNode(ref) {
+    const state = activeMolstarViewer()?.plugin?.state?.data;
+    if (typeof state?.build !== 'function') return;
+    try {
+      await state.build().delete(ref).commit();
+    } catch (error) {
+      debug('scene tree remove failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  function focusSceneTreeNode(ref) {
+    const plugin = activeMolstarViewer()?.plugin;
+    const data = plugin?.state?.data?.cells?.get(ref)?.obj?.data;
+    const sphere = data?.boundingSphere || data?.sourceData?.boundingSphere;
+    if (!sphere || typeof plugin?.managers?.camera?.focusSphere !== 'function') return;
+    try {
+      plugin.managers.camera.focusSphere(sphere, { durationMs: 250 });
+    } catch (error) {
+      debug('scene tree focus failed: ' + (error && error.message || String(error)));
+    }
+  }
+
+  async function applySceneTreeColorTheme(ref, theme, value) {
+    const viewer = activeMolstarViewer();
+    const manager = viewer?.plugin?.managers?.structure?.component;
+    const components = sceneTreeColorTargets(viewer).get(ref) || [];
+    if (typeof manager?.updateRepresentationsTheme !== 'function' || !components.length) return;
+    const params = theme === 'default'
+      ? { color: 'default' }
+      : { color: theme, ...(theme === 'uniform' ? { colorParams: { value } } : {}) };
+    try {
+      await manager.updateRepresentationsTheme(components, params);
+    } catch (error) {
+      debug('scene tree colour failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  function sceneTreeColorThemes(viewer) {
+    const types = viewer?.plugin?.representation?.structure?.themes?.colorThemeRegistry?.types;
+    if (!Array.isArray(types)) return [];
+    return types
+      .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+      .filter(entry => entry.name);
+  }
+
+  function sceneTreeCellActions(viewer, ref) {
+    const state = viewer?.plugin?.state?.data;
+    const cell = state?.cells?.get(ref);
+    if (!cell?.obj || typeof state.actions?.fromCell !== 'function') return [];
+    try {
+      return state.actions.fromCell(cell, viewer.plugin)
+        .map(action => ({ action, label: String(action?.definition?.display?.name || '') }))
+        .filter(entry => entry.label);
+    } catch (error) {
+      debug('scene tree actions failed: ' + (error && error.message || String(error)));
+      return [];
+    }
+  }
+
+  // Mol* puts a parameter form in front of every action. These run straight on the
+  // action's own defaults, which is what makes the menu usable rather than a form.
+  function sceneTreeActionDefaults(action, viewer, cell) {
+    const definition = action?.definition;
+    const params = typeof definition?.params === 'function'
+      ? definition.params(cell?.obj, viewer?.plugin)
+      : definition?.params;
+    if (!params || typeof params !== 'object') return {};
+    const values = {};
+    for (const [key, entry] of Object.entries(params)) values[key] = entry?.defaultValue;
+    return values;
+  }
+
+  async function applySceneTreeAction(ref, index) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    const entry = sceneTreeCellActions(viewer, ref)[index];
+    if (!entry || typeof state?.applyAction !== 'function') return;
+    try {
+      await viewer.plugin.runTask(
+        state.applyAction(entry.action, sceneTreeActionDefaults(entry.action, viewer, state.cells.get(ref)), ref)
+      );
+    } catch (error) {
+      debug('scene tree action failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  function closeSceneTreeMenu() {
+    sceneTreeMenuRef = '';
+    document.getElementById('buret-scene-tree-menu')?.remove();
+  }
+
+  function sceneTreeNodeByRef(nodes, ref) {
+    for (const node of nodes) {
+      if (node.ref === ref) return node;
+      const found = sceneTreeNodeByRef(node.children, ref);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function sceneTreeMenuButton(label, action, extra = {}) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'menuitem');
+    button.dataset.sceneTreeAction = action;
+    Object.assign(button.dataset, extra);
+    button.textContent = label;
+    return button;
+  }
+
+  function openSceneTreeMenu(ref, clientX, clientY) {
+    closeSceneTreeMenu();
+    const viewer = activeMolstarViewer();
+    const node = sceneTreeNodeByRef(sceneTreeNodes(viewer), ref);
+    if (!node) return;
+    sceneTreeMenuRef = ref;
+    const menu = document.createElement('div');
+    menu.id = 'buret-scene-tree-menu';
+    menu.className = 'buret-tree-menu';
+    menu.dataset.ref = ref;
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', `${node.label} actions`);
+
+    const title = document.createElement('div');
+    title.className = 'buret-tree-menu-title';
+    title.textContent = node.label;
+    menu.appendChild(title);
+
+    menu.appendChild(sceneTreeMenuButton('Focus', 'focus'));
+    menu.appendChild(sceneTreeMenuButton(node.hidden ? 'Show' : 'Hide', 'visibility'));
+
+    if (node.colorable) {
+      const divider = document.createElement('div');
+      divider.className = 'buret-tree-menu-divider';
+      menu.appendChild(divider);
+
+      const themeRow = document.createElement('label');
+      themeRow.className = 'buret-tree-menu-field';
+      const themeLabel = document.createElement('span');
+      themeLabel.textContent = 'Colour';
+      const select = document.createElement('select');
+      select.className = 'buret-select';
+      select.dataset.sceneTreeColorTheme = '1';
+      for (const theme of sceneTreeColorThemes(viewer)) {
+        const option = document.createElement('option');
+        option.value = theme.name;
+        option.textContent = theme.label;
+        select.appendChild(option);
+      }
+      if (node.theme) select.value = node.theme;
+      themeRow.append(themeLabel, select);
+      menu.appendChild(themeRow);
+
+      const swatches = document.createElement('div');
+      swatches.className = 'buret-tree-swatches';
+      for (const entry of SCENE_TREE_UNIFORM_COLORS) {
+        const swatch = document.createElement('button');
+        swatch.type = 'button';
+        swatch.className = 'buret-tree-swatch';
+        swatch.dataset.sceneTreeAction = 'uniform-color';
+        swatch.dataset.sceneTreeColor = String(entry.value);
+        swatch.style.background = sceneTreeColorHex(entry.value);
+        swatch.setAttribute('aria-label', `${entry.label} uniform colour`);
+        swatch.setAttribute('aria-pressed', node.theme === 'uniform' && node.value === entry.value ? 'true' : 'false');
+        swatch.title = entry.label;
+        swatches.appendChild(swatch);
+      }
+      menu.appendChild(swatches);
+    }
+
+    const actions = sceneTreeCellActions(viewer, ref);
+    if (actions.length) {
+      const actionsDivider = document.createElement('div');
+      actionsDivider.className = 'buret-tree-menu-divider';
+      menu.appendChild(actionsDivider);
+      const actionsTitle = document.createElement('div');
+      actionsTitle.className = 'buret-tree-menu-title';
+      actionsTitle.textContent = 'Apply action';
+      menu.appendChild(actionsTitle);
+      actions.forEach((entry, index) => {
+        menu.appendChild(sceneTreeMenuButton(entry.label, 'apply-action', { sceneTreeActionIndex: String(index) }));
+      });
+    }
+
+    const divider = document.createElement('div');
+    divider.className = 'buret-tree-menu-divider';
+    menu.appendChild(divider);
+    menu.appendChild(sceneTreeMenuButton('Remove', 'remove'));
+
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    const left = Math.max(6, Math.min(clientX, window.innerWidth - rect.width - 6));
+    const top = Math.max(6, Math.min(clientY, window.innerHeight - rect.height - 6));
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+  }
+
+  function runSceneTreeAction(action, ref, control) {
+    if (action === 'expand') toggleSceneTreeNode(ref);
+    else if (action === 'visibility') toggleSceneTreeVisibility(ref);
+    else if (action === 'focus') focusSceneTreeNode(ref);
+    else if (action === 'remove') removeSceneTreeNode(ref);
+    else if (action === 'uniform-color') {
+      applySceneTreeColorTheme(ref, 'uniform', Number(control.dataset.sceneTreeColor));
+    } else if (action === 'apply-action') {
+      applySceneTreeAction(ref, Number(control.dataset.sceneTreeActionIndex));
+    }
+  }
+
+  function onSceneTreeClick(event) {
+    const control = event.target.closest('[data-scene-tree-action]');
+    if (!control) return;
+    const ref = control.closest('[data-ref]')?.dataset.ref;
+    if (!ref) return;
+    const action = control.dataset.sceneTreeAction;
+    runSceneTreeAction(action, ref, control);
+    if (control.closest('#buret-scene-tree-menu') && action !== 'uniform-color') closeSceneTreeMenu();
+  }
+
+  function onSceneTreeContextMenu(event) {
+    const row = event.target.closest('.buret-tree-row');
+    if (!row?.dataset.ref) return;
+    event.preventDefault();
+    openSceneTreeMenu(row.dataset.ref, event.clientX, event.clientY);
+  }
+
+  function moveSceneTreePanel(panel, left, top) {
+    const rect = panel.getBoundingClientRect();
+    const maxLeft = Math.max(6, window.innerWidth - rect.width - 6);
+    const maxTop = Math.max(6, window.innerHeight - rect.height - 6);
+    panel.style.left = `${Math.round(Math.max(6, Math.min(left, maxLeft)))}px`;
+    panel.style.top = `${Math.round(Math.max(6, Math.min(top, maxTop)))}px`;
+    updateSceneTreeLayoutOffset();
+  }
+
+  // Three things want the top-left corner: the Mol* left panel, our toggle plus its
+  // panel, and the Mol* trajectory/animation controls. They queue up left to right,
+  // and each one that disappears gives its space back.
+  function updateSceneTreeLayoutOffset() {
+    const style = document.documentElement.style;
+    const toggle = document.getElementById('buret-scene-tree-toggle');
+    const panel = document.getElementById('buret-scene-tree');
+
+    const leftPanel = document.querySelector('.msp-layout-region.msp-layout-left');
+    const leftRect = leftPanel?.offsetParent === null ? null : leftPanel?.getBoundingClientRect();
+    if (leftRect?.width) style.setProperty('--buret-scene-tree-left', `${Math.round(leftRect.right + 12)}px`);
+    else style.removeProperty('--buret-scene-tree-left');
+
+    const controls = document.querySelector('.msp-plugin .msp-viewport-top-left-controls');
+    if (!controls) {
+      style.removeProperty('--buret-scene-tree-inset');
+      return;
+    }
+    let edge = null;
+    if (toggle && !toggle.classList.contains('hidden')) edge = toggle.getBoundingClientRect().right + 8;
+    if (panel && !panel.classList.contains('hidden')) {
+      const rect = panel.getBoundingClientRect();
+      if (rect.top < 56) edge = Math.max(edge ?? 0, rect.right + 10);
+    }
+    if (edge === null) {
+      style.removeProperty('--buret-scene-tree-inset');
+      return;
+    }
+    // The controls sit inside the Mol* main region, so the offset is measured from
+    // that region rather than from the window.
+    const origin = controls.offsetParent?.getBoundingClientRect().left ?? 0;
+    style.setProperty('--buret-scene-tree-inset', `${Math.round(Math.max(10, edge - origin))}px`);
+  }
+
+  function initSceneTreeDrag(panel) {
+    const handle = panel.querySelector('.buret-scene-tree-header');
+    if (!handle) return;
+    let drag = null;
+    const onPointerDown = event => {
+      if (event.button !== 0 || event.target.closest('button, input, select')) return;
+      const rect = panel.getBoundingClientRect();
+      drag = { pointerId: event.pointerId, dx: event.clientX - rect.left, dy: event.clientY - rect.top };
+      handle.setPointerCapture(event.pointerId);
+      panel.classList.add('buret-scene-tree-dragging');
+      event.preventDefault();
+    };
+    const onPointerMove = event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      moveSceneTreePanel(panel, event.clientX - drag.dx, event.clientY - drag.dy);
+      event.preventDefault();
+    };
+    const finishDrag = event => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      try { handle.releasePointerCapture(event.pointerId); } catch (_) {}
+      panel.classList.remove('buret-scene-tree-dragging');
+      drag = null;
+    };
+    handle.addEventListener('pointerdown', onPointerDown);
+    handle.addEventListener('pointermove', onPointerMove);
+    handle.addEventListener('pointerup', finishDrag);
+    handle.addEventListener('pointercancel', finishDrag);
+  }
+
+  function initSceneTree(viewer) {
+    const toggle = document.getElementById('buret-scene-tree-toggle');
+    const panel = document.getElementById('buret-scene-tree');
+    if (!toggle || !panel) return;
+    if (toggle.dataset.sceneTreeBound !== '1') {
+      toggle.dataset.sceneTreeBound = '1';
+      toggle.addEventListener('click', () => setSceneTreeOpen(panel.classList.contains('hidden')));
+      panel.querySelector('[data-buret-action="scene-tree-close"]')
+        ?.addEventListener('click', () => setSceneTreeOpen(false));
+      // The context menu is portalled to <body> so the scrolling panel cannot clip
+      // it, which means the click handler has to live on the document.
+      document.addEventListener('click', onSceneTreeClick);
+      panel.addEventListener('contextmenu', onSceneTreeContextMenu);
+      panel.addEventListener('pointerover', event => {
+        moveSceneTreeHighlight(event.target.closest('.buret-tree-row'));
+      });
+      panel.addEventListener('pointerleave', () => moveSceneTreeHighlight(null));
+      panel.addEventListener('focusin', event => {
+        moveSceneTreeHighlight(event.target.closest('.buret-tree-row'));
+      });
+      initSceneTreeDrag(panel);
+      window.addEventListener('resize', updateSceneTreeLayoutOffset);
+      document.addEventListener('click', event => {
+        const menu = document.getElementById('buret-scene-tree-menu');
+        if (menu && !menu.contains(event.target)) closeSceneTreeMenu();
+      }, true);
+      document.addEventListener('change', event => {
+        const select = event.target.closest('[data-scene-tree-color-theme]');
+        const ref = select?.closest('[data-ref]')?.dataset.ref;
+        if (select && ref) applySceneTreeColorTheme(ref, select.value, null);
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        if (document.getElementById('buret-scene-tree-menu')) closeSceneTreeMenu();
+        else if (!panel.classList.contains('hidden')) setSceneTreeOpen(false);
+      });
+    }
+    sceneTreeStateDisposer?.();
+    sceneTreeStateDisposer = null;
+    const events = viewer?.plugin?.state?.data?.events;
+    const subscriptions = [
+      events?.changed?.subscribe?.(scheduleSceneTreeRender),
+      events?.cell?.stateUpdated?.subscribe?.(scheduleSceneTreeRender)
+    ].filter(Boolean);
+    if (subscriptions.length) {
+      sceneTreeStateDisposer = () => subscriptions.forEach(subscription => subscription?.unsubscribe?.());
+    }
+    scheduleSceneTreeRender();
   }
 
   function updateThemeButton() {

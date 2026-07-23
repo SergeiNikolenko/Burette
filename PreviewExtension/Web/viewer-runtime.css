@@ -2302,3 +2302,449 @@ body .msp-plugin .msp-selection-viewport-controls-actions {
     transition: none;
   }
 }
+
+/* Scene tree overlay.
+   Chrome uses the same saturated Mol* surfaces as the other viewer panels
+   (--buret-molstar-*), and rows follow the Mol* state tree: a twisty, the
+   type-coloured left edge, label plus a muted description, then visibility and
+   remove. Focus and colouring live in the right-click menu so the row stays
+   compact. */
+.buret-scene-tree-toggle {
+  position: absolute;
+  top: var(--buret-toolbar-safe-top);
+  left: var(--buret-scene-tree-left, var(--buret-control-island-right));
+  z-index: 36;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  box-sizing: border-box;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 9px;
+  padding: 0;
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-panel-background);
+  box-shadow: 0 8px 22px var(--buret-molstar-shadow);
+  transition: background 150ms ease, color 150ms ease;
+}
+.buret-scene-tree-toggle > svg {
+  width: 16px;
+  height: 16px;
+}
+/* The layers fan apart on hover and stay apart while the panel is open — the same
+   motion animate-ui gives its Lucide icons, expressed as a transform because this
+   document has no React and no motion library. */
+.buret-scene-tree-toggle > svg > path {
+  transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.buret-scene-tree-toggle:hover > svg > path:first-child,
+.buret-scene-tree-toggle:focus-visible > svg > path:first-child,
+.buret-scene-tree-toggle[aria-expanded="true"] > svg > path:first-child {
+  transform: translateY(-1.6px);
+}
+.buret-scene-tree-toggle:hover > svg > path:last-child,
+.buret-scene-tree-toggle:focus-visible > svg > path:last-child,
+.buret-scene-tree-toggle[aria-expanded="true"] > svg > path:last-child {
+  transform: translateY(1.6px);
+}
+.buret-scene-tree-toggle:hover {
+  background: var(--buret-molstar-hover-background);
+}
+.buret-scene-tree-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 8px 22px var(--buret-molstar-shadow), 0 0 0 2px var(--buret-molstar-accent);
+}
+.buret-scene-tree-toggle[aria-expanded="true"] {
+  background: var(--buret-molstar-hover-background);
+}
+.buret-scene-tree-toggle .buret-tooltip {
+  left: 0;
+  transform: translate(0, -4px) scale(0.98);
+}
+.buret-scene-tree-toggle:hover > .buret-tooltip,
+.buret-scene-tree-toggle:focus-visible > .buret-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(0, 0) scale(1);
+  transition-delay: 180ms, 180ms, 0s;
+}
+.buret-scene-tree-toggle[aria-expanded="true"] > .buret-tooltip {
+  opacity: 0;
+  visibility: hidden;
+  transition-delay: 0s;
+}
+.buret-scene-tree-toggle.hidden,
+.buret-scene-tree.hidden {
+  display: none;
+}
+/* Keep the native Mol* top-left controls — the animation button and, for a
+   trajectory, the frame stepper — clear of the toggle, and of the panel itself
+   while it sits open in that corner. */
+body.buret-scene-tree-available .msp-plugin .msp-viewport-top-left-controls {
+  left: var(--buret-scene-tree-inset, calc(var(--buret-control-island-right) + 38px));
+  transition: left 160ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.buret-scene-tree {
+  position: absolute;
+  top: calc(var(--buret-toolbar-safe-top) + 38px);
+  left: var(--buret-scene-tree-left, var(--buret-control-island-right));
+  z-index: 36;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(272px, calc(100vw - 24px));
+  max-height: var(--buret-viewport-panel-max-height);
+  overflow: hidden;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: var(--buret-molstar-panel-radius);
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-panel-background);
+  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-scene-tree-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 5px 5px 5px 10px;
+  border-bottom: 1px solid var(--buret-molstar-border);
+  background: var(--buret-molstar-row-background);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.buret-scene-tree.buret-scene-tree-dragging .buret-scene-tree-header {
+  cursor: grabbing;
+}
+.buret-scene-tree-title {
+  font-size: 10px;
+  font-weight: 590;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--buret-molstar-muted-text);
+}
+.buret-scene-tree-header-action {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  padding: 0;
+  color: var(--buret-molstar-muted-text);
+  background: transparent;
+}
+.buret-scene-tree-header-action > svg {
+  width: 13px;
+  height: 13px;
+}
+.buret-scene-tree-header-action:hover {
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-hover-background);
+}
+.buret-scene-tree-header-action:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
+}
+.buret-scene-tree-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.buret-tree {
+  position: relative;
+  width: 100%;
+  padding: 4px;
+  box-sizing: border-box;
+}
+.buret-tree-highlight {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  border-radius: 5px;
+  background: var(--buret-molstar-hover-background);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 170ms cubic-bezier(0.32, 0.72, 0, 1),
+    width 170ms cubic-bezier(0.32, 0.72, 0, 1),
+    height 170ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 130ms ease;
+}
+.buret-tree-highlight.buret-tree-highlight-active {
+  opacity: 1;
+}
+.buret-tree-highlight.buret-tree-highlight-instant {
+  transition: opacity 130ms ease;
+}
+.buret-tree-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 3px 0 0;
+  border-radius: 5px;
+}
+.buret-tree-twisty {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  color: var(--buret-molstar-muted-text);
+  background: transparent;
+}
+.buret-tree-twisty > svg {
+  width: 11px;
+  height: 11px;
+  transition: transform 170ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.buret-tree-item[data-open="true"] > .buret-tree-row > .buret-tree-twisty > svg {
+  transform: rotate(90deg);
+}
+.buret-tree-twisty:hover {
+  color: var(--buret-molstar-text);
+}
+.buret-tree-twisty:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
+}
+.buret-tree-bar {
+  flex: 0 0 auto;
+  width: 2px;
+  height: 15px;
+  border-radius: 1px;
+}
+.buret-tree-trigger {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  border-radius: 4px;
+  padding: 3px 2px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+.buret-tree-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--buret-molstar-accent);
+}
+.buret-tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.25;
+}
+.buret-tree-note {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--buret-molstar-muted-text);
+  font-size: 10.5px;
+}
+.buret-tree-actions {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: 0 0 auto;
+}
+.buret-tree-dot {
+  width: 8px;
+  height: 8px;
+  margin-right: 2px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  border-radius: 50%;
+}
+.buret-tree-action {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  color: var(--buret-molstar-muted-text);
+  background: transparent;
+  opacity: 0;
+  transition: opacity 110ms ease, color 110ms ease, background 110ms ease;
+}
+.buret-tree-action > svg {
+  width: 13px;
+  height: 13px;
+}
+.buret-tree-row:hover .buret-tree-action,
+.buret-tree-row:focus-within .buret-tree-action,
+.buret-tree-item[data-hidden="true"] > .buret-tree-row .buret-tree-action-visibility {
+  opacity: 1;
+}
+.buret-tree-action:hover {
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-hover-background);
+}
+.buret-tree-action-remove:hover {
+  color: #ff6b5e;
+}
+.buret-tree-action:focus-visible {
+  opacity: 1;
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
+}
+.buret-tree-item[data-hidden="true"] > .buret-tree-row > .buret-tree-trigger,
+.buret-tree-item[data-hidden="true"] > .buret-tree-row > .buret-tree-bar {
+  opacity: 0.45;
+}
+.buret-tree-content {
+  position: relative;
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-left: 13px;
+}
+/* Nested 0fr/1fr grids animate one level at a time, so a freshly rendered tree
+   would unfold in slow cascade. Transitions switch on a frame after the render,
+   which leaves them for the twisty clicks that actually need them. */
+.buret-tree-animate .buret-tree-content {
+  transition: grid-template-rows 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.buret-tree-content::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--buret-molstar-border);
+}
+/* Collapsed subtrees keep their buttons in the DOM, so drop them out of the tab
+   order once the collapse animation has finished. */
+.buret-tree-content > .buret-tree-content-inner {
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+.buret-tree-animate .buret-tree-content > .buret-tree-content-inner {
+  transition: visibility 0s linear 200ms;
+}
+.buret-tree-item[data-open="true"] > .buret-tree-content {
+  grid-template-rows: 1fr;
+}
+.buret-tree-item[data-open="true"] > .buret-tree-content > .buret-tree-content-inner {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.buret-tree-menu {
+  position: fixed;
+  z-index: 2147483646;
+  box-sizing: border-box;
+  width: 190px;
+  max-height: min(70vh, 440px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 9px;
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-panel-background);
+  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-tree-menu-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 8px 6px;
+  color: var(--buret-molstar-muted-text);
+  font-size: 10px;
+  font-weight: 590;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.buret-tree-menu > button {
+  display: block;
+  width: 100%;
+  min-height: 26px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+.buret-tree-menu > button:hover {
+  background: var(--buret-molstar-hover-background);
+}
+.buret-tree-menu > button:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
+}
+.buret-tree-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--buret-molstar-border);
+}
+.buret-tree-menu-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 6px;
+}
+.buret-tree-menu-field > span {
+  flex: 0 0 auto;
+  color: var(--buret-molstar-muted-text);
+  font-size: 11px;
+}
+.buret-tree-menu-field > .buret-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.buret-tree-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 8px 6px;
+}
+.buret-tree-swatch {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 50%;
+  padding: 0;
+  transition: transform 110ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 110ms ease;
+}
+.buret-tree-swatch:hover {
+  transform: scale(1.18);
+}
+.buret-tree-swatch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--buret-molstar-accent);
+}
+.buret-tree-swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 1.5px var(--buret-molstar-panel-background), 0 0 0 3px var(--buret-molstar-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-tree-highlight,
+  .buret-tree-animate .buret-tree-content,
+  .buret-tree-twisty > svg,
+  .buret-tree-swatch {
+    transition: none;
+  }
+}
