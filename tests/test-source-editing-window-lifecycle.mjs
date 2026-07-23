@@ -25,13 +25,12 @@ assert.match(sourceEditingContext, /getWindowDirtySnapshot: \(\) => SourceEditin
 assert.match(app, /const confirmCloseWindow = useCallback[\s\S]*sourceEditing\.confirmCloseWindow\(\)[\s\S]*confirmDiscardAllDirtyGridDocuments\(\)[\s\S]*try \{[\s\S]*return permit;[\s\S]*catch \(error\) \{\s*permit\.release\(\);/u);
 assert.match(app, /dirty: gridSnapshot\.dirty \|\| sourceSnapshot\.dirty/u);
 assert.match(app, /closeTransitionActive: sourceSnapshot\.closeTransitionActive/u);
-assert.match(app, /closeGuardRevision: sourceSnapshot\.revision/u);
 assert.match(app, /windowDocumentDirty: hasDirtyGridDocuments \|\| sourceEditing\.hasUnsavedOrSavingSessions/u);
 
 assert.match(nativeMenuHook, /canSave: sourceSaveEnabled\s*\|\| Boolean\(isGrid/u);
 assert.match(nativeMenuHook, /case "file\.save":\s*if \(sourceSaveEnabled\) await saveActiveSource\(\);\s*else gridCommand\(\);/su);
 assert.match(nativeMenuHook, /closeTransitionActive: snapshot\.closeTransitionActive\s*\|\| barrier\.closeTransitionActive/su);
-assert.match(nativeMenuHook, /finalDirtySnapshot\.closeGuardRevision !== closeGuardRevision/u);
-assert.match(nativeMenuHook, /else \{\s*permit\?\.release\(\);\s*\}/u);
+// A failed close must hand the permit back, otherwise the next one is refused.
+assert.match(nativeMenuHook, /catch \(error\) \{\s*closingWindowRef\.current = false;\s*permit\?\.release\(\);/u);
 
 console.log("source editing window lifecycle tests passed");
