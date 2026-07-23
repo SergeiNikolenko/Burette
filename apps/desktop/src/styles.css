@@ -2439,6 +2439,22 @@ img.radix-menu-item-icon {
   font-size: 12px;
   line-height: 1.35;
 }
+.structure-story-dock {
+  gap: 8px;
+}
+.structure-story-card {
+  gap: 8px;
+}
+.structure-story-card .structure-story-file {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.structure-story-card .structure-story-summary {
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
 .structure-brief-kicker {
   color: var(--text-muted);
   font-size: 11px;

@@ -8,6 +8,7 @@ import type { UpdatePreferences, UpdateState } from "../update";
 import type { SidebarProject } from "../lib/sidebar-projects";
 import type { AppSettingsSectionId } from "../lib/settings-sections";
 import type { DockArea, DockDropInput, DockDroppedStructure, DockTab, DockTabKind, DockToolKind } from "../lib/dock";
+import type { StructureStory } from "../lib/structure-story";
 
 export type { AppSettingsSectionId } from "../lib/settings-sections";
 
@@ -302,6 +303,7 @@ export type ShellViewState = {
   conformerSettings: ConformerSettings;
   conformerJobs: ConformerJob[];
   viewerLigandSelection: ViewerLigandSelection | null;
+  structureStory: StructureStory | null;
   structureOverlayMode: StructureOverlayMode;
   xtbStatus: XtbStatus | null;
   xtbSettings: XtbSettings;
