@@ -2672,19 +2672,41 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   box-shadow: 0 18px 44px var(--buret-molstar-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
+.buret-tree-menu-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px 8px;
+}
+.buret-tree-menu-heading {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 590;
+}
+.buret-tree-menu-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--buret-molstar-muted-text);
+  font-size: 10.5px;
+}
 .buret-tree-menu-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 4px 8px 6px;
+  padding: 2px 8px 4px;
   color: var(--buret-molstar-muted-text);
   font-size: 10px;
   font-weight: 590;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
-.buret-tree-menu > button {
-  display: block;
+.buret-tree-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   min-height: 26px;
   border: 0;
@@ -2695,12 +2717,71 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   font: inherit;
   text-align: left;
 }
-.buret-tree-menu > button:hover {
+.buret-tree-menu-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: var(--buret-molstar-muted-text);
+}
+.buret-tree-menu-icon > svg {
+  width: 14px;
+  height: 14px;
+}
+.buret-tree-menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-tree-menu-item:hover {
   background: var(--buret-molstar-hover-background);
 }
-.buret-tree-menu > button:focus-visible {
+.buret-tree-menu-item:hover > .buret-tree-menu-icon {
+  color: var(--buret-molstar-text);
+}
+.buret-tree-menu-item:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
+}
+.buret-tree-menu-item-destructive:hover,
+.buret-tree-menu-item-destructive:hover > .buret-tree-menu-icon {
+  color: #ff6b5e;
+}
+/* Mol*'s action list is long and seldom the reason the menu was opened. */
+.buret-tree-menu-actions > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: var(--buret-molstar-muted-text);
+  font-size: 10px;
+  font-weight: 590;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: default;
+  list-style: none;
+}
+.buret-tree-menu-actions > summary::-webkit-details-marker {
+  display: none;
+}
+.buret-tree-menu-actions > summary::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.2px solid currentColor;
+  border-bottom: 1.2px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+  transition: transform 160ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.buret-tree-menu-actions[open] > summary::after {
+  transform: translateY(1px) rotate(-135deg);
+}
+.buret-tree-menu-actions > summary:hover {
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-hover-background);
 }
 .buret-tree-menu-divider {
   height: 1px;

@@ -4618,7 +4618,9 @@
     chevron: ['m9 6 6 6-6 6'],
     eye: ['M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
     eyeOff: ['M9.88 9.88a3 3 0 1 0 4.24 4.24', 'M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68', 'M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61', 'm2 2 20 20'],
-    trash: ['M3 6h18', 'M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6']
+    trash: ['M3 6h18', 'M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6'],
+    isolate: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
+    focus: ['M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0', 'M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5']
   };
   // Apple system colours: the uniform tints offered next to the real colour themes.
   const SCENE_TREE_UNIFORM_COLORS = [
@@ -5163,14 +5165,120 @@
     return null;
   }
 
-  function sceneTreeMenuButton(label, action, extra = {}) {
+  function sceneTreeMenuItem(label, action, options = {}) {
     const button = document.createElement('button');
     button.type = 'button';
     button.setAttribute('role', 'menuitem');
+    button.className = `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
     button.dataset.sceneTreeAction = action;
-    Object.assign(button.dataset, extra);
-    button.textContent = label;
+    Object.assign(button.dataset, options.data || {});
+    const icon = document.createElement('span');
+    icon.className = 'buret-tree-menu-icon';
+    if (options.icon) icon.appendChild(sceneTreeIconElement(options.icon));
+    const text = document.createElement('span');
+    text.className = 'buret-tree-menu-label';
+    text.textContent = label;
+    button.append(icon, text);
     return button;
+  }
+
+  function sceneTreeMenuSection(menu, title) {
+    const divider = document.createElement('div');
+    divider.className = 'buret-tree-menu-divider';
+    menu.appendChild(divider);
+    if (!title) return;
+    const heading = document.createElement('div');
+    heading.className = 'buret-tree-menu-title';
+    heading.textContent = title;
+    menu.appendChild(heading);
+  }
+
+  function sceneTreeMenuSelect(menu, label, select, options, current) {
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const control = document.createElement('select');
+    control.className = 'buret-select';
+    control.dataset.sceneTreeSelect = select;
+    for (const option of options) {
+      const item = document.createElement('option');
+      item.value = option.name;
+      item.textContent = option.label;
+      control.appendChild(item);
+    }
+    // An empty selection is honest when the representations disagree, which is what
+    // a structure row with a cartoon and a ball-and-stick under it looks like.
+    if (current && options.some(option => option.name === current)) control.value = current;
+    else control.selectedIndex = -1;
+    row.append(caption, control);
+    menu.appendChild(row);
+  }
+
+  function sceneTreeRepresentationTypes(viewer, components) {
+    const registry = viewer?.plugin?.representation?.structure?.registry;
+    const structure = components?.[0]?.cell?.obj?.data;
+    if (!registry) return [];
+    let types = registry.types;
+    if (structure && typeof registry.getApplicableTypes === 'function') {
+      try {
+        types = registry.getApplicableTypes(structure);
+      } catch (error) {
+        debug('scene tree representation list failed: ' + (error && error.message || String(error)));
+      }
+    }
+    if (!Array.isArray(types)) return [];
+    return types
+      .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+      .filter(entry => entry.name);
+  }
+
+  function sceneTreeCurrentRepresentation(components) {
+    let type = null;
+    for (const component of components) {
+      for (const representation of component?.representations || []) {
+        const name = String(representation?.cell?.transform?.params?.type?.name || '');
+        if (type === null) type = name;
+        else if (type !== name) return '';
+      }
+    }
+    return type || '';
+  }
+
+  async function applySceneTreeRepresentation(ref, type) {
+    const viewer = activeMolstarViewer();
+    const manager = viewer?.plugin?.managers?.structure?.component;
+    const components = sceneTreeColorTargets(viewer).get(ref) || [];
+    if (!components.length || typeof manager?.addRepresentation !== 'function') return;
+    try {
+      if (typeof manager.removeRepresentations === 'function') await manager.removeRepresentations(components);
+      await manager.addRepresentation(components, type);
+    } catch (error) {
+      debug('scene tree representation failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
+  // Shows one component and hides its siblings — the quickest way to look at a
+  // ligand or a chain without walking the tree turning eyes off one by one.
+  function isolateSceneTreeNode(ref) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    if (typeof state?.updateCellState !== 'function') return;
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const components = structure?.components || [];
+      if (!components.some(component => component?.cell?.transform?.ref === ref)) continue;
+      for (const component of components) {
+        const componentRef = component?.cell?.transform?.ref;
+        if (!componentRef) continue;
+        const hidden = componentRef !== ref;
+        for (const target of sceneTreeSubtreeRefs(state, componentRef)) {
+          state.updateCellState(target, { isHidden: hidden });
+        }
+      }
+      break;
+    }
+    scheduleSceneTreeRender();
   }
 
   function openSceneTreeMenu(ref, clientX, clientY) {
@@ -5179,6 +5287,9 @@
     const node = sceneTreeNodeByRef(sceneTreeNodes(viewer), ref);
     if (!node) return;
     sceneTreeMenuRef = ref;
+    const components = sceneTreeColorTargets(viewer).get(ref) || [];
+    const isComponent = components.length === 1 && components[0]?.cell?.transform?.ref === ref;
+
     const menu = document.createElement('div');
     menu.id = 'buret-scene-tree-menu';
     menu.className = 'buret-tree-menu';
@@ -5186,36 +5297,38 @@
     menu.setAttribute('role', 'menu');
     menu.setAttribute('aria-label', `${node.label} actions`);
 
-    const title = document.createElement('div');
-    title.className = 'buret-tree-menu-title';
-    title.textContent = node.label;
-    menu.appendChild(title);
+    const header = document.createElement('div');
+    header.className = 'buret-tree-menu-header';
+    const heading = document.createElement('span');
+    heading.className = 'buret-tree-menu-heading';
+    heading.textContent = node.label;
+    heading.title = node.label;
+    header.appendChild(heading);
+    if (node.note) {
+      const note = document.createElement('span');
+      note.className = 'buret-tree-menu-note';
+      note.textContent = node.note;
+      header.appendChild(note);
+    }
+    menu.appendChild(header);
 
-    menu.appendChild(sceneTreeMenuButton('Focus', 'focus'));
-    menu.appendChild(sceneTreeMenuButton(node.hidden ? 'Show' : 'Hide', 'visibility'));
+    menu.appendChild(sceneTreeMenuItem('Focus', 'focus', { icon: SCENE_TREE_ICON.focus }));
+    menu.appendChild(sceneTreeMenuItem(node.hidden ? 'Show' : 'Hide', 'visibility', {
+      icon: node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
+    }));
+    if (isComponent) {
+      menu.appendChild(sceneTreeMenuItem('Isolate', 'isolate', { icon: SCENE_TREE_ICON.isolate }));
+    }
 
-    if (node.colorable) {
-      const divider = document.createElement('div');
-      divider.className = 'buret-tree-menu-divider';
-      menu.appendChild(divider);
-
-      const themeRow = document.createElement('label');
-      themeRow.className = 'buret-tree-menu-field';
-      const themeLabel = document.createElement('span');
-      themeLabel.textContent = 'Colour';
-      const select = document.createElement('select');
-      select.className = 'buret-select';
-      select.dataset.sceneTreeColorTheme = '1';
-      for (const theme of sceneTreeColorThemes(viewer, sceneTreeColorTargets(viewer).get(ref))) {
-        const option = document.createElement('option');
-        option.value = theme.name;
-        option.textContent = theme.label;
-        select.appendChild(option);
+    if (components.length) {
+      const representations = sceneTreeRepresentationTypes(viewer, components);
+      if (representations.length) {
+        sceneTreeMenuSection(menu, 'Representation');
+        sceneTreeMenuSelect(menu, 'Type', 'representation', representations, sceneTreeCurrentRepresentation(components));
       }
-      if (node.theme) select.value = node.theme;
-      themeRow.append(themeLabel, select);
-      menu.appendChild(themeRow);
 
+      sceneTreeMenuSection(menu, 'Colour');
+      sceneTreeMenuSelect(menu, 'Theme', 'color-theme', sceneTreeColorThemes(viewer, components), node.theme);
       const swatches = document.createElement('div');
       swatches.className = 'buret-tree-swatches';
       for (const entry of SCENE_TREE_UNIFORM_COLORS) {
@@ -5233,24 +5346,26 @@
       menu.appendChild(swatches);
     }
 
+    // Mol*'s own actions are many and rarely the reason the menu was opened, so they
+    // stay folded away instead of pushing everything else off the screen.
     const actions = sceneTreeCellActions(viewer, ref);
     if (actions.length) {
-      const actionsDivider = document.createElement('div');
-      actionsDivider.className = 'buret-tree-menu-divider';
-      menu.appendChild(actionsDivider);
-      const actionsTitle = document.createElement('div');
-      actionsTitle.className = 'buret-tree-menu-title';
-      actionsTitle.textContent = 'Apply action';
-      menu.appendChild(actionsTitle);
+      sceneTreeMenuSection(menu);
+      const disclosure = document.createElement('details');
+      disclosure.className = 'buret-tree-menu-actions';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Apply action';
+      disclosure.appendChild(summary);
       actions.forEach((entry, index) => {
-        menu.appendChild(sceneTreeMenuButton(entry.label, 'apply-action', { sceneTreeActionIndex: String(index) }));
+        disclosure.appendChild(sceneTreeMenuItem(entry.label, 'apply-action', {
+          data: { sceneTreeActionIndex: String(index) }
+        }));
       });
+      menu.appendChild(disclosure);
     }
 
-    const divider = document.createElement('div');
-    divider.className = 'buret-tree-menu-divider';
-    menu.appendChild(divider);
-    menu.appendChild(sceneTreeMenuButton('Remove', 'remove'));
+    sceneTreeMenuSection(menu);
+    menu.appendChild(sceneTreeMenuItem('Remove', 'remove', { icon: SCENE_TREE_ICON.trash, destructive: true }));
 
     document.body.appendChild(menu);
     const rect = menu.getBoundingClientRect();
@@ -5264,6 +5379,7 @@
     if (action === 'expand') toggleSceneTreeNode(ref);
     else if (action === 'visibility') toggleSceneTreeVisibility(ref);
     else if (action === 'focus') focusSceneTreeNode(ref);
+    else if (action === 'isolate') isolateSceneTreeNode(ref);
     else if (action === 'remove') removeSceneTreeNode(ref);
     else if (action === 'tint-color') {
       applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
@@ -5459,9 +5575,11 @@
         if (menu && !menu.contains(event.target)) closeSceneTreeMenu();
       }, true);
       document.addEventListener('change', event => {
-        const select = event.target.closest('[data-scene-tree-color-theme]');
+        const select = event.target.closest('[data-scene-tree-select]');
         const ref = select?.closest('[data-ref]')?.dataset.ref;
-        if (select && ref) applySceneTreeColorTheme(ref, select.value, null);
+        if (!select || !ref) return;
+        if (select.dataset.sceneTreeSelect === 'representation') applySceneTreeRepresentation(ref, select.value);
+        else applySceneTreeColorTheme(ref, select.value, null);
       });
       document.addEventListener('keydown', event => {
         if (event.key !== 'Escape') return;
