@@ -1246,6 +1246,7 @@
       clusterRepresentativesAvailable: Boolean(latestRepresentativeAnalysisColumn()),
       similarityQuerySelected: state.selected.size === 1,
       clusterCutoff: state.clusterCutoff,
+      selectedCount: state.selected.size,
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
         setUnifiedSearchQuery(value || '', cfg);
@@ -1474,6 +1475,7 @@
       state.tableColumnPanelOutsideController?.abort();
       state.tableColumnPanelOutsideController = null;
     }
+    refreshGridControls(cfg);
     applyGridPreferences(cfg);
     void render(cfg);
   }
@@ -4582,6 +4584,10 @@
       card.classList.toggle('selected', selected);
       card.setAttribute('aria-selected', selected ? 'true' : 'false');
     });
+    // Toolbar actions live in a menu that React unmounts while closed, so the
+    // imperative syncs below cannot reach them. Re-mount with a fresh
+    // selectedCount instead, or a reopened menu renders a stale disabled state.
+    refreshGridControls();
   }
 
   function toggleSelection(index, cfg) {

@@ -6636,7 +6636,7 @@ assert.doesNotMatch(gridViewer, /function drawXyzrenderPlaceholder\(row\)/);
 assert.doesNotMatch(gridViewer, /target\.classList\.remove\('buret-xyzrender-preview'\)/);
 assert.match(gridUi, /dataAttribute="buret-grid-card-renderer"/);
 assert.match(gridUi, /\{ value: "rdkit", label: "RDKit" \}/);
-assert.match(gridUi, /\{ value: "xyzrender" as const, label: "xyzrender" \}/);
+assert.match(gridUi, /\{ value: "xyzrender", label: "xyzrender" \}/);
 assert.match(gridUi, /id="xyzrender-preset"/);
 assert.match(gridUi, /onXyzrenderPresetChange/);
 assert.match(gridViewer, /const DEFAULT_XYZRENDER_PRESETS = \[/);
