@@ -645,44 +645,15 @@ button:disabled {
   color: var(--buret-accent);
 }
 
+/* Only a slot for the toggle now — the button inside carries the whole
+   control, and the wrapper's own pill drew a second box around it. */
 .buret-grid-toolbar .buret-rdkit-coords-control {
-  box-sizing: border-box;
   display: inline-flex;
-  align-self: end;
   align-items: center;
-  gap: 8px;
-  height: var(--buret-control-height);
-  min-height: var(--buret-control-height);
-  padding: 0 10px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--buret-control-surface);
-  color: var(--buret-muted);
-  font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  text-transform: none;
 }
 
 .buret-grid-toolbar .buret-rdkit-coords-control[hidden] {
   display: none;
-}
-
-.buret-grid-toolbar .buret-rdkit-coords-control input {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--buret-accent);
-}
-
-.buret-grid-toolbar .buret-rdkit-coords-control:has(input:checked) {
-  color: var(--buret-text);
-  background: var(--buret-control-active);
-}
-
-.buret-grid-toolbar .buret-rdkit-coords-control[aria-disabled="true"] {
-  opacity: 0.58;
-}
-
-.buret-grid-toolbar .buret-rdkit-coords-control[aria-disabled="true"] input {
-  cursor: not-allowed;
 }
 
 .buret-grid-toolbar label {
