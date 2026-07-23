@@ -3701,6 +3701,7 @@
     installToolbarAutoLayoutTracking(toolbar);
     installMolstarFloatingPanelTracking();
     initSceneTree(viewer);
+    initViewportControls(viewer);
     initSequenceResize();
     installSequenceSelectionMode();
     installViewerResizeObserver(viewer);
@@ -4244,11 +4245,18 @@
     const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
     const viewportControlsRect = viewportControls ? viewportControls.getBoundingClientRect() : null;
     const viewportControlRailRect = visibleRect('.msp-plugin .msp-viewport-controls-buttons');
-    const generate3DControlRight = viewportControlRailRect
-      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - viewportControlRailRect.left + FLOATING_LAYOUT_GAP * 2))
+    // Our own rail stands where Mol*'s used to; whichever of the two is on screen is
+    // the edge the compute button has to keep clear of.
+    const railRect = visibleRect('#buret-viewport-rail') || viewportControlRailRect;
+    const generate3DControlRight = railRect
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - railRect.left + FLOATING_LAYOUT_GAP * 2))
       : 70;
     root.style.setProperty('--buret-generate-3d-control-right', generate3DControlRight + 'px');
-    const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row');
+    root.style.setProperty('--buret-viewport-rail-right', toolbarRect
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(window.innerWidth - toolbarRect.right)) + 'px'
+      : 'var(--buret-control-island-right)');
+    const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row')
+      || visibleRect('#buret-selection-bar');
     document.body?.classList.toggle('buret-selection-toolbar-open', !!selectionToolbarRect && !!toolbarRect);
     const mainRect = visibleRect('.msp-plugin .msp-layout-main');
     const mainTop = mainRect ? mainRect.top : 0;
@@ -4268,6 +4276,10 @@
       : defaultViewportTop;
     const viewportControlsTop = Math.max(TOOLBAR_MARGIN, Math.ceil(viewportControlsViewportTop - mainTop));
     root.style.setProperty('--buret-viewport-controls-top', viewportControlsTop + 'px');
+    // The rail is positioned against the window rather than the layout region, so it
+    // takes the unshifted figure — the one that already steps below the toolbar and
+    // the selection bar.
+    root.style.setProperty('--buret-viewport-rail-top', Math.ceil(viewportControlsViewportTop) + 'px');
     repositionDockingPoseControlsForLayout(mainRect);
 
     const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || window.innerHeight;
@@ -4996,6 +5008,10 @@
     reconcileSceneTreeExpansion(nodes);
     const available = nodes.length > 0;
     toggle.classList.toggle('hidden', !available);
+    // The rail and the tree answer the same question — is there a Mol* scene to
+    // control — so they appear and go together.
+    document.getElementById('buret-viewport-rail')?.classList.toggle('hidden', !available);
+    updateSelectionBar();
     if (!available) {
       setSceneTreeOpen(false);
       body.replaceChildren();
@@ -5880,6 +5896,401 @@
     handle.addEventListener('pointermove', onPointerMove);
     handle.addEventListener('pointerup', finishDrag);
     handle.addEventListener('pointercancel', finishDrag);
+  }
+
+  // Mol*'s viewport rail and selection row are strips of unlabelled icons that all
+  // look alike — the rail hides three camera actions behind a hover box, and the
+  // selection row asks you to tell four near-identical circles apart. Both are
+  // hidden in CSS and rebuilt here as a four-button rail and one labelled bar,
+  // driving the very same managers Mol*'s own controls drive.
+  const VIEWPORT_GRANULARITIES = [
+    ['element', 'Atom'],
+    ['residue', 'Residue'],
+    ['chain', 'Chain'],
+    ['entity', 'Entity'],
+    ['model', 'Model'],
+    ['operator', 'Operator'],
+    ['structure', 'Structure'],
+    ['elementInstances', 'Atom + instances'],
+    ['residueInstances', 'Residue + instances'],
+    ['chainInstances', 'Chain + instances']
+  ];
+  // Mol* names these add/remove/intersect/set; the labels say what they do to the
+  // selection you already have.
+  const SELECTION_MODIFIERS = [
+    ['set', 'Replace'],
+    ['add', 'Add'],
+    ['remove', 'Remove'],
+    ['intersect', 'Keep']
+  ];
+  const VIEWPORT_ICON = {
+    camera: ['M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z', 'M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'],
+    layFlat: ['M3 8.5 12 4l9 4.5-9 4.5Z', 'm3 15 9 4.5L21 15'],
+    paint: ['M4 8.5A2.5 2.5 0 0 1 6.5 6H16a3 3 0 0 1 3 3v1.5H8.5A2.5 2.5 0 0 0 6 13v1', 'M9 14h4v4a2 2 0 0 1-4 0Z'],
+    cube: ['M12 3 4.5 7v10L12 21l7.5-4V7Z', 'M4.5 7 12 11l7.5-4', 'M12 11v10'],
+    scissors: ['M6.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'M6.5 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'm8.7 7.2 10.8 10.6', 'M19.5 6.2 8.7 16.8'],
+    undo: ['M4 9h11a5 5 0 0 1 0 10h-7', 'm8 5-4 4 4 4']
+  };
+  let selectionQueryModifier = 'set';
+  let viewportControlsDisposers = [];
+
+  function viewportPlugin() {
+    return activeMolstarViewer()?.plugin || null;
+  }
+
+  function closeViewportMenu() {
+    document.getElementById('buret-viewport-menu')?.remove();
+    for (const trigger of document.querySelectorAll('#buret-viewport-rail [aria-expanded], #buret-selection-bar [aria-expanded]')) {
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function openViewportMenu(trigger, label, build) {
+    const wasOpen = trigger.getAttribute('aria-expanded') === 'true';
+    closeViewportMenu();
+    if (wasOpen) return;
+    const menu = document.createElement('div');
+    menu.id = 'buret-viewport-menu';
+    menu.className = 'buret-tree-menu buret-viewport-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', label);
+    build(menu);
+    document.body.appendChild(menu);
+    trigger.setAttribute('aria-expanded', 'true');
+    const anchor = trigger.getBoundingClientRect();
+    const rect = menu.getBoundingClientRect();
+    // The rail lives on the right edge, so its menus open leftwards rather than
+    // running off the window and being clamped back over their own button.
+    const preferred = anchor.left > window.innerWidth / 2 ? anchor.right - rect.width : anchor.left;
+    menu.style.left = `${Math.round(Math.max(6, Math.min(preferred, window.innerWidth - rect.width - 6)))}px`;
+    menu.style.top = `${Math.round(Math.max(6, Math.min(anchor.bottom + 4, window.innerHeight - rect.height - 6)))}px`;
+  }
+
+  function viewportMenuItem(menu, label, action, options = {}) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.setAttribute('role', 'menuitem');
+    button.className = `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
+    button.dataset.buretViewportMenu = action;
+    Object.assign(button.dataset, options.data || {});
+    if (options.disabled) button.disabled = true;
+    const icon = document.createElement('span');
+    icon.className = 'buret-tree-menu-icon';
+    if (options.icon) icon.appendChild(sceneTreeIconElement(options.icon));
+    const text = document.createElement('span');
+    text.className = 'buret-tree-menu-label';
+    text.textContent = label;
+    button.append(icon, text);
+    (options.parent || menu).appendChild(button);
+    return button;
+  }
+
+  function viewportMenuSelect(menu, label, name, options, placeholder) {
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const control = document.createElement('select');
+    control.className = 'buret-select';
+    control.dataset.buretViewportSelect = name;
+    const prompt = document.createElement('option');
+    prompt.value = '';
+    prompt.textContent = placeholder;
+    control.appendChild(prompt);
+    for (const option of options) {
+      const item = document.createElement('option');
+      item.value = option.name;
+      item.textContent = option.label;
+      control.appendChild(item);
+    }
+    control.value = '';
+    row.append(caption, control);
+    menu.appendChild(row);
+  }
+
+  function viewportMenuSwatches(menu, action) {
+    const swatches = document.createElement('div');
+    swatches.className = 'buret-tree-swatches';
+    for (const entry of SCENE_TREE_UNIFORM_COLORS) {
+      const swatch = document.createElement('button');
+      swatch.type = 'button';
+      swatch.className = 'buret-tree-swatch';
+      swatch.dataset.buretViewportMenu = action;
+      swatch.dataset.viewportColor = String(entry.value);
+      swatch.style.background = sceneTreeColorHex(entry.value);
+      swatch.setAttribute('aria-label', `Paint the selection ${entry.label.toLowerCase()}`);
+      swatch.title = entry.label;
+      swatches.appendChild(swatch);
+    }
+    menu.appendChild(swatches);
+  }
+
+  function viewportCameraMenu(menu) {
+    viewportMenuItem(menu, 'Reset zoom', 'camera-reset', { icon: SCENE_TREE_ICON.focus });
+    viewportMenuItem(menu, 'Lay flat', 'camera-orient', { icon: VIEWPORT_ICON.layFlat });
+    viewportMenuItem(menu, 'Reset axes', 'camera-axes', { icon: SCENE_TREE_ICON.restore });
+  }
+
+  // The registry ships seventy queries, twenty of which are single amino acids;
+  // anything longer than a screenful is folded away so the useful groups — types,
+  // secondary structure, "around the selection" — stay visible without scrolling.
+  function viewportQueryMenu(menu) {
+    const queries = viewportPlugin()?.query?.structure?.registry?.list || [];
+    sceneTreeMenuSection(menu, 'Mode');
+    const segment = document.createElement('div');
+    segment.className = 'buret-viewport-segment';
+    segment.setAttribute('role', 'group');
+    segment.setAttribute('aria-label', 'Selection mode');
+    for (const [name, label] of SELECTION_MODIFIERS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-viewport-segment-button';
+      button.dataset.buretViewportMenu = 'modifier';
+      button.dataset.modifier = name;
+      button.setAttribute('aria-pressed', name === selectionQueryModifier ? 'true' : 'false');
+      button.textContent = label;
+      segment.appendChild(button);
+    }
+    menu.appendChild(segment);
+
+    const groups = new Map();
+    queries.forEach((query, index) => {
+      if (query?.isHidden || !query?.label) return;
+      const category = String(query.category || 'Common');
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category).push({ label: query.label, index });
+    });
+    for (const [category, entries] of groups) {
+      // Twenty amino acids and seven bases fold away; the groups people actually
+      // reach for — Type, secondary structure, "around the selection" — stay open.
+      if (entries.length > 12) {
+        sceneTreeMenuSection(menu);
+        const disclosure = document.createElement('details');
+        disclosure.className = 'buret-tree-menu-actions';
+        const summary = document.createElement('summary');
+        summary.textContent = category;
+        disclosure.appendChild(summary);
+        for (const entry of entries) {
+          viewportMenuItem(menu, entry.label, 'query', {
+            data: { queryIndex: String(entry.index) }, parent: disclosure
+          });
+        }
+        menu.appendChild(disclosure);
+        continue;
+      }
+      sceneTreeMenuSection(menu, category);
+      for (const entry of entries) {
+        viewportMenuItem(menu, entry.label, 'query', { data: { queryIndex: String(entry.index) } });
+      }
+    }
+  }
+
+  function viewportApplyMenu(menu) {
+    const plugin = viewportPlugin();
+    const empty = !(plugin?.managers?.structure?.selection?.stats?.elementCount > 0);
+    sceneTreeMenuSection(menu, 'Colour');
+    viewportMenuSwatches(menu, 'selection-color');
+    viewportMenuItem(menu, 'Reset colour', 'selection-color-reset', {
+      icon: VIEWPORT_ICON.paint, disabled: empty
+    });
+
+    sceneTreeMenuSection(menu, 'Component');
+    const types = typeof plugin?.managers?.structure?.component?.constructor?.getRepresentationTypes === 'function'
+      ? plugin.managers.structure.component.constructor
+        .getRepresentationTypes(plugin, plugin.managers.structure.hierarchy.current.structures[0])
+        .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+        .filter(entry => entry.name)
+      : [];
+    if (types.length) viewportMenuSelect(menu, 'Add as', 'component-representation', types, 'Representation…');
+    viewportMenuItem(menu, 'Cut out of components', 'selection-subtract', {
+      icon: VIEWPORT_ICON.scissors, disabled: empty
+    });
+
+    sceneTreeMenuSection(menu);
+    viewportMenuItem(menu, 'Undo', 'undo', {
+      icon: VIEWPORT_ICON.undo, disabled: plugin?.state?.data?.canUndo !== true
+    });
+    viewportMenuItem(menu, 'Clear selection', 'selection-clear', {
+      icon: SCENE_TREE_ICON.trash, destructive: true, disabled: empty
+    });
+  }
+
+  // applyTheme and add both take a selection query rather than a loci, and the one
+  // that stands for "whatever is selected right now" is the registry entry Mol*
+  // registers under that name.
+  function currentSelectionQuery() {
+    const list = viewportPlugin()?.query?.structure?.registry?.list || [];
+    return list.find(query => query?.referencesCurrent && query?.label === 'Current Selection') || null;
+  }
+
+  function paintViewportSelection(color) {
+    const plugin = viewportPlugin();
+    const selection = currentSelectionQuery();
+    const action = color === null ? { name: 'resetColor', params: {} } : { name: 'color', params: { color } };
+    if (!plugin || !selection) return;
+    Promise.resolve(plugin.managers.structure.component.applyTheme({ action, selection }))
+      .catch(error => setStatus(`[web] Colouring the selection failed. ${error?.message || error}`, 'error'));
+  }
+
+  function addViewportSelectionComponent(representation) {
+    const plugin = viewportPlugin();
+    const selection = currentSelectionQuery();
+    if (!plugin || !selection || !representation) return;
+    Promise.resolve(plugin.managers.structure.component.add({
+      selection, representation, options: { label: '', checkExisting: false }
+    })).then(() => scheduleSceneTreeRender())
+      .catch(error => setStatus(`[web] Creating the component failed. ${error?.message || error}`, 'error'));
+  }
+
+  function subtractViewportSelection() {
+    const plugin = viewportPlugin();
+    const structures = plugin?.managers?.structure?.hierarchy?.getStructuresWithSelection?.() || [];
+    const components = structures.flatMap(structure => structure.components || []);
+    if (!components.length) return;
+    Promise.resolve(plugin.managers.structure.component.modifyByCurrentSelection(components, 'subtract'))
+      .then(() => scheduleSceneTreeRender())
+      .catch(error => setStatus(`[web] Cutting the selection out failed. ${error?.message || error}`, 'error'));
+  }
+
+  function runViewportMenuAction(action, control) {
+    const plugin = viewportPlugin();
+    if (!plugin) return false;
+    if (action === 'camera-reset') plugin.canvas3d?.requestCameraReset?.({ durationMs: 250 });
+    else if (action === 'camera-orient') plugin.managers.camera.orientAxes(undefined, 250);
+    else if (action === 'camera-axes') plugin.managers.camera.resetAxes(250);
+    else if (action === 'modifier') {
+      selectionQueryModifier = control.dataset.modifier || 'set';
+      for (const button of control.parentElement?.children || []) {
+        button.setAttribute('aria-pressed', button === control ? 'true' : 'false');
+      }
+      return true;
+    } else if (action === 'query') {
+      const query = plugin.query.structure.registry.list[Number(control.dataset.queryIndex)];
+      // Mol* applies its own query buttons without the picking level, so a "Ligand"
+      // pick stays a ligand instead of being widened to whole chains.
+      if (query) plugin.managers.structure.selection.fromSelectionQuery(selectionQueryModifier, query, false);
+    } else if (action === 'selection-color') {
+      paintViewportSelection(Number(control.dataset.viewportColor));
+      return true;
+    } else if (action === 'selection-color-reset') paintViewportSelection(null);
+    else if (action === 'selection-subtract') subtractViewportSelection();
+    else if (action === 'undo') {
+      // undo() hands back a task rather than running one, the same way Mol*'s own
+      // selection controls take it.
+      const task = plugin.state.data.undo();
+      if (task) plugin.runTask(task);
+    }
+    else if (action === 'selection-clear') plugin.managers.interactivity.lociSelects.deselectAll();
+    return false;
+  }
+
+  function runViewportRailAction(action, control) {
+    const plugin = viewportPlugin();
+    if (!plugin) return;
+    if (action === 'camera') {
+      openViewportMenu(control, 'Camera', viewportCameraMenu);
+    } else if (action === 'screenshot') {
+      Promise.resolve(plugin.helpers.viewportScreenshot?.download())
+        .then(() => setStatus('[web] Screenshot saved.'))
+        .catch(error => setStatus(`[web] Screenshot failed. ${error?.message || error}`, 'error'));
+    } else if (action === 'illumination') {
+      const enabled = plugin.canvas3d?.props?.illumination?.enabled !== true;
+      plugin.canvas3d?.setProps({ illumination: { enabled } });
+      control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    } else if (action === 'select-mode') {
+      plugin.selectionMode = plugin.selectionMode !== true;
+    }
+  }
+
+  function runSelectionBarAction(action, control) {
+    const plugin = viewportPlugin();
+    if (!plugin) return;
+    if (action === 'query') openViewportMenu(control, 'Select', viewportQueryMenu);
+    else if (action === 'apply') openViewportMenu(control, 'Apply', viewportApplyMenu);
+    else if (action === 'exit') plugin.selectionMode = false;
+  }
+
+  function updateSelectionBar() {
+    const bar = document.getElementById('buret-selection-bar');
+    const rail = document.getElementById('buret-viewport-rail');
+    const plugin = viewportPlugin();
+    if (!bar || !rail) return;
+    const active = plugin?.selectionMode === true && !rail.classList.contains('hidden');
+    bar.classList.toggle('hidden', !active);
+    rail.querySelector('[data-buret-viewport-action="select-mode"]')
+      ?.setAttribute('aria-pressed', active ? 'true' : 'false');
+    if (!active) closeViewportMenu();
+    const stats = plugin?.managers?.structure?.selection?.stats;
+    const count = document.querySelector('[data-buret-selection-count]');
+    if (count) count.textContent = stats?.elementCount ? stats.label : 'Nothing selected';
+    const level = document.querySelector('[data-buret-selection-level]');
+    const granularity = plugin?.managers?.interactivity?.props?.granularity;
+    if (level && granularity && level.value !== granularity) level.value = granularity;
+    updateFloatingLayoutOffsets();
+  }
+
+  function initViewportControls(viewer) {
+    const rail = document.getElementById('buret-viewport-rail');
+    const bar = document.getElementById('buret-selection-bar');
+    if (!rail || !bar) return;
+    if (rail.dataset.viewportControlsBound !== '1') {
+      rail.dataset.viewportControlsBound = '1';
+      const level = bar.querySelector('[data-buret-selection-level]');
+      for (const [name, label] of VIEWPORT_GRANULARITIES) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = label;
+        level?.appendChild(option);
+      }
+      level?.addEventListener('change', () => {
+        viewportPlugin()?.managers?.interactivity?.setProps({ granularity: level.value });
+      });
+      rail.addEventListener('click', event => {
+        const control = event.target.closest('[data-buret-viewport-action]');
+        if (control) runViewportRailAction(control.dataset.buretViewportAction, control);
+      });
+      bar.addEventListener('click', event => {
+        const control = event.target.closest('[data-buret-selection-action]');
+        if (control) runSelectionBarAction(control.dataset.buretSelectionAction, control);
+      });
+      // The menu is portalled to <body> so the bar cannot clip it, which puts both
+      // its clicks and its dismissal on the document.
+      document.addEventListener('click', event => {
+        const menu = document.getElementById('buret-viewport-menu');
+        if (!menu) return;
+        const control = event.target.closest?.('[data-buret-viewport-menu]');
+        if (control && menu.contains(control)) {
+          // Swatches and the mode switch are meant to be tried in place, so they
+          // leave the menu standing; every other item is a one-shot.
+          if (!runViewportMenuAction(control.dataset.buretViewportMenu, control)) closeViewportMenu();
+          return;
+        }
+        if (!menu.contains(event.target) && !event.target.closest?.('[aria-haspopup="menu"]')) closeViewportMenu();
+      });
+      document.addEventListener('change', event => {
+        const select = event.target.closest('[data-buret-viewport-select="component-representation"]');
+        if (!select?.value) return;
+        addViewportSelectionComponent(select.value);
+        closeViewportMenu();
+      });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && document.getElementById('buret-viewport-menu')) closeViewportMenu();
+      });
+    }
+    for (const disposer of viewportControlsDisposers) disposer();
+    viewportControlsDisposers = [];
+    const plugin = viewer?.plugin;
+    const subscriptions = [
+      plugin?.behaviors?.interaction?.selectionMode?.subscribe?.(updateSelectionBar),
+      plugin?.managers?.structure?.selection?.events?.changed?.subscribe?.(updateSelectionBar),
+      plugin?.managers?.interactivity?.events?.propsUpdated?.subscribe?.(updateSelectionBar)
+    ].filter(Boolean);
+    if (subscriptions.length) {
+      viewportControlsDisposers.push(() => subscriptions.forEach(item => item?.unsubscribe?.()));
+    }
+    rail.querySelector('[data-buret-viewport-action="illumination"]')
+      ?.setAttribute('aria-pressed', plugin?.canvas3d?.props?.illumination?.enabled === true ? 'true' : 'false');
+    updateSelectionBar();
   }
 
   function initSceneTree(viewer) {

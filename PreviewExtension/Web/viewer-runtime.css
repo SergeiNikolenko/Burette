@@ -518,6 +518,215 @@ body .msp-plugin .msp-viewport-controls {
   top: var(--buret-viewport-controls-top) !important;
   z-index: 40;
 }
+/* Replaced by #buret-viewport-rail and #buret-selection-bar, which say what each
+   control does instead of leaving it to a row of near-identical circles. The mobile
+   host keeps the native ones: it has its own chrome around them. */
+body:not(.burette-mobile-host) .msp-plugin .msp-viewport-controls-buttons,
+body:not(.burette-mobile-host) .msp-plugin .msp-selection-viewport-controls {
+  display: none !important;
+}
+body.burette-mobile-host #buret-viewport-rail,
+body.burette-mobile-host #buret-selection-bar {
+  display: none !important;
+}
+.buret-viewport-rail {
+  position: fixed;
+  top: var(--buret-viewport-rail-top, calc(var(--buret-toolbar-safe-top) + 42px));
+  right: var(--buret-viewport-rail-right, var(--buret-control-island-right));
+  z-index: 40;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--buret-control-island-gap);
+  width: 36px;
+  padding: 3px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 12px;
+  color: var(--buret-toolbar-color);
+  background: var(--buret-toolbar-background);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.buret-viewport-rail.hidden,
+.buret-selection-bar.hidden {
+  display: none;
+}
+body.buret-toolbar-collapsed .buret-selection-bar {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.buret-rail-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  color: var(--buret-toolbar-color);
+  background: transparent;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.buret-rail-button > svg {
+  width: 16px;
+  height: 16px;
+}
+.buret-rail-button:hover {
+  background: var(--buret-toolbar-hover);
+}
+.buret-rail-button:focus-visible {
+  outline: 2px solid var(--buret-molstar-accent);
+  outline-offset: 1px;
+}
+.buret-rail-button[aria-pressed="true"],
+.buret-rail-button[aria-expanded="true"] {
+  color: var(--buret-molstar-accent);
+  background: var(--buret-toolbar-hover);
+}
+.buret-selection-bar {
+  position: fixed;
+  top: var(--buret-selection-controls-top, calc(var(--buret-toolbar-safe-top) + 48px));
+  left: var(--buret-selection-controls-left, var(--buret-control-island-right));
+  z-index: 41;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: min(var(--buret-selection-controls-width, 430px), var(--buret-selection-controls-max-width, calc(100vw - 24px)));
+  padding: 6px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 12px;
+  color: var(--buret-toolbar-color);
+  background: var(--buret-toolbar-background);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+body.buret-selection-toolbar-open .buret-selection-bar {
+  border-top-right-radius: 0;
+  border-top-left-radius: 0;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
+}
+.buret-selection-bar > .buret-selection-level {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 84px;
+  max-width: 120px;
+  height: 26px;
+}
+.buret-selection-button {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 6px 0 8px;
+  color: var(--buret-toolbar-color);
+  background: var(--buret-toolbar-hover);
+  font: inherit;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.buret-selection-button > svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+}
+.buret-selection-button:hover,
+.buret-selection-button[aria-expanded="true"] {
+  background: var(--buret-molstar-hover-background);
+}
+.buret-selection-button:focus-visible,
+.buret-selection-icon:focus-visible {
+  outline: 2px solid var(--buret-molstar-accent);
+  outline-offset: 1px;
+}
+/* The count is the only thing here that grows, so it takes the slack and truncates
+   rather than pushing the buttons off the bar. */
+.buret-selection-count {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 2px;
+  color: var(--buret-molstar-muted-text);
+  font-size: 11px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-selection-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  color: var(--buret-toolbar-color);
+  background: transparent;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.buret-selection-icon > svg {
+  width: 14px;
+  height: 14px;
+}
+.buret-selection-icon:hover {
+  background: var(--buret-toolbar-hover);
+}
+.buret-tree-menu.buret-viewport-menu {
+  width: 214px;
+}
+.buret-viewport-menu .buret-tree-menu-item[disabled] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.buret-viewport-segment {
+  display: flex;
+  gap: 1px;
+  margin: 0 4px 2px;
+  border-radius: 7px;
+  padding: 2px;
+  background: var(--buret-molstar-field-background);
+}
+.buret-viewport-segment-button {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  padding: 0;
+  color: var(--buret-molstar-muted-text);
+  background: transparent;
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.buret-viewport-segment-button:hover {
+  color: var(--buret-molstar-text);
+}
+.buret-viewport-segment-button[aria-pressed="true"] {
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-hover-background);
+}
+.buret-viewport-segment-button:focus-visible {
+  outline: 2px solid var(--buret-molstar-accent);
+  outline-offset: 1px;
+}
 body .msp-plugin .msp-viewport-controls-buttons {
   box-sizing: border-box;
   display: flex;
