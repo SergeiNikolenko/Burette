@@ -19,6 +19,8 @@ const artifactReader = source("apps/desktop/src-tauri/src/compute/artifact_reade
 const chemicalSpace = source("apps/desktop/src-tauri/src/compute/chemical_space.rs");
 const chemicalSpacePanel = source("apps/desktop/src/components/chemical-space-panel.tsx");
 const chemicalSpace3d = source("apps/desktop/src/components/chemical-space-3d.tsx");
+const progressComponent = source("apps/desktop/src/components/ui/progress.tsx");
+const desktopStyles = source("apps/desktop/src/styles.css");
 const browserDevCompute = source("apps/desktop/src/lib/browser-dev-compute.ts");
 const browserDevRoute = source("apps/desktop/vite/browser-dev/native-compute.ts");
 const representationWorker = source("compute/models/chemical_space_representations.py");
@@ -110,7 +112,12 @@ assert.match(chemicalSpacePanel, /Run animated study on Metal/);
 assert.match(chemicalSpacePanel, /interpolateStudyResult/);
 assert.match(chemicalSpacePanel, /data-testid="parameter-study-timeline"/);
 assert.match(chemicalSpacePanel, /studyRunning \? \(/);
-assert.match(chemicalSpacePanel, /value=\{progressPercent\(progress\) \?\? 0\}/);
+assert.match(chemicalSpacePanel, /value=\{progressPercent\(progress\) \?\? undefined\}/);
+assert.match(chemicalSpacePanel, /indeterminate=\{progressPercent\(progress\) === null\}/);
+assert.match(chemicalSpacePanel, /indeterminate=\{value === null\}/);
+assert.match(progressComponent, /data-indeterminate=\{indeterminate \|\| undefined\}/);
+assert.match(progressComponent, /burette-progress-indeterminate_1\.2s_ease-in-out_infinite/);
+assert.match(desktopStyles, /@keyframes burette-progress-indeterminate/);
 assert.doesNotMatch(chemicalSpacePanel, /studyParameterLabel/);
 assert.ok(
   chemicalSpacePanel.indexOf('data-testid="parameter-study-timeline"')

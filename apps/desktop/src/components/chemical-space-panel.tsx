@@ -562,7 +562,8 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
             <Spinner data-icon="inline-start" />
             <Progress
               className="flex-1"
-              value={progressPercent(progress) ?? 0}
+              value={progressPercent(progress) ?? undefined}
+              indeterminate={progressPercent(progress) === null}
               aria-label={runningLabel || "Parameter study calculation in progress"}
             />
             <span className="min-w-28 text-right font-mono text-xs text-muted-foreground">
@@ -914,6 +915,7 @@ function ChemicalSpaceLoading({
           <Progress
             className="w-56"
             value={value ?? undefined}
+            indeterminate={value === null}
             aria-label={value === null ? "Chemical-space calculation in progress" : `Chemical-space calculation ${Math.round(value)}% complete`}
           />
         </EmptyContent>
