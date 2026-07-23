@@ -1153,8 +1153,10 @@ assert.match(appDirtyGridHook, /Close Without Saving/);
 assert.match(appDirtyGridHook, /await message\(detail/);
 assert.match(appDirtyGridHook, /beginWindowCloseTransition\(\)/);
 assert.match(appDirtyGridHook, /transition\.pendingDocumentIds/);
-assert.match(appShellActionsHook, /await permit\.waitForPending\(documentIds\)/);
-assert.match(appShellActionsHook, /permit\.release\(\)/);
+// Closing must not be gated on in-flight mutations: an unbounded wait here used
+// to strand the window with the grid overlay up and every later close refused.
+assert.doesNotMatch(appShellActionsHook, /waitForPending/);
+assert.match(appShellActionsHook, /const completeClose = \(permit: WindowCloseMutationPermit, close: \(\) => void\) => \{\s*try \{\s*close\(\);\s*\} finally \{\s*permit\.release\(\);/s);
 assert.match(appGridWorkflowsHook, /if \(result\.recordsAppended > 0\) updateDirtyGridDocument\(targetDocument\.id, true\);\s*notifyGridRecordsAppended\(targetDocument\.id, result\)/s);
 assert.match(appKetcherActionsHook, /updateDirtyGridDocument\(request\.documentId, true\);\s*iframe\.contentWindow\.postMessage/s);
 assert.match(appKetcherActionsHook, /isGridDocumentCloseTransitionActive\(request\.documentId\)/);
@@ -2059,7 +2061,11 @@ assert.doesNotMatch(styles, /\.splitter::after \{ background: var\(--sidebar-div
 // The workbench card's edge shadow lives on the sidebar handle now: the center
 // ResizablePanel clips its children (overflow: hidden), so a box-shadow on
 // .workbench itself can never reach over the sidebar.
-assert.match(styles, /\.workbench \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 20px 0 0 20px;/s);
+assert.match(styles, /\.workbench \{[^}]*background: var\(--bg\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 20px 0 0 20px;/s);
+// The surfaces that tile the window follow the Translucent preference. Painting
+// `--bg-base` here covers the translucent shell with an opaque sheet.
+assert.match(styles, /\.main-stage \{[^}]*background: var\(--bg\);/s);
+assert.match(styles, /\.dock-panel \{[^}]*background: var\(--bg\);/s);
 assert.doesNotMatch(styles, /\.workbench \{[^}]*box-shadow: -12px 0 28px/s);
 assert.match(styles, /\.workspace-sidebar-handle::before \{[^}]*box-shadow: -12px 0 28px var\(--workspace-edge-shadow\);[^}]*pointer-events: none;/s);
 assert.match(appLayout, /className="workspace-sidebar-handle"/);
@@ -5936,18 +5942,16 @@ assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onFocusChanged/);
 assert.match(appNativeMenuHook, /getCurrentWindow\(\)\.onCloseRequested/);
 assert.match(appNativeMenuHook, /event\.preventDefault\(\);[\s\S]*await confirmCloseWindowRef\.current\(\)/);
 assert.match(appNativeMenuHook, /confirmCloseWindowRef\.current\(\)/);
-assert.match(appNativeMenuHook, /setGridDocumentCloseTransition\(documentIds, true\)/);
-assert.match(appNativeMenuHook, /setWindowShellCloseTransition\(true\)/);
-assert.match(appNativeMenuHook, /await currentWindow\.setEnabled\(false\)/);
-assert.match(appNativeMenuHook, /if \(await currentWindow\.isEnabled\(\)\)/);
-assert.match(appNativeMenuHook, /await permit\.waitForPending\(\)/);
-assert.match(appNativeMenuHook, /sameWindowItemIds\(documentIds, windowDocumentIdsRef\.current\)/);
-assert.match(appNativeMenuHook, /sameWindowItemIds\(tabIds, windowTabIdsRef\.current\)/);
-assert.match(appNativeMenuHook, /finalDirtySnapshot\.closeGuardRevision !== closeGuardRevision/);
+// The close button always closes. Nothing between the prompt and close() may
+// wait on other work, freeze the shell, or disable the window.
 assert.match(
   appNativeMenuHook,
-  /if \(windowInteractionPaused\) \{\s*await currentWindow\.setEnabled\(true\);\s*windowInteractionPaused = false;\s*\}\s*await currentWindow\.close\(\)/,
+  /if \(!permit\) return;\s*permit\.release\(\);\s*closingWindowRef\.current = true;\s*await getCurrentWindow\(\)\.close\(\)/s,
 );
+assert.doesNotMatch(appNativeMenuHook, /waitForPending/);
+assert.doesNotMatch(appNativeMenuHook, /setEnabled/);
+assert.doesNotMatch(appNativeMenuHook, /setWindowShellCloseTransition/);
+assert.doesNotMatch(appNativeMenuHook, /setGridDocumentCloseTransition/);
 assert.match(appNativeMenuHook, /if \(closingWindowRef\.current\) return;/);
 assert.match(appNativeMenuHook, /listen<ExitPreflightRequest>\(EXIT_PREFLIGHT_EVENT/);
 assert.match(appNativeMenuHook, /invoke<string>\("register_exit_preflight_listener"\)/);
