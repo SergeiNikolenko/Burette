@@ -21,6 +21,13 @@ export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repo
       sendJson(res, 405, { error: "Method not allowed" });
       return;
     }
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    const abortOnClose = () => {
+      if (!res.writableEnded) controller.abort();
+    };
+    req.once("aborted", abort);
+    res.once("close", abortOnClose);
     try {
       const body = await readJsonBody(req);
       const input = JSON.stringify(body);
@@ -30,11 +37,16 @@ export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repo
       sendJson(
         res,
         200,
-        await runMolecularRepresentation(repoRoot, input),
+        await runMolecularRepresentation(repoRoot, input, controller.signal),
         "no-cache",
       );
     } catch (error) {
-      sendJsonError(res, 500, error, "no-cache");
+      if (!controller.signal.aborted && !res.destroyed && !res.writableEnded) {
+        sendJsonError(res, 500, error, "no-cache");
+      }
+    } finally {
+      req.off("aborted", abort);
+      res.off("close", abortOnClose);
     }
   });
   server.middlewares.use("/__burette/native-compute", async (req, res) => {
@@ -87,7 +99,7 @@ function molecularRepresentationPython(repoRoot: string) {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
-async function runMolecularRepresentation(repoRoot: string, input: string) {
+async function runMolecularRepresentation(repoRoot: string, input: string, signal: AbortSignal) {
   const python = molecularRepresentationPython(repoRoot);
   if (!python) {
     throw new Error(
@@ -113,6 +125,7 @@ async function runMolecularRepresentation(repoRoot: string, input: string) {
       PYTORCH_ENABLE_MPS_FALLBACK: "0",
       UNIMOL_WEIGHT_DIR: process.env.UNIMOL_WEIGHT_DIR?.trim() || join(modelRoot, "unimol"),
     },
+    signal,
   );
   const payload = JSON.parse(output) as { ok?: unknown; result?: unknown; error?: unknown };
   if (payload.ok !== true || !payload.result) {
@@ -228,8 +241,13 @@ function runWithStdin(
   cwd: string,
   timeoutMs: number,
   environment: Record<string, string> = {},
+  abortSignal?: AbortSignal,
 ): Promise<string> {
   return new Promise((resolvePromise, rejectPromise) => {
+    if (abortSignal?.aborted) {
+      rejectPromise(abortError());
+      return;
+    }
     const child = spawn(command, args, {
       cwd,
       env: { ...process.env, ...environment },
@@ -237,18 +255,44 @@ function runWithStdin(
     });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
+    let terminationError: Error | null = null;
+    let forceKillTimeout: ReturnType<typeof setTimeout> | null = null;
+    let settled = false;
+    const terminate = (error: Error) => {
+      if (terminationError || child.exitCode !== null) return;
+      terminationError = error;
+      child.kill("SIGTERM");
+      forceKillTimeout = setTimeout(() => {
+        if (child.exitCode === null) child.kill("SIGKILL");
+      }, 2_000);
+      forceKillTimeout.unref();
+    };
+    const onAbort = () => terminate(abortError());
+    const cleanup = () => {
+      clearTimeout(timeout);
+      if (forceKillTimeout) clearTimeout(forceKillTimeout);
+      abortSignal?.removeEventListener("abort", onAbort);
+    };
     const timeout = setTimeout(() => {
-      child.kill();
-      rejectPromise(new Error("Native Metal dev backend timed out"));
+      terminate(new Error("Native Metal dev backend timed out"));
     }, timeoutMs);
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
     child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
     child.on("error", (error) => {
-      clearTimeout(timeout);
+      if (settled) return;
+      settled = true;
+      cleanup();
       rejectPromise(error);
     });
     child.on("close", (code, signal) => {
-      clearTimeout(timeout);
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (terminationError) {
+        rejectPromise(terminationError);
+        return;
+      }
       const stdout = Buffer.concat(stdoutChunks).toString("utf8").trim();
       const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
       if (code !== 0) {
@@ -259,4 +303,10 @@ function runWithStdin(
     });
     child.stdin.end(input);
   });
+}
+
+function abortError() {
+  const error = new Error("Metal model calculation was cancelled");
+  error.name = "AbortError";
+  return error;
 }

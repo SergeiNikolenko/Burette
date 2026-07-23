@@ -12,6 +12,12 @@ from dataclasses import dataclass
 from typing import Any
 
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "0"
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "2")
+os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.8")
+os.environ.setdefault("PYTORCH_MPS_LOW_WATERMARK_RATIO", "0.7")
 
 MAX_RECORDS = 20_000
 MAX_INPUT_BYTES = 32 * 1024 * 1024
@@ -48,6 +54,8 @@ class ValidRecord:
 def require_mps():
     import torch
 
+    torch.set_num_threads(2)
+    torch.set_num_interop_threads(1)
     if not torch.backends.mps.is_built() or not torch.backends.mps.is_available():
         raise RuntimeError("Apple Metal Performance Shaders are unavailable")
     device = torch.device("mps")
@@ -115,7 +123,7 @@ def transformer_embeddings(engine: str, smiles: list[str], device):
     if trust_remote_code:
         model_options["deterministic_eval"] = True
     model = AutoModel.from_pretrained(spec["model_id"], **model_options).eval().to(device)
-    batch_size = 64 if trust_remote_code else 128
+    batch_size = 16 if trust_remote_code else 32
     outputs = []
     observed_devices: set[str] = set()
     for start in range(0, len(smiles), batch_size):
@@ -155,7 +163,7 @@ def unimol_embeddings(engine: str, smiles: list[str], device):
     model_name = "unimolv2" if engine == "unimol2-84m" else "unimolv1"
     params = {
         "data_type": "molecule",
-        "batch_size": 32,
+        "batch_size": 16,
         "remove_hs": False,
         "model_name": model_name,
         "model_size": "84m",
@@ -172,8 +180,8 @@ def unimol_embeddings(engine: str, smiles: list[str], device):
         else UniMolModel(output_dim=1, data_type="molecule", remove_hs=False)
     ).eval().to(device)
     outputs = []
-    for start in range(0, len(smiles), 256):
-        batch_smiles = smiles[start : start + 256]
+    for start in range(0, len(smiles), 64):
+        batch_smiles = smiles[start : start + 64]
         datahub = DataHub(data=batch_smiles, task="repr", is_train=False, **params)
         dataset = MolDataset(
             datahub.data["unimol_input"],

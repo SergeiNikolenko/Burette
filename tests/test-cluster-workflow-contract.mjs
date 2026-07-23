@@ -150,6 +150,15 @@ assert.match(representationWorker, /scores = vectors\[start:stop\] @ vectors\.T/
 assert.match(representationWorker, /torch\.topk/);
 assert.match(browserDevRoute, /BURRETE_CHEMICAL_SPACE_MODEL_PYTHON/);
 assert.match(browserDevRoute, /chemical-space-representation/);
+assert.match(browserDevRoute, /controller\.signal/);
+assert.match(browserDevRoute, /child\.kill\("SIGTERM"\)/);
+assert.match(browserDevRoute, /child\.kill\("SIGKILL"\)/);
+assert.match(agentShellServer, /child\.kill\('SIGTERM'\)/);
+assert.match(agentShellServer, /child\.kill\('SIGKILL'\)/);
+assert.match(chemicalSpacePanel, /Stop calculation/);
+assert.match(chemicalSpacePanel, /workflowControllerRef\.current\?\.abort\(\)/);
+assert.match(representationWorker, /OMP_NUM_THREADS", "2"/);
+assert.match(representationWorker, /PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0\.8"/);
 assert.match(browserDevCompute, /moleculeContentSha256/);
 assert.match(browserDevRoute, /"chemicalSpace"/);
 assert.match(browserDevRoute, /chemicalSpaceKnnCache/);

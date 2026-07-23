@@ -130,6 +130,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [studyPosition, setStudyPosition] = useState(0);
   const [studyPlaying, setStudyPlaying] = useState(false);
   const [studyRunning, setStudyRunning] = useState(false);
+  const workflowControllerRef = useRef<AbortController | null>(null);
   const studyControllerRef = useRef<AbortController | null>(null);
   const hoveredRef = useRef<number | null>(null);
   const documentId = document?.renderer === "grid2d" ? document.id : null;
@@ -165,6 +166,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       return;
     }
     const controller = new AbortController();
+    workflowControllerRef.current = controller;
     setResult(null);
     setError(null);
     setProgress({ phase: "queued" });
@@ -183,8 +185,18 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         if (controller.signal.aborted) return;
         setProgress(null);
         setError(computeErrorMessage(cause));
+      })
+      .finally(() => {
+        if (workflowControllerRef.current === controller) {
+          workflowControllerRef.current = null;
+        }
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (workflowControllerRef.current === controller) {
+        workflowControllerRef.current = null;
+      }
+    };
   }, [documentId, options]);
 
   useEffect(() => {
@@ -265,6 +277,19 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       body: { ...body, documentId },
     }, "*");
   }, [documentId]);
+  const stopCalculation = useCallback(() => {
+    workflowControllerRef.current?.abort();
+    workflowControllerRef.current = null;
+    setProgress(null);
+    setResult(null);
+    setError("Calculation stopped.");
+  }, []);
+  const stopStudy = useCallback(() => {
+    studyControllerRef.current?.abort();
+    studyControllerRef.current = null;
+    setProgress(null);
+    setStudyRunning(false);
+  }, []);
 
   if (!documentId) {
     return <ChemicalSpaceEmpty message="Open a molecular Grid to build its chemical-space map." />;
@@ -304,6 +329,10 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       setProgress(null);
       setStudyRunning(false);
       setError(computeErrorMessage(cause));
+    } finally {
+      if (studyControllerRef.current === controller) {
+        studyControllerRef.current = null;
+      }
     }
   };
   return (
@@ -455,6 +484,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
             <ChemicalSpaceLoading
               message={runningLabel || "Preparing chemical space…"}
               progress={progress}
+              onStop={stopCalculation}
             />
           )}
         </div>
@@ -569,6 +599,9 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
             <span className="min-w-28 text-right font-mono text-xs text-muted-foreground">
               {runningLabel || "Preparing study…"}
             </span>
+            <Button size="xs" variant="outline" onClick={stopStudy}>
+              Stop
+            </Button>
           </div>
         ) : completedStudy && displayedResult ? (
           <div
@@ -892,9 +925,11 @@ function ChemicalSpaceEmpty({ message, actionLabel, onAction }: { message: strin
 function ChemicalSpaceLoading({
   message,
   progress,
+  onStop,
 }: {
   message: string;
   progress: ChemicalSpaceProgress | null;
+  onStop: () => void;
 }) {
   const value = progressPercent(progress);
   return (
@@ -911,13 +946,16 @@ function ChemicalSpaceLoading({
           <EmptyTitle>Building chemical space</EmptyTitle>
           <EmptyDescription>{message}</EmptyDescription>
         </EmptyHeader>
-        <EmptyContent>
+        <EmptyContent className="flex flex-col gap-3">
           <Progress
             className="w-56"
             value={value ?? undefined}
             indeterminate={value === null}
             aria-label={value === null ? "Chemical-space calculation in progress" : `Chemical-space calculation ${Math.round(value)}% complete`}
           />
+          <Button size="sm" variant="outline" onClick={onStop}>
+            Stop calculation
+          </Button>
         </EmptyContent>
       </Empty>
     </div>

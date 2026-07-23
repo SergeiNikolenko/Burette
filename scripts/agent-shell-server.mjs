@@ -246,6 +246,13 @@ async function handleChemicalSpaceRepresentation(req, res, method) {
     sendJson(res, 405, { error: 'Method not allowed' });
     return;
   }
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const abortOnClose = () => {
+    if (!res.writableEnded) controller.abort();
+  };
+  req.once('aborted', abort);
+  res.once('close', abortOnClose);
   try {
     const python = molecularRepresentationPython();
     if (!python) {
@@ -265,13 +272,19 @@ async function handleChemicalSpaceRepresentation(req, res, method) {
         PYTORCH_ENABLE_MPS_FALLBACK: '0',
         UNIMOL_WEIGHT_DIR: String(process.env.UNIMOL_WEIGHT_DIR || '').trim() || resolve(modelRoot, 'unimol'),
       },
+      controller.signal,
     );
     if (payload.ok !== true || !payload.result) {
       throw new Error(typeof payload.error === 'string' ? payload.error : 'Metal model worker failed');
     }
     sendJson(res, 200, payload.result);
   } catch (error) {
-    sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+    if (!controller.signal.aborted && !res.destroyed && !res.writableEnded) {
+      sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+    }
+  } finally {
+    req.off('aborted', abort);
+    res.off('close', abortOnClose);
   }
 }
 
@@ -834,26 +847,56 @@ function runNativeCompute(runtime, input) {
   });
 }
 
-function runJsonWorker(command, commandArgs, input, timeoutMs, environment = {}) {
+function runJsonWorker(command, commandArgs, input, timeoutMs, environment = {}, abortSignal) {
   return new Promise((resolvePromise, rejectPromise) => {
+    if (abortSignal?.aborted) {
+      rejectPromise(abortError());
+      return;
+    }
     const child = spawn(command, commandArgs, {
       env: { ...process.env, ...environment },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     const stdoutChunks = [];
     const stderrChunks = [];
+    let terminationError = null;
+    let forceKillTimeout = null;
+    let settled = false;
+    const terminate = (error) => {
+      if (terminationError || child.exitCode !== null) return;
+      terminationError = error;
+      child.kill('SIGTERM');
+      forceKillTimeout = setTimeout(() => {
+        if (child.exitCode === null) child.kill('SIGKILL');
+      }, 2_000);
+      forceKillTimeout.unref();
+    };
+    const onAbort = () => terminate(abortError());
+    const cleanup = () => {
+      clearTimeout(timeout);
+      if (forceKillTimeout) clearTimeout(forceKillTimeout);
+      abortSignal?.removeEventListener('abort', onAbort);
+    };
     const timeout = setTimeout(() => {
-      child.kill();
-      rejectPromise(new Error('Metal model worker timed out'));
+      terminate(new Error('Metal model worker timed out'));
     }, timeoutMs);
+    abortSignal?.addEventListener('abort', onAbort, { once: true });
     child.stdout.on('data', (chunk) => stdoutChunks.push(Buffer.from(chunk)));
     child.stderr.on('data', (chunk) => stderrChunks.push(Buffer.from(chunk)));
     child.on('error', (error) => {
-      clearTimeout(timeout);
+      if (settled) return;
+      settled = true;
+      cleanup();
       rejectPromise(error);
     });
     child.on('close', (code, signal) => {
-      clearTimeout(timeout);
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (terminationError) {
+        rejectPromise(terminationError);
+        return;
+      }
       const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim();
       const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
       if (code !== 0) {
@@ -868,6 +911,12 @@ function runJsonWorker(command, commandArgs, input, timeoutMs, environment = {})
     });
     child.stdin.end(input);
   });
+}
+
+function abortError() {
+  const error = new Error('Metal model calculation was cancelled');
+  error.name = 'AbortError';
+  return error;
 }
 
 async function handleRuntimeAsset(res, method, url) {
