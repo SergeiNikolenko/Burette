@@ -4238,9 +4238,24 @@
     const toolbarRect = toolbar && !panelState.open ? toolbar.getBoundingClientRect() : null;
     root.style.setProperty('--buret-toolbar-current-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : '0px');
     root.style.setProperty('--buret-toolbar-current-height', toolbarRect ? Math.ceil(toolbarRect.height) + 'px' : '0px');
-    root.style.setProperty('--buret-selection-controls-left', toolbarRect ? Math.ceil(toolbarRect.left) + 'px' : `${TOOLBAR_MARGIN}px`);
-    root.style.setProperty('--buret-selection-controls-width', toolbarRect ? Math.ceil(toolbarRect.width) + 'px' : 'min(430px, calc(100vw - 24px))');
-    root.style.setProperty('--buret-selection-controls-max-width', toolbarRect ? Math.max(180, Math.floor(window.innerWidth - toolbarRect.left - TOOLBAR_MARGIN)) + 'px' : 'calc(100vw - 24px)');
+    // The selection bar is a control of its own, not a drawer of the toolbar, so it
+    // has to stay usable while the toolbar is rolled up to its grip. Collapsed, it
+    // keeps the toolbar's right edge but takes a width of its own — inheriting the
+    // grip's 42px left it a stub nobody could read.
+    const toolbarCollapsed = document.body?.classList.contains('buret-toolbar-collapsed') === true;
+    const selectionBarWidth = toolbarRect && !toolbarCollapsed
+      ? Math.ceil(toolbarRect.width)
+      : Math.min(430, Math.max(240, window.innerWidth - TOOLBAR_MARGIN * 2));
+    const selectionBarLeft = toolbarRect
+      ? Math.max(TOOLBAR_MARGIN, Math.ceil(toolbarRect.right - selectionBarWidth))
+      : TOOLBAR_MARGIN;
+    root.style.setProperty('--buret-selection-controls-left', `${selectionBarLeft}px`);
+    root.style.setProperty('--buret-selection-controls-width', `${selectionBarWidth}px`);
+    // Measured from where the bar actually starts. Taken from the toolbar's left
+    // edge it collapsed along with the toolbar, capping the bar at 180px — the two
+    // coincide while the toolbar is open, so nothing changes there.
+    root.style.setProperty('--buret-selection-controls-max-width',
+      Math.max(180, Math.floor(window.innerWidth - selectionBarLeft - TOOLBAR_MARGIN)) + 'px');
     root.style.setProperty('--buret-selection-controls-top', toolbarRect ? Math.ceil(toolbarRect.bottom - 1) + 'px' : `calc(var(--buret-toolbar-safe-top) + 48px)`);
     const toolbarBottom = toolbarRect ? toolbarRect.bottom + FLOATING_LAYOUT_GAP : toolbarSafeTop() + 40;
     const viewportControls = document.querySelector('.msp-plugin .msp-viewport-controls');
@@ -4258,7 +4273,10 @@
       : 'var(--buret-control-island-right)');
     const selectionToolbarRect = visibleRect('.msp-plugin .msp-selection-viewport-controls > .msp-flex-row')
       || visibleRect('#buret-selection-bar');
-    document.body?.classList.toggle('buret-selection-toolbar-open', !!selectionToolbarRect && !!toolbarRect);
+    // The squared-off join only makes sense while the two actually meet; rolled up,
+    // the toolbar is a grip somewhere above and the bar keeps its own rounding.
+    document.body?.classList.toggle('buret-selection-toolbar-open',
+      !!selectionToolbarRect && !!toolbarRect && !toolbarCollapsed);
     const mainRect = visibleRect('.msp-plugin .msp-layout-main');
     const mainTop = mainRect ? mainRect.top : 0;
     const defaultViewportTop = mainTop + 64;

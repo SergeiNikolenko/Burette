@@ -554,11 +554,6 @@ body.burette-mobile-host #buret-selection-bar {
 .buret-selection-bar.hidden {
   display: none;
 }
-body.buret-toolbar-collapsed .buret-selection-bar {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
 .buret-rail-button {
   position: relative;
   display: grid;
