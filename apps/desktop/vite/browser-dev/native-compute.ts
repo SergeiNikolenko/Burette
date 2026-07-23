@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 
 import type { ViteDevServer } from "vite";
 
@@ -9,10 +10,33 @@ import { readJsonBody, sendJson, sendJsonError } from "./http";
 
 const REQUEST_LIMIT_BYTES = 12 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const MODEL_REQUEST_TIMEOUT_MS = 60 * 60 * 1000;
+const MODEL_REQUEST_LIMIT_BYTES = 36 * 1024 * 1024;
 const MAX_CHEMICAL_SPACE_KNN_CACHE_ENTRIES = 8;
 const chemicalSpaceKnnCache = new Map<string, unknown>();
 
 export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repoRoot: string) {
+  server.middlewares.use("/__burette/chemical-space-representation", async (req, res) => {
+    if ((req.method || "GET").toUpperCase() !== "POST") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const input = JSON.stringify(body);
+      if (Buffer.byteLength(input, "utf8") > MODEL_REQUEST_LIMIT_BYTES) {
+        throw new Error("Molecular representation request exceeds 36 MiB");
+      }
+      sendJson(
+        res,
+        200,
+        await runMolecularRepresentation(repoRoot, input),
+        "no-cache",
+      );
+    } catch (error) {
+      sendJsonError(res, 500, error, "no-cache");
+    }
+  });
   server.middlewares.use("/__burette/native-compute", async (req, res) => {
     if ((req.method || "GET").toUpperCase() === "GET") {
       const runtimeRoot = nativeComputeRuntimeRoot(repoRoot);
@@ -53,6 +77,50 @@ export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repo
   });
 }
 
+function molecularRepresentationPython(repoRoot: string) {
+  const configured = process.env.BURRETE_CHEMICAL_SPACE_MODEL_PYTHON?.trim();
+  const candidates = [
+    configured || null,
+    join(homedir(), "Library", "Application Support", "Burrete", "model-python", "bin", "python"),
+    join(repoRoot, ".venv-chemical-space", "bin", "python"),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+async function runMolecularRepresentation(repoRoot: string, input: string) {
+  const python = molecularRepresentationPython(repoRoot);
+  if (!python) {
+    throw new Error(
+      "Metal model runtime is not installed. Configure BURRETE_CHEMICAL_SPACE_MODEL_PYTHON.",
+    );
+  }
+  const script = join(repoRoot, "compute", "models", "chemical_space_representations.py");
+  const modelRoot = join(
+    homedir(),
+    "Library",
+    "Application Support",
+    "Burrete",
+    "chemical-space-models",
+  );
+  const output = await runWithStdin(
+    python,
+    [script],
+    input,
+    repoRoot,
+    MODEL_REQUEST_TIMEOUT_MS,
+    {
+      HF_HOME: process.env.HF_HOME?.trim() || join(modelRoot, "huggingface"),
+      PYTORCH_ENABLE_MPS_FALLBACK: "0",
+      UNIMOL_WEIGHT_DIR: process.env.UNIMOL_WEIGHT_DIR?.trim() || join(modelRoot, "unimol"),
+    },
+  );
+  const payload = JSON.parse(output) as { ok?: unknown; result?: unknown; error?: unknown };
+  if (payload.ok !== true || !payload.result) {
+    throw new Error(typeof payload.error === "string" ? payload.error : "Metal model worker failed");
+  }
+  return payload.result;
+}
+
 function chemicalSpacePayload(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== "object") return {};
   const chemicalSpace = (body as { chemicalSpace?: unknown }).chemicalSpace;
@@ -71,8 +139,11 @@ function chemicalSpaceCacheKey(body: unknown) {
     : {};
   const records = Array.isArray(payload.records) ? payload.records : [];
   const neighbors = Number(options.neighbors);
+  const suppliedKnn = payload.knnCache && typeof payload.knnCache === "object"
+    ? createHash("sha256").update(JSON.stringify(payload.knnCache)).digest("hex")
+    : "compute";
   return records.length > 0 && Number.isSafeInteger(neighbors) && neighbors > 0
-    ? `${createHash("sha256").update(JSON.stringify(records)).digest("hex")}:${neighbors}`
+    ? `${createHash("sha256").update(JSON.stringify(records)).digest("hex")}:${neighbors}:${suppliedKnn}`
     : null;
 }
 
@@ -106,6 +177,25 @@ async function runNativeCompute(repoRoot: string, input: string) {
   if (!runtimeRoot) {
     throw new Error("Native Metal dev runtime is missing. Build the desktop compute runtime first.");
   }
+  const packagedBackend = join(dirname(dirname(runtimeRoot)), "MacOS", "burrete-compute-dev-backend");
+  const configuredBackend = process.env.BURRETE_DEV_COMPUTE_BACKEND?.trim();
+  const directBackend = [configuredBackend || null, packagedBackend]
+    .filter((candidate): candidate is string => Boolean(candidate))
+    .find((candidate) => existsSync(candidate));
+  if (directBackend) {
+    const output = await runWithStdin(
+      directBackend,
+      ["--runtime-root", runtimeRoot],
+      input,
+      repoRoot,
+      REQUEST_TIMEOUT_MS,
+    );
+    const payload = JSON.parse(output) as unknown;
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Native Metal dev backend returned an invalid response");
+    }
+    return payload;
+  }
   const manifestPath = join(repoRoot, "apps", "desktop", "src-tauri", "Cargo.toml");
   const output = await runWithStdin(
     process.env.CARGO?.trim() || "cargo",
@@ -122,6 +212,7 @@ async function runNativeCompute(repoRoot: string, input: string) {
     ],
     input,
     repoRoot,
+    REQUEST_TIMEOUT_MS,
   );
   const payload = JSON.parse(output) as unknown;
   if (!payload || typeof payload !== "object") {
@@ -130,15 +221,26 @@ async function runNativeCompute(repoRoot: string, input: string) {
   return payload;
 }
 
-function runWithStdin(command: string, args: string[], input: string, cwd: string): Promise<string> {
+function runWithStdin(
+  command: string,
+  args: string[],
+  input: string,
+  cwd: string,
+  timeoutMs: number,
+  environment: Record<string, string> = {},
+): Promise<string> {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(command, args, {
+      cwd,
+      env: { ...process.env, ...environment },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     const timeout = setTimeout(() => {
       child.kill();
       rejectPromise(new Error("Native Metal dev backend timed out"));
-    }, REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
     child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
     child.on("error", (error) => {

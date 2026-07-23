@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, watch } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +13,8 @@ const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
 const NATIVE_COMPUTE_REQUEST_LIMIT = 12 * 1024 * 1024;
 const NATIVE_COMPUTE_TIMEOUT_MS = 10 * 60 * 1000;
+const MODEL_REQUEST_LIMIT = 36 * 1024 * 1024;
+const MODEL_REQUEST_TIMEOUT_MS = 60 * 60 * 1000;
 const MAX_CHEMICAL_SPACE_KNN_CACHE_ENTRIES = 4;
 const chemicalSpaceKnnCache = new Map();
 const AMBER_NC_PREVIEW_FRAME_LIMIT = 100;
@@ -227,11 +230,58 @@ async function handleRequest(req, res) {
     await handleNativeCompute(req, res, method);
     return;
   }
+  if (url.pathname === '/__burette/chemical-space-representation') {
+    await handleChemicalSpaceRepresentation(req, res, method);
+    return;
+  }
   if (url.pathname.startsWith('/__burette/runtime/')) {
     await handleRuntimeAsset(res, method, url);
     return;
   }
   await handleStatic(res, method, url);
+}
+
+async function handleChemicalSpaceRepresentation(req, res, method) {
+  if (method !== 'POST') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  try {
+    const python = molecularRepresentationPython();
+    if (!python) {
+      throw new Error('Metal model runtime is not installed. Configure BURRETE_CHEMICAL_SPACE_MODEL_PYTHON.');
+    }
+    const body = await readJsonBody(req, MODEL_REQUEST_LIMIT);
+    const repoRoot = resolve(scriptDir, '..');
+    const script = resolve(repoRoot, 'compute', 'models', 'chemical_space_representations.py');
+    const modelRoot = resolve(homedir(), 'Library', 'Application Support', 'Burrete', 'chemical-space-models');
+    const payload = await runJsonWorker(
+      python,
+      [script],
+      JSON.stringify(body),
+      MODEL_REQUEST_TIMEOUT_MS,
+      {
+        HF_HOME: String(process.env.HF_HOME || '').trim() || resolve(modelRoot, 'huggingface'),
+        PYTORCH_ENABLE_MPS_FALLBACK: '0',
+        UNIMOL_WEIGHT_DIR: String(process.env.UNIMOL_WEIGHT_DIR || '').trim() || resolve(modelRoot, 'unimol'),
+      },
+    );
+    if (payload.ok !== true || !payload.result) {
+      throw new Error(typeof payload.error === 'string' ? payload.error : 'Metal model worker failed');
+    }
+    sendJson(res, 200, payload.result);
+  } catch (error) {
+    sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+function molecularRepresentationPython() {
+  const repoRoot = resolve(scriptDir, '..');
+  return [
+    String(process.env.BURRETE_CHEMICAL_SPACE_MODEL_PYTHON || '').trim(),
+    resolve(homedir(), 'Library', 'Application Support', 'Burrete', 'model-python', 'bin', 'python'),
+    resolve(repoRoot, '.venv-chemical-space', 'bin', 'python'),
+  ].filter(Boolean).find((candidate) => existsSync(candidate)) || null;
 }
 
 async function handleAgentSession(req, res, method, url) {
@@ -707,8 +757,11 @@ function chemicalSpaceCacheKey(body) {
   const options = payload.options && typeof payload.options === 'object' ? payload.options : {};
   const records = Array.isArray(payload.records) ? payload.records : [];
   const neighbors = Number(options.neighbors);
+  const suppliedKnn = payload.knnCache && typeof payload.knnCache === 'object'
+    ? createHash('sha256').update(JSON.stringify(payload.knnCache)).digest('hex')
+    : 'compute';
   return records.length > 0 && Number.isSafeInteger(neighbors) && neighbors > 0
-    ? `${createHash('sha256').update(JSON.stringify(records)).digest('hex')}:${neighbors}`
+    ? `${createHash('sha256').update(JSON.stringify(records)).digest('hex')}:${neighbors}:${suppliedKnn}`
     : null;
 }
 
@@ -737,9 +790,11 @@ function nativeComputeRuntime() {
   const runtimeRoot = runtimeRoots.find((candidate) => existsSync(resolve(candidate, 'current.json')));
   if (!runtimeRoot) return null;
   const executables = [
+    String(process.env.BURRETE_DEV_COMPUTE_BACKEND || '').trim(),
+    resolve(dirname(dirname(runtimeRoot)), 'MacOS', 'burrete-compute-dev-backend'),
     resolve(repoRoot, 'target', 'debug', 'burrete-compute-dev-backend'),
     resolve(repoRoot, 'target', 'release', 'burrete-compute-dev-backend'),
-  ];
+  ].filter(Boolean);
   const executable = executables.find((candidate) => existsSync(candidate));
   return executable ? { executable, runtimeRoot } : null;
 }
@@ -771,6 +826,42 @@ function runNativeCompute(runtime, input) {
         const payload = JSON.parse(stdout);
         if (!payload || typeof payload !== 'object') throw new Error('Native Metal dev backend returned an invalid response');
         resolvePromise(payload);
+      } catch (error) {
+        rejectPromise(error);
+      }
+    });
+    child.stdin.end(input);
+  });
+}
+
+function runJsonWorker(command, commandArgs, input, timeoutMs, environment = {}) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(command, commandArgs, {
+      env: { ...process.env, ...environment },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    const timeout = setTimeout(() => {
+      child.kill();
+      rejectPromise(new Error('Metal model worker timed out'));
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr.on('data', (chunk) => stderrChunks.push(Buffer.from(chunk)));
+    child.on('error', (error) => {
+      clearTimeout(timeout);
+      rejectPromise(error);
+    });
+    child.on('close', (code, signal) => {
+      clearTimeout(timeout);
+      const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim();
+      const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
+      if (code !== 0) {
+        rejectPromise(new Error(stderr || `Metal model worker exited with ${signal || code}`));
+        return;
+      }
+      try {
+        resolvePromise(JSON.parse(stdout));
       } catch (error) {
         rejectPromise(error);
       }
