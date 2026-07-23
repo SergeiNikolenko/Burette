@@ -7967,6 +7967,23 @@
     }
   }
 
+  function molstarStructureRefsOf(structures) {
+    return Array.from(structures || []).map(structure => structure?.cell?.transform?.ref).filter(Boolean);
+  }
+
+  function molstarStructuresByRefs(viewer, refs) {
+    const wanted = new Set((refs || []).filter(Boolean));
+    if (!wanted.size) return [];
+    return Array.from(molstarCurrentStructures(viewer))
+      .filter(structure => wanted.has(structure?.cell?.transform?.ref));
+  }
+
+  function molstarRefsStillLoaded(viewer, refs) {
+    const loaded = molstarStructureCellRefs(viewer);
+    const required = (refs || []).filter(Boolean);
+    return required.length > 0 && required.every(ref => loaded.has(ref));
+  }
+
   async function removeMolstarStructures(viewer, structures) {
     const list = Array.from(structures || []).filter(Boolean);
     if (!list.length) return;
@@ -7981,10 +7998,7 @@
 
   function xyzFrameOverlayStateStillLoaded(viewer, state) {
     if (!state || state.viewer !== viewer) return false;
-    const structures = Array.from(molstarCurrentStructures(viewer));
-    const background = Array.isArray(state.backgroundStructures) ? state.backgroundStructures : [];
-    if (!background.length) return false;
-    return background.every(structure => structures.includes(structure));
+    return molstarRefsStillLoaded(viewer, state.backgroundRefs);
   }
 
   function sdfCollectionStateKey(prepared, style, allMode, contextStyle, contextOpacity, contextColor) {
@@ -8008,11 +8022,8 @@
 
   function sdfCollectionVisibilityStateStillLoaded(viewer, state) {
     if (!state || state.viewer !== viewer) return false;
-    const structures = Array.from(molstarCurrentStructures(viewer));
-    const background = Array.isArray(state.backgroundStructures) ? state.backgroundStructures : [];
-    const active = Array.isArray(state.activeStructures) ? state.activeStructures : [];
-    const required = background.length ? background : active;
-    return required.length > 0 && required.every(structure => structures.includes(structure));
+    const background = Array.isArray(state.backgroundRefs) ? state.backgroundRefs : [];
+    return molstarRefsStillLoaded(viewer, background.length ? background : state.activeRefs);
   }
 
   function parseV2000SdfRecord(record) {
@@ -8213,8 +8224,8 @@
       state = {
         viewer,
         key: stateKey,
-        backgroundStructures,
-        activeStructures: [],
+        backgroundRefs: molstarStructureRefsOf(backgroundStructures),
+        activeRefs: [],
         activeIndex: -1
       };
       activeSdfCollectionVisibilityState = state;
@@ -8226,12 +8237,12 @@
       return;
     }
 
-    await removeMolstarStructures(viewer, state.activeStructures);
-    state.activeStructures = [];
+    await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.activeRefs));
+    state.activeRefs = [];
     const label = `${prepared.label || 'Molecule collection'} (${prepared.controlLabel || 'Molecule'} ${activeIndex + 1})`;
     const structures = await loadSdfCollectionPdbLayer(viewer, activeData, label);
     await applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored');
-    state.activeStructures = structures;
+    state.activeRefs = molstarStructureRefsOf(structures);
     state.activeIndex = activeIndex;
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
@@ -8266,12 +8277,11 @@
 
   function dockingPoseCollectionStateStillLoaded(viewer, state) {
     if (!state || state.viewer !== viewer) return false;
-    const structures = Array.from(molstarCurrentStructures(viewer));
-    const receptor = Array.isArray(state.receptorStructures) ? state.receptorStructures : [];
-    const background = Array.isArray(state.backgroundStructures) ? state.backgroundStructures : [];
-    const active = Array.isArray(state.activeStructures) ? state.activeStructures : [];
-    const required = [...receptor, ...background, ...active];
-    return required.length > 0 && required.every(structure => structures.includes(structure));
+    return molstarRefsStillLoaded(viewer, [
+      ...(state.receptorRefs || []),
+      ...(state.backgroundRefs || []),
+      ...(state.activeRefs || [])
+    ]);
   }
 
   async function applyDockingPoseCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
@@ -8315,9 +8325,9 @@
       state = {
         viewer,
         key: stateKey,
-        receptorStructures,
-        backgroundStructures,
-        activeStructures: [],
+        receptorRefs: molstarStructureRefsOf(receptorStructures),
+        backgroundRefs: molstarStructureRefsOf(backgroundStructures),
+        activeRefs: [],
         activeIndex: -1
       };
       activeDockingPoseCollectionState = state;
@@ -8329,13 +8339,13 @@
       return;
     }
 
-    await removeMolstarStructures(viewer, state.activeStructures);
-    state.activeStructures = [];
+    await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.activeRefs));
+    state.activeRefs = [];
     const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
     if (activeStructures.length) {
       await applySdfCollectionMolstarStyle(viewer, style, activeStructures, 1, 'colored');
     }
-    state.activeStructures = activeStructures;
+    state.activeRefs = molstarStructureRefsOf(activeStructures);
     state.activeIndex = activeIndex;
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     await applyMolstarWaterLineRepresentation(viewer);
@@ -8407,8 +8417,8 @@
         key: stateKey,
         rawSignature,
         frames,
-        backgroundStructures: contextStructures,
-        activeStructures: [],
+        backgroundRefs: molstarStructureRefsOf(contextStructures),
+        activeRefs: [],
         activeIndex: -1
       };
       activeXyzFrameOverlayState = state;
@@ -8419,18 +8429,18 @@
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       return;
     }
-    await removeMolstarStructures(viewer, state.activeStructures);
-    state.activeStructures = [];
+    await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.activeRefs));
+    state.activeRefs = [];
     const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
     if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
-    const structuresBeforeActive = new Set(molstarCurrentStructures(viewer));
+    const refsBeforeActive = molstarStructureCellRefs(viewer);
     const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
     const scopedActiveStructures = activeStructures.length
       ? activeStructures
-      : Array.from(molstarCurrentStructures(viewer)).filter(structure => !structuresBeforeActive.has(structure));
+      : Array.from(molstarCurrentStructures(viewer)).filter(structure => !refsBeforeActive.has(structure?.cell?.transform?.ref));
     if (!scopedActiveStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
     await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, scopedActiveStructures, 1, 'colored');
-    state.activeStructures = scopedActiveStructures;
+    state.activeRefs = molstarStructureRefsOf(scopedActiveStructures);
     state.activeIndex = activeIndex;
     if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
@@ -8700,11 +8710,12 @@
 
   async function loadSdfCollectionPdbLayer(viewer, data, label) {
     const plugin = viewer?.plugin;
+    const before = molstarStructureCellRefs(viewer);
     const raw = await plugin.builders.data.rawData({ data, label });
     const trajectory = await plugin.builders.structure.parseTrajectory(raw, 'pdb');
-    const preset = await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
-    const structure = preset?.structureProperties || preset?.structure || null;
-    return structure ? [structure] : [];
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
+    return Array.from(molstarCurrentStructures(viewer))
+      .filter(structure => !before.has(structure?.cell?.transform?.ref));
   }
 
   async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray') {

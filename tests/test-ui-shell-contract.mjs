@@ -5594,9 +5594,11 @@ for (const runtimeSource of [previewViewer]) {
   assert.match(runtimeSource, /if \(!state \|\| state\.key !== stateKey \|\| !xyzFrameOverlayStateStillLoaded\(viewer, state\)\) \{/);
   assert.match(runtimeSource, /const backgroundOpacity = xyzFrameBackgroundLayerOpacity\(contextOpacity, contextStructures\.length\)/);
   assert.match(runtimeSource, /await applyXyzFrameMolstarStyle\(viewer, resolvedContextStyle, contextStructures, backgroundOpacity, contextColor, XYZ_FRAME_BACKGROUND_MIN_ALPHA\)/);
-  assert.match(runtimeSource, /await removeMolstarStructures\(viewer, state\.activeStructures\)/);
+  assert.match(runtimeSource, /await removeMolstarStructures\(viewer, molstarStructuresByRefs\(viewer, state\.activeRefs\)\)/);
   assert.match(runtimeSource, /await applyXyzFrameMolstarStyle\(viewer, resolvedContextStyle, scopedActiveStructures, 1, 'colored'\)/);
-  assert.match(runtimeSource, /state\.activeStructures = scopedActiveStructures;\s*state\.activeIndex = activeIndex;/);
+  assert.match(runtimeSource, /state\.activeRefs = molstarStructureRefsOf\(scopedActiveStructures\);\s*state\.activeIndex = activeIndex;/);
+  assert.match(runtimeSource, /function molstarRefsStillLoaded\(viewer, refs\)/);
+  assert.match(runtimeSource, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default', \{ representationPreset: 'empty' \}\);\s*return Array\.from\(molstarCurrentStructures\(viewer\)\)/);
 }
 assert.match(previewViewer, /const label = prepared\?\.controlLabel \|\| \(activeConfig\?\.sdfPosePager === true \? 'Pose' : 'Model'\)/);
 assert.match(previewViewer, /installDockingPoseControls\(viewer, trajectoryControlsForPrepared\(prepared\)\)/);
