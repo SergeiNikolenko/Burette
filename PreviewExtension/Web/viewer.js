@@ -37,6 +37,7 @@
   const MOLSTAR_STYLE_OPTIONS = [
     { value: 'default', label: 'Default' },
     { value: 'illustrative', label: 'Illustrative' },
+    { value: 'illustrative-surface', label: 'Illustrative+Surface' },
     { value: 'polymer-ligand', label: 'Polymer+Ligand' },
     { value: 'cartoon', label: 'Cartoon' },
     { value: 'ball-and-stick', label: 'Ball+Stick' },
@@ -8500,6 +8501,26 @@
     );
   }
 
+  // Adds a translucent grey envelope on top of the representations the default
+  // preset already built, so the illustrative cartoon stays visible through it.
+  // Style switches clear and reload the plugin, so this never stacks surfaces.
+  async function addMolstarGhostSurfaceRepresentation(viewer) {
+    const plugin = viewer?.plugin;
+    if (!plugin) return;
+    const representation = {
+      type: 'molecular-surface',
+      typeParams: { alpha: 0.24, transparentBackfaces: 'on' },
+      color: 'uniform',
+      colorParams: { value: 0x9aa3ad }
+    };
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const polymer = await tryCreateMolstarComponent(plugin, structure, 'polymer');
+      if (await addMolstarRepresentation(plugin, polymer, representation)) continue;
+      const all = await tryCreateMolstarComponent(plugin, structure, 'all');
+      await addMolstarRepresentation(plugin, all, representation);
+    }
+  }
+
   function resetMolstarPostprocessing(viewer) {
     const canvas = viewer?.plugin?.canvas3d;
     if (!canvas) return;
@@ -8570,7 +8591,7 @@
     if (!plugin) return;
     const normalized = normalizeMolstarStyle(style);
 
-    if (normalized !== 'illustrative') {
+    if (normalized !== 'illustrative' && normalized !== 'illustrative-surface') {
       await applyMolstarNonIllustrativePostprocessing(viewer);
     }
 
@@ -8608,6 +8629,11 @@
     }
     if (normalized === 'illustrative') {
       await applyMolstarIllustrativePostprocessing(viewer);
+      return;
+    }
+    if (normalized === 'illustrative-surface') {
+      await applyMolstarIllustrativePostprocessing(viewer);
+      await addMolstarGhostSurfaceRepresentation(viewer);
       return;
     }
     if (normalized === 'cartoon' || normalized === 'polymer-ligand') {
