@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, watch } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
@@ -11,6 +12,8 @@ const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
 const NATIVE_COMPUTE_REQUEST_LIMIT = 12 * 1024 * 1024;
 const NATIVE_COMPUTE_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_CHEMICAL_SPACE_KNN_CACHE_ENTRIES = 4;
+const chemicalSpaceKnnCache = new Map();
 const AMBER_NC_PREVIEW_FRAME_LIMIT = 100;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const STRUCTURE_EXTENSIONS = new Set([
@@ -673,14 +676,55 @@ async function handleNativeCompute(req, res, method) {
   try {
     if (!runtime) throw new Error('Native Metal dev runtime is unavailable in this Browser shell.');
     const body = await readJsonBody(req, NATIVE_COMPUTE_REQUEST_LIMIT);
-    const input = JSON.stringify(body);
-    if (Buffer.byteLength(input, 'utf8') > NATIVE_COMPUTE_REQUEST_LIMIT) {
+    const originalInput = JSON.stringify(body);
+    if (Buffer.byteLength(originalInput, 'utf8') > NATIVE_COMPUTE_REQUEST_LIMIT) {
       throw new Error('Native compute request exceeds 12 MiB');
     }
-    sendJson(res, 200, await runNativeCompute(runtime, input));
+    const cacheKey = chemicalSpaceCacheKey(body);
+    if (cacheKey) {
+      const cached = chemicalSpaceKnnCache.get(cacheKey);
+      if (cached) {
+        chemicalSpaceKnnCache.delete(cacheKey);
+        chemicalSpaceKnnCache.set(cacheKey, cached);
+        chemicalSpacePayload(body).knnCache = cached;
+      }
+    }
+    const response = await runNativeCompute(runtime, JSON.stringify(body));
+    sendJson(res, 200, cacheChemicalSpaceKnn(response, cacheKey));
   } catch (error) {
     sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
   }
+}
+
+function chemicalSpacePayload(body) {
+  const chemicalSpace = body && typeof body === 'object' ? body.chemicalSpace : null;
+  return chemicalSpace && typeof chemicalSpace === 'object' ? chemicalSpace : {};
+}
+
+function chemicalSpaceCacheKey(body) {
+  if (!body || typeof body !== 'object' || body.operation !== 'chemicalSpace') return null;
+  const payload = chemicalSpacePayload(body);
+  const options = payload.options && typeof payload.options === 'object' ? payload.options : {};
+  const records = Array.isArray(payload.records) ? payload.records : [];
+  const neighbors = Number(options.neighbors);
+  return records.length > 0 && Number.isSafeInteger(neighbors) && neighbors > 0
+    ? `${createHash('sha256').update(JSON.stringify(records)).digest('hex')}:${neighbors}`
+    : null;
+}
+
+function cacheChemicalSpaceKnn(response, cacheKey) {
+  if (!cacheKey || !response || typeof response !== 'object') return response;
+  const result = response.result;
+  if (!result || typeof result !== 'object' || result.embedding === undefined || result.knnCache === undefined) {
+    return response;
+  }
+  chemicalSpaceKnnCache.set(cacheKey, result.knnCache);
+  while (chemicalSpaceKnnCache.size > MAX_CHEMICAL_SPACE_KNN_CACHE_ENTRIES) {
+    const oldestKey = chemicalSpaceKnnCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    chemicalSpaceKnnCache.delete(oldestKey);
+  }
+  return { ...response, result: result.embedding };
 }
 
 function nativeComputeRuntime() {

@@ -11,7 +11,7 @@ use std::{
 use burrete_compute_core::{
     build_tanimoto_graph, ConformerEnginePackArrays, NativeMmffParameters, SymmetricCsr,
 };
-use burrete_compute_metal::{MetalRuntimeError, MetalTanimotoRuntime};
+use burrete_compute_metal::{MetalRuntimeError, MetalTanimotoKnnExecution, MetalTanimotoRuntime};
 use burrete_compute_protocol::{
     Backend, BackendPolicy, CapabilityEntry, CapabilityLimits, CapabilityMaturity,
     CapabilityReason, CapabilityReasonCode, CapabilityReportSchemaVersion, ClusterV1SubmitRequest,
@@ -114,6 +114,7 @@ struct ReadyCoordinator {
     fingerprint_sessions: Mutex<BTreeMap<Uuid, FingerprintSession>>,
     conformer_submissions: Mutex<BTreeMap<Uuid, PendingConformerSubmission>>,
     prepared_clusters: Mutex<BTreeMap<Uuid, CompletedFingerprintBatch>>,
+    chemical_space_knn: Mutex<BTreeMap<(Uuid, usize), MetalTanimotoKnnExecution>>,
     prepared_conformers: Mutex<BTreeMap<Uuid, PreparedConformerBatch>>,
     computed_conformers: Mutex<BTreeMap<Uuid, ComputedConformerBatch>>,
     computed_clusters: Mutex<BTreeMap<Uuid, ClusterComputation>>,
@@ -229,7 +230,23 @@ impl ComputeCoordinator {
                 "prepared chemical space does not belong to this Grid window".into(),
             ));
         }
-        execute_chemical_space(batch, &ready.native_metal, request)
+        let cache_key = (job_id, request.requested_neighbors());
+        let cached_knn = ready
+            .chemical_space_knn
+            .lock()
+            .map_err(|_| poisoned("chemical-space neighbor cache"))?
+            .get(&cache_key)
+            .cloned();
+        let execution =
+            execute_chemical_space(batch, &ready.native_metal, request, cached_knn.as_ref())?;
+        if cached_knn.is_none() {
+            ready
+                .chemical_space_knn
+                .lock()
+                .map_err(|_| poisoned("chemical-space neighbor cache"))?
+                .insert(cache_key, execution.knn.clone());
+        }
+        Ok(execution.result)
     }
 
     pub(crate) fn evaluate_grid_semiempirical(
@@ -988,6 +1005,7 @@ impl ComputeCoordinator {
                                 fingerprint_sessions: Mutex::new(BTreeMap::new()),
                                 conformer_submissions: Mutex::new(BTreeMap::new()),
                                 prepared_clusters: Mutex::new(BTreeMap::new()),
+                                chemical_space_knn: Mutex::new(BTreeMap::new()),
                                 prepared_conformers: Mutex::new(BTreeMap::new()),
                                 computed_conformers: Mutex::new(BTreeMap::new()),
                                 computed_clusters: Mutex::new(BTreeMap::new()),
@@ -3188,6 +3206,11 @@ fn discard_cancelled_job_state(ready: &ReadyCoordinator, job_id: Uuid) -> Comput
         .lock()
         .map_err(|_| poisoned("prepared cluster registry"))?
         .remove(&job_id);
+    ready
+        .chemical_space_knn
+        .lock()
+        .map_err(|_| poisoned("chemical-space neighbor cache"))?
+        .retain(|(cached_job_id, _), _| *cached_job_id != job_id);
     ready
         .prepared_conformers
         .lock()

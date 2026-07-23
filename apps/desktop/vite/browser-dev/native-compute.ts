@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import type { ViteDevServer } from "vite";
@@ -8,6 +9,8 @@ import { readJsonBody, sendJson, sendJsonError } from "./http";
 
 const REQUEST_LIMIT_BYTES = 12 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_CHEMICAL_SPACE_KNN_CACHE_ENTRIES = 8;
+const chemicalSpaceKnnCache = new Map<string, unknown>();
 
 export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repoRoot: string) {
   server.middlewares.use("/__burette/native-compute", async (req, res) => {
@@ -28,15 +31,64 @@ export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repo
     }
     try {
       const body = await readJsonBody(req);
-      const input = JSON.stringify(body);
-      if (Buffer.byteLength(input, "utf8") > REQUEST_LIMIT_BYTES) {
+      const originalInput = JSON.stringify(body);
+      if (Buffer.byteLength(originalInput, "utf8") > REQUEST_LIMIT_BYTES) {
         throw new Error("Native compute request exceeds 12 MiB");
       }
-      sendJson(res, 200, await runNativeCompute(repoRoot, input), "no-cache");
+      const cacheKey = chemicalSpaceCacheKey(body);
+      if (cacheKey) {
+        const cached = chemicalSpaceKnnCache.get(cacheKey);
+        if (cached) {
+          chemicalSpaceKnnCache.delete(cacheKey);
+          chemicalSpaceKnnCache.set(cacheKey, cached);
+          chemicalSpacePayload(body).knnCache = cached;
+        }
+      }
+      const input = JSON.stringify(body);
+      const response = await runNativeCompute(repoRoot, input);
+      sendJson(res, 200, cacheChemicalSpaceKnn(response, cacheKey), "no-cache");
     } catch (error) {
       sendJsonError(res, 500, error);
     }
   });
+}
+
+function chemicalSpacePayload(body: unknown): Record<string, unknown> {
+  if (!body || typeof body !== "object") return {};
+  const chemicalSpace = (body as { chemicalSpace?: unknown }).chemicalSpace;
+  return chemicalSpace && typeof chemicalSpace === "object"
+    ? chemicalSpace as Record<string, unknown>
+    : {};
+}
+
+function chemicalSpaceCacheKey(body: unknown) {
+  if (!body || typeof body !== "object" || (body as { operation?: unknown }).operation !== "chemicalSpace") {
+    return null;
+  }
+  const payload = chemicalSpacePayload(body);
+  const options = payload.options && typeof payload.options === "object"
+    ? payload.options as Record<string, unknown>
+    : {};
+  const records = Array.isArray(payload.records) ? payload.records : [];
+  const neighbors = Number(options.neighbors);
+  return records.length > 0 && Number.isSafeInteger(neighbors) && neighbors > 0
+    ? `${createHash("sha256").update(JSON.stringify(records)).digest("hex")}:${neighbors}`
+    : null;
+}
+
+function cacheChemicalSpaceKnn(response: unknown, cacheKey: string | null) {
+  if (!cacheKey || !response || typeof response !== "object") return response;
+  const envelope = response as { result?: unknown };
+  if (!envelope.result || typeof envelope.result !== "object") return response;
+  const result = envelope.result as { embedding?: unknown; knnCache?: unknown };
+  if (result.embedding === undefined || result.knnCache === undefined) return response;
+  chemicalSpaceKnnCache.set(cacheKey, result.knnCache);
+  while (chemicalSpaceKnnCache.size > MAX_CHEMICAL_SPACE_KNN_CACHE_ENTRIES) {
+    const oldestKey = chemicalSpaceKnnCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    chemicalSpaceKnnCache.delete(oldestKey);
+  }
+  return { ...envelope, result: result.embedding };
 }
 
 function nativeComputeRuntimeRoot(repoRoot: string) {

@@ -4,7 +4,7 @@ use burrete_compute_core::{
     build_tanimoto_umap_graph, ChemicalSpaceMethod as NativeChemicalSpaceMethod, Fingerprint2048,
     TanimotoKnnOptions, UmapOptions,
 };
-use burrete_compute_metal::MetalTanimotoRuntime;
+use burrete_compute_metal::{MetalTanimotoKnnExecution, MetalTanimotoRuntime};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -77,11 +77,24 @@ pub(crate) struct ChemicalSpaceResult {
     pub(crate) host_time_ms: f64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ChemicalSpaceExecution {
+    pub(crate) result: ChemicalSpaceResult,
+    pub(crate) knn: MetalTanimotoKnnExecution,
+}
+
+impl ChemicalSpaceRequest {
+    pub(crate) const fn requested_neighbors(&self) -> usize {
+        self.neighbors
+    }
+}
+
 pub(crate) fn execute_chemical_space(
     batch: &CompletedFingerprintBatch,
     native_metal: &NativeMetalState,
     request: ChemicalSpaceRequest,
-) -> ComputeResult<ChemicalSpaceResult> {
+    cached_knn: Option<&MetalTanimotoKnnExecution>,
+) -> ComputeResult<ChemicalSpaceExecution> {
     let (fingerprints, valid_ordinals) = valid_fingerprints(batch)?;
     let runtime = match native_metal {
         NativeMetalState::Available(runtime) => runtime,
@@ -106,22 +119,24 @@ pub(crate) fn execute_chemical_space(
                 })
         })
         .collect::<ComputeResult<Vec<_>>>()?;
-    execute_chemical_space_from_fingerprints(
+    execute_chemical_space_from_fingerprints_with_knn(
         &fingerprints,
         &source_record_ids,
         batch.errors.iter().filter(|error| error.is_some()).count(),
         runtime,
         request,
+        cached_knn,
     )
 }
 
-pub(crate) fn execute_chemical_space_from_fingerprints(
+pub(crate) fn execute_chemical_space_from_fingerprints_with_knn(
     fingerprints: &[Fingerprint2048],
     source_record_ids: &[u64],
     failed_records: usize,
     runtime: &MetalTanimotoRuntime,
     request: ChemicalSpaceRequest,
-) -> ComputeResult<ChemicalSpaceResult> {
+    cached_knn: Option<&MetalTanimotoKnnExecution>,
+) -> ComputeResult<ChemicalSpaceExecution> {
     let started = Instant::now();
     if fingerprints.len() < 2 {
         return Err(ComputeCoordinatorError::Validation(
@@ -154,9 +169,22 @@ pub(crate) fn execute_chemical_space_from_fingerprints(
         request.random_seed,
     )
     .map_err(|error| ComputeCoordinatorError::Validation(error.to_string()))?;
-    let knn = runtime
-        .build_tanimoto_knn_profiled(fingerprints, knn_options)
-        .map_err(metal_error)?;
+    let reused_knn = cached_knn
+        .filter(|knn| {
+            knn.neighbors_per_vertex == neighbors
+                && knn.source_indices.len() == fingerprints.len() * neighbors
+                && knn.similarities.len() == fingerprints.len() * neighbors
+        })
+        .cloned();
+    let (knn, tanimoto_gpu_time_ms) = if let Some(knn) = reused_knn {
+        (knn, 0)
+    } else {
+        let knn = runtime
+            .build_tanimoto_knn_profiled(fingerprints, knn_options)
+            .map_err(metal_error)?;
+        let gpu_time_ms = knn.gpu_time_ms;
+        (knn, gpu_time_ms)
+    };
     let graph = build_tanimoto_umap_graph(
         fingerprints.len(),
         neighbor_count,
@@ -178,18 +206,21 @@ pub(crate) fn execute_chemical_space_from_fingerprints(
         .into_iter()
         .map(|position| [position[0], position[1], position[2]])
         .collect();
-    Ok(ChemicalSpaceResult {
-        source_record_ids: source_record_ids.to_vec(),
-        positions,
-        dimensions: embedding.component_count,
-        method: request.method,
-        neighbors,
-        successful_records: fingerprints.len(),
-        failed_records,
-        backend: "nativeMetal",
-        tanimoto_gpu_time_ms: knn.gpu_time_ms,
-        embedding_gpu_time_ms: embedding.gpu_time_ms,
-        host_time_ms: started.elapsed().as_secs_f64() * 1_000.0,
+    Ok(ChemicalSpaceExecution {
+        result: ChemicalSpaceResult {
+            source_record_ids: source_record_ids.to_vec(),
+            positions,
+            dimensions: embedding.component_count,
+            method: request.method,
+            neighbors,
+            successful_records: fingerprints.len(),
+            failed_records,
+            backend: "nativeMetal",
+            tanimoto_gpu_time_ms,
+            embedding_gpu_time_ms: embedding.gpu_time_ms,
+            host_time_ms: started.elapsed().as_secs_f64() * 1_000.0,
+        },
+        knn,
     })
 }
 

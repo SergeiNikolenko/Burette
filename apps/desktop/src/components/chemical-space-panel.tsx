@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -366,10 +367,28 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
               {Math.round(pointScale * 100)}%
             </span>
           </Field>
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-            {!displayedResult && progress ? <Spinner className="size-3.5" /> : null}
-            {displayedResult ? `${displayedResult.successfulRecords.toLocaleString()} molecules · Metal` : runningLabel}
-          </span>
+          {displayedResult ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge
+                  className="ml-auto"
+                  variant="outline"
+                  aria-label={`${displayedResult.successfulRecords.toLocaleString()} molecules, Metal. Tanimoto graph ${displayedResult.tanimotoGpuTimeMs === 0 ? "cached" : `${displayedResult.tanimotoGpuTimeMs} milliseconds`}. Embedding ${displayedResult.embeddingGpuTimeMs} milliseconds.`}
+                >
+                  {displayedResult.successfulRecords.toLocaleString()} molecules · Metal
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent showArrow={false}>
+                Tanimoto graph: {displayedResult.tanimotoGpuTimeMs === 0 ? "cached" : `${displayedResult.tanimotoGpuTimeMs} ms`}
+                {" · "}embedding: {displayedResult.embeddingGpuTimeMs} ms
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Badge className="ml-auto" variant="outline">
+              {progress ? <Spinner data-icon="inline-start" /> : null}
+              {runningLabel}
+            </Badge>
+          )}
         </div>
 
         <div className="relative min-h-0 flex-1">
@@ -610,6 +629,8 @@ function ChemicalSpace2D({
     const selectedColor = styles.getPropertyValue("--primary").trim() || "#af52de";
     const pointColor = styles.color || "#f5f5f7";
     const ringColor = pointColor;
+    const basePointRadius = adaptivePointRadius(result.successfulRecords);
+    const basePointOpacity = adaptivePointOpacity(result.successfulRecords);
     for (const point of [...projected].sort((left, right) => left.depth - right.depth)) {
       const active = selected.has(point.sourceRecordId);
       const hot = hovered === point.sourceRecordId;
@@ -617,12 +638,12 @@ function ChemicalSpace2D({
       context.arc(
         point.x,
         point.y,
-        (hot ? 5.5 : active ? 4.5 : 2.6) * pointScale,
+        (hot ? 5.5 : active ? 4.5 : basePointRadius) * pointScale,
         0,
         Math.PI * 2,
       );
       context.fillStyle = active || hot ? selectedColor : pointColor;
-      context.globalAlpha = active || hot ? 1 : 0.78;
+      context.globalAlpha = active || hot ? 1 : basePointOpacity;
       context.fill();
       if (hot) {
         context.lineWidth = 1.5;
@@ -865,8 +886,17 @@ function normalizePositions(positions: Array<[number, number, number]>) {
   if (!positions.length) return [];
   const center = [0, 1, 2].map((axis) => positions.reduce((sum, position) => sum + position[axis], 0) / positions.length);
   const centered = positions.map((position) => [position[0] - center[0], position[1] - center[1], position[2] - center[2]] as [number, number, number]);
-  const radius = Math.max(1e-6, ...centered.map((position) => Math.hypot(...position)));
+  const radii = centered.map((position) => Math.hypot(...position)).sort((left, right) => left - right);
+  const radius = Math.max(1e-6, radii[Math.min(radii.length - 1, Math.floor(radii.length * 0.98))]);
   return centered.map((position) => position.map((value) => value / radius) as [number, number, number]);
+}
+
+function adaptivePointRadius(recordCount: number) {
+  return Math.max(1.1, Math.min(2.6, 2.6 * Math.sqrt(1_000 / Math.max(1_000, recordCount))));
+}
+
+function adaptivePointOpacity(recordCount: number) {
+  return Math.max(0.5, Math.min(0.78, 0.78 * Math.sqrt(2_500 / Math.max(2_500, recordCount))));
 }
 
 function projectPositions(

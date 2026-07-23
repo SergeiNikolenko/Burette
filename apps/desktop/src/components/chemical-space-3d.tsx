@@ -97,16 +97,19 @@ export function ChemicalSpace3D({
 
     const primaryColor = semanticColor(host, "text-primary", "#af52de");
     const foregroundColor = semanticColor(host, "text-foreground", "#f5f5f7");
+    const pointColor = semanticColor(host, "text-foreground", "#f5f5f7");
     const pointTexture = circleTexture();
+    const densityScale = adaptivePointScale(sourceRecordIds.length);
+    const pointOpacity = adaptivePointOpacity(sourceRecordIds.length);
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions.flat(), 3));
     const points = new THREE.Points(geometry, new THREE.PointsMaterial({
-      color: foregroundColor,
+      color: pointColor,
       map: pointTexture,
       alphaTest: 0.15,
-      opacity: 0.82,
-      size: BASE_POINT_SIZE * pointScale,
+      opacity: pointOpacity,
+      size: BASE_POINT_SIZE * pointScale * densityScale,
       sizeAttenuation: true,
       transparent: true,
     }));
@@ -182,7 +185,7 @@ export function ChemicalSpace3D({
       projectPoints();
     };
     const updatePointScale = (nextPointScale: number) => {
-      points.material.size = BASE_POINT_SIZE * nextPointScale;
+      points.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
       selectedPoints.material.size = BASE_SELECTED_POINT_SIZE * nextPointScale;
       hoveredPoints.material.size = BASE_HOVERED_POINT_SIZE * nextPointScale;
       render();
@@ -407,6 +410,14 @@ function overlayPoints(color: THREE.Color, texture: THREE.Texture, size: number)
       transparent: true,
     }),
   );
+}
+
+function adaptivePointScale(recordCount: number) {
+  return Math.max(0.45, Math.min(1, Math.sqrt(1_000 / Math.max(1_000, recordCount))));
+}
+
+function adaptivePointOpacity(recordCount: number) {
+  return Math.max(0.48, Math.min(0.82, 0.82 * Math.sqrt(2_500 / Math.max(2_500, recordCount))));
 }
 
 function disposeMaterial(material: THREE.Material | THREE.Material[]) {

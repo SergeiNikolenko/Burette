@@ -49,6 +49,8 @@ assert.match(workflow, /fingerprintBrowserChemicalSpaceRecords/);
 assert.match(workflow, /invoke<ChemicalSpaceResult>\("compute_execute_chemical_space"/);
 assert.match(chemicalSpace, /build_tanimoto_knn_profiled/);
 assert.match(chemicalSpace, /optimize_embedding_profiled/);
+assert.match(chemicalSpace, /cached_knn/);
+assert.match(chemicalSpace, /let \(knn, tanimoto_gpu_time_ms\) = if let Some\(knn\) = reused_knn/);
 for (const method of ["Umap", "Tsne", "Pacmap", "Localmap", "Trimap", "Dreams", "Cne", "Mmae"]) {
   assert.match(chemicalSpace, new RegExp(`ChemicalSpaceMethod::${method}`));
 }
@@ -76,12 +78,18 @@ assert.match(chemicalSpacePanel, /interpolateStudyResult/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/empty"/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/progress"/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/spinner"/);
+assert.match(chemicalSpacePanel, /from "@\/components\/ui\/badge"/);
 assert.match(chemicalSpacePanel, /data\.body\.type === "gridDirtyChanged"/);
+assert.match(chemicalSpacePanel, /radii\.length \* 0\.98/);
+assert.match(chemicalSpacePanel, /adaptivePointRadius/);
+assert.match(chemicalSpace3d, /adaptivePointScale/);
 assert.match(browserDevCompute, /runBrowserDevChemicalSpaceStudy/);
 assert.match(browserDevCompute, /browserFingerprintCache\.get\(key\)/);
 assert.match(browserDevCompute, /moleculeContentSha256/);
 assert.match(browserDevRoute, /"chemicalSpace"/);
+assert.match(browserDevRoute, /chemicalSpaceKnnCache/);
 assert.match(agentShellServer, /'chemicalSpace'/);
+assert.match(agentShellServer, /chemicalSpaceKnnCache/);
 assert.match(devComputeBackend, /DevComputeOperation::ChemicalSpace/);
 assert.match(devComputeBackend, /execute_chemical_space_from_fingerprints/);
 
