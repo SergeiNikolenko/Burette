@@ -2056,6 +2056,15 @@
       void handleWorkspaceHistoryCommand(body, event.source);
       return;
     }
+    // Applied in place so a theme change never costs a viewer rebuild: the runtime
+    // already carries the token sets for both themes.
+    if (body.type === 'setViewerTheme') {
+      const nextTheme = normalizeViewerTheme(body.value);
+      if (activeConfig) activeConfig.theme = nextTheme;
+      if (window.BurreteConfig) window.BurreteConfig.theme = nextTheme;
+      setViewerTheme(nextTheme, activeViewer);
+      return;
+    }
     if (body.type === 'setXyzrenderControls') {
       const config = activeConfig || window.BurreteConfig || {};
       const documentId = String(config.documentId || '');
