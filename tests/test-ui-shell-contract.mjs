@@ -6346,6 +6346,15 @@ assert.doesNotMatch(app, /void openDocuments\(\[path\]\)\.then/);
 assert.match(appPreferenceEffectsHook, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
 assert.match(appPreferenceEffectsHook, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
 assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\]\)\.then/);
+// A theme change must reach mounted viewers as a message instead of reopening the
+// document, otherwise the live Mol* scene (camera, components, selections) is lost.
+assert.match(appPreferenceEffectsHook, /const LIVE_APPLIED_PREFERENCE_KEYS = \["theme"\] as const/);
+assert.match(appPreferenceEffectsHook, /function onlyLiveAppliedPreferencesChanged\(previous: ViewerPreferences, next: ViewerPreferences\)/);
+assert.match(appPreferenceEffectsHook, /querySelectorAll<HTMLIFrameElement>\("iframe\[data-document-id\]"\)/);
+assert.match(appPreferenceEffectsHook, /body: \{ type: "setViewerTheme", value: theme \}/);
+assert.match(appPreferenceEffectsHook, /if \(onlyLiveAppliedPreferencesChanged\(previousPreferences, preferences\)\) \{\s*broadcastViewerTheme\(preferences\.theme\);\s*return;\s*\}/s);
+assert.match(previewViewer, /if \(body\.type === 'setViewerTheme'\) \{\s*const nextTheme = normalizeViewerTheme\(body\.value\);/s);
+assert.match(previewViewer, /setViewerTheme\(nextTheme, activeViewer\);/);
 assert.match(appMaintenanceHook, /Quick Look reset completed/);
 assert.match(appMaintenanceHook, /Quick Look reset reported issues/);
 assert.doesNotMatch(app, /Quick Look reset requested/);

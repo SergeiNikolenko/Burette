@@ -37,6 +37,7 @@
   const MOLSTAR_STYLE_OPTIONS = [
     { value: 'default', label: 'Default' },
     { value: 'illustrative', label: 'Illustrative' },
+    { value: 'illustrative-surface', label: 'Illustrative+Surface' },
     { value: 'polymer-ligand', label: 'Polymer+Ligand' },
     { value: 'cartoon', label: 'Cartoon' },
     { value: 'ball-and-stick', label: 'Ball+Stick' },
@@ -2053,6 +2054,15 @@
     if (!body) return;
     if (body.type === 'workspaceHistoryCommand') {
       void handleWorkspaceHistoryCommand(body, event.source);
+      return;
+    }
+    // Applied in place so a theme change never costs a viewer rebuild: the runtime
+    // already carries the token sets for both themes.
+    if (body.type === 'setViewerTheme') {
+      const nextTheme = normalizeViewerTheme(body.value);
+      if (activeConfig) activeConfig.theme = nextTheme;
+      if (window.BurreteConfig) window.BurreteConfig.theme = nextTheme;
+      setViewerTheme(nextTheme, activeViewer);
       return;
     }
     if (body.type === 'setXyzrenderControls') {
@@ -8500,6 +8510,35 @@
     );
   }
 
+  // Adds a translucent grey envelope on top of the representations the default
+  // preset already built, so the illustrative cartoon stays visible through it.
+  // Style switches clear and reload the plugin, so this never stacks surfaces.
+  async function addMolstarGhostSurfaceRepresentation(viewer) {
+    const plugin = viewer?.plugin;
+    if (!plugin) return;
+    // Cel shading banks the envelope into flat tones, and the caller switches the
+    // outline pass onto transparent geometry, so it reads as a drawn shell with
+    // edges rather than as a featureless grey wash.
+    const representation = {
+      type: 'molecular-surface',
+      typeParams: {
+        alpha: 0.12,
+        transparentBackfaces: 'on',
+        ignoreLight: false,
+        celShaded: true,
+        material: { roughness: 0.2, metalness: 0 }
+      },
+      color: 'uniform',
+      colorParams: { value: 0xc8d0d8 }
+    };
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const polymer = await tryCreateMolstarComponent(plugin, structure, 'polymer');
+      if (await addMolstarRepresentation(plugin, polymer, representation)) continue;
+      const all = await tryCreateMolstarComponent(plugin, structure, 'all');
+      await addMolstarRepresentation(plugin, all, representation);
+    }
+  }
+
   function resetMolstarPostprocessing(viewer) {
     const canvas = viewer?.plugin?.canvas3d;
     if (!canvas) return;
@@ -8522,7 +8561,10 @@
     resetMolstarPostprocessing(viewer);
   }
 
-  async function applyMolstarIllustrativePostprocessing(viewer) {
+  // `includeTransparent` is always written out: the outline otherwise skips
+  // translucent geometry, and leaving the previous value in place would leak the
+  // surface preset's outlining into the plain illustrative style.
+  async function applyMolstarIllustrativePostprocessing(viewer, options = {}) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
     await plugin.managers.structure.component.setOptions({
@@ -8535,14 +8577,16 @@
       postprocessing: {
         outline: {
           name: 'on',
-          params: postprocessing.outline.name === 'on'
-            ? postprocessing.outline.params
-            : {
-                scale: 1,
-                color: 0x000000,
-                threshold: 0.33,
-                includeTransparent: false
-              }
+          params: {
+            ...(postprocessing.outline.name === 'on'
+              ? postprocessing.outline.params
+              : {
+                  scale: 1,
+                  color: 0x000000,
+                  threshold: 0.33
+                }),
+            includeTransparent: options.includeTransparent === true
+          }
         },
         occlusion: {
           name: 'on',
@@ -8570,7 +8614,7 @@
     if (!plugin) return;
     const normalized = normalizeMolstarStyle(style);
 
-    if (normalized !== 'illustrative') {
+    if (normalized !== 'illustrative' && normalized !== 'illustrative-surface') {
       await applyMolstarNonIllustrativePostprocessing(viewer);
     }
 
@@ -8608,6 +8652,11 @@
     }
     if (normalized === 'illustrative') {
       await applyMolstarIllustrativePostprocessing(viewer);
+      return;
+    }
+    if (normalized === 'illustrative-surface') {
+      await applyMolstarIllustrativePostprocessing(viewer, { includeTransparent: true });
+      await addMolstarGhostSurfaceRepresentation(viewer);
       return;
     }
     if (normalized === 'cartoon' || normalized === 'polymer-ligand') {
@@ -8673,6 +8722,33 @@
     };
   }
 
+  // Crystallographic waters are lone oxygens, so the bond-only line visual has
+  // nothing to draw for them. Dots keep those waters visible without changing how
+  // bonded MD solvent (GRO/Desmond) renders.
+  function molstarWaterPointRepresentation() {
+    return {
+      type: 'point',
+      typeParams: {
+        alpha: 0.5,
+        sizeFactor: 1,
+        pointSizeAttenuation: true,
+        pointStyle: 'circle'
+      },
+      color: 'uniform',
+      colorParams: { value: 0x4db6ff },
+      size: 'uniform',
+      sizeParams: { value: 0.22 }
+    };
+  }
+
+  function molstarWaterRepresentationFor(component) {
+    const structure = component?.cell?.obj?.data || component?.obj?.data || null;
+    for (const unit of structure?.units || []) {
+      if (unit.bonds?.edgeCount > 0) return molstarWaterLineRepresentation();
+    }
+    return molstarWaterPointRepresentation();
+  }
+
   async function applyMolstarWaterLineRepresentation(viewer) {
     if (!shouldUseMolstarWaterLines(activeConfig)) return;
     const plugin = viewer?.plugin;
@@ -8697,10 +8773,10 @@
       await plugin.managers.structure.component.removeRepresentations(waterComponents);
     }
     for (const component of waterComponents) {
-      await plugin.builders.structure.representation.addRepresentation(component.cell, molstarWaterLineRepresentation(), { tag: 'water' });
+      await plugin.builders.structure.representation.addRepresentation(component.cell, molstarWaterRepresentationFor(component), { tag: 'water' });
     }
     for (const component of createdWaterComponents) {
-      await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarWaterLineRepresentation(), { tag: 'water' });
+      await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarWaterRepresentationFor(component), { tag: 'water' });
     }
     return waterComponents.length;
   }
