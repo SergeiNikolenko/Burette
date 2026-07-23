@@ -2390,7 +2390,9 @@
       || format === 'xyz';
     if (trajectoryOverlay) {
       const poseCount = Number(prepared?.poseCount || prepared?.xyzFrameCount || prepared?.pdbModelCount || activeConfig?.trajectoryFrameCount || 0);
-      return Number.isFinite(poseCount) && poseCount > 1 && poseCount <= MAX_STRUCTURE_OVERLAY_FRAME_COUNT;
+      if (!Number.isFinite(poseCount) || poseCount <= 1) return false;
+      if (prepared?.xyzFrameOverlayAvailable === true) return true;
+      return poseCount <= MAX_STRUCTURE_OVERLAY_FRAME_COUNT;
     }
     return true;
   }
