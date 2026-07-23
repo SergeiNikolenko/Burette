@@ -3957,7 +3957,12 @@
     positionTableColumnPanel(panel);
     state.tableColumnPanelOutsideController?.abort();
     state.tableColumnPanelOutsideController = new AbortController();
-    const closeOnViewportChange = () => closeTableColumnPanel(cfg);
+    // Only a scroll that moves the panel away from its trigger closes it — the
+    // wheel over its own column list must not.
+    const closeOnViewportChange = event => {
+      if (event?.target instanceof Node && panel.contains(event.target)) return;
+      closeTableColumnPanel(cfg);
+    };
     window.addEventListener('resize', closeOnViewportChange, {
       signal: state.tableColumnPanelOutsideController.signal
     });

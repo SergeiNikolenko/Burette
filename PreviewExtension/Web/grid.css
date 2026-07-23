@@ -337,6 +337,26 @@ button:disabled {
   background: var(--buret-control-active);
 }
 
+/* Square, label-free buttons for the actions whose names were eating the
+   toolbar; the name survives as a tooltip and as the accessible label. */
+#grid-controls .ab-btn-icon {
+  justify-content: center;
+  width: var(--buret-control-height);
+  min-width: var(--buret-control-height);
+  padding: 0;
+}
+
+#grid-controls .ab-btn-icon .ab-ico {
+  color: currentColor;
+}
+
+/* A pressed icon toggle has no text to change weight, so the accent carries
+   the state on its own. */
+#grid-controls .ab-btn-icon[aria-pressed="true"] {
+  color: var(--buret-accent);
+  background: color-mix(in srgb, var(--buret-accent) 20%, transparent);
+}
+
 #grid-controls .ab-btn[hidden] {
   display: none;
 }
@@ -879,7 +899,9 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 60;
+  /* Above the grid rail, which is itself fixed at 900 and otherwise draws
+     straight over the panel. */
+  z-index: 950;
   box-sizing: border-box;
   display: grid;
   gap: 2px;
