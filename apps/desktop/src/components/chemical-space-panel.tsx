@@ -118,6 +118,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
   const [completedStudy, setCompletedStudy] = useState<CompletedStudy | null>(null);
   const [studyPosition, setStudyPosition] = useState(0);
   const [studyPlaying, setStudyPlaying] = useState(false);
+  const [studyRunning, setStudyRunning] = useState(false);
   const studyControllerRef = useRef<AbortController | null>(null);
   const hoveredRef = useRef<number | null>(null);
   const documentId = document?.renderer === "grid2d" ? document.id : null;
@@ -139,6 +140,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setCompletedStudy(null);
     setStudyPosition(0);
     setStudyPlaying(false);
+    setStudyRunning(false);
   }, [documentId]);
 
   useEffect(() => {
@@ -273,6 +275,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
     setError(null);
     setProgress({ phase: "queued" });
     setStudyPlaying(false);
+    setStudyRunning(true);
     try {
       const results = isTauriRuntime()
         ? await runChemicalSpaceStudyWorkflow(documentId, frames, setProgress, controller.signal)
@@ -284,9 +287,11 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
       setStudyPosition(0);
       setStudyPlaying(true);
       setProgress(null);
+      setStudyRunning(false);
     } catch (cause) {
       if (controller.signal.aborted) return;
       setProgress(null);
+      setStudyRunning(false);
       setError(computeErrorMessage(cause));
     }
   };
@@ -425,36 +430,6 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           )}
         </div>
 
-        {completedStudy && displayedResult ? (
-          <div className="flex shrink-0 items-center gap-2 border-t border-border bg-background px-3 py-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setStudyPlaying((value) => !value)}
-            >
-              {studyPlaying ? "Pause" : "Play"}
-            </Button>
-            <Slider
-              tone="neutral"
-              min={0}
-              max={completedStudy.results.length - 1}
-              step={0.01}
-              value={[studyPosition]}
-              aria-label="Parameter study timeline"
-              onValueChange={([value]) => {
-                setStudyPlaying(false);
-                setStudyPosition(value);
-              }}
-            />
-            <span className="min-w-28 text-right font-mono text-xs text-muted-foreground">
-              {studyParameterLabel(completedStudy.parameter)} {formatStudyValue(
-                completedStudy.parameter,
-                interpolateStudyValue(completedStudy.values, studyPosition),
-              )}
-            </span>
-          </div>
-        ) : null}
-
         <div className="flex shrink-0 items-center border-t border-border px-3 py-2">
           <Popover>
             <PopoverTrigger asChild>
@@ -546,6 +521,53 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
             </PopoverContent>
           </Popover>
         </div>
+        {studyRunning ? (
+          <div
+            className="flex shrink-0 items-center gap-2 border-t border-border bg-background px-3 py-2"
+            data-testid="parameter-study-timeline"
+          >
+            <Spinner data-icon="inline-start" />
+            <Progress
+              className="flex-1"
+              value={progressPercent(progress) ?? 0}
+              aria-label={runningLabel || "Parameter study calculation in progress"}
+            />
+            <span className="min-w-28 text-right font-mono text-xs text-muted-foreground">
+              {runningLabel || "Preparing study…"}
+            </span>
+          </div>
+        ) : completedStudy && displayedResult ? (
+          <div
+            className="flex shrink-0 items-center gap-2 border-t border-border bg-background px-3 py-2"
+            data-testid="parameter-study-timeline"
+          >
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => setStudyPlaying((value) => !value)}
+            >
+              {studyPlaying ? "Pause" : "Play"}
+            </Button>
+            <Slider
+              tone="neutral"
+              min={0}
+              max={completedStudy.results.length - 1}
+              step={0.01}
+              value={[studyPosition]}
+              aria-label="Parameter study timeline"
+              onValueChange={([value]) => {
+                setStudyPlaying(false);
+                setStudyPosition(value);
+              }}
+            />
+            <span className="min-w-28 text-right font-mono text-xs text-muted-foreground">
+              {studyParameterLabel(completedStudy.parameter)} {formatStudyValue(
+                completedStudy.parameter,
+                interpolateStudyValue(completedStudy.values, studyPosition),
+              )}
+            </span>
+          </div>
+        ) : null}
       </div>
     </TooltipProvider>
   );

@@ -78,6 +78,13 @@ assert.doesNotMatch(gridCss, /buret-chemical-space-hover/);
 assert.match(gridViewer, /svg\.slice\(0, 262144\)/);
 assert.match(chemicalSpacePanel, /Run animated study on Metal/);
 assert.match(chemicalSpacePanel, /interpolateStudyResult/);
+assert.match(chemicalSpacePanel, /data-testid="parameter-study-timeline"/);
+assert.match(chemicalSpacePanel, /studyRunning \? \(/);
+assert.match(chemicalSpacePanel, /value=\{progressPercent\(progress\) \?\? 0\}/);
+assert.ok(
+  chemicalSpacePanel.indexOf('data-testid="parameter-study-timeline"')
+    > chemicalSpacePanel.indexOf("{methodLabel(draft.method)} parameters"),
+);
 assert.match(chemicalSpacePanel, />\s*Reset\s*<\/Button>/);
 assert.match(chemicalSpacePanel, /method: current\.method,\s*dimensions: current\.dimensions/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/empty"/);
