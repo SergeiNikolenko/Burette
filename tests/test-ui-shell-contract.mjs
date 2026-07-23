@@ -2054,7 +2054,13 @@ assert.match(styles, /--sidebar-divider-right: transparent/);
 assert.match(styles, /--workspace-edge-border: color-mix\(in srgb, var\(--fg-base\) calc\(var\(--contrast\) \* 22%\), transparent\)/);
 assert.match(styles, /\.sidebar::after \{[^}]*background: var\(--sidebar-divider-right\);/s);
 assert.doesNotMatch(styles, /\.splitter::after \{ background: var\(--sidebar-divider-right\); \}/);
-assert.match(styles, /\.workbench \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 20px 0 0 20px;[^}]*box-shadow: -12px 0 28px var\(--workspace-edge-shadow\);/s);
+// The workbench card's edge shadow lives on the sidebar handle now: the center
+// ResizablePanel clips its children (overflow: hidden), so a box-shadow on
+// .workbench itself can never reach over the sidebar.
+assert.match(styles, /\.workbench \{[^}]*background: var\(--bg-base\);[^}]*overflow: hidden;[^}]*border-left: 1px solid var\(--workspace-edge-border\);[^}]*border-radius: 20px 0 0 20px;/s);
+assert.doesNotMatch(styles, /\.workbench \{[^}]*box-shadow: -12px 0 28px/s);
+assert.match(styles, /\.workspace-sidebar-handle::before \{[^}]*box-shadow: -12px 0 28px var\(--workspace-edge-shadow\);[^}]*pointer-events: none;/s);
+assert.match(appLayout, /className="workspace-sidebar-handle"/);
 assert.match(styles, /\.app-shell\[data-settings-mode="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
 assert.match(styles, /\.app-shell\[data-hosted-mcp-widget="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
 assert.doesNotMatch(styles, /\.main-stage \{[^}]*border-radius: 20px 0 0 20px;/s);
@@ -2121,6 +2127,28 @@ assert.match(appLayout, /\}, \[open\]\);/);
 assert.match(appLayout, /function useInitialSize/);
 assert.match(appLayout, /onLayoutChanged=\{\(_layout, meta\) => \{/);
 assert.match(appLayout, /if \(!meta\.isUserInteraction\) return;/);
+// Open/close toggles animate through a transient flex-grow transition on the
+// library's [data-panel] wrappers. The transition must exist only while a
+// toggle is animating (drags and window resizes rewrite flex-grow every frame
+// and would rubber-band), and the animation hooks must register their layout
+// effects before the collapse/expand sync hooks: collapse() reports a
+// synchronous onResize that the handlers gate on animatingRef.
+assert.match(appLayout, /function usePanelToggleAnimation/);
+assert.ok(appLayout.indexOf("usePanelToggleAnimation(sidebarVisible)") < appLayout.indexOf("useCollapsiblePanelSync(sidebarVisible"), "toggle-animation hooks must be called before the collapse/expand sync hooks");
+assert.match(appLayout, /data-panels-animating=\{sidebarToggle\.animating \|\| undefined\}/);
+assert.match(appLayout, /sidebarToggle\.animatingRef\.current && !groupHasActiveSeparator\(workspaceGroupRef\.current\)/);
+assert.match(styles, /\.workspace-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 140ms ease-out;/);
+assert.match(styles, /\.workbench-main-panels\[data-panels-animating\] > \[data-panel\] \{\s*transition: flex-grow 180ms cubic-bezier\(0\.2, 0, 0, 1\);/);
+// The tab strip follows the sidebar edge through the same easing.
+assert.match(styles, /\.topbar \{[^}]*transition: left 140ms ease-out;/s);
+// groupResizeBehavior="preserve-pixel-size" is inert in react-resizable-panels
+// 4.12.2, so fixed panels re-assert their stored pixel size when the group's
+// container resizes — deferred to the next frame because a resize() inside the
+// ResizeObserver callback races the library's own observer and converts px→%
+// through a stale cached group size.
+assert.match(appLayout, /function useGroupPixelGuard/);
+assert.match(appLayout, /frame = requestAnimationFrame\(correct\)/);
+assert.match(appLayout, /panel\.resize\(`\$\{want\}px`\)/);
 assert.doesNotMatch(appLayout, /\{rightDockOpen \? <DockPanel/);
 assert.doesNotMatch(appLayout, /\{bottomDockOpen \? <DockPanel/);
 assert.match(dockPanel, /data-open=\{open \? "true" : "false"\}/);

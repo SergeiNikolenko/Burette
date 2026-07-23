@@ -324,6 +324,9 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   pointer-events: none;
   gap: 12px;
   padding: var(--chrome-control-padding) 0;
+  /* `left` is set inline from the sidebar width; ease it so the tab strip
+     travels with the sidebar edge instead of teleporting on toggle. */
+  transition: left 140ms ease-out;
   container-type: inline-size;
 }
 .chrome-button,
@@ -606,6 +609,20 @@ button:focus-visible > .shortcut-tooltip {
 .utility-tab { min-width: auto; }
 .workspace { position: relative; min-height: 0; flex: 1; display: flex; }
 .workspace-panels { flex: 1; min-width: 0; min-height: 0; height: 100%; }
+/* Open/close animation for the sidebar and the docks. Panels are sized through
+   flex-grow on the library's `[data-panel]` wrappers, and collapse()/expand()
+   swap that value instantly; easing it recreates the pre-refactor slide. The
+   transition only exists while the app marks the group as animating a toggle —
+   a standing one would rubber-band pointer drags and window resizes, where the
+   library rewrites flex-grow every frame. Timings match the old .sidebar-shell
+   (140ms ease-out) and .dock-panel (180ms) rules. */
+.workspace-panels[data-panels-animating] > [data-panel] {
+  transition: flex-grow 140ms ease-out;
+}
+.workbench-panels[data-panels-animating] > [data-panel],
+.workbench-main-panels[data-panels-animating] > [data-panel] {
+  transition: flex-grow 180ms cubic-bezier(0.2, 0, 0, 1);
+}
 .workspace-sidebar-panel { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .workspace-center-panel { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; }
 .workbench-panels { flex: 1; min-width: 0; min-height: 0; }
@@ -632,6 +649,21 @@ button:focus-visible > .shortcut-tooltip {
   height: 14px;
   margin: -7px 0;
   cursor: row-resize;
+}
+/* The workbench card's soft shadow over the glass sidebar. It sits on this
+   handle (centered on the sidebar/workbench boundary) because the handle rides
+   the animated edge and is never clipped, unlike the center panel's children.
+   With the sidebar collapsed the boundary is at the window edge and the
+   leftward shadow lands off-screen, matching the old .workbench behavior. */
+.workspace-sidebar-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  box-shadow: -12px 0 28px var(--workspace-edge-shadow);
+  pointer-events: none;
 }
 .resizable-handle::after {
   content: "";
@@ -697,7 +729,9 @@ button:focus-visible > .shortcut-tooltip {
   overflow: hidden;
   border-left: 1px solid var(--workspace-edge-border);
   border-radius: 20px 0 0 20px;
-  box-shadow: -12px 0 28px var(--workspace-edge-shadow);
+  /* The soft edge shadow this card used to cast over the glass sidebar lives on
+     .workspace-sidebar-handle::before now: the center ResizablePanel clips its
+     children (overflow: hidden), so a box-shadow here can never reach out. */
 }
 .app-shell[data-settings-mode="true"] .workbench {
   border-radius: 0;
