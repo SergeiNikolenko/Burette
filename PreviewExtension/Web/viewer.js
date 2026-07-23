@@ -4620,7 +4620,8 @@
     eyeOff: ['M9.88 9.88a3 3 0 1 0 4.24 4.24', 'M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68', 'M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61', 'm2 2 20 20'],
     trash: ['M3 6h18', 'M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6'],
     isolate: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
-    focus: ['M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0', 'M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5']
+    focus: ['M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0', 'M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5'],
+    restore: ['M3 12a9 9 0 1 0 3-6.7L3 8', 'M3 3v5h5']
   };
   // Apple system colours: the uniform tints offered next to the real colour themes.
   const SCENE_TREE_UNIFORM_COLORS = [
@@ -4641,6 +4642,7 @@
   let sceneTreeRenderHandle = 0;
   let sceneTreeHoverRef = '';
   let sceneTreeMenuRef = '';
+  let sceneTreeSelectedRef = '';
 
   function sceneTreeIconElement(paths) {
     const svg = document.createElementNS(SCENE_TREE_SVG_NS, 'svg');
@@ -4812,6 +4814,7 @@
       if (!present.has(ref)) sceneTreeExpandedRefs.delete(ref);
     }
     if (sceneTreeMenuRef && !present.has(sceneTreeMenuRef)) closeSceneTreeMenu();
+    if (sceneTreeSelectedRef && !present.has(sceneTreeSelectedRef)) sceneTreeSelectedRef = '';
   }
 
   function sceneTreeActionButton(action, label, icon) {
@@ -4858,10 +4861,15 @@
     bar.style.background = SCENE_TREE_TYPE_COLOR[node.typeClass] || SCENE_TREE_TYPE_COLOR.Object;
     row.appendChild(bar);
 
+    if (sceneTreeSelectedRef === node.ref) item.dataset.selected = 'true';
+
     const trigger = document.createElement('button');
     trigger.type = 'button';
     trigger.className = 'buret-tree-trigger';
-    trigger.dataset.sceneTreeAction = 'focus';
+    // Left click picks the row, the way a tree is expected to behave. The camera
+    // move sits on the double click and in the menu, so browsing the tree does not
+    // fling the view around.
+    trigger.dataset.sceneTreeAction = 'select';
     const label = document.createElement('span');
     label.className = 'buret-tree-label';
     label.textContent = node.label;
@@ -4878,9 +4886,15 @@
     const actions = document.createElement('span');
     actions.className = 'buret-tree-actions';
     if (node.colorable && node.value !== null) {
-      const dot = document.createElement('span');
+      // The tint is the one thing on the row you want to change after seeing it,
+      // so the dot opens the same menu the right click does.
+      const dot = document.createElement('button');
+      dot.type = 'button';
       dot.className = 'buret-tree-dot';
+      dot.dataset.sceneTreeAction = 'menu';
       dot.style.background = sceneTreeColorHex(node.value);
+      dot.setAttribute('aria-label', `Colour ${node.label}`);
+      dot.title = `Colour ${node.label}`;
       actions.appendChild(dot);
     }
     actions.appendChild(sceneTreeActionButton('remove', `Remove ${node.label}`, SCENE_TREE_ICON.trash));
@@ -5043,10 +5057,26 @@
     scheduleSceneTreeRender();
   }
 
+  // Selecting also hands the cell to Mol* as its current object, so the native
+  // panels follow the tree instead of disagreeing with it.
+  function selectSceneTreeNode(ref) {
+    sceneTreeSelectedRef = ref;
+    const panel = document.getElementById('buret-scene-tree');
+    panel?.querySelectorAll('.buret-tree-item[data-selected="true"]').forEach(item => {
+      delete item.dataset.selected;
+    });
+    const item = panel?.querySelector(`.buret-tree-item[data-ref="${CSS.escape(ref)}"]`);
+    if (item) item.dataset.selected = 'true';
+    const state = activeMolstarViewer()?.plugin?.state?.data;
+    try { state?.setCurrent?.(ref); } catch (_) {}
+  }
+
   function focusSceneTreeNode(ref) {
     const plugin = activeMolstarViewer()?.plugin;
     const data = plugin?.state?.data?.cells?.get(ref)?.obj?.data;
-    const sphere = data?.boundingSphere || data?.sourceData?.boundingSphere;
+    // A Mol* Structure carries its extent on `boundary`, not `boundingSphere`;
+    // representation cells keep theirs one level down on the structure they draw.
+    const sphere = data?.boundary?.sphere || data?.sourceData?.boundary?.sphere;
     if (!sphere || typeof plugin?.managers?.camera?.focusSphere !== 'function') return;
     try {
       plugin.managers.camera.focusSphere(sphere, { durationMs: 250 });
@@ -5261,6 +5291,29 @@
 
   // Shows one component and hides its siblings — the quickest way to look at a
   // ligand or a chain without walking the tree turning eyes off one by one.
+  // Isolate needs an inverse, or hiding everything but one component leaves no way
+  // back short of clicking every eye.
+  function showAllSceneTreeNodes(ref) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    if (typeof state?.updateCellState !== 'function') return;
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const components = structure?.components || [];
+      const owns = structure?.cell?.transform?.ref === ref
+        || components.some(component => component?.cell?.transform?.ref === ref);
+      if (!owns) continue;
+      for (const component of components) {
+        const componentRef = component?.cell?.transform?.ref;
+        if (!componentRef) continue;
+        for (const target of sceneTreeSubtreeRefs(state, componentRef)) {
+          state.updateCellState(target, { isHidden: false });
+        }
+      }
+      break;
+    }
+    scheduleSceneTreeRender();
+  }
+
   function isolateSceneTreeNode(ref) {
     const viewer = activeMolstarViewer();
     const state = viewer?.plugin?.state?.data;
@@ -5318,6 +5371,9 @@
     }));
     if (isComponent) {
       menu.appendChild(sceneTreeMenuItem('Isolate', 'isolate', { icon: SCENE_TREE_ICON.isolate }));
+    }
+    if (components.length) {
+      menu.appendChild(sceneTreeMenuItem('Show all', 'show-all', { icon: SCENE_TREE_ICON.restore }));
     }
 
     if (components.length) {
@@ -5377,9 +5433,11 @@
 
   function runSceneTreeAction(action, ref, control) {
     if (action === 'expand') toggleSceneTreeNode(ref);
+    else if (action === 'select') selectSceneTreeNode(ref);
     else if (action === 'visibility') toggleSceneTreeVisibility(ref);
     else if (action === 'focus') focusSceneTreeNode(ref);
     else if (action === 'isolate') isolateSceneTreeNode(ref);
+    else if (action === 'show-all') showAllSceneTreeNodes(ref);
     else if (action === 'remove') removeSceneTreeNode(ref);
     else if (action === 'tint-color') {
       applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
@@ -5394,8 +5452,19 @@
     const ref = control.closest('[data-ref]')?.dataset.ref;
     if (!ref) return;
     const action = control.dataset.sceneTreeAction;
+    if (action === 'menu') {
+      const rect = control.getBoundingClientRect();
+      openSceneTreeMenu(ref, rect.left, rect.bottom + 4);
+      return;
+    }
     runSceneTreeAction(action, ref, control);
     if (control.closest('#buret-scene-tree-menu') && action !== 'tint-color') closeSceneTreeMenu();
+  }
+
+  function onSceneTreeDoubleClick(event) {
+    const row = event.target.closest('.buret-tree-row');
+    if (!row?.dataset.ref || event.target.closest('.buret-tree-actions, .buret-tree-twisty')) return;
+    focusSceneTreeNode(row.dataset.ref);
   }
 
   function onSceneTreeContextMenu(event) {
@@ -5561,6 +5630,7 @@
       // it, which means the click handler has to live on the document.
       document.addEventListener('click', onSceneTreeClick);
       panel.addEventListener('contextmenu', onSceneTreeContextMenu);
+      panel.addEventListener('dblclick', onSceneTreeDoubleClick);
       panel.addEventListener('pointerover', event => {
         moveSceneTreeHighlight(event.target.closest('.buret-tree-row'));
       });
