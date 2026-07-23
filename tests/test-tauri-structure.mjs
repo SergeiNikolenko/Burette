@@ -1360,7 +1360,7 @@ assert.match(previewRuntimeGrid, /build_grid_store/);
 assert.match(previewRuntimeGrid, /include_single_sdf: options\.include_single_sdf\s*\|\|\s*normalize_renderer_mode\(&preferences\.renderer_mode\) == "grid2d"/);
 assert.match(previewGridStore, /!options\.include_single_sdf\s*&& \(\(extension == "sdf" \|\| extension == "sd"\) && records_indexed <= 1\)/);
 assert.match(previewRuntimeGrid, /"sourcePath": file_path\.to_string_lossy\(\)/);
-assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*\)/);
+assert.match(previewRuntimeGrid, /register\(\s*registry_document_id,\s*grid_store\.database_path,\s*collection\.format,\s*grid_store\.cancel_token,\s*grid_store\.ingest_worker,\s*\)/);
 assert.match(previewRuntimeGrid, /"gridDataMode": "bridge"/);
 assert.match(previewRuntimeGrid, /"recordsIndexed": collection\.records_indexed/);
 assert.match(previewRuntimeGrid, /"indexReady": collection\.index_ready/);
