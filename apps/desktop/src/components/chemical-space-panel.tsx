@@ -34,6 +34,7 @@ import {
   type BrowserChemicalSpaceInputRecord,
   type ChemicalSpaceOptions,
   type ChemicalSpaceMethod,
+  type ChemicalSpaceRepresentation,
   type ChemicalSpaceProgress,
   type ChemicalSpaceResult,
 } from "../lib/compute-cluster";
@@ -71,6 +72,7 @@ type CompletedStudy = {
 };
 
 const DEFAULT_OPTIONS: ChemicalSpaceOptions = {
+  representation: "morgan",
   method: "umap",
   dimensions: 2,
   neighbors: 15,
@@ -81,6 +83,16 @@ const DEFAULT_OPTIONS: ChemicalSpaceOptions = {
   negativeSampleRate: 5,
   randomSeed: 42,
 };
+const CHEMICAL_SPACE_REPRESENTATIONS: Array<{
+  value: ChemicalSpaceRepresentation;
+  label: string;
+}> = [
+  { value: "morgan", label: "Morgan · Tanimoto" },
+  { value: "chemberta", label: "ChemBERTa 77M" },
+  { value: "molformer", label: "MoLFormer XL" },
+  { value: "unimol2-84m", label: "Uni-Mol2 84M" },
+  { value: "unimol-v1", label: "Uni-Mol v1" },
+];
 const CHEMICAL_SPACE_METHODS: Array<{ value: ChemicalSpaceMethod; label: string }> = [
   { value: "umap", label: "UMAP" },
   { value: "tsne", label: "t-SNE" },
@@ -300,6 +312,23 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <NativeSelect
             size="sm"
+            aria-label="Molecular representation engine"
+            value={draft.representation}
+            onChange={(event) => {
+              const representation = event.currentTarget.value as ChemicalSpaceRepresentation;
+              const next = { ...draft, representation };
+              setDraft(next);
+              commitOptions(next);
+            }}
+          >
+            {CHEMICAL_SPACE_REPRESENTATIONS.map((representation) => (
+              <NativeSelectOption key={representation.value} value={representation.value}>
+                {representation.label}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <NativeSelect
+            size="sm"
             aria-label="Chemical-space method"
             value={draft.method}
             onChange={(event) => {
@@ -377,13 +406,14 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                 <Badge
                   className="ml-auto"
                   variant="outline"
-                  aria-label={`${displayedResult.successfulRecords.toLocaleString()} molecules, Metal. Tanimoto graph ${displayedResult.tanimotoGpuTimeMs === 0 ? "cached" : `${displayedResult.tanimotoGpuTimeMs} milliseconds`}. Embedding ${displayedResult.embeddingGpuTimeMs} milliseconds.`}
+                  aria-label={`${displayedResult.successfulRecords.toLocaleString()} molecules, Metal. ${representationLabel(displayedResult.representation)}. Similarity graph ${similarityTimeLabel(displayedResult)}. Embedding ${displayedResult.embeddingGpuTimeMs} milliseconds.`}
                 >
                   {displayedResult.successfulRecords.toLocaleString()} molecules · Metal
                 </Badge>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>
-                Tanimoto graph: {displayedResult.tanimotoGpuTimeMs === 0 ? "cached" : `${displayedResult.tanimotoGpuTimeMs} ms`}
+                {representationLabel(displayedResult.representation)}
+                {": "}{similarityTimeLabel(displayedResult)}
                 {" · "}embedding: {displayedResult.embeddingGpuTimeMs} ms
               </TooltipContent>
             </Tooltip>
@@ -453,6 +483,7 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
                   size="xs"
                   onClick={() => setDraft((current) => ({
                     ...DEFAULT_OPTIONS,
+                    representation: current.representation,
                     method: current.method,
                     dimensions: current.dimensions,
                   }))}
@@ -917,11 +948,24 @@ function progressLabel(progress: ChemicalSpaceProgress | null) {
   if (progress.phase === "fingerprints") {
     return `Fingerprints ${Math.min(progress.completedRecords ?? 0, progress.totalRecords ?? 0).toLocaleString()} / ${(progress.totalRecords ?? 0).toLocaleString()}`;
   }
-  if (progress.phase === "embedding") return "Metal Tanimoto + embedding…";
+  if (progress.phase === "representations") return "Metal molecular representation…";
+  if (progress.phase === "embedding") return "Metal similarity + embedding…";
   if (progress.phase === "study") {
     return `Metal study ${Math.min(progress.completedFrames ?? 0, progress.totalFrames ?? 0)} / ${progress.totalFrames ?? 0}`;
   }
   return "Preparing snapshot…";
+}
+
+function representationLabel(representation: ChemicalSpaceRepresentation) {
+  return CHEMICAL_SPACE_REPRESENTATIONS.find((entry) => entry.value === representation)?.label
+    ?? representation;
+}
+
+function similarityTimeLabel(result: ChemicalSpaceResult) {
+  if (result.representation === "morgan") {
+    return result.tanimotoGpuTimeMs === 0 ? "cached" : `${result.tanimotoGpuTimeMs} ms`;
+  }
+  return result.similarityGpuTimeMs === 0 ? "cached" : `${result.similarityGpuTimeMs ?? 0} ms`;
 }
 
 function methodLabel(method: ChemicalSpaceMethod) {

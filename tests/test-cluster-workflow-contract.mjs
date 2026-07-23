@@ -21,6 +21,7 @@ const chemicalSpacePanel = source("apps/desktop/src/components/chemical-space-pa
 const chemicalSpace3d = source("apps/desktop/src/components/chemical-space-3d.tsx");
 const browserDevCompute = source("apps/desktop/src/lib/browser-dev-compute.ts");
 const browserDevRoute = source("apps/desktop/vite/browser-dev/native-compute.ts");
+const representationWorker = source("compute/models/chemical_space_representations.py");
 const devComputeBackend = source("apps/desktop/src-tauri/src/compute/dev_backend.rs");
 const agentShellServer = source("scripts/agent-shell-server.mjs");
 const normalization = source("apps/desktop/src/lib/chemical-space-normalization.ts");
@@ -129,6 +130,19 @@ assert.match(chemicalSpacePanel, /adaptivePointRadius/);
 assert.match(chemicalSpace3d, /adaptivePointScale/);
 assert.match(browserDevCompute, /runBrowserDevChemicalSpaceStudy/);
 assert.match(browserDevCompute, /browserFingerprintCache\.get\(key\)/);
+for (const engine of ["chemberta", "molformer", "unimol2-84m", "unimol-v1"]) {
+  assert.match(chemicalSpacePanel, new RegExp(`value: "${engine}"`));
+  assert.match(representationWorker, new RegExp(`"${engine}"`));
+}
+assert.match(browserDevCompute, /browserRepresentationCache\.get\(key\)/);
+assert.match(browserDevCompute, /neighbors: 64/);
+assert.match(browserDevCompute, /sliceKnnCache/);
+assert.match(representationWorker, /PYTORCH_ENABLE_MPS_FALLBACK.*=.*"0"/);
+assert.match(representationWorker, /torch\.backends\.mps\.is_available\(\)/);
+assert.match(representationWorker, /scores = vectors\[start:stop\] @ vectors\.T/);
+assert.match(representationWorker, /torch\.topk/);
+assert.match(browserDevRoute, /BURRETE_CHEMICAL_SPACE_MODEL_PYTHON/);
+assert.match(browserDevRoute, /chemical-space-representation/);
 assert.match(browserDevCompute, /moleculeContentSha256/);
 assert.match(browserDevRoute, /"chemicalSpace"/);
 assert.match(browserDevRoute, /chemicalSpaceKnnCache/);

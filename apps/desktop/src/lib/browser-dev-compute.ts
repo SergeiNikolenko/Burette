@@ -10,6 +10,7 @@ import {
   type BrowserChemicalSpaceInputRecord,
   type ChemicalSpaceOptions,
   type ChemicalSpaceProgress,
+  type ChemicalSpaceRepresentation,
   type ChemicalSpaceResult,
   type FingerprintOutputRecord,
 } from "./compute-cluster";
@@ -26,6 +27,24 @@ type BrowserDevNativeComputeResponse<T> = {
 
 const MAX_BROWSER_FINGERPRINT_CACHE_ENTRIES = 4;
 const browserFingerprintCache = new Map<string, Promise<FingerprintOutputRecord[]>>();
+const browserRepresentationCache = new Map<string, Promise<LearnedRepresentationResult>>();
+
+type KnnCache = {
+  neighborsPerVertex: number;
+  sourceIndicesBase64: string;
+  similaritiesBase64: string;
+};
+
+type LearnedRepresentationResult = {
+  engine: Exclude<ChemicalSpaceRepresentation, "morgan">;
+  backend: "metalMps";
+  sourceRecordIds: number[];
+  failedRecords: number;
+  dimensions: number;
+  representationTimeMs: number;
+  similarityGpuTimeMs: number;
+  knnCache: KnnCache;
+};
 
 export function runBrowserDevSemiempirical(
   source: StandaloneComputeSource,
@@ -51,6 +70,17 @@ export async function runBrowserDevChemicalSpace(
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
 ): Promise<ChemicalSpaceResult> {
+  if (options.representation !== "morgan") {
+    const represented = await prepareBrowserChemicalSpaceRepresentation(
+      records,
+      options.representation,
+      onProgress,
+      signal,
+    );
+    if (signal?.aborted) throw abortError();
+    onProgress({ phase: "embedding" });
+    return executeBrowserLearnedChemicalSpace(records, represented, options);
+  }
   const fingerprints = await prepareBrowserChemicalSpaceFingerprints(
     records,
     onProgress,
@@ -67,6 +97,26 @@ export async function runBrowserDevChemicalSpaceStudy(
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
 ): Promise<ChemicalSpaceResult[]> {
+  const representation = frames[0]?.representation ?? "morgan";
+  if (frames.some((frame) => frame.representation !== representation)) {
+    throw new Error("A parameter study must use one molecular representation.");
+  }
+  if (representation !== "morgan") {
+    const represented = await prepareBrowserChemicalSpaceRepresentation(
+      records,
+      representation,
+      onProgress,
+      signal,
+    );
+    const results: ChemicalSpaceResult[] = [];
+    for (let index = 0; index < frames.length; index += 1) {
+      if (signal?.aborted) throw abortError();
+      onProgress({ phase: "study", completedFrames: index, totalFrames: frames.length });
+      results.push(await executeBrowserLearnedChemicalSpace(records, represented, frames[index]));
+    }
+    onProgress({ phase: "study", completedFrames: frames.length, totalFrames: frames.length });
+    return results;
+  }
   const fingerprints = await prepareBrowserChemicalSpaceFingerprints(
     records,
     onProgress,
@@ -88,6 +138,54 @@ export async function runBrowserDevChemicalSpaceStudy(
     totalFrames: frames.length,
   });
   return results;
+}
+
+function prepareBrowserChemicalSpaceRepresentation(
+  records: BrowserChemicalSpaceInputRecord[],
+  engine: Exclude<ChemicalSpaceRepresentation, "morgan">,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+  signal?: AbortSignal,
+) {
+  const key = `${engine}:${browserFingerprintCacheKey(records)}`;
+  const cached = browserRepresentationCache.get(key);
+  if (cached) {
+    browserRepresentationCache.delete(key);
+    browserRepresentationCache.set(key, cached);
+    return cached;
+  }
+  onProgress({ phase: "representations", completedRecords: 0, totalRecords: records.length });
+  const pending = fetch("/__burette/chemical-space-representation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify({ operation: "represent", engine, neighbors: 64, records }),
+    signal,
+  }).then(async (response) => {
+    const payload = await response.json().catch(() => null) as
+      | (LearnedRepresentationResult & { error?: unknown })
+      | null;
+    if (!response.ok || !payload) {
+      throw new Error(
+        typeof payload?.error === "string"
+          ? payload.error
+          : `Metal representation request failed with status ${response.status}`,
+      );
+    }
+    if (payload.backend !== "metalMps" || payload.engine !== engine) {
+      throw new Error("Metal representation worker returned an unattested result.");
+    }
+    onProgress({
+      phase: "representations",
+      completedRecords: records.length,
+      totalRecords: records.length,
+    });
+    return payload;
+  });
+  browserRepresentationCache.set(key, pending);
+  trimCache(browserRepresentationCache, MAX_BROWSER_FINGERPRINT_CACHE_ENTRIES);
+  void pending.catch(() => {
+    if (browserRepresentationCache.get(key) === pending) browserRepresentationCache.delete(key);
+  });
+  return pending;
 }
 
 function prepareBrowserChemicalSpaceFingerprints(
@@ -139,6 +237,7 @@ function executeBrowserChemicalSpace(
   fingerprints: Awaited<ReturnType<typeof fingerprintBrowserChemicalSpaceRecords>>,
   options: ChemicalSpaceOptions,
 ) {
+  const { representation, ...embeddingOptions } = options;
   return runBrowserDevNativeCompute<ChemicalSpaceResult>(
     {
       title: "browser-chemical-space",
@@ -149,7 +248,7 @@ function executeBrowserChemicalSpace(
     undefined,
     {
       options: {
-        ...options,
+        ...embeddingOptions,
         maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
       },
       records: fingerprints.map((record) => ({
@@ -158,7 +257,106 @@ function executeBrowserChemicalSpace(
         error: record.error,
       })),
     },
+  ).then((result) => ({ ...result, representation }));
+}
+
+async function executeBrowserLearnedChemicalSpace(
+  records: BrowserChemicalSpaceInputRecord[],
+  represented: LearnedRepresentationResult,
+  options: ChemicalSpaceOptions,
+) {
+  const validIds = new Set(represented.sourceRecordIds);
+  const invalidIds = records
+    .map((record) => record.sourceRecordId)
+    .filter((sourceRecordId) => !validIds.has(sourceRecordId));
+  const { representation, ...embeddingOptions } = options;
+  const result = await runBrowserDevNativeCompute<ChemicalSpaceResult>(
+    { title: "browser-chemical-space", extension: "representations", text: "" },
+    "chemicalSpace",
+    undefined,
+    {
+      options: {
+        ...embeddingOptions,
+        maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
+      },
+      records: [
+        ...represented.sourceRecordIds.map((sourceRecordId) => ({
+          sourceRecordId,
+          fingerprintBase64: zeroFingerprintBase64(),
+          error: null,
+        })),
+        ...invalidIds.map((sourceRecordId) => ({
+          sourceRecordId,
+          fingerprintBase64: null,
+          error: "Molecular representation failed",
+        })),
+      ],
+      knnCache: sliceKnnCache(
+        represented.knnCache,
+        represented.sourceRecordIds.length,
+        options.neighbors,
+      ),
+    },
   );
+  return {
+    ...result,
+    representation,
+    representationTimeMs: represented.representationTimeMs,
+    similarityGpuTimeMs: represented.similarityGpuTimeMs,
+  };
+}
+
+let cachedZeroFingerprintBase64 = "";
+
+function zeroFingerprintBase64() {
+  if (!cachedZeroFingerprintBase64) {
+    cachedZeroFingerprintBase64 = encodeBase64(new Uint8Array(256));
+  }
+  return cachedZeroFingerprintBase64;
+}
+
+function sliceKnnCache(cache: KnnCache, recordCount: number, requestedNeighbors: number): KnnCache {
+  const neighbors = Math.min(requestedNeighbors, cache.neighborsPerVertex);
+  if (neighbors === cache.neighborsPerVertex) return cache;
+  const source = new Uint32Array(decodeBase64(cache.sourceIndicesBase64).buffer);
+  const similarities = new Float32Array(decodeBase64(cache.similaritiesBase64).buffer);
+  const slicedSource = new Uint32Array(recordCount * neighbors);
+  const slicedSimilarities = new Float32Array(recordCount * neighbors);
+  for (let row = 0; row < recordCount; row += 1) {
+    const sourceStart = row * cache.neighborsPerVertex;
+    const targetStart = row * neighbors;
+    slicedSource.set(source.subarray(sourceStart, sourceStart + neighbors), targetStart);
+    slicedSimilarities.set(
+      similarities.subarray(sourceStart, sourceStart + neighbors),
+      targetStart,
+    );
+  }
+  return {
+    neighborsPerVertex: neighbors,
+    sourceIndicesBase64: encodeBase64(new Uint8Array(slicedSource.buffer)),
+    similaritiesBase64: encodeBase64(new Uint8Array(slicedSimilarities.buffer)),
+  };
+}
+
+function decodeBase64(value: string) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function encodeBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (let start = 0; start < bytes.length; start += 32_768) {
+    binary += String.fromCharCode(...bytes.subarray(start, start + 32_768));
+  }
+  return btoa(binary);
+}
+
+function trimCache<Key, Value>(cache: Map<Key, Value>, limit: number) {
+  while (cache.size > limit) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey === undefined) break;
+    cache.delete(oldestKey);
+  }
 }
 
 export async function runBrowserDevMetalConformer(

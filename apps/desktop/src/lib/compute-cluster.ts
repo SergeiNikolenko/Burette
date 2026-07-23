@@ -105,6 +105,7 @@ export type ClusterProgress = {
 };
 
 export type ChemicalSpaceOptions = {
+  representation: ChemicalSpaceRepresentation;
   method: ChemicalSpaceMethod;
   dimensions: 2 | 3;
   neighbors: number;
@@ -115,6 +116,13 @@ export type ChemicalSpaceOptions = {
   negativeSampleRate: number;
   randomSeed: number;
 };
+
+export type ChemicalSpaceRepresentation =
+  | "morgan"
+  | "chemberta"
+  | "molformer"
+  | "unimol2-84m"
+  | "unimol-v1";
 
 export type ChemicalSpaceMethod =
   | "umap"
@@ -131,17 +139,20 @@ export type ChemicalSpaceResult = {
   positions: Array<[number, number, number]>;
   dimensions: 2 | 3;
   method: ChemicalSpaceMethod;
+  representation: ChemicalSpaceRepresentation;
   neighbors: number;
   successfulRecords: number;
   failedRecords: number;
   backend: "nativeMetal";
   tanimotoGpuTimeMs: number;
+  representationTimeMs?: number;
+  similarityGpuTimeMs?: number;
   embeddingGpuTimeMs: number;
   hostTimeMs: number;
 };
 
 export type ChemicalSpaceProgress = {
-  phase: "queued" | "fingerprints" | "embedding" | "study";
+  phase: "queued" | "fingerprints" | "representations" | "embedding" | "study";
   completedRecords?: number;
   totalRecords?: number;
   completedFrames?: number;
@@ -354,6 +365,9 @@ export async function runChemicalSpaceWorkflow(
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
 ): Promise<ChemicalSpaceResult> {
+  if (options.representation !== "morgan") {
+    throw new Error("Learned Metal representations are not yet installed in the packaged runtime.");
+  }
   const job = await getPreparedChemicalSpaceJob(documentId, onProgress, signal);
   throwIfAborted(signal);
   onProgress({ phase: "embedding" });
@@ -366,6 +380,9 @@ export async function runChemicalSpaceStudyWorkflow(
   onProgress: (progress: ChemicalSpaceProgress) => void,
   signal?: AbortSignal,
 ): Promise<ChemicalSpaceResult[]> {
+  if (frames.some((frame) => frame.representation !== "morgan")) {
+    throw new Error("Learned Metal representations are not yet installed in the packaged runtime.");
+  }
   if (frames.length < 2 || frames.length > 24) {
     throw new Error("A parameter study requires between 2 and 24 frames.");
   }
@@ -530,14 +547,15 @@ function trimPreparedChemicalSpaceJobs() {
 }
 
 function executePreparedChemicalSpace(job: ComputeJob, options: ChemicalSpaceOptions) {
+  const { representation, ...request } = options;
   return invoke<ChemicalSpaceResult>("compute_execute_chemical_space", {
     jobId: job.jobId,
     expectedRevision: job.revision,
     request: {
-      ...options,
+      ...request,
       maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
     },
-  });
+  }).then((result) => ({ ...result, representation }));
 }
 
 function clusterPreparationRequest(
