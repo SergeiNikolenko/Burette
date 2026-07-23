@@ -1028,6 +1028,29 @@
     });
   }
 
+  // Mol* commits a layout change a frame or two after the toggle, so a resize on a
+  // fixed delay measures the container it had *before* the change and is thrown
+  // away; the canvas then catches up on Mol*'s own schedule, well after the panels
+  // have moved. Watching the container fires exactly when it has settled, which is
+  // both earlier and correct, and costs one resize instead of two.
+  let viewerResizeObserver = null;
+  function installViewerResizeObserver(viewer) {
+    const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
+    if (!container || typeof ResizeObserver !== 'function') return;
+    if (viewerResizeObserver?.container === container) return;
+    viewerResizeObserver?.observer.disconnect();
+    let lastSize = '';
+    const observer = new ResizeObserver(entries => {
+      const rect = entries[0]?.contentRect;
+      const size = rect ? `${Math.round(rect.width)}x${Math.round(rect.height)}` : '';
+      if (size === lastSize) return;
+      lastSize = size;
+      try { viewer.handleResize?.(); } catch (_) {}
+    });
+    observer.observe(container);
+    viewerResizeObserver = { observer, container };
+  }
+
   const DEFAULT_VIEWER_UI_SCALE = 0.9;
   const MIN_VIEWER_UI_SCALE = 0.9;
   const MAX_VIEWER_UI_SCALE = 0.9;
@@ -3677,6 +3700,7 @@
     installMolstarFloatingPanelTracking();
     initSceneTree(viewer);
     initSequenceResize();
+    installViewerResizeObserver(viewer);
     updateToolbarVisibility();
     updateSdfPoseButton();
     updatePreviewDockButtons();
@@ -4431,7 +4455,13 @@
     scheduleViewportCornerLayout();
 
     updateToolbarButtons();
-    scheduleViewerResize(viewer, 40);
+    // Setting the region state does not re-render it — Mol* only lays the regions
+    // out when its layout announces an update. Announce it now instead of behind a
+    // timer, and leave the canvas to the container observer, which fires once the
+    // region has actually taken its space rather than guessing when that is.
+    try { viewer?.plugin?.layout?.events?.updated?.next?.(); } catch (error) {
+      debug('layout update notify failed: ' + (error && error.message || String(error)));
+    }
     updateFloatingLayoutOffsets();
     const toolbar = document.getElementById('buret-toolbar');
     if (toolbar?.dataset.defaultPosition === '1') {
