@@ -2593,9 +2593,11 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   box-shadow: 0 0 0 2px var(--buret-molstar-accent);
 }
 /* The picked row keeps a mark of its own so a left click reads as having done
-   something even when the hover block has moved on. */
+   something even when the hover block has moved on. A coloured outline shouted
+   over a panel that is otherwise greyscale; a flat tint carries it quietly. */
 .buret-tree-item[data-selected="true"] > .buret-tree-row {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buret-molstar-accent) 60%, transparent);
+  background: color-mix(in srgb, var(--buret-molstar-text) 9%, transparent);
+  border-radius: 5px;
 }
 .buret-tree-item[data-selected="true"] > .buret-tree-row > .buret-tree-trigger > .buret-tree-label {
   color: var(--buret-molstar-text);
@@ -3049,6 +3051,47 @@ body.buret-theme-light .msp-plugin .msp-sequence .msp-sequence-wrapper-non-empty
 }
 body.buret-theme-light .msp-plugin .msp-sequence .msp-sequence-select {
   background: var(--buret-control-fill) !important;
+}
+/* ...and the card itself takes the reading surface, otherwise its own fill shows
+   as a grey ring around the white sequence. */
+body.buret-theme-light .msp-plugin .msp-sequence {
+  background: var(--buret-molstar-field-background) !important;
+}
+/* Mol* offers no way to dismiss the strip from the strip; the toolbar toggle is a
+   long way off once you are reading sequence. Pinned rather than laid out in the
+   row: Mol* re-renders the header on every chain change and would shuffle a flex
+   child back among its own selects. */
+body .msp-plugin .msp-sequence .msp-sequence-select {
+  position: relative;
+  padding-right: 30px;
+}
+.buret-sequence-close {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  padding: 0;
+  color: var(--buret-molstar-muted-text);
+  background: transparent;
+  cursor: pointer;
+}
+.buret-sequence-close > svg {
+  width: 13px;
+  height: 13px;
+}
+.buret-sequence-close:hover {
+  color: var(--buret-molstar-text);
+  background: var(--buret-molstar-hover-background);
+}
+.buret-sequence-close:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
 }
 
 /* Molecule context menu.

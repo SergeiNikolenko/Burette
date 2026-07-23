@@ -4615,6 +4615,7 @@
     const observer = new MutationObserver(() => {
       if (layoutState.left === 'hidden') syncLeftPanelVisibility();
       stripMolstarSequenceTooltips();
+      installSequenceCloseButton();
       scheduleViewportCornerLayout();
     });
     observer.observe(document.body, {
@@ -5726,6 +5727,24 @@
   // native tooltip over the structure. The controls read clearly without them.
   function stripMolstarSequenceTooltips() {
     document.querySelectorAll('.msp-sequence-select [title]').forEach(element => element.removeAttribute('title'));
+  }
+
+  // Mol* rebuilds the strip's header whenever the chain or entity changes, so the
+  // button is re-added rather than bound once.
+  function installSequenceCloseButton() {
+    const strip = document.querySelector('.msp-sequence .msp-sequence-select');
+    if (!strip || strip.querySelector('.buret-sequence-close')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'buret-sequence-close';
+    button.setAttribute('aria-label', 'Close sequence');
+    button.appendChild(sceneTreeIconElement(['M18 6 6 18M6 6l12 12']));
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleLayoutRegion('sequence', activeMolstarViewer());
+    });
+    strip.appendChild(button);
   }
 
   // Mol* reads a plain click on the sequence as "focus", which sets a focus
@@ -12959,11 +12978,16 @@
     return true;
   }
 
-  function beginMolstarEmptyClickSelectionPreserve(event) {
+  // A selection made elsewhere — most often by picking a stretch of sequence —
+  // should outlive a look around the 3D view. A click there focuses rather than
+  // selects, so the selection it drops is collateral. This arms for any left
+  // click on the view, empty space or a molecule alike; the restore below only
+  // fires when the selection was actually wiped, so a click that legitimately
+  // makes a new one is left alone.
+  function beginMolstarSelectionPreserve(event) {
     if (molstarLassoEnabled || molstarLassoStroke || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
     const lociList = molstarCurrentSelectionLociList();
     if (!lociList.length) return;
-    if (molstarContextPickFromEvent(event, molstarContextTouchPickOptions(event))) return;
     molstarSelectionPreserveClick = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -12972,7 +12996,7 @@
     };
   }
 
-  function finishMolstarEmptyClickSelectionPreserve(event) {
+  function finishMolstarSelectionPreserve(event) {
     const preserve = molstarSelectionPreserveClick;
     if (!preserve || event.pointerId !== preserve.pointerId) return;
     molstarSelectionPreserveClick = null;
@@ -15654,7 +15678,7 @@
       contextPointer = null;
     };
     const onPointerDown = (event) => {
-      beginMolstarEmptyClickSelectionPreserve(event);
+      beginMolstarSelectionPreserve(event);
       clearTouchContextPointer();
       if (event.button === 2) {
         if (!viewer || !isMolstarContextMenuTarget(event.target)) {
@@ -15736,7 +15760,7 @@
         Math.abs(event.clientY - contextPointer.startY) > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
     };
     const onPointerUp = (event) => {
-      finishMolstarEmptyClickSelectionPreserve(event);
+      finishMolstarSelectionPreserve(event);
       if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) {
         const opened = touchContextPointer.opened;
         clearTouchContextPointer();
