@@ -1605,33 +1605,40 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   letter-spacing: 0;
 }
 
+/* Same segmented track as the action bar's view/render switches, rather than
+   underlined tabs with an accent-filled active state. The markup is built in
+   grid-viewer.js and has no thumb element, so the active segment carries the
+   fill directly instead of animating one. */
 .buret-grid-molecule-detail-tabs {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 4px;
+  align-self: flex-start;
+  gap: 0;
   margin: 0 0 14px;
-  border-bottom: 1px solid var(--buret-border);
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--buret-control-surface);
 }
 
 .buret-grid-molecule-detail-tabs button {
-  min-height: 34px;
+  min-height: 30px;
   border: 0;
-  border-radius: 7px 7px 0 0;
-  padding: 7px 10px;
+  border-radius: 7px;
+  padding: 0 12px;
   color: var(--buret-muted);
   background: transparent;
-  font: 600 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  transition: background 140ms ease-out, color 140ms ease-out;
 }
 
 .buret-grid-molecule-detail-tabs button:hover,
 .buret-grid-molecule-detail-tabs button:focus-visible {
   color: var(--buret-text);
-  background: color-mix(in srgb, var(--buret-text) 6%, transparent);
+  background: transparent;
 }
 
 .buret-grid-molecule-detail-tabs button.active {
-  color: #ffffff;
-  background: var(--buret-accent);
+  color: var(--buret-text);
+  background: var(--buret-control-active);
 }
 
 .buret-grid-molecule-detail-tab-panel {
@@ -1782,7 +1789,8 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   font: 600 10px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
-.buret-grid-molecule-detail-json {
+.buret-grid-molecule-detail-json,
+.buret-grid-molecule-detail-source {
   max-height: min(430px, calc(100vh - 300px));
   margin: 0;
   overflow: auto;
@@ -1804,21 +1812,9 @@ body.buret-grid-rail-dragging .buret-grid-rail-active-marker {
   background: var(--buret-detail-surface);
 }
 
-.buret-grid-molecule-detail-actions button,
-.buret-grid-molecule-detail-title-row button {
-  min-height: 34px;
-  border: 1px solid var(--buret-border);
-  border-radius: 7px;
-  padding: 7px 11px;
-  color: var(--buret-text);
-  background: var(--buret-control-surface);
-  font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-}
-
-.buret-grid-molecule-detail-actions button:hover,
-.buret-grid-molecule-detail-title-row button:hover {
-  background: color-mix(in srgb, var(--buret-text) 7%, var(--buret-control-surface));
-}
+/* Buttons here take the shared control styling — borderless, 8px radius, the
+   toolbar's surface and hover — instead of the bordered pre-redesign variant
+   that used to override it. */
 
 @media (max-width: 820px) {
   .buret-grid-molecule-detail {

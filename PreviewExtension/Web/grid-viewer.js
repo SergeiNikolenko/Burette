@@ -4905,6 +4905,7 @@
             <button type="button" role="tab" class="active" aria-selected="true" data-buret-detail-tab="details">Details</button>
             <button type="button" role="tab" aria-selected="false" data-buret-detail-tab="descriptors">Descriptors (${descriptorEntries(row).length.toLocaleString()})</button>
             <button type="button" role="tab" aria-selected="false" data-buret-detail-tab="json">JSON</button>
+            <button type="button" role="tab" aria-selected="false" data-buret-detail-tab="source">Source</button>
           </div>
           <div class="buret-grid-molecule-detail-tab-panel" data-buret-detail-panel="details">
             ${row.smiles ? `<div class="buret-grid-molecule-detail-smiles">${escapeHTML(row.smiles)}</div>` : ''}
@@ -4917,6 +4918,9 @@
           </div>
           <div class="buret-grid-molecule-detail-tab-panel" data-buret-detail-panel="json" hidden>
             <pre class="buret-grid-molecule-detail-json">${escapeHTML(moleculeDetailJson(row))}</pre>
+          </div>
+          <div class="buret-grid-molecule-detail-tab-panel" data-buret-detail-panel="source" hidden>
+            <pre class="buret-grid-molecule-detail-source">${escapeHTML(moleculeDetailSource(row))}</pre>
           </div>
           <div class="buret-grid-molecule-detail-actions">
             <button type="button" data-buret-detail-action="descriptors">Calculate descriptors</button>
@@ -5123,6 +5127,13 @@
         </span>
         <span class="buret-grid-molecule-detail-descriptor-value" role="cell">${escapeHTML(display)}</span>
       </div>`;
+  }
+
+  function moleculeDetailSource(row) {
+    const molblock = String(row.molblock || '').trim();
+    if (molblock) return molblock;
+    const smiles = String(row.smiles || '').trim();
+    return smiles || 'No structure source for this record.';
   }
 
   function moleculeDetailJson(row) {
