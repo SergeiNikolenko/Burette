@@ -50,6 +50,7 @@ import { useAppStartupEffects } from "./hooks/use-app-startup-effects";
 import { useAppStatus } from "./hooks/use-app-status";
 import { useAppUpdates } from "./hooks/use-app-updates";
 import { useAppViewerBridgeController } from "./hooks/use-app-viewer-bridge-controller";
+import type { StructureStory } from "./lib/structure-story";
 import { useAppViewerReloadActions } from "./hooks/use-app-viewer-reload-actions";
 import { useAppViewerRuntimeRefs } from "./hooks/use-app-viewer-runtime-refs";
 import { useAppWorkspaceActions } from "./hooks/use-app-workspace-actions";
@@ -269,6 +270,7 @@ export default function App() {
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [viewerLigandSelections, setViewerLigandSelections] = useState<Record<string, ViewerLigandSelection | null>>({});
   const [structureOverlayModes, setStructureOverlayModes] = useState<Record<string, StructureOverlayMode>>({});
+  const [structureStories, setStructureStories] = useState<Record<string, StructureStory | null>>({});
   const {
     cancelConformerJob,
     cancelXtbJob,
@@ -821,6 +823,7 @@ export default function App() {
     setPreference,
     setPoseReviewSelections,
     setStructureOverlayModes,
+    setStructureStories,
     setViewerLigandSelections,
     skipNextPreferenceRefreshRef,
     toggleSidebar,
@@ -1022,6 +1025,7 @@ export default function App() {
     conformerSettings,
     conformerJobs,
     viewerLigandSelections,
+    structureStories,
     structureOverlayMode: activeDocument ? structureOverlayModes[activeDocument.id] ?? "single" : "single",
     xtbStatus,
     xtbSettings,

@@ -1,10 +1,12 @@
 import type { ShellViewState, ViewerLigandSelection } from "../components/types";
+import type { StructureStory } from "../lib/structure-story";
 
 type AppShellViewStateInput = Omit<
   ShellViewState,
-  "activeDocumentId" | "visibleDocuments" | "viewerLigandSelection"
+  "activeDocumentId" | "visibleDocuments" | "viewerLigandSelection" | "structureStory"
 > & {
   viewerLigandSelections: Record<string, ViewerLigandSelection | null>;
+  structureStories: Record<string, StructureStory | null>;
 };
 
 type DocumentShellViewState = Pick<
@@ -73,7 +75,7 @@ type DockingShellViewState = Pick<ShellViewState, "poseReviewSelections">;
 
 type ViewerShellViewState = Pick<
   ShellViewState,
-  "viewerLigandSelection" | "structureOverlayMode"
+  "viewerLigandSelection" | "structureStory" | "structureOverlayMode"
 >;
 
 type ChemistryShellViewState = Pick<
@@ -121,7 +123,7 @@ export function flattenAppShellViewStateSlices(slices: AppShellViewStateSlices):
 }
 
 export function createAppShellViewStateSlices(input: AppShellViewStateInput): AppShellViewStateSlices {
-  const { viewerLigandSelections, ...state } = input;
+  const { viewerLigandSelections, structureStories, ...state } = input;
   return {
     documents: {
       documents: state.documents,
@@ -183,6 +185,9 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
     viewer: {
       viewerLigandSelection: state.activeDocument
         ? viewerLigandSelections[state.activeDocument.id] ?? null
+        : null,
+      structureStory: state.activeDocument
+        ? structureStories[state.activeDocument.id] ?? null
         : null,
       structureOverlayMode: state.structureOverlayMode,
     },
