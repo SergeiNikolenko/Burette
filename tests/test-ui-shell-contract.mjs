@@ -3621,7 +3621,7 @@ assert.match(themesSection, /Window opacity mapping used by Writer-style glass\.
 assert.match(settingsPanel, /const defaultRendererModeOptions: Array<ViewerPreferences\["rendererMode"\]> = \["auto", "molstar", "xyzrender-external"\]/);
 assert.match(settingsPanel, /const conformerEngineOptions: Array<ViewerPreferences\["conformerEngine"\]> = \["datamol", "rdkit"\]/);
 assert.doesNotMatch(settingsPanel, /function visibleRendererModeOptions\(current: ViewerPreferences\["rendererMode"\]\)/);
-assert.match(settingsPanel, /preferenceRow<"molstarStyle">\("Mol\* style", "Default appearance preset for the Mol\* renderer\.", preferences\.molstarStyle, \["default", "illustrative"\], defaultPreferences\.molstarStyle, \(molstarStyle\) => actions\.setPreference\("molstarStyle", molstarStyle\)\)/);
+assert.match(settingsPanel, /preferenceRow<"molstarStyle">\("Mol\* style", "Default appearance preset for the Mol\* renderer\.", preferences\.molstarStyle, \["default", "illustrative", "illustrative-surface"\], defaultPreferences\.molstarStyle, \(molstarStyle\) => actions\.setPreference\("molstarStyle", molstarStyle\)\)/);
 assert.match(settingsPanel, /Desktop preview limit/);
 assert.match(settingsPanel, /suffix="MiB"/);
 assert.match(settingsPanel, /actions\.setPreference\("desktopPreviewLimitMiB", desktopPreviewLimitMiB\)/);
@@ -6380,15 +6380,17 @@ assert.doesNotMatch(app, /void openDocuments\(\[path\]\)\.then/);
 assert.match(appPreferenceEffectsHook, /Preferences refresh only the mounted file runtime\. Inactive file tabs are unloaded\./);
 assert.match(appPreferenceEffectsHook, /if \(skipNextPreferenceRefreshRef\.current\) \{\s*skipNextPreferenceRefreshRef\.current = false;\s*return;\s*\}/s);
 assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\]\)\.then/);
-// A theme change must reach mounted viewers as a message instead of reopening the
-// document, otherwise the live Mol* scene (camera, components, selections) is lost.
-assert.match(appPreferenceEffectsHook, /const LIVE_APPLIED_PREFERENCE_KEYS = \["theme"\] as const/);
-assert.match(appPreferenceEffectsHook, /function onlyLiveAppliedPreferencesChanged\(previous: ViewerPreferences, next: ViewerPreferences\)/);
+// Theme and Mol* style changes must reach mounted viewers as messages instead of
+// reopening the document, otherwise the live Mol* scene (camera, components,
+// selections) is lost.
+assert.match(appPreferenceEffectsHook, /const LIVE_APPLIED_PREFERENCE_MESSAGES = \{\s*theme: "setViewerTheme",\s*molstarStyle: "setViewerStyle",\s*\}/s);
+assert.match(appPreferenceEffectsHook, /function changedLiveAppliedKeys\(previous: ViewerPreferences, next: ViewerPreferences\)/);
 assert.match(appPreferenceEffectsHook, /querySelectorAll<HTMLIFrameElement>\("iframe\[data-document-id\]"\)/);
-assert.match(appPreferenceEffectsHook, /body: \{ type: "setViewerTheme", value: theme \}/);
-assert.match(appPreferenceEffectsHook, /if \(onlyLiveAppliedPreferencesChanged\(previousPreferences, preferences\)\) \{\s*broadcastViewerTheme\(preferences\.theme\);\s*return;\s*\}/s);
+assert.match(appPreferenceEffectsHook, /body: \{ type: LIVE_APPLIED_PREFERENCE_MESSAGES\[key\], value: preferences\[key\] \}/);
+assert.match(appPreferenceEffectsHook, /const liveKeys = changedLiveAppliedKeys\(previousPreferences, preferences\);\s*if \(liveKeys\) \{\s*broadcastLiveAppliedPreferences\(liveKeys, preferences\);\s*return;\s*\}/s);
 assert.match(previewViewer, /if \(body\.type === 'setViewerTheme'\) \{\s*const nextTheme = normalizeViewerTheme\(body\.value\);/s);
 assert.match(previewViewer, /setViewerTheme\(nextTheme, activeViewer\);/);
+assert.match(previewViewer, /if \(body\.type === 'setViewerStyle'\) \{\s*requestMolstarStyle\(body\.value\);/s);
 assert.match(appMaintenanceHook, /Quick Look reset completed/);
 assert.match(appMaintenanceHook, /Quick Look reset reported issues/);
 assert.doesNotMatch(app, /Quick Look reset requested/);

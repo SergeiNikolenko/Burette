@@ -2067,6 +2067,13 @@
       setViewerTheme(nextTheme, activeViewer);
       return;
     }
+    // Applied in place so the default-style preference never rebuilds the viewer.
+    // requestMolstarStyle updates the config, the toolbar selector, and re-renders
+    // through the same path the toolbar dropdown uses.
+    if (body.type === 'setViewerStyle') {
+      requestMolstarStyle(body.value);
+      return;
+    }
     if (body.type === 'setXyzrenderControls') {
       const config = activeConfig || window.BurreteConfig || {};
       const documentId = String(config.documentId || '');
@@ -2914,12 +2921,16 @@
     return MOLSTAR_STYLE_OPTIONS.find(option => option.value === value)?.label || value;
   }
 
+  // A structure that has not been focused yet still reports the default camera
+  // (radius 0 at the origin). Restoring that after a reload leaves the scene
+  // empty, so it is treated as "no snapshot" and the caller refocuses instead.
   function captureMolstarCameraSnapshot(viewer) {
     const camera = viewer?.plugin?.canvas3d?.camera;
     if (!camera || typeof camera.getSnapshot !== 'function') return null;
     try {
       const snapshot = camera.getSnapshot();
       if (!snapshot) return null;
+      if (!(Number(snapshot.radius) > 0)) return null;
       return {
         ...snapshot,
         position: snapshot.position?.slice?.() || snapshot.position,
@@ -2941,6 +2952,33 @@
     } catch (_) {}
   }
 
+  // Used when the style switch happens before the structure was ever focused, so
+  // there is no camera worth keeping. The retries reach past the initial delays
+  // because framing needs scene bounds, and a heavy visual such as the molecular
+  // surface only reports them once its geometry is built.
+  const STYLE_SWITCH_FOCUS_DELAYS = [0, 240, 800, 2000, 4000];
+
+  function focusMolstarStructureAfterReload(viewer) {
+    if (molstarAutoFocusEnabled(activeConfig) && !hasMolstarContextFocus(activeConfig)) {
+      scheduleMolstarStructureFocus(viewer, {
+        reason: 'style-switch',
+        durationMs: 0,
+        delays: STYLE_SWITCH_FOCUS_DELAYS
+      });
+      return;
+    }
+    for (const delayMs of STYLE_SWITCH_FOCUS_DELAYS) {
+      window.setTimeout(() => {
+        const canvas3d = viewer?.plugin?.canvas3d;
+        if (!canvas3d || Number(canvas3d.camera?.getSnapshot?.()?.radius) > 0) return;
+        try {
+          canvas3d.requestCameraReset({ durationMs: 0 });
+          canvas3d.requestDraw?.();
+        } catch (_) {}
+      }, delayMs);
+    }
+  }
+
   async function reloadMolstarStyle(viewer, style, serial) {
     const prepared = activeMolstarPrepared;
     if (!prepared) {
@@ -2960,7 +2998,8 @@
     applyLayoutState(viewer);
     scheduleLayoutStateReapply(viewer);
     try { viewer.handleResize(); } catch (_) {}
-    restoreMolstarCameraSnapshot(viewer, cameraSnapshot);
+    if (cameraSnapshot) restoreMolstarCameraSnapshot(viewer, cameraSnapshot);
+    else focusMolstarStructureAfterReload(viewer);
     setStatus(`[web] Applied Mol* ${molstarStyleLabel(style)} style`);
     setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
   }
