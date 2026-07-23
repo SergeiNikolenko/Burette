@@ -4692,23 +4692,36 @@
 
   // A row reports a colour theme only when every representation under it agrees;
   // mixed rows show nothing rather than lying about the scene.
+  // A tint reads back either from a flat uniform theme or from the carbon colour of
+  // an element-symbol theme, which is how atom-level representations are painted.
+  function sceneTreeRepresentationTint(representation) {
+    const theme = representation?.cell?.transform?.params?.colorTheme;
+    if (theme?.name === 'uniform') {
+      return Number.isFinite(theme.params?.value) ? theme.params.value : null;
+    }
+    if (theme?.name === 'element-symbol') {
+      const carbon = theme.params?.carbonColor;
+      return carbon?.name === 'uniform' && Number.isFinite(carbon.params?.value) ? carbon.params.value : null;
+    }
+    return null;
+  }
+
   function sceneTreeColorState(components) {
     let theme = null;
     let value = null;
     let seen = false;
     for (const component of components) {
       for (const representation of component?.representations || []) {
-        const colorTheme = representation?.cell?.transform?.params?.colorTheme;
-        const name = colorTheme?.name || '';
-        const uniform = name === 'uniform' ? colorTheme?.params?.value : null;
+        const name = representation?.cell?.transform?.params?.colorTheme?.name || '';
+        const tint = sceneTreeRepresentationTint(representation);
         if (!seen) {
           theme = name;
-          value = Number.isFinite(uniform) ? uniform : null;
+          value = tint;
           seen = true;
           continue;
         }
-        if (theme !== name) return { theme: '', value: null };
-        if (value !== (Number.isFinite(uniform) ? uniform : null)) value = null;
+        if (theme !== name) theme = '';
+        if (value !== tint) value = null;
       }
     }
     return { theme: theme || '', value };
@@ -5038,14 +5051,31 @@
     }
   }
 
+  // Ribbons and surfaces carry no element detail, so a pick paints them whole.
+  // Everything else keeps its element colours and only the carbons take the pick,
+  // which is what the default Mol* colouring does with its own carbon palette.
+  const SCENE_TREE_FLAT_REPRESENTATIONS = new Set([
+    'cartoon', 'backbone', 'putty', 'molecular-surface', 'gaussian-surface', 'gaussian-volume'
+  ]);
+
+  function sceneTreeTintParams(value) {
+    return (_component, representation) => {
+      const type = String(representation?.cell?.transform?.params?.type?.name || '');
+      return SCENE_TREE_FLAT_REPRESENTATIONS.has(type)
+        ? { color: 'uniform', colorParams: { value } }
+        : { color: 'element-symbol', colorParams: { carbonColor: { name: 'uniform', params: { value } } } };
+    };
+  }
+
   async function applySceneTreeColorTheme(ref, theme, value) {
     const viewer = activeMolstarViewer();
     const manager = viewer?.plugin?.managers?.structure?.component;
     const components = sceneTreeColorTargets(viewer).get(ref) || [];
     if (typeof manager?.updateRepresentationsTheme !== 'function' || !components.length) return;
-    const params = theme === 'default'
-      ? { color: 'default' }
-      : { color: theme, ...(theme === 'uniform' ? { colorParams: { value } } : {}) };
+    let params;
+    if (theme === 'tint') params = sceneTreeTintParams(value);
+    else if (theme === 'default') params = { color: 'default' };
+    else params = { color: theme };
     try {
       await manager.updateRepresentationsTheme(components, params);
     } catch (error) {
@@ -5054,8 +5084,21 @@
     scheduleSceneTreeRender();
   }
 
-  function sceneTreeColorThemes(viewer) {
-    const types = viewer?.plugin?.representation?.structure?.themes?.colorThemeRegistry?.types;
+  // Mol* ships fifty colour themes but most of them need data this structure does
+  // not have — volumes, annotations, quality reports. The registry knows which ones
+  // actually apply, so the menu only offers those.
+  function sceneTreeColorThemes(viewer, components) {
+    const registry = viewer?.plugin?.representation?.structure?.themes?.colorThemeRegistry;
+    if (!registry) return [];
+    let types = registry.types;
+    const structure = components?.[0]?.cell?.obj?.data;
+    if (structure && typeof registry.getApplicableTypes === 'function') {
+      try {
+        types = registry.getApplicableTypes({ structure });
+      } catch (error) {
+        debug('scene tree theme list failed: ' + (error && error.message || String(error)));
+      }
+    }
     if (!Array.isArray(types)) return [];
     return types
       .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
@@ -5161,7 +5204,7 @@
       const select = document.createElement('select');
       select.className = 'buret-select';
       select.dataset.sceneTreeColorTheme = '1';
-      for (const theme of sceneTreeColorThemes(viewer)) {
+      for (const theme of sceneTreeColorThemes(viewer, sceneTreeColorTargets(viewer).get(ref))) {
         const option = document.createElement('option');
         option.value = theme.name;
         option.textContent = theme.label;
@@ -5177,11 +5220,11 @@
         const swatch = document.createElement('button');
         swatch.type = 'button';
         swatch.className = 'buret-tree-swatch';
-        swatch.dataset.sceneTreeAction = 'uniform-color';
+        swatch.dataset.sceneTreeAction = 'tint-color';
         swatch.dataset.sceneTreeColor = String(entry.value);
         swatch.style.background = sceneTreeColorHex(entry.value);
-        swatch.setAttribute('aria-label', `${entry.label} uniform colour`);
-        swatch.setAttribute('aria-pressed', node.theme === 'uniform' && node.value === entry.value ? 'true' : 'false');
+        swatch.setAttribute('aria-label', `Tint ${node.label} ${entry.label.toLowerCase()}`);
+        swatch.setAttribute('aria-pressed', node.value === entry.value ? 'true' : 'false');
         swatch.title = entry.label;
         swatches.appendChild(swatch);
       }
@@ -5220,8 +5263,8 @@
     else if (action === 'visibility') toggleSceneTreeVisibility(ref);
     else if (action === 'focus') focusSceneTreeNode(ref);
     else if (action === 'remove') removeSceneTreeNode(ref);
-    else if (action === 'uniform-color') {
-      applySceneTreeColorTheme(ref, 'uniform', Number(control.dataset.sceneTreeColor));
+    else if (action === 'tint-color') {
+      applySceneTreeColorTheme(ref, 'tint', Number(control.dataset.sceneTreeColor));
     } else if (action === 'apply-action') {
       applySceneTreeAction(ref, Number(control.dataset.sceneTreeActionIndex));
     }
@@ -5234,7 +5277,7 @@
     if (!ref) return;
     const action = control.dataset.sceneTreeAction;
     runSceneTreeAction(action, ref, control);
-    if (control.closest('#buret-scene-tree-menu') && action !== 'uniform-color') closeSceneTreeMenu();
+    if (control.closest('#buret-scene-tree-menu') && action !== 'tint-color') closeSceneTreeMenu();
   }
 
   function onSceneTreeContextMenu(event) {
