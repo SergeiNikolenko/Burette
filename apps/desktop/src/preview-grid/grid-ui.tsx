@@ -212,13 +212,6 @@ function SegmentedControl<T extends string>({
 
 function XyzrenderStyleControl(props: GridControlProps) {
   if (!props.supportsXyzrenderCards) return null;
-  const selectedPresetLabel = props.xyzrenderPresetOptions.find(
-    (option) => option.value === props.xyzrenderPreset,
-  )?.label ?? "Default";
-  const presetWidth = Math.max(74, Math.min(128, selectedPresetLabel.length * 7 + 42));
-  const presetWidthStyle = {
-    "--buret-xyzrender-preset-width": `${presetWidth}px`,
-  } as React.CSSProperties;
   return (
     <label
       id="xyzrender-preset-control"
@@ -228,10 +221,10 @@ function XyzrenderStyleControl(props: GridControlProps) {
       Style
       <select
         id="xyzrender-preset"
+        className="ab-mini"
         value={props.xyzrenderPreset}
         disabled={props.cardRenderer !== "xyzrender"}
         aria-label="xyzrender card style"
-        style={presetWidthStyle}
         onChange={(event) => props.onXyzrenderPresetChange(event.currentTarget.value)}
       >
         {props.xyzrenderPresetOptions.map((option) => (

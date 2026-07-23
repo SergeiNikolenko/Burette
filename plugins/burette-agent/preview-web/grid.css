@@ -564,17 +564,6 @@ button:disabled {
   display: none;
 }
 
-.buret-grid-toolbar .buret-grid-xyzrender-preset-control select {
-  width: var(--buret-xyzrender-preset-width, 86px);
-  min-width: 0;
-  height: 24px;
-  border: 0;
-  border-radius: 6px;
-  background: var(--buret-control-active);
-  color: var(--buret-text);
-  font: 400 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-}
-
 .buret-grid-cluster-group {
   padding-left: 6px;
   border-left: 1px solid color-mix(in srgb, var(--buret-border) 58%, transparent);
