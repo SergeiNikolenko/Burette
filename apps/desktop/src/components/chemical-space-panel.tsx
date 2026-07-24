@@ -2,6 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Empty,
   EmptyContent,
   EmptyDescription,
@@ -11,16 +20,7 @@ import {
 } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { Spinner } from "@/components/ui/spinner";
@@ -489,146 +489,160 @@ export function ChemicalSpacePanel({ document }: ChemicalSpacePanelProps) {
           )}
         </div>
 
-        <div className="flex shrink-0 items-center border-t border-border px-3 py-2">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="sm">{methodLabel(draft.method)} parameters</Button>
-            </PopoverTrigger>
-            <PopoverContent
+        <div className="flex shrink-0 items-center gap-3 border-t border-border px-3 py-2">
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button className="shrink-0" variant="ghost" size="sm">
+                {methodLabel(draft.method)} parameters
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
               align="start"
               side="top"
               sideOffset={8}
               container={portalContainer}
-              className="max-h-[min(70vh,32rem)] w-80 overflow-y-auto"
+              className="max-h-[min(70vh,32rem)] w-72"
             >
-              <PopoverHeader className="flex-row items-start justify-between gap-2">
-                <div className="flex flex-col gap-0.5">
-                  <PopoverTitle>{methodLabel(draft.method)} parameters</PopoverTitle>
-                  <PopoverDescription>
-                    k={draft.neighbors} · min dist={draft.minDist.toFixed(2)}
-                  </PopoverDescription>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => setDraft((current) => ({
+              <DropdownMenuLabel className="flex flex-col gap-0.5 px-2 py-1.5">
+                <span className="text-sm font-medium text-foreground">
+                  {methodLabel(draft.method)} parameters
+                </span>
+                <span className="font-normal">
+                  k={draft.neighbors} · min dist={draft.minDist.toFixed(2)}
+                </span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup className="px-2 py-1.5">
+                <FieldGroup className="gap-3">
+                  <ParameterField label="Neighbors" value={draft.neighbors}>
+                    <Slider tone="neutral" min={2} max={64} step={1} value={[draft.neighbors]} onValueChange={([neighbors]) => setDraft((value) => ({ ...value, neighbors }))} />
+                  </ParameterField>
+                  <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
+                    <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
+                  </ParameterField>
+                  <ParameterField label="Cluster spread" value={draft.spread.toFixed(1)}>
+                    <Slider tone="neutral" min={1} max={3} step={0.1} value={[draft.spread]} onValueChange={([spread]) => setDraft((value) => ({ ...value, spread }))} />
+                  </ParameterField>
+                  <ParameterField label="Epochs" value={draft.epochs}>
+                    <Slider tone="neutral" min={100} max={1500} step={100} value={[draft.epochs]} onValueChange={([epochs]) => setDraft((value) => ({ ...value, epochs }))} />
+                  </ParameterField>
+                  <ParameterField label="Learning rate" value={draft.learningRate.toFixed(1)}>
+                    <Slider tone="neutral" min={0.1} max={3} step={0.1} value={[draft.learningRate]} onValueChange={([learningRate]) => setDraft((value) => ({ ...value, learningRate }))} />
+                  </ParameterField>
+                </FieldGroup>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  onSelect={() => setDraft((current) => ({
                     ...DEFAULT_OPTIONS,
                     representation: current.representation,
                     method: current.method,
                     dimensions: current.dimensions,
                   }))}
                 >
-                  Reset
-                </Button>
-              </PopoverHeader>
-              <FieldGroup className="gap-4">
-                <ParameterField label="Neighbors" value={draft.neighbors}>
-                  <Slider tone="neutral" min={2} max={64} step={1} value={[draft.neighbors]} onValueChange={([neighbors]) => setDraft((value) => ({ ...value, neighbors }))} />
-                </ParameterField>
-                <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
-                  <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
-                </ParameterField>
-                <ParameterField label="Cluster spread" value={draft.spread.toFixed(1)}>
-                  <Slider tone="neutral" min={1} max={3} step={0.1} value={[draft.spread]} onValueChange={([spread]) => setDraft((value) => ({ ...value, spread }))} />
-                </ParameterField>
-                <ParameterField label="Epochs" value={draft.epochs}>
-                  <Slider tone="neutral" min={100} max={1500} step={100} value={[draft.epochs]} onValueChange={([epochs]) => setDraft((value) => ({ ...value, epochs }))} />
-                </ParameterField>
-                <ParameterField label="Learning rate" value={draft.learningRate.toFixed(1)}>
-                  <Slider tone="neutral" min={0.1} max={3} step={0.1} value={[draft.learningRate]} onValueChange={([learningRate]) => setDraft((value) => ({ ...value, learningRate }))} />
-                </ParameterField>
-              </FieldGroup>
-              <Button className="mt-4 w-full" variant="outline" size="sm" disabled={Boolean(progress)} onClick={() => commitOptions({ ...draft })}>
-                Rebuild on Metal
-              </Button>
-              <Separator className="my-4" />
-              <FieldGroup className="gap-4">
-                <Field>
-                  <FieldLabel htmlFor="chemical-space-study-parameter">Parameter study</FieldLabel>
-                  <NativeSelect
-                    id="chemical-space-study-parameter"
-                    size="sm"
-                    value={study.parameter}
-                    onChange={(event) => setStudy(studyDefaults(event.currentTarget.value as StudyParameter))}
+                  Reset to defaults
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={Boolean(progress)} onSelect={() => commitOptions({ ...draft })}>
+                  Rebuild on Metal
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Parameter study</DropdownMenuLabel>
+              <DropdownMenuGroup className="px-2 py-1.5">
+                <FieldGroup className="gap-3">
+                  <Field>
+                    <FieldLabel htmlFor="chemical-space-study-parameter">Parameter</FieldLabel>
+                    <NativeSelect
+                      id="chemical-space-study-parameter"
+                      size="sm"
+                      value={study.parameter}
+                      onChange={(event) => setStudy(studyDefaults(event.currentTarget.value as StudyParameter))}
+                    >
+                      <NativeSelectOption value="minDist">Minimum distance</NativeSelectOption>
+                      <NativeSelectOption value="neighbors">Neighbors</NativeSelectOption>
+                      <NativeSelectOption value="learningRate">Learning rate</NativeSelectOption>
+                    </NativeSelect>
+                  </Field>
+                  <ParameterField
+                    label="Sweep range"
+                    value={`${formatStudyValue(study.parameter, study.range[0])}–${formatStudyValue(study.parameter, study.range[1])}`}
                   >
-                    <NativeSelectOption value="minDist">Minimum distance</NativeSelectOption>
-                    <NativeSelectOption value="neighbors">Neighbors</NativeSelectOption>
-                    <NativeSelectOption value="learningRate">Learning rate</NativeSelectOption>
-                  </NativeSelect>
-                </Field>
-                <ParameterField
-                  label="Sweep range"
-                  value={`${formatStudyValue(study.parameter, study.range[0])}–${formatStudyValue(study.parameter, study.range[1])}`}
-                >
-                  <Slider
-                    tone="neutral"
-                    {...studySliderBounds(study.parameter)}
-                    value={study.range}
-                    onValueChange={(range) => setStudy((value) => ({ ...value, range: range as [number, number] }))}
-                  />
-                </ParameterField>
-                <ParameterField label="Frames" value={study.frames}>
-                  <Slider
-                    tone="neutral"
-                    min={3}
-                    max={16}
-                    step={1}
-                    value={[study.frames]}
-                    onValueChange={([frames]) => setStudy((value) => ({ ...value, frames }))}
-                  />
-                </ParameterField>
-              </FieldGroup>
-              <Button className="mt-4 w-full" variant="secondary" size="sm" disabled={Boolean(progress)} onClick={() => void runStudy()}>
-                Run animated study on Metal
-              </Button>
-            </PopoverContent>
-          </Popover>
-        </div>
-        {studyRunning ? (
-          <div
-            className="flex shrink-0 items-center gap-2 border-t border-border bg-background px-3 py-2"
-            data-testid="parameter-study-timeline"
-          >
-            <Spinner data-icon="inline-start" />
-            <Progress
-              className="flex-1"
-              value={progressPercent(progress) ?? undefined}
-              indeterminate={progressPercent(progress) === null}
-              aria-label={runningLabel || "Parameter study calculation in progress"}
-            />
-            <span className="min-w-28 text-right font-mono text-xs text-muted-foreground">
-              {runningLabel || "Preparing study…"}
-            </span>
-            <Button size="xs" variant="outline" onClick={stopStudy}>
-              Stop
-            </Button>
-          </div>
-        ) : completedStudy && displayedResult ? (
-          <div
-            className="flex shrink-0 items-center gap-2 border-t border-border bg-background px-3 py-2"
-            data-testid="parameter-study-timeline"
-          >
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={() => setStudyPlaying((value) => !value)}
+                    <Slider
+                      tone="neutral"
+                      {...studySliderBounds(study.parameter)}
+                      value={study.range}
+                      onValueChange={(range) => setStudy((value) => ({ ...value, range: range as [number, number] }))}
+                    />
+                  </ParameterField>
+                  <ParameterField label="Frames" value={study.frames}>
+                    <Slider
+                      tone="neutral"
+                      min={3}
+                      max={16}
+                      step={1}
+                      value={[study.frames]}
+                      onValueChange={([frames]) => setStudy((value) => ({ ...value, frames }))}
+                    />
+                  </ParameterField>
+                </FieldGroup>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem disabled={Boolean(progress)} onSelect={() => void runStudy()}>
+                  Run animated study on Metal
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {studyRunning ? (
+            <div
+              className="flex min-w-0 flex-1 items-center gap-2"
+              data-testid="parameter-study-timeline"
             >
-              {studyPlaying ? "Pause" : "Play"}
-            </Button>
-            <Slider
-              tone="neutral"
-              min={0}
-              max={completedStudy.results.length - 1}
-              step={0.01}
-              value={[studyPosition]}
-              aria-label="Parameter study timeline"
-              onValueChange={([value]) => {
-                setStudyPlaying(false);
-                setStudyPosition(value);
-              }}
-            />
-          </div>
-        ) : null}
+              <Spinner data-icon="inline-start" />
+              <Progress
+                className="min-w-20 flex-1"
+                value={progressPercent(progress) ?? undefined}
+                indeterminate={progressPercent(progress) === null}
+                aria-label={runningLabel || "Parameter study calculation in progress"}
+              />
+              <span className="truncate text-right font-mono text-xs text-muted-foreground">
+                {runningLabel || "Preparing study…"}
+              </span>
+              <Button className="shrink-0" size="xs" variant="outline" onClick={stopStudy}>
+                Stop
+              </Button>
+            </div>
+          ) : completedStudy && displayedResult ? (
+            <div
+              className="flex min-w-0 flex-1 items-center gap-2"
+              data-testid="parameter-study-timeline"
+            >
+              <Button
+                className="shrink-0"
+                size="xs"
+                variant="outline"
+                onClick={() => setStudyPlaying((value) => !value)}
+              >
+                {studyPlaying ? "Pause" : "Play"}
+              </Button>
+              <Slider
+                className="min-w-20 flex-1"
+                tone="neutral"
+                min={0}
+                max={completedStudy.results.length - 1}
+                step={0.01}
+                value={[studyPosition]}
+                aria-label="Parameter study timeline"
+                onValueChange={([value]) => {
+                  setStudyPlaying(false);
+                  setStudyPosition(value);
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
       </div>
     </TooltipProvider>
   );

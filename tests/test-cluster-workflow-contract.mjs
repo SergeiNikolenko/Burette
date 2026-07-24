@@ -125,7 +125,12 @@ assert.ok(
 );
 assert.match(chemicalSpacePanel, /label="Cluster spread" value=\{draft\.spread\.toFixed\(1\)\}/);
 assert.match(chemicalSpacePanel, /min=\{1\} max=\{3\} step=\{0\.1\} value=\{\[draft\.spread\]\}/);
-assert.match(chemicalSpacePanel, />\s*Reset\s*<\/Button>/);
+assert.match(chemicalSpacePanel, /from "@\/components\/ui\/dropdown-menu"/);
+assert.match(chemicalSpacePanel, /<DropdownMenu modal=\{false\}>/);
+assert.match(chemicalSpacePanel, /<DropdownMenuGroup/);
+assert.match(chemicalSpacePanel, />\s*Reset to defaults\s*<\/DropdownMenuItem>/);
+assert.match(chemicalSpacePanel, />\s*Rebuild on Metal\s*<\/DropdownMenuItem>/);
+assert.match(chemicalSpacePanel, />\s*Run animated study on Metal\s*<\/DropdownMenuItem>/);
 assert.match(chemicalSpacePanel, /method: current\.method,\s*dimensions: current\.dimensions/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/empty"/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/progress"/);
