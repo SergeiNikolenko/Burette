@@ -87,17 +87,21 @@ export function SettingControl({ row }: { row: SettingRow }) {
 export function SelectControl({
   value,
   options,
+  labels,
   onChange,
 }: {
   value: string;
   options: string[];
+  // Chemistry settings carry raw engine tokens - "gfnff", "verytight", "ch2cl2" -
+  // which are what the executable wants but not what a reader wants.
+  labels?: Record<string, string>;
   onChange: (value: string) => void;
 }) {
   return (
     <NativeSelect className="settings-select" size="sm" value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map((option) => (
         <NativeSelectOption key={option} value={option}>
-          {option}
+          {labels?.[option] ?? option}
         </NativeSelectOption>
       ))}
     </NativeSelect>
