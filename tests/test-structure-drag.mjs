@@ -103,26 +103,26 @@ malformedExplicit.setData(STRUCTURE_DRAG_MIME, "{not-json");
 assert.deepEqual(readStructureDragPayload(malformedExplicit), { paths: ["/tmp/fallback.sdf"], records: [] });
 
 const inlineMol = new FakeDataTransfer();
-inlineMol.setData("text/plain", "Example\n  Burrete\n\nM  END\n$$$$\n");
+inlineMol.setData("text/plain", "Example\n  Burette\n\nM  END\n$$$$\n");
 const inlinePayload = readStructureDragPayload(inlineMol);
 assert.equal(hasStructureDrag(inlineMol), true);
 assert.deepEqual(inlinePayload.paths, []);
 assert.deepEqual(inlinePayload.records, [{
   path: "structure.sdf",
   inputExtension: "sdf",
-  text: "Example\n  Burrete\n\nM  END\n$$$$",
+  text: "Example\n  Burette\n\nM  END\n$$$$",
 }]);
-assert.deepEqual(structureDragPayloadFromText("Example\n  Burrete\n\nM  END\n$$$$\n"), {
+assert.deepEqual(structureDragPayloadFromText("Example\n  Burette\n\nM  END\n$$$$\n"), {
   paths: [],
   records: [{
     path: "structure.sdf",
     inputExtension: "sdf",
-    text: "Example\n  Burrete\n\nM  END\n$$$$",
+    text: "Example\n  Burette\n\nM  END\n$$$$",
   }],
 });
 assert.deepEqual(structureDragRecordsToFragments(inlinePayload.records), [{
   title: "structure.sdf",
-  text: "Example\n  Burrete\n\nM  END\n",
+  text: "Example\n  Burette\n\nM  END\n",
 }]);
 
 const smilesText = new FakeDataTransfer();

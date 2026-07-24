@@ -1,7 +1,7 @@
 # Launch Modes
 
-Burrete remains a normal visible macOS application by default. The main Tauri
-window is configured as `visible: true`; double-clicking `Burrete.app` opens the
+Burette remains a normal visible macOS application by default. The main Tauri
+window is configured as `visible: true`; double-clicking `Burette.app` opens the
 full desktop shell.
 
 ## Modes
@@ -18,26 +18,26 @@ full desktop shell.
 
 ## Explicit Registration Mode
 
-Use `BURRETE_LAUNCH_MODE=register` for registration-only maintenance where a
+Use `BURETTE_LAUNCH_MODE=register` for registration-only maintenance where a
 visible app window is not needed:
 
 ```bash
-BURRETE_LAUNCH_MODE=register open -n /Applications/Burrete.app
+BURETTE_LAUNCH_MODE=register open -n /Applications/Burette.app
 ```
 
 The same mode can be passed directly to the binary:
 
 ```bash
-/Applications/Burrete.app/Contents/MacOS/burrete --burrete-launch-mode=register
+/Applications/Burette.app/Contents/MacOS/burette --burette-launch-mode=register
 ```
 
-`BURRETE_LAUNCH_MODE=normal` or no launch mode keeps the standard visible
+`BURETTE_LAUNCH_MODE=normal` or no launch mode keeps the standard visible
 application behavior. File arguments always take precedence over registration
-mode: if a launch includes file paths, Burrete shows the main window and opens
+mode: if a launch includes file paths, Burette shows the main window and opens
 the documents.
 
 ## Installer Behavior
 
 `scripts/install.sh` and the package installer perform LaunchServices and Quick
 Look registration directly. They do not need to launch the full app during that
-maintenance path. Users can still open Burrete normally after installation.
+maintenance path. Users can still open Burette normally after installation.

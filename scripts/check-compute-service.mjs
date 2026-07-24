@@ -10,12 +10,12 @@ if (!app || process.argv.length !== 3) {
   throw new Error('Usage: check-compute-service.mjs APP_BUNDLE');
 }
 
-const service = join(app, 'Contents', 'Helpers', 'burrete-compute-service');
+const service = join(app, 'Contents', 'Helpers', 'burette-compute-service');
 const runtime = join(app, 'Contents', 'Resources', 'ComputeMetal');
 const sessionToken = `session.v1.${randomBytes(32).toString('base64url')}`;
 const coordinatorNonce = randomBytes(32).toString('base64url');
 const child = spawn(service, ['--runtime-root', runtime], {
-  env: { ...process.env, BURRETE_COMPUTE_SESSION_TOKEN: sessionToken },
+  env: { ...process.env, BURETTE_COMPUTE_SESSION_TOKEN: sessionToken },
   stdio: ['pipe', 'pipe', 'pipe'],
 });
 

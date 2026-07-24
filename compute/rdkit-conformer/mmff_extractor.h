@@ -1,4 +1,4 @@
-// Copyright 2026 Burrete contributors.
+// Copyright 2026 Burette contributors.
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -11,7 +11,7 @@ namespace RDKit {
 class ROMol;
 }
 
-namespace burrete::mmff {
+namespace burette::mmff {
 
 enum class Variant : std::uint8_t { MMFF94 = 0, MMFF94s = 1 };
 
@@ -38,4 +38,4 @@ struct ExtractedParameters {
 
 ExtractedParameters extract_parameters(RDKit::ROMol &mol, Variant variant);
 
-}  // namespace burrete::mmff
+}  // namespace burette::mmff

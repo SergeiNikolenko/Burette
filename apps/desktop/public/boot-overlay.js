@@ -1,6 +1,6 @@
 (function () {
-  const overlayId = "burrete-boot-overlay";
-  const styleId = "burrete-boot-overlay-style";
+  const overlayId = "burette-boot-overlay";
+  const styleId = "burette-boot-overlay-style";
   const mountTimeoutMs = 3000;
   let pendingOverlay = null;
   let mounted = false;
@@ -32,7 +32,7 @@
         font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         -webkit-font-smoothing: antialiased;
       }
-      #${overlayId} .burrete-boot-card {
+      #${overlayId} .burette-boot-card {
         width: min(720px, 100%);
         max-height: min(520px, 100%);
         overflow: auto;
@@ -74,8 +74,8 @@
     overlay.setAttribute("role", "status");
     overlay.setAttribute("aria-live", "polite");
     overlay.innerHTML = [
-      '<section class="burrete-boot-card">',
-      "<h1>Burrete is starting</h1>",
+      '<section class="burette-boot-card">',
+      "<h1>Burette is starting</h1>",
       "<p>Loading the desktop UI...</p>",
       "</section>",
     ].join("");
@@ -98,8 +98,8 @@
     overlay.setAttribute("aria-live", "assertive");
     const detailsMarkup = details ? `<pre>${escapeHtml(details)}</pre>` : "";
     overlay.innerHTML = [
-      '<section class="burrete-boot-card">',
-      "<h1>Burrete UI failed to start</h1>",
+      '<section class="burette-boot-card">',
+      "<h1>Burette UI failed to start</h1>",
       `<p>${escapeHtml(message)}</p>`,
       detailsMarkup,
       "</section>",
@@ -156,7 +156,7 @@
       reportStartupFailure("The desktop UI did not mount within 3 seconds.");
     }, mountTimeoutMs);
   });
-  window.__BURRETE_BOOT_OVERLAY__ = {
+  window.__BURETTE_BOOT_OVERLAY__ = {
     report: setOverlay,
     markMounted: removeOverlay,
   };

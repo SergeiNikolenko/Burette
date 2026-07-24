@@ -2,16 +2,16 @@ import type { Plugin } from "vite";
 
 export function ketcherRaphaelImportShimPlugin(): Plugin {
   const target = "raphaelModule = require('raphael');";
-  const replacement = "raphaelModule = __burreteRaphael;";
+  const replacement = "raphaelModule = __buretteRaphael;";
 
   return {
-    name: "burrete-ketcher-raphael-import-shim",
+    name: "burette-ketcher-raphael-import-shim",
     transform(code, id) {
       const normalized = id.replaceAll("\\", "/");
       if (!normalized.endsWith("/node_modules/ketcher-core/dist/index.modern.js")) return null;
       if (!code.includes(target)) return null;
       return {
-        code: `import __burreteRaphael from "raphael";\n${code.replaceAll(target, replacement)}`,
+        code: `import __buretteRaphael from "raphael";\n${code.replaceAll(target, replacement)}`,
         map: null,
       };
     },
@@ -20,7 +20,7 @@ export function ketcherRaphaelImportShimPlugin(): Plugin {
 
 export function deferKetcherCssPlugin(): Plugin {
   return {
-    name: "burrete-defer-ketcher-css",
+    name: "burette-defer-ketcher-css",
     transformIndexHtml(html) {
       return html.replace(/\n\s*<link rel="stylesheet" crossorigin href="\.\/assets\/ketcher-[^"]+\.css">/gu, "");
     },

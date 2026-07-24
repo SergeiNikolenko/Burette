@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use burrete_compute_protocol::{ArtifactManifest, JobRevisionEvent, JobSnapshot};
+use burette_compute_protocol::{ArtifactManifest, JobRevisionEvent, JobSnapshot};
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use uuid::Uuid;
 

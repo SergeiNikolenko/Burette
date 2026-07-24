@@ -178,7 +178,7 @@ function pipelineFor(source: ConformerEnsembleSummary["source"], conformerCount:
   return [
     { step: "input", label: "Input ensemble", status: conformerCount > 0 ? "ready" : "missing", detail: `${conformerCount} conformer${conformerCount === 1 ? "" : "s"} detected` },
     { step: "generation", label: "Generation", status: source === "crest" ? "ready" : "available", detail: source === "crest" ? "CREST output detected" : "CREST, RDKit ETKDG, MCMM, or manual ensembles can feed this surface" },
-    { step: "optimization", label: "Optimization", status: "available", detail: "Attach xTB, DFT, or force-field refinement outputs when they are produced outside Burrete" },
+    { step: "optimization", label: "Optimization", status: "available", detail: "Attach xTB, DFT, or force-field refinement outputs when they are produced outside Burette" },
     { step: "deduplication", label: "Deduplication", status: source === "prism" ? "ready" : "available", detail: source === "prism" ? "PRISM-style pruning detected" : "Run PRISM Pruner or CREGEN before expensive downstream work" },
     { step: "clustering", label: "Clustering", status: "available", detail: "Use ReSCoSS-style cluster representatives for diverse output subsets" },
     { step: "analytics", label: "Analytics", status: conformerCount > 0 ? "ready" : "available", detail: "Energy, cluster, and coordinate analytics belong in this workspace" },

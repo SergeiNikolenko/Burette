@@ -22,7 +22,7 @@ const VIEWPORT_OVERSHOOT = 2000;
 const VIEWPORT_PARSE_BUDGET_MS = 50;
 const IDLE_PARSE_BUDGET_MS = 50;
 const IDLE_PARSE_TIMEOUT_MS = 2000;
-const AGENT_SHELL_BUILD = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
+const AGENT_SHELL_BUILD = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
 function invisibleSearchPanel() {
   const dom = document.createElement("div");

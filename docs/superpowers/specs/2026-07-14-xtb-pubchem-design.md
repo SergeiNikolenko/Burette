@@ -11,7 +11,7 @@ This change covers the macOS desktop app and its browser-development parity surf
 Implementation is split into three reviewable stages:
 
 1. Existing xTB selection and automatic Conda/Pixi/Homebrew/PATH discovery.
-2. An isolated Burrete-managed xTB environment, replacing `pixi global install xtb`.
+2. An isolated Burette-managed xTB environment, replacing `pixi global install xtb`.
 3. PubChem identity and similarity actions for exact molecule structures.
 
 ## xTB Runtime Contract
@@ -21,7 +21,7 @@ The native backend owns runtime selection so status checks and actual jobs alway
 Resolution order is:
 
 1. Explicitly selected executable. An invalid explicit selection fails closed and must not silently fall back.
-2. The current Burrete-managed environment.
+2. The current Burette-managed environment.
 3. Active Conda environment (`CONDA_PREFIX`).
 4. Common Miniconda, Miniforge, Mambaforge, Anaconda, and Pixi locations.
 5. `PATH`, Homebrew, and conventional local binary locations.
@@ -32,22 +32,22 @@ Settings provides these contextual actions:
 
 - **Use Existing…** opens a native file picker and validates the selected xTB executable.
 - **Use Automatically** clears an explicit selection and returns to discovery.
-- **Install Managed** installs xTB in Burrete app data.
+- **Install Managed** installs xTB in Burette app data.
 - **Check** refreshes status.
 
 Browser development exposes equivalent status, selection, installation, and execution routes. It stores its selection outside the repository and never mutates global `PATH`.
 
 ## Managed xTB Installation
 
-Burrete ships a repository-owned Pixi manifest and lockfile for xTB. Installation runs `pixi install --locked --manifest-path` into a staged directory under app data, validates the resulting executable, and atomically promotes the staged environment. A failed install leaves the previous managed environment intact.
+Burette ships a repository-owned Pixi manifest and lockfile for xTB. Installation runs `pixi install --locked --manifest-path` into a staged directory under app data, validates the resulting executable, and atomically promotes the staged environment. A failed install leaves the previous managed environment intact.
 
-The installer never calls `pixi global install`, never modifies shell configuration, and never writes to the user's global Pixi environment. If Pixi is unavailable, Burrete explains how to select an existing executable instead.
+The installer never calls `pixi global install`, never modifies shell configuration, and never writes to the user's global Pixi environment. If Pixi is unavailable, Burette explains how to select an existing executable instead.
 
 ## PubChem Search Contract
 
 PubChem actions live in molecule-level menus: the Mol* molecule actions menu and grid row/card menus. They are visible only in the desktop app viewer, not shared Quick Look or iPhone viewer surfaces.
 
-Actions are enabled only when Burrete can derive a complete, exact SMILES from the source molecule. SDF-backed structures and explicit grid SMILES are supported. Protein residues, inferred PDB/mmCIF/XYZ bonds, empty structures, wildcard/query atoms, and oversized SMILES are rejected.
+Actions are enabled only when Burette can derive a complete, exact SMILES from the source molecule. SDF-backed structures and explicit grid SMILES are supported. Protein residues, inferred PDB/mmCIF/XYZ bonds, empty structures, wildcard/query atoms, and oversized SMILES are rejected.
 
 The embedded viewer posts a structured trusted bridge message:
 
@@ -80,7 +80,7 @@ Focused checks must cover:
 
 - Chris's `~/miniconda3/bin/xtb` can be detected automatically or selected explicitly.
 - Running a job uses exactly the executable shown in Settings.
-- Installing xTB creates only a Burrete-managed environment and does not affect global Pixi packages.
+- Installing xTB creates only a Burette-managed environment and does not affect global Pixi packages.
 - Supported molecules can open PubChem identity and 90% similarity results with correctly encoded SMILES.
 - Unsupported or ambiguous structures cannot launch a misleading PubChem search.
 - Quick Look behavior remains unchanged until diagnostic evidence is available.

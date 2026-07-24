@@ -1,12 +1,12 @@
 {
-  "schemaVersion": "burrete.compute-job-snapshot.v1",
+  "schemaVersion": "burette.compute-job-snapshot.v1",
   "jobId": "018f48f2-2e20-7e53-976b-cf93e08976ff",
   "revision": 20,
   "ownerSurface": "desktop",
   "workflowTemplate": "cluster.v1",
   "state": "succeeded",
   "request": {
-    "schemaVersion": "burrete.compute-job.v1",
+    "schemaVersion": "burette.compute-job.v1",
     "workflowTemplate": "cluster.v1",
     "source": {
       "documentId": "document-1",
@@ -49,7 +49,7 @@
   },
   "normalizedRequestSha256": "e9ac23cb9b124ece406aee5619cf49112de538f4fdf6d2f2217387df1ab202af",
   "frozenSource": {
-    "schemaVersion": "burrete.molecular-snapshot.v1",
+    "schemaVersion": "burette.molecular-snapshot.v1",
     "snapshotId": "018f48f2-2e20-7e53-976b-cf93e0897701",
     "snapshotSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "frozenSource": {
@@ -83,7 +83,7 @@
         "effectiveBackend": "coordinator",
         "precision": "notApplicable",
         "engine": {
-          "engineId": "burrete-coordinator",
+          "engineId": "burette-coordinator",
           "version": "1.0.0",
           "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
         },
@@ -135,7 +135,7 @@
         "effectiveBackend": "nativeMetal",
         "precision": "integerExact",
         "engine": {
-          "engineId": "burrete-native-metal",
+          "engineId": "burette-native-metal",
           "version": "1.0.0",
           "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
         },
@@ -161,7 +161,7 @@
         "effectiveBackend": "referenceCpu",
         "precision": "integerExact",
         "engine": {
-          "engineId": "burrete-reference-cpu",
+          "engineId": "burette-reference-cpu",
           "version": "1.0.0",
           "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
         },
@@ -187,7 +187,7 @@
         "effectiveBackend": "referenceCpu",
         "precision": "integerExact",
         "engine": {
-          "engineId": "burrete-reference-cpu",
+          "engineId": "burette-reference-cpu",
           "version": "1.0.0",
           "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
         },
@@ -213,7 +213,7 @@
         "effectiveBackend": "coordinator",
         "precision": "notApplicable",
         "engine": {
-          "engineId": "burrete-coordinator",
+          "engineId": "burette-coordinator",
           "version": "1.0.0",
           "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
         },
@@ -249,7 +249,7 @@
       "requestedBackend": "coordinator",
       "effectiveBackend": "coordinator",
       "engine": {
-        "engineId": "burrete-coordinator",
+        "engineId": "burette-coordinator",
         "version": "1.0.0",
         "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       },
@@ -309,7 +309,7 @@
       "requestedBackend": "nativeMetal",
       "effectiveBackend": "nativeMetal",
       "engine": {
-        "engineId": "burrete-native-metal",
+        "engineId": "burette-native-metal",
         "version": "1.0.0",
         "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       },
@@ -339,7 +339,7 @@
       "requestedBackend": "referenceCpu",
       "effectiveBackend": "referenceCpu",
       "engine": {
-        "engineId": "burrete-reference-cpu",
+        "engineId": "burette-reference-cpu",
         "version": "1.0.0",
         "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       },
@@ -369,7 +369,7 @@
       "requestedBackend": "referenceCpu",
       "effectiveBackend": "referenceCpu",
       "engine": {
-        "engineId": "burrete-reference-cpu",
+        "engineId": "burette-reference-cpu",
         "version": "1.0.0",
         "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       },
@@ -399,7 +399,7 @@
       "requestedBackend": "coordinator",
       "effectiveBackend": "coordinator",
       "engine": {
-        "engineId": "burrete-coordinator",
+        "engineId": "burette-coordinator",
         "version": "1.0.0",
         "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       },

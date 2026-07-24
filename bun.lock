@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "burrete",
+      "name": "burette",
       "dependencies": {
         "@codemirror/commands": "6.10.3",
         "@codemirror/lang-markdown": "^6.4.0",
@@ -59,11 +59,11 @@
         "zod": "^4.4.2",
       },
     },
-    "apps/burrete-public-plugin": {
-      "name": "@burrete/public-plugin",
+    "apps/burette-public-plugin": {
+      "name": "@burette/public-plugin",
       "version": "0.1.0",
       "dependencies": {
-        "@burrete/ketcher-agent-contract": "workspace:*",
+        "@burette/ketcher-agent-contract": "workspace:*",
         "@modelcontextprotocol/ext-apps": "1.7.4",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@vercel/analytics": "2.0.1",
@@ -82,10 +82,10 @@
       },
     },
     "apps/desktop": {
-      "name": "@burrete/desktop",
+      "name": "@burette/desktop",
       "dependencies": {
         "@base-ui/react": "^1.6.0",
-        "@burrete/ketcher-agent-contract": "workspace:*",
+        "@burette/ketcher-agent-contract": "workspace:*",
         "@vercel/analytics": "2.0.1",
         "@vercel/speed-insights": "2.0.0",
         "ketcher-core": "3.15.0",
@@ -96,15 +96,15 @@
         "radix-ui": "^1.6.4",
       },
     },
-    "packages/burrete": {
-      "name": "burrete",
+    "packages/burette": {
+      "name": "burette",
       "version": "1.0.31",
       "bin": {
-        "burrete": "bin/burrete.mjs",
+        "burette": "bin/burette.mjs",
       },
     },
     "packages/ketcher-agent-contract": {
-      "name": "@burrete/ketcher-agent-contract",
+      "name": "@burette/ketcher-agent-contract",
       "version": "0.1.0",
     },
   },
@@ -183,11 +183,11 @@
 
     "@blazediff/core": ["@blazediff/core@1.9.1", "", {}, "sha512-ehg3jIkYKulZh+8om/O25vkvSsXXwC+skXmyA87FFx6A/45eqOkZsBltMw/TVteb0mloiGT8oGRTcjRAz66zaA=="],
 
-    "@burrete/desktop": ["@burrete/desktop@workspace:apps/desktop"],
+    "@burette/desktop": ["@burette/desktop@workspace:apps/desktop"],
 
-    "@burrete/ketcher-agent-contract": ["@burrete/ketcher-agent-contract@workspace:packages/ketcher-agent-contract"],
+    "@burette/ketcher-agent-contract": ["@burette/ketcher-agent-contract@workspace:packages/ketcher-agent-contract"],
 
-    "@burrete/public-plugin": ["@burrete/public-plugin@workspace:apps/burrete-public-plugin"],
+    "@burette/public-plugin": ["@burette/public-plugin@workspace:apps/burette-public-plugin"],
 
     "@codemirror/autocomplete": ["@codemirror/autocomplete@6.20.3", "", { "dependencies": { "@codemirror/language": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.17.0", "@lezer/common": "^1.0.0" } }, "sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g=="],
 
@@ -1069,7 +1069,7 @@
 
     "bundle-name": ["bundle-name@4.1.0", "", { "dependencies": { "run-applescript": "^7.0.0" } }, "sha512-tjwM5exMg6BGRI+kNmTntNsvdZS1X8BFYS6tnJ2hdH0kVxM6/eVZ2xy+FqStSWvYmtfFMDLIxurorHwDKfDz5Q=="],
 
-    "burrete": ["burrete@workspace:packages/burrete"],
+    "burette": ["burette@workspace:packages/burette"],
 
     "bytes": ["bytes@3.1.2", "", {}, "sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg=="],
 

@@ -1,6 +1,6 @@
 ---
 name: trajectory-review
-description: "Use when reviewing molecular trajectories, frame metrics, representative structures, or trajectory result bundles in Burrete."
+description: "Use when reviewing molecular trajectories, frame metrics, representative structures, or trajectory result bundles in Burette."
 ---
 
 # Trajectory Review
@@ -14,7 +14,7 @@ frames, RMSD/RMSF/contact plots, and trajectory cleanup outputs.
 2. Identify the trajectory bundle and required companion files.
 3. Open the displayable structure or bundle through `open-workspace`.
 4. Validate trajectory metrics and artifacts as a bounded snapshot.
-5. Render metrics and artifact provenance in a Burrete side panel or adjacent
+5. Render metrics and artifact provenance in a Burette side panel or adjacent
    report file.
 6. Use Browser or Computer visual QA when trajectory controls or frame display
    must be verified.
@@ -25,4 +25,4 @@ frames, RMSD/RMSF/contact plots, and trajectory cleanup outputs.
 - `partial`: metrics or representative frames are reviewable, but interactive
   trajectory controls are missing or incomplete.
 - `unsupported`: required topology/coordinate files are absent or unreadable.
-- `external_workflow`: cleanup or production MD must run outside Burrete.
+- `external_workflow`: cleanup or production MD must run outside Burette.

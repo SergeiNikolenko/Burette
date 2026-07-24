@@ -26,23 +26,23 @@
 		<dict>
 			<key>QLSupportedContentTypes</key>
 			<array>
-				<string>com.local.burrete10.pdb</string>
+				<string>com.local.burette10.pdb</string>
 				<string>public.pdb</string>
-				<string>com.local.burrete10.cif</string>
+				<string>com.local.burette10.cif</string>
 				<string>public.cif</string>
-				<string>com.local.burrete10.mmcif</string>
-				<string>com.local.burrete10.bcif</string>
-				<string>com.local.burrete10.mmtf</string>
-				<string>com.local.burrete10.sdf</string>
-				<string>com.local.burrete10.smiles</string>
+				<string>com.local.burette10.mmcif</string>
+				<string>com.local.burette10.bcif</string>
+				<string>com.local.burette10.mmtf</string>
+				<string>com.local.burette10.sdf</string>
+				<string>com.local.burette10.smiles</string>
 				<string>gg.flew.unfold.subtitle-smi</string>
-				<string>com.local.burrete10.csv</string>
-				<string>com.local.burrete10.datawarrior</string>
-				<string>com.local.burrete10.tsv</string>
+				<string>com.local.burette10.csv</string>
+				<string>com.local.burette10.datawarrior</string>
+				<string>com.local.burette10.tsv</string>
 				<string>public.comma-separated-values-text</string>
 				<string>public.tab-separated-values-text</string>
-				<string>com.local.burrete10.mol</string>
-				<string>com.local.burrete10.mol2</string>
+				<string>com.local.burette10.mol</string>
+				<string>com.local.burette10.mol2</string>
 				<string>com.revvity.external.mdl3000</string>
 				<string>com.mdli.molfile</string>
 				<string>com.revvity.external.cif</string>
@@ -51,26 +51,26 @@
 				<string>com.schrodinger.pdb</string>
 				<string>com.schrodinger.sdf</string>
 				<string>com.mdli.sketchfile</string>
-				<string>com.local.burrete10.xyz</string>
-				<string>com.local.burrete10.xyzrender-input</string>
+				<string>com.local.burette10.xyz</string>
+				<string>com.local.burette10.xyzrender-input</string>
 				<string>net.sourceforge.openbabel.xyz</string>
 				<string>com.adobe.fdf</string>
 				<string>com.apple.videoapps.cube</string>
 				<string>com.gaussian.cube</string>
-				<string>com.local.burrete10.gro</string>
+				<string>com.local.burette10.gro</string>
 				<string>gg.flew.unfold.gromacs-structure</string>
-				<string>com.local.burrete10.mvsj</string>
-				<string>com.local.burrete10.mvsx</string>
-				<string>com.local.burrete10.molecular-dynamics</string>
+				<string>com.local.burette10.mvsj</string>
+				<string>com.local.burette10.mvsx</string>
+				<string>com.local.burette10.molecular-dynamics</string>
 					<string>com.schrodinger.mae</string>
-					<string>com.local.burrete10.schrodinger</string>
-					<string>com.local.burrete10.graphml</string>
-					<string>com.local.burrete10.fep-edge-list</string>
-					<string>com.local.burrete10.pharmacophore</string>
-				<string>com.local.burrete10.spectrum</string>
-				<string>com.local.burrete10.spectrum-json</string>
-				<string>com.local.burrete10.openmm-coordinate-artifact</string>
-				<string>com.local.burrete10.openmm-workflow-text-artifact</string>
+					<string>com.local.burette10.schrodinger</string>
+					<string>com.local.burette10.graphml</string>
+					<string>com.local.burette10.fep-edge-list</string>
+					<string>com.local.burette10.pharmacophore</string>
+				<string>com.local.burette10.spectrum</string>
+				<string>com.local.burette10.spectrum-json</string>
+				<string>com.local.burette10.openmm-coordinate-artifact</string>
+				<string>com.local.burette10.openmm-workflow-text-artifact</string>
 			</array>
 		</dict>
 		<key>NSExtensionPointIdentifier</key>

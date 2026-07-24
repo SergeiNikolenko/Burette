@@ -2,16 +2,16 @@
 set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-APP="${BURRETE_APP_PATH:-$ROOT/build/Burrete.app}"
-REPORT="${BURRETE_PERF_REPORT:-$ROOT/build/reports/perf-smoke.txt}"
-PDB_FILE="${BURRETE_PERF_PDB:-$ROOT/samples/mini.pdb}"
-SDF_FILE="${BURRETE_PERF_SDF:-$ROOT/samples/mini.sdf}"
-QUICKLOOK_FILE="${BURRETE_PERF_QUICKLOOK_FILE:-$PDB_FILE}"
-TIMEOUT_SECONDS="${BURRETE_PERF_TIMEOUT_SECONDS:-20}"
-RUN_GUI="${BURRETE_PERF_RUN_GUI:-1}"
-RUN_QUICKLOOK="${BURRETE_PERF_RUN_QUICKLOOK:-1}"
-RUN_GRID_FTS="${BURRETE_PERF_RUN_GRID_FTS:-0}"
-PROCESS_NAME="${BURRETE_PROCESS_NAME:-Burrete}"
+APP="${BURETTE_APP_PATH:-$ROOT/build/Burette.app}"
+REPORT="${BURETTE_PERF_REPORT:-$ROOT/build/reports/perf-smoke.txt}"
+PDB_FILE="${BURETTE_PERF_PDB:-$ROOT/samples/mini.pdb}"
+SDF_FILE="${BURETTE_PERF_SDF:-$ROOT/samples/mini.sdf}"
+QUICKLOOK_FILE="${BURETTE_PERF_QUICKLOOK_FILE:-$PDB_FILE}"
+TIMEOUT_SECONDS="${BURETTE_PERF_TIMEOUT_SECONDS:-20}"
+RUN_GUI="${BURETTE_PERF_RUN_GUI:-1}"
+RUN_QUICKLOOK="${BURETTE_PERF_RUN_QUICKLOOK:-1}"
+RUN_GRID_FTS="${BURETTE_PERF_RUN_GRID_FTS:-0}"
+PROCESS_NAME="${BURETTE_PROCESS_NAME:-Burette}"
 
 mkdir -p "$(dirname "$REPORT")"
 
@@ -20,7 +20,7 @@ now_ms() {
 }
 
 print_header() {
-  printf 'Burrete performance smoke report\n'
+  printf 'Burette performance smoke report\n'
   printf 'Generated: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   printf 'Root: %s\n' "$ROOT"
   printf 'App: %s\n' "$APP"
@@ -58,7 +58,7 @@ wait_for_first_window() {
 }
 
 quit_app() {
-  osascript -e 'tell application "Burrete" to quit' >/dev/null 2>&1 || true
+  osascript -e 'tell application "Burette" to quit' >/dev/null 2>&1 || true
   sleep 1
 }
 
@@ -79,7 +79,7 @@ measure_open() {
 smoke_app_launch() {
   printf '## App Cold Launch Approximation\n\n'
   if [[ "$RUN_GUI" != "1" ]]; then
-    echo "Skipped: BURRETE_PERF_RUN_GUI is not 1."
+    echo "Skipped: BURETTE_PERF_RUN_GUI is not 1."
     return 0
   fi
   if [[ ! -d "$APP" ]]; then
@@ -113,7 +113,7 @@ smoke_open_file() {
   local file="$2"
   printf '\n## %s\n\n' "$title"
   if [[ "$RUN_GUI" != "1" ]]; then
-    echo "Skipped: BURRETE_PERF_RUN_GUI is not 1."
+    echo "Skipped: BURETTE_PERF_RUN_GUI is not 1."
     return 0
   fi
   if [[ ! -d "$APP" ]]; then
@@ -136,7 +136,7 @@ smoke_open_file() {
 smoke_quicklook() {
   printf '\n## Quick Look Preview Smoke\n\n'
   if [[ "$RUN_QUICKLOOK" != "1" ]]; then
-    echo "Skipped: BURRETE_PERF_RUN_QUICKLOOK is not 1."
+    echo "Skipped: BURETTE_PERF_RUN_QUICKLOOK is not 1."
     return 0
   fi
   if [[ ! -f "$QUICKLOOK_FILE" ]]; then
@@ -152,7 +152,7 @@ smoke_quicklook() {
   local started ended status
   started="$(now_ms)"
   set +e
-  RUNS="${BURRETE_QUICKLOOK_RUNS:-1}" \
+  RUNS="${BURETTE_QUICKLOOK_RUNS:-1}" \
     TIMEOUT_SECONDS="$TIMEOUT_SECONDS" \
     METRICS_PATH="$metrics_path" \
     "$ROOT/scripts/measure-quicklook-cold-open.sh" "$QUICKLOOK_FILE"
@@ -169,7 +169,7 @@ smoke_quicklook() {
 smoke_grid_fts() {
   printf '\n## SQLite FTS Grid Search Perf Smoke\n\n'
   if [[ "$RUN_GRID_FTS" != "1" ]]; then
-    echo "Skipped: BURRETE_PERF_RUN_GRID_FTS is not 1."
+    echo "Skipped: BURETTE_PERF_RUN_GRID_FTS is not 1."
     return 0
   fi
   if ! command -v cargo >/dev/null 2>&1; then

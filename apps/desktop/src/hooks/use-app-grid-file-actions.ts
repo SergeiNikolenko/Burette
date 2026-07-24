@@ -55,7 +55,7 @@ export function useAppGridFileActions({
     bodyPayload: Record<string, unknown>,
   ) => {
     postMessageToViewerSource(source, {
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: {
         documentId,
         ...bodyPayload,

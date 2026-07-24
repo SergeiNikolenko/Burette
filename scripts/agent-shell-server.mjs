@@ -256,12 +256,12 @@ async function handleChemicalSpaceRepresentation(req, res, method) {
   try {
     const python = molecularRepresentationPython();
     if (!python) {
-      throw new Error('Metal model runtime is not installed. Configure BURRETE_CHEMICAL_SPACE_MODEL_PYTHON.');
+      throw new Error('Metal model runtime is not installed. Configure BURETTE_CHEMICAL_SPACE_MODEL_PYTHON.');
     }
     const body = await readJsonBody(req, MODEL_REQUEST_LIMIT);
     const repoRoot = resolve(scriptDir, '..');
     const script = resolve(repoRoot, 'compute', 'models', 'chemical_space_representations.py');
-    const modelRoot = resolve(homedir(), 'Library', 'Application Support', 'Burrete', 'chemical-space-models');
+    const modelRoot = resolve(homedir(), 'Library', 'Application Support', 'Burette', 'chemical-space-models');
     res.writeHead(200, {
       'Content-Type': 'application/x-ndjson; charset=utf-8',
       'Cache-Control': 'no-cache',
@@ -305,8 +305,8 @@ async function handleChemicalSpaceRepresentation(req, res, method) {
 function molecularRepresentationPython() {
   const repoRoot = resolve(scriptDir, '..');
   return [
-    String(process.env.BURRETE_CHEMICAL_SPACE_MODEL_PYTHON || '').trim(),
-    resolve(homedir(), 'Library', 'Application Support', 'Burrete', 'model-python', 'bin', 'python'),
+    String(process.env.BURETTE_CHEMICAL_SPACE_MODEL_PYTHON || '').trim(),
+    resolve(homedir(), 'Library', 'Application Support', 'Burette', 'model-python', 'bin', 'python'),
     resolve(repoRoot, '.venv-chemical-space', 'bin', 'python'),
   ].filter(Boolean).find((candidate) => existsSync(candidate)) || null;
 }
@@ -484,9 +484,9 @@ async function handleTrajectoryPreview(res, method, url) {
     res.setHeader('Content-Type', 'chemical/x-pdb; charset=us-ascii');
     res.setHeader('Content-Length', String(preview.bytes.length));
     res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('X-Burrete-Source-Byte-Count', String(preview.sourceByteCount));
-    res.setHeader('X-Burrete-Trajectory-Topology', preview.topologyPath);
-    res.setHeader('X-Burrete-Trajectory-Frame-Count', String(preview.frameCount));
+    res.setHeader('X-Burette-Source-Byte-Count', String(preview.sourceByteCount));
+    res.setHeader('X-Burette-Trajectory-Topology', preview.topologyPath);
+    res.setHeader('X-Burette-Trajectory-Frame-Count', String(preview.frameCount));
     res.end(preview.bytes);
   } catch (error) {
     sendJson(res, 400, { error: error?.message || String(error) });
@@ -810,17 +810,17 @@ function cacheChemicalSpaceKnn(response, cacheKey) {
 function nativeComputeRuntime() {
   const repoRoot = resolve(scriptDir, '..');
   const runtimeRoots = [
-    String(process.env.BURRETE_DEV_COMPUTE_RUNTIME_ROOT || '').trim(),
+    String(process.env.BURETTE_DEV_COMPUTE_RUNTIME_ROOT || '').trim(),
     resolve(repoRoot, 'target', 'debug', 'ComputeMetal'),
     resolve(repoRoot, 'target', 'release', 'ComputeMetal'),
   ].filter(Boolean);
   const runtimeRoot = runtimeRoots.find((candidate) => existsSync(resolve(candidate, 'current.json')));
   if (!runtimeRoot) return null;
   const executables = [
-    String(process.env.BURRETE_DEV_COMPUTE_BACKEND || '').trim(),
-    resolve(dirname(dirname(runtimeRoot)), 'MacOS', 'burrete-compute-dev-backend'),
-    resolve(repoRoot, 'target', 'debug', 'burrete-compute-dev-backend'),
-    resolve(repoRoot, 'target', 'release', 'burrete-compute-dev-backend'),
+    String(process.env.BURETTE_DEV_COMPUTE_BACKEND || '').trim(),
+    resolve(dirname(dirname(runtimeRoot)), 'MacOS', 'burette-compute-dev-backend'),
+    resolve(repoRoot, 'target', 'debug', 'burette-compute-dev-backend'),
+    resolve(repoRoot, 'target', 'release', 'burette-compute-dev-backend'),
   ].filter(Boolean);
   const executable = executables.find((candidate) => existsSync(candidate));
   return executable ? { executable, runtimeRoot } : null;
@@ -902,9 +902,9 @@ function runJsonWorker(command, commandArgs, input, timeoutMs, environment = {},
       const lines = stderrBuffer.split('\n');
       stderrBuffer = lines.pop() || '';
       for (const line of lines) {
-        if (line.startsWith('BURRETE_PROGRESS\t')) {
+        if (line.startsWith('BURETTE_PROGRESS\t')) {
           try {
-            onProgress?.(JSON.parse(line.slice('BURRETE_PROGRESS\t'.length)));
+            onProgress?.(JSON.parse(line.slice('BURETTE_PROGRESS\t'.length)));
           } catch {
             stderrChunks.push(Buffer.from(`${line}\n`));
           }

@@ -1,4 +1,4 @@
-export const KETCHER_AGENT_API_VERSION = "burrete-ketcher-agent/v1";
+export const KETCHER_AGENT_API_VERSION = "burette-ketcher-agent/v1";
 
 export const KETCHER_AGENT_LIMITS = Object.freeze({
   inlineBytes: 64 * 1024,

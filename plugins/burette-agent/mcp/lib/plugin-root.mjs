@@ -19,8 +19,8 @@ export function repoPath(...parts) {
 }
 
 function resolveRepoRoot() {
-  if (process.env.BURRETE_AGENT_REPO_ROOT) {
-    return { path: path.resolve(process.env.BURRETE_AGENT_REPO_ROOT), source: "env" };
+  if (process.env.BURETTE_AGENT_REPO_ROOT) {
+    return { path: path.resolve(process.env.BURETTE_AGENT_REPO_ROOT), source: "env" };
   }
   try {
     const metadata = JSON.parse(readFileSync(path.join(pluginRoot, ".burette-agent-install.json"), "utf8"));
@@ -30,7 +30,7 @@ function resolveRepoRoot() {
   } catch {
     // Source checkouts do not have install metadata.
   }
-  const sourceCheckoutCli = path.join(defaultRepoRoot, "scripts", "burrete-agent.mjs");
+  const sourceCheckoutCli = path.join(defaultRepoRoot, "scripts", "burette-agent.mjs");
   if (existsSync(sourceCheckoutCli)) {
     return { path: defaultRepoRoot, source: "source-checkout" };
   }

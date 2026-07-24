@@ -594,7 +594,7 @@ mod tests {
 
     fn temp_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "burrete-numpy-artifact-test-{}-{name}",
+            "burette-numpy-artifact-test-{}-{name}",
             uuid::Uuid::new_v4()
         ))
     }

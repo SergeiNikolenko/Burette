@@ -270,7 +270,7 @@ function moldictToMolblock(label: string, atoms: unknown[], bonds: unknown[], co
 
   return [
     label.slice(0, 80),
-    "Burrete FEP GraphML",
+    "Burette FEP GraphML",
     "",
     `${atomLines.length.toString().padStart(3, " ")}${bondLines.length.toString().padStart(3, " ")}  0  0  0  0            999 V2000`,
     ...atomLines,

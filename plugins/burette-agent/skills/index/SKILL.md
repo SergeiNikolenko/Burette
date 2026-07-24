@@ -1,12 +1,12 @@
 ---
 name: index
-description: "Primary router for Burrete. Use when the plugin is at-mentioned or for molecular workspace work: opening structures, operating Mol* or Ketcher, reviewing SDF/property collections, trajectories, workflow result bundles, molecular reports, or Browser/Computer visual QA."
+description: "Primary router for Burette. Use when the plugin is at-mentioned or for molecular workspace work: opening structures, operating Mol* or Ketcher, reviewing SDF/property collections, trajectories, workflow result bundles, molecular reports, or Browser/Computer visual QA."
 ---
 
-# Burrete
+# Burette
 
 Route broad molecular workspace requests to the right focused workflow. Treat a
-direct Burrete invocation as intent to use this plugin.
+direct Burette invocation as intent to use this plugin.
 
 ## Mandatory Preflight
 
@@ -26,7 +26,7 @@ substitute for runtime `observe`.
 Choose the smallest focused workflow that covers the request:
 
 - [external-agent-contract](../external-agent-contract/SKILL.md): operate
-  Burrete through a short `workspaceSessionId` contract for external agents,
+  Burette through a short `workspaceSessionId` contract for external agents,
   hiding URL/session-directory transport details unless advanced control is
   needed.
 - [open-workspace](../open-workspace/SKILL.md): open local structures,
@@ -52,11 +52,11 @@ verify visual reality. Do not replace typed `observe` and `act` with screenshot
 interpretation.
 
 For external agent workflows, prefer the short MCP facade first:
-`burrete.get_context`, `burrete.open_workspace`,
-`burrete.open_ketcher`, `burrete.observe_workspace`, `burrete.control_viewer`,
-`burrete.control_ketcher`, and `burrete.render_panel`. These tools return a
+`burette.get_context`, `burette.open_workspace`,
+`burette.open_ketcher`, `burette.observe_workspace`, `burette.control_viewer`,
+`burette.control_ketcher`, and `burette.render_panel`. These tools return a
 stable `workspaceSessionId` and
-compact `modelContext`; the advanced Burrete tools remain available for
+compact `modelContext`; the advanced Burette tools remain available for
 docking, fragments, reports, trajectories, and lower-level scene operations.
 
 For Browser work, distinguish two local surfaces:
@@ -64,8 +64,8 @@ For Browser work, distinguish two local surfaces:
 - `auto`: the default route. It starts the full browser agent shell when the
   shell can start and falls back to tokenized browser-preview when the shell
   runtime is unavailable.
-- `browser-agent-shell`: the full Burrete Browser shell, started by
-  `scripts/burrete-agent.mjs open --mode browser-agent-shell ...` on a fresh
+- `browser-agent-shell`: the full Burette Browser shell, started by
+  `scripts/burette-agent.mjs open --mode browser-agent-shell ...` on a fresh
   local port and opened as
   `http://127.0.0.1:<fresh-port>/?devFiles=<encoded absolute path>&agentLayout=focus`.
   The focus layout starts with the outer Projects, Info, and bottom panels
@@ -76,7 +76,7 @@ For Browser work, distinguish two local surfaces:
   Do not reuse another browser-dev port unless the user explicitly asks to
   attach to that exact surface.
 - `browser-preview`: the tokenized agent preview opened through
-  `scripts/burrete-agent.mjs open --mode browser-preview ... --no-launch`.
+  `scripts/burette-agent.mjs open --mode browser-preview ... --no-launch`.
   Use it when typed MCP/CLI `observe` and `act` over a tokenized localhost
   transport are required.
 
@@ -87,7 +87,7 @@ external browser unless the user explicitly asks for an external browser.
 
 ## Completion Gate
 
-A Burrete workflow is complete only when:
+A Burette workflow is complete only when:
 
 - the requested workspace or artifact is opened or a typed blocker is reported;
 - when a Browser workspace URL was created, the final handoff includes that

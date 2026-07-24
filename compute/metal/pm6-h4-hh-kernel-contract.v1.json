@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "kernel": "burrete_pm6_h4_hh_v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "kernel": "burette_pm6_h4_hh_v1",
   "model": "PM6-D3H4 Rezac-Hobza H4 hydrogen bonding and short-range H-H repulsion",
   "dispatch": "one GPU thread per molecule; molecules are independently batched",
   "inputs": {

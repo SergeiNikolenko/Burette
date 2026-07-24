@@ -1,1 +1,1 @@
-"""ChimeraX-independent MDSmooth computational core bundled with Burrete."""
+"""ChimeraX-independent MDSmooth computational core bundled with Burette."""

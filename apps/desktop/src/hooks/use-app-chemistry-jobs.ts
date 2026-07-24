@@ -107,7 +107,7 @@ export function useAppChemistryJobs({
   const chooseXtbExecutable = useCallback(async () => {
     try {
       if (!isTauriRuntime()) {
-        throw new Error("Use the BURRETE_XTB_EXECUTABLE environment variable in browser development.");
+        throw new Error("Use the BURETTE_XTB_EXECUTABLE environment variable in browser development.");
       }
       const selected = await open({
         title: "Choose xTB Executable",

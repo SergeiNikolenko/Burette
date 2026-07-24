@@ -31,7 +31,7 @@ const valid = validateKetcherAction({
 });
 assert.equal(valid.ok, true);
 assert.equal(valid.value.input.format, "smiles");
-assert.equal(validateKetcherAction({ ...valid.value, apiVersion: "burrete-ketcher-agent/v0" }).ok, false);
+assert.equal(validateKetcherAction({ ...valid.value, apiVersion: "burette-ketcher-agent/v0" }).ok, false);
 assert.equal(validateKetcherAction({ ...valid.value, unexpected: true }).ok, false);
 assert.equal(validateKetcherAction({ ...valid.value, content: "x".repeat(65537) }).ok, false);
 assert.equal(validateKetcherAction({

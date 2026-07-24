@@ -74,7 +74,7 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
     setUpdate((previous) => ({
       ...previous,
       isInstalling: true,
-      statusText: "Installing " + release.displayName + "... Burrete will restart when the update is ready.",
+      statusText: "Installing " + release.displayName + "... Burette will restart when the update is ready.",
     }));
     pushStatus("Installing update...");
     try {
@@ -121,8 +121,8 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
     if (!shouldPromptForUpdate(release, automatic)) return;
     const canInstall = release.installAsset !== null;
     const message = canInstall
-      ? "Burrete " + release.tagName + " is available. Install it now and restart Burrete when the update is ready?"
-      : "Burrete " + release.tagName + " is available, but this release does not include an installable app archive.";
+      ? "Burette " + release.tagName + " is available. Install it now and restart Burette when the update is ready?"
+      : "Burette " + release.tagName + " is available, but this release does not include an installable app archive.";
     const accepted = isTauriRuntime()
       ? await ask(message, {
         title: "Update Available",
@@ -168,7 +168,7 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
         availableRelease: release,
         statusText: release
           ? "Update available: " + release.displayName + " (" + release.tagName + ")." + (release.installAsset ? "" : " No downloadable app archive is attached to this release.")
-          : "Burrete is up to date on " + channel + ".",
+          : "Burette is up to date on " + channel + ".",
       }));
       if (automatic) markAutomaticCheck(true);
       if (release) {

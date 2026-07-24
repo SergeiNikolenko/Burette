@@ -1,6 +1,6 @@
 # Modular Runtime Refactor
 
-This document tracks the staged refactor that moves Burrete runtime logic out of
+This document tracks the staged refactor that moves Burette runtime logic out of
 large composition files without changing observable behavior.
 
 ## Goal
@@ -255,7 +255,7 @@ Current Stage 3 progress:
   sidebar/project roots, with file-count and directory-count contracts;
 - preview runtime localStorage/sessionStorage usage now has an inventory
   contract in `tests/test-runtime-storage-contract.mjs`, covering the current
-  `buret.*` and `burrete.*` runtime key namespaces in `viewer.js` and
+  `buret.*` and `burette.*` runtime key namespaces in `viewer.js` and
   `grid-viewer.js`;
 - trusted shell capability boundaries now have a structural contract: Tauri
   command permissions remain limited to shell windows and bundled preview
