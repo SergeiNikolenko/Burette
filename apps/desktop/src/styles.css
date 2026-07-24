@@ -1433,25 +1433,16 @@ kbd span { margin-left: 2px; }
 /* Only the kinds that carry science get a hue. Logs, code, configs and plain
    documents stay neutral, so a project's molecular payload reads at a glance
    instead of every row shouting. Hues are damped Apple system colours, which
-   the status chips elsewhere in the app already use. */
-.project-icon:is(
-  [data-file-kind="protein"],
-  [data-file-kind="crystal"],
-  [data-file-kind="molecule"],
-  [data-file-kind="table"],
-  [data-file-kind="trajectory"],
-  [data-file-kind="topology"],
-  [data-file-kind="spectrum"],
-  [data-file-kind="network"]
-) { --file-icon-strength: 82%; }
-.project-icon[data-file-kind="protein"] { --file-icon-hue: #5ac8fa; }
-.project-icon[data-file-kind="crystal"] { --file-icon-hue: #7d7aec; }
-.project-icon[data-file-kind="molecule"] { --file-icon-hue: #3ecf6a; }
-.project-icon[data-file-kind="table"] { --file-icon-hue: #e8c249; }
-.project-icon[data-file-kind="trajectory"] { --file-icon-hue: #ff6482; }
-.project-icon[data-file-kind="topology"] { --file-icon-hue: #c48af0; }
-.project-icon[data-file-kind="spectrum"] { --file-icon-hue: #ff9f0a; }
-.project-icon[data-file-kind="network"] { --file-icon-hue: #3fc7bd; }
+   the status chips elsewhere in the app already use. Each rule carries its own
+   strength so a tinted kind is named in exactly one place. */
+.project-icon[data-file-kind="protein"] { --file-icon-hue: #5ac8fa; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="crystal"] { --file-icon-hue: #7d7aec; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="molecule"] { --file-icon-hue: #3ecf6a; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="table"] { --file-icon-hue: #e8c249; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="trajectory"] { --file-icon-hue: #ff6482; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="topology"] { --file-icon-hue: #c48af0; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="spectrum"] { --file-icon-hue: #ff9f0a; --file-icon-strength: 82%; }
+.project-icon[data-file-kind="network"] { --file-icon-hue: #3fc7bd; --file-icon-strength: 82%; }
 .project-copy {
   min-width: 0;
   flex: 1;

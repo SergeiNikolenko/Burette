@@ -96,6 +96,12 @@ assert.equal(fileKindForPath("/fixtures/receptor", "pdb"), "protein");
 assert.equal(fileKindForPath("/fixtures/topology.PRMTOP"), "topology");
 assert.equal(fileKindForPath("/fixtures/notes.unknownext"), "default");
 
+// Extensions are user-supplied, so a lookup that walks Object.prototype would
+// return a function or an object here instead of a kind.
+for (const inherited of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+  assert.equal(fileKindForPath(`/fixtures/notes.${inherited}`), "default");
+}
+
 console.log("sidebar tree render tests passed");
 
 function structure(path, title, relativePath) {

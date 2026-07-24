@@ -178,7 +178,12 @@ const FILE_KIND_BY_EXTENSION: Record<string, FileKind> = {
 
 export function fileKindForPath(path: string, extension?: string): FileKind {
   const candidate = (extension || "").trim().toLowerCase() || pathExtension(path);
-  return FILE_KIND_BY_EXTENSION[candidate] ?? "default";
+  // Extensions come from scanning user directories, so a file really can be named
+  // "notes.constructor" or "x.__proto__". A plain lookup would hand back
+  // Object.prototype's member instead of undefined, and ?? would not catch it.
+  return Object.hasOwn(FILE_KIND_BY_EXTENSION, candidate)
+    ? FILE_KIND_BY_EXTENSION[candidate]
+    : "default";
 }
 
 export function FileKindIcon({ kind }: { kind: FileKind }) {
