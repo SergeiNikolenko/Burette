@@ -1,5 +1,5 @@
 name: Unsupported File or Format
-description: Request support for a molecular file that Burrete cannot open or preview.
+description: Request support for a molecular file that Burette cannot open or preview.
 title: "[File format]: "
 labels:
   - enhancement
@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping Burrete support more molecular files. Search existing issues first and never upload proprietary or sensitive molecule data publicly.
+        Thanks for helping Burette support more molecular files. Search existing issues first and never upload proprietary or sensitive molecule data publicly.
   - type: input
     id: format
     attributes:
@@ -22,7 +22,7 @@ body:
       label: Where does it fail?
       options:
         - Finder Quick Look preview or thumbnail
-        - Burrete desktop app
+        - Burette desktop app
         - iPhone app
         - More than one surface
         - Other
@@ -54,7 +54,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Burrete version, macOS version, installation method, and Apple Silicon or Intel.
+      description: Burette version, macOS version, installation method, and Apple Silicon or Intel.
     validations:
       required: true
   - type: checkboxes

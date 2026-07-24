@@ -1,4 +1,4 @@
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     ComputeJobEventSchemaVersion, JobRevisionEvent, JobSnapshot, JobState, OwnerSurface,
 };
 use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
@@ -192,7 +192,7 @@ impl ComputeStore {
         }
         if previous.state == JobState::CancelRequested {
             return Ok(JobRevisionEvent {
-                schema_version: burrete_compute_protocol::ComputeJobEventSchemaVersion::V1,
+                schema_version: burette_compute_protocol::ComputeJobEventSchemaVersion::V1,
                 job_id,
                 revision: previous.revision,
                 emitted_at_ms: previous.updated_at_ms,

@@ -41,7 +41,7 @@ fn source_revision_fingerprint_and_virtual_edit_generation_are_durable() {
         second.document_fingerprint_sha256
     );
 
-    let root = std::env::temp_dir().join(format!("burrete-grid-identity-{}", uuid::Uuid::new_v4()));
+    let root = std::env::temp_dir().join(format!("burette-grid-identity-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).expect("create temp root");
     let database_path = root.join("collection.sqlite");
     let disk = Connection::open(&database_path).expect("open disk database");

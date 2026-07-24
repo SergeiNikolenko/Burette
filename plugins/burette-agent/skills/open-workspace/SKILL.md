@@ -1,16 +1,16 @@
 ---
 name: open-workspace
-description: "Use when opening molecular artifacts in Burrete Browser preview or desktop app sessions and establishing an observable workspace."
+description: "Use when opening molecular artifacts in Burette Browser preview or desktop app sessions and establishing an observable workspace."
 ---
 
 # Open Workspace
 
 Use this workflow to open local structures, SDF collections, trajectory bundles,
-or workflow result bundles in Burrete.
+or workflow result bundles in Burette.
 
 ## Workflow
 
-1. Run Burrete preflight through [user-context](../user-context/SKILL.md).
+1. Run Burette preflight through [user-context](../user-context/SKILL.md).
 2. Choose mode:
    - `auto` for the default agent path. It starts `browser-agent-shell` when
      the full Browser UI is available and falls back to `browser-preview` when
@@ -28,12 +28,12 @@ or workflow result bundles in Burrete.
    - `browser-preview` when the task needs the tokenized agent transport,
      typed MCP/CLI `observe` and `act`, quick visual QA, screenshots, or a
      localhost preview without the full app shell.
-   - `desktop-app` when the user asks for the real Burrete application or wants
+   - `desktop-app` when the user asks for the real Burette application or wants
      results left open in the app.
 3. For `auto`, call the CLI and use the returned `mode`:
 
 ```bash
-bun scripts/burrete-agent.mjs open --mode auto <file>
+bun scripts/burette-agent.mjs open --mode auto <file>
 ```
 
 If the result mode is `browser-preview`, inspect `result.fallback` before
@@ -48,7 +48,7 @@ that explicitly needs app chrome such as tabs, docks, or sidebars.
    explicitly asks to attach to that exact surface.
 
 ```bash
-bun scripts/burrete-agent.mjs open --mode browser-agent-shell <file>
+bun scripts/burette-agent.mjs open --mode browser-agent-shell <file>
 ```
 
 Use the returned URL shaped like:
@@ -63,13 +63,13 @@ bottom dock.
 
 ### Opening a folder as one Mol* scene
 
-By default every path becomes its own Burrete tab. When the user wants a set of
+By default every path becomes its own Burette tab. When the user wants a set of
 related structures compared in a single viewer — a folder of simulation stages,
 docked poses, or model variants — pass `--scene` with a folder or with two or
 more files:
 
 ```bash
-bun scripts/burrete-agent.mjs open --mode browser-agent-shell <folder> --scene structureAll
+bun scripts/burette-agent.mjs open --mode browser-agent-shell <folder> --scene structureAll
 ```
 
 That returns a URL shaped like
@@ -83,23 +83,23 @@ Keep the returned `sessionDir`. In agent shell mode, `observe` and `act` use
 the same CLI session contract as desktop app mode:
 
 ```bash
-bun scripts/burrete-agent.mjs observe --session-dir <sessionDir>
-bun scripts/burrete-agent.mjs act --session-dir <sessionDir> '{"type":"focus_ligand","selector":{"comp_id":"PYZ"},"allowAmbiguous":true}' --wait-ms 12000
+bun scripts/burette-agent.mjs observe --session-dir <sessionDir>
+bun scripts/burette-agent.mjs act --session-dir <sessionDir> '{"type":"focus_ligand","selector":{"comp_id":"PYZ"},"allowAmbiguous":true}' --wait-ms 12000
 ```
 
-Use `manage_burrete_tabs` for tab strip work inside Burrete:
+Use `manage_burette_tabs` for tab strip work inside Burette:
 
 - `list` to read tab ids, indexes, paths, titles, and active state;
-- `focus`, `next`, or `previous` to switch active Burrete tabs;
-- `open_file` to open a file as a Burrete tab in the existing workspace;
-- `new` to create a blank Burrete tab;
-- `close` to close a Burrete tab by id, index, path, title, or the active tab;
+- `focus`, `next`, or `previous` to switch active Burette tabs;
+- `open_file` to open a file as a Burette tab in the existing workspace;
+- `new` to create a blank Burette tab;
+- `close` to close a Burette tab by id, index, path, title, or the active tab;
 - `move` to reorder a tab with `toIndex`.
 
 Do not open additional Codex Browser tabs when the user asks for additional
-Burrete tabs.
+Burette tabs.
 
-Use `manage_burrete_structure_component` instead of manually driving the
+Use `manage_burette_structure_component` instead of manually driving the
 right-click menus when the user asks to select, focus, hide/remove from view,
 restore, or open a structure part separately:
 
@@ -107,24 +107,24 @@ restore, or open a structure part separately:
 - `hide` or `show` for polymer, ligand, water, or ion component classes;
 - `clear` to clear the active Mol* selection;
 - `open_as_tab` to extract a PDB component to a temporary PDB and open it as a
-  Burrete tab in the same workspace.
+  Burette tab in the same workspace.
 
 This is view/runtime control. Do not delete or rewrite the user's source file
 unless they explicitly ask for file mutation.
 
-Use `open_burrete_docking_view` when the user asks for a docking view inside
-the existing Burrete workspace. Pass `receptorPath`, `ligandPaths`, and
+Use `open_burette_docking_view` when the user asks for a docking view inside
+the existing Burette workspace. Pass `receptorPath`, `ligandPaths`, and
 optionally `sceneMode: "structureAll"` when the request is to show structures
 together rather than pose-paged docking. Do not use a new Codex Browser tab for
-this; it must create a Burrete tab in the current workspace.
+this; it must create a Burette tab in the current workspace.
 
 If the visible in-app Browser tab is already on the agent-owned
 browser-agent-shell URL but `sessionDir` is missing from the conversation, pass
 the URL directly:
 
 ```bash
-bun scripts/burrete-agent.mjs observe --url 'http://127.0.0.1:<port>/?devFiles=...'
-bun scripts/burrete-agent.mjs act --url 'http://127.0.0.1:<port>/?devFiles=...' '{"type":"focus_ligand","selector":{"comp_id":"PYZ"},"allowAmbiguous":true}' --wait-ms 12000
+bun scripts/burette-agent.mjs observe --url 'http://127.0.0.1:<port>/?devFiles=...'
+bun scripts/burette-agent.mjs act --url 'http://127.0.0.1:<port>/?devFiles=...' '{"type":"focus_ligand","selector":{"comp_id":"PYZ"},"allowAmbiguous":true}' --wait-ms 12000
 ```
 
 The CLI resolves the live shell session through
@@ -135,7 +135,7 @@ dead.
    browser, then open that URL only through the Codex in-app Browser plugin:
 
 ```bash
-bun scripts/burrete-agent.mjs open --mode browser-preview <file> --no-launch
+bun scripts/burette-agent.mjs open --mode browser-preview <file> --no-launch
 ```
 
 Use the returned tokenized URL with Browser. Do not use macOS `open`, Arc,
@@ -146,12 +146,12 @@ report a typed blocker instead of falling back to an external browser.
 Use the returned tokenized URL when typed agent control is required. Use it as
 the `auto` fallback for molecular opening/observation, but do not treat it as
 equivalent to the full browser agent shell when the user is asking about
-ordinary Burrete UI chrome.
+ordinary Burette UI chrome.
 
 6. For `desktop-app`, open through the CLI:
 
 ```bash
-bun scripts/burrete-agent.mjs open --mode desktop-app <file> --session-dir <dir>
+bun scripts/burette-agent.mjs open --mode desktop-app <file> --session-dir <dir>
 ```
 
 7. Run `observe` after the workspace URL is open. Completion requires all of
@@ -167,9 +167,9 @@ bun scripts/burrete-agent.mjs open --mode desktop-app <file> --session-dir <dir>
    structure. If `openAsTab` was requested, the file-open action must also
    succeed; creating the derived file alone is only partial completion.
 8. Read the structure summary:
-   - `open_burrete_workspace` returns `structureSummary` for the opened file.
+   - `open_burette_workspace` returns `structureSummary` for the opened file.
    - If attaching to an existing workspace or if summary is missing, call
-     `summarize_burrete_structure` with `file`, `url`, or `sessionDir`.
+     `summarize_burette_structure` with `file`, `url`, or `sessionDir`.
    Use this summary internally to understand the file format, molecular kind,
    atom/residue/chain counts, ligand instances, water, ions, and available
    selectors before choosing viewer actions. Do not show explanatory UI text to
@@ -182,7 +182,7 @@ Report the mode, session directory, active document title, viewer readiness,
 concise structure facts from `structureSummary`, and any typed errors. For
 every Browser mode, include the exact URL returned by `open` as a clickable
 Markdown link in the final handoff, for example
-`[Open Burrete in Browser](http://127.0.0.1:<port>/...)`. Include this link even
+`[Open Burette in Browser](http://127.0.0.1:<port>/...)`. Include this link even
 when the in-app Browser tab is already open and visually verified. A link to
 the source file, bundle directory, report, or screenshot does not replace the
 Browser workspace link. Do not describe a successful molecular load until the

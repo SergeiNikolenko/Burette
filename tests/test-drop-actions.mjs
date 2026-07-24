@@ -283,7 +283,7 @@ const fepSetupRequest = {
   gridDocumentId: "grid-doc",
   gridPath: "/tmp/poses.sdf",
   dockingDocumentId: "docking-doc",
-  dockingPath: "burrete-docking://poses",
+  dockingPath: "burette-docking://poses",
   referencePose: 2,
 };
 assert.deepEqual(resolveDropActionChoices(payload(["/tmp/analogs.sdf"]), {
@@ -557,7 +557,7 @@ assert.deepEqual(
 
 const ligandOnDocking = resolveDropAction(payload(["/tmp/new-ligand.sdf", "/tmp/receptor-2.pdb"]), {
   kind: "active-viewer",
-  documentPath: "burrete-docking://active",
+  documentPath: "burette-docking://active",
   renderer: "molstar",
   dockingRequest: {
     receptorPath: "/tmp/receptor.pdb",
@@ -574,7 +574,7 @@ assert.deepEqual(ligandOnDocking, {
 
 assert.deepEqual(resolveDropAction(payload([], [{ path: "new-grid-ligand.smi", inputExtension: "smi", text: "CCO ethanol\n" }]), {
   kind: "active-viewer",
-  documentPath: "burrete-docking://active",
+  documentPath: "burette-docking://active",
   renderer: "molstar",
   dockingRequest: {
     receptorPath: "/tmp/receptor.pdb",

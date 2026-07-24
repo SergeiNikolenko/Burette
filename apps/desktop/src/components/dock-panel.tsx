@@ -405,6 +405,7 @@ function DockPanelContent({
     return (
       <StructureInfoPanel
         document={dockStructureDocument}
+        gridFilterModel={state.gridFilterModel}
         textDocument={activeTextDocument}
         dockDrops={dockDrops}
         conformerStatus={state.conformerStatus}
@@ -539,7 +540,7 @@ async function resolveXyzrenderGalleryResource(src: string) {
       try {
         return convertFileSrc(await join(await resourceDir(), "xyzrender-gallery", fileName));
       } catch (error) {
-        console.warn(`[Burrete] Could not resolve xyzrender gallery asset ${fileName}`, error);
+        console.warn(`[Burette] Could not resolve xyzrender gallery asset ${fileName}`, error);
         return null;
       }
     })();

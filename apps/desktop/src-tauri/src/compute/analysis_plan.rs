@@ -1,4 +1,4 @@
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     Backend, BackendPolicy, ComputeSubmitRequest, EngineIdentity, ExecutionPartition,
     ExecutionPlan, ExecutionPlanVersion, FallbackDecision, PlannedStage, Precision, StageKind,
     WorkflowTemplateId, ALIGNMENT_STAGE_IDS, SEMIEMPIRICAL_STAGE_IDS,

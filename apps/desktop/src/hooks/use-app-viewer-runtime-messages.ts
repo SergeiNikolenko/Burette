@@ -57,7 +57,7 @@ export function useAppViewerRuntimeMessages({
 }: UseAppViewerRuntimeMessagesOptions) {
   const markViewerFirstRenderMessage = useCallback((sourceName: unknown, body: ViewerRuntimeMessageBody) => {
     if (
-      sourceName === "burrete-viewer" &&
+      sourceName === "burette-viewer" &&
       (body?.type === "ready" || (body?.type === "status" && bodyString(body.message)?.startsWith("[web] Rendered ")))
     ) {
       markPerformanceOnce("viewer:first-render");

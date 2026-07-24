@@ -61,11 +61,11 @@
   const TABLE_COLUMN_OVERSCAN_PX = 360;
   const RDKIT_SVG_CACHE_LIMIT = 220;
   const XYZRENDER_CARD_CACHE_LIMIT = 180;
-  const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
+  const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   const state = {
     rdkit: null,
     rdkitError: '',
-    all: Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [],
+    all: Array.isArray(window.BuretteGridRecords) ? window.BuretteGridRecords : [],
     rows: [],
     totalRows: 0,
     recordsIndexed: 0,
@@ -85,6 +85,7 @@
     viewMode: storedGridViewMode(),
     tableColumnPanelOpen: false,
     tableFiltersOpen: false,
+    gridViewportCover: 0,
     tableColumnQuery: '',
     tableColumnVisibleLimit: TABLE_COLUMN_PICKER_LIMIT,
     tableHiddenColumns: storedStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY),
@@ -129,7 +130,7 @@
     hostRequests: new Map(),
     remoteMode: false,
     remoteLoading: false,
-    hostReadOnly: window.name === 'burrete-read-only',
+    hostReadOnly: window.name === 'burette-read-only',
     closeTransitionActive: false,
     dirty: false,
     dirtyReason: '',
@@ -179,14 +180,14 @@
       if (window.__mqlPost) window.__mqlPost(type, message || '', payload);
       else {
         const body = { type, message: String(message || ''), ...payload };
-        if (window.BurreteConfig && window.BurreteConfig.previewRequestID) {
-          body.requestID = String(window.BurreteConfig.previewRequestID);
+        if (window.BuretteConfig && window.BuretteConfig.previewRequestID) {
+          body.requestID = String(window.BuretteConfig.previewRequestID);
         }
-        if (window.BurreteConfig && window.BurreteConfig.documentId) {
-          body.documentId = String(window.BurreteConfig.documentId);
+        if (window.BuretteConfig && window.BuretteConfig.documentId) {
+          body.documentId = String(window.BuretteConfig.documentId);
         }
-        window.parent?.postMessage({ source: 'burrete-grid', body }, '*');
-        window.webkit?.messageHandlers?.burrete?.postMessage(body);
+        window.parent?.postMessage({ source: 'burette-grid', body }, '*');
+        window.webkit?.messageHandlers?.burette?.postMessage(body);
       }
     } catch (_) {}
   }
@@ -307,14 +308,14 @@
   }
 
   function setStatus(message, kind = 'info') {
-    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
+    const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
     if (status) {
       setStatusText(String(message || ''));
       status.classList.toggle('error', kind === 'error');
-      status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
-      if (kind === 'error' && status && !window.BurreteDebug && cfg.appViewer === true) status.classList.add('hidden');
+      status.classList.toggle('hidden', kind !== 'error' && !window.BuretteDebug);
+      if (kind === 'error' && status && !window.BuretteDebug && cfg.appViewer === true) status.classList.add('hidden');
     }
-    if (kind === 'error' || window.BurreteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
+    if (kind === 'error' || window.BuretteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
   }
 
   function setStatusText(text) {
@@ -341,10 +342,10 @@
   }
 
   function config() {
-    if (!window.BurreteConfig || typeof window.BurreteConfig !== 'object') {
-      throw new Error('preview-config.js did not define window.BurreteConfig.');
+    if (!window.BuretteConfig || typeof window.BuretteConfig !== 'object') {
+      throw new Error('preview-config.js did not define window.BuretteConfig.');
     }
-    return window.BurreteConfig;
+    return window.BuretteConfig;
   }
 
   function safeConfig() {
@@ -380,7 +381,7 @@
   }
 
   function isRemoteMode(cfg) {
-    return cfg.appViewer === true && cfg.gridDataMode === 'bridge' && !Array.isArray(window.BurreteGridRecords);
+    return cfg.appViewer === true && cfg.gridDataMode === 'bridge' && !Array.isArray(window.BuretteGridRecords);
   }
 
   function setGridCloseTransition(active) {
@@ -416,8 +417,20 @@
   function installHostMessageListener() {
     window.addEventListener('message', event => {
       const data = event.data;
-      if (!data || (data.source !== 'burrete-grid-host' && data.source !== 'burrete-host')) return;
+      if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
+      if (body.type === 'gridSetColumnFilter') {
+        applyGridColumnFilter(config(), String(body.columnId || ''), String(body.part || ''), body.value);
+        return;
+      }
+      if (body.type === 'gridClearColumnFilters') {
+        clearGridColumnFilters(config(), body.columnId ? String(body.columnId) : null);
+        return;
+      }
+      if (body.type === 'gridViewportCover') {
+        setGridViewportCover(Number(body.cover) || 0);
+        return;
+      }
       if (body.type === 'workspaceHistoryCommand') {
         const direction = body.direction === 'redo' ? 'redo' : 'undo';
         let handled = false;
@@ -431,7 +444,7 @@
           }
         }
         event.source?.postMessage({
-          source: 'burrete-grid',
+          source: 'burette-grid',
           body: {
             type: 'workspaceHistoryCommandResult',
             requestId: body.requestId,
@@ -934,9 +947,9 @@
     const wasmPaths = rdkitWasmCandidates(cfg);
     let wasmPath = wasmPaths[0] || '../assets/rdkit/RDKit_minimal.wasm';
     const options = { locateFile: () => wasmPath };
-    if (window.BurreteRDKitWasmBase64) {
-      options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
-      window.BurreteRDKitWasmBase64 = '';
+    if (window.BuretteRDKitWasmBase64) {
+      options.wasmBinary = base64ToBytes(window.BuretteRDKitWasmBase64);
+      window.BuretteRDKitWasmBase64 = '';
     } else if (wasmPaths.length) {
       const loaded = await loadFirstWasmBinary(wasmPaths);
       wasmPath = loaded.path;
@@ -1253,7 +1266,7 @@
       root.addEventListener('contextmenu', handleGridShellContextMenu);
       root.dataset.contextMenuBound = '1';
     }
-    initRdkitCoordinatesControl(cfg);
+    initRdkitCoordinatesControl();
     if (state.selectionKeydownHandler) {
       document.removeEventListener('keydown', state.selectionKeydownHandler);
     }
@@ -1266,10 +1279,10 @@
 
   function mountGridControls(cfg, caps) {
     const host = document.getElementById('grid-controls');
-    if (!host || !window.BurreteGridUI || typeof window.BurreteGridUI.mountGridControls !== 'function') {
-      throw new Error('BurreteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
+    if (!host || !window.BuretteGridUI || typeof window.BuretteGridUI.mountGridControls !== 'function') {
+      throw new Error('BuretteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
     }
-    window.BurreteGridUI.mountGridControls(host, {
+    window.BuretteGridUI.mountGridControls(host, {
       format: ['csv', 'dwar', 'sdf', 'smiles', 'tsv'].includes(cfg.format) ? cfg.format : 'smiles',
       label: cfg.label || 'Molecule collection',
       exportEnabled: caps.export,
@@ -1297,6 +1310,7 @@
       similarityQuerySelected: state.selected.size === 1,
       clusterCutoff: state.clusterCutoff,
       selectedCount: state.selected.size,
+      ...gridEditState(),
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
         setUnifiedSearchQuery(value || '', cfg);
@@ -1365,6 +1379,7 @@
       }
     });
     bindGridEditControlHandlers(cfg);
+    applyGridToolbarInset();
   }
 
   function refreshGridControls(cfg) {
@@ -1419,31 +1434,47 @@
     notifyGridMenuState(currentCfg);
   }
 
-  function syncGridEditControls() {
+  function gridEditState() {
     const cfg = safeConfig();
     const editing = cfg ? capabilities(cfg).editing : !state.hostReadOnly;
     const saveReady = collectionIndexReady();
-    const saveButton = document.getElementById('save-grid');
-    if (saveButton) {
-      saveButton.disabled = !editing || !state.dirty || !saveReady;
-      saveButton.title = !editing
-        ? 'This embedded collection preview is read-only'
+    const readOnlyTitle = 'This embedded collection preview is read-only';
+    return {
+      saveEnabled: editing && state.dirty && saveReady,
+      saveAsEnabled: editing && saveReady,
+      undoEnabled: editing && state.undoStack.length > 0,
+      saveTitle: !editing
+        ? readOnlyTitle
         : !saveReady ? 'Wait for collection indexing to finish before saving'
-        : state.dirty ? 'Overwrite the source collection file' : 'No unsaved changes';
-    }
-    const undoButton = document.getElementById('undo-grid-edit');
-    if (undoButton) {
-      undoButton.disabled = !editing || state.undoStack.length === 0;
-      undoButton.title = !editing
-        ? 'This embedded collection preview is read-only'
-        : state.undoStack.length ? 'Undo the last collection edit' : 'Nothing to undo';
-    }
-    const saveAsButton = document.getElementById('save-grid-as');
-    if (saveAsButton) {
-      saveAsButton.disabled = !editing || !saveReady;
-      saveAsButton.title = !editing
-        ? 'This embedded collection preview is read-only'
-        : saveReady ? 'Save this collection as a new file' : 'Wait for collection indexing to finish before saving';
+        : state.dirty ? 'Overwrite the source collection file' : 'No unsaved changes',
+      saveAsTitle: !editing
+        ? readOnlyTitle
+        : saveReady ? 'Save this collection as a new file' : 'Wait for collection indexing to finish before saving',
+      undoTitle: !editing
+        ? readOnlyTitle
+        : state.undoStack.length ? 'Undo the last collection edit' : 'Nothing to undo'
+    };
+  }
+
+  function syncGridEditControls() {
+    const edit = gridEditState();
+    const apply = (id, enabled, title) => {
+      const button = document.getElementById(id);
+      if (!button) return;
+      button.disabled = !enabled;
+      button.title = title;
+    };
+    apply('save-grid', edit.saveEnabled, edit.saveTitle);
+    apply('undo-grid-edit', edit.undoEnabled, edit.undoTitle);
+    apply('save-grid-as', edit.saveAsEnabled, edit.saveAsTitle);
+    // Save As and Undo live in the header's overflow menu, which is absent from
+    // the DOM until it opens. Re-render the controls whenever the edit state
+    // changes so the menu is built from fresh props rather than stale markup.
+    const signature = `${edit.saveEnabled}|${edit.saveAsEnabled}|${edit.undoEnabled}`;
+    if (state.gridEditSignature !== signature) {
+      state.gridEditSignature = signature;
+      const cfg = safeConfig();
+      if (cfg) refreshGridControls(cfg);
     }
   }
 
@@ -1588,7 +1619,7 @@
       applied += 1;
     }
     state.remoteDescriptorIds = Array.from(descriptorIds).sort((left, right) => left.localeCompare(right));
-    if (Array.isArray(window.BurreteGridRecords)) window.BurreteGridRecords = state.all;
+    if (Array.isArray(window.BuretteGridRecords)) window.BuretteGridRecords = state.all;
     invalidateTableColumnCatalog();
     refreshOpenMoleculeDetail(cfg);
     setStatus(`[grid] Applied descriptors to ${applied.toLocaleString()} molecule${applied === 1 ? '' : 's'}.`);
@@ -1742,23 +1773,19 @@
     select.value = currentXyzrenderPreset(cfg);
   }
 
-  function initRdkitCoordinatesControl(cfg) {
-    const input = document.getElementById('rdkit-use-input-coords');
-    if (!input) return;
-    input.checked = state.rdkitUseInputCoords;
+  function initRdkitCoordinatesControl() {
     syncRdkitCoordinatesControl();
   }
 
   function syncRdkitCoordinatesControl() {
     const control = document.getElementById('rdkit-use-input-coords-control');
-    const input = document.getElementById('rdkit-use-input-coords');
-    if (!control || !input) return;
+    const toggle = document.getElementById('rdkit-use-input-coords');
+    if (!control || !toggle) return;
     const hasInputCoordinates = hasInputCoordinateRows();
     control.hidden = state.cardRenderer !== 'rdkit' || !hasInputCoordinates;
-    control.toggleAttribute('aria-disabled', !hasInputCoordinates);
-    control.title = hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
-    input.disabled = !hasInputCoordinates;
-    input.checked = hasInputCoordinates && state.rdkitUseInputCoords;
+    toggle.disabled = !hasInputCoordinates;
+    toggle.title = hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
+    toggle.setAttribute('aria-pressed', hasInputCoordinates && state.rdkitUseInputCoords ? 'true' : 'false');
   }
 
   function hasInputCoordinateRows() {
@@ -2480,13 +2507,20 @@
     return rows.filter(row => filters.every(([columnId, filter]) => tableColumnFilterMatches(row, columnId, filter)));
   }
 
+  // A cleared bound is stored as an empty string, and Number('') is 0, so the
+  // bounds have to be read as "blank means unbounded" rather than coerced.
+  function tableColumnFilterBound(value) {
+    const text = String(value ?? '').trim();
+    return text ? Number(text) : NaN;
+  }
+
   function tableColumnFilterMatches(row, columnId, filter) {
     if (!filter) return true;
     if (filter.type === 'number') {
       const value = tableColumnNumericValue(row, columnId);
       if (!Number.isFinite(value)) return false;
-      const min = Number(filter.min);
-      const max = Number(filter.max);
+      const min = tableColumnFilterBound(filter.min);
+      const max = tableColumnFilterBound(filter.max);
       if (Number.isFinite(min) && value < min) return false;
       if (Number.isFinite(max) && value > max) return false;
       return true;
@@ -2960,7 +2994,7 @@
         maybeLoadMoreForRenderedRange(cfg, range);
         postGridReady(cfg);
         emitGridPerfMetric(cfg, 'window-render', startedAt, { force: true });
-        if (status && !window.BurreteDebug) status.classList.add('hidden');
+        if (status && !window.BuretteDebug) status.classList.add('hidden');
         return;
       }
       if (range.topHeight > 0) fragment.appendChild(gridSpacer('top', range.topHeight));
@@ -2986,7 +3020,7 @@
       maybeLoadMoreForRenderedRange(cfg, range);
       postGridReady(cfg);
       emitGridPerfMetric(cfg, 'window-render', startedAt, { force: true });
-      if (status && !window.BurreteDebug) status.classList.add('hidden');
+      if (status && !window.BuretteDebug) status.classList.add('hidden');
     } finally {
       state.rendering = false;
       if (token === state.token) {
@@ -3116,6 +3150,7 @@
   }
 
   function updateChrome(cfg) {
+    postGridFilterModel(cfg);
     const total = state.remoteMode
       ? (state.recordsTotalHint || state.recordsIndexed || state.totalRows)
       : Number(cfg.recordsTotal || state.all.length);
@@ -3545,12 +3580,120 @@
         }
       });
     }
+    el.addEventListener('dblclick', event => handleTableRowOpen(event, row, cfg));
     el.addEventListener('contextmenu', event => showMoleculeContextMenu(event, row));
     installCardHover(el);
     installCardResizeHandle(el);
     installCardDrag(el, row);
     installCardDrop(el, row, cfg);
     return el;
+  }
+
+
+  const FILTER_BINS = 32;
+
+  function filterModelColumns() {
+    // Remote collections only hold the current page client-side, so ranges and
+    // histograms would describe that page, not the collection, and filters would
+    // apply to it alone. Keep the panel empty until server-side stats exist.
+    if (state.remoteMode) return [];
+    const catalog = tableColumnCatalog();
+    const visible = new Set(tableVisibleColumns(catalog).map(column => column.id));
+    return catalog.filter(column => {
+      if (column.spacer || column.type === 'none' || column.id === 'index') return false;
+      return visible.has(column.id) || Boolean(state.tableColumnFilters[column.id]);
+    });
+  }
+
+  // The distribution is measured over every loaded row rather than the filtered
+  // ones, so its shape stays put while a range moves across it.
+  function filterColumnStats(column) {
+    const rows = state.all.length ? state.all : state.rows;
+    const values = [];
+    let min = Infinity;
+    let max = -Infinity;
+    for (const row of rows) {
+      const value = tableColumnNumericValue(row, column.id);
+      if (!Number.isFinite(value)) continue;
+      values.push(value);
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+    if (values.length < 2) return null;
+    if (!(max > min)) return null;
+    const bins = new Array(FILTER_BINS).fill(0);
+    for (const value of values) {
+      bins[Math.min(FILTER_BINS - 1, Math.floor(((value - min) / (max - min)) * FILTER_BINS))] += 1;
+    }
+    return { min, max, bins };
+  }
+
+  function gridFilterModel(cfg) {
+    const columns = filterModelColumns().map(column => {
+      const filter = state.tableColumnFilters[column.id] || null;
+      const entry = { id: column.id, label: column.label, type: column.type === 'number' ? 'number' : 'text' };
+      if (filter) entry.filter = { min: filter.min ?? '', max: filter.max ?? '', text: filter.text ?? '' };
+      if (column.type === 'number') {
+        const stats = filterColumnStats(column);
+        if (stats) Object.assign(entry, stats);
+      }
+      return entry;
+    });
+    return {
+      documentId: cfg?.documentId || null,
+      visible: state.rows.length,
+      total: state.all.length || state.rows.length,
+      columns,
+    };
+  }
+
+  // Published to the host so the Info panel can render the filters; the model is
+  // only sent when it actually changes, since it rides every chrome update.
+  function postGridFilterModel(cfg) {
+    const model = gridFilterModel(cfg);
+    const signature = JSON.stringify(model);
+    if (signature === state.gridFilterModelSignature) return;
+    state.gridFilterModelSignature = signature;
+    post('gridFilterModel', '[grid] Column filter model.', { model });
+  }
+
+  // How far the right dock floats over the grid. A spilling grid keeps its full
+  // width, so this is pushed from the host rather than read from a resize.
+  function setGridViewportCover(cover) {
+    const next = Math.max(0, Math.round(cover));
+    if (next === state.gridViewportCover) return;
+    state.gridViewportCover = next;
+    applyGridToolbarInset();
+  }
+
+  // Cap the toolbar to the strip the dock is not covering, so its buttons and
+  // the menus anchored to them stay clickable while the table spills under it.
+  // The cover is also mirrored onto the host dataset, where the React island's
+  // menus read it live when they position themselves.
+  function applyGridToolbarInset() {
+    const host = document.getElementById('grid-controls');
+    if (!host) return;
+    const cover = state.gridViewportCover;
+    host.dataset.viewportCover = String(cover);
+    host.style.maxWidth = cover > 0
+      ? Math.max(0, document.documentElement.clientWidth - cover) + 'px'
+      : '';
+  }
+
+  function applyGridColumnFilter(cfg, columnId, part, value) {
+    if (!columnId || !['min', 'max', 'text'].includes(part)) return;
+    const current = { ...state.tableColumnFilters[columnId] };
+    current.type = part === 'text' ? 'text' : 'number';
+    current[part] = String(value ?? '');
+    if (tableColumnFilterEmpty(current)) delete state.tableColumnFilters[columnId];
+    else state.tableColumnFilters[columnId] = current;
+    void refresh(cfg);
+  }
+
+  function clearGridColumnFilters(cfg, columnId) {
+    if (columnId) delete state.tableColumnFilters[columnId];
+    else state.tableColumnFilters = {};
+    void refresh(cfg);
   }
 
   function gridTable(rows, cfg, range) {
@@ -3569,14 +3712,15 @@
       <table class="buret-grid-table">
         <thead>
           <tr>${tableHeaderCellsHTML(columnWindow, searchColumns)}</tr>
-          ${state.tableFiltersOpen ? `<tr class="buret-grid-table-filter-row">${tableFilterCellsHTML(columnWindow, searchColumns)}</tr>` : ''}
+          ${''/* Filters live in the rail beside the table, not in this header. */}
         </thead>
         <tbody>
           ${range.topHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan}" style="height:${Math.max(0, Math.round(range.topHeight))}px"></td></tr>` : ''}
           ${rows.map(row => tableRowHTML(row, columns, cfg)).join('')}
           ${range.bottomHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan}" style="height:${Math.max(0, Math.round(range.bottomHeight))}px"></td></tr>` : ''}
         </tbody>
-      </table>`;
+      </table>
+      ${tableTotalsHTML(state.rows, columnWindow)}`;
     wrapper.scrollLeft = state.tableScrollLeft;
     wrapper.addEventListener('scroll', () => handleTableColumnScroll(wrapper, cfg), { passive: true });
     wrapper.addEventListener('wheel', event => handleTableWheel(event, wrapper, cfg), { passive: false });
@@ -3804,14 +3948,38 @@
         ? ` data-buret-table-filter-toggle aria-pressed="${state.tableFiltersOpen ? 'true' : 'false'}" title="Show table filters" aria-label="Show table filters for ${escapeAttr(column.label)}"`
         : '';
       if (column.id === 'index') {
-        return `<th scope="col" data-column="${escapeHTML(column.id)}"${className}${filterToggle}>${escapeHTML(column.label)}</th>`;
+        return `<th scope="col" data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${className}${filterToggle}>${escapeHTML(column.label)}</th>`;
       }
-      return `<th scope="col" data-column="${escapeHTML(column.id)}"${className}${filterToggle}${column.title ? ` title="${escapeAttr(column.title)}"` : ''}>${escapeHTML(column.label)}</th>`;
+      return `<th scope="col" data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${className}${filterToggle}${column.title ? ` title="${escapeAttr(column.title)}"` : ''}>${escapeHTML(column.label)}</th>`;
     }).join('');
   }
 
-  function tableFilterCellsHTML(columnWindow, searchColumns = new Set()) {
-    return tableRenderedColumns(columnWindow).map(column => column.spacer ? tableSpacerCellHTML('th', column) : tableFilterCellHTML(column, searchColumns)).join('');
+  // Numeric columns are right-aligned and tabular, so a column's cells line up
+  // digit by digit down the table.
+  function tableNumericAttr(column) {
+    return column.type === 'number' ? ' data-buret-grid-numeric="1"' : '';
+  }
+
+  // Running totals for the visible rows, mirroring the collection summary that
+  // the table view otherwise leaves to the status footer.
+  function tableTotalsHTML(rows, columnWindow) {
+    const numericColumns = tableRenderedColumns(columnWindow)
+      .filter(column => !column.spacer && column.type === 'number' && column.id !== 'index' && column.get)
+      .slice(0, 4);
+    const means = numericColumns.map(column => {
+      const values = rows
+        .map(row => Number.parseFloat(String(column.get(row) ?? '')))
+        .filter(value => Number.isFinite(value));
+      if (!values.length) return '';
+      const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+      const decimals = Math.abs(mean) >= 100 ? 1 : 2;
+      return `<span>Mean ${escapeHTML(column.label)}<strong>${mean.toFixed(decimals)}</strong></span>`;
+    }).filter(Boolean);
+    return `
+      <div class="buret-grid-table-totals" role="status">
+        <span class="buret-grid-table-totals-count">${rows.length.toLocaleString()} ${rows.length === 1 ? 'molecule' : 'molecules'}</span>
+        ${means.join('')}
+      </div>`;
   }
 
   function tableSpacerCellHTML(tagName, column) {
@@ -3831,7 +3999,7 @@
           if (column.spacer) return tableSpacerCellHTML('td', column);
           const searchMatch = tableColumnMatchesSearch(row, column) || (column.id === 'molecule' && rowSearchMatch);
           const searchClass = searchMatch ? ' class="buret-grid-table-search-match"' : '';
-          return `<td data-column="${escapeHTML(column.id)}"${searchClass}>${tableCellHTML(row, column, cfg)}</td>`;
+          return `<td data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${searchClass}>${tableCellHTML(row, column, cfg)}</td>`;
         }).join('')}
       </tr>`;
   }
@@ -3850,23 +4018,6 @@
     const match = text.slice(index, index + rawQuery.length);
     const after = text.slice(index + rawQuery.length);
     return `${escapeHTML(before)}<mark class="buret-grid-table-search-mark">${escapeHTML(match)}</mark>${escapeHTML(after)}`;
-  }
-
-  function tableFilterCellHTML(column, searchColumns = new Set()) {
-    const className = searchColumns.has(column.id) ? ' class="buret-grid-table-search-column"' : '';
-    if (column.type === 'none' || column.id === 'index') return `<th data-column="${escapeHTML(column.id)}"${className}></th>`;
-    const filter = state.tableColumnFilters[column.id] || {};
-    if (column.type === 'number') {
-      return `<th data-column="${escapeHTML(column.id)}"${className}>
-        <div class="buret-grid-table-number-filter">
-          <input type="number" inputmode="decimal" placeholder="min" value="${escapeAttr(filter.min ?? '')}" data-buret-table-filter="${escapeAttr(column.id)}" data-buret-table-filter-part="min" aria-label="Minimum ${escapeAttr(column.label)}">
-          <input type="number" inputmode="decimal" placeholder="max" value="${escapeAttr(filter.max ?? '')}" data-buret-table-filter="${escapeAttr(column.id)}" data-buret-table-filter-part="max" aria-label="Maximum ${escapeAttr(column.label)}">
-        </div>
-      </th>`;
-    }
-    return `<th data-column="${escapeHTML(column.id)}"${className}>
-      <input type="search" value="${escapeAttr(filter.text ?? '')}" placeholder="filter" data-buret-table-filter="${escapeAttr(column.id)}" data-buret-table-filter-part="text" aria-label="Filter ${escapeAttr(column.label)}">
-    </th>`;
   }
 
   function tableSearchMatchColumns(rows, columns) {
@@ -3948,7 +4099,9 @@
       <label class="buret-table-column-item" data-column-search="${escapeAttr(tableColumnPickerSearchText(column))}">
         <input type="checkbox" ${visible.has(column.id) ? 'checked' : ''} data-buret-table-column="${escapeAttr(column.id)}">
         <span>${escapeHTML(column.label)}</span>
-        <small>${column.kind === 'descriptor' ? 'descriptor' : column.kind === 'analysis' ? 'analysis' : 'property'} / ${column.type}</small>
+        ${column.kind === 'descriptor' || column.kind === 'analysis'
+          ? `<small>${escapeHTML(column.kind)}</small>`
+          : ''}
       </label>
     `).join('');
     const remaining = Math.max(0, matchCount - columns.length);
@@ -3959,11 +4112,40 @@
       </button>`;
   }
 
+  // The panel is fixed, so it has to be placed against its trigger rather than
+  // against the table it is rendered inside — that box scrolls and would clip
+  // the panel to the height of the table.
+  function positionTableColumnPanel(panel) {
+    const margin = 8;
+    const trigger = document.getElementById('table-columns');
+    const rect = trigger?.getBoundingClientRect();
+    const width = panel.offsetWidth || 340;
+    const top = rect ? rect.bottom + 6 : margin;
+    const left = rect ? rect.right - width : margin;
+    panel.style.top = `${Math.round(Math.max(margin, top))}px`;
+    panel.style.left = `${Math.round(Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin)))}px`;
+  }
+
   function bindTableColumnPanel(wrapper, cfg, catalog) {
     const panel = wrapper.querySelector('.buret-table-column-panel');
     if (!panel) return;
+    positionTableColumnPanel(panel);
     state.tableColumnPanelOutsideController?.abort();
     state.tableColumnPanelOutsideController = new AbortController();
+    // Follow the trigger instead of closing: the table's own horizontal scroll
+    // does not move the toolbar, and restoring that scroll offset while the
+    // panel opens used to close it again before it could be seen.
+    const followTrigger = event => {
+      if (event?.target instanceof Node && panel.contains(event.target)) return;
+      positionTableColumnPanel(panel);
+    };
+    window.addEventListener('resize', followTrigger, {
+      signal: state.tableColumnPanelOutsideController.signal
+    });
+    window.addEventListener('scroll', followTrigger, {
+      capture: true,
+      signal: state.tableColumnPanelOutsideController.signal
+    });
     const handleOutsidePointerDown = event => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -4263,7 +4445,7 @@
     }
     pushUndoSnapshot('append molecules');
     state.all.push(...appendedRows);
-    window.BurreteGridRecords = state.all;
+    window.BuretteGridRecords = state.all;
     state.selected.clear();
     state.chemicalSpaceFilterActive = false;
     state.selectionAnchorIndex = null;
@@ -4898,7 +5080,9 @@
   function isMoleculeContextTarget(target) {
     if (!(target instanceof Element)) return false;
     if (target.closest('[data-buret-card-resize], button, input, select, textarea, [contenteditable="true"]')) return false;
-    return !!target.closest('[data-buret-molecule-picture], .buret-card');
+    // The whole row is the molecule, not just its picture: right-clicking a
+    // name, a SMILES or a property cell has to reach the same menu.
+    return !!target.closest('[data-buret-molecule-picture], .buret-card, .buret-grid-table-row');
   }
 
   function removeGridRow(row, options = {}) {
@@ -4943,7 +5127,7 @@
   }
 
   function notifyGridDirty(dirty) {
-    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
+    const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
     post('gridDirtyChanged', dirty ? '[grid] Unsaved changes.' : '[grid] Saved changes.', {
       documentId: cfg.documentId || null,
       dirty,
@@ -5065,6 +5249,7 @@
             <button type="button" role="tab" class="active" aria-selected="true" data-buret-detail-tab="details">Details</button>
             <button type="button" role="tab" aria-selected="false" data-buret-detail-tab="descriptors">Descriptors (${descriptorEntries(row).length.toLocaleString()})</button>
             <button type="button" role="tab" aria-selected="false" data-buret-detail-tab="json">JSON</button>
+            <button type="button" role="tab" aria-selected="false" data-buret-detail-tab="source">Source</button>
           </div>
           <div class="buret-grid-molecule-detail-tab-panel" data-buret-detail-panel="details">
             ${row.smiles ? `<div class="buret-grid-molecule-detail-smiles">${escapeHTML(row.smiles)}</div>` : ''}
@@ -5077,6 +5262,9 @@
           </div>
           <div class="buret-grid-molecule-detail-tab-panel" data-buret-detail-panel="json" hidden>
             <pre class="buret-grid-molecule-detail-json">${escapeHTML(moleculeDetailJson(row))}</pre>
+          </div>
+          <div class="buret-grid-molecule-detail-tab-panel" data-buret-detail-panel="source" hidden>
+            <pre class="buret-grid-molecule-detail-source">${escapeHTML(moleculeDetailSource(row))}</pre>
           </div>
           <div class="buret-grid-molecule-detail-actions">
             <button type="button" data-buret-detail-action="descriptors">Calculate descriptors</button>
@@ -5263,9 +5451,19 @@
       </div>`;
   }
 
+  // Mordred's own order is alphabetical, which opens the list on ABC and ABCGG
+  // and buries molecular weight sixteen hundred rows down. Lead with the
+  // descriptors the runner gave a human label to, and keep the rest behind them
+  // in that alphabetical order.
   function descriptorEntries(row) {
     return Object.entries(row.descriptors || {})
-      .filter(([, value]) => descriptorDisplayValue(value));
+      .filter(([, value]) => descriptorDisplayValue(value))
+      .sort(([leftId, left], [rightId, right]) => {
+        const leftNamed = Boolean(left?.label) && left.label !== leftId;
+        const rightNamed = Boolean(right?.label) && right.label !== rightId;
+        if (leftNamed !== rightNamed) return leftNamed ? -1 : 1;
+        return leftId.localeCompare(rightId);
+      });
   }
 
   function descriptorDetailRow(id, value) {
@@ -5283,6 +5481,13 @@
         </span>
         <span class="buret-grid-molecule-detail-descriptor-value" role="cell">${escapeHTML(display)}</span>
       </div>`;
+  }
+
+  function moleculeDetailSource(row) {
+    const molblock = String(row.molblock || '').trim();
+    if (molblock) return molblock;
+    const smiles = String(row.smiles || '').trim();
+    return smiles || 'No structure source for this record.';
   }
 
   function moleculeDetailJson(row) {
@@ -5394,6 +5599,7 @@
   }
 
   function showMoleculeContextMenu(event, row) {
+    const cfg = config();
     if (event.target?.closest?.('[data-buret-card-resize]')) return;
     if (!isMoleculeContextTarget(event.target)) {
       event.preventDefault();
@@ -5417,7 +5623,7 @@
     const subtitle = document.createElement('div');
     subtitle.className = 'buret-grid-molecule-context-menu-subtitle';
     subtitle.textContent = row.smiles || 'SDF molecule';
-    const editing = capabilities(config()).editing;
+    const editing = capabilities(cfg).editing;
     const actions = [
       ['open', 'Preview molecule'],
       ['molstar', 'Open in Mol*'],
@@ -6011,7 +6217,7 @@
     state.smartsError = '';
     state.smartsMatches = new Map();
     state.rows = [];
-    state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
+    state.all = Array.isArray(window.BuretteGridRecords) ? window.BuretteGridRecords : [];
     state.remoteAnalysisColumns = [];
     state.selected = new Set();
     state.chemicalSpaceFilterActive = false;
@@ -6419,11 +6625,24 @@
     return String(cell.value);
   }
 
+  // One decimal flattened most of the set: molecular weight lost its fraction
+  // and every topological index collapsed onto the same handful of values.
+  // Keep integers whole and give small magnitudes the digits that carry them.
+  function descriptorNumberText(value) {
+    if (!Number.isFinite(value)) return String(value);
+    if (Number.isInteger(value)) return String(value);
+    const magnitude = Math.abs(value);
+    const text = magnitude >= 1000 ? value.toFixed(1)
+      : magnitude >= 1 ? value.toFixed(3)
+      : value.toPrecision(3);
+    return text.includes('.') ? text.replace(/\.?0+$/u, '') : text;
+  }
+
   function descriptorDisplayValue(value) {
     if (!value) return '';
     if (value.errorText) return value.errorText;
     if (value.missingKind) return value.missingKind;
-    if (typeof value.value === 'number') return value.value.toFixed(1);
+    if (typeof value.value === 'number') return descriptorNumberText(value.value);
     if (typeof value.value === 'boolean') return value.value ? 'true' : 'false';
     if (value.value === null || value.value === undefined) return '';
     return String(value.value);
@@ -6617,7 +6836,7 @@
   function serializeDelimitedRows(rows, separator) {
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
-      ['burrete_encoding', 'index', 'name', 'smiles', 'molblock', ...props],
+      ['burette_encoding', 'index', 'name', 'smiles', 'molblock', ...props],
       ...rows.map(row => [
         'escaped-v1',
         row.index,
@@ -6717,8 +6936,8 @@
   }
 
   function canUseNativeBridge() {
-    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
-    return cfg.appViewer === true || !!window.webkit?.messageHandlers?.burrete;
+    const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
+    return cfg.appViewer === true || !!window.webkit?.messageHandlers?.burette;
   }
 
   function sanitizeSVG(svg) {
@@ -6750,7 +6969,7 @@
 
   async function hydrateDataWarriorRows(rows, cfg) {
     if (!Array.isArray(rows) || !rows.some(row => String(row?.idcode || '').trim())) return rows;
-    const openChemLib = window.BurreteOpenChemLib;
+    const openChemLib = window.BuretteOpenChemLib;
     if (!openChemLib?.Molecule?.fromIDCode) throw new Error('OpenChemLib IDCode decoder is unavailable.');
     return rows.map(row => {
       const idcode = String(row?.idcode || '').trim();

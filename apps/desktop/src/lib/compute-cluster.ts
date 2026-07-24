@@ -600,7 +600,7 @@ function clusterPreparationRequest(
   backendPolicy: "gpuPreferred" | "gpuRequired",
 ) {
   return {
-    schemaVersion: "burrete.compute-job.v1",
+    schemaVersion: "burette.compute-job.v1",
     workflowTemplate: "cluster.v1",
     source: {
       documentId,
@@ -660,7 +660,7 @@ class FingerprintWorkerClient {
 
   constructor() {
     this.worker = new Worker(new URL("../workers/cluster-fingerprint.worker.ts", import.meta.url), {
-      name: "burrete-cluster-fingerprints",
+      name: "burette-cluster-fingerprints",
       type: "module",
     });
   }

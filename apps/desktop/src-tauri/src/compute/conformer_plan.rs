@@ -1,10 +1,10 @@
 use std::{fmt, num::NonZeroU32};
 
-use burrete_compute_core::{
+use burette_compute_core::{
     plan_conformer_batches, ConformerEnginePackArrays, ConformerMoleculeWork,
     ConformerSchedulingOptions,
 };
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     Backend, BackendPolicy, ConformerV1SubmitRequest, EngineIdentity, ExecutionPartition,
     ExecutionPlan, ExecutionPlanVersion, FallbackDecision, GridScope, PlannedStage, Precision,
     ProtocolError, StageKind, WorkflowTemplateId, MAX_PACK_BYTES, MAX_PACK_RECORDS,
@@ -721,8 +721,8 @@ fn sum_buffers(buffers: &[u64]) -> Result<u64, ConformerV1AdmissionError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burrete_compute_core::{ConformerEnginePackBuilder, ExtractedConformerParameters};
-    use burrete_compute_protocol::{
+    use burette_compute_core::{ConformerEnginePackBuilder, ExtractedConformerParameters};
+    use burette_compute_protocol::{
         AllGridScope, ComputeJobSchemaVersion, ConformerResourceLimits, ConformerV1Parameters,
         ConformerVariant, ExecutionPolicy, FallbackReasonCode, GridSourceReference,
         SchedulingPolicy, MIN_COMPUTE_MEMORY_BYTES,
@@ -736,8 +736,8 @@ mod tests {
             &frozen_identity(),
             &preflight(),
             &engines(),
-            ConformerBackendAdmission::NativeMetal(engine("burrete-native-metal", '4')),
-            ConformerBackendAdmission::NativeMetal(engine("burrete-native-metal", '4')),
+            ConformerBackendAdmission::NativeMetal(engine("burette-native-metal", '4')),
+            ConformerBackendAdmission::NativeMetal(engine("burette-native-metal", '4')),
         )
         .expect("admit fully native conformer plan");
 
@@ -760,7 +760,7 @@ mod tests {
             &frozen_identity(),
             &preflight(),
             &engines(),
-            ConformerBackendAdmission::NativeMetal(engine("burrete-native-metal", '4')),
+            ConformerBackendAdmission::NativeMetal(engine("burette-native-metal", '4')),
             ConformerBackendAdmission::GpuUnavailable(fallback.clone()),
         )
         .expect("admit explicit stereo fallback");
@@ -779,7 +779,7 @@ mod tests {
             &frozen_identity(),
             &preflight(),
             &engines(),
-            ConformerBackendAdmission::NativeMetal(engine("burrete-native-metal", '4')),
+            ConformerBackendAdmission::NativeMetal(engine("burette-native-metal", '4')),
             ConformerBackendAdmission::GpuUnavailable(FallbackDecision {
                 code: FallbackReasonCode::CapabilityUnavailable,
                 reason: "Stereo-validation Metal kernel is unavailable.".into(),
@@ -861,8 +861,8 @@ mod tests {
             },
             parameters: ConformerV1Parameters {
                 variant: ConformerVariant::EtkdgV3,
-                initialization: burrete_compute_protocol::ConformerInitialization::Generated,
-                mmff_variant: burrete_compute_protocol::MmffVariant::Mmff94s,
+                initialization: burette_compute_protocol::ConformerInitialization::Generated,
+                mmff_variant: burette_compute_protocol::MmffVariant::Mmff94s,
                 conformers_per_molecule: 4,
                 max_attempts_per_conformer: 8,
             },
@@ -948,9 +948,9 @@ mod tests {
 
     fn engines() -> ClusterV1EngineIdentities {
         ClusterV1EngineIdentities {
-            coordinator: engine("burrete-coordinator", '1'),
+            coordinator: engine("burette-coordinator", '1'),
             rdkit: engine("rdkit", '2'),
-            reference_cpu: engine("burrete-reference-cpu", '3'),
+            reference_cpu: engine("burette-reference-cpu", '3'),
         }
     }
 

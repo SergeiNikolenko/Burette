@@ -291,7 +291,7 @@ fn installed_editor_from_app(app_path: &Path) -> Option<InstalledEditor> {
         .map(ToOwned::to_owned);
     let app_file_name = app_path.file_name()?.to_string_lossy().to_string();
     let profile = profile_for_app(bundle_id.as_deref(), &app_file_name);
-    if is_burrete_app_candidate(bundle_id.as_deref(), &app_file_name) {
+    if is_burette_app_candidate(bundle_id.as_deref(), &app_file_name) {
         return None;
     }
     let name = dictionary
@@ -464,13 +464,10 @@ fn is_generic_chemical_extension(extension: &str) -> bool {
         .any(|candidate| candidate == &extension)
 }
 
-fn is_burrete_app_candidate(bundle_id: Option<&str>, app_file_name: &str) -> bool {
+fn is_burette_app_candidate(bundle_id: Option<&str>, app_file_name: &str) -> bool {
     bundle_id
-        .map(|value| {
-            value.starts_with("com.local.Burrete") || value.starts_with("com.local.Burette")
-        })
+        .map(|value| value.starts_with("com.local.Burette"))
         .unwrap_or(false)
-        || app_file_name == "Burrete.app"
         || app_file_name == "Burette.app"
 }
 
@@ -619,20 +616,20 @@ mod tests {
     }
 
     #[test]
-    fn burrete_app_is_not_an_external_editor_candidate() {
-        assert!(is_burrete_app_candidate(
-            Some("com.local.BurreteV10"),
-            "Burrete.app"
-        ));
-        assert!(is_burrete_app_candidate(
-            Some("com.local.BurreteV10.Dev.chat13ba"),
-            "Burrete.app"
-        ));
-        assert!(is_burrete_app_candidate(
+    fn burette_app_is_not_an_external_editor_candidate() {
+        assert!(is_burette_app_candidate(
             Some("com.local.BuretteV10"),
             "Burette.app"
         ));
-        assert!(!is_burrete_app_candidate(
+        assert!(is_burette_app_candidate(
+            Some("com.local.BuretteV10.Dev.chat13ba"),
+            "Burette.app"
+        ));
+        assert!(is_burette_app_candidate(
+            Some("com.local.BuretteV10"),
+            "Burette.app"
+        ));
+        assert!(!is_burette_app_candidate(
             Some("com.schrodinger.Maestro"),
             "Maestro.app"
         ));
@@ -642,7 +639,7 @@ mod tests {
     #[test]
     fn finder_icon_is_converted_to_webview_compatible_png() {
         let cache_dir =
-            std::env::temp_dir().join(format!("burrete-finder-icon-test-{}", std::process::id()));
+            std::env::temp_dir().join(format!("burette-finder-icon-test-{}", std::process::id()));
         let icon_path = app_icon_png_path(Path::new(FINDER_APP_PATH), &cache_dir, "finder")
             .expect("Finder icon should convert to PNG");
         let bytes = std::fs::read(&icon_path).expect("Finder PNG should be readable");

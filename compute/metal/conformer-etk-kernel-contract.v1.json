@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "libraryId": "burrete.compute.conformer-etk.v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "libraryId": "burette.compute.conformer-etk.v1",
   "source": "conformer-etk.v1.metal",
   "deploymentTarget": "14.0",
   "algorithm": "batched ETK torsion, improper-planarity, and flat-bottom distance energy with analytic float3 gradients",
@@ -11,7 +11,7 @@
     "byteOrder": "littleEndian"
   },
   "entrypoint": {
-    "name": "burrete_conformer_etk_v1",
+    "name": "burette_conformer_etk_v1",
     "threads": "atomCount * conformerCount",
     "buffers": [
       { "name": "positions", "index": 0, "type": "float4", "access": "read" },

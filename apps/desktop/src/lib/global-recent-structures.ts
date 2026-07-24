@@ -1,7 +1,7 @@
 import type { RecentStructure } from "../types";
 import { isPersistentRecentStructure } from "./temporary-documents";
 
-export const GLOBAL_RECENT_STRUCTURES_STORAGE_KEY = "burrete.recent.structures";
+export const GLOBAL_RECENT_STRUCTURES_STORAGE_KEY = "burette.recent.structures";
 
 const MAX_GLOBAL_RECENT_STRUCTURES = 100;
 let latestRevision = 0;

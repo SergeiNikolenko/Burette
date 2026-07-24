@@ -19,12 +19,16 @@ import { DIRECT_CHEMISTRY_JOB_ATOM_LIMIT, structureAtomCountFromSummary } from "
 import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
+import { GridFilterSection } from "./grid-filter-section";
+import { GridDescriptorStatus } from "./grid-descriptor-status";
+import type { GridFilterModel } from "./types";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
 import { isTauriRuntime } from "../lib/tauri";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings } from "../types";
 
 type StructureInfoPanelProps = {
+  gridFilterModel: GridFilterModel | null;
   document: ViewerDocument | null;
   textDocument?: TextFileDocument | null;
   dockDrops: ShellViewState["dockDroppedStructures"];
@@ -106,7 +110,7 @@ const TRAJECTORY_SMOOTHING_EXTENSIONS = new Set([
   "xyz", "pdb", "ent", "gro", "xtc", "trr", "dcd", "nctraj", "nc", "ncdf", "netcdf", "ncrst", "lammpstrj",
 ]);
 
-export function StructureInfoPanel({ document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
+export function StructureInfoPanel({ gridFilterModel, document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, actions }: StructureInfoPanelProps) {
   const hostedMcpWidget = isHostedMcpWidget();
   const composition = useStructureComposition(document);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
@@ -179,8 +183,8 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
         playing: detail.playing === true,
       });
     };
-    window.addEventListener("burrete:trajectory-frame-changed", handle);
-    return () => window.removeEventListener("burrete:trajectory-frame-changed", handle);
+    window.addEventListener("burette:trajectory-frame-changed", handle);
+    return () => window.removeEventListener("burette:trajectory-frame-changed", handle);
   }, [document?.id]);
 
   useEffect(() => {
@@ -200,8 +204,8 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
         interpolation: String(detail.interpolation || "linear"),
       });
     };
-    window.addEventListener("burrete:trajectory-smoothing-changed", handle);
-    return () => window.removeEventListener("burrete:trajectory-smoothing-changed", handle);
+    window.addEventListener("burette:trajectory-smoothing-changed", handle);
+    return () => window.removeEventListener("burette:trajectory-smoothing-changed", handle);
   }, [document?.id]);
 
   useEffect(() => {
@@ -375,6 +379,8 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           actions={actions}
         />
 
+        {document?.renderer === "grid2d" ? <GridDescriptorStatus documentId={document.id} /> : null}
+        {gridFilterModel ? <GridFilterSection model={gridFilterModel} actions={actions} /> : null}
         <InspectorEngineCard
           className="structure-inspector-xtb-card"
           title="xTB"
@@ -786,8 +792,8 @@ function TrajectorySmoothingCard({
       if (!built) void build();
       else changeView(view === "smoothed" ? "original" : "smoothed");
     };
-    window.addEventListener("burrete:trajectory-smoothing-toggle-requested", toggle);
-    return () => window.removeEventListener("burrete:trajectory-smoothing-toggle-requested", toggle);
+    window.addEventListener("burette:trajectory-smoothing-toggle-requested", toggle);
+    return () => window.removeEventListener("burette:trajectory-smoothing-toggle-requested", toggle);
   });
   return (
     <section className="structure-brief-card trajectory-smoothing-card" data-collapsed={!open || undefined}>
@@ -2438,7 +2444,7 @@ function xtboutPreviewRows(text: string): BriefRow[] {
 function xtbRunNameForPath(path: string) {
   const match = path.replace(/\\/g, "/").match(/\/(xtb_(?:run|optimize|properties|hessian|ip_ea|fukui|md|metadyn)_\d+)(?:\/|$)/u);
   if (match) return match[1];
-  if (path.includes("/burrete-xtb-jobs/")) return "temporary xTB run";
+  if (path.includes("/burette-xtb-jobs/")) return "temporary xTB run";
   return null;
 }
 
@@ -2461,7 +2467,7 @@ const XTB_TEXT_ARTIFACTS: Record<string, Omit<XtbTextArtifactInfo, "runName">> =
     title: "Optimization success marker",
     kind: "Marker",
     summary: "xTB marker created when geometry optimization finished successfully.",
-    purpose: "Lets xTB and Burrete distinguish a completed optimization from a partial run.",
+    purpose: "Lets xTB and Burette distinguish a completed optimization from a partial run.",
     use: "Marker for completed geometry relaxation; useful when auditing run completeness.",
     format: "empty marker file",
     notes: ["Presence is the signal; file content is usually empty."],
@@ -2487,14 +2493,14 @@ const XTB_TEXT_ARTIFACTS: Record<string, Omit<XtbTextArtifactInfo, "runName">> =
   "xtb-prep.log": {
     title: "Input preparation log",
     kind: "Log",
-    summary: "Records how Burrete prepared the input before xTB.",
+    summary: "Records how Burette prepared the input before xTB.",
     purpose: "Explains whether hydrogens were added and which tool/path was used.",
     use: "Check this first when optimized geometry looks odd because missing hydrogens or conversion can change results.",
     format: "plain text log",
-    notes: ["Generated by Burrete, not by xTB itself."],
+    notes: ["Generated by Burette, not by xTB itself."],
   },
   "xtb-report.md": {
-    title: "Burrete xTB report",
+    title: "Burette xTB report",
     kind: "Report",
     summary: "Human-readable summary of one xTB job.",
     purpose: "Collects operation, status, command, artifacts, JSON summary, and log tail in one place.",
@@ -2523,7 +2529,7 @@ const XTB_TEXT_ARTIFACTS: Record<string, Omit<XtbTextArtifactInfo, "runName">> =
   "xtbout.json": {
     title: "Machine-readable xTB summary",
     kind: "JSON",
-    summary: "Structured xTB output used by Burrete result cards.",
+    summary: "Structured xTB output used by Burette result cards.",
     purpose: "Stores energy, gap, dipole, partial charges, orbital data, method, version, and command metadata.",
     use: "Use for tables, comparisons, and automated parsing instead of scraping xtb.log.",
     format: "JSON",
@@ -2589,7 +2595,7 @@ const XTB_PATTERN_ARTIFACTS: Record<string, Omit<XtbTextArtifactInfo, "runName">
   inputWithHydrogens: {
     title: "Prepared input with hydrogens",
     kind: "Input",
-    summary: "Structure after Burrete/Open Babel hydrogen preparation.",
+    summary: "Structure after Burette/Open Babel hydrogen preparation.",
     purpose: "xTB generally needs chemically complete hydrogens for stable local calculations.",
     use: "Use to verify chemical completeness if geometry or charge distribution looks unexpected.",
     format: "structure file",

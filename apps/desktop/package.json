@@ -1,5 +1,5 @@
 {
-  "name": "@burrete/desktop",
+  "name": "@burette/desktop",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
-    "@burrete/ketcher-agent-contract": "workspace:*",
+    "@burette/ketcher-agent-contract": "workspace:*",
     "@vercel/analytics": "2.0.1",
     "@vercel/speed-insights": "2.0.0",
     "ketcher-core": "3.15.0",
@@ -20,6 +20,7 @@
     "ketcher-standalone": "3.15.0",
     "lucide-react": "^1.25.0",
     "motion": "^12.42.2",
-    "radix-ui": "^1.6.4"
+    "radix-ui": "^1.6.4",
+    "recharts": "3.8.0"
   }
 }

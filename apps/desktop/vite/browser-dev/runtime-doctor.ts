@@ -2,7 +2,7 @@ import type { ViteDevServer } from "vite";
 
 import { sendJson, sendJsonError } from "./http";
 
-const DOCTOR_SCHEMA = "burrete.external-runtime-doctor.v1";
+const DOCTOR_SCHEMA = "burette.external-runtime-doctor.v1";
 
 type RuntimeStatusPayload = Record<string, unknown>;
 

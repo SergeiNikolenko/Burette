@@ -33,7 +33,7 @@ inline float umap_unit_v1(ulong value) {
         (1.0f / 16777216.0f);
 }
 
-kernel void burrete_umap_initialize_v1(
+kernel void burette_umap_initialize_v1(
     device float4* positions [[buffer(0)]],
     constant UmapEpochConfigV1& config [[buffer(1)]],
     uint vertexIndex [[thread_position_in_grid]]
@@ -51,7 +51,7 @@ kernel void burrete_umap_initialize_v1(
     positions[vertexIndex] = float4(x, y, z, 0.0f);
 }
 
-kernel void burrete_umap_epoch_v1(
+kernel void burette_umap_epoch_v1(
     device const float4* inputPositions [[buffer(0)]],
     device const ulong* rowOffsets [[buffer(1)]],
     device const uint* columnIndices [[buffer(2)]],

@@ -223,7 +223,7 @@ inline float heavy_heavy_value(
         + ri[19] * coupled + ri[20] * crossPi + ri[21] * exchange;
 }
 
-kernel void burrete_rm1_pair_rotate_v1(
+kernel void burette_rm1_pair_rotate_v1(
     device const Rm1PairRotationV1* pairs [[buffer(0)]],
     device const Rm1PairParametersV1* pairParameters [[buffer(1)]],
     constant uint& pairCount [[buffer(2)]],

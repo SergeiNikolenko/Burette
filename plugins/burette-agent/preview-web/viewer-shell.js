@@ -6,7 +6,7 @@
     const app = document.getElementById('app');
     if (!app) return;
     app.insertAdjacentHTML('afterend', `
-      <div id="buret-toolbar" role="toolbar" aria-label="Burrete preview controls">
+      <div id="buret-toolbar" role="toolbar" aria-label="Burette preview controls">
         <div class="buret-toolbar-content" data-buret-toolbar-content>
           <button class="buret-button buret-preview-dock-toggle" type="button" data-buret-dock-toggle="bottom" aria-label="Show bottom dock" title="Show bottom dock">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-13Zm2 0v10h12v-10a.5.5 0 0 0-.5-.5h-11a.5.5 0 0 0-.5.5Zm0 13a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5V17H6v1.5Z" fill="currentColor"/></svg>
@@ -147,7 +147,7 @@
       <aside class="buret-preview-dock buret-preview-dock-right" data-buret-preview-dock="right" aria-label="Right dock" aria-hidden="true"></aside>
       <section class="buret-preview-dock buret-preview-dock-bottom" data-buret-preview-dock="bottom" aria-label="Bottom dock" aria-hidden="true"></section>
     `);
-    if (window.__BURRETE_HOSTED_MCP_WIDGET__ === true) {
+    if (window.__BURETTE_HOSTED_MCP_WIDGET__ === true) {
       const toolbar = document.getElementById('buret-toolbar');
       const grip = toolbar?.querySelector('[data-drag-handle]');
       if (toolbar && grip) {
@@ -166,13 +166,13 @@
           grip.setAttribute('aria-label', collapsed ? 'Expand controls' : 'Collapse controls');
           grip.setAttribute('title', collapsed ? 'Expand controls' : 'Collapse controls');
         };
-        window.__BURRETE_HOSTED_GRIP_FALLBACK__ = fallbackGripClick;
+        window.__BURETTE_HOSTED_GRIP_FALLBACK__ = fallbackGripClick;
         grip.addEventListener('click', fallbackGripClick);
       }
     }
   }
 
-  window.BurreteViewerShell = { mountToolbar };
+  window.BuretteViewerShell = { mountToolbar };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mountToolbar, { once: true });
   } else {

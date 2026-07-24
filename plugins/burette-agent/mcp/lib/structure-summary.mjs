@@ -343,7 +343,7 @@ function summarizeCif(base, text) {
       { label: "Lines", value: formatInteger(base.lineCount) },
     ],
     components: {},
-    notes: ["CIF summary is intentionally lightweight; open the file in Burrete for detailed residue grouping."],
+    notes: ["CIF summary is intentionally lightweight; open the file in Burette for detailed residue grouping."],
   };
 }
 

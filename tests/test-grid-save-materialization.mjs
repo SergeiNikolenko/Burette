@@ -95,7 +95,7 @@ const duplicate = { index: 1, name: "Base copy", smiles: "CC", props: {} };
     { index: 1, name: "From SMILES", smiles: "CC", molblock: "", props: {} },
   ], ",");
   assert.equal(csv.trimEnd().split("\n").length, 3, "saved CSV rows must remain single-line records");
-  assert.match(csv, /burrete_encoding/);
+  assert.match(csv, /burette_encoding/);
   assert.match(csv, /escaped-v1/);
   assert.match(csv, /Molecule \\\\ literal\\nM  END/);
   assert.match(csv, /Line 1\\nLine 2 \\\\ tail/);

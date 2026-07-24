@@ -109,16 +109,16 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v143";
-const VIEWER_ASSET_VERSION = "viewer-ui-v69";
-const REPO_ROOT = String(import.meta.env.BURRETE_REPO_ROOT || "");
+const GRID_ASSET_VERSION = "grid-ui-v166";
+const VIEWER_ASSET_VERSION = "viewer-ui-v70";
+const REPO_ROOT = String(import.meta.env.BURETTE_REPO_ROOT || "");
 const WEB_ASSETS_BASE = String(
-  (typeof window !== "undefined" ? window.__BURRETE_WEB_ASSETS_BASE__ : "")
-  || import.meta.env.VITE_BURRETE_WEB_ASSETS_BASE
+  (typeof window !== "undefined" ? window.__BURETTE_WEB_ASSETS_BASE__ : "")
+  || import.meta.env.VITE_BURETTE_WEB_ASSETS_BASE
   || "",
 )
   || fsUrl(`${REPO_ROOT}/PreviewExtension/Web/`);
-const WEB_DEMO_ENABLED = import.meta.env.VITE_BURRETE_WEB_DEMO === "1";
+const WEB_DEMO_ENABLED = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
 const RDKIT_WASM_PATH = WEB_DEMO_ENABLED
   ? `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/rdkit/RDKit_minimal.wasm`
   : "/__burette/rdkit-wasm";
@@ -285,7 +285,7 @@ export async function openBrowserDevTextDocument(
 ): Promise<ViewerDocument> {
   const cleanExtension = extension.toLowerCase().replace(/^\./u, "");
   const cleanTitle = fileTitle(title).replace(/[\\/]/gu, "").trim() || `ketcher-sketch.${cleanExtension}`;
-  const path = `burrete-ketcher://${stableId(`${cleanTitle}:${text}`)}/${cleanTitle}`;
+  const path = `burette-ketcher://${stableId(`${cleanTitle}:${text}`)}/${cleanTitle}`;
   const bytes = new TextEncoder().encode(text);
   browserDevVirtualTextDocuments.set(path, text);
   const document = await openBrowserDevDocumentFromBytes(path, cleanExtension, bytes, bytes.length, preferences, reloadOptions, documentId);
@@ -328,7 +328,7 @@ export async function openBrowserDevDockingDocument(
     label,
     byteCount: receptor.byteCount + ligands.reduce((total, ligand) => total + ligand.byteCount, 0),
     previewByteCount: receptor.bytes.length + dockingLigands.reduce((total, ligand) => total + ligand.bytes.length, 0),
-    quickLookBuild: "burrete-browser-dev-docking",
+    quickLookBuild: "burette-browser-dev-docking",
     debug: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
@@ -374,12 +374,12 @@ export async function openBrowserDevDockingDocument(
     undefined,
     undefined,
     undefined,
-    `<script>window.BurreteDockingPayloads = ${serializeInlineJson(payloads)};</script>`,
+    `<script>window.BuretteDockingPayloads = ${serializeInlineJson(payloads)};</script>`,
     config,
   );
   return {
     id,
-    path: `burrete-docking://${id}`,
+    path: `burette-docking://${id}`,
     title: label,
     extension: "docking",
     renderer: "molstar",
@@ -432,7 +432,7 @@ export async function openBrowserDevMolstarContextDocument(
         : [],
       molstarContextFocus: contextFocus,
     };
-    const virtualPath = `burrete-context://${id}`;
+    const virtualPath = `burette-context://${id}`;
     browserDevVirtualTextDocuments.set(virtualPath, decodeUtf8(entry.bytes));
     const html = viewerHtml(
       label,
@@ -481,7 +481,7 @@ export async function openBrowserDevMolstarContextDocument(
     label,
     byteCount,
     previewByteCount: byteCount,
-    quickLookBuild: "burrete-browser-dev-context-docking",
+    quickLookBuild: "burette-browser-dev-context-docking",
     debug: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
@@ -527,12 +527,12 @@ export async function openBrowserDevMolstarContextDocument(
     undefined,
     undefined,
     undefined,
-    `<script>window.BurreteDockingPayloads = ${serializeInlineJson(payloads)};</script>`,
+    `<script>window.BuretteDockingPayloads = ${serializeInlineJson(payloads)};</script>`,
     config,
   );
   return {
     id,
-    path: `burrete-context://${id}`,
+    path: `burette-context://${id}`,
     title: label,
     extension: "docking",
     renderer: "molstar",
@@ -556,7 +556,7 @@ export async function openBrowserDevMergedCollection(
   if (!grid) throw new Error("Merged collection does not contain supported molecule grid records.");
 
   const id = stableId(`merged:${merged.sourcePaths.join("|")}:${merged.text.length}`);
-  const path = `burrete-collection://${id}/${merged.suggestedFileName}`;
+  const path = `burette-collection://${id}/${merged.suggestedFileName}`;
   browserDevVirtualTextDocuments.set(path, merged.text);
   const html = await gridHtml(path, id, grid.records, grid.format, preferences, new TextEncoder().encode(merged.text).byteLength);
   return {
@@ -588,7 +588,7 @@ export async function appendToBrowserDevCollection(
 ): Promise<ViewerDocument> {
   const receiverId = stableId(`ketcher-append:${targetPath}`);
   const receiverName = fileTitle(targetPath).replace(/[\\/]/gu, "").trim() || `collection.${record.extension}`;
-  const receiverPath = `burrete-collection://${receiverId}/${receiverName}`;
+  const receiverPath = `burette-collection://${receiverId}/${receiverName}`;
   const baseText = browserDevVirtualTextDocuments.get(receiverPath) ?? await readBrowserDevCollectionText(targetPath);
   const merged = mergeCollectionSources([
     { path: receiverPath, extension: collectionExtension(receiverName) || record.extension, text: baseText },
@@ -748,7 +748,7 @@ function openBrowserDevTrajectoryPairDocument(
     previewByteCount: 1,
     sourcePath: pair.sourcePath,
     sourceExtension: pair.sourceExtension,
-    quickLookBuild: "burrete-browser-dev-trajectory-pair",
+    quickLookBuild: "burette-browser-dev-trajectory-pair",
     debug: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
@@ -789,7 +789,7 @@ function openBrowserDevTrajectoryPairDocument(
     undefined,
     undefined,
     undefined,
-    `<script>window.BurreteDockingPayloads = ${serializeInlineJson(pair.payloads)};</script>`,
+    `<script>window.BuretteDockingPayloads = ${serializeInlineJson(pair.payloads)};</script>`,
     config,
     0,
     null,
@@ -1108,7 +1108,7 @@ function browserDevContextPayload(entry: BrowserDevMolstarContextEntry, index: n
     throw new Error(`${entry.label || "Mol* context structure"} is larger than the 75 MB preview limit`);
   }
   return {
-    path: `burrete-context-entry://${index}`,
+    path: `burette-context-entry://${index}`,
     title: entry.label?.trim() || `Context structure ${index + 1}`,
     extension: contextExtensionForFormat(formatName),
     format: {
@@ -1141,7 +1141,7 @@ function browserDevContextConfig(
     label,
     byteCount,
     previewByteCount: byteCount,
-    quickLookBuild: "burrete-browser-dev-context",
+    quickLookBuild: "burette-browser-dev-context",
     debug: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
@@ -1220,7 +1220,7 @@ function viewerHtml(
     dataPath: renderer === "xyzrender-external" ? browserDevReadUrl(path, extension) : undefined,
     sourcePath: path,
     sourceExtension: extension,
-    quickLookBuild: "burrete-browser-dev",
+    quickLookBuild: "burette-browser-dev",
     debug: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
@@ -1273,21 +1273,21 @@ function viewerHtml(
   const runtimeAssetVersion = `${VIEWER_ASSET_VERSION}-${Date.now()}`;
   const embeddedBytes = renderer === "xyzrender-external" ? new Uint8Array([10]) : bytes;
   const runtimeBootstrap = hostedMcpBootstrap
-    ? `<script id="burrete-runtime-config" type="application/json">${serializeInlineJson(config)}</script>
-  <script id="burrete-runtime-data" type="application/json">${serializeInlineJson(bytesToBase64(embeddedBytes))}</script>
+    ? `<script id="burette-runtime-config" type="application/json">${serializeInlineJson(config)}</script>
+  <script id="burette-runtime-data" type="application/json">${serializeInlineJson(bytesToBase64(embeddedBytes))}</script>
   <script src="${viewerAsset("viewer-bootstrap.js")}?v=${runtimeAssetVersion}"></script>`
     : `<script>${viewerBridgeJs()}</script>
   <script>
-    window.BurreteConfig = ${serializeInlineJson(config)};
+    window.BuretteConfig = ${serializeInlineJson(config)};
   </script>
-  <script>window.BurreteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>`;
+  <script>window.BuretteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>`;
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   ${hostedMcpBootstrap ? "" : `<base href="${WEB_ASSETS_BASE}" />`}
-  <title>Burrete - ${escapeHtml(label)}</title>
+  <title>Burette - ${escapeHtml(label)}</title>
   <link rel="stylesheet" href="${viewerAsset("viewer-runtime.css")}?v=${runtimeAssetVersion}" />
 </head>
 <body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
@@ -1436,7 +1436,7 @@ async function gridHtml(
     label,
     byteCount,
     host: "browser-dev",
-    quickLookBuild: "burrete-browser-dev-grid2d",
+    quickLookBuild: "burette-browser-dev-grid2d",
     debug: false,
     appViewer: true,
     pubChemSearch: true,
@@ -1497,28 +1497,28 @@ async function gridHtml(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <base href="${WEB_ASSETS_BASE}" />
-  <title>Burrete Grid - ${escapeHtml(label)}</title>
+  <title>Burette Grid - ${escapeHtml(label)}</title>
   <link rel="stylesheet" href="grid.css?v=${GRID_ASSET_VERSION}" />
   <script>
     window.__mqlPost = function (type, message, payload) {
       try {
         const body = { type, message: String(message || ''), ...(payload || {}) };
-        if (window.BurreteConfig && window.BurreteConfig.documentId) body.documentId = String(window.BurreteConfig.documentId);
-        window.parent && window.parent.postMessage({ source: 'burrete-grid', body }, '*');
+        if (window.BuretteConfig && window.BuretteConfig.documentId) body.documentId = String(window.BuretteConfig.documentId);
+        window.parent && window.parent.postMessage({ source: 'burette-grid', body }, '*');
       } catch (_) {}
     };
-    window.BurreteInlineMode = true;
-    window.BurreteGridMode = true;
-    window.BurreteDebug = false;
+    window.BuretteInlineMode = true;
+    window.BuretteGridMode = true;
+    window.BuretteDebug = false;
   </script>
 </head>
 <body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
   <script>
-    window.BurreteConfig = ${serializeInlineJson(config)};
+    window.BuretteConfig = ${serializeInlineJson(config)};
   </script>
-  <script>window.BurreteGridRecords = ${serializeInlineJson(records)};</script>
+  <script>window.BuretteGridRecords = ${serializeInlineJson(records)};</script>
   ${format === "dwar" ? `<script src="openchemlib/openchemlib.js?v=${GRID_ASSET_VERSION}"></script>` : ""}
   <script src="rdkit/RDKit_minimal.js?v=${GRID_ASSET_VERSION}"></script>
   <script src="grid-ui.js?v=${GRID_ASSET_VERSION}"></script>
@@ -1728,27 +1728,27 @@ function parseDelimitedLine(line: string, delimiter: "," | "\t") {
 function viewerBridgeJs() {
   return `(() => {
   const postToParent = (body) => {
-    if (window.BurreteConfig && window.BurreteConfig.documentId) {
-      body.documentId = String(window.BurreteConfig.documentId);
+    if (window.BuretteConfig && window.BuretteConfig.documentId) {
+      body.documentId = String(window.BuretteConfig.documentId);
     }
     if (window.parent && window.parent !== window) {
-      try { window.parent.postMessage({ source: 'burrete-viewer', body }, '*'); } catch (_) {}
+      try { window.parent.postMessage({ source: 'burette-viewer', body }, '*'); } catch (_) {}
     }
   };
   const webkit = window.webkit || {};
   const messageHandlers = webkit.messageHandlers || {};
-  if (!messageHandlers.burrete) {
-    messageHandlers.burrete = { postMessage: postToParent };
+  if (!messageHandlers.burette) {
+    messageHandlers.burette = { postMessage: postToParent };
   }
   webkit.messageHandlers = messageHandlers;
   window.webkit = webkit;
   window.__mqlPost = (type, message, payload) => postToParent({ type, message: message || '', ...(payload || {}) });
-  window.__mqlAction = (name) => messageHandlers.burrete.postMessage({ type: 'action', message: name });
+  window.__mqlAction = (name) => messageHandlers.burette.postMessage({ type: 'action', message: name });
   window.__mqlDebug = () => {};
-  window.BurreteInlineMode = true;
-  window.BurreteDebug = false;
-  window.BurretePanelControlsVisible = false;
-  window.BurreteCacheBuster = String(Date.now());
+  window.BuretteInlineMode = true;
+  window.BuretteDebug = false;
+  window.BurettePanelControlsVisible = false;
+  window.BuretteCacheBuster = String(Date.now());
 })();`;
 }
 
@@ -2070,7 +2070,7 @@ async function decodeStructureText(bytes: Uint8Array, extension: string) {
 }
 
 function browserDevSourceByteCount(response: Response, fallback: number) {
-  const sourceByteCount = Number(response.headers.get("x-burrete-source-byte-count"));
+  const sourceByteCount = Number(response.headers.get("x-burette-source-byte-count"));
   if (Number.isFinite(sourceByteCount) && sourceByteCount > 0) return sourceByteCount;
   const contentRange = response.headers.get("content-range");
   const total = contentRange?.match(/\/(\d+)$/u)?.[1];

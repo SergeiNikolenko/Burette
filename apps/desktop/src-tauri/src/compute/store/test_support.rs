@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf, sync::Arc};
 
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     AttemptSnapshot, AttemptState, Backend, BackendPolicy, ClusterV1Parameters,
     ClusterV1SubmitRequest, ComputeJobSchemaVersion, ComputeJobSnapshotSchemaVersion,
     EngineIdentity, ExecutionPartition, ExecutionPlan, ExecutionPlanVersion, ExecutionPolicy,
@@ -26,7 +26,7 @@ impl TestStore {
         let root = std::env::temp_dir()
             .canonicalize()
             .expect("canonical temporary directory")
-            .join(format!("burrete-compute-store-{}", Uuid::new_v4()));
+            .join(format!("burette-compute-store-{}", Uuid::new_v4()));
         let store = ComputeStore::initialize(root.clone()).expect("initialize compute store");
         Self { root, store }
     }
@@ -39,7 +39,7 @@ impl TestStore {
         let root = std::env::temp_dir()
             .canonicalize()
             .expect("canonical temporary directory")
-            .join(format!("burrete-compute-store-v1-{}", Uuid::new_v4()));
+            .join(format!("burette-compute-store-v1-{}", Uuid::new_v4()));
         let root_lease = Arc::new(
             crate::compute::root_lease::ComputeRootLease::acquire(&root)
                 .expect("acquire legacy v1 compute root"),
@@ -361,10 +361,10 @@ fn planned_stage(stage_id: &str, kind: StageKind, backend: Backend) -> PlannedSt
         precision,
         engine: EngineIdentity {
             engine_id: match backend {
-                Backend::Coordinator => "burrete-coordinator",
+                Backend::Coordinator => "burette-coordinator",
                 Backend::Rdkit => "rdkit",
-                Backend::NativeMetal => "burrete-native-metal",
-                Backend::ReferenceCpu => "burrete-reference-cpu",
+                Backend::NativeMetal => "burette-native-metal",
+                Backend::ReferenceCpu => "burette-reference-cpu",
             }
             .into(),
             version: "1.0.0".into(),

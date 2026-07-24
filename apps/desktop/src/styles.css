@@ -4769,7 +4769,7 @@ img.radix-menu-item-icon {
 .ketcher-editor-root {
   position: relative;
 }
-.ketcher-editor-root [data-burrete-agent-highlighted="true"] {
+.ketcher-editor-root [data-burette-agent-highlighted="true"] {
   filter: drop-shadow(0 0 3px rgba(20, 122, 255, 0.95));
   stroke: #147aff !important;
   stroke-width: 2px !important;
@@ -7539,4 +7539,243 @@ img.settings-open-destination-icon {
   .sidebar-product:active {
     transform: none;
   }
+}
+
+/* Live status for the grid's descriptor calculation: a spinner and running
+   count while it works, mirrored in the Info panel next to the filters. */
+.grid-descriptor-status {
+  display: grid;
+  gap: 8px;
+}
+.grid-descriptor-status-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.grid-descriptor-status-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-descriptor-status-count {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.grid-descriptor-status-message {
+  color: var(--text-secondary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.grid-descriptor-spinner {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  animation: grid-descriptor-spin 0.7s linear infinite;
+}
+@keyframes grid-descriptor-spin {
+  to { transform: rotate(360deg); }
+}
+.grid-descriptor-progress {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+.grid-descriptor-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease-out;
+}
+.grid-descriptor-progress.indeterminate > span {
+  width: 40%;
+  animation: grid-descriptor-slide 1.1s ease-in-out infinite;
+}
+@keyframes grid-descriptor-slide {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+.grid-descriptor-status[data-state="failed"] .grid-descriptor-status-title {
+  color: var(--danger, #e5484d);
+}
+@media (prefers-reduced-motion: reduce) {
+  .grid-descriptor-spinner,
+  .grid-descriptor-progress.indeterminate > span {
+    animation-duration: 0s;
+  }
+}
+
+/* Column filters for the active grid, drawn from the model the grid runtime
+   publishes. One card per column, the distribution visible on numeric ones. */
+.grid-filter-count {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.grid-filter-search {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 30px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 9px;
+  color: var(--text-primary);
+  background: var(--control-fill, rgba(255, 255, 255, 0.06));
+  font: 400 12px/1.2 inherit;
+  outline: none;
+}
+/* No inner scroll: the section grows to its full height and the dock scrolls
+   once, so a filter never sits in a box inside a box. */
+.grid-filter-list {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  margin-top: 8px;
+}
+.grid-filter-more {
+  padding: 6px 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.grid-filter-card {
+  display: grid;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--control-fill, rgba(255, 255, 255, 0.05));
+}
+.grid-filter-card.active {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 30%, transparent);
+}
+.grid-filter-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.grid-filter-card header span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-filter-clear {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: 11px;
+  cursor: pointer;
+}
+.grid-filter-clear:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+/* Bar colours reach Recharts as per-datum `fill`, so they have to be plain
+   custom properties resolvable on the chart's own subtree. */
+.grid-filter-chart-wrap {
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+/* Recharts marks its surface focusable; the chart is driven by dragging, so
+   drop the browser's focus ring that showed as an orange box around it. */
+.grid-filter-chart-wrap .recharts-surface {
+  outline: none;
+}
+.grid-filter-chart {
+  --grid-filter-bin: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  --grid-filter-bin-active: color-mix(in srgb, var(--accent) 72%, transparent);
+}
+.grid-filter-chart .recharts-rectangle {
+  transition: fill 90ms ease-out;
+}
+.grid-filter-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+.grid-filter-toggle:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+.grid-filter-toggle[aria-expanded="true"] {
+  color: var(--text-primary);
+}
+.grid-filter-slider-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 16px;
+}
+/* Sits over the middle of the selected range, clear of both thumbs, so the
+   whole window can be slid without changing its width. */
+.grid-filter-slider-grab {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  min-width: 0;
+  cursor: grab;
+  touch-action: none;
+}
+.grid-filter-slider-grab:active {
+  cursor: grabbing;
+}
+.grid-filter-slider [data-slot="slider-track"] {
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+.grid-filter-slider [data-slot="slider-range"] {
+  background: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+.grid-filter-slider [data-slot="slider-thumb"] {
+  border-color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  background: var(--surface-card);
+}
+.grid-filter-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.grid-filter-card input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 26px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 7px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  font: 400 12px/1.2 inherit;
+  outline: none;
 }

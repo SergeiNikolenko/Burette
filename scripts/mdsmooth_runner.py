@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ChimeraX-independent trajectory analysis runner for Burrete.
+"""ChimeraX-independent trajectory analysis runner for Burette.
 
 Reads one JSON request from stdin and writes one JSON response to stdout. The
 runner deliberately keeps MDAnalysis I/O outside the upstream-derived numerical
@@ -186,7 +186,7 @@ def write_xyz(path: Path, universe, frames: np.ndarray):
         elements.append(element)
     with path.open("w", encoding="utf-8") as handle:
         for index, frame in enumerate(frames):
-            handle.write(f"{len(elements)}\nBurrete MDSmooth frame {index + 1}\n")
+            handle.write(f"{len(elements)}\nBurette MDSmooth frame {index + 1}\n")
             for element, (x, y, z) in zip(elements, frame):
                 handle.write(f"{element} {x:.6f} {y:.6f} {z:.6f}\n")
 

@@ -1,4 +1,4 @@
-const WEB_DEMO_ENABLED = import.meta.env.VITE_BURRETE_WEB_DEMO === "1";
+const WEB_DEMO_ENABLED = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
 const ANALYTICS_ROUTE = "/web-demo";
 const ANALYTICS_PATH = "/web-demo/index.html";
 const SAFE_EXTENSIONS = new Set([

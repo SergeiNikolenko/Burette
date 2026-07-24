@@ -80,7 +80,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         && should_require_extracted_standalone_coordinates(extension)
     {
         let message = format!(
-            "{label} does not contain standalone molecular coordinates Burrete can preview. Open the referenced structure file directly if this output report points to one."
+            "{label} does not contain standalone molecular coordinates Burette can preview. Open the referenced structure file directly if this output report points to one."
         );
         return create_not_renderable_runtime(file_path, &runtime, &message);
     }
@@ -204,7 +204,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "byteCount": data.len(),
         "previewByteCount": payload.data.len(),
         "sourceExtension": extension,
-        "quickLookBuild": "burrete-tauri",
+        "quickLookBuild": "burette-tauri",
         "debug": false,
         "theme": preferences.theme_for_runtime(),
         "themeTokens": preferences.theme_tokens(),
@@ -316,14 +316,14 @@ pub(crate) fn create_runtime<R: Runtime>(
     )?;
     write_bytes_atomic(
         &runtime.join("preview-config.js"),
-        format!("window.BurreteConfig = {config_text};\n").as_bytes(),
+        format!("window.BuretteConfig = {config_text};\n").as_bytes(),
     )?;
     write_bytes_atomic(&runtime.join("preview-data.bin"), &payload.data)?;
     if include_data_script {
         write_bytes_atomic(
             &runtime.join("preview-data.js"),
             format!(
-                "window.BurreteDataBase64 = \"{}\";\nwindow.BurreteDataURL = null;\n",
+                "window.BuretteDataBase64 = \"{}\";\nwindow.BuretteDataURL = null;\n",
                 base64::engine::general_purpose::STANDARD.encode(&payload.data)
             )
             .as_bytes(),
@@ -377,7 +377,7 @@ pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
         "byteCount": data.len(),
         "previewByteCount": data.len(),
         "sourceExtension": "sdf",
-        "quickLookBuild": "burrete-tauri-combined-sdf-poses",
+        "quickLookBuild": "burette-tauri-combined-sdf-poses",
         "debug": false,
         "theme": preferences.theme_for_runtime(),
         "themeTokens": preferences.theme_tokens(),
@@ -415,14 +415,14 @@ pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
         .map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("preview-config.js"),
-        format!("window.BurreteConfig = {config_text};\n"),
+        format!("window.BuretteConfig = {config_text};\n"),
     )
     .map_err(|err| err.to_string())?;
     fs::write(runtime.join("preview-data.bin"), data).map_err(|err| err.to_string())?;
     fs::write(
         runtime.join("preview-data.js"),
         format!(
-            "window.BurreteDataBase64 = \"{}\";\nwindow.BurreteDataURL = null;\n",
+            "window.BuretteDataBase64 = \"{}\";\nwindow.BuretteDataURL = null;\n",
             base64::engine::general_purpose::STANDARD.encode(data)
         ),
     )
@@ -537,7 +537,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
         "label": label,
         "byteCount": byte_count,
         "previewByteCount": preview_byte_count,
-        "quickLookBuild": "burrete-tauri-docking",
+        "quickLookBuild": "burette-tauri-docking",
         "debug": false,
         "theme": preferences.theme_for_runtime(),
         "themeTokens": preferences.theme_tokens(),
@@ -587,13 +587,13 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
     )?;
     write_bytes_atomic(
         &runtime.join("preview-config.js"),
-        format!("window.BurreteConfig = {config_text};\n").as_bytes(),
+        format!("window.BuretteConfig = {config_text};\n").as_bytes(),
     )?;
     write_bytes_atomic(&runtime.join("preview-data.bin"), b"\n")?;
     write_bytes_atomic(
         &runtime.join("preview-data.js"),
         format!(
-            "window.BurreteDataBase64 = \"Cg==\";\nwindow.BurreteDataURL = null;\nwindow.BurreteDockingPayloads = {payload_text};\n"
+            "window.BuretteDataBase64 = \"Cg==\";\nwindow.BuretteDataURL = null;\nwindow.BuretteDockingPayloads = {payload_text};\n"
         )
         .as_bytes(),
     )?;
@@ -818,7 +818,7 @@ mod tests {
     #[test]
     fn molstar_profile_copies_rdkit_for_ligand_previews_without_grid_assets() {
         let app = tauri::test::mock_app();
-        let assets = std::env::temp_dir().join(format!("burrete-assets-{}", uuid::Uuid::new_v4()));
+        let assets = std::env::temp_dir().join(format!("burette-assets-{}", uuid::Uuid::new_v4()));
 
         copy_web_assets(app.handle(), &assets, AssetProfile::Molstar)
             .expect("molstar assets should copy");
@@ -833,7 +833,7 @@ mod tests {
         let wasm_data = fs::read_to_string(assets.join("rdkit-wasm-data.js"))
             .expect("RDKit wasm data script should exist");
         assert!(wasm_data.starts_with("// sha256:"));
-        assert!(wasm_data.contains("\nwindow.BurreteRDKitWasmBase64 = \""));
+        assert!(wasm_data.contains("\nwindow.BuretteRDKitWasmBase64 = \""));
 
         fs::write(
             assets.join("rdkit-wasm-data.js"),
@@ -861,7 +861,7 @@ mod tests {
     #[test]
     fn grid_profile_copies_rdkit_once_and_skips_matching_files() {
         let app = tauri::test::mock_app();
-        let assets = std::env::temp_dir().join(format!("burrete-assets-{}", uuid::Uuid::new_v4()));
+        let assets = std::env::temp_dir().join(format!("burette-assets-{}", uuid::Uuid::new_v4()));
 
         copy_web_assets(app.handle(), &assets, AssetProfile::Grid)
             .expect("grid assets should copy");
@@ -917,7 +917,7 @@ mod tests {
         assert!(html.contains("Content-Security-Policy"));
         assert!(html.contains("unsafe-eval"));
         assert!(html.contains("wasm-unsafe-eval"));
-        assert!(html.contains("window.BurreteRDKitWasmDataURL"));
+        assert!(html.contains("window.BuretteRDKitWasmDataURL"));
         assert!(html.contains("rdkit-wasm-data.js"));
     }
 }
@@ -1019,7 +1019,7 @@ fn write_rdkit_wasm_data_if_needed(source: &Path, destination: &Path) -> Result<
     let base64 = base64::engine::general_purpose::STANDARD.encode(bytes);
     write_bytes_atomic(
         destination,
-        format!("{fingerprint}\nwindow.BurreteRDKitWasmBase64 = \"{base64}\";\n").as_bytes(),
+        format!("{fingerprint}\nwindow.BuretteRDKitWasmBase64 = \"{base64}\";\n").as_bytes(),
     )
     .map_err(|error| format!("write RDKit wasm data: {error}"))
 }
@@ -1043,7 +1043,7 @@ fn bundled_web_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, Str
     if dev.exists() {
         return Ok(dev);
     }
-    Err("Burrete Web runtime assets were not found".into())
+    Err("Burette Web runtime assets were not found".into())
 }
 
 fn copy_dir_if_needed(source: &Path, destination: &Path) -> Result<(), String> {
@@ -1069,14 +1069,14 @@ fn copy_dir_if_needed(source: &Path, destination: &Path) -> Result<(), String> {
 
 fn copy_file_if_needed(source: &Path, destination: &Path, label: &str) -> Result<(), String> {
     if destination_matches_source(source, destination)? {
-        eprintln!("Burrete asset skipped: {label}");
+        eprintln!("Burette asset skipped: {label}");
         return Ok(());
     }
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
     fs::copy(source, destination).map_err(|err| format!("copy {label}: {err}"))?;
-    eprintln!("Burrete asset copied: {label}");
+    eprintln!("Burette asset copied: {label}");
     Ok(())
 }
 
@@ -1151,18 +1151,18 @@ fn viewer_html(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="{csp}" />
-  <title>Burrete - {title}</title>
+  <title>Burette - {title}</title>
   {renderer_styles}
   <link rel="stylesheet" href="{runtime_css}" />
   <script src="{bridge_js}"></script>
   <script>
-    window.BurretePreviewConfigURL = {config_js:?};
-    window.BurretePreviewDataScriptURL = {data_js:?};
-    window.BurreteDataURL = {data_bin_js:?};
-    window.BurreteMolstarURL = {molstar_js:?};
-    window.BurreteRDKitJSURL = {rdkit_js:?};
-    window.BurreteRDKitWasmURL = {rdkit_wasm:?};
-    window.BurreteRDKitWasmDataURL = {rdkit_wasm_data:?};
+    window.BurettePreviewConfigURL = {config_js:?};
+    window.BurettePreviewDataScriptURL = {data_js:?};
+    window.BuretteDataURL = {data_bin_js:?};
+    window.BuretteMolstarURL = {molstar_js:?};
+    window.BuretteRDKitJSURL = {rdkit_js:?};
+    window.BuretteRDKitWasmURL = {rdkit_wasm:?};
+    window.BuretteRDKitWasmDataURL = {rdkit_wasm_data:?};
   </script>
 </head>
 <body class="{background_class}">
@@ -1195,7 +1195,7 @@ fn not_renderable_html(file_path: &Path, message: &str) -> String {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="{VIEWER_MINIMAL_CSP}" />
-  <title>Burrete - {title}</title>
+  <title>Burette - {title}</title>
   <style>
     html, body {{ margin: 0; width: 100%; height: 100%; background: #111317; color: #f2f2f2; }}
     body {{ box-sizing: border-box; padding: 28px; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }}
@@ -1204,7 +1204,7 @@ fn not_renderable_html(file_path: &Path, message: &str) -> String {
   </style>
 </head>
 <body>
-  <h1>Burrete could not preview {title}</h1>
+  <h1>Burette could not preview {title}</h1>
   <p>{message}</p>
 </body>
 </html>"#
@@ -1222,38 +1222,38 @@ fn viewer_csp(renderer: &str) -> &'static str {
 fn viewer_bridge_js() -> &'static str {
     r#"(() => {
   const postToParent = (body) => {
-    if (window.BurreteConfig && window.BurreteConfig.documentId) {
-      body.documentId = String(window.BurreteConfig.documentId);
+    if (window.BuretteConfig && window.BuretteConfig.documentId) {
+      body.documentId = String(window.BuretteConfig.documentId);
     }
     if (window.parent && window.parent !== window) {
       try {
-        window.parent.postMessage({ source: 'burrete-viewer', body }, '*');
+        window.parent.postMessage({ source: 'burette-viewer', body }, '*');
       } catch (_) {}
     }
   };
   const webkit = window.webkit || {};
   const messageHandlers = webkit.messageHandlers || {};
-  if (!messageHandlers.burrete) {
-    messageHandlers.burrete = { postMessage: postToParent };
+  if (!messageHandlers.burette) {
+    messageHandlers.burette = { postMessage: postToParent };
   }
   webkit.messageHandlers = messageHandlers;
   window.webkit = webkit;
   window.__mqlPost = (type, message, payload) => postToParent({ type, message: message || '', ...(payload || {}) });
-  window.__mqlAction = (name) => messageHandlers.burrete.postMessage({ type: 'action', message: name });
+  window.__mqlAction = (name) => messageHandlers.burette.postMessage({ type: 'action', message: name });
   window.__mqlDebug = () => {};
-  window.BurreteInlineMode = true;
-  window.BurreteDebug = false;
-  window.BurretePanelControlsVisible = false;
-  window.BurreteCacheBuster = String(Date.now());
+  window.BuretteInlineMode = true;
+  window.BuretteDebug = false;
+  window.BurettePanelControlsVisible = false;
+  window.BuretteCacheBuster = String(Date.now());
   window.addEventListener('message', (event) => {
     const data = event.data || {};
-    if (data.source !== 'burrete-native-host' || !data.body) return;
+    if (data.source !== 'burette-native-host' || !data.body) return;
     const body = data.body;
-    if (body.type === 'nativeData' && window.BurreteReceiveNativeData) {
-      window.BurreteReceiveNativeData(body.payload || {});
+    if (body.type === 'nativeData' && window.BuretteReceiveNativeData) {
+      window.BuretteReceiveNativeData(body.payload || {});
     }
-    if (body.type === 'nativeRuntimeFile' && window.BurreteReceiveNativeRuntimeFile) {
-      window.BurreteReceiveNativeRuntimeFile(body.payload || {});
+    if (body.type === 'nativeRuntimeFile' && window.BuretteReceiveNativeRuntimeFile) {
+      window.BuretteReceiveNativeRuntimeFile(body.payload || {});
     }
   });
 })();"#

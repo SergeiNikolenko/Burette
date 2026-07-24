@@ -40,7 +40,7 @@ jobs:
             case "$path" in
               PreviewExtension/Web/*)
                 ;;
-              App/*|PreviewExtension/*|Burrete.xcodeproj/*|apps/desktop/src-tauri/*|scripts/build*.sh|scripts/install*.sh|scripts/ci.sh|package.json|bun.lock)
+              App/*|PreviewExtension/*|Burette.xcodeproj/*|apps/desktop/src-tauri/*|scripts/build*.sh|scripts/install*.sh|scripts/ci.sh|package.json|bun.lock)
                 native=true
                 ;;
             esac
@@ -56,8 +56,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Burrete toolchain
-        uses: ./.github/actions/setup-burrete-toolchain
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
         with:
           install-dependencies: "false"
 
@@ -77,8 +77,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Burrete toolchain
-        uses: ./.github/actions/setup-burrete-toolchain
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
         with:
           install-xyzrender: "true"
 

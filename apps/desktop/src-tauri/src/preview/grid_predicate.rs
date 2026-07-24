@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::BTreeSet};
 
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     AnalysisFilter, ColumnFilter, ColumnFilterKind, DescriptorFilter, GridTextQuery,
 };
 use rusqlite::types::Value as SqlValue;

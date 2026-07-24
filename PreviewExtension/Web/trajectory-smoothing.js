@@ -263,5 +263,5 @@
     return frameCount;
   }
 
-  window.BurreteTrajectorySmoothing = { smooth, concatenateXtcSegments, countXtcFrames };
+  window.BuretteTrajectorySmoothing = { smooth, concatenateXtcSegments, countXtcFrames };
 })();
