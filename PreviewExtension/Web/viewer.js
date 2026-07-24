@@ -6318,9 +6318,13 @@
   // Each animation reads more than a speed - spin needs an axis, rock an axis and
   // a sweep angle - and a missing one leaves the maths on undefined, which is a
   // scene that simply never moves. The rest of the payload travels with the speed.
+  // The library's bounds are symmetric (a negative speed reverses direction), which
+  // parks the default just right of centre and hands half the track to reverse
+  // spin nobody reaches for. This is a magnitude slider instead: slow on the left,
+  // fast on the right, floored just above zero so Off stays the only way to stop.
   const VIEWPORT_MOTION_SPEEDS = {
-    spin: { value: 0.1, min: -2, max: 2, step: 0.01, params: { axis: [0, -1, 0] } },
-    rock: { value: 0.3, min: -5, max: 5, step: 0.1, params: { angle: 10, axis: [0, -1, 0] } }
+    spin: { value: 0.1, min: 0.01, max: 1, step: 0.01, params: { axis: [0, -1, 0] } },
+    rock: { value: 0.3, min: 0.02, max: 1.5, step: 0.02, params: { angle: 10, axis: [0, -1, 0] } }
   };
   // The plugin ships timed camera spin and rock too; the Motion switch covers the
   // same ground without a stopwatch, so they are not listed twice.

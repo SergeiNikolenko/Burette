@@ -8,7 +8,7 @@ import { FoldingResultsPanel, useFoldingResult } from "./folding-results-panel";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewerAction } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
-import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow, type StructureViewerSelector } from "../lib/structure-composition";
+import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
 import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -215,10 +215,6 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const latestXtbJob = latestXtbJobForDocument(document, xtbJobs);
   const runningXtbJob = latestXtbJob?.status === "running" ? latestXtbJob : null;
   const structureXtbArtifact = xtbArtifactInfoForPath(document.path, document.extension);
-  const clearSelection = () => {
-    actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
-    setActiveActionKey(null);
-  };
   // Only a checked-and-missing binary disables the run buttons; an unchecked one
   // is not yet known to be missing.
   const xtbMissing = xtbStatus?.installed === false;
@@ -366,9 +362,9 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
             <>
               {runningXtbJob.inputLabel} is running.
               {" "}
-              <button type="button" className="structure-inspector-inline-action" onClick={() => void actions.cancelXtbJob(runningXtbJob.id)}>
+              <Button type="button" variant="outline" size="xs" onClick={() => void actions.cancelXtbJob(runningXtbJob.id)}>
                 Cancel
-              </button>
+              </Button>
             </>
           ) : jobScopedToSelection ? "Scope: selected object" : undefined}
           notice={(
@@ -389,23 +385,18 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
             <XtbActionButton label="Frequencies" tooltip={XTB_ACTION_TOOLTIPS["optimized-hessian"]} disabled={xtbBlocked} onClick={() => void actions.runXtbActiveOperation("optimized-hessian")} onContextMenu={showXtbSettingsFor("optimized-hessian")} />
             {/* Four of the seven operations are specialist runs, and giving them the
                 same weight as Optimize made the card read as a wall of buttons. */}
-            <button type="button" className="dock-action" disabled={xtbBlocked} onClick={showXtbMoreMenu}>
+            <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={xtbBlocked} onClick={showXtbMoreMenu}>
               More
               <ShortcutTooltip label="IP/EA, Fukui, molecular dynamics, and metadynamics runs." />
-            </button>
-            <button
-              type="button"
-              className="dock-action"
-              aria-expanded={xtbSettingsOpen}
-              onClick={toggleGeneralXtbSettings}
-            >
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" aria-expanded={xtbSettingsOpen} onClick={toggleGeneralXtbSettings}>
               Settings
               <ShortcutTooltip label="Hamiltonian, charge, spin, solvation, accuracy, property, and dynamics parameters." />
-            </button>
-            <button type="button" className="dock-action" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
               Jobs
               <ShortcutTooltip label="xTB calculation history, energies, properties, trajectories, and output artifacts." />
-            </button>
+            </Button>
           </div>
           {xtbSettingsOpen ? (
             <XtbInlineSettings
@@ -468,13 +459,6 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
             />
           ) : null}
         </>
-      ) : null}
-
-      {selectedEntity ? (
-        <SelectedEntityCard
-          selectedEntity={selectedEntity}
-          clearSelection={clearSelection}
-        />
       ) : null}
 
       <StructureDetailsSection
@@ -1180,22 +1164,22 @@ function ConformerWorkflowCard({
       )}
     >
       <div className="structure-brief-actions structure-brief-actions-grid">
-        <button type="button" className="dock-action" disabled={crestDisabled} onClick={() => void actions.runConformerOperation("crest-generate", document, selectedConformerAction)} onContextMenu={showSettingsFor("crest")}>
+        <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={crestDisabled} onClick={() => void actions.runConformerOperation("crest-generate", document, selectedConformerAction)} onContextMenu={showSettingsFor("crest")}>
           CREST
           <ShortcutTooltip label="Sample low-energy conformers with CREST." />
-        </button>
-        <button type="button" className="dock-action" disabled={prismDisabled} onClick={() => void actions.runConformerOperation("prism-prune", document)} onContextMenu={showSettingsFor("prism")}>
+        </Button>
+        <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={prismDisabled} onClick={() => void actions.runConformerOperation("prism-prune", document)} onContextMenu={showSettingsFor("prism")}>
           PRISM
           <ShortcutTooltip label="Prune duplicate or redundant conformers." />
-        </button>
-        <button type="button" className="dock-action" aria-expanded={settingsPanel !== null} onClick={() => setSettingsPanel((current) => current === "all" ? null : "all")}>
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" aria-expanded={settingsPanel !== null} onClick={() => setSettingsPanel((current) => current === "all" ? null : "all")}>
           Settings
           <ShortcutTooltip label="CREST and PRISM run parameters." />
-        </button>
-        <button type="button" className="dock-action" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
           Jobs
           <ShortcutTooltip label="Calculation history and output artifacts." />
-        </button>
+        </Button>
       </div>
       {settingsPanel ? <ConformerInlineSettings panel={settingsPanel} settings={settings} status={status} actions={actions} /> : null}
     </InspectorEngineCard>
@@ -1234,9 +1218,9 @@ function ConformerInlineSettings({
     <div className="structure-inspector-xtb-settings conformer-inline-settings">
       <div className="structure-inspector-section-header">
         <h4>{panel === "crest" ? "CREST settings" : panel === "prism" ? "PRISM settings" : "Conformer settings"}</h4>
-        <button type="button" className="structure-inspector-inline-action" onClick={() => void actions.checkConformerStatus()}>
+        <Button type="button" variant="outline" size="xs" onClick={() => void actions.checkConformerStatus()}>
           Check
-        </button>
+        </Button>
       </div>
       <div className="structure-inspector-settings-status">{conformerStatusSummary(status)}</div>
       {showCrest ? (
@@ -1938,10 +1922,10 @@ function XtbActionButton({
   onContextMenu: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
-    <button type="button" className="dock-action structure-inspector-xtb-action" disabled={disabled} onClick={onClick} onContextMenu={onContextMenu}>
+    <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={disabled} onClick={onClick} onContextMenu={onContextMenu}>
       {label}
       <ShortcutTooltip label={tooltip} />
-    </button>
+    </Button>
   );
 }
 
@@ -1999,10 +1983,10 @@ function InspectorEngineCard({
         >
           <span>{summary}</span>
           {onReset ? (
-            <button type="button" className="structure-inspector-inline-action" onClick={onReset}>
+            <Button type="button" variant="outline" size="xs" onClick={onReset}>
               Reset
               <ShortcutTooltip label="Restore the default settings." />
-            </button>
+            </Button>
           ) : null}
         </div>
         {scope ? (
@@ -2087,15 +2071,15 @@ function XtbInlineSettings({
     <div className="structure-inspector-xtb-settings">
       <div className="structure-inspector-xtb-settings-title">
         <span>{xtbSettingsScopeLabel(scope)} settings</span>
-        <button type="button" className="structure-inspector-inline-action" onClick={onClose}>
+        <Button type="button" variant="ghost" size="xs" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
       <div className="structure-inspector-xtb-runtime">
         <span>{xtbStatus?.executablePath ?? xtbStatus?.installHint ?? (isBrowserDev ? "Browser dev can run local xTB jobs." : "xTB status has not been checked.")}</span>
-        <button type="button" className="structure-inspector-inline-action" onClick={() => void actions.checkXtbStatus()}>
+        <Button type="button" variant="outline" size="xs" onClick={() => void actions.checkXtbStatus()}>
           Check
-        </button>
+        </Button>
       </div>
       {showCategories ? <XtbSettingsCategoryBar category={category} setCategory={setCategory} /> : null}
       {showCore ? (
@@ -2774,16 +2758,16 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
       </div>
       <div className="dock-action-row structure-inspector-xtb-result-actions">
         {result.primaryOpenPath ? (
-          <button type="button" className="dock-action" onClick={() => void actions.openPaths([result.primaryOpenPath!])}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void actions.openPaths([result.primaryOpenPath!])}>
             Open result
-          </button>
+          </Button>
         ) : null}
-        <button type="button" className="dock-action" onClick={() => void actions.revealPath(result.workDir, "xTB run folder")}>
+        <Button type="button" variant="secondary" size="sm" onClick={() => void actions.revealPath(result.workDir, "xTB run folder")}>
           Open run folder
-        </button>
-        <button type="button" className="dock-action" onClick={() => void actions.openTextPaths([result.logPath])}>
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => void actions.openTextPaths([result.logPath])}>
           Log
-        </button>
+        </Button>
       </div>
     </section>
   );
@@ -3181,71 +3165,6 @@ function selectedStructureRow(
   return null;
 }
 
-function SelectedEntityCard({
-  selectedEntity,
-  clearSelection,
-}: {
-  selectedEntity: SelectedStructureRow;
-  clearSelection: () => void;
-}) {
-  const copyIdentity = () => void navigator.clipboard?.writeText(`${selectedEntity.row.label}: ${selectedEntity.row.value}`);
-  return (
-    <section className="structure-brief-card structure-inspector-selected-card">
-      <StructureSectionHeader title="Selected entity" detail={selectedEntity.group} />
-      <div className="structure-inspector-selection-pill">
-        <span>Selected</span>
-        <strong>{selectedEntity.row.label}</strong>
-        <button type="button" className="structure-inspector-inline-action" onClick={clearSelection}>
-          Clear
-        </button>
-      </div>
-      <div className="structure-inspector-selected-meta">
-        <span>{selectedEntity.row.value}</span>
-        <span>{actionTypeLabel(selectedEntity.action)}</span>
-        <span>{selectorLabel(selectedEntity.action)}</span>
-      </div>
-      <div className="structure-brief-actions structure-brief-actions-secondary">
-        <button type="button" className="dock-action" onClick={copyIdentity}>
-          Copy id
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function actionTypeLabel(action: StructureViewerAction) {
-  if (action.type === "focus_ligand") return "Focus in 3D";
-  if (action.type === "set_sdf_molecule") return "Show molecule";
-  if (action.type === "set_structure_pose") return "Show pose";
-  if (action.type === "select_residues") return "Residues";
-  if (action.type === "hide_waters") return "Hide water";
-  if (action.type === "show_waters") return "Show water";
-  if (action.type === "hide_components") return `Hide ${action.kind}`;
-  if (action.type === "show_components") return `Show ${action.kind}`;
-  return action.label;
-}
-
-function selectorLabel(action: StructureViewerAction) {
-  if (action.type === "set_sdf_molecule") return `Molecule ${action.index + 1}`;
-  if (action.type === "set_structure_pose") return `Pose ${action.index + 1}`;
-  if (!("selector" in action)) return "Scene action";
-  const chain = valueFromSelector(action.selector, "auth_asym_id") ?? valueFromSelector(action.selector, "label_asym_id");
-  const seq = valueFromSelector(action.selector, "auth_seq_id") ?? valueFromSelector(action.selector, "label_seq_id");
-  const comp = valueFromSelector(action.selector, "label_comp_id") ?? valueFromSelector(action.selector, "auth_comp_id");
-  const kind = valueFromSelector(action.selector, "kind");
-  return [comp, chain, seq, kind && `kind ${kind}`].filter(Boolean).join(" ") || "Selector";
-}
-
-function valueFromSelector(selector: StructureViewerSelector, key: string) {
-  const value = selector[key];
-  if (Array.isArray(value)) {
-    if (value.some((item) => typeof item === "object")) return null;
-    return value.join(", ");
-  }
-  if (value === undefined || value === null) return null;
-  return String(value);
-}
-
 function StructureBriefRow({ label, value }: BriefRow) {
   return (
     <div className="structure-brief-row">
@@ -3597,15 +3516,15 @@ function StructureDetailsSection({
         </div>
 
         {!hostedMcpWidget ? <div className="structure-brief-actions">
-          <button type="button" className="dock-action" onClick={() => void actions.showDocumentMetadata(document)}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void actions.showDocumentMetadata(document)}>
             Show metadata
-          </button>
-          <button type="button" className="dock-action" onClick={() => void actions.revealDocument(document)}>
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void actions.revealDocument(document)}>
             Reveal file
-          </button>
-          <button type="button" className="dock-action" onClick={() => void actions.copyDocumentPath(document)}>
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void actions.copyDocumentPath(document)}>
             Copy path
-          </button>
+          </Button>
         </div> : null}
       </div>
     </details>

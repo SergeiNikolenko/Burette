@@ -2507,7 +2507,10 @@ assert.match(structureInfoPanel, /valueForLabel\(summary\.rows, "Preview atoms"\
 assert.match(structureInfoPanel, /row\.label === "Polymers" \? summary\.polymerRows/);
 assert.match(structureInfoPanel, /row\.label === "Ligands" \? summary\.ligandRows/);
 assert.match(structureInfoPanel, /const COMPOSITION_AUTO_EXPAND_LIMIT = 8/);
-assert.match(structureInfoPanel, /StructureSectionHeader title="Selected entity"/);
+// The standalone "Selected entity" card was removed - the tree row highlight and
+// the run-scope line already say what is selected, so the card only repeated them.
+assert.doesNotMatch(structureInfoPanel, /StructureSectionHeader title="Selected entity"/);
+assert.doesNotMatch(structureInfoPanel, /function SelectedEntityCard\(/);
 assert.match(structureInfoPanel, /const SDF_CONTEXT_STYLE_OPTIONS = \[/);
 assert.match(structureInfoPanel, /\{ value: "line", label: "Line" \}/);
 assert.match(structureInfoPanel, /\{ value: "cartoon", label: "Cartoon" \}/);
@@ -2643,7 +2646,6 @@ assert.match(previewRuntimeCss, /@media \(max-width: 360px\)[\s\S]*?top: 64px;[\
 assert.match(previewRuntimeCss, /grid-template-columns: 28px auto minmax\(62px, 1fr\) auto auto/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-trajectory-smooth-button \{\s*grid-column:/);
 assert.match(styles, /\.structure-inspector-opacity-control \{/);
-assert.match(structureInfoPanel, /structure-inspector-selection-pill/);
 assert.match(structureInfoPanel, /inspectorSummaryLine\(brief\.kind, compositionSummary, compositionPending, compositionError\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument/);
 assert.match(structureInfoPanel, /function structureCompositionSourceForDocument\(document: ViewerDocument\): InspectorStructureTextSource/);
@@ -2672,8 +2674,6 @@ assert.match(structureInfoPanel, /type: "clear_selection", label: "Clear selecti
 assert.match(structureInfoPanel, /actions\.runStructureViewerAction\(document, action\)/);
 assert.match(structureInfoPanel, /selectionActionKey\(document: ViewerDocument, action: StructureViewerAction\)/);
 assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) return JSON\.stringify\(\[document\.id, action\.type, action\.index\]\)/);
-assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) return "Show molecule"/);
-assert.match(structureInfoPanel, /if \(action\.type === "set_sdf_molecule"\) return `Molecule \$\{action\.index \+ 1\}`/);
 assert.match(structureInfoPanel, /navigator\.clipboard\?\.writeText/);
 // Water and Ions already have their rows in componentRows, so the parser emits
 // solventRows as the individual ions only - no filtering needed downstream.
@@ -2717,7 +2717,6 @@ assert.match(structureBrief, /\["cube", "cub"\]/);
 assert.match(styles, /\.structure-brief-card \{/);
 assert.match(styles, /\.structure-brief-actions \{/);
 assert.match(styles, /\.structure-inspector-header \{/);
-assert.match(styles, /\.structure-inspector-selection-pill \{/);
 assert.doesNotMatch(structureInfoPanel, /structure-inspector-row-action/);
 assert.doesNotMatch(structureInfoPanel, /rowActionLabel/);
 assert.doesNotMatch(structureInfoPanel, /selectedEntity\.action\.type === "focus_ligand" \? "Focus" : "Select"/);
@@ -4927,8 +4926,8 @@ assert.match(previewViewer, /'built-in\.animate-camera-spin'/);
 assert.match(previewViewer, /\.filter\(entry => entry\.applicability\.canApply \|\| entry\.applicability\.reason\)/);
 // Rock reads an angle and an axis besides its speed; a partial payload leaves the
 // maths on undefined and the scene simply never moves.
-assert.match(previewViewer, /rock: \{ value: 0\.3, min: -5, max: 5, step: 0\.1, params: \{ angle: 10, axis: \[0, -1, 0\] \} \}/);
-assert.match(previewViewer, /spin: \{ value: 0\.1, min: -2, max: 2, step: 0\.01, params: \{ axis: \[0, -1, 0\] \} \}/);
+assert.match(previewViewer, /rock: \{ value: 0\.3, min: 0\.02, max: 1\.5, step: 0\.02, params: \{ angle: 10, axis: \[0, -1, 0\] \} \}/);
+assert.match(previewViewer, /spin: \{ value: 0\.1, min: 0\.01, max: 1, step: 0\.01, params: \{ axis: \[0, -1, 0\] \} \}/);
 // Mol* defaults Unwind Assembly to looping, so an animation started from here has
 // to be told to finish.
 assert.match(previewViewer, /if \('playOnce' in params\) params\.playOnce = true;/);
