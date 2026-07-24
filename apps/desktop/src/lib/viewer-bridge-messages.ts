@@ -1,6 +1,6 @@
 import type { KnownViewerMessageSource } from "./viewer-bridge";
 
-export type ViewerBridgeMessageSource = "burrete-viewer" | "burrete-grid" | "burrete-agent-viewer";
+export type ViewerBridgeMessageSource = "burette-viewer" | "burette-grid" | "burette-agent-viewer";
 export type ViewerBridgeMessageBody = (Record<string, unknown> & { documentId?: string }) | null | undefined;
 
 export type ViewerBridgeMessage = {
@@ -58,7 +58,7 @@ type ViewerBridgeEnvelope = {
 };
 
 export function viewerBridgeSource(value: unknown): ViewerBridgeMessageSource | null {
-  return value === "burrete-viewer" || value === "burrete-grid" || value === "burrete-agent-viewer"
+  return value === "burette-viewer" || value === "burette-grid" || value === "burette-agent-viewer"
     ? value
     : null;
 }
@@ -103,13 +103,13 @@ export async function dispatchViewerBridgeMessage(
     return true;
   }
   handlers.markViewerFirstRenderMessage(source, body);
-  if (source === "burrete-viewer" && handlers.handleViewerFileMessage(body)) {
+  if (source === "burette-viewer" && handlers.handleViewerFileMessage(body)) {
     return true;
   }
   if (handlers.handleXyzrenderSheetMessage(source, body, eventSource)) {
     return true;
   }
-  if (source === "burrete-grid") {
+  if (source === "burette-grid") {
     if (handlers.handleGridComputeMessage(body, eventSource)) {
       return true;
     }

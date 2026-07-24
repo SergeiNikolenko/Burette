@@ -31,7 +31,7 @@ const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-s
 
 const dockingDocument = {
   id: "docking-doc",
-  path: "burrete-docking://poses",
+  path: "burette-docking://poses",
   title: "Docking poses",
   extension: "html",
   renderer: "molstar",

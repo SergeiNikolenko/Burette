@@ -11,7 +11,7 @@ struct Rm1FockPairV1 {
     uint reserved;
 };
 
-kernel void burrete_rm1_pair_fock_v1(
+kernel void burette_rm1_pair_fock_v1(
     device const float* density [[buffer(0)]],
     device const Rm1FockPairV1* pairs [[buffer(1)]],
     device const float* repulsion [[buffer(2)]],

@@ -4,7 +4,7 @@ type WorkspaceStorageKeyOptions = {
 
 function currentWindowStorageSuffix() {
   if (typeof window === "undefined" || !window.location) return "";
-  const windowLabel = new URLSearchParams(window.location.search).get("burreteWindow")?.trim() ?? "";
+  const windowLabel = new URLSearchParams(window.location.search).get("buretteWindow")?.trim() ?? "";
   if (!windowLabel || windowLabel === "main") return "";
   return `.${windowLabel.replace(/[^A-Za-z0-9_-]/g, "-")}`;
 }

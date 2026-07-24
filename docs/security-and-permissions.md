@@ -1,6 +1,6 @@
 # Security And Permissions
 
-Burrete works with local molecular files, native macOS preview extensions,
+Burette works with local molecular files, native macOS preview extensions,
 browser-dev servers, and agent-operated sessions. The security model is local
 first: explicit files, bounded payloads, tokenized browser surfaces, and narrow
 native command permissions.
@@ -9,7 +9,7 @@ native command permissions.
 
 - The desktop app opens files selected by the user, command-palette actions,
   drag-and-drop, recent/project roots, or explicit agent-session commands.
-- Browser-dev filesystem access must be explicit. Use `BURRETE_DEV_FS_ALLOW`
+- Browser-dev filesystem access must be explicit. Use `BURETTE_DEV_FS_ALLOW`
   for extra local roots during browser testing.
 - Quick Look receives a file selected by Finder or a forced preview command. It
   should not scan unrelated directories to discover additional data.
@@ -23,7 +23,7 @@ network fetches without an explicit design and validation plan.
 
 The native Compute Layer stores its coordinator database, immutable molecular
 snapshots, and artifacts below the app-data `compute/` directory. The root is
-private to the current user (`0700`), is owned by one Burrete process through a
+private to the current user (`0700`), is owned by one Burette process through a
 retained exclusive lease, and is revalidated before path-based database access.
 The `snapshots/` child is created and reopened relative to the retained root
 descriptor. Snapshot directories and files use descriptor-relative operations,
@@ -35,7 +35,7 @@ APFS/POSIX directory-link and atomic-rename semantics. A relocated app-data
 directory on a filesystem with incompatible metadata semantics must fail closed
 rather than weaken snapshot verification.
 
-The lease coordinates Burrete processes and protects against accidental path
+The lease coordinates Burette processes and protects against accidental path
 replacement, stale writers, symlink traversal, and hard-linked snapshot files.
 It is not an OS security boundary against an actively malicious process already
 running as the same macOS user and deliberately ignoring the advisory lease.
@@ -48,12 +48,12 @@ device security; do not claim resistance to a hostile same-UID process.
 Tauri command access is controlled by:
 
 - `apps/desktop/src-tauri/capabilities/default.json`
-- `apps/desktop/src-tauri/permissions/burrete.toml`
+- `apps/desktop/src-tauri/permissions/burette.toml`
 
 When adding a Tauri command:
 
 1. Keep the command narrow and typed.
-2. Add it to the Burrete permission allowlist only when the desktop shell needs
+2. Add it to the Burette permission allowlist only when the desktop shell needs
    it.
 3. Keep payloads explicit; avoid unstructured `any`-style JSON at the native
    boundary.
@@ -66,7 +66,7 @@ Browser means the in-app Browser plugin unless a user explicitly asks for an
 external browser. The Browser and Computer surfaces are verification tools, not
 the source of molecular truth.
 
-- `scripts/burrete-agent.mjs` is the app-control contract.
+- `scripts/burette-agent.mjs` is the app-control contract.
 - `scripts/agent-preview.mjs` is the tokenized preview server.
 - Browser shell sessions use explicit session directories with observe/action
   files.

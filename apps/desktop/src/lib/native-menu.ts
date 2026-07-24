@@ -1,7 +1,7 @@
 export const MENU_COMMAND_EVENT = "menu:command";
 export const EXIT_PREFLIGHT_EVENT = "app:exit-preflight";
 export const EXIT_TRANSITION_RESUMED_EVENT = "app:exit-transition-resumed";
-const DOCUMENT_REGISTRY_REVISION_KEY = "burrete.document-registry-revision";
+const DOCUMENT_REGISTRY_REVISION_KEY = "burette.document-registry-revision";
 
 let documentRegistryRevision = 0;
 

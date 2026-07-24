@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
-const routePath = resolve('apps/burrete-public-plugin/api/xyzrender.py');
+const routePath = resolve('apps/burette-public-plugin/api/xyzrender.py');
 const testProgram = String.raw`
 import base64
 import importlib.util
@@ -11,7 +11,7 @@ import pathlib
 import sys
 
 route_path = pathlib.Path(sys.argv[1])
-spec = importlib.util.spec_from_file_location("burrete_hosted_xyzrender", route_path)
+spec = importlib.util.spec_from_file_location("burette_hosted_xyzrender", route_path)
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 

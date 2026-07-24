@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const script = path.join(root, "scripts", "quicklook-semantic-check.mjs");
-const workspace = await mkdtemp(path.join(tmpdir(), "burrete-semantic-check-"));
+const workspace = await mkdtemp(path.join(tmpdir(), "burette-semantic-check-"));
 
 async function runCase(name, filePath, lines) {
   const logPath = path.join(workspace, `${name}.log`);

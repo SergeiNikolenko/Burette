@@ -61,11 +61,11 @@
   const TABLE_COLUMN_OVERSCAN_PX = 360;
   const RDKIT_SVG_CACHE_LIMIT = 220;
   const XYZRENDER_CARD_CACHE_LIMIT = 180;
-  const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
+  const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   const state = {
     rdkit: null,
     rdkitError: '',
-    all: Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [],
+    all: Array.isArray(window.BuretteGridRecords) ? window.BuretteGridRecords : [],
     rows: [],
     totalRows: 0,
     recordsIndexed: 0,
@@ -130,7 +130,7 @@
     hostRequests: new Map(),
     remoteMode: false,
     remoteLoading: false,
-    hostReadOnly: window.name === 'burrete-read-only',
+    hostReadOnly: window.name === 'burette-read-only',
     closeTransitionActive: false,
     dirty: false,
     dirtyReason: '',
@@ -180,14 +180,14 @@
       if (window.__mqlPost) window.__mqlPost(type, message || '', payload);
       else {
         const body = { type, message: String(message || ''), ...payload };
-        if (window.BurreteConfig && window.BurreteConfig.previewRequestID) {
-          body.requestID = String(window.BurreteConfig.previewRequestID);
+        if (window.BuretteConfig && window.BuretteConfig.previewRequestID) {
+          body.requestID = String(window.BuretteConfig.previewRequestID);
         }
-        if (window.BurreteConfig && window.BurreteConfig.documentId) {
-          body.documentId = String(window.BurreteConfig.documentId);
+        if (window.BuretteConfig && window.BuretteConfig.documentId) {
+          body.documentId = String(window.BuretteConfig.documentId);
         }
-        window.parent?.postMessage({ source: 'burrete-grid', body }, '*');
-        window.webkit?.messageHandlers?.burrete?.postMessage(body);
+        window.parent?.postMessage({ source: 'burette-grid', body }, '*');
+        window.webkit?.messageHandlers?.burette?.postMessage(body);
       }
     } catch (_) {}
   }
@@ -308,14 +308,14 @@
   }
 
   function setStatus(message, kind = 'info') {
-    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
+    const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
     if (status) {
       setStatusText(String(message || ''));
       status.classList.toggle('error', kind === 'error');
-      status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
-      if (kind === 'error' && status && !window.BurreteDebug && cfg.appViewer === true) status.classList.add('hidden');
+      status.classList.toggle('hidden', kind !== 'error' && !window.BuretteDebug);
+      if (kind === 'error' && status && !window.BuretteDebug && cfg.appViewer === true) status.classList.add('hidden');
     }
-    if (kind === 'error' || window.BurreteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
+    if (kind === 'error' || window.BuretteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
   }
 
   function setStatusText(text) {
@@ -342,10 +342,10 @@
   }
 
   function config() {
-    if (!window.BurreteConfig || typeof window.BurreteConfig !== 'object') {
-      throw new Error('preview-config.js did not define window.BurreteConfig.');
+    if (!window.BuretteConfig || typeof window.BuretteConfig !== 'object') {
+      throw new Error('preview-config.js did not define window.BuretteConfig.');
     }
-    return window.BurreteConfig;
+    return window.BuretteConfig;
   }
 
   function safeConfig() {
@@ -381,7 +381,7 @@
   }
 
   function isRemoteMode(cfg) {
-    return cfg.appViewer === true && cfg.gridDataMode === 'bridge' && !Array.isArray(window.BurreteGridRecords);
+    return cfg.appViewer === true && cfg.gridDataMode === 'bridge' && !Array.isArray(window.BuretteGridRecords);
   }
 
   function setGridCloseTransition(active) {
@@ -417,7 +417,7 @@
   function installHostMessageListener() {
     window.addEventListener('message', event => {
       const data = event.data;
-      if (!data || (data.source !== 'burrete-grid-host' && data.source !== 'burrete-host')) return;
+      if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
       if (body.type === 'gridSetColumnFilter') {
         applyGridColumnFilter(config(), String(body.columnId || ''), String(body.part || ''), body.value);
@@ -444,7 +444,7 @@
           }
         }
         event.source?.postMessage({
-          source: 'burrete-grid',
+          source: 'burette-grid',
           body: {
             type: 'workspaceHistoryCommandResult',
             requestId: body.requestId,
@@ -947,9 +947,9 @@
     const wasmPaths = rdkitWasmCandidates(cfg);
     let wasmPath = wasmPaths[0] || '../assets/rdkit/RDKit_minimal.wasm';
     const options = { locateFile: () => wasmPath };
-    if (window.BurreteRDKitWasmBase64) {
-      options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
-      window.BurreteRDKitWasmBase64 = '';
+    if (window.BuretteRDKitWasmBase64) {
+      options.wasmBinary = base64ToBytes(window.BuretteRDKitWasmBase64);
+      window.BuretteRDKitWasmBase64 = '';
     } else if (wasmPaths.length) {
       const loaded = await loadFirstWasmBinary(wasmPaths);
       wasmPath = loaded.path;
@@ -1279,10 +1279,10 @@
 
   function mountGridControls(cfg, caps) {
     const host = document.getElementById('grid-controls');
-    if (!host || !window.BurreteGridUI || typeof window.BurreteGridUI.mountGridControls !== 'function') {
-      throw new Error('BurreteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
+    if (!host || !window.BuretteGridUI || typeof window.BuretteGridUI.mountGridControls !== 'function') {
+      throw new Error('BuretteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
     }
-    window.BurreteGridUI.mountGridControls(host, {
+    window.BuretteGridUI.mountGridControls(host, {
       format: ['csv', 'dwar', 'sdf', 'smiles', 'tsv'].includes(cfg.format) ? cfg.format : 'smiles',
       label: cfg.label || 'Molecule collection',
       exportEnabled: caps.export,
@@ -1619,7 +1619,7 @@
       applied += 1;
     }
     state.remoteDescriptorIds = Array.from(descriptorIds).sort((left, right) => left.localeCompare(right));
-    if (Array.isArray(window.BurreteGridRecords)) window.BurreteGridRecords = state.all;
+    if (Array.isArray(window.BuretteGridRecords)) window.BuretteGridRecords = state.all;
     invalidateTableColumnCatalog();
     refreshOpenMoleculeDetail(cfg);
     setStatus(`[grid] Applied descriptors to ${applied.toLocaleString()} molecule${applied === 1 ? '' : 's'}.`);
@@ -2994,7 +2994,7 @@
         maybeLoadMoreForRenderedRange(cfg, range);
         postGridReady(cfg);
         emitGridPerfMetric(cfg, 'window-render', startedAt, { force: true });
-        if (status && !window.BurreteDebug) status.classList.add('hidden');
+        if (status && !window.BuretteDebug) status.classList.add('hidden');
         return;
       }
       if (range.topHeight > 0) fragment.appendChild(gridSpacer('top', range.topHeight));
@@ -3020,7 +3020,7 @@
       maybeLoadMoreForRenderedRange(cfg, range);
       postGridReady(cfg);
       emitGridPerfMetric(cfg, 'window-render', startedAt, { force: true });
-      if (status && !window.BurreteDebug) status.classList.add('hidden');
+      if (status && !window.BuretteDebug) status.classList.add('hidden');
     } finally {
       state.rendering = false;
       if (token === state.token) {
@@ -4445,7 +4445,7 @@
     }
     pushUndoSnapshot('append molecules');
     state.all.push(...appendedRows);
-    window.BurreteGridRecords = state.all;
+    window.BuretteGridRecords = state.all;
     state.selected.clear();
     state.chemicalSpaceFilterActive = false;
     state.selectionAnchorIndex = null;
@@ -5127,7 +5127,7 @@
   }
 
   function notifyGridDirty(dirty) {
-    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
+    const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
     post('gridDirtyChanged', dirty ? '[grid] Unsaved changes.' : '[grid] Saved changes.', {
       documentId: cfg.documentId || null,
       dirty,
@@ -6217,7 +6217,7 @@
     state.smartsError = '';
     state.smartsMatches = new Map();
     state.rows = [];
-    state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
+    state.all = Array.isArray(window.BuretteGridRecords) ? window.BuretteGridRecords : [];
     state.remoteAnalysisColumns = [];
     state.selected = new Set();
     state.chemicalSpaceFilterActive = false;
@@ -6836,7 +6836,7 @@
   function serializeDelimitedRows(rows, separator) {
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
-      ['burrete_encoding', 'index', 'name', 'smiles', 'molblock', ...props],
+      ['burette_encoding', 'index', 'name', 'smiles', 'molblock', ...props],
       ...rows.map(row => [
         'escaped-v1',
         row.index,
@@ -6936,8 +6936,8 @@
   }
 
   function canUseNativeBridge() {
-    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
-    return cfg.appViewer === true || !!window.webkit?.messageHandlers?.burrete;
+    const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
+    return cfg.appViewer === true || !!window.webkit?.messageHandlers?.burette;
   }
 
   function sanitizeSVG(svg) {
@@ -6969,7 +6969,7 @@
 
   async function hydrateDataWarriorRows(rows, cfg) {
     if (!Array.isArray(rows) || !rows.some(row => String(row?.idcode || '').trim())) return rows;
-    const openChemLib = window.BurreteOpenChemLib;
+    const openChemLib = window.BuretteOpenChemLib;
     if (!openChemLib?.Molecule?.fromIDCode) throw new Error('OpenChemLib IDCode decoder is unavailable.');
     return rows.map(row => {
       const idcode = String(row?.idcode || '').trim();

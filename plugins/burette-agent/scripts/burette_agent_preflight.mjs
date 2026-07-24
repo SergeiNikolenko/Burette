@@ -36,14 +36,14 @@ async function previewWebRuntimeExists(dir) {
 }
 
 async function resolveRepoRoot() {
-  if (process.env.BURRETE_AGENT_REPO_ROOT) {
-    return { path: path.resolve(process.env.BURRETE_AGENT_REPO_ROOT), source: "env" };
+  if (process.env.BURETTE_AGENT_REPO_ROOT) {
+    return { path: path.resolve(process.env.BURETTE_AGENT_REPO_ROOT), source: "env" };
   }
   const metadata = await readJson(path.join(pluginRoot, ".burette-agent-install.json"), {});
   if (typeof metadata.repoRoot === "string" && metadata.repoRoot.trim()) {
     return { path: path.resolve(metadata.repoRoot), source: "metadata" };
   }
-  if (await exists(path.join(defaultRepoRoot, "scripts", "burrete-agent.mjs"))) {
+  if (await exists(path.join(defaultRepoRoot, "scripts", "burette-agent.mjs"))) {
     return { path: defaultRepoRoot, source: "source-checkout" };
   }
   return { path: defaultRepoRoot, source: "fallback-unverified" };
@@ -51,8 +51,8 @@ async function resolveRepoRoot() {
 
 const pluginManifestPath = path.join(pluginRoot, ".codex-plugin", "plugin.json");
 const repoPackagePath = path.join(repoRoot, "package.json");
-const pluginCliPath = path.join(pluginRoot, "scripts", "burrete-agent.mjs");
-const repoCliPath = path.join(repoRoot, "scripts", "burrete-agent.mjs");
+const pluginCliPath = path.join(pluginRoot, "scripts", "burette-agent.mjs");
+const repoCliPath = path.join(repoRoot, "scripts", "burette-agent.mjs");
 const cliPath = await exists(pluginCliPath) ? pluginCliPath : repoCliPath;
 const pluginPreviewPath = path.join(pluginRoot, "scripts", "agent-preview.mjs");
 const repoPreviewPath = path.join(repoRoot, "scripts", "agent-preview.mjs");
@@ -60,8 +60,8 @@ const previewPath = await exists(pluginPreviewPath) ? pluginPreviewPath : repoPr
 const pluginAgentShellServerPath = path.join(pluginRoot, "scripts", "agent-shell-server.mjs");
 const repoAgentShellServerPath = path.join(repoRoot, "scripts", "agent-shell-server.mjs");
 const agentShellServerPath = await exists(pluginAgentShellServerPath) ? pluginAgentShellServerPath : repoAgentShellServerPath;
-const agentShellDistPath = process.env.BURRETE_AGENT_SHELL_DIST_DIR
-  ? path.resolve(process.env.BURRETE_AGENT_SHELL_DIST_DIR)
+const agentShellDistPath = process.env.BURETTE_AGENT_SHELL_DIST_DIR
+  ? path.resolve(process.env.BURETTE_AGENT_SHELL_DIST_DIR)
   : await exists(path.join(pluginRoot, "browser-shell-dist", "index.html"))
     ? path.join(pluginRoot, "browser-shell-dist")
     : path.join(repoRoot, "apps", "desktop", "dist");
@@ -69,7 +69,7 @@ const repoPreviewWebPath = path.join(repoRoot, "PreviewExtension", "Web");
 const pluginPreviewWebPath = path.join(pluginRoot, "preview-web");
 const usesBundledCli = cliPath === pluginCliPath;
 const previewWebPath = usesBundledCli ? pluginPreviewWebPath : repoPreviewWebPath;
-const desktopApp = process.env.BURRETE_AGENT_APP || null;
+const desktopApp = process.env.BURETTE_AGENT_APP || null;
 const hasVp = commandExists("vp");
 
 const [pluginManifest, repoPackage, hasCli, hasPreview, hasPreviewWeb, hasAgentShellServer, hasAgentShellDist, hasDesktopApp] = await Promise.all([
@@ -97,7 +97,7 @@ const payload = {
   schema: "burette_agent_preflight.v1",
   readOnly: true,
   plugin: {
-    name: pluginManifest.name || "burrete",
+    name: pluginManifest.name || "burette",
     version: pluginManifest.version || "0.0.0",
     root: pluginRoot,
   },
@@ -161,7 +161,7 @@ const payload = {
       {
         id: "desktop-app",
         status: hasCli ? "available" : "blocked",
-        note: "Explicit file-backed session directory passed through --burrete-agent-session.",
+        note: "Explicit file-backed session directory passed through --burette-agent-session.",
       },
     ],
     visualQaSurfaces: [
@@ -227,7 +227,7 @@ const payload = {
   control: {
     proceed: hasCli && hasPreview && hasPreviewWeb,
     blockers: [
-      ...(hasCli ? [] : ["scripts/burrete-agent.mjs is missing"]),
+      ...(hasCli ? [] : ["scripts/burette-agent.mjs is missing"]),
       ...(hasPreview ? [] : ["scripts/agent-preview.mjs is missing"]),
       ...(hasPreviewWeb ? [] : ["preview web index.html or viewer.js is missing"]),
     ],

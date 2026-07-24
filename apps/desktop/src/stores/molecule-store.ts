@@ -888,7 +888,7 @@ export const useMoleculeStore = create<MoleculeState>()(
         }),
     }),
     {
-      name: workspaceStorageKey("burrete.molecule.session"),
+      name: workspaceStorageKey("burette.molecule.session"),
       partialize: (state) => shouldIgnorePersistedSession()
         ? devFilesPersistedSession(state.recentStructures)
         : ({

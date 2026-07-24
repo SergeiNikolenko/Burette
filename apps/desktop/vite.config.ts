@@ -49,15 +49,15 @@ import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
 
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
-const hostedMcpBuild = process.env.VITE_BURRETE_BUILD_IDENTIFIER === "hosted-mcp-widget";
-const prebuiltAgentShellBuild = Boolean(process.env.BURRETE_AGENT_SHELL_OUT_DIR);
+const hostedMcpBuild = process.env.VITE_BURETTE_BUILD_IDENTIFIER === "hosted-mcp-widget";
+const prebuiltAgentShellBuild = Boolean(process.env.BURETTE_AGENT_SHELL_OUT_DIR);
 const browserRuntimeRepoRoot = hostedMcpBuild || prebuiltAgentShellBuild ? "" : repoRoot;
-const desktopDist = process.env.BURRETE_AGENT_SHELL_OUT_DIR
-  ? resolve(process.env.BURRETE_AGENT_SHELL_OUT_DIR)
+const desktopDist = process.env.BURETTE_AGENT_SHELL_OUT_DIR
+  ? resolve(process.env.BURETTE_AGENT_SHELL_OUT_DIR)
   : fileURLToPath(new URL("dist", import.meta.url));
 const previewFormatRegistry = JSON.parse(readFileSync(join(repoRoot, "config", "preview-formats.json"), "utf8"));
-const extraFsAllow = (process.env.BURRETE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
-const defaultDevFileRoots = (process.env.BURRETE_DEV_DEFAULT_FILES ?? "").split(delimiter).filter(Boolean);
+const extraFsAllow = (process.env.BURETTE_DEV_FS_ALLOW ?? "").split(delimiter).filter(Boolean);
+const defaultDevFileRoots = (process.env.BURETTE_DEV_DEFAULT_FILES ?? "").split(delimiter).filter(Boolean);
 const defaultDesktopRoots = [
   join(homedir(), "Desktop", "BurettePreviewSamples"),
   join(homedir(), "Desktop", "BuretteMDAnalysisSamples"),
@@ -93,23 +93,23 @@ const DESMOND_PREVIEW_TARGET_MB = 24;
 const RDKIT_WASM_PATH = join(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal.wasm");
 const RDKIT_CONFORMER_SCRIPT_PATH = join(repoRoot, "scripts", "rdkit_conformer.py");
 const MDSMOOTH_RUNNER_PATH = join(repoRoot, "scripts", "mdsmooth_runner.py");
-const BROWSER_DEV_GENERATED_FILES_ROOT = process.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT
-  ? resolve(process.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT)
-  : join(homedir(), "Desktop", "Burrete Generated Files");
+const BROWSER_DEV_GENERATED_FILES_ROOT = process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT
+  ? resolve(process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT)
+  : join(homedir(), "Desktop", "Burette Generated Files");
 const BROWSER_DEV_XTB_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "xTB Jobs");
 const BROWSER_DEV_CONFORMER_JOBS_ROOT = join(BROWSER_DEV_GENERATED_FILES_ROOT, "Conformer Jobs");
 const browserDevGeneratedFileRoots = [BROWSER_DEV_GENERATED_FILES_ROOT];
 const devFsAllowRoots = [repoRoot, ...defaultFsAllow, ...browserDevGeneratedFileRoots, ...extraFsAllow].map((path) => resolve(path));
-const BROWSER_DEV_CCD_CACHE_ROOT = join(homedir(), ".cache", "burrete", "ccd-ligands");
+const BROWSER_DEV_CCD_CACHE_ROOT = join(homedir(), ".cache", "burette", "ccd-ligands");
 const BROWSER_DEV_CHEMISTRY_PREP_PROJECT = join(repoRoot, "tools", "chemistry-prep");
-const BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR = process.env.BURRETE_DESCRIPTOR_RUNTIME_DIR
-  ? resolve(process.env.BURRETE_DESCRIPTOR_RUNTIME_DIR)
-  : join(homedir(), "Library", "Application Support", "Burrete", "descriptor-python");
-const BROWSER_DEV_MSBUDDY_RUNTIME_DIR = process.env.BURRETE_MSBUDDY_RUNTIME_DIR
-  ? resolve(process.env.BURRETE_MSBUDDY_RUNTIME_DIR)
-  : join(homedir(), "Library", "Application Support", "Burrete", "msbuddy-python");
-const XTB_RUN_METADATA_FILE = ".burrete-xtb-run.json";
-const CONFORMER_RUN_METADATA_FILE = ".burrete-conformer-run.json";
+const BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR = process.env.BURETTE_DESCRIPTOR_RUNTIME_DIR
+  ? resolve(process.env.BURETTE_DESCRIPTOR_RUNTIME_DIR)
+  : join(homedir(), "Library", "Application Support", "Burette", "descriptor-python");
+const BROWSER_DEV_MSBUDDY_RUNTIME_DIR = process.env.BURETTE_MSBUDDY_RUNTIME_DIR
+  ? resolve(process.env.BURETTE_MSBUDDY_RUNTIME_DIR)
+  : join(homedir(), "Library", "Application Support", "Burette", "msbuddy-python");
+const XTB_RUN_METADATA_FILE = ".burette-xtb-run.json";
+const CONFORMER_RUN_METADATA_FILE = ".burette-conformer-run.json";
 const XTB_LOG_CAPTURE_BYTES = 128 * 1024;
 const DIRECT_CHEMISTRY_JOB_ATOM_LIMIT = 300;
 const DESCRIPTOR_INPUT_LIMIT_BYTES = 2 * 1024 * 1024;
@@ -959,7 +959,7 @@ function browserDevSchrodingerStatus() {
 
 function conformerPythonCandidates(engine: string) {
   const candidates: PythonCommand[] = [];
-  const configuredPython = String(engine === "datamol" ? process.env.BURRETE_DATAMOL_PYTHON || "" : process.env.BURRETE_RDKIT_PYTHON || "").trim();
+  const configuredPython = String(engine === "datamol" ? process.env.BURETTE_DATAMOL_PYTHON || "" : process.env.BURETTE_RDKIT_PYTHON || "").trim();
   if (configuredPython) candidates.push({ label: configuredPython, command: configuredPython, args: [] });
   const packageName = engine === "datamol" ? "datamol" : "rdkit";
   const uvx = resolveExecutable("uvx", [
@@ -994,14 +994,14 @@ function conformerPythonRuntimeSpec(engine: ConformerPythonEngine) {
     ? {
         engine,
         packageName: "datamol",
-        envName: "BURRETE_DATAMOL_PYTHON",
+        envName: "BURETTE_DATAMOL_PYTHON",
         label: "Datamol",
         script: "import datamol as dm\nprint(getattr(dm, '__version__', 'unknown'))",
       }
     : {
         engine,
         packageName: "rdkit",
-        envName: "BURRETE_RDKIT_PYTHON",
+        envName: "BURETTE_RDKIT_PYTHON",
         label: "RDKit",
         script: "import rdkit\nprint(getattr(rdkit, '__version__', 'unknown'))",
       };
@@ -1068,14 +1068,14 @@ function resolveExecutable(name: string, preferredPaths: string[] = []) {
 }
 
 function browserDevDescriptorInstallHint() {
-  return "Install a uv-managed descriptor runtime from the Descriptors panel, or set BURRETE_DESCRIPTOR_PYTHON to a Python interpreter with RDKit and mordredcommunity.";
+  return "Install a uv-managed descriptor runtime from the Descriptors panel, or set BURETTE_DESCRIPTOR_PYTHON to a Python interpreter with RDKit and mordredcommunity.";
 }
 
 function browserDevDescriptorPythonCandidates() {
   const candidates = [
-    process.env.BURRETE_DESCRIPTOR_PYTHON || "",
+    process.env.BURETTE_DESCRIPTOR_PYTHON || "",
     join(BROWSER_DEV_DESCRIPTOR_RUNTIME_DIR, "bin", "python3"),
-    join(homedir(), ".local", "share", "burrete", "descriptor-python", "bin", "python3"),
+    join(homedir(), ".local", "share", "burette", "descriptor-python", "bin", "python3"),
     resolveExecutable("python3") || "",
     resolveExecutable("python") || "",
     "/opt/homebrew/bin/python3",
@@ -1093,7 +1093,7 @@ function browserDevDescriptorPythonCandidates() {
 
 function browserDevMsbuddyPythonCandidates() {
   const candidates = [
-    process.env.BURRETE_MSBUDDY_PYTHON || "",
+    process.env.BURETTE_MSBUDDY_PYTHON || "",
     join(BROWSER_DEV_MSBUDDY_RUNTIME_DIR, "bin", "python3"),
     ...browserDevDescriptorPythonCandidates(),
   ].filter(Boolean);
@@ -1812,7 +1812,7 @@ async function generate3DConformerForBrowserDev(body: unknown) {
     }
   }
   const engineLabel = request.engine === "datamol" ? "Datamol" : "RDKit";
-  const envName = request.engine === "datamol" ? "BURRETE_DATAMOL_PYTHON" : "BURRETE_RDKIT_PYTHON";
+  const envName = request.engine === "datamol" ? "BURETTE_DATAMOL_PYTHON" : "BURETTE_RDKIT_PYTHON";
   throw new Error(errors.length
     ? `${engineLabel} conformer generation failed: ${errors.join("; ")}`
     : `${engineLabel} Python is required for 3D conformer generation. Set ${envName} to a Python executable with ${request.engine} installed.`);
@@ -3566,7 +3566,7 @@ function truncateText(text: string, limit: number) {
 
 export function browserDevXyzrenderPlugin() {
   return {
-    name: "burrete-browser-dev-xyzrender",
+    name: "burette-browser-dev-xyzrender",
     configureServer(server: import("vite").ViteDevServer) {
       const fileRoutes = {
         collectDefaultDevFiles,
@@ -3727,9 +3727,9 @@ function readableTextBytes(bytes: Buffer, extension: string) {
 function molecularBinaryArtifactSummary(path: string, byteCount: number) {
   const extension = fileExtension(path);
   if (extension === "chk" || extension === "checkpoint") {
-    return `Binary OpenMM checkpoint artifact\n\nFile: ${path}\nSize: ${byteCount} bytes\n\nBurrete registers this file as an OpenMM workflow artifact, but does not deserialize checkpoint payloads. OpenMM checkpoints are tied to the matching System, Platform, OpenMM version, and hardware context, so this viewer shows metadata instead of raw binary bytes.\n`;
+    return `Binary OpenMM checkpoint artifact\n\nFile: ${path}\nSize: ${byteCount} bytes\n\nBurette registers this file as an OpenMM workflow artifact, but does not deserialize checkpoint payloads. OpenMM checkpoints are tied to the matching System, Platform, OpenMM version, and hardware context, so this viewer shows metadata instead of raw binary bytes.\n`;
   }
-  return `Binary molecular workflow artifact\n\nFile: ${path}\nSize: ${byteCount} bytes\nFormat: .${extension}\n\nBurrete registers this file as an MDAnalysis-compatible molecular artifact. This text viewer shows metadata because the file is a binary payload; structure preview can still use it when a compatible topology/trajectory pair is available.\n`;
+  return `Binary molecular workflow artifact\n\nFile: ${path}\nSize: ${byteCount} bytes\nFormat: .${extension}\n\nBurette registers this file as an MDAnalysis-compatible molecular artifact. This text viewer shows metadata because the file is a binary payload; structure preview can still use it when a compatible topology/trajectory pair is available.\n`;
 }
 
 function languageForTextExtension(extension: string) {
@@ -3898,10 +3898,10 @@ export default defineConfig({
   },
   define: {
     global: "globalThis",
-    "import.meta.env.BURRETE_REPO_ROOT": JSON.stringify(browserRuntimeRepoRoot),
-    "import.meta.env.BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT": JSON.stringify(BROWSER_DEV_GENERATED_FILES_ROOT),
-    "import.meta.env.BURRETE_GRID_PERF_REPORT_PATH": JSON.stringify(
-      hostedMcpBuild ? "" : "/private/tmp/burrete-grid-real-app-perf.jsonl",
+    "import.meta.env.BURETTE_REPO_ROOT": JSON.stringify(browserRuntimeRepoRoot),
+    "import.meta.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT": JSON.stringify(BROWSER_DEV_GENERATED_FILES_ROOT),
+    "import.meta.env.BURETTE_GRID_PERF_REPORT_PATH": JSON.stringify(
+      hostedMcpBuild ? "" : "/private/tmp/burette-grid-real-app-perf.jsonl",
     ),
     process: JSON.stringify({ env: {} }),
     "process.env": "{}",
@@ -3931,11 +3931,11 @@ export default defineConfig({
     rollupOptions: {
       output: {
         entryFileNames: hostedMcpBuild
-          ? "assets/burrete-hosted-shell.js"
+          ? "assets/burette-hosted-shell.js"
           : undefined,
         assetFileNames: hostedMcpBuild
           ? (assetInfo) => assetInfo.name?.endsWith(".css")
-            ? "assets/burrete-hosted-shell.css"
+            ? "assets/burette-hosted-shell.css"
             : "assets/[name]-[hash][extname]"
           : undefined,
         manualChunks: hostedMcpBuild ? undefined : desktopManualChunks,

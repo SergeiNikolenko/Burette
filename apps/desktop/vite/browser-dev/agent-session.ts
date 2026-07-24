@@ -7,8 +7,8 @@ import { readJsonBody, sendJson, sendJsonError } from "./http";
 
 export function registerBrowserDevAgentSessionRoute(server: ViteDevServer) {
   server.middlewares.use("/__burette/agent-session/", async (req, res) => {
-    const sessionDir = process.env.BURRETE_AGENT_SHELL_SESSION_DIR
-      ? resolve(process.env.BURRETE_AGENT_SHELL_SESSION_DIR)
+    const sessionDir = process.env.BURETTE_AGENT_SHELL_SESSION_DIR
+      ? resolve(process.env.BURETTE_AGENT_SHELL_SESSION_DIR)
       : null;
     const method = (req.method || "GET").toUpperCase();
     const url = new URL(req.url || "", "http://127.0.0.1");

@@ -1,4 +1,4 @@
-use burrete_core::{
+use burette_core::{
     preview_error_code_for_message, preview_runtime_manifest, preview_trace_payload,
     PreviewLifecycleState, PreviewRuntimeManifest, PreviewSubsystem, PreviewTracePayload,
 };
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Manager, Runtime};
 
-pub(crate) use burrete_core::PREVIEW_TRACE_FILE;
+pub(crate) use burette_core::PREVIEW_TRACE_FILE;
 
 #[derive(Debug)]
 pub(crate) struct PreviewTraceEvent<'a> {
@@ -133,14 +133,14 @@ mod tests {
         append_preview_trace_to_dir, preview_error_code, write_json_atomic, PreviewTraceEvent,
         PREVIEW_TRACE_FILE,
     };
-    use burrete_core::{PreviewLifecycleState, PreviewSubsystem, PREVIEW_CONTRACT_SCHEMA_VERSION};
+    use burette_core::{PreviewLifecycleState, PreviewSubsystem, PREVIEW_CONTRACT_SCHEMA_VERSION};
     use serde_json::json;
     use std::fs;
 
     #[test]
     fn appends_jsonl_preview_trace_without_raw_payloads() {
         let dir =
-            std::env::temp_dir().join(format!("burrete-preview-trace-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-preview-trace-{}", uuid::Uuid::new_v4()));
         append_preview_trace_to_dir(
             &dir,
             PreviewTraceEvent {
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn writes_json_atomically() {
         let dir =
-            std::env::temp_dir().join(format!("burrete-runtime-manifest-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-runtime-manifest-{}", uuid::Uuid::new_v4()));
         let path = dir.join("manifest.json");
         write_json_atomic(&path, &json!({"complete": true})).expect("manifest should be written");
         let manifest = fs::read_to_string(&path).expect("manifest should exist");

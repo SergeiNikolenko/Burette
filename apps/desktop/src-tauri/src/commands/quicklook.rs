@@ -58,13 +58,13 @@ struct CommandReport {
 pub(crate) fn reset_quick_look() -> Result<QuickLookResetReport, String> {
     let app_bundle = current_app_bundle()?;
     let app_bundle_id =
-        bundle_id(&app_bundle).unwrap_or_else(|| "com.local.BurreteV10".to_string());
+        bundle_id(&app_bundle).unwrap_or_else(|| "com.local.BuretteV10".to_string());
     let preview_extension = app_bundle
         .join("Contents")
         .join("PlugIns")
-        .join("BurretePreview.appex");
+        .join("BurettePreview.appex");
     let preview_extension_id =
-        bundle_id(&preview_extension).unwrap_or_else(|| "com.local.BurreteV10.Preview".to_string());
+        bundle_id(&preview_extension).unwrap_or_else(|| "com.local.BuretteV10.Preview".to_string());
 
     let launch_services_registered = run_command(
         "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",

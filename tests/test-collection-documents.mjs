@@ -48,7 +48,7 @@ assert.equal(parsedSdf[0].props.NOTE, "price $$$$ marker");
 const sampleMultiSdf = await readFile(new URL("../samples/collections/sdf/multi.sdf", import.meta.url), "utf8");
 const browserGridDocument = await openBrowserDevTextDocument("multi.sdf", "sdf", sampleMultiSdf, defaultPreferences);
 assert.equal(browserGridDocument.renderer, "grid2d");
-const browserRecordsMatch = /window\.BurreteGridRecords = (\[[^;]+\]);<\/script>/u.exec(browserGridDocument.runtimePath);
+const browserRecordsMatch = /window\.BuretteGridRecords = (\[[^;]+\]);<\/script>/u.exec(browserGridDocument.runtimePath);
 assert.ok(browserRecordsMatch, "browser-dev grid should embed parsed records");
 const browserRecords = JSON.parse(browserRecordsMatch[1]);
 assert.equal(browserRecords.length, 2);

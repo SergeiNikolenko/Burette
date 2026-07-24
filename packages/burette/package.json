@@ -1,0 +1,35 @@
+{
+  "name": "burette",
+  "version": "1.0.31",
+  "description": "CLI installer for the Burette macOS app and Quick Look extension.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "latest": "node bin/burette.mjs latest"
+  },
+  "bin": {
+    "burette": "bin/burette.mjs"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SergeiNikolenko/Burette.git",
+    "directory": "packages/burette"
+  },
+  "bugs": {
+    "url": "https://github.com/SergeiNikolenko/Burette/issues"
+  },
+  "homepage": "https://github.com/SergeiNikolenko/Burette#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}

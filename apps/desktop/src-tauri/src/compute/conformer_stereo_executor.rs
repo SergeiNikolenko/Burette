@@ -1,8 +1,8 @@
-use burrete_compute_core::{
+use burette_compute_core::{
     validate_conformer_stereo, ChiralVolumeConstraint, TetrahedralConstraint,
 };
-use burrete_compute_metal::MetalTanimotoRuntime;
-use burrete_compute_protocol::Backend;
+use burette_compute_metal::MetalTanimotoRuntime;
+use burette_compute_protocol::Backend;
 
 use super::{
     conformer_executor::ConformerDistanceComputation,

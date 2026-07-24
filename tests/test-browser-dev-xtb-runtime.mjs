@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mock } from "bun:test";
 
-const childMode = process.env.BURRETE_XTB_TEST_CHILD === "1";
+const childMode = process.env.BURETTE_XTB_TEST_CHILD === "1";
 
 if (childMode) {
   const originalStatSync = realFs.statSync;
@@ -32,13 +32,13 @@ if (childMode) {
   const resolution = await runtime.installBrowserDevManagedXtb();
   console.log(JSON.stringify({ installer, resolution, runtimeRoot: runtime.browserDevXtbRuntimeRoot() }));
 } else {
-  const root = await mkdtemp(join(tmpdir(), "burrete-browser-xtb-"));
+  const root = await mkdtemp(join(tmpdir(), "burette-browser-xtb-"));
   const conda = join(root, "miniconda3", "bin", "conda");
   const argumentsLog = join(root, "conda-arguments.txt");
   await mkdir(dirname(conda), { recursive: true });
   await writeFile(conda, `#!/bin/sh
 set -eu
-printf '%s\\n' "$@" > "$BURRETE_XTB_TEST_ARGUMENTS_LOG"
+printf '%s\\n' "$@" > "$BURETTE_XTB_TEST_ARGUMENTS_LOG"
 prefix=''
 while [ "$#" -gt 0 ]; do
   if [ "$1" = '--prefix' ]; then
@@ -59,8 +59,8 @@ chmod +x "$prefix/bin/xtb"
       encoding: "utf8",
       env: {
         ...process.env,
-        BURRETE_XTB_TEST_ARGUMENTS_LOG: argumentsLog,
-        BURRETE_XTB_TEST_CHILD: "1",
+        BURETTE_XTB_TEST_ARGUMENTS_LOG: argumentsLog,
+        BURETTE_XTB_TEST_CHILD: "1",
         CONDA_EXE: conda,
         HOME: root,
         PATH: "/usr/bin:/bin",
@@ -68,7 +68,7 @@ chmod +x "$prefix/bin/xtb"
     });
     assert.equal(child.status, 0, child.stderr || child.stdout || "browser-dev xTB child failed");
     const output = JSON.parse(child.stdout.trim().split("\n").at(-1));
-    const runtimeRoot = join(root, "Library", "Application Support", "Burrete", "browser-dev", "runtimes", "xtb");
+    const runtimeRoot = join(root, "Library", "Application Support", "Burette", "browser-dev", "runtimes", "xtb");
 
     assert.equal(output.installer, "conda");
     assert.equal(output.runtimeRoot, runtimeRoot);

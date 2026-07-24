@@ -9,8 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const repoRoot = resolve(__dirname, '..');
-const webRoot = process.env.BURRETE_AGENT_PREVIEW_WEB_ROOT
-  ? resolve(process.env.BURRETE_AGENT_PREVIEW_WEB_ROOT)
+const webRoot = process.env.BURETTE_AGENT_PREVIEW_WEB_ROOT
+  ? resolve(process.env.BURETTE_AGENT_PREVIEW_WEB_ROOT)
   : defaultPreviewWebRoot();
 const agentControlApiVersion = 'burette-agent-control/v1';
 const renderPanelReadLimit = 512 * 1024;
@@ -51,7 +51,7 @@ function sourcePreviewWebRoot() {
 function usage() {
   console.error(`Usage: node scripts/agent-preview.mjs <structure-file> [--port 5177] [--host 127.0.0.1] [--token <token>]
 
-Starts a tiny localhost-only Burrete agent viewer for browser-use/manual QA.
+Starts a tiny localhost-only Burette agent viewer for browser-use/manual QA.
 It serves PreviewExtension/Web assets and generates preview-config.js/preview-data.js in-memory.`);
 }
 
@@ -124,7 +124,7 @@ async function amberNcPreviewPayload(file) {
   if (!topology) {
     throw new Error(`${file}: Amber NetCDF trajectory requires a matching PDB topology/reference file in the same folder.`);
   }
-  const tempDir = await mkdtemp(resolve(tmpdir(), 'burrete-amber-nc-preview-'));
+  const tempDir = await mkdtemp(resolve(tmpdir(), 'burette-amber-nc-preview-'));
   const outputPath = resolve(tempDir, 'amber-nc-preview.pdb');
   try {
     const frameCount = runAmberNcExtractor(topology, file, outputPath);
@@ -250,7 +250,7 @@ async function findAmberNcTopology(trajectoryPath) {
   const errors = [];
   for (const candidate of candidates) {
     if (!existsSync(candidate)) continue;
-    const tempDir = await mkdtemp(resolve(tmpdir(), 'burrete-amber-nc-probe-'));
+    const tempDir = await mkdtemp(resolve(tmpdir(), 'burette-amber-nc-probe-'));
     const outputPath = resolve(tempDir, 'probe.pdb');
     try {
       runAmberNcExtractor(candidate, trajectoryPath, outputPath);
@@ -1098,8 +1098,8 @@ function observeState({ host, port, structurePath, config, liveReport, actions }
       commands: liveCapabilities?.commands || [],
       lastReportAt: liveReport?.reportedAt || null,
       note: liveCapabilities
-        ? 'Live Mol* state was reported by window.BurreteAgent inside the browser runtime.'
-        : 'Live Mol* state is available inside the browser through window.BurreteAgent after the viewer loads.'
+        ? 'Live Mol* state was reported by window.BuretteAgent inside the browser runtime.'
+        : 'Live Mol* state is available inside the browser through window.BuretteAgent after the viewer loads.'
     },
     scene: liveSummary
       ? {
@@ -1142,7 +1142,7 @@ function textPreviewHtml({ title, extension, byteCount, text }) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Burrete - ${escapeHtml(title)}</title>
+  <title>Burette - ${escapeHtml(title)}</title>
   <style>
     :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
     body { margin: 0; background: Canvas; color: CanvasText; }
@@ -1174,7 +1174,7 @@ function textPreviewContent(file, bytes, preview) {
       `Path: ${file}`,
       `Bytes: ${bytes.length}`,
       '',
-      'Burrete shows metadata for binary checkpoints instead of rendering opaque bytes as text.'
+      'Burette shows metadata for binary checkpoints instead of rendering opaque bytes as text.'
     ].join('\n');
   }
   return bytes.toString('utf8');
@@ -1269,7 +1269,7 @@ function validateAction(action) {
     'load_mvs',
     'screenshot',
     'export_image',
-    'raw_burrete_agent'
+    'raw_burette_agent'
   ]);
   if (!allowed.has(type)) return `Unsupported action type: ${type}.`;
   if (type === 'render_panel') {
@@ -1418,7 +1418,7 @@ async function main() {
   };
   const dataBase64 = preview.bytes.toString('base64');
   const token = args.token || Math.random().toString(36).slice(2) + Date.now().toString(36);
-  const tokenCookieName = 'BurreteAgentPreviewToken';
+  const tokenCookieName = 'BuretteAgentPreviewToken';
   let liveReport = null;
   let nextActionId = 1;
   const actions = new Map();
@@ -1533,15 +1533,15 @@ async function main() {
       if (url.pathname === '/preview-config.js') {
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
         res.end(
-          js('BurreteConfig', config)
-          + (preview.dockingPayloads ? js('BurreteDockingPayloads', preview.dockingPayloads) : '')
-          + js('BurreteAgentControl', controlConfig())
+          js('BuretteConfig', config)
+          + (preview.dockingPayloads ? js('BuretteDockingPayloads', preview.dockingPayloads) : '')
+          + js('BuretteAgentControl', controlConfig())
         );
         return;
       }
       if (url.pathname === '/preview-data.js') {
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
-        res.end(js('BurreteDataBase64', dataBase64));
+        res.end(js('BuretteDataBase64', dataBase64));
         return;
       }
       const file = safeWebPath(url.pathname);

@@ -110,7 +110,7 @@ assert.deepEqual(
 
 const mol = [
   "sample",
-  "  Burrete",
+  "  Burette",
   "",
   "  3  2  0  0  0  0            999 V2000",
   "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0",

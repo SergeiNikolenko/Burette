@@ -939,7 +939,7 @@ fn fetch_pdb_structure_blocking(pdb_id: &str) -> Result<FetchStructureResult, St
             "--max-filesize",
             &max_filesize,
             "--user-agent",
-            "Burrete/1.0",
+            "Burette/1.0",
             &url,
         ])
         .output()
@@ -1117,9 +1117,9 @@ pub(crate) fn generate_3d_conformer(
     }
 
     let (engine_label, env_name) = if engine == "datamol" {
-        ("Datamol", "BURRETE_DATAMOL_PYTHON")
+        ("Datamol", "BURETTE_DATAMOL_PYTHON")
     } else {
-        ("RDKit", "BURRETE_RDKIT_PYTHON")
+        ("RDKit", "BURETTE_RDKIT_PYTHON")
     };
     Err(if candidate_errors.is_empty() {
         format!("{engine_label} Python is required for 3D conformer generation. Set {env_name} to a Python executable with {engine} installed.")
@@ -1230,9 +1230,9 @@ pub(crate) fn conformer_python_runtime_status(engine: &str) -> ConformerPythonRu
 fn conformer_python_candidates(engine: &str) -> Vec<PythonCommand> {
     let mut candidates = Vec::new();
     let (env_name, package_name) = if engine == "datamol" {
-        ("BURRETE_DATAMOL_PYTHON", "datamol")
+        ("BURETTE_DATAMOL_PYTHON", "datamol")
     } else {
-        ("BURRETE_RDKIT_PYTHON", "rdkit")
+        ("BURETTE_RDKIT_PYTHON", "rdkit")
     };
     if let Ok(value) = env::var(env_name) {
         let value = value.trim();
@@ -1361,14 +1361,14 @@ fn conformer_python_runtime_spec(engine: &str) -> ConformerPythonRuntimeSpec {
         ConformerPythonRuntimeSpec {
             engine: "datamol",
             package_name: "datamol",
-            env_name: "BURRETE_DATAMOL_PYTHON",
+            env_name: "BURETTE_DATAMOL_PYTHON",
             label: "Datamol",
         }
     } else {
         ConformerPythonRuntimeSpec {
             engine: "rdkit",
             package_name: "rdkit",
-            env_name: "BURRETE_RDKIT_PYTHON",
+            env_name: "BURETTE_RDKIT_PYTHON",
             label: "RDKit",
         }
     }
@@ -1537,7 +1537,7 @@ pub(crate) fn fetch_remote_structure(
             "--max-filesize",
             &max_size,
             "--header",
-            "User-Agent: Burrete/1.0",
+            "User-Agent: Burette/1.0",
         ])
         .arg(parsed.as_str())
         .output()
@@ -3042,7 +3042,7 @@ mod tests {
     #[test]
     fn failed_open_releases_its_provisional_claim() {
         let registry = OpenDocumentRegistry::default();
-        let path = Path::new("/tmp/burrete-failed-open.sdf");
+        let path = Path::new("/tmp/burette-failed-open.sdf");
 
         let error = open_with_provisional_claim(&registry, "main", path, 7, || {
             Err::<ViewerDocument, _>("parse failed".to_string())
@@ -3058,7 +3058,7 @@ mod tests {
     #[test]
     fn combined_read_claims_block_writes_then_release_on_success() {
         let registry = OpenDocumentRegistry::default();
-        let path = Path::new("/tmp/burrete-combined-read.sdf");
+        let path = Path::new("/tmp/burette-combined-read.sdf");
 
         open_with_provisional_read_claims(&registry, "main", &[path.into()], 7, || {
             assert!(registry
@@ -3076,7 +3076,7 @@ mod tests {
     #[test]
     fn failed_combined_read_releases_its_source_claims() {
         let registry = OpenDocumentRegistry::default();
-        let path = Path::new("/tmp/burrete-failed-combined-read.sdf");
+        let path = Path::new("/tmp/burette-failed-combined-read.sdf");
 
         let error = open_with_provisional_read_claims(&registry, "main", &[path.into()], 7, || {
             Err::<(), _>("combine failed".to_string())
@@ -3092,7 +3092,7 @@ mod tests {
     #[test]
     fn collection_write_claim_blocks_cross_window_overwrite() {
         let registry = OpenDocumentRegistry::default();
-        let path = Path::new("/tmp/burrete-collection-write.sdf");
+        let path = Path::new("/tmp/burette-collection-write.sdf");
 
         let ((), claim_id) = write_collection_with_provisional_claim(
             &registry,
@@ -3119,7 +3119,7 @@ mod tests {
     #[test]
     fn failed_collection_write_releases_its_provisional_claim() {
         let registry = OpenDocumentRegistry::default();
-        let path = Path::new("/tmp/burrete-failed-collection-write.sdf");
+        let path = Path::new("/tmp/burette-failed-collection-write.sdf");
 
         let error = write_collection_with_provisional_claim(
             &registry,
@@ -3140,7 +3140,7 @@ mod tests {
     #[test]
     fn bounded_sdf_read_enforces_the_actual_byte_limit() {
         let root =
-            std::env::temp_dir().join(format!("burrete-bounded-sdf-read-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-bounded-sdf-read-{}", uuid::Uuid::new_v4()));
         let path = root.join("combined.sdf");
         fs::create_dir_all(&root).expect("create test directory");
         fs::write(&path, b"12345").expect("write SDF source");
@@ -3181,11 +3181,11 @@ mod tests {
     #[test]
     fn bundled_conformer_python_candidate_uses_runtime_site_packages() {
         let directory =
-            std::env::temp_dir().join(format!("burrete-conformer-python-{}", uuid::Uuid::new_v4()));
-        let app_executable = directory.join("Burrete.app/Contents/MacOS/burrete");
-        let python = directory.join("Burrete.app/Contents/Resources/xyzrender-python/bin/python3");
+            std::env::temp_dir().join(format!("burette-conformer-python-{}", uuid::Uuid::new_v4()));
+        let app_executable = directory.join("Burette.app/Contents/MacOS/burette");
+        let python = directory.join("Burette.app/Contents/Resources/xyzrender-python/bin/python3");
         let site_packages = directory
-            .join("Burrete.app/Contents/Resources/xyzrender-runtime/lib/python3.13/site-packages");
+            .join("Burette.app/Contents/Resources/xyzrender-runtime/lib/python3.13/site-packages");
         fs::create_dir_all(app_executable.parent().expect("app executable parent")).unwrap();
         fs::create_dir_all(python.parent().expect("python parent")).unwrap();
         fs::create_dir_all(&site_packages).unwrap();
@@ -3226,10 +3226,10 @@ mod tests {
 
         let datamol = conformer_python_runtime_spec("datamol");
         assert_eq!(datamol.package_name, "datamol");
-        assert_eq!(datamol.env_name, "BURRETE_DATAMOL_PYTHON");
+        assert_eq!(datamol.env_name, "BURETTE_DATAMOL_PYTHON");
         let rdkit = conformer_python_runtime_spec("rdkit");
         assert_eq!(rdkit.package_name, "rdkit");
-        assert_eq!(rdkit.env_name, "BURRETE_RDKIT_PYTHON");
+        assert_eq!(rdkit.env_name, "BURETTE_RDKIT_PYTHON");
     }
 
     #[test]
@@ -3285,7 +3285,7 @@ mod tests {
     #[test]
     fn classifies_open_paths_without_expanding_directories() {
         let root = std::env::temp_dir().join(format!(
-            "burrete-classify-open-paths-{}",
+            "burette-classify-open-paths-{}",
             std::process::id()
         ));
         let nested = root.join("nested");
@@ -3434,7 +3434,7 @@ mod tests {
     #[test]
     fn expands_directories_into_supported_files() {
         let root =
-            std::env::temp_dir().join(format!("burrete-open-targets-{}", std::process::id()));
+            std::env::temp_dir().join(format!("burette-open-targets-{}", std::process::id()));
         let nested = root.join("nested");
         fs::create_dir_all(&nested).unwrap();
         let pdb = root.join("mini.pdb");
@@ -3482,7 +3482,7 @@ mod tests {
     #[test]
     fn deduplicates_overlapping_open_document_inputs() {
         let root = std::env::temp_dir().join(format!(
-            "burrete-open-targets-overlap-{}",
+            "burette-open-targets-overlap-{}",
             std::process::id()
         ));
         let nested = root.join("nested");
@@ -3507,7 +3507,7 @@ mod tests {
     #[test]
     fn lists_project_structure_files_with_metadata() {
         let root =
-            std::env::temp_dir().join(format!("burrete-project-files-{}", std::process::id()));
+            std::env::temp_dir().join(format!("burette-project-files-{}", std::process::id()));
         let nested = root.join("nested");
         fs::create_dir_all(&nested).unwrap();
         let pdb = root.join("mini.pdb");
@@ -3547,7 +3547,7 @@ mod tests {
     #[test]
     fn project_structure_scan_limits_file_count() {
         let root = std::env::temp_dir().join(format!(
-            "burrete-project-files-limit-{}",
+            "burette-project-files-limit-{}",
             std::process::id()
         ));
         fs::create_dir_all(&root).unwrap();
@@ -3578,7 +3578,7 @@ mod tests {
     #[test]
     fn project_structure_scan_limits_directory_count() {
         let root = std::env::temp_dir().join(format!(
-            "burrete-project-directory-limit-{}",
+            "burette-project-directory-limit-{}",
             std::process::id()
         ));
         let first = root.join("a-first");
@@ -3613,7 +3613,7 @@ mod tests {
     #[test]
     fn expands_directories_with_symlink_loops_once() {
         let root =
-            std::env::temp_dir().join(format!("burrete-open-targets-loop-{}", std::process::id()));
+            std::env::temp_dir().join(format!("burette-open-targets-loop-{}", std::process::id()));
         let nested = root.join("nested");
         let loop_link = nested.join("loop");
         let pdb = root.join("mini.pdb");
@@ -3635,7 +3635,7 @@ mod tests {
     #[test]
     fn skips_broken_symlinks_inside_directories() {
         let root = std::env::temp_dir().join(format!(
-            "burrete-open-targets-broken-link-{}",
+            "burette-open-targets-broken-link-{}",
             std::process::id()
         ));
         let pdb = root.join("mini.pdb");
@@ -3657,7 +3657,7 @@ mod tests {
     #[test]
     fn preserves_symlink_alias_paths_for_nested_files() {
         let root =
-            std::env::temp_dir().join(format!("burrete-open-targets-alias-{}", std::process::id()));
+            std::env::temp_dir().join(format!("burette-open-targets-alias-{}", std::process::id()));
         let real = root.join("real.pdb");
         let alias = root.join("alias.pdb");
         fs::create_dir_all(&root).unwrap();
@@ -3683,7 +3683,7 @@ mod tests {
     #[test]
     fn atomic_text_save_preserves_permissions() {
         let root = std::env::temp_dir().join(format!(
-            "burrete-atomic-save-permissions-{}",
+            "burette-atomic-save-permissions-{}",
             uuid::Uuid::new_v4()
         ));
         let path = root.join("collection.csv");
@@ -3714,7 +3714,7 @@ mod tests {
     #[test]
     fn atomic_text_save_rejects_read_only_files() {
         let root = std::env::temp_dir().join(format!(
-            "burrete-atomic-save-read-only-{}",
+            "burette-atomic-save-read-only-{}",
             uuid::Uuid::new_v4()
         ));
         let path = root.join("collection.csv");
@@ -3741,7 +3741,7 @@ mod tests {
     #[test]
     fn atomic_collection_copy_rejects_symlink_destinations() {
         let root = std::env::temp_dir().join(format!(
-            "burrete-atomic-copy-symlink-{}",
+            "burette-atomic-copy-symlink-{}",
             uuid::Uuid::new_v4()
         ));
         let source = root.join("source.sdf");
@@ -3770,7 +3770,7 @@ mod tests {
     #[test]
     fn atomic_collection_copy_preserves_bytes_and_destination_permissions() {
         let root = std::env::temp_dir().join(format!(
-            "burrete-atomic-copy-permissions-{}",
+            "burette-atomic-copy-permissions-{}",
             uuid::Uuid::new_v4()
         ));
         let source = root.join("source.sdf");

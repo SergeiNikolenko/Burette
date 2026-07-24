@@ -11,7 +11,7 @@ import {
 import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
 
-export const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job";
+export const GRID_DESCRIPTOR_JOB_EVENT = "burette-grid-descriptor-job";
 
 type UseAppDescriptorsArgs = {
   documents: ViewerDocument[];
@@ -40,7 +40,7 @@ export function useAppDescriptors({
       return;
     }
     iframe.contentWindow.postMessage({
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: {
         type: "gridDescriptorControls",
         documentId,
@@ -58,7 +58,7 @@ export function useAppDescriptors({
       return;
     }
     iframe.contentWindow.postMessage({
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: {
         type: "gridDescriptorResults",
         documentId,

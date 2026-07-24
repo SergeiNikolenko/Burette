@@ -206,13 +206,13 @@ fn molecular_binary_artifact_summary(path: &Path, byte_count: u64) -> String {
     let extension = file_extension(path);
     if is_openmm_binary_artifact(&extension) {
         return format!(
-            "Binary OpenMM checkpoint artifact\n\nFile: {}\nSize: {} bytes\n\nBurrete registers this file as an OpenMM workflow artifact, but does not deserialize checkpoint payloads. OpenMM checkpoints are tied to the matching System, Platform, OpenMM version, and hardware context, so this viewer shows metadata instead of raw binary bytes.\n",
+            "Binary OpenMM checkpoint artifact\n\nFile: {}\nSize: {} bytes\n\nBurette registers this file as an OpenMM workflow artifact, but does not deserialize checkpoint payloads. OpenMM checkpoints are tied to the matching System, Platform, OpenMM version, and hardware context, so this viewer shows metadata instead of raw binary bytes.\n",
             path.display(),
             byte_count
         );
     }
     format!(
-        "Binary molecular workflow artifact\n\nFile: {}\nSize: {} bytes\nFormat: .{}\n\nBurrete registers this file as an MDAnalysis-compatible molecular artifact. This text viewer shows metadata because the file is a binary payload; structure preview can still use it when a compatible topology/trajectory pair is available.\n",
+        "Binary molecular workflow artifact\n\nFile: {}\nSize: {} bytes\nFormat: .{}\n\nBurette registers this file as an MDAnalysis-compatible molecular artifact. This text viewer shows metadata because the file is a binary payload; structure preview can still use it when a compatible topology/trajectory pair is available.\n",
         path.display(),
         byte_count,
         extension
@@ -304,7 +304,7 @@ mod tests {
 
     fn temp_path(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "burrete-text-file-test-{}-{name}",
+            "burette-text-file-test-{}-{name}",
             uuid::Uuid::new_v4()
         ))
     }
@@ -349,7 +349,7 @@ mod tests {
     #[test]
     fn opens_relative_text_files_with_canonical_document_paths() {
         let path = std::path::PathBuf::from(format!(
-            "burrete-text-file-test-{}-relative.txt",
+            "burette-text-file-test-{}-relative.txt",
             uuid::Uuid::new_v4()
         ));
         fs::write(&path, "relative path\n").expect("fixture should write");

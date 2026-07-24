@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use burrete_compute_protocol::{JobSnapshot, MolecularSnapshotRef};
+use burette_compute_protocol::{JobSnapshot, MolecularSnapshotRef};
 use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
 use uuid::Uuid;
@@ -150,17 +150,17 @@ pub(crate) fn validate_owner_window_label(label: &str) -> ComputeResult<()> {
     }
     let Some(suffix) = label.strip_prefix(WORKSPACE_WINDOW_PREFIX) else {
         return Err(ComputeCoordinatorError::Forbidden(
-            "compute owner must be a Burrete application window".into(),
+            "compute owner must be a Burette application window".into(),
         ));
     };
     let workspace_id = Uuid::parse_str(suffix).map_err(|_| {
         ComputeCoordinatorError::Forbidden(
-            "compute owner must be a Burrete application window".into(),
+            "compute owner must be a Burette application window".into(),
         )
     })?;
     if workspace_id.is_nil() {
         return Err(ComputeCoordinatorError::Forbidden(
-            "compute owner must be a Burrete application window".into(),
+            "compute owner must be a Burette application window".into(),
         ));
     }
     Ok(())

@@ -6,7 +6,7 @@ export function useAppDockingPoseSelection() {
       (item) => item.dataset.documentId === targetDocumentId,
     );
     iframe?.contentWindow?.postMessage({
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: {
         type: "poseReviewSelection",
         documentId: targetDocumentId,

@@ -4740,7 +4740,7 @@ img.radix-menu-item-icon {
 .ketcher-editor-root {
   position: relative;
 }
-.ketcher-editor-root [data-burrete-agent-highlighted="true"] {
+.ketcher-editor-root [data-burette-agent-highlighted="true"] {
   filter: drop-shadow(0 0 3px rgba(20, 122, 255, 0.95));
   stroke: #147aff !important;
   stroke-width: 2px !important;

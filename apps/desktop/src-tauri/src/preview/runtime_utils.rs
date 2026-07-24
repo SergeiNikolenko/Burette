@@ -103,14 +103,14 @@ mod tests {
 
     #[test]
     fn asset_url_percent_encodes_unsafe_path_bytes() {
-        let url = asset_url(Path::new("/tmp/Burrete Preview/a+b #1.pdb"));
+        let url = asset_url(Path::new("/tmp/Burette Preview/a+b #1.pdb"));
 
         #[cfg(target_os = "windows")]
         assert!(url.starts_with("http://asset.localhost/"));
         #[cfg(not(target_os = "windows"))]
         assert!(url.starts_with("asset://localhost/"));
 
-        assert!(url.contains("%2Ftmp%2FBurrete%20Preview%2Fa%2Bb%20%231.pdb"));
+        assert!(url.contains("%2Ftmp%2FBurette%20Preview%2Fa%2Bb%20%231.pdb"));
     }
 
     #[test]
@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn keeps_fresh_runtime_dirs_during_large_batches() {
         let base =
-            std::env::temp_dir().join(format!("burrete-runtime-prune-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-runtime-prune-{}", uuid::Uuid::new_v4()));
         let assets = base.join("assets");
         fs::create_dir_all(&assets).expect("assets dir should be created");
 

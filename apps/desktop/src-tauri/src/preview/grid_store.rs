@@ -176,9 +176,9 @@ pub(crate) struct GridQuery {
     pub(crate) limit: usize,
 }
 
-pub(crate) type GridColumnFilter = burrete_compute_protocol::ColumnFilter;
-pub(crate) type GridDescriptorFilter = burrete_compute_protocol::DescriptorFilter;
-pub(crate) type GridAnalysisFilter = burrete_compute_protocol::AnalysisFilter;
+pub(crate) type GridColumnFilter = burette_compute_protocol::ColumnFilter;
+pub(crate) type GridDescriptorFilter = burette_compute_protocol::DescriptorFilter;
+pub(crate) type GridAnalysisFilter = burette_compute_protocol::AnalysisFilter;
 
 #[derive(Debug, Clone)]
 pub(crate) struct GridDescriptorSort {
@@ -554,7 +554,7 @@ fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult,
     let limit = query.limit.clamp(1, 240);
     let offset = query.offset;
     let sort_clause = page_sort_clause(query.descriptor_sort.as_ref(), &query.sort);
-    let text_query = burrete_compute_protocol::GridTextQuery::Text {
+    let text_query = burette_compute_protocol::GridTextQuery::Text {
         text: query.query.clone(),
     };
     let predicate = grid_predicate::plan_grid_predicate(
@@ -1828,7 +1828,7 @@ fn parse_delimited_table_batch(
         .collect();
     let encoding_index = raw_headers
         .iter()
-        .position(|value| normalize_column_name(value) == "burrete_encoding");
+        .position(|value| normalize_column_name(value) == "burette_encoding");
     let headers: Vec<_> = raw_headers
         .into_iter()
         .map(|value| {
@@ -2510,13 +2510,13 @@ fn is_molfile_counts_line(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burrete_compute_protocol::{
+    use burette_compute_protocol::{
         AnalysisFilter, CapabilityMaturity, ColumnFilterKind, FilteredGridScope, GridScope,
         GridTextQuery, RepresentativePolicy, WorkflowTemplateId,
     };
 
     fn temp_runtime_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("burrete-grid-store-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("burette-grid-store-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("create temp runtime dir");
         dir
     }
@@ -3420,8 +3420,8 @@ mod tests {
 
     #[test]
     fn reopens_saved_grid_rows_with_molblocks_or_smiles() {
-        let csv = "burrete_encoding,index,name,smiles,molblock\n\
-                   escaped-v1,0,From SDF,,Molecule\\n  Burrete\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n\
+        let csv = "burette_encoding,index,name,smiles,molblock\n\
+                   escaped-v1,0,From SDF,,Molecule\\n  Burette\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n\
                    escaped-v1,1,From SMILES,CC,\n";
         let batch = parse_delimited_table_batch(
             csv,
@@ -3450,7 +3450,7 @@ mod tests {
 
     #[test]
     fn reopens_saved_grid_cells_with_reversible_escapes() {
-        let csv = "burrete_encoding,index,name,smiles,molblock,Note\n\
+        let csv = "burette_encoding,index,name,smiles,molblock,Note\n\
                    escaped-v1,0,Path\\\\name,,Molecule \\\\ literal\\nM  END,Line 1\\nLine 2 \\\\ tail\n";
         let batch = parse_delimited_table_batch(
             csv,
@@ -3479,8 +3479,8 @@ mod tests {
 
     #[test]
     fn accepts_molblock_only_rows_beside_multiple_smiles_columns() {
-        let csv = "burrete_encoding,name,target_smiles,proposal_smiles,molblock\n\
-                   escaped-v1,From SDF,,,Molecule\\n  Burrete\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n";
+        let csv = "burette_encoding,name,target_smiles,proposal_smiles,molblock\n\
+                   escaped-v1,From SDF,,,Molecule\\n  Burette\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n";
         let batch = parse_delimited_table_batch(csv, ',', 0, 0, 100, &GridParseOptions::default())
             .expect("parse molblock-only row");
 
@@ -4376,7 +4376,7 @@ mod tests {
     #[test]
     fn appends_sdf_records_to_existing_grid_store() {
         let runtime_dir = temp_runtime_dir();
-        let sdf = "First\n  Burrete\n\nM  END\n$$$$\nSecond\n  Burrete\n\nM  END\n$$$$\n";
+        let sdf = "First\n  Burette\n\nM  END\n$$$$\nSecond\n  Burette\n\nM  END\n$$$$\n";
 
         let handle = build_grid_store(&runtime_dir, "sdf", sdf.as_bytes())
             .expect("build grid store")
@@ -4391,7 +4391,7 @@ mod tests {
         let appended = append_grid_text(
             &handle.database_path,
             "sdf",
-            "Third\n  Burrete\n\nM  END\n$$$$\n",
+            "Third\n  Burette\n\nM  END\n$$$$\n",
             &GridParseOptions::default(),
         )
         .expect("append sdf");

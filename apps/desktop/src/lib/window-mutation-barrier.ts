@@ -134,7 +134,7 @@ export function setGridDocumentCloseTransition(documentIds: Iterable<string>, ac
     iframe.inert = transitionActive;
     iframe.toggleAttribute("aria-busy", transitionActive);
     iframe.contentWindow?.postMessage({
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: { type: "gridCloseTransitionChanged", active: transitionActive },
     }, "*");
   }
@@ -164,7 +164,7 @@ export async function waitForGridDocumentCloseTransition(documentIds: Iterable<s
         post: () => {
           if (settled) return;
           contentWindow.postMessage({
-            source: "burrete-grid-host",
+            source: "burette-grid-host",
             body: { type: "gridCloseTransitionChanged", active: true, requestId },
           }, "*");
         },
@@ -180,7 +180,7 @@ export async function waitForGridDocumentCloseTransition(documentIds: Iterable<s
       const handleAcknowledgement = (event: MessageEvent) => {
         if (event.source !== contentWindow) return;
         const data = event.data as { source?: unknown; body?: { type?: unknown; requestId?: unknown; active?: unknown } } | null;
-        if (data?.source !== "burrete-grid"
+        if (data?.source !== "burette-grid"
           || data.body?.type !== "gridCloseTransitionAcknowledged"
           || data.body.requestId !== requestId) return;
         cleanup();

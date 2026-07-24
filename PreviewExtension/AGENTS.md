@@ -10,14 +10,14 @@ changes that affect Finder Quick Look preview behavior.
 The release Quick Look extension identifier is:
 
 ```text
-com.local.BurreteV10.Preview
+com.local.BuretteV10.Preview
 ```
 
 Forced release preview content types include:
 
 ```text
-com.local.burrete10.pdb
-com.local.burrete10.cif
+com.local.burette10.pdb
+com.local.burette10.cif
 ```
 
 Do not change bundle identifiers, exported content types, or Launch Services
@@ -35,7 +35,7 @@ registration behavior without an explicit migration plan.
   the molecular meaning is not covered by a system symbol.
 - Invoke `@product-design` before implementation when the change affects the
   preview product flow, inspection workflow, or user-facing design direction.
-- Use `BURRETE_DEV_FLAVOR=<worktree-slug>` for packaged local builds and Quick
+- Use `BURETTE_DEV_FLAVOR=<worktree-slug>` for packaged local builds and Quick
   Look checks. Do not run unflavored build/install commands for local testing
   unless the task is explicitly a release-bundle task.
 - Keep `config/preview-formats.json`, `apps/desktop/src-tauri/AppMetadata.plist`,
@@ -51,23 +51,23 @@ registration behavior without an explicit migration plan.
 For a flavored packaged app:
 
 ```bash
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.pdb
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.cif
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.xyz
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.pdb
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.cif
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/force-preview.sh samples/mini.xyz
 ```
 
 For broader sample coverage:
 
 ```bash
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/smoke-samples-quicklook.sh samples
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/smoke-samples-quicklook.sh samples
 ```
 
 For focused CI-like preview checks:
 
 ```bash
-BURRETE_DEV_FLAVOR=<worktree-slug> ./scripts/quicklook-preview-smoke.sh samples/mini.pdb samples/mini.cif samples/mini.sdf
+BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/quicklook-preview-smoke.sh samples/mini.pdb samples/mini.cif samples/mini.sdf
 ```
 
 After replacing the app or extension, refresh Quick Look state:

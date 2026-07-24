@@ -5,7 +5,7 @@ import vm from "node:vm";
 const source = fs.readFileSync(new URL("../PreviewExtension/Web/trajectory-smoothing.js", import.meta.url), "utf8");
 const context = { window: {} };
 vm.runInNewContext(source, context);
-const smooth = context.window.BurreteTrajectorySmoothing?.smooth;
+const smooth = context.window.BuretteTrajectorySmoothing?.smooth;
 assert.equal(typeof smooth, "function");
 
 const xyz = [0, 1, 3, 1, 0].map((x, index) => `2\nframe ${index + 1}\nC ${x} 0 0\nO ${x + 1} 0 0`).join("\n");

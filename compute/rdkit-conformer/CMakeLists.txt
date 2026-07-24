@@ -1,16 +1,16 @@
-if(NOT DEFINED BURRETE_CONFORMER_SOURCE_DIR)
-    message(FATAL_ERROR "BURRETE_CONFORMER_SOURCE_DIR is required")
+if(NOT DEFINED BURETTE_CONFORMER_SOURCE_DIR)
+    message(FATAL_ERROR "BURETTE_CONFORMER_SOURCE_DIR is required")
 endif()
 
-add_executable(Burrete_rdkit_conformer
-    "${BURRETE_CONFORMER_SOURCE_DIR}/jswrapper.cpp"
-    "${BURRETE_CONFORMER_SOURCE_DIR}/conformer_binary.cpp"
-    "${BURRETE_CONFORMER_SOURCE_DIR}/conformer_extractor.cpp"
-    "${BURRETE_CONFORMER_SOURCE_DIR}/mmff_binary.cpp"
-    "${BURRETE_CONFORMER_SOURCE_DIR}/mmff_extractor.cpp")
-target_include_directories(Burrete_rdkit_conformer PRIVATE
-    "${BURRETE_CONFORMER_SOURCE_DIR}")
-target_link_libraries(Burrete_rdkit_conformer
+add_executable(Burette_rdkit_conformer
+    "${BURETTE_CONFORMER_SOURCE_DIR}/jswrapper.cpp"
+    "${BURETTE_CONFORMER_SOURCE_DIR}/conformer_binary.cpp"
+    "${BURETTE_CONFORMER_SOURCE_DIR}/conformer_extractor.cpp"
+    "${BURETTE_CONFORMER_SOURCE_DIR}/mmff_binary.cpp"
+    "${BURETTE_CONFORMER_SOURCE_DIR}/mmff_extractor.cpp")
+target_include_directories(Burette_rdkit_conformer PRIVATE
+    "${BURETTE_CONFORMER_SOURCE_DIR}")
+target_link_libraries(Burette_rdkit_conformer
     DistGeomHelpers
     ForceFieldHelpers
     DistGeometry
@@ -20,4 +20,4 @@ target_link_libraries(Burrete_rdkit_conformer
     GraphMol
     RDGeometryLib
     RDGeneral)
-set_target_properties(Burrete_rdkit_conformer PROPERTIES LINK_FLAGS "--bind")
+set_target_properties(Burette_rdkit_conformer PROPERTIES LINK_FLAGS "--bind")

@@ -26,8 +26,8 @@ import multiMolecule from "../../../../samples/structures/small-molecules/multi-
 import trajectory from "../../../../samples/trajectory.xyz?raw";
 import { trackWebDemoLocalFiles } from "./web-demo-analytics";
 
-const WEB_DEMO_ROOT = "/BurreteDemo";
-const WEB_DEMO_ENABLED = import.meta.env.VITE_BURRETE_WEB_DEMO === "1";
+const WEB_DEMO_ROOT = "/BuretteDemo";
+const WEB_DEMO_ENABLED = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
 const MAX_FILE_BYTES = 3 * 1024 * 1024;
 const listeners = new Set<() => void>();
 const files = new Map<string, SidebarProjectStructure>();
@@ -86,7 +86,7 @@ export function initializeWebDemoWorkspace() {
     for (const [relativePath, text] of DEMO_STRUCTURES) {
       registerText(`${WEB_DEMO_ROOT}/${relativePath}`, text);
     }
-    registerText(`${WEB_DEMO_ROOT}/notes/README.md`, "# Burrete browser workspace\n\nOpen a structure or choose a local project folder.\n");
+    registerText(`${WEB_DEMO_ROOT}/notes/README.md`, "# Burette browser workspace\n\nOpen a structure or choose a local project folder.\n");
   }
   return [`${WEB_DEMO_ROOT}/proteins/1HTB.pdb`];
 }

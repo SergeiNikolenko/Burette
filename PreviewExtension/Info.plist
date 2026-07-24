@@ -26,23 +26,23 @@
 		<dict>
 			<key>QLSupportedContentTypes</key>
 			<array>
-				<string>com.local.burrete10.pdb</string>
+				<string>com.local.burette10.pdb</string>
 				<string>public.pdb</string>
-				<string>com.local.burrete10.cif</string>
+				<string>com.local.burette10.cif</string>
 				<string>public.cif</string>
-				<string>com.local.burrete10.mmcif</string>
-				<string>com.local.burrete10.bcif</string>
-				<string>com.local.burrete10.mmtf</string>
-				<string>com.local.burrete10.sdf</string>
-				<string>com.local.burrete10.smiles</string>
+				<string>com.local.burette10.mmcif</string>
+				<string>com.local.burette10.bcif</string>
+				<string>com.local.burette10.mmtf</string>
+				<string>com.local.burette10.sdf</string>
+				<string>com.local.burette10.smiles</string>
 				<string>gg.flew.unfold.subtitle-smi</string>
-				<string>com.local.burrete10.csv</string>
-				<string>com.local.burrete10.datawarrior</string>
-				<string>com.local.burrete10.tsv</string>
+				<string>com.local.burette10.csv</string>
+				<string>com.local.burette10.datawarrior</string>
+				<string>com.local.burette10.tsv</string>
 				<string>public.comma-separated-values-text</string>
 				<string>public.tab-separated-values-text</string>
-				<string>com.local.burrete10.mol</string>
-				<string>com.local.burrete10.mol2</string>
+				<string>com.local.burette10.mol</string>
+				<string>com.local.burette10.mol2</string>
 				<string>com.revvity.external.mdl3000</string>
 				<string>com.mdli.molfile</string>
 				<string>com.revvity.external.cif</string>
@@ -51,26 +51,26 @@
 				<string>com.schrodinger.pdb</string>
 				<string>com.schrodinger.sdf</string>
 				<string>com.mdli.sketchfile</string>
-				<string>com.local.burrete10.xyz</string>
-				<string>com.local.burrete10.xyzrender-input</string>
+				<string>com.local.burette10.xyz</string>
+				<string>com.local.burette10.xyzrender-input</string>
 				<string>net.sourceforge.openbabel.xyz</string>
 				<string>com.adobe.fdf</string>
 				<string>com.apple.videoapps.cube</string>
 				<string>com.gaussian.cube</string>
-				<string>com.local.burrete10.gro</string>
+				<string>com.local.burette10.gro</string>
 				<string>gg.flew.unfold.gromacs-structure</string>
-				<string>com.local.burrete10.mvsj</string>
-				<string>com.local.burrete10.mvsx</string>
-				<string>com.local.burrete10.molecular-dynamics</string>
+				<string>com.local.burette10.mvsj</string>
+				<string>com.local.burette10.mvsx</string>
+				<string>com.local.burette10.molecular-dynamics</string>
 					<string>com.schrodinger.mae</string>
-					<string>com.local.burrete10.schrodinger</string>
-					<string>com.local.burrete10.graphml</string>
-					<string>com.local.burrete10.fep-edge-list</string>
-					<string>com.local.burrete10.pharmacophore</string>
-				<string>com.local.burrete10.spectrum</string>
-				<string>com.local.burrete10.spectrum-json</string>
-				<string>com.local.burrete10.openmm-coordinate-artifact</string>
-				<string>com.local.burrete10.openmm-workflow-text-artifact</string>
+					<string>com.local.burette10.schrodinger</string>
+					<string>com.local.burette10.graphml</string>
+					<string>com.local.burette10.fep-edge-list</string>
+					<string>com.local.burette10.pharmacophore</string>
+				<string>com.local.burette10.spectrum</string>
+				<string>com.local.burette10.spectrum-json</string>
+				<string>com.local.burette10.openmm-coordinate-artifact</string>
+				<string>com.local.burette10.openmm-workflow-text-artifact</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>
 			<false/>
@@ -91,7 +91,7 @@
 			<key>UTTypeDescription</key>
 			<string>Protein Data Bank coordinate file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.pdb</string>
+			<string>com.local.burette10.pdb</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -118,7 +118,7 @@
 			<key>UTTypeDescription</key>
 			<string>DataWarrior molecular structure table</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.datawarrior</string>
+			<string>com.local.burette10.datawarrior</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -141,7 +141,7 @@
 			<key>UTTypeDescription</key>
 			<string>Crystallographic information file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.cif</string>
+			<string>com.local.burette10.cif</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -164,7 +164,7 @@
 				<key>UTTypeDescription</key>
 				<string>FEP edge-list network file</string>
 				<key>UTTypeIdentifier</key>
-				<string>com.local.burrete10.fep-edge-list</string>
+				<string>com.local.burette10.fep-edge-list</string>
 				<key>UTTypeTagSpecification</key>
 				<dict>
 					<key>public.filename-extension</key>
@@ -180,14 +180,14 @@
 			<dict>
 				<key>UTTypeConformsTo</key>
 				<array>
-				<string>com.local.burrete10.cif</string>
+				<string>com.local.burette10.cif</string>
 				<string>public.plain-text</string>
 				<string>public.data</string>
 			</array>
 			<key>UTTypeDescription</key>
 			<string>Macromolecular crystallographic information file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.mmcif</string>
+			<string>com.local.burette10.mmcif</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -209,7 +209,7 @@
 			<key>UTTypeDescription</key>
 			<string>BinaryCIF molecular structure file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.bcif</string>
+			<string>com.local.burette10.bcif</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -230,7 +230,7 @@
 			<key>UTTypeDescription</key>
 			<string>Macromolecular Transmission Format structure file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.mmtf</string>
+			<string>com.local.burette10.mmtf</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -252,7 +252,7 @@
 			<key>UTTypeDescription</key>
 			<string>Structure-data molecular file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.sdf</string>
+			<string>com.local.burette10.sdf</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -275,7 +275,7 @@
 			<key>UTTypeDescription</key>
 			<string>SMILES molecular structure list</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.smiles</string>
+			<string>com.local.burette10.smiles</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -301,7 +301,7 @@
 			<key>UTTypeDescription</key>
 			<string>Comma-separated molecular structure table</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.csv</string>
+			<string>com.local.burette10.csv</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -325,7 +325,7 @@
 			<key>UTTypeDescription</key>
 			<string>Tab-separated molecular structure table</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.tsv</string>
+			<string>com.local.burette10.tsv</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -347,7 +347,7 @@
 			<key>UTTypeDescription</key>
 			<string>MDL molfile</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.mol</string>
+			<string>com.local.burette10.mol</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -370,7 +370,7 @@
 			<key>UTTypeDescription</key>
 			<string>Tripos MOL2 molecular structure file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.mol2</string>
+			<string>com.local.burette10.mol2</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -392,7 +392,7 @@
 			<key>UTTypeDescription</key>
 			<string>XYZ molecular structure file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.xyz</string>
+			<string>com.local.burette10.xyz</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -414,7 +414,7 @@
 			<key>UTTypeDescription</key>
 			<string>GROMACS structure file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.gro</string>
+			<string>com.local.burette10.gro</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -433,7 +433,7 @@
 			<key>UTTypeDescription</key>
 			<string>MolViewSpec JSON scene file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.mvsj</string>
+			<string>com.local.burette10.mvsj</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -456,7 +456,7 @@
 			<key>UTTypeDescription</key>
 			<string>MolViewSpec archive scene file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.mvsx</string>
+			<string>com.local.burette10.mvsx</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -479,7 +479,7 @@
 			<key>UTTypeDescription</key>
 			<string>xyzrender-compatible molecular structure file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.xyzrender-input</string>
+			<string>com.local.burette10.xyzrender-input</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -511,7 +511,7 @@
 			<key>UTTypeDescription</key>
 			<string>Molecular dynamics trajectory or topology file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.molecular-dynamics</string>
+			<string>com.local.burette10.molecular-dynamics</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -564,7 +564,7 @@
 			<key>UTTypeDescription</key>
 			<string>Schrodinger molecular structure file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.schrodinger</string>
+			<string>com.local.burette10.schrodinger</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -586,7 +586,7 @@
 			<key>UTTypeDescription</key>
 			<string>GraphML FEP network file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.graphml</string>
+			<string>com.local.burette10.graphml</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -609,7 +609,7 @@
 			<key>UTTypeDescription</key>
 			<string>Pharmacophore model file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.pharmacophore</string>
+			<string>com.local.burette10.pharmacophore</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -631,7 +631,7 @@
 			<key>UTTypeDescription</key>
 			<string>OpenMM workflow coordinate artifact</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.openmm-coordinate-artifact</string>
+			<string>com.local.burette10.openmm-coordinate-artifact</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -660,7 +660,7 @@
 			<key>UTTypeDescription</key>
 			<string>Molecular workflow text or metadata artifact</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.openmm-workflow-text-artifact</string>
+			<string>com.local.burette10.openmm-workflow-text-artifact</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -694,7 +694,7 @@
 			<key>UTTypeDescription</key>
 			<string>Mass spectrum or annotated spectrum file</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.local.burrete10.spectrum</string>
+			<string>com.local.burette10.spectrum</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

@@ -1,6 +1,6 @@
 ---
 name: molstar-scene
-description: "Use when operating an active Mol* scene through allowlisted Burrete actions and typed observe/action results."
+description: "Use when operating an active Mol* scene through allowlisted Burette actions and typed observe/action results."
 ---
 
 # Molstar Scene
@@ -30,7 +30,7 @@ Use this workflow for scene operations:
 Use one typed action surface:
 
 ```bash
-bun scripts/burrete-agent.mjs act --session-dir <dir> '{"type":"hide_waters"}' --wait-ms 12000
+bun scripts/burette-agent.mjs act --session-dir <dir> '{"type":"hide_waters"}' --wait-ms 12000
 ```
 
 For `browser-agent-shell`, use the `sessionDir` returned by
@@ -50,7 +50,7 @@ and serializable.
 Use MolViewSpec as the mental model for agent scene requests, but keep two
 execution paths separate:
 
-- `apply_scene` edits the currently active Burrete/Mol* viewer by relaying
+- `apply_scene` edits the currently active Burette/Mol* viewer by relaying
   allowlisted commands. Use it for highlight, select, focus, contact
   neighborhood, water/surface/theme toggles, screenshot, and reset camera.
 - `load_mvs` loads a complete MolViewSpec state (`mvsj` JSON or `mvsx` archive)
@@ -98,7 +98,7 @@ loop ranges.
 optional `label`, optional visual hints, and operation flags:
 
 ```bash
-bun scripts/burrete-agent.mjs act --session-dir <dir> '{
+bun scripts/burette-agent.mjs act --session-dir <dir> '{
   "type": "apply_scene",
   "components": [
     {"selector": "protein", "label": "Protein", "highlight": true, "color": "#4f8cff"},
@@ -111,7 +111,7 @@ Use these request patterns:
 
 ```bash
 # Highlight the whole protein.
-bun scripts/burrete-agent.mjs act --session-dir <dir> '{
+bun scripts/burette-agent.mjs act --session-dir <dir> '{
   "type": "apply_scene",
   "components": [
     {"selector": "protein", "label": "Protein", "highlight": true, "color": "#4f8cff"}
@@ -119,7 +119,7 @@ bun scripts/burrete-agent.mjs act --session-dir <dir> '{
 }' --wait-ms 12000
 
 # Select and focus an active loop by residue range.
-bun scripts/burrete-agent.mjs act --session-dir <dir> '{
+bun scripts/burette-agent.mjs act --session-dir <dir> '{
   "type": "apply_scene",
   "components": [
     {"selector": {"label_asym_id": "A", "beg_label_seq_id": 45, "end_label_seq_id": 58}, "label": "Active loop", "select": true, "focus": true}
@@ -127,7 +127,7 @@ bun scripts/burrete-agent.mjs act --session-dir <dir> '{
 }' --wait-ms 12000
 
 # Focus a ligand and ask for a local protein neighborhood/contacts.
-bun scripts/burrete-agent.mjs act --session-dir <dir> '{
+bun scripts/burette-agent.mjs act --session-dir <dir> '{
   "type": "focus_ligand",
   "selector": {"comp_id": "PYZ"},
   "allowAmbiguous": true,
@@ -136,14 +136,14 @@ bun scripts/burrete-agent.mjs act --session-dir <dir> '{
 }' --wait-ms 12000
 
 # Add a visible 3D label to the last focused/selected ligand.
-bun scripts/burrete-agent.mjs act --session-dir <dir> '{
+bun scripts/burette-agent.mjs act --session-dir <dir> '{
   "type": "label_selection",
   "selection": "last",
   "text": "PYZ A:378"
 }' --wait-ms 12000
 
 # Reset camera after manual movement.
-bun scripts/burrete-agent.mjs act --session-dir <dir> '{"type":"reset_camera","args":{"durationMs":250}}' --wait-ms 12000
+bun scripts/burette-agent.mjs act --session-dir <dir> '{"type":"reset_camera","args":{"durationMs":250}}' --wait-ms 12000
 ```
 
 When a user says "move the scene", decide which meaning applies:
@@ -158,7 +158,7 @@ Use `load_mvs` only for complete MolViewSpec (`mvsj` or `mvsx`) payloads that
 should be handed to Mol* `loadMvsData` as scene state:
 
 ```bash
-bun scripts/burrete-agent.mjs act --session-dir <dir> '{
+bun scripts/burette-agent.mjs act --session-dir <dir> '{
   "type": "load_mvs",
   "json": {
     "metadata": {"title": "Protein and ligand view", "version": "1"},
@@ -212,4 +212,4 @@ Persistent overpaint and arbitrary representation graph rewriting are not yet a
 general `apply_scene` guarantee. If durable representation, opacity, labels,
 tooltips, primitives, volumes, animations, or coordinate transforms are required,
 prefer a full `load_mvs` payload or implement a new allowlisted
-`BurreteSceneActions` handler first.
+`BuretteSceneActions` handler first.

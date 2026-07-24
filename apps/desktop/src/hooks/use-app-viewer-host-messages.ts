@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
 type RefValue<T> = { current: T };
-type ViewerMessageSource = "burrete-viewer" | "burrete-grid" | "burrete-agent-viewer";
+type ViewerMessageSource = "burette-viewer" | "burette-grid" | "burette-agent-viewer";
 type ViewerHostMessageBody = Record<string, unknown> | null | undefined;
 type PendingMolstarReplaceResolver = (ok: boolean) => void;
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
@@ -42,7 +42,7 @@ export function useAppViewerHostMessages({
       return true;
     }
 
-    if (source === "burrete-agent-viewer" && body?.type === "agent-action-result") {
+    if (source === "burette-agent-viewer" && body?.type === "agent-action-result") {
       if (bodyString(body.id).startsWith("text-selection-")) return true;
       const result = agentActionResult(body.result);
       if (result?.ok) return true;

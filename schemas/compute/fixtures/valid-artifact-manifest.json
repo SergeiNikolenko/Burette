@@ -1,10 +1,10 @@
 {
-  "schemaVersion": "burrete.compute-artifact-manifest.v1",
+  "schemaVersion": "burette.compute-artifact-manifest.v1",
   "artifactId": "018f48f2-2e20-7e53-976b-cf93e0897702",
   "jobId": "018f48f2-2e20-7e53-976b-cf93e08976ff",
   "workflowTemplate": "cluster.v1",
   "molecularSnapshot": {
-    "schemaVersion": "burrete.molecular-snapshot.v1",
+    "schemaVersion": "burette.molecular-snapshot.v1",
     "snapshotId": "018f48f2-2e20-7e53-976b-cf93e0897701",
     "snapshotSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "frozenSource": {
@@ -57,7 +57,7 @@
       "stageId": "freezeScope",
       "kind": "materialize",
       "engine": {
-        "engineId": "burrete-coordinator",
+        "engineId": "burette-coordinator",
         "version": "1.0.0",
         "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       },
@@ -93,7 +93,7 @@
       "stageId": "tanimotoNeighbors",
       "kind": "numericCompute",
       "engine": {
-        "engineId": "burrete-native-metal",
+        "engineId": "burette-native-metal",
         "version": "1.0.0",
         "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       },
@@ -111,7 +111,7 @@
       "stageId": "butinaClusters",
       "kind": "workflowSemantics",
       "engine": {
-        "engineId": "burrete-reference-cpu",
+        "engineId": "burette-reference-cpu",
         "version": "1.0.0",
         "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       },
@@ -129,7 +129,7 @@
       "stageId": "validateResults",
       "kind": "validation",
       "engine": {
-        "engineId": "burrete-reference-cpu",
+        "engineId": "burette-reference-cpu",
         "version": "1.0.0",
         "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       },
@@ -147,7 +147,7 @@
       "stageId": "publishResults",
       "kind": "artifactIo",
       "engine": {
-        "engineId": "burrete-coordinator",
+        "engineId": "burette-coordinator",
         "version": "1.0.0",
         "manifestSha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       },

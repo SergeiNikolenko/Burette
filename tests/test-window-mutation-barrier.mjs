@@ -123,7 +123,7 @@ const gridContentWindow = {
         listener({
           source: gridContentWindow,
           data: {
-            source: "burrete-grid",
+            source: "burette-grid",
             body: { type: "gridCloseTransitionAcknowledged", requestId, active: true },
           },
         });
@@ -191,7 +191,7 @@ const lateGridContentWindow = {
         listener({
           source: lateGridContentWindow,
           data: {
-            source: "burrete-grid",
+            source: "burette-grid",
             body: { type: "gridCloseTransitionAcknowledged", requestId, active: true },
           },
         });

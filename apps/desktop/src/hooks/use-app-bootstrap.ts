@@ -9,7 +9,7 @@ export function useAppBootstrap(setUpdate: Dispatch<SetStateAction<UpdateState>>
   const [buildInfoLoaded, setBuildInfoLoaded] = useState(false);
 
   useEffect(() => {
-    window.__BURRETE_BOOT_OVERLAY__?.markMounted();
+    window.__BURETTE_BOOT_OVERLAY__?.markMounted();
     const frame = window.requestAnimationFrame(() => {
       markPerformanceOnce("app:shell-visible");
     });

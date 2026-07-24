@@ -6,7 +6,7 @@ use std::{
 };
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use burrete_compute_protocol::{EngineIdentity, RuntimeIdentity};
+use burette_compute_protocol::{EngineIdentity, RuntimeIdentity};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -19,21 +19,21 @@ const RDKIT_ASSET_PATHS: [&str; 2] = [
     "PreviewExtension/Web/rdkit/RDKit_minimal.js",
     "PreviewExtension/Web/rdkit/RDKit_minimal.wasm",
 ];
-const CONFORMER_EXTRACTOR_PACKAGE: &str = "burrete-rdkit-conformer";
+const CONFORMER_EXTRACTOR_PACKAGE: &str = "burette-rdkit-conformer";
 const CONFORMER_EXTRACTOR_VERSION: &str =
     "Release_2025_03_4@276b5a662302c6a548ac4f1363c066f3258e3a20";
 const CONFORMER_EXTRACTOR_ASSET_PATHS: [&str; 2] = [
-    "PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.js",
-    "PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.wasm",
+    "PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js",
+    "PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm",
 ];
 const VIEWER_PREFIX: &str = "PreviewExtension/Web/";
 const MAX_ENGINE_ASSET_BYTES: u64 = 16 * 1024 * 1024;
 const COORDINATOR_MANIFEST: &[u8] =
-    br#"{"engineId":"burrete-coordinator","implementation":"burrete/src-tauri/compute","schemaVersion":1}"#;
+    br#"{"engineId":"burette-coordinator","implementation":"burette/src-tauri/compute","schemaVersion":1}"#;
 const REFERENCE_CPU_MANIFEST: &[u8] =
-    br#"{"engineId":"burrete-reference-cpu","implementation":"burrete-compute-core","schemaVersion":1}"#;
+    br#"{"engineId":"burette-reference-cpu","implementation":"burette-compute-core","schemaVersion":1}"#;
 const REFERENCE_RUNTIME_MANIFEST: &[u8] =
-    br#"{"runtimeVersion":"burrete-native-compute-v1","linkedHelper":true,"metallib":null,"schemaVersion":1}"#;
+    br#"{"runtimeVersion":"burette-native-compute-v1","linkedHelper":true,"metallib":null,"schemaVersion":1}"#;
 
 #[derive(Debug)]
 pub(crate) struct VerifiedEngineCatalog {
@@ -50,13 +50,13 @@ impl VerifiedEngineCatalog {
         let version = env!("CARGO_PKG_VERSION");
         let identities = ClusterV1EngineIdentities {
             coordinator: EngineIdentity {
-                engine_id: "burrete-coordinator".into(),
+                engine_id: "burette-coordinator".into(),
                 version: version.into(),
                 manifest_sha256: sha256_hex(COORDINATOR_MANIFEST),
             },
             rdkit,
             reference_cpu: EngineIdentity {
-                engine_id: "burrete-reference-cpu".into(),
+                engine_id: "burette-reference-cpu".into(),
                 version: version.into(),
                 manifest_sha256: sha256_hex(REFERENCE_CPU_MANIFEST),
             },
@@ -83,7 +83,7 @@ impl VerifiedEngineCatalog {
             .validate()
             .map_err(|error| error.to_string())?;
         let reference_runtime = RuntimeIdentity {
-            version: "burrete-native-compute-v1".into(),
+            version: "burette-native-compute-v1".into(),
             manifest_sha256: sha256_hex(REFERENCE_RUNTIME_MANIFEST),
             helper_sha256: helper_sha256.into(),
             metallib_sha256: None,
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn rejects_a_missing_viewer_runtime() {
         let missing =
-            std::env::temp_dir().join(format!("burrete-missing-viewer-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-missing-viewer-{}", uuid::Uuid::new_v4()));
         assert!(VerifiedEngineCatalog::load(&missing, &"a".repeat(64)).is_err());
     }
 }
