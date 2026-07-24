@@ -30,10 +30,8 @@ export type StructureViewerAction =
     };
 
 export type StatusNotice = {
-  id: number;
   kind: StatusKind;
   message: string;
-  details: string[];
 };
 
 export type ViewerLigandSelection = {
