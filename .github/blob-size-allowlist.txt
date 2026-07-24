@@ -8,6 +8,7 @@ PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm
 compute/semiempirical/reference/c6ab_d3.npz
 crates/burette-compute-core/src/semiempirical/pm6_d3.generated.bin
 plugins/burette-agent/preview-web/viewer.js
+plugins/burette-agent/preview-web/molstar.js
 plugins/burette-agent/preview-web/openchemlib/openchemlib.js
 plugins/burette-agent/preview-web/rdkit-conformer/Burette_rdkit_conformer.wasm
 plugins/burette-agent/browser-shell-dist/assets/Burette_rdkit_conformer-BA7plZBF.wasm
