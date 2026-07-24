@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { showNativeContextMenu } from "./native-context-menu";
 import { formatBytes } from "./format";
@@ -8,8 +8,14 @@ import { FoldingResultsPanel, useFoldingResult } from "./folding-results-panel";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewerAction } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
-import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow, type StructureViewerSelector } from "../lib/structure-composition";
+import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
 import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
+import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { DIRECT_CHEMISTRY_JOB_ATOM_LIMIT, structureAtomCountFromSummary } from "../lib/direct-chemistry-guard";
 import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
@@ -130,6 +136,14 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
     setTrajectoryPlayback(null);
   }, [document?.id]);
 
+  // Closing the molecule card clears the selection inside the viewer, so a row
+  // highlighted from a ligand click here has to let go of it too - otherwise the
+  // panel keeps claiming a scope the viewer no longer has.
+  useEffect(() => {
+    if (viewerLigandSelection) return;
+    setActiveActionKey((current) => current && current.includes("focus_ligand") ? null : current);
+  }, [viewerLigandSelection]);
+
   useEffect(() => {
     const handle = (event: Event) => {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail;
@@ -199,14 +213,43 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   const trajectoryDocument = isTrajectorySmoothingDocument(document, poseControls);
   const contextStyleCard = structureContextStyleCardFor(document, compositionSummary, structureOverlayMode);
   const latestXtbJob = latestXtbJobForDocument(document, xtbJobs);
+  const runningXtbJob = latestXtbJob?.status === "running" ? latestXtbJob : null;
   const structureXtbArtifact = xtbArtifactInfoForPath(document.path, document.extension);
-  const clearSelection = () => {
-    actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
-    setActiveActionKey(null);
-  };
+  // Only a checked-and-missing binary disables the run buttons; an unchecked one
+  // is not yet known to be missing.
+  const xtbMissing = xtbStatus?.installed === false;
+  // A direct job is refused once it starts if the object it runs on is over the
+  // atom cap, with a message telling you to select something smaller. The count
+  // is already parsed, so the card can say that before the click. When something
+  // is selected the run scopes to it, so the cap applies to the selection's size
+  // - picking a whole chain or all polymers is still too big and must stay
+  // blocked, not just "a selection exists".
+  const structureAtoms = compositionSummary ? structureAtomCountFromSummary(compositionSummary) : null;
+  const jobScopedToSelection = Boolean(selectedEntity || viewerLigandSelection);
+  const scopedAtoms = selectedScopeAtomCount(selectedEntity, viewerLigandSelection);
+  const effectiveAtoms = jobScopedToSelection ? scopedAtoms : structureAtoms;
+  const oversizedForDirectJob = effectiveAtoms !== null && effectiveAtoms > DIRECT_CHEMISTRY_JOB_ATOM_LIMIT;
+  const oversizedNotice: EngineTool[] = oversizedForDirectJob ? [{
+    name: "Scope",
+    installed: false,
+    hint: jobScopedToSelection
+      ? `This selection has ${effectiveAtoms.toLocaleString()} atoms. Pick a single ligand or a smaller object — direct runs are capped at ${DIRECT_CHEMISTRY_JOB_ATOM_LIMIT}.`
+      : `This structure has ${effectiveAtoms.toLocaleString()} atoms. Select a ligand or chain first — direct runs are capped at ${DIRECT_CHEMISTRY_JOB_ATOM_LIMIT}.`,
+  }] : [];
+  const xtbBlocked = xtbMissing || oversizedForDirectJob;
   const openXtbSettingsFor = (scope: XtbSettingsScope) => {
     setXtbSettingsScope(scope);
     setXtbSettingsOpen(true);
+  };
+  const showXtbMoreMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    void showNativeContextMenu(XTB_MORE_OPERATIONS.map(([operation, text]) => ({
+      kind: "item" as const,
+      id: operation,
+      text,
+      detail: XTB_ACTION_TOOLTIPS[operation],
+      action: () => void actions.runXtbActiveOperation(operation),
+    })), { x: rect.left, y: rect.bottom + 6 }, { forceWeb: true });
   };
   const showXtbSettingsFor = (scope: XtbSettingsScope) => (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -250,7 +293,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
         <div className="structure-brief-kicker">Molecular Inspector</div>
         <div className="structure-brief-title-row">
           <h3 title={document.title}>{document.title}</h3>
-          <span>{brief.format}</span>
+          <Badge variant="secondary">{brief.format}</Badge>
           {!hostedMcpWidget && !document.virtual ? (
             <button
               type="button"
@@ -281,20 +324,15 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
       ) : null}
 
       {(compositionSummary || compositionPending || compositionError) ? (
-        <section className="structure-brief-card">
-          <StructureSectionHeader title="Components" detail="Primary groups" />
-          {compositionSummary ? (
-            <StructureActionList
-              rows={visibleComponentRows(compositionSummary.componentRows)}
-              document={document}
-              actions={actions}
-              activeActionKey={activeActionKey}
-              setActiveActionKey={setActiveActionKey}
-            />
-          ) : (
-            <div className="dock-empty">{compositionPending ? "Reading structure text..." : `Composition unavailable: ${compositionError}`}</div>
-          )}
-        </section>
+        <StructureCompositionCard
+          summary={compositionSummary}
+          pending={compositionPending}
+          error={compositionError}
+          document={document}
+          actions={actions}
+          activeActionKey={activeActionKey}
+          setActiveActionKey={setActiveActionKey}
+        />
       ) : null}
 
       <FoldingResultsPanel state={foldingResult} actions={actions} />
@@ -308,72 +346,74 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           settings={conformerSettings}
           open={conformerOpen}
           setOpen={setConformerOpen}
+          oversizedNotice={oversizedNotice}
           actions={actions}
         />
 
-        <section className="structure-brief-card structure-inspector-xtb-card" data-collapsed={!xtbOpen || undefined}>
-        <div className="structure-inspector-section-header">
-          <button
-            type="button"
-            className="structure-inspector-section-title-button"
-            aria-expanded={xtbOpen}
-            onClick={() => setXtbOpen((open) => !open)}
-          >
-            xTB
-            <ShortcutTooltip label="Semiempirical quantum calculations for the current molecular scope." />
-          </button>
-          <span>{xtbStatusLine(xtbStatus, isBrowserDev)}</span>
-        </div>
-        {xtbOpen ? (
-          <>
-            <div
-              className="structure-inspector-xtb-summary"
-              data-modified={xtbSettingsModified(xtbSettings) || undefined}
-              data-xtb-tooltip="Hamiltonian, convergence, charge, spin, solvation, and parallelism for xTB calculations."
-            >
-              <span>{xtbSettingsSummary(xtbSettings)}</span>
-              {xtbSettingsModified(xtbSettings) ? (
-                <button type="button" className="structure-inspector-inline-action" onClick={() => actions.setXtbSettings(defaultXtbSettings)}>
-                  Reset
-                <ShortcutTooltip label="Restore the default GFN2 gas-phase calculation settings." />
-                </button>
-              ) : null}
-            </div>
-            <div className="structure-brief-actions structure-brief-actions-grid">
-              <XtbActionButton label="Optimize" tooltip={XTB_ACTION_TOOLTIPS.optimize} onClick={() => void actions.runXtbActiveOperation("optimize")} onContextMenu={showXtbSettingsFor("optimize")} />
-              <XtbActionButton label="Properties" tooltip={XTB_ACTION_TOOLTIPS.properties} onClick={() => void actions.runXtbActiveOperation("properties")} onContextMenu={showXtbSettingsFor("properties")} />
-              <XtbActionButton label="Frequencies" tooltip={XTB_ACTION_TOOLTIPS["optimized-hessian"]} onClick={() => void actions.runXtbActiveOperation("optimized-hessian")} onContextMenu={showXtbSettingsFor("optimized-hessian")} />
-              <XtbActionButton label="IP/EA" tooltip={XTB_ACTION_TOOLTIPS.vipea} onClick={() => void actions.runXtbActiveOperation("vipea")} onContextMenu={showXtbSettingsFor("vipea")} />
-              <XtbActionButton label="Fukui" tooltip={XTB_ACTION_TOOLTIPS.vfukui} onClick={() => void actions.runXtbActiveOperation("vfukui")} onContextMenu={showXtbSettingsFor("vfukui")} />
-              <XtbActionButton label="MD" tooltip={XTB_ACTION_TOOLTIPS.md} onClick={() => void actions.runXtbActiveOperation("md")} onContextMenu={showXtbSettingsFor("md")} />
-              <XtbActionButton label="Metadyn" tooltip={XTB_ACTION_TOOLTIPS.metadyn} onClick={() => void actions.runXtbActiveOperation("metadyn")} onContextMenu={showXtbSettingsFor("metadyn")} />
-              <button
-                type="button"
-                className="dock-action"
-                aria-expanded={xtbSettingsOpen}
-                onClick={toggleGeneralXtbSettings}
-              >
-                Settings
-                <ShortcutTooltip label="Hamiltonian, charge, spin, solvation, accuracy, property, and dynamics parameters." />
-              </button>
-              <button type="button" className="dock-action" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
-                Jobs
-                <ShortcutTooltip label="xTB calculation history, energies, properties, trajectories, and output artifacts." />
-              </button>
-            </div>
-            {xtbSettingsOpen ? (
-              <XtbInlineSettings
-                settings={xtbSettings}
-                scope={xtbSettingsScope}
-                xtbStatus={xtbStatus}
-                isBrowserDev={isBrowserDev}
-                actions={actions}
-                onClose={() => setXtbSettingsOpen(false)}
-              />
-            ) : null}
-          </>
-        ) : null}
-        </section>
+        <InspectorEngineCard
+          className="structure-inspector-xtb-card"
+          title="xTB"
+          tooltip="Semiempirical quantum calculations for the current molecular scope."
+          status={runningXtbJob ? `Running ${operationTitle(runningXtbJob.operation).toLowerCase()}` : xtbStatusLine(xtbStatus, isBrowserDev)}
+          open={xtbOpen}
+          onToggle={() => setXtbOpen((open) => !open)}
+          summary={xtbSettingsSummary(xtbSettings)}
+          summaryTooltip="Hamiltonian, convergence, charge, spin, solvation, and parallelism for xTB calculations."
+          summaryModified={xtbSettingsModified(xtbSettings)}
+          onReset={xtbSettingsModified(xtbSettings) ? () => actions.setXtbSettings(defaultXtbSettings) : undefined}
+          // xTB takes the viewer's selection as its scope the same way CREST does,
+          // and that changes what the run costs - worth saying out loud.
+          scope={runningXtbJob ? (
+            <>
+              {runningXtbJob.inputLabel} is running.
+              {" "}
+              <Button type="button" variant="outline" size="xs" onClick={() => void actions.cancelXtbJob(runningXtbJob.id)}>
+                Cancel
+              </Button>
+            </>
+          ) : jobScopedToSelection ? "Scope: selected object" : undefined}
+          notice={(
+            <EngineToolNotice
+              tools={[...oversizedNotice, {
+                name: "xTB",
+                installed: xtbStatus?.installed !== false,
+                hint: xtbStatus?.installHint ?? "",
+                install: () => void actions.installXtb(),
+              }]}
+              onCheck={() => void actions.checkXtbStatus()}
+            />
+          )}
+        >
+          <div className="structure-brief-actions structure-brief-actions-grid">
+            <XtbActionButton label="Optimize" tooltip={XTB_ACTION_TOOLTIPS.optimize} disabled={xtbBlocked} onClick={() => void actions.runXtbActiveOperation("optimize")} onContextMenu={showXtbSettingsFor("optimize")} />
+            <XtbActionButton label="Properties" tooltip={XTB_ACTION_TOOLTIPS.properties} disabled={xtbBlocked} onClick={() => void actions.runXtbActiveOperation("properties")} onContextMenu={showXtbSettingsFor("properties")} />
+            <XtbActionButton label="Frequencies" tooltip={XTB_ACTION_TOOLTIPS["optimized-hessian"]} disabled={xtbBlocked} onClick={() => void actions.runXtbActiveOperation("optimized-hessian")} onContextMenu={showXtbSettingsFor("optimized-hessian")} />
+            {/* Four of the seven operations are specialist runs, and giving them the
+                same weight as Optimize made the card read as a wall of buttons. */}
+            <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={xtbBlocked} onClick={showXtbMoreMenu}>
+              More
+              <ShortcutTooltip label="IP/EA, Fukui, molecular dynamics, and metadynamics runs." />
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" aria-expanded={xtbSettingsOpen} onClick={toggleGeneralXtbSettings}>
+              Settings
+              <ShortcutTooltip label="Hamiltonian, charge, spin, solvation, accuracy, property, and dynamics parameters." />
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
+              Jobs
+              <ShortcutTooltip label="xTB calculation history, energies, properties, trajectories, and output artifacts." />
+            </Button>
+          </div>
+          {xtbSettingsOpen ? (
+            <XtbInlineSettings
+              settings={xtbSettings}
+              scope={xtbSettingsScope}
+              xtbStatus={xtbStatus}
+              isBrowserDev={isBrowserDev}
+              actions={actions}
+              onClose={() => setXtbSettingsOpen(false)}
+            />
+          ) : null}
+        </InspectorEngineCard>
 
         {latestXtbJob?.result ? (
           <XtbResultsPanel document={document} job={latestXtbJob} actions={actions} />
@@ -426,68 +466,6 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
         </>
       ) : null}
 
-      {selectedEntity ? (
-        <SelectedEntityCard
-          selectedEntity={selectedEntity}
-          clearSelection={clearSelection}
-        />
-      ) : null}
-
-      {compositionSummary?.maestroRows?.length ? (
-        <section className="structure-brief-card">
-          <StructureSectionHeader title="Maestro entries" detail={`${compositionSummary.maestroRows.length} CT ${plural(compositionSummary.maestroRows.length, "block")}`} />
-          <StructureActionList
-            rows={compositionSummary.maestroRows}
-            document={document}
-            actions={actions}
-            activeActionKey={activeActionKey}
-            setActiveActionKey={setActiveActionKey}
-            compact
-          />
-        </section>
-      ) : null}
-
-      {compositionSummary?.ligandRows.length ? (
-        <section className="structure-brief-card">
-          <StructureSectionHeader title="Ligands" detail={`${compositionSummary.ligandRows.length} ${plural(compositionSummary.ligandRows.length, "instance")}`} />
-          <StructureActionList
-            rows={compositionSummary.ligandRows}
-            document={document}
-            actions={actions}
-            activeActionKey={activeActionKey}
-            setActiveActionKey={setActiveActionKey}
-            compact
-          />
-        </section>
-      ) : null}
-
-      {compositionSummary?.polymerRows.length ? (
-        <section className="structure-brief-card">
-          <StructureSectionHeader title="Chains" detail={`${compositionSummary.polymerRows.length} ${plural(compositionSummary.polymerRows.length, "chain")}`} />
-          <StructureActionList
-            rows={compositionSummary.polymerRows}
-            document={document}
-            actions={actions}
-            activeActionKey={activeActionKey}
-            setActiveActionKey={setActiveActionKey}
-            compact
-          />
-        </section>
-      ) : null}
-
-      {compositionSummary?.solventRows.length ? (
-        <section className="structure-brief-card">
-          <StructureSectionHeader title="Water / ions" />
-          <StructureActionList
-            rows={compositionSummary.solventRows}
-            document={document}
-            actions={actions}
-            activeActionKey={activeActionKey}
-            setActiveActionKey={setActiveActionKey}
-          />
-        </section>
-      ) : null}
-
       <StructureDetailsSection
         brief={brief}
         compositionSummary={compositionSummary}
@@ -517,8 +495,13 @@ type StructurePoseControls = {
 
 function structurePoseControlsFor(document: ViewerDocument, summary: StructureCompositionSummary | null): StructurePoseControls | null {
   if (document.renderer !== "molstar") return null;
+  // molstarSceneStructureCount already returns 0 for anything that is not a
+  // virtual scene, so the count alone identifies one. Requiring !summary as well
+  // used the parser failing as the signal, and for a scene built from real files
+  // the receptor almost always parses - so the stepper went missing exactly when
+  // there were several structures to step through.
   const sceneStructureCount = molstarSceneStructureCount(document);
-  if (!summary && sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT) {
+  if (sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT) {
     return {
       kind: "frames",
       title: "Structures",
@@ -1136,6 +1119,7 @@ function ConformerWorkflowCard({
   settings,
   open,
   setOpen,
+  oversizedNotice,
   actions,
 }: {
   document: ViewerDocument;
@@ -1145,6 +1129,7 @@ function ConformerWorkflowCard({
   settings: ShellViewState["conformerSettings"];
   open: boolean;
   setOpen: (updater: (open: boolean) => boolean) => void;
+  oversizedNotice: EngineTool[];
   actions: ShellActions;
 }) {
   const [settingsPanel, setSettingsPanel] = useState<"all" | "crest" | "prism" | null>(null);
@@ -1156,7 +1141,10 @@ function ConformerWorkflowCard({
   const canRunPrism = canInspectConformerEnsemble(document.extension);
   if (!canShowConformerWorkflow(document.extension, document.renderer) && !selectedConformerAction) return null;
   if (!canRunCrest && !canRunPrism) return null;
-  const crestDisabled = !canRunCrest || status?.crest.installed === false;
+  // CREST reads the whole structure the same way xTB does, so the atom cap
+  // applies to it too. PRISM only prunes an existing ensemble file.
+  const oversized = oversizedNotice.length > 0;
+  const crestDisabled = !canRunCrest || oversized || status?.crest.installed === false;
   const prismDisabled = !canRunPrism || status?.prism.installed === false;
   const showSettingsFor = (panel: "crest" | "prism") => (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1164,47 +1152,57 @@ function ConformerWorkflowCard({
     setSettingsPanel((current) => current === panel ? null : panel);
   };
   return (
-    <section className="structure-brief-card conformer-inspector-card" data-collapsed={!open || undefined}>
-      <div className="structure-inspector-section-header">
-        <button type="button" className="structure-inspector-section-title-button" aria-expanded={open} onClick={() => setOpen((current) => !current)}>
-          Conformers
-          <ShortcutTooltip label="Conformer search and ensemble pruning for small molecules or selected objects." />
-        </button>
-        <span>{conformerStatusSummary(status)}</span>
+    <InspectorEngineCard
+      className="conformer-inspector-card"
+      title="Conformers"
+      tooltip="Conformer search and ensemble pruning for small molecules or selected objects."
+      status={conformerStatusSummary(status)}
+      open={open}
+      onToggle={() => setOpen((current) => !current)}
+      summary={conformerSettingsSummary(settings)}
+      scope={selectedConformerAction ? "Scope: selected object" : undefined}
+      notice={(
+        <EngineToolNotice
+          tools={[...oversizedNotice, ...conformerTools(status)]}
+          onCheck={() => void actions.checkConformerStatus()}
+        />
+      )}
+    >
+      <div className="structure-brief-actions structure-brief-actions-grid">
+        <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={crestDisabled} onClick={() => void actions.runConformerOperation("crest-generate", document, selectedConformerAction)} onContextMenu={showSettingsFor("crest")}>
+          CREST
+          <ShortcutTooltip label="Sample low-energy conformers with CREST." />
+        </Button>
+        <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={prismDisabled} onClick={() => void actions.runConformerOperation("prism-prune", document)} onContextMenu={showSettingsFor("prism")}>
+          PRISM
+          <ShortcutTooltip label="Prune duplicate or redundant conformers." />
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" aria-expanded={settingsPanel !== null} onClick={() => setSettingsPanel((current) => current === "all" ? null : "all")}>
+          Settings
+          <ShortcutTooltip label="CREST and PRISM run parameters." />
+        </Button>
+        <Button type="button" variant="outline" size="sm" className="structure-inspector-xtb-action w-full" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
+          Jobs
+          <ShortcutTooltip label="Calculation history and output artifacts." />
+        </Button>
       </div>
-      {open ? (
-        <>
-          <div className="structure-inspector-xtb-summary">
-            <span>{conformerSettingsSummary(settings)}</span>
-          </div>
-          {selectedConformerAction ? (
-            <div className="structure-brief-notes">
-              <span>Scope: selected object</span>
-            </div>
-          ) : null}
-          <div className="structure-brief-actions structure-brief-actions-grid">
-            <button type="button" className="dock-action" disabled={crestDisabled} onClick={() => void actions.runConformerOperation("crest-generate", document, selectedConformerAction)} onContextMenu={showSettingsFor("crest")}>
-              CREST
-              <ShortcutTooltip label="Sample low-energy conformers with CREST." />
-            </button>
-            <button type="button" className="dock-action" disabled={prismDisabled} onClick={() => void actions.runConformerOperation("prism-prune", document)} onContextMenu={showSettingsFor("prism")}>
-              PRISM
-              <ShortcutTooltip label="Prune duplicate or redundant conformers." />
-            </button>
-            <button type="button" className="dock-action" aria-expanded={settingsPanel !== null} onClick={() => setSettingsPanel((current) => current === "all" ? null : "all")}>
-              Settings
-              <ShortcutTooltip label="CREST and PRISM run parameters." />
-            </button>
-            <button type="button" className="dock-action" onClick={() => actions.toggleDockTab("bottom", "jobs")}>
-              Jobs
-              <ShortcutTooltip label="Calculation history and output artifacts." />
-            </button>
-          </div>
-          {settingsPanel ? <ConformerInlineSettings panel={settingsPanel} settings={settings} status={status} actions={actions} /> : null}
-        </>
-      ) : null}
-    </section>
+      {settingsPanel ? <ConformerInlineSettings panel={settingsPanel} settings={settings} status={status} actions={actions} /> : null}
+    </InspectorEngineCard>
   );
+}
+
+// Open Babel only appears once the backend has reported on it; the older status
+// payloads leave it out entirely.
+function conformerTools(status: ShellViewState["conformerStatus"]): EngineTool[] {
+  if (!status) return [];
+  const tools: EngineTool[] = [
+    { name: "CREST", installed: status.crest.installed, hint: status.crest.installHint },
+    { name: "PRISM Pruner", installed: status.prism.installed, hint: status.prism.installHint },
+  ];
+  if (status.openbabel) {
+    tools.push({ name: "Open Babel", installed: status.openbabel.installed, hint: status.openbabel.installHint });
+  }
+  return tools;
 }
 
 function ConformerInlineSettings({
@@ -1225,27 +1223,32 @@ function ConformerInlineSettings({
     <div className="structure-inspector-xtb-settings conformer-inline-settings">
       <div className="structure-inspector-section-header">
         <h4>{panel === "crest" ? "CREST settings" : panel === "prism" ? "PRISM settings" : "Conformer settings"}</h4>
-        <button type="button" className="structure-inspector-inline-action" onClick={() => void actions.checkConformerStatus()}>
+        <Button type="button" variant="outline" size="xs" onClick={() => void actions.checkConformerStatus()}>
           Check
-        </button>
+        </Button>
       </div>
       <div className="structure-inspector-settings-status">{conformerStatusSummary(status)}</div>
       {showCrest ? (
-        <div className="structure-inspector-settings-category">
-          <h5>CREST</h5>
+        <InlineSettingsSection title="CREST">
           <InlineXtbSetting label="Method">
-            <SelectControl value={settings.method} options={["gfn2", "gfn1", "gfn0", "gfnff"]} onChange={(value) => updateSettings({ method: value as ConformerSettings["method"] })} />
+            <InlineSegmentedControl
+              value={settings.method}
+              options={["gfn2", "gfn1", "gfn0", "gfnff"]}
+              labels={XTB_METHOD_LABELS}
+              ariaLabel="CREST method"
+              onChange={(value) => updateSettings({ method: value as ConformerSettings["method"] })}
+            />
           </InlineXtbSetting>
           <InlineXtbSetting label="Sampling">
-            <SelectControl value={settings.samplingMode} options={["auto", "normal", "quick", "squick", "mquick"]} onChange={(value) => updateSettings({ samplingMode: value as ConformerSettings["samplingMode"] })} />
+            <SelectControl value={settings.samplingMode} options={["auto", "normal", "quick", "squick", "mquick"]} labels={CONFORMER_SAMPLING_LABELS} onChange={(value) => updateSettings({ samplingMode: value as ConformerSettings["samplingMode"] })} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Solvent">
-            <SelectControl value={settings.solvent} options={["none", "water", "methanol", "acetonitrile", "dmso", "chloroform"]} onChange={(value) => updateSettings({ solvent: value as ConformerSettings["solvent"] })} />
+            <SelectControl value={settings.solvent} options={["none", "water", "methanol", "acetonitrile", "dmso", "chloroform"]} labels={CONFORMER_SOLVENT_LABELS} onChange={(value) => updateSettings({ solvent: value as ConformerSettings["solvent"] })} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Charge">
             <RangeControl value={settings.charge} min={-8} max={8} step={1} onChange={(value) => updateSettings({ charge: value })} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="UHF">
+          <InlineXtbSetting label="Unpaired electrons">
             <RangeControl value={settings.uhf} min={0} max={12} step={1} onChange={(value) => updateSettings({ uhf: value })} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Threads">
@@ -1254,21 +1257,20 @@ function ConformerInlineSettings({
           <InlineXtbSetting label="Energy window">
             <NumberXtbControl value={settings.energyWindowKcalMol} min={1} max={60} step={0.5} suffix="kcal/mol" onChange={(value) => updateSettings({ energyWindowKcalMol: value })} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="RMSD">
-            <NumberXtbControl value={settings.rmsdThresholdAngstrom} min={0.01} max={2} step={0.005} suffix="A" onChange={(value) => updateSettings({ rmsdThresholdAngstrom: value })} />
+          <InlineXtbSetting label="RMSD threshold">
+            <NumberXtbControl value={settings.rmsdThresholdAngstrom} min={0.01} max={2} step={0.005} suffix="Å" onChange={(value) => updateSettings({ rmsdThresholdAngstrom: value })} />
           </InlineXtbSetting>
-        </div>
+        </InlineSettingsSection>
       ) : null}
       {showPrism ? (
-        <div className="structure-inspector-settings-category">
-          <h5>PRISM</h5>
+        <InlineSettingsSection title="PRISM">
           <InlineXtbSetting label="Timeout">
-            <RangeControl value={settings.prismTimeoutSeconds} min={5} max={86400} step={5} onChange={(value) => updateSettings({ prismTimeoutSeconds: value })} />
+            <RangeControl value={settings.prismTimeoutSeconds} min={5} max={86400} step={5} suffix="s" onChange={(value) => updateSettings({ prismTimeoutSeconds: value })} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="Energy sort">
+          <InlineXtbSetting label="Sort by energy">
             <ToggleControl label="Sort by energy" checked={settings.prismEnergySort} onChange={(value) => updateSettings({ prismEnergySort: value })} />
           </InlineXtbSetting>
-        </div>
+        </InlineSettingsSection>
       ) : null}
     </div>
   );
@@ -1814,6 +1816,13 @@ const XTB_ACTION_TOOLTIPS = {
   metadyn: "Bias the xTB dynamics to explore conformational space beyond local minima.",
 } satisfies Record<string, string>;
 
+const XTB_MORE_OPERATIONS = [
+  ["vipea", "IP/EA"],
+  ["vfukui", "Fukui"],
+  ["md", "MD"],
+  ["metadyn", "Metadyn"],
+] as const satisfies readonly (readonly [keyof typeof XTB_ACTION_TOOLTIPS, string])[];
+
 const XTB_SETTING_TOOLTIPS = {
   method: "Choose the xTB Hamiltonian. GFN2 is the default balanced method; GFNFF is faster for large systems.",
   optLevel: "Controls geometry optimization convergence. Loose is faster; tight and verytight are more conservative.",
@@ -1907,19 +1916,128 @@ function XtbSettingsCategoryBar({
 function XtbActionButton({
   label,
   tooltip,
+  disabled,
   onClick,
   onContextMenu,
 }: {
   label: string;
   tooltip: string;
+  disabled?: boolean;
   onClick: () => void;
   onContextMenu: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
-    <button type="button" className="dock-action structure-inspector-xtb-action" onClick={onClick} onContextMenu={onContextMenu}>
+    <Button type="button" variant="secondary" size="sm" className="structure-inspector-xtb-action w-full" disabled={disabled} onClick={onClick} onContextMenu={onContextMenu}>
       {label}
       <ShortcutTooltip label={tooltip} />
-    </button>
+    </Button>
+  );
+}
+
+// The conformer and xTB cards were the same card written twice: a collapsible
+// header with a status, a settings summary, a grid of runs and an inline
+// settings body. They now share one.
+function InspectorEngineCard({
+  className,
+  title,
+  tooltip,
+  status,
+  open,
+  onToggle,
+  summary,
+  summaryTooltip,
+  summaryModified,
+  onReset,
+  notice,
+  scope,
+  children,
+}: {
+  className: string;
+  title: string;
+  tooltip: string;
+  status: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  summary: string;
+  summaryTooltip?: string;
+  summaryModified?: boolean;
+  onReset?: () => void;
+  notice?: ReactNode;
+  scope?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={onToggle}
+      className={`structure-brief-card ${className}`}
+      data-collapsed={!open || undefined}
+    >
+      <div className="structure-inspector-section-header">
+        <CollapsibleTrigger className="structure-inspector-section-title-button">
+          {title}
+          <ShortcutTooltip label={tooltip} />
+        </CollapsibleTrigger>
+        <span>{status}</span>
+      </div>
+      <CollapsibleContent className="structure-inspector-engine-body">
+        <div
+          className="structure-inspector-xtb-summary"
+          data-modified={summaryModified || undefined}
+          data-xtb-tooltip={summaryTooltip}
+        >
+          <span>{summary}</span>
+          {onReset ? (
+            <Button type="button" variant="outline" size="xs" onClick={onReset}>
+              Reset
+              <ShortcutTooltip label="Restore the default settings." />
+            </Button>
+          ) : null}
+        </div>
+        {scope ? (
+          <div className="structure-brief-notes">
+            <span>{scope}</span>
+          </div>
+        ) : null}
+        {notice}
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+type EngineTool = {
+  name: string;
+  installed: boolean;
+  hint: string;
+  install?: () => void;
+};
+
+// A disabled button with no explanation is a dead end. The backend already says
+// how to install each tool, so the card repeats that instead of swallowing it.
+function EngineToolNotice({ tools, onCheck }: { tools: EngineTool[]; onCheck: () => void }) {
+  const missing = tools.filter((tool) => !tool.installed);
+  if (missing.length === 0) return null;
+  return (
+    <div className="structure-inspector-engine-notices">
+      {missing.map((tool) => (
+        <Alert key={tool.name} className="structure-inspector-engine-notice">
+          {/* Every hint the backend writes already names its own tool, so repeating
+              the name here would only read as a stutter. */}
+          <AlertDescription>{tool.hint || `${tool.name} is not installed.`}</AlertDescription>
+          {tool.install ? (
+            <AlertAction>
+              <Button type="button" variant="outline" size="xs" onClick={tool.install}>
+                Install
+              </Button>
+            </AlertAction>
+          ) : null}
+        </Alert>
+      ))}
+      <Button type="button" variant="ghost" size="xs" className="justify-self-start" onClick={onCheck}>
+        Check again
+      </Button>
+    </div>
   );
 }
 
@@ -1958,31 +2076,43 @@ function XtbInlineSettings({
     <div className="structure-inspector-xtb-settings">
       <div className="structure-inspector-xtb-settings-title">
         <span>{xtbSettingsScopeLabel(scope)} settings</span>
-        <button type="button" className="structure-inspector-inline-action" onClick={onClose}>
+        <Button type="button" variant="ghost" size="xs" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
       <div className="structure-inspector-xtb-runtime">
         <span>{xtbStatus?.executablePath ?? xtbStatus?.installHint ?? (isBrowserDev ? "Browser dev can run local xTB jobs." : "xTB status has not been checked.")}</span>
-        <button type="button" className="structure-inspector-inline-action" onClick={() => void actions.checkXtbStatus()}>
+        <Button type="button" variant="outline" size="xs" onClick={() => void actions.checkXtbStatus()}>
           Check
-        </button>
+        </Button>
       </div>
       {showCategories ? <XtbSettingsCategoryBar category={category} setCategory={setCategory} /> : null}
       {showCore ? (
-        <>
+        <XtbSettingsGroup title="Calculation" labelled={!showCategories}>
           <InlineXtbSetting label="Method" tooltip={XTB_SETTING_TOOLTIPS.method} reset={() => update("method", defaultXtbSettings.method)} modified={settings.method !== defaultXtbSettings.method}>
-            <SelectControl value={settings.method} options={["gfn2", "gfn1", "gfn0", "gfnff"]} onChange={(method) => update("method", method as XtbSettings["method"])} />
+            <InlineSegmentedControl
+              value={settings.method}
+              options={["gfn2", "gfn1", "gfn0", "gfnff"]}
+              labels={XTB_METHOD_LABELS}
+              ariaLabel="xTB method"
+              onChange={(method) => update("method", method as XtbSettings["method"])}
+            />
           </InlineXtbSetting>
           {showOptLevel ? (
-            <InlineXtbSetting label="Opt level" tooltip={XTB_SETTING_TOOLTIPS.optLevel} reset={() => update("optLevel", defaultXtbSettings.optLevel)} modified={settings.optLevel !== defaultXtbSettings.optLevel}>
-              <SelectControl value={settings.optLevel} options={["loose", "normal", "tight", "verytight"]} onChange={(optLevel) => update("optLevel", optLevel as XtbSettings["optLevel"])} />
+            <InlineXtbSetting label="Convergence" tooltip={XTB_SETTING_TOOLTIPS.optLevel} reset={() => update("optLevel", defaultXtbSettings.optLevel)} modified={settings.optLevel !== defaultXtbSettings.optLevel}>
+              <InlineSegmentedControl
+                value={settings.optLevel}
+                options={["loose", "normal", "tight", "verytight"]}
+                labels={XTB_OPT_LEVEL_LABELS}
+                ariaLabel="Optimization convergence"
+                onChange={(optLevel) => update("optLevel", optLevel as XtbSettings["optLevel"])}
+              />
             </InlineXtbSetting>
           ) : null}
           <InlineXtbSetting label="Charge" tooltip={XTB_SETTING_TOOLTIPS.charge} reset={() => update("charge", defaultXtbSettings.charge)} modified={settings.charge !== defaultXtbSettings.charge}>
             <RangeControl value={settings.charge} min={-5} max={5} step={1} onChange={(charge) => update("charge", charge)} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="UHF" tooltip={XTB_SETTING_TOOLTIPS.uhf} reset={() => update("uhf", defaultXtbSettings.uhf)} modified={settings.uhf !== defaultXtbSettings.uhf}>
+          <InlineXtbSetting label="Unpaired electrons" tooltip={XTB_SETTING_TOOLTIPS.uhf} reset={() => update("uhf", defaultXtbSettings.uhf)} modified={settings.uhf !== defaultXtbSettings.uhf}>
             <RangeControl value={settings.uhf} min={0} max={10} step={1} onChange={(uhf) => update("uhf", uhf)} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Threads" tooltip={XTB_SETTING_TOOLTIPS.threads} reset={() => update("threads", defaultXtbSettings.threads)} modified={settings.threads !== defaultXtbSettings.threads}>
@@ -1991,22 +2121,29 @@ function XtbInlineSettings({
           <InlineXtbSetting label="Accuracy" tooltip={XTB_SETTING_TOOLTIPS.accuracy} reset={() => update("accuracy", defaultXtbSettings.accuracy)} modified={settings.accuracy !== defaultXtbSettings.accuracy}>
             <NumberXtbControl value={settings.accuracy} min={0.05} max={10} step={0.05} onChange={(accuracy) => update("accuracy", accuracy)} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="E-temp" tooltip={XTB_SETTING_TOOLTIPS.electronicTemperature} reset={() => update("electronicTemperature", defaultXtbSettings.electronicTemperature)} modified={settings.electronicTemperature !== defaultXtbSettings.electronicTemperature}>
-            <RangeControl value={settings.electronicTemperature} min={50} max={5000} step={50} onChange={(electronicTemperature) => update("electronicTemperature", electronicTemperature)} />
+          <InlineXtbSetting label="Electronic temp" tooltip={XTB_SETTING_TOOLTIPS.electronicTemperature} reset={() => update("electronicTemperature", defaultXtbSettings.electronicTemperature)} modified={settings.electronicTemperature !== defaultXtbSettings.electronicTemperature}>
+            <RangeControl value={settings.electronicTemperature} min={50} max={5000} step={50} suffix="K" onChange={(electronicTemperature) => update("electronicTemperature", electronicTemperature)} />
           </InlineXtbSetting>
-        </>
+        </XtbSettingsGroup>
       ) : null}
       {showSolvation ? (
-        <>
-          <InlineXtbSetting label="Solvation" tooltip={XTB_SETTING_TOOLTIPS.solvation} reset={() => update("solvationModel", defaultXtbSettings.solvationModel)} modified={settings.solvationModel !== defaultXtbSettings.solvationModel}>
-            <SelectControl value={settings.solvationModel} options={["none", "alpb", "gbsa", "cosmo", "cpcmx"]} onChange={(solvationModel) => update("solvationModel", solvationModel as XtbSettings["solvationModel"])} />
+        <XtbSettingsGroup title="Solvation" labelled={!showCategories}>
+          <InlineXtbSetting label="Model" tooltip={XTB_SETTING_TOOLTIPS.solvation} reset={() => update("solvationModel", defaultXtbSettings.solvationModel)} modified={settings.solvationModel !== defaultXtbSettings.solvationModel}>
+            <InlineSegmentedControl
+              value={settings.solvationModel}
+              options={["none", "alpb", "gbsa", "cosmo", "cpcmx"]}
+              labels={XTB_SOLVATION_LABELS}
+              ariaLabel="Solvation model"
+              onChange={(solvationModel) => update("solvationModel", solvationModel as XtbSettings["solvationModel"])}
+            />
           </InlineXtbSetting>
           <InlineXtbSetting label="Solvent" tooltip={XTB_SETTING_TOOLTIPS.solvent} reset={() => update("solvent", defaultXtbSettings.solvent)} modified={settings.solvent !== defaultXtbSettings.solvent}>
-            <SelectControl value={settings.solvent} options={XTB_SOLVENT_OPTIONS} onChange={(solvent) => update("solvent", solvent)} />
+            <SelectControl value={settings.solvent} options={XTB_SOLVENT_OPTIONS} labels={XTB_SOLVENT_LABELS} onChange={(solvent) => update("solvent", solvent)} />
           </InlineXtbSetting>
-        </>
+        </XtbSettingsGroup>
       ) : null}
       {showProperties ? (
+        <XtbSettingsGroup title="Properties" labelled={!showCategories}>
         <div className="structure-inspector-xtb-toggle-grid" aria-label="xTB property outputs" data-xtb-tooltip={XTB_SETTING_TOOLTIPS.properties}>
           <XtbToggle label="Dipole" tooltip={XTB_PROPERTY_TOOLTIPS.dipole} checked={settings.properties.dipole} onChange={(value) => updateProperty("dipole", value)} />
           <XtbToggle label="WBO" tooltip={XTB_PROPERTY_TOOLTIPS.wbo} checked={settings.properties.wbo} onChange={(value) => updateProperty("wbo", value)} />
@@ -2017,35 +2154,44 @@ function XtbInlineSettings({
           <XtbToggle label="ESP" tooltip={XTB_PROPERTY_TOOLTIPS.esp} checked={settings.properties.esp} onChange={(value) => updateProperty("esp", value)} />
           <XtbToggle label="Fukui" tooltip={XTB_PROPERTY_TOOLTIPS.fukui} checked={settings.properties.fukui} onChange={(value) => updateProperty("fukui", value)} />
         </div>
+        </XtbSettingsGroup>
       ) : null}
       {showMd ? (
-        <>
-          <InlineXtbSetting label="MD temp" tooltip={XTB_SETTING_TOOLTIPS.mdTemperature} reset={() => update("mdTemperature", defaultXtbSettings.mdTemperature)} modified={settings.mdTemperature !== defaultXtbSettings.mdTemperature}>
-            <RangeControl value={settings.mdTemperature} min={50} max={2000} step={10} onChange={(mdTemperature) => update("mdTemperature", mdTemperature)} />
+        <XtbSettingsGroup title="Dynamics" labelled={!showCategories}>
+          <InlineXtbSetting label="Temperature" tooltip={XTB_SETTING_TOOLTIPS.mdTemperature} reset={() => update("mdTemperature", defaultXtbSettings.mdTemperature)} modified={settings.mdTemperature !== defaultXtbSettings.mdTemperature}>
+            <RangeControl value={settings.mdTemperature} min={50} max={2000} step={10} suffix="K" onChange={(mdTemperature) => update("mdTemperature", mdTemperature)} />
           </InlineXtbSetting>
-          <InlineXtbSetting label="MD time" tooltip={XTB_SETTING_TOOLTIPS.mdTime} reset={() => update("mdTimePs", defaultXtbSettings.mdTimePs)} modified={settings.mdTimePs !== defaultXtbSettings.mdTimePs}>
+          <InlineXtbSetting label="Duration" tooltip={XTB_SETTING_TOOLTIPS.mdTime} reset={() => update("mdTimePs", defaultXtbSettings.mdTimePs)} modified={settings.mdTimePs !== defaultXtbSettings.mdTimePs}>
             <NumberXtbControl value={settings.mdTimePs} min={0.05} max={100} step={0.05} onChange={(mdTimePs) => update("mdTimePs", mdTimePs)} suffix="ps" />
           </InlineXtbSetting>
-          <InlineXtbSetting label="MD step" tooltip={XTB_SETTING_TOOLTIPS.mdStep} reset={() => update("mdStepFs", defaultXtbSettings.mdStepFs)} modified={settings.mdStepFs !== defaultXtbSettings.mdStepFs}>
+          <InlineXtbSetting label="Time step" tooltip={XTB_SETTING_TOOLTIPS.mdStep} reset={() => update("mdStepFs", defaultXtbSettings.mdStepFs)} modified={settings.mdStepFs !== defaultXtbSettings.mdStepFs}>
             <NumberXtbControl value={settings.mdStepFs} min={0.1} max={10} step={0.1} onChange={(mdStepFs) => update("mdStepFs", mdStepFs)} suffix="fs" />
           </InlineXtbSetting>
           <InlineXtbSetting label="Snapshots" tooltip={XTB_SETTING_TOOLTIPS.mdSnapshots} reset={() => update("mdSnapshots", defaultXtbSettings.mdSnapshots)} modified={settings.mdSnapshots !== defaultXtbSettings.mdSnapshots}>
             <RangeControl value={settings.mdSnapshots} min={1} max={1000} step={1} onChange={(mdSnapshots) => update("mdSnapshots", mdSnapshots)} />
           </InlineXtbSetting>
-        </>
+        </XtbSettingsGroup>
       ) : null}
       {showOutput ? (
-        <>
-          <InlineXtbSetting label="Save files" tooltip={XTB_SETTING_TOOLTIPS.saveRunFiles} reset={() => update("saveRunFiles", defaultXtbSettings.saveRunFiles)} modified={settings.saveRunFiles !== defaultXtbSettings.saveRunFiles}>
+        <XtbSettingsGroup title="Output" labelled={!showCategories}>
+          <InlineXtbSetting label="Keep run files" tooltip={XTB_SETTING_TOOLTIPS.saveRunFiles} reset={() => update("saveRunFiles", defaultXtbSettings.saveRunFiles)} modified={settings.saveRunFiles !== defaultXtbSettings.saveRunFiles}>
             <ToggleControl label="Save xTB run files" checked={settings.saveRunFiles} onChange={(saveRunFiles) => update("saveRunFiles", saveRunFiles)} />
           </InlineXtbSetting>
           <InlineXtbSetting label="Timeout" tooltip={XTB_SETTING_TOOLTIPS.timeout} reset={() => update("timeoutSeconds", defaultXtbSettings.timeoutSeconds)} modified={settings.timeoutSeconds !== defaultXtbSettings.timeoutSeconds}>
-            <RangeControl value={settings.timeoutSeconds} min={30} max={1200} step={30} onChange={(timeoutSeconds) => update("timeoutSeconds", timeoutSeconds)} />
+            <RangeControl value={settings.timeoutSeconds} min={30} max={1200} step={30} suffix="s" onChange={(timeoutSeconds) => update("timeoutSeconds", timeoutSeconds)} />
           </InlineXtbSetting>
-        </>
+        </XtbSettingsGroup>
       ) : null}
     </div>
   );
+}
+
+// In category mode the bar above already says which group you are in, so the
+// heading would only repeat it. Scoped mode stacks several groups at once and
+// needs them.
+function XtbSettingsGroup({ title, labelled, children }: { title: string; labelled: boolean; children: ReactNode }) {
+  if (!labelled) return <>{children}</>;
+  return <InlineSettingsSection title={title}>{children}</InlineSettingsSection>;
 }
 
 const XTB_SOLVENT_OPTIONS = [
@@ -2073,6 +2219,23 @@ const XTB_SOLVENT_OPTIONS = [
   "toluene",
   "thf",
 ];
+
+// Only the tokens whose spelling is not already the chemical name.
+const XTB_SOLVENT_LABELS: Record<string, string> = {
+  none: "Gas phase",
+  ch2cl2: "Dichloromethane",
+  chcl3: "Chloroform",
+  cs2: "Carbon disulfide",
+  dmf: "DMF",
+  dmso: "DMSO",
+  ether: "Diethyl ether",
+  ethylacetate: "Ethyl acetate",
+  furane: "Furan",
+  nitromethane: "Nitromethane",
+  thf: "THF",
+  ...Object.fromEntries(["water", "acetone", "acetonitrile", "aniline", "benzaldehyde", "benzene", "dioxane", "hexane", "methanol", "octanol", "phenol", "toluene"]
+    .map((solvent) => [solvent, solvent.charAt(0).toUpperCase() + solvent.slice(1)])),
+};
 
 function XtbToggle({ label, tooltip, checked, onChange }: { label: string; tooltip: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
@@ -2456,14 +2619,17 @@ const XTB_PATTERN_ARTIFACTS: Record<string, Omit<XtbTextArtifactInfo, "runName">
 };
 
 function latestXtbJobForDocument(document: ViewerDocument, jobs: ShellViewState["xtbJobs"]) {
+  const documentPaths = [document.path, document.sourcePath].filter((path): path is string => Boolean(path));
   return jobs.find((job) => {
+    // The label is set when the job is queued; everything else only exists once
+    // it finishes. Testing it behind `result &&` meant a running job could never
+    // match its own document, so the panel stayed silent until the run ended.
+    if (job.inputLabel === document.title) return true;
     const result = job.result;
-    const documentPaths = [document.path, document.sourcePath].filter((path): path is string => Boolean(path));
-    return result && (
-      documentPaths.includes(result.primaryOpenPath ?? "")
-      || job.inputLabel === document.title
-      || result.command.some((part) => documentPaths.includes(part))
-      || result.artifacts.some((artifact) => documentPaths.includes(artifact.path))
+    return Boolean(result) && (
+      documentPaths.includes(result!.primaryOpenPath ?? "")
+      || result!.command.some((part) => documentPaths.includes(part))
+      || result!.artifacts.some((artifact) => documentPaths.includes(artifact.path))
     );
   }) ?? null;
 }
@@ -2482,21 +2648,14 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
   const runName = xtbRunNameForPath(result.workDir) ?? fileName(result.workDir);
   const commandSummary = xtbCommandSummary(result.command);
   const openedInMs = Number.isFinite(result.elapsedMs) ? `${Math.max(0.1, result.elapsedMs / 1000).toFixed(1)} s` : "n/a";
-  const colorChargesInMolstar = () => {
+  // Both renderers took the same action with the same payload; only the button
+  // label differed.
+  const colorCharges = () => {
     actions.runStructureViewerAction(document, {
       type: "color_xtb_charges",
       label: "Color xTB charges",
       charges: allCharges,
       chargeFilePath: chargesArtifact?.path,
-    });
-  };
-  const colorChargesInXyzrender = () => {
-    if (!chargesArtifact) return;
-    actions.runStructureViewerAction(document, {
-      type: "color_xtb_charges",
-      label: "Color xTB charges",
-      charges: allCharges,
-      chargeFilePath: chargesArtifact.path,
     });
   };
   const colorFukuiInMolstar = (mode: "fplus" | "fminus" | "fzero") => {
@@ -2542,11 +2701,11 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
           columns={["Atom", "Charge"]}
           rows={charges.map((charge, index) => [`#${index + 1}`, charge.toFixed(4)])}
           action={document.renderer === "molstar" ? (
-            <button type="button" className="structure-inspector-xtb-table-action" onClick={colorChargesInMolstar}>
+            <button type="button" className="structure-inspector-xtb-table-action" onClick={colorCharges}>
               Color in Mol*
             </button>
           ) : document.renderer === "xyzrender-external" && chargesArtifact ? (
-            <button type="button" className="structure-inspector-xtb-table-action" onClick={colorChargesInXyzrender}>
+            <button type="button" className="structure-inspector-xtb-table-action" onClick={colorCharges}>
               Color in xyzr
             </button>
           ) : null}
@@ -2604,16 +2763,16 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
       </div>
       <div className="dock-action-row structure-inspector-xtb-result-actions">
         {result.primaryOpenPath ? (
-          <button type="button" className="dock-action" onClick={() => void actions.openPaths([result.primaryOpenPath!])}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void actions.openPaths([result.primaryOpenPath!])}>
             Open result
-          </button>
+          </Button>
         ) : null}
-        <button type="button" className="dock-action" onClick={() => void actions.revealPath(result.workDir, "xTB run folder")}>
+        <Button type="button" variant="secondary" size="sm" onClick={() => void actions.revealPath(result.workDir, "xTB run folder")}>
           Open run folder
-        </button>
-        <button type="button" className="dock-action" onClick={() => void actions.openTextPaths([result.logPath])}>
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => void actions.openTextPaths([result.logPath])}>
           Log
-        </button>
+        </Button>
       </div>
     </section>
   );
@@ -2711,6 +2870,15 @@ function xtbArtifactButtonTitle(artifact: XtbArtifact) {
   return info ? `${info.title}: ${info.summary}` : artifact.path;
 }
 
+// Keyed by the exact flags xtb_solvation_flag emits in the backend. The previous
+// list guessed "--cpcm", so a CPCM-X run was reported back as gas phase.
+const XTB_SOLVATION_FLAG_LABELS: Record<string, string> = {
+  "--alpb": "ALPB",
+  "--gbsa": "GBSA",
+  "--cosmo": "COSMO",
+  "--cpcmx": "CPCM-X",
+};
+
 function operationTitle(operation: XtbRunResult["operation"]) {
   switch (operation) {
     case "optimize":
@@ -2741,9 +2909,11 @@ function xtbCommandSummary(command: string[]) {
   const charge = chargeIndex >= 0 ? `charge ${command[chargeIndex + 1] ?? "0"}` : null;
   const uhfIndex = command.indexOf("--uhf");
   const uhf = uhfIndex >= 0 ? `UHF ${command[uhfIndex + 1] ?? "0"}` : null;
-  const solventFlag = command.find((part) => ["--alpb", "--gbsa", "--cosmo", "--cpcm"].includes(part.toLowerCase()));
+  const solventFlag = command.find((part) => XTB_SOLVATION_FLAG_LABELS[part.toLowerCase()]);
   const solventIndex = solventFlag ? command.indexOf(solventFlag) : -1;
-  const solvent = solventFlag ? `${solventFlag.replace("--", "").toUpperCase()} ${command[solventIndex + 1] ?? ""}`.trim() : "gas phase";
+  const solvent = solventFlag
+    ? `${XTB_SOLVATION_FLAG_LABELS[solventFlag.toLowerCase()]} ${command[solventIndex + 1] ?? ""}`.trim()
+    : "gas phase";
   return [method, opt, charge, uhf, solvent].filter(Boolean).join(" · ") || truncateInline(joined, 80);
 }
 
@@ -2857,6 +3027,68 @@ function formatDipole(value: unknown) {
   return rows.length >= 3 ? rows.slice(0, 3).map((number) => number.toFixed(3)).join(", ") : "n/a";
 }
 
+// Engine tokens are what the executable wants; these are what a reader wants.
+const XTB_METHOD_LABELS: Record<string, string> = {
+  gfn2: "GFN2", gfn1: "GFN1", gfn0: "GFN0", gfnff: "GFN-FF",
+};
+const XTB_OPT_LEVEL_LABELS: Record<string, string> = {
+  loose: "Loose", normal: "Normal", tight: "Tight", verytight: "Very tight",
+};
+const XTB_SOLVATION_LABELS: Record<string, string> = {
+  none: "None", alpb: "ALPB", gbsa: "GBSA", cosmo: "COSMO", cpcmx: "CPCM-X",
+};
+const CONFORMER_SAMPLING_LABELS: Record<string, string> = {
+  auto: "Auto", normal: "Normal", quick: "Quick", squick: "Super quick", mquick: "Micro quick",
+};
+const CONFORMER_SOLVENT_LABELS: Record<string, string> = {
+  none: "Gas phase", water: "Water", methanol: "Methanol",
+  acetonitrile: "Acetonitrile", dmso: "DMSO", chloroform: "Chloroform",
+};
+
+// Small mutually exclusive sets read far better as one switch than as a dropdown
+// you have to open to see the alternatives - the same trade the viewport menus make.
+function InlineSegmentedControl({
+  value,
+  options,
+  labels,
+  ariaLabel,
+  onChange,
+}: {
+  value: string;
+  options: readonly string[];
+  labels: Record<string, string>;
+  ariaLabel: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <ToggleGroup
+      type="single"
+      value={value}
+      aria-label={ariaLabel}
+      size="sm"
+      spacing={0}
+      className="structure-inspector-segment"
+      // A radio group is never empty: clicking the active item must not clear it.
+      onValueChange={(next) => { if (next) onChange(next); }}
+    >
+      {options.map((option) => (
+        <ToggleGroupItem key={option} value={option} className="structure-inspector-segment-button">
+          {labels[option] ?? option}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
+}
+
+function InlineSettingsSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="structure-inspector-settings-group">
+      <h5 className="structure-inspector-settings-group-title">{title}</h5>
+      {children}
+    </div>
+  );
+}
+
 function InlineXtbSetting({
   label,
   tooltip,
@@ -2899,6 +3131,22 @@ function countFromSummaryValue(value: string | null, unit: string) {
   return match?.[1] ?? null;
 }
 
+// How many atoms a scoped run would actually touch. A ligand pick carries its
+// own count; a composition row (a chain, all polymers, all ligands) states it in
+// its value text. Used to keep the pre-click size gate honest for large
+// selections, not just for the whole structure.
+function selectedScopeAtomCount(
+  selectedEntity: SelectedStructureRow | null,
+  viewerLigandSelection: ShellViewState["viewerLigandSelection"],
+): number | null {
+  if (viewerLigandSelection?.atoms) return viewerLigandSelection.atoms;
+  if (selectedEntity) {
+    const atoms = countFromSummaryValue(selectedEntity.row.value, "atoms");
+    if (atoms) return Number(atoms.replace(/,/gu, ""));
+  }
+  return null;
+}
+
 function valueForLabel(rows: StructureSummaryRow[], label: string) {
   return rows.find((row) => row.label === label)?.value ?? null;
 }
@@ -2938,71 +3186,6 @@ function selectedStructureRow(
   return null;
 }
 
-function SelectedEntityCard({
-  selectedEntity,
-  clearSelection,
-}: {
-  selectedEntity: SelectedStructureRow;
-  clearSelection: () => void;
-}) {
-  const copyIdentity = () => void navigator.clipboard?.writeText(`${selectedEntity.row.label}: ${selectedEntity.row.value}`);
-  return (
-    <section className="structure-brief-card structure-inspector-selected-card">
-      <StructureSectionHeader title="Selected entity" detail={selectedEntity.group} />
-      <div className="structure-inspector-selection-pill">
-        <span>Selected</span>
-        <strong>{selectedEntity.row.label}</strong>
-        <button type="button" className="structure-inspector-inline-action" onClick={clearSelection}>
-          Clear
-        </button>
-      </div>
-      <div className="structure-inspector-selected-meta">
-        <span>{selectedEntity.row.value}</span>
-        <span>{actionTypeLabel(selectedEntity.action)}</span>
-        <span>{selectorLabel(selectedEntity.action)}</span>
-      </div>
-      <div className="structure-brief-actions structure-brief-actions-secondary">
-        <button type="button" className="dock-action" onClick={copyIdentity}>
-          Copy id
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function actionTypeLabel(action: StructureViewerAction) {
-  if (action.type === "focus_ligand") return "Focus in 3D";
-  if (action.type === "set_sdf_molecule") return "Show molecule";
-  if (action.type === "set_structure_pose") return "Show pose";
-  if (action.type === "select_residues") return "Residues";
-  if (action.type === "hide_waters") return "Hide water";
-  if (action.type === "show_waters") return "Show water";
-  if (action.type === "hide_components") return `Hide ${action.kind}`;
-  if (action.type === "show_components") return `Show ${action.kind}`;
-  return action.label;
-}
-
-function selectorLabel(action: StructureViewerAction) {
-  if (action.type === "set_sdf_molecule") return `Molecule ${action.index + 1}`;
-  if (action.type === "set_structure_pose") return `Pose ${action.index + 1}`;
-  if (!("selector" in action)) return "Scene action";
-  const chain = valueFromSelector(action.selector, "auth_asym_id") ?? valueFromSelector(action.selector, "label_asym_id");
-  const seq = valueFromSelector(action.selector, "auth_seq_id") ?? valueFromSelector(action.selector, "label_seq_id");
-  const comp = valueFromSelector(action.selector, "label_comp_id") ?? valueFromSelector(action.selector, "auth_comp_id");
-  const kind = valueFromSelector(action.selector, "kind");
-  return [comp, chain, seq, kind && `kind ${kind}`].filter(Boolean).join(" ") || "Selector";
-}
-
-function valueFromSelector(selector: StructureViewerSelector, key: string) {
-  const value = selector[key];
-  if (Array.isArray(value)) {
-    if (value.some((item) => typeof item === "object")) return null;
-    return value.join(", ");
-  }
-  if (value === undefined || value === null) return null;
-  return String(value);
-}
-
 function StructureBriefRow({ label, value }: BriefRow) {
   return (
     <div className="structure-brief-row">
@@ -3016,54 +3199,153 @@ function plural(count: number, noun: string) {
   return count === 1 ? noun : `${noun}s`;
 }
 
-function StructureActionList({
-  rows,
+// Arrow keys walk the rows of a list — and of the composition tree, where the
+// walk crosses group boundaries because the buttons are collected from the
+// container rather than from any one group.
+function structureRowsKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  const button = target?.closest<HTMLButtonElement>("button.structure-brief-action-row, button.structure-brief-chip-button");
+  if (!button || !event.currentTarget.contains(button)) return;
+  const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button.structure-brief-action-row, button.structure-brief-chip-button"))
+    .filter((candidate) => !candidate.disabled);
+  const index = buttons.indexOf(button);
+  if (index < 0) return;
+  const nextIndex = event.key === "ArrowDown"
+    ? Math.min(buttons.length - 1, index + 1)
+    : Math.max(0, index - 1);
+  if (nextIndex === index) return;
+  event.preventDefault();
+  event.stopPropagation();
+  buttons[nextIndex].focus();
+  buttons[nextIndex].click();
+}
+
+type CompositionGroup = {
+  key: string;
+  row: StructureSummaryRow;
+  children: StructureSummaryRow[];
+};
+
+// The parser reports each group twice: once as a summary line and once as the
+// members behind it, and the panel used to render those as separate cards. They
+// are one hierarchy, so they are shown as one.
+function compositionGroups(summary: StructureCompositionSummary): CompositionGroup[] {
+  const groups = visibleComponentRows(summary.componentRows).map((row) => ({
+    key: `component:${row.label}`,
+    row,
+    children: row.label === "Polymers" ? summary.polymerRows
+      : row.label === "Ligands" ? summary.ligandRows
+      : row.label === "Ions" ? summary.solventRows
+      : [],
+  }));
+  const maestroRows = summary.maestroRows ?? [];
+  if (maestroRows.length === 0) return groups;
+  return [...groups, {
+    key: "maestro",
+    row: { label: "Maestro entries", value: `${maestroRows.length} CT ${plural(maestroRows.length, "block")}` },
+    children: maestroRows,
+  }];
+}
+
+// A handful of chains or ligands is what people open a structure to look at, so
+// those groups start open; a hundred of them would just be the old wall of rows.
+const COMPOSITION_AUTO_EXPAND_LIMIT = 8;
+
+function defaultExpandedCompositionGroups(groups: CompositionGroup[]) {
+  return new Set(groups
+    .filter((group) => group.children.length > 0 && group.children.length <= COMPOSITION_AUTO_EXPAND_LIMIT)
+    .map((group) => group.key));
+}
+
+function StructureCompositionCard({
+  summary,
+  pending,
+  error,
   document,
   actions,
   activeActionKey,
   setActiveActionKey,
-  compact = false,
 }: {
-  rows: StructureSummaryRow[];
+  summary: StructureCompositionSummary | null;
+  pending: boolean;
+  error: string | null;
   document: ViewerDocument;
   actions: ShellActions;
   activeActionKey: string | null;
   setActiveActionKey: (key: string | null) => void;
-  compact?: boolean;
 }) {
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    const target = event.target instanceof HTMLElement ? event.target : null;
-    const button = target?.closest<HTMLButtonElement>("button.structure-brief-action-row, button.structure-brief-chip-button");
-    if (!button || !event.currentTarget.contains(button)) return;
-    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button.structure-brief-action-row, button.structure-brief-chip-button"))
-      .filter((candidate) => !candidate.disabled);
-    const index = buttons.indexOf(button);
-    if (index < 0) return;
-    const nextIndex = event.key === "ArrowDown"
-      ? Math.min(buttons.length - 1, index + 1)
-      : Math.max(0, index - 1);
-    if (nextIndex === index) return;
-    event.preventDefault();
-    event.stopPropagation();
-    buttons[nextIndex].focus();
-    buttons[nextIndex].click();
-  };
+  const groups = useMemo(() => summary ? compositionGroups(summary) : [], [summary]);
+  const [expanded, setExpanded] = useState<Set<string>>(() => defaultExpandedCompositionGroups(groups));
+  useEffect(() => {
+    setExpanded(defaultExpandedCompositionGroups(groups));
+  }, [groups]);
+  const toggle = (key: string) => setExpanded((current) => {
+    const next = new Set(current);
+    if (!next.delete(key)) next.add(key);
+    return next;
+  });
 
   return (
-    <div className={compact ? "structure-brief-chip-list" : "structure-brief-rows"} onKeyDown={handleKeyDown}>
-      {rows.map((row, index) => (
-        <StructureActionRow
-          key={structureActionRowKey(row, index)}
-          row={row}
-          document={document}
-          actions={actions}
-          activeActionKey={activeActionKey}
-          setActiveActionKey={setActiveActionKey}
-          compact={compact}
-        />
-      ))}
-    </div>
+    <section className="structure-brief-card">
+      <StructureSectionHeader title="Composition" detail={groups.length ? `${groups.length} ${plural(groups.length, "group")}` : undefined} />
+      {summary ? (
+        <div className="structure-brief-rows structure-inspector-tree" onKeyDown={structureRowsKeyDown}>
+          {groups.map((group) => {
+            const open = expanded.has(group.key);
+            return (
+              <div className="structure-inspector-tree-group" key={group.key}>
+                <StructureActionRow
+                  row={group.row}
+                  document={document}
+                  actions={actions}
+                  activeActionKey={activeActionKey}
+                  setActiveActionKey={setActiveActionKey}
+                  compact={false}
+                  leading={group.children.length > 0 ? (
+                    <button
+                      type="button"
+                      className="structure-inspector-tree-toggle"
+                      aria-expanded={open}
+                      aria-label={`${open ? "Collapse" : "Expand"} ${group.row.label}`}
+                      title={open ? "Collapse" : "Expand"}
+                      onClick={() => toggle(group.key)}
+                    >
+                      <TreeDisclosureIcon />
+                    </button>
+                  ) : <span className="structure-inspector-tree-spacer" aria-hidden="true" />}
+                />
+                {open && group.children.length > 0 ? (
+                  <div className="structure-inspector-tree-children">
+                    {group.children.map((child, index) => (
+                      <StructureActionRow
+                        key={structureActionRowKey(child, index)}
+                        row={child}
+                        document={document}
+                        actions={actions}
+                        activeActionKey={activeActionKey}
+                        setActiveActionKey={setActiveActionKey}
+                        compact
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="dock-empty">{pending ? "Reading structure text..." : `Composition unavailable: ${error}`}</div>
+      )}
+    </section>
+  );
+}
+
+function TreeDisclosureIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M4.5 2.5 8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -3079,6 +3361,7 @@ function StructureActionRow({
   activeActionKey,
   setActiveActionKey,
   compact,
+  leading,
 }: {
   row: StructureSummaryRow;
   document: ViewerDocument;
@@ -3086,6 +3369,7 @@ function StructureActionRow({
   activeActionKey: string | null;
   setActiveActionKey: (key: string | null) => void;
   compact: boolean;
+  leading?: ReactNode;
 }) {
   const content = () => (
     <span className="structure-inspector-row-content">
@@ -3094,6 +3378,19 @@ function StructureActionRow({
     </span>
   );
   if (!row.action) {
+    // A group heading with no action of its own still has to line up with the
+    // rows around it, so it keeps the entry layout instead of falling back to a
+    // plain row.
+    if (leading) {
+      return (
+        <div className="structure-brief-action-entry" data-leading="true">
+          {leading}
+          <div className="structure-brief-action-summary" title={`${row.label}: ${row.value}`}>
+            {content()}
+          </div>
+        </div>
+      );
+    }
     return compact ? (
       <span title={`${row.label}: ${row.value}`}>
         <strong>{row.label}</strong>
@@ -3137,7 +3434,8 @@ function StructureActionRow({
 
   if (secondaryAction) {
     return (
-      <div className="structure-brief-action-entry" data-actions="pair" data-selected={selected || undefined} onContextMenu={showContextMenu}>
+      <div className="structure-brief-action-entry" data-actions="pair" data-leading={leading ? "true" : undefined} data-selected={selected || undefined} onContextMenu={showContextMenu}>
+        {leading}
         <div
           className={compact ? "structure-brief-chip-summary" : "structure-brief-action-summary"}
           title={`${row.label}: ${row.value}`}
@@ -3165,7 +3463,8 @@ function StructureActionRow({
   }
 
   return (
-    <div className="structure-brief-action-entry" data-selected={selected || undefined} onContextMenu={showContextMenu}>
+    <div className="structure-brief-action-entry" data-leading={leading ? "true" : undefined} data-selected={selected || undefined} onContextMenu={showContextMenu}>
+      {leading}
       <button
         type="button"
         className={compact ? "structure-brief-chip-button" : "structure-brief-action-row"}
@@ -3238,15 +3537,15 @@ function StructureDetailsSection({
         </div>
 
         {!hostedMcpWidget ? <div className="structure-brief-actions">
-          <button type="button" className="dock-action" onClick={() => void actions.showDocumentMetadata(document)}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void actions.showDocumentMetadata(document)}>
             Show metadata
-          </button>
-          <button type="button" className="dock-action" onClick={() => void actions.revealDocument(document)}>
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void actions.revealDocument(document)}>
             Reveal file
-          </button>
-          <button type="button" className="dock-action" onClick={() => void actions.copyDocumentPath(document)}>
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => void actions.copyDocumentPath(document)}>
             Copy path
-          </button>
+          </Button>
         </div> : null}
       </div>
     </details>

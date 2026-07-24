@@ -49,6 +49,11 @@
   --line: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 24%), transparent);
   --line-subtle: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 24%), transparent);
   --line-subtler: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 15%), transparent);
+  /* One step of file-tree nesting, and where that step's guide line sits inside it.
+     The tree nests in the DOM, so this compounds with depth — the sidebar is narrow,
+     and a wider step buys clarity at one level while truncating names at five. */
+  --project-tree-indent: 12px;
+  --project-tree-guide-left: 5px;
   --focus-border: #0a84ff;
   /* Neutral, never blue. Every consumer is a :focus-visible rule, so this shows
      for keyboard navigation only and a mouse click still leaves no ring. */
@@ -1221,12 +1226,26 @@ kbd span { margin-left: 2px; }
   color: var(--text-secondary);
   outline: none;
 }
+/* The first level under a project is a nesting level like any other. It used to
+   indent by 2px and draw no guide, so a tree read as "flat, then suddenly nested"
+   and the first branch had nothing to trace back to its parent. */
 .project-children {
+  position: relative;
   display: grid;
   gap: 1px;
-  padding-left: 2px;
+  padding-left: var(--project-tree-indent);
   min-height: 0;
   overflow: hidden;
+}
+.project-children::before {
+  content: "";
+  position: absolute;
+  left: var(--project-tree-guide-left);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line-subtler);
+  pointer-events: none;
 }
 .project-folder-node {
   display: grid;
@@ -1317,7 +1336,7 @@ kbd span { margin-left: 2px; }
   gap: 1px;
   /* One nesting level of indent. Because the tree nests in the DOM, this
      compounds naturally with depth and needs no per-row depth arithmetic. */
-  padding-left: 14px;
+  padding-left: var(--project-tree-indent);
 }
 /* Guide line for this nesting level, same idea as the Files component's
    `before:w-px` rule. Kept inside the padding box so the container's own
@@ -1325,7 +1344,7 @@ kbd span { margin-left: 2px; }
 .project-folder-children::before {
   content: "";
   position: absolute;
-  left: 6px;
+  left: var(--project-tree-guide-left);
   top: 0;
   bottom: 0;
   width: 1px;
@@ -1348,6 +1367,15 @@ kbd span { margin-left: 2px; }
   cursor: default;
   line-height: 1.15;
   transition: background 140ms ease-out, color 140ms ease-out, box-shadow 140ms ease-out, transform 140ms ease-out;
+}
+/* Inside the tree a file sits on the same level as its sibling folders, so it takes
+   the folder row's inset and icon gap; left at the base 10px its name stood 6px
+   right of theirs. Scoped to the nesting containers so the flat Pinned list, which
+   lines up with the project rows instead, keeps its own inset. */
+.project-children .project,
+.project-folder-children .project {
+  padding-left: 6px;
+  gap: 4px;
 }
 .project:hover { background: var(--surface-subtle); }
 .project.active {
@@ -1813,8 +1841,6 @@ img.radix-menu-item-icon {
 .project-group-menu-button:focus-visible,
 .pin-hit:focus-visible,
 .native-context-menu-item:focus-visible,
-.notification-popup-details-trigger:focus-visible,
-.notification-popup-dismiss:focus-visible,
 .radix-dialog-close:focus-visible,
 .status-surface-dismiss:focus-visible,
 .welcome button:focus-visible,
@@ -2537,32 +2563,6 @@ img.radix-menu-item-icon {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.structure-inspector-selection-pill {
-  min-width: 0;
-  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line-subtler));
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface-card));
-  color: var(--text-primary);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 7px;
-  align-items: center;
-  padding: 5px 6px 5px 8px;
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-}
-.structure-inspector-selection-pill span {
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-.structure-inspector-selection-pill strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 500;
-}
 .structure-inspector-inline-action {
   min-width: 0;
   height: 22px;
@@ -2619,6 +2619,27 @@ img.radix-menu-item-icon {
 .structure-inspector-section-title-button:hover,
 .structure-inspector-section-title-button:focus-visible {
   color: var(--text-primary);
+}
+/* Collapsible wraps the card body in one more element, so the card's own row gap
+   has to be re-established inside it. */
+.structure-inspector-engine-body {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.structure-inspector-engine-notices {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.structure-inspector-engine-notice {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--line-subtler));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-subtle));
+}
+.structure-inspector-engine-notice [data-slot="alert-description"] {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
 }
 .structure-inspector-xtb-card[data-collapsed] {
   gap: 0;
@@ -3068,17 +3089,26 @@ img.radix-menu-item-icon {
   position: relative;
   min-width: 0;
   display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
+  /* 74px ellipsized "Energy window" into "Energy win...". The label now gets room
+     to wrap instead, and the row keeps one height so sliders and selects line up. */
+  grid-template-columns: minmax(92px, 0.42fr) minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 4px 10px;
+  min-height: 32px;
+  border-radius: 7px;
+  padding: 2px 4px;
+  margin: 0 -4px;
+  transition: background 120ms ease-out;
+}
+.structure-inspector-xtb-setting-row:hover {
+  background: var(--surface-subtle);
 }
 .structure-inspector-xtb-setting-row > span {
   min-width: 0;
   color: var(--text-secondary);
   font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+  overflow-wrap: break-word;
 }
 .structure-inspector-xtb-setting-control {
   min-width: 0;
@@ -3086,6 +3116,75 @@ img.radix-menu-item-icon {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+/* Slider readouts sit in their own column so the numbers form a straight edge
+   down the panel instead of drifting with each track. */
+.structure-inspector-xtb-setting-control .settings-range-control {
+  gap: 8px;
+}
+.structure-inspector-xtb-setting-control .settings-range-control > span:not([data-slot]) {
+  min-width: 42px;
+  font-variant-numeric: tabular-nums;
+}
+/* Unit widths differ wildly ("A" vs "kcal/mol"). Reserving the same trailing
+   column keeps the input boxes themselves the same width down the panel. */
+.structure-inspector-xtb-setting-control .structure-inspector-number-control {
+  width: 100%;
+  max-width: 176px;
+}
+.structure-inspector-xtb-setting-control .structure-inspector-number-control > span {
+  min-width: 42px;
+}
+.structure-inspector-settings-group {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.structure-inspector-settings-group + .structure-inspector-settings-group {
+  margin-top: 4px;
+}
+/* Same small-caps heading with a hairline the viewport menus use to break a long
+   list into readable groups. */
+.structure-inspector-settings-group-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin: 2px 0 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.structure-inspector-settings-group-title::after {
+  content: "";
+  height: 1px;
+  background: var(--line-subtler);
+}
+/* ToggleGroup sizes itself to its content; in a settings row it has to fill the
+   control column so the options divide it evenly. */
+.structure-inspector-segment {
+  width: 100%;
+  min-width: 0;
+  border-radius: 7px;
+  padding: 2px;
+  background: var(--surface-input);
+}
+.structure-inspector-segment-button {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 24px;
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+.structure-inspector-segment-button[data-state="on"] {
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface-card));
+  color: var(--text-primary);
 }
 .structure-inspector-xtb-setting-control .settings-select {
   width: 100%;
@@ -3111,17 +3210,6 @@ img.radix-menu-item-icon {
   border-radius: 7px;
   padding: 4px 7px;
   font-size: 11px;
-}
-.structure-inspector-settings-category {
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-.structure-inspector-settings-category h5 {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
 }
 .structure-inspector-number-control {
   width: 100%;
@@ -3483,6 +3571,60 @@ img.radix-menu-item-icon {
 .structure-brief-action-entry[data-actions="pair"] {
   grid-template-columns: minmax(0, 1fr) auto auto;
 }
+.structure-brief-action-entry[data-leading] {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.structure-brief-action-entry[data-leading][data-actions="pair"] {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+/* The composition tree stacks each group with its members, so the separator has
+   to move from the rows to the groups. */
+.structure-inspector-tree-group + .structure-inspector-tree-group {
+  border-top: 1px solid var(--line-subtler);
+}
+.structure-inspector-tree-toggle,
+.structure-inspector-tree-spacer {
+  width: 18px;
+  height: 18px;
+}
+.structure-inspector-tree-toggle {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0;
+  cursor: default;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+.structure-inspector-tree-toggle:hover {
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+}
+.structure-inspector-tree-toggle svg {
+  transition: transform 140ms ease-out;
+}
+.structure-inspector-tree-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.structure-inspector-tree-children {
+  position: relative;
+  padding: 0 0 2px 22px;
+}
+/* Same guide the sidebar tree uses, so nesting reads the same in both panels. */
+.structure-inspector-tree-children::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 4px;
+  left: 13px;
+  width: 1px;
+  background: var(--line-subtler);
+}
+.structure-inspector-tree-children .structure-brief-action-entry + .structure-brief-action-entry {
+  border-top: 0;
+}
 .structure-brief-action-row,
 .structure-brief-action-summary,
 .structure-brief-chip-button,
@@ -3570,16 +3712,6 @@ img.radix-menu-item-icon {
   font-size: 12px;
   line-height: 1.3;
 }
-.structure-brief-chip-list {
-  min-width: 0;
-  display: grid;
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid var(--line-subtler);
-  border-radius: 7px;
-  background: var(--surface-card);
-}
-.structure-brief-chip-list > span,
 .structure-brief-chip-button,
 .structure-brief-chip-summary {
   min-width: 0;
@@ -3592,13 +3724,6 @@ img.radix-menu-item-icon {
   font-size: 11px;
   line-height: 1.25;
 }
-.structure-brief-chip-list .structure-brief-action-entry {
-  border-top: 0;
-}
-.structure-brief-chip-list .structure-brief-action-entry + .structure-brief-action-entry {
-  border-top: 1px solid var(--line-subtler);
-}
-.structure-brief-chip-list > span > strong,
 .structure-brief-chip-button strong,
 .structure-brief-chip-summary strong {
   min-width: 0;
@@ -3638,12 +3763,6 @@ img.radix-menu-item-icon {
 }
 .structure-brief-actions-grid {
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
-}
-.structure-brief-actions-secondary {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.structure-inspector-selected-card {
-  border-color: color-mix(in srgb, var(--accent) 22%, var(--line-subtler));
 }
 .structure-inspector-context-style,
 .structure-inspector-display-style {
@@ -3927,19 +4046,6 @@ img.radix-menu-item-icon {
   font-size: 11px;
   font-weight: 500;
   text-align: right;
-}
-.structure-inspector-selected-meta {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-.structure-inspector-selected-meta span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-muted);
-  font-size: 12px;
 }
 .dock-drop-list {
   min-width: 0;
@@ -6668,84 +6774,6 @@ img.radix-menu-item-icon {
   .file-drop-target,
   .file-drop-card { animation: none; }
 }
-.notification-popup {
-  position: absolute;
-  right: 16px;
-  bottom: 16px;
-  z-index: 12;
-  width: min(420px, calc(100vw - 32px));
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 12px 12px 14px;
-  border: 1px solid var(--line-subtle);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--bg-base) 82%, transparent);
-  color: var(--text-secondary);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(28px) saturate(1.2);
-  -webkit-backdrop-filter: blur(28px) saturate(1.2);
-}
-.notification-popup[data-kind="error"] {
-  border-color: color-mix(in srgb, #ff7b72 42%, var(--line-strong));
-  background: color-mix(in srgb, var(--bg-base) 88%, transparent);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24), inset 0 0 0 1px color-mix(in srgb, #ff7b72 12%, transparent);
-}
-.notification-popup[data-kind="success"] {
-  border-color: color-mix(in srgb, var(--accent) 34%, var(--line-strong));
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.24), inset 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
-}
-.notification-popup-copy {
-  min-width: 0;
-  flex: 1;
-}
-.notification-popup-copy strong {
-  display: block;
-  margin: 0 0 4px;
-  color: var(--text-primary);
-  font-size: 11px;
-  font-weight: 400;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.notification-popup-copy p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-  overflow: hidden;
-  max-height: calc(1.35em * 2);
-}
-.notification-popup-details-trigger {
-  height: 22px;
-  margin-top: 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  padding: 0;
-  font-size: 12px;
-}
-.notification-popup-details-trigger:hover {
-  color: var(--text-primary);
-}
-.notification-popup-dismiss {
-  flex: 0 0 auto;
-  height: 28px;
-  border: 0;
-  border-radius: var(--control-radius);
-  background: var(--surface-input);
-  color: var(--text-secondary);
-  padding: 0 10px;
-  font-size: 12px;
-  font-weight: 400;
-  transition: background 120ms ease, color 120ms ease;
-}
-.notification-popup-dismiss:hover {
-  background: var(--surface-subtle-strong);
-  color: var(--text-primary);
-}
 .radix-dialog-overlay {
   position: fixed;
   inset: 0;
@@ -7447,10 +7475,6 @@ img.settings-open-destination-icon {
   .sidebar-search-row { padding: 0 28px 0 32px; }
   .settings-panel-content { width: 100%; padding: 80px 16px 64px; }
   .agent-integration-content { width: 100%; padding: 80px 16px 64px; }
-  .notification-popup {
-    left: 16px;
-    width: auto;
-  }
 }
 @media (max-width: 520px) {
   .settings-panel-content { width: 100%; padding: 80px 24px 64px; }

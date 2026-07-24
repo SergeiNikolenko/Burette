@@ -468,21 +468,9 @@ function summarizeAtomRecords(records: AtomRecord[], modelCount: number): Struct
       };
     });
 
+  // Water and Ions already have their own rows in componentRows; this list is the
+  // individual ions behind that summary, not a second copy of it.
   const solventRows: StructureSummaryRow[] = [];
-  if (waterResidues > 0) {
-    solventRows.push({
-      label: "Water",
-      value: `${waterResidues} ${plural(waterResidues, "molecule")} / ${waterAtoms} atoms`,
-      action: { type: "hide_waters", label: "Hide water" },
-      secondaryAction: { type: "show_waters", label: "Show water" },
-    });
-  }
-  if (ionResidues > 0) {
-    solventRows.push({
-      label: "Ions",
-      value: `${formatNameCounts(ionGroups, 8)} / ${ionAtoms} atoms`,
-    });
-  }
   for (const [name, count] of [...ionGroups.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0])).slice(0, 8)) {
     solventRows.push({
       label: name,

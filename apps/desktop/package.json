@@ -11,6 +11,7 @@
     "tauri": "bunx --bun tauri"
   },
   "dependencies": {
+    "@base-ui/react": "^1.6.0",
     "@burrete/ketcher-agent-contract": "workspace:*",
     "@vercel/analytics": "2.0.1",
     "@vercel/speed-insights": "2.0.0",
