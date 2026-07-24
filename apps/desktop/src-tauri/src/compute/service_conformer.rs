@@ -1,8 +1,8 @@
-use burrete_compute_core::{
+use burette_compute_core::{
     DistanceConstraint, DistanceGeometryOptimizationOptions, DistanceGeometryOptimizationStatus,
 };
-use burrete_compute_metal::MetalDistanceEmbedding;
-use burrete_compute_protocol::MAX_PACK_BYTES;
+use burette_compute_metal::MetalDistanceEmbedding;
+use burette_compute_protocol::MAX_PACK_BYTES;
 
 const DG_INPUT_MAGIC: &[u8; 4] = b"BDG1";
 const DG_OUTPUT_MAGIC: &[u8; 4] = b"BDO1";

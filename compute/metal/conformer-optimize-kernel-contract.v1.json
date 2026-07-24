@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "libraryId": "burrete.compute.conformer-optimize.v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "libraryId": "burette.compute.conformer-optimize.v1",
   "source": "conformer-optimize.v1.metal",
   "deploymentTarget": "14.0",
   "algorithm": "one-threadgroup-per-conformer bounded float32 L-BFGS over the conformer-distance.v1 objective",
@@ -32,7 +32,7 @@
     ]
   },
   "entrypoint": {
-    "name": "burrete_conformer_optimize_v1",
+    "name": "burette_conformer_optimize_v1",
     "threadgroups": "conformerCount",
     "threadsPerThreadgroup": 32,
     "buffers": [

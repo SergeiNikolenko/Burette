@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import type { StatusKind, StatusNotice } from "../components/types";
+import { toast } from "../components/ui/toast";
 import { trackWebDemoHandledError } from "../lib/web-demo-analytics";
 
 export type RecentStatusError = {
@@ -9,9 +10,16 @@ export type RecentStatusError = {
   timestampMs: number;
 };
 
+export type StatusDetailsRequest = {
+  kind: StatusKind;
+  details: string[];
+};
+
+const NOTICE_TIMEOUT_MS = 3200;
+
 export function useAppStatus() {
   const [status, setStatus] = useState<StatusNotice | null>(null);
-  const statusSequenceRef = useRef(0);
+  const [statusDetails, setStatusDetails] = useState<StatusDetailsRequest | null>(null);
   const recentErrorsRef = useRef<RecentStatusError[]>([]);
 
   const pushStatus = useCallback((message: string, kind: StatusKind = "info", details: string[] = []) => {
@@ -26,11 +34,22 @@ export function useAppStatus() {
       });
       recentErrorsRef.current = recentErrorsRef.current.slice(-20);
     }
-    setStatus({
-      id: ++statusSequenceRef.current,
-      kind,
-      message: trimmed,
-      details: normalizedDetails,
+    setStatus({ kind, message: trimmed });
+    const compact = compactStatusMessage(trimmed);
+    const fullDetails = compact === trimmed ? normalizedDetails : [trimmed, ...normalizedDetails];
+    toast.add({
+      title: compact,
+      type: kind,
+      timeout: kind === "error" ? 0 : NOTICE_TIMEOUT_MS,
+      ...(kind === "error" ? { priority: "high" as const } : {}),
+      ...(fullDetails.length > 0
+        ? {
+            actionProps: {
+              children: "Details",
+              onClick: () => setStatusDetails({ kind, details: fullDetails }),
+            },
+          }
+        : {}),
     });
   }, []);
 
@@ -40,23 +59,20 @@ export function useAppStatus() {
     pushStatus(prefix ? `${prefix}: ${message}` : message, "error", details.length > 0 ? details : [message]);
   }, [pushStatus]);
 
-  const clearStatus = useCallback(() => {
-    setStatus(null);
+  const dismissStatusDetails = useCallback(() => {
+    setStatusDetails(null);
   }, []);
-
-  useEffect(() => {
-    if (!status || status.kind === "error") return undefined;
-    const timeout = window.setTimeout(() => {
-      setStatus((current) => (current?.id === status.id ? null : current));
-    }, 3200);
-    return () => window.clearTimeout(timeout);
-  }, [status]);
 
   return {
     status,
+    statusDetails,
+    dismissStatusDetails,
     pushStatus,
     pushErrorStatus,
-    clearStatus,
     recentErrorsRef,
   };
+}
+
+function compactStatusMessage(message: string) {
+  return message.trim().split(/\r?\n| Error:| at /)[0]?.trim() || message;
 }

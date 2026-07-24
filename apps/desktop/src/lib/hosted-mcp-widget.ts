@@ -1,5 +1,5 @@
 export const HOSTED_MCP_WIDGET_QUERY = "mcpWidget";
-export const HOSTED_MCP_WIDGET_MESSAGE_SOURCE = "burrete-hosted-mcp-widget";
+export const HOSTED_MCP_WIDGET_MESSAGE_SOURCE = "burette-hosted-mcp-widget";
 export type HostedKetcherSeed = {
   surfaceId?: string;
   format: "ket" | "mol" | "rxn" | "smiles";
@@ -53,8 +53,8 @@ function boundedLabel(value: unknown, fallback: string) {
 }
 
 export function updateHostedMcpSelectionContext(value: unknown, documentId: string) {
-  if (!isHostedMcpWidget() || !window.BurreteHostedAppBridge) return false;
-  void window.BurreteHostedAppBridge.updateSelection(value, documentId);
+  if (!isHostedMcpWidget() || !window.BuretteHostedAppBridge) return false;
+  void window.BuretteHostedAppBridge.updateSelection(value, documentId);
   return true;
 }
 
@@ -64,18 +64,18 @@ export function isHostedMcpWidgetLocation(location: Pick<Location, "search">) {
 
 export function isHostedMcpWidget() {
   return typeof window !== "undefined" && (
-    window.__BURRETE_HOSTED_MCP_WIDGET__ === true
+    window.__BURETTE_HOSTED_MCP_WIDGET__ === true
     || isHostedMcpWidgetLocation(window.location)
   );
 }
 
 export function isHostedKetcherWidget() {
-  return typeof window !== "undefined" && window.__BURRETE_HOSTED_KETCHER_WIDGET__ === true;
+  return typeof window !== "undefined" && window.__BURETTE_HOSTED_KETCHER_WIDGET__ === true;
 }
 
 export function hostedKetcherSeedFromWindow(): HostedKetcherSeed | null {
   if (!isHostedKetcherWidget()) return null;
-  const seed = window.__BURRETE_HOSTED_KETCHER_SEED__;
+  const seed = window.__BURETTE_HOSTED_KETCHER_SEED__;
   if (!seed || typeof seed.content !== "string" || !HOSTED_KETCHER_FORMATS.has(seed.format)) return null;
   let content = seed.content.slice(0, 65536);
   while (new TextEncoder().encode(content).byteLength > 65536) content = content.slice(0, -1);

@@ -3,6 +3,7 @@ mod analysis_plan;
 mod analysis_snapshot;
 mod artifact_publisher;
 mod artifact_reader;
+mod chemical_space;
 mod cluster_executor;
 mod cluster_plan;
 pub(crate) mod commands;

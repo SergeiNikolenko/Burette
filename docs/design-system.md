@@ -1,6 +1,6 @@
 # Design Direction
 
-This document records Burrete's current design direction and the implementation
+This document records Burette's current design direction and the implementation
 constraints that should guide future UI work. It is not a generated token file.
 The source of truth for runtime theme defaults is:
 
@@ -10,7 +10,7 @@ The source of truth for runtime theme defaults is:
 
 ## Current Reality
 
-Burrete's desktop shell is a compact, translucent macOS-style workspace. It uses
+Burette's desktop shell is a compact, translucent macOS-style workspace. It uses
 system fonts, configurable light/dark theme settings, a single default accent,
 low-contrast surfaces, and dense file-oriented controls.
 
@@ -34,7 +34,7 @@ hard-code a parallel token registry.
 
 ## North Star
 
-**Native lab utility.** Burrete should feel like a focused macOS tool for
+**Native lab utility.** Burette should feel like a focused macOS tool for
 molecular inspection: compact, quiet, recoverable, and oriented around files.
 The shell is a workspace, not a brand canvas.
 

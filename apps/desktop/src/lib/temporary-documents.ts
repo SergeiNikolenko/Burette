@@ -1,10 +1,10 @@
 import type { RecentStructure, ViewerDocument } from "../types";
 
 const TEMPORARY_DOCUMENT_PROTOCOLS = [
-  "burrete-ketcher://",
-  "burrete-collection://",
-  "burrete-context://",
-  "burrete-docking://",
+  "burette-ketcher://",
+  "burette-collection://",
+  "burette-context://",
+  "burette-docking://",
 ];
 
 const TEMPORARY_VIEWER_SEGMENTS = [

@@ -8,11 +8,11 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use burrete_compute_core::{
+use burette_compute_core::{
     build_tanimoto_graph, ConformerEnginePackArrays, NativeMmffParameters, SymmetricCsr,
 };
-use burrete_compute_metal::{MetalRuntimeError, MetalTanimotoRuntime};
-use burrete_compute_protocol::{
+use burette_compute_metal::{MetalRuntimeError, MetalTanimotoKnnExecution, MetalTanimotoRuntime};
+use burette_compute_protocol::{
     Backend, BackendPolicy, CapabilityEntry, CapabilityLimits, CapabilityMaturity,
     CapabilityReason, CapabilityReasonCode, CapabilityReportSchemaVersion, ClusterV1SubmitRequest,
     ComputeAvailability, ComputeCapabilityReport, ComputeErrorCode, ComputeFailure,
@@ -34,6 +34,11 @@ use crate::compute::{
         artifact_manifest_sha256, materialize_analysis_artifact, materialize_cluster_artifact,
         materialize_conformer_artifact, reconcile_artifact_root, AnalysisArtifactPayload,
         AnalysisPublicationStep, ClusterPublicationStep, ConformerPublicationStep,
+    },
+    chemical_space::{
+        cluster_chemical_space_from_fingerprints, execute_chemical_space,
+        ChemicalSpaceClusterRequest, ChemicalSpaceClusterResult, ChemicalSpaceRequest,
+        ChemicalSpaceResult,
     },
     cluster_executor::{
         finish_clustering, graph_options, valid_fingerprints, validate_computation,
@@ -113,6 +118,7 @@ struct ReadyCoordinator {
     fingerprint_sessions: Mutex<BTreeMap<Uuid, FingerprintSession>>,
     conformer_submissions: Mutex<BTreeMap<Uuid, PendingConformerSubmission>>,
     prepared_clusters: Mutex<BTreeMap<Uuid, CompletedFingerprintBatch>>,
+    chemical_space_knn: Mutex<BTreeMap<(Uuid, usize), MetalTanimotoKnnExecution>>,
     prepared_conformers: Mutex<BTreeMap<Uuid, PreparedConformerBatch>>,
     computed_conformers: Mutex<BTreeMap<Uuid, ComputedConformerBatch>>,
     computed_clusters: Mutex<BTreeMap<Uuid, ClusterComputation>>,
@@ -186,7 +192,7 @@ pub(crate) struct ConformerReferenceValidationStep {
 }
 
 #[derive(Debug)]
-enum NativeMetalState {
+pub(crate) enum NativeMetalState {
     Available(MetalTanimotoRuntime),
     Unavailable {
         code: CapabilityReasonCode,
@@ -195,6 +201,112 @@ enum NativeMetalState {
 }
 
 impl ComputeCoordinator {
+    pub(crate) fn execute_chemical_space(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        expected_revision: u64,
+        request: ChemicalSpaceRequest,
+    ) -> ComputeResult<ChemicalSpaceResult> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let job = ready.store.get_job(owner, job_id)?;
+        if job.revision != expected_revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: job.revision,
+            });
+        }
+        let prepared = ready
+            .prepared_clusters
+            .lock()
+            .map_err(|_| poisoned("prepared cluster registry"))?;
+        let batch = prepared
+            .get(&job_id)
+            .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                entity: "prepared chemical-space fingerprints",
+                id: job_id.to_string(),
+            })?;
+        if batch.grid_lease.namespaced_document_id()
+            != runtime_document_id(owner, &job.request.source().document_id)
+        {
+            return Err(ComputeCoordinatorError::Forbidden(
+                "prepared chemical space does not belong to this Grid window".into(),
+            ));
+        }
+        let cache_key = (job_id, request.requested_neighbors());
+        let cached_knn = ready
+            .chemical_space_knn
+            .lock()
+            .map_err(|_| poisoned("chemical-space neighbor cache"))?
+            .get(&cache_key)
+            .cloned();
+        let execution =
+            execute_chemical_space(batch, &ready.native_metal, request, cached_knn.as_ref())?;
+        if cached_knn.is_none() {
+            ready
+                .chemical_space_knn
+                .lock()
+                .map_err(|_| poisoned("chemical-space neighbor cache"))?
+                .insert(cache_key, execution.knn.clone());
+        }
+        Ok(execution.result)
+    }
+
+    pub(crate) fn cluster_chemical_space(
+        &self,
+        owner: &str,
+        job_id: Uuid,
+        expected_revision: u64,
+        request: ChemicalSpaceClusterRequest,
+    ) -> ComputeResult<ChemicalSpaceClusterResult> {
+        validate_owner_window_label(owner)?;
+        let ready = self.ready()?;
+        let job = ready.store.get_job(owner, job_id)?;
+        if job.revision != expected_revision {
+            return Err(ComputeCoordinatorError::Conflict {
+                expected_revision,
+                actual_revision: job.revision,
+            });
+        }
+        let prepared = ready
+            .prepared_clusters
+            .lock()
+            .map_err(|_| poisoned("prepared cluster registry"))?;
+        let batch = prepared
+            .get(&job_id)
+            .ok_or_else(|| ComputeCoordinatorError::NotFound {
+                entity: "prepared chemical-space fingerprints",
+                id: job_id.to_string(),
+            })?;
+        if batch.grid_lease.namespaced_document_id()
+            != runtime_document_id(owner, &job.request.source().document_id)
+        {
+            return Err(ComputeCoordinatorError::Forbidden(
+                "prepared chemical space does not belong to this Grid window".into(),
+            ));
+        }
+        let (fingerprints, valid_ordinals) = valid_fingerprints(batch)?;
+        let source_record_ids = valid_ordinals
+            .iter()
+            .map(|ordinal| batch.identities[*ordinal as usize].source_record_id)
+            .collect::<Vec<_>>();
+        let runtime = match &ready.native_metal {
+            NativeMetalState::Available(runtime) => runtime,
+            NativeMetalState::Unavailable { message, .. } => {
+                return Err(ComputeCoordinatorError::Unavailable(format!(
+                    "Chemical-space Metal runtime is unavailable: {message}"
+                )))
+            }
+        };
+        cluster_chemical_space_from_fingerprints(
+            &fingerprints,
+            &source_record_ids,
+            runtime,
+            request,
+        )
+    }
+
     pub(crate) fn evaluate_grid_semiempirical(
         &self,
         owner: &str,
@@ -389,7 +501,7 @@ impl ComputeCoordinator {
             "Running SCF, corrections, energies, and charges",
             runtime.map_or_else(StageStartEvidence::default, |runtime| StageStartEvidence {
                 device: Some(runtime.device_identity().name.clone()),
-                kernel_id: Some("burrete.compute.semiempirical.v1:scf-corrections".into()),
+                kernel_id: Some("burette.compute.semiempirical.v1:scf-corrections".into()),
             }),
         )?;
         ready
@@ -645,7 +757,7 @@ impl ComputeCoordinator {
             "Aligning and scoring poses on Metal",
             StageStartEvidence {
                 device: Some(runtime.device_identity().name.clone()),
-                kernel_id: Some("burrete.compute.alignment.v1:mapped-horn".into()),
+                kernel_id: Some("burette.compute.alignment.v1:mapped-horn".into()),
             },
         )?;
         ready
@@ -951,6 +1063,7 @@ impl ComputeCoordinator {
                                 fingerprint_sessions: Mutex::new(BTreeMap::new()),
                                 conformer_submissions: Mutex::new(BTreeMap::new()),
                                 prepared_clusters: Mutex::new(BTreeMap::new()),
+                                chemical_space_knn: Mutex::new(BTreeMap::new()),
                                 prepared_conformers: Mutex::new(BTreeMap::new()),
                                 computed_conformers: Mutex::new(BTreeMap::new()),
                                 computed_clusters: Mutex::new(BTreeMap::new()),
@@ -1401,7 +1514,7 @@ impl ComputeCoordinator {
             .as_conformer()?
             .parameters
             .initialization
-            == burrete_compute_protocol::ConformerInitialization::InputGeometry;
+            == burette_compute_protocol::ConformerInitialization::InputGeometry;
         let constraints_running = start_stage(
             &freeze_succeeded,
             1,
@@ -1458,9 +1571,9 @@ impl ComputeCoordinator {
                 NativeMetalState::Available(runtime) => StageStartEvidence {
                     device: Some(runtime.device_identity().name.clone()),
                     kernel_id: Some(if input_geometry {
-                        "burrete.compute.mmff-input-geometry.v1:bfgs+lbfgs+retry.v1".into()
+                        "burette.compute.mmff-input-geometry.v1:bfgs+lbfgs+retry.v1".into()
                     } else {
-                        "burrete.compute.conformer.v1:initialize+dg-lbfgs+etk-lbfgs+stereo-retry.v1"
+                        "burette.compute.conformer.v1:initialize+dg-lbfgs+etk-lbfgs+stereo-retry.v1"
                             .into()
                     }),
                 },
@@ -1609,7 +1722,7 @@ impl ComputeCoordinator {
             match &ready.native_metal {
                 NativeMetalState::Available(runtime) => StageStartEvidence {
                     device: Some(runtime.device_identity().name.clone()),
-                    kernel_id: Some("burrete.compute.conformer-stereo.v1".into()),
+                    kernel_id: Some("burette.compute.conformer-stereo.v1".into()),
                 },
                 NativeMetalState::Unavailable { message, .. } => {
                     return Err(ComputeCoordinatorError::Unavailable(format!(
@@ -2213,7 +2326,7 @@ impl ComputeCoordinator {
         };
         let fingerprint_bytes = u64::try_from(batch.fingerprints.len())
             .ok()
-            .and_then(|count| count.checked_mul(burrete_compute_core::FINGERPRINT_BYTES as u64))
+            .and_then(|count| count.checked_mul(burette_compute_core::FINGERPRINT_BYTES as u64))
             .ok_or_else(|| {
                 ComputeCoordinatorError::Protocol("fingerprint byte count overflowed".into())
             })?;
@@ -2292,7 +2405,7 @@ impl ComputeCoordinator {
             match &ready.native_metal {
                 NativeMetalState::Available(runtime) => StageStartEvidence {
                     device: Some(runtime.device_identity().name.clone()),
-                    kernel_id: Some("burrete.compute.tanimoto.v2:neighbor-graph.v1".into()),
+                    kernel_id: Some("burette.compute.tanimoto.v2:neighbor-graph.v1".into()),
                 },
                 NativeMetalState::Unavailable { message, .. } => {
                     return Err(ComputeCoordinatorError::Unavailable(format!(
@@ -2777,7 +2890,7 @@ impl ComputeCoordinator {
         &self,
         owner: &str,
         artifact_id: Uuid,
-    ) -> ComputeResult<burrete_compute_protocol::ArtifactManifest> {
+    ) -> ComputeResult<burette_compute_protocol::ArtifactManifest> {
         self.store()?.get_artifact_manifest(owner, artifact_id)
     }
 
@@ -2928,14 +3041,14 @@ impl NativeMetalState {
         let Some(runtime_root) = runtime_root else {
             return Self::unavailable(
                 CapabilityReasonCode::RuntimeMissing,
-                "The bundled Burrete Metal runtime directory is unavailable.",
+                "The bundled Burette Metal runtime directory is unavailable.",
             );
         };
         if !runtime_root.is_dir() {
             return Self::unavailable(
                 CapabilityReasonCode::RuntimeMissing,
                 format!(
-                    "The bundled Burrete Metal runtime is missing at {}.",
+                    "The bundled Burette Metal runtime is missing at {}.",
                     runtime_root.display()
                 ),
             );
@@ -2970,7 +3083,7 @@ impl NativeMetalState {
                 Self::Available(runtime),
             ) => Ok((
                 SimilarityBackendAdmission::NativeMetal(EngineIdentity {
-                    engine_id: "burrete-native-metal".into(),
+                    engine_id: "burette-native-metal".into(),
                     version: runtime.runtime_identity().version.clone(),
                     manifest_sha256: runtime.runtime_identity().manifest_sha256.clone(),
                 }),
@@ -3017,7 +3130,7 @@ impl NativeMetalState {
                 Self::Available(runtime),
             ) => {
                 let engine = EngineIdentity {
-                    engine_id: "burrete-native-metal".into(),
+                    engine_id: "burette-native-metal".into(),
                     version: runtime.runtime_identity().version.clone(),
                     manifest_sha256: runtime.runtime_identity().manifest_sha256.clone(),
                 };
@@ -3058,7 +3171,7 @@ fn initialize_compute_service(
         return (
             NativeMetalState::unavailable(
                 CapabilityReasonCode::RuntimeMissing,
-                "The bundled Burrete Metal runtime directory is unavailable.",
+                "The bundled Burette Metal runtime directory is unavailable.",
             ),
             None,
         );
@@ -3128,7 +3241,7 @@ fn initialize_runtime_catalog(
     viewer_runtime_root: Option<PathBuf>,
 ) -> Result<(String, VerifiedEngineCatalog), String> {
     let viewer_runtime_root = viewer_runtime_root.ok_or_else(|| {
-        "The bundled Burrete ViewerWeb runtime directory is unavailable.".to_string()
+        "The bundled Burette ViewerWeb runtime directory is unavailable.".to_string()
     })?;
     let helper_sha256 = current_executable_sha256()?;
     let engines = VerifiedEngineCatalog::load(&viewer_runtime_root, &helper_sha256)?;
@@ -3151,6 +3264,11 @@ fn discard_cancelled_job_state(ready: &ReadyCoordinator, job_id: Uuid) -> Comput
         .lock()
         .map_err(|_| poisoned("prepared cluster registry"))?
         .remove(&job_id);
+    ready
+        .chemical_space_knn
+        .lock()
+        .map_err(|_| poisoned("chemical-space neighbor cache"))?
+        .retain(|(cached_job_id, _), _| *cached_job_id != job_id);
     ready
         .prepared_conformers
         .lock()
@@ -3180,7 +3298,7 @@ fn metal_execution_error(error: MetalRuntimeError) -> ComputeCoordinatorError {
 fn graph_bytes(graph: &SymmetricCsr, fingerprint_count: usize) -> ComputeResult<u64> {
     let fingerprints = u64::try_from(fingerprint_count)
         .ok()
-        .and_then(|count| count.checked_mul(burrete_compute_core::FINGERPRINT_BYTES as u64));
+        .and_then(|count| count.checked_mul(burette_compute_core::FINGERPRINT_BYTES as u64));
     let offsets = u64::try_from(graph.row_offsets().len())
         .ok()
         .and_then(|count| count.checked_mul(8));
@@ -3363,10 +3481,10 @@ fn reason_code_for_runtime_error(error: &MetalRuntimeError) -> CapabilityReasonC
 
 fn current_executable_sha256() -> Result<String, String> {
     let path = std::env::current_exe()
-        .map_err(|error| format!("The Burrete executable path is unavailable: {error}"))?;
+        .map_err(|error| format!("The Burette executable path is unavailable: {error}"))?;
     let mut file = File::open(&path).map_err(|error| {
         format!(
-            "The Burrete executable cannot be opened for runtime attestation at {}: {error}",
+            "The Burette executable cannot be opened for runtime attestation at {}: {error}",
             path.display()
         )
     })?;
@@ -3375,7 +3493,7 @@ fn current_executable_sha256() -> Result<String, String> {
     loop {
         let read = file
             .read(&mut buffer)
-            .map_err(|error| format!("The Burrete executable cannot be hashed: {error}"))?;
+            .map_err(|error| format!("The Burette executable cannot be hashed: {error}"))?;
         if read == 0 {
             break;
         }

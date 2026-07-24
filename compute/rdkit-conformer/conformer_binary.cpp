@@ -1,4 +1,4 @@
-// Copyright 2026 Burrete contributors.
+// Copyright 2026 Burette contributors.
 // SPDX-License-Identifier: MIT
 
 #include "conformer_binary.h"
@@ -11,7 +11,7 @@
 #include <string>
 #include <type_traits>
 
-namespace burrete::conformer {
+namespace burette::conformer {
 namespace {
 
 template <typename T>
@@ -196,4 +196,4 @@ std::vector<std::uint8_t> encode_binary(const ExtractedParameters &p,
   return bytes;
 }
 
-}  // namespace burrete::conformer
+}  // namespace burette::conformer

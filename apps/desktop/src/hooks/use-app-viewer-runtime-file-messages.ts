@@ -28,7 +28,7 @@ export function useAppViewerRuntimeFileMessages({
     body: ViewerRuntimeFileMessageBody,
     source: MessageEventSource | null,
   ) => {
-    if (sourceName !== "burrete-viewer" || (body?.type !== "requestData" && body?.type !== "requestRuntimeFile")) {
+    if (sourceName !== "burette-viewer" || (body?.type !== "requestData" && body?.type !== "requestRuntimeFile")) {
       return false;
     }
     if (!body.requestToken) return true;
@@ -38,7 +38,7 @@ export function useAppViewerRuntimeFileMessages({
       : activeDocument;
     const reply = (payload: Record<string, unknown>) => {
       postMessageToViewerSource(source, {
-        source: "burrete-native-host",
+        source: "burette-native-host",
         body: {
           type: body.type === "requestData" ? "nativeData" : "nativeRuntimeFile",
           documentId: body.documentId,

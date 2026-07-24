@@ -1,13 +1,13 @@
 # Product Direction
 
-This document describes Burrete's product intent. It is not a release checklist,
+This document describes Burette's product intent. It is not a release checklist,
 marketing page, or complete feature specification. Keep it aligned with
 `README.md`, the active desktop app, the Quick Look extension, the source-built
 iPhone app, and the agent/plugin surface.
 
 ## Current Product
 
-Burrete is a molecular file workspace with four connected surfaces:
+Burette is a molecular file workspace with four connected surfaces:
 
 - Finder Quick Look previews for molecular files.
 - A compact macOS desktop workspace for opening, comparing, editing, and
@@ -49,7 +49,7 @@ not ordinary application dependencies.
 
 ## Primary Users
 
-Burrete is for people who inspect molecular and adjacent computational chemistry
+Burette is for people who inspect molecular and adjacent computational chemistry
 files as part of technical work:
 
 - computational chemists
@@ -89,13 +89,13 @@ and a way to recover when renderer or Quick Look infrastructure needs attention.
 
 - **Molecule first.** The structure, collection, trajectory, spectrum, or
   workflow artifact is the visual center. Shell UI exists to support inspection.
-- **Native enough to trust.** Burrete should feel like a serious macOS utility:
+- **Native enough to trust.** Burette should feel like a serious macOS utility:
   predictable menus, keyboard access, stable window behavior, familiar controls,
   and clear recovery actions.
 - **Surface truth matters.** Finder Quick Look, desktop app, browser-dev,
   tokenized browser preview, iPhone app, and agent sessions are separate
   runtimes. Product claims must say which surface is supported.
-- **File workflows beat dashboards.** Burrete is organized around files,
+- **File workflows beat dashboards.** Burette is organized around files,
   project folders, tabs, previews, and handoff, not hero metrics or abstract
   workspace cards.
 - **Local first.** The app should work from local files and local tools. External
@@ -116,7 +116,7 @@ and a way to recover when renderer or Quick Look infrastructure needs attention.
 
 ## Voice
 
-Burrete should sound practical, direct, and precise. User-facing copy should say
+Burette should sound practical, direct, and precise. User-facing copy should say
 what the app can do, what surface it applies to, and what the user can do next.
 Avoid aspirational claims that are not backed by README, docs, tests, or the
 current runtime.

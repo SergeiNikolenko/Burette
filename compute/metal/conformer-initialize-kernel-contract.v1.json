@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "libraryId": "burrete.compute.conformer-initialize.v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "libraryId": "burette.compute.conformer-initialize.v1",
   "source": "conformer-initialize.v1.metal",
   "deploymentTarget": "14.0",
   "algorithm": "counter-based deterministic float4 coordinate initialization",
@@ -17,7 +17,7 @@
     ]
   },
   "entrypoint": {
-    "name": "burrete_conformer_initialize_v1",
+    "name": "burette_conformer_initialize_v1",
     "threads": "atomCount * conformerCount",
     "buffers": [
       { "name": "seedWords", "index": 0, "type": "uint4", "access": "read", "elements": "conformerCount" },

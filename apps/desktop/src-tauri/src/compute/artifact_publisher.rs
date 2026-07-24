@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     ArtifactFile, ArtifactManifest, ArtifactManifestSchemaVersion, EnginePackManifest,
     EnginePackRef, EnginePackVersion, JobSnapshot, PackedArrayDescriptor, PackedByteOrder,
     PackedDType, PackedFileDescriptor, PackedLayout, ResultPackManifest, ResultPackRef,
@@ -29,7 +29,7 @@ use super::{
     error::{ComputeCoordinatorError, ComputeResult},
     store::ComputeStore,
 };
-use burrete_compute_core::{ConformerEnginePackArrays, ConformerPackedArraySpan};
+use burette_compute_core::{ConformerEnginePackArrays, ConformerPackedArraySpan};
 
 const ARTIFACT_DIRECTORY_MODE: u32 = 0o700;
 const ARTIFACT_FILE_MODE: u32 = 0o600;
@@ -925,8 +925,8 @@ pub(crate) fn materialize_conformer_artifact(
         let parameters = &job.request.as_conformer()?.parameters;
         let mmff_variant = parameters.mmff_variant.wire_id();
         let initialization = match parameters.initialization {
-            burrete_compute_protocol::ConformerInitialization::Generated => "generated",
-            burrete_compute_protocol::ConformerInitialization::InputGeometry => "inputGeometry",
+            burette_compute_protocol::ConformerInitialization::Generated => "generated",
+            burette_compute_protocol::ConformerInitialization::InputGeometry => "inputGeometry",
         };
         let xyz = encode_conformer_xyz(
             engine_arrays,
@@ -1804,7 +1804,7 @@ fn encode_conformer_xyz(
         };
         writeln!(
             xyz,
-            "Burrete conformer molecule={} energyRank={} ordinal={} initialization={} etkEnergy={:.8} mmffVariant={} mmffEnergy={} mmffStatus={} stereo={}",
+            "Burette conformer molecule={} energyRank={} ordinal={} initialization={} etkEnergy={:.8} mmffVariant={} mmffEnergy={} mmffStatus={} stereo={}",
             molecule,
             energy_rank,
             distance.conformer_ordinals[conformer],
@@ -2182,7 +2182,7 @@ mod recovery_tests {
     #[test]
     fn startup_removes_only_canonical_uncommitted_artifact_directories() {
         let temp_root = std::fs::canonicalize(std::env::temp_dir()).expect("canonical temp root");
-        let compute_root = temp_root.join(format!("burrete-artifact-recovery-{}", Uuid::new_v4()));
+        let compute_root = temp_root.join(format!("burette-artifact-recovery-{}", Uuid::new_v4()));
         let store =
             ComputeStore::initialize(compute_root.clone()).expect("initialize compute store");
         let artifacts = store.artifact_root().expect("artifact root");
@@ -2203,7 +2203,7 @@ mod recovery_tests {
     #[test]
     fn startup_fails_closed_on_unknown_artifact_entries() {
         let temp_root = std::fs::canonicalize(std::env::temp_dir()).expect("canonical temp root");
-        let compute_root = temp_root.join(format!("burrete-artifact-recovery-{}", Uuid::new_v4()));
+        let compute_root = temp_root.join(format!("burette-artifact-recovery-{}", Uuid::new_v4()));
         let store =
             ComputeStore::initialize(compute_root.clone()).expect("initialize compute store");
         let artifacts = store.artifact_root().expect("artifact root");

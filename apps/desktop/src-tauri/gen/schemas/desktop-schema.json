@@ -345,16 +345,16 @@
       "description": "Permission identifier",
       "oneOf": [
         {
-          "description": "Allows trusted Burrete desktop windows to inspect and control durable local compute jobs.",
+          "description": "Allows trusted Burette desktop windows to inspect and control durable local compute jobs.",
           "type": "string",
           "const": "allow-compute-commands",
-          "markdownDescription": "Allows trusted Burrete desktop windows to inspect and control durable local compute jobs."
+          "markdownDescription": "Allows trusted Burette desktop windows to inspect and control durable local compute jobs."
         },
         {
-          "description": "Allows the Burrete desktop shell to open structures and manage local viewer runtime state.",
+          "description": "Allows the Burette desktop shell to open structures and manage local viewer runtime state.",
           "type": "string",
           "const": "allow-viewer-commands",
-          "markdownDescription": "Allows the Burrete desktop shell to open structures and manage local viewer runtime state."
+          "markdownDescription": "Allows the Burette desktop shell to open structures and manage local viewer runtime state."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

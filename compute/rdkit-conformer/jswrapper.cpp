@@ -1,4 +1,4 @@
-// Copyright 2026 Burrete contributors.
+// Copyright 2026 Burette contributors.
 // SPDX-License-Identifier: MIT
 
 #include <emscripten/bind.h>
@@ -18,18 +18,18 @@
 
 namespace {
 
-burrete::conformer::Variant parse_variant(unsigned int raw) {
-  if (raw > static_cast<unsigned int>(burrete::conformer::Variant::SrETKDGv3)) {
+burette::conformer::Variant parse_variant(unsigned int raw) {
+  if (raw > static_cast<unsigned int>(burette::conformer::Variant::SrETKDGv3)) {
     throw std::invalid_argument("conformer variant is outside ABI v1");
   }
-  return static_cast<burrete::conformer::Variant>(raw);
+  return static_cast<burette::conformer::Variant>(raw);
 }
 
-burrete::mmff::Variant parse_mmff_variant(unsigned int raw) {
-  if (raw > static_cast<unsigned int>(burrete::mmff::Variant::MMFF94s)) {
+burette::mmff::Variant parse_mmff_variant(unsigned int raw) {
+  if (raw > static_cast<unsigned int>(burette::mmff::Variant::MMFF94s)) {
     throw std::invalid_argument("MMFF variant is outside ABI v1");
   }
-  return static_cast<burrete::mmff::Variant>(raw);
+  return static_cast<burette::mmff::Variant>(raw);
 }
 
 std::unique_ptr<RDKit::RWMol> parse_molecule(const std::string &input,
@@ -57,8 +57,8 @@ emscripten::val extract_conformer_parameters(const std::string &input,
   auto molecule = parse_molecule(input, input_format);
   const auto variant = parse_variant(raw_variant);
   const auto parameters =
-      burrete::conformer::extract_parameters(*molecule, variant);
-  const auto bytes = burrete::conformer::encode_binary(parameters, variant);
+      burette::conformer::extract_parameters(*molecule, variant);
+  const auto bytes = burette::conformer::encode_binary(parameters, variant);
   auto result = emscripten::val::global("Uint8Array").new_(bytes.size());
   if (!bytes.empty()) {
     const auto view = emscripten::val(emscripten::typed_memory_view(
@@ -73,8 +73,8 @@ emscripten::val extract_mmff_parameters(const std::string &input,
                                         unsigned int raw_variant) {
   auto molecule = parse_molecule(input, input_format);
   const auto variant = parse_mmff_variant(raw_variant);
-  const auto parameters = burrete::mmff::extract_parameters(*molecule, variant);
-  const auto bytes = burrete::mmff::encode_binary(parameters, variant);
+  const auto parameters = burette::mmff::extract_parameters(*molecule, variant);
+  const auto bytes = burette::mmff::encode_binary(parameters, variant);
   auto result = emscripten::val::global("Uint8Array").new_(bytes.size());
   if (!bytes.empty()) {
     const auto view = emscripten::val(emscripten::typed_memory_view(
@@ -89,16 +89,16 @@ std::string rdkit_source_revision() {
 }
 
 unsigned int conformer_extractor_abi_version() {
-  return burrete::conformer::kBinaryAbiVersion;
+  return burette::conformer::kBinaryAbiVersion;
 }
 
 unsigned int mmff_extractor_abi_version() {
-  return burrete::mmff::kBinaryAbiVersion;
+  return burette::mmff::kBinaryAbiVersion;
 }
 
 }  // namespace
 
-EMSCRIPTEN_BINDINGS(Burrete_rdkit_conformer) {
+EMSCRIPTEN_BINDINGS(Burette_rdkit_conformer) {
   emscripten::function("extract_conformer_parameters",
                        &extract_conformer_parameters);
   emscripten::function("extract_mmff_parameters", &extract_mmff_parameters);

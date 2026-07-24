@@ -1,13 +1,13 @@
 [package]
-name = "burrete"
-version = "1.0.28"
+name = "burette"
+version = "1.0.31"
 description = "Tauri/Rust shell for local molecular previews"
-authors = ["Burrete"]
+authors = ["Burette"]
 edition = "2021"
-default-run = "burrete"
+default-run = "burette"
 
 [lib]
-name = "burrete_lib"
+name = "burette_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -15,10 +15,10 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 base64 = "0.22"
-burrete-compute-metal = { path = "../../../crates/burrete-compute-metal" }
-burrete-compute-core = { path = "../../../crates/burrete-compute-core" }
-burrete-compute-protocol = { path = "../../../crates/burrete-compute-protocol" }
-burrete-core = { path = "../../../crates/burrete-core" }
+burette-compute-metal = { path = "../../../crates/burette-compute-metal" }
+burette-compute-core = { path = "../../../crates/burette-compute-core" }
+burette-compute-protocol = { path = "../../../crates/burette-compute-protocol" }
+burette-core = { path = "../../../crates/burette-core" }
 ed25519-dalek = "3"
 flate2 = "1"
 libc = "0.2"

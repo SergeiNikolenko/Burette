@@ -17,7 +17,7 @@ export function WelcomeScreen({ actions, buildInfo }: { actions: ShellActions; b
     <div className="new-tab-page">
       <div className="new-tab-copy">
         <div className="new-tab-eyebrow-row">
-          <p className="new-tab-eyebrow">Burrete Desktop</p>
+          <p className="new-tab-eyebrow">Burette Desktop</p>
           {buildInfo.isDevBuild ? (
             <span className="new-tab-build-badge" title={`${buildInfo.identifier}\n${buildDetail(buildInfo)}`}>
               {buildLabel(buildInfo)}
@@ -35,8 +35,8 @@ export function WelcomeScreen({ actions, buildInfo }: { actions: ShellActions; b
           <ShortcutTooltip label="Open Structure" shortcut="⌘O" />
         </button>
         <button type="button" data-analytics-control="open_command_palette" onClick={actions.openCommandPalette}>
-          Command Palette <kbd>⇧⌘P</kbd> <kbd>/</kbd>
-          <ShortcutTooltip label="Command Palette" shortcut="⇧⌘P /" />
+          Command Palette <kbd>⌘P</kbd> <kbd>/</kbd>
+          <ShortcutTooltip label="Command Palette" shortcut="⌘P /" />
         </button>
         <button type="button" data-analytics-control="open_settings" onClick={actions.openSettings}>
           Settings <kbd>⌘,</kbd>

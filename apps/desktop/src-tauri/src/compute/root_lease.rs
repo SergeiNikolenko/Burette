@@ -36,7 +36,7 @@ const MAX_SNAPSHOTS_TEMP_ATTEMPTS: usize = 8;
 #[cfg(unix)]
 const MAX_COMPUTE_ROOT_ENTRIES: usize = 4_096;
 #[cfg(unix)]
-const LOCK_DIAGNOSTIC_SCHEMA: &str = "burrete.compute-owner.v1";
+const LOCK_DIAGNOSTIC_SCHEMA: &str = "burette.compute-owner.v1";
 #[cfg(unix)]
 const MAX_LOCK_DIAGNOSTIC_BYTES: usize = 512;
 #[cfg(unix)]
@@ -96,7 +96,7 @@ impl ComputeRootLease {
             Ok(()) => {}
             Err(Errno::AGAIN) => {
                 return Err(ComputeCoordinatorError::Unavailable(
-                    "the compute root is already owned by another Burrete process".into(),
+                    "the compute root is already owned by another Burette process".into(),
                 ));
             }
             Err(error) => {
@@ -870,9 +870,9 @@ mod tests {
 
     use super::*;
 
-    const CHILD_PATH_ENV: &str = "BURRETE_COMPUTE_ROOT_LEASE_CHILD_PATH";
-    const CHILD_EXPECT_ENV: &str = "BURRETE_COMPUTE_ROOT_LEASE_CHILD_EXPECT";
-    const CHILD_READY_ENV: &str = "BURRETE_COMPUTE_ROOT_LEASE_CHILD_READY";
+    const CHILD_PATH_ENV: &str = "BURETTE_COMPUTE_ROOT_LEASE_CHILD_PATH";
+    const CHILD_EXPECT_ENV: &str = "BURETTE_COMPUTE_ROOT_LEASE_CHILD_EXPECT";
+    const CHILD_READY_ENV: &str = "BURETTE_COMPUTE_ROOT_LEASE_CHILD_READY";
     const CHILD_TEST_NAME: &str = "compute::root_lease::tests::lock_subprocess_helper";
 
     struct TestRoot {
@@ -885,7 +885,7 @@ mod tests {
             let temp = std::env::temp_dir()
                 .canonicalize()
                 .expect("canonical temporary directory");
-            let parent = temp.join(format!("burrete-compute-root-{}", Uuid::new_v4()));
+            let parent = temp.join(format!("burette-compute-root-{}", Uuid::new_v4()));
             fs::create_dir(&parent).expect("create test parent");
             Self {
                 compute_root: parent.join("compute"),

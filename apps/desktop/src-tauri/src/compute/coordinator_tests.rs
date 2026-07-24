@@ -1,6 +1,6 @@
 use super::*;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     AllGridScope, ClusterV1Parameters, ComputeJobSchemaVersion, ConformerResourceLimits,
     ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant, EnginePackManifest,
     ExecutionPolicy, FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
@@ -14,7 +14,7 @@ use crate::preview::grid_store::{build_grid_store, GridQuery, GridRuntimeRegistr
 
 #[test]
 fn missing_runtime_never_advertises_gpu_execution() {
-    let missing = std::env::temp_dir().join(format!("burrete-missing-metal-{}", Uuid::new_v4()));
+    let missing = std::env::temp_dir().join(format!("burette-missing-metal-{}", Uuid::new_v4()));
     let state = NativeMetalState::probe(Some(missing), &"a".repeat(64));
     let NativeMetalState::Unavailable { code, message } = state else {
         panic!("missing runtime cannot become available");
@@ -38,10 +38,10 @@ fn helper_attestation_is_a_real_sha256_digest() {
 fn semiempirical_grid_workflow_fails_closed_without_native_metal_runtime() {
     let fixture_id = Uuid::new_v4();
     let temp_root = std::fs::canonicalize(std::env::temp_dir()).expect("canonical temp root");
-    let compute_root = temp_root.join(format!("burrete-semi-durable-{fixture_id}"));
-    let grid_root = temp_root.join(format!("burrete-semi-grid-{fixture_id}"));
+    let compute_root = temp_root.join(format!("burette-semi-durable-{fixture_id}"));
+    let grid_root = temp_root.join(format!("burette-semi-grid-{fixture_id}"));
     std::fs::create_dir_all(&grid_root).expect("create Grid fixture directory");
-    let record = b"water\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9584    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2396    0.9275    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END\n$$$$\n";
+    let record = b"water\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9584    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2396    0.9275    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END\n$$$$\n";
     let sdf = [record.as_slice(), record.as_slice()].concat();
     let handle = build_grid_store(&grid_root, "sdf", &sdf)
         .expect("build Grid fixture")
@@ -53,6 +53,7 @@ fn semiempirical_grid_workflow_fails_closed_without_native_metal_runtime() {
             handle.database_path,
             "sdf",
             handle.cancel_token,
+            handle.ingest_worker,
         )
         .expect("register Grid fixture");
     let viewer_root =
@@ -85,8 +86,8 @@ fn semiempirical_grid_workflow_fails_closed_without_native_metal_runtime() {
 fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
     let fixture_id = Uuid::new_v4();
     let temp_root = std::fs::canonicalize(std::env::temp_dir()).expect("canonical temp root");
-    let compute_root = temp_root.join(format!("burrete-conformer-submit-{fixture_id}"));
-    let grid_root = temp_root.join(format!("burrete-conformer-grid-{fixture_id}"));
+    let compute_root = temp_root.join(format!("burette-conformer-submit-{fixture_id}"));
+    let grid_root = temp_root.join(format!("burette-conformer-grid-{fixture_id}"));
     std::fs::create_dir_all(&grid_root).expect("create Grid fixture directory");
     let handle = build_grid_store(&grid_root, "csv", b"smiles,name\nCC,Ethane\nCO,Methanol\n")
         .expect("build Grid fixture")
@@ -98,6 +99,7 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
             handle.database_path,
             "csv",
             handle.cancel_token,
+            handle.ingest_worker,
         )
         .expect("register Grid fixture");
     let viewer_root =
@@ -112,8 +114,8 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
         },
         parameters: ConformerV1Parameters {
             variant: ConformerVariant::EtkdgV3,
-            initialization: burrete_compute_protocol::ConformerInitialization::Generated,
-            mmff_variant: burrete_compute_protocol::MmffVariant::Mmff94s,
+            initialization: burette_compute_protocol::ConformerInitialization::Generated,
+            mmff_variant: burette_compute_protocol::MmffVariant::Mmff94s,
             conformers_per_molecule: 3,
             max_attempts_per_conformer: 2,
         },
@@ -256,7 +258,7 @@ fn conformer_submission_streams_raw_extraction_into_a_durable_job() {
     );
     let xyz = std::fs::read_to_string(&publication.primary_open_path)
         .expect("read published conformer XYZ");
-    assert_eq!(xyz.matches("Burrete conformer molecule=").count(), 6);
+    assert_eq!(xyz.matches("Burette conformer molecule=").count(), 6);
     assert!(xyz.contains("etkEnergy="));
     assert!(xyz.contains("initialization=generated etkEnergy="));
     assert!(xyz.contains("mmffVariant=MMFF94s mmffEnergy="));
@@ -406,8 +408,8 @@ fn decode_test_sha256(value: &str) -> [u8; 32] {
 fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
     let fixture_id = Uuid::new_v4();
     let temp_root = std::fs::canonicalize(std::env::temp_dir()).expect("canonical temp root");
-    let compute_root = temp_root.join(format!("burrete-compute-e2e-{fixture_id}"));
-    let grid_root = temp_root.join(format!("burrete-grid-e2e-{fixture_id}"));
+    let compute_root = temp_root.join(format!("burette-compute-e2e-{fixture_id}"));
+    let grid_root = temp_root.join(format!("burette-grid-e2e-{fixture_id}"));
     std::fs::create_dir_all(&grid_root).expect("create Grid fixture directory");
     let handle = build_grid_store(
         &grid_root,
@@ -424,6 +426,7 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
             handle.database_path,
             "csv",
             handle.cancel_token,
+            handle.ingest_worker,
         )
         .expect("register Grid fixture");
 
@@ -491,7 +494,7 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
             .records
             .iter()
             .map(|record| {
-                let mut fingerprint = vec![0_u8; burrete_compute_core::FINGERPRINT_BYTES];
+                let mut fingerprint = vec![0_u8; burette_compute_core::FINGERPRINT_BYTES];
                 fingerprint[if record.ordinal < 2 { 0 } else { 1 }] = 1;
                 crate::compute::fingerprint_session::FingerprintOutputRecord {
                     ordinal: record.ordinal,
@@ -633,7 +636,7 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
         .iter()
         .all(|row| row.analyses.contains_key("clusterId")));
 
-    let export_root = temp_root.join(format!("burrete-cluster-export-e2e-{fixture_id}"));
+    let export_root = temp_root.join(format!("burette-cluster-export-e2e-{fixture_id}"));
     std::fs::create_dir(&export_root).expect("create representative export root");
     let export = coordinator
         .export_cluster_representatives(
@@ -669,7 +672,7 @@ fn cluster_v1_runs_end_to_end_and_writes_results_back_to_grid() {
     .expect("decode representative provenance report");
     assert_eq!(
         report["schemaVersion"],
-        "burrete.cluster-representative-export.v1"
+        "burette.cluster-representative-export.v1"
     );
     assert_eq!(report["representativeCount"], 2);
     assert_eq!(report["job"]["jobId"], publication.job.job_id.to_string());

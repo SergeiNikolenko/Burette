@@ -79,6 +79,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
             grid_store.database_path,
             collection.format,
             grid_store.cancel_token,
+            grid_store.ingest_worker,
         )?;
     let rdkit_wasm = runtime.join("RDKit_minimal.wasm");
     fs::copy(assets.join("rdkit").join("RDKit_minimal.wasm"), &rdkit_wasm)
@@ -87,7 +88,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         .encode(fs::read(&rdkit_wasm).map_err(|err| err.to_string())?);
     write_bytes_atomic(
         &runtime.join("preview-rdkit-wasm.js"),
-        format!("window.BurreteRDKitWasmBase64 = \"{rdkit_wasm_base64}\";\n").as_bytes(),
+        format!("window.BuretteRDKitWasmBase64 = \"{rdkit_wasm_base64}\";\n").as_bytes(),
     )?;
     let rdkit_wasm_path = asset_url(&rdkit_wasm);
     let config = json!({
@@ -99,7 +100,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         "label": file_path.file_name().and_then(|value| value.to_str()).unwrap_or("molecule collection"),
         "byteCount": data.len(),
         "host": "app",
-        "quickLookBuild": "burrete-tauri-grid2d",
+        "quickLookBuild": "burette-tauri-grid2d",
         "debug": false,
         "appViewer": true,
         "pubChemSearch": true,
@@ -132,7 +133,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     )?;
     write_bytes_atomic(
         &runtime.join("preview-config.js"),
-        format!("window.BurreteConfig = {config_text};\n").as_bytes(),
+        format!("window.BuretteConfig = {config_text};\n").as_bytes(),
     )?;
     write_json_atomic(
         &runtime.join("manifest.json"),
@@ -184,18 +185,18 @@ fn grid_html(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Burrete Grid - {title}</title>
+  <title>Burette Grid - {title}</title>
   <meta http-equiv="Content-Security-Policy" content="{GRID_RUNTIME_CSP}" />
   <link rel="stylesheet" href="{grid_css}" />
   <script>
     window.__mqlPost = function (type, message, payload) {{
       try {{
-        window.parent && window.parent.postMessage({{ source: 'burrete-grid', body: {{ type: type, message: String(message || ''), ...(payload || {{}}) }} }}, '*');
+        window.parent && window.parent.postMessage({{ source: 'burette-grid', body: {{ type: type, message: String(message || ''), ...(payload || {{}}) }} }}, '*');
       }} catch (_) {{}}
     }};
-    window.BurreteInlineMode = true;
-    window.BurreteGridMode = true;
-    window.BurreteDebug = false;
+    window.BuretteInlineMode = true;
+    window.BuretteGridMode = true;
+    window.BuretteDebug = false;
   </script>
 </head>
 <body class="{background_class}">
@@ -213,7 +214,7 @@ fn grid_html(
 }
 
 fn versioned_asset_url(path: &Path) -> String {
-    format!("{}?v=grid-ui-v11", asset_url(path))
+    format!("{}?v=grid-ui-v12", asset_url(path))
 }
 
 fn grid_can_preview(extension: &str) -> bool {
@@ -709,7 +710,7 @@ mod tests {
     fn parses_standard_multi_record_sdf_separator() {
         let collection = parse_sdf_grid(
             r#"Mol A
-  Burrete
+  Burette
 
   0  0  0  0  0  0            999 V2000
 M  END
@@ -718,7 +719,7 @@ A1
 
 $$$$
 Mol B
-  Burrete
+  Burette
 
   0  0  0  0  0  0            999 V2000
 M  END
@@ -819,7 +820,7 @@ c1ccccc1	Benzene	aromatic
     fn sdf_properties_and_molblock_stop_at_m_end() {
         let lines = normalized_lines(
             r#"Mol A
-  Burrete
+  Burette
 
   0  0  0  0  0  0            999 V2000
 M  END

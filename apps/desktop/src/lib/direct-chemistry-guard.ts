@@ -1,7 +1,7 @@
-import { parseStructureComposition } from "./structure-composition";
+import { parseStructureComposition, type StructureCompositionSummary } from "./structure-composition";
 import { readStructureText } from "./structure-text";
 
-const DIRECT_CHEMISTRY_JOB_ATOM_LIMIT = 300;
+export const DIRECT_CHEMISTRY_JOB_ATOM_LIMIT = 300;
 const DIRECT_CHEMISTRY_JOB_READ_LIMIT = 4 * 1024 * 1024;
 
 export async function directChemistryJobGuardMessage(
@@ -30,15 +30,22 @@ async function directChemistryJobAtomCount(
 function estimateStructureAtomCount(text: string, extension: string | null | undefined) {
   const normalizedExtension = String(extension || "").replace(/^\./u, "").toLowerCase();
   const summary = parseStructureComposition(text, normalizedExtension);
-  const summaryCounts = summary ? [
+  const summaryMax = summary ? structureAtomCountFromSummary(summary) : null;
+  return summaryMax ?? fallbackStructureAtomCount(text, normalizedExtension);
+}
+
+// The inspector has the same parsed summary in hand, so it can warn about an
+// oversized job before the click rather than letting the run fail into a toast.
+export function structureAtomCountFromSummary(summary: StructureCompositionSummary) {
+  const counts = [
     ...summary.rows,
     ...summary.componentRows,
     ...summary.polymerRows,
     ...summary.ligandRows,
     ...summary.solventRows,
-  ].flatMap((row) => atomCountsFromLabelValue(row.label, row.value)) : [];
-  const summaryMax = Math.max(0, ...summaryCounts);
-  return summaryMax > 0 ? summaryMax : fallbackStructureAtomCount(text, normalizedExtension);
+  ].flatMap((row) => atomCountsFromLabelValue(row.label, row.value));
+  const max = Math.max(0, ...counts);
+  return max > 0 ? max : null;
 }
 
 function atomCountsFromLabelValue(label: string, value: string) {

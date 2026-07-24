@@ -4,17 +4,17 @@ use std::{
     time::Instant,
 };
 
-use burrete_compute_core::{
+use burette_compute_core::{
     evaluate_pm6_with_accelerators, evaluate_rm1_with_prepared_pairs_and_accelerators,
     evaluate_semiempirical, symmetric_eigendecomposition, Rm1Evaluation, SemiempiricalAtom,
     SemiempiricalError, SemiempiricalMethod, SemiempiricalMolecule, SemiempiricalScfOptions,
     SemiempiricalScfStatus,
 };
-use burrete_compute_metal::{
+use burette_compute_metal::{
     MetalPm6CorrectionBatch, MetalPm6OneCenterFockBatch, MetalTanimotoRuntime,
     Pm6CorrectionMoleculeDescriptor,
 };
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     AnalysisResourceLimits, BackendPolicy, CapabilityMaturity, ComputeJobSchemaVersion,
     ExecutionPolicy, GridScope, GridSourceReference, RepresentativePolicy, SchedulingPolicy,
     SelectedGridScope, SemiempiricalMethodV1, SemiempiricalV1Parameters,
@@ -740,11 +740,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "manual real-GPU smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    #[ignore = "manual real-GPU smoke; set BURETTE_METAL_RUNTIME_ROOT"]
     fn evaluates_explicit_water_with_metal_scf_kernels() {
-        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+        let root = std::env::var_os("BURETTE_METAL_RUNTIME_ROOT")
             .map(PathBuf::from)
-            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged runtime");
+            .expect("BURETTE_METAL_RUNTIME_ROOT must name a packaged runtime");
         let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
             .expect("load verified Metal runtime");
         let classified = execute_semiempirical_rows(
@@ -802,7 +802,7 @@ mod tests {
             molecule_content_sha256: "0".repeat(64),
             name: "water".into(),
             molblock: Some(
-                "water\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9584    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2396    0.9275    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END"
+                "water\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9584    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2396    0.9275    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END"
                     .into(),
             ),
         }
@@ -815,7 +815,7 @@ mod tests {
             molecule_content_sha256: "1".repeat(64),
             name: "hydrogen sulfide".into(),
             molblock: Some(
-                "hydrogen sulfide\n  Burrete\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 S   0  0  0  0  0  0  0  0  0  0  0  0\n    1.3360    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.4450    1.2600    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END"
+                "hydrogen sulfide\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 S   0  0  0  0  0  0  0  0  0  0  0  0\n    1.3360    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.4450    1.2600    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END"
                     .into(),
             ),
         }
@@ -828,7 +828,7 @@ mod tests {
             molecule_content_sha256: "2".repeat(64),
             name: "hydrogen chloride".into(),
             molblock: Some(
-                "hydrogen chloride\n  Burrete\n\n  2  1  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    1.2746    0.0000    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\nM  END"
+                "hydrogen chloride\n  Burette\n\n  2  1  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    1.2746    0.0000    0.0000 Cl  0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\nM  END"
                     .into(),
             ),
         }

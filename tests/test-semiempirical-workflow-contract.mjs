@@ -5,7 +5,7 @@ const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "u
 const workflow = source("apps/desktop/src-tauri/src/compute/semiempirical_workflow.rs");
 const commands = source("apps/desktop/src-tauri/src/compute/commands.rs");
 const permissions = source("apps/desktop/src-tauri/permissions/compute.toml");
-const protocol = source("crates/burrete-compute-protocol/src/workflow.rs");
+const protocol = source("crates/burette-compute-protocol/src/workflow.rs");
 const gridMessages = source("apps/desktop/src/hooks/use-app-grid-conformer-messages.ts");
 const gridViewer = source("PreviewExtension/Web/grid-viewer.js");
 const gridUi = source("apps/desktop/src/preview-grid/grid-ui.tsx");
@@ -29,7 +29,7 @@ assert.match(gridViewer, /evaluateSemiempiricalGridSelection/);
 assert.match(gridViewer, /semiempiricalEnabled: caps\.cluster/);
 assert.match(gridViewer, /SEMIEMPIRICAL_METHOD_STORAGE_KEY/);
 assert.match(gridUi, /id="calculate-semiempirical-selected"/);
-assert.match(gridUi, /aria-label="Semi-empirical method"/);
-assert.match(gridUi, /<option value="PM6">PM6<\/option>/);
+assert.match(gridUi, /ariaLabel="Semi-empirical method"/);
+assert.match(gridUi, /SEMIEMPIRICAL_METHODS: SemiempiricalMethod\[\] = \[[^\]]*"PM6"[^\]]*\]/);
 
 console.log("semi-empirical Grid workflow contract tests passed");

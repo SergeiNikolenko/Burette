@@ -1,4 +1,4 @@
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     ArtifactManifest, ClusterV1SubmitRequest, ComputeCapabilityReport, ConformerV1SubmitRequest,
     JobRevisionEvent, JobSnapshot, MAX_JSON_SAFE_INTEGER,
 };
@@ -10,6 +10,10 @@ use uuid::Uuid;
 use crate::compute::{
     alignment_workflow::{GridAlignmentRequest, GridAlignmentResult},
     artifact_publisher::{ClusterPublicationStep, ConformerPublicationStep},
+    chemical_space::{
+        ChemicalSpaceClusterRequest, ChemicalSpaceClusterResult, ChemicalSpaceRequest,
+        ChemicalSpaceResult,
+    },
     cluster_executor::ClusterExecutionStep,
     conformer_session::ConformerSubmissionStep,
     coordinator::{
@@ -120,6 +124,7 @@ pub(crate) fn compute_register_inline_source<R: Runtime>(
         grid_store.database_path,
         grid_store.summary.format,
         grid_store.cancel_token,
+        grid_store.ingest_worker,
     ) {
         let _ = fs::remove_dir_all(&runtime_dir);
         return Err(error);
@@ -415,6 +420,42 @@ pub(crate) async fn compute_execute_cluster<R: Runtime>(
     validate_revision(expected_revision)?;
     let coordinator = coordinator.inner().clone();
     run_blocking(move || coordinator.execute_cluster_v1(&owner, job_id, expected_revision)).await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_execute_chemical_space<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    job_id: String,
+    expected_revision: u64,
+    request: ChemicalSpaceRequest,
+) -> Result<ChemicalSpaceResult, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let job_id = parse_uuid("job ID", &job_id)?;
+    validate_revision(expected_revision)?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || {
+        coordinator.execute_chemical_space(&owner, job_id, expected_revision, request)
+    })
+    .await
+}
+
+#[tauri::command]
+pub(crate) async fn compute_cluster_chemical_space<R: Runtime>(
+    window: WebviewWindow<R>,
+    coordinator: State<'_, ComputeCoordinator>,
+    job_id: String,
+    expected_revision: u64,
+    request: ChemicalSpaceClusterRequest,
+) -> Result<ChemicalSpaceClusterResult, ComputeCommandError> {
+    let owner = trusted_owner(&window)?;
+    let job_id = parse_uuid("job ID", &job_id)?;
+    validate_revision(expected_revision)?;
+    let coordinator = coordinator.inner().clone();
+    run_blocking(move || {
+        coordinator.cluster_chemical_space(&owner, job_id, expected_revision, request)
+    })
+    .await
 }
 
 #[tauri::command]

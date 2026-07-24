@@ -15,7 +15,7 @@ use commands::descriptors::DescriptorGridJobRegistry;
 use commands::recent_documents::RecentDocumentsRegistry;
 use commands::source_editing::{OpenedSourceRegistry, SourceEditRegistry};
 use preview::grid_store::GridRuntimeRegistry;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 use tauri::{Manager, RunEvent};
 
 pub fn run_compute_service() -> Result<(), String> {
@@ -55,6 +55,11 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .map(|app_data| {
+                    if let Err(error) = fs::create_dir_all(&app_data) {
+                        return compute::coordinator::ComputeCoordinator::unavailable(format!(
+                            "compute app-data directory cannot be created: {error}"
+                        ));
+                    }
                     let resource_root = app.path().resource_dir().ok();
                     let metal_runtime_root =
                         resource_root.as_ref().map(|root| root.join("ComputeMetal"));
@@ -94,7 +99,7 @@ pub fn run() {
                             &initial_app,
                             Some(windows::MAIN_WINDOW_LABEL),
                         ) {
-                            eprintln!("failed to create the initial Burrete workspace: {error}");
+                            eprintln!("failed to create the initial Burette workspace: {error}");
                         }
                     } else {
                         show_and_emit_open_documents(&initial_app, startup_paths);
@@ -123,6 +128,8 @@ pub fn run() {
             compute::commands::compute_begin_cluster_execution,
             compute::commands::compute_submit_fingerprint_chunk,
             compute::commands::compute_execute_cluster,
+            compute::commands::compute_execute_chemical_space,
+            compute::commands::compute_cluster_chemical_space,
             compute::commands::compute_publish_cluster,
             compute::commands::compute_get_job,
             compute::commands::compute_list_jobs,
@@ -133,6 +140,7 @@ pub fn run() {
             compute::commands::compute_purge_job,
             menu::sync_native_menu,
             menu::drain_native_menu_commands,
+            menu::request_app_quit,
             menu::register_exit_preflight_listener,
             menu::unregister_exit_preflight_listener,
             menu::respond_to_exit_preflight,
@@ -219,7 +227,7 @@ pub fn run() {
             commands::xtb::cancel_xtb_job,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building Burrete Tauri application");
+        .expect("error while building Burette Tauri application");
 
     #[cfg(target_os = "macos")]
     macos::install_termination_handler(app.handle())
@@ -270,7 +278,7 @@ fn should_keep_running_after_last_window_closed(code: Option<i32>, has_windows: 
 }
 
 fn packaged_compute_service_path() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("BURRETE_COMPUTE_SERVICE_PATH").map(PathBuf::from) {
+    if let Some(path) = std::env::var_os("BURETTE_COMPUTE_SERVICE_PATH").map(PathBuf::from) {
         return path.is_file().then_some(path);
     }
     let executable = std::env::current_exe().ok()?;
@@ -278,11 +286,11 @@ fn packaged_compute_service_path() -> Option<PathBuf> {
     let packaged = directory
         .parent()?
         .join("Helpers")
-        .join("burrete-compute-service");
+        .join("burette-compute-service");
     if packaged.is_file() {
         return Some(packaged);
     }
-    let development = directory.join("burrete-compute-service");
+    let development = directory.join("burette-compute-service");
     development.is_file().then_some(development)
 }
 

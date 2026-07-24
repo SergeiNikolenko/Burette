@@ -350,11 +350,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 
 [[package]]
-name = "burrete"
-version = "1.0.28"
+name = "burette"
+version = "1.0.31"
 dependencies = [
  "base64 0.22.1",
- "burrete-core",
+ "burette-core",
  "cocoa",
  "core-foundation",
  "ed25519-dalek",
@@ -375,7 +375,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "burrete-core"
+name = "burette-core"
 version = "0.1.0"
 dependencies = [
  "serde",

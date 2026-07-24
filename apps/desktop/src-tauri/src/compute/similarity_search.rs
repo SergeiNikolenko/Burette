@@ -1,8 +1,8 @@
 use std::{mem::size_of, time::Instant};
 
-use burrete_compute_core::{score_tanimoto_query, TanimotoCounts, TanimotoQueryOptions};
-use burrete_compute_metal::{MetalRuntimeError, MetalTanimotoRuntime};
-use burrete_compute_protocol::{
+use burette_compute_core::{score_tanimoto_query, TanimotoCounts, TanimotoQueryOptions};
+use burette_compute_metal::{MetalRuntimeError, MetalTanimotoRuntime};
+use burette_compute_protocol::{
     ArtifactManifest, Backend, BackendPolicy, EngineIdentity, JobSnapshot, JobState,
     SimilarityCutoff, WorkflowTemplateId, MAX_JSON_SAFE_INTEGER,
 };
@@ -155,7 +155,7 @@ pub(crate) fn execute_similarity_search(
                     serde_json::json!({
                         "runtime": runtime.runtime_identity(),
                         "device": runtime.device_identity(),
-                        "kernelId": "burrete.compute.tanimoto.v2:query-counts.v1",
+                        "kernelId": "burette.compute.tanimoto.v2:query-counts.v1",
                     }),
                 )
             }
@@ -221,7 +221,7 @@ pub(crate) fn execute_similarity_search(
 
     let run_id = Uuid::new_v4();
     let settings = SimilaritySettingsIdentity {
-        schema_version: "burrete.similarity-search-settings.v1",
+        schema_version: "burette.similarity-search-settings.v1",
         run_id,
         source_job_id: job.job_id,
         source_artifact_id: artifact.artifact_id,

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://burrete.app/schemas/compute/protocol/artifact-manifest.v1.schema.json",
-  "title": "Burrete ArtifactManifest v1",
+  "$id": "https://burette.app/schemas/compute/protocol/artifact-manifest.v1.schema.json",
+  "title": "Burette ArtifactManifest v1",
   "$comment": "The Rust validator is authoritative for canonical file ordering, aggregate bytes, and exact result-pack descriptor and job bindings.",
   "type": "object",
   "required": [
@@ -21,7 +21,7 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
-      "const": "burrete.compute-artifact-manifest.v1"
+      "const": "burette.compute-artifact-manifest.v1"
     },
     "artifactId": {
       "$ref": "common.v1.schema.json#/$defs/nonNilUuid"

@@ -1,4 +1,4 @@
-// Copyright 2026 Burrete contributors.
+// Copyright 2026 Burette contributors.
 // SPDX-License-Identifier: MIT
 //
 // RDKit Release_2025_03_4 API adapter. See README.md and THIRD_PARTY_NOTICES.md.
@@ -12,7 +12,7 @@ namespace RDKit {
 class ROMol;
 }
 
-namespace burrete::conformer {
+namespace burette::conformer {
 
 enum class Variant : std::uint8_t {
   DG = 0,
@@ -54,4 +54,4 @@ struct ExtractedParameters {
 
 ExtractedParameters extract_parameters(RDKit::ROMol &mol, Variant variant);
 
-}  // namespace burrete::conformer
+}  // namespace burette::conformer

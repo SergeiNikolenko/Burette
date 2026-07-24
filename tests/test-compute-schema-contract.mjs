@@ -538,7 +538,7 @@ for (const file of ["protocol/common.v1.schema.json", ...publicSchemaFiles]) {
   assertValidatorCoverage(schema, file);
   assertStrictTypeCoverage(schema, file);
   assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema", `${file} must use JSON Schema 2020-12`);
-  assert.match(schema.$id, /^https:\/\/burrete\.app\/schemas\/compute\//u, `${file} must have a stable schema ID`);
+  assert.match(schema.$id, /^https:\/\/burette\.app\/schemas\/compute\//u, `${file} must have a stable schema ID`);
 }
 for (const file of publicSchemaFiles) {
   assert.equal(readJson(schemaPath(file)).additionalProperties, false, `${file} must reject unknown top-level fields`);

@@ -1,4 +1,4 @@
-// Copyright 2026 Burrete contributors.
+// Copyright 2026 Burette contributors.
 // SPDX-License-Identifier: MIT
 
 #include "mmff_binary.h"
@@ -20,12 +20,12 @@ std::uint32_t read_u32(const std::vector<std::uint8_t> &bytes,
 }  // namespace
 
 int main() {
-  burrete::mmff::ExtractedParameters parameters;
+  burette::mmff::ExtractedParameters parameters;
   parameters.atom_count = 2;
   parameters.partial_charges = {0.1F, -0.1F};
   parameters.bonds.push_back({{0, 1, 0, 0}, {4.0F, 1.2F, 0, 0}, {}});
-  const auto bytes = burrete::mmff::encode_binary(
-      parameters, burrete::mmff::Variant::MMFF94s);
+  const auto bytes = burette::mmff::encode_binary(
+      parameters, burette::mmff::Variant::MMFF94s);
   assert(bytes.size() == 128);
   assert(bytes[0] == 'B' && bytes[1] == 'M' && bytes[2] == 'F' &&
          bytes[3] == 'X');
@@ -39,8 +39,8 @@ int main() {
   parameters.bonds[0].atoms[1] = 2;
   bool rejected = false;
   try {
-    static_cast<void>(burrete::mmff::encode_binary(
-        parameters, burrete::mmff::Variant::MMFF94));
+    static_cast<void>(burette::mmff::encode_binary(
+        parameters, burette::mmff::Variant::MMFF94));
   } catch (const std::runtime_error &) {
     rejected = true;
   }

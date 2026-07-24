@@ -53,7 +53,7 @@ export function registerBrowserDevDesmondPreviewRoute(server: ViteDevServer, opt
         sendJson(res, 404, { error: "Schrodinger Desmond preview extractor is unavailable." });
         return;
       }
-      const tempDirectory = await mkdtemp(join(tmpdir(), "burrete-desmond-preview-"));
+      const tempDirectory = await mkdtemp(join(tmpdir(), "burette-desmond-preview-"));
       const outputPath = join(tempDirectory, "desmond-preview.pdb");
       try {
         await options.execFileAsync(
@@ -82,7 +82,7 @@ export function registerBrowserDevDesmondPreviewRoute(server: ViteDevServer, opt
         res.setHeader("Content-Type", "application/octet-stream");
         res.setHeader("Content-Length", String(bytes.length));
         res.setHeader("Cache-Control", "no-cache");
-        res.setHeader("X-Burrete-Preview-Extension", "pdb");
+        res.setHeader("X-Burette-Preview-Extension", "pdb");
         res.end(bytes);
       } finally {
         await rm(tempDirectory, { recursive: true, force: true });

@@ -10,7 +10,7 @@ const fixture = JSON.parse(readFileSync(
 ));
 const rdkit = await initRDKitModule();
 
-assert.equal(fixture.schemaVersion, "burrete.rdkit-morgan-known-answer.v1");
+assert.equal(fixture.schemaVersion, "burette.rdkit-morgan-known-answer.v1");
 assert.equal(rdkit.version(), fixture.rdkitVersion);
 assert.deepEqual(fixture.settings, {
   radius: 2,

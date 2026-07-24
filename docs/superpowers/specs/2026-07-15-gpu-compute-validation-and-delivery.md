@@ -1,11 +1,11 @@
-# Burrete GPU Compute Validation And Delivery
+# Burette GPU Compute Validation And Delivery
 
 Status: authoritative companion acceptance contract for the native GPU Compute
 Layer.
 
 Date: 2026-07-15
 
-Architecture: [Burrete GPU Compute Platform Design](2026-07-15-gpu-compute-platform-design.md)
+Architecture: [Burette GPU Compute Platform Design](2026-07-15-gpu-compute-platform-design.md)
 
 ## Validation Principles
 
