@@ -2436,13 +2436,20 @@
     return rows.filter(row => filters.every(([columnId, filter]) => tableColumnFilterMatches(row, columnId, filter)));
   }
 
+  // A cleared bound is stored as an empty string, and Number('') is 0, so the
+  // bounds have to be read as "blank means unbounded" rather than coerced.
+  function tableColumnFilterBound(value) {
+    const text = String(value ?? '').trim();
+    return text ? Number(text) : NaN;
+  }
+
   function tableColumnFilterMatches(row, columnId, filter) {
     if (!filter) return true;
     if (filter.type === 'number') {
       const value = tableColumnNumericValue(row, columnId);
       if (!Number.isFinite(value)) return false;
-      const min = Number(filter.min);
-      const max = Number(filter.max);
+      const min = tableColumnFilterBound(filter.min);
+      const max = tableColumnFilterBound(filter.max);
       if (Number.isFinite(min) && value < min) return false;
       if (Number.isFinite(max) && value > max) return false;
       return true;
@@ -3512,7 +3519,7 @@
   }
 
 
-  const FILTER_BINS = 14;
+  const FILTER_BINS = 32;
 
   function filterModelColumns() {
     const catalog = tableColumnCatalog();
@@ -3528,13 +3535,16 @@
   function filterColumnStats(column) {
     const rows = state.all.length ? state.all : state.rows;
     const values = [];
+    let min = Infinity;
+    let max = -Infinity;
     for (const row of rows) {
       const value = tableColumnNumericValue(row, column.id);
-      if (Number.isFinite(value)) values.push(value);
+      if (!Number.isFinite(value)) continue;
+      values.push(value);
+      if (value < min) min = value;
+      if (value > max) max = value;
     }
     if (values.length < 2) return null;
-    const min = Math.min(...values);
-    const max = Math.max(...values);
     if (!(max > min)) return null;
     const bins = new Array(FILTER_BINS).fill(0);
     for (const value of values) {

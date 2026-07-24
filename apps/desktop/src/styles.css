@@ -7485,14 +7485,13 @@ img.settings-open-destination-icon {
   font: 400 12px/1.2 inherit;
   outline: none;
 }
+/* No inner scroll: the section grows to its full height and the dock scrolls
+   once, so a filter never sits in a box inside a box. */
 .grid-filter-list {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   align-content: start;
-  max-height: 420px;
   margin-top: 8px;
-  overflow-x: hidden;
-  overflow-y: auto;
 }
 .grid-filter-more {
   padding: 6px 2px;
@@ -7501,13 +7500,13 @@ img.settings-open-destination-icon {
 }
 .grid-filter-card {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   border-radius: 8px;
-  padding: 8px;
+  padding: 10px;
   background: var(--control-fill, rgba(255, 255, 255, 0.05));
 }
 .grid-filter-card.active {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 30%, transparent);
 }
 .grid-filter-card header {
   display: flex;
@@ -7517,6 +7516,7 @@ img.settings-open-destination-icon {
   min-width: 0;
 }
 .grid-filter-card header span {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
@@ -7539,27 +7539,69 @@ img.settings-open-destination-icon {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
-.grid-filter-histogram {
+/* Bar colours reach Recharts as per-datum `fill`, so they have to be plain
+   custom properties resolvable on the chart's own subtree. */
+.grid-filter-chart-wrap {
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+.grid-filter-chart {
+  --grid-filter-bin: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  --grid-filter-bin-active: color-mix(in srgb, var(--text-primary) 62%, transparent);
+}
+.grid-filter-chart .recharts-rectangle {
+  transition: fill 90ms ease-out;
+}
+.grid-filter-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+.grid-filter-toggle:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+.grid-filter-toggle[aria-expanded="true"] {
+  color: var(--text-primary);
+}
+.grid-filter-slider-wrap {
+  position: relative;
   display: flex;
-  align-items: flex-end;
-  gap: 1px;
-  height: 38px;
+  align-items: center;
+  height: 16px;
 }
-.grid-filter-bin {
-  flex: 1 1 0;
-  min-height: 1px;
-  border-radius: 1px;
-  background: color-mix(in srgb, var(--text-primary) 16%, transparent);
+/* Sits over the middle of the selected range, clear of both thumbs, so the
+   whole window can be slid without changing its width. */
+.grid-filter-slider-grab {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  min-width: 0;
+  cursor: grab;
+  touch-action: none;
 }
-.grid-filter-bin.in-range {
-  background: color-mix(in srgb, var(--accent) 62%, transparent);
+.grid-filter-slider-grab:active {
+  cursor: grabbing;
 }
-.grid-filter-range {
-  display: flex;
-  justify-content: space-between;
-  color: var(--text-secondary);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
+.grid-filter-slider [data-slot="slider-track"] {
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+.grid-filter-slider [data-slot="slider-range"] {
+  background: color-mix(in srgb, var(--text-primary) 55%, transparent);
+}
+.grid-filter-slider [data-slot="slider-thumb"] {
+  border-color: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  background: var(--surface-card);
 }
 .grid-filter-inputs {
   display: grid;
