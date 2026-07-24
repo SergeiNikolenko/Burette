@@ -5999,7 +5999,7 @@ assert.match(previewViewer, /if \(!open \|\| hasTrajectorySegments\) return;\s*c
 assert.match(previewViewer, /function pdbTrajectoryTimesPs\(data\)/);
 assert.match(previewViewer, /function trajectoryPoseLabel\(prepared, controlLabel, activePose\)/);
 assert.match(previewViewer, /Time \$\{timeNs\} ns - \$\{indexText\}/);
-assert.match(previewViewer, /currentName\.textContent = prepared\?\.poses\?\.\[poseIndex\]\?\.label \|\| `\$\{controlLabel\} \$\{poseIndex \+ 1\}`/);
+assert.match(previewViewer, /setCurrentName\(prepared\?\.poses\?\.\[poseIndex\]\?\.label \|\| `\$\{controlLabel\} \$\{poseIndex \+ 1\}`\)/);
 assert.match(previewViewer, /function alignStructureSceneEntries\(prepared\)/);
 assert.match(previewViewer, /function restoreStructureSceneEntries\(prepared\)/);
 assert.match(previewViewer, /value\.toFixed\(3\)\.padStart\(8, ' '\)/);
@@ -6051,7 +6051,7 @@ assert.match(previewViewer, /const supportsLivePoseInput = \(\) => \(/);
 assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.sdfPoseOverlayAvailable === true/);
 assert.match(previewViewer, /if \(supportsLivePoseInput\(\)\) scheduleSliderInputPose\(previewIndex\)/);
 assert.match(previewViewer, /slider\.addEventListener\('change', \(\) => \{/);
-assert.match(previewViewer, /if \(hasTrajectorySegments \|\| event\.pointerType === 'touch'/);
+assert.match(previewViewer, /if \(event\.pointerType === 'touch' \|\| targetPose === activePose\) return;/);
 assert.match(previewViewer, /function installDockingPoseInteractionIsolation\(root\)/);
 assert.match(previewViewer, /root\.addEventListener\('wheel', isolateWheel, \{ passive: false \}\)/);
 assert.match(previewViewer, /const isolationDisposer = installDockingPoseInteractionIsolation\(root\)/);

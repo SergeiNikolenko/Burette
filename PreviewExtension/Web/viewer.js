@@ -13219,6 +13219,7 @@
     const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
     const label = hasFileList ? document.createElement('button') : document.createElement('span');
     const currentName = hasFileList ? document.createElement('span') : null;
+    const currentNameText = hasFileList ? document.createElement('span') : null;
     const currentIndex = hasFileList ? document.createElement('span') : null;
     if (currentName && currentIndex) {
       label.type = 'button';
@@ -13227,7 +13228,21 @@
       label.setAttribute('aria-expanded', 'false');
       currentName.className = 'buret-docking-pose-current-name';
       currentIndex.className = 'buret-docking-pose-current-index';
+      // The name rides in its own element so hovering can slide it with a transform.
+      currentNameText.className = 'buret-docking-pose-current-text';
+      currentName.appendChild(currentNameText);
       label.append(currentName, currentIndex);
+      // How far the name has to travel to show its tail. Measured on enter rather than
+      // on render: it depends on the current segment and on the toolbar's width.
+      const measureNameMarquee = () => {
+        const overflow = Math.max(0, currentNameText.scrollWidth - currentName.clientWidth);
+        currentName.style.setProperty('--buret-marquee-shift', `${overflow}px`);
+        // Constant reading speed rather than a constant duration, so a long tail does
+        // not race past. Slow enough to read, at roughly 34px per second.
+        currentName.style.setProperty('--buret-marquee-duration', `${Math.max(0.45, overflow / 34).toFixed(2)}s`);
+      };
+      label.addEventListener('pointerenter', measureNameMarquee);
+      label.addEventListener('focus', measureNameMarquee);
     }
     label.title = prepared.ligandLabel || '';
     const fileList = hasFileList ? document.createElement('div') : null;
@@ -13430,6 +13445,12 @@
         count: active.segment.frameCount
       };
     };
+    // Every frame step relabels the control, but within a segment the name does not
+    // change. Rewriting the text node anyway relaid the line and cut short the hover
+    // slide that walks a long name, so it only lands when the name actually differs.
+    const setCurrentName = (text) => {
+      if (currentNameText.textContent !== text) currentNameText.textContent = text;
+    };
     const applyLabel = (poseIndex) => {
       if (!currentName || !currentIndex) {
         label.textContent = trajectoryPoseLabel(prepared, controlLabel, poseIndex);
@@ -13437,11 +13458,11 @@
       }
       if (hasTrajectorySegments) {
         const current = activeTrajectorySegment(poseIndex);
-        currentName.textContent = current.segment?.label || `${controlLabel} ${poseIndex + 1}`;
+        setCurrentName(current.segment?.label || `${controlLabel} ${poseIndex + 1}`);
         currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount} · ${current.index + 1}/${trajectorySegments.length}`;
         return;
       }
-      currentName.textContent = prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`;
+      setCurrentName(prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`);
       currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount}`;
     };
     const updateControls = () => {
@@ -13659,7 +13680,10 @@
       fileButtons.forEach((button, index) => {
         button.addEventListener('pointerenter', (event) => {
           const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
-          if (hasTrajectorySegments || event.pointerType === 'touch' || targetPose === activePose) return;
+          // Segments preview on hover like poses do: every frame is already in the one
+          // trajectory, so jumping to a segment's first frame is a model-index change,
+          // not a reload. Touch has no hover, and it would fire on the way to a tap.
+          if (event.pointerType === 'touch' || targetPose === activePose) return;
           scheduleSliderInputPose(targetPose);
         });
         button.addEventListener('click', () => {

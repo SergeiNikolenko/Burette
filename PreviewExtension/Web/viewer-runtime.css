@@ -2604,8 +2604,40 @@ body.burette-mobile-host .buret-docking-poses button {
   flex: 0 1 auto;
   overflow: hidden;
   text-align: left !important;
+  white-space: nowrap;
+}
+/* Segment names outrun any sensible toolbar width, so the control stays narrow and
+   the name is cut. Hovering walks the name through that window to show its tail.
+   The moving part is an inner element driven by transform: it composites, where
+   animating text-indent or width would relay out the line on every frame. */
+.buret-docking-pose-current-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  vertical-align: bottom;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: transform 200ms ease-out;
+}
+.buret-docking-pose-current:hover .buret-docking-pose-current-text,
+.buret-docking-pose-current:focus-visible .buret-docking-pose-current-text {
+  max-width: none;
+  text-overflow: clip;
+  transform: translateX(calc(var(--buret-marquee-shift, 0px) * -1));
+  /* The fallback duration carries the first hover: :hover applies the moment the
+     pointer lands, while the measured distance arrives from the pointerenter
+     handler. The delay lets a pointer cross the control on its way elsewhere
+     without setting the name moving. */
+  /* Eases off the mark instead of snapping to full speed, then settles at the end —
+     a linear walk read as a jerk the moment the pointer landed. */
+  transition: transform var(--buret-marquee-duration, 1.6s) cubic-bezier(0.4, 0, 0.2, 1) 120ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-docking-pose-current-text,
+  .buret-docking-pose-current:hover .buret-docking-pose-current-text,
+  .buret-docking-pose-current:focus-visible .buret-docking-pose-current-text {
+    transition: none;
+  }
 }
 .buret-docking-pose-current-index {
   min-width: 0 !important;
@@ -2635,7 +2667,7 @@ body.burette-mobile-host .buret-docking-poses button {
   width: min(420px, calc(100vw - 24px));
 }
 .buret-docking-poses-trajectory-segments {
-  width: min(520px, calc(100vw - 24px));
+  width: min(392px, calc(100vw - 24px));
 }
 .buret-docking-poses-trajectory-segments .buret-docking-pose-main {
   width: 100%;
