@@ -273,6 +273,78 @@ fn query_scoring_enforces_the_exact_output_memory_boundary() {
     );
 }
 
+fn knn_options(neighbor_count: usize, max_memory_bytes: u64) -> TanimotoKnnOptions {
+    TanimotoKnnOptions::try_new(
+        NonZeroUsize::new(neighbor_count).expect("nonzero neighbor count"),
+        max_memory_bytes,
+    )
+    .expect("valid kNN options")
+}
+
+#[test]
+fn exact_tanimoto_knn_orders_by_ratio_then_source_index() {
+    let fingerprints = [
+        fingerprint(&[0, 1, 2, 3]),
+        fingerprint(&[0, 1, 2, 3]),
+        fingerprint(&[0, 1]),
+        fingerprint(&[0, 4]),
+        Fingerprint2048::ZERO,
+    ];
+    let graph =
+        build_tanimoto_knn(&fingerprints, knn_options(3, 1024 * 1024)).expect("exact Tanimoto kNN");
+
+    assert_eq!(graph.vertex_count(), fingerprints.len());
+    assert_eq!(graph.neighbors_per_vertex(), 3);
+    assert_eq!(
+        graph
+            .neighbors(0)
+            .expect("first row")
+            .map(|(index, counts)| (index, counts.intersection, counts.union))
+            .collect::<Vec<_>>(),
+        vec![(1, 4, 4), (2, 2, 4), (3, 1, 5)]
+    );
+    assert_eq!(
+        graph
+            .neighbors(4)
+            .expect("zero row")
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+    assert!(graph.neighbors(fingerprints.len()).is_none());
+}
+
+#[test]
+fn exact_tanimoto_knn_clamps_k_and_handles_empty_input() {
+    let fingerprints = [fingerprint(&[0]), fingerprint(&[1]), fingerprint(&[2])];
+    let graph =
+        build_tanimoto_knn(&fingerprints, knn_options(64, 1024 * 1024)).expect("clamped kNN");
+    assert_eq!(graph.neighbors_per_vertex(), 2);
+    assert_eq!(graph.source_indices().len(), 6);
+    assert_eq!(graph.counts().len(), 6);
+
+    let empty = build_tanimoto_knn(&[], knn_options(64, 1024 * 1024)).expect("empty kNN");
+    assert_eq!(empty.vertex_count(), 0);
+    assert_eq!(empty.neighbors_per_vertex(), 0);
+    assert!(empty.source_indices().is_empty());
+    assert!(empty.counts().is_empty());
+}
+
+#[test]
+fn exact_tanimoto_knn_enforces_the_accounted_memory_boundary() {
+    let fingerprints = [fingerprint(&[0]); 4];
+    let required = accounted_tanimoto_knn_bytes(fingerprints.len(), 2).expect("kNN account");
+    assert!(build_tanimoto_knn(&fingerprints, knn_options(2, required)).is_ok());
+    assert_eq!(
+        build_tanimoto_knn(&fingerprints, knn_options(2, required - 1))
+            .expect_err("one byte below kNN account"),
+        ClusterCoreError::MemoryBudgetExceeded {
+            required_bytes: required,
+            limit_bytes: required - 1,
+        }
+    );
+}
+
 #[test]
 fn integer_threshold_has_full_protocol_parity_for_2048_bit_counts() {
     let cutoffs = [
@@ -424,6 +496,16 @@ fn resource_limits_map_max_edges_to_undirected_graph_options() {
             .expect("resource-backed query options")
             .max_memory_bytes(),
         16 * 1024 * 1024
+    );
+    assert_eq!(
+        TanimotoKnnOptions::from_resource_limits(
+            NonZeroUsize::new(15).expect("nonzero k"),
+            &limits,
+        )
+        .expect("resource-backed kNN options")
+        .neighbor_count()
+        .get(),
+        15
     );
 }
 

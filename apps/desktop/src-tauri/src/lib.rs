@@ -15,7 +15,7 @@ use commands::descriptors::DescriptorGridJobRegistry;
 use commands::recent_documents::RecentDocumentsRegistry;
 use commands::source_editing::{OpenedSourceRegistry, SourceEditRegistry};
 use preview::grid_store::GridRuntimeRegistry;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 use tauri::{Manager, RunEvent};
 
 pub fn run_compute_service() -> Result<(), String> {
@@ -55,6 +55,11 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .map(|app_data| {
+                    if let Err(error) = fs::create_dir_all(&app_data) {
+                        return compute::coordinator::ComputeCoordinator::unavailable(format!(
+                            "compute app-data directory cannot be created: {error}"
+                        ));
+                    }
                     let resource_root = app.path().resource_dir().ok();
                     let metal_runtime_root =
                         resource_root.as_ref().map(|root| root.join("ComputeMetal"));
@@ -123,6 +128,8 @@ pub fn run() {
             compute::commands::compute_begin_cluster_execution,
             compute::commands::compute_submit_fingerprint_chunk,
             compute::commands::compute_execute_cluster,
+            compute::commands::compute_execute_chemical_space,
+            compute::commands::compute_cluster_chemical_space,
             compute::commands::compute_publish_cluster,
             compute::commands::compute_get_job,
             compute::commands::compute_list_jobs,
