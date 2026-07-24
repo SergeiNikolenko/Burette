@@ -146,7 +146,14 @@
   // and the corner the user dragged it to live out here instead of on the element.
   let molstarMoleculePreviewGeometry = null;
   let molstarMoleculePreviewSize = 's';
-  let molstarMoleculePreviewDismissedKey = '';
+  // Closing the card (×) leaves the selection alone but parks the card: nothing
+  // re-shows it until the next genuine click. Minimizing tucks it into a chip in
+  // the corner that the same molecule pops back out of.
+  let molstarMoleculePreviewSuppressed = false;
+  let molstarMoleculePreviewMinimized = false;
+  let molstarMoleculePreviewMinimizedTarget = null;
+  let molstarMoleculePreviewChip = null;
+  let molstarPreviewRevealStart = null;
   let molstarSelectionHostSignature = '';
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
@@ -17025,6 +17032,8 @@
   };
   const MOLECULE_PREVIEW_ICON = {
     close: ['M18 6 6 18', 'm6 6 12 12'],
+    minimize: ['M6 17h12'],
+    molecule: ['m12 3 7.5 4.33v8.66L12 20.33 4.5 16V7.33Z'],
     ketcher: ['M12 3v4.5', 'm12 7.5 3.9 2.25', 'm12 7.5-3.9 2.25', 'M15.9 9.75v4.5L12 16.5l-3.9-2.25v-4.5', 'M4.2 6.75 12 2.25l7.8 4.5v9L12 20.25l-7.8-4.5Z'],
     copy: ['M9 9h9a1.5 1.5 0 0 1 1.5 1.5V19a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 19v-8.5A1.5 1.5 0 0 1 9 9Z', 'M4.5 15A1.5 1.5 0 0 1 3 13.5V5a1.5 1.5 0 0 1 1.5-1.5H13A1.5 1.5 0 0 1 14.5 5']
   };
@@ -17130,7 +17139,8 @@
           <span class="buret-molecule-card-subtitle">${escapeHTML(subtitle)}</span>
         </span>
         ${molstarMoleculePreviewNavHTML()}
-        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="minimize" aria-label="Minimize preview" title="Minimize preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.minimize)}</button>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Close preview" title="Close preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
       <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
       <div class="buret-molecule-card-footer">
@@ -17288,6 +17298,7 @@
 
   function runMolstarMoleculePreviewAction(action, control) {
     if (action === 'close') dismissMolstarMoleculePreview();
+    else if (action === 'minimize') minimizeMolstarMoleculePreview();
     else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
     else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
     else if (action === 'size') setMolstarMoleculePreviewSize(control.dataset.size);
@@ -17295,18 +17306,55 @@
     else if (action === 'next') stepMolstarMoleculePreview(1);
   }
 
-  // The card is the selection's window, so closing it drops the selection too.
-  // Hiding it alone was not enough to make it stay hidden: any pointer event over
-  // the view re-resolves the card from whatever is still selected, so the only way
-  // to close it for good is to leave nothing selected.
+  // × closes the card but leaves the selection standing. A plain hide is not
+  // enough - the next pointer move re-resolves the card from whatever is still
+  // selected - so it also latches "suppressed", which every show path checks. The
+  // latch lifts on the next genuine click (see the reveal handler on pointerup).
   function dismissMolstarMoleculePreview() {
-    molstarMoleculePreviewDismissedKey = molstarMoleculePreview?.dataset?.buretPreviewKey || '';
+    molstarMoleculePreviewSuppressed = true;
     hideMolstarMoleculePreview({ force: true });
-    clearMolstarSelection();
-    // The host learns about selection through the selection manager's own events,
-    // and clearing this way does not reach it - so the inspector would keep
-    // showing the ligand as selected. Tell it directly.
-    notifyMolstarSelectionChanged(null);
+  }
+
+  // Minimize tucks the card into a small chip in the bottom-left corner. The
+  // selection stays, the card stays out of the way, and the chip is the one way
+  // back - hover will not pop it open again.
+  function minimizeMolstarMoleculePreview() {
+    const label = molstarMoleculePreview?.querySelector('.buret-molecule-card-title')?.textContent
+      || molstarMoleculePreviewTarget?.label || 'Molecule';
+    molstarMoleculePreviewMinimizedTarget = molstarMoleculePreviewTarget;
+    molstarMoleculePreviewMinimized = true;
+    hideMolstarMoleculePreview({ force: true });
+    showMolstarMoleculePreviewChip(label);
+  }
+
+  function restoreMolstarMoleculePreview() {
+    molstarMoleculePreviewMinimized = false;
+    molstarMoleculePreviewSuppressed = false;
+    removeMolstarMoleculePreviewChip();
+    // Prefer whatever is selected now, so restoring after picking a different
+    // ligand shows that one rather than the molecule that was parked.
+    const target = molstarSelectedMoleculePreviewTarget() || molstarMoleculePreviewMinimizedTarget;
+    molstarMoleculePreviewMinimizedTarget = null;
+    if (target) showMolstarMoleculePreview(target);
+    else scheduleMolstarSelectedMoleculePreview();
+  }
+
+  function showMolstarMoleculePreviewChip(label) {
+    removeMolstarMoleculePreviewChip();
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'buret-molecule-preview-chip';
+    chip.setAttribute('aria-label', `Restore ${label} preview`);
+    chip.title = `Restore ${label} preview`;
+    chip.innerHTML = `${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.molecule)}<span class="buret-molecule-preview-chip-label">${escapeHTML(label)}</span>`;
+    chip.addEventListener('click', () => restoreMolstarMoleculePreview());
+    document.body.appendChild(chip);
+    molstarMoleculePreviewChip = chip;
+  }
+
+  function removeMolstarMoleculePreviewChip() {
+    molstarMoleculePreviewChip?.remove();
+    molstarMoleculePreviewChip = null;
   }
 
   function installMolstarMoleculePreviewResize(popover) {
@@ -17663,9 +17711,10 @@
       hideMolstarMoleculePreview();
       return;
     }
+    // Parked by × or tucked into the chip: stay hidden until the user asks for it
+    // back, not the moment the pointer drifts back over the selected ligand.
+    if (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized) return;
     const key = molstarPreviewKey(entry);
-    if (key === molstarMoleculePreviewDismissedKey) return;
-    molstarMoleculePreviewDismissedKey = '';
     const image = molstarPreviewSvgCache.get(key) || '';
     const label = target?.label || entry?.label || (target?.scope === 'ion' ? 'Ion' : 'Ligand');
     const subtitle = target?.scope === 'ion' ? 'Ion' : 'Small molecule';
@@ -17775,6 +17824,13 @@
     const hasCandidate = Boolean(molstarSelectedMoleculePreviewTarget() || fallbackTarget);
     if (!hasCandidate) {
       hideMolstarMoleculePreview({ force: true });
+      // Nothing left to preview means nothing left to restore, so the parked chip
+      // goes with it.
+      if (molstarMoleculePreviewMinimized) {
+        molstarMoleculePreviewMinimized = false;
+        molstarMoleculePreviewMinimizedTarget = null;
+        removeMolstarMoleculePreviewChip();
+      }
       return;
     }
     if (showMolstarSelectedMoleculePreview(fallbackTarget)) return;
@@ -17797,6 +17853,10 @@
   }
 
   function clearMolstarPersistentMoleculePreview() {
+    molstarMoleculePreviewSuppressed = false;
+    molstarMoleculePreviewMinimized = false;
+    molstarMoleculePreviewMinimizedTarget = null;
+    removeMolstarMoleculePreviewChip();
     hideMolstarMoleculePreview({ force: true });
   }
 
@@ -17997,6 +18057,11 @@
     const onPointerDown = (event) => {
       beginMolstarSelectionPreserve(event);
       clearTouchContextPointer();
+      // Remember where a left press on the viewport began, so a click (not a drag
+      // to rotate) can lift a × dismissal on release.
+      molstarPreviewRevealStart = event.button === 0 && isMolstarContextMenuTarget(event.target)
+        ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+        : null;
       if (event.button === 2) {
         if (!viewer || !isMolstarContextMenuTarget(event.target)) {
           contextPointer = null;
@@ -18086,6 +18151,16 @@
     };
     const onPointerUp = (event) => {
       finishMolstarSelectionPreserve(event);
+      if (molstarPreviewRevealStart && event.pointerId === molstarPreviewRevealStart.pointerId) {
+        const moved = Math.hypot(event.clientX - molstarPreviewRevealStart.x, event.clientY - molstarPreviewRevealStart.y)
+          > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
+        molstarPreviewRevealStart = null;
+        // A click - not a drag - is the "next click" that a × dismissal waits for.
+        if (!moved && molstarMoleculePreviewSuppressed && !molstarMoleculePreviewMinimized) {
+          molstarMoleculePreviewSuppressed = false;
+          scheduleMolstarSelectedMoleculePreview();
+        }
+      }
       if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) {
         const opened = touchContextPointer.opened;
         clearTouchContextPointer();
