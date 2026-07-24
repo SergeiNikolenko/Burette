@@ -8,7 +8,7 @@ constant uchar PM6_FOCK_DENSITY_INDICES[243] = {14, 20, 27, 35, 44, 11, 18, 22, 
 constant uchar PM6_PACKED_ROWS[45] = {0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8};
 constant uchar PM6_PACKED_COLUMNS[45] = {0, 0, 1, 0, 1, 2, 0, 1, 2, 3, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7, 8};
 
-kernel void burrete_pm6_one_center_fock_v1(
+kernel void burette_pm6_one_center_fock_v1(
     device const float* density [[buffer(0)]],
     device const float* w_integrals [[buffer(1)]],
     constant uint& block_count [[buffer(2)]],

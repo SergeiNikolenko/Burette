@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     ClusterV1SubmitRequest, ComputeSubmitRequest, ConformerV1SubmitRequest, GridScope,
     MolecularSnapshotRef,
 };
@@ -409,7 +409,7 @@ fn next_timestamp(created_at_ms: u64, increment: u64) -> ComputeResult<u64> {
 mod tests {
     use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf};
 
-    use burrete_compute_protocol::{GridScope, SelectedGridScope};
+    use burette_compute_protocol::{GridScope, SelectedGridScope};
 
     use super::*;
     use crate::{
@@ -431,7 +431,7 @@ mod tests {
             let root = std::env::temp_dir()
                 .canonicalize()
                 .expect("canonical temporary directory")
-                .join(format!("burrete-snapshot-repository-{}", Uuid::new_v4()));
+                .join(format!("burette-snapshot-repository-{}", Uuid::new_v4()));
             let store = ComputeStore::initialize(root.clone()).expect("initialize compute store");
             Self { root, store }
         }
@@ -465,7 +465,7 @@ mod tests {
         fn publish_committed_snapshot(
             &self,
             repository: &SnapshotRepository,
-        ) -> burrete_compute_protocol::JobSnapshot {
+        ) -> burette_compute_protocol::JobSnapshot {
             let reference = self.publish_snapshot(repository);
             let mut snapshot = queued_snapshot();
             snapshot.frozen_source = reference;
@@ -477,7 +477,7 @@ mod tests {
         fn publish_snapshot(
             &self,
             repository: &SnapshotRepository,
-        ) -> burrete_compute_protocol::MolecularSnapshotRef {
+        ) -> burette_compute_protocol::MolecularSnapshotRef {
             let grid_root = self.root.join(format!("grid-fixture-{}", Uuid::new_v4()));
             fs::create_dir_all(&grid_root).expect("create Grid fixture root");
             let database = build_grid_store(&grid_root, "smi", b"CC Ethane\nO Water\n")

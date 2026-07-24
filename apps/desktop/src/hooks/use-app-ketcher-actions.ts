@@ -144,7 +144,7 @@ export function useAppKetcherActions({
     const id = stableTextDocumentId(`ketcher-export:${title}:${text}`);
     const document: TextFileDocument = {
       id,
-      path: `burrete-ketcher-export://${id}/${title}`,
+      path: `burette-ketcher-export://${id}/${title}`,
       title,
       extension,
       language: extension,
@@ -240,7 +240,7 @@ export function useAppKetcherActions({
     }
     updateDirtyGridDocument(request.documentId, true);
     iframe.contentWindow.postMessage({
-      source: "burrete-grid-host",
+      source: "burette-grid-host",
       body: {
         type: "gridApplyKetcherRow",
         documentId: request.documentId,

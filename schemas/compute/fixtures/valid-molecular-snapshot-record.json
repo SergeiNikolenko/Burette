@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "burrete.molecular-snapshot-record.v1",
+  "schemaVersion": "burette.molecular-snapshot-record.v1",
   "sourceRecordId": 42,
   "moleculeContentSha256": "abababababababababababababababababababababababababababababababab",
   "name": "ethanol",

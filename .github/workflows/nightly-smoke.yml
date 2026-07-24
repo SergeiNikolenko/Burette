@@ -14,32 +14,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Burrete toolchain
-        uses: ./.github/actions/setup-burrete-toolchain
+      - name: Setup Burette toolchain
+        uses: ./.github/actions/setup-burette-toolchain
         with:
           install-xyzrender: "true"
 
       - name: Build flavored app
         env:
-          BURRETE_DEV_FLAVOR: ci
+          BURETTE_DEV_FLAVOR: ci
         run: ./scripts/build.sh
 
       - name: Verify bundle shape
         run: |
-          codesign --verify --deep --strict build/Burrete-ci.app
-          test -d build/Burrete-ci.app/Contents/PlugIns/BurretePreview.appex
-          test -d build/Burrete-ci.app/Contents/PlugIns/BurreteThumbnail.appex
+          codesign --verify --deep --strict build/Burette-ci.app
+          test -d build/Burette-ci.app/Contents/PlugIns/BurettePreview.appex
+          test -d build/Burette-ci.app/Contents/PlugIns/BuretteThumbnail.appex
 
       - name: Install flavored app
         env:
-          BURRETE_DEV_FLAVOR: ci
+          BURETTE_DEV_FLAVOR: ci
         run: ./scripts/install.sh
 
       - name: Run Quick Look smoke
         env:
-          BURRETE_DEV_FLAVOR: ci
-          BURRETE_QUICKLOOK_SMOKE_RESULTS: build/reports/nightly-quicklook-preview-smoke.tsv
-          BURRETE_QUICKLOOK_SMOKE_TIMEOUT_SECONDS: 60
+          BURETTE_DEV_FLAVOR: ci
+          BURETTE_QUICKLOOK_SMOKE_RESULTS: build/reports/nightly-quicklook-preview-smoke.tsv
+          BURETTE_QUICKLOOK_SMOKE_TIMEOUT_SECONDS: 60
         run: |
           ./scripts/quicklook-preview-smoke.sh \
             samples/mini.pdb \
@@ -51,10 +51,10 @@ jobs:
 
       - name: Run non-GUI perf smoke report
         env:
-          BURRETE_APP_PATH: build/Burrete-ci.app
-          BURRETE_PERF_REPORT: build/reports/nightly-perf-smoke.txt
-          BURRETE_PERF_RUN_GUI: 0
-          BURRETE_PERF_RUN_QUICKLOOK: 1
+          BURETTE_APP_PATH: build/Burette-ci.app
+          BURETTE_PERF_REPORT: build/reports/nightly-perf-smoke.txt
+          BURETTE_PERF_RUN_GUI: 0
+          BURETTE_PERF_RUN_QUICKLOOK: 1
         run: ./scripts/perf-smoke.sh
 
       - name: Upload smoke reports

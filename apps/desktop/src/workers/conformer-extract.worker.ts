@@ -1,7 +1,7 @@
 // The generated Emscripten module is hash-locked and verified by the native
 // coordinator before conformer submission is exposed.
 // @ts-expect-error generated pinned RDKit module has no authored declarations
-import initializeExtractor from "../../../../PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.js";
+import initializeExtractor from "../../../../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js";
 import type {
   ConformerExtractionWorkerRequest,
   ConformerExtractionWorkerResponse,
@@ -14,7 +14,7 @@ const EXPECTED_ABI_VERSION = 1;
 const EXPECTED_RDKIT_REVISION = "Release_2025_03_4@276b5a662302c6a548ac4f1363c066f3258e3a20";
 const MAX_ERROR_BYTES = 2_048;
 const wasmUrl = new URL(
-  "../../../../PreviewExtension/Web/rdkit-conformer/Burrete_rdkit_conformer.wasm",
+  "../../../../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm",
   import.meta.url,
 ).href;
 

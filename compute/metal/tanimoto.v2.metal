@@ -59,7 +59,7 @@ inline bool tanimoto_matches_v1(
         unionCount * tile.cutoffNumerator;
 }
 
-kernel void burrete_tanimoto_degree_count_v1(
+kernel void burette_tanimoto_degree_count_v1(
     device const uint* fingerprints [[buffer(0)]],
     constant TanimotoTileV1& tile [[buffer(1)]],
     device ulong* rowDegrees [[buffer(2)]],
@@ -93,7 +93,7 @@ kernel void burrete_tanimoto_degree_count_v1(
     rowDegrees[row] += matches;
 }
 
-kernel void burrete_tanimoto_csr_fill_v1(
+kernel void burette_tanimoto_csr_fill_v1(
     device const uint* fingerprints [[buffer(0)]],
     constant TanimotoTileV1& tile [[buffer(1)]],
     device const ulong* rowOffsets [[buffer(2)]],
@@ -140,7 +140,7 @@ kernel void burrete_tanimoto_csr_fill_v1(
     rowCursors[row] = cursor;
 }
 
-kernel void burrete_tanimoto_query_counts_v1(
+kernel void burette_tanimoto_query_counts_v1(
     device const uint* fingerprints [[buffer(0)]],
     constant const uint* query [[buffer(1)]],
     device uint2* counts [[buffer(2)]],
@@ -185,7 +185,7 @@ inline bool tanimoto_ranked_before_v1(
         (candidateCross == existingCross && candidateIndex < existingIndex);
 }
 
-kernel void burrete_tanimoto_counts_batch_v1(
+kernel void burette_tanimoto_counts_batch_v1(
     device const uint* fingerprints [[buffer(0)]],
     device uint2* counts [[buffer(1)]],
     constant TanimotoKnnBatchV1& config [[buffer(2)]],
@@ -216,7 +216,7 @@ kernel void burrete_tanimoto_counts_batch_v1(
     counts[pairIndex] = uint2(intersection, unionCount);
 }
 
-kernel void burrete_tanimoto_top_k_batch_v1(
+kernel void burette_tanimoto_top_k_batch_v1(
     device const uint2* counts [[buffer(0)]],
     device uint* outputIndices [[buffer(1)]],
     device float* outputSimilarities [[buffer(2)]],

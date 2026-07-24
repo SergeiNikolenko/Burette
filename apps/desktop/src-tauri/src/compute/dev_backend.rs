@@ -4,12 +4,12 @@ use std::{
 };
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use burrete_compute_core::{
+use burette_compute_core::{
     decode_native_mmff_parameters, ConformerEnginePackBuilder, ExtractedConformerParameters,
     Fingerprint2048, FINGERPRINT_BYTES,
 };
-use burrete_compute_metal::{MetalTanimotoKnnExecution, MetalTanimotoRuntime};
-use burrete_compute_protocol::{
+use burette_compute_metal::{MetalTanimotoKnnExecution, MetalTanimotoRuntime};
+use burette_compute_protocol::{
     AllGridScope, Backend, BackendPolicy, ComputeJobSchemaVersion, ConformerInitialization,
     ConformerResourceLimits, ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant,
     ExecutionPolicy, GridScope, GridSourceReference, MmffVariant, SchedulingPolicy,
@@ -520,7 +520,7 @@ fn conformer_sdf(
         };
         output.push_str(molblock.trim_end());
         output.push_str(&format!(
-            "\n>  <BURRETE_COMPUTE_BACKEND>\nMetal GPU\n\n>  <BURRETE_CONFORMER_VARIANT>\n{}\n\n>  <BURRETE_MMFF_ENERGY_KCAL_MOL>\n{:.8}\n\n>  <BURRETE_STEREO_STATUS>\n{}\n\n$$$$\n",
+            "\n>  <BURETTE_COMPUTE_BACKEND>\nMetal GPU\n\n>  <BURETTE_CONFORMER_VARIANT>\n{}\n\n>  <BURETTE_MMFF_ENERGY_KCAL_MOL>\n{:.8}\n\n>  <BURETTE_STEREO_STATUS>\n{}\n\n$$$$\n",
             variant.wire_id(),
             distance.mmff_energies[conformer],
             if stereo_flags[conformer] == 0 { "passed" } else { "failed" },
@@ -593,7 +593,7 @@ fn synthetic_molblock(atomic_numbers: &[u16], positions: &[[f32; 3]]) -> Result<
         return Err("SMILES Metal output cannot be represented as V2000".into());
     }
     let mut output = format!(
-        "Burrete Metal conformer\n  Burrete\n\n{:>3}{:>3}  0  0  0  0            999 V2000\n",
+        "Burette Metal conformer\n  Burette\n\n{:>3}{:>3}  0  0  0  0            999 V2000\n",
         atomic_numbers.len(),
         0
     );
@@ -627,7 +627,7 @@ fn element_symbol(atomic_number: u16) -> Result<&'static str, String> {
 fn parse_runtime_root() -> Result<PathBuf, String> {
     let mut args = std::env::args_os().skip(1);
     if args.next().as_deref() != Some(std::ffi::OsStr::new("--runtime-root")) {
-        return Err("usage: burrete-compute-dev-backend --runtime-root <directory>".into());
+        return Err("usage: burette-compute-dev-backend --runtime-root <directory>".into());
     }
     let root = args
         .next()
@@ -728,7 +728,7 @@ fn write_response(result: Value) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    const WATER: &str = "water\n  Burrete\n\n  3  2  0  0  0  0  0  0  0  0999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9572    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2390    0.9270    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END\n";
+    const WATER: &str = "water\n  Burette\n\n  3  2  0  0  0  0  0  0  0  0999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9572    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2390    0.9270    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END\n";
 
     #[test]
     fn splits_bounded_sdf_ensemble_into_stable_rows() {

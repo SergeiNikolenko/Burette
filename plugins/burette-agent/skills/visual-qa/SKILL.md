@@ -1,6 +1,6 @@
 ---
 name: visual-qa
-description: "Use when visually verifying Burrete Browser preview or desktop app state without replacing typed observe/action contracts."
+description: "Use when visually verifying Burette Browser preview or desktop app state without replacing typed observe/action contracts."
 ---
 
 # Visual QA
@@ -12,9 +12,9 @@ Use Browser and Computer as verification surfaces.
 Use Browser for:
 
 - full Browser shell URLs started by
-  `scripts/burrete-agent.mjs open --mode browser-agent-shell ...`, such as
+  `scripts/burette-agent.mjs open --mode browser-agent-shell ...`, such as
   `http://127.0.0.1:<fresh-port>/?devFiles=<encoded absolute path>`, when the user
-  wants ordinary Burrete UI chrome, sidebars, right dock, bottom dock, tabs, or
+  wants ordinary Burette UI chrome, sidebars, right dock, bottom dock, tabs, or
   app-like behavior;
 - tokenized localhost browser-preview URLs;
 - screenshot and canvas nonblank checks;
@@ -41,7 +41,7 @@ change.
 
 Use Computer for:
 
-- real macOS Burrete app windows;
+- real macOS Burette app windows;
 - accessibility tree checks for Tauri shell and Mol* controls;
 - clicking native/Tauri controls when the CLI contract is insufficient;
 - confirming that the user-visible desktop app is open and usable.

@@ -1,6 +1,6 @@
 # RDKit.js Runtime Assets
 
-Burrete's 2D molecule grid expects these vendored offline files in this directory:
+Burette's 2D molecule grid expects these vendored offline files in this directory:
 
 - `RDKit_minimal.js`
 - `RDKit_minimal.wasm`

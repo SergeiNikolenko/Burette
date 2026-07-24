@@ -1,6 +1,6 @@
 # Documentation Map
 
-This directory is the current documentation graph for Burrete. It intentionally
+This directory is the current documentation graph for Burette. It intentionally
 contains only documents that describe the active project.
 
 ## Current Docs
@@ -44,7 +44,7 @@ contains only documents that describe the active project.
   separate.
 - [MolComputeKit relationship](molcomputekit.md): standalone framework release,
   ownership boundary, compatibility identifiers, and the pinned migration rule
-  for removing Burrete's integration copy.
+  for removing Burette's integration copy.
 - [Stability program](stability.md): preview trace, runtime manifest, nightly
   smoke, and staged stability guardrails.
 - [Installing and building](installing-building.md): source build, local
@@ -62,10 +62,10 @@ contains only documents that describe the active project.
   docking poses, SDF collections, XYZ frames, PDB models, and structure scenes.
 - [Quick Look debugging](quicklook-debugging.md): Finder preview diagnosis and
   cache reset workflow.
-- [iOS mobile app](../ios/BurreteMobile/README.md): source-built iPhone preview
+- [iOS mobile app](../ios/BuretteMobile/README.md): source-built iPhone preview
   app target, runtime reuse, signing, and real-device install flow.
   Agent-facing local rules live in
-  [ios/BurreteMobile/AGENTS.md](../ios/BurreteMobile/AGENTS.md).
+  [ios/BuretteMobile/AGENTS.md](../ios/BuretteMobile/AGENTS.md).
 - Apple-platform agent routes are dispatched from [AGENTS.md](../AGENTS.md):
   use `@build-ios-apps`, `@build-macos-apps`, `@product-design`, and
   `$apple-design` where those platform/design rules apply.

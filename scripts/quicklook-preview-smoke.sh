@@ -4,26 +4,26 @@ set -euo pipefail
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:${PATH:-}"
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-PREVIEW_ID="com.local.BurreteV10.Preview"
+PREVIEW_ID="com.local.BuretteV10.Preview"
 DEV_FLAVOR_SLUG=""
-APP_BUNDLE_NAME="Burrete.app"
-if [[ -n "${BURRETE_DEV_FLAVOR:-}" ]]; then
-  command -v bun >/dev/null 2>&1 || { echo "error: BURRETE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
+APP_BUNDLE_NAME="Burette.app"
+if [[ -n "${BURETTE_DEV_FLAVOR:-}" ]]; then
+  command -v bun >/dev/null 2>&1 || { echo "error: BURETTE_DEV_FLAVOR requires bun to compute the dev namespace." >&2; exit 1; }
   eval "$(bun "$ROOT/scripts/dev-namespace.mjs" shell-env)"
-  PREVIEW_ID="$BURRETE_PREVIEW_ID"
-  DEV_FLAVOR_SLUG="$BURRETE_DEV_FLAVOR_SLUG"
-  APP_BUNDLE_NAME="$BURRETE_APP_BUNDLE_NAME"
+  PREVIEW_ID="$BURETTE_PREVIEW_ID"
+  DEV_FLAVOR_SLUG="$BURETTE_DEV_FLAVOR_SLUG"
+  APP_BUNDLE_NAME="$BURETTE_APP_BUNDLE_NAME"
 fi
 
-LOG_PATH="${BURRETE_QUICKLOOK_SMOKE_LOG:-$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Caches/Burrete/Burrete.log}"
-TRACE_PATH="${BURRETE_QUICKLOOK_SMOKE_TRACE:-$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Caches/Burrete/preview-trace.jsonl}"
-RESULTS_PATH="${BURRETE_QUICKLOOK_SMOKE_RESULTS:-$ROOT/build/reports/quicklook-preview-smoke.tsv}"
-TIMEOUT_SECONDS="${BURRETE_QUICKLOOK_SMOKE_TIMEOUT_SECONDS:-45}"
-RESET_CACHE="${BURRETE_QUICKLOOK_SMOKE_RESET_CACHE:-1}"
-INSTALLED_PREVIEW_EXECUTABLE="$HOME/Applications/$APP_BUNDLE_NAME/Contents/PlugIns/BurretePreview.appex/Contents/MacOS/BurretePreview"
+LOG_PATH="${BURETTE_QUICKLOOK_SMOKE_LOG:-$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Caches/Burette/Burette.log}"
+TRACE_PATH="${BURETTE_QUICKLOOK_SMOKE_TRACE:-$HOME/Library/Containers/$PREVIEW_ID/Data/Library/Caches/Burette/preview-trace.jsonl}"
+RESULTS_PATH="${BURETTE_QUICKLOOK_SMOKE_RESULTS:-$ROOT/build/reports/quicklook-preview-smoke.tsv}"
+TIMEOUT_SECONDS="${BURETTE_QUICKLOOK_SMOKE_TIMEOUT_SECONDS:-45}"
+RESET_CACHE="${BURETTE_QUICKLOOK_SMOKE_RESET_CACHE:-1}"
+INSTALLED_PREVIEW_EXECUTABLE="$HOME/Applications/$APP_BUNDLE_NAME/Contents/PlugIns/BurettePreview.appex/Contents/MacOS/BurettePreview"
 
 if ! [[ "$TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || [[ "$TIMEOUT_SECONDS" -lt 1 ]]; then
-  echo "error: BURRETE_QUICKLOOK_SMOKE_TIMEOUT_SECONDS must be a positive integer" >&2
+  echo "error: BURETTE_QUICKLOOK_SMOKE_TIMEOUT_SECONDS must be a positive integer" >&2
   exit 1
 fi
 
@@ -70,7 +70,7 @@ extension_launch_failure_note() {
   diagnostics="$(
     {
       /usr/bin/log show --last "${lookback_seconds}s" --style compact \
-        --predicate "eventMessage CONTAINS \"$PREVIEW_ID\" OR eventMessage CONTAINS \"BurretePreview\"" 2>/dev/null |
+        --predicate "eventMessage CONTAINS \"$PREVIEW_ID\" OR eventMessage CONTAINS \"BurettePreview\"" 2>/dev/null |
         grep -E 'AppleMobileFileIntegrityError|not valid:|Hub connection error|must have pid|Unable to acquire process assertion|PlugInKit error|DID FAIL LOADING|connection to service named' |
         tail -n 6 |
         tr '\n' ' ' |
@@ -259,7 +259,7 @@ wait_for_preview_result() {
   elif diagnostic_note="$(adhoc_extension_note)" && [[ -n "$diagnostic_note" ]]; then
     printf 'FAIL\t%s\t%s\n' "${request_id:-}" "$diagnostic_note"
   else
-    printf 'NO_REQUEST\t%s\tno new request-id in Burrete log\n' "${request_id:-}"
+    printf 'NO_REQUEST\t%s\tno new request-id in Burette log\n' "${request_id:-}"
   fi
 }
 
@@ -311,7 +311,7 @@ for file in "$@"; do
   if [[ -n "$DEV_FLAVOR_SLUG" ]]; then
     tmp_base="${TMPDIR:-/tmp}"
     tmp_base="${tmp_base%/}"
-    dev_preview_dir="$(mktemp -d "$tmp_base/BurretePreview-${DEV_FLAVOR_SLUG}.XXXXXX")"
+    dev_preview_dir="$(mktemp -d "$tmp_base/BurettePreview-${DEV_FLAVOR_SLUG}.XXXXXX")"
     preview_file="$dev_preview_dir/${DEV_FLAVOR_SLUG} $(basename "$abs_file")"
     ln "$abs_file" "$preview_file" 2>/dev/null || cp -p "$abs_file" "$preview_file"
   fi
@@ -327,7 +327,7 @@ for file in "$@"; do
 
   before_request_id="$(last_request_id_for_file "$preview_file")"
   started="$SECONDS"
-  stdout_path="$(mktemp "${TMPDIR:-/tmp}/burrete-quicklook-smoke.XXXXXX")"
+  stdout_path="$(mktemp "${TMPDIR:-/tmp}/burette-quicklook-smoke.XXXXXX")"
   (
     cd "$ROOT"
     run_preview "$type" "$preview_file"

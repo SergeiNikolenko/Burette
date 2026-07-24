@@ -1,12 +1,12 @@
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
 
-use burrete_compute_protocol::MAX_JSON_SAFE_INTEGER;
+use burette_compute_protocol::MAX_JSON_SAFE_INTEGER;
 
 use super::grid_database::open_grid_database;
 
-const DOCUMENT_FINGERPRINT_DOMAIN: &[u8] = b"burrete.grid-document.v1\0";
-const MOLECULE_CONTENT_DOMAIN: &[u8] = b"burrete.grid-molecule.v1\0";
+const DOCUMENT_FINGERPRINT_DOMAIN: &[u8] = b"burette.grid-document.v1\0";
+const MOLECULE_CONTENT_DOMAIN: &[u8] = b"burette.grid-molecule.v1\0";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct GridSourceIdentity {

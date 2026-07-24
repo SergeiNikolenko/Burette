@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     ArtifactManifest, JobSnapshot, MolecularSnapshotRecordV1, OrderedRecordMoleculeIdentityHasher,
     MOLECULAR_RECORDS_FILE_PATH,
 };
@@ -22,7 +22,7 @@ use super::{
     store::ComputeStore,
 };
 
-const EXPORT_SCHEMA_VERSION: &str = "burrete.cluster-representative-export.v1";
+const EXPORT_SCHEMA_VERSION: &str = "burette.cluster-representative-export.v1";
 const REPRESENTATIVES_PATH: &str = "result/representatives.bin";
 const CLUSTER_IDS_PATH: &str = "result/cluster-ids.bin";
 const MAX_RECORD_LINE_BYTES: usize = 512 * 1024;
@@ -454,7 +454,7 @@ fn write_smiles_header(
     artifact: &ArtifactManifest,
     artifact_sha256: &str,
 ) -> ComputeResult<()> {
-    writeln!(writer, "# Burrete cluster representative export v1")?;
+    writeln!(writer, "# Burette cluster representative export v1")?;
     writeln!(writer, "# jobId={}", job.job_id)?;
     writeln!(writer, "# artifactId={}", artifact.artifact_id)?;
     writeln!(writer, "# artifactManifestSha256={artifact_sha256}")?;
@@ -501,35 +501,35 @@ fn write_sdf_record(
         ));
     }
     writeln!(writer, "{molblock}")?;
-    write_sdf_property(writer, "BURRETE_NAME", &single_line_metadata(&record.name))?;
+    write_sdf_property(writer, "BURETTE_NAME", &single_line_metadata(&record.name))?;
     if let Some(smiles) = record.smiles.as_deref() {
         write_sdf_property(writer, "SMILES", &single_line_metadata(smiles))?;
     }
     write_sdf_property(
         writer,
-        "BURRETE_SOURCE_RECORD_ID",
+        "BURETTE_SOURCE_RECORD_ID",
         &record.source_record_id.to_string(),
     )?;
-    write_sdf_property(writer, "BURRETE_CLUSTER_ID", &cluster_id.to_string())?;
-    write_sdf_property(writer, "BURRETE_CLUSTER_JOB_ID", &job.job_id.to_string())?;
+    write_sdf_property(writer, "BURETTE_CLUSTER_ID", &cluster_id.to_string())?;
+    write_sdf_property(writer, "BURETTE_CLUSTER_JOB_ID", &job.job_id.to_string())?;
     write_sdf_property(
         writer,
-        "BURRETE_CLUSTER_ARTIFACT_ID",
+        "BURETTE_CLUSTER_ARTIFACT_ID",
         &artifact.artifact_id.to_string(),
     )?;
     write_sdf_property(
         writer,
-        "BURRETE_CLUSTER_ARTIFACT_MANIFEST_SHA256",
+        "BURETTE_CLUSTER_ARTIFACT_MANIFEST_SHA256",
         artifact_sha256,
     )?;
     write_sdf_property(
         writer,
-        "BURRETE_SNAPSHOT_SHA256",
+        "BURETTE_SNAPSHOT_SHA256",
         &job.frozen_source.snapshot_sha256,
     )?;
     write_sdf_property(
         writer,
-        "BURRETE_SOURCE_PROPERTIES_JSON",
+        "BURETTE_SOURCE_PROPERTIES_JSON",
         &serde_json::to_string(&record.props)?,
     )?;
     writeln!(writer, "$$$$")?;

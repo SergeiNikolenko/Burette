@@ -55,12 +55,12 @@ function plist(path) {
 
 assert.deepEqual(packageJson.workspaces, ['apps/*', 'packages/*']);
 
-const appFormats = registry.formats.filter((format) => format.contentType?.startsWith('com.local.burrete10.'));
+const appFormats = registry.formats.filter((format) => format.contentType?.startsWith('com.local.burette10.'));
 const xyzrenderInputFormat = registry.formats.find((format) => format.id === 'xyzrender-input');
 assert.ok(xyzrenderInputFormat?.extensions?.includes('xyzr'), 'XYZR files must map to the xyzrender Quick Look input type');
 assert.equal(
   xyzrenderInputFormat?.contentType,
-  'com.local.burrete10.xyzrender-input',
+  'com.local.burette10.xyzrender-input',
   'XYZR files must use the xyzrender Quick Look content type',
 );
 assert.equal(
@@ -96,8 +96,8 @@ const allowedSystemQuickLookContentTypes = new Set([
 ]);
 for (const contentType of registry.quickLook.contentTypes) {
   assert.ok(
-    contentType.startsWith('com.local.burrete10.') || allowedSystemQuickLookContentTypes.has(contentType),
-    `Quick Look content type must be exported by Burrete or explicitly allowed: ${contentType}`,
+    contentType.startsWith('com.local.burette10.') || allowedSystemQuickLookContentTypes.has(contentType),
+    `Quick Look content type must be exported by Burette or explicitly allowed: ${contentType}`,
   );
 }
 
@@ -146,12 +146,12 @@ assertSameSet(
 assertSameSet(
   gridTableDocumentType.LSItemContentTypes ?? [],
   [
-    'com.local.burrete10.csv',
-    'com.local.burrete10.tsv',
+    'com.local.burette10.csv',
+    'com.local.burette10.tsv',
     'public.comma-separated-values-text',
     'public.tab-separated-values-text',
   ],
-  'Grid-table document type must cover Burrete-owned and system CSV/TSV UTIs',
+  'Grid-table document type must cover Burette-owned and system CSV/TSV UTIs',
 );
 assertExportedTypeDeclarations(
   appInfo.UTExportedTypeDeclarations ?? [],
@@ -162,7 +162,7 @@ const graphmlFormat = registry.formats.find((format) => format.id === 'graphml')
 assert.ok(graphmlFormat, 'Registry must declare GraphML for FEP network files');
 const quickLookPreviewController = readFileSync('PreviewExtension/Platform/PreviewViewController.swift', 'utf8');
 assert.match(quickLookPreviewController, /shouldUseFepGraphMLPreview\(fileExtension: pathExtension, previewPlan: previewPlan\)/);
-assert.match(quickLookPreviewController, /private static func shouldUseFepGraphMLPreview\(fileExtension: String, previewPlan: BurretePreviewPlan\?\) -> Bool/);
+assert.match(quickLookPreviewController, /private static func shouldUseFepGraphMLPreview\(fileExtension: String, previewPlan: BurettePreviewPlan\?\) -> Bool/);
 assert.match(quickLookPreviewController, /detected\.previewMode=fep-graphml/);
 assert.equal(
   registry.quickLook.contentTypes.includes(graphmlFormat.contentType),
@@ -172,10 +172,10 @@ assert.equal(
 assert.equal(
   appDocumentTypes.find((type) => type.CFBundleTypeName === registry.documentTypes.name)?.LSHandlerRank,
   'Owner',
-  'Molecular document type must make Burrete the default opener',
+  'Molecular document type must make Burette the default opener',
 );
 
-const mobileInfo = plist('ios/BurreteMobile/Info.plist');
+const mobileInfo = plist('ios/BuretteMobile/Info.plist');
 assert.deepEqual(
   mobileInfo.CFBundleDocumentTypes ?? [],
   appInfo.CFBundleDocumentTypes ?? [],
@@ -218,8 +218,8 @@ assertSameSet(
 );
 
 const rustFormats = readFileSync('apps/desktop/src-tauri/src/preview/formats.rs', 'utf8');
-assert.match(rustFormats, /pub\(crate\) use burrete_core::/);
-const coreFormats = readFileSync('crates/burrete-core/src/lib.rs', 'utf8');
+assert.match(rustFormats, /pub\(crate\) use burette_core::/);
+const coreFormats = readFileSync('crates/burette-core/src/lib.rs', 'utf8');
 assert.match(coreFormats, /include_str!\("\.\.\/\.\.\/\.\.\/config\/preview-formats\.json"\)/);
 
 const browserDevDocuments = readFileSync('apps/desktop/src/lib/browser-dev-documents.ts', 'utf8');

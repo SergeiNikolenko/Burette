@@ -1,4 +1,4 @@
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     ArtifactManifest, ClusterV1SubmitRequest, ComputeCapabilityReport, ConformerV1SubmitRequest,
     JobRevisionEvent, JobSnapshot, MAX_JSON_SAFE_INTEGER,
 };

@@ -6,11 +6,11 @@ use crate::menu;
 use crate::windows;
 
 pub(crate) fn configure_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
-    let show = MenuItemBuilder::with_id("tray.show", "Show Burrete").build(app)?;
+    let show = MenuItemBuilder::with_id("tray.show", "Show Burette").build(app)?;
     let new_window = MenuItemBuilder::with_id("tray.new-window", "New Window").build(app)?;
     let open = MenuItemBuilder::with_id("tray.open", "Open...").build(app)?;
     let settings = MenuItemBuilder::with_id("tray.settings", "Settings...").build(app)?;
-    let quit = MenuItemBuilder::with_id("tray.quit", "Quit Burrete").build(app)?;
+    let quit = MenuItemBuilder::with_id("tray.quit", "Quit Burette").build(app)?;
     let tray_menu = MenuBuilder::new(app)
         .items(&[
             &show,
@@ -23,12 +23,12 @@ pub(crate) fn configure_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         ])
         .build()?;
 
-    let builder = TrayIconBuilder::with_id("burrete-status")
+    let builder = TrayIconBuilder::with_id("burette-status")
         .menu(&tray_menu)
         .show_menu_on_left_click(true)
         .icon(status_image())
         .icon_as_template(true)
-        .tooltip("Burrete")
+        .tooltip("Burette")
         .on_menu_event(|app, event| {
             if menu::exit_transition_is_active(app) {
                 return;

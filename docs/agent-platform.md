@@ -1,6 +1,6 @@
 # Agent Platform
 
-Burrete exposes molecular workspace control through a layered agent platform.
+Burette exposes molecular workspace control through a layered agent platform.
 The goal is to let agents open structures, observe workspace state, act on the
 active viewer, and render bounded side panels without treating screenshots as
 the source of truth.
@@ -9,8 +9,8 @@ the source of truth.
 
 | Layer | Path | Responsibility |
 | --- | --- | --- |
-| Hosted public plugin | `apps/burrete-public-plugin` | Public HTTPS MCP tools for one authorized attachment or public PDB entry, plus the sandboxed Burrete workspace. |
-| Repository CLI | `scripts/burrete-agent.mjs` | Source-of-truth execution contract for open, observe, act, and render-panel workflows. |
+| Hosted public plugin | `apps/burette-public-plugin` | Public HTTPS MCP tools for one authorized attachment or public PDB entry, plus the sandboxed Burette workspace. |
+| Repository CLI | `scripts/burette-agent.mjs` | Source-of-truth execution contract for open, observe, act, and render-panel workflows. |
 | Browser preview server | `scripts/agent-preview.mjs` | Tokenized preview surface for typed browser agent sessions. |
 | Browser shell session | `apps/desktop/vite/browser-dev/agent-session.ts`, `apps/desktop/src/hooks/use-agent-session.ts` | Browser-dev shell observe/action files and event delivery. |
 | Desktop app session | `apps/desktop/src/hooks/use-agent-session.ts`, `apps/desktop/src/lib/ketcher-agent.ts`, Tauri agent session commands | Desktop file-session observe/action bridge for Mol* and the Ketcher chemical editor. |
@@ -18,36 +18,36 @@ the source of truth.
 | MCP registrations | `plugins/burette-agent/mcp/registrations/*` | Stable tools wrapping the CLI and bounded artifact validation. |
 
 Repository-local maintenance skills under `.codex/skills` are not part of the
-packaged Burrete agent plugin. Use them for development-time PR review, release
+packaged Burette agent plugin. Use them for development-time PR review, release
 readiness, contract checks, and PR body drafting.
 
 ## Hosted Public Plugin
 
 The hosted plugin is a separate runtime boundary from the local desktop bridge:
 
-- Plugin documentation: <https://burrete-landing.vercel.app/docs/plugin>
-- Production MCP: <https://burrete-plugin.vercel.app/mcp>
+- Plugin documentation: <https://burette-landing.vercel.app/docs/plugin>
+- Production MCP: <https://burette-plugin.vercel.app/mcp>
 - `preview_molecular_file` accepts one OpenAI-authorized PDB, ENT, PDBQT, CIF,
   mmCIF, SDF, SD, XYZ, or extended XYZ attachment.
 - `preview_pdb_structure` accepts one four-character public PDB ID.
 - `open_ketcher` and `control_ketcher` expose an isolated revision-checked
   chemical editor surface with bounded inline structures and exports.
 - The model receives bounded structured composition data. Raw structure text is
-  placed only in result `_meta` for the sandboxed Burrete workspace.
+  placed only in result `_meta` for the sandboxed Burette workspace.
 - Downloads are capped at 3 MiB and 200,000 lines, redirects are revalidated,
   and HTTPS connections are pinned to DNS addresses already checked as public.
-- Attachments are processed in memory and are not written to Burrete
+- Attachments are processed in memory and are not written to Burette
   application storage.
 
-The MCP widget mounts the production build of the real Burrete browser shell
+The MCP widget mounts the production build of the real Burette browser shell
 directly and passes the tool result into its existing inline-document path. The
 root deployment URL redirects to the public plugin documentation; it is not a
 second standalone product or a persistent web workspace. The local desktop app
-remains the primary Burrete workspace, while each hosted widget receives only
+remains the primary Burette workspace, while each hosted widget receives only
 the current MCP tool result inside the user's chat. The packaged local plugin
 continues to use the local MCP and CLI bridge for local files and installed-app
 control on the same Mac. The bundle, submission metadata, review tests, and
-directory skill live together under `apps/burrete-public-plugin`; the main
+directory skill live together under `apps/burette-public-plugin`; the main
 repository remains the source of truth.
 
 ## CLI And Skill Map
@@ -57,11 +57,11 @@ result back to the user.
 
 | Surface | Path | Use |
 | --- | --- | --- |
-| Workspace opener | `bun scripts/burrete-agent.mjs open` | Opens browser preview, browser-dev shell, or desktop app sessions. |
-| Workspace observer | `bun scripts/burrete-agent.mjs observe` | Reads typed state from a session directory. |
-| Workspace action | `bun scripts/burrete-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
-| Ketcher surface | `burrete.open_ketcher` / `burrete.control_ketcher` | Opens and controls the active chemical editor with bounded, revision-checked actions. |
-| Panel renderer | `bun scripts/burrete-agent.mjs render-panel` | Opens bounded markdown/table/chart output in a docked panel. |
+| Workspace opener | `bun scripts/burette-agent.mjs open` | Opens browser preview, browser-dev shell, or desktop app sessions. |
+| Workspace observer | `bun scripts/burette-agent.mjs observe` | Reads typed state from a session directory. |
+| Workspace action | `bun scripts/burette-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
+| Ketcher surface | `burette.open_ketcher` / `burette.control_ketcher` | Opens and controls the active chemical editor with bounded, revision-checked actions. |
+| Panel renderer | `bun scripts/burette-agent.mjs render-panel` | Opens bounded markdown/table/chart output in a docked panel. |
 | Tokenized preview | `bun scripts/agent-preview.mjs` | Starts typed browser preview sessions for direct observe/act checks. |
 | Router skill | `plugins/burette-agent/skills/index/SKILL.md` | Routes molecular workspace requests to the right focused skill. |
 | User context | `plugins/burette-agent/skills/user-context/SKILL.md` | Performs scoped preflight and capability checks. |
@@ -69,7 +69,7 @@ result back to the user.
 | Mol* scene | `plugins/burette-agent/skills/molstar-scene/SKILL.md` | Applies or reviews Mol* scene actions and MVS-like operations. |
 | Molecule collection | `plugins/burette-agent/skills/molecule-collection/SKILL.md` | Handles SDF, SMILES, CSV, TSV, and grid workflows. |
 | Trajectory review | `plugins/burette-agent/skills/trajectory-review/SKILL.md` | Reviews trajectory or result-bundle artifacts. |
-| Workflow results | `plugins/burette-agent/skills/workflow-results/SKILL.md` | Intakes external workflow artifacts and maps them to Burrete surfaces. |
+| Workflow results | `plugins/burette-agent/skills/workflow-results/SKILL.md` | Intakes external workflow artifacts and maps them to Burette surfaces. |
 | Molecular report | `plugins/burette-agent/skills/molecular-report/SKILL.md` | Builds bounded notes, charts, tables, and report artifacts. |
 | Visual QA | `plugins/burette-agent/skills/visual-qa/SKILL.md` | Uses Browser or Computer verification after typed state checks. |
 
@@ -104,7 +104,7 @@ state channel.
 
 ## Ketcher Agent Contract
 
-The Ketcher surface uses API version `burrete-ketcher-agent/v1`. The desktop
+The Ketcher surface uses API version `burette-ketcher-agent/v1`. The desktop
 controller is registered per tab and reports it through `observe.json` as:
 
 ```json
@@ -126,7 +126,7 @@ controller is registered per tab and reports it through `observe.json` as:
 }
 ```
 
-`burrete.control_ketcher` accepts `set_structure`, `clear_structure`,
+`burette.control_ketcher` accepts `set_structure`, `clear_structure`,
 `highlight_atoms`, `get_structure`, and `request_persist`. Every action carries
 an idempotent `actionId`, the target `surfaceId`, and `expectedRevision`.
 Structural edits advance `structureRevision`; highlight/selection changes only
@@ -138,7 +138,7 @@ confirms the file write.
 
 The hosted public plugin mirrors the same action schema through
 `open_ketcher`/`control_ketcher` and the resource
-`ui://burrete/ketcher-editor-v1.html`. Its relay is process-local and ephemeral:
+`ui://burette/ketcher-editor-v1.html`. Its relay is process-local and ephemeral:
 it is suitable for the current MCP widget turn, not a durable shared workspace;
 reference-backed content fails closed until an authenticated artifact relay is
 added.
@@ -151,8 +151,8 @@ added.
 | MCP tool succeeds but the panel is empty | Widget snapshot is unbounded, malformed, or missing the expected artifact shape. | MCP registration output, `plugins/burette-agent/mcp/widget-assets/*`, `render-panel` payload |
 | `observe` returns no active document | Wrong session directory, closed Browser tab, or desktop session not attached. | CLI `sessionDir`, shell logs, `apps/desktop/src/hooks/use-agent-session.ts` |
 | `act` times out | Action was sent to the shell when the active Mol* viewer was not ready, or the action contract changed. | Last `observe` result, `apps/desktop/src/hooks/use-agent-session.ts`, viewer bridge tests |
-| `control_ketcher` returns `REVISION_CONFLICT` | Another edit, selection change, or tab switch advanced the editor state. | Refresh `burrete.observe_workspace` and use the returned `surfaceId`/`structureRevision`. |
-| `control_ketcher` returns `STALE_TARGET` | The requested surface is no longer the active Ketcher tab or was unmounted. | Reopen Ketcher with `burrete.open_ketcher`; do not reuse the old surface id. |
+| `control_ketcher` returns `REVISION_CONFLICT` | Another edit, selection change, or tab switch advanced the editor state. | Refresh `burette.observe_workspace` and use the returned `surfaceId`/`structureRevision`. |
+| `control_ketcher` returns `STALE_TARGET` | The requested surface is no longer the active Ketcher tab or was unmounted. | Reopen Ketcher with `burette.open_ketcher`; do not reuse the old surface id. |
 | Plugin preflight fails | Packaged plugin paths, CLI availability, or local runtime capabilities are out of sync. | `plugins/burette-agent/scripts/burette_agent_preflight.mjs`, `plugins/burette-agent/AGENTS.md` |
 | Browser screenshot disagrees with typed state | Visual QA inspected the wrong tab or stale runtime while `observe` targeted another session. | Browser URL, CLI JSON metadata, `observe` output |
 
@@ -170,7 +170,7 @@ added.
 For CLI/session changes:
 
 ```bash
-bun tests/test-burrete-agent-cli.mjs
+bun tests/test-burette-agent-cli.mjs
 bun tests/test-agent-preview-server.mjs
 bun tests/test-burette-agent.mjs
 ```
@@ -185,7 +185,7 @@ bun run test:agent
 For the hosted public plugin:
 
 ```bash
-cd apps/burrete-public-plugin
+cd apps/burette-public-plugin
 bun run test
 bun run typecheck
 bun run build

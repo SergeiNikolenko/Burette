@@ -26,7 +26,7 @@ inline float signed_volume(
     return dot(first - fourth, cross(second - fourth, third - fourth));
 }
 
-kernel void burrete_conformer_stereo_validate_v1(
+kernel void burette_conformer_stereo_validate_v1(
     device const float4* positions [[buffer(0)]],
     device const uint4* chiralAtomQuads [[buffer(1)]],
     device const float2* chiralVolumeBounds [[buffer(2)]],

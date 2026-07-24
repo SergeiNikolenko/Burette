@@ -2,14 +2,14 @@
 
 interface ImportMetaEnv {
   readonly VITE_BURETTE_DEV_INSTANCE?: string;
-  readonly VITE_BURRETE_BUILD_CHANNEL?: string;
-  readonly VITE_BURRETE_BUILD_FLAVOR?: string;
-  readonly VITE_BURRETE_BUILD_IDENTIFIER?: string;
-  readonly VITE_BURRETE_AGENT_SHELL?: string;
-  readonly VITE_BURRETE_WEB_ASSETS_BASE?: string;
-  readonly BURRETE_BROWSER_DEV_GENERATED_FILES_ROOT?: string;
-  readonly BURRETE_GRID_PERF_REPORT_PATH?: string;
-  readonly BURRETE_REPO_ROOT?: string;
+  readonly VITE_BURETTE_BUILD_CHANNEL?: string;
+  readonly VITE_BURETTE_BUILD_FLAVOR?: string;
+  readonly VITE_BURETTE_BUILD_IDENTIFIER?: string;
+  readonly VITE_BURETTE_AGENT_SHELL?: string;
+  readonly VITE_BURETTE_WEB_ASSETS_BASE?: string;
+  readonly BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT?: string;
+  readonly BURETTE_GRID_PERF_REPORT_PATH?: string;
+  readonly BURETTE_REPO_ROOT?: string;
 }
 
 interface ImportMeta {
@@ -17,16 +17,16 @@ interface ImportMeta {
 }
 
 interface Window {
-  __BURRETE_HOSTED_MCP_BRIDGE_READY__?: boolean;
-  __BURRETE_HOSTED_MCP_RESULTS__?: unknown[];
-  __BURRETE_HOSTED_MCP_WIDGET__?: boolean;
-  __BURRETE_HOSTED_KETCHER_WIDGET__?: boolean;
-  __BURRETE_HOSTED_KETCHER_SEED__?: {
+  __BURETTE_HOSTED_MCP_BRIDGE_READY__?: boolean;
+  __BURETTE_HOSTED_MCP_RESULTS__?: unknown[];
+  __BURETTE_HOSTED_MCP_WIDGET__?: boolean;
+  __BURETTE_HOSTED_KETCHER_WIDGET__?: boolean;
+  __BURETTE_HOSTED_KETCHER_SEED__?: {
     surfaceId?: string;
     format: "ket" | "mol" | "rxn" | "smiles";
     content: string;
   } | null;
-  BurreteHostedAppBridge?: {
+  BuretteHostedAppBridge?: {
     ready: Promise<boolean>;
     setSource: (source: unknown) => void;
     updateSelection: (selection: unknown, documentId: string) => Promise<boolean>;
@@ -37,10 +37,10 @@ interface Window {
     ) => Promise<unknown>;
     sanitizeViewerActions: (actions: unknown) => Record<string, unknown>[];
   };
-  __BURRETE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;
-  __BURRETE_HOSTED_APP_READY__?: (ready: boolean) => void;
-  __BURRETE_WEB_ASSETS_BASE__?: string;
-  __BURRETE_BOOT_OVERLAY__?: {
+  __BURETTE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;
+  __BURETTE_HOSTED_APP_READY__?: (ready: boolean) => void;
+  __BURETTE_WEB_ASSETS_BASE__?: string;
+  __BURETTE_BOOT_OVERLAY__?: {
     report: (message: string, details?: string) => void;
     markMounted: () => void;
   };

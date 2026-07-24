@@ -1,6 +1,6 @@
 {
   "identifier": "compute",
-  "description": "Local compute control for trusted Burrete application windows",
+  "description": "Local compute control for trusted Burette application windows",
   "local": true,
   "windows": [
     "main",

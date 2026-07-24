@@ -2,8 +2,8 @@
 
 using namespace metal;
 
-constant uint BURRETE_DG_THREADS = 32;
-constant float BURRETE_DG_MIN_CURVATURE = 1.0e-10f;
+constant uint BURETTE_DG_THREADS = 32;
+constant float BURETTE_DG_MIN_CURVATURE = 1.0e-10f;
 
 struct ConformerOptimizeConfigV1 {
     uint atomCount;
@@ -22,7 +22,7 @@ struct ConformerOptimizeConfigV1 {
 
 inline float reduce_sum(threadgroup float* shared, uint tid) {
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint stride = BURRETE_DG_THREADS / 2; stride > 0; stride >>= 1) {
+    for (uint stride = BURETTE_DG_THREADS / 2; stride > 0; stride >>= 1) {
         if (tid < stride) {
             shared[tid] += shared[tid + stride];
         }
@@ -33,7 +33,7 @@ inline float reduce_sum(threadgroup float* shared, uint tid) {
 
 inline float reduce_max(threadgroup float* shared, uint tid) {
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint stride = BURRETE_DG_THREADS / 2; stride > 0; stride >>= 1) {
+    for (uint stride = BURETTE_DG_THREADS / 2; stride > 0; stride >>= 1) {
         if (tid < stride) {
             shared[tid] = max(shared[tid], shared[tid + stride]);
         }
@@ -50,7 +50,7 @@ inline float vector_dot(
     threadgroup float* shared
 ) {
     float value = 0.0f;
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_DG_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_DG_THREADS) {
         value += dot(left[atom], right[atom]);
     }
     shared[tid] = value;
@@ -67,7 +67,7 @@ inline void copy_vector(
     uint atomCount,
     uint tid
 ) {
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_DG_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_DG_THREADS) {
         destination[atom] = source[atom];
     }
     threadgroup_barrier(mem_flags::mem_device);
@@ -80,7 +80,7 @@ inline void add_scaled(
     uint atomCount,
     uint tid
 ) {
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_DG_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_DG_THREADS) {
         target[atom] += scale * source[atom];
     }
     threadgroup_barrier(mem_flags::mem_device);
@@ -92,7 +92,7 @@ inline void scale_vector(
     uint atomCount,
     uint tid
 ) {
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_DG_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_DG_THREADS) {
         values[atom] *= scale;
     }
     threadgroup_barrier(mem_flags::mem_device);
@@ -110,7 +110,7 @@ inline float evaluate_distance_objective(
     threadgroup float* shared
 ) {
     float localEnergy = 0.0f;
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_DG_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_DG_THREADS) {
         float4 gradient = float4(0.0f);
         float atomEnergy = 0.0f;
         for (uint term = 0; term < constraintCount; ++term) {
@@ -159,7 +159,7 @@ inline float scaled_gradient_maximum(
     threadgroup float* shared
 ) {
     float localMaximum = 0.0f;
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_DG_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_DG_THREADS) {
         const float4 positionScale = max(abs(positions[atom]), float4(1.0f));
         localMaximum = max(
             localMaximum,
@@ -170,7 +170,7 @@ inline float scaled_gradient_maximum(
     return reduce_max(shared, tid) / max(abs(energy), 1.0f);
 }
 
-kernel void burrete_conformer_optimize_v1(
+kernel void burette_conformer_optimize_v1(
     device float4* positions [[buffer(0)]],
     device const uint2* atomPairs [[buffer(1)]],
     device const float2* boundsSquared [[buffer(2)]],
@@ -194,11 +194,11 @@ kernel void burrete_conformer_optimize_v1(
 ) {
     const uint tid = threadPosition.x;
     const uint conformer = threadgroupPosition.x;
-    if (threadsPerThreadgroup.x != BURRETE_DG_THREADS
+    if (threadsPerThreadgroup.x != BURETTE_DG_THREADS
         || conformer >= config.conformerCount) {
         return;
     }
-    threadgroup float shared[BURRETE_DG_THREADS];
+    threadgroup float shared[BURETTE_DG_THREADS];
     const ulong atomOffset = static_cast<ulong>(conformer) * config.atomCount;
     const ulong historyOffset = static_cast<ulong>(conformer)
         * config.historySize * config.atomCount;
@@ -237,7 +237,7 @@ kernel void burrete_conformer_optimize_v1(
     uint historyCount = 0;
     uint historyNext = 0;
 
-    for (uint atom = tid; atom < config.atomCount; atom += BURRETE_DG_THREADS) {
+    for (uint atom = tid; atom < config.atomCount; atom += BURETTE_DG_THREADS) {
         myDirections[atom] = -myGradients[atom];
     }
     threadgroup_barrier(mem_flags::mem_device);
@@ -247,7 +247,7 @@ kernel void burrete_conformer_optimize_v1(
     }
 
     shared[tid] = 0.0f;
-    for (uint atom = tid; atom < config.atomCount; atom += BURRETE_DG_THREADS) {
+    for (uint atom = tid; atom < config.atomCount; atom += BURETTE_DG_THREADS) {
         shared[tid] += dot(myPositions[atom], myPositions[atom]);
     }
     const float coordinateNorm = sqrt(reduce_sum(shared, tid));
@@ -277,7 +277,7 @@ kernel void burrete_conformer_optimize_v1(
         if (!isfinite(slope) || slope >= 0.0f) {
             historyCount = 0;
             historyNext = 0;
-            for (uint atom = tid; atom < config.atomCount; atom += BURRETE_DG_THREADS) {
+            for (uint atom = tid; atom < config.atomCount; atom += BURETTE_DG_THREADS) {
                 myDirections[atom] = -myGradients[atom];
             }
             threadgroup_barrier(mem_flags::mem_device);
@@ -294,7 +294,7 @@ kernel void burrete_conformer_optimize_v1(
         copy_vector(myOldGradients, myGradients, config.atomCount, tid);
         const float oldEnergy = energy;
         float localRelativeDirection = 0.0f;
-        for (uint atom = tid; atom < config.atomCount; atom += BURRETE_DG_THREADS) {
+        for (uint atom = tid; atom < config.atomCount; atom += BURETTE_DG_THREADS) {
             const float4 ratio = abs(myDirections[atom])
                 / max(abs(myOldPositions[atom]), float4(1.0f));
             localRelativeDirection = max(localRelativeDirection, maximum_component(ratio));
@@ -314,7 +314,7 @@ kernel void burrete_conformer_optimize_v1(
             if (lineStep < minimumLineStep) {
                 break;
             }
-            for (uint atom = tid; atom < config.atomCount; atom += BURRETE_DG_THREADS) {
+            for (uint atom = tid; atom < config.atomCount; atom += BURETTE_DG_THREADS) {
                 myPositions[atom] = myOldPositions[atom] + lineStep * myDirections[atom];
             }
             threadgroup_barrier(mem_flags::mem_device);
@@ -346,7 +346,7 @@ kernel void burrete_conformer_optimize_v1(
         completedIterations = iteration + 1;
 
         float localRelativeStep = 0.0f;
-        for (uint atom = tid; atom < config.atomCount; atom += BURRETE_DG_THREADS) {
+        for (uint atom = tid; atom < config.atomCount; atom += BURETTE_DG_THREADS) {
             const float4 step = myPositions[atom] - myOldPositions[atom];
             const float4 ratio = abs(step) / max(abs(myPositions[atom]), float4(1.0f));
             localRelativeStep = max(localRelativeStep, maximum_component(ratio));
@@ -371,20 +371,20 @@ kernel void burrete_conformer_optimize_v1(
         }
 
         float localCurvature = 0.0f;
-        for (uint atom = tid; atom < config.atomCount; atom += BURRETE_DG_THREADS) {
+        for (uint atom = tid; atom < config.atomCount; atom += BURETTE_DG_THREADS) {
             const float4 step = myPositions[atom] - myOldPositions[atom];
             const float4 gradientDelta = myGradients[atom] - myOldGradients[atom];
             localCurvature += dot(step, gradientDelta);
         }
         shared[tid] = localCurvature;
         const float curvature = reduce_sum(shared, tid);
-        if (isfinite(curvature) && curvature > BURRETE_DG_MIN_CURVATURE) {
+        if (isfinite(curvature) && curvature > BURETTE_DG_MIN_CURVATURE) {
             const uint slot = historyNext;
             device float4* storedStep = myHistorySteps
                 + static_cast<ulong>(slot) * config.atomCount;
             device float4* storedGradientDelta = myHistoryGradientDeltas
                 + static_cast<ulong>(slot) * config.atomCount;
-            for (uint atom = tid; atom < config.atomCount; atom += BURRETE_DG_THREADS) {
+            for (uint atom = tid; atom < config.atomCount; atom += BURETTE_DG_THREADS) {
                 storedStep[atom] = myPositions[atom] - myOldPositions[atom];
                 storedGradientDelta[atom] = myGradients[atom] - myOldGradients[atom];
             }

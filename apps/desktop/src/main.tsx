@@ -25,7 +25,7 @@ function Root() {
   );
 }
 
-if (import.meta.env.VITE_BURRETE_WEB_DEMO === "1") {
+if (import.meta.env.VITE_BURETTE_WEB_DEMO === "1") {
   void initializeWebDemoAnalytics().catch((error) => {
     console.error("[Web demo analytics] Initialization failed", error);
   });

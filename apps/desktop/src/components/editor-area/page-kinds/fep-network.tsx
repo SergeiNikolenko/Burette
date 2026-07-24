@@ -893,7 +893,7 @@ function fepGridHtml(title: string, records: FepGridRecord[]) {
     label: title,
     byteCount: records.reduce((total, record) => total + record.molblock.length, 0),
     host: "browser-dev",
-    quickLookBuild: "burrete-browser-dev-grid2d",
+    quickLookBuild: "burette-browser-dev-grid2d",
     debug: false,
     appViewer: true,
     tauriViewer: false,
@@ -920,26 +920,26 @@ function fepGridHtml(title: string, records: FepGridRecord[]) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <base href="${gridAssetsBaseUrl}" />
-  <title>Burrete FEP Grid - ${escapeHtml(title)}</title>
+  <title>Burette FEP Grid - ${escapeHtml(title)}</title>
   <link rel="stylesheet" href="grid.css?v=${gridAssetVersion}" />
   <script>
     window.__mqlPost = function (type, message, payload) {
       try {
         const body = { type, message: String(message || ''), ...(payload || {}) };
-        if (window.BurreteConfig && window.BurreteConfig.documentId) body.documentId = String(window.BurreteConfig.documentId);
-        window.parent && window.parent.postMessage({ source: 'burrete-grid', body }, '*');
+        if (window.BuretteConfig && window.BuretteConfig.documentId) body.documentId = String(window.BuretteConfig.documentId);
+        window.parent && window.parent.postMessage({ source: 'burette-grid', body }, '*');
       } catch (_) {}
     };
-    window.BurreteInlineMode = true;
-    window.BurreteGridMode = true;
-    window.BurreteDebug = false;
+    window.BuretteInlineMode = true;
+    window.BuretteGridMode = true;
+    window.BuretteDebug = false;
   </script>
 </head>
 <body class="burette-opaque-background">
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
-  <script>window.BurreteConfig = ${JSON.stringify(config)};</script>
-  <script>window.BurreteGridRecords = ${JSON.stringify(records)};</script>
+  <script>window.BuretteConfig = ${JSON.stringify(config)};</script>
+  <script>window.BuretteGridRecords = ${JSON.stringify(records)};</script>
   <script src="rdkit/RDKit_minimal.js?v=${gridAssetVersion}"></script>
   <script src="grid-ui.js?v=${gridAssetVersion}"></script>
   <script src="grid-viewer.js?v=${gridAssetVersion}"></script>

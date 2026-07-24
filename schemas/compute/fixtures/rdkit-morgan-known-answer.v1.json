@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "burrete.rdkit-morgan-known-answer.v1",
+  "schemaVersion": "burette.rdkit-morgan-known-answer.v1",
   "rdkitVersion": "2025.03.4",
   "settings": {
     "radius": 2,

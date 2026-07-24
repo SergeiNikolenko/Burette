@@ -165,8 +165,8 @@ function simulateQuery(fingerprints, query, batchSize) {
   return counts;
 }
 
-assert.equal(contract.schemaVersion, "burrete.compute.metal-kernel-contract.v2");
-assert.equal(contract.libraryId, "burrete.compute.tanimoto.v2");
+assert.equal(contract.schemaVersion, "burette.compute.metal-kernel-contract.v2");
+assert.equal(contract.libraryId, "burette.compute.tanimoto.v2");
 assert.equal(contract.fingerprint.bits, 2048);
 assert.equal(contract.fingerprint.canonicalWordType, "uint64");
 assert.equal(contract.fingerprint.canonicalWordsPerRecord, 32);
@@ -215,8 +215,8 @@ assert.deepEqual(
   [0, 8, 16, 24, 28],
 );
 const expectedBuffers = {
-  burrete_tanimoto_degree_count_v1: ["fingerprints", "tile", "rowDegrees"],
-  burrete_tanimoto_csr_fill_v1: [
+  burette_tanimoto_degree_count_v1: ["fingerprints", "tile", "rowDegrees"],
+  burette_tanimoto_csr_fill_v1: [
     "fingerprints",
     "tile",
     "rowOffsets",
@@ -224,9 +224,9 @@ const expectedBuffers = {
     "columnIndices",
     "rowStatus",
   ],
-  burrete_tanimoto_query_counts_v1: ["fingerprints", "query", "counts", "batch"],
-  burrete_tanimoto_counts_batch_v1: ["fingerprints", "counts", "config"],
-  burrete_tanimoto_top_k_batch_v1: [
+  burette_tanimoto_query_counts_v1: ["fingerprints", "query", "counts", "batch"],
+  burette_tanimoto_counts_batch_v1: ["fingerprints", "counts", "config"],
+  burette_tanimoto_top_k_batch_v1: [
     "counts",
     "outputIndices",
     "outputSimilarities",
@@ -288,7 +288,7 @@ assert.equal(syntax.status, 0, syntax.stderr);
 const metalLookup = spawnSync("xcrun", ["--sdk", "macosx", "--find", "metal"]);
 const metallibLookup = spawnSync("xcrun", ["--sdk", "macosx", "--find", "metallib"]);
 if (metalLookup.status === 0 && metallibLookup.status === 0) {
-  const buildDirectory = mkdtempSync(resolve(tmpdir(), "burrete-metallib-"));
+  const buildDirectory = mkdtempSync(resolve(tmpdir(), "burette-metallib-"));
   try {
     const build = spawnSync(resolve(metalRoot, "build-metallib.sh"), [buildDirectory], {
       encoding: "utf8",
@@ -374,7 +374,7 @@ assert.throws(() => simulateKernels(records, { numerator: 2, denominator: 1 }, 1
 assert.throws(() => simulateKernels(records, { numerator: Number.MAX_SAFE_INTEGER + 1, denominator: 1 }, 1, 1));
 assert.throws(() => simulateKernels(records, { numerator: 1, denominator: 2 }, 1025, 1));
 
-const metadataDirectory = mkdtempSync(resolve(tmpdir(), "burrete-metal-metadata-"));
+const metadataDirectory = mkdtempSync(resolve(tmpdir(), "burette-metal-metadata-"));
 try {
   const metadataPath = resolve(metadataDirectory, "metadata.json");
   const fakeHash = "0".repeat(64);
@@ -450,7 +450,7 @@ try {
   );
   assert.equal(metadataRun.status, 0, metadataRun.stderr);
   const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
-  assert.equal(metadata.runtimeVersion, "burrete-native-metal-v22");
+  assert.equal(metadata.runtimeVersion, "burette-native-metal-v22");
   assert.equal(metadata.sources[0].sha256, fakeHash);
   assert.equal(metadata.sources[1].sha256, fakeHash);
   assert.equal(metadata.sources[2].sha256, fakeHash);
@@ -459,23 +459,23 @@ try {
   assert.equal(metadata.compiler.version, "Apple metal version test Target test");
   assert.deepEqual(metadata.entrypoints, [
     ...contract.entrypoints.map(({ name }) => name),
-    "burrete_conformer_initialize_v1",
-    "burrete_conformer_distance_v1",
+    "burette_conformer_initialize_v1",
+    "burette_conformer_distance_v1",
     optimizerContract.entrypoint.name,
-    "burrete_conformer_stereo_validate_v1",
-    "burrete_conformer_etk_v1",
-    "burrete_conformer_etk_optimize_v1",
+    "burette_conformer_stereo_validate_v1",
+    "burette_conformer_etk_v1",
+    "burette_conformer_etk_optimize_v1",
     ...mmffContract.entrypoints,
     alignmentContract.kernel,
-    "burrete_rm1_pair_fock_v1",
-    "burrete_rm1_symmetric_eigen_v1",
-    "burrete_rm1_pair_rotate_v1",
-    "burrete_pm6_h4_hh_v1",
-    "burrete_pm6_d3_v2",
-    "burrete_pm6_one_center_fock_v1",
-    "burrete_pm6_pair_fock_v1",
-    "burrete_umap_initialize_v1",
-    "burrete_umap_epoch_v1",
+    "burette_rm1_pair_fock_v1",
+    "burette_rm1_symmetric_eigen_v1",
+    "burette_rm1_pair_rotate_v1",
+    "burette_pm6_h4_hh_v1",
+    "burette_pm6_d3_v2",
+    "burette_pm6_one_center_fock_v1",
+    "burette_pm6_pair_fock_v1",
+    "burette_umap_initialize_v1",
+    "burette_umap_epoch_v1",
   ]);
 } finally {
   rmSync(metadataDirectory, { recursive: true, force: true });
