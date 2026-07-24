@@ -70,6 +70,7 @@ assert.deepEqual(useShellStore.getState().rightDockTabs.map((tab) => tab.kind), 
   "inspector",
   "text",
   "files",
+  "chemical-space",
 ]);
 assert.deepEqual(useShellStore.getState().bottomDockTabs.map((tab) => tab.kind), [
   "files",
