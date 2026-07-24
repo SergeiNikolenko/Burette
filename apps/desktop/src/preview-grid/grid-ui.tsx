@@ -57,6 +57,15 @@ type GridControlProps = {
   similarityQuerySelected: boolean;
   clusterCutoff: number;
   selectedCount: number;
+  // Collection edit state. grid-viewer also writes these onto the buttons by id,
+  // but the overflow menu only exists in the DOM while it is open, so its items
+  // have to render the right state from props on the way in.
+  saveEnabled: boolean;
+  saveAsEnabled: boolean;
+  undoEnabled: boolean;
+  saveTitle: string;
+  saveAsTitle: string;
+  undoTitle: string;
   sortOptions: SortOption[];
   onSearchInput: (value: string) => void;
   onSortChange: (value: string) => void;
@@ -85,6 +94,7 @@ type GridControlProps = {
   onSemiempiricalMethodChange: (value: SemiempiricalMethod) => void;
   onGenerate3D: () => void;
   onOptimizeGeometry: () => void;
+  onCalculateSelectedDescriptors: () => void;
   onConformerVariantChange: (value: ConformerVariant) => void;
   onMmffVariantChange: (value: MmffVariant) => void;
   onRendererSwitch: (value: "molstar") => void;
@@ -134,6 +144,7 @@ const ICONS = {
   generate3d: <Icon paths={<><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z" /><path d="M3 8l9 5 9-5" /><path d="M12 13v8" /></>} />,
   optimize: <Icon paths={<><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></>} />,
   energy: <Icon paths={<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />} />,
+  descriptors: <Icon paths={<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M9 9v11" /><path d="M12.5 13h5M12.5 16.5h5" /></>} />,
   align: <Icon paths={<><path d="m12 2 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5" /></>} />,
   cluster: <Icon paths={<><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>} />,
   findSimilar: <Icon paths={<><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>} />,
@@ -141,6 +152,9 @@ const ICONS = {
   selectAll: <Icon paths={<><rect x="3" y="3" width="18" height="18" rx="3" /><path d="m8 12 3 3 5-6" /></>} />,
   clearSelection: <Icon paths={<><rect x="3" y="3" width="18" height="18" rx="3" /><path d="m9 9 6 6M15 9l-6 6" /></>} />,
   copy: <Icon paths={<><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></>} />,
+  fileCoords: <Icon paths={<><path d="M4 20V6a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" /><path d="M13 4v5h5" /><path d="M9 16.5 11 14l1.6 1.8L15 12" /></>} />,
+  molstar: <Icon paths={<><circle cx="12" cy="6" r="2.4" /><circle cx="6" cy="16.5" r="2.4" /><circle cx="18" cy="16.5" r="2.4" /><path d="M10.4 7.9 7.6 14.6M13.6 7.9l2.8 6.7M8.4 16.5h7.2" /></>} />,
+  ketcher: <Icon paths={<><path d="M14.5 4.5 19.5 9.5 9 20H4v-5Z" /><path d="M12.5 6.5 17.5 11.5" /></>} />,
 };
 
 function MiniSelect<T extends string>({ value, options, ariaLabel, disabled, formatOption, onChange }: {
@@ -212,13 +226,6 @@ function SegmentedControl<T extends string>({
 
 function XyzrenderStyleControl(props: GridControlProps) {
   if (!props.supportsXyzrenderCards) return null;
-  const selectedPresetLabel = props.xyzrenderPresetOptions.find(
-    (option) => option.value === props.xyzrenderPreset,
-  )?.label ?? "Default";
-  const presetWidth = Math.max(74, Math.min(128, selectedPresetLabel.length * 7 + 42));
-  const presetWidthStyle = {
-    "--buret-xyzrender-preset-width": `${presetWidth}px`,
-  } as React.CSSProperties;
   return (
     <label
       id="xyzrender-preset-control"
@@ -228,10 +235,10 @@ function XyzrenderStyleControl(props: GridControlProps) {
       Style
       <select
         id="xyzrender-preset"
+        className="ab-mini"
         value={props.xyzrenderPreset}
         disabled={props.cardRenderer !== "xyzrender"}
         aria-label="xyzrender card style"
-        style={presetWidthStyle}
         onChange={(event) => props.onXyzrenderPresetChange(event.currentTarget.value)}
       >
         {props.xyzrenderPresetOptions.map((option) => (
@@ -331,6 +338,20 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
         >
           {ICONS.align}
           <span className="ab-item-title">{props.aligningPoses ? "Aligning..." : "Align & compare"}</span>
+        </button>
+      </div>
+      <div className="ab-row">
+        <button
+          id="calculate-descriptors-selected"
+          className="ab-item"
+          type="button"
+          role="menuitem"
+          disabled={noSelection}
+          title="Calculate Mordred descriptors for the selected molecules and write them to Grid"
+          onClick={() => props.onRun(props.onCalculateSelectedDescriptors)}
+        >
+          {ICONS.descriptors}
+          <span className="ab-item-title">Calculate descriptors</span>
         </button>
       </div>
     </>
@@ -469,9 +490,50 @@ function SelectionSection(props: GridControlProps & { onRun: (action: () => void
   );
 }
 
-function ActionsMenu(props: GridControlProps) {
+// Shared open/close behaviour for the toolbar's dropdowns. The menu is switched
+// to fixed positioning and clamped to the viewport so it stays on screen when
+// the grid panel is squeezed narrow, instead of overflowing off the left edge.
+function useMenu() {
   const [open, setOpen] = React.useState(false);
   const wrapRef = React.useRef<HTMLDivElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = React.useState<React.CSSProperties>();
+
+  const reposition = React.useCallback(() => {
+    const trigger = wrapRef.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]');
+    const menu = menuRef.current;
+    if (!trigger || !menu) return;
+    const t = trigger.getBoundingClientRect();
+    const m = menu.getBoundingClientRect();
+    const margin = 8;
+    // The visible strip stops where the dock begins floating over the grid; the
+    // runtime writes that width onto the toolbar host as the dock moves.
+    const host = document.getElementById("grid-controls");
+    const cover = Number(host?.dataset.viewportCover) || 0;
+    const vw = Math.max(0, document.documentElement.clientWidth - cover);
+    const vh = document.documentElement.clientHeight;
+    // When the strip is narrower than the menu, cap it (its rows wrap) so it fits
+    // rather than spilling back under the dock.
+    const maxWidth = Math.max(160, vw - margin * 2);
+    const width = Math.min(m.width, maxWidth);
+    // Right-align to the trigger, then pull back inside the visible strip.
+    const left = Math.max(margin, Math.min(t.right - width, vw - width - margin));
+    // Prefer opening below; flip above only when there is no room down there.
+    const top = t.bottom + margin + m.height <= vh - margin
+      ? t.bottom + margin
+      : Math.max(margin, t.top - margin - m.height);
+    setMenuStyle(cover > 0
+      ? { position: "fixed", top, left, right: "auto", maxWidth: `${maxWidth}px`, minWidth: 0 }
+      : { position: "fixed", top, left, right: "auto" });
+  }, []);
+
+  React.useLayoutEffect(() => {
+    if (!open) {
+      setMenuStyle(undefined);
+      return;
+    }
+    reposition();
+  }, [open, reposition]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -481,18 +543,30 @@ function ActionsMenu(props: GridControlProps) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
+    const onReflow = () => reposition();
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onReflow);
+    window.addEventListener("scroll", onReflow, true);
     return () => {
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onReflow);
+      window.removeEventListener("scroll", onReflow, true);
     };
-  }, [open]);
+  }, [open, reposition]);
 
   const onRun = React.useCallback((action: () => void) => {
     action();
     setOpen(false);
   }, []);
+
+  return { open, setOpen, wrapRef, menuRef, menuStyle, onRun };
+}
+
+function ActionsMenu(props: GridControlProps) {
+  const { open, setOpen, wrapRef, menuRef, menuStyle, onRun } = useMenu();
+  const selectedCount = props.selectedCount;
 
   return (
     <div className="ab-menu-wrap" ref={wrapRef}>
@@ -506,13 +580,134 @@ function ActionsMenu(props: GridControlProps) {
         Actions
       </button>
       {open ? (
-        <div className="ab-menu" role="menu">
+        <div className="ab-menu" role="menu" ref={menuRef} style={menuStyle}>
+          <div className={selectedCount > 0 ? "ab-selhead has-selection" : "ab-selhead"}>
+            {selectedCount > 0
+              ? `${selectedCount.toLocaleString()} selected`
+              : "Select molecules to enable actions"}
+          </div>
           <ComputeSection {...props} onRun={onRun} />
           <CollectionSection {...props} onRun={onRun} />
           <SelectionSection {...props} onRun={onRun} />
         </div>
       ) : null}
     </div>
+  );
+}
+
+// The collection's file actions: Save stays on the surface, everything else
+// moves into an overflow menu so the header keeps one row on narrow grids.
+function HeaderActions(props: GridControlProps) {
+  const { open, setOpen, wrapRef, menuRef, menuStyle, onRun } = useMenu();
+  return (
+    <div className="buret-actions" hidden={!props.exportEnabled}>
+      <button
+        id="save-grid"
+        className="ab-btn"
+        type="button"
+        disabled={!props.saveEnabled}
+        title={props.saveTitle}
+        onClick={props.onSaveGrid}
+      >
+        Save
+      </button>
+      <div className="ab-menu-wrap" ref={wrapRef}>
+        <button
+          className="ab-btn buret-actions-more"
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label="More collection actions"
+          onClick={() => setOpen((value) => !value)}
+        >
+          <MoreIcon />
+        </button>
+        {open ? (
+          <div className="ab-menu" role="menu" ref={menuRef} style={menuStyle}>
+            <div className="ab-group">File</div>
+            <div className="ab-row">
+              <button
+                id="save-grid-as"
+                className="ab-item"
+                type="button"
+                role="menuitem"
+                disabled={!props.saveAsEnabled}
+                title={props.saveAsTitle}
+                onClick={() => onRun(props.onSaveGridAs)}
+              >
+                <span className="ab-item-title">Save As...</span>
+              </button>
+            </div>
+            <div className="ab-row">
+              <button
+                id="undo-grid-edit"
+                className="ab-item"
+                type="button"
+                role="menuitem"
+                disabled={!props.undoEnabled}
+                title={props.undoTitle}
+                onClick={() => onRun(props.onUndoGridEdit)}
+              >
+                <span className="ab-item-title">Undo</span>
+              </button>
+            </div>
+            <div className="ab-separator" />
+            <div className="ab-group">Export</div>
+            <div className="ab-row">
+              <button
+                id="export-smi"
+                className="ab-item"
+                type="button"
+                role="menuitem"
+                title="Export visible molecules as SMILES"
+                onClick={() => onRun(props.onExportSmiles)}
+              >
+                <span className="ab-item-title">Export SMILES</span>
+                <span className="ab-item-meta">.smi</span>
+              </button>
+            </div>
+            <div className="ab-row">
+              <button
+                id="export-csv"
+                className="ab-item"
+                type="button"
+                role="menuitem"
+                title="Export visible table data as CSV"
+                onClick={() => onRun(props.onExportCSV)}
+              >
+                <span className="ab-item-title">Export CSV</span>
+                <span className="ab-item-meta">.csv</span>
+              </button>
+            </div>
+            <div className="ab-separator" />
+            <div className="ab-group">Clipboard</div>
+            <div className="ab-row">
+              <button
+                id="copy-selected"
+                className="ab-item"
+                type="button"
+                role="menuitem"
+                disabled={props.selectedCount === 0}
+                title="Copy selected molecule records"
+                onClick={() => onRun(props.onCopySelected)}
+              >
+                <span className="ab-item-title">Copy selected</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg className="ab-ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <circle cx="5" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="19" cy="12" r="1.6" />
+    </svg>
   );
 }
 
@@ -575,14 +770,23 @@ function GridActionToolbar(props: GridControlProps) {
         </>
       ) : null}
       <XyzrenderStyleControl {...props} />
-      <label id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
-        <input
+      {/* A pressed-state button rather than a checkbox: grid-viewer owns both the
+          `hidden` on the wrapper and the pressed state on the button by id. */}
+      <span id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
+        <button
           id="rdkit-use-input-coords"
-          type="checkbox"
-          onChange={(event) => props.onRdkitUseInputCoordsChange(event.currentTarget.checked === true)}
-        />
-        <span>Use file coords</span>
-      </label>
+          className="ab-btn ab-btn-icon"
+          type="button"
+          aria-pressed="false"
+          aria-label="Use file coords"
+          onClick={(event) => props.onRdkitUseInputCoordsChange(
+            event.currentTarget.getAttribute("aria-pressed") !== "true",
+          )}
+        >
+          {ICONS.fileCoords}
+          <ControlTooltip label="Use the coordinates embedded in the file" />
+        </button>
+      </span>
       <button id="clear-smarts" className="ab-btn buret-clear-smarts" type="button" hidden onClick={props.onClearSmarts}>
         Clear search
         <ControlTooltip label="Clear the SMARTS search" />
@@ -592,15 +796,22 @@ function GridActionToolbar(props: GridControlProps) {
         <div id="selected-open-actions" className="buret-selected-open-actions" hidden>
           <button
             id="open-selected-molstar"
-            className="ab-btn"
+            className="ab-btn ab-btn-icon"
             type="button"
+            aria-label="Open in Molstar"
             onClick={() => props.onRendererSwitch("molstar")}
           >
-            Open in Molstar
+            {ICONS.molstar}
             <ControlTooltip label="Open selected molecules in Molstar" />
           </button>
-          <button id="open-selected-ketcher" className="ab-btn" type="button" onClick={props.onOpenKetcher}>
-            Open in Ketcher
+          <button
+            id="open-selected-ketcher"
+            className="ab-btn ab-btn-icon"
+            type="button"
+            aria-label="Open in Ketcher"
+            onClick={props.onOpenKetcher}
+          >
+            {ICONS.ketcher}
             <ControlTooltip label="Open selected molecule in Ketcher" />
           </button>
         </div>
@@ -632,32 +843,7 @@ function GridControls(props: GridControlProps) {
           <h1>{props.label || "Molecule collection"}</h1>
           <div id="summary" className="buret-summary" />
         </div>
-        <div className="buret-actions" hidden={!props.exportEnabled}>
-          <button id="copy-selected" type="button" onClick={props.onCopySelected}>
-            Copy selected
-            <ControlTooltip label="Copy selected molecule records" />
-          </button>
-          <button id="save-grid" type="button" disabled onClick={props.onSaveGrid}>
-            Save
-            <ControlTooltip label="Save changes back to this collection" />
-          </button>
-          <button id="save-grid-as" type="button" onClick={props.onSaveGridAs}>
-            Save As...
-            <ControlTooltip label="Save this collection as a new file" />
-          </button>
-          <button id="undo-grid-edit" type="button" disabled onClick={props.onUndoGridEdit}>
-            Undo
-            <ControlTooltip label="Undo the last grid edit" />
-          </button>
-          <button id="export-smi" type="button" onClick={props.onExportSmiles}>
-            Export SMILES
-            <ControlTooltip label="Export visible molecules as SMILES" />
-          </button>
-          <button id="export-csv" type="button" onClick={props.onExportCSV}>
-            Export CSV
-            <ControlTooltip label="Export visible table data as CSV" />
-          </button>
-        </div>
+        <HeaderActions {...props} />
       </header>
       <div className="buret-grid-toolbar">
         <div className="buret-toolbar-row buret-toolbar-row-main">

@@ -137,6 +137,8 @@ type UseAppShellActionsOptions = {
   setDockDocument: ShellActions["setDockDocument"];
   setDockOpen: ShellActions["setDockOpen"];
   setDockSize: ShellActions["setDockSize"];
+  setGridColumnFilter: ShellActions["setGridColumnFilter"];
+  clearGridColumnFilters: ShellActions["clearGridColumnFilters"];
   setDockTool: ShellActions["setDockTool"];
   setExpandedProjectIds: ShellActions["setExpandedProjectIds"];
   setPreference: ShellActions["setPreference"];
@@ -259,6 +261,8 @@ type DockShellActions = Pick<
   | "toggleDockTab"
   | "setDockOpen"
   | "setDockSize"
+  | "setGridColumnFilter"
+  | "clearGridColumnFilters"
   | "openDockTab"
   | "closeDockTab"
   | "setDockActiveTab"
@@ -625,6 +629,8 @@ export function createAppShellActionSlices(actions: ShellActions): AppShellActio
       toggleDockTab: actions.toggleDockTab,
       setDockOpen: actions.setDockOpen,
       setDockSize: actions.setDockSize,
+      setGridColumnFilter: actions.setGridColumnFilter,
+      clearGridColumnFilters: actions.clearGridColumnFilters,
       openDockTab: actions.openDockTab,
       closeDockTab: actions.closeDockTab,
       setDockActiveTab: actions.setDockActiveTab,
@@ -820,6 +826,8 @@ export function useAppShellActions({
   toggleProjectExpanded,
   toggleProjectsOpen,
   toggleSidebar,
+  setGridColumnFilter,
+  clearGridColumnFilters,
 }: UseAppShellActionsOptions) {
   const canUndoWorkspace = useWorkspaceHistoryStore((state) => state.canUndo);
   const canRedoWorkspace = useWorkspaceHistoryStore((state) => state.canRedo);
@@ -959,6 +967,8 @@ export function useAppShellActions({
     openUpdateRelease,
     setPreference,
     setUpdatePreferences,
+    setGridColumnFilter,
+    clearGridColumnFilters,
   }), {
     canNavigateBack,
     canNavigateForward,
