@@ -7548,7 +7548,7 @@ img.settings-open-destination-icon {
 }
 .grid-filter-chart {
   --grid-filter-bin: color-mix(in srgb, var(--text-primary) 14%, transparent);
-  --grid-filter-bin-active: color-mix(in srgb, var(--text-primary) 62%, transparent);
+  --grid-filter-bin-active: color-mix(in srgb, var(--accent) 72%, transparent);
 }
 .grid-filter-chart .recharts-rectangle {
   transition: fill 90ms ease-out;
