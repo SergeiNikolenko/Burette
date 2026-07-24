@@ -1,13 +1,19 @@
-use std::{collections::HashSet, ffi::c_void, mem::size_of_val, sync::OnceLock};
+use std::{
+    collections::HashSet,
+    ffi::c_void,
+    mem::{size_of, size_of_val},
+    sync::OnceLock,
+};
 
 use burrete_compute_core::{
-    pm6_h4_covalent_radius, rm1_multipole_parameters, semiempirical_parameters,
+    fit_umap_curve, pm6_h4_covalent_radius, rm1_multipole_parameters, semiempirical_parameters,
     validate_etk_geometry_constraints, validate_mmff_parameters, validate_stereo_constraints,
-    AlignmentMode, ChiralVolumeConstraint, DistanceConstraint, DistanceGeometryOptimizationOptions,
-    EtkDistanceConstraint, EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint,
-    Fingerprint2048, GraphBuildOptions, MmffParameters, Pm6FockPair, Rm1FockPair,
-    SemiempiricalMolecule, SymmetricCsr, TanimotoCounts, TanimotoQueryOptions,
-    TetrahedralConstraint,
+    AlignmentMode, ChemicalSpaceMethod, ChiralVolumeConstraint, DistanceConstraint,
+    DistanceGeometryOptimizationOptions, EtkDistanceConstraint, EtkGeometryTerms,
+    EtkImproperConstraint, EtkTorsionConstraint, Fingerprint2048, GraphBuildOptions,
+    MmffParameters, Pm6FockPair, Rm1FockPair, SemiempiricalMolecule, SymmetricCsr, TanimotoCounts,
+    TanimotoKnnOptions, TanimotoQueryOptions, TanimotoUmapGraph, TetrahedralConstraint,
+    UmapOptions,
 };
 use burrete_compute_protocol::{GpuDeviceIdentity, SimilarityCutoff};
 use metal::{
@@ -23,13 +29,15 @@ use crate::platform::{
     MetalEtkDispatch, MetalMmffDispatch, MetalMmffOptimizationDispatch, MetalPm6D3Dispatch,
     MetalPm6H4HhDispatch, MetalPm6OneCenterFockDispatch, MetalPm6PairFockDispatch,
     MetalRm1FockDispatch, MetalRm1PairRotationDispatch, MetalStereoValidationDispatch,
-    MetalSymmetricEigenDispatch,
+    MetalSymmetricEigenDispatch, MetalTanimotoKnnDispatch, MetalUmapDispatch,
 };
 use crate::runtime::{MetalAlignmentBatch, MetalPm6CorrectionBatch, MetalPm6OneCenterFockBatch};
 use crate::MetalRuntimeError;
 
 const MAX_TILE_RECORDS: usize = 1_024;
 const MAX_QUERY_BATCH_RECORDS: usize = 262_144;
+const MAX_TANIMOTO_NEIGHBORS: usize = 64;
+const MAX_TANIMOTO_KNN_BATCH_ROWS: usize = 32;
 const MEMORY_HEADROOM_BYTES: u64 = 64 * 1024;
 
 #[repr(C)]
@@ -50,6 +58,32 @@ struct TanimotoQueryBatchV1 {
     record_count: u64,
     row_start: u64,
     row_count: u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct TanimotoKnnBatchV1 {
+    record_count: u64,
+    row_start: u64,
+    row_count: u64,
+    neighbor_count: u32,
+    reserved: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct UmapEpochConfigV1 {
+    vertex_count: u64,
+    edge_count: u64,
+    random_seed: u64,
+    component_count: u32,
+    negative_sample_rate: u32,
+    epoch: u32,
+    epoch_count: u32,
+    alpha: f32,
+    curve_a: f32,
+    curve_b: f32,
+    method: u32,
 }
 
 #[repr(C, align(8))]
@@ -257,6 +291,10 @@ pub(crate) struct MetalHost {
     degree_pipeline: ComputePipelineState,
     fill_pipeline: ComputePipelineState,
     query_pipeline: ComputePipelineState,
+    counts_batch_pipeline: ComputePipelineState,
+    top_k_batch_pipeline: ComputePipelineState,
+    umap_initialize_pipeline: ComputePipelineState,
+    umap_epoch_pipeline: ComputePipelineState,
     conformer_initialize_pipeline: ComputePipelineState,
     conformer_distance_pipeline: ComputePipelineState,
     conformer_optimize_pipeline: ComputePipelineState,
@@ -305,6 +343,10 @@ impl MetalHost {
         let degree_pipeline = pipeline(&device, library, "burrete_tanimoto_degree_count_v1")?;
         let fill_pipeline = pipeline(&device, library, "burrete_tanimoto_csr_fill_v1")?;
         let query_pipeline = pipeline(&device, library, "burrete_tanimoto_query_counts_v1")?;
+        let counts_batch_pipeline = pipeline(&device, library, "burrete_tanimoto_counts_batch_v1")?;
+        let top_k_batch_pipeline = pipeline(&device, library, "burrete_tanimoto_top_k_batch_v1")?;
+        let umap_initialize_pipeline = pipeline(&device, library, "burrete_umap_initialize_v1")?;
+        let umap_epoch_pipeline = pipeline(&device, library, "burrete_umap_epoch_v1")?;
         let conformer_initialize_pipeline =
             pipeline(&device, library, "burrete_conformer_initialize_v1")?;
         let conformer_distance_pipeline =
@@ -335,6 +377,10 @@ impl MetalHost {
             degree_pipeline,
             fill_pipeline,
             query_pipeline,
+            counts_batch_pipeline,
+            top_k_batch_pipeline,
+            umap_initialize_pipeline,
+            umap_epoch_pipeline,
             conformer_initialize_pipeline,
             conformer_distance_pipeline,
             conformer_optimize_pipeline,
@@ -549,6 +595,307 @@ impl MetalHost {
             });
         }
         Ok((counts, gpu_time_seconds))
+    }
+
+    pub(crate) fn build_tanimoto_knn_profiled(
+        &self,
+        fingerprints: &[Fingerprint2048],
+        options: TanimotoKnnOptions,
+    ) -> Result<MetalTanimotoKnnDispatch, MetalRuntimeError> {
+        let record_count = fingerprints.len();
+        let neighbors_per_vertex = options
+            .neighbor_count()
+            .get()
+            .min(record_count.saturating_sub(1));
+        if neighbors_per_vertex == 0 {
+            return Ok(MetalTanimotoKnnDispatch {
+                source_indices: Vec::new(),
+                similarities: Vec::new(),
+                neighbors_per_vertex,
+                gpu_time_seconds: 0.0,
+            });
+        }
+        if neighbors_per_vertex > MAX_TANIMOTO_NEIGHBORS {
+            return resource_limit("native Metal top-K supports at most 64 neighbors per vertex");
+        }
+        if record_count > u32::MAX as usize {
+            return resource_limit("fingerprint count exceeds the Metal uint32 row limit");
+        }
+        admit_knn_memory(
+            record_count,
+            neighbors_per_vertex,
+            options.max_memory_bytes(),
+        )?;
+
+        let fingerprints_buffer = buffer_with_slice(&self.device, fingerprints);
+        let batch_capacity = record_count.min(MAX_TANIMOTO_KNN_BATCH_ROWS);
+        let counts_count = batch_capacity
+            .checked_mul(record_count)
+            .ok_or_else(memory_overflow)?;
+        let counts_bytes = counts_count
+            .checked_mul(size_of::<TanimotoQueryCountsV1>())
+            .ok_or_else(memory_overflow)?;
+        let counts_buffer = self
+            .device
+            .new_buffer(counts_bytes as u64, MTLResourceOptions::StorageModePrivate);
+        let output_capacity = batch_capacity
+            .checked_mul(neighbors_per_vertex)
+            .ok_or_else(memory_overflow)?;
+        let output_indices = buffer_with_slice(&self.device, &vec![u32::MAX; output_capacity]);
+        let output_similarities = buffer_with_slice(&self.device, &vec![f32::NAN; output_capacity]);
+        let thread_width = self.counts_batch_pipeline.thread_execution_width().min(
+            self.counts_batch_pipeline
+                .max_total_threads_per_threadgroup(),
+        );
+        let top_k_thread_width = self.top_k_batch_pipeline.thread_execution_width().min(
+            self.top_k_batch_pipeline
+                .max_total_threads_per_threadgroup(),
+        );
+        if thread_width == 0 || top_k_thread_width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal Tanimoto kNN pipeline advertises a zero thread width".into(),
+            ));
+        }
+
+        let result_count = record_count
+            .checked_mul(neighbors_per_vertex)
+            .ok_or_else(memory_overflow)?;
+        let mut source_indices = Vec::with_capacity(result_count);
+        let mut similarities = Vec::with_capacity(result_count);
+        let mut gpu_time_seconds = 0.0;
+        for row_start in (0..record_count).step_by(batch_capacity) {
+            let row_count = batch_capacity.min(record_count - row_start);
+            let config = TanimotoKnnBatchV1 {
+                record_count: record_count as u64,
+                row_start: row_start as u64,
+                row_count: row_count as u64,
+                neighbor_count: neighbors_per_vertex as u32,
+                reserved: 0,
+            };
+            gpu_time_seconds += autoreleasepool(|| {
+                let command = self.queue.new_command_buffer();
+                let encoder = command.new_compute_command_encoder();
+                encoder.set_compute_pipeline_state(&self.counts_batch_pipeline);
+                encoder.set_buffer(0, Some(&fingerprints_buffer), 0);
+                encoder.set_buffer(1, Some(&counts_buffer), 0);
+                encoder.set_bytes(
+                    2,
+                    size_of_val(&config) as u64,
+                    (&config as *const TanimotoKnnBatchV1).cast(),
+                );
+                encoder.dispatch_threads(
+                    MTLSize {
+                        width: record_count as u64,
+                        height: row_count as u64,
+                        depth: 1,
+                    },
+                    MTLSize {
+                        width: thread_width,
+                        height: 1,
+                        depth: 1,
+                    },
+                );
+                encoder.end_encoding();
+                let top_k_encoder = command.new_compute_command_encoder();
+                top_k_encoder.set_compute_pipeline_state(&self.top_k_batch_pipeline);
+                top_k_encoder.set_buffer(0, Some(&counts_buffer), 0);
+                top_k_encoder.set_buffer(1, Some(&output_indices), 0);
+                top_k_encoder.set_buffer(2, Some(&output_similarities), 0);
+                top_k_encoder.set_bytes(
+                    3,
+                    size_of_val(&config) as u64,
+                    (&config as *const TanimotoKnnBatchV1).cast(),
+                );
+                top_k_encoder.dispatch_threads(
+                    MTLSize {
+                        width: row_count as u64,
+                        height: 1,
+                        depth: 1,
+                    },
+                    MTLSize {
+                        width: top_k_thread_width,
+                        height: 1,
+                        depth: 1,
+                    },
+                );
+                top_k_encoder.end_encoding();
+                command.commit();
+                command.wait_until_completed();
+                completed_gpu_time(command)
+            })?;
+            let selected_indices =
+                read_buffer::<u32>(&output_indices, output_capacity, "Tanimoto top-K index")?;
+            let selected_similarities = read_buffer::<f32>(
+                &output_similarities,
+                output_capacity,
+                "Tanimoto top-K similarity",
+            )?;
+            let active_count = row_count * neighbors_per_vertex;
+            if selected_indices[..active_count]
+                .iter()
+                .enumerate()
+                .any(|(offset, index)| {
+                    let row_index = row_start + offset / neighbors_per_vertex;
+                    *index as usize >= record_count
+                        || *index as usize == row_index
+                        || !selected_similarities[offset].is_finite()
+                        || !(0.0..=1.0).contains(&selected_similarities[offset])
+                })
+            {
+                return Err(MetalRuntimeError::Dispatch(
+                    "Metal Tanimoto top-K returned invalid neighbors".into(),
+                ));
+            }
+            source_indices.extend_from_slice(&selected_indices[..active_count]);
+            similarities.extend_from_slice(&selected_similarities[..active_count]);
+        }
+        Ok(MetalTanimotoKnnDispatch {
+            source_indices,
+            similarities,
+            neighbors_per_vertex,
+            gpu_time_seconds,
+        })
+    }
+
+    pub(crate) fn optimize_embedding_profiled(
+        &self,
+        graph: &TanimotoUmapGraph,
+        options: UmapOptions,
+        method: ChemicalSpaceMethod,
+        max_memory_bytes: u64,
+    ) -> Result<MetalUmapDispatch, MetalRuntimeError> {
+        let vertex_count = graph.vertex_count();
+        if vertex_count == 0 {
+            return Ok(MetalUmapDispatch {
+                positions: Vec::new(),
+                gpu_time_seconds: 0.0,
+            });
+        }
+        if vertex_count > u32::MAX as usize || graph.edge_count() > u32::MAX as usize {
+            return resource_limit("UMAP graph exceeds the Metal UInt32 grid limit");
+        }
+        admit_umap_memory(vertex_count, graph.edge_count(), max_memory_bytes)?;
+        let (curve_a, curve_b) = fit_umap_curve(options.spread(), options.min_dist())
+            .map_err(|error| MetalRuntimeError::Dispatch(error.to_string()))?;
+        let row_offsets = buffer_with_slice(&self.device, graph.row_offsets());
+        let column_indices = buffer_with_slice(&self.device, graph.column_indices());
+        let weights = buffer_with_slice(&self.device, graph.weights());
+        let empty_positions = vec![[0.0_f32; 4]; vertex_count];
+        let positions_a = buffer_with_slice(&self.device, &empty_positions);
+        let positions_b = buffer_with_slice(&self.device, &empty_positions);
+        let initialize_width = self.umap_initialize_pipeline.thread_execution_width().min(
+            self.umap_initialize_pipeline
+                .max_total_threads_per_threadgroup(),
+        );
+        let epoch_width = self
+            .umap_epoch_pipeline
+            .thread_execution_width()
+            .min(self.umap_epoch_pipeline.max_total_threads_per_threadgroup());
+        if initialize_width == 0 || epoch_width == 0 {
+            return Err(MetalRuntimeError::KernelUnavailable(
+                "Metal UMAP pipeline advertises a zero thread width".into(),
+            ));
+        }
+
+        let mut config = UmapEpochConfigV1 {
+            vertex_count: vertex_count as u64,
+            edge_count: graph.edge_count() as u64,
+            random_seed: options.random_seed(),
+            component_count: options.n_components(),
+            negative_sample_rate: options.negative_sample_rate(),
+            epoch: 0,
+            epoch_count: options.n_epochs(),
+            alpha: options.learning_rate(),
+            curve_a,
+            curve_b,
+            method: method.metal_discriminant(),
+        };
+        let mut gpu_time_seconds = autoreleasepool(|| {
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&self.umap_initialize_pipeline);
+            encoder.set_buffer(0, Some(&positions_a), 0);
+            encoder.set_bytes(
+                1,
+                size_of_val(&config) as u64,
+                (&config as *const UmapEpochConfigV1).cast(),
+            );
+            encoder.dispatch_threads(
+                MTLSize {
+                    width: vertex_count as u64,
+                    height: 1,
+                    depth: 1,
+                },
+                MTLSize {
+                    width: initialize_width,
+                    height: 1,
+                    depth: 1,
+                },
+            );
+            encoder.end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            completed_gpu_time(command)
+        })?;
+
+        for epoch in 0..options.n_epochs() {
+            config.epoch = epoch;
+            config.alpha =
+                options.learning_rate() * (1.0 - epoch as f32 / options.n_epochs() as f32);
+            let (input, output): (&BufferRef, &BufferRef) = if epoch.is_multiple_of(2) {
+                (&positions_a, &positions_b)
+            } else {
+                (&positions_b, &positions_a)
+            };
+            gpu_time_seconds += autoreleasepool(|| {
+                let command = self.queue.new_command_buffer();
+                let encoder = command.new_compute_command_encoder();
+                encoder.set_compute_pipeline_state(&self.umap_epoch_pipeline);
+                encoder.set_buffer(0, Some(input), 0);
+                encoder.set_buffer(1, Some(&row_offsets), 0);
+                encoder.set_buffer(2, Some(&column_indices), 0);
+                encoder.set_buffer(3, Some(&weights), 0);
+                encoder.set_buffer(4, Some(output), 0);
+                encoder.set_bytes(
+                    5,
+                    size_of_val(&config) as u64,
+                    (&config as *const UmapEpochConfigV1).cast(),
+                );
+                encoder.dispatch_threads(
+                    MTLSize {
+                        width: vertex_count as u64,
+                        height: 1,
+                        depth: 1,
+                    },
+                    MTLSize {
+                        width: epoch_width,
+                        height: 1,
+                        depth: 1,
+                    },
+                );
+                encoder.end_encoding();
+                command.commit();
+                command.wait_until_completed();
+                completed_gpu_time(command)
+            })?;
+        }
+        let final_buffer = if options.n_epochs().is_multiple_of(2) {
+            &positions_a
+        } else {
+            &positions_b
+        };
+        let positions = read_buffer::<[f32; 4]>(final_buffer, vertex_count, "UMAP position")?;
+        if positions.iter().flatten().any(|value| !value.is_finite())
+            || (options.n_components() == 2 && positions.iter().any(|position| position[2] != 0.0))
+        {
+            return Err(MetalRuntimeError::Dispatch(
+                "Metal UMAP returned invalid positions".into(),
+            ));
+        }
+        Ok(MetalUmapDispatch {
+            positions,
+            gpu_time_seconds,
+        })
     }
 
     pub(crate) fn initialize_conformers_profiled(
@@ -3204,6 +3551,50 @@ fn admit_query_memory(record_count: usize, limit: u64) -> Result<(), MetalRuntim
     Ok(())
 }
 
+fn admit_knn_memory(
+    record_count: usize,
+    neighbors_per_vertex: usize,
+    limit: u64,
+) -> Result<(), MetalRuntimeError> {
+    let records = record_count as u64;
+    let neighbors = neighbors_per_vertex as u64;
+    let batch_rows = record_count.min(MAX_TANIMOTO_KNN_BATCH_ROWS) as u64;
+    let required = MEMORY_HEADROOM_BYTES
+        .checked_add(records.checked_mul(256 * 2).ok_or_else(memory_overflow)?)
+        .and_then(|total| total.checked_add(records.checked_mul(neighbors)?.checked_mul(8)?))
+        .and_then(|total| total.checked_add(records.checked_mul(batch_rows)?.checked_mul(8)?))
+        .and_then(|total| total.checked_add(batch_rows.checked_mul(neighbors)?.checked_mul(8)?))
+        .and_then(|total| total.checked_add(32))
+        .ok_or_else(memory_overflow)?;
+    if required > limit {
+        return resource_limit(format!(
+            "Metal Tanimoto kNN requires {required} accounted bytes; limit is {limit}"
+        ));
+    }
+    Ok(())
+}
+
+fn admit_umap_memory(
+    vertex_count: usize,
+    edge_count: usize,
+    limit: u64,
+) -> Result<(), MetalRuntimeError> {
+    let vertices = vertex_count as u64;
+    let edges = edge_count as u64;
+    let offsets = vertices.checked_add(1).ok_or_else(memory_overflow)?;
+    let required = MEMORY_HEADROOM_BYTES
+        .checked_add(offsets.checked_mul(16).ok_or_else(memory_overflow)?)
+        .and_then(|total| total.checked_add(edges.checked_mul(16)?))
+        .and_then(|total| total.checked_add(vertices.checked_mul(48)?))
+        .ok_or_else(memory_overflow)?;
+    if required > limit {
+        return resource_limit(format!(
+            "Metal UMAP requires {required} accounted bytes; limit is {limit}"
+        ));
+    }
+    Ok(())
+}
+
 fn memory_overflow() -> MetalRuntimeError {
     MetalRuntimeError::ResourceLimit("Metal working-set accounting overflowed".into())
 }
@@ -3235,6 +3626,14 @@ mod tests {
         assert_eq!(std::mem::offset_of!(TanimotoQueryBatchV1, row_count), 16);
         assert_eq!(std::mem::size_of::<TanimotoQueryCountsV1>(), 8);
         assert_eq!(std::mem::align_of::<TanimotoQueryCountsV1>(), 8);
+        assert_eq!(std::mem::size_of::<TanimotoKnnBatchV1>(), 32);
+        assert_eq!(std::mem::align_of::<TanimotoKnnBatchV1>(), 8);
+        assert_eq!(std::mem::offset_of!(TanimotoKnnBatchV1, neighbor_count), 24);
+        assert_eq!(std::mem::size_of::<UmapEpochConfigV1>(), 56);
+        assert_eq!(std::mem::align_of::<UmapEpochConfigV1>(), 8);
+        assert_eq!(std::mem::offset_of!(UmapEpochConfigV1, component_count), 24);
+        assert_eq!(std::mem::offset_of!(UmapEpochConfigV1, alpha), 40);
+        assert_eq!(std::mem::offset_of!(UmapEpochConfigV1, method), 52);
         assert_eq!(std::mem::size_of::<ConformerInitializeBatchV1>(), 16);
         assert_eq!(std::mem::align_of::<ConformerInitializeBatchV1>(), 8);
         assert_eq!(
@@ -3272,6 +3671,20 @@ mod tests {
         let bytes_per_record = 256 * 2 + 8 * 2 + 16;
         assert!(admit_query_memory(1, base + bytes_per_record).is_ok());
         assert!(admit_query_memory(1, base + bytes_per_record - 1).is_err());
+    }
+
+    #[test]
+    fn knn_memory_admission_counts_results_and_device_score_row() {
+        let required = MEMORY_HEADROOM_BYTES + 256 * 2 + 3 * 8 + 8 + 3 * 8 + 32;
+        assert!(admit_knn_memory(1, 3, required).is_ok());
+        assert!(admit_knn_memory(1, 3, required - 1).is_err());
+    }
+
+    #[test]
+    fn umap_memory_admission_counts_cpu_and_gpu_graph_views() {
+        let required = MEMORY_HEADROOM_BYTES + 2 * 16 + 2 * 16 + 48;
+        assert!(admit_umap_memory(1, 2, required).is_ok());
+        assert!(admit_umap_memory(1, 2, required - 1).is_err());
     }
 
     #[test]

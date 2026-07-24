@@ -6,15 +6,16 @@ use std::{
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use burrete_compute_core::{
     decode_native_mmff_parameters, ConformerEnginePackBuilder, ExtractedConformerParameters,
+    Fingerprint2048, FINGERPRINT_BYTES,
 };
-use burrete_compute_metal::MetalTanimotoRuntime;
+use burrete_compute_metal::{MetalTanimotoKnnExecution, MetalTanimotoRuntime};
 use burrete_compute_protocol::{
     AllGridScope, Backend, BackendPolicy, ComputeJobSchemaVersion, ConformerInitialization,
     ConformerResourceLimits, ConformerV1Parameters, ConformerV1SubmitRequest, ConformerVariant,
     ExecutionPolicy, GridScope, GridSourceReference, MmffVariant, SchedulingPolicy,
     WorkflowTemplateId,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -23,6 +24,11 @@ use crate::preview::grid_store::GridAlignmentSourceRow;
 
 use super::{
     alignment_workflow::{execute_snapshot_alignment_with_run_id, GridAlignmentRequest},
+    chemical_space::{
+        cluster_chemical_space_from_fingerprints,
+        execute_chemical_space_from_fingerprints_with_knn, ChemicalSpaceClusterRequest,
+        ChemicalSpaceRequest,
+    },
     conformer_executor::execute_conformer_distance_geometry_with_service,
     conformer_plan::ConformerMoleculeIdentity,
     conformer_stereo_executor::execute_conformer_stereo_validation,
@@ -33,6 +39,7 @@ use super::{
 };
 
 const MAX_SOURCE_BYTES: usize = 12 * 1024 * 1024;
+const MAX_REQUEST_BYTES: usize = 32 * 1024 * 1024;
 const HELPER_SHA256_PLACEHOLDER: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -42,6 +49,8 @@ struct DevComputeRequest {
     operation: DevComputeOperation,
     source: DevComputeSource,
     conformer: Option<DevConformerRequest>,
+    chemical_space: Option<DevChemicalSpaceRequest>,
+    chemical_space_cluster: Option<DevChemicalSpaceClusterRequest>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -52,6 +61,8 @@ enum DevComputeOperation {
     OptimizeGeometry,
     SemiempiricalRm1,
     AlignPoses,
+    ChemicalSpace,
+    ChemicalSpaceCluster,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +87,37 @@ struct DevConformerRecord {
     template: Option<String>,
     conformer_base64: String,
     mmff_base64: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DevChemicalSpaceRequest {
+    options: ChemicalSpaceRequest,
+    records: Vec<DevChemicalSpaceRecord>,
+    knn_cache: Option<DevChemicalSpaceKnnCache>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DevChemicalSpaceClusterRequest {
+    options: ChemicalSpaceClusterRequest,
+    records: Vec<DevChemicalSpaceRecord>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DevChemicalSpaceRecord {
+    source_record_id: u64,
+    fingerprint_base64: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DevChemicalSpaceKnnCache {
+    neighbors_per_vertex: usize,
+    source_indices_base64: String,
+    similarities_base64: String,
 }
 
 pub(crate) fn run() -> Result<(), String> {
@@ -127,8 +169,169 @@ pub(crate) fn run() -> Result<(), String> {
             .map_err(|error| error.to_string())?,
         )
         .map_err(|error| error.to_string())?,
+        DevComputeOperation::ChemicalSpace => execute_chemical_space(
+            &runtime,
+            request
+                .chemical_space
+                .as_ref()
+                .ok_or("native Metal chemical-space request is missing fingerprints")?,
+        )?,
+        DevComputeOperation::ChemicalSpaceCluster => execute_chemical_space_cluster(
+            &runtime,
+            request
+                .chemical_space_cluster
+                .as_ref()
+                .ok_or("native Metal chemical-space cluster request is missing fingerprints")?,
+        )?,
     };
     write_response(result)
+}
+
+fn execute_chemical_space(
+    runtime: &MetalTanimotoRuntime,
+    input: &DevChemicalSpaceRequest,
+) -> Result<Value, String> {
+    if input.records.len() < 2 || input.records.len() > 20_000 {
+        return Err(
+            "native Metal chemical-space request accepts between 2 and 20000 records".into(),
+        );
+    }
+    let mut fingerprints = Vec::with_capacity(input.records.len());
+    let mut source_record_ids = Vec::with_capacity(input.records.len());
+    let mut failed_records = 0usize;
+    for record in &input.records {
+        match (&record.fingerprint_base64, &record.error) {
+            (Some(encoded), None) => {
+                let bytes = STANDARD
+                    .decode(encoded)
+                    .map_err(|_| "native chemical-space fingerprint is not valid base64")?;
+                let bytes: [u8; FINGERPRINT_BYTES] = bytes.try_into().map_err(|_| {
+                    format!(
+                        "native chemical-space fingerprint must contain {FINGERPRINT_BYTES} bytes"
+                    )
+                })?;
+                fingerprints.push(Fingerprint2048::from_le_bytes(bytes));
+                source_record_ids.push(record.source_record_id);
+            }
+            (None, Some(_)) => failed_records += 1,
+            _ => {
+                return Err(
+                    "native chemical-space record must contain either a fingerprint or an error"
+                        .into(),
+                )
+            }
+        }
+    }
+    let cached_knn = input
+        .knn_cache
+        .as_ref()
+        .map(|cache| decode_knn_cache(cache, fingerprints.len()))
+        .transpose()?;
+    let execution = execute_chemical_space_from_fingerprints_with_knn(
+        &fingerprints,
+        &source_record_ids,
+        failed_records,
+        runtime,
+        input.options,
+        cached_knn.as_ref(),
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(json!({
+        "embedding": execution.result,
+        "knnCache": encode_knn_cache(&execution.knn),
+    }))
+}
+
+fn execute_chemical_space_cluster(
+    runtime: &MetalTanimotoRuntime,
+    input: &DevChemicalSpaceClusterRequest,
+) -> Result<Value, String> {
+    if input.records.len() < 2 || input.records.len() > 20_000 {
+        return Err(
+            "native Metal chemical-space clustering accepts between 2 and 20000 records".into(),
+        );
+    }
+    let mut fingerprints = Vec::with_capacity(input.records.len());
+    let mut source_record_ids = Vec::with_capacity(input.records.len());
+    for record in &input.records {
+        match (&record.fingerprint_base64, &record.error) {
+            (Some(encoded), None) => {
+                let bytes = STANDARD.decode(encoded).map_err(|_| {
+                    "native chemical-space cluster fingerprint is not valid base64"
+                })?;
+                let bytes: [u8; FINGERPRINT_BYTES] = bytes.try_into().map_err(|_| {
+                    format!(
+                        "native chemical-space cluster fingerprint must contain {FINGERPRINT_BYTES} bytes"
+                    )
+                })?;
+                fingerprints.push(Fingerprint2048::from_le_bytes(bytes));
+                source_record_ids.push(record.source_record_id);
+            }
+            (None, Some(_)) => {}
+            _ => {
+                return Err(
+                    "native chemical-space cluster record must contain either a fingerprint or an error"
+                        .into(),
+                )
+            }
+        }
+    }
+    serde_json::to_value(
+        cluster_chemical_space_from_fingerprints(
+            &fingerprints,
+            &source_record_ids,
+            runtime,
+            input.options,
+        )
+        .map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn encode_knn_cache(knn: &MetalTanimotoKnnExecution) -> DevChemicalSpaceKnnCache {
+    let mut source_indices = Vec::with_capacity(knn.source_indices.len() * 4);
+    for value in &knn.source_indices {
+        source_indices.extend_from_slice(&value.to_le_bytes());
+    }
+    let mut similarities = Vec::with_capacity(knn.similarities.len() * 4);
+    for value in &knn.similarities {
+        similarities.extend_from_slice(&value.to_le_bytes());
+    }
+    DevChemicalSpaceKnnCache {
+        neighbors_per_vertex: knn.neighbors_per_vertex,
+        source_indices_base64: STANDARD.encode(source_indices),
+        similarities_base64: STANDARD.encode(similarities),
+    }
+}
+
+fn decode_knn_cache(
+    cache: &DevChemicalSpaceKnnCache,
+    record_count: usize,
+) -> Result<MetalTanimotoKnnExecution, String> {
+    let expected_values = record_count
+        .checked_mul(cache.neighbors_per_vertex)
+        .ok_or("native chemical-space neighbor cache size overflowed")?;
+    let source_indices = STANDARD
+        .decode(&cache.source_indices_base64)
+        .map_err(|_| "native chemical-space neighbor indexes are not valid base64")?;
+    let similarities = STANDARD
+        .decode(&cache.similarities_base64)
+        .map_err(|_| "native chemical-space neighbor similarities are not valid base64")?;
+    if source_indices.len() != expected_values * 4 || similarities.len() != expected_values * 4 {
+        return Err("native chemical-space neighbor cache has an invalid shape".into());
+    }
+    Ok(MetalTanimotoKnnExecution {
+        source_indices: source_indices
+            .chunks_exact(4)
+            .map(|bytes| u32::from_le_bytes(bytes.try_into().expect("four-byte chunk")))
+            .collect(),
+        similarities: similarities
+            .chunks_exact(4)
+            .map(|bytes| f32::from_le_bytes(bytes.try_into().expect("four-byte chunk")))
+            .collect(),
+        neighbors_per_vertex: cache.neighbors_per_vertex,
+        gpu_time_ms: 0,
+    })
 }
 
 fn source_indexes(source: &DevComputeSource) -> Result<Vec<usize>, String> {
@@ -439,11 +642,11 @@ fn parse_runtime_root() -> Result<PathBuf, String> {
 fn read_request() -> Result<DevComputeRequest, String> {
     let mut bytes = Vec::new();
     std::io::stdin()
-        .take((MAX_SOURCE_BYTES + 1) as u64)
+        .take((MAX_REQUEST_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
         .map_err(|error| format!("cannot read native compute request: {error}"))?;
-    if bytes.is_empty() || bytes.len() > MAX_SOURCE_BYTES {
-        return Err("native compute request is empty or exceeds 12 MiB".into());
+    if bytes.is_empty() || bytes.len() > MAX_REQUEST_BYTES {
+        return Err("native compute request is empty or exceeds 32 MiB".into());
     }
     serde_json::from_slice(&bytes)
         .map_err(|error| format!("invalid native compute request: {error}"))
@@ -556,6 +759,22 @@ mod tests {
             text: "O water".into(),
         };
         assert!(source_rows(&source).is_err());
+    }
+
+    #[test]
+    fn round_trips_bounded_chemical_space_knn_cache() {
+        let knn = MetalTanimotoKnnExecution {
+            source_indices: vec![1, 2, 0, 2, 0, 1],
+            similarities: vec![0.75, 0.5, 0.75, 0.25, 0.5, 0.25],
+            neighbors_per_vertex: 2,
+            gpu_time_ms: 17,
+        };
+        let encoded = encode_knn_cache(&knn);
+        let decoded = decode_knn_cache(&encoded, 3).expect("decoded neighbor cache");
+        assert_eq!(decoded.source_indices, knn.source_indices);
+        assert_eq!(decoded.similarities, knn.similarities);
+        assert_eq!(decoded.neighbors_per_vertex, knn.neighbors_per_vertex);
+        assert_eq!(decoded.gpu_time_ms, 0);
     }
 
     #[test]
