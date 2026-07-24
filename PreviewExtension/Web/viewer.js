@@ -12474,7 +12474,7 @@
       return;
     }
     const rect = root.getBoundingClientRect();
-    moveDockingPoseControls(root, rect.left, rect.top, mainRect);
+    moveDockingPoseControls(root, rect.left, rect.top, mainRect, true);
     saveDockingPoseControlsPosition(root);
   }
 
@@ -12508,7 +12508,7 @@
       }
       if (!drag.moved) return;
       root.dataset.defaultPosition = '0';
-      moveDockingPoseControls(root, event.clientX - drag.dx, event.clientY - drag.dy);
+      moveDockingPoseControls(root, event.clientX - drag.dx, event.clientY - drag.dy, undefined, true);
       event.preventDefault();
     };
     const finishDrag = (event) => {
@@ -13755,6 +13755,7 @@
     const setControlsCollapsed = (collapsed) => {
       root.classList.toggle('buret-docking-poses-collapsed', Boolean(collapsed));
       animation.title = collapsed ? 'Show playback controls' : 'Select animation';
+      animation.setAttribute('aria-label', collapsed ? 'Show playback controls' : 'Select Molstar animation');
       if (!collapsed) return;
       setFileListOpen(false);
       setAnimationOptionsOpen(false);
@@ -13848,8 +13849,8 @@
     mainRow.append(animation, previous, label, next);
     const smoothAvailable = !xyzAlignFrames
       && (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
-    if (smoothAvailable) mainRow.append(smooth);
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
+    if (smoothAvailable && toggleRow) mainRow.append(smooth);
     if (toggleRow) {
       toggleRow.className = 'buret-docking-pose-toggles';
       if (story) toggleRow.append(story);
@@ -13858,7 +13859,9 @@
     } else {
       if (align) mainRow.append(align);
       if (all) mainRow.append(all);
-      animationRow.append(speed, loop, slider);
+      animationRow.append(speed, loop);
+      if (smoothAvailable) animationRow.append(smooth);
+      animationRow.append(slider);
     }
     root.append(mainRow);
     if (toggleRow) root.append(toggleRow);

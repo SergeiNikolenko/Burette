@@ -2722,6 +2722,13 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-poses-collapsed .buret-docking-pose-animation {
   display: none !important;
 }
+.buret-docking-poses.buret-docking-poses-collapsed {
+  width: max-content;
+}
+.buret-docking-poses.buret-docking-poses-collapsed .buret-docking-pose-main {
+  display: inline-flex;
+  width: auto;
+}
 .buret-docking-pose-files {
   position: absolute;
   top: calc(100% + 4px);
