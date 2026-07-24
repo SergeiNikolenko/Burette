@@ -62,6 +62,21 @@ const STANDALONE_MD_TOPOLOGY_EXTENSIONS: &[&str] = &[
     "psf", "prmtop", "top", "tpr", "parm7", "parm", "itp", "data", "lammps", "lmp", "txyz",
 ];
 const MD_VISUAL_COORDINATE_COMPANION_EXTENSIONS: &[&str] = &["pdb", "ent", "pdbqt", "pqr", "gro"];
+const MOLSTAR_MD_COORDINATE_EXTENSIONS: &[&str] = &[
+    "xtc",
+    "trr",
+    "dcd",
+    "nctraj",
+    "nc",
+    "ncdf",
+    "netcdf",
+    "ncrst",
+    "lammpstrj",
+];
+const MOLSTAR_MD_MODEL_EXTENSIONS: &[&str] = &[
+    "pdb", "ent", "pdbqt", "pqr", "xpdb", "gro", "cif", "mmcif", "mcif", "psf", "prmtop", "top",
+    "tpr",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StructureAttachmentRole {
@@ -608,6 +623,9 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         Ok(None) => None,
         Err(error) => Some(error),
     };
+    if let Some(bundle) = resolve_molstar_md_file_bundle(&canonical, &extension) {
+        return open_md_trajectory_document(app, bundle, preferences);
+    }
     let uses_bounded_maestro_preview =
         is_maestro_preview_extension(&extension) && metadata.len() > MAX_STRUCTURE_FILE_SIZE;
     let data = if uses_bounded_maestro_preview {
@@ -875,7 +893,9 @@ pub(crate) fn companion_paths_for_open_path(path: &Path, extension: &str) -> Vec
     if let Some(companion) = visual_coordinate_companion_for_topology(path, extension) {
         paths.push(companion);
     }
-    if bundle.kind == StructureBundleKind::Single {
+    if bundle.kind == StructureBundleKind::Single
+        || resolve_molstar_md_file_bundle(path, extension).is_some()
+    {
         return paths;
     }
     for candidate in std::iter::once(bundle.primary_path).chain(
@@ -1030,6 +1050,74 @@ fn resolve_md_file_bundle(path: &Path, extension: &str) -> Option<StructureFileB
         });
     }
     None
+}
+
+fn resolve_molstar_md_file_bundle(path: &Path, extension: &str) -> Option<StructureFileBundle> {
+    let bundle = resolve_md_file_bundle(path, extension)?;
+    let topology_supported = bundle.attachments.iter().any(|attachment| {
+        attachment.role == StructureAttachmentRole::Topology
+            && MOLSTAR_MD_MODEL_EXTENSIONS
+                .contains(&structure_path_extension(&attachment.path).as_str())
+    });
+    let trajectory_supported = bundle.attachments.iter().any(|attachment| {
+        attachment.role == StructureAttachmentRole::Trajectory
+            && MOLSTAR_MD_COORDINATE_EXTENSIONS
+                .contains(&structure_path_extension(&attachment.path).as_str())
+    });
+    (topology_supported && trajectory_supported).then_some(bundle)
+}
+
+fn open_md_trajectory_document<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    bundle: StructureFileBundle,
+    preferences: &ViewerPreferences,
+) -> Result<ViewerDocument, String> {
+    let topology_path = bundle
+        .attachments
+        .iter()
+        .find(|attachment| attachment.role == StructureAttachmentRole::Topology)
+        .map(|attachment| attachment.path.as_path())
+        .ok_or_else(|| "MD trajectory bundle is missing its topology.".to_string())?;
+    let trajectory_path = bundle
+        .attachments
+        .iter()
+        .find(|attachment| attachment.role == StructureAttachmentRole::Trajectory)
+        .map(|attachment| attachment.path.as_path())
+        .ok_or_else(|| "MD trajectory bundle is missing its coordinates.".to_string())?;
+    let topology_source = read_docking_source(&topology_path.to_string_lossy())?;
+    let trajectory_source = read_docking_source(&trajectory_path.to_string_lossy())?;
+    let document_id = stable_id(&bundle.input_path);
+    let title = file_title(&bundle.input_path);
+    let extension = structure_path_extension(&bundle.input_path);
+    let byte_count = topology_source.byte_count as u64 + trajectory_source.byte_count as u64;
+    let docking_request = DockingDocumentRequest {
+        receptor_path: topology_source.path.clone(),
+        ligand_paths: vec![trajectory_source.path.clone()],
+        active_pose: None,
+        scene_mode: None,
+    };
+    let runtime = create_docking_runtime(
+        app,
+        &document_id,
+        &title,
+        topology_source,
+        vec![trajectory_source],
+        None,
+        None,
+        preferences,
+    )?;
+    Ok(ViewerDocument {
+        id: document_id,
+        path: bundle.input_path.to_string_lossy().to_string(),
+        title,
+        extension,
+        renderer: runtime.renderer,
+        runtime_path: runtime.path.to_string_lossy().to_string(),
+        byte_count,
+        is_virtual: false,
+        docking_request: Some(docking_request),
+        open_claim_id: None,
+    })
 }
 
 fn candidate_desmond_bases(path: &Path) -> Vec<String> {
@@ -1421,6 +1509,72 @@ mod document_open_tests {
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
         }
+    }
+
+    #[test]
+    fn opens_same_stem_xtc_and_pdb_as_native_trajectory_pair() {
+        let app = mock_app_with_grid_registry();
+        let preferences = viewer_preferences();
+        let directory = create_temp_directory();
+        let trajectory = directory.join("production.xtc");
+        let topology = directory.join("production.pdb");
+        fs::write(&trajectory, [0x0f, 0x00, 0x00, 0x01, b'X', b'T', b'C'])
+            .expect("XTC fixture should be written");
+        fs::write(
+            &topology,
+            b"ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00 20.00           C\nEND\n",
+        )
+        .expect("PDB topology should be written");
+
+        let result = open_documents_for_window_label(
+            app.handle(),
+            crate::windows::MAIN_WINDOW_LABEL,
+            vec![trajectory.to_string_lossy().to_string()],
+            preferences,
+            None,
+            None,
+        )
+        .expect("same-stem XTC and PDB should open as a trajectory pair");
+        assert!(result.errors.is_empty());
+        assert_eq!(result.documents.len(), 1);
+        let document = &result.documents[0];
+        let canonical_trajectory = trajectory
+            .canonicalize()
+            .expect("XTC fixture should canonicalize");
+        let canonical_topology = topology
+            .canonicalize()
+            .expect("PDB topology should canonicalize");
+        let docking_request = document
+            .docking_request
+            .as_ref()
+            .expect("native trajectory document should retain its topology and coordinates");
+
+        assert_eq!(document.path, canonical_trajectory.to_string_lossy());
+        assert_eq!(document.title, "production.xtc");
+        assert_eq!(document.renderer, "molstar");
+        assert_eq!(
+            docking_request.receptor_path,
+            canonical_topology.to_string_lossy()
+        );
+        assert_eq!(
+            docking_request.ligand_paths,
+            vec![canonical_trajectory.to_string_lossy().to_string()]
+        );
+
+        let runtime_directory = Path::new(&document.runtime_path)
+            .parent()
+            .expect("trajectory runtime should have a parent");
+        let config = fs::read_to_string(runtime_directory.join("preview-config.js"))
+            .expect("trajectory config should be readable");
+        let payload = fs::read_to_string(runtime_directory.join("preview-data.js"))
+            .expect("trajectory payload should be readable");
+        assert!(config.contains("\"docking\""));
+        assert!(config.contains("\"format\":\"pdb\""));
+        assert!(config.contains("\"format\":\"xtc\""));
+        assert!(payload.contains("window.BurreteDockingPayloads = "));
+
+        remove_runtime_artifacts(&document.runtime_path);
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]
