@@ -1140,10 +1140,12 @@ assert.match(appStatusHook, /useState<StatusNotice \| null>\(null\)/);
 assert.match(appStatusHook, /const pushStatus = useCallback/);
 assert.match(appStatusHook, /const pushErrorStatus = useCallback/);
 assert.match(appStatusHook, /recentErrorsRef\.current = recentErrorsRef\.current\.slice\(-20\)/);
-// Status notices surface through the shared Base UI toast manager; errors stay
-// until dismissed while info/success auto-close.
+// Routine info/success updates remain in app status state without interrupting
+// the user; only errors surface through the shared Base UI toast manager.
 assert.match(appStatusHook, /toast\.add\(\{/);
-assert.match(appStatusHook, /timeout: kind === "error" \? 0 : NOTICE_TIMEOUT_MS/);
+assert.match(appStatusHook, /setStatus\(\{ kind, message: trimmed \}\);\s*if \(kind !== "error"\) return;/);
+assert.match(appStatusHook, /timeout: 0/);
+assert.doesNotMatch(appStatusHook, /NOTICE_TIMEOUT_MS/);
 assert.match(app, /useAppDescriptors\(\{\s*documents,\s*pushStatus,\s*\}\)/s);
 assert.match(appDescriptorsHook, /const GRID_DESCRIPTOR_JOB_EVENT = "burrete-grid-descriptor-job"/);
 assert.match(appDescriptorsHook, /type: "gridDescriptorControls"/);
@@ -4005,6 +4007,7 @@ assert.match(appFileOpenHook, /const openStructureRecordDocuments = useCallback/
 assert.match(appDockingWorkflowsHook, /const openDockingStructureRecords = useCallback/);
 assert.match(appDockingWorkflowsHook, /if \(opened\.length > 0\) addDocuments\(opened\)/);
 assert.match(appDockingWorkflowsHook, /addDocuments\(\[dockingDocument\]\)/);
+assert.match(appDockingWorkflowsHook, /pushErrorStatus\(error, isTrajectory \? "Trajectory failed" : "Docking view failed"\)/);
 assert.match(app, /openDockingStructureRecords,/);
 assert.match(appFileOpenHook, /const openStructureRecords = useCallback/);
 assert.match(appFileOpenHook, /invoke<ViewerDocument>\("open_text_structure"/);
