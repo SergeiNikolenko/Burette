@@ -148,6 +148,10 @@ for (const engine of ["chemberta", "molformer", "unimol2-84m", "unimol-v1"]) {
 }
 assert.match(browserDevCompute, /browserRepresentationCache\.get\(key\)/);
 assert.match(browserDevCompute, /neighbors: 64/);
+assert.match(browserDevCompute, /REPRESENTATION_FETCH_RETRY_DELAY_MS = 400/);
+assert.match(browserDevCompute, /fetchRepresentationWithRetry/);
+assert.match(browserDevCompute, /error instanceof TypeError/);
+assert.match(browserDevCompute, /signal\?\.aborted/);
 assert.match(browserDevCompute, /sliceKnnCache/);
 assert.match(representationWorker, /PYTORCH_ENABLE_MPS_FALLBACK.*=.*"0"/);
 assert.match(representationWorker, /torch\.backends\.mps\.is_available\(\)/);

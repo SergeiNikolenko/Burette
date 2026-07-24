@@ -26,6 +26,7 @@ type BrowserDevNativeComputeResponse<T> = {
 };
 
 const MAX_BROWSER_FINGERPRINT_CACHE_ENTRIES = 4;
+const REPRESENTATION_FETCH_RETRY_DELAY_MS = 400;
 const browserFingerprintCache = new Map<string, Promise<FingerprintOutputRecord[]>>();
 const browserRepresentationCache = new Map<string, Promise<LearnedRepresentationResult>>();
 
@@ -174,12 +175,13 @@ function prepareBrowserChemicalSpaceRepresentation(
     return cached;
   }
   onProgress({ phase: "representations", completedRecords: 0, totalRecords: records.length });
-  const pending = fetch("/__burette/chemical-space-representation", {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ operation: "represent", engine, neighbors: 64, records }),
-    signal,
-  }).then(async (response) => {
+  const pending = fetchRepresentationWithRetry(async () => {
+    const response = await fetch("/__burette/chemical-space-representation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ operation: "represent", engine, neighbors: 64, records }),
+      signal,
+    });
     if (response.headers.get("Content-Type")?.includes("application/x-ndjson")) {
       return readRepresentationStream(response, engine, onProgress);
     }
@@ -202,13 +204,36 @@ function prepareBrowserChemicalSpaceRepresentation(
       totalRecords: records.length,
     });
     return payload;
-  });
+  }, signal);
   browserRepresentationCache.set(key, pending);
   trimCache(browserRepresentationCache, MAX_BROWSER_FINGERPRINT_CACHE_ENTRIES);
   void pending.catch(() => {
     if (browserRepresentationCache.get(key) === pending) browserRepresentationCache.delete(key);
   });
   return pending;
+}
+
+async function fetchRepresentationWithRetry<T>(
+  request: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    if (signal?.aborted) throw abortError();
+    if (!(error instanceof TypeError)) throw error;
+  }
+  await new Promise((resolve) => setTimeout(resolve, REPRESENTATION_FETCH_RETRY_DELAY_MS));
+  if (signal?.aborted) throw abortError();
+  try {
+    return await request();
+  } catch (error) {
+    if (signal?.aborted) throw abortError();
+    if (error instanceof TypeError) {
+      throw new Error("Local Metal service is temporarily unavailable. Retry when the browser shell is ready.");
+    }
+    throw error;
+  }
 }
 
 async function readRepresentationStream(
