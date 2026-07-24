@@ -481,6 +481,14 @@
         postChemicalSpaceRecords(body.requestId);
         return;
       }
+      if (body.type === 'chemicalSpaceRequestColumns') {
+        postChemicalSpaceColumns(body.requestId);
+        return;
+      }
+      if (body.type === 'chemicalSpaceRequestColumnValues') {
+        postChemicalSpaceColumnValues(body.requestId, body.columnId);
+        return;
+      }
       if (body.type === 'chemicalSpaceHoverChanged') {
         const index = Number(body.sourceRecordId);
         const normalizedIndex = Number.isSafeInteger(index) && index >= 0 ? index : null;
@@ -4736,6 +4744,42 @@
       truncated: records.length >= CHEMICAL_SPACE_RECORD_LIMIT
         || inputBytes >= CHEMICAL_SPACE_INPUT_BYTES_LIMIT
     });
+  }
+
+  function chemicalSpaceColumnPool() {
+    return state.remoteMode ? state.rows : state.all;
+  }
+
+  function postChemicalSpaceColumns(requestId) {
+    const pool = chemicalSpaceColumnPool();
+    const keys = new Set();
+    for (const row of pool) {
+      Object.keys(row?.props || {}).forEach(key => keys.add(key));
+      if (keys.size >= 64) break;
+    }
+    const columns = [];
+    for (const key of [...keys].sort()) {
+      if (inferPropColumnType(pool, key) !== 'number') continue;
+      columns.push({ id: `prop:${key}`, label: key });
+    }
+    post('chemicalSpaceColumns', '', { requestId: String(requestId || ''), columns });
+  }
+
+  function postChemicalSpaceColumnValues(requestId, columnId) {
+    const id = String(columnId || '');
+    const pool = chemicalSpaceColumnPool();
+    const values = [];
+    if (id) {
+      for (const row of pool) {
+        if (values.length >= CHEMICAL_SPACE_RECORD_LIMIT) break;
+        const sourceRecordId = Number(row?.index);
+        if (!Number.isSafeInteger(sourceRecordId) || sourceRecordId < 0) continue;
+        const value = tableColumnNumericValue(row, id);
+        if (!Number.isFinite(value)) continue;
+        values.push([sourceRecordId, value]);
+      }
+    }
+    post('chemicalSpaceColumnValues', '', { requestId: String(requestId || ''), columnId: id, values });
   }
 
   function toggleSelection(index, cfg) {
