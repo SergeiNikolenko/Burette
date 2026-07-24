@@ -8,7 +8,7 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
-  const DOCKING_POSE_POSITION_VERSION = '6';
+  const DOCKING_POSE_POSITION_VERSION = '8';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -4342,7 +4342,7 @@
       !!selectionToolbarRect && !!toolbarRect && !toolbarCollapsed);
     const mainRect = visibleRect('.msp-plugin .msp-layout-main');
     const mainTop = mainRect ? mainRect.top : 0;
-    const defaultViewportTop = mainTop + 64;
+    const defaultViewportTop = mainTop + 56;
     const panelOpenTop = selectionToolbarRect
       ? Math.ceil(selectionToolbarRect.bottom + FLOATING_LAYOUT_GAP)
       : defaultViewportTop;
@@ -5932,6 +5932,10 @@
 
     const header = document.createElement('div');
     header.className = 'buret-tree-menu-header';
+    // The menu carries representation, opacity and colour controls, so it is worked in
+    // rather than picked from — and where it lands is wherever the row was clicked,
+    // often over the very structure being edited. Its heading doubles as a drag handle.
+    header.setAttribute('data-buret-panel-handle', '');
     const heading = document.createElement('span');
     heading.className = 'buret-tree-menu-heading';
     heading.textContent = node.label;
@@ -6002,6 +6006,7 @@
     const top = Math.max(6, Math.min(clientY, window.innerHeight - rect.height - 6));
     menu.style.left = `${Math.round(left)}px`;
     menu.style.top = `${Math.round(top)}px`;
+    initViewportPanelDrag(menu);
   }
 
   function runSceneTreeAction(action, ref, control) {
@@ -7988,6 +7993,7 @@
       poseCount,
       nativeTrajectoryControls: prepared?.nativeTrajectoryControls === true,
       trajectoryTimesPs: trajectoryTimesPsForPrepared(prepared),
+      trajectorySegments: Array.isArray(prepared?.trajectorySegments) ? prepared.trajectorySegments : [],
       ligandLabel: prepared?.label || activeConfig?.label || 'Mol* trajectory',
       controlLabel: label,
       sdfPoseOverlayAvailable: prepared?.sdfPoseOverlayAvailable === true,
@@ -8007,14 +8013,48 @@
   }
 
   function dockingTrajectoryPair(entries) {
-    const coordinateEntry = entries.find(isDockingCoordinateTrajectoryEntry);
-    if (!coordinateEntry) return null;
-    const modelEntry = entries.find(entry => entry !== coordinateEntry && dockingTrajectoryModelKind(entry));
+    const coordinateEntries = entries.filter(isDockingCoordinateTrajectoryEntry);
+    if (!coordinateEntries.length) return null;
+    const modelEntry = entries.find(entry => !coordinateEntries.includes(entry) && dockingTrajectoryModelKind(entry));
     if (!modelEntry) return null;
+    let coordinateEntry = coordinateEntries[0];
+    let trajectorySegments = [];
+    if (coordinateEntries.length > 1) {
+      const formats = new Set(coordinateEntries.map(entry => normalizeFormat(entry.format)));
+      if (formats.size !== 1 || !formats.has('xtc')) {
+        throw new Error('Combining trajectory segments currently requires XTC files with one shared topology.');
+      }
+      const concatenate = window.BuretteTrajectorySmoothing?.concatenateXtcSegments;
+      const countXtcFrames = window.BuretteTrajectorySmoothing?.countXtcFrames;
+      if (typeof concatenate !== 'function' || typeof countXtcFrames !== 'function') {
+        throw new Error('XTC trajectory concatenation is unavailable in this viewer runtime.');
+      }
+      let startFrame = 0;
+      trajectorySegments = coordinateEntries.map((entry, index) => {
+        const frameCount = countXtcFrames(entry.data);
+        const segment = {
+          label: entry.label || `Trajectory segment ${index + 1}`,
+          sourcePath: entry.sourcePath || '',
+          frameCount,
+          startFrame,
+          endFrame: startFrame + frameCount - 1
+        };
+        startFrame += frameCount;
+        return segment;
+      });
+      coordinateEntry = {
+        ...coordinateEntry,
+        data: concatenate(coordinateEntries.map(entry => entry.data)),
+        label: `${coordinateEntries.length} XTC trajectory segments`,
+        sourcePaths: coordinateEntries.map(entry => entry.sourcePath).filter(Boolean)
+      };
+    }
     return {
       modelEntry,
       modelKind: dockingTrajectoryModelKind(modelEntry),
-      coordinateEntry
+      coordinateEntry,
+      coordinateEntries,
+      trajectorySegments
     };
   }
 
@@ -8056,7 +8096,8 @@
       entries.push({
         data,
         format,
-        label: source.label || `Ligand ${ligandIndex + 1}`
+        label: source.label || `Ligand ${ligandIndex + 1}`,
+        sourcePath: source.path || ''
       });
       poses.push({
         data,
@@ -8081,7 +8122,8 @@
         receptorEntry,
         poses,
         entries,
-        trajectoryPair
+        trajectoryPair,
+        trajectorySegments: trajectoryPair.trajectorySegments
       };
     }
     const sceneMode = dockingSceneMode(config);
@@ -12104,7 +12146,7 @@
   }
 
   function isDockingTrajectoryPairEntry(entry, pair) {
-    return !!pair && (entry === pair.modelEntry || entry === pair.coordinateEntry);
+    return !!pair && (entry === pair.modelEntry || pair.coordinateEntries?.includes(entry));
   }
 
   async function loadDockingTrajectoryPair(viewer, pair) {
@@ -12348,9 +12390,13 @@
     const margin = TOOLBAR_MARGIN;
     const left = mainRect ? Math.max(margin, Math.ceil(mainRect.left + margin)) : margin;
     const right = mainRect ? Math.min(window.innerWidth - margin, Math.floor(mainRect.right - margin)) : window.innerWidth - margin;
+    // Keep the trajectory toolbar glued to the left edge but clear of the scene-tree
+    // corner toggle, so it sits right next to that button instead of on top of it.
+    const cornerRect = visibleRect('#buret-viewport-corner');
+    const clearedLeft = cornerRect ? Math.max(left, Math.ceil(cornerRect.right + 8)) : left;
     return {
-      left,
-      right: Math.max(left, right),
+      left: clearedLeft,
+      right: Math.max(clearedLeft, right),
       top: margin,
       bottom: window.innerHeight - margin
     };
@@ -12358,7 +12404,14 @@
 
   function moveDockingPoseControls(root, left, top, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     const bounds = dockingPoseControlsBounds(mainRect);
-    root.style.maxWidth = Math.max(180, Math.floor(bounds.right - bounds.left)) + 'px';
+    // The toolbar and the scene tree no longer share a band — the toolbar ends at the
+    // corner button's baseline and the tree starts below it — so clearing that button
+    // is enough and the toolbar can stay at the left edge.
+    const availableWidth = Math.max(180, Math.floor(bounds.right - bounds.left));
+    root.style.maxWidth = availableWidth + 'px';
+    // Too narrow for one row: the controls fold into a fixed two-row grid instead of
+    // wrapping wherever they happen to break.
+    root.classList.toggle('buret-docking-poses-compact', availableWidth < 360);
     const width = root.offsetWidth || root.getBoundingClientRect().width || 180;
     const height = root.offsetHeight || root.getBoundingClientRect().height || 40;
     const maxLeft = Math.max(bounds.left, bounds.right - width);
@@ -12404,7 +12457,7 @@
   function applyDefaultDockingPoseControlsPosition(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     root.dataset.defaultPosition = '1';
     const bounds = dockingPoseControlsBounds(mainRect);
-    moveDockingPoseControls(root, bounds.left, 14, mainRect);
+    moveDockingPoseControls(root, bounds.left, 12, mainRect);
   }
 
   function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
@@ -12535,19 +12588,26 @@
       const transformerId = String(transform.transformer?.id || transform.transformer?.definition?.name || '');
       if (transformerId && transformerId !== 'model-from-trajectory' && !transformerId.endsWith('.model-from-trajectory')) return;
       const frameCount = nativeTrajectoryFrameCount(plugin, cell);
-      if (expectedCount > 0 && frameCount > 0 && frameCount !== expectedCount) return;
       matches.push({
         plugin,
         ref: transform.ref,
         params,
         frameCount,
-        selected: selectedRefs.has(transform.ref)
+        selected: selectedRefs.has(transform.ref),
+        // Smoothing rebuilds the trajectory with a frame count of its own, and a
+        // segment steps through a slice of the whole. A caller asking with the old
+        // total must still reach the cell it is stepping through, so a mismatch only
+        // deprioritises a candidate — the alternative is no transform at all, which
+        // strands the stepper on Mol*'s own buttons, and our chrome hides those.
+        countMatches: !(expectedCount > 0 && frameCount > 0 && frameCount !== expectedCount)
       });
     });
     if (matches.length) {
-      return matches.find(match => match.selected) ||
-        matches.find(match => match.frameCount > 1) ||
-        matches[0];
+      const exact = matches.filter(match => match.countMatches);
+      const pool = exact.length ? exact : matches;
+      return pool.find(match => match.selected) ||
+        pool.find(match => match.frameCount > 1) ||
+        pool[0];
     }
     if (!selection || selection.structures?.length !== 1) return null;
     const model = selection.structures[0]?.model;
@@ -12591,14 +12651,29 @@
 
   function afterNativeTrajectoryPaint() {
     return new Promise(resolve => {
-      requestAnimationFrame(() => requestAnimationFrame(resolve));
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      // Frame steps are chained through one queue, and rAF never fires while the tab
+      // is hidden — a single step taken in the background would otherwise leave the
+      // queue waiting for a paint that never comes, stalling playback for good even
+      // after the window is focused again.
+      requestAnimationFrame(() => requestAnimationFrame(finish));
+      setTimeout(finish, 250);
     });
   }
 
   async function setNativeTrajectoryPoseDirect(index, poseCount) {
-    const target = Math.max(0, Math.min(poseCount - 1, index));
     const transform = nativeTrajectoryModelTransform(poseCount);
     if (!transform) return false;
+    // Clamp against the frames the cell actually holds: after smoothing the caller's
+    // total and the loaded trajectory can disagree, and asking for a frame past the
+    // end leaves the model on its last one while we report success.
+    const limit = transform.frameCount > 0 ? transform.frameCount : poseCount;
+    const target = Math.max(0, Math.min(limit - 1, index));
     await transform.plugin.state.updateTransform(
       transform.plugin.state.data,
       transform.ref,
@@ -12704,8 +12779,11 @@
     const slider = root.querySelector('.buret-docking-pose-slider');
     const speed = root.querySelector('.buret-docking-pose-speed');
     const stop = root.querySelector('button[aria-label^="Stop "]');
+    const globalFrameIndex = Number(slider?.dataset.globalFrameIndex);
     return {
-      frameIndex: Math.max(0, Math.trunc(Number(slider?.value) || 1) - 1),
+      frameIndex: Number.isFinite(globalFrameIndex)
+        ? Math.max(0, Math.trunc(globalFrameIndex))
+        : Math.max(0, Math.trunc(Number(slider?.value) || 1) - 1),
       fps: String(speed?.value || ''),
       playing: Boolean(stop)
     };
@@ -12749,7 +12827,9 @@
 
   async function applyTrajectorySmoothingFromAction(action = {}) {
     const engine = window.BuretteTrajectorySmoothing;
-    const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
+    const originalPrepared = trajectorySmoothingState?.view === 'smoothed'
+      ? trajectorySmoothingState.originalPrepared
+      : activeMolstarPrepared;
     if (!engine?.smooth || !originalPrepared) {
       return agentActionFailure('apply_trajectory_smoothing', 'NOT_AVAILABLE', 'Trajectory smoothing is unavailable in this viewer runtime.');
     }
@@ -12798,7 +12878,9 @@
   }
 
   async function applyExternalTrajectorySmoothingFromAction(action = {}) {
-    const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
+    const originalPrepared = trajectorySmoothingState?.view === 'smoothed'
+      ? trajectorySmoothingState.originalPrepared
+      : activeMolstarPrepared;
     if (!originalPrepared || !action.sourceUrl) {
       return agentActionFailure('apply_external_trajectory_smoothing', 'NOT_AVAILABLE', 'The smoothed trajectory is unavailable.');
     }
@@ -12807,21 +12889,35 @@
       if (!response.ok) throw new Error(`Could not read smoothed trajectory: ${response.status}`);
       const data = await response.text();
       const frameCount = Math.max(2, Math.trunc(Number(action.frameCount) || 2));
+      // Smoothing keeps the topology whenever the run had one, and then hands back a
+      // multi-model PDB. Reading that as XYZ would throw away the residues and chains
+      // it just preserved, leaving a protein drawn as loose atoms and bonds.
+      const smoothedFormat = String(action.sourceFormat || 'xyz').toLowerCase() === 'pdb' ? 'pdb' : 'xyz';
       const smoothedPrepared = {
         ...originalPrepared,
+        kind: 'trajectory',
         data,
-        format: 'xyz',
+        format: smoothedFormat,
         label: `${originalPrepared.label || 'Trajectory'} - smoothed view`,
         poseCount: frameCount,
-        pdbModelCount: 0,
-        xyzFrameCount: frameCount,
+        pdbModelCount: smoothedFormat === 'pdb' ? frameCount : 0,
+        xyzFrameCount: smoothedFormat === 'xyz' ? frameCount : 0,
         nativeTrajectoryControls: true,
-        controlLabel: 'Frame'
+        controlLabel: 'Frame',
+        dockingSceneMode: false,
+        sdfPoseOverlayAvailable: false,
+        xyzFrameOverlayAvailable: false,
+        pdbModelOverlayAvailable: false,
+        trajectorySegments: [],
+        smoothingSourcePath: String(action.sourcePath || '')
       };
       trajectorySmoothingState = {
         originalPrepared,
         smoothedPrepared,
         result: { frameCount, interpolation: action.interpolation || 'linear' },
+        originalFrameIndex: Math.max(0, Math.trunc(Number(action.originalFrameIndex) || 0)),
+        originalSegmentStartFrame: Math.max(0, Math.trunc(Number(action.originalSegmentStartFrame) || 0)),
+        smoothedFrameIndex: Math.max(0, Math.trunc(Number(action.frameIndex) || 0)),
         view: 'smoothed'
       };
       await replaceTrajectorySmoothingPrepared(smoothedPrepared, {
@@ -12842,8 +12938,24 @@
     }
     const view = action.view === 'original' ? 'original' : 'smoothed';
     try {
+      const currentPlayback = currentTrajectoryPlaybackSnapshot();
+      if (trajectorySmoothingState.view === 'original' && currentPlayback) {
+        trajectorySmoothingState.originalFrameIndex = currentPlayback.frameIndex;
+        trajectorySmoothingState.smoothedFrameIndex = Math.max(
+          0,
+          currentPlayback.frameIndex - trajectorySmoothingState.originalSegmentStartFrame
+        );
+      } else if (trajectorySmoothingState.view === 'smoothed' && currentPlayback) {
+        trajectorySmoothingState.smoothedFrameIndex = currentPlayback.frameIndex;
+      }
       const prepared = view === 'original' ? trajectorySmoothingState.originalPrepared : trajectorySmoothingState.smoothedPrepared;
-      await replaceTrajectorySmoothingPrepared(prepared);
+      const frameIndex = view === 'original'
+        ? trajectorySmoothingState.originalFrameIndex
+        : trajectorySmoothingState.smoothedFrameIndex;
+      await replaceTrajectorySmoothingPrepared(prepared, {
+        frameIndex,
+        playing: Boolean(currentPlayback?.playing)
+      });
       trajectorySmoothingState.view = view;
       updateTrajectorySmoothingButtons();
       postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view });
@@ -13059,6 +13171,11 @@
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
     if (prepared.dockingSceneMode) root.classList.add('buret-docking-poses-structure-scene');
+    const trajectorySegments = Array.isArray(prepared.trajectorySegments)
+      ? prepared.trajectorySegments.filter(segment => Number(segment?.frameCount) > 0)
+      : [];
+    const hasTrajectorySegments = trajectorySegments.length > 1;
+    if (hasTrajectorySegments) root.classList.add('buret-docking-poses-trajectory-segments');
     const controlLabel = String(prepared.controlLabel || 'Pose');
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
@@ -13090,8 +13207,10 @@
     let loopTimer = null;
     let loopActive = Boolean(playbackRestore?.playing);
     let loopBusy = false;
+    let loopEpoch = 0;
     let loopStartedAt = 0;
     let loopStartPose = activePose;
+    let poseUpdateQueue = Promise.resolve();
     let poseRepeatDelayTimer = null;
     let poseRepeatTimer = null;
     let poseRepeatBusy = false;
@@ -13105,9 +13224,12 @@
     mainRow.className = 'buret-docking-pose-main';
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
-    const label = prepared.dockingSceneMode ? document.createElement('button') : document.createElement('span');
-    const currentName = prepared.dockingSceneMode ? document.createElement('span') : null;
-    const currentIndex = prepared.dockingSceneMode ? document.createElement('span') : null;
+    const hasFileList = prepared.dockingSceneMode || hasTrajectorySegments;
+    const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
+    const label = hasFileList ? document.createElement('button') : document.createElement('span');
+    const currentName = hasFileList ? document.createElement('span') : null;
+    const currentNameText = hasFileList ? document.createElement('span') : null;
+    const currentIndex = hasFileList ? document.createElement('span') : null;
     if (currentName && currentIndex) {
       label.type = 'button';
       label.className = 'buret-docking-pose-current';
@@ -13115,28 +13237,52 @@
       label.setAttribute('aria-expanded', 'false');
       currentName.className = 'buret-docking-pose-current-name';
       currentIndex.className = 'buret-docking-pose-current-index';
+      // The name rides in its own element so hovering can slide it with a transform.
+      currentNameText.className = 'buret-docking-pose-current-text';
+      currentName.appendChild(currentNameText);
       label.append(currentName, currentIndex);
+      // How far the name has to travel to show its tail. Measured on enter rather than
+      // on render: it depends on the current segment and on the toolbar's width.
+      const measureNameMarquee = () => {
+        const overflow = Math.max(0, currentNameText.scrollWidth - currentName.clientWidth);
+        currentName.style.setProperty('--buret-marquee-shift', `${overflow}px`);
+        // Constant reading speed rather than a constant duration, so a long tail does
+        // not race past. Slow enough to read, at roughly 34px per second.
+        currentName.style.setProperty('--buret-marquee-duration', `${Math.max(0.45, overflow / 34).toFixed(2)}s`);
+      };
+      label.addEventListener('pointerenter', measureNameMarquee);
+      label.addEventListener('focus', measureNameMarquee);
     }
     label.title = prepared.ligandLabel || '';
-    const fileList = prepared.dockingSceneMode ? document.createElement('div') : null;
+    const fileList = hasFileList ? document.createElement('div') : null;
     const fileButtons = [];
     if (fileList) {
       fileList.className = 'buret-docking-pose-files';
       fileList.setAttribute('role', 'listbox');
-      fileList.setAttribute('aria-label', 'Open structures');
-      prepared.poses.forEach((entry, index) => {
+      fileList.setAttribute('aria-label', hasTrajectorySegments ? 'Trajectory segments' : 'Open structures');
+      listEntries.forEach((entry, index) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'buret-docking-pose-file';
         button.setAttribute('role', 'option');
-        button.title = entry.label || `Structure ${index + 1}`;
+        const fallbackLabel = hasTrajectorySegments ? `Trajectory segment ${index + 1}` : `Structure ${index + 1}`;
+        const entryLabel = entry.label || fallbackLabel;
+        button.title = hasTrajectorySegments
+          ? `${entryLabel} · frames ${entry.startFrame + 1}–${entry.endFrame + 1}`
+          : entryLabel;
         const number = document.createElement('span');
         number.className = 'buret-docking-pose-file-number';
         number.textContent = String(index + 1).padStart(2, '0');
         const name = document.createElement('span');
         name.className = 'buret-docking-pose-file-name';
-        name.textContent = entry.label || `Structure ${index + 1}`;
+        name.textContent = entryLabel;
         button.append(number, name);
+        if (hasTrajectorySegments) {
+          const frameCount = document.createElement('span');
+          frameCount.className = 'buret-docking-pose-file-meta';
+          frameCount.textContent = `${entry.frameCount} frames`;
+          button.append(frameCount);
+        }
         fileButtons.push(button);
         fileList.append(button);
       });
@@ -13145,15 +13291,18 @@
     animation.type = 'button';
     animation.className = 'buret-docking-pose-animation-button';
     animation.textContent = '⏯';
-    animation.setAttribute('aria-label', 'Select Molstar animation');
+    const animationControlLabel = hasTrajectorySegments ? 'Toggle trajectory playback options' : 'Select Molstar animation';
+    animation.setAttribute('aria-label', animationControlLabel);
     animation.setAttribute('aria-expanded', 'false');
-    animation.title = 'Select animation';
+    animation.title = hasTrajectorySegments ? 'Playback options' : 'Select animation';
     const previous = document.createElement('button');
     previous.type = 'button';
+    previous.className = 'buret-docking-pose-previous';
     previous.textContent = 'Prev';
     previous.setAttribute('aria-label', `Previous ${controlLabelLower}`);
     const next = document.createElement('button');
     next.type = 'button';
+    next.className = 'buret-docking-pose-next';
     next.textContent = 'Next';
     next.setAttribute('aria-label', `Next ${controlLabelLower}`);
     const xyzAlignSignature = prepared.xyzFrameOverlayAvailable === true
@@ -13286,22 +13435,59 @@
       prepared.kind === 'xyz-frame-overlay' ||
       (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true)
     );
+    const activeTrajectorySegment = (poseIndex) => {
+      if (!hasTrajectorySegments) return { index: -1, segment: null };
+      const index = trajectorySegments.findIndex(segment => (
+        poseIndex >= segment.startFrame && poseIndex <= segment.endFrame
+      ));
+      const resolvedIndex = index >= 0 ? index : trajectorySegments.length - 1;
+      return { index: resolvedIndex, segment: trajectorySegments[resolvedIndex] };
+    };
+    const trajectoryControlBounds = (poseIndex) => {
+      const active = activeTrajectorySegment(poseIndex);
+      if (!active.segment) {
+        return { start: 0, end: prepared.poseCount - 1, count: prepared.poseCount };
+      }
+      return {
+        start: active.segment.startFrame,
+        end: active.segment.endFrame,
+        count: active.segment.frameCount
+      };
+    };
+    // Every frame step relabels the control, but within a segment the name does not
+    // change. Rewriting the text node anyway relaid the line and cut short the hover
+    // slide that walks a long name, so it only lands when the name actually differs.
+    const setCurrentName = (text) => {
+      if (currentNameText.textContent !== text) currentNameText.textContent = text;
+    };
     const applyLabel = (poseIndex) => {
       if (!currentName || !currentIndex) {
         label.textContent = trajectoryPoseLabel(prepared, controlLabel, poseIndex);
         return;
       }
-      currentName.textContent = prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`;
+      if (hasTrajectorySegments) {
+        const current = activeTrajectorySegment(poseIndex);
+        setCurrentName(current.segment?.label || `${controlLabel} ${poseIndex + 1}`);
+        currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount} · ${current.index + 1}/${trajectorySegments.length}`;
+        return;
+      }
+      setCurrentName(prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`);
       currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount}`;
     };
     const updateControls = () => {
+      const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
-      label.title = prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
-      previous.disabled = activePose <= 0;
-      next.disabled = activePose >= prepared.poseCount - 1;
-      slider.value = String(activePose + 1);
+      label.title = hasTrajectorySegments
+        ? activeTrajectorySegment(activePose).segment?.label || prepared.ligandLabel || ''
+        : prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
+      previous.disabled = activePose <= controlBounds.start;
+      next.disabled = activePose >= controlBounds.end;
+      slider.max = String(controlBounds.count);
+      slider.value = String(activePose - controlBounds.start + 1);
+      slider.dataset.globalFrameIndex = String(activePose);
+      const activeSegmentIndex = activeTrajectorySegment(activePose).index;
       fileButtons.forEach((button, index) => {
-        const active = index === activePose;
+        const active = hasTrajectorySegments ? index === activeSegmentIndex : index === activePose;
         button.classList.toggle('active', active);
         button.setAttribute('aria-selected', active ? 'true' : 'false');
       });
@@ -13313,11 +13499,15 @@
         postHostMessage({ type: 'structureStoryChanged', ...storyPayload });
       }
       refreshNativeTrajectoryStandalonePreview();
+      const activeSegment = activeTrajectorySegment(activePose);
       postHostMessage({
         type: 'trajectoryFrameChanged',
         documentId: activeConfig?.documentId || '',
-        frameIndex: activePose,
-        frameCount: prepared.poseCount,
+        frameIndex: activePose - controlBounds.start,
+        frameCount: controlBounds.count,
+        globalFrameIndex: activePose,
+        segmentStartFrame: controlBounds.start,
+        sourcePath: activeSegment.segment?.sourcePath || prepared.smoothingSourcePath || '',
         playing: loopActive
       });
     };
@@ -13342,6 +13532,7 @@
     };
     const isAnimationOptionsOpen = () => root.classList.contains('buret-docking-poses-animation-open');
     const setLoopActive = (active) => {
+      loopEpoch += 1;
       loopActive = Boolean(active);
       if (!active && loopTimer) {
         clearTimeout(loopTimer);
@@ -13356,11 +13547,16 @@
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
       if (active) setAnimationOptionsOpen(true);
+      const controlBounds = trajectoryControlBounds(activePose);
+      const activeSegment = activeTrajectorySegment(activePose);
       postHostMessage({
         type: 'trajectoryFrameChanged',
         documentId: activeConfig?.documentId || '',
-        frameIndex: activePose,
-        frameCount: prepared.poseCount,
+        frameIndex: activePose - controlBounds.start,
+        frameCount: controlBounds.count,
+        globalFrameIndex: activePose,
+        segmentStartFrame: controlBounds.start,
+        sourcePath: activeSegment.segment?.sourcePath || prepared.smoothingSourcePath || '',
         playing: loopActive
       });
     };
@@ -13377,7 +13573,8 @@
       const delay = loopDelayMs();
       const elapsed = Math.max(0, loopNow() - loopStartedAt);
       const frameOffset = Math.floor(elapsed / delay);
-      return (loopStartPose + frameOffset) % prepared.poseCount;
+      const loopBounds = trajectoryControlBounds(loopStartPose);
+      return loopBounds.start + ((loopStartPose - loopBounds.start + frameOffset) % loopBounds.count);
     };
     const loopNextDelay = () => {
       const delay = loopDelayMs();
@@ -13385,28 +13582,45 @@
       const untilNextFrame = delay - (elapsed % delay);
       return Math.max(minimumTrajectoryLoopTimerDelay(prepared), Math.min(delay, untilNextFrame));
     };
-    const scheduleLoopStep = (delayMs = loopNextDelay()) => {
+    const scheduleLoopStep = (delayMs = loopNextDelay(), expectedLoopEpoch = loopEpoch) => {
       loopTimer = window.setTimeout(() => {
         loopTimer = null;
-        if (!loopActive) return;
+        if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
         if (loopBusy) {
-          scheduleLoopStep();
+          scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
         }
         const nextIndex = loopTargetIndex();
         if (nextIndex === activePose) {
-          scheduleLoopStep();
+          scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
         }
         loopBusy = true;
-        void setPose(nextIndex, { loopStep: true }).finally(() => {
+        void setPose(nextIndex, { loopStep: true, loopEpoch: expectedLoopEpoch }).finally(() => {
           loopBusy = false;
-          if (!loopActive) return;
-          scheduleLoopStep();
+          if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
+          scheduleLoopStep(undefined, expectedLoopEpoch);
         });
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
     };
-    const setPose = async (index, options = {}) => {
+    const setPose = (index, options = {}) => {
+      const requestedIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
+      let queuedOptions = options;
+      if (options.loopStep !== true && loopActive) {
+        loopEpoch += 1;
+        loopStartedAt = loopNow();
+        loopStartPose = requestedIndex;
+        if (loopTimer) {
+          clearTimeout(loopTimer);
+          loopTimer = null;
+        }
+        queuedOptions = { ...options, loopEpoch };
+      }
+      const queued = poseUpdateQueue.then(() => performSetPose(requestedIndex, queuedOptions));
+      poseUpdateQueue = queued.catch(() => {});
+      return queued;
+    };
+    const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
@@ -13419,14 +13633,14 @@
           if (!switched) throw new Error('Mol* trajectory controls are not available.');
           activePose = readNativeTrajectoryPosition(prepared.poseCount)?.index ?? nextIndex;
           updateControls();
-          if (options.loopStep !== true && loopActive) {
+          if (options.loopStep !== true && loopActive && options.loopEpoch === loopEpoch) {
             loopStartedAt = loopNow();
             loopStartPose = activePose;
             if (loopTimer) {
               clearTimeout(loopTimer);
               loopTimer = null;
             }
-            scheduleLoopStep(loopDelayMs());
+            scheduleLoopStep(loopDelayMs(), loopEpoch);
           }
           if (options.focus === true) {
             scheduleMolstarStructureFocus(viewer, { reason: 'native-trajectory-pose', durationMs: 180 });
@@ -13461,7 +13675,9 @@
         try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
         activePose = previousIndex;
         updateControls();
-        setStatus(`[web] Could not switch ${controlLabelLower}.\n\n${error?.message || String(error)}`, 'error');
+        // Stepping frames is the most repeated action here and a loop retries it on a
+        // timer, so a failed step stays in the console: the label and buttons have
+        // already rolled back to the frame still on screen, which is the honest report.
         // eslint-disable-next-line no-console
         console.error(error);
       }
@@ -13472,12 +13688,17 @@
       });
       fileButtons.forEach((button, index) => {
         button.addEventListener('pointerenter', (event) => {
-          if (event.pointerType === 'touch' || index === activePose) return;
-          scheduleSliderInputPose(index);
+          const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
+          // Segments preview on hover like poses do: every frame is already in the one
+          // trajectory, so jumping to a segment's first frame is a model-index change,
+          // not a reload. Touch has no hover, and it would fire on the way to a tap.
+          if (event.pointerType === 'touch' || targetPose === activePose) return;
+          scheduleSliderInputPose(targetPose);
         });
         button.addEventListener('click', () => {
           setFileListOpen(false);
-          if (index !== activePose) scheduleSliderInputPose(index);
+          const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
+          if (targetPose !== activePose) scheduleSliderInputPose(targetPose);
         });
       });
       const onOutsidePointerDown = (event) => {
@@ -13598,11 +13819,12 @@
     };
     const repeatPoseStep = (direction) => {
       if (poseRepeatBusy) return;
+      const controlBounds = trajectoryControlBounds(activePose);
       const nextIndex = activePose + direction;
-      const wrappedIndex = nextIndex < 0
-        ? prepared.poseCount - 1
-        : nextIndex >= prepared.poseCount
-          ? 0
+      const wrappedIndex = nextIndex < controlBounds.start
+        ? controlBounds.end
+        : nextIndex > controlBounds.end
+          ? controlBounds.start
           : nextIndex;
       poseRepeatBusy = true;
       void setPose(wrappedIndex, { userStep: true }).finally(() => {
@@ -13655,7 +13877,8 @@
     };
     const setControlsCollapsed = (collapsed) => {
       root.classList.toggle('buret-docking-poses-collapsed', Boolean(collapsed));
-      animation.title = collapsed ? 'Show playback controls' : 'Select animation';
+      animation.title = collapsed ? 'Show playback controls' : (hasTrajectorySegments ? 'Playback options' : 'Select animation');
+      animation.setAttribute('aria-label', collapsed ? 'Show playback controls' : animationControlLabel);
       if (!collapsed) return;
       setFileListOpen(false);
       setAnimationOptionsOpen(false);
@@ -13672,7 +13895,7 @@
       }
       const open = !isAnimationOptionsOpen();
       setAnimationOptionsOpen(open);
-      if (!open) return;
+      if (!open || hasTrajectorySegments) return;
       const button = nativeAnimationSelectButton();
       if (button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') {
         button.click();
@@ -13710,12 +13933,14 @@
     });
     speed.addEventListener('input', updateSpeedMode);
     slider.addEventListener('input', () => {
-      const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
+      const controlBounds = trajectoryControlBounds(activePose);
+      const previewIndex = controlBounds.start + Math.max(0, Math.min(controlBounds.count - 1, Number(slider.value) - 1));
       applyLabel(previewIndex);
       if (supportsLivePoseInput()) scheduleSliderInputPose(previewIndex);
     });
     slider.addEventListener('change', () => {
-      const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
+      const controlBounds = trajectoryControlBounds(activePose);
+      const nextIndex = controlBounds.start + Math.max(0, Math.min(controlBounds.count - 1, Number(slider.value) - 1));
       if (supportsLivePoseInput()) {
         if (sliderInputTimer) {
           clearTimeout(sliderInputTimer);
@@ -13738,10 +13963,10 @@
       }
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        if (activePose > 0) void setPose(activePose - 1, { userStep: true });
+        if (activePose > trajectoryControlBounds(activePose).start) void setPose(activePose - 1, { userStep: true });
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        if (activePose < prepared.poseCount - 1) void setPose(activePose + 1, { userStep: true });
+        if (activePose < trajectoryControlBounds(activePose).end) void setPose(activePose + 1, { userStep: true });
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -13749,8 +13974,8 @@
     mainRow.append(animation, previous, label, next);
     const smoothAvailable = !xyzAlignFrames
       && (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
-    if (smoothAvailable) mainRow.append(smooth);
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
+    if (smoothAvailable && toggleRow) mainRow.append(smooth);
     if (toggleRow) {
       toggleRow.className = 'buret-docking-pose-toggles';
       if (story) toggleRow.append(story);
@@ -13760,6 +13985,7 @@
       if (align) mainRow.append(align);
       if (all) mainRow.append(all);
       animationRow.append(speed, loop, slider);
+      if (smoothAvailable) animationRow.append(smooth);
     }
     root.append(mainRow);
     if (toggleRow) root.append(toggleRow);

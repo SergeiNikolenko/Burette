@@ -1450,6 +1450,35 @@ kbd span { margin-left: 2px; }
   gap: 1px;
 }
 .project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; line-height: 1.15; }
+/* A cut name hides the tail, which is often the only thing telling two files apart.
+   Hovering the row walks the name through its window; the moving part is an inner
+   element driven by transform, so the row never reflows while it travels. The
+   distance comes from MarqueeName, which measures the overflow it has to cover. */
+.marquee-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  vertical-align: bottom;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: transform 200ms ease-out;
+}
+.project:hover .marquee-text,
+.project-folder-row:hover .marquee-text,
+.project:focus-visible .marquee-text,
+.project-folder-row:focus-visible .marquee-text {
+  max-width: none;
+  text-overflow: clip;
+  transform: translateX(calc(var(--marquee-shift, 0px) * -1));
+  /* Eases off the mark rather than snapping to speed, and waits out a pointer that
+     is only passing over the row on its way somewhere else. */
+  transition: transform var(--marquee-duration, 1.6s) cubic-bezier(0.4, 0, 0.2, 1) 120ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-text,
+  .project:hover .marquee-text,
+  .project-folder-row:hover .marquee-text { transition: none; }
+}
 .project-meta { font-size: 12px; color: var(--text-muted); }
 .project-extension {
   display: inline-flex;
