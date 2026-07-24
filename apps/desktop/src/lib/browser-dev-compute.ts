@@ -46,6 +46,26 @@ type LearnedRepresentationResult = {
   knnCache: KnnCache;
 };
 
+type RepresentationProgressEvent = {
+  type: "progress";
+  progress: {
+    stage: ChemicalSpaceProgress["representationStage"];
+    completedRecords: number;
+    totalRecords: number;
+    percent: number;
+  };
+};
+
+type RepresentationResultEvent = {
+  type: "result";
+  result: LearnedRepresentationResult;
+};
+
+type RepresentationErrorEvent = {
+  type: "error";
+  error: string;
+};
+
 export function runBrowserDevSemiempirical(
   source: StandaloneComputeSource,
 ): Promise<StandaloneSemiempiricalResult> {
@@ -160,6 +180,9 @@ function prepareBrowserChemicalSpaceRepresentation(
     body: JSON.stringify({ operation: "represent", engine, neighbors: 64, records }),
     signal,
   }).then(async (response) => {
+    if (response.headers.get("Content-Type")?.includes("application/x-ndjson")) {
+      return readRepresentationStream(response, engine, onProgress);
+    }
     const payload = await response.json().catch(() => null) as
       | (LearnedRepresentationResult & { error?: unknown })
       | null;
@@ -186,6 +209,54 @@ function prepareBrowserChemicalSpaceRepresentation(
     if (browserRepresentationCache.get(key) === pending) browserRepresentationCache.delete(key);
   });
   return pending;
+}
+
+async function readRepresentationStream(
+  response: Response,
+  engine: Exclude<ChemicalSpaceRepresentation, "morgan">,
+  onProgress: (progress: ChemicalSpaceProgress) => void,
+) {
+  if (!response.ok || !response.body) {
+    throw new Error(`Metal representation request failed with status ${response.status}`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: LearnedRepresentationResult | null = null;
+  const consumeLine = (line: string) => {
+    if (!line.trim()) return;
+    const event = JSON.parse(line) as
+      | RepresentationProgressEvent
+      | RepresentationResultEvent
+      | RepresentationErrorEvent;
+    if (event.type === "progress") {
+      onProgress({
+        phase: "representations",
+        representationStage: event.progress.stage,
+        completedRecords: event.progress.completedRecords,
+        totalRecords: event.progress.totalRecords,
+        percent: event.progress.percent,
+      });
+    } else if (event.type === "result") {
+      result = event.result;
+    } else if (event.type === "error") {
+      throw new Error(event.error);
+    }
+  };
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) consumeLine(line);
+    if (done) break;
+  }
+  consumeLine(buffer);
+  const resolvedResult = result as LearnedRepresentationResult | null;
+  if (!resolvedResult || resolvedResult.backend !== "metalMps" || resolvedResult.engine !== engine) {
+    throw new Error("Metal representation worker returned an unattested result.");
+  }
+  return resolvedResult;
 }
 
 function prepareBrowserChemicalSpaceFingerprints(

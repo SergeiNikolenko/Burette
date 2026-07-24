@@ -700,6 +700,7 @@ function ChemicalSpace2D({
   const [viewport, setViewport] = useState({ width: 1, height: 1, pixelRatio: 1 });
   const [camera, setCamera] = useState({ yaw: -0.45, pitch: 0.35, zoom: 1, panX: 0, panY: 0 });
   const [lasso, setLasso] = useState<Point2[]>([]);
+  const [cursor, setCursor] = useState<Point2 | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -784,9 +785,6 @@ function ChemicalSpace2D({
     onHover(sourceRecordId);
   };
 
-  const previewPoint = preview
-    ? projectedRef.current.find((point) => point.sourceRecordId === preview.sourceRecordId) ?? null
-    : null;
   return (
     <div className="absolute inset-0 overflow-hidden bg-muted/20">
       <canvas
@@ -837,6 +835,7 @@ function ChemicalSpace2D({
         }}
         onPointerMove={(event) => {
           const point = localPoint(event);
+          setCursor(point);
           const pointer = pointerRef.current;
           if (!pointer) {
             hoverNearest(point);
@@ -882,16 +881,17 @@ function ChemicalSpace2D({
         }}
         onPointerLeave={() => {
           if (pointerRef.current) return;
+          setCursor(null);
           hoverRef.current = null;
           onHover(null);
         }}
       />
-      {preview && hovered === preview.sourceRecordId && previewPoint ? (
+      {preview && hovered === preview.sourceRecordId && cursor ? (
         <div
           className="pointer-events-none absolute z-10 w-52 overflow-hidden rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg"
           style={{
-            left: Math.min(Math.max(8, viewport.width - 220), Math.max(8, previewPoint.x + 12)),
-            top: Math.min(Math.max(8, viewport.height - 188), Math.max(8, previewPoint.y + 12)),
+            left: Math.min(Math.max(8, viewport.width - 220), Math.max(8, cursor.x + 12)),
+            top: Math.min(Math.max(8, viewport.height - 188), Math.max(8, cursor.y + 12)),
           }}
         >
           {preview.svgUrl ? <img className="h-28 w-full rounded-lg bg-white object-contain" src={preview.svgUrl} alt="" /> : null}
@@ -974,6 +974,9 @@ function invalidateCompletedEmbeddings(documentId: string) {
 }
 
 function progressPercent(progress: ChemicalSpaceProgress | null) {
+  if (progress?.phase === "representations" && typeof progress.percent === "number") {
+    return Math.min(100, Math.max(0, progress.percent));
+  }
   if (progress?.phase === "fingerprints" && progress.totalRecords) {
     return Math.min(100, ((progress.completedRecords ?? 0) / progress.totalRecords) * 100);
   }
@@ -988,7 +991,18 @@ function progressLabel(progress: ChemicalSpaceProgress | null) {
   if (progress.phase === "fingerprints") {
     return `Fingerprints ${Math.min(progress.completedRecords ?? 0, progress.totalRecords ?? 0).toLocaleString()} / ${(progress.totalRecords ?? 0).toLocaleString()}`;
   }
-  if (progress.phase === "representations") return "Metal molecular representation…";
+  if (progress.phase === "representations") {
+    const completed = Math.min(progress.completedRecords ?? 0, progress.totalRecords ?? 0).toLocaleString();
+    const total = (progress.totalRecords ?? 0).toLocaleString();
+    const stage = progress.representationStage === "preparing"
+      ? "Preparing molecules"
+      : progress.representationStage === "loading"
+        ? "Loading model"
+        : progress.representationStage === "similarity"
+          ? "Metal similarity"
+          : "Metal embeddings";
+    return `${stage} ${completed} / ${total}`;
+  }
   if (progress.phase === "embedding") return "Metal similarity + embedding…";
   if (progress.phase === "study") {
     return `Metal study ${Math.min(progress.completedFrames ?? 0, progress.totalFrames ?? 0)} / ${progress.totalFrames ?? 0}`;

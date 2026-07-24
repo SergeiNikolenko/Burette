@@ -34,15 +34,31 @@ export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repo
       if (Buffer.byteLength(input, "utf8") > MODEL_REQUEST_LIMIT_BYTES) {
         throw new Error("Molecular representation request exceeds 36 MiB");
       }
-      sendJson(
-        res,
-        200,
-        await runMolecularRepresentation(repoRoot, input, controller.signal),
-        "no-cache",
+      res.writeHead(200, {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache",
+      });
+      const writeEvent = (event: unknown) => {
+        if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
+      };
+      const result = await runMolecularRepresentation(
+        repoRoot,
+        input,
+        controller.signal,
+        (progress) => writeEvent({ type: "progress", progress }),
       );
+      writeEvent({ type: "result", result });
+      res.end();
     } catch (error) {
       if (!controller.signal.aborted && !res.destroyed && !res.writableEnded) {
-        sendJsonError(res, 500, error, "no-cache");
+        if (res.headersSent) {
+          res.end(`${JSON.stringify({
+            type: "error",
+            error: error instanceof Error ? error.message : String(error),
+          })}\n`);
+        } else {
+          sendJsonError(res, 500, error, "no-cache");
+        }
       }
     } finally {
       req.off("aborted", abort);
@@ -99,7 +115,12 @@ function molecularRepresentationPython(repoRoot: string) {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
-async function runMolecularRepresentation(repoRoot: string, input: string, signal: AbortSignal) {
+async function runMolecularRepresentation(
+  repoRoot: string,
+  input: string,
+  signal: AbortSignal,
+  onProgress: (progress: unknown) => void,
+) {
   const python = molecularRepresentationPython(repoRoot);
   if (!python) {
     throw new Error(
@@ -126,6 +147,7 @@ async function runMolecularRepresentation(repoRoot: string, input: string, signa
       UNIMOL_WEIGHT_DIR: process.env.UNIMOL_WEIGHT_DIR?.trim() || join(modelRoot, "unimol"),
     },
     signal,
+    onProgress,
   );
   const payload = JSON.parse(output) as { ok?: unknown; result?: unknown; error?: unknown };
   if (payload.ok !== true || !payload.result) {
@@ -242,6 +264,7 @@ function runWithStdin(
   timeoutMs: number,
   environment: Record<string, string> = {},
   abortSignal?: AbortSignal,
+  onProgress?: (progress: unknown) => void,
 ): Promise<string> {
   return new Promise((resolvePromise, rejectPromise) => {
     if (abortSignal?.aborted) {
@@ -255,6 +278,7 @@ function runWithStdin(
     });
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
+    let stderrBuffer = "";
     let terminationError: Error | null = null;
     let forceKillTimeout: ReturnType<typeof setTimeout> | null = null;
     let settled = false;
@@ -278,7 +302,22 @@ function runWithStdin(
     }, timeoutMs);
     abortSignal?.addEventListener("abort", onAbort, { once: true });
     child.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrBuffer += chunk.toString("utf8");
+      const lines = stderrBuffer.split("\n");
+      stderrBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.startsWith("BURRETE_PROGRESS\t")) {
+          try {
+            onProgress?.(JSON.parse(line.slice("BURRETE_PROGRESS\t".length)));
+          } catch {
+            stderrChunks.push(Buffer.from(`${line}\n`));
+          }
+        } else {
+          stderrChunks.push(Buffer.from(`${line}\n`));
+        }
+      }
+    });
     child.on("error", (error) => {
       if (settled) return;
       settled = true;
@@ -294,6 +333,7 @@ function runWithStdin(
         return;
       }
       const stdout = Buffer.concat(stdoutChunks).toString("utf8").trim();
+      if (stderrBuffer) stderrChunks.push(Buffer.from(stderrBuffer));
       const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
       if (code !== 0) {
         rejectPromise(new Error(stderr || `Native Metal dev backend exited with ${signal || code}`));

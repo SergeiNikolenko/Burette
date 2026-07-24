@@ -155,6 +155,8 @@ export type ChemicalSpaceProgress = {
   phase: "queued" | "fingerprints" | "representations" | "embedding" | "study";
   completedRecords?: number;
   totalRecords?: number;
+  percent?: number;
+  representationStage?: "preparing" | "loading" | "model" | "similarity";
   completedFrames?: number;
   totalFrames?: number;
 };

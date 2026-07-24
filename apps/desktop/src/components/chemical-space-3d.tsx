@@ -146,11 +146,6 @@ export function ChemicalSpace3D({
           sourceRecordId: sourceRecordIds[index],
         }];
       });
-      const activePreview = previewRef.current;
-      const anchor = activePreview
-        ? projectedRef.current.find((point) => point.sourceRecordId === activePreview.sourceRecordId) ?? null
-        : null;
-      setPreviewAnchor(anchor);
     };
 
     const render = () => {
@@ -181,7 +176,6 @@ export function ChemicalSpace3D({
     };
     const updatePreview = (nextPreview: MoleculePreview | null) => {
       previewRef.current = nextPreview;
-      projectPoints();
     };
     const updatePointScale = (nextPointScale: number) => {
       points.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
@@ -247,6 +241,7 @@ export function ChemicalSpace3D({
       pointerMoved = false;
     };
     const onPointerMove = (event: PointerEvent) => {
+      setPreviewAnchor(localPoint(event));
       if (pointerDown) {
         const point = localPoint(event);
         pointerMoved ||= Math.hypot(point.x - pointerDown.x, point.y - pointerDown.y) > 3;
@@ -265,6 +260,7 @@ export function ChemicalSpace3D({
     };
     const onPointerLeave = () => {
       pointerDown = null;
+      setPreviewAnchor(null);
       onHoverRef.current(null);
     };
     const onKeyDown = (event: KeyboardEvent) => {

@@ -262,6 +262,13 @@ async function handleChemicalSpaceRepresentation(req, res, method) {
     const repoRoot = resolve(scriptDir, '..');
     const script = resolve(repoRoot, 'compute', 'models', 'chemical_space_representations.py');
     const modelRoot = resolve(homedir(), 'Library', 'Application Support', 'Burrete', 'chemical-space-models');
+    res.writeHead(200, {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache',
+    });
+    const writeEvent = (event) => {
+      if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
+    };
     const payload = await runJsonWorker(
       python,
       [script],
@@ -273,14 +280,21 @@ async function handleChemicalSpaceRepresentation(req, res, method) {
         UNIMOL_WEIGHT_DIR: String(process.env.UNIMOL_WEIGHT_DIR || '').trim() || resolve(modelRoot, 'unimol'),
       },
       controller.signal,
+      (progress) => writeEvent({ type: 'progress', progress }),
     );
     if (payload.ok !== true || !payload.result) {
       throw new Error(typeof payload.error === 'string' ? payload.error : 'Metal model worker failed');
     }
-    sendJson(res, 200, payload.result);
+    writeEvent({ type: 'result', result: payload.result });
+    res.end();
   } catch (error) {
     if (!controller.signal.aborted && !res.destroyed && !res.writableEnded) {
-      sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+      const message = error instanceof Error ? error.message : String(error);
+      if (res.headersSent) {
+        res.end(`${JSON.stringify({ type: 'error', error: message })}\n`);
+      } else {
+        sendJson(res, 500, { error: message });
+      }
     }
   } finally {
     req.off('aborted', abort);
@@ -847,7 +861,7 @@ function runNativeCompute(runtime, input) {
   });
 }
 
-function runJsonWorker(command, commandArgs, input, timeoutMs, environment = {}, abortSignal) {
+function runJsonWorker(command, commandArgs, input, timeoutMs, environment = {}, abortSignal, onProgress) {
   return new Promise((resolvePromise, rejectPromise) => {
     if (abortSignal?.aborted) {
       rejectPromise(abortError());
@@ -859,6 +873,7 @@ function runJsonWorker(command, commandArgs, input, timeoutMs, environment = {},
     });
     const stdoutChunks = [];
     const stderrChunks = [];
+    let stderrBuffer = '';
     let terminationError = null;
     let forceKillTimeout = null;
     let settled = false;
@@ -882,7 +897,22 @@ function runJsonWorker(command, commandArgs, input, timeoutMs, environment = {},
     }, timeoutMs);
     abortSignal?.addEventListener('abort', onAbort, { once: true });
     child.stdout.on('data', (chunk) => stdoutChunks.push(Buffer.from(chunk)));
-    child.stderr.on('data', (chunk) => stderrChunks.push(Buffer.from(chunk)));
+    child.stderr.on('data', (chunk) => {
+      stderrBuffer += Buffer.from(chunk).toString('utf8');
+      const lines = stderrBuffer.split('\n');
+      stderrBuffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('BURRETE_PROGRESS\t')) {
+          try {
+            onProgress?.(JSON.parse(line.slice('BURRETE_PROGRESS\t'.length)));
+          } catch {
+            stderrChunks.push(Buffer.from(`${line}\n`));
+          }
+        } else {
+          stderrChunks.push(Buffer.from(`${line}\n`));
+        }
+      }
+    });
     child.on('error', (error) => {
       if (settled) return;
       settled = true;
@@ -898,6 +928,7 @@ function runJsonWorker(command, commandArgs, input, timeoutMs, environment = {},
         return;
       }
       const stdout = Buffer.concat(stdoutChunks).toString('utf8').trim();
+      if (stderrBuffer) stderrChunks.push(Buffer.from(stderrBuffer));
       const stderr = Buffer.concat(stderrChunks).toString('utf8').trim();
       if (code !== 0) {
         rejectPromise(new Error(stderr || `Metal model worker exited with ${signal || code}`));

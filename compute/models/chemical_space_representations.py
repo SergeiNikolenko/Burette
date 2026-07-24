@@ -43,12 +43,29 @@ MODEL_SPECS = {
         "dimensions": 512,
     },
 }
+PROGRESS_PREFIX = "BURRETE_PROGRESS\t"
 
 
 @dataclass(frozen=True)
 class ValidRecord:
     source_record_id: int
     smiles: str
+
+
+def emit_progress(
+    stage: str,
+    completed_records: int,
+    total_records: int,
+    percent: float,
+) -> None:
+    event = {
+        "stage": stage,
+        "completedRecords": completed_records,
+        "totalRecords": total_records,
+        "percent": round(max(0.0, min(100.0, percent)), 1),
+    }
+    sys.stderr.write(f"{PROGRESS_PREFIX}{json.dumps(event, separators=(',', ':'))}\n")
+    sys.stderr.flush()
 
 
 def require_mps():
@@ -73,7 +90,9 @@ def normalize_records(raw_records: Any) -> tuple[list[ValidRecord], int]:
     valid: list[ValidRecord] = []
     failed = 0
     input_bytes = 0
-    for raw in raw_records:
+    total_records = len(raw_records)
+    emit_progress("preparing", 0, total_records, 0)
+    for index, raw in enumerate(raw_records, start=1):
         if not isinstance(raw, dict):
             failed += 1
             continue
@@ -102,6 +121,8 @@ def normalize_records(raw_records: Any) -> tuple[list[ValidRecord], int]:
             valid.append(ValidRecord(source_record_id=source_record_id, smiles=smiles))
         else:
             failed += 1
+        if index % 128 == 0 or index == total_records:
+            emit_progress("preparing", index, total_records, 10 * index / total_records)
     if len(valid) < 2:
         raise ValueError("fewer than two molecules can be represented")
     return valid, failed
@@ -122,6 +143,7 @@ def transformer_embeddings(engine: str, smiles: list[str], device):
     model_options = {**shared}
     if trust_remote_code:
         model_options["deterministic_eval"] = True
+    emit_progress("loading", 0, len(smiles), 10)
     model = AutoModel.from_pretrained(spec["model_id"], **model_options).eval().to(device)
     batch_size = 16 if trust_remote_code else 32
     outputs = []
@@ -146,6 +168,8 @@ def transformer_embeddings(engine: str, smiles: list[str], device):
                 )
             observed_devices.add(batch_output.device.type)
             outputs.append(functional.normalize(batch_output.float(), dim=1).cpu())
+        completed = min(len(smiles), start + batch_size)
+        emit_progress("model", completed, len(smiles), 10 + 75 * completed / len(smiles))
     if observed_devices != {"mps"}:
         raise RuntimeError(f"model output left Metal: {sorted(observed_devices)}")
     return torch.cat(outputs, dim=0)
@@ -161,6 +185,7 @@ def unimol_embeddings(engine: str, smiles: list[str], device):
     from unimol_tools.tasks import Trainer
 
     model_name = "unimolv2" if engine == "unimol2-84m" else "unimolv1"
+    emit_progress("loading", 0, len(smiles), 10)
     params = {
         "data_type": "molecule",
         "batch_size": 16,
@@ -215,6 +240,8 @@ def unimol_embeddings(engine: str, smiles: list[str], device):
         if observed_devices != {"mps"}:
             raise RuntimeError(f"model output left Metal: {sorted(observed_devices)}")
         outputs.append(functional.normalize(batch_output.float(), dim=1))
+        completed = min(len(smiles), start + 64)
+        emit_progress("model", completed, len(smiles), 10 + 75 * completed / len(smiles))
     return torch.cat(outputs, dim=0)
 
 
@@ -246,6 +273,7 @@ def cosine_knn(embeddings, neighbors: int, device):
             )
             all_indices.append(indices.to(torch.int32).cpu())
             all_similarities.append(((similarities.float() + 1) * 0.5).clamp(0, 1).cpu())
+            emit_progress("similarity", stop, count, 85 + 15 * stop / count)
     torch.mps.synchronize()
     elapsed_ms = round((time.perf_counter() - started) * 1_000)
     indices = torch.cat(all_indices).contiguous().numpy().astype("<u4", copy=False)
