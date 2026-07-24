@@ -11,7 +11,7 @@ import {
 import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
 
-const GRID_DESCRIPTOR_JOB_EVENT = "burette-grid-descriptor-job";
+export const GRID_DESCRIPTOR_JOB_EVENT = "burette-grid-descriptor-job";
 
 type UseAppDescriptorsArgs = {
   documents: ViewerDocument[];
