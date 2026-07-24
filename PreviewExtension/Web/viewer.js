@@ -7988,6 +7988,7 @@
       poseCount,
       nativeTrajectoryControls: prepared?.nativeTrajectoryControls === true,
       trajectoryTimesPs: trajectoryTimesPsForPrepared(prepared),
+      trajectorySegments: Array.isArray(prepared?.trajectorySegments) ? prepared.trajectorySegments : [],
       ligandLabel: prepared?.label || activeConfig?.label || 'Mol* trajectory',
       controlLabel: label,
       sdfPoseOverlayAvailable: prepared?.sdfPoseOverlayAvailable === true,
@@ -8012,15 +8013,30 @@
     const modelEntry = entries.find(entry => !coordinateEntries.includes(entry) && dockingTrajectoryModelKind(entry));
     if (!modelEntry) return null;
     let coordinateEntry = coordinateEntries[0];
+    let trajectorySegments = [];
     if (coordinateEntries.length > 1) {
       const formats = new Set(coordinateEntries.map(entry => normalizeFormat(entry.format)));
       if (formats.size !== 1 || !formats.has('xtc')) {
         throw new Error('Combining trajectory segments currently requires XTC files with one shared topology.');
       }
       const concatenate = window.BurreteTrajectorySmoothing?.concatenateXtcSegments;
-      if (typeof concatenate !== 'function') {
+      const countXtcFrames = window.BurreteTrajectorySmoothing?.countXtcFrames;
+      if (typeof concatenate !== 'function' || typeof countXtcFrames !== 'function') {
         throw new Error('XTC trajectory concatenation is unavailable in this viewer runtime.');
       }
+      let startFrame = 0;
+      trajectorySegments = coordinateEntries.map((entry, index) => {
+        const frameCount = countXtcFrames(entry.data);
+        const segment = {
+          label: entry.label || `Trajectory segment ${index + 1}`,
+          sourcePath: entry.sourcePath || '',
+          frameCount,
+          startFrame,
+          endFrame: startFrame + frameCount - 1
+        };
+        startFrame += frameCount;
+        return segment;
+      });
       coordinateEntry = {
         ...coordinateEntry,
         data: concatenate(coordinateEntries.map(entry => entry.data)),
@@ -8032,7 +8048,8 @@
       modelEntry,
       modelKind: dockingTrajectoryModelKind(modelEntry),
       coordinateEntry,
-      coordinateEntries
+      coordinateEntries,
+      trajectorySegments
     };
   }
 
@@ -8100,7 +8117,8 @@
         receptorEntry,
         poses,
         entries,
-        trajectoryPair
+        trajectoryPair,
+        trajectorySegments: trajectoryPair.trajectorySegments
       };
     }
     const sceneMode = dockingSceneMode(config);
@@ -12375,9 +12393,29 @@
     };
   }
 
-  function moveDockingPoseControls(root, left, top, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
+  function dockingPoseControlsBoundsAvoidingSceneTree(mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     const bounds = dockingPoseControlsBounds(mainRect);
+    const sceneTreeRect = visibleRect('#buret-scene-tree');
+    const cornerRect = visibleRect('#buret-viewport-corner');
+    const left = Math.max(
+      bounds.left,
+      sceneTreeRect ? Math.ceil(sceneTreeRect.right + TOOLBAR_MARGIN) : bounds.left,
+      cornerRect ? Math.ceil(cornerRect.right + TOOLBAR_MARGIN) : bounds.left
+    );
+    if (bounds.right - left < 148) return bounds;
+    return { ...bounds, left: Math.max(bounds.left, left) };
+  }
+
+  function moveDockingPoseControls(root, left, top, mainRect = visibleRect('.msp-plugin .msp-layout-main'), avoidSceneTree = false) {
+    const bounds = avoidSceneTree
+      ? dockingPoseControlsBoundsAvoidingSceneTree(mainRect)
+      : dockingPoseControlsBounds(mainRect);
     root.style.maxWidth = Math.max(180, Math.floor(bounds.right - bounds.left)) + 'px';
+    const availableWidth = avoidSceneTree
+      ? Math.max(148, Math.floor(bounds.right - bounds.left))
+      : Math.max(180, Math.floor(bounds.right - bounds.left));
+    if (avoidSceneTree) root.style.maxWidth = availableWidth + 'px';
+    root.classList.toggle('buret-docking-poses-compact', availableWidth < 360);
     const width = root.offsetWidth || root.getBoundingClientRect().width || 180;
     const height = root.offsetHeight || root.getBoundingClientRect().height || 40;
     const maxLeft = Math.max(bounds.left, bounds.right - width);
@@ -12424,6 +12462,10 @@
     root.dataset.defaultPosition = '1';
     const bounds = dockingPoseControlsBounds(mainRect);
     moveDockingPoseControls(root, bounds.left, 14, mainRect);
+    const sceneTreeBounds = dockingPoseControlsBoundsAvoidingSceneTree(mainRect);
+    if (sceneTreeBounds.left > bounds.left) {
+      moveDockingPoseControls(root, sceneTreeBounds.left, 14, mainRect, true);
+    }
   }
 
   function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
@@ -13078,6 +13120,11 @@
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
     if (prepared.dockingSceneMode) root.classList.add('buret-docking-poses-structure-scene');
+    const trajectorySegments = Array.isArray(prepared.trajectorySegments)
+      ? prepared.trajectorySegments.filter(segment => Number(segment?.frameCount) > 0)
+      : [];
+    const hasTrajectorySegments = trajectorySegments.length > 1;
+    if (hasTrajectorySegments) root.classList.add('buret-docking-poses-trajectory-segments');
     const controlLabel = String(prepared.controlLabel || 'Pose');
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
@@ -13124,9 +13171,11 @@
     mainRow.className = 'buret-docking-pose-main';
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
-    const label = prepared.dockingSceneMode ? document.createElement('button') : document.createElement('span');
-    const currentName = prepared.dockingSceneMode ? document.createElement('span') : null;
-    const currentIndex = prepared.dockingSceneMode ? document.createElement('span') : null;
+    const hasFileList = prepared.dockingSceneMode || hasTrajectorySegments;
+    const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
+    const label = hasFileList ? document.createElement('button') : document.createElement('span');
+    const currentName = hasFileList ? document.createElement('span') : null;
+    const currentIndex = hasFileList ? document.createElement('span') : null;
     if (currentName && currentIndex) {
       label.type = 'button';
       label.className = 'buret-docking-pose-current';
@@ -13137,25 +13186,35 @@
       label.append(currentName, currentIndex);
     }
     label.title = prepared.ligandLabel || '';
-    const fileList = prepared.dockingSceneMode ? document.createElement('div') : null;
+    const fileList = hasFileList ? document.createElement('div') : null;
     const fileButtons = [];
     if (fileList) {
       fileList.className = 'buret-docking-pose-files';
       fileList.setAttribute('role', 'listbox');
-      fileList.setAttribute('aria-label', 'Open structures');
-      prepared.poses.forEach((entry, index) => {
+      fileList.setAttribute('aria-label', hasTrajectorySegments ? 'Trajectory segments' : 'Open structures');
+      listEntries.forEach((entry, index) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'buret-docking-pose-file';
         button.setAttribute('role', 'option');
-        button.title = entry.label || `Structure ${index + 1}`;
+        const fallbackLabel = hasTrajectorySegments ? `Trajectory segment ${index + 1}` : `Structure ${index + 1}`;
+        const entryLabel = entry.label || fallbackLabel;
+        button.title = hasTrajectorySegments
+          ? `${entryLabel} · frames ${entry.startFrame + 1}–${entry.endFrame + 1}`
+          : entryLabel;
         const number = document.createElement('span');
         number.className = 'buret-docking-pose-file-number';
         number.textContent = String(index + 1).padStart(2, '0');
         const name = document.createElement('span');
         name.className = 'buret-docking-pose-file-name';
-        name.textContent = entry.label || `Structure ${index + 1}`;
+        name.textContent = entryLabel;
         button.append(number, name);
+        if (hasTrajectorySegments) {
+          const frameCount = document.createElement('span');
+          frameCount.className = 'buret-docking-pose-file-meta';
+          frameCount.textContent = `${entry.frameCount} frames`;
+          button.append(frameCount);
+        }
         fileButtons.push(button);
         fileList.append(button);
       });
@@ -13169,10 +13228,12 @@
     animation.title = 'Select animation';
     const previous = document.createElement('button');
     previous.type = 'button';
+    previous.className = 'buret-docking-pose-previous';
     previous.textContent = 'Prev';
     previous.setAttribute('aria-label', `Previous ${controlLabelLower}`);
     const next = document.createElement('button');
     next.type = 'button';
+    next.className = 'buret-docking-pose-next';
     next.textContent = 'Next';
     next.setAttribute('aria-label', `Next ${controlLabelLower}`);
     const xyzAlignSignature = prepared.xyzFrameOverlayAvailable === true
@@ -13305,9 +13366,23 @@
       prepared.kind === 'xyz-frame-overlay' ||
       (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true)
     );
+    const activeTrajectorySegment = (poseIndex) => {
+      if (!hasTrajectorySegments) return { index: -1, segment: null };
+      const index = trajectorySegments.findIndex(segment => (
+        poseIndex >= segment.startFrame && poseIndex <= segment.endFrame
+      ));
+      const resolvedIndex = index >= 0 ? index : trajectorySegments.length - 1;
+      return { index: resolvedIndex, segment: trajectorySegments[resolvedIndex] };
+    };
     const applyLabel = (poseIndex) => {
       if (!currentName || !currentIndex) {
         label.textContent = trajectoryPoseLabel(prepared, controlLabel, poseIndex);
+        return;
+      }
+      if (hasTrajectorySegments) {
+        const current = activeTrajectorySegment(poseIndex);
+        currentName.textContent = current.segment?.label || `${controlLabel} ${poseIndex + 1}`;
+        currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount} · ${current.index + 1}/${trajectorySegments.length}`;
         return;
       }
       currentName.textContent = prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`;
@@ -13315,12 +13390,15 @@
     };
     const updateControls = () => {
       applyLabel(activePose);
-      label.title = prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
+      label.title = hasTrajectorySegments
+        ? activeTrajectorySegment(activePose).segment?.label || prepared.ligandLabel || ''
+        : prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
       previous.disabled = activePose <= 0;
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
+      const activeSegmentIndex = activeTrajectorySegment(activePose).index;
       fileButtons.forEach((button, index) => {
-        const active = index === activePose;
+        const active = hasTrajectorySegments ? index === activeSegmentIndex : index === activePose;
         button.classList.toggle('active', active);
         button.setAttribute('aria-selected', active ? 'true' : 'false');
       });
@@ -13491,12 +13569,14 @@
       });
       fileButtons.forEach((button, index) => {
         button.addEventListener('pointerenter', (event) => {
-          if (event.pointerType === 'touch' || index === activePose) return;
-          scheduleSliderInputPose(index);
+          const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
+          if (event.pointerType === 'touch' || targetPose === activePose) return;
+          scheduleSliderInputPose(targetPose);
         });
         button.addEventListener('click', () => {
           setFileListOpen(false);
-          if (index !== activePose) scheduleSliderInputPose(index);
+          const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
+          if (targetPose !== activePose) scheduleSliderInputPose(targetPose);
         });
       });
       const onOutsidePointerDown = (event) => {
