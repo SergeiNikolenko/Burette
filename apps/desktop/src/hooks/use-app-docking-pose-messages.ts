@@ -24,7 +24,7 @@ export function useAppDockingPoseMessages({
   setPoseReviewSelections,
 }: UseAppDockingPoseMessagesOptions) {
   const handleDockingPoseMessage = useCallback((sourceName: unknown, body: DockingPoseMessageBody) => {
-    if (sourceName !== "burrete-viewer" || body?.type !== "dockingPoseChanged") {
+    if (sourceName !== "burette-viewer" || body?.type !== "dockingPoseChanged") {
       return false;
     }
     const documentId = bodyString(body.documentId);

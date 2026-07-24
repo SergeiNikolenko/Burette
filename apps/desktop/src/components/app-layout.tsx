@@ -1,20 +1,31 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { ArrowLeft, ArrowRight, PanelLeft } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
-import { NotificationPopup } from "./notification-popup";
 import { OpenInEditorMenu } from "./open-in-editor-menu";
 import { QuickLookPreview } from "./quick-look-preview";
 import { Sidebar } from "./sidebar";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import { FileDropFeedback } from "./file-drop-feedback";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle, type PanelImperativeHandle } from "./ui/resizable";
 import type { ShellActions, ShellViewState } from "./types";
 import type { FileDropPreview } from "../lib/drop-preview";
 import { isTauriRuntime } from "../lib/tauri";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
+
+// Smallest the viewer/content column may become before the right dock stops
+// squeezing it (the point where an overlay dock would take over).
+const MAIN_MIN_WIDTH = 420;
+
+// react-resizable-panels writes `overflow: auto` inline on every panel, which
+// beats the `overflow: hidden` in our panel classes — content with its own
+// min-size would scroll inside the panel instead of being clipped by it. The
+// caller's `style` is merged after the library's, so this restores clipping.
+const CLIPPED_PANEL_STYLE: CSSProperties = { overflow: "hidden" };
 
 function clampSidebarWidth(width: number, maxSidebarWidth: number) {
   return Math.max(220, Math.min(maxSidebarWidth, Math.round(width)));
@@ -26,14 +37,164 @@ function clampRightDockWidth(width: number, viewportWidth: number, sidebarLayout
   return Math.max(minWidth, Math.min(maxWidth, Math.round(width)));
 }
 
+// Keeps an always-mounted collapsible Panel in sync with an external open/closed
+// flag. Panels are never unmounted (changing a group's panel count throws
+// "Invalid N panel layout" in react-resizable-panels); instead they are
+// collapsed/expanded imperatively. useLayoutEffect applies the initial collapsed
+// state before paint, so closed panels don't flash open on mount.
+function useCollapsiblePanelSync(open: boolean, expandedSizePx: number) {
+  const panelRef = useRef<PanelImperativeHandle | null>(null);
+  // The expanded size is read through a ref so that persisting a size while the
+  // user drags (which updates it every frame) never re-runs this effect. Doing so
+  // used to re-enter expand()/resize() mid-gesture, which reset the library's
+  // drag origin and froze the divider until the pointer was released.
+  const expandedSizeRef = useRef(expandedSizePx);
+  expandedSizeRef.current = expandedSizePx;
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (open) {
+      if (panel.isCollapsed()) {
+        panel.expand();
+        const px = expandedSizeRef.current;
+        if (px > 1) panel.resize(`${px}px`);
+      }
+    } else if (!panel.isCollapsed()) {
+      panel.collapse();
+    }
+  }, [open]);
+  return panelRef;
+}
+
+// `defaultSize` is only meant to seed a panel on mount. Feeding the live stored
+// size back into it re-seeds the panel mid-drag, so capture it once.
+function useInitialSize(sizePx: number) {
+  return useRef(sizePx).current;
+}
+
+// Marks a group as animating for the duration of an open/close toggle. The CSS
+// flex transition on `[data-panels-animating] > [data-panel]` must apply only
+// then: react-resizable-panels rewrites flex-grow every frame during drags and
+// window resizes, and a standing transition would rubber-band both.
+function usePanelToggleAnimation(open: boolean) {
+  const [animating, setAnimating] = useState(false);
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    setAnimating(true);
+    const timer = window.setTimeout(() => setAnimating(false), 220);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+  return animating;
+}
+
+// Whether a collapsible panel reads as open. Collapsed is the library's own
+// state, which a user drag past the snap threshold sets; the pixel size is only
+// a fallback for the mount pass, before the imperative handle is attached.
+function isPanelOpen(panel: PanelImperativeHandle | null, sizePx: number) {
+  return panel ? !panel.isCollapsed() : sizePx > 1;
+}
+
+// Publishes the panels' measured edges as CSS variables on the shell. The tab
+// strip is positioned absolutely over the panel grid, so its edges have to
+// follow what the panels actually occupy: sizing it from the stored sizes
+// desynced whenever a group could not honour one (a right dock squeezed to
+// 118px still reported its wanted 260px, leaving the strip's right edge ~140px
+// off the dock), and it lagged behind every drag because the stored width only
+// reaches the DOM through a React render. ResizeObserver fires between layout
+// and paint, and writing the variables straight to the node keeps drag frames
+// out of React entirely. React only ever writes the seed variables these
+// override (`--sidebar-layout-width`, `--right-dock-width`), so the two never
+// fight over the same property.
+function usePanelEdgeVariables(entries: { elementRef: React.RefObject<HTMLDivElement | null>; property: string }[]) {
+  const shellRef = useRef<HTMLElement | null>(null);
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    const publish = (element: Element, width: number) => {
+      const entry = entriesRef.current.find((candidate) => candidate.elementRef.current === element);
+      if (entry) shell.style.setProperty(entry.property, `${width}px`);
+    };
+    const observer = new ResizeObserver((records) => {
+      for (const record of records) {
+        publish(record.target, record.borderBoxSize?.[0]?.inlineSize ?? record.contentRect.width);
+      }
+    });
+    // No eager measurement: the observer delivers an initial observation for
+    // every element it starts watching, and a value published from here would
+    // be the panel's pre-collapse size on mount. Until that first delivery the
+    // CSS falls back to the stored layout widths.
+    for (const { elementRef } of entriesRef.current) {
+      if (elementRef.current) observer.observe(elementRef.current);
+    }
+    return () => observer.disconnect();
+  }, []);
+  return shellRef;
+}
+
+type PixelGuardEntry = {
+  panelRef: React.RefObject<PanelImperativeHandle | null>;
+  openRef: React.RefObject<boolean>;
+  sizePxRef: React.RefObject<number>;
+};
+
+// groupResizeBehavior="preserve-pixel-size" is inert in react-resizable-panels
+// 4.12.2: any container resize (window resize, or the sidebar moving the
+// workbench) redistributes panel sizes proportionally, so the right dock used
+// to drift through the 360px tab-label container-query threshold and flicker.
+// Re-assert the stored pixel size of fixed panels whenever the group's element
+// resizes. The observer fires between layout and paint, so the proportional
+// intermediate state is corrected before it becomes visible, and correcting the
+// group's inner layout does not resize the group element again (no loop).
+function useGroupPixelGuard(entries: PixelGuardEntry[]) {
+  const elementRef = useRef<HTMLDivElement | null>(null);
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  useEffect(() => {
+    const element = elementRef.current;
+    if (!element) return;
+    let frame = 0;
+    const correct = () => {
+      frame = 0;
+      for (const { panelRef, openRef, sizePxRef } of entriesRef.current) {
+        const panel = panelRef.current;
+        if (!panel || !openRef.current) continue;
+        // A panel the group collapsed under pressure is restored here once the
+        // room is back: the open flag stays true through a squeeze, so this is
+        // the other half of not persisting a forced collapse.
+        if (panel.isCollapsed()) panel.expand();
+        const want = sizePxRef.current;
+        if (want <= 1) continue;
+        if (Math.abs(panel.getSize().inPixels - want) > 0.75) panel.resize(`${want}px`);
+      }
+    };
+    // Correct on the next frame, not inside the observer callback: the library
+    // processes the same container resize in its own observer and converts
+    // px→% through a cached group size, so a same-frame resize() races it and
+    // lands on a stale conversion. By the rAF the library has settled; if the
+    // container moves again the observer refires and schedules another pass.
+    const observer = new ResizeObserver(() => {
+      if (!frame) frame = requestAnimationFrame(correct);
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
+  return elementRef;
+}
+
 export function AppLayout({
   state,
   actions,
-  onDismissStatus,
   onToggleSidebar,
-  onResizeStart,
-  onRightDockResizeStart,
-  onBottomDockResizeStart,
+  onSidebarWidthChange,
   dropPreview,
   onDragEnter,
   onDragOver,
@@ -43,11 +204,8 @@ export function AppLayout({
 }: {
   state: ShellViewState;
   actions: ShellActions;
-  onDismissStatus: () => void;
   onToggleSidebar: () => void;
-  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
-  onRightDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
-  onBottomDockResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onSidebarWidthChange: (width: number) => void;
   dropPreview: FileDropPreview | null;
   onDragEnter: (event: React.DragEvent<HTMLElement>) => void;
   onDragOver: (event: React.DragEvent<HTMLElement>) => void;
@@ -88,21 +246,71 @@ export function AppLayout({
   const rightDockWidth = clampRightDockWidth(state.rightDockWidth, viewportWidth, sidebarLayoutWidth);
   const layoutState = sidebarWidth === state.sidebarWidth && rightDockWidth === state.rightDockWidth ? state : { ...state, sidebarWidth, rightDockWidth };
   const compactLeadingChrome = !tauriRuntime || windowFullscreen;
-  const tabChromeLeft = hostedMcpWidget
-    ? 12
-    : state.sidebarOpen
-      ? sidebarLayoutWidth + 12
-      : compactLeadingChrome ? 112 : 192;
+  // How far the leading window controls reach: the tab strip starts past them
+  // when the sidebar is narrower than they are (or closed). The sidebar's own
+  // edge comes from `--sidebar-edge`, measured rather than stored.
+  const chromeLeadingInset = compactLeadingChrome ? 112 : 192;
   const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
   const bottomDockOpen = !settingsMode && !hostedMcpWidget && state.bottomDockOpen;
-  const dockDragging = state.sidebarDragging || state.rightDockDragging || state.bottomDockDragging;
-  const chromeTransition = dockDragging ? "none" : undefined;
+  // Toggle-animation hooks must come before the collapse/expand sync hooks:
+  // layout effects run in hook order, so registering them the other way round
+  // would collapse the panel before the group is marked as animating and the
+  // toggle would jump instead of sliding.
+  const sidebarAnimating = usePanelToggleAnimation(sidebarVisible);
+  const rightDockAnimating = usePanelToggleAnimation(rightDockOpen);
+  const bottomDockAnimating = usePanelToggleAnimation(bottomDockOpen);
+  const sidebarPanelRef = useCollapsiblePanelSync(sidebarVisible, sidebarWidth);
+  const rightDockPanelRef = useCollapsiblePanelSync(rightDockOpen, rightDockWidth);
+  const bottomDockPanelRef = useCollapsiblePanelSync(bottomDockOpen, state.bottomDockHeight);
+  const initialSidebarSize = useInitialSize(sidebarWidth);
+  const initialRightDockSize = useInitialSize(rightDockWidth);
+  const initialBottomDockSize = useInitialSize(state.bottomDockHeight);
+  // Latest open flags / stored pixel sizes, readable from observer callbacks.
+  const rightDockOpenRef = useRef(rightDockOpen);
+  rightDockOpenRef.current = rightDockOpen;
+  const bottomDockOpenRef = useRef(bottomDockOpen);
+  bottomDockOpenRef.current = bottomDockOpen;
+  const sidebarWidthRef = useRef(sidebarWidth);
+  sidebarWidthRef.current = sidebarWidth;
+  const rightDockWidthRef = useRef(rightDockWidth);
+  rightDockWidthRef.current = rightDockWidth;
+  const bottomDockHeightRef = useRef(state.bottomDockHeight);
+  bottomDockHeightRef.current = state.bottomDockHeight;
+  // The sidebar store only exposes a toggle; wrap it as an idempotent setter so
+  // drag-to-collapse can sync the flag without double-toggling.
+  const sidebarOpenRef = useRef(sidebarVisible);
+  sidebarOpenRef.current = sidebarVisible;
+  const setSidebarOpen = useCallback(
+    (next: boolean) => {
+      if (sidebarOpenRef.current === next) return;
+      sidebarOpenRef.current = next;
+      onToggleSidebar();
+    },
+    [onToggleSidebar],
+  );
+  const workspaceGroupRef = useGroupPixelGuard([
+    { panelRef: sidebarPanelRef, openRef: sidebarOpenRef, sizePxRef: sidebarWidthRef },
+  ]);
+  const workbenchGroupRef = useGroupPixelGuard([
+    { panelRef: rightDockPanelRef, openRef: rightDockOpenRef, sizePxRef: rightDockWidthRef },
+  ]);
+  const workbenchMainGroupRef = useGroupPixelGuard([
+    { panelRef: bottomDockPanelRef, openRef: bottomDockOpenRef, sizePxRef: bottomDockHeightRef },
+  ]);
+  const sidebarElementRef = useRef<HTMLDivElement | null>(null);
+  const rightDockElementRef = useRef<HTMLDivElement | null>(null);
+  const shellRef = usePanelEdgeVariables([
+    { elementRef: sidebarElementRef, property: "--sidebar-edge" },
+    { elementRef: rightDockElementRef, property: "--right-dock-edge" },
+  ]);
   const systemThemeMode = useSystemThemeMode();
+  // The layout widths seed the chrome before the edge observer's first pass;
+  // `--sidebar-edge` / `--right-dock-edge` take over from there.
   const shellStyle = {
     ...buildThemeStyle(state.preferences, systemThemeMode),
     "--sidebar-layout-width": `${sidebarLayoutWidth}px`,
     "--right-dock-width": `${rightDockOpen ? rightDockWidth : 0}px`,
-    "--bottom-dock-height": `${bottomDockOpen ? state.bottomDockHeight : 0}px`,
+    "--chrome-leading-inset": `${chromeLeadingInset}px`,
     "--chrome-height": hostedMcpWidget ? "0px" : undefined,
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
@@ -129,6 +337,7 @@ export function AppLayout({
   }
   return (
     <main
+      ref={shellRef}
       className="app-shell"
       data-theme={state.preferences.theme}
       data-effective-theme={effectiveTheme}
@@ -177,7 +386,7 @@ export function AppLayout({
                   title="Back"
                   aria-label="Back"
                 >
-                  ←
+                  <ArrowLeft size={16} aria-hidden />
                 </button>
                 <button
                   type="button"
@@ -188,7 +397,7 @@ export function AppLayout({
                   title="Forward"
                   aria-label="Forward"
                 >
-                  →
+                  <ArrowRight size={16} aria-hidden />
                 </button>
               </div>
             </div>
@@ -220,80 +429,144 @@ export function AppLayout({
               <ShortcutTooltip label={state.rightDockOpen ? "Hide right dock" : "Show right dock"} shortcut="⌥⌘B" />
             </button>
           </div>
-          <header
-            className="topbar"
-            style={{ left: tabChromeLeft, transition: chromeTransition }}
-          >
+          <header className="topbar">
             <EditorTabs state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
           </header>
         </>
       )}
       <section className="workspace">
-        {(!hostedMcpWidget || settingsMode) ? (
-          <div className="sidebar-shell" style={{ transition: chromeTransition }}>
-            <div className="sidebar-shell-inner" style={{ width: sidebarWidth }}>
+        {/* Sizes AND open flags are persisted from onLayoutChanged, not
+            onResize: onResize is driven by a ResizeObserver and also fires for
+            window resizes, constraint re-clamps and imperative
+            collapse()/expand(), so writing from there overwrote the user's
+            stored size with a clamped one (a 400px sidebar became 280px for
+            good after shrinking the window) and, worse, persisted a collapse
+            the group had forced for lack of room — the dock then stayed closed
+            once the room came back, which is why docks seemed to randomly
+            disappear while resizing. onLayoutChanged reports isUserInteraction
+            for exactly the pointer and keyboard resizes we want to remember;
+            the separator's own state cannot stand in for it, since
+            `data-separator="focus"` outlives the keystrokes that caused it. */}
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="workspace-panels"
+          elementRef={workspaceGroupRef}
+          data-panels-animating={sidebarAnimating || undefined}
+          onLayoutChanged={(_layout, meta) => {
+            if (!meta.isUserInteraction) return;
+            const panel = sidebarPanelRef.current;
+            const px = Math.round(panel?.getSize().inPixels ?? 0);
+            if (px > 1) onSidebarWidthChange(px);
+            if (!settingsMode) setSidebarOpen(isPanelOpen(panel, px));
+          }}
+        >
+          <ResizablePanel
+            id="sidebar"
+            className="workspace-sidebar-panel"
+            style={CLIPPED_PANEL_STYLE}
+            elementRef={sidebarElementRef}
+            panelRef={sidebarPanelRef}
+            collapsible
+            collapsedSize="0px"
+            defaultSize={`${initialSidebarSize}px`}
+            minSize="220px"
+            maxSize={`${maxSidebarWidth}px`}
+            groupResizeBehavior="preserve-pixel-size"
+          >
+            <div className="sidebar-shell-inner">
               <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
             </div>
-          </div>
-        ) : null}
-        {state.sidebarOpen && !settingsMode && !hostedMcpWidget && (
-          <div
-            className="splitter"
-            onPointerDown={onResizeStart}
-            role="separator"
-            aria-orientation="vertical"
-            aria-valuemin={220}
-            aria-valuemax={maxSidebarWidth}
-            aria-valuenow={sidebarWidth}
-            aria-label="Resize sidebar"
-            data-dragging={state.sidebarDragging || undefined}
-          />
-        )}
-        <section className="workbench">
-          <section className="workbench-main">
-            <section className="main-stage">
-              <ViewerArea state={layoutState} actions={actions} />
+          </ResizablePanel>
+          {chromeVisible ? (
+            <ResizableHandle withHandle className="workspace-sidebar-handle" aria-label="Resize sidebar" data-collapsed={!state.sidebarOpen || undefined} />
+          ) : null}
+          <ResizablePanel id="center" className="workspace-center-panel" style={CLIPPED_PANEL_STYLE}>
+            <section className="workbench">
+              <ResizablePanelGroup
+                orientation="horizontal"
+                className="workbench-panels"
+                elementRef={workbenchGroupRef}
+                data-panels-animating={rightDockAnimating || undefined}
+                onLayoutChanged={(_layout, meta) => {
+                  if (!meta.isUserInteraction) return;
+                  const panel = rightDockPanelRef.current;
+                  const px = Math.round(panel?.getSize().inPixels ?? 0);
+                  if (px > 1) actions.setDockSize("right", px);
+                  const open = isPanelOpen(panel, px);
+                  if (open !== rightDockOpenRef.current) actions.setDockOpen("right", open);
+                }}
+              >
+                <ResizablePanel id="workbench-main" className="workbench-main-panel" minSize={`${MAIN_MIN_WIDTH}px`} style={CLIPPED_PANEL_STYLE}>
+                  <ResizablePanelGroup
+                    orientation="vertical"
+                    className="workbench-main-panels"
+                    elementRef={workbenchMainGroupRef}
+                    data-panels-animating={bottomDockAnimating || undefined}
+                    onLayoutChanged={(_layout, meta) => {
+                      if (!meta.isUserInteraction) return;
+                      const panel = bottomDockPanelRef.current;
+                      const px = Math.round(panel?.getSize().inPixels ?? 0);
+                      if (px > 1) actions.setDockSize("bottom", px);
+                      const open = isPanelOpen(panel, px);
+                      if (open !== bottomDockOpenRef.current) actions.setDockOpen("bottom", open);
+                    }}
+                  >
+                    <ResizablePanel id="main" className="main-panel" style={CLIPPED_PANEL_STYLE}>
+                      <section className="main-stage">
+                        <ViewerArea state={layoutState} actions={actions} />
+                      </section>
+                    </ResizablePanel>
+                    {chromeVisible ? (
+                      <ResizableHandle withHandle className="resizable-handle-horizontal" aria-label="Resize bottom dock" data-collapsed={!state.bottomDockOpen || undefined} />
+                    ) : null}
+                    <ResizablePanel
+                      id="bottom-dock"
+                      className="dock-panel-shell"
+                      style={CLIPPED_PANEL_STYLE}
+                      panelRef={bottomDockPanelRef}
+                      collapsible
+                      collapsedSize="0px"
+                      defaultSize={`${initialBottomDockSize}px`}
+                      minSize="180px"
+                      maxSize="70%"
+                      groupResizeBehavior="preserve-pixel-size"
+                    >
+                      {/* Always mounted: DockPanel renders its own closed state
+                          (data-open / aria-hidden / inert) and unmounting it on
+                          close would drop the dock's internal state and re-fire
+                          the xyzrender auto-open on every reopen. */}
+                      <DockPanel area="bottom" state={layoutState} actions={actions} />
+                    </ResizablePanel>
+                  </ResizablePanelGroup>
+                </ResizablePanel>
+                {chromeVisible ? (
+                  <ResizableHandle withHandle aria-label="Resize right dock" data-collapsed={!state.rightDockOpen || undefined} />
+                ) : null}
+                <ResizablePanel
+                  id="right-dock"
+                  className="dock-panel-shell"
+                  style={CLIPPED_PANEL_STYLE}
+                  elementRef={rightDockElementRef}
+                  panelRef={rightDockPanelRef}
+                  collapsible
+                  collapsedSize="0px"
+                  defaultSize={`${initialRightDockSize}px`}
+                  minSize="260px"
+                  maxSize="70%"
+                  groupResizeBehavior="preserve-pixel-size"
+                >
+                  <DockPanel area="right" state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
+                </ResizablePanel>
+              </ResizablePanelGroup>
             </section>
-            {!settingsMode && !hostedMcpWidget && (
-              <DockPanel
-                area="bottom"
-                state={layoutState}
-                actions={actions}
-                onResizeStart={onBottomDockResizeStart}
-              />
-            )}
-          </section>
-          {!settingsMode && !hostedMcpWidget && (
-            <DockPanel
-              area="right"
-              state={layoutState}
-              actions={actions}
-              onResizeStart={onRightDockResizeStart}
-              readOnly={hostedMcpWidget}
-            />
-          )}
-        </section>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </section>
       <FileDropFeedback preview={dropPreview} />
-      {state.status && (
-        <NotificationPopup notice={state.status} onDismiss={onDismissStatus} />
-      )}
     </main>
   );
 }
 
 function DockToggleIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="18"
-      height="18"
-      viewBox="0 0 18 18"
-      fill="none"
-      aria-hidden="true"
-    >
-      <rect x="2.25" y="2.25" width="13.5" height="13.5" rx="3.25" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M6.75 4.75V13.25" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
+  return <PanelLeft className={className} size={18} strokeWidth={1.8} aria-hidden />;
 }

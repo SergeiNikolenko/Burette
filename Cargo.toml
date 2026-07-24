@@ -1,9 +1,9 @@
 [workspace]
 members = [
   "apps/desktop/src-tauri",
-  "crates/burrete-compute-core",
-  "crates/burrete-compute-metal",
-  "crates/burrete-compute-protocol",
-  "crates/burrete-core",
+  "crates/burette-compute-core",
+  "crates/burette-compute-metal",
+  "crates/burette-compute-protocol",
+  "crates/burette-core",
 ]
 resolver = "2"

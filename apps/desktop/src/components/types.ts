@@ -8,6 +8,7 @@ import type { UpdatePreferences, UpdateState } from "../update";
 import type { SidebarProject } from "../lib/sidebar-projects";
 import type { AppSettingsSectionId } from "../lib/settings-sections";
 import type { DockArea, DockDropInput, DockDroppedStructure, DockTab, DockTabKind, DockToolKind } from "../lib/dock";
+import type { StructureStory } from "../lib/structure-story";
 
 export type { AppSettingsSectionId } from "../lib/settings-sections";
 
@@ -29,10 +30,8 @@ export type StructureViewerAction =
     };
 
 export type StatusNotice = {
-  id: number;
   kind: StatusKind;
   message: string;
-  details: string[];
 };
 
 export type ViewerLigandSelection = {
@@ -276,21 +275,18 @@ export type ShellViewState = {
   page: AppPage;
   sidebarOpen: boolean;
   sidebarWidth: number;
-  sidebarDragging: boolean;
   rightDockOpen: boolean;
   rightDockWidth: number;
   rightDockTabs: DockTab[];
   rightDockActiveTab: DockTabKind;
   rightDockDocumentId: string | null;
   rightDockTool: DockToolKind | null;
-  rightDockDragging: boolean;
   bottomDockOpen: boolean;
   bottomDockHeight: number;
   bottomDockTabs: DockTab[];
   bottomDockActiveTab: DockTabKind;
   bottomDockDocumentId: string | null;
   bottomDockTool: DockToolKind | null;
-  bottomDockDragging: boolean;
   dockDroppedStructures: DockDroppedStructure[];
   structureDragActive: boolean;
   poseReviewSelections: Record<string, number>;
@@ -305,6 +301,7 @@ export type ShellViewState = {
   conformerSettings: ConformerSettings;
   conformerJobs: ConformerJob[];
   viewerLigandSelection: ViewerLigandSelection | null;
+  structureStory: StructureStory | null;
   structureOverlayMode: StructureOverlayMode;
   xtbStatus: XtbStatus | null;
   xtbSettings: XtbSettings;

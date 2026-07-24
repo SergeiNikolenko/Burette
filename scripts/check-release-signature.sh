@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP="${1:-build/Burrete.app}"
-EXTENSION_ID="com.local.BurreteV10.Preview"
-THUMBNAIL_EXTENSION_ID="com.local.BurreteV10.Thumbnail"
-ALLOW_ADHOC="${BURRETE_RELEASE_ALLOW_ADHOC:-0}"
+APP="${1:-build/Burette.app}"
+EXTENSION_ID="com.local.BuretteV10.Preview"
+THUMBNAIL_EXTENSION_ID="com.local.BuretteV10.Thumbnail"
+ALLOW_ADHOC="${BURETTE_RELEASE_ALLOW_ADHOC:-0}"
 
 if [[ ! -d "$APP" ]]; then
   echo "error: release app is missing: $APP" >&2
   exit 1
 fi
 
-APPEX="$APP/Contents/PlugIns/BurretePreview.appex"
+APPEX="$APP/Contents/PlugIns/BurettePreview.appex"
 if [[ ! -d "$APPEX" ]]; then
-  echo "error: release app is missing BurretePreview.appex" >&2
+  echo "error: release app is missing BurettePreview.appex" >&2
   exit 1
 fi
-THUMBNAIL_APPEX="$APP/Contents/PlugIns/BurreteThumbnail.appex"
+THUMBNAIL_APPEX="$APP/Contents/PlugIns/BuretteThumbnail.appex"
 if [[ ! -d "$THUMBNAIL_APPEX" ]]; then
-  echo "error: release app is missing BurreteThumbnail.appex" >&2
+  echo "error: release app is missing BuretteThumbnail.appex" >&2
   exit 1
 fi
 require_hardened_runtime() {

@@ -3,8 +3,8 @@ use std::{
     mem::size_of,
 };
 
-use burrete_compute_core::{Fingerprint2048, FINGERPRINT_BYTES};
-use burrete_compute_protocol::{
+use burette_compute_core::{Fingerprint2048, FINGERPRINT_BYTES};
+use burette_compute_protocol::{
     ArtifactManifest, EnginePackManifest, JobSnapshot, MolecularSnapshotRecordV1,
     OrderedRecordMoleculeIdentityHasher, PackedArrayDescriptor, PackedByteOrder, PackedDType,
     PackedFileDescriptor, ResultPackManifest, ResultPackRef, CLUSTER_FINGERPRINT_ARRAY_NAME,

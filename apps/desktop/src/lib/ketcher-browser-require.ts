@@ -70,14 +70,14 @@ export function installKetcherBrowserRequire() {
   };
   const globalWithRequire = globalThis as typeof globalThis & {
     require?: BrowserRequire;
-    __burreteRequire?: BrowserRequire;
+    __buretteRequire?: BrowserRequire;
   };
   Object.defineProperty(globalWithRequire, "require", {
     configurable: true,
     writable: true,
     value: browserRequire,
   });
-  Object.defineProperty(globalWithRequire, "__burreteRequire", {
+  Object.defineProperty(globalWithRequire, "__buretteRequire", {
     configurable: true,
     writable: true,
     value: browserRequire,

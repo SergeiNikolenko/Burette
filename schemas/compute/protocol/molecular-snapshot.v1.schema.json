@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://burrete.app/schemas/compute/protocol/molecular-snapshot.v1.schema.json",
-  "title": "Burrete MolecularSnapshotManifest v1",
+  "$id": "https://burette.app/schemas/compute/protocol/molecular-snapshot.v1.schema.json",
+  "title": "Burette MolecularSnapshotManifest v1",
   "type": "object",
   "required": ["schemaVersion", "snapshotId", "snapshotSha256", "frozenSource", "layout", "createdAtMs"],
   "additionalProperties": false,
   "properties": {
     "schemaVersion": {
-      "const": "burrete.molecular-snapshot.v1"
+      "const": "burette.molecular-snapshot.v1"
     },
     "snapshotId": {
       "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
@@ -58,7 +58,7 @@
       "additionalProperties": false,
       "properties": {
         "schemaVersion": {
-          "const": "burrete.molecular-snapshot.v1"
+          "const": "burette.molecular-snapshot.v1"
         },
         "snapshotId": {
           "$ref": "common.v1.schema.json#/$defs/nonNilUuid"
@@ -161,7 +161,7 @@
               "maximum": 1099511627776
             },
             "mediaType": {
-              "const": "application/vnd.burrete.molecular-records-v1+jsonl"
+              "const": "application/vnd.burette.molecular-records-v1+jsonl"
             }
           }
         }

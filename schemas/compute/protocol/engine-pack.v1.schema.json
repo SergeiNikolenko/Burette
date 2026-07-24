@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://burrete.app/schemas/compute/protocol/engine-pack.v1.schema.json",
-  "title": "Burrete EnginePackManifest cluster.v1",
+  "$id": "https://burette.app/schemas/compute/protocol/engine-pack.v1.schema.json",
+  "title": "Burette EnginePackManifest cluster.v1",
   "type": "object",
   "required": [
     "schemaVersion",

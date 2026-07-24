@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, path::Path};
 
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     CapabilityMaturity, ConformerInitialization, MmffVariant, RepresentativePolicy,
     WorkflowTemplateId, MAX_JSON_SAFE_INTEGER, MAX_PACK_FILES, MAX_PACK_RECORDS,
 };

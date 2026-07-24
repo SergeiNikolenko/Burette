@@ -3,6 +3,7 @@ import type { StructureOverlayMode, ViewerLigandSelection } from "../components/
 import type { ViewerDocument, ViewerPreferences } from "../types";
 import type { DockTabKind } from "../lib/dock";
 import { updateHostedMcpSelectionContext } from "../lib/hosted-mcp-widget";
+import { structureStoryFromViewerMessage, type StructureStory } from "../lib/structure-story";
 
 type ViewerStateMessageBody = Record<string, unknown> | null | undefined;
 type SetViewerLigandSelections = (
@@ -15,6 +16,11 @@ type SetStructureOverlayModes = (
     previous: Record<string, StructureOverlayMode>,
   ) => Record<string, StructureOverlayMode>,
 ) => void;
+type SetStructureStories = (
+  updater: (
+    previous: Record<string, StructureStory | null>,
+  ) => Record<string, StructureStory | null>,
+) => void;
 
 type UseAppViewerStateMessagesOptions = {
   activeDocument: ViewerDocument | null;
@@ -25,6 +31,7 @@ type UseAppViewerStateMessagesOptions = {
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setViewerLigandSelections: SetViewerLigandSelections;
   setStructureOverlayModes: SetStructureOverlayModes;
+  setStructureStories: SetStructureStories;
   toggleSidebar: () => void;
 };
 
@@ -46,44 +53,56 @@ export function useAppViewerStateMessages({
   setPreference,
   setViewerLigandSelections,
   setStructureOverlayModes,
+  setStructureStories,
   toggleSidebar,
 }: UseAppViewerStateMessagesOptions) {
   const handleViewerStateMessage = useCallback((sourceName: unknown, body: ViewerStateMessageBody) => {
-    if ((sourceName === "burrete-viewer" || sourceName === "burrete-grid") && body?.type === "openCommandPalette") {
+    if ((sourceName === "burette-viewer" || sourceName === "burette-grid") && body?.type === "openCommandPalette") {
       openCommandPalette();
       return true;
     }
 
-    if ((sourceName === "burrete-viewer" || sourceName === "burrete-grid") && body?.type === "toggleSidebar") {
+    if ((sourceName === "burette-viewer" || sourceName === "burette-grid") && body?.type === "toggleSidebar") {
       toggleSidebar();
       return true;
     }
 
-    if (sourceName === "burrete-viewer" && body?.type === "setTheme") {
+    if (sourceName === "burette-viewer" && body?.type === "setTheme") {
       const theme = body.value === "light" || body.value === "dark" ? body.value : null;
       if (theme) setPreference("theme", theme);
       return true;
     }
 
-    if (sourceName === "burrete-viewer" && body?.type === "openTrajectorySmoothing") {
+    if (sourceName === "burette-viewer" && body?.type === "openTrajectorySmoothing") {
       openDockTab("right", "inspector");
       window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent("burrete:trajectory-smoothing-toggle-requested", { detail: body }));
+        window.dispatchEvent(new CustomEvent("burette:trajectory-smoothing-toggle-requested", { detail: body }));
       }, 0);
       return true;
     }
 
-    if (sourceName === "burrete-viewer" && body?.type === "trajectorySmoothingChanged") {
-      window.dispatchEvent(new CustomEvent("burrete:trajectory-smoothing-changed", { detail: body }));
+    if (sourceName === "burette-viewer" && body?.type === "trajectorySmoothingChanged") {
+      window.dispatchEvent(new CustomEvent("burette:trajectory-smoothing-changed", { detail: body }));
       return true;
     }
 
-    if (sourceName === "burrete-viewer" && body?.type === "trajectoryFrameChanged") {
-      window.dispatchEvent(new CustomEvent("burrete:trajectory-frame-changed", { detail: body }));
+    if (sourceName === "burette-viewer" && body?.type === "trajectoryFrameChanged") {
+      window.dispatchEvent(new CustomEvent("burette:trajectory-frame-changed", { detail: body }));
       return true;
     }
 
-    if (sourceName === "burrete-viewer" && body?.type === "selectionChanged") {
+    if (
+      sourceName === "burette-viewer"
+      && (body?.type === "structureStoryChanged" || body?.type === "openStructureStory")
+    ) {
+      const story = structureStoryFromViewerMessage(body);
+      if (!story) return true;
+      setStructureStories((previous) => ({ ...previous, [story.documentId]: story }));
+      if (body.type === "openStructureStory") openDockTab("right", "story");
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "selectionChanged") {
       const documentId = bodyString(body.documentId);
       if (!documentId) return true;
       const selection = body.selection && typeof body.selection === "object"
@@ -106,12 +125,12 @@ export function useAppViewerStateMessages({
       return true;
     }
 
-    if (sourceName === "burrete-viewer" && body?.type === "sceneActionsApplied") {
-      void window.BurreteHostedAppBridge?.updateScene(body.report);
+    if (sourceName === "burette-viewer" && body?.type === "sceneActionsApplied") {
+      void window.BuretteHostedAppBridge?.updateScene(body.report);
       return true;
     }
 
-    if (sourceName === "burrete-viewer" && body?.type === "structureOverlayModeChanged") {
+    if (sourceName === "burette-viewer" && body?.type === "structureOverlayModeChanged") {
       const documentId = bodyString(body.documentId);
       if (!documentId) return true;
       const mode: StructureOverlayMode = body.mode === "all" ? "all" : "single";
@@ -119,7 +138,7 @@ export function useAppViewerStateMessages({
       return true;
     }
 
-    if (sourceName === "burrete-viewer" && body?.type === "rendererChanged") {
+    if (sourceName === "burette-viewer" && body?.type === "rendererChanged") {
       const documentId = bodyString(body.documentId);
       const targetDocument = (documentId
         ? documents.find((document) => document.id === documentId)
@@ -142,7 +161,7 @@ export function useAppViewerStateMessages({
     }
 
     return false;
-  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, setPreference, setStructureOverlayModes, setViewerLigandSelections, toggleSidebar]);
+  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar]);
 
   return { handleViewerStateMessage };
 }

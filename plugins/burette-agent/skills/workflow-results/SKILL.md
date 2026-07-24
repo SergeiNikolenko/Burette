@@ -5,13 +5,13 @@ description: "Use when accepting and displaying externally produced protein prep
 
 # Workflow Results
 
-Burrete is a workspace interface, not a general job manager. Heavy
+Burette is a workspace interface, not a general job manager. Heavy
 workflows should run through domain tools or servers, then hand local artifacts
-back to Burrete.
+back to Burette.
 
 ## External Workflows
 
-Treat these as external unless a dedicated Burrete runtime is added:
+Treat these as external unless a dedicated Burette runtime is added:
 
 - protein preparation;
 - ligand preparation;

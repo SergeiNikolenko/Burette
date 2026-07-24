@@ -22,7 +22,7 @@ if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(packageVersion)) {
 }
 
 const bunLock = readBunLock();
-const workspacePackageVersion = bunLock.workspaces?.['packages/burrete']?.version;
+const workspacePackageVersion = bunLock.workspaces?.['packages/burette']?.version;
 if (workspacePackageVersion !== packageVersion) {
   fail(`bun.lock workspace version ${workspacePackageVersion || 'unknown'} does not match package.json ${packageVersion}`);
 }
@@ -38,7 +38,7 @@ if (cargoVersion !== packageVersion) {
   fail(`Tauri Rust crate version ${cargoVersion || 'unknown'} does not match package.json ${packageVersion}`);
 }
 
-const project = readFileSync('Burrete.xcodeproj/project.pbxproj', 'utf8');
+const project = readFileSync('Burette.xcodeproj/project.pbxproj', 'utf8');
 const marketingVersions = [...project.matchAll(/MARKETING_VERSION = ([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?);/g)].map(match => match[1]);
 if (marketingVersions.length === 0) {
   fail('no MARKETING_VERSION entries found in Xcode project');

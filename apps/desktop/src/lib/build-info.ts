@@ -2,11 +2,11 @@ import packageInfo from "../../../../package.json";
 import type { BuildInfo } from "../components/types";
 import { isTauriRuntime } from "./tauri";
 
-const RELEASE_IDENTIFIER = "com.local.BurreteV10";
-const buildIdentifier = import.meta.env.VITE_BURRETE_BUILD_IDENTIFIER;
-const buildFlavor = import.meta.env.VITE_BURRETE_BUILD_FLAVOR;
-const buildChannel = import.meta.env.VITE_BURRETE_BUILD_CHANNEL;
-const isAgentShell = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
+const RELEASE_IDENTIFIER = "com.local.BuretteV10";
+const buildIdentifier = import.meta.env.VITE_BURETTE_BUILD_IDENTIFIER;
+const buildFlavor = import.meta.env.VITE_BURETTE_BUILD_FLAVOR;
+const buildChannel = import.meta.env.VITE_BURETTE_BUILD_CHANNEL;
+const isAgentShell = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
 function devFlavorFromIdentifier(identifier: string) {
   return identifier.match(/\.Dev\.([A-Za-z][A-Za-z0-9-]*)$/u)?.[1] ?? null;
@@ -41,7 +41,7 @@ function buildInfoFromValues(
 }
 
 export const defaultBuildInfo = buildInfoFromValues(
-  "Burrete",
+  "Burette",
   packageInfo.version,
   buildIdentifier ?? (import.meta.env.DEV ? "browser-dev" : RELEASE_IDENTIFIER),
   import.meta.env.DEV || isAgentShell,

@@ -29,12 +29,12 @@ export async function extractStructureComponentFile({
   if (records.length === 0) {
     throw new Error("No atoms matched the requested component.");
   }
-  const outputDir = path.join(tmpdir(), "burrete-agent-components");
+  const outputDir = path.join(tmpdir(), "burette-agent-components");
   await mkdir(outputDir, { recursive: true });
   const outputTitle = safeFileName(title || componentTitle({ component, chain, compId, seq, element }));
   const outputPath = path.join(outputDir, `${outputTitle}.pdb`);
   const contents = [
-    `REMARK Extracted by Burrete agent from ${sourcePath}`,
+    `REMARK Extracted by Burette agent from ${sourcePath}`,
     `REMARK Component ${componentTitle({ component, chain, compId, seq, element })}`,
     ...records.map((record) => record.line),
     "END",
@@ -107,12 +107,12 @@ export async function editStructureFragmentFile({
     outputLines.push(...replacementLines);
   }
 
-  const outputDir = path.join(tmpdir(), "burrete-agent-components");
+  const outputDir = path.join(tmpdir(), "burette-agent-components");
   await mkdir(outputDir, { recursive: true });
   const outputTitle = safeFileName(title || `${operation}-${componentTitle({ component, chain, compId, seq, element }) || "fragment"}`);
   const outputPath = path.join(outputDir, `${outputTitle}.pdb`);
   const header = [
-    `REMARK Derived by Burrete agent from ${sourcePath}`,
+    `REMARK Derived by Burette agent from ${sourcePath}`,
     `REMARK Operation ${operation}`,
     `REMARK Fragment ${componentTitle({ component, chain, compId, seq, element })}`,
   ];

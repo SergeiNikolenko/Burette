@@ -47,8 +47,10 @@ export function ViewerFrame({
   const runtimePathForFrame = (runtimePath: string) => heroEmbed
     ? runtimePath.replace(
         "</head>",
-        `<style id="burrete-hero-interaction-lock">
+        `<style id="burette-hero-interaction-lock">
           #buret-toolbar,
+          #buret-scene-tree-toggle,
+          #buret-scene-tree,
           .buret-preview-dock,
           .buret-docking-poses,
           .msp-viewport-top-left-controls,
@@ -74,13 +76,13 @@ export function ViewerFrame({
     if (document.renderer === "grid2d") {
       if (readOnly) {
         event.currentTarget.contentWindow?.postMessage({
-          source: "burrete-grid-host",
+          source: "burette-grid-host",
           body: { type: "gridReadOnlyChanged", readOnly: true },
         }, "*");
       }
       if (isGridDocumentCloseTransitionActive(document.id)) {
         event.currentTarget.contentWindow?.postMessage({
-          source: "burrete-grid-host",
+          source: "burette-grid-host",
           body: { type: "gridCloseTransitionChanged", active: true },
         }, "*");
         replayPendingGridCloseTransitionRequests(event.currentTarget);
@@ -104,7 +106,7 @@ export function ViewerFrame({
       "data-document-id": document.id,
       "data-renderer": document.renderer,
       "data-read-only": readOnly ? "true" : undefined,
-      name: readOnly ? "burrete-read-only" : "burrete-editable",
+      name: readOnly ? "burette-read-only" : "burette-editable",
       "data-source-preview-role": active ? "active" : "staging",
       "data-source-preview-request-id": identity?.requestId,
       "data-source-preview-revision": identity?.revision,
@@ -141,7 +143,7 @@ export function ViewerFrame({
       "data-document-id": document.id,
       "data-renderer": document.renderer,
       "data-read-only": readOnly ? "true" : undefined,
-      name: readOnly ? "burrete-read-only" : "burrete-editable",
+      name: readOnly ? "burette-read-only" : "burette-editable",
       onLoad: document.renderer === "grid2d"
         ? (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, true)
         : undefined,

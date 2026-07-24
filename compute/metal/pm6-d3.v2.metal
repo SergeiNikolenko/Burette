@@ -51,7 +51,7 @@ inline float interpolate_c6(
     return weight_sum > 0.0f ? weighted / weight_sum : fallback;
 }
 
-kernel void burrete_pm6_d3_v2(
+kernel void burette_pm6_d3_v2(
     device const D3AtomV2* atoms [[buffer(0)]],
     device const D3MoleculeV2* molecules [[buffer(1)]],
     constant uint& molecule_count [[buffer(2)]],

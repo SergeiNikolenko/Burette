@@ -456,7 +456,7 @@ fn run_xyzrender_smiles_batch_helper(
     let helper_launch = xyzrender_batch_helper_launch(executable).ok_or_else(|| {
         "Could not resolve Python interpreter for xyzrender batch helper.".to_string()
     })?;
-    let helper_path = std::env::temp_dir().join("burrete-xyzrender-grid-batch-helper.py");
+    let helper_path = std::env::temp_dir().join("burette-xyzrender-grid-batch-helper.py");
     fs::write(&helper_path, XYZRENDER_GRID_BATCH_HELPER)
         .map_err(|err| format!("Could not write xyzrender batch helper: {err}"))?;
     let payload = XyzrenderSmilesBatchHelperPayload {
@@ -1824,7 +1824,7 @@ fn resolve_xyzrender_executable() -> Result<PathBuf, String> {
             return Ok(path);
         }
     }
-    Err("External xyzrender executable was not found or is not executable. Bundle xyzrender-runtime with Burrete, install xyzrender in ~/.local/bin, or make it available on PATH.".into())
+    Err("External xyzrender executable was not found or is not executable. Bundle xyzrender-runtime with Burette, install xyzrender in ~/.local/bin, or make it available on PATH.".into())
 }
 
 fn bundled_xyzrender_candidates_from_executable(executable: &Path) -> Vec<PathBuf> {
@@ -1880,7 +1880,7 @@ pub(crate) fn xyzrender_preset_options() -> serde_json::Value {
 }
 
 pub(crate) fn xyzrender_runtime_status() -> XyzrenderRuntimeStatus {
-    const INSTALL_HINT: &str = "Bundle xyzrender-runtime with Burrete, install xyzrender in ~/.local/bin, or make it available on PATH.";
+    const INSTALL_HINT: &str = "Bundle xyzrender-runtime with Burette, install xyzrender in ~/.local/bin, or make it available on PATH.";
     match resolve_xyzrender_executable() {
         Ok(path) => XyzrenderRuntimeStatus {
             installed: true,
@@ -1930,7 +1930,7 @@ mod tests {
     #[test]
     fn times_out_hung_xyzrender_processes() {
         let directory =
-            std::env::temp_dir().join(format!("burrete-xyzrender-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-xyzrender-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&directory).expect("test directory should be created");
         let executable = directory.join("xyzrender");
         fs::write(
@@ -1984,7 +1984,7 @@ mod tests {
     #[test]
     fn xyzrender_cache_key_changes_for_file_and_controls() {
         let directory = std::env::temp_dir().join(format!(
-            "burrete-xyzrender-cache-key-{}",
+            "burette-xyzrender-cache-key-{}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&directory).expect("test directory should be created");
@@ -2040,7 +2040,7 @@ mod tests {
     #[test]
     fn xyzrender_cache_key_uses_inline_content_not_temporary_path() {
         let directory = std::env::temp_dir().join(format!(
-            "burrete-xyzrender-inline-cache-key-{}",
+            "burette-xyzrender-inline-cache-key-{}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&directory).expect("test directory should be created");
@@ -2096,7 +2096,7 @@ mod tests {
     #[test]
     fn cached_xyzrender_artifact_copies_svg_without_process() {
         let directory = std::env::temp_dir().join(format!(
-            "burrete-xyzrender-cache-hit-{}",
+            "burette-xyzrender-cache-hit-{}",
             uuid::Uuid::new_v4()
         ));
         let entry = directory.join("entry");
@@ -2132,12 +2132,12 @@ mod tests {
 
     #[test]
     fn finds_bundled_xyzrender_runtime_from_app_and_appex_executables() {
-        let app_executable = Path::new("/Applications/Burrete.app/Contents/MacOS/burrete");
+        let app_executable = Path::new("/Applications/Burette.app/Contents/MacOS/burette");
         let appex_executable = Path::new(
-            "/Applications/Burrete.app/Contents/PlugIns/BurretePreview.appex/Contents/MacOS/BurretePreview",
+            "/Applications/Burette.app/Contents/PlugIns/BurettePreview.appex/Contents/MacOS/BurettePreview",
         );
         let bundled = PathBuf::from(
-            "/Applications/Burrete.app/Contents/Resources/xyzrender-runtime/bin/xyzrender",
+            "/Applications/Burette.app/Contents/Resources/xyzrender-runtime/bin/xyzrender",
         );
 
         assert!(bundled_xyzrender_candidates_from_executable(app_executable).contains(&bundled));
@@ -2147,7 +2147,7 @@ mod tests {
     #[test]
     fn resolves_bundled_xyzrender_batch_helper_python_from_shell_wrapper() {
         let directory = std::env::temp_dir().join(format!(
-            "burrete-xyzrender-batch-python-{}",
+            "burette-xyzrender-batch-python-{}",
             uuid::Uuid::new_v4()
         ));
         let runtime_bin = directory.join("Resources/xyzrender-runtime/bin");
@@ -2391,7 +2391,7 @@ mod tests {
     #[test]
     fn keeps_esp_light_and_pairs_gradient_with_sibling_density_cube() {
         let directory =
-            std::env::temp_dir().join(format!("burrete-cube-pair-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("burette-cube-pair-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&directory).expect("test directory should be created");
         let dens_path = directory.join("caffeine_dens.cube");
         let esp_path = directory.join("caffeine_esp.cube");

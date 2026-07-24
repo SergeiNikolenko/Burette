@@ -29,5 +29,5 @@ Quick Look behavior.
 - Keep PR-time checks focused enough to be useful during review.
 - Move broad native, all-sample, and release-only validation into scheduled or
   release workflows unless a PR touches that surface.
-- Reuse `.github/actions/setup-burrete-toolchain` for Bun, dependencies, and
+- Reuse `.github/actions/setup-burette-toolchain` for Bun, dependencies, and
   `xyzrender` setup so CI, nightly smoke, and release jobs do not drift.

@@ -6,7 +6,7 @@
     const app = document.getElementById('app');
     if (!app) return;
     app.insertAdjacentHTML('afterend', `
-      <div id="buret-toolbar" role="toolbar" aria-label="Burrete preview controls">
+      <div id="buret-toolbar" role="toolbar" aria-label="Burette preview controls">
         <div class="buret-toolbar-content" data-buret-toolbar-content>
           <button class="buret-button buret-preview-dock-toggle" type="button" data-buret-dock-toggle="bottom" aria-label="Show bottom dock" title="Show bottom dock">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-13Zm2 0v10h12v-10a.5.5 0 0 0-.5-.5h-11a.5.5 0 0 0-.5.5Zm0 13a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5V17H6v1.5Z" fill="currentColor"/></svg>
@@ -19,7 +19,6 @@
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L<span class="buret-tooltip" role="tooltip">Toggle Mol* left object tree</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R<span class="buret-tooltip" role="tooltip">Toggle Mol* right properties panel</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq<span class="buret-tooltip" role="tooltip">Toggle sequence panel</span></button>
-          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="log" aria-label="Toggle log panel" title="Toggle log panel">Log<span class="buret-tooltip" role="tooltip">Toggle Mol* log panel</span></button>
           <div class="buret-molstar-style-slot" data-buret-molstar-style-slot>
             <select class="buret-select" data-buret-molstar-style aria-label="Mol* preview style" title="Mol* preview style"></select>
             <span class="buret-tooltip" role="tooltip">Choose Mol* representation style</span>
@@ -133,6 +132,62 @@
           </details>
         </div>
       </div>
+      <div id="buret-viewport-corner" class="buret-viewport-corner">
+        <button id="buret-scene-tree-toggle" class="buret-corner-toggle hidden" type="button" data-buret-action="scene-tree" aria-label="Toggle scene tree" aria-haspopup="dialog" aria-controls="buret-scene-tree" aria-expanded="false" title="Scene tree (⌘T)">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+          <span class="buret-tooltip" role="tooltip">Scene tree (⌘T)</span>
+        </button>
+      </div>
+      <div id="buret-viewport-rail" class="buret-viewport-rail hidden" role="toolbar" aria-label="Viewport controls">
+        <button class="buret-rail-button" type="button" data-buret-viewport-action="camera" aria-haspopup="menu" aria-expanded="false" aria-label="Camera" title="Camera">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5"/></svg>
+          <span class="buret-tooltip" role="tooltip">Camera</span>
+        </button>
+        <button class="buret-rail-button" type="button" data-buret-viewport-action="screenshot" aria-label="Save a screenshot" title="Save a screenshot">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z"/><path d="M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/></svg>
+          <span class="buret-tooltip" role="tooltip">Save a screenshot</span>
+        </button>
+        <button class="buret-rail-button" type="button" data-buret-viewport-action="illumination" aria-pressed="false" aria-label="Realistic lighting" title="Realistic lighting">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"/><path d="M12 1.8V4M12 20v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M1.8 12H4M20 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg>
+          <span class="buret-tooltip" role="tooltip">Realistic lighting</span>
+        </button>
+        <button class="buret-rail-button" type="button" data-buret-viewport-action="animate" aria-haspopup="menu" aria-expanded="false" data-motion="off" aria-label="Animate the scene" title="Animate the scene">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.8 3.9v4.3h-4.3"/><path d="m10.4 9.2 4.8 2.8-4.8 2.8Z"/></svg>
+          <span class="buret-tooltip" role="tooltip">Animate the scene</span>
+        </button>
+        <button class="buret-rail-button" type="button" data-buret-viewport-action="select-mode" aria-pressed="false" aria-label="Selection mode" title="Selection mode">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 7.2-6 1.6-1.6 6L5 3Z"/></svg>
+          <span class="buret-tooltip" role="tooltip">Selection mode</span>
+        </button>
+      </div>
+      <div id="buret-selection-bar" class="buret-selection-bar hidden" role="toolbar" aria-label="Selection controls">
+        <select class="buret-select buret-selection-level" data-buret-selection-level aria-label="Picking level" title="What one click picks"></select>
+        <button class="buret-selection-button" type="button" data-buret-selection-action="query" aria-haspopup="menu" aria-expanded="false" title="Select part of the structure">
+          <span>Select</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <span class="buret-selection-count" data-buret-selection-count aria-live="polite">Nothing selected</span>
+        <button class="buret-selection-button" type="button" data-buret-selection-action="apply" aria-haspopup="menu" aria-expanded="false" title="Act on the selection">
+          <span>Apply</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+        <button class="buret-selection-icon" type="button" data-buret-selection-action="exit" aria-label="Leave selection mode" title="Leave selection mode">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="buret-sequence-resize" class="buret-sequence-resize" data-buret-sequence-resize role="separator" aria-orientation="horizontal" aria-label="Resize sequence"></div>
+      <aside id="buret-scene-tree" class="buret-scene-tree hidden" data-buret-scene-tree role="dialog" aria-label="Scene tree" aria-hidden="true">
+        <div class="buret-scene-tree-header" data-buret-panel-handle>
+          <span class="buret-scene-tree-title">Scene</span>
+          <span class="buret-scene-tree-header-actions">
+          <button class="buret-scene-tree-header-action" type="button" data-buret-action="scene-tree-expand-all" aria-label="Collapse all" title="Collapse all"></button>
+          <button class="buret-scene-tree-header-action" type="button" data-buret-action="scene-tree-close" aria-label="Close scene tree" title="Close scene tree">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+          </span>
+        </div>
+        <div class="buret-scene-tree-body" data-buret-scene-tree-body></div>
+      </aside>
       <button id="buret-compute-menu-trigger" class="buret-generate-3d-control hidden" type="button" data-buret-action="generate-3d-conformer" aria-label="Open molecular compute menu" aria-haspopup="menu" aria-controls="buret-compute-menu" aria-expanded="false">
         <span data-buret-generate-3d-label>Compute</span>
         <span class="buret-tooltip" role="tooltip">Native molecular compute</span>
@@ -147,7 +202,7 @@
       <aside class="buret-preview-dock buret-preview-dock-right" data-buret-preview-dock="right" aria-label="Right dock" aria-hidden="true"></aside>
       <section class="buret-preview-dock buret-preview-dock-bottom" data-buret-preview-dock="bottom" aria-label="Bottom dock" aria-hidden="true"></section>
     `);
-    if (window.__BURRETE_HOSTED_MCP_WIDGET__ === true) {
+    if (window.__BURETTE_HOSTED_MCP_WIDGET__ === true) {
       const toolbar = document.getElementById('buret-toolbar');
       const grip = toolbar?.querySelector('[data-drag-handle]');
       if (toolbar && grip) {
@@ -166,13 +221,13 @@
           grip.setAttribute('aria-label', collapsed ? 'Expand controls' : 'Collapse controls');
           grip.setAttribute('title', collapsed ? 'Expand controls' : 'Collapse controls');
         };
-        window.__BURRETE_HOSTED_GRIP_FALLBACK__ = fallbackGripClick;
+        window.__BURETTE_HOSTED_GRIP_FALLBACK__ = fallbackGripClick;
         grip.addEventListener('click', fallbackGripClick);
       }
     }
   }
 
-  window.BurreteViewerShell = { mountToolbar };
+  window.BuretteViewerShell = { mountToolbar };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mountToolbar, { once: true });
   } else {

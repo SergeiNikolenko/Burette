@@ -9,6 +9,9 @@
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
   const CLUSTER_CUTOFF_STORAGE_KEY = 'buret.grid.clusterCutoff';
+  const GRID_SELECTION_BRIDGE_LIMIT = 100000;
+  const CHEMICAL_SPACE_RECORD_LIMIT = 20000;
+  const CHEMICAL_SPACE_INPUT_BYTES_LIMIT = 8 * 1024 * 1024;
   const CONFORMER_VARIANT_STORAGE_KEY = 'buret.grid.conformerVariant';
   const MMFF_VARIANT_STORAGE_KEY = 'buret.grid.mmffVariant';
   const SEMIEMPIRICAL_METHOD_STORAGE_KEY = 'buret.grid.semiempiricalMethod';
@@ -58,11 +61,11 @@
   const TABLE_COLUMN_OVERSCAN_PX = 360;
   const RDKIT_SVG_CACHE_LIMIT = 220;
   const XYZRENDER_CARD_CACHE_LIMIT = 180;
-  const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
+  const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   const state = {
     rdkit: null,
     rdkitError: '',
-    all: Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [],
+    all: Array.isArray(window.BuretteGridRecords) ? window.BuretteGridRecords : [],
     rows: [],
     totalRows: 0,
     recordsIndexed: 0,
@@ -99,6 +102,7 @@
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     hiddenRows: new Set(),
     selected: new Set(),
+    chemicalSpaceFilterActive: false,
     ketcherOpenPendingUntil: 0,
     selectionAnchorIndex: null,
     selectionKeydownHandler: null,
@@ -125,7 +129,7 @@
     hostRequests: new Map(),
     remoteMode: false,
     remoteLoading: false,
-    hostReadOnly: window.name === 'burrete-read-only',
+    hostReadOnly: window.name === 'burette-read-only',
     closeTransitionActive: false,
     dirty: false,
     dirtyReason: '',
@@ -165,7 +169,8 @@
     railDragging: false,
     pendingGridScrollIndex: null,
     pendingGridRailPosition: null,
-    menuStateSignature: ''
+    menuStateSignature: '',
+    chemicalSpaceHoverToken: 0,
   };
 
   function post(type, message, payload = {}) {
@@ -173,14 +178,14 @@
       if (window.__mqlPost) window.__mqlPost(type, message || '', payload);
       else {
         const body = { type, message: String(message || ''), ...payload };
-        if (window.BurreteConfig && window.BurreteConfig.previewRequestID) {
-          body.requestID = String(window.BurreteConfig.previewRequestID);
+        if (window.BuretteConfig && window.BuretteConfig.previewRequestID) {
+          body.requestID = String(window.BuretteConfig.previewRequestID);
         }
-        if (window.BurreteConfig && window.BurreteConfig.documentId) {
-          body.documentId = String(window.BurreteConfig.documentId);
+        if (window.BuretteConfig && window.BuretteConfig.documentId) {
+          body.documentId = String(window.BuretteConfig.documentId);
         }
-        window.parent?.postMessage({ source: 'burrete-grid', body }, '*');
-        window.webkit?.messageHandlers?.burrete?.postMessage(body);
+        window.parent?.postMessage({ source: 'burette-grid', body }, '*');
+        window.webkit?.messageHandlers?.burette?.postMessage(body);
       }
     } catch (_) {}
   }
@@ -227,7 +232,7 @@
       const key = event.key?.toLowerCase();
       const commandKey = event.metaKey || event.ctrlKey;
       const togglesSidebar = commandKey && !event.altKey && !event.shiftKey && key === 'b';
-      const opensCommandPalette = (commandKey && event.shiftKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
+      const opensCommandPalette = (commandKey && !event.altKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
       if (!opensCommandPalette && !togglesSidebar) return;
       event.preventDefault();
       post(togglesSidebar ? 'toggleSidebar' : 'openCommandPalette');
@@ -301,14 +306,14 @@
   }
 
   function setStatus(message, kind = 'info') {
-    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
+    const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
     if (status) {
       setStatusText(String(message || ''));
       status.classList.toggle('error', kind === 'error');
-      status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
-      if (kind === 'error' && status && !window.BurreteDebug && cfg.appViewer === true) status.classList.add('hidden');
+      status.classList.toggle('hidden', kind !== 'error' && !window.BuretteDebug);
+      if (kind === 'error' && status && !window.BuretteDebug && cfg.appViewer === true) status.classList.add('hidden');
     }
-    if (kind === 'error' || window.BurreteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
+    if (kind === 'error' || window.BuretteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
   }
 
   function setStatusText(text) {
@@ -335,10 +340,10 @@
   }
 
   function config() {
-    if (!window.BurreteConfig || typeof window.BurreteConfig !== 'object') {
-      throw new Error('preview-config.js did not define window.BurreteConfig.');
+    if (!window.BuretteConfig || typeof window.BuretteConfig !== 'object') {
+      throw new Error('preview-config.js did not define window.BuretteConfig.');
     }
-    return window.BurreteConfig;
+    return window.BuretteConfig;
   }
 
   function safeConfig() {
@@ -374,7 +379,7 @@
   }
 
   function isRemoteMode(cfg) {
-    return cfg.appViewer === true && cfg.gridDataMode === 'bridge' && !Array.isArray(window.BurreteGridRecords);
+    return cfg.appViewer === true && cfg.gridDataMode === 'bridge' && !Array.isArray(window.BuretteGridRecords);
   }
 
   function setGridCloseTransition(active) {
@@ -410,7 +415,7 @@
   function installHostMessageListener() {
     window.addEventListener('message', event => {
       const data = event.data;
-      if (!data || (data.source !== 'burrete-grid-host' && data.source !== 'burrete-host')) return;
+      if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
       if (body.type === 'workspaceHistoryCommand') {
         const direction = body.direction === 'redo' ? 'redo' : 'undo';
@@ -425,7 +430,7 @@
           }
         }
         event.source?.postMessage({
-          source: 'burrete-grid',
+          source: 'burette-grid',
           body: {
             type: 'workspaceHistoryCommandResult',
             requestId: body.requestId,
@@ -454,10 +459,52 @@
         executeGridMenuCommand(body, cfg);
         return;
       }
+      if (body.type === 'chemicalSpaceSelectionChanged') {
+        const indexes = Array.isArray(body.sourceRecordIds)
+          ? body.sourceRecordIds
+            .slice(0, GRID_SELECTION_BRIDGE_LIMIT)
+            .map(Number)
+            .filter(index => Number.isSafeInteger(index) && index >= 0)
+          : [];
+        state.selected = new Set(indexes);
+        state.chemicalSpaceFilterActive = body.filterToSelection === true && indexes.length > 0;
+        state.selectionAnchorIndex = indexes.length ? indexes[indexes.length - 1] : null;
+        refresh(config());
+        return;
+      }
+      if (body.type === 'chemicalSpaceRequestState') {
+        state.menuStateSignature = '';
+        notifyGridMenuState(config());
+        return;
+      }
+      if (body.type === 'chemicalSpaceRequestRecords') {
+        postChemicalSpaceRecords(body.requestId);
+        return;
+      }
+      if (body.type === 'chemicalSpaceRequestColumns') {
+        postChemicalSpaceColumns(body.requestId);
+        return;
+      }
+      if (body.type === 'chemicalSpaceRequestColumnValues') {
+        postChemicalSpaceColumnValues(body.requestId, body.columnId);
+        return;
+      }
+      if (body.type === 'chemicalSpaceHoverChanged') {
+        const index = Number(body.sourceRecordId);
+        const normalizedIndex = Number.isSafeInteger(index) && index >= 0 ? index : null;
+        if (normalizedIndex === null) {
+          state.chemicalSpaceHoverToken += 1;
+          post('chemicalSpaceMoleculePreview', '', { sourceRecordId: null });
+        } else {
+          void postChemicalSpaceMoleculePreview(normalizedIndex, config());
+        }
+        return;
+      }
       if (body.type === 'gridRecordsAppended') {
         if (!capabilities(config()).editing) return;
         state.hiddenRows.clear();
         state.selected.clear();
+        state.chemicalSpaceFilterActive = false;
         state.undoStack = [];
         state.redoStack = [];
         state.svgCache.clear();
@@ -793,9 +840,14 @@
     const caps = capabilities(cfg);
     if (!caps.editing) return;
     const selectedStructureCount = selectedMolecularGridRowCount();
+    const selectedSourceIndexes = state.selected.size <= GRID_SELECTION_BRIDGE_LIMIT
+      ? [...state.selected].map(Number).filter(index => Number.isSafeInteger(index) && index >= 0)
+      : [];
     const payload = {
       selectedCount: selectedGridRowCount(),
       selectedStructureCount,
+      selectedSourceIndexes,
+      selectionTruncated: state.selected.size > GRID_SELECTION_BRIDGE_LIMIT,
       dirty: state.dirty,
       canUndo: undoEntry !== null,
       canRedo: redoEntry !== null,
@@ -884,9 +936,9 @@
     const wasmPaths = rdkitWasmCandidates(cfg);
     let wasmPath = wasmPaths[0] || '../assets/rdkit/RDKit_minimal.wasm';
     const options = { locateFile: () => wasmPath };
-    if (window.BurreteRDKitWasmBase64) {
-      options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
-      window.BurreteRDKitWasmBase64 = '';
+    if (window.BuretteRDKitWasmBase64) {
+      options.wasmBinary = base64ToBytes(window.BuretteRDKitWasmBase64);
+      window.BuretteRDKitWasmBase64 = '';
     } else if (wasmPaths.length) {
       const loaded = await loadFirstWasmBinary(wasmPaths);
       wasmPath = loaded.path;
@@ -1216,10 +1268,10 @@
 
   function mountGridControls(cfg, caps) {
     const host = document.getElementById('grid-controls');
-    if (!host || !window.BurreteGridUI || typeof window.BurreteGridUI.mountGridControls !== 'function') {
-      throw new Error('BurreteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
+    if (!host || !window.BuretteGridUI || typeof window.BuretteGridUI.mountGridControls !== 'function') {
+      throw new Error('BuretteGridUI is missing. Ensure grid-ui.js loads before grid-viewer.js.');
     }
-    window.BurreteGridUI.mountGridControls(host, {
+    window.BuretteGridUI.mountGridControls(host, {
       format: ['csv', 'dwar', 'sdf', 'smiles', 'tsv'].includes(cfg.format) ? cfg.format : 'smiles',
       label: cfg.label || 'Molecule collection',
       exportEnabled: caps.export,
@@ -1246,6 +1298,7 @@
       clusterRepresentativesAvailable: Boolean(latestRepresentativeAnalysisColumn()),
       similarityQuerySelected: state.selected.size === 1,
       clusterCutoff: state.clusterCutoff,
+      selectedCount: state.selected.size,
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
         setUnifiedSearchQuery(value || '', cfg);
@@ -1474,6 +1527,7 @@
       state.tableColumnPanelOutsideController?.abort();
       state.tableColumnPanelOutsideController = null;
     }
+    refreshGridControls(cfg);
     applyGridPreferences(cfg);
     void render(cfg);
   }
@@ -1536,7 +1590,7 @@
       applied += 1;
     }
     state.remoteDescriptorIds = Array.from(descriptorIds).sort((left, right) => left.localeCompare(right));
-    if (Array.isArray(window.BurreteGridRecords)) window.BurreteGridRecords = state.all;
+    if (Array.isArray(window.BuretteGridRecords)) window.BuretteGridRecords = state.all;
     invalidateTableColumnCatalog();
     refreshOpenMoleculeDetail(cfg);
     setStatus(`[grid] Applied descriptors to ${applied.toLocaleString()} molecule${applied === 1 ? '' : 's'}.`);
@@ -2361,6 +2415,12 @@
   function refresh(cfg) {
     resetGridWindowForNewResultSet();
     if (state.remoteMode) {
+      if (state.chemicalSpaceFilterActive) {
+        state.rows = filterByChemicalSpaceSelection(state.rows);
+        state.totalRows = state.rows.length;
+        render(cfg);
+        return;
+      }
       void refreshRemote(cfg);
       return;
     }
@@ -2369,7 +2429,9 @@
     const textRows = query
       ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(query))
       : allRows.slice();
-    state.rows = filterByTableColumnControls(filterByDescriptorControls(filterBySMARTS(textRows)));
+    state.rows = filterByChemicalSpaceSelection(
+      filterByTableColumnControls(filterByDescriptorControls(filterBySMARTS(textRows)))
+    );
     if (shouldFallbackSMARTSToTextSearch()) {
       const fallbackQuery = normalize(state.query);
       state.smartsError = '';
@@ -2377,11 +2439,18 @@
       state.rows = fallbackQuery
         ? allRows.filter(row => normalize([row.name, row.smiles, ...Object.entries(row.props || {}).flat()].join('\n')).includes(fallbackQuery))
         : allRows.slice();
-      state.rows = filterByTableColumnControls(filterByDescriptorControls(state.rows));
+      state.rows = filterByChemicalSpaceSelection(
+        filterByTableColumnControls(filterByDescriptorControls(state.rows))
+      );
     }
     state.rows.sort((a, b) => compareWithDescriptorSort(a, b));
     state.totalRows = state.rows.length;
     render(cfg);
+  }
+
+  function filterByChemicalSpaceSelection(rows) {
+    if (!state.chemicalSpaceFilterActive) return rows;
+    return rows.filter(row => state.selected.has(Number(row.index)));
   }
 
   function resetGridWindowForNewResultSet() {
@@ -2893,7 +2962,7 @@
         maybeLoadMoreForRenderedRange(cfg, range);
         postGridReady(cfg);
         emitGridPerfMetric(cfg, 'window-render', startedAt, { force: true });
-        if (status && !window.BurreteDebug) status.classList.add('hidden');
+        if (status && !window.BuretteDebug) status.classList.add('hidden');
         return;
       }
       if (range.topHeight > 0) fragment.appendChild(gridSpacer('top', range.topHeight));
@@ -2919,7 +2988,7 @@
       maybeLoadMoreForRenderedRange(cfg, range);
       postGridReady(cfg);
       emitGridPerfMetric(cfg, 'window-render', startedAt, { force: true });
-      if (status && !window.BurreteDebug) status.classList.add('hidden');
+      if (status && !window.BuretteDebug) status.classList.add('hidden');
     } finally {
       state.rendering = false;
       if (token === state.token) {
@@ -4196,8 +4265,9 @@
     }
     pushUndoSnapshot('append molecules');
     state.all.push(...appendedRows);
-    window.BurreteGridRecords = state.all;
+    window.BuretteGridRecords = state.all;
     state.selected.clear();
+    state.chemicalSpaceFilterActive = false;
     state.selectionAnchorIndex = null;
     state.svgCache.clear();
     state.xyzrenderCardCache.clear();
@@ -4582,6 +4652,137 @@
       card.classList.toggle('selected', selected);
       card.setAttribute('aria-selected', selected ? 'true' : 'false');
     });
+    // Toolbar actions live in a menu that React unmounts while closed, so the
+    // imperative syncs below cannot reach them. Re-mount with a fresh
+    // selectedCount instead, or a reopened menu renders a stale disabled state.
+    refreshGridControls();
+  }
+
+  function postChemicalSpaceHover(index) {
+    post('gridHoverChanged', '', {
+      sourceRecordId: Number.isSafeInteger(index) && index >= 0 ? index : null,
+    });
+  }
+
+  async function postChemicalSpaceMoleculePreview(index, cfg) {
+    const token = ++state.chemicalSpaceHoverToken;
+    try {
+      const localPool = state.remoteMode ? state.rows : state.all;
+      let row = localPool.find(candidate => Number(candidate?.index) === index) || null;
+      if (!row && state.remoteMode) {
+        const result = await hostRequest('gridFetchPage', {
+          query: '',
+          sort: 'index',
+          columnFilters: [],
+          descriptorFilters: [],
+          analysisFilters: [],
+          descriptorSort: null,
+          offset: index,
+          limit: 1
+        });
+        row = Array.isArray(result.rows)
+          ? result.rows.find(candidate => Number(candidate?.index) === index) || null
+          : null;
+      }
+      if (token !== state.chemicalSpaceHoverToken || !row) return;
+      const input = String(row.molblock || row.smiles || '').trim();
+      let svg = '';
+      if (input) {
+        const rdkit = await initRDKit();
+        let molecule = null;
+        try {
+          molecule = rdkit.get_mol(input);
+          if (molecule) svg = molecule.get_svg(240, 160);
+        } finally {
+          molecule?.delete?.();
+        }
+      }
+      if (token !== state.chemicalSpaceHoverToken) return;
+      post('chemicalSpaceMoleculePreview', '', {
+        sourceRecordId: index,
+        name: String(row.name || `Molecule ${index + 1}`).slice(0, 240),
+        smiles: String(row.smiles || '').slice(0, 4096),
+        svgBase64: svg ? textToBase64(svg.slice(0, 262144)) : ''
+      });
+    } catch (_) {
+      if (token === state.chemicalSpaceHoverToken) {
+        post('chemicalSpaceMoleculePreview', '', {
+          sourceRecordId: index,
+          name: `Molecule ${index + 1}`,
+          smiles: '',
+          svgBase64: ''
+        });
+      }
+    }
+  }
+
+  function postChemicalSpaceRecords(requestId) {
+    const pool = state.remoteMode ? state.rows : state.all;
+    const records = [];
+    let inputBytes = 0;
+    for (const row of pool) {
+      if (records.length >= CHEMICAL_SPACE_RECORD_LIMIT) break;
+      const sourceRecordId = Number(row?.index);
+      if (!Number.isSafeInteger(sourceRecordId) || sourceRecordId < 0) continue;
+      const molblock = String(row?.molblock || '').trim();
+      const smiles = String(row?.smiles || '').trim();
+      const input = molblock || smiles;
+      if (!input) continue;
+      const nextBytes = new TextEncoder().encode(input).byteLength;
+      if (inputBytes + nextBytes > CHEMICAL_SPACE_INPUT_BYTES_LIMIT) break;
+      inputBytes += nextBytes;
+      records.push({
+        sourceRecordId,
+        moleculeContentSha256: `browser-${sourceRecordId}-${hash(input)}`,
+        format: molblock ? 'molblock' : 'smiles',
+        input
+      });
+    }
+    post('chemicalSpaceRecords', '', {
+      requestId: String(requestId || ''),
+      records,
+      truncated: records.length >= CHEMICAL_SPACE_RECORD_LIMIT
+        || inputBytes >= CHEMICAL_SPACE_INPUT_BYTES_LIMIT
+    });
+  }
+
+  function chemicalSpaceColumnPool() {
+    return state.remoteMode ? state.rows : state.all;
+  }
+
+  function postChemicalSpaceColumns(requestId) {
+    const pool = chemicalSpaceColumnPool();
+    const keys = new Set();
+    for (const row of pool) {
+      if (keys.size >= 64) break;
+      for (const key of Object.keys(row?.props || {})) {
+        keys.add(key);
+        if (keys.size >= 64) break;
+      }
+    }
+    const columns = [];
+    for (const key of [...keys].sort()) {
+      if (inferPropColumnType(pool, key) !== 'number') continue;
+      columns.push({ id: `prop:${key}`, label: key });
+    }
+    post('chemicalSpaceColumns', '', { requestId: String(requestId || ''), columns });
+  }
+
+  function postChemicalSpaceColumnValues(requestId, columnId) {
+    const id = String(columnId || '');
+    const pool = chemicalSpaceColumnPool();
+    const values = [];
+    if (id) {
+      for (const row of pool) {
+        if (values.length >= CHEMICAL_SPACE_RECORD_LIMIT) break;
+        const sourceRecordId = Number(row?.index);
+        if (!Number.isSafeInteger(sourceRecordId) || sourceRecordId < 0) continue;
+        const value = tableColumnNumericValue(row, id);
+        if (!Number.isFinite(value)) continue;
+        values.push([sourceRecordId, value]);
+      }
+    }
+    post('chemicalSpaceColumnValues', '', { requestId: String(requestId || ''), columnId: id, values });
   }
 
   function toggleSelection(index, cfg) {
@@ -4630,8 +4831,14 @@
   }
 
   function clearSelection(cfg) {
+    const wasFilteringChemicalSpace = state.chemicalSpaceFilterActive;
     state.selected.clear();
+    state.chemicalSpaceFilterActive = false;
     state.selectionAnchorIndex = null;
+    if (wasFilteringChemicalSpace) {
+      refresh(cfg);
+      return;
+    }
     syncRenderedSelection();
     updateChrome(cfg);
   }
@@ -4777,7 +4984,7 @@
   }
 
   function notifyGridDirty(dirty) {
-    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
+    const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
     post('gridDirtyChanged', dirty ? '[grid] Unsaved changes.' : '[grid] Saved changes.', {
       documentId: cfg.documentId || null,
       dirty,
@@ -5308,9 +5515,16 @@
   function installCardHover(card) {
     const picture = card.querySelector('[data-buret-molecule-picture]');
     if (!picture) return;
-    picture.addEventListener('pointerenter', () => card.classList.add('buret-card-hovering-molecule'));
+    const index = Number(card.getAttribute('data-index'));
+    picture.addEventListener('pointerenter', () => {
+      card.classList.add('buret-card-hovering-molecule');
+      postChemicalSpaceHover(index);
+    });
     picture.addEventListener('pointermove', () => card.classList.add('buret-card-hovering-molecule'));
-    picture.addEventListener('pointerleave', () => card.classList.remove('buret-card-hovering-molecule'));
+    picture.addEventListener('pointerleave', () => {
+      card.classList.remove('buret-card-hovering-molecule');
+      postChemicalSpaceHover(null);
+    });
     card.addEventListener('focusin', () => card.classList.add('buret-card-hovering-molecule'));
     card.addEventListener('focusout', () => card.classList.remove('buret-card-hovering-molecule'));
   }
@@ -5320,6 +5534,7 @@
     if (!picture) return;
     picture.addEventListener('pointerenter', event => {
       if (event.pointerType === 'touch') return;
+      postChemicalSpaceHover(Number(row.index));
       showTableMoleculePreview(event, row, cfg);
     });
     picture.addEventListener('pointermove', event => {
@@ -5327,7 +5542,10 @@
       if (!state.tableMoleculePreview) showTableMoleculePreview(event, row, cfg);
       positionTableMoleculePreview(event);
     });
-    picture.addEventListener('pointerleave', hideTableMoleculePreview);
+    picture.addEventListener('pointerleave', () => {
+      postChemicalSpaceHover(null);
+      hideTableMoleculePreview();
+    });
     picture.addEventListener('contextmenu', hideTableMoleculePreview);
   }
 
@@ -5834,9 +6052,10 @@
     state.smartsError = '';
     state.smartsMatches = new Map();
     state.rows = [];
-    state.all = Array.isArray(window.BurreteGridRecords) ? window.BurreteGridRecords : [];
+    state.all = Array.isArray(window.BuretteGridRecords) ? window.BuretteGridRecords : [];
     state.remoteAnalysisColumns = [];
     state.selected = new Set();
+    state.chemicalSpaceFilterActive = false;
     state.hiddenRows = new Set();
     state.findingSimilar = false;
     state.exportingClusterRepresentatives = false;
@@ -6439,7 +6658,7 @@
   function serializeDelimitedRows(rows, separator) {
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
-      ['burrete_encoding', 'index', 'name', 'smiles', 'molblock', ...props],
+      ['burette_encoding', 'index', 'name', 'smiles', 'molblock', ...props],
       ...rows.map(row => [
         'escaped-v1',
         row.index,
@@ -6539,8 +6758,8 @@
   }
 
   function canUseNativeBridge() {
-    const cfg = window.BurreteConfig && typeof window.BurreteConfig === 'object' ? window.BurreteConfig : {};
-    return cfg.appViewer === true || !!window.webkit?.messageHandlers?.burrete;
+    const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
+    return cfg.appViewer === true || !!window.webkit?.messageHandlers?.burette;
   }
 
   function sanitizeSVG(svg) {
@@ -6572,7 +6791,7 @@
 
   async function hydrateDataWarriorRows(rows, cfg) {
     if (!Array.isArray(rows) || !rows.some(row => String(row?.idcode || '').trim())) return rows;
-    const openChemLib = window.BurreteOpenChemLib;
+    const openChemLib = window.BuretteOpenChemLib;
     if (!openChemLib?.Molecule?.fromIDCode) throw new Error('OpenChemLib IDCode decoder is unavailable.');
     return rows.map(row => {
       const idcode = String(row?.idcode || '').trim();

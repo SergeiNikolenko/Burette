@@ -14,7 +14,7 @@ const runtimeScripts = [
   'amber_nc_preview_extract.py',
   'agent-preview.mjs',
   'agent-shell-server.mjs',
-  'burrete-agent.mjs',
+  'burette-agent.mjs',
 ];
 const requiredPreviewAssets = [
   'viewer.js',
@@ -86,10 +86,10 @@ await run('bun', ['run', 'build'], {
   cwd: resolve(repoRoot, 'apps/desktop'),
   env: {
     ...process.env,
-    BURRETE_AGENT_SHELL_OUT_DIR: shellDist,
-    VITE_BURRETE_AGENT_SHELL: '1',
-    VITE_BURRETE_WEB_ASSETS_BASE: '/__burette/runtime/',
-    VITE_BURRETE_BUILD_IDENTIFIER: 'browser-agent-shell',
+    BURETTE_AGENT_SHELL_OUT_DIR: shellDist,
+    VITE_BURETTE_AGENT_SHELL: '1',
+    VITE_BURETTE_WEB_ASSETS_BASE: '/__burette/runtime/',
+    VITE_BURETTE_BUILD_IDENTIFIER: 'browser-agent-shell',
     VITE_BURETTE_DEV_INSTANCE: 'agent',
   },
 });

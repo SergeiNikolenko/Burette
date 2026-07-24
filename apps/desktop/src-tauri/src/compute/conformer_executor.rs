@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use burrete_compute_core::{
+use burette_compute_core::{
     initialize_conformer_positions, optimize_distance_geometry, optimize_etk_geometry,
     optimize_mmff, plan_conformer_batches, validate_conformer_stereo, ChiralVolumeConstraint,
     ConformerDistanceEngine, ConformerEnginePackArrays, ConformerMoleculeWork,
@@ -9,8 +9,8 @@ use burrete_compute_core::{
     EtkGeometryTerms, EtkImproperConstraint, EtkTorsionConstraint, MmffOptimizerKind,
     NativeMmffParameters, TetrahedralConstraint,
 };
-use burrete_compute_metal::{MetalDistanceEmbedding, MetalTanimotoRuntime};
-use burrete_compute_protocol::{Backend, ConformerInitialization, ConformerV1SubmitRequest};
+use burette_compute_metal::{MetalDistanceEmbedding, MetalTanimotoRuntime};
+use burette_compute_protocol::{Backend, ConformerInitialization, ConformerV1SubmitRequest};
 use uuid::Uuid;
 
 use super::{
@@ -115,9 +115,9 @@ pub(crate) fn execute_conformer_distance_geometry_with_service(
         ));
     }
     let requested_mmff = match request.parameters.mmff_variant {
-        burrete_compute_protocol::MmffVariant::Mmff94 => burrete_compute_core::MmffVariant::Mmff94,
-        burrete_compute_protocol::MmffVariant::Mmff94s => {
-            burrete_compute_core::MmffVariant::Mmff94s
+        burette_compute_protocol::MmffVariant::Mmff94 => burette_compute_core::MmffVariant::Mmff94,
+        burette_compute_protocol::MmffVariant::Mmff94s => {
+            burette_compute_core::MmffVariant::Mmff94s
         }
     };
     if mmff_parameters
@@ -1199,11 +1199,11 @@ fn unavailable(message: impl Into<String>) -> ComputeCoordinatorError {
 #[cfg(test)]
 mod tests {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
-    use burrete_compute_core::{
+    use burette_compute_core::{
         ConformerEnginePackBuilder, ExtractedConformerParameters, MmffBondTerm, MmffParameters,
         MmffVariant,
     };
-    use burrete_compute_protocol::{
+    use burette_compute_protocol::{
         AllGridScope, BackendPolicy, ComputeJobSchemaVersion, ConformerResourceLimits,
         ConformerV1Parameters, ExecutionPolicy, GridScope, GridSourceReference, SchedulingPolicy,
         WorkflowTemplateId, MIN_COMPUTE_MEMORY_BYTES,
@@ -1230,7 +1230,7 @@ mod tests {
     #[test]
     fn reference_executor_preserves_order_seeds_and_ragged_offsets() {
         let mut builder = ConformerEnginePackBuilder::new(
-            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            burette_compute_protocol::ConformerVariant::EtkdgV3,
             1024 * 1024,
         );
         builder.append_valid(extracted()).expect("valid molecule");
@@ -1285,7 +1285,7 @@ mod tests {
     #[test]
     fn reference_executor_applies_etk_refinement_terms() {
         let mut builder = ConformerEnginePackBuilder::new(
-            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            burette_compute_protocol::ConformerVariant::EtkdgV3,
             1024 * 1024,
         );
         builder
@@ -1317,7 +1317,7 @@ mod tests {
     #[test]
     fn reference_executor_applies_mmff94s_and_records_optimizer_provenance() {
         let mut builder = ConformerEnginePackBuilder::new(
-            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            burette_compute_protocol::ConformerVariant::EtkdgV3,
             1024 * 1024,
         );
         builder.append_valid(extracted()).expect("valid molecule");
@@ -1346,7 +1346,7 @@ mod tests {
     #[test]
     fn reference_executor_retries_rejected_stereochemistry_to_the_limit() {
         let mut builder = ConformerEnginePackBuilder::new(
-            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            burette_compute_protocol::ConformerVariant::EtkdgV3,
             1024 * 1024,
         );
         builder
@@ -1377,13 +1377,13 @@ mod tests {
     #[test]
     fn reference_executor_optimizes_the_supplied_input_geometry() {
         let mut builder = ConformerEnginePackBuilder::new(
-            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            burette_compute_protocol::ConformerVariant::EtkdgV3,
             1024 * 1024,
         );
         builder.append_valid(extracted()).expect("valid molecule");
         let mut request = request();
         request.parameters.initialization =
-            burrete_compute_protocol::ConformerInitialization::InputGeometry;
+            burette_compute_protocol::ConformerInitialization::InputGeometry;
         request.parameters.conformers_per_molecule = 1;
         let initial = vec![[0.0, 0.0, 0.0, 0.0], [3.0, 0.0, 0.0, 0.0]];
         let result = execute_conformer_distance_geometry(
@@ -1414,15 +1414,15 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "manual real-GPU smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    #[ignore = "manual real-GPU smoke; set BURETTE_METAL_RUNTIME_ROOT"]
     fn native_executor_dispatches_adaptive_batches_on_the_real_gpu() {
-        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+        let root = std::env::var_os("BURETTE_METAL_RUNTIME_ROOT")
             .map(std::path::PathBuf::from)
-            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged runtime");
+            .expect("BURETTE_METAL_RUNTIME_ROOT must name a packaged runtime");
         let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
             .expect("load verified Metal runtime");
         let mut builder = ConformerEnginePackBuilder::new(
-            burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            burette_compute_protocol::ConformerVariant::EtkdgV3,
             1024 * 1024,
         );
         builder
@@ -1453,14 +1453,14 @@ mod tests {
         assert!(result.mmff_statuses.iter().all(|status| *status <= 1));
         let mut input_request = request();
         input_request.parameters.initialization =
-            burrete_compute_protocol::ConformerInitialization::InputGeometry;
+            burette_compute_protocol::ConformerInitialization::InputGeometry;
         input_request.parameters.conformers_per_molecule = 1;
         let input = execute_conformer_distance_geometry(
             Uuid::from_u128(8),
             &input_request,
             {
                 let mut builder = ConformerEnginePackBuilder::new(
-                    burrete_compute_protocol::ConformerVariant::EtkdgV3,
+                    burette_compute_protocol::ConformerVariant::EtkdgV3,
                     1024 * 1024,
                 );
                 builder
@@ -1514,11 +1514,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "manual RDKit conformer corpus smoke; set BURRETE_METAL_RUNTIME_ROOT"]
+    #[ignore = "manual RDKit conformer corpus smoke; set BURETTE_METAL_RUNTIME_ROOT"]
     fn executes_all_pinned_rdkit_conformer_variants_on_the_real_gpu() {
-        let root = std::env::var_os("BURRETE_METAL_RUNTIME_ROOT")
+        let root = std::env::var_os("BURETTE_METAL_RUNTIME_ROOT")
             .map(std::path::PathBuf::from)
-            .expect("BURRETE_METAL_RUNTIME_ROOT must name a packaged runtime");
+            .expect("BURETTE_METAL_RUNTIME_ROOT must name a packaged runtime");
         let runtime = MetalTanimotoRuntime::load(&root, &"0".repeat(64))
             .expect("load verified Metal runtime");
         let fixture: RdkitConformerFixture = serde_json::from_str(include_str!(
@@ -1528,7 +1528,7 @@ mod tests {
         assert_eq!(fixture.cases.len(), 32);
         let mut maximum_attempt_count = 0;
         for (case_index, case) in fixture.cases.into_iter().enumerate() {
-            let variant: burrete_compute_protocol::ConformerVariant =
+            let variant: burette_compute_protocol::ConformerVariant =
                 serde_json::from_value(serde_json::Value::String(case.variant.clone()))
                     .expect("decode conformer variant");
             let bytes = STANDARD
@@ -1585,7 +1585,7 @@ mod tests {
 
     fn extracted() -> ExtractedConformerParameters {
         ExtractedConformerParameters {
-            variant: burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            variant: burette_compute_protocol::ConformerVariant::EtkdgV3,
             atomic_numbers: vec![6, 8],
             formal_charges: vec![0, 0],
             distance_atom_pairs: vec![[0, 1]],
@@ -1632,7 +1632,7 @@ mod tests {
 
     fn extracted_etk() -> ExtractedConformerParameters {
         ExtractedConformerParameters {
-            variant: burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            variant: burette_compute_protocol::ConformerVariant::EtkdgV3,
             atomic_numbers: vec![6, 6, 6, 8],
             formal_charges: vec![0, 0, 0, 0],
             distance_atom_pairs: vec![[0, 1], [0, 2], [1, 2], [1, 3], [2, 3]],
@@ -1662,7 +1662,7 @@ mod tests {
 
     fn extracted_impossible_stereo() -> ExtractedConformerParameters {
         ExtractedConformerParameters {
-            variant: burrete_compute_protocol::ConformerVariant::EtkdgV3,
+            variant: burette_compute_protocol::ConformerVariant::EtkdgV3,
             atomic_numbers: vec![6, 6, 6, 6],
             formal_charges: vec![0; 4],
             distance_atom_pairs: vec![[0, 1]],
@@ -1693,9 +1693,9 @@ mod tests {
                 scope: GridScope::All(AllGridScope::default()),
             },
             parameters: ConformerV1Parameters {
-                variant: burrete_compute_protocol::ConformerVariant::EtkdgV3,
-                initialization: burrete_compute_protocol::ConformerInitialization::Generated,
-                mmff_variant: burrete_compute_protocol::MmffVariant::Mmff94s,
+                variant: burette_compute_protocol::ConformerVariant::EtkdgV3,
+                initialization: burette_compute_protocol::ConformerInitialization::Generated,
+                mmff_variant: burette_compute_protocol::MmffVariant::Mmff94s,
                 conformers_per_molecule: 2,
                 max_attempts_per_conformer: 2,
             },

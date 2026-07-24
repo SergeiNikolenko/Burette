@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Button } from "@/components/ui/button";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { hasFoldingResultContent, readFoldingResultBundle } from "../lib/folding-results";
 import { readStructureText } from "../lib/structure-text";
 import type { FoldingArtifact, FoldingMatrixPreview, FoldingModel, FoldingProfile, FoldingResultBundle, ViewerDocument } from "../types";
@@ -170,14 +172,14 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
               <strong>{activeModel.title}</strong>
               <span title={activeModel.structureTitle}>{activeModel.structureTitle}</span>
             </div>
-            <button type="button" className="structure-inspector-xtb-table-action" onClick={() => actions.openStructurePaths([activeModel.structurePath])}>
+            <Button type="button" variant="outline" size="xs" onClick={() => actions.openStructurePaths([activeModel.structurePath])}>
               Open
-            </button>
+            </Button>
           </div>
           {activeModel.matrixPreview ? (
-            <button type="button" className="dock-action folding-full-pae-button" onClick={() => actions.openDockTab("bottom", "folding")}>
+            <Button type="button" variant="secondary" size="sm" className="folding-full-pae-button w-full" onClick={() => actions.openDockTab("bottom", "folding")}>
               Full PAE
-            </button>
+            </Button>
           ) : null}
 
           {activeModel.metrics.length ? (
@@ -303,16 +305,25 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
           <span>{bundle.source} · {modelCountLabel(bundle.models.length)}</span>
         </div>
         <div className="folding-analysis-actions">
-          <button type="button" className="dock-action dock-action-compact" onClick={() => actions.openStructurePaths([activeModel.structurePath])}>
+          <Button type="button" variant="secondary" size="sm" onClick={() => actions.openStructurePaths([activeModel.structurePath])}>
             Open model
-          </button>
-          <button type="button" className="dock-action dock-action-compact" onClick={() => actions.revealPath(bundle.rootPath, "Folding result")}>
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => actions.revealPath(bundle.rootPath, "Folding result")}>
             Reveal bundle
-          </button>
+          </Button>
         </div>
       </div>
 
       <FoldingModelSelector models={bundle.models} activeModel={activeModel} onSelect={selectModel} />
+
+      {/* This panel is what the "Full PAE" button opens and what its own empty
+          state promises, but the matrix was never rendered here - only the
+          thumbnail in the side card. The large size was already designed for it. */}
+      {activeModel.matrixPreview ? (
+        <FoldingMatrixHeatmap preview={activeModel.matrixPreview} size="large" />
+      ) : (
+        <div className="dock-empty">This model has no PAE matrix.</div>
+      )}
 
       <FoldingSequenceStrip
         sequences={sequences}
@@ -353,7 +364,9 @@ function FoldingModelSelector({
     <div className="folding-model-selector">
       <label>
         <span>Model / seed</span>
-        <select
+        <NativeSelect
+          className="settings-select w-full"
+          size="sm"
           value={activeModel.id}
           disabled={models.length <= 1}
           aria-label="Folding model or seed"
@@ -363,11 +376,11 @@ function FoldingModelSelector({
           }}
         >
           {models.map((model) => (
-            <option key={model.id} value={model.id}>
+            <NativeSelectOption key={model.id} value={model.id}>
               {modelOptionLabel(model)}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
+        </NativeSelect>
       </label>
       <span className="folding-model-selector-count">{modelAvailabilityLabel(models.length)}</span>
     </div>
@@ -752,6 +765,15 @@ function FoldingSequenceStrip({
                   data-residue-index={index}
                   aria-label={`Select Chain-${chain.chainId} residue ${residueNumber} ${residue}`}
                   aria-pressed={selected}
+                  // Selection was driven entirely by elementFromPoint inside the
+                  // container's pointer handlers, so these buttons looked focusable
+                  // and did nothing on Enter or Space. A keyboard-generated click
+                  // reports detail 0, which is what keeps this from firing a second
+                  // selection after the pointer handlers have already made one.
+                  onClick={(event) => {
+                    if (event.detail !== 0) return;
+                    onSelectResidue?.(chain, residueNumber, residue, index, { rangeFromAnchor: event.shiftKey });
+                  }}
                 >
                   {residue}
                 </button>
@@ -763,9 +785,9 @@ function FoldingSequenceStrip({
       {selectedResidues?.length ? (
         <div className="folding-sequence-selection">
           <span>{selectedResidues.length} {selectedResidues.length === 1 ? "residue" : "residues"} selected</span>
-          <button type="button" className="dock-action dock-action-compact" onClick={onClearSelection}>
+          <Button type="button" variant="outline" size="xs" onClick={onClearSelection}>
             Clear
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

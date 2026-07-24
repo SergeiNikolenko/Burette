@@ -19,7 +19,7 @@ detection and record splitting stay outside this chemistry boundary, so the
 extractor does not carry the renderer's full MinimalLib surface. DataWarrior
 IDCode remains an explicit unsupported-record outcome.
 
-The adapter is Burrete-owned code. `mlxmolkit/dg_extract.py` and
+The adapter is Burette-owned code. `mlxmolkit/dg_extract.py` and
 `mlxmolkit/etk_extract.py` at commit
 `9e7337f6f93c40a39ad0187991151944a4f1e274` are parity references only; no
 source text from those files is present here. The pinned RDKit source is

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "burrete.compute-capability-report.v2",
+  "schemaVersion": "burette.compute-capability-report.v2",
   "reportRevision": 1,
   "protocol": {
     "min": 1,

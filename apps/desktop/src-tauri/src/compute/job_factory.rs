@@ -1,4 +1,4 @@
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     ClusterV1SubmitRequest, ComputeJobSnapshotSchemaVersion, ComputeSubmitRequest,
     ConformerV1SubmitRequest, ExecutionPlan, JobProgress, JobSnapshot, JobState,
     MolecularSnapshotRef, OwnerSurface, RuntimeIdentity, StageSnapshot, StageState,
@@ -338,7 +338,7 @@ fn queued_stages(plan: &ExecutionPlan) -> Vec<StageSnapshot> {
 mod tests {
     use super::*;
     use crate::compute::cluster_plan::{ClusterV1EngineIdentities, SimilarityBackendAdmission};
-    use burrete_compute_protocol::{
+    use burette_compute_protocol::{
         Backend, BackendPolicy, ClusterV1Parameters, ComputeJobSchemaVersion,
         ConformerResourceLimits, ConformerV1Parameters, ConformerVariant, EngineIdentity,
         ExecutionPolicy, FallbackDecision, FallbackReasonCode, FingerprintAlgorithm,
@@ -481,12 +481,12 @@ mod tests {
                 metallib_sha256: Some(test_only_hash('c')),
             },
             engines: ClusterV1EngineIdentities {
-                coordinator: test_engine("burrete-coordinator", '1'),
+                coordinator: test_engine("burette-coordinator", '1'),
                 rdkit: test_engine("rdkit", '2'),
-                reference_cpu: test_engine("burrete-reference-cpu", '3'),
+                reference_cpu: test_engine("burette-reference-cpu", '3'),
             },
             distance_admission: ConformerBackendAdmission::NativeMetal(test_engine(
-                "burrete-native-metal",
+                "burette-native-metal",
                 '4',
             )),
             stereo_admission: ConformerBackendAdmission::GpuUnavailable(fallback.clone()),
@@ -532,14 +532,14 @@ mod tests {
                 metallib_sha256: Some(test_only_hash('c')),
             },
             engines: ClusterV1EngineIdentities {
-                coordinator: test_engine("burrete-coordinator", '1'),
+                coordinator: test_engine("burette-coordinator", '1'),
                 rdkit: test_engine("rdkit", '2'),
-                reference_cpu: test_engine("burrete-reference-cpu", '3'),
+                reference_cpu: test_engine("burette-reference-cpu", '3'),
             },
             similarity_admission: match policy {
                 BackendPolicy::GpuRequired | BackendPolicy::GpuPreferred => {
                     SimilarityBackendAdmission::NativeMetal(test_engine(
-                        "burrete-native-metal",
+                        "burette-native-metal",
                         '4',
                     ))
                 }
@@ -602,8 +602,8 @@ mod tests {
             },
             parameters: ConformerV1Parameters {
                 variant: ConformerVariant::EtkdgV3,
-                initialization: burrete_compute_protocol::ConformerInitialization::Generated,
-                mmff_variant: burrete_compute_protocol::MmffVariant::Mmff94s,
+                initialization: burette_compute_protocol::ConformerInitialization::Generated,
+                mmff_variant: burette_compute_protocol::MmffVariant::Mmff94s,
                 conformers_per_molecule: 4,
                 max_attempts_per_conformer: 8,
             },

@@ -1,6 +1,6 @@
 ---
 name: molecule-collection
-description: "Use when reviewing SDF or molecule-property collections with bounded tables, filters, selected-molecule handoff, and Burrete panels."
+description: "Use when reviewing SDF or molecule-property collections with bounded tables, filters, selected-molecule handoff, and Burette panels."
 ---
 
 # Molecule Collection
@@ -10,10 +10,10 @@ collections, and selected molecule review.
 
 ## Workflow
 
-1. Prepare or receive a local SDF/CSV/JSON artifact outside Burrete when
+1. Prepare or receive a local SDF/CSV/JSON artifact outside Burette when
    computation is required.
 2. Validate the collection as a bounded molecular artifact before rendering.
-3. Render reviewed rows in a Burrete side panel or open the collection as a
+3. Render reviewed rows in a Burette side panel or open the collection as a
    normal workspace document.
 4. If the user selects a row, hand the selected molecule or derived structure
    back to `open-workspace` or `molstar-scene`.
@@ -28,6 +28,6 @@ Rows should stay compact and reviewable. Keep useful fields for exploration:
 - filter flags;
 - source path or run id.
 
-Do not claim filtering or property calculation happened inside Burrete unless a
-Burrete runtime actually performed it. Prefer external RDKit or workflow tools
-for chemistry computation, then display the reviewed results in Burrete.
+Do not claim filtering or property calculation happened inside Burette unless a
+Burette runtime actually performed it. Prefer external RDKit or workflow tools
+for chemistry computation, then display the reviewed results in Burette.

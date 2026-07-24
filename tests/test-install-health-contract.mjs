@@ -19,12 +19,12 @@ const [
 ] = await Promise.all([
   source("scripts/install.sh"),
   source("scripts/install-local.sh"),
-  source(".github/actions/setup-burrete-toolchain/action.yml"),
+  source(".github/actions/setup-burette-toolchain/action.yml"),
   source(".github/workflows/ci.yml"),
   source(".github/workflows/nightly-smoke.yml"),
   source(".github/workflows/release.yml"),
   source(".github/workflows/blob-size-policy.yml"),
-  source("packages/burrete/bin/burrete.mjs"),
+  source("packages/burette/bin/burette.mjs"),
   source("package.json"),
 ]);
 
@@ -39,7 +39,7 @@ assert.match(installLocalScript, /run_bundled_xyzrender_help/);
 assert.match(installLocalScript, /-m xyzrender\.cli --help/);
 assert.doesNotMatch(installLocalScript, /"\$runtime\/bin\/xyzrender" --help/);
 assert.match(installLocalScript, /unregister_stale_dev_flavor_extensions\(\)/);
-assert.match(installLocalScript, /\/Burrete-/);
+assert.match(installLocalScript, /\/Burette-/);
 assert.doesNotMatch(installLocalScript, /assert_quicklook_xyzrender_python/);
 assert.doesNotMatch(installLocalScript, /sign_quicklook_xyzrender_python/);
 assert.doesNotMatch(installLocalScript, /APPEX_XYZRENDER/);
@@ -54,8 +54,8 @@ assert.match(installLocalScript, /Contents\/lib\/\{libpython3\*\.dylib,Python\}/
 assert.doesNotMatch(installLocalScript, /Contents\/lib\/libpython3\.13\.dylib/);
 assert.doesNotMatch(installLocalScript, /install_name_tool -change "@executable_path\/\.\.\/lib\/libpython3\.13\.dylib" "@executable_path\/libpython3\.13\.dylib"/);
 assert.doesNotMatch(installLocalScript, /Contents\/MacOS\/xyzrender-python\/bin\/python3/);
-assert.doesNotMatch(installLocalScript, /BurretePreviewChild\.entitlements/);
-assert.match(installLocalScript, /"\$STAGING_APPEX\/Contents\/Resources\/burrete-core-bridge"/);
+assert.doesNotMatch(installLocalScript, /BurettePreviewChild\.entitlements/);
+assert.match(installLocalScript, /"\$STAGING_APPEX\/Contents\/Resources\/burette-core-bridge"/);
 assert.match(installLocalScript, /pluginkit -a "\$DEST_APPEX"/);
 assert.match(installLocalScript, /LSSetDefaultRoleHandlerForContentType|lsregister/);
 assert.doesNotMatch(installLocalScript, /-name python3 -o/);
@@ -84,7 +84,7 @@ for (const [label, workflow] of [
   ["nightly smoke", nightlySmokeWorkflow],
   ["release", releaseWorkflow],
 ]) {
-  assert.match(workflow, /uses: \.\/\.github\/actions\/setup-burrete-toolchain/, `${label} must use shared toolchain action`);
+  assert.match(workflow, /uses: \.\/\.github\/actions\/setup-burette-toolchain/, `${label} must use shared toolchain action`);
 }
 assert.match(ciWorkflow, /install-dependencies: "false"/);
 assert.match(ciWorkflow, /install-xyzrender: "true"/);

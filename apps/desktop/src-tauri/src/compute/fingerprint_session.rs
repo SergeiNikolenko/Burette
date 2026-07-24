@@ -5,8 +5,8 @@ use std::{
 };
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use burrete_compute_core::{Fingerprint2048, FINGERPRINT_BYTES};
-use burrete_compute_protocol::{
+use burette_compute_core::{Fingerprint2048, FINGERPRINT_BYTES};
+use burette_compute_protocol::{
     FingerprintSettings, JobSnapshot, JobState, MolecularSnapshotRecordV1,
     OrderedRecordMoleculeIdentityHasher, PackedFileDescriptor, MOLECULAR_RECORDS_FILE_PATH,
 };

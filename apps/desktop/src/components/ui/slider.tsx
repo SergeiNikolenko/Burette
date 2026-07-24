@@ -11,8 +11,11 @@ function Slider({
   value,
   min = 0,
   max = 100,
+  tone = "default",
   ...props
-}: React.ComponentProps<typeof SliderPrimitive.Root>) {
+}: React.ComponentProps<typeof SliderPrimitive.Root> & {
+  tone?: "default" | "neutral"
+}) {
   const _values = React.useMemo(
     () =>
       Array.isArray(value)
@@ -30,8 +33,9 @@ function Slider({
       value={value}
       min={min}
       max={max}
+      data-tone={tone}
       className={cn(
-        "relative flex w-full touch-none items-center select-none data-disabled:opacity-[var(--shadcn-disabled-opacity)] data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col",
+        "group/slider relative flex w-full touch-none items-center select-none data-disabled:opacity-[var(--shadcn-disabled-opacity)] data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col",
         className
       )}
       {...props}
@@ -42,14 +46,14 @@ function Slider({
       >
         <SliderPrimitive.Range
           data-slot="slider-range"
-          className="absolute bg-primary select-none data-horizontal:h-full data-vertical:w-full"
+          className="absolute bg-primary select-none data-horizontal:h-full data-vertical:w-full group-data-[tone=neutral]/slider:bg-foreground"
         />
       </SliderPrimitive.Track>
       {Array.from({ length: _values.length }, (_, index) => (
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           key={index}
-          className="relative block size-3 shrink-0 rounded-full border border-ring bg-white ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-[var(--shadcn-disabled-opacity)]"
+          className="relative block size-3 shrink-0 rounded-full border border-ring bg-white ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-[var(--shadcn-disabled-opacity)] group-data-[tone=neutral]/slider:border-foreground group-data-[tone=neutral]/slider:ring-foreground/30"
         />
       ))}
     </SliderPrimitive.Root>

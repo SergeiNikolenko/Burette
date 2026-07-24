@@ -59,8 +59,8 @@ export function useHostedMcpWidget({
       ) return;
 
       openedStructureRef.current = structure;
-      window.BurreteHostedAppBridge?.setSource(structure.source);
-      void window.BurreteHostedAppBridge?.updateSelection(null, "active-structure");
+      window.BuretteHostedAppBridge?.setSource(structure.source);
+      void window.BuretteHostedAppBridge?.updateSelection(null, "active-structure");
       openSequenceRef.current += 1;
       const sequence = openSequenceRef.current;
       forgetOpenedDocument();
@@ -119,9 +119,9 @@ export function useHostedMcpWidget({
 
     window.addEventListener("message", onMessage);
     window.addEventListener("openai:set_globals", onOpenAiGlobals);
-    window.__BURRETE_HOSTED_MCP_BRIDGE_READY__ = true;
+    window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = true;
 
-    const queuedResults = window.__BURRETE_HOSTED_MCP_RESULTS__?.splice(0) ?? [];
+    const queuedResults = window.__BURETTE_HOSTED_MCP_RESULTS__?.splice(0) ?? [];
     const initialStructure = selectHostedMcpInitialStructure(
       queuedResults,
       window.openai?.toolOutput !== undefined ? {
@@ -137,8 +137,8 @@ export function useHostedMcpWidget({
     return () => {
       window.removeEventListener("message", onMessage);
       window.removeEventListener("openai:set_globals", onOpenAiGlobals);
-      window.__BURRETE_HOSTED_MCP_BRIDGE_READY__ = false;
-      window.__BURRETE_HOSTED_MCP_RESULTS__ = [];
+      window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = false;
+      window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
       forgetOpenedDocument();
       delete document.documentElement.dataset.hostedMcpWidget;
     };

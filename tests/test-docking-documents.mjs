@@ -127,7 +127,7 @@ assert.deepEqual(
 
 assert.deepEqual(
   dockingRequestForDrop(
-    "burrete-docking://active-view",
+    "burette-docking://active-view",
     ["/tmp/new-pose.sdf", "/tmp/receptor.pdb", "/tmp/alternate-receptor.cif", "/tmp/old-pose.sdf", "/tmp/new-pose.sdf"],
     {
       receptorPath: "/tmp/receptor.pdb",
@@ -142,7 +142,7 @@ assert.deepEqual(
 
 assert.deepEqual(
   dockingRequestForDrop(
-    "burrete-docking://active-view",
+    "burette-docking://active-view",
     ["/tmp/alternate-receptor.cif"],
     {
       receptorPath: "/tmp/receptor.pdb",
@@ -157,7 +157,7 @@ assert.deepEqual(
 
 assert.deepEqual(
   dockingRequestForDrop(
-    "burrete-docking://active-view",
+    "burette-docking://active-view",
     ["/tmp/new-pose.sdf", "/tmp/new-protein.pdb", "/tmp/new-pose-2.mol2"],
     {
       receptorPath: "/tmp/receptor.pdb",
@@ -204,7 +204,7 @@ assert.deepEqual(
 
 assert.equal(
   dockingRequestForDrop(
-    "burrete-docking://active-view",
+    "burette-docking://active-view",
     ["/tmp/old-pose.sdf"],
     {
       receptorPath: "/tmp/receptor.pdb",

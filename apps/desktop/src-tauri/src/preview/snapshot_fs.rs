@@ -24,7 +24,7 @@ mod platform {
     #[cfg(test)]
     use std::path::Component;
 
-    use burrete_compute_protocol::{
+    use burette_compute_protocol::{
         MolecularSnapshotManifest, MolecularSnapshotRef, PackedFileDescriptor,
         MAX_MOLECULAR_SNAPSHOT_MANIFEST_BYTES, MOLECULAR_RECORDS_FILE_NAME,
     };
@@ -1645,7 +1645,7 @@ mod platform {
         pub(crate) fn reopen_file(
             &self,
             _relative_path: &str,
-        ) -> Result<(File, burrete_compute_protocol::PackedFileDescriptor), String> {
+        ) -> Result<(File, burette_compute_protocol::PackedFileDescriptor), String> {
             Err("Snapshot publication requires Unix directory capabilities".into())
         }
     }
@@ -1732,7 +1732,7 @@ mod platform {
 
         pub(crate) fn verify(
             self,
-            _expected: &burrete_compute_protocol::MolecularSnapshotRef,
+            _expected: &burette_compute_protocol::MolecularSnapshotRef,
         ) -> Result<VerifiedSnapshot, String> {
             Err("Snapshot publication requires Unix directory capabilities".into())
         }

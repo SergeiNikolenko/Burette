@@ -301,7 +301,7 @@ export function useSourceEditingController({
       const staged = stagingWindowsRef.current.get(event.source as WindowProxy);
       if (!staged) return;
       const envelope = event.data as { source?: unknown; body?: { type?: unknown; message?: unknown; renderer?: unknown; molstarStructureCount?: unknown } } | null;
-      if (envelope?.source !== "burrete-viewer" || !envelope.body || typeof envelope.body.type !== "string") return;
+      if (envelope?.source !== "burette-viewer" || !envelope.body || typeof envelope.body.type !== "string") return;
       const adapter = adaptersRef.current.get(staged.path);
       if (!adapter) return;
       if (envelope.body.type === "error") {

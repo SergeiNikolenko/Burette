@@ -36,7 +36,7 @@ mod tests {
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "burrete-preview-cache-{}-{name}",
+            "burette-preview-cache-{}-{name}",
             uuid::Uuid::new_v4()
         ))
     }

@@ -1,12 +1,12 @@
-# Releasing Burrete
+# Releasing Burette
 
-Release identity is Burrete-specific:
+Release identity is Burette-specific:
 
-- app name: `Burrete`
-- bundle app: `Burrete.app`
-- Quick Look extension: `BurretePreview.appex`
-- extension identifier: `com.local.BurreteV10.Preview`
-- release repository: `SergeiNikolenko/Burrete`
+- app name: `Burette`
+- bundle app: `Burette.app`
+- Quick Look extension: `BurettePreview.appex`
+- extension identifier: `com.local.BuretteV10.Preview`
+- release repository: `SergeiNikolenko/Burette`
 
 ## Version Discipline
 
@@ -27,7 +27,7 @@ bun run check:release
 
 ## Changelog And Release Notes
 
-Burrete follows the same changelog model as Codex: the root
+Burette follows the same changelog model as Codex: the root
 [`CHANGELOG.md`](../CHANGELOG.md) points readers to GitHub Releases, and each
 release page is the human-readable changelog for that version.
 
@@ -80,7 +80,7 @@ Full Changelog: v<previous>...v<current>
 Release pages should be user-facing and concise. Prefer short entries that say
 what changed for the app, Quick Look, iPhone app, CLI installer, or agent
 surface. Keep raw implementation details in PRs and docs unless they affect how
-users install, launch, preview, or update Burrete.
+users install, launch, preview, or update Burette.
 
 ## Pre-Release Checks
 
@@ -94,9 +94,9 @@ For native, packaging, Quick Look, or release changes, build the macOS bundle:
 
 ```bash
 ./scripts/build.sh
-codesign --verify --deep --strict build/Burrete.app
-test -d build/Burrete.app/Contents/PlugIns/BurretePreview.appex
-test -d build/Burrete.app/Contents/PlugIns/BurreteThumbnail.appex
+codesign --verify --deep --strict build/Burette.app
+test -d build/Burette.app/Contents/PlugIns/BurettePreview.appex
+test -d build/Burette.app/Contents/PlugIns/BuretteThumbnail.appex
 ```
 
 If Quick Look or renderer behavior changed, install and run forced previews:
@@ -120,8 +120,8 @@ Developer ID signing and Apple notarization are used when the credentials are
 available:
 
 ```bash
-export BURRETE_CODESIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)"
-export BURRETE_DEVELOPMENT_TEAM="TEAMID"
+export BURETTE_CODESIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)"
+export BURETTE_DEVELOPMENT_TEAM="TEAMID"
 export APPLE_ID="release@example.com"
 export APPLE_TEAM_ID="TEAMID"
 export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
@@ -132,7 +132,7 @@ Instead of Apple ID credentials, a local notarytool keychain profile can be
 used:
 
 ```bash
-export BURRETE_NOTARY_KEYCHAIN_PROFILE="BurreteNotary"
+export BURETTE_NOTARY_KEYCHAIN_PROFILE="BuretteNotary"
 ./scripts/release.sh
 ```
 
@@ -140,7 +140,7 @@ If Developer ID credentials are not available, release artifacts can be built
 and published with ad-hoc signing and without notarization:
 
 ```bash
-export BURRETE_RELEASE_ALLOW_ADHOC=1
+export BURETTE_RELEASE_ALLOW_ADHOC=1
 ./scripts/release.sh
 ```
 
@@ -154,30 +154,30 @@ notarize, staple, package, or publish:
 
 The local `./scripts/build.sh` path remains an ad-hoc debug build by default.
 Release builds are explicit: `scripts/release.sh` sets
-`BURRETE_BUILD_MODE=release` and uses the Xcode Release configuration. With
+`BURETTE_BUILD_MODE=release` and uses the Xcode Release configuration. With
 Developer ID credentials it enables the notarized path: hardened runtime,
 Developer ID signing, Apple notarytool submission, stapling, and then zip/dmg
-packaging. With `BURRETE_RELEASE_ALLOW_ADHOC=1`, it skips notarization and
+packaging. With `BURETTE_RELEASE_ALLOW_ADHOC=1`, it skips notarization and
 publishes ad-hoc signed zip/dmg artifacts.
 
 ## Artifact Requirements
 
 Every release app bundle must satisfy:
 
-- `Burrete.app` launches as the desktop shell.
-- `Burrete.app/Contents/PlugIns/BurretePreview.appex` exists.
-- `Burrete.app/Contents/PlugIns/BurreteThumbnail.appex` exists.
+- `Burette.app` launches as the desktop shell.
+- `Burette.app/Contents/PlugIns/BurettePreview.appex` exists.
+- `Burette.app/Contents/PlugIns/BuretteThumbnail.appex` exists.
 - Deep codesign verification passes.
-- Developer ID releases: `codesign -dv --verbose=4 build/Burrete.app` shows a
+- Developer ID releases: `codesign -dv --verbose=4 build/Burette.app` shows a
   Developer ID Application authority, a TeamIdentifier, and hardened runtime
   metadata.
-- Developer ID releases: `spctl --assess --type execute build/Burrete.app`
+- Developer ID releases: `spctl --assess --type execute build/Burette.app`
   passes.
-- Developer ID releases: `xcrun stapler validate build/Burrete.app` passes.
-- Ad-hoc releases: `BURRETE_RELEASE_ALLOW_ADHOC=1
-  ./scripts/check-release-signature.sh build/Burrete.app` passes.
+- Developer ID releases: `xcrun stapler validate build/Burette.app` passes.
+- Ad-hoc releases: `BURETTE_RELEASE_ALLOW_ADHOC=1
+  ./scripts/check-release-signature.sh build/Burette.app` passes.
 - Finder Quick Look can preview PDB, CIF, and XYZ samples.
-- Update metadata points to the Burrete release endpoint.
+- Update metadata points to the Burette release endpoint.
 
 The zip artifact is the in-app updater artifact. The dmg artifact is for manual
 distribution and is not currently consumed by the updater. The DMG uses the
@@ -192,26 +192,26 @@ release artifact should keep web asset profile membership explainable through
 ## Package Managers
 
 User-facing Homebrew installs use the public tap at
-`SergeiNikolenko/homebrew-burrete`. This is Burrete's dedicated tap for release
+`SergeiNikolenko/homebrew-burette`. This is Burette's dedicated tap for release
 cask metadata. The working user command is:
 
 ```bash
-brew tap SergeiNikolenko/burrete
-brew install --cask burrete
+brew tap SergeiNikolenko/burette
+brew install --cask burette
 ```
 
-The shorter default-tap command, `brew install --cask burrete`, works only if
+The shorter default-tap command, `brew install --cask burette`, works only if
 the cask is accepted into `Homebrew/homebrew-cask`. The first upstream PR was
 blocked because the app is not Apple-signed/notarized and the project does not
 meet the default tap notability threshold yet.
 
 Stable GitHub releases update the external Homebrew tap automatically.
 Configure the `HOMEBREW_TAP_TOKEN` repository secret with write access to
-`SergeiNikolenko/homebrew-burrete`; the release workflow fails early for stable
+`SergeiNikolenko/homebrew-burette`; the release workflow fails early for stable
 releases when this token is missing. After the GitHub release is created, the
-workflow checks out the tap, updates `Casks/burrete.rb` or the sharded
-`Casks/b/burrete.rb` cask `version` and `sha256` from the uploaded
-`Burrete-<version>.zip` artifact, normalizes the macOS dependency syntax,
+workflow checks out the tap, updates `Casks/burette.rb` or the sharded
+`Casks/b/burette.rb` cask `version` and `sha256` from the uploaded
+`Burette-<version>.zip` artifact, normalizes the macOS dependency syntax,
 commits the cask change, and pushes it back to the tap.
 
 Prereleases do not update the Homebrew cask.
@@ -222,48 +222,48 @@ After every stable release, verify the external tap, not a local cask copy in
 this repository:
 
 ```bash
-brew tap SergeiNikolenko/burrete
+brew tap SergeiNikolenko/burette
 brew update
-brew info --cask SergeiNikolenko/burrete/burrete
+brew info --cask SergeiNikolenko/burette/burette
 ```
 
 Confirm the cask version matches the GitHub release tag and the cask `sha256`
-matches the uploaded `Burrete-<version>.zip.sha256` artifact. For an installable
+matches the uploaded `Burette-<version>.zip.sha256` artifact. For an installable
 checksum check, run:
 
 ```bash
-brew fetch --cask --force SergeiNikolenko/burrete/burrete
+brew fetch --cask --force SergeiNikolenko/burette/burette
 ```
 
 The release workflow should also push a tap commit named
-`Update Burrete cask to <version>`. If the public tap remains stale after a
+`Update Burette cask to <version>`. If the public tap remains stale after a
 stable release, inspect the release job's Homebrew checkout/update steps and the
 `HOMEBREW_TAP_TOKEN` secret before announcing the release channel as updated.
 
-The registry package lives in `packages/burrete`. It is a thin CLI installer
+The registry package lives in `packages/burette`. It is a thin CLI installer
 for the macOS app, not the app bundle itself. Publish it from that workspace
 package after registry authentication:
 
 ```bash
-cd packages/burrete
+cd packages/burette
 bun publish
 ```
 
 Bun installs the same published package:
 
 ```bash
-bunx burrete install
-bunx burrete doctor
+bunx burette install
+bunx burette doctor
 ```
 
 The CLI installer installs to `~/Applications` by default and to
 `/Applications` only with `--system`. It prints each install step, verifies the
 GitHub `sha256:<digest>` asset checksum when release metadata provides one,
-stages replacement through `Burrete.app.updating`, and restores the previous app
-bundle if replacement fails. `burrete doctor` checks the installed app, embedded
+stages replacement through `Burette.app.updating`, and restores the previous app
+bundle if replacement fails. `burette doctor` checks the installed app, embedded
 Quick Look extension, `qlmanage`, and the app version.
 
 ## In-App Updates
 
-The desktop app checks Burrete GitHub Releases on launch and from the app menu.
+The desktop app checks Burette GitHub Releases on launch and from the app menu.
 A newer release can be downloaded from the update dialog.

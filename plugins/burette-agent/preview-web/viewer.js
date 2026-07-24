@@ -8,7 +8,7 @@
   const SDF_GRID_PADDING = 4.0;
   const TOOLBAR_POSITION_VERSION = '13';
   const TOOLBAR_COLLAPSED_VERSION = '5';
-  const DOCKING_POSE_POSITION_VERSION = '4';
+  const DOCKING_POSE_POSITION_VERSION = '6';
   const TOOLBAR_MARGIN = 12;
   const FLOATING_LAYOUT_GAP = 12;
   const PANEL_CLOSE_HIT_WIDTH = 38;
@@ -37,6 +37,7 @@
   const MOLSTAR_STYLE_OPTIONS = [
     { value: 'default', label: 'Default' },
     { value: 'illustrative', label: 'Illustrative' },
+    { value: 'illustrative-surface', label: 'Illustrative+Surface' },
     { value: 'polymer-ligand', label: 'Polymer+Ligand' },
     { value: 'cartoon', label: 'Cartoon' },
     { value: 'ball-and-stick', label: 'Ball+Stick' },
@@ -99,7 +100,7 @@
   const DOCKING_COORDINATE_TRAJECTORY_FORMATS = new Set(['xtc', 'trr', 'dcd', 'nctraj', 'nc', 'ncdf', 'netcdf', 'ncrst', 'lammpstrj']);
   const DOCKING_MODEL_TRAJECTORY_FORMATS = new Set(['pdb', 'pdbqt', 'mmcif', 'gro']);
   const DOCKING_TOPOLOGY_TRAJECTORY_FORMATS = new Set(['top', 'psf', 'prmtop', 'tpr']);
-  const STRUCTURE_DRAG_MIME = 'application/x-burrete-structure-paths';
+  const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   const MOLSTAR_VIEWPORT_PANEL_OPEN_CLASS = 'buret-molstar-viewport-panel-open';
   let xyzrenderControlsApplyTimer = 0;
   let xyzrenderInlineRequestSerial = 0;
@@ -145,8 +146,8 @@
   const molstarPreviewSvgCache = new Map();
   const molstarEditUndoStack = [];
   let activeDockingPrepared = null;
-  let burreteAgentActionPollTimer = 0;
-  let burreteAgentActionPollBusy = false;
+  let buretteAgentActionPollTimer = 0;
+  let buretteAgentActionPollBusy = false;
   let molstarViewportPanelObserver = null;
   let generate3dPending = false;
   let generate3dPendingMode = 'single';
@@ -165,17 +166,17 @@
   function postHostMessage(payload) {
     try {
       const body = { ...(payload || {}) };
-      if (window.BurreteConfig && window.BurreteConfig.documentId) {
-        body.documentId = String(window.BurreteConfig.documentId);
+      if (window.BuretteConfig && window.BuretteConfig.documentId) {
+        body.documentId = String(window.BuretteConfig.documentId);
       }
-      if (window.BurreteConfig && window.BurreteConfig.previewRequestID) {
-        body.requestID = String(window.BurreteConfig.previewRequestID);
+      if (window.BuretteConfig && window.BuretteConfig.previewRequestID) {
+        body.requestID = String(window.BuretteConfig.previewRequestID);
       }
-      const hasWebkitBridge = !!window.webkit?.messageHandlers?.burrete;
-      window.webkit?.messageHandlers?.burrete?.postMessage(body);
+      const hasWebkitBridge = !!window.webkit?.messageHandlers?.burette;
+      window.webkit?.messageHandlers?.burette?.postMessage(body);
       if (hasWebkitBridge) return true;
       if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ source: 'burrete-viewer', body }, '*');
+        window.parent.postMessage({ source: 'burette-viewer', body }, '*');
         return true;
       }
       return false;
@@ -195,7 +196,7 @@
       const key = event.key?.toLowerCase();
       const commandKey = event.metaKey || event.ctrlKey;
       const togglesSidebar = commandKey && !event.altKey && !event.shiftKey && key === 'b';
-      const opensCommandPalette = (commandKey && event.shiftKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
+      const opensCommandPalette = (commandKey && !event.altKey && key === 'p') || (!commandKey && !event.altKey && key === '/');
       if (!opensCommandPalette && !togglesSidebar) return;
       event.preventDefault();
       postHostMessage({ type: togglesSidebar ? 'toggleSidebar' : 'openCommandPalette' });
@@ -319,7 +320,7 @@
   }
 
   function canUseDownloadExportBridge() {
-    return !!window.webkit?.messageHandlers?.burrete || (window.parent && window.parent !== window);
+    return !!window.webkit?.messageHandlers?.burette || (window.parent && window.parent !== window);
   }
 
   async function exportDownloadBlob(href, name) {
@@ -380,7 +381,7 @@
     if (status) {
       setStatusText(text);
       status.classList.toggle('error', kind === 'error');
-      status.classList.toggle('hidden', kind !== 'error' && !window.BurreteDebug);
+      status.classList.toggle('hidden', kind !== 'error' && !window.BuretteDebug);
     }
     if (shouldReportStatus(text, kind)) {
       post(kind === 'error' ? 'error' : 'status', text);
@@ -411,7 +412,7 @@
   }
 
   function shouldReportStatus(text, kind) {
-    if (kind === 'error' || window.BurreteDebug) return true;
+    if (kind === 'error' || window.BuretteDebug) return true;
     return text.startsWith('[web] Loading Mol* engine') ||
       text.startsWith('[web] Mol* engine loaded') ||
       text.startsWith('[web] Loading xyzrender artifact') ||
@@ -421,22 +422,22 @@
   }
 
   function debug(message) {
-    if (!window.BurreteDebug) return;
+    if (!window.BuretteDebug) return;
     post('debug', message);
   }
 
-  async function reportBurreteAgentState() {
-    const control = window.BurreteAgentControl;
+  async function reportBuretteAgentState() {
+    const control = window.BuretteAgentControl;
     const reportUrl = typeof control?.reportUrl === 'string' ? control.reportUrl : '';
-    if (!reportUrl || !window.BurreteAgent?.run) return;
+    if (!reportUrl || !window.BuretteAgent?.run) return;
     try {
-      const capabilities = await window.BurreteAgent.run({ command: 'capabilities' });
+      const capabilities = await window.BuretteAgent.run({ command: 'capabilities' });
       let summary = null;
       const warnings = [];
       if (capabilities?.ok && capabilities.result?.ready) {
-        summary = await window.BurreteAgent.run({ command: 'summary', args: { includeLigands: true } });
+        summary = await window.BuretteAgent.run({ command: 'summary', args: { includeLigands: true } });
       } else {
-        warnings.push('BurreteAgent was present but did not report ready=true.');
+        warnings.push('BuretteAgent was present but did not report ready=true.');
       }
       await fetch(reportUrl, {
         method: 'POST',
@@ -451,25 +452,25 @@
         })
       });
     } catch (error) {
-      debug('BurreteAgent live report failed: ' + (error && error.message || String(error)));
+      debug('BuretteAgent live report failed: ' + (error && error.message || String(error)));
     }
   }
 
-  function startBurreteAgentActionPolling() {
-    const control = window.BurreteAgentControl;
+  function startBuretteAgentActionPolling() {
+    const control = window.BuretteAgentControl;
     const nextActionUrl = typeof control?.nextActionUrl === 'string' ? control.nextActionUrl : '';
     const actionResultUrl = typeof control?.actionResultUrl === 'string' ? control.actionResultUrl : '';
-    if (!nextActionUrl || !actionResultUrl || !window.BurreteAgent?.run || burreteAgentActionPollTimer) return;
+    if (!nextActionUrl || !actionResultUrl || !window.BuretteAgent?.run || buretteAgentActionPollTimer) return;
     const intervalMs = Math.max(250, Math.min(5000, Number(control.actionPollIntervalMs) || 500));
-    burreteAgentActionPollTimer = window.setInterval(() => {
-      void pollBurreteAgentAction(nextActionUrl, actionResultUrl);
+    buretteAgentActionPollTimer = window.setInterval(() => {
+      void pollBuretteAgentAction(nextActionUrl, actionResultUrl);
     }, intervalMs);
-    void pollBurreteAgentAction(nextActionUrl, actionResultUrl);
+    void pollBuretteAgentAction(nextActionUrl, actionResultUrl);
   }
 
-  async function pollBurreteAgentAction(nextActionUrl, actionResultUrl) {
-    if (burreteAgentActionPollBusy) return;
-    burreteAgentActionPollBusy = true;
+  async function pollBuretteAgentAction(nextActionUrl, actionResultUrl) {
+    if (buretteAgentActionPollBusy) return;
+    buretteAgentActionPollBusy = true;
     try {
       const response = await fetch(nextActionUrl, { credentials: 'same-origin' });
       if (response.status === 204) return;
@@ -478,7 +479,7 @@
       if (!payload?.id || !payload.action) return;
       let result;
       try {
-        result = await executeBurreteAgentAction(payload.action);
+        result = await executeBuretteAgentAction(payload.action);
       } catch (error) {
         const actionType = String(payload.action?.type || 'unknown');
         result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
@@ -489,15 +490,15 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: payload.id, result })
       });
-      void reportBurreteAgentState();
+      void reportBuretteAgentState();
     } catch (error) {
-      debug('BurreteAgent action poll failed: ' + (error && error.message || String(error)));
+      debug('BuretteAgent action poll failed: ' + (error && error.message || String(error)));
     } finally {
-      burreteAgentActionPollBusy = false;
+      buretteAgentActionPollBusy = false;
     }
   }
 
-  async function executeBurreteAgentAction(action) {
+  async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
     if (type === 'get_xtb_context') {
       const target = molstarSelectedMoleculeTargetFromSelection();
@@ -511,12 +512,12 @@
         }
       };
     }
-    if (!window.BurreteAgent?.run) {
-      return agentActionFailure(type, 'NO_VIEWER', 'BurreteAgent is not available in this viewer runtime.');
+    if (!window.BuretteAgent?.run) {
+      return agentActionFailure(type, 'NO_VIEWER', 'BuretteAgent is not available in this viewer runtime.');
     }
     if (type === 'focus_ligand') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
-      const result = await window.BurreteAgent.run({
+      const result = await window.BuretteAgent.run({
         command: 'focusLigand',
         args: {
           selector: action.selector || action,
@@ -532,17 +533,17 @@
       return result;
     }
     if (type === 'show_ligands') {
-      return window.BurreteAgent.run({ command: 'showLigands', args: action.args || {} });
+      return window.BuretteAgent.run({ command: 'showLigands', args: action.args || {} });
     }
     if (type === 'hide_components') {
-      return window.BurreteSceneActions?.hideComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.hideComponents is unavailable.');
+      return window.BuretteSceneActions?.hideComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideComponents is unavailable.');
     }
     if (type === 'show_components') {
-      return window.BurreteSceneActions?.showComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showComponents is unavailable.');
+      return window.BuretteSceneActions?.showComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showComponents is unavailable.');
     }
     if (type === 'select_residues') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
-      const result = await window.BurreteAgent.run({
+      const result = await window.BuretteAgent.run({
         command: 'selectResidues',
         args: {
           ...(action.args || {}),
@@ -593,7 +594,7 @@
       return setSdfPoseIndexFromAction(action);
     }
     if (type === 'focus_selection') {
-      return window.BurreteAgent.run({
+      return window.BuretteAgent.run({
         command: 'focusSelection',
         args: {
           ...(action.args || {}),
@@ -602,7 +603,7 @@
       });
     }
     if (type === 'label_selection') {
-      return window.BurreteAgent.run({
+      return window.BuretteAgent.run({
         command: 'labelSelection',
         args: {
           selection: action.selection,
@@ -624,31 +625,31 @@
       });
     }
     if (type === 'contacts') {
-      return window.BurreteAgent.run({ command: 'contacts', args: action.args || action });
+      return window.BuretteAgent.run({ command: 'contacts', args: action.args || action });
     }
     if (type === 'reset_camera') {
-      return window.BurreteAgent.run({ command: 'resetCamera', args: action.args || {} });
+      return window.BuretteAgent.run({ command: 'resetCamera', args: action.args || {} });
     }
     if (type === 'hide_waters') {
-      return window.BurreteSceneActions?.hideWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.hideWaters is unavailable.');
+      return window.BuretteSceneActions?.hideWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideWaters is unavailable.');
     }
     if (type === 'show_waters') {
-      return window.BurreteSceneActions?.showWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showWaters is unavailable.');
+      return window.BuretteSceneActions?.showWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showWaters is unavailable.');
     }
     if (type === 'show_surface') {
-      return window.BurreteSceneActions?.showSurface?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.showSurface is unavailable.');
+      return window.BuretteSceneActions?.showSurface?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showSurface is unavailable.');
     }
     if (type === 'color_by_chain') {
-      return window.BurreteSceneActions?.colorByChain?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BurreteSceneActions.colorByChain is unavailable.');
+      return window.BuretteSceneActions?.colorByChain?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.colorByChain is unavailable.');
     }
     if (type === 'render_panel') {
-      return renderBurreteAgentPanel(action);
+      return renderBuretteAgentPanel(action);
     }
     if (type === 'apply_scene') {
-      return executeBurreteSceneSpec(action);
+      return executeBuretteSceneSpec(action);
     }
     if (type === 'load_mvs') {
-      return window.BurreteAgent.run({
+      return window.BuretteAgent.run({
         command: 'loadMVS',
         args: {
           data: action.data,
@@ -660,51 +661,51 @@
       });
     }
     if (type === 'screenshot' || type === 'export_image') {
-      return window.BurreteAgent.run({ command: 'screenshot', args: action.args || {} });
+      return window.BuretteAgent.run({ command: 'screenshot', args: action.args || {} });
     }
-    if (type === 'raw_burrete_agent') {
-      if (!action.command) return agentActionFailure(type, 'INVALID_ARGS', 'raw_burrete_agent requires command.');
-      return window.BurreteAgent.run({ command: action.command, args: action.args || {} });
+    if (type === 'raw_burette_agent') {
+      if (!action.command) return agentActionFailure(type, 'INVALID_ARGS', 'raw_burette_agent requires command.');
+      return window.BuretteAgent.run({ command: action.command, args: action.args || {} });
     }
-    return agentActionFailure(type, 'NOT_IMPLEMENTED', `Unsupported BurreteAgent action: ${type}`);
+    return agentActionFailure(type, 'NOT_IMPLEMENTED', `Unsupported BuretteAgent action: ${type}`);
   }
 
-  function burreteSceneSpecOperations(action) {
+  function buretteSceneSpecOperations(action) {
     const raw = Array.isArray(action?.operations) ? action.operations : action?.components;
     return Array.isArray(raw) ? raw : [];
   }
 
-  function burreteSceneSpecTarget(operation) {
+  function buretteSceneSpecTarget(operation) {
     if (operation?.selector != null) return operation.selector;
     if (operation?.target != null) return operation.target;
     if (operation?.component != null) return operation.component;
     return null;
   }
 
-  function burreteSceneSpecLabel(operation, index) {
+  function buretteSceneSpecLabel(operation, index) {
     return operation?.label || operation?.name || operation?.id || `scene-component-${index + 1}`;
   }
 
-  async function executeBurreteSceneSpec(action) {
-    const operations = burreteSceneSpecOperations(action);
+  async function executeBuretteSceneSpec(action) {
+    const operations = buretteSceneSpecOperations(action);
     if (!operations.length) return agentActionFailure('apply_scene', 'INVALID_ARGS', 'apply_scene requires components or operations.');
 
     const results = [];
     for (let index = 0; index < operations.length; index++) {
       const operation = operations[index] || {};
-      const target = burreteSceneSpecTarget(operation);
+      const target = buretteSceneSpecTarget(operation);
       if (target == null) {
         results.push(agentActionFailure('apply_scene', 'INVALID_ARGS', `Scene operation ${index + 1} requires selector or target.`));
         continue;
       }
-      const label = burreteSceneSpecLabel(operation, index);
+      const label = buretteSceneSpecLabel(operation, index);
       const kind = String(operation.kind || operation.action || '').toLowerCase();
       const wantsSelect = operation.select === true || kind === 'select' || kind === 'selection';
       const wantsFocus = operation.focus === true || kind === 'focus';
       const wantsHighlight = operation.highlight === true || operation.color != null || operation.representation != null || kind === 'highlight' || kind === 'color';
 
       if (wantsHighlight || (!wantsSelect && !wantsFocus)) {
-        results.push(await window.BurreteAgent.run({
+        results.push(await window.BuretteAgent.run({
           command: 'colorSelection',
           args: {
             selector: target,
@@ -717,7 +718,7 @@
         }));
       }
       if (wantsSelect) {
-        results.push(await window.BurreteAgent.run({
+        results.push(await window.BuretteAgent.run({
           command: 'selectResidues',
           args: {
             selector: target,
@@ -728,7 +729,7 @@
         }));
       }
       if (wantsFocus) {
-        results.push(await window.BurreteAgent.run({
+        results.push(await window.BuretteAgent.run({
           command: 'focusSelection',
           args: {
             selector: target,
@@ -748,18 +749,18 @@
   }
 
   window.addEventListener('message', event => {
-    const body = event.data && event.data.source === 'burrete-agent-host' ? event.data.body : null;
+    const body = event.data && event.data.source === 'burette-agent-host' ? event.data.body : null;
     if (!body || body.type !== 'agent-action' || !body.id) return;
     void (async () => {
       let result;
       try {
-        result = await executeBurreteAgentAction(body.action);
+        result = await executeBuretteAgentAction(body.action);
       } catch (error) {
         const actionType = String(body.action?.type || 'unknown');
         result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
       }
       event.source?.postMessage({
-        source: 'burrete-agent-viewer',
+        source: 'burette-agent-viewer',
         body: {
           type: 'agent-action-result',
           id: body.id,
@@ -769,7 +770,7 @@
     })();
   });
 
-  window.BurreteViewerActions = { run: executeBurreteAgentAction };
+  window.BuretteViewerActions = { run: executeBuretteAgentAction };
 
   let hostedMcpActionsApplied = false;
   function hostedMcpSelectionFromResults(actions, results) {
@@ -800,24 +801,24 @@
 
   async function applyHostedMcpActions() {
     if (hostedMcpActionsApplied) return;
-    const requestedActions = Array.isArray(window.BurreteConfig?.hostedMcpActions)
-      ? window.BurreteConfig.hostedMcpActions.slice(0, 8)
+    const requestedActions = Array.isArray(window.BuretteConfig?.hostedMcpActions)
+      ? window.BuretteConfig.hostedMcpActions.slice(0, 8)
       : [];
     if (!requestedActions.length) return;
     hostedMcpActionsApplied = true;
     try {
-      await window.BurreteHostedAppBridge?.ready;
-      const actions = window.BurreteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
+      await window.BuretteHostedAppBridge?.ready;
+      const actions = window.BuretteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
       if (actions.length !== requestedActions.length) {
-        throw new Error('Hosted scene contained an action outside the public Burrete allowlist.');
+        throw new Error('Hosted scene contained an action outside the public Burette allowlist.');
       }
-      await window.BurreteAgent?.ready;
+      await window.BuretteAgent?.ready;
       const results = [];
-      for (const action of actions) results.push(await executeBurreteAgentAction(action));
+      for (const action of actions) results.push(await executeBuretteAgentAction(action));
       window.__mqlPost?.('sceneActionsApplied', '', {
         report: {
           revision: Date.now(),
-          documentId: String(window.BurreteConfig?.documentId || 'active-structure'),
+          documentId: String(window.BuretteConfig?.documentId || 'active-structure'),
           selection: hostedMcpSelectionFromResults(actions, results),
           results
         }
@@ -843,7 +844,7 @@
     };
   }
 
-  function renderBurreteAgentPanel(action) {
+  function renderBuretteAgentPanel(action) {
     const panel = action?.panel || action;
     const kind = String(panel.kind || action?.kind || '').trim();
     const content = String(panel.content || '');
@@ -853,11 +854,11 @@
     if (!content) {
       return agentActionFailure('render_panel', 'INVALID_ARGS', 'render_panel requires panel content.');
     }
-    const root = ensureBurreteAgentPanelRoot();
+    const root = ensureBuretteAgentPanelRoot();
     const title = String(panel.title || action?.title || `${kind} panel`);
-    root.querySelector('[data-burrete-agent-panel-title]').textContent = title;
+    root.querySelector('[data-burette-agent-panel-title]').textContent = title;
     root.dataset.kind = kind;
-    const body = root.querySelector('[data-burrete-agent-panel-body]');
+    const body = root.querySelector('[data-burette-agent-panel-body]');
     body.replaceChildren(renderPanelContent(kind, content));
     root.classList.remove('hidden');
     return {
@@ -871,21 +872,21 @@
     };
   }
 
-  function ensureBurreteAgentPanelRoot() {
-    let root = document.querySelector('[data-burrete-agent-panel]');
+  function ensureBuretteAgentPanelRoot() {
+    let root = document.querySelector('[data-burette-agent-panel]');
     if (root) return root;
     root = document.createElement('aside');
     root.className = 'buret-agent-panel hidden';
-    root.setAttribute('data-burrete-agent-panel', '');
-    root.setAttribute('aria-label', 'Burrete agent panel');
+    root.setAttribute('data-burette-agent-panel', '');
+    root.setAttribute('aria-label', 'Burette agent panel');
     root.innerHTML = `
       <header class="buret-agent-panel-header">
-        <strong data-burrete-agent-panel-title>Panel</strong>
-        <button type="button" data-burrete-agent-panel-close aria-label="Close panel">Close</button>
+        <strong data-burette-agent-panel-title>Panel</strong>
+        <button type="button" data-burette-agent-panel-close aria-label="Close panel">Close</button>
       </header>
-      <div class="buret-agent-panel-body" data-burrete-agent-panel-body></div>
+      <div class="buret-agent-panel-body" data-burette-agent-panel-body></div>
     `;
-    root.querySelector('[data-burrete-agent-panel-close]').addEventListener('click', () => root.classList.add('hidden'));
+    root.querySelector('[data-burette-agent-panel-close]').addEventListener('click', () => root.classList.add('hidden'));
     document.body.appendChild(root);
     return root;
   }
@@ -1028,7 +1029,7 @@
   const MAX_VIEWER_UI_SCALE = 0.9;
   const VIEWER_UI_SCALE_STEP = 0.08;
 
-  let panelControlsVisible = window.BurretePanelControlsVisible !== false;
+  let panelControlsVisible = window.BurettePanelControlsVisible !== false;
   let transparentBackground = false;
   let viewerTheme = 'auto';
   let canvasBackground = 'auto';
@@ -1042,7 +1043,9 @@
   let activeSdfPoseMode = 'single';
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
+  let xyzFrameAlignment = null;
   let activeDockingPoseCollectionState = null;
+  let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
   let latestXyzrenderOrientationRef = null;
@@ -1165,7 +1168,7 @@
   function setSdfCollectionContextStyle(style) {
     const value = normalizeSdfCollectionContextStyle(style);
     try {
-      window.localStorage?.setItem(sdfCollectionContextStyleStorageKey(activeConfig || window.BurreteConfig || {}), value);
+      window.localStorage?.setItem(sdfCollectionContextStyleStorageKey(activeConfig || window.BuretteConfig || {}), value);
     } catch (_) {}
     return value;
   }
@@ -1181,7 +1184,7 @@
   function setSdfCollectionContextOpacity(opacity) {
     const value = normalizeSdfCollectionContextOpacity(opacity);
     try {
-      window.localStorage?.setItem(sdfCollectionContextOpacityStorageKey(activeConfig || window.BurreteConfig || {}), value.toFixed(2));
+      window.localStorage?.setItem(sdfCollectionContextOpacityStorageKey(activeConfig || window.BuretteConfig || {}), value.toFixed(2));
     } catch (_) {}
     return value;
   }
@@ -1206,7 +1209,7 @@
   function setSdfCollectionContextColor(color) {
     const value = normalizeSdfCollectionContextColor(color);
     try {
-      window.localStorage?.setItem(sdfCollectionContextColorStorageKey(activeConfig || window.BurreteConfig || {}), value);
+      window.localStorage?.setItem(sdfCollectionContextColorStorageKey(activeConfig || window.BuretteConfig || {}), value);
     } catch (_) {}
     return value;
   }
@@ -1816,7 +1819,7 @@
     if (!sent) setStatus('Renderer switching is available only in the app or Quick Look viewer.', 'error');
   }
 
-  function activeTrajectoryFrameIndexForRendererSwitch(config = activeConfig || window.BurreteConfig || {}, prepared = activeMolstarPrepared) {
+  function activeTrajectoryFrameIndexForRendererSwitch(config = activeConfig || window.BuretteConfig || {}, prepared = activeMolstarPrepared) {
     const poseCount = Number(
       prepared?.poseCount ||
       prepared?.xyzFrameCount ||
@@ -1833,7 +1836,7 @@
   }
 
   function requestBrowserDevRendererSwitch(renderer) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     if (config.tauriViewer !== false) return false;
     const value = normalizeRenderer(renderer);
     if (value === normalizeRenderer(config.renderer)) return true;
@@ -1848,9 +1851,9 @@
   }
 
   async function switchBrowserDevMolstar() {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     if (config.tauriViewer !== false) return;
-    const cb = window.BurreteCacheBuster || String(Date.now());
+    const cb = window.BuretteCacheBuster || String(Date.now());
     const format = normalizeFormat(config.molstarFormat || config.format);
     const trajectoryFrameCount = Number(config.trajectoryFrameCount || 0);
     const nextConfig = {
@@ -1862,7 +1865,7 @@
       trajectoryControls: config.trajectoryControls === true || trajectoryFrameCount > 1
     };
     activeConfig = nextConfig;
-    window.BurreteConfig = nextConfig;
+    window.BuretteConfig = nextConfig;
     postHostMessage({
       type: 'rendererChanged',
       documentId: nextConfig.documentId,
@@ -1880,9 +1883,9 @@
   }
 
   function embeddedStructureDataByteLength() {
-    if (window.BurreteDataBytes instanceof Uint8Array) return window.BurreteDataBytes.length;
-    if (typeof window.BurreteDataBase64 !== 'string') return 0;
-    const text = window.BurreteDataBase64.trim();
+    if (window.BuretteDataBytes instanceof Uint8Array) return window.BuretteDataBytes.length;
+    if (typeof window.BuretteDataBase64 !== 'string') return 0;
+    const text = window.BuretteDataBase64.trim();
     if (!text) return 0;
     const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0;
     return Math.max(0, Math.floor(text.length * 3 / 4) - padding);
@@ -1894,8 +1897,8 @@
     const expectedBytes = Number(config.previewByteCount || config.byteCount || 0);
     if (!Number.isFinite(expectedBytes) || expectedBytes <= 1) return;
     if (embeddedStructureDataByteLength() > 1) return;
-    window.BurreteDataBytes = null;
-    window.BurreteDataBase64 = null;
+    window.BuretteDataBytes = null;
+    window.BuretteDataBase64 = null;
     await loadStructureData(config, cb);
   }
 
@@ -1962,7 +1965,7 @@
   function applyGenerate3DPendingState(button) {
     const label = button.querySelector('[data-buret-generate-3d-label]');
     if (!button.dataset.readyLabel) button.dataset.readyLabel = label?.textContent?.trim() || 'Generate 3D';
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const renderer = normalizeRenderer(config.renderer);
     const canGenerate3d = canGenerate3DConformerFromConfig(config, renderer);
     button.classList.toggle('generating', generate3dPending);
@@ -2003,7 +2006,7 @@
   });
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -2049,14 +2052,23 @@
 
   window.addEventListener('message', event => {
     const data = event.data || {};
-    const body = data.source === 'burrete-host' ? data.body : null;
+    const body = data.source === 'burette-host' ? data.body : null;
     if (!body) return;
     if (body.type === 'workspaceHistoryCommand') {
       void handleWorkspaceHistoryCommand(body, event.source);
       return;
     }
+    // Applied in place so a theme change never costs a viewer rebuild: the runtime
+    // already carries the token sets for both themes.
+    if (body.type === 'setViewerTheme') {
+      const nextTheme = normalizeViewerTheme(body.value);
+      if (activeConfig) activeConfig.theme = nextTheme;
+      if (window.BuretteConfig) window.BuretteConfig.theme = nextTheme;
+      setViewerTheme(nextTheme, activeViewer);
+      return;
+    }
     if (body.type === 'setXyzrenderControls') {
-      const config = activeConfig || window.BurreteConfig || {};
+      const config = activeConfig || window.BuretteConfig || {};
       const documentId = String(config.documentId || '');
       const hasXyzrenderArtifact = Boolean(document.querySelector('.buret-external-artifact-root, .buret-xyzrender-sheet-item-base, .buret-external-artifact-object'));
       if (body.documentId && documentId && String(body.documentId) !== documentId && !hasXyzrenderArtifact) return;
@@ -2109,7 +2121,7 @@
       setStatus(`[web] ${direction === 'redo' ? 'Redo' : 'Undo'} failed.\n\n${error?.message || String(error)}`, 'error');
     }
     source?.postMessage({
-      source: 'burrete-viewer',
+      source: 'burette-viewer',
       body: {
         type: 'workspaceHistoryCommandResult',
         requestId: body.requestId,
@@ -2119,7 +2131,7 @@
   }
 
   async function replaceMolstarStructureFromHost(body) {
-    const documentId = String((activeConfig || window.BurreteConfig || {}).documentId || '');
+    const documentId = String((activeConfig || window.BuretteConfig || {}).documentId || '');
     if (body.documentId && documentId && String(body.documentId) !== documentId) return;
     if (!activeViewer) throw new Error('Mol* viewer is not ready.');
     const textBase64 = typeof body.textBase64 === 'string' ? body.textBase64.trim() : '';
@@ -2127,9 +2139,9 @@
     const text = base64ToText(textBase64);
     const title = String(body.title || 'generated-3d.sdf').trim() || 'generated-3d.sdf';
     const byteCount = Number(body.byteCount || new TextEncoder().encode(text).byteLength);
-    const generatedStyle = normalizeMolstarStyle(body.molstarStyle || configuredMolstarStyle(activeConfig || window.BurreteConfig || {}));
+    const generatedStyle = normalizeMolstarStyle(body.molstarStyle || configuredMolstarStyle(activeConfig || window.BuretteConfig || {}));
     const nextConfig = {
-      ...(activeConfig || window.BurreteConfig || {}),
+      ...(activeConfig || window.BuretteConfig || {}),
       label: title,
       format: 'sdf',
       molstarFormat: 'sdf',
@@ -2150,9 +2162,9 @@
       trajectoryFrameCount: 0
     };
     activeConfig = nextConfig;
-    window.BurreteConfig = nextConfig;
-    window.BurreteDataBytes = null;
-    window.BurreteDataBase64 = textBase64;
+    window.BuretteConfig = nextConfig;
+    window.BuretteDataBytes = null;
+    window.BuretteDataBase64 = textBase64;
     activeMolstarCacheBuster = String(Date.now());
     setStatus(`[web] Updating Mol* structure…\n${title}`);
     const plugin = activeViewer?.plugin;
@@ -2179,12 +2191,12 @@
       throw error;
     }
     try {
-      window.BurreteAgent?.notifyStructureLoaded?.({ viewer: activeViewer, plugin: activeViewer.plugin, config: nextConfig, prepared });
-      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
+      window.BuretteAgent?.notifyStructureLoaded?.({ viewer: activeViewer, plugin: activeViewer.plugin, config: nextConfig, prepared });
+      postHostMessage({ type: 'agentReady', message: 'Burette agent ready' });
     } catch (error) {
-      debug('BurreteAgent notifyStructureLoaded failed after in-place structure update: ' + (error && error.message || String(error)));
+      debug('BuretteAgent notifyStructureLoaded failed after in-place structure update: ' + (error && error.message || String(error)));
     }
-    void reportBurreteAgentState();
+    void reportBuretteAgentState();
     setGenerate3DPending(false);
     setStatus(`[web] Updated ${title} with generated 3D coordinates`);
     postHostMessage({
@@ -2249,7 +2261,7 @@
     delays.forEach(delayMs => {
       window.setTimeout(() => {
         if (serial !== molstarStructureFocusSerial) return;
-        if (viewer !== activeViewer && viewer !== window.BurreteViewer && viewer !== window.BuretteViewer) return;
+        if (viewer !== activeViewer && viewer !== window.BuretteViewer && viewer !== window.BuretteViewer) return;
         try { viewer?.handleResize?.(); } catch (_) {}
         requestMolstarStructureFocus(viewer, options);
       }, Math.max(0, Number(delayMs) || 0));
@@ -2353,7 +2365,7 @@
 
   function notifyStructureOverlayModeChanged(prepared = activeMolstarPrepared) {
     if (!structureOverlayAvailable(prepared)) return;
-    const documentId = String(activeConfig?.documentId || window.BurreteConfig?.documentId || '');
+    const documentId = String(activeConfig?.documentId || window.BuretteConfig?.documentId || '');
     postHostMessage({
       type: 'structureOverlayModeChanged',
       documentId,
@@ -2389,7 +2401,9 @@
       || format === 'xyz';
     if (trajectoryOverlay) {
       const poseCount = Number(prepared?.poseCount || prepared?.xyzFrameCount || prepared?.pdbModelCount || activeConfig?.trajectoryFrameCount || 0);
-      return Number.isFinite(poseCount) && poseCount > 1 && poseCount <= MAX_STRUCTURE_OVERLAY_FRAME_COUNT;
+      if (!Number.isFinite(poseCount) || poseCount <= 1) return false;
+      if (prepared?.xyzFrameOverlayAvailable === true) return true;
+      return poseCount <= MAX_STRUCTURE_OVERLAY_FRAME_COUNT;
     }
     return true;
   }
@@ -2501,14 +2515,14 @@
     scheduleLayoutStateReapply(viewer);
     try { viewer.handleResize(); } catch (_) {}
     try {
-      window.BurreteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
-      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
+      window.BuretteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
+      postHostMessage({ type: 'agentReady', message: 'Burette agent ready' });
     } catch (error) {
-      debug('BurreteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
+      debug('BuretteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
     }
     await applyMolstarContextFocus(config);
-    void reportBurreteAgentState();
-    startBurreteAgentActionPolling();
+    void reportBuretteAgentState();
+    startBuretteAgentActionPolling();
     {
       const poseCount = Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || prepared?.xyzFrameCount || config?.trajectoryFrameCount || 0);
       setStatus(`[web] Rendered ${config.label || 'structure'}`);
@@ -2534,7 +2548,7 @@
   }
 
   function requestOpenInKetcher() {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     if (config.ketcherEditable !== true) {
       setStatus('This structure is too large or not supported by Ketcher.', 'error');
       return;
@@ -2620,9 +2634,9 @@
   }
 
   function previewDockDocumentRows() {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const rows = [
-      ['Document', config.label || config.title || 'Burrete preview'],
+      ['Document', config.label || config.title || 'Burette preview'],
       ['Format', config.format || config.molstarFormat || 'unknown']
     ];
     if (config.byteCount !== undefined) rows.push(['Size', `${Number(config.byteCount || 0).toLocaleString()} bytes`]);
@@ -2743,7 +2757,7 @@
       : `<div class="buret-preview-dock-section">
           <div class="buret-preview-dock-card">
             <div class="buret-preview-dock-label">Active preview</div>
-            <div class="buret-preview-dock-value">${escapeHtml((activeConfig || window.BurreteConfig || {}).label || 'Burrete preview')}</div>
+            <div class="buret-preview-dock-value">${escapeHtml((activeConfig || window.BuretteConfig || {}).label || 'Burette preview')}</div>
           </div>
           <div class="buret-preview-dock-card">
             <div class="buret-preview-dock-label">Status</div>
@@ -2760,7 +2774,7 @@
   }
 
   function previewDockObserveUrl() {
-    return window.BurreteAgentControl?.observeUrl || '/__agent/observe';
+    return window.BuretteAgentControl?.observeUrl || '/__agent/observe';
   }
 
   async function refreshPreviewDockObserve() {
@@ -2811,7 +2825,7 @@
   }
 
   function previewDocksEnabled() {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     return config.enablePreviewDocks === true;
   }
 
@@ -2860,7 +2874,7 @@
 
   function applyDefaultPreviewDocks(toolbar) {
     if (!toolbar || !previewDocksEnabled() || toolbar.dataset.previewDocksDefaulted === '1') return;
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const defaultDocks = Array.isArray(config.defaultPreviewDocks) ? config.defaultPreviewDocks : [];
     toolbar.dataset.previewDocksDefaulted = '1';
     for (const area of defaultDocks) {
@@ -2871,7 +2885,7 @@
   function requestMolstarStyle(style) {
     const value = normalizeMolstarStyle(style);
     activeConfig = {
-      ...(activeConfig || window.BurreteConfig || {}),
+      ...(activeConfig || window.BuretteConfig || {}),
       molstarStyle: value
     };
     if (activeMolstarPrepared?.molstarStyleOverride) {
@@ -2880,7 +2894,7 @@
         molstarStyleOverride: value
       };
     }
-    window.BurreteConfig = { ...(window.BurreteConfig || {}), ...activeConfig };
+    window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
     const toolbar = document.getElementById('buret-toolbar');
     const select = toolbar?.querySelector('[data-buret-molstar-style]');
     if (select) select.value = value;
@@ -2968,7 +2982,7 @@
   }
 
   function requestBrowserDevXyzrenderUpdate(options = {}) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const endpoint = String(config.xyzrenderEndpoint || '').trim();
     const sourcePath = String(config.xyzrenderSourcePath || config.sourcePath || '').trim();
     const renderer = options.rendererSwitch === true ? 'xyzrender-external' : normalizeRenderer(config.renderer);
@@ -3051,7 +3065,7 @@
     const badge = document.querySelector('.buret-xyz-badge span');
     if (badge) badge.textContent = `SVG · ${preset}${elapsed ? ` · ${elapsed} ms` : ''}`;
     activeConfig = {
-      ...(activeConfig || window.BurreteConfig || {}),
+      ...(activeConfig || window.BuretteConfig || {}),
       renderer: 'xyzrender-external',
       ...(Number.isFinite(activeModel) && activeModel >= 0 ? { activeModel: Math.trunc(activeModel) } : {}),
       xyzrenderControls: controls,
@@ -3069,7 +3083,7 @@
         log: typeof payload.log === 'string' ? payload.log : ''
       }
     };
-    window.BurreteConfig = { ...(window.BurreteConfig || {}), ...activeConfig };
+    window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
     postHostMessage({
       type: 'rendererChanged',
       documentId: activeConfig.documentId,
@@ -3271,7 +3285,7 @@
 
   function requestXyzrenderOrientationReset(toolbar) {
     latestXyzrenderOrientationRef = null;
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const controls = toolbar
       ? readXyzrenderControlsForm(toolbar)
       : normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
@@ -3384,7 +3398,7 @@
 
     const lines = [
       String(frame.atoms.length),
-      `Burrete Mol* orientation reference for ${config.label || 'structure'}`
+      `Burette Mol* orientation reference for ${config.label || 'structure'}`
     ];
     for (const atom of frame.atoms) {
       const x = atom.x - basis.origin.x;
@@ -3790,7 +3804,7 @@
     const select = toolbar.querySelector('[data-buret-molstar-style]');
     populateMolstarStyleSelect(select);
     if (select) {
-      select.value = configuredMolstarStyle(activeConfig || window.BurreteConfig || {});
+      select.value = configuredMolstarStyle(activeConfig || window.BuretteConfig || {});
       select.addEventListener('change', () => requestMolstarStyle(select.value));
     }
     toolbar.dataset.molstarStyleBound = '1';
@@ -3870,7 +3884,7 @@
   }
 
   function isXyzrenderLassoSurfaceActive() {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     return normalizeRenderer(config.renderer) === 'xyzrender-external' || !!document.querySelector('.buret-external-artifact-root');
   }
 
@@ -3953,7 +3967,7 @@
   }
 
   function restoreToolbarCollapsed(toolbar, viewer) {
-    if (window.BurreteConfig?.hostedMcpWidgetBootstrap === true) {
+    if (window.BuretteConfig?.hostedMcpWidgetBootstrap === true) {
       setToolbarCollapsed(toolbar, true, viewer, false);
       return;
     }
@@ -4040,9 +4054,9 @@
     let drag = null;
     let ignoreNextGripClick = false;
     const grip = toolbar.querySelector('[data-drag-handle]');
-    if (grip && window.__BURRETE_HOSTED_GRIP_FALLBACK__) {
-      grip.removeEventListener('click', window.__BURRETE_HOSTED_GRIP_FALLBACK__);
-      delete window.__BURRETE_HOSTED_GRIP_FALLBACK__;
+    if (grip && window.__BURETTE_HOSTED_GRIP_FALLBACK__) {
+      grip.removeEventListener('click', window.__BURETTE_HOSTED_GRIP_FALLBACK__);
+      delete window.__BURETTE_HOSTED_GRIP_FALLBACK__;
     }
     grip?.addEventListener('click', event => {
       event.preventDefault();
@@ -4430,7 +4444,7 @@
     }
   }
 
-  function applyMobileLayoutState(state, viewer = activeViewer || window.BurreteViewer || null) {
+  function applyMobileLayoutState(state, viewer = activeViewer || window.BuretteViewer || null) {
     const next = state && typeof state === 'object' ? state : {};
     const boolRegion = (value, visibleState = 'full') => value === true ? visibleState : 'hidden';
     document.body?.classList.toggle('burette-mobile-show-left', next.left === true);
@@ -4530,10 +4544,10 @@
     }
   }
 
-  window.BurreteApplyMobileLayoutState = applyMobileLayoutState;
-  window.BurreteRunMobileControlAction = runMobileControlAction;
-  if (window.BurreteMobileControls?.pendingLayoutState) {
-    requestAnimationFrame(() => applyMobileLayoutState(window.BurreteMobileControls.pendingLayoutState));
+  window.BuretteApplyMobileLayoutState = applyMobileLayoutState;
+  window.BuretteRunMobileControlAction = runMobileControlAction;
+  if (window.BuretteMobileControls?.pendingLayoutState) {
+    requestAnimationFrame(() => applyMobileLayoutState(window.BuretteMobileControls.pendingLayoutState));
   }
 
   function scheduleLayoutStateReapply(viewer) {
@@ -4644,7 +4658,7 @@
   }
 
 
-  function previewReadyPayload(config = activeConfig || window.BurreteConfig || {}, extra = {}) {
+  function previewReadyPayload(config = activeConfig || window.BuretteConfig || {}, extra = {}) {
     const cfg = config && typeof config === 'object' ? config : {};
     return {
       mode: cfg.mode || 'structure',
@@ -4678,7 +4692,7 @@
 
   function hideStatus(payload = null) {
     post('ready', 'ready', payload || previewReadyPayload());
-    if (window.BurreteDebug) return;
+    if (window.BuretteDebug) return;
     if (status) status.classList.add('hidden');
   }
 
@@ -4730,13 +4744,13 @@
   }
 
   function installNativeDataBridge() {
-    if (typeof window.BurreteReceiveNativeData === 'function') return;
-    window.BurreteReceiveNativeData = function (payload) {
+    if (typeof window.BuretteReceiveNativeData === 'function') return;
+    window.BuretteReceiveNativeData = function (payload) {
       if (!payload || typeof payload !== 'object') return;
       if (typeof payload.base64 === 'string' && payload.base64.length > 0) {
-        window.BurreteDataBase64 = payload.base64;
+        window.BuretteDataBase64 = payload.base64;
       }
-      window.dispatchEvent(new CustomEvent('BurreteNativeDataReady', { detail: payload }));
+      window.dispatchEvent(new CustomEvent('BuretteNativeDataReady', { detail: payload }));
     };
   }
 
@@ -4750,7 +4764,7 @@
       const requestToken = 'native-data-' + Math.random().toString(36).slice(2);
       let settled = false;
       const cleanup = () => {
-        window.removeEventListener('BurreteNativeDataReady', onReady);
+        window.removeEventListener('BuretteNativeDataReady', onReady);
         clearTimeout(timeout);
       };
       const finish = (fn, value) => {
@@ -4771,7 +4785,7 @@
       const timeout = setTimeout(() => {
         finish(reject, new Error('Timed out while waiting for structure payload from native Quick Look.'));
       }, 10000);
-      window.addEventListener('BurreteNativeDataReady', onReady);
+      window.addEventListener('BuretteNativeDataReady', onReady);
       try {
         window.__mqlPost('requestData', 'requestData', { requestToken });
       } catch (error) {
@@ -4781,9 +4795,9 @@
   }
 
   function installNativeRuntimeFileBridge() {
-    if (typeof window.BurreteReceiveNativeRuntimeFile === 'function') return;
-    window.BurreteReceiveNativeRuntimeFile = function (payload) {
-      window.dispatchEvent(new CustomEvent('BurreteNativeRuntimeFileReady', { detail: payload || {} }));
+    if (typeof window.BuretteReceiveNativeRuntimeFile === 'function') return;
+    window.BuretteReceiveNativeRuntimeFile = function (payload) {
+      window.dispatchEvent(new CustomEvent('BuretteNativeRuntimeFileReady', { detail: payload || {} }));
     };
   }
 
@@ -4797,7 +4811,7 @@
       const requestToken = 'native-file-' + Math.random().toString(36).slice(2);
       let settled = false;
       const cleanup = () => {
-        window.removeEventListener('BurreteNativeRuntimeFileReady', onReady);
+        window.removeEventListener('BuretteNativeRuntimeFileReady', onReady);
         clearTimeout(timeout);
       };
       const finish = (fn, value) => {
@@ -4822,7 +4836,7 @@
       const timeout = setTimeout(() => {
         finish(reject, new Error('Timed out while waiting for runtime file from native Quick Look.'));
       }, 10000);
-      window.addEventListener('BurreteNativeRuntimeFileReady', onReady);
+      window.addEventListener('BuretteNativeRuntimeFileReady', onReady);
       try {
         window.__mqlPost('requestRuntimeFile', 'requestRuntimeFile', { requestToken, path });
       } catch (error) {
@@ -4855,9 +4869,9 @@
   }
 
   async function loadStructureData(config, cb) {
-    if (window.BurreteDataBytes instanceof Uint8Array || window.BurreteDataBase64) return;
+    if (window.BuretteDataBytes instanceof Uint8Array || window.BuretteDataBase64) return;
     const configured = typeof config.dataPath === 'string' ? config.dataPath : null;
-    const scripted = typeof window.BurreteDataURL === 'string' ? window.BurreteDataURL : null;
+    const scripted = typeof window.BuretteDataURL === 'string' ? window.BuretteDataURL : null;
     const url = configured || scripted || './preview-data.bin';
     const requestURL = appendCacheBuster(url, cb);
     try {
@@ -4865,13 +4879,13 @@
       if (!response.ok) {
         throw new Error('Could not load structure payload: HTTP ' + response.status);
       }
-      window.BurreteDataBytes = new Uint8Array(await response.arrayBuffer());
+      window.BuretteDataBytes = new Uint8Array(await response.arrayBuffer());
       return;
     } catch (error) {
       debug('fetch preview-data.bin failed, falling back to XMLHttpRequest: ' + (error && error.message || String(error)));
     }
     try {
-      window.BurreteDataBytes = await loadArrayBufferViaXHR(requestURL);
+      window.BuretteDataBytes = await loadArrayBufferViaXHR(requestURL);
       return;
     } catch (error) {
       debug('XMLHttpRequest preview-data.bin failed, requesting native structure payload: ' + (error && error.message || String(error)));
@@ -4942,9 +4956,9 @@
   }
 
   function requireConfig() {
-    const config = window.BurreteConfig;
+    const config = window.BuretteConfig;
     if (!config || typeof config !== 'object') {
-      throw new Error('preview-config.js did not define window.BurreteConfig.');
+      throw new Error('preview-config.js did not define window.BuretteConfig.');
     }
     if (!config.format) throw new Error('preview-config.js is missing format.');
     return config;
@@ -4958,8 +4972,8 @@
 
   function installDirectTemplateFallback() {
     if (!isDirectTemplatePreview()) return false;
-    window.BurreteConfig = {
-      label: 'Burrete mini sample',
+    window.BuretteConfig = {
+      label: 'Burette mini sample',
       format: 'pdb',
       binary: false,
       renderer: 'molstar',
@@ -4977,16 +4991,16 @@
         bottom: 'hidden'
       }
     };
-    window.BurreteDataBase64 = 'SEVBREVSICAgIE1JTkkgR0xZLUFMQSBQRVBUSURFIEZPUiBRVUlDSyBMT09LIFRFU1QKVElUTEUgICAgIE1PTFNUQVIgUVVJQ0sgTE9PSyBTQU1QTEUKQVRPTSAgICAgIDEgIE4gICBHTFkgQSAgIDEgICAgICAtMS4yMDQgICAwLjE3NiAgIDAuMDAwICAxLjAwIDIwLjAwICAgICAgICAgICBOCkFUT00gICAgICAyICBDQSAgR0xZIEEgICAxICAgICAgIDAuMDAwICAgMC4wMDAgICAwLjAwMCAgMS4wMCAyMC4wMCAgICAgICAgICAgQwpBVE9NICAgICAgMyAgQyAgIEdMWSBBICAgMSAgICAgICAwLjcyMiAgIDEuMjcxICAgMC4wMDAgIDEuMDAgMjAuMDAgICAgICAgICAgIEMKQVRPTSAgICAgIDQgIE8gICBHTFkgQSAgIDEgICAgICAgMC4xNjMgICAyLjM2MCAgIDAuMDAwICAxLjAwIDIwLjAwICAgICAgICAgICBPCkFUT00gICAgICA1ICBOICAgQUxBIEEgICAyICAgICAgIDIuMDUyICAgMS4xODkgICAwLjAwMCAgMS4wMCAyMC4wMCAgICAgICAgICAgTgpBVE9NICAgICAgNiAgQ0EgIEFMQSBBICAgMiAgICAgICAyLjg5NiAgIDIuMzc3ICAgMC4wMDAgIDEuMDAgMjAuMDAgICAgICAgICAgIEMKQVRPTSAgICAgIDcgIENCICBBTEEgQSAgIDIgICAgICAgMy43MTEgICAyLjI3MyAgIDEuMjc2ICAxLjAwIDIwLjAwICAgICAgICAgICBDCkFUT00gICAgICA4ICBDICAgQUxBIEEgICAyICAgICAgIDMuNzkzICAgMi40NzcgIC0xLjIzMCAgMS4wMCAyMC4wMCAgICAgICAgICAgQwpBVE9NICAgICAgOSAgTyAgIEFMQSBBICAgMiAgICAgICA0LjY3NSAgIDMuMzM2ICAtMS4yMzYgIDEuMDAgMjAuMDAgICAgICAgICAgIE8KVEVSICAgICAgMTAgICAgICBBTEEgQSAgIDIKRU5ECg==';
+    window.BuretteDataBase64 = 'SEVBREVSICAgIE1JTkkgR0xZLUFMQSBQRVBUSURFIEZPUiBRVUlDSyBMT09LIFRFU1QKVElUTEUgICAgIE1PTFNUQVIgUVVJQ0sgTE9PSyBTQU1QTEUKQVRPTSAgICAgIDEgIE4gICBHTFkgQSAgIDEgICAgICAtMS4yMDQgICAwLjE3NiAgIDAuMDAwICAxLjAwIDIwLjAwICAgICAgICAgICBOCkFUT00gICAgICAyICBDQSAgR0xZIEEgICAxICAgICAgIDAuMDAwICAgMC4wMDAgICAwLjAwMCAgMS4wMCAyMC4wMCAgICAgICAgICAgQwpBVE9NICAgICAgMyAgQyAgIEdMWSBBICAgMSAgICAgICAwLjcyMiAgIDEuMjcxICAgMC4wMDAgIDEuMDAgMjAuMDAgICAgICAgICAgIEMKQVRPTSAgICAgIDQgIE8gICBHTFkgQSAgIDEgICAgICAgMC4xNjMgICAyLjM2MCAgIDAuMDAwICAxLjAwIDIwLjAwICAgICAgICAgICBPCkFUT00gICAgICA1ICBOICAgQUxBIEEgICAyICAgICAgIDIuMDUyICAgMS4xODkgICAwLjAwMCAgMS4wMCAyMC4wMCAgICAgICAgICAgTgpBVE9NICAgICAgNiAgQ0EgIEFMQSBBICAgMiAgICAgICAyLjg5NiAgIDIuMzc3ICAgMC4wMDAgIDEuMDAgMjAuMDAgICAgICAgICAgIEMKQVRPTSAgICAgIDcgIENCICBBTEEgQSAgIDIgICAgICAgMy43MTEgICAyLjI3MyAgIDEuMjc2ICAxLjAwIDIwLjAwICAgICAgICAgICBDCkFUT00gICAgICA4ICBDICAgQUxBIEEgICAyICAgICAgIDMuNzkzICAgMi40NzcgIC0xLjIzMCAgMS4wMCAyMC4wMCAgICAgICAgICAgQwpBVE9NICAgICAgOSAgTyAgIEFMQSBBICAgMiAgICAgICA0LjY3NSAgIDMuMzM2ICAtMS4yMzYgIDEuMDAgMjAuMDAgICAgICAgICAgIE8KVEVSICAgICAgMTAgICAgICBBTEEgQSAgIDIKRU5ECg==';
     setStatus('[web] Using built-in mini sample for direct template preview.');
     return true;
   }
 
   async function loadRuntimeInputs(cb) {
-    if (window.BurreteConfig) return;
+    if (window.BuretteConfig) return;
     try {
-      if (!window.BurreteConfig) {
-        await loadScript(appendCacheBuster(runtimeURL('BurretePreviewConfigURL', './preview-config.js'), cb), 'preview config', 10000);
+      if (!window.BuretteConfig) {
+        await loadScript(appendCacheBuster(runtimeURL('BurettePreviewConfigURL', './preview-config.js'), cb), 'preview config', 10000);
       }
     } catch (error) {
       if (installDirectTemplateFallback()) return;
@@ -4995,10 +5009,10 @@
   }
 
   function rawStructureData(config) {
-    if (window.BurreteDataBytes instanceof Uint8Array) {
-      return config.binary ? window.BurreteDataBytes : new TextDecoder('utf-8', { fatal: false }).decode(window.BurreteDataBytes);
+    if (window.BuretteDataBytes instanceof Uint8Array) {
+      return config.binary ? window.BuretteDataBytes : new TextDecoder('utf-8', { fatal: false }).decode(window.BuretteDataBytes);
     }
-    const base64 = window.BurreteDataBase64;
+    const base64 = window.BuretteDataBase64;
     if (!base64 || typeof base64 !== 'string') {
       throw new Error('Preview payload was not loaded.');
     }
@@ -5017,11 +5031,246 @@
     return mode === 'structureAll' || mode === 'structurePoses' ? mode : '';
   }
 
+  function pdbAlphaCarbonChains(data) {
+    const chains = new Map();
+    for (const line of String(data || '').split(/\r?\n/)) {
+      if (!line.startsWith('ATOM  ') || line.slice(12, 16).trim() !== 'CA') continue;
+      const altLoc = line.slice(16, 17);
+      if (altLoc && altLoc !== ' ' && altLoc !== 'A') continue;
+      const x = Number(line.slice(30, 38));
+      const y = Number(line.slice(38, 46));
+      const z = Number(line.slice(46, 54));
+      if (![x, y, z].every(Number.isFinite)) continue;
+      const chain = line.slice(21, 22).trim() || '_';
+      const residue = `${line.slice(22, 26).trim()}:${line.slice(26, 27).trim()}`;
+      if (!chains.has(chain)) chains.set(chain, new Map());
+      if (!chains.get(chain).has(residue)) chains.get(chain).set(residue, [x, y, z]);
+    }
+    return chains;
+  }
+
+  function largestEigenvectorSymmetric4(matrix) {
+    const values = matrix.map(row => row.slice());
+    const vectors = Array.from({ length: 4 }, (_, row) => (
+      Array.from({ length: 4 }, (_, column) => row === column ? 1 : 0)
+    ));
+    for (let iteration = 0; iteration < 40; iteration += 1) {
+      let p = 0;
+      let q = 1;
+      let largest = Math.abs(values[p][q]);
+      for (let row = 0; row < 4; row += 1) {
+        for (let column = row + 1; column < 4; column += 1) {
+          const candidate = Math.abs(values[row][column]);
+          if (candidate > largest) {
+            largest = candidate;
+            p = row;
+            q = column;
+          }
+        }
+      }
+      if (largest < 1e-10) break;
+      const angle = 0.5 * Math.atan2(2 * values[p][q], values[q][q] - values[p][p]);
+      const cosine = Math.cos(angle);
+      const sine = Math.sin(angle);
+      for (let index = 0; index < 4; index += 1) {
+        if (index === p || index === q) continue;
+        const aip = values[index][p];
+        const aiq = values[index][q];
+        values[index][p] = values[p][index] = cosine * aip - sine * aiq;
+        values[index][q] = values[q][index] = sine * aip + cosine * aiq;
+      }
+      const app = values[p][p];
+      const aqq = values[q][q];
+      const apq = values[p][q];
+      values[p][p] = cosine * cosine * app - 2 * sine * cosine * apq + sine * sine * aqq;
+      values[q][q] = sine * sine * app + 2 * sine * cosine * apq + cosine * cosine * aqq;
+      values[p][q] = values[q][p] = 0;
+      for (let row = 0; row < 4; row += 1) {
+        const vip = vectors[row][p];
+        const viq = vectors[row][q];
+        vectors[row][p] = cosine * vip - sine * viq;
+        vectors[row][q] = sine * vip + cosine * viq;
+      }
+    }
+    let largestIndex = 0;
+    for (let index = 1; index < 4; index += 1) {
+      if (values[index][index] > values[largestIndex][largestIndex]) largestIndex = index;
+    }
+    const vector = vectors.map(row => row[largestIndex]);
+    const length = Math.hypot(...vector) || 1;
+    return vector.map(value => value / length);
+  }
+
+  function pdbRigidAlignment(movingPoints, referencePoints) {
+    const count = Math.min(movingPoints.length, referencePoints.length);
+    if (count < 3) return null;
+    const movingCenter = [0, 0, 0];
+    const referenceCenter = [0, 0, 0];
+    for (let index = 0; index < count; index += 1) {
+      for (let axis = 0; axis < 3; axis += 1) {
+        movingCenter[axis] += movingPoints[index][axis] / count;
+        referenceCenter[axis] += referencePoints[index][axis] / count;
+      }
+    }
+    const covariance = Array.from({ length: 3 }, () => [0, 0, 0]);
+    for (let index = 0; index < count; index += 1) {
+      const moving = movingPoints[index].map((value, axis) => value - movingCenter[axis]);
+      const reference = referencePoints[index].map((value, axis) => value - referenceCenter[axis]);
+      for (let row = 0; row < 3; row += 1) {
+        for (let column = 0; column < 3; column += 1) covariance[row][column] += moving[row] * reference[column];
+      }
+    }
+    const [[sxx, sxy, sxz], [syx, syy, syz], [szx, szy, szz]] = covariance;
+    const [w, x, y, z] = largestEigenvectorSymmetric4([
+      [sxx + syy + szz, syz - szy, szx - sxz, sxy - syx],
+      [syz - szy, sxx - syy - szz, sxy + syx, szx + sxz],
+      [szx - sxz, sxy + syx, -sxx + syy - szz, syz + szy],
+      [sxy - syx, szx + sxz, syz + szy, -sxx - syy + szz]
+    ]);
+    const rotation = [
+      [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+      [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+      [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]
+    ];
+    const apply = point => rotation.map((row, axis) => (
+      row.reduce((sum, value, column) => sum + value * (point[column] - movingCenter[column]), 0) + referenceCenter[axis]
+    ));
+    let squaredError = 0;
+    for (let index = 0; index < count; index += 1) {
+      const aligned = apply(movingPoints[index]);
+      squaredError += aligned.reduce((sum, value, axis) => sum + (value - referencePoints[index][axis]) ** 2, 0);
+    }
+    return { apply, rmsd: Math.sqrt(squaredError / count), count };
+  }
+
+  function transformPdbCoordinates(data, apply) {
+    return String(data || '').split(/\r?\n/).map(line => {
+      if (!line.startsWith('ATOM  ') && !line.startsWith('HETATM')) return line;
+      const point = [Number(line.slice(30, 38)), Number(line.slice(38, 46)), Number(line.slice(46, 54))];
+      if (!point.every(Number.isFinite)) return line;
+      const aligned = apply(point);
+      const coordinates = aligned.map(value => value.toFixed(3).padStart(8, ' '));
+      return `${line.slice(0, 30)}${coordinates.join('')}${line.slice(54)}`;
+    }).join('\n');
+  }
+
+  function alignStructureSceneEntries(prepared) {
+    const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
+    if (poses.length < 2 || poses.some(entry => normalizeFormat(entry?.format) !== 'pdb')) {
+      throw new Error('One-click alignment currently requires two or more PDB structures.');
+    }
+    for (const entry of poses) {
+      if (typeof entry.unalignedData !== 'string') entry.unalignedData = entry.data;
+    }
+    const reference = poses[0];
+    const referenceChains = pdbAlphaCarbonChains(reference.unalignedData);
+    const movingChainsByPose = poses.slice(1).map(entry => pdbAlphaCarbonChains(entry.unalignedData));
+    const sharedChains = Array.from(referenceChains.entries()).map(([chain, residues]) => {
+      const keysByPose = movingChainsByPose.map(chains => {
+        const movingResidues = chains.get(chain);
+        return movingResidues ? Array.from(residues.keys()).filter(key => movingResidues.has(key)) : [];
+      });
+      return { chain, residues, keysByPose, minimumMatches: Math.min(...keysByPose.map(keys => keys.length)) };
+    }).filter(candidate => candidate.minimumMatches >= 3)
+      .sort((left, right) => right.minimumMatches - left.minimumMatches);
+    const sharedChain = sharedChains[0];
+    if (!sharedChain) throw new Error('No Cα chain with at least three common residues exists across every structure.');
+    let alignedCount = 0;
+    let matchedCount = 0;
+    let rmsdTotal = 0;
+    for (let poseIndex = 1; poseIndex < poses.length; poseIndex += 1) {
+      const entry = poses[poseIndex];
+      const movingResidues = movingChainsByPose[poseIndex - 1].get(sharedChain.chain);
+      const keys = sharedChain.keysByPose[poseIndex - 1];
+      const movingPoints = keys.map(key => movingResidues.get(key));
+      const referencePoints = keys.map(key => sharedChain.residues.get(key));
+      const alignment = pdbRigidAlignment(movingPoints, referencePoints);
+      if (!alignment) throw new Error(`Not enough Cα atoms could align ${entry.label || `structure ${poseIndex + 1}`}.`);
+      entry.data = transformPdbCoordinates(entry.unalignedData, alignment.apply);
+      alignedCount += 1;
+      matchedCount += alignment.count;
+      rmsdTotal += alignment.rmsd;
+    }
+    reference.data = reference.unalignedData;
+    prepared.structureAlignmentEnabled = true;
+    return {
+      alignedCount,
+      chain: sharedChain.chain === '_' ? '(blank)' : sharedChain.chain,
+      averageMatches: Math.round(matchedCount / Math.max(alignedCount, 1)),
+      averageRmsd: rmsdTotal / Math.max(alignedCount, 1),
+      referenceLabel: reference.label || 'first structure'
+    };
+  }
+
+  function xyzFrameElementSignature(frame) {
+    return (frame?.atoms || []).map(atom => atom.symbol).join(',');
+  }
+
+  function xyzFramesAlignable(frames) {
+    if (!Array.isArray(frames) || frames.length < 2) return false;
+    const signature = xyzFrameElementSignature(frames[0]);
+    if (!signature || (frames[0].atoms || []).length < 3) return false;
+    return frames.every(frame => xyzFrameElementSignature(frame) === signature);
+  }
+
+  const XYZ_ALIGNMENT_GAIN_THRESHOLD = 0.5;
+
+  function xyzFrameAlignmentGain(frames) {
+    if (!xyzFramesAlignable(frames)) return 0;
+    const step = Math.max(1, Math.floor((frames.length - 1) / 7));
+    const referencePoints = frames[0].atoms.map(atom => [atom.x, atom.y, atom.z]);
+    let best = 0;
+    for (let index = step; index < frames.length; index += step) {
+      const movingPoints = frames[index].atoms.map(atom => [atom.x, atom.y, atom.z]);
+      const squared = movingPoints.reduce((sum, point, atom) => (
+        sum + point.reduce((axisSum, value, axis) => axisSum + (value - referencePoints[atom][axis]) ** 2, 0)
+      ), 0);
+      const rawRmsd = Math.sqrt(squared / movingPoints.length);
+      const alignment = pdbRigidAlignment(movingPoints, referencePoints);
+      if (!alignment) continue;
+      best = Math.max(best, rawRmsd - alignment.rmsd);
+    }
+    return best;
+  }
+
+  function alignXyzFramesToFirst(frames) {
+    if (!xyzFramesAlignable(frames)) {
+      throw new Error('Alignment needs every structure to list the same atoms in the same order.');
+    }
+    const referencePoints = frames[0].atoms.map(atom => [atom.x, atom.y, atom.z]);
+    let rmsdTotal = 0;
+    const aligned = frames.map((frame, index) => {
+      if (index === 0) return frame;
+      const alignment = pdbRigidAlignment(frame.atoms.map(atom => [atom.x, atom.y, atom.z]), referencePoints);
+      if (!alignment) throw new Error('Not enough atoms to align these structures.');
+      rmsdTotal += alignment.rmsd;
+      return {
+        ...frame,
+        atoms: frame.atoms.map(atom => {
+          const [x, y, z] = alignment.apply([atom.x, atom.y, atom.z]);
+          return { ...atom, x, y, z };
+        })
+      };
+    });
+    return {
+      frames: aligned,
+      averageRmsd: rmsdTotal / Math.max(1, frames.length - 1),
+      atomCount: frames[0].atoms.length
+    };
+  }
+
+  function restoreStructureSceneEntries(prepared) {
+    for (const entry of Array.isArray(prepared?.poses) ? prepared.poses : []) {
+      if (typeof entry.unalignedData === 'string') entry.data = entry.unalignedData;
+    }
+    prepared.structureAlignmentEnabled = false;
+  }
+
   function dockingPoseStorageKey(config) {
     const documentId = String(config?.documentId || '').trim();
-    if (documentId) return `burrete.dockingPose.${documentId}`;
+    if (documentId) return `burette.dockingPose.${documentId}`;
     const fallback = `${config?.label || 'active'}:${window.location.pathname}:${window.location.search}`;
-    return `burrete.dockingPose.fallback-${stableTextHash(fallback)}`;
+    return `burette.dockingPose.fallback-${stableTextHash(fallback)}`;
   }
 
   function stableTextHash(value) {
@@ -5048,9 +5297,9 @@
   function trajectoryControlStorageKey(config, prepared) {
     if (prepared?.kind === 'docking') return dockingPoseStorageKey(config);
     const documentId = String(config?.documentId || '').trim();
-    if (documentId) return `burrete.trajectoryControl.${documentId}`;
+    if (documentId) return `burette.trajectoryControl.${documentId}`;
     const fallback = `${config?.label || 'active'}:${window.location.pathname}:${window.location.search}`;
-    return `burrete.trajectoryControl.fallback-${stableTextHash(fallback)}`;
+    return `burette.trajectoryControl.fallback-${stableTextHash(fallback)}`;
   }
 
   function readTrajectoryControlIndex(config, prepared, poseCount) {
@@ -5076,7 +5325,7 @@
   }
 
   function minimumTrajectoryLoopDelay(prepared) {
-    return prepared?.nativeTrajectoryControls ? 0 : 300;
+    return prepared?.nativeTrajectoryControls ? 0 : minimumTrajectoryLoopTimerDelay(prepared);
   }
 
   function minimumTrajectoryLoopTimerDelay(prepared) {
@@ -5256,7 +5505,7 @@
 
   function prepareDockingStructure(config) {
     const docking = config.docking || {};
-    const payloads = window.BurreteDockingPayloads || {};
+    const payloads = window.BuretteDockingPayloads || {};
     const receptor = docking.receptor;
     if (!receptor) throw new Error('Docking view is missing a receptor.');
     const ligandSources = Array.isArray(docking.ligands) ? docking.ligands : [];
@@ -5640,7 +5889,7 @@
   }
 
   function sheetItemExportLabel(item) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     return item?.getAttribute?.('aria-label') || config.label || 'xyzrender';
   }
 
@@ -6132,7 +6381,7 @@
     let sheetItemSerial = sheet.querySelectorAll('.buret-xyzrender-sheet-item').length;
 
     const addSheetItems = async (entries, point = null) => {
-      const config = activeConfig || window.BurreteConfig || {};
+      const config = activeConfig || window.BuretteConfig || {};
       const cleanEntries = uniqueSheetEntries(entries);
       if (cleanEntries.length === 0) return;
       setStatus(`[web] Adding ${cleanEntries.length} structure${cleanEntries.length === 1 ? '' : 's'} to xyzrender sheet…`);
@@ -6183,15 +6432,15 @@
     const onMessage = event => {
       const data = event.data || {};
       const body = data.body || {};
-      if (data.source === 'burrete-host' && (
+      if (data.source === 'burette-host' && (
         body.type === 'xyzrenderSheetItemRendered' ||
         body.type === 'xyzrenderSheetItemError'
       )) {
         resolveHostXyzrenderSheetItem(body);
         return;
       }
-      if (data.source !== 'burrete-host' || body.type !== 'addXyzrenderSheetItems') return;
-      const documentId = String((activeConfig || window.BurreteConfig || {}).documentId || '');
+      if (data.source !== 'burette-host' || body.type !== 'addXyzrenderSheetItems') return;
+      const documentId = String((activeConfig || window.BuretteConfig || {}).documentId || '');
       if (body.documentId && documentId && String(body.documentId) !== documentId) return;
       const point = normalizeSheetClientPoint(body.point);
       void addSheetItems(
@@ -6255,7 +6504,7 @@
     return bytesToBase64(new TextEncoder().encode(text));
   }
 
-  function baseXyzrenderSheetEntry(config = activeConfig || window.BurreteConfig || {}) {
+  function baseXyzrenderSheetEntry(config = activeConfig || window.BuretteConfig || {}) {
     const path = String(
       config.xyzrenderSourcePath ||
       config.sourcePath ||
@@ -6313,7 +6562,7 @@
     }, items[0]);
   }
 
-  function xyzrenderSheetItemPreset(item, config = activeConfig || window.BurreteConfig || {}) {
+  function xyzrenderSheetItemPreset(item, config = activeConfig || window.BuretteConfig || {}) {
     return normalizeXyzrenderPreset(
       item?.dataset?.buretXyzrenderPreset ||
       config.externalArtifact?.preset ||
@@ -6534,7 +6783,7 @@
       if (!atomSelector) continue;
       try {
         const regions = [...xyzrenderSheetItemRegions(group.item), { atoms: atomSelector, preset: normalizedPreset }];
-        const nextControls = normalizeXyzrenderControls({ ...controls, regions }, activeConfig || window.BurreteConfig || {});
+        const nextControls = normalizeXyzrenderControls({ ...controls, regions }, activeConfig || window.BuretteConfig || {});
         const basePreset = xyzrenderSheetItemPreset(group.item);
         const payload = await renderXyzrenderSheetItemPayload(entry, basePreset, nextControls);
         pushXyzrenderActionHistory(group.item, `apply ${normalizedPreset} region`);
@@ -6577,7 +6826,7 @@
           showVdw: true,
           vdwAtoms: atomSelector,
           regions: xyzrenderSheetItemRegions(group.item)
-        }, activeConfig || window.BurreteConfig || {});
+        }, activeConfig || window.BuretteConfig || {});
         const basePreset = xyzrenderSheetItemPreset(group.item);
         const payload = await renderXyzrenderSheetItemPayload(entry, normalizedPreset || basePreset, nextControls);
         pushXyzrenderActionHistory(group.item, 'apply partial vdW');
@@ -6601,7 +6850,7 @@
   }
 
   async function updateSelectedXyzrenderSheetItems(items, options = {}) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const controls = normalizeXyzrenderControls(options.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
     const preset = normalizeXyzrenderPreset(options.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
     setStatus(`[web] Updating ${items.length} selected xyzrender structure${items.length === 1 ? '' : 's'}…`);
@@ -6631,7 +6880,7 @@
   }
 
   async function renderXyzrenderSheetItemPayload(entry, preset, controls, options = {}) {
-    const config = activeConfig || window.BurreteConfig || {};
+    const config = activeConfig || window.BuretteConfig || {};
     const endpoint = String(config.xyzrenderEndpoint || '').trim();
     const path = sheetEntryLabel(entry);
     const inputDataBase64 = sheetEntryInputDataBase64(entry);
@@ -7475,8 +7724,8 @@
 
     return {
       data: [
-        'Burrete SDF Grid',
-        '  Burrete',
+        'Burette SDF Grid',
+        '  Burette',
         `${molecules.length} of ${records.length} SDF records`,
         formatSdfCountsLine(totalAtoms, totalBonds),
         ...atoms,
@@ -7523,8 +7772,8 @@
 
     return {
       data: [
-        'Burrete SDF Pose Overlay',
-        '  Burrete',
+        'Burette SDF Pose Overlay',
+        '  Burette',
         `${molecules.length} poses overlaid from ${label}`,
         '  0  0  0     0  0            999 V3000',
         'M  V30 BEGIN CTAB',
@@ -7563,8 +7812,8 @@
       atomCount: molecule.atomCount
     }));
     const lines = [
-      `REMARK ${String(label || 'Burrete molecule collection').slice(0, 66)}`,
-      `REMARK Burrete SDF collection with ${molecules.length} molecules`
+      `REMARK ${String(label || 'Burette molecule collection').slice(0, 66)}`,
+      `REMARK Burette SDF collection with ${molecules.length} molecules`
     ];
     let serialOffset = 0;
     const adjacency = new Map();
@@ -7591,7 +7840,7 @@
     appendPdbConectLines(lines, adjacency);
     lines.push('END', '');
     const singlePdbs = molecules.map((molecule, index) => (
-      sdfMoleculesToPdbStructure([molecule], `${label || 'Burrete molecule'} Molecule ${index + 1}`)
+      sdfMoleculesToPdbStructure([molecule], `${label || 'Burette molecule'} Molecule ${index + 1}`)
     ));
     return { data: lines.join('\n'), residues, singlePdbs, molecules };
   }
@@ -7599,7 +7848,7 @@
   function sdfMoleculesToPdbStructure(molecules, label) {
     const totalAtoms = molecules.reduce((sum, molecule) => sum + molecule.atomCount, 0);
     if (totalAtoms <= 0 || totalAtoms > 99999) return null;
-    const lines = [`REMARK ${String(label || 'Burrete molecule').slice(0, 66)}`];
+    const lines = [`REMARK ${String(label || 'Burette molecule').slice(0, 66)}`];
     let serialOffset = 0;
     const adjacency = new Map();
     for (const molecule of molecules) {
@@ -7735,21 +7984,14 @@
     };
   }
 
-  function sampledXyzFrameBackgroundIndexes(frameCount, activeIndex) {
+  function sampledXyzFrameIndexes(frameCount) {
     const count = Math.max(0, Math.trunc(Number(frameCount) || 0));
-    if (count <= 1) return [];
-    const all = Array.from({ length: count }, (_, index) => index).filter(index => index !== activeIndex);
-    if (all.length <= XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT) return all;
-    const picked = new Set();
+    if (count <= 0) return [];
+    if (count <= XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT) return Array.from({ length: count }, (_, index) => index);
     const last = count - 1;
+    const picked = new Set();
     for (let slot = 0; slot < XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT; slot += 1) {
-      const rawIndex = Math.round((slot * last) / Math.max(1, XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT - 1));
-      const candidates = [rawIndex];
-      for (let delta = 1; delta < count && candidates.length < count; delta += 1) {
-        candidates.push(rawIndex - delta, rawIndex + delta);
-      }
-      const next = candidates.find(index => index >= 0 && index < count && index !== activeIndex && !picked.has(index));
-      if (next !== undefined) picked.add(next);
+      picked.add(Math.round((slot * last) / Math.max(1, XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT - 1)));
     }
     return Array.from(picked).sort((left, right) => left - right);
   }
@@ -7788,6 +8030,23 @@
     }
   }
 
+  function molstarStructureRefsOf(structures) {
+    return Array.from(structures || []).map(structure => structure?.cell?.transform?.ref).filter(Boolean);
+  }
+
+  function molstarStructuresByRefs(viewer, refs) {
+    const wanted = new Set((refs || []).filter(Boolean));
+    if (!wanted.size) return [];
+    return Array.from(molstarCurrentStructures(viewer))
+      .filter(structure => wanted.has(structure?.cell?.transform?.ref));
+  }
+
+  function molstarRefsStillLoaded(viewer, refs) {
+    const loaded = molstarStructureCellRefs(viewer);
+    const required = (refs || []).filter(Boolean);
+    return required.length > 0 && required.every(ref => loaded.has(ref));
+  }
+
   async function removeMolstarStructures(viewer, structures) {
     const list = Array.from(structures || []).filter(Boolean);
     if (!list.length) return;
@@ -7802,10 +8061,7 @@
 
   function xyzFrameOverlayStateStillLoaded(viewer, state) {
     if (!state || state.viewer !== viewer) return false;
-    const structures = Array.from(molstarCurrentStructures(viewer));
-    const background = Array.isArray(state.backgroundStructures) ? state.backgroundStructures : [];
-    if (!background.length) return false;
-    return background.every(structure => structures.includes(structure));
+    return molstarRefsStillLoaded(viewer, state.backgroundRefs);
   }
 
   function sdfCollectionStateKey(prepared, style, allMode, contextStyle, contextOpacity, contextColor) {
@@ -7829,11 +8085,8 @@
 
   function sdfCollectionVisibilityStateStillLoaded(viewer, state) {
     if (!state || state.viewer !== viewer) return false;
-    const structures = Array.from(molstarCurrentStructures(viewer));
-    const background = Array.isArray(state.backgroundStructures) ? state.backgroundStructures : [];
-    const active = Array.isArray(state.activeStructures) ? state.activeStructures : [];
-    const required = background.length ? background : active;
-    return required.length > 0 && required.every(structure => structures.includes(structure));
+    const background = Array.isArray(state.backgroundRefs) ? state.backgroundRefs : [];
+    return molstarRefsStillLoaded(viewer, background.length ? background : state.activeRefs);
   }
 
   function parseV2000SdfRecord(record) {
@@ -8013,6 +8266,7 @@
     if (!state || state.key !== stateKey || !sdfCollectionVisibilityStateStillLoaded(viewer, state)) {
       resetXyzFrameOverlayState(viewer);
       resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
       if (typeof plugin.clear === 'function') await plugin.clear();
       const backgroundStructures = [];
       if (allMode) {
@@ -8033,8 +8287,8 @@
       state = {
         viewer,
         key: stateKey,
-        backgroundStructures,
-        activeStructures: [],
+        backgroundRefs: molstarStructureRefsOf(backgroundStructures),
+        activeRefs: [],
         activeIndex: -1
       };
       activeSdfCollectionVisibilityState = state;
@@ -8046,12 +8300,12 @@
       return;
     }
 
-    await removeMolstarStructures(viewer, state.activeStructures);
-    state.activeStructures = [];
+    await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.activeRefs));
+    state.activeRefs = [];
     const label = `${prepared.label || 'Molecule collection'} (${prepared.controlLabel || 'Molecule'} ${activeIndex + 1})`;
     const structures = await loadSdfCollectionPdbLayer(viewer, activeData, label);
     await applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored');
-    state.activeStructures = structures;
+    state.activeRefs = molstarStructureRefsOf(structures);
     state.activeIndex = activeIndex;
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
@@ -8086,12 +8340,11 @@
 
   function dockingPoseCollectionStateStillLoaded(viewer, state) {
     if (!state || state.viewer !== viewer) return false;
-    const structures = Array.from(molstarCurrentStructures(viewer));
-    const receptor = Array.isArray(state.receptorStructures) ? state.receptorStructures : [];
-    const background = Array.isArray(state.backgroundStructures) ? state.backgroundStructures : [];
-    const active = Array.isArray(state.activeStructures) ? state.activeStructures : [];
-    const required = [...receptor, ...background, ...active];
-    return required.length > 0 && required.every(structure => structures.includes(structure));
+    return molstarRefsStillLoaded(viewer, [
+      ...(state.receptorRefs || []),
+      ...(state.backgroundRefs || []),
+      ...(state.activeRefs || [])
+    ]);
   }
 
   async function applyDockingPoseCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
@@ -8135,9 +8388,9 @@
       state = {
         viewer,
         key: stateKey,
-        receptorStructures,
-        backgroundStructures,
-        activeStructures: [],
+        receptorRefs: molstarStructureRefsOf(receptorStructures),
+        backgroundRefs: molstarStructureRefsOf(backgroundStructures),
+        activeRefs: [],
         activeIndex: -1
       };
       activeDockingPoseCollectionState = state;
@@ -8149,13 +8402,13 @@
       return;
     }
 
-    await removeMolstarStructures(viewer, state.activeStructures);
-    state.activeStructures = [];
+    await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.activeRefs));
+    state.activeRefs = [];
     const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
     if (activeStructures.length) {
       await applySdfCollectionMolstarStyle(viewer, style, activeStructures, 1, 'colored');
     }
-    state.activeStructures = activeStructures;
+    state.activeRefs = molstarStructureRefsOf(activeStructures);
     state.activeIndex = activeIndex;
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     await applyMolstarWaterLineRepresentation(viewer);
@@ -8170,10 +8423,13 @@
     }
     const raw = rawStructureData(activeConfig);
     const rawSignature = xyzFrameOverlayRawSignature(raw);
-    let frames = activeXyzFrameOverlayState?.viewer === viewer && activeXyzFrameOverlayState.rawSignature === rawSignature
+    const framesAligned = xyzFrameAlignment?.signature === rawSignature;
+    let frames = activeXyzFrameOverlayState?.viewer === viewer
+      && activeXyzFrameOverlayState.rawSignature === rawSignature
+      && activeXyzFrameOverlayState.aligned === framesAligned
       ? activeXyzFrameOverlayState.frames
       : null;
-    if (!Array.isArray(frames)) frames = splitXyzFrames(raw);
+    if (!Array.isArray(frames)) frames = framesAligned ? xyzFrameAlignment.frames : splitXyzFrames(raw);
     if (frames.length <= 1) {
       resetXyzFrameOverlayState(viewer);
       await reloadActiveMolstarStructure();
@@ -8183,10 +8439,11 @@
     const label = activeConfig?.label || prepared?.label || 'XYZ frames';
     const style = configuredMolstarStyle(activeConfig);
     const foregroundStyle = xyzFrameForegroundStyle(style);
-    if (activeSdfPoseMode !== 'all') {
+    if (activeSdfPoseMode !== 'all' || !structureOverlayToggleAvailable(prepared)) {
       resetXyzFrameOverlayState(viewer);
       resetSdfCollectionVisibilityState(viewer);
       resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
       if (typeof plugin.clear === 'function') await plugin.clear();
       const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
       if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
@@ -8203,30 +8460,39 @@
     const resolvedContextStyle = xyzFrameBackgroundStyle(contextStyle, foregroundStyle);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readXyzFrameContextColor(activeConfig);
-    const backgroundIndexes = sampledXyzFrameBackgroundIndexes(frames.length, activeIndex);
-    const stateKey = xyzFrameOverlayStateKey(rawSignature, frames, prepared, foregroundStyle, resolvedContextStyle, contextOpacity, contextColor, backgroundIndexes);
+    const sampledIndexes = sampledXyzFrameIndexes(frames.length);
+    const stateKey = `${xyzFrameOverlayStateKey(rawSignature, frames, prepared, foregroundStyle, resolvedContextStyle, contextOpacity, contextColor, sampledIndexes)}|${framesAligned ? 'aligned' : 'raw'}`;
+    const backgroundLayerOpacity = (activePosition) => xyzFrameBackgroundLayerOpacity(
+      contextOpacity,
+      Math.max(1, sampledIndexes.length - (activePosition >= 0 ? 1 : 0))
+    );
     let state = activeXyzFrameOverlayState;
     if (!state || state.key !== stateKey || !xyzFrameOverlayStateStillLoaded(viewer, state)) {
       resetSdfCollectionVisibilityState(viewer);
       resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
       if (typeof plugin.clear === 'function') await plugin.clear();
-      const contextStructures = [];
-      for (const index of backgroundIndexes) {
-        const entry = xyzFrameEntry(frames[index], `${label} (background frame ${index + 1})`);
-        if (!entry) continue;
-        contextStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
+      const frameRefs = [];
+      for (const index of sampledIndexes) {
+        const entry = xyzFrameEntry(frames[index], `${label} (${prepared.controlLabel || 'Frame'} ${index + 1})`);
+        if (!entry) { frameRefs.push([]); continue; }
+        frameRefs.push(molstarStructureRefsOf(await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' })));
       }
-      if (contextStructures.length) {
-        const backgroundOpacity = xyzFrameBackgroundLayerOpacity(contextOpacity, contextStructures.length);
-        await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, contextStructures, backgroundOpacity, contextColor, XYZ_FRAME_BACKGROUND_MIN_ALPHA);
+      const loaded = molstarStructuresByRefs(viewer, frameRefs.flat());
+      if (loaded.length) {
+        await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, loaded, backgroundLayerOpacity(0), contextColor, XYZ_FRAME_BACKGROUND_MIN_ALPHA);
       }
       state = {
         viewer,
         key: stateKey,
         rawSignature,
         frames,
-        backgroundStructures: contextStructures,
-        activeStructures: [],
+        aligned: framesAligned,
+        sampledIndexes,
+        frameRefs,
+        backgroundRefs: frameRefs.flat(),
+        activeRefs: [],
+        extraActiveRefs: [],
         activeIndex: -1
       };
       activeXyzFrameOverlayState = state;
@@ -8237,18 +8503,30 @@
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       return;
     }
-    await removeMolstarStructures(viewer, state.activeStructures);
-    state.activeStructures = [];
-    const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
-    if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
-    const structuresBeforeActive = new Set(molstarCurrentStructures(viewer));
-    const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
-    const scopedActiveStructures = activeStructures.length
-      ? activeStructures
-      : Array.from(molstarCurrentStructures(viewer)).filter(structure => !structuresBeforeActive.has(structure));
-    if (!scopedActiveStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
-    await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, scopedActiveStructures, 1, 'colored');
-    state.activeStructures = scopedActiveStructures;
+    if (state.extraActiveRefs?.length) {
+      await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.extraActiveRefs));
+      state.extraActiveRefs = [];
+    }
+    const activePosition = state.sampledIndexes.indexOf(activeIndex);
+    const previousPosition = state.sampledIndexes.indexOf(state.activeIndex);
+    if (previousPosition >= 0 && previousPosition !== activePosition) {
+      const previous = molstarStructuresByRefs(viewer, state.frameRefs[previousPosition]);
+      if (previous.length) {
+        await clearMolstarMainRepresentationsForStructures(viewer, previous);
+        await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, previous, backgroundLayerOpacity(activePosition), contextColor, XYZ_FRAME_BACKGROUND_MIN_ALPHA);
+      }
+    }
+    let activeStructures = activePosition >= 0 ? molstarStructuresByRefs(viewer, state.frameRefs[activePosition]) : [];
+    if (!activeStructures.length) {
+      const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
+      if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
+      activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
+      state.extraActiveRefs = molstarStructureRefsOf(activeStructures);
+    }
+    if (!activeStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
+    await clearMolstarMainRepresentationsForStructures(viewer, activeStructures);
+    await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, activeStructures, 1, 'colored');
+    state.activeRefs = molstarStructureRefsOf(activeStructures);
     state.activeIndex = activeIndex;
     if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
@@ -8279,12 +8557,186 @@
     await applyMolstarNonIllustrativePostprocessing(viewer);
   }
 
-  async function applyDockingSceneVisibility(viewer, prepared, activePose = 0, options = {}) {
-    if (!viewer || prepared?.kind !== 'docking' || !prepared.dockingSceneMode) return;
+  function dockingSceneStateKey(prepared, style) {
+    const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
+    const first = poses[0] || {};
+    const last = poses[poses.length - 1] || {};
+    return [
+      activeConfig?.documentId || '',
+      prepared?.label || '',
+      poses.length,
+      first.sourcePath || first.label || '',
+      last.sourcePath || last.label || '',
+      xyzFrameOverlayRawSignature(first.data || ''),
+      style,
+      prepared?.structureAlignmentEnabled === true ? 'aligned' : 'raw'
+    ].join('|');
+  }
+
+  function resetDockingSceneVisibilityState(viewer = null) {
+    if (!viewer || activeDockingSceneVisibilityState?.viewer === viewer) {
+      activeDockingSceneVisibilityState = null;
+    }
+  }
+
+  function molstarStructureCellRefs(viewer) {
+    return new Set(Array.from(molstarCurrentStructures(viewer))
+      .map(structure => structure?.cell?.transform?.ref)
+      .filter(Boolean));
+  }
+
+  function dockingSceneVisibilityStateStillLoaded(viewer, state) {
+    if (!state || state.viewer !== viewer) return false;
+    const refs = molstarStructureCellRefs(viewer);
+    const required = (state.poseRefs || []).flat();
+    return required.length > 0 && required.every(ref => refs.has(ref));
+  }
+
+  function setDockingSceneRefsHidden(viewer, refs, hidden) {
+    const state = viewer?.plugin?.state?.data;
+    if (typeof state?.updateCellState !== 'function') return;
+    const wanted = new Set(refs || []);
+    if (!wanted.size) return;
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const structureRef = structure?.cell?.transform?.ref;
+      if (!structureRef || !wanted.has(structureRef)) continue;
+      state.updateCellState(structureRef, { isHidden: hidden });
+      for (const component of structure.components || []) {
+        const componentRef = component?.cell?.transform?.ref;
+        if (componentRef) state.updateCellState(componentRef, { isHidden: hidden });
+        for (const representation of component.representations || []) {
+          const representationRef = representation?.cell?.transform?.ref;
+          if (representationRef) state.updateCellState(representationRef, { isHidden: hidden });
+        }
+      }
+    }
+  }
+
+  function dockingSceneStructuresByPose(viewer, poseRefs) {
+    const byRef = new Map(Array.from(molstarCurrentStructures(viewer))
+      .map(structure => [structure?.cell?.transform?.ref, structure]));
+    return (poseRefs || []).map(refs => refs.map(ref => byRef.get(ref)).filter(Boolean));
+  }
+
+  async function styleDockingSceneOverlay(viewer, structuresByPose, activeIndex, params) {
+    if (params.uniform) {
+      const everything = structuresByPose.flat();
+      if (everything.length) await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, everything, 1, 'colored');
+      return;
+    }
+    const background = structuresByPose.filter((_, index) => index !== activeIndex).flat();
+    if (background.length) {
+      await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, background, params.contextOpacity, params.contextColor);
+    }
+    const active = structuresByPose[activeIndex] || [];
+    if (active.length) {
+      await applySdfCollectionMolstarStyle(viewer, normalizeMolstarStyle(params.style), active, 1, 'colored');
+    }
+  }
+
+  async function applyDockingSceneOverlayPoses(viewer, prepared, activePose, options) {
     const plugin = viewer.plugin;
+    const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
+    const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
+    if (!poses[activeIndex]) return false;
+    const style = configuredMolstarStyle(activeConfig);
+    const resolvedContextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
+    const uniform = resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative';
+    const contextOpacity = uniform ? 1 : readSdfCollectionContextOpacity(activeConfig);
+    const contextColor = uniform ? 'colored' : readSdfCollectionContextColor(activeConfig);
+    const params = { style, resolvedContextStyle, contextOpacity, contextColor, uniform };
+    const stateKey = [dockingSceneStateKey(prepared, style), 'all', resolvedContextStyle, contextOpacity, contextColor].join('|');
+    const state = activeDockingSceneVisibilityState;
+    if (state && state.key === stateKey && dockingSceneVisibilityStateStillLoaded(viewer, state)) {
+      if (state.activeIndex !== activeIndex && !uniform) {
+        const structuresByPose = dockingSceneStructuresByPose(viewer, state.poseRefs);
+        await clearMolstarMainRepresentationsForStructures(viewer, structuresByPose.flat());
+        await styleDockingSceneOverlay(viewer, structuresByPose, activeIndex, params);
+        await applyMolstarWaterLineRepresentation(viewer);
+      }
+      state.activeIndex = activeIndex;
+      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
+      return true;
+    }
     resetXyzFrameOverlayState(viewer);
     resetSdfCollectionVisibilityState(viewer);
     resetDockingPoseCollectionState(viewer);
+    resetDockingSceneVisibilityState(viewer);
+    if (typeof plugin.clear === 'function') await plugin.clear();
+    const poseRefs = [];
+    for (const entry of poses) {
+      const before = molstarStructureCellRefs(viewer);
+      await loadMolstarEntry(viewer, entry, { representationPreset: 'empty' });
+      poseRefs.push(Array.from(molstarStructureCellRefs(viewer)).filter(ref => !before.has(ref)));
+    }
+    if (!poseRefs.every(refs => refs.length)) {
+      activeDockingSceneVisibilityState = null;
+      return false;
+    }
+    await styleDockingSceneOverlay(viewer, dockingSceneStructuresByPose(viewer, poseRefs), activeIndex, params);
+    await applyMolstarWaterLineRepresentation(viewer);
+    activeDockingSceneVisibilityState = { viewer, key: stateKey, poseRefs, activeIndex };
+    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+    scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
+    return true;
+  }
+
+  async function applyDockingSceneSinglePose(viewer, prepared, activePose, options) {
+    const plugin = viewer.plugin;
+    if (typeof plugin?.state?.data?.updateCellState !== 'function') return false;
+    const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
+    const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
+    if (!poses[activeIndex]) return false;
+    const style = configuredMolstarStyle(activeConfig);
+    const stateKey = dockingSceneStateKey(prepared, style);
+    let state = activeDockingSceneVisibilityState;
+    let rebuilt = false;
+    if (!state || state.key !== stateKey || !dockingSceneVisibilityStateStillLoaded(viewer, state)) {
+      resetXyzFrameOverlayState(viewer);
+      resetSdfCollectionVisibilityState(viewer);
+      resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
+      if (typeof plugin.clear === 'function') await plugin.clear();
+      const poseRefs = [];
+      for (const entry of poses) {
+        const before = molstarStructureCellRefs(viewer);
+        await loadMolstarEntry(viewer, entry);
+        poseRefs.push(Array.from(molstarStructureCellRefs(viewer)).filter(ref => !before.has(ref)));
+      }
+      if (!poseRefs.every(refs => refs.length)) {
+        activeDockingSceneVisibilityState = null;
+        return false;
+      }
+      await applyMolstarStyle(viewer, style);
+      await applyMolstarWaterLineRepresentation(viewer);
+      state = { viewer, key: stateKey, poseRefs, activeIndex: -1 };
+      activeDockingSceneVisibilityState = state;
+      rebuilt = true;
+    }
+    if (state.activeIndex !== activeIndex) {
+      if (state.activeIndex < 0) {
+        state.poseRefs.forEach((refs, index) => setDockingSceneRefsHidden(viewer, refs, index !== activeIndex));
+      } else {
+        setDockingSceneRefsHidden(viewer, state.poseRefs[state.activeIndex] || [], true);
+        setDockingSceneRefsHidden(viewer, state.poseRefs[activeIndex] || [], false);
+      }
+      state.activeIndex = activeIndex;
+    }
+    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+    if (rebuilt || options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
+    return true;
+  }
+
+  async function applyDockingSceneVisibility(viewer, prepared, activePose = 0, options = {}) {
+    if (!viewer || prepared?.kind !== 'docking' || !prepared.dockingSceneMode) return;
+    const plugin = viewer.plugin;
+    if (activeSdfPoseMode !== 'all' && await applyDockingSceneSinglePose(viewer, prepared, activePose, options)) return;
+    if (activeSdfPoseMode === 'all' && await applyDockingSceneOverlayPoses(viewer, prepared, activePose, options)) return;
+    resetXyzFrameOverlayState(viewer);
+    resetSdfCollectionVisibilityState(viewer);
+    resetDockingPoseCollectionState(viewer);
+    resetDockingSceneVisibilityState(viewer);
     if (typeof plugin.clear === 'function') await plugin.clear();
     const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
     const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
@@ -8344,11 +8796,12 @@
 
   async function loadSdfCollectionPdbLayer(viewer, data, label) {
     const plugin = viewer?.plugin;
+    const before = molstarStructureCellRefs(viewer);
     const raw = await plugin.builders.data.rawData({ data, label });
     const trajectory = await plugin.builders.structure.parseTrajectory(raw, 'pdb');
-    const preset = await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
-    const structure = preset?.structureProperties || preset?.structure || null;
-    return structure ? [structure] : [];
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
+    return Array.from(molstarCurrentStructures(viewer))
+      .filter(structure => !before.has(structure?.cell?.transform?.ref));
   }
 
   async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray') {
@@ -8500,6 +8953,35 @@
     );
   }
 
+  // Adds a translucent grey envelope on top of the representations the default
+  // preset already built, so the illustrative cartoon stays visible through it.
+  // Style switches clear and reload the plugin, so this never stacks surfaces.
+  async function addMolstarGhostSurfaceRepresentation(viewer) {
+    const plugin = viewer?.plugin;
+    if (!plugin) return;
+    // Cel shading banks the envelope into flat tones, and the caller switches the
+    // outline pass onto transparent geometry, so it reads as a drawn shell with
+    // edges rather than as a featureless grey wash.
+    const representation = {
+      type: 'molecular-surface',
+      typeParams: {
+        alpha: 0.12,
+        transparentBackfaces: 'on',
+        ignoreLight: false,
+        celShaded: true,
+        material: { roughness: 0.2, metalness: 0 }
+      },
+      color: 'uniform',
+      colorParams: { value: 0xc8d0d8 }
+    };
+    for (const structure of molstarCurrentStructures(viewer)) {
+      const polymer = await tryCreateMolstarComponent(plugin, structure, 'polymer');
+      if (await addMolstarRepresentation(plugin, polymer, representation)) continue;
+      const all = await tryCreateMolstarComponent(plugin, structure, 'all');
+      await addMolstarRepresentation(plugin, all, representation);
+    }
+  }
+
   function resetMolstarPostprocessing(viewer) {
     const canvas = viewer?.plugin?.canvas3d;
     if (!canvas) return;
@@ -8522,7 +9004,10 @@
     resetMolstarPostprocessing(viewer);
   }
 
-  async function applyMolstarIllustrativePostprocessing(viewer) {
+  // `includeTransparent` is always written out: the outline otherwise skips
+  // translucent geometry, and leaving the previous value in place would leak the
+  // surface preset's outlining into the plain illustrative style.
+  async function applyMolstarIllustrativePostprocessing(viewer, options = {}) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
     await plugin.managers.structure.component.setOptions({
@@ -8535,14 +9020,16 @@
       postprocessing: {
         outline: {
           name: 'on',
-          params: postprocessing.outline.name === 'on'
-            ? postprocessing.outline.params
-            : {
-                scale: 1,
-                color: 0x000000,
-                threshold: 0.33,
-                includeTransparent: false
-              }
+          params: {
+            ...(postprocessing.outline.name === 'on'
+              ? postprocessing.outline.params
+              : {
+                  scale: 1,
+                  color: 0x000000,
+                  threshold: 0.33
+                }),
+            includeTransparent: options.includeTransparent === true
+          }
         },
         occlusion: {
           name: 'on',
@@ -8570,7 +9057,7 @@
     if (!plugin) return;
     const normalized = normalizeMolstarStyle(style);
 
-    if (normalized !== 'illustrative') {
+    if (normalized !== 'illustrative' && normalized !== 'illustrative-surface') {
       await applyMolstarNonIllustrativePostprocessing(viewer);
     }
 
@@ -8608,6 +9095,11 @@
     }
     if (normalized === 'illustrative') {
       await applyMolstarIllustrativePostprocessing(viewer);
+      return;
+    }
+    if (normalized === 'illustrative-surface') {
+      await applyMolstarIllustrativePostprocessing(viewer, { includeTransparent: true });
+      await addMolstarGhostSurfaceRepresentation(viewer);
       return;
     }
     if (normalized === 'cartoon' || normalized === 'polymer-ligand') {
@@ -8673,6 +9165,33 @@
     };
   }
 
+  // Crystallographic waters are lone oxygens, so the bond-only line visual has
+  // nothing to draw for them. Dots keep those waters visible without changing how
+  // bonded MD solvent (GRO/Desmond) renders.
+  function molstarWaterPointRepresentation() {
+    return {
+      type: 'point',
+      typeParams: {
+        alpha: 0.5,
+        sizeFactor: 1,
+        pointSizeAttenuation: true,
+        pointStyle: 'circle'
+      },
+      color: 'uniform',
+      colorParams: { value: 0x4db6ff },
+      size: 'uniform',
+      sizeParams: { value: 0.22 }
+    };
+  }
+
+  function molstarWaterRepresentationFor(component) {
+    const structure = component?.cell?.obj?.data || component?.obj?.data || null;
+    for (const unit of structure?.units || []) {
+      if (unit.bonds?.edgeCount > 0) return molstarWaterLineRepresentation();
+    }
+    return molstarWaterPointRepresentation();
+  }
+
   async function applyMolstarWaterLineRepresentation(viewer) {
     if (!shouldUseMolstarWaterLines(activeConfig)) return;
     const plugin = viewer?.plugin;
@@ -8697,16 +9216,16 @@
       await plugin.managers.structure.component.removeRepresentations(waterComponents);
     }
     for (const component of waterComponents) {
-      await plugin.builders.structure.representation.addRepresentation(component.cell, molstarWaterLineRepresentation(), { tag: 'water' });
+      await plugin.builders.structure.representation.addRepresentation(component.cell, molstarWaterRepresentationFor(component), { tag: 'water' });
     }
     for (const component of createdWaterComponents) {
-      await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarWaterLineRepresentation(), { tag: 'water' });
+      await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarWaterRepresentationFor(component), { tag: 'water' });
     }
     return waterComponents.length;
   }
 
   function activeMolstarViewer() {
-    return activeViewer || window.BurreteViewer || window.BuretteViewer || null;
+    return activeViewer || window.BuretteViewer || window.BuretteViewer || null;
   }
 
   function molstarComponentsByKind(viewer, kind) {
@@ -8921,7 +9440,7 @@
     await plugin.build().to(target).apply(transform, {
       radius: Number.isFinite(Number(options.radius)) ? Number(options.radius) : 0.035,
       color: Number.isFinite(Number(options.color)) ? Number(options.color) : 0x2f6f66
-    }, { tags: ['burrete-box-geometry'] }).commit({ revertOnError: true });
+    }, { tags: ['burette-box-geometry'] }).commit({ revertOnError: true });
     return true;
   }
 
@@ -8959,7 +9478,7 @@
     return { ok: false, command, error: { code, message } };
   }
 
-  window.BurreteSceneActions = {
+  window.BuretteSceneActions = {
     hideComponents: hideMolstarComponents,
     showComponents: showMolstarComponents,
     hideWaters: hideMolstarWaters,
@@ -9040,9 +9559,10 @@
   }
 
   async function loadMolstarEntryWithStructureRefs(viewer, entry, presetOptions = undefined) {
-    const before = new Set(molstarCurrentStructures(viewer));
+    const before = molstarStructureCellRefs(viewer);
     await loadMolstarEntry(viewer, entry, presetOptions);
-    return Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure));
+    return Array.from(molstarCurrentStructures(viewer))
+      .filter(structure => !before.has(structure?.cell?.transform?.ref));
   }
 
   async function loadMolstarEntryAsLines(viewer, entry) {
@@ -9194,7 +9714,7 @@
     const selector = focus.selector && typeof focus.selector === 'object' ? focus.selector : { kind: 'ligand' };
     const radiusA = Number(focus.radiusA || focus.extraRadius || 5);
     try {
-      const result = await window.BurreteAgent?.run?.({
+      const result = await window.BuretteAgent?.run?.({
         command: 'focusLigand',
         args: {
           selector,
@@ -9230,6 +9750,7 @@
       resetXyzFrameOverlayState(viewer);
       resetSdfCollectionVisibilityState(viewer);
       resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
       await plugin.clear();
     }
     if (prepared.trajectoryPair) {
@@ -9249,6 +9770,7 @@
   let dockingPoseControlsDisposer = null;
   let activeSdfCollectionPoseSetter = null;
   let activeStructurePoseSetter = null;
+  let activeStructureAlignmentControl = null;
 
   function isDockingPoseKeyboardTarget(target) {
     const element = target instanceof Element ? target : null;
@@ -9389,7 +9911,7 @@
     let drag = null;
     const onPointerDown = (event) => {
       if (event.button !== 0) return;
-      if (event.target.closest('button, input, select, textarea, [contenteditable="true"]')) return;
+      if (event.target.closest('button, input, select, textarea, [contenteditable="true"], .buret-docking-pose-files')) return;
       const rect = root.getBoundingClientRect();
       drag = {
         pointerId: event.pointerId,
@@ -9711,7 +10233,7 @@
   }
 
   async function applyTrajectorySmoothingFromAction(action = {}) {
-    const engine = window.BurreteTrajectorySmoothing;
+    const engine = window.BuretteTrajectorySmoothing;
     const originalPrepared = trajectorySmoothingState?.originalPrepared || activeMolstarPrepared;
     if (!engine?.smooth || !originalPrepared) {
       return agentActionFailure('apply_trajectory_smoothing', 'NOT_AVAILABLE', 'Trajectory smoothing is unavailable in this viewer runtime.');
@@ -10012,6 +10534,7 @@
     }
     activeSdfCollectionPoseSetter = null;
     activeStructurePoseSetter = null;
+    activeStructureAlignmentControl = null;
     document.body.classList.remove('buret-docking-pose-controls-active');
     if (!prepared) return;
     const overlayAvailable = structureOverlayAvailable(prepared);
@@ -10020,6 +10543,7 @@
     document.body.classList.add('buret-docking-pose-controls-active');
     const root = document.createElement('div');
     root.className = 'buret-docking-poses';
+    if (prepared.dockingSceneMode) root.classList.add('buret-docking-poses-structure-scene');
     const controlLabel = String(prepared.controlLabel || 'Pose');
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
@@ -10061,12 +10585,47 @@
     let sliderInputTimer = null;
     let sliderInputBusy = false;
     let pendingSliderIndex = null;
+    let fileListDisposer = null;
     const mainRow = document.createElement('div');
     mainRow.className = 'buret-docking-pose-main';
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
-    const label = document.createElement('span');
+    const label = prepared.dockingSceneMode ? document.createElement('button') : document.createElement('span');
+    const currentName = prepared.dockingSceneMode ? document.createElement('span') : null;
+    const currentIndex = prepared.dockingSceneMode ? document.createElement('span') : null;
+    if (currentName && currentIndex) {
+      label.type = 'button';
+      label.className = 'buret-docking-pose-current';
+      label.setAttribute('aria-haspopup', 'listbox');
+      label.setAttribute('aria-expanded', 'false');
+      currentName.className = 'buret-docking-pose-current-name';
+      currentIndex.className = 'buret-docking-pose-current-index';
+      label.append(currentName, currentIndex);
+    }
     label.title = prepared.ligandLabel || '';
+    const fileList = prepared.dockingSceneMode ? document.createElement('div') : null;
+    const fileButtons = [];
+    if (fileList) {
+      fileList.className = 'buret-docking-pose-files';
+      fileList.setAttribute('role', 'listbox');
+      fileList.setAttribute('aria-label', 'Open structures');
+      prepared.poses.forEach((entry, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'buret-docking-pose-file';
+        button.setAttribute('role', 'option');
+        button.title = entry.label || `Structure ${index + 1}`;
+        const number = document.createElement('span');
+        number.className = 'buret-docking-pose-file-number';
+        number.textContent = String(index + 1).padStart(2, '0');
+        const name = document.createElement('span');
+        name.className = 'buret-docking-pose-file-name';
+        name.textContent = entry.label || `Structure ${index + 1}`;
+        button.append(number, name);
+        fileButtons.push(button);
+        fileList.append(button);
+      });
+    }
     const animation = document.createElement('button');
     animation.type = 'button';
     animation.className = 'buret-docking-pose-animation-button';
@@ -10082,6 +10641,37 @@
     next.type = 'button';
     next.textContent = 'Next';
     next.setAttribute('aria-label', `Next ${controlLabelLower}`);
+    const xyzAlignSignature = prepared.xyzFrameOverlayAvailable === true
+      ? xyzFrameOverlayRawSignature(rawStructureData(activeConfig))
+      : '';
+    const xyzCandidateFrames = xyzAlignSignature ? splitXyzFrames(rawStructureData(activeConfig)) : null;
+    const xyzAlignFrames = xyzCandidateFrames
+      && (xyzFrameAlignment?.signature === xyzAlignSignature
+        || xyzFrameAlignmentGain(xyzCandidateFrames) > XYZ_ALIGNMENT_GAIN_THRESHOLD)
+      ? xyzCandidateFrames
+      : null;
+    const align = prepared.dockingSceneMode || xyzAlignFrames ? document.createElement('button') : null;
+    const alignmentSupported = Boolean(align) && (xyzAlignFrames
+      ? xyzFramesAlignable(xyzAlignFrames)
+      : prepared.poses.every(entry => normalizeFormat(entry?.format) === 'pdb'));
+    const alignmentOn = xyzAlignFrames
+      ? xyzFrameAlignment?.signature === xyzAlignSignature
+      : prepared.structureAlignmentEnabled === true;
+    if (align) {
+      align.type = 'button';
+      align.className = 'buret-docking-pose-align';
+      align.textContent = alignmentOn ? 'Aligned' : 'Align';
+      align.classList.toggle('active', alignmentOn);
+      align.title = !alignmentSupported
+        ? (xyzAlignFrames
+          ? 'Alignment needs every structure to list the same atoms in the same order'
+          : 'One-click alignment currently supports PDB structure scenes')
+        : xyzAlignFrames
+          ? 'Superimpose every structure onto the first one by atom order'
+          : 'Align every structure to the first file using Cα atoms from the largest common chain';
+      align.disabled = !alignmentSupported;
+      align.setAttribute('aria-pressed', alignmentOn ? 'true' : 'false');
+    }
     const loop = document.createElement('button');
     loop.type = 'button';
     loop.textContent = 'Loop';
@@ -10125,11 +10715,25 @@
       prepared.kind === 'xyz-frame-overlay' ||
       (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true)
     );
+    const applyLabel = (poseIndex) => {
+      if (!currentName || !currentIndex) {
+        label.textContent = trajectoryPoseLabel(prepared, controlLabel, poseIndex);
+        return;
+      }
+      currentName.textContent = prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`;
+      currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount}`;
+    };
     const updateControls = () => {
-      label.textContent = trajectoryPoseLabel(prepared, controlLabel, activePose);
+      applyLabel(activePose);
+      label.title = prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
       previous.disabled = activePose <= 0;
       next.disabled = activePose >= prepared.poseCount - 1;
       slider.value = String(activePose + 1);
+      fileButtons.forEach((button, index) => {
+        const active = index === activePose;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
       refreshNativeTrajectoryStandalonePreview();
       postHostMessage({
         type: 'trajectoryFrameChanged',
@@ -10139,6 +10743,21 @@
         playing: loopActive
       });
     };
+    const setFileListOpen = (open) => {
+      if (!fileList) return;
+      if (open) {
+        const rootRect = root.getBoundingClientRect();
+        const triggerLeft = Math.round(label.offsetLeft);
+        const spaceBelow = window.innerHeight - rootRect.bottom;
+        root.classList.toggle('buret-docking-poses-files-above', spaceBelow < 200 && rootRect.top > spaceBelow);
+        fileList.style.left = `${triggerLeft}px`;
+        fileList.style.minWidth = `${Math.max(128, Math.round(label.getBoundingClientRect().width))}px`;
+        fileList.style.maxWidth = `${Math.max(160, Math.round(window.innerWidth - 12 - rootRect.left - triggerLeft))}px`;
+      }
+      root.classList.toggle('buret-docking-poses-files-open', Boolean(open));
+      label.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+    const isFileListOpen = () => root.classList.contains('buret-docking-poses-files-open');
     const setAnimationOptionsOpen = (open) => {
       root.classList.toggle('buret-docking-poses-animation-open', Boolean(open));
       animation.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -10215,7 +10834,7 @@
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
-      label.textContent = trajectoryPoseLabel(prepared, controlLabel, nextIndex);
+      applyLabel(nextIndex);
       try {
         if (prepared.nativeTrajectoryControls) {
           const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
@@ -10269,6 +10888,102 @@
         console.error(error);
       }
     };
+    if (fileList) {
+      label.addEventListener('click', () => {
+        setFileListOpen(!isFileListOpen());
+      });
+      fileButtons.forEach((button, index) => {
+        button.addEventListener('pointerenter', (event) => {
+          if (event.pointerType === 'touch' || index === activePose) return;
+          scheduleSliderInputPose(index);
+        });
+        button.addEventListener('click', () => {
+          setFileListOpen(false);
+          if (index !== activePose) scheduleSliderInputPose(index);
+        });
+      });
+      const onOutsidePointerDown = (event) => {
+        if (!isFileListOpen()) return;
+        if (event.target instanceof Node && root.contains(event.target)) return;
+        setFileListOpen(false);
+      };
+      window.addEventListener('pointerdown', onOutsidePointerDown, true);
+      fileListDisposer = () => window.removeEventListener('pointerdown', onOutsidePointerDown, true);
+    }
+    if (align && alignmentSupported && xyzAlignFrames) {
+      const toggleXyzAlignment = () => {
+        align.disabled = true;
+        const enabling = xyzFrameAlignment?.signature !== xyzAlignSignature;
+        try {
+          let result = null;
+          if (enabling) {
+            result = alignXyzFramesToFirst(xyzAlignFrames);
+            xyzFrameAlignment = { signature: xyzAlignSignature, frames: result.frames };
+          } else {
+            xyzFrameAlignment = null;
+          }
+          return applyXyzFrameOverlayVisibility(viewer, prepared, activePose, { focus: true, installControls: false }).then(() => {
+            align.textContent = enabling ? 'Aligned' : 'Align';
+            align.classList.toggle('active', enabling);
+            align.setAttribute('aria-pressed', enabling ? 'true' : 'false');
+            if (result) {
+              align.title = `Superimposed onto the first structure by atom order · ${result.atomCount} atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
+              setStatus(`[web] Aligned ${xyzAlignFrames.length} structures onto the first one by atom order (${result.atomCount} atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+            } else {
+              align.title = 'Superimpose every structure onto the first one by atom order';
+              setStatus('[web] Restored original structure coordinates.');
+            }
+            setTimeout(hideStatus, 2200);
+          }).catch(error => {
+            if (enabling) xyzFrameAlignment = null;
+            setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
+          }).finally(() => { align.disabled = false; });
+        } catch (error) {
+          if (enabling) xyzFrameAlignment = null;
+          align.disabled = false;
+          setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
+          return Promise.resolve();
+        }
+      };
+      align.addEventListener('click', () => { void toggleXyzAlignment(); });
+    } else if (align && alignmentSupported) {
+      const toggleAlignment = () => {
+        align.disabled = true;
+        const enabling = prepared.structureAlignmentEnabled !== true;
+        try {
+          let result = null;
+          if (enabling) result = alignStructureSceneEntries(prepared);
+          else restoreStructureSceneEntries(prepared);
+          return applyDockingSceneVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: true }).then(() => {
+            align.textContent = enabling ? 'Aligned' : 'Align';
+            align.classList.toggle('active', enabling);
+            align.setAttribute('aria-pressed', enabling ? 'true' : 'false');
+            if (result) {
+              align.title = `Aligned to ${result.referenceLabel} using chain ${result.chain} Cα · ${result.averageMatches} matched atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
+              setStatus(`[web] Aligned ${result.alignedCount + 1} structures to ${result.referenceLabel} using chain ${result.chain} Cα (${result.averageMatches} matched atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+            } else {
+              align.title = 'Align every structure to the first file using Cα atoms from the largest common chain';
+              setStatus('[web] Restored original structure coordinates.');
+            }
+            setTimeout(hideStatus, 2200);
+          }).catch(error => {
+            if (enabling) restoreStructureSceneEntries(prepared);
+            setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
+          }).finally(() => { align.disabled = false; });
+        } catch (error) {
+          if (enabling) restoreStructureSceneEntries(prepared);
+          align.disabled = false;
+          setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
+          return Promise.resolve();
+        }
+      };
+      activeStructureAlignmentControl = {
+        toggle: toggleAlignment,
+        isAligned: () => prepared.structureAlignmentEnabled === true,
+        referenceLabel: () => prepared.poses?.[0]?.label || 'the first structure'
+      };
+      align.addEventListener('click', () => { void toggleAlignment(); });
+    }
     activeStructurePoseSetter = setPose;
     if (prepared.kind === 'sdf-collection') activeSdfCollectionPoseSetter = setPose;
     const stopPoseRepeat = () => {
@@ -10343,7 +11058,23 @@
         flushPendingSliderInput();
       }, 24);
     };
+    const setControlsCollapsed = (collapsed) => {
+      root.classList.toggle('buret-docking-poses-collapsed', Boolean(collapsed));
+      animation.title = collapsed ? 'Show playback controls' : 'Select animation';
+      if (!collapsed) return;
+      setFileListOpen(false);
+      setAnimationOptionsOpen(false);
+    };
+    animation.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setControlsCollapsed(!root.classList.contains('buret-docking-poses-collapsed'));
+    });
     animation.addEventListener('click', () => {
+      if (root.classList.contains('buret-docking-poses-collapsed')) {
+        setControlsCollapsed(false);
+        return;
+      }
       const open = !isAnimationOptionsOpen();
       setAnimationOptionsOpen(open);
       if (!open) return;
@@ -10385,7 +11116,7 @@
     speed.addEventListener('input', updateSpeedMode);
     slider.addEventListener('input', () => {
       const previewIndex = Math.max(0, Math.min(prepared.poseCount - 1, Number(slider.value) - 1));
-      label.textContent = `${controlLabel} ${previewIndex + 1} / ${prepared.poseCount}`;
+      applyLabel(previewIndex);
       if (supportsLivePoseInput()) scheduleSliderInputPose(previewIndex);
     });
     slider.addEventListener('change', () => {
@@ -10404,6 +11135,12 @@
     const onKeyDown = (event) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
       if (isDockingPoseKeyboardTarget(event.target)) return;
+      if (event.key === 'Escape' && fileList && isFileListOpen()) {
+        event.preventDefault();
+        setFileListOpen(false);
+        label.focus();
+        return;
+      }
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
         if (activePose > 0) void setPose(activePose - 1, { userStep: true });
@@ -10415,10 +11152,23 @@
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => window.removeEventListener('keydown', onKeyDown);
     mainRow.append(animation, previous, label, next);
-    if (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls) mainRow.append(smooth);
-    if (all) mainRow.append(all);
-    animationRow.append(speed, loop, slider);
-    root.append(mainRow, animationRow);
+    const smoothAvailable = !xyzAlignFrames
+      && (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
+    if (smoothAvailable) mainRow.append(smooth);
+    const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
+    if (toggleRow) {
+      toggleRow.className = 'buret-docking-pose-toggles';
+      if (align) toggleRow.append(align);
+      if (all) toggleRow.append(all);
+    } else {
+      if (align) mainRow.append(align);
+      if (all) mainRow.append(all);
+      animationRow.append(speed, loop, slider);
+    }
+    root.append(mainRow);
+    if (toggleRow) root.append(toggleRow);
+    if (fileList) root.append(fileList);
+    if (!toggleRow) root.append(animationRow);
     document.body.appendChild(root);
     restoreDockingPoseControlsPosition(root);
     const isolationDisposer = installDockingPoseInteractionIsolation(root);
@@ -10462,6 +11212,7 @@
       isolationDisposer?.();
       hoverDisposer?.();
       dragDisposer?.();
+      fileListDisposer?.();
       document.body.classList.remove('buret-docking-pose-controls-active');
       if (activeStructurePoseSetter === setPose) activeStructurePoseSetter = null;
       if (activeSdfCollectionPoseSetter === setPose) activeSdfCollectionPoseSetter = null;
@@ -12154,7 +12905,7 @@
     if (bonds.length > 999) return null;
     return [
       String(label || 'Molecule').slice(0, 80),
-      '  Burrete',
+      '  Burette',
       'Small structure preview',
       formatSdfCountsLine(sdfAtoms.length, bonds.length),
       ...sdfAtoms.map(atom => formatSdfAtomLine(atom, atom.x, atom.y, atom.z)),
@@ -12430,7 +13181,7 @@
     const firstAtom = parsePdbAtomLine(lines[0]);
     const resolvedCompId = compId || firstAtom?.compId || 'Ligand';
     return {
-      data: ['HEADER    BURRETE PICKED SELECTION', ...lines, 'END', ''].join('\n'),
+      data: ['HEADER    BURETTE PICKED SELECTION', ...lines, 'END', ''].join('\n'),
       format: 'pdb',
       label: [resolvedCompId, chainId, seqId].filter(Boolean).join(' ')
     };
@@ -12475,7 +13226,7 @@
     return {
       data: [
         label,
-        '  Burrete',
+        '  Burette',
         'PDB ligand selection',
         formatSdfCountsLine(parsedAtoms.length, sdfBonds.length),
         ...parsedAtoms.map(current => formatSdfAtomLine({
@@ -12525,7 +13276,7 @@
       if (atom && selectedResidues.has(atom.residueKey)) selectedLines.push(line);
     }
     return {
-      data: ['HEADER    BURRETE DOCKING CONTEXT', ...selectedLines, 'END', ''].join('\n'),
+      data: ['HEADER    BURETTE DOCKING CONTEXT', ...selectedLines, 'END', ''].join('\n'),
       label: `${receptor?.label || 'Receptor'} environment`,
       fallback: false,
       residueCount: selectedResidues.size
@@ -12789,7 +13540,7 @@
     if (!toMmCif) throw new Error('mmCIF export is unavailable in this Mol* runtime.');
     const exports = molstarCurrentStructuresForExport();
     if (!exports.length) throw new Error('No modified Mol* structure is available to save.');
-    const label = exports.length === 1 ? exports[0].name : 'burrete_modified_structures';
+    const label = exports.length === 1 ? exports[0].name : 'burette_modified_structures';
     const structures = exports.length === 1 ? exports[0].structure : exports.map(entry => entry.structure);
     const text = toMmCif(label, structures, false, { copyAllCategories: true });
     if (typeof text !== 'string' || !text.trim()) throw new Error('Mol* returned an empty mmCIF export.');
@@ -12918,7 +13669,7 @@
       data: text,
       format,
       label,
-      molstarStyleOverride: configuredMolstarStyle(activeConfig || window.BurreteConfig || {})
+      molstarStyleOverride: configuredMolstarStyle(activeConfig || window.BuretteConfig || {})
     };
     const plugin = activeViewer.plugin;
     const transitionFrame = captureMolstarTransitionFrame();
@@ -12941,15 +13692,15 @@
     setMolstarStructureDirty(snapshot.dirty === true);
     clearMolstarSelection();
     try {
-      window.BurreteAgent?.notifyStructureLoaded?.({
+      window.BuretteAgent?.notifyStructureLoaded?.({
         viewer: activeViewer,
         plugin: activeViewer.plugin,
-        config: activeConfig || window.BurreteConfig || {},
+        config: activeConfig || window.BuretteConfig || {},
         prepared
       });
-      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
+      postHostMessage({ type: 'agentReady', message: 'Burette agent ready' });
     } catch (error) {
-      debug('BurreteAgent notifyStructureLoaded failed after Mol* undo: ' + (error && error.message || String(error)));
+      debug('BuretteAgent notifyStructureLoaded failed after Mol* undo: ' + (error && error.message || String(error)));
     }
   }
 
@@ -12971,7 +13722,7 @@
 
   async function resetMolstarCameraForContext() {
     try {
-      const result = await window.BurreteAgent?.run?.({
+      const result = await window.BuretteAgent?.run?.({
         command: 'resetCamera',
         args: { durationMs: 250 }
       });
@@ -13157,6 +13908,11 @@
     ];
     if (molstarContextCanBulkDelete(target)) actions.push(['remove-type', `Delete ${molstarContextBulkDeleteLabel(target)}`]);
     if (target?.scope === 'residue') actions.push(['remove-chain', 'Delete chain']);
+    if (activeStructureAlignmentControl) {
+      actions.push(activeStructureAlignmentControl.isAligned()
+        ? ['align-structures', 'Reset structure alignment']
+        : ['align-structures', `Align structures to ${activeStructureAlignmentControl.referenceLabel()}`]);
+    }
     if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
     actions.push(['save-modified', 'Save modified structure']);
     actions.push(['save-format:mmcif', 'Save as mmCIF']);
@@ -13205,7 +13961,12 @@
     const targetLabel = target.label;
     let previewAfterAction = null;
     try {
-      if (action === 'select') {
+      if (action === 'align-structures') {
+        if (!activeStructureAlignmentControl) throw new Error('No structure scene is available to align.');
+        hideMolstarContextMenu();
+        await activeStructureAlignmentControl.toggle();
+        return;
+      } else if (action === 'select') {
         const selectionLoci = molstarContextSelectionLoci(target);
         if (!selectMolstarContextPick({ ...target, loci: selectionLoci }, { applyGranularity: false })) throw new Error('No Mol* residue or ligand is available to select.');
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
@@ -13284,7 +14045,7 @@
     }
   }
 
-  window.BurreteRunMobileContextMenuAction = function (action, mode = 'molecule') {
+  window.BuretteRunMobileContextMenuAction = function (action, mode = 'molecule') {
     const actionName = String(action || '');
     if (!actionName) return;
     const nextMode = mode === 'atom' ? 'atom' : 'molecule';
@@ -13563,7 +14324,7 @@
 
   async function molstarPreviewLoadRDKitScript() {
     const sources = [
-      runtimeURL('BurreteRDKitJSURL', '../assets/rdkit/RDKit_minimal.js'),
+      runtimeURL('BuretteRDKitJSURL', '../assets/rdkit/RDKit_minimal.js'),
       'rdkit/RDKit_minimal.js'
     ];
     let lastError = null;
@@ -13585,8 +14346,8 @@
       const text = String(value || '').trim();
       if (text && !candidates.includes(text)) candidates.push(text);
     };
-    add(window.BurreteConfig?.rdkitWasmPath);
-    add(runtimeURL('BurreteRDKitWasmURL', ''));
+    add(window.BuretteConfig?.rdkitWasmPath);
+    add(runtimeURL('BuretteRDKitWasmURL', ''));
     add('rdkit/RDKit_minimal.wasm');
     add('../assets/rdkit/RDKit_minimal.wasm');
     add('/__burette/rdkit-wasm');
@@ -13610,8 +14371,8 @@
   }
 
   async function molstarPreviewLoadRDKitWasmData() {
-    if (window.BurreteRDKitWasmBase64) return;
-    const dataURL = runtimeURL('BurreteRDKitWasmDataURL', '');
+    if (window.BuretteRDKitWasmBase64) return;
+    const dataURL = runtimeURL('BuretteRDKitWasmDataURL', '');
     if (!dataURL) return;
     await molstarPreviewLoadScript(dataURL);
   }
@@ -13631,9 +14392,9 @@
       if (typeof window.initRDKitModule !== 'function') throw new Error('RDKit_minimal.js is missing.');
       await molstarPreviewLoadRDKitWasmData();
       const options = { locateFile: molstarPreviewRDKitWasmPath };
-      if (window.BurreteRDKitWasmBase64) {
-        options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
-        window.BurreteRDKitWasmBase64 = '';
+      if (window.BuretteRDKitWasmBase64) {
+        options.wasmBinary = base64ToBytes(window.BuretteRDKitWasmBase64);
+        window.BuretteRDKitWasmBase64 = '';
       } else {
         options.wasmBinary = await molstarPreviewLoadRDKitWasmBinary();
       }
@@ -14418,7 +15179,7 @@
     if (document.querySelector('link[href*="molstar.css"]')) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = runtimeURL('BurreteMolstarCSSURL', './molstar.css');
+    link.href = runtimeURL('BuretteMolstarCSSURL', './molstar.css');
     document.head.appendChild(link);
   }
 
@@ -14448,7 +15209,7 @@
     setMolstarStructureDirty(false);
     clearMolstarEditUndoHistory();
     resetXyzFrameOverlayState(activeViewer);
-    const viewer = activeViewer || window.BurreteViewer || window.BuretteViewer;
+    const viewer = activeViewer || window.BuretteViewer || window.BuretteViewer;
     try { viewer?.plugin?.dispose?.(); } catch (_) {}
     if (molstarContainerResizeCleanup) {
       molstarContainerResizeCleanup();
@@ -14462,16 +15223,16 @@
       window.removeEventListener('resize', molstarWindowResizeHandler);
       molstarWindowResizeHandler = null;
     }
-    if (burreteAgentActionPollTimer) {
-      window.clearInterval(burreteAgentActionPollTimer);
-      burreteAgentActionPollTimer = 0;
+    if (buretteAgentActionPollTimer) {
+      window.clearInterval(buretteAgentActionPollTimer);
+      buretteAgentActionPollTimer = 0;
     }
     activeViewer = null;
     activeMolstarPrepared = null;
     trajectorySmoothingState = null;
     updateSdfPoseButton(null);
     activeMolstarCacheBuster = null;
-    window.BurreteViewer = null;
+    window.BuretteViewer = null;
     window.BuretteViewer = null;
   }
 
@@ -14487,7 +15248,7 @@
     if (!window.molstar) {
       setStatus(`[web] Loading Mol* engine…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
-      await loadScript(appendCacheBuster(runtimeURL('BurreteMolstarURL', './molstar.js'), cb), 'Mol* engine', 120000);
+      await loadScript(appendCacheBuster(runtimeURL('BuretteMolstarURL', './molstar.js'), cb), 'Mol* engine', 120000);
     }
 
     setStatus(`[web] Mol* engine loaded. Creating WebGL viewer…
@@ -14501,15 +15262,15 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     setStatus(`[web] WebGL viewer created. Parsing structure…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyViewerBackground(viewer);
-    window.BurreteViewer = viewer;
+    window.BuretteViewer = viewer;
     window.BuretteViewer = viewer;
     try {
-      window.BurreteAgent?.attach?.({ viewer, plugin: viewer.plugin, config });
+      window.BuretteAgent?.attach?.({ viewer, plugin: viewer.plugin, config });
     } catch (error) {
-      debug('BurreteAgent attach failed: ' + (error && error.message || String(error)));
+      debug('BuretteAgent attach failed: ' + (error && error.message || String(error)));
     }
     activeViewer = viewer;
-    window.BurreteHandleResize = () => scheduleViewerResize(viewer, 60);
+    window.BuretteHandleResize = () => scheduleViewerResize(viewer, 60);
     molstarContainerResizeCleanup = installMolstarContainerResizeObserver(viewer);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
@@ -14523,7 +15284,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyLayoutState(viewer);
     try { viewer.handleResize(); } catch (_) {}
 
-    debug('before structureDataForMolstar: bytes=' + (window.BurreteDataBytes ? window.BurreteDataBytes.length : -1) + '; base64 chars=' + (window.BurreteDataBase64 ? window.BurreteDataBase64.length : -1));
+    debug('before structureDataForMolstar: bytes=' + (window.BuretteDataBytes ? window.BuretteDataBytes.length : -1) + '; base64 chars=' + (window.BuretteDataBase64 ? window.BuretteDataBase64.length : -1));
     const prepared = structureDataForMolstar(config);
     activeMolstarCacheBuster = cb;
     debug('prepared format=' + prepared.format + '; data type=' + (prepared.data && prepared.data.constructor ? prepared.data.constructor.name : typeof prepared.data) + '; data length=' + (prepared.data ? prepared.data.length : -1));
@@ -14541,15 +15302,15 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
 
     try {
-      window.BurreteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
-      postHostMessage({ type: 'agentReady', message: 'Burrete agent ready' });
+      window.BuretteAgent?.notifyStructureLoaded?.({ viewer, plugin: viewer.plugin, config, prepared });
+      postHostMessage({ type: 'agentReady', message: 'Burette agent ready' });
     } catch (error) {
-      debug('BurreteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
+      debug('BuretteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
     }
     await applyMolstarContextFocus(config);
     notifyMolstarSelectionChanged(molstarSelectedMoleculePreviewTarget());
-    void reportBurreteAgentState();
-    startBurreteAgentActionPolling();
+    void reportBuretteAgentState();
+    startBuretteAgentActionPolling();
     trackMolstarOrientation(viewer, config);
 
     if (molstarWindowResizeHandler) window.removeEventListener('resize', molstarWindowResizeHandler);
@@ -14588,17 +15349,17 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
   async function start() {
     debug('viewer.js executed');
-    setStatus('[web] Booting Burrete viewer JavaScript…');
+    setStatus('[web] Booting Burette viewer JavaScript…');
     installDownloadExportBridge();
 
-    const cb = window.BurreteCacheBuster || String(Date.now());
+    const cb = window.BuretteCacheBuster || String(Date.now());
     await loadRuntimeInputs(cb);
 
     const config = requireConfig();
     activeConfig = config;
-    if (!(window.BurreteDataBytes instanceof Uint8Array) && !window.BurreteDataBase64) {
-      if (!config.dataPath && !window.BurreteDataURL) {
-        await loadScript(appendCacheBuster(runtimeURL('BurretePreviewDataScriptURL', './preview-data.js'), cb), 'structure data', 30000);
+    if (!(window.BuretteDataBytes instanceof Uint8Array) && !window.BuretteDataBase64) {
+      if (!config.dataPath && !window.BuretteDataURL) {
+        await loadScript(appendCacheBuster(runtimeURL('BurettePreviewDataScriptURL', './preview-data.js'), cb), 'structure data', 30000);
       }
       await loadStructureData(config, cb);
     }
@@ -14800,10 +15561,10 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
 
   function showError(error) {
     const message = error && (error.stack || error.message) ? (error.stack || error.message) : String(error);
-    const diagnostics = window.__BURRETE_HOSTED_MCP_WIDGET__ === true
+    const diagnostics = window.__BURETTE_HOSTED_MCP_WIDGET__ === true
       ? ''
       : '\n\nCheck: ./scripts/tail-log.sh';
-    setStatus(`[web] Burrete web renderer failed to load this file.\n\n${message}${diagnostics}`, 'error');
+    setStatus(`[web] Burette web renderer failed to load this file.\n\n${message}${diagnostics}`, 'error');
     // eslint-disable-next-line no-console
     console.error(error);
   }

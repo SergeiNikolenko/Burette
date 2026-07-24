@@ -1,6 +1,6 @@
 # Control Affordances
 
-Burrete uses compact toolbars, icon buttons, short mode labels, and embedded
+Burette uses compact toolbars, icon buttons, short mode labels, and embedded
 viewer controls. Every control whose visible text is abbreviated, icon-only, or
 domain-specific must expose a short explanation on hover and keyboard focus.
 
