@@ -84,12 +84,23 @@ for (const kind of ["protein", "trajectory", "molecule"]) {
 }
 assert.doesNotMatch(html, /data-file-kind="default"/);
 
-// Every format the app can preview must resolve to a real kind. Without this a
-// newly registered format silently falls back to the blank page glyph.
+// Anything that can reach a sidebar row must resolve to a real kind, or it
+// silently falls back to the blank page glyph. The registry is not the only
+// source: browser dev scans its own list, which is how .dtr slipped through.
 const previewRegistry = JSON.parse(readFileSync(new URL("../config/preview-formats.json", import.meta.url), "utf8"));
-const registryExtensions = previewRegistry.formats.flatMap((format) => format.extensions);
-const unmapped = registryExtensions.filter((extension) => fileKindForPath(`/fixtures/sample.${extension}`) === "default");
-assert.deepEqual(unmapped, [], `preview formats with no sidebar icon kind: ${unmapped.join(", ")}`);
+const sidebarProjectsHook = readFileSync(new URL("../apps/desktop/src/hooks/use-app-sidebar-projects.ts", import.meta.url), "utf8");
+const browserDevExtensions = sidebarProjectsHook
+  .split("browserDevStructureExtensions = new Set([")[1]
+  ?.split("]);")[0];
+assert.ok(browserDevExtensions, "browserDevStructureExtensions is no longer a literal Set this test can read");
+
+const scannedExtensions = [
+  ...previewRegistry.formats.flatMap((format) => format.extensions),
+  ...[...browserDevExtensions.matchAll(/"([a-z0-9.]+)"/gu)].map((match) => match[1]),
+];
+const unmapped = [...new Set(scannedExtensions)]
+  .filter((extension) => fileKindForPath(`/fixtures/sample.${extension}`) === "default");
+assert.deepEqual(unmapped, [], `scanned extensions with no sidebar icon kind: ${unmapped.join(", ")}`);
 
 // The extension wins over a path that has none, and an unknown one still renders.
 assert.equal(fileKindForPath("/fixtures/receptor", "pdb"), "protein");

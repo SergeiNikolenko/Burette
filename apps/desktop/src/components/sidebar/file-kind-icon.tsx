@@ -76,6 +76,7 @@ const FILE_KIND_BY_EXTENSION: Record<string, FileKind> = {
   mdcrd: "trajectory",
   crdbox: "trajectory",
   trc: "trajectory",
+  dtr: "trajectory",
   history: "trajectory",
   nc: "trajectory",
   ncdf: "trajectory",
@@ -181,7 +182,9 @@ export function fileKindForPath(path: string, extension?: string): FileKind {
   // Extensions come from scanning user directories, so a file really can be named
   // "notes.constructor" or "x.__proto__". A plain lookup would hand back
   // Object.prototype's member instead of undefined, and ?? would not catch it.
-  return Object.hasOwn(FILE_KIND_BY_EXTENSION, candidate)
+  // hasOwnProperty rather than Object.hasOwn: the app ships to macOS 12.0, and
+  // WebKit only gained Object.hasOwn in 12.3.
+  return Object.prototype.hasOwnProperty.call(FILE_KIND_BY_EXTENSION, candidate)
     ? FILE_KIND_BY_EXTENSION[candidate]
     : "default";
 }
