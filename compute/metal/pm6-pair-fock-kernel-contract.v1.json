@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "kernel": "burrete_pm6_pair_fock_v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "kernel": "burette_pm6_pair_fock_v1",
   "source": "pm6-pair-fock.v1.metal",
   "dispatch": {
     "threads": "orbitalCount * orbitalCount",

@@ -9,7 +9,7 @@ import type { DockArea } from "../lib/dock";
 const AGENT_API_VERSION = "burette-agent-control/v1";
 const ACTION_POLL_INTERVAL_MS = 500;
 const BROWSER_AGENT_SESSION_DIR = "__browser_agent_shell__";
-const isBrowserAgentShell = import.meta.env.VITE_BURRETE_AGENT_SHELL === "1";
+const isBrowserAgentShell = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
 type KetcherAgentModule = typeof import("../lib/ketcher-agent");
 let ketcherAgentModulePromise: Promise<KetcherAgentModule> | null = null;
@@ -168,7 +168,7 @@ export function useAgentSession({
   useEffect(() => {
     if (!isTauriRuntime() && !isBrowserAgentShell) return undefined;
     const handler = (event: MessageEvent) => {
-      if (event.data?.source === "burrete-agent-viewer") {
+      if (event.data?.source === "burette-agent-viewer") {
         const body = event.data.body;
         if (!body || body.type !== "agent-action-result" || typeof body.id !== "string") return;
         const activeDocumentId = activeDocumentRef.current?.id;
@@ -194,7 +194,7 @@ export function useAgentSession({
         resolve(body.result);
         return;
       }
-      if (event.data?.source !== "burrete-viewer") return;
+      if (event.data?.source !== "burette-viewer") return;
       const body = event.data.body;
       if (!body || typeof body.documentId !== "string") return;
       const nextState = viewerAgentStateFromMessage(body, viewerAgentStatesRef.current[body.documentId]);
@@ -319,7 +319,7 @@ async function writeObserve(
       lastError: activeAgentState?.lastError ?? null,
       updatedAt: activeAgentState?.updatedAt ?? null,
       note: activeMolstar
-        ? "Actions are relayed to the active Mol* viewer iframe after the viewer reports BurreteAgent readiness."
+        ? "Actions are relayed to the active Mol* viewer iframe after the viewer reports BuretteAgent readiness."
         : "Agent actions require an active Mol* viewer document.",
     },
     scene: {
@@ -476,7 +476,7 @@ async function postActionToActiveViewer(
   }
   const agentState = viewerAgentStates[activeDocument.id];
   if (!agentState?.agentReady) {
-    return agentFailure(String(item.action?.type || ""), "NO_VIEWER", "The active Mol* viewer has not reported BurreteAgent readiness yet.");
+    return agentFailure(String(item.action?.type || ""), "NO_VIEWER", "The active Mol* viewer has not reported BuretteAgent readiness yet.");
   }
   const iframe = activeDocument.id
     ? Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe[data-document-id]")).find(
@@ -496,7 +496,7 @@ async function postActionToActiveViewer(
       resolve(value);
     });
     iframe.contentWindow?.postMessage({
-      source: "burrete-agent-host",
+      source: "burette-agent-host",
       body: {
         type: "agent-action",
         id: item.id,
@@ -525,7 +525,7 @@ function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; 
   if (type === "agentReady") {
     next.agentReady = true;
     next.viewerReady = true;
-    next.lastMessage = message || "Burrete agent ready";
+    next.lastMessage = message || "Burette agent ready";
     next.lastError = null;
     return next;
   }

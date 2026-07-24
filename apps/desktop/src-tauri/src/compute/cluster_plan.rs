@@ -1,6 +1,6 @@
 use std::fmt;
 
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     Backend, BackendPolicy, ClusterV1SubmitRequest, EngineIdentity, ExecutionPartition,
     ExecutionPlan, ExecutionPlanVersion, FallbackDecision, GridScope, PlannedStage, Precision,
     ProtocolError, StageKind, WorkflowTemplateId, MAX_PACK_RECORDS,
@@ -441,7 +441,7 @@ fn sum_buffers(buffers: &[u64]) -> Result<u64, ClusterV1AdmissionError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burrete_compute_protocol::{
+    use burette_compute_protocol::{
         AllGridScope, ClusterV1Parameters, ComputeJobSchemaVersion, ExecutionPolicy,
         FingerprintAlgorithm, FingerprintInputOrder, FingerprintSettings, GridScope,
         GridSourceReference, RdkitBaselineVersion, RepresentativePolicy, ResourceLimits,
@@ -462,7 +462,7 @@ mod tests {
             ),
             100,
             &engines,
-            SimilarityBackendAdmission::NativeMetal(test_engine("burrete-native-metal", '4')),
+            SimilarityBackendAdmission::NativeMetal(test_engine("burette-native-metal", '4')),
         )
         .expect("admit required GPU plan");
         assert_eq!(
@@ -482,7 +482,7 @@ mod tests {
         );
 
         let fallback = FallbackDecision {
-            code: burrete_compute_protocol::FallbackReasonCode::RuntimeUnavailable,
+            code: burette_compute_protocol::FallbackReasonCode::RuntimeUnavailable,
             reason: "Verified native Metal runtime is unavailable.".into(),
         };
         let preferred = admit_cluster_v1_plan(
@@ -531,7 +531,7 @@ mod tests {
     #[test]
     fn never_silently_falls_back_for_gpu_policies() {
         let unavailable = SimilarityBackendAdmission::GpuUnavailable(FallbackDecision {
-            code: burrete_compute_protocol::FallbackReasonCode::CapabilityUnavailable,
+            code: burette_compute_protocol::FallbackReasonCode::CapabilityUnavailable,
             reason: "No verified Metal capability.".into(),
         });
         let required = admit_cluster_v1_plan(
@@ -644,7 +644,7 @@ mod tests {
     #[test]
     fn rejects_engine_identity_for_the_wrong_backend() {
         let mut engines = test_engines();
-        engines.rdkit = test_engine("burrete-reference-cpu", '2');
+        engines.rdkit = test_engine("burette-reference-cpu", '2');
         let result = admit_cluster_v1_plan(
             &request(BackendPolicy::ReferenceCpu, 2, 1, MIN_COMPUTE_MEMORY_BYTES),
             2,
@@ -700,9 +700,9 @@ mod tests {
 
     fn test_engines() -> ClusterV1EngineIdentities {
         ClusterV1EngineIdentities {
-            coordinator: test_engine("burrete-coordinator", '1'),
+            coordinator: test_engine("burette-coordinator", '1'),
             rdkit: test_engine("rdkit", '2'),
-            reference_cpu: test_engine("burrete-reference-cpu", '3'),
+            reference_cpu: test_engine("burette-reference-cpu", '3'),
         }
     }
 

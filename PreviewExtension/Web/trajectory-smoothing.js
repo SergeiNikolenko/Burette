@@ -199,5 +199,5 @@
     };
   }
 
-  window.BurreteTrajectorySmoothing = { smooth };
+  window.BuretteTrajectorySmoothing = { smooth };
 })();

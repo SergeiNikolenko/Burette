@@ -10,8 +10,8 @@ done
 ROOT="$(cd -P "$(dirname "$SCRIPT")/.." >/dev/null 2>&1 && pwd -P)"
 cd "$ROOT"
 
-REMOTE_HOST="${BURRETE_REMOTE_HOST:-${1:-gauss}}"
-REMOTE_ROOT="${BURRETE_REMOTE_ROOT:-/tmp/burrete-remote-check-${USER:-user}}"
+REMOTE_HOST="${BURETTE_REMOTE_HOST:-${1:-gauss}}"
+REMOTE_ROOT="${BURETTE_REMOTE_ROOT:-/tmp/burette-remote-check-${USER:-user}}"
 
 case "$REMOTE_HOST" in
   ""|*[^A-Za-z0-9._-]*)
@@ -25,7 +25,7 @@ require_tool ssh
 require_tool rsync
 
 cat <<MSG
-Burrete remote check
+Burette remote check
   source: $ROOT
   host: $REMOTE_HOST
   remote root: $REMOTE_ROOT

@@ -179,7 +179,10 @@ assert.equal(rowValue(cmsComposition.componentRows, "Polymers"), "1 chain / 1 re
 assert.equal(rowValue(cmsComposition.componentRows, "Ligands"), "None detected");
 assert.equal(rowValue(cmsComposition.componentRows, "Water"), "1 molecule / 3 atoms");
 assert.equal(rowValue(cmsComposition.componentRows, "Ions"), "CL 1 / 1 atoms");
-assert.equal(rowValue(cmsComposition.solventRows, "Water"), "1 molecule / 3 atoms");
+// Water and the Ions summary live only in componentRows now; solventRows carries
+// just the individual ions behind that summary (no duplicate Water/Ions rows).
+assert.equal(cmsComposition.solventRows.find((row) => row.label === "Water"), undefined);
+assert.equal(cmsComposition.solventRows.find((row) => row.label === "Ions"), undefined);
 assert.equal(rowValue(cmsComposition.solventRows, "CL"), "1 ion");
 assert.deepEqual(cmsComposition.maestroRows.find((row) => row.label === "System")?.action?.selector, { kind: "all" });
 assert.deepEqual(cmsComposition.maestroRows.find((row) => row.label === "Solute")?.action?.selector, { structure: "primary" });
@@ -399,9 +402,12 @@ assert.equal(rowValue(miniGro.componentRows, "Polymers"), "1 chain / 1 residue /
 assert.match(rowValue(miniGro.componentRows, "Ions"), /NA 1/);
 assert.equal(miniGro.componentRows.find((row) => row.label === "Ions")?.action?.type, "select_residues");
 assert.equal(miniGro.componentRows.find((row) => row.label === "Ions")?.action?.selector.kind, "ion");
-assert.equal(rowValue(miniGro.solventRows, "Water"), "1 molecule / 2 atoms");
-assert.equal(miniGro.solventRows.find((row) => row.label === "Water")?.action?.type, "hide_waters");
-assert.equal(miniGro.solventRows.find((row) => row.label === "Water")?.secondaryAction?.type, "show_waters");
+// Water and its hide/show actions live on the componentRows summary now;
+// solventRows lists only the individual ions behind it.
+assert.equal(rowValue(miniGro.componentRows, "Water"), "1 molecule / 2 atoms");
+assert.equal(miniGro.componentRows.find((row) => row.label === "Water")?.action?.type, "hide_waters");
+assert.equal(miniGro.componentRows.find((row) => row.label === "Water")?.secondaryAction?.type, "show_waters");
+assert.equal(miniGro.solventRows.find((row) => row.label === "Water"), undefined);
 assert.equal(miniGro.solventRows.find((row) => row.label === "NA")?.action?.selector.kind, "ion");
 
 const histidineAliasGro = parseStructureComposition([

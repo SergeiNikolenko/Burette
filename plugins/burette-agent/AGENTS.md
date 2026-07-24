@@ -1,4 +1,4 @@
-# Burrete Agent Plugin Instructions
+# Burette Agent Plugin Instructions
 
 ## Scope
 
@@ -16,7 +16,7 @@ registrations, validation helpers, and plugin-local scripts.
 ## Contract Rules
 
 - The repository CLI remains the execution contract. MCP tools should wrap
-  `scripts/burrete-agent.mjs` or plugin-local validation scripts instead of
+  `scripts/burette-agent.mjs` or plugin-local validation scripts instead of
   reimplementing app control.
 - Skills decide workflow routing and user-facing handoff. MCP registrations
   expose stable tools.
@@ -37,7 +37,7 @@ For plugin changes, run the narrowest applicable checks:
 ```bash
 bun tests/test-burette-agent-plugin.mjs
 bun tests/test-burette-agent.mjs
-bun tests/test-burrete-agent-cli.mjs
+bun tests/test-burette-agent-cli.mjs
 bun tests/test-agent-preview-server.mjs
 ```
 

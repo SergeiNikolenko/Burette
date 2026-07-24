@@ -20,7 +20,7 @@ export const DEFAULT_CONFORMER_SETTINGS: ConformerSettings = {
   prismEnergySort: true,
 };
 
-const CONFORMER_SETTINGS_STORAGE_KEY = "burrete.conformer.settings";
+const CONFORMER_SETTINGS_STORAGE_KEY = "burette.conformer.settings";
 
 export function readConformerSettings(): ConformerSettings {
   try {
@@ -98,7 +98,7 @@ export const DEFAULT_XTB_SETTINGS: XtbSettings = {
   saveRunFiles: true,
 };
 
-const XTB_SETTINGS_STORAGE_KEY = "burrete.xtb.settings";
+const XTB_SETTINGS_STORAGE_KEY = "burette.xtb.settings";
 const XTB_METHODS = new Set<XtbSettings["method"]>(["gfn2", "gfn1", "gfn0", "gfnff"]);
 const XTB_OPT_LEVELS = new Set<XtbSettings["optLevel"]>(["loose", "normal", "tight", "verytight"]);
 const XTB_SOLVATION_MODELS = new Set<XtbSettings["solvationModel"]>(["none", "alpb", "gbsa", "cosmo", "cpcmx"]);

@@ -26,6 +26,7 @@ import type { ConformerGenerationMode, MolstarStylePreference } from "../lib/con
 import type { MolecularComputeOperation } from "../lib/standalone-compute";
 import type { DockTabKind } from "../lib/dock";
 import type { GridNativeMenuState } from "../lib/native-menu";
+import type { StructureStory } from "../lib/structure-story";
 import type { PendingMolstarReplaceResolver } from "./use-app-generate-3d-conformer";
 import type { DockingSceneMode, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
@@ -121,6 +122,7 @@ type UseAppViewerBridgeControllerOptions = {
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setPoseReviewSelections: Dispatch<SetStateAction<Record<string, number>>>;
   setStructureOverlayModes: Dispatch<SetStateAction<Record<string, StructureOverlayMode>>>;
+  setStructureStories: Dispatch<SetStateAction<Record<string, StructureStory | null>>>;
   setViewerLigandSelections: Dispatch<SetStateAction<Record<string, ViewerLigandSelection | null>>>;
   skipNextPreferenceRefreshRef: RefValue<boolean>;
   toggleSidebar: () => void;
@@ -162,6 +164,7 @@ export function useAppViewerBridgeController({
   setPreference,
   setPoseReviewSelections,
   setStructureOverlayModes,
+  setStructureStories,
   setViewerLigandSelections,
   skipNextPreferenceRefreshRef,
   toggleSidebar,
@@ -280,6 +283,7 @@ export function useAppViewerBridgeController({
     setPreference,
     setViewerLigandSelections,
     setStructureOverlayModes,
+    setStructureStories,
     toggleSidebar,
   });
   const { handleDockingPoseMessage } = useAppDockingPoseMessages({

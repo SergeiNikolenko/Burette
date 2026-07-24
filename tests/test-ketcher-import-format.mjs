@@ -4,7 +4,7 @@ import { detectKetcherImportFormat, normalizeKetcherSmilesImport } from "../apps
 
 const molV2000 = [
   "example",
-  "  Burrete",
+  "  Burette",
   "",
   "  1  0  0  0  0  0            999 V2000",
   "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0",

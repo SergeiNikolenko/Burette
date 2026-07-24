@@ -144,15 +144,15 @@ const viewer = {
   }
 };
 
-context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake.pdb', format: 'pdb' } });
-context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake.pdb', format: 'pdb' } });
+context.window.BuretteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake.pdb', format: 'pdb' } });
+context.window.BuretteAgent.notifyStructureLoaded({ prepared: { label: 'fake.pdb', format: 'pdb' } });
 
-const capabilities = await context.window.BurreteAgent.run({ command: 'capabilities' });
+const capabilities = await context.window.BuretteAgent.run({ command: 'capabilities' });
 assert.equal(capabilities.ok, true);
 assert.equal(capabilities.result.hasViewer, true);
 assert.equal(capabilities.result.hasStructureInteractivity, true);
 
-const summary = await context.window.BurreteAgent.run({ command: 'summary', args: { includeLigands: true } });
+const summary = await context.window.BuretteAgent.run({ command: 'summary', args: { includeLigands: true } });
 assert.equal(summary.ok, true);
 assert.equal(summary.result.counts.atoms, 6);
 assert.equal(summary.result.counts.ligands, 1);
@@ -160,14 +160,14 @@ assert.equal(summary.result.structures[0].chains.length, 2);
 assert.equal(summary.result.structures[0].ligands[0].label_comp_id, 'HEM');
 assert.equal(summary.result.structures[0].ligands[0].category, 'small_molecule');
 
-const selected = await context.window.BurreteAgent.run({ command: 'selectResidues', args: { selector: { auth_asym_id: 'A', beg_auth_seq_id: 1, end_auth_seq_id: 2 } } });
+const selected = await context.window.BuretteAgent.run({ command: 'selectResidues', args: { selector: { auth_asym_id: 'A', beg_auth_seq_id: 1, end_auth_seq_id: 2 } } });
 assert.equal(selected.ok, true);
 assert.equal(selected.result.counts.residues, 2);
 assert.ok(selected.result.selectionId.startsWith('sel-'));
 assert.ok(interactions.some(x => x.action === 'select'));
 
 interactions.length = 0;
-const selectedAtomRange = await context.window.BurreteAgent.run({
+const selectedAtomRange = await context.window.BuretteAgent.run({
   command: 'selectResidues',
   args: { selector: { atom_index: [1, 2, 3] }, granularity: 'atom' }
 });
@@ -179,47 +179,47 @@ assert.deepEqual(
 );
 assert.ok(interactions.every(x => !Array.isArray(x.elements?.atom_index)));
 
-const focus = await context.window.BurreteAgent.run({ command: 'focusSelection', args: { selection: 'last' } });
+const focus = await context.window.BuretteAgent.run({ command: 'focusSelection', args: { selection: 'last' } });
 assert.equal(focus.ok, true);
 assert.ok(interactions.some(x => x.action === 'focus'));
 
-const lig = await context.window.BurreteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM' }, showNeighborhood: true, radiusA: 4 } });
+const lig = await context.window.BuretteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM' }, showNeighborhood: true, radiusA: 4 } });
 assert.equal(lig.ok, true);
 assert.equal(lig.result.ligand.label_comp_id, 'HEM');
 assert.ok(lig.result.neighborhood.residues.some(r => r.auth_asym_id === 'A'));
 assert.equal(interactions.findLast(x => x.action === 'focus')?.focusOptions?.extraRadius, 4);
 
 viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure({ omitAuthIds: true });
-context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-label-only.pdb', format: 'pdb' } });
-context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake-label-only.pdb', format: 'pdb' } });
-const selectedViaAuthFallback = await context.window.BurreteAgent.run({ command: 'selectResidues', args: { selector: { auth_asym_id: 'A', beg_auth_seq_id: 1, end_auth_seq_id: 2 } } });
+context.window.BuretteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-label-only.pdb', format: 'pdb' } });
+context.window.BuretteAgent.notifyStructureLoaded({ prepared: { label: 'fake-label-only.pdb', format: 'pdb' } });
+const selectedViaAuthFallback = await context.window.BuretteAgent.run({ command: 'selectResidues', args: { selector: { auth_asym_id: 'A', beg_auth_seq_id: 1, end_auth_seq_id: 2 } } });
 assert.equal(selectedViaAuthFallback.ok, true);
 assert.equal(selectedViaAuthFallback.result.counts.residues, 2);
-const ligandViaAuthFallback = await context.window.BurreteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM', auth_asym_id: 'B', auth_seq_id: 100 } } });
+const ligandViaAuthFallback = await context.window.BuretteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM', auth_asym_id: 'B', auth_seq_id: 100 } } });
 assert.equal(ligandViaAuthFallback.ok, true);
 assert.equal(ligandViaAuthFallback.result.ligand.label_asym_id, 'B');
 viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure({ remapAuthIds: true });
-context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-remapped-auth.pdb', format: 'pdb' } });
-context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake-remapped-auth.pdb', format: 'pdb' } });
-const ligandViaLabelAlias = await context.window.BurreteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM', auth_asym_id: 'B', auth_seq_id: 100 } } });
+context.window.BuretteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-remapped-auth.pdb', format: 'pdb' } });
+context.window.BuretteAgent.notifyStructureLoaded({ prepared: { label: 'fake-remapped-auth.pdb', format: 'pdb' } });
+const ligandViaLabelAlias = await context.window.BuretteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM', auth_asym_id: 'B', auth_seq_id: 100 } } });
 assert.equal(ligandViaLabelAlias.ok, true);
 assert.equal(ligandViaLabelAlias.result.ligand.label_asym_id, 'B');
 viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure({ omitCompIds: true });
-context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-no-comp-id.pdb', format: 'pdb' } });
-context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake-no-comp-id.pdb', format: 'pdb' } });
-const ligandViaResidueAddress = await context.window.BurreteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM', auth_asym_id: 'B', auth_seq_id: 100 }, showNeighborhood: true, radiusA: 4 } });
+context.window.BuretteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-no-comp-id.pdb', format: 'pdb' } });
+context.window.BuretteAgent.notifyStructureLoaded({ prepared: { label: 'fake-no-comp-id.pdb', format: 'pdb' } });
+const ligandViaResidueAddress = await context.window.BuretteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM', auth_asym_id: 'B', auth_seq_id: 100 }, showNeighborhood: true, radiusA: 4 } });
 assert.equal(ligandViaResidueAddress.ok, true);
 assert.equal(ligandViaResidueAddress.result.ligand.auth_asym_id, 'B');
 assert.ok(ligandViaResidueAddress.result.neighborhood.residues.length > 0);
 
 viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure();
-context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake.pdb', format: 'pdb' } });
-context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake.pdb', format: 'pdb' } });
-const ligByCompAlias = await context.window.BurreteAgent.run({ command: 'focusLigand', args: { selector: { comp_id: 'HEM' } } });
+context.window.BuretteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake.pdb', format: 'pdb' } });
+context.window.BuretteAgent.notifyStructureLoaded({ prepared: { label: 'fake.pdb', format: 'pdb' } });
+const ligByCompAlias = await context.window.BuretteAgent.run({ command: 'focusLigand', args: { selector: { comp_id: 'HEM' } } });
 assert.equal(ligByCompAlias.ok, true);
 assert.equal(ligByCompAlias.result.ligand.auth_seq_id, 100);
 
-const ligWithMissingNeighborhood = await context.window.BurreteAgent.run({
+const ligWithMissingNeighborhood = await context.window.BuretteAgent.run({
   command: 'focusLigand',
   args: { selector: { comp_id: 'HEM' }, showNeighborhood: true, target: { auth_asym_id: 'Z' } }
 });
@@ -229,14 +229,14 @@ assert.equal(ligWithMissingNeighborhood.result.neighborhood.ok, false);
 assert.equal(ligWithMissingNeighborhood.result.neighborhood.error.code, 'SELECTION_EMPTY');
 
 viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeSpcWaterStructure();
-context.window.BurreteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-spc-water.pdb', format: 'pdb' } });
-context.window.BurreteAgent.notifyStructureLoaded({ prepared: { label: 'fake-spc-water.pdb', format: 'pdb' } });
-const spcWater = await context.window.BurreteAgent.run({ command: 'selectResidues', args: { selector: { kind: 'water' } } });
+context.window.BuretteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-spc-water.pdb', format: 'pdb' } });
+context.window.BuretteAgent.notifyStructureLoaded({ prepared: { label: 'fake-spc-water.pdb', format: 'pdb' } });
+const spcWater = await context.window.BuretteAgent.run({ command: 'selectResidues', args: { selector: { kind: 'water' } } });
 assert.equal(spcWater.ok, true);
 assert.equal(spcWater.result.counts.atoms, 3);
 assert.equal(spcWater.result.counts.residues, 1);
 
-const label = await context.window.BurreteAgent.run({
+const label = await context.window.BuretteAgent.run({
   command: 'labelSelection',
   args: { selection: 'last', text: 'HEM A:100', textSize: 0.42 }
 });
@@ -246,13 +246,13 @@ assert.equal(label.result.labels[0].selectionRef, 'label-selection-ref');
 assert.equal(measurementLabels.length, 1);
 assert.equal(measurementLabels[0].options.labelParams.customText, 'HEM A:100');
 assert.equal(measurementLabels[0].options.labelParams.textSize, 0.42);
-assert.equal(measurementLabels[0].options.reprTags[0], 'burrete-agent-label');
+assert.equal(measurementLabels[0].options.reprTags[0], 'burette-agent-label');
 
-const shot = await context.window.BurreteAgent.run({ command: 'screenshot' });
+const shot = await context.window.BuretteAgent.run({ command: 'screenshot' });
 assert.equal(shot.ok, true);
 assert.equal(shot.result.dataUri, 'data:image/png;base64,from-helper');
 
-const mvs = await context.window.BurreteAgent.run({
+const mvs = await context.window.BuretteAgent.run({
   command: 'loadMVS',
   args: {
     json: {
@@ -272,7 +272,7 @@ assert.equal(loadedMvs.format, 'mvsj');
 assert.equal(JSON.parse(loadedMvs.data).root.kind, 'root');
 assert.equal(loadedMvs.options.replaceExisting, true);
 
-const bad = await context.window.BurreteAgent.run({ command: 'selectResidues', args: { selector: { auth_asym_id: 'Z' } } });
+const bad = await context.window.BuretteAgent.run({ command: 'selectResidues', args: { selector: { auth_asym_id: 'Z' } } });
 assert.equal(bad.ok, false);
 assert.equal(bad.error.code, 'SELECTION_EMPTY');
 

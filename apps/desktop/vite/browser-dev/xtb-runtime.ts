@@ -17,7 +17,7 @@ export type BrowserDevXtbResolution = {
 type RuntimeConfig = { selectedExecutablePath?: unknown };
 type BrowserDevManagedInstaller = { kind: "pixi" | "conda"; executablePath: string };
 
-const runtimeRoot = join(homedir(), "Library", "Application Support", "Burrete", "browser-dev", "runtimes", "xtb");
+const runtimeRoot = join(homedir(), "Library", "Application Support", "Burette", "browser-dev", "runtimes", "xtb");
 const configPath = join(runtimeRoot, "config.json");
 const pixiManifest = readFileSync(fileURLToPath(new URL("../../../../config/xtb/pixi.toml", import.meta.url)), "utf8");
 const pixiLock = readFileSync(fileURLToPath(new URL("../../../../config/xtb/pixi.lock", import.meta.url)), "utf8");
@@ -37,11 +37,11 @@ export function resolveBrowserDevXtb(): BrowserDevXtbResolution {
       return { executablePath: realpathSync(path), selectedExecutablePath: null, source };
     }
   }
-  throw new Error("xTB was not found. Choose an existing xTB executable in Settings or install a Burrete-managed copy.");
+  throw new Error("xTB was not found. Choose an existing xTB executable in Settings or install a Burette-managed copy.");
 }
 
 export function selectedBrowserDevXtbPath() {
-  return process.env.BURRETE_XTB_EXECUTABLE?.trim() || readSelection();
+  return process.env.BURETTE_XTB_EXECUTABLE?.trim() || readSelection();
 }
 
 export async function selectBrowserDevXtb(executablePath: unknown): Promise<void> {

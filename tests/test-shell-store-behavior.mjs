@@ -20,7 +20,7 @@ globalThis.localStorage = {
 };
 globalThis.window = { localStorage: globalThis.localStorage };
 
-const { useShellStore } = await import("../apps/desktop/src/stores/shell-store.ts");
+const { getShellStoreSnapshot, useShellStore } = await import("../apps/desktop/src/stores/shell-store.ts");
 
 const initial = useShellStore.getState();
 assert.equal(initial.rightDockOpen, false);
@@ -31,6 +31,7 @@ assert.deepEqual(initial.rightDockTabs.map((tab) => tab.kind), [
 ]);
 assert.deepEqual(initial.bottomDockTabs.map((tab) => tab.kind), [
   "files",
+  "chemical-space",
   "jobs",
 ]);
 useShellStore.getState().openDockTab("right", "descriptors");
@@ -47,6 +48,33 @@ useShellStore.setState({
 useShellStore.getState().setDockOpen("bottom", true);
 assert.deepEqual(useShellStore.getState().bottomDockTabs.map((tab) => tab.kind), [
   "files",
+  "chemical-space",
+  "jobs",
+]);
+
+const restoredSnapshot = getShellStoreSnapshot();
+restoredSnapshot.rightDockOpen = true;
+restoredSnapshot.rightDockTabs = [
+  { id: "dock-inspector", kind: "inspector" },
+  { id: "dock-chemical-space", kind: "chemical-space" },
+  { id: "dock-text", kind: "text" },
+  { id: "dock-files", kind: "files" },
+];
+restoredSnapshot.bottomDockOpen = true;
+restoredSnapshot.bottomDockTabs = [
+  { id: "dock-files", kind: "files" },
+  { id: "dock-jobs", kind: "jobs" },
+];
+useShellStore.getState().restoreSnapshot(restoredSnapshot);
+assert.deepEqual(useShellStore.getState().rightDockTabs.map((tab) => tab.kind), [
+  "inspector",
+  "text",
+  "files",
+  "chemical-space",
+]);
+assert.deepEqual(useShellStore.getState().bottomDockTabs.map((tab) => tab.kind), [
+  "files",
+  "chemical-space",
   "jobs",
 ]);
 

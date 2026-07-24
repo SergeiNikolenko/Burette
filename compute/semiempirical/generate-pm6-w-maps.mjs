@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const input = resolve(root, "compute/semiempirical/reference/w_integrals.py");
-const output = resolve(root, "crates/burrete-compute-core/src/semiempirical/pm6_w_maps.generated.rs");
+const output = resolve(root, "crates/burette-compute-core/src/semiempirical/pm6_w_maps.generated.rs");
 const source = readFileSync(input, "utf8");
 
 function array(name) {

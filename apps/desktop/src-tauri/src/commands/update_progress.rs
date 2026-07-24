@@ -89,7 +89,7 @@ unsafe fn create_progress_window() -> NativeUpdateProgressWindow {
         NSBackingStoreType::NSBackingStoreBuffered,
         NO,
     );
-    window.setTitle_(nsstring("Updating Burrete"));
+    window.setTitle_(nsstring("Updating Burette"));
     let _: () = msg_send![window, setReleasedWhenClosed: NO];
     let _: () = msg_send![window, setMovableByWindowBackground: YES];
     let _: () = msg_send![window, setTitleVisibility: 0u64];

@@ -1,21 +1,21 @@
 # Agent Dispatch
 
-Burrete is a macOS desktop app, Finder Quick Look extension, and source-built
+Burette is a macOS desktop app, Finder Quick Look extension, and source-built
 iPhone preview app for molecular structure files. Keep this file as a
 dispatcher; load the focused doc for the surface you are changing.
 
 ## Project Contracts
 
-- Product name: `Burrete`
-- Package name: `burrete`
-- Tauri app identifier: `com.local.BurreteV10`
+- Product name: `Burette`
+- Package name: `burette`
+- Tauri app identifier: `com.local.BuretteV10`
 - Package manager: `bun@1.3.8`
-- Stable agent CLIs: `scripts/burrete-agent.mjs` and
+- Stable agent CLIs: `scripts/burette-agent.mjs` and
   `scripts/agent-preview.mjs`
 - Packaged agent plugin root: `plugins/burette-agent`
 - Quick Look base bundle identifiers:
-  `com.local.BurreteV10.Preview` and `com.local.BurreteV10.Thumbnail`
-- Development installs must use `BURRETE_DEV_FLAVOR` so local app, extension,
+  `com.local.BuretteV10.Preview` and `com.local.BuretteV10.Thumbnail`
+- Development installs must use `BURETTE_DEV_FLAVOR` so local app, extension,
   container, and forced-content-type namespaces do not collide.
 
 ## Documentation Graph
@@ -43,7 +43,7 @@ dispatcher; load the focused doc for the surface you are changing.
 - Desktop library helpers: [apps/desktop/src/lib/README.md](apps/desktop/src/lib/README.md)
 - Desktop Vite runtime: [apps/desktop/vite/README.md](apps/desktop/vite/README.md)
 - Quick Look extension: [PreviewExtension/AGENTS.md](PreviewExtension/AGENTS.md)
-- iOS mobile app: [ios/BurreteMobile/AGENTS.md](ios/BurreteMobile/AGENTS.md)
+- iOS mobile app: [ios/BuretteMobile/AGENTS.md](ios/BuretteMobile/AGENTS.md)
 - Agent plugin: [plugins/burette-agent/AGENTS.md](plugins/burette-agent/AGENTS.md)
 - Repository scripts: [scripts/README.md](scripts/README.md)
 
@@ -54,8 +54,8 @@ dispatcher; load the focused doc for the surface you are changing.
 | Desktop app shell | `apps/desktop/src`, `apps/desktop/src-tauri` | `docs/architecture.md` |
 | Browser-dev runtime | `apps/desktop/vite`, `apps/desktop/src/hooks` | `docs/tools/testing-surfaces.md` |
 | Finder Quick Look | `PreviewExtension`, `PreviewExtension/Web` | `PreviewExtension/AGENTS.md` |
-| iPhone source app | `ios/BurreteMobile` | `ios/BurreteMobile/AGENTS.md` |
-| Agent CLI and sessions | `scripts/burrete-agent.mjs`, `scripts/agent-preview.mjs` | `docs/agent-platform.md` |
+| iPhone source app | `ios/BuretteMobile` | `ios/BuretteMobile/AGENTS.md` |
+| Agent CLI and sessions | `scripts/burette-agent.mjs`, `scripts/agent-preview.mjs` | `docs/agent-platform.md` |
 | Packaged MCP plugin | `plugins/burette-agent` | `plugins/burette-agent/AGENTS.md` |
 | Release and repository tooling | `scripts`, `.codex/skills` | `docs/tools/index.md` |
 
@@ -72,11 +72,11 @@ dispatcher; load the focused doc for the surface you are changing.
 - Do not open the desktop app as a substitute for a browser preview. Use
   `desktop-app` only for packaged app, native app, Quick Look, or other
   desktop-specific verification.
-- For packaged local testing, always use a unique `BURRETE_DEV_FLAVOR` unless
+- For packaged local testing, always use a unique `BURETTE_DEV_FLAVOR` unless
   the task is explicitly release-bundle work.
 - For Quick Look work, read [PreviewExtension/AGENTS.md](PreviewExtension/AGENTS.md)
   before building, installing, or forcing previews.
-- For iPhone app work, read [ios/BurreteMobile/AGENTS.md](ios/BurreteMobile/AGENTS.md)
+- For iPhone app work, read [ios/BuretteMobile/AGENTS.md](ios/BuretteMobile/AGENTS.md)
   and verify the intended surface: generic build, Simulator, or real device.
 - For Apple-platform build/run/test work, invoke the relevant plugin first:
   `@build-ios-apps` for iOS and `@build-macos-apps` for macOS/Quick Look.
@@ -126,7 +126,7 @@ metadata, and run the focused contract check.
 - Browser-dev, browser Quick Look, tokenized preview, and packaged Quick Look
   are separate runtime surfaces. Passing one does not prove the others.
 - CLI, MCP, and plugin tool contracts are defined by
-  `scripts/burrete-agent.mjs`, `scripts/agent-preview.mjs`,
+  `scripts/burette-agent.mjs`, `scripts/agent-preview.mjs`,
   `docs/agent-platform.md`, and `plugins/burette-agent/**`. Do not change JSON
   shapes, action names, session files, or widget artifact shapes without tests
   and docs.

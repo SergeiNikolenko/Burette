@@ -1,4 +1,4 @@
-// Copyright 2026 Burrete contributors.
+// Copyright 2026 Burette contributors.
 // SPDX-License-Identifier: MIT
 
 #include "mmff_binary.h"
@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace burrete::mmff {
+namespace burette::mmff {
 namespace {
 
 void append_u16(std::vector<std::uint8_t> &bytes, std::uint16_t value) {
@@ -124,4 +124,4 @@ std::vector<std::uint8_t> encode_binary(const ExtractedParameters &p,
   return bytes;
 }
 
-}  // namespace burrete::mmff
+}  // namespace burette::mmff

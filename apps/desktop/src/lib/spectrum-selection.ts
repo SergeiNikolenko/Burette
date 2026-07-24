@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-const SPECTRUM_SELECTION_EVENT = "burrete-spectrum-selection";
+const SPECTRUM_SELECTION_EVENT = "burette-spectrum-selection";
 const spectrumSelections = new Map<string, SpectrumSelectionState>();
 
 export type SpectrumSelectionState = {

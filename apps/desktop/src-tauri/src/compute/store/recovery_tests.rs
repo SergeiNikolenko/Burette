@@ -1,4 +1,4 @@
-use burrete_compute_protocol::{
+use burette_compute_protocol::{
     AttemptSnapshot, AttemptState, BackendPolicy, ComputeErrorCode, JobState, StageState,
 };
 use uuid::Uuid;

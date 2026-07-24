@@ -50,6 +50,17 @@ export function useAppChemistryJobs({
   const cancelledConformerJobIdsRef = useRef(new Set<string>());
   const cancelledXtbJobIdsRef = useRef(new Set<string>());
 
+  // The inspector decides what it can offer from these, and until now they were
+  // only filled in after a job finished or the user opened a settings panel and
+  // pressed Check - so a fresh launch showed every tool as unknown. Probed here
+  // without a status line, since nobody asked for one.
+  useEffect(() => {
+    let cancelled = false;
+    void requestConformerStatus().then((status) => { if (!cancelled) setConformerStatus(status); }).catch(() => {});
+    void requestXtbStatus().then((status) => { if (!cancelled) setXtbStatus(status); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const setConformerSettings = useCallback((settings: ConformerSettings) => {
     const normalized = normalizeConformerSettings(settings);
     setConformerSettingsState(normalized);
@@ -96,7 +107,7 @@ export function useAppChemistryJobs({
   const chooseXtbExecutable = useCallback(async () => {
     try {
       if (!isTauriRuntime()) {
-        throw new Error("Use the BURRETE_XTB_EXECUTABLE environment variable in browser development.");
+        throw new Error("Use the BURETTE_XTB_EXECUTABLE environment variable in browser development.");
       }
       const selected = await open({
         title: "Choose xTB Executable",

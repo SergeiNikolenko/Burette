@@ -366,7 +366,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function applyAgentHighlights(root: HTMLElement | null, indexes: number[]) {
   if (!root) return;
   const normalized = uniqueIndexes(indexes);
-  root.dataset.burreteAgentHighlightedAtoms = normalized.join(",");
+  root.dataset.buretteAgentHighlightedAtoms = normalized.join(",");
   const elements = root.querySelectorAll<SVGElement>("[data-atom-index], [data-atom-id], [data-atom], [id^='atom-'], [id^='atom']");
   for (const element of elements) {
     const candidates = [
@@ -376,7 +376,7 @@ function applyAgentHighlights(root: HTMLElement | null, indexes: number[]) {
       element.id.replace(/^atom[-_:]?/u, ""),
     ].map(toAtomIndex).filter((value): value is number => value !== undefined);
     const active = candidates.some((candidate) => normalized.includes(candidate) || normalized.includes(candidate - 1));
-    element.toggleAttribute("data-burrete-agent-highlighted", active);
+    element.toggleAttribute("data-burette-agent-highlighted", active);
   }
 }
 

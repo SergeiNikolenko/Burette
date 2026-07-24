@@ -1,0 +1,13 @@
+[package]
+name = "burette-compute-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burette-compute-protocol = { path = "../burette-compute-protocol" }
+sha2 = "0.11"
+
+[dev-dependencies]
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

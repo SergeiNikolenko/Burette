@@ -2,9 +2,9 @@
 
 using namespace metal;
 
-constant uint BURRETE_ETK_THREADS = 32;
-constant float BURRETE_ETK_MIN_CURVATURE = 1.0e-10f;
-constant float BURRETE_ETK_MIN_NORM_SQUARED = 1.0e-12f;
+constant uint BURETTE_ETK_THREADS = 32;
+constant float BURETTE_ETK_MIN_CURVATURE = 1.0e-10f;
+constant float BURETTE_ETK_MIN_NORM_SQUARED = 1.0e-12f;
 
 struct ConformerEtkOptimizeConfigV1 {
     uint atomCount;
@@ -23,7 +23,7 @@ struct ConformerEtkOptimizeConfigV1 {
 
 inline float reduce_sum(threadgroup float* shared, uint tid) {
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint stride = BURRETE_ETK_THREADS / 2; stride > 0; stride >>= 1) {
+    for (uint stride = BURETTE_ETK_THREADS / 2; stride > 0; stride >>= 1) {
         if (tid < stride) {
             shared[tid] += shared[tid + stride];
         }
@@ -34,7 +34,7 @@ inline float reduce_sum(threadgroup float* shared, uint tid) {
 
 inline float reduce_max(threadgroup float* shared, uint tid) {
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint stride = BURRETE_ETK_THREADS / 2; stride > 0; stride >>= 1) {
+    for (uint stride = BURETTE_ETK_THREADS / 2; stride > 0; stride >>= 1) {
         if (tid < stride) {
             shared[tid] = max(shared[tid], shared[tid + stride]);
         }
@@ -51,7 +51,7 @@ inline float vector_dot(
     threadgroup float* shared
 ) {
     float value = 0.0f;
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_ETK_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_ETK_THREADS) {
         value += dot(left[atom], right[atom]);
     }
     shared[tid] = value;
@@ -68,7 +68,7 @@ inline void copy_vector(
     uint atomCount,
     uint tid
 ) {
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_ETK_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_ETK_THREADS) {
         destination[atom] = source[atom];
     }
     threadgroup_barrier(mem_flags::mem_device);
@@ -81,7 +81,7 @@ inline void add_scaled(
     uint atomCount,
     uint tid
 ) {
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_ETK_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_ETK_THREADS) {
         target[atom] += scale * source[atom];
     }
     threadgroup_barrier(mem_flags::mem_device);
@@ -93,7 +93,7 @@ inline void scale_vector(
     uint atomCount,
     uint tid
 ) {
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_ETK_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_ETK_THREADS) {
         values[atom] *= scale;
     }
     threadgroup_barrier(mem_flags::mem_device);
@@ -114,9 +114,9 @@ inline float3 dihedral_derivative(
     const float3 b3 = p3 - p2;
     const float3 n1 = cross(b1, b2);
     const float3 n2 = cross(b2, b3);
-    const float n1Squared = max(dot(n1, n1), BURRETE_ETK_MIN_NORM_SQUARED);
-    const float n2Squared = max(dot(n2, n2), BURRETE_ETK_MIN_NORM_SQUARED);
-    const float b2Squared = max(dot(b2, b2), BURRETE_ETK_MIN_NORM_SQUARED);
+    const float n1Squared = max(dot(n1, n1), BURETTE_ETK_MIN_NORM_SQUARED);
+    const float n2Squared = max(dot(n2, n2), BURETTE_ETK_MIN_NORM_SQUARED);
+    const float b2Squared = max(dot(b2, b2), BURETTE_ETK_MIN_NORM_SQUARED);
     const float b2Length = sqrt(b2Squared);
     const float inverseNormals = rsqrt(n1Squared * n2Squared);
     const float cosine = clamp(dot(n1, n2) * inverseNormals, -1.0f, 1.0f);
@@ -153,7 +153,7 @@ inline float evaluate_etk_objective(
     threadgroup float* shared
 ) {
     float localEnergy = 0.0f;
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_ETK_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_ETK_THREADS) {
         float atomEnergy = 0.0f;
         float3 gradient = float3(0.0f);
         for (uint term = 0; term < torsionCount; ++term) {
@@ -189,7 +189,7 @@ inline float evaluate_etk_objective(
             const bool isRight = atom == atoms.y;
             if (!isLeft && !isRight) continue;
             const float3 delta = positions[atoms.x].xyz - positions[atoms.y].xyz;
-            const float distance = sqrt(max(dot(delta, delta), BURRETE_ETK_MIN_NORM_SQUARED));
+            const float distance = sqrt(max(dot(delta, delta), BURETTE_ETK_MIN_NORM_SQUARED));
             const float2 bounds = distanceBounds[term];
             const float violation = distance < bounds.x
                 ? distance - bounds.x
@@ -217,7 +217,7 @@ inline float scaled_gradient_maximum(
     threadgroup float* shared
 ) {
     float localMaximum = 0.0f;
-    for (uint atom = tid; atom < atomCount; atom += BURRETE_ETK_THREADS) {
+    for (uint atom = tid; atom < atomCount; atom += BURETTE_ETK_THREADS) {
         const float4 positionScale = max(abs(positions[atom]), float4(1.0f));
         localMaximum = max(
             localMaximum,
@@ -228,7 +228,7 @@ inline float scaled_gradient_maximum(
     return reduce_max(shared, tid) / max(abs(energy), 1.0f);
 }
 
-kernel void burrete_conformer_etk_optimize_v1(
+kernel void burette_conformer_etk_optimize_v1(
     device float4* positions [[buffer(0)]],
     device const uint4* torsionAtoms [[buffer(1)]],
     device const float* torsionCoefficients [[buffer(2)]],
@@ -257,11 +257,11 @@ kernel void burrete_conformer_etk_optimize_v1(
 ) {
     const uint tid = threadPosition.x;
     const uint conformer = threadgroupPosition.x;
-    if (threadsPerThreadgroup.x != BURRETE_ETK_THREADS
+    if (threadsPerThreadgroup.x != BURETTE_ETK_THREADS
         || conformer >= config.conformerCount) {
         return;
     }
-    threadgroup float shared[BURRETE_ETK_THREADS];
+    threadgroup float shared[BURETTE_ETK_THREADS];
     const ulong atomOffset = static_cast<ulong>(conformer) * config.atomCount;
     const ulong historyOffset = static_cast<ulong>(conformer)
         * config.historySize * config.atomCount;
@@ -307,7 +307,7 @@ kernel void burrete_conformer_etk_optimize_v1(
     uint historyCount = 0;
     uint historyNext = 0;
 
-    for (uint atom = tid; atom < config.atomCount; atom += BURRETE_ETK_THREADS) {
+    for (uint atom = tid; atom < config.atomCount; atom += BURETTE_ETK_THREADS) {
         myDirections[atom] = -myGradients[atom];
     }
     threadgroup_barrier(mem_flags::mem_device);
@@ -317,7 +317,7 @@ kernel void burrete_conformer_etk_optimize_v1(
     }
 
     shared[tid] = 0.0f;
-    for (uint atom = tid; atom < config.atomCount; atom += BURRETE_ETK_THREADS) {
+    for (uint atom = tid; atom < config.atomCount; atom += BURETTE_ETK_THREADS) {
         shared[tid] += dot(myPositions[atom], myPositions[atom]);
     }
     const float coordinateNorm = sqrt(reduce_sum(shared, tid));
@@ -347,7 +347,7 @@ kernel void burrete_conformer_etk_optimize_v1(
         if (!isfinite(slope) || slope >= 0.0f) {
             historyCount = 0;
             historyNext = 0;
-            for (uint atom = tid; atom < config.atomCount; atom += BURRETE_ETK_THREADS) {
+            for (uint atom = tid; atom < config.atomCount; atom += BURETTE_ETK_THREADS) {
                 myDirections[atom] = -myGradients[atom];
             }
             threadgroup_barrier(mem_flags::mem_device);
@@ -364,7 +364,7 @@ kernel void burrete_conformer_etk_optimize_v1(
         copy_vector(myOldGradients, myGradients, config.atomCount, tid);
         const float oldEnergy = energy;
         float localRelativeDirection = 0.0f;
-        for (uint atom = tid; atom < config.atomCount; atom += BURRETE_ETK_THREADS) {
+        for (uint atom = tid; atom < config.atomCount; atom += BURETTE_ETK_THREADS) {
             const float4 ratio = abs(myDirections[atom])
                 / max(abs(myOldPositions[atom]), float4(1.0f));
             localRelativeDirection = max(localRelativeDirection, maximum_component(ratio));
@@ -384,7 +384,7 @@ kernel void burrete_conformer_etk_optimize_v1(
             if (lineStep < minimumLineStep) {
                 break;
             }
-            for (uint atom = tid; atom < config.atomCount; atom += BURRETE_ETK_THREADS) {
+            for (uint atom = tid; atom < config.atomCount; atom += BURETTE_ETK_THREADS) {
                 myPositions[atom] = myOldPositions[atom] + lineStep * myDirections[atom];
             }
             threadgroup_barrier(mem_flags::mem_device);
@@ -423,7 +423,7 @@ kernel void burrete_conformer_etk_optimize_v1(
         completedIterations = iteration + 1;
 
         float localRelativeStep = 0.0f;
-        for (uint atom = tid; atom < config.atomCount; atom += BURRETE_ETK_THREADS) {
+        for (uint atom = tid; atom < config.atomCount; atom += BURETTE_ETK_THREADS) {
             const float4 step = myPositions[atom] - myOldPositions[atom];
             const float4 ratio = abs(step) / max(abs(myPositions[atom]), float4(1.0f));
             localRelativeStep = max(localRelativeStep, maximum_component(ratio));
@@ -448,20 +448,20 @@ kernel void burrete_conformer_etk_optimize_v1(
         }
 
         float localCurvature = 0.0f;
-        for (uint atom = tid; atom < config.atomCount; atom += BURRETE_ETK_THREADS) {
+        for (uint atom = tid; atom < config.atomCount; atom += BURETTE_ETK_THREADS) {
             const float4 step = myPositions[atom] - myOldPositions[atom];
             const float4 gradientDelta = myGradients[atom] - myOldGradients[atom];
             localCurvature += dot(step, gradientDelta);
         }
         shared[tid] = localCurvature;
         const float curvature = reduce_sum(shared, tid);
-        if (isfinite(curvature) && curvature > BURRETE_ETK_MIN_CURVATURE) {
+        if (isfinite(curvature) && curvature > BURETTE_ETK_MIN_CURVATURE) {
             const uint slot = historyNext;
             device float4* storedStep = myHistorySteps
                 + static_cast<ulong>(slot) * config.atomCount;
             device float4* storedGradientDelta = myHistoryGradientDeltas
                 + static_cast<ulong>(slot) * config.atomCount;
-            for (uint atom = tid; atom < config.atomCount; atom += BURRETE_ETK_THREADS) {
+            for (uint atom = tid; atom < config.atomCount; atom += BURETTE_ETK_THREADS) {
                 storedStep[atom] = myPositions[atom] - myOldPositions[atom];
                 storedGradientDelta[atom] = myGradients[atom] - myOldGradients[atom];
             }

@@ -35,7 +35,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static let defaultViewerPageZoom: CGFloat = 0.9
     private static let minViewerPageZoom: CGFloat = 0.9
     private static let maxViewerPageZoom: CGFloat = 0.9
-    private static let previewSourceMonitorQueue = DispatchQueue(label: "com.local.BurreteV10.preview-source-monitor")
+    private static let previewSourceMonitorQueue = DispatchQueue(label: "com.local.BuretteV10.preview-source-monitor")
     private static let gridRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
     private static let molstarRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'self' blob:;"
     private static let externalArtifactRuntimeCSP = "default-src 'self' file: data: blob:; connect-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; worker-src 'none';"
@@ -46,14 +46,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         renderTimeoutWorkItem?.cancel()
         pendingPreviewSourceReloadWorkItem?.cancel()
         previewSourceMonitor?.cancel()
-        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "burrete")
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "burette")
         appendLog("deinit")
     }
 
     override func loadView() {
         let transparentBackground = PreviewPreferences.load().resolvedTransparentBackground
         let userContentController = WKUserContentController()
-        userContentController.add(self, name: "burrete")
+        userContentController.add(self, name: "burette")
         if Self.showDebugOverlay {
             userContentController.addUserScript(WKUserScript(source: Self.documentStartProbeJavaScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
             userContentController.addUserScript(WKUserScript(source: Self.documentEndProbeJavaScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false))
@@ -267,7 +267,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private struct StructurePreviewPayload {
         let format: StructureFormat
-        let rendererPolicy: BurreteRendererPolicy
+        let rendererPolicy: BuretteRendererPolicy
         let requestedRendererMode: String
         let renderer: String
         let structureData: Data
@@ -353,7 +353,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         case convert
         case legacy
 
-        init(previewPlan: BurretePreviewPlan?) {
+        init(previewPlan: BurettePreviewPlan?) {
             switch previewPlan?.strategy {
             case "direct":
                 self = .direct
@@ -368,13 +368,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             }
         }
 
-        func requiresPreparedConversion(previewPlan: BurretePreviewPlan?) -> Bool {
+        func requiresPreparedConversion(previewPlan: BurettePreviewPlan?) -> Bool {
             self == .convert && previewPlan?.converter?.required == true
         }
 
-        func supportsFallbackRenderer(_ renderer: String, previewPlan: BurretePreviewPlan?) -> Bool {
+        func supportsFallbackRenderer(_ renderer: String, previewPlan: BurettePreviewPlan?) -> Bool {
             previewPlan?.fallbacks.contains { fallback in
-                BurreteRendererMode.normalize(fallback.renderer) == renderer
+                BuretteRendererMode.normalize(fallback.renderer) == renderer
             } ?? false
         }
 
@@ -387,23 +387,23 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static func prepareConvertStructurePreviewIfNeeded(
         state: inout StructurePreviewBuildState,
         strategy: StructurePreviewStrategy,
-        previewPlan: BurretePreviewPlan?,
+        previewPlan: BurettePreviewPlan?,
         preparedConversion: PreviewStructureTextConverter.ConvertedStructure?,
         pathExtension: String,
         diagnostics: inout [String]
     ) {
         func diag(_ message: String) { diagnostics.append("[build] " + message) }
         guard strategy == .convert else { return }
-        if state.renderer == BurreteRendererMode.molstar,
+        if state.renderer == BuretteRendererMode.molstar,
            let convertedStructure = preparedConversion {
             state.applyConvertedStructure(convertedStructure)
             diag("previewPlan.convert.primary=\(pathExtension)-pdb staged=\(convertedStructure.stagedEntries.count)")
         }
-        if state.renderer == BurreteRendererMode.molstar,
+        if state.renderer == BuretteRendererMode.molstar,
            strategy.requiresPreparedConversion(previewPlan: previewPlan),
            preparedConversion == nil,
-           strategy.supportsFallbackRenderer(BurreteRendererMode.xyzrenderExternal, previewPlan: previewPlan) {
-            state.renderer = BurreteRendererMode.xyzrenderExternal
+           strategy.supportsFallbackRenderer(BuretteRendererMode.xyzrenderExternal, previewPlan: previewPlan) {
+            state.renderer = BuretteRendererMode.xyzrenderExternal
             diag("previewPlan.convert.fallback=xyzrender-external missing-conversion")
         }
     }
@@ -415,13 +415,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         diagnostics: inout [String]
     ) {
         func diag(_ message: String) { diagnostics.append("[build] " + message) }
-        guard state.renderer == BurreteRendererMode.xyzrenderExternal,
+        guard state.renderer == BuretteRendererMode.xyzrenderExternal,
               rendererOverride == nil,
               state.format.isExternalXyzrenderOnly,
               let convertedStructure = preparedConversion else {
             return
         }
-        state.renderer = BurreteRendererMode.molstar
+        state.renderer = BuretteRendererMode.molstar
         state.applyConvertedStructure(convertedStructure)
         diag("xyzrender.default=built-in-text-parser")
     }
@@ -438,7 +438,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         func diag(_ message: String) { diagnostics.append("[build] " + message) }
 
         let pathExtension = structurePathExtension(for: url)
-        let isSupportedStructure = BurreteCoreBridge.supportedExtension(pathExtension)
+        let isSupportedStructure = BuretteCoreBridge.supportedExtension(pathExtension)
             ?? BundledFormatRegistry.supportedExtension(pathExtension)
             ?? false
         guard isSupportedStructure else {
@@ -476,9 +476,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
 
         let preferences = PreviewPreferences.load()
-        let previewPlan = BurreteCoreBridge.previewPlan(
+        let previewPlan = BuretteCoreBridge.previewPlan(
             fileExtension: pathExtension,
-            requestedMode: BurreteRendererMode.normalize(rendererOverride ?? preferences.rendererMode)
+            requestedMode: BuretteRendererMode.normalize(rendererOverride ?? preferences.rendererMode)
         )
         if let previewPlan {
             diag("previewPlan.strategy=\(previewPlan.strategy) renderer=\(previewPlan.renderer) converter=\(previewPlan.converter?.id ?? "none") staged=\(previewPlan.staged.count) fallbacks=\(previewPlan.fallbacks.count)")
@@ -522,7 +522,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
 
         let gridFileSupport = preferences.gridFileSupport
-        let shouldBuildGridPreview = rendererOverride == nil || rendererOverride == BurreteRendererMode.auto
+        let shouldBuildGridPreview = rendererOverride == nil || rendererOverride == BuretteRendererMode.auto
         if shouldBuildGridPreview, let gridPreviewResult = try buildMoleculeGridPreviewResult(
             for: url,
             requestID: requestID,
@@ -563,7 +563,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
         diag("detected.format=\(structurePreview.format.molstarFormat) binary=\(structurePreview.format.isBinary) renderer=\(structurePreview.renderer)")
         if let trajectoryFrameCount = structurePreview.trajectoryFrameCount {
-            diag("trajectory.frames=\(trajectoryFrameCount) controls=\(structurePreview.renderer == BurreteRendererMode.molstar && trajectoryFrameCount > 1)")
+            diag("trajectory.frames=\(trajectoryFrameCount) controls=\(structurePreview.renderer == BuretteRendererMode.molstar && trajectoryFrameCount > 1)")
         }
 
         let configJSON = try previewConfigJSON(
@@ -618,7 +618,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             dockingPayloadsJSON: structurePreview.dockingPayloadsJSON,
             gridRecordsScript: nil,
             requiredAssets: runtimeAssets(for: structurePreview.renderer),
-            requiresRDKit: structurePreview.renderer == BurreteRendererMode.molstar,
+            requiresRDKit: structurePreview.renderer == BuretteRendererMode.molstar,
             externalArtifactSourceURL: structurePreview.externalArtifactSourceURL,
             fileManager: fileManager,
             diagnostics: &diagnostics
@@ -923,7 +923,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         xyzrenderOrientationRefText: String?,
         xyzrenderControlsOverride: [String: Any]?,
         preferences: PreviewPreferences,
-        previewPlan: BurretePreviewPlan?,
+        previewPlan: BurettePreviewPlan?,
         usesBoundedMaestroPreview: Bool,
         fileManager: FileManager,
         diagnostics: inout [String]
@@ -933,8 +933,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let structureStrategy = StructurePreviewStrategy(previewPlan: previewPlan)
         diag("structure.strategy=\(structureStrategy.rawValue)")
         let initialFormat = StructureFormat(url: url, data: structureData)
-        let rendererPolicy = BurreteRendererPolicy.resolve(
-            format: BurreteRendererFormat(initialFormat),
+        let rendererPolicy = BuretteRendererPolicy.resolve(
+            format: BuretteRendererFormat(initialFormat),
             requestedMode: rendererOverride ?? preferences.rendererMode,
             fileExtension: pathExtension,
             previewPlan: previewPlan
@@ -963,7 +963,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             : nil
         if let nativeTrajectoryPair {
             state.format = nativeTrajectoryPair.format
-            state.renderer = BurreteRendererMode.molstar
+            state.renderer = BuretteRendererMode.molstar
             state.structureData = Data("\n".utf8)
             diag("trajectory.pair model=\(nativeTrajectoryPair.modelURL.lastPathComponent) coordinates=\(nativeTrajectoryPair.coordinateURL.lastPathComponent)")
         }
@@ -981,12 +981,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             diagnostics: &diagnostics
         )
         if structureStrategy != .convert,
-           (state.renderer == BurreteRendererMode.molstar || PreviewStructureTextConverter.shouldPreferConvertedMolstarData(fileExtension: pathExtension)),
+           (state.renderer == BuretteRendererMode.molstar || PreviewStructureTextConverter.shouldPreferConvertedMolstarData(fileExtension: pathExtension)),
            let convertedStructure = preparedConversion {
             state.applyConvertedStructure(convertedStructure)
             diag("molstar.converted=\(pathExtension)-pdb")
         }
-        let xyzrenderPreset = BurreteXyzrenderPreset.normalize(xyzrenderPresetOverride ?? preferences.xyzrenderPreset)
+        let xyzrenderPreset = BuretteXyzrenderPreset.normalize(xyzrenderPresetOverride ?? preferences.xyzrenderPreset)
         let xyzPayload = state.format.molstarFormat == "xyz" && !state.format.isBinary ? makeXYZPayload(from: state.structureData) : nil
         let estimatedTrajectoryFrameCount = estimateTrajectoryFrameCount(
             fileExtension: pathExtension,
@@ -1001,9 +1001,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let isXYZTrajectory = (xyzPayload?.frameCount ?? 0) > 1
         if isXYZTrajectory,
            rendererOverride == nil,
-           requestedRendererMode == BurreteRendererMode.auto,
-           state.renderer != BurreteRendererMode.molstar {
-            state.renderer = BurreteRendererMode.molstar
+           requestedRendererMode == BuretteRendererMode.auto,
+           state.renderer != BuretteRendererMode.molstar {
+            state.renderer = BuretteRendererMode.molstar
             diag("xyz.trajectory.default=molstar frames=\(xyzPayload?.frameCount ?? -1)")
         }
         preferBuiltInParserForDefaultExternalPreviewIfAvailable(
@@ -1049,7 +1049,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             temporaryExternalDirectory: state.temporaryExternalDirectory,
             xyzrenderPreset: xyzrenderPreset,
             xyzrenderControls: state.xyzrenderControls,
-            trajectoryFrameCount: state.renderer == BurreteRendererMode.molstar && resolvedTrajectoryFrameCount > 0 ? resolvedTrajectoryFrameCount : nil,
+            trajectoryFrameCount: state.renderer == BuretteRendererMode.molstar && resolvedTrajectoryFrameCount > 0 ? resolvedTrajectoryFrameCount : nil,
             molstarAvailable: molstarAvailable,
             dockingConfig: nativeTrajectoryPair?.dockingConfig,
             dockingPayloadsJSON: nativeTrajectoryPair?.dockingPayloadsJSON
@@ -1070,11 +1070,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         fileManager: FileManager,
         diagnostics: inout [String]
     ) throws {
-        guard state.renderer == BurreteRendererMode.xyzrenderExternal else { return }
+        guard state.renderer == BuretteRendererMode.xyzrenderExternal else { return }
         func diag(_ message: String) { diagnostics.append("[build] " + message) }
 
         let renderDirectory = fileManager.temporaryDirectory
-            .appendingPathComponent("BurreteXYZRender-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("BuretteXYZRender-\(UUID().uuidString)", isDirectory: true)
         state.temporaryExternalDirectory = renderDirectory
         let defaultXyzrenderInput = xyzrenderControlsOverride == nil
             ? defaultCubeXyzrenderInput(fileURL: url, data: structureData, fileExtension: pathExtension)
@@ -1097,19 +1097,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             )
             state.externalArtifactSourceURL = renderDirectory.appendingPathComponent("xyzrender.svg")
         } catch {
-            if rendererOverride == BurreteRendererMode.xyzrenderExternal {
+            if rendererOverride == BuretteRendererMode.xyzrenderExternal {
                 throw error
             }
             if state.format.isExternalXyzrenderOnly {
                 throw error
             } else {
-                state.renderer = BurreteRendererPolicy.fallbackRenderer(for: BurreteRendererFormat(state.format))
+                state.renderer = BuretteRendererPolicy.fallbackRenderer(for: BuretteRendererFormat(state.format))
                 state.externalArtifact = nil
                 state.externalArtifactSourceURL = nil
                 state.xyzrenderControls = nil
                 state.externalStatus = [
                     "status": "error",
-                    "requested": BurreteRendererMode.xyzrenderExternal,
+                    "requested": BuretteRendererMode.xyzrenderExternal,
                     "message": error.localizedDescription
                 ]
                 diag("xyzrender.error=\(error.localizedDescription)")
@@ -1251,7 +1251,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static func renderTimeoutSeconds(byteCount: Int, renderer: String) -> TimeInterval {
-        guard renderer == BurreteRendererMode.molstar else {
+        guard renderer == BuretteRendererMode.molstar else {
             return defaultRenderTimeoutSeconds
         }
         return byteCount >= largeStructureRenderTimeoutThresholdBytes
@@ -1283,7 +1283,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             throw PreviewError.couldNotCreateRuntimePreview("Caches directory is unavailable")
         }
         let previewsDirectory = cachesDirectory
-            .appendingPathComponent("Burrete", isDirectory: true)
+            .appendingPathComponent("Burette", isDirectory: true)
             .appendingPathComponent("previews", isDirectory: true)
         try fileManager.createDirectory(at: previewsDirectory, withIntermediateDirectories: true)
         pruneRuntimePreviews(in: previewsDirectory, fileManager: fileManager, diagnostics: &diagnostics)
@@ -1301,7 +1301,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
         let indexURL = runtimeDirectory.appendingPathComponent("index.html")
         try Data(html.utf8).write(to: indexURL, options: [.atomic])
-        try Data("window.BurreteConfig = \(configJSON);\n".utf8)
+        try Data("window.BuretteConfig = \(configJSON);\n".utf8)
             .write(to: runtimeDirectory.appendingPathComponent("preview-config.js"), options: [.atomic])
         if let structureData {
             try structureData.write(to: runtimeDirectory.appendingPathComponent("preview-data.bin"), options: [.atomic])
@@ -1310,7 +1310,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             try auxiliaryFile.data.write(to: runtimeDirectory.appendingPathComponent(auxiliaryFile.path), options: [.atomic])
         }
         if let dockingPayloadsJSON {
-            try Data("window.BurreteDockingPayloads = \(dockingPayloadsJSON);\n".utf8)
+            try Data("window.BuretteDockingPayloads = \(dockingPayloadsJSON);\n".utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-docking-payloads.js"), options: [.atomic])
         }
         if let gridRecordsScript {
@@ -1323,7 +1323,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 .appendingPathComponent("rdkit", isDirectory: true)
                 .appendingPathComponent("RDKit_minimal.wasm")
             let wasmData = try Data(contentsOf: rdkitWasm)
-            try Data("window.BurreteRDKitWasmBase64 = \"\(wasmData.base64EncodedString())\";\n".utf8)
+            try Data("window.BuretteRDKitWasmBase64 = \"\(wasmData.base64EncodedString())\";\n".utf8)
                 .write(to: runtimeDirectory.appendingPathComponent("preview-rdkit-wasm.js"), options: [.atomic])
             diagnostics.append("[build] runtime.asset.rdkit.wasm.inlineBytes=\(wasmData.count)")
         }
@@ -1443,7 +1443,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static func runtimeAssets(for renderer: String) -> [String] {
-        if renderer == BurreteRendererMode.xyzrenderExternal {
+        if renderer == BuretteRendererMode.xyzrenderExternal {
             return ["viewer-runtime.css", "viewer-shell.js", "molstar.css", "burette-agent.js", "viewer.js"]
         }
         return ["viewer-runtime.css", "viewer-shell.js", "molstar.js", "molstar.css", "burette-agent.js", "viewer.js"]
@@ -1532,8 +1532,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         stagedEntries: [[String: Any]],
         trajectoryFrameCount: Int?,
         originalFileExtension: String,
-        rendererPolicy: BurreteRendererPolicy,
-        previewPlan: BurretePreviewPlan?,
+        rendererPolicy: BuretteRendererPolicy,
+        previewPlan: BurettePreviewPlan?,
         molstarAvailable: Bool,
         dockingConfig: [String: Any]?,
         preferences: PreviewPreferences
@@ -1569,23 +1569,23 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "overlayOpacity": preferences.overlayOpacity,
             "transparentBackground": preferences.resolvedTransparentBackground,
             "sdfGrid": true,
-            "sdfPosePager": renderer == BurreteRendererMode.molstar && format.molstarFormat == "sdf" && !format.isBinary,
-            "trajectoryControls": renderer == BurreteRendererMode.molstar && resolvedTrajectoryFrameCount > 1,
+            "sdfPosePager": renderer == BuretteRendererMode.molstar && format.molstarFormat == "sdf" && !format.isBinary,
+            "trajectoryControls": renderer == BuretteRendererMode.molstar && resolvedTrajectoryFrameCount > 1,
             "trajectoryFrameCount": resolvedTrajectoryFrameCount,
             "showPanelControls": preferences.showPanelControls,
             "defaultLayoutState": preferences.defaultLayoutState,
             "canOpenInVesta": canOpenInVesta(fileExtension: originalFileExtension, previewPlan: previewPlan)
         ]
-        if renderer == BurreteRendererMode.xyzrenderExternal {
+        if renderer == BuretteRendererMode.xyzrenderExternal {
             payload["xyzrenderViewer"] = true
             payload["molstarAvailable"] = molstarAvailable
             payload["xyzrenderPreset"] = xyzrenderPreset
-            payload["xyzrenderPresetOptions"] = BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
+            payload["xyzrenderPresetOptions"] = BuretteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
             if let xyzrenderControls { payload["xyzrenderControls"] = xyzrenderControls }
         }
         if format.molstarFormat == "xyz" && !format.isBinary {
             payload["xyzrenderPreset"] = xyzrenderPreset
-            payload["xyzrenderPresetOptions"] = BurreteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
+            payload["xyzrenderPresetOptions"] = BuretteXyzrenderPreset.pickerOptions.map { ["value": $0.0, "label": $0.1] }
             if let xyzrenderControls { payload["xyzrenderControls"] = xyzrenderControls }
         }
         if let dockingConfig {
@@ -1626,14 +1626,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <meta http-equiv="Content-Security-Policy" content="\(gridRuntimeCSP)" />
-          <title>Burrete Grid - \(safeTitle)</title>
+          <title>Burette Grid - \(safeTitle)</title>
           <link rel="stylesheet" href="../assets/grid.css" />
           <script>
             (function () {
               function post(type, message, payload) {
                 var body = Object.assign({ type: type, message: String(message || '') }, payload || {});
-                if (window.BurreteConfig && window.BurreteConfig.previewRequestID) body.requestID = String(window.BurreteConfig.previewRequestID);
-                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage(body); } catch (_) {}
+                if (window.BuretteConfig && window.BuretteConfig.previewRequestID) body.requestID = String(window.BuretteConfig.previewRequestID);
+                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burette.postMessage(body); } catch (_) {}
               }
               window.__mqlPost = post;
             })();
@@ -1643,9 +1643,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <div id="app"></div>
           <div id="status">Loading molecule grid...</div>
           <script>
-            window.BurreteInlineMode = true;
-            window.BurreteGridMode = true;
-            window.BurreteDebug = \(showDebugOverlay ? "true" : "false");
+            window.BuretteInlineMode = true;
+            window.BuretteGridMode = true;
+            window.BuretteDebug = \(showDebugOverlay ? "true" : "false");
           </script>
           <script src="preview-config.js"></script>
           <script src="preview-grid-records.js"></script>
@@ -2100,7 +2100,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
         return ([
             String(label.prefix(80)),
-            "Burrete FEP GraphML",
+            "Burette FEP GraphML",
             "",
             "\(String(format: "%3d", atomLines.count))\(String(format: "%3d", bondLines.count))  0  0  0  0            999 V2000"
         ] + atomLines + bondLines + ["M  END", ""]).joined(separator: "\n")
@@ -2268,7 +2268,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <meta http-equiv="Content-Security-Policy" content="\(gridRuntimeCSP)" />
-          <title>Burrete FEP Network - \(safeTitle)</title>
+          <title>Burette FEP Network - \(safeTitle)</title>
           <style>
             html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f8fafc;color:#172033}
             body{font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
@@ -2334,9 +2334,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             async function renderFepMolecules() {
               if (typeof window.initRDKitModule !== 'function') throw new Error('RDKit_minimal.js is missing');
               const options = { locateFile: () => '../assets/rdkit/RDKit_minimal.wasm' };
-              if (window.BurreteRDKitWasmBase64) {
-                options.wasmBinary = base64ToBytes(window.BurreteRDKitWasmBase64);
-                window.BurreteRDKitWasmBase64 = '';
+              if (window.BuretteRDKitWasmBase64) {
+                options.wasmBinary = base64ToBytes(window.BuretteRDKitWasmBase64);
+                window.BuretteRDKitWasmBase64 = '';
               }
               const rdkit = await window.initRDKitModule(options);
               let rendered = 0;
@@ -2365,7 +2365,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             window.addEventListener('load', async function () {
               let rdkitImages = 0;
               try { rdkitImages = await renderFepMolecules(); } catch (_) {}
-              try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({
+              try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burette.postMessage({
                 type: 'ready',
                 message: 'ready',
                 requestID: '\(requestID)',
@@ -2430,18 +2430,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <meta http-equiv="Content-Security-Policy" content="\(csp)" />
-          <title>Burrete - \(safeTitle)</title>
+          <title>Burette - \(safeTitle)</title>
           <link rel="stylesheet" href="../assets/molstar.css" />
           <link rel="stylesheet" href="../assets/viewer-runtime.css" />
           <script>
             (function () {
               function post(type, message, payload) {
                 var body = Object.assign({ type: type, message: String(message || '') }, payload || {});
-                if (window.BurreteConfig && window.BurreteConfig.previewRequestID) body.requestID = String(window.BurreteConfig.previewRequestID);
-                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage(body); } catch (_) {}
+                if (window.BuretteConfig && window.BuretteConfig.previewRequestID) body.requestID = String(window.BuretteConfig.previewRequestID);
+                try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burette.postMessage(body); } catch (_) {}
               }
               function shouldReportStatus(text, kind) {
-                if (kind === 'error' || window.BurreteDebug) return true;
+                if (kind === 'error' || window.BuretteDebug) return true;
                 return text.indexOf('[web] About to load molstar.js') === 0 ||
                   text.indexOf('[web] molstar.js parsed') === 0 ||
                   text.indexOf('[web] About to load viewer.js') === 0 ||
@@ -2459,7 +2459,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 if (el) {
                   el.textContent = text;
                   if (kind === 'error') el.classList.add('error'); else el.classList.remove('error');
-                  if (kind === 'error' || window.BurreteDebug) el.classList.remove('hidden'); else el.classList.add('hidden');
+                  if (kind === 'error' || window.BuretteDebug) el.classList.remove('hidden'); else el.classList.add('hidden');
                 }
                 if (shouldReportStatus(text, kind)) {
                   post(kind === 'error' ? 'error' : 'status', text);
@@ -2467,13 +2467,13 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
               };
               window.__mqlAction = function (name) { post('action', name); };
               window.__mqlDebug = function (message) {
-                if (window.BurreteDebug) post('debug', String(message || ''));
+                if (window.BuretteDebug) post('debug', String(message || ''));
               };
               ['log', 'warn', 'error'].forEach(function (name) {
                 var original = console[name];
                 console[name] = function () {
                   try {
-                    if (window.BurreteDebug || name === 'error') {
+                    if (window.BuretteDebug || name === 'error') {
                       post('console.' + name, Array.prototype.map.call(arguments, function (x) { try { return typeof x === 'string' ? x : JSON.stringify(x); } catch (_) { return String(x); } }).join(' '));
                     }
                   } catch (_) {}
@@ -2498,10 +2498,10 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <script src="../assets/viewer-shell.js"></script>
           <div id="status" class="hidden">\(initialStatus)</div>
           <script>
-            window.BurreteInlineMode = true;
-            window.BurreteDebug = \(showDebugOverlay ? "true" : "false");
-            window.BurretePanelControlsVisible = \(preferences.showPanelControls ? "true" : "false");
-            window.BurreteCacheBuster = String(Date.now());
+            window.BuretteInlineMode = true;
+            window.BuretteDebug = \(showDebugOverlay ? "true" : "false");
+            window.BurettePanelControlsVisible = \(preferences.showPanelControls ? "true" : "false");
+            window.BuretteCacheBuster = String(Date.now());
           </script>
           \(rendererAssets)
           <script src="preview-config.js"></script>
@@ -2546,7 +2546,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline';" />
-          <title>Burrete - \(safeTitle)</title>
+          <title>Burette - \(safeTitle)</title>
           <style>
             :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
             body { margin: 0; background: Canvas; color: CanvasText; }
@@ -2568,7 +2568,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           </main>
           <script>
             window.addEventListener('load', function () {
-              try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: 'ready', message: 'ready', requestID: \(requestIDJSON), mode: 'text', renderer: \(rendererJSON), sourceExtension: \(extensionJSON) }); } catch (_) {}
+              try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burette.postMessage({ type: 'ready', message: 'ready', requestID: \(requestIDJSON), mode: 'text', renderer: \(rendererJSON), sourceExtension: \(extensionJSON) }); } catch (_) {}
             });
           </script>
         </body>
@@ -2590,7 +2590,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "renderer": renderer,
             "byteCount": byteCount,
             "previewByteCount": byteCount,
-            "quickLookBuild": "burrete-text-quicklook",
+            "quickLookBuild": "burette-text-quicklook",
             "quickLookViewer": true,
             "previewRequestID": requestID,
         ]
@@ -2754,7 +2754,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
             Bytes: \(byteCount)
 
-            Burrete shows metadata for binary checkpoints instead of rendering opaque bytes as text.
+            Burette shows metadata for binary checkpoints instead of rendering opaque bytes as text.
             """
         }
         return decodeText(data)
@@ -2774,7 +2774,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func shouldUseSpectrumPreview(
         fileExtension: String,
-        previewPlan: BurretePreviewPlan?,
+        previewPlan: BurettePreviewPlan?,
         data: Data,
         url: URL
     ) -> Bool {
@@ -3517,8 +3517,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             topLabelsInput.addEventListener('change', renderPlot);
             renderMetrics(); renderMetadata(); renderFormulas(); renderRows(); renderPlot();
             window.addEventListener('resize', renderPlot);
-            window.BurretePreviewReady = true;
-            window.webkit?.messageHandlers?.burrete?.postMessage({
+            window.BurettePreviewReady = true;
+            window.webkit?.messageHandlers?.burette?.postMessage({
               type: 'ready',
               requestID: '\(requestID)',
               message: 'ready',
@@ -3552,7 +3552,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func quickLookSizeLimit(for url: URL) -> Int64 {
         let fileExtension = structurePathExtension(for: url)
-        if let bridgeLimit = BurreteCoreBridge.quickLookSizeLimit(fileExtension: fileExtension) {
+        if let bridgeLimit = BuretteCoreBridge.quickLookSizeLimit(fileExtension: fileExtension) {
             return bridgeLimit
         }
         let mib: Int64 = 1024 * 1024
@@ -3591,14 +3591,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         return url.pathExtension.lowercased()
     }
 
-    private static func shouldUseFepGraphMLPreview(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+    private static func shouldUseFepGraphMLPreview(fileExtension: String, previewPlan: BurettePreviewPlan?) -> Bool {
         if let previewPlan {
             return previewPlan.strategy == "custom" && previewPlan.renderer == "fep-graphml"
         }
         return ["graphml", "edge"].contains(fileExtension.lowercased())
     }
 
-    private static func shouldUseTextArtifactPreview(url: URL, fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+    private static func shouldUseTextArtifactPreview(url: URL, fileExtension: String, previewPlan: BurettePreviewPlan?) -> Bool {
         if isPreferredTextArtifact(url: url) {
             return true
         }
@@ -3612,14 +3612,14 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         url.lastPathComponent.lowercased() == "log.lammps"
     }
 
-    private static func requiresGridPreview(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+    private static func requiresGridPreview(fileExtension: String, previewPlan: BurettePreviewPlan?) -> Bool {
         if let previewPlan {
             return previewPlan.strategy == "grid"
         }
         return MoleculeGridFileSupport.requiresGridPreview(fileExtension: fileExtension)
     }
 
-    private static func canOpenInVesta(fileExtension: String, previewPlan: BurretePreviewPlan?) -> Bool {
+    private static func canOpenInVesta(fileExtension: String, previewPlan: BurettePreviewPlan?) -> Bool {
         if let previewPlan {
             return previewPlan.capabilities.canOpenInVesta
         }
@@ -3886,7 +3886,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private func isTrustedScriptMessage(_ message: WKScriptMessage) -> Bool {
-        guard message.name == "burrete" else { return false }
+        guard message.name == "burette" else { return false }
         guard message.webView === webView, message.frameInfo.isMainFrame else { return false }
         let messageURL = message.frameInfo.request.url ?? webView.url
         guard let messageURL, messageURL.isFileURL else { return false }
@@ -3987,7 +3987,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             appendLog("requestData.responseEncodingFailed")
             return
         }
-        webView.evaluateJavaScript("window.BurreteReceiveNativeData && window.BurreteReceiveNativeData(\(json));") { [weak self] _, evaluationError in
+        webView.evaluateJavaScript("window.BuretteReceiveNativeData && window.BuretteReceiveNativeData(\(json));") { [weak self] _, evaluationError in
             guard let self, let evaluationError else { return }
             self.appendLog("requestData.injectFailed=\(Self.describe(evaluationError))")
         }
@@ -4006,7 +4006,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             appendLog("requestRuntimeFile.responseEncodingFailed")
             return
         }
-        webView.evaluateJavaScript("window.BurreteReceiveNativeRuntimeFile && window.BurreteReceiveNativeRuntimeFile(\(json));") { [weak self] _, evaluationError in
+        webView.evaluateJavaScript("window.BuretteReceiveNativeRuntimeFile && window.BuretteReceiveNativeRuntimeFile(\(json));") { [weak self] _, evaluationError in
             guard let self, let evaluationError else { return }
             self.appendLog("requestRuntimeFile.injectFailed=\(Self.describe(evaluationError))")
         }
@@ -4033,9 +4033,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private func setRendererOverride(_ value: String, orientationRefText: String? = nil) {
-        let renderer = BurreteRendererMode.normalize(value)
+        let renderer = BuretteRendererMode.normalize(value)
         let hasNewOrientation = setXyzrenderOrientation(orientationRefText)
-        if renderer != BurreteRendererMode.xyzrenderExternal {
+        if renderer != BuretteRendererMode.xyzrenderExternal {
             xyzrenderOrientationRefText = nil
         }
         guard rendererOverride != renderer || hasNewOrientation else { return }
@@ -4056,19 +4056,19 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private func setXyzrenderPresetOverride(_ value: String) {
-        let preset = BurreteXyzrenderPreset.normalize(value)
-        guard xyzrenderPresetOverride != preset || rendererOverride != BurreteRendererMode.xyzrenderExternal else { return }
+        let preset = BuretteXyzrenderPreset.normalize(value)
+        guard xyzrenderPresetOverride != preset || rendererOverride != BuretteRendererMode.xyzrenderExternal else { return }
         xyzrenderPresetOverride = preset
-        rendererOverride = BurreteRendererMode.xyzrenderExternal
+        rendererOverride = BuretteRendererMode.xyzrenderExternal
         reloadCurrentPreview()
     }
 
     private func setXyzrenderControlsOverride(_ value: [String: Any]) {
         let normalized = PreviewExternalXyzrenderWorker.normalizedControls(value)
         guard NSDictionary(dictionary: xyzrenderControlsOverride ?? [:]).isEqual(to: normalized) == false
-            || rendererOverride != BurreteRendererMode.xyzrenderExternal else { return }
+            || rendererOverride != BuretteRendererMode.xyzrenderExternal else { return }
         xyzrenderControlsOverride = normalized
-        rendererOverride = BurreteRendererMode.xyzrenderExternal
+        rendererOverride = BuretteRendererMode.xyzrenderExternal
         reloadCurrentPreview()
     }
 
@@ -4148,7 +4148,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         webView.pageZoom = clamped
         appendLog("viewer pageZoom=\(String(format: "%.2f", Double(clamped)))")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.webView.evaluateJavaScript("window.BurreteHandleResize && window.BurreteHandleResize();", completionHandler: nil)
+            self?.webView.evaluateJavaScript("window.BuretteHandleResize && window.BuretteHandleResize();", completionHandler: nil)
         }
     }
 
@@ -4184,8 +4184,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             scriptCount: document.getElementsByTagName('script').length,
             typeofMolstar: typeof window.molstar,
             typeofViewer: window.molstar ? typeof window.molstar.Viewer : 'no molstar',
-            typeofConfig: typeof window.BurreteConfig,
-            dataBytes: window.BurreteDataBytes ? window.BurreteDataBytes.length : -1,
+            typeofConfig: typeof window.BuretteConfig,
+            dataBytes: window.BuretteDataBytes ? window.BuretteDataBytes.length : -1,
             webgl2: (function(){ try { var c = document.createElement('canvas'); return !!c.getContext('webgl2'); } catch(e) { return 'error:' + e; } })(),
             webgl1: (function(){ try { var c = document.createElement('canvas'); return !!(c.getContext('webgl') || c.getContext('experimental-webgl')); } catch(e) { return 'error:' + e; } })()
           };
@@ -4209,7 +4209,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private func appendLog(_ message: String) {
         guard Self.shouldRecordLog(message) else { return }
         let line = "[\(Self.timestamp())] [\(previewID)] \(message)"
-        NSLog("[BurreteV10] \(line)")
+        NSLog("[BuretteV10] \(line)")
         Self.writeLogLine(line)
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
@@ -4313,9 +4313,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let fileManager = FileManager.default
         for directory in [.cachesDirectory, .applicationSupportDirectory] as [FileManager.SearchPathDirectory] {
             if let base = fileManager.urls(for: directory, in: .userDomainMask).first {
-                let logDirectory = base.appendingPathComponent("Burrete", isDirectory: true)
-                urls.append(logDirectory.appendingPathComponent("BurreteV10.log"))
-                urls.append(logDirectory.appendingPathComponent("Burrete.log"))
+                let logDirectory = base.appendingPathComponent("Burette", isDirectory: true)
+                urls.append(logDirectory.appendingPathComponent("BuretteV10.log"))
+                urls.append(logDirectory.appendingPathComponent("Burette.log"))
             }
         }
         var seen = Set<String>()
@@ -4340,7 +4340,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     try data.write(to: url, options: [.atomic])
                 }
             } catch {
-                NSLog("[BurreteV10] could not write log to \(url.path): \(String(describing: error))")
+                NSLog("[BuretteV10] could not write log to \(url.path): \(String(describing: error))")
             }
         }
     }
@@ -4351,7 +4351,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return nil
         }
         return base
-            .appendingPathComponent("Burrete", isDirectory: true)
+            .appendingPathComponent("Burette", isDirectory: true)
             .appendingPathComponent("preview-trace.jsonl")
     }
 
@@ -4417,7 +4417,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                 try line.write(to: url, options: [.atomic])
             }
         } catch {
-            NSLog("[BurreteV10] could not write preview trace to \(url.path): \(String(describing: error))")
+            NSLog("[BuretteV10] could not write preview trace to \(url.path): \(String(describing: error))")
         }
     }
 
@@ -4448,7 +4448,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private func renderNativeError(_ error: Error, fileURL: URL?) {
         let fileName = fileURL?.lastPathComponent ?? "file"
         appendLog("renderNativeError for \(fileName): \(Self.describe(error))")
-        webView.loadHTMLString(Self.staticErrorHTML(title: "Burrete could not preview \(fileName)", details: Self.describe(error)), baseURL: nil)
+        webView.loadHTMLString(Self.staticErrorHTML(title: "Burette could not preview \(fileName)", details: Self.describe(error)), baseURL: nil)
     }
 
     private static func describe(_ error: Error) -> String {
@@ -4472,7 +4472,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         """
         (function(){
           function post(type, message) {
-            try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: type, message: String(message || '') }); } catch (_) {}
+            try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burette.postMessage({ type: type, message: String(message || '') }); } catch (_) {}
           }
           post('debug', '[probe] document-start. href=' + String(location.href));
           window.addEventListener('DOMContentLoaded', function(){ post('debug', '[probe] DOMContentLoaded. body=' + !!document.body); });
@@ -4486,7 +4486,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private static var documentEndProbeJavaScript: String {
         """
         (function(){
-          try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burrete.postMessage({ type: 'debug', message: '[probe] document-end. readyState=' + document.readyState + '; title=' + document.title }); } catch (_) {}
+          try { window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.burette.postMessage({ type: 'debug', message: '[probe] document-end. readyState=' + document.readyState + '; title=' + document.title }); } catch (_) {}
         })();
         """
     }
@@ -4601,7 +4601,7 @@ private enum PreviewStructureTextConverter {
             let solventPath = "preview-solvent.pdb"
             let solventData = bundle.solventAtoms.isEmpty
                 ? nil
-                : maestroPDBData(from: bundle.solventAtoms, remark: "Burrete staged CMS solvent preview")
+                : maestroPDBData(from: bundle.solventAtoms, remark: "Burette staged CMS solvent preview")
             let auxiliaryFiles = solventData.map { [RuntimeAuxiliaryFile(path: solventPath, data: $0)] } ?? []
             let stagedEntries: [[String: Any]] = solventData == nil ? [] : [[
                 "path": "./\(solventPath)",
@@ -4612,7 +4612,7 @@ private enum PreviewStructureTextConverter {
                 "requiredForReady": true
             ]]
             return ConvertedStructure(
-                data: maestroPDBData(from: bundle.primaryAtoms, remark: "Burrete staged CMS protein and ligand preview"),
+                data: maestroPDBData(from: bundle.primaryAtoms, remark: "Burette staged CMS protein and ligand preview"),
                 format: .convertedPDB,
                 auxiliaryFiles: auxiliaryFiles,
                 stagedEntries: stagedEntries
@@ -6691,7 +6691,7 @@ private struct StructureFormat {
 
     init(url: URL, data: Data) {
         let ext = url.lastPathComponent.lowercased().hasSuffix(".mae.gz") ? "maegz" : url.pathExtension.lowercased()
-        if let bridgeFormat = BurreteCoreBridge.format(fileExtension: ext) {
+        if let bridgeFormat = BuretteCoreBridge.format(fileExtension: ext) {
             self.molstarFormat = ext == "cif" ? Self.detectCIFFormat(data: data) : bridgeFormat.molstarFormat
             self.isBinary = bridgeFormat.isBinary
             self.isExternalXyzrenderOnly = bridgeFormat.isExternalXyzrenderOnly
@@ -6763,7 +6763,7 @@ private struct StructureFormat {
     }
 }
 
-private extension BurreteRendererFormat {
+private extension BuretteRendererFormat {
     init(_ format: StructureFormat) {
         self.init(
             molstarFormat: format.molstarFormat,
@@ -6817,7 +6817,7 @@ private enum PreviewExternalXyzrenderWorker {
         let resolvedExecutablePath = try resolvedExecutable(configuredExecutable)
         let launch = launchConfiguration(for: resolvedExecutablePath)
 
-        let safePreset = BurreteXyzrenderPreset.normalize(preset)
+        let safePreset = BuretteXyzrenderPreset.normalize(preset)
         let normalizedControls = normalizedControls(controls ?? [:])
         let configArgument = resolveConfigArgument(
             preset: safePreset,
@@ -6943,7 +6943,7 @@ private enum PreviewExternalXyzrenderWorker {
             return nil
         }
         return cacheRoot
-            .appendingPathComponent("Burrete", isDirectory: true)
+            .appendingPathComponent("Burette", isDirectory: true)
             .appendingPathComponent("xyzrender-cache", isDirectory: true)
             .appendingPathComponent(key, isDirectory: true)
     }
@@ -7813,7 +7813,7 @@ private enum PreviewExternalXyzrenderError: LocalizedError {
         switch self {
         case .missingExecutable(let diagnostics):
             let details = diagnostics.isEmpty ? "" : " Checked: \(diagnostics.prefix(900))"
-            return "External xyzrender executable was not found. Set an absolute xyzrender path in Burrete settings.\(details)"
+            return "External xyzrender executable was not found. Set an absolute xyzrender path in Burette settings.\(details)"
         case .launchFailed(let diagnostics):
             let details = diagnostics.isEmpty ? "" : " Checked: \(diagnostics.prefix(900))"
             return "External xyzrender process could not be launched.\(details)"
@@ -7933,7 +7933,7 @@ private struct PreviewPreferences {
             overlayOpacity: min(max(overlayOpacity, 0.72), 0.98),
             rendererMode: rendererMode,
             molstarStyle: molstarStyle,
-            xyzrenderPreset: BurreteXyzrenderPreset.normalize(xyzrenderPreset),
+            xyzrenderPreset: BuretteXyzrenderPreset.normalize(xyzrenderPreset),
             xyzrenderCustomConfigPath: xyzrenderCustomConfigPath,
             xyzrenderExecutablePath: xyzrenderExecutablePath,
             xyzrenderExtraArguments: xyzrenderExtraArguments,
@@ -7967,7 +7967,7 @@ private struct PreviewPreferences {
                 return identifier as CFString
             }
         }
-        return "com.local.BurreteV10" as CFString
+        return "com.local.BuretteV10" as CFString
     }
 
     private static func containingAppBundleIdentifier(startingAt bundleURL: URL) -> String? {
@@ -8015,13 +8015,13 @@ private enum PreviewError: LocalizedError {
         case .unsupportedStructureFile(let name):
             return "Unsupported structure file type: \(name)"
         case .gridFileTypeDisabled(let ext):
-            return ".\(ext) molecule grid previews are disabled in Burrete Settings."
+            return ".\(ext) molecule grid previews are disabled in Burette Settings."
         case .fileTooLarge(let name, let size, let limit):
-            return "\(name) is too large for Quick Look preview (\(size) bytes; limit \(limit) bytes). Open it in the Burrete app viewer or use a smaller file."
+            return "\(name) is too large for Quick Look preview (\(size) bytes; limit \(limit) bytes). Open it in the Burette app viewer or use a smaller file."
         case .couldNotExtractBoundedMaestroPreview(let name, let limit):
-            return "\(name) is too large for full Quick Look loading, and Burrete could not extract a Maestro atom table from the first \(limit) bytes."
+            return "\(name) is too large for full Quick Look loading, and Burette could not extract a Maestro atom table from the first \(limit) bytes."
         case .notRenderableStandaloneStructure(let name):
-            return "\(name) does not contain standalone molecular coordinates Burrete can preview. Open the referenced structure file directly if this output report points to one."
+            return "\(name) does not contain standalone molecular coordinates Burette can preview. Open the referenced structure file directly if this output report points to one."
         case .ubiquitousFileNotDownloaded(let name):
             return "\(name) is in iCloud and is not downloaded locally. Download it in Finder, then open Quick Look again."
         case .webRenderFailed(let message):

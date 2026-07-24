@@ -13,32 +13,12 @@ const tabs = [
   { id: "tab-launcher", location: { kind: "launcher" } },
 ];
 
-function closeActions(approveClose, waitForPending) {
+function closeActions(approveClose) {
   const calls = [];
-  globalThis.document = {
-    querySelectorAll: () => [{
-      dataset: { documentId: "doc-b" },
-      inert: false,
-      blur: () => calls.push(["blur-grid", "doc-b"]),
-      toggleAttribute: () => {},
-      contentWindow: {
-        postMessage: (message) => calls.push([
-          "grid-close-transition",
-          message.body.active,
-        ]),
-      },
-    }],
-  };
   const confirm = (ids) => {
     calls.push(["confirm", ids]);
     if (!approveClose) return null;
-    return {
-      waitForPending: async (pendingIds) => {
-        calls.push(["wait-pending", [...pendingIds]]);
-        await waitForPending?.();
-      },
-      release: () => calls.push(["release-permit"]),
-    };
+    return { release: () => calls.push(["release-permit"]) };
   };
   const actions = createDocumentCloseShellActions({
     activeDocument: documents[0],
@@ -66,37 +46,46 @@ function closeActions(approveClose, waitForPending) {
   assert.deepEqual(calls, [["confirm", ["doc-b"]]]);
 }
 
+// Closing never waits on in-flight work: once the prompt approves, the tabs go
+// away in the same turn and the permit is released.
 {
-  let finishPending;
-  const pending = new Promise((resolve) => {
-    finishPending = resolve;
-  });
-  const { actions, calls } = closeActions(true, () => pending);
-  const closing = actions.closeOtherTabs("tab-a");
-  await Promise.resolve();
+  const { actions, calls } = closeActions(true);
+  await actions.closeOtherTabs("tab-a");
   assert.deepEqual(calls, [
     ["confirm", ["doc-b"]],
-    ["blur-grid", "doc-b"],
-    ["grid-close-transition", true],
-    ["wait-pending", ["doc-b"]],
-  ]);
-  finishPending();
-  await closing;
-  assert.deepEqual(calls, [
-    ["confirm", ["doc-b"]],
-    ["blur-grid", "doc-b"],
-    ["grid-close-transition", true],
-    ["wait-pending", ["doc-b"]],
     ["close-runtime", "doc-b"],
     ["forget-dirty-many", ["doc-b"]],
     ["close-tab", "tab-b"],
     ["close-tab", "tab-launcher"],
     ["status", "Closed other tabs"],
-    ["grid-close-transition", false],
     ["release-permit"],
   ]);
 }
 
-delete globalThis.document;
+// A throwing close still releases the permit, so a later close is never refused.
+{
+  const calls = [];
+  const actions = createDocumentCloseShellActions({
+    activeDocument: documents[0],
+    clearDirtyGridDocuments: () => {},
+    closeActiveDocument: () => {},
+    closeAllDocuments: () => {},
+    closeDocument: () => {
+      throw new Error("close failed");
+    },
+    closeGridRuntime: () => {},
+    closeTab: () => {},
+    confirmCloseSourceDocuments: () => true,
+    confirmDiscardDirtyGridDocument: () => ({ release: () => calls.push("release-permit") }),
+    confirmDiscardDirtyGridDocuments: () => ({ release: () => calls.push("release-permit") }),
+    documents,
+    forgetDirtyGridDocument: () => {},
+    forgetDirtyGridDocuments: () => {},
+    pushStatus: () => {},
+    tabs,
+  });
+  await assert.rejects(actions.closeDocument("doc-a"), /close failed/);
+  assert.deepEqual(calls, ["release-permit"]);
+}
 
 console.log("document close shell action tests passed");

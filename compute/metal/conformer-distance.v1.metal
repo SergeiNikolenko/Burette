@@ -9,7 +9,7 @@ struct ConformerDistanceBatchV1 {
     uint reserved;
 };
 
-kernel void burrete_conformer_distance_v1(
+kernel void burette_conformer_distance_v1(
     device const float4* positions [[buffer(0)]],
     device const uint2* atomPairs [[buffer(1)]],
     device const float2* boundsSquared [[buffer(2)]],

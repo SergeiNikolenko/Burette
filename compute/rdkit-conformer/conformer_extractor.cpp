@@ -1,7 +1,7 @@
-// Copyright 2026 Burrete contributors.
+// Copyright 2026 Burette contributors.
 // SPDX-License-Identifier: MIT
 //
-// This adapter calls pinned RDKit APIs and independently materializes Burrete's
+// This adapter calls pinned RDKit APIs and independently materializes Burette's
 // conformer.engine-pack.v1 arrays. No mlxmolkit source text is included.
 
 #include "conformer_extractor.h"
@@ -40,7 +40,7 @@ void findChiralSets(const ROMol &mol, DistGeom::VECT_CHIRALSET &chiral,
                     const std::map<int, RDGeom::Point3D> *coordinate_map);
 }  // namespace RDKit::DGeomHelpers::EmbeddingOps
 
-namespace burrete::conformer {
+namespace burette::conformer {
 namespace {
 
 constexpr float kImproperWeight = 10.0F;
@@ -288,4 +288,4 @@ ExtractedParameters extract_parameters(RDKit::ROMol &mol, Variant variant) {
   return output;
 }
 
-}  // namespace burrete::conformer
+}  // namespace burette::conformer

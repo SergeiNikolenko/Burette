@@ -10,11 +10,11 @@ This project follows the same broad product idea as QuickLookProtein: a host mac
 
 ## xyzrender
 
-Burrete can call a user-installed `xyzrender` executable from the standalone app and Quick Look previews. The `xyzrender` Python package is MIT-licensed by Alister S. Goodfellow and contributors. `xyzrender` itself is not bundled with Burrete.
+Burette can call a user-installed `xyzrender` executable from the standalone app and Quick Look previews. The `xyzrender` Python package is MIT-licensed by Alister S. Goodfellow and contributors. `xyzrender` itself is not bundled with Burette.
 
 ## RDKit
 
-Burrete uses the official `@rdkit/rdkit` MinimalLib distribution and stages a
+Burette uses the official `@rdkit/rdkit` MinimalLib distribution and stages a
 dedicated conformer-parameter extractor built from official RDKit tag
 `Release_2025_03_4`, commit
 `276b5a662302c6a548ac4f1363c066f3258e3a20`. The extractor uses RDKit distance
@@ -26,20 +26,20 @@ ship with the extractor binary.
 
 ## mlxmolkit and native GPU Compute Layer provenance
 
-The Burrete project owner records that Guillaume, author of
+The Burette project owner records that Guillaume, author of
 [`guillaume-osmo/mlxmolkit`](https://github.com/guillaume-osmo/mlxmolkit),
 granted permission to copy and adapt useful code and algorithmic logic for the
-Burrete native GPU Compute Layer. The pinned audit source is commit
+Burette native GPU Compute Layer. The pinned audit source is commit
 `9e7337f6f93c40a39ad0187991151944a4f1e274`.
 
 The pinned repository contains no top-level `LICENSE` file, although its
-package metadata declares MIT. Burrete retains only the selected build-time
+package metadata declares MIT. Burette retains only the selected build-time
 reference files, numeric tables, generated maps, and formula adaptations listed
 in `docs/third-party/mlxmolkit-provenance.md`; Python/MLX packaging, CLI,
 examples, and runtime code are not shipped. Every retained or adapted item is
 mapped to its upstream path, commit, secondary source, and validation evidence.
 
-Burrete's independently written distance-geometry and ETK CPU oracles, Metal
+Burette's independently written distance-geometry and ETK CPU oracles, Metal
 evaluation kernels, bounded L-BFGS CPU oracle, and fused Metal optimizers use
 mathematical equations and optimizer behavior checked against the pinned
 `mlxmolkit` reference. No upstream DG/ETK optimizer source text is included;
@@ -100,7 +100,7 @@ prolate-spheroidal STO integral, checked against
 `mlxmolkit/rm1/slater_overlap_ref.py`; no SciPy or Python code is included.
 The RM1 NDDO core-Hamiltonian, one-/two-center Fock contractions, and electronic
 energy equation are adapted from `seqm/seqm_functions/fock.py` and `energy.py`
-at that revision. Burrete's bounded SCF/DIIS driver and eigensolver remain
+at that revision. Burette's bounded SCF/DIIS driver and eigensolver remain
 independently written.
 
 The CHNO AM1, PM3, PM6_SP, and AM1* parameter slices are adapted against the
@@ -122,7 +122,7 @@ the pinned upstream oracle for main-group and transition-metal d elements.
 mlxmolkit MIT and PYSEQM BSD-3-Clause attribution apply.
 
 The PM6 45-output one-center d Fock contraction map is retained from the
-pinned `mlxmolkit/rm1/fock_d.py` representation of PYSEQM behavior. Burrete's
+pinned `mlxmolkit/rm1/fock_d.py` representation of PYSEQM behavior. Burette's
 production implementation performs the packed-density weighting, contraction,
 and symmetric 9x9 unpacking in native Rust. mlxmolkit MIT and PYSEQM
 BSD-3-Clause attribution apply.
@@ -132,7 +132,7 @@ adapted from the pinned `mlxmolkit/rm1/wigner_d.py` formulas, which cite Ivanic
 and Ruedenberg, J. Phys. Chem. 100, 6342 (1996). mlxmolkit MIT attribution
 applies.
 
-PM6 radial d-s, d-p, and d-d Slater overlap uses Burrete's independently
+PM6 radial d-s, d-p, and d-d Slater overlap uses Burette's independently
 structured bounded Gauss-Legendre prolate-spheroidal implementation for
 principal quantum numbers one through five. The mathematical behavior is
 checked against `mlxmolkit/rm1/slater_overlap_ref.py` and the d-channel layout

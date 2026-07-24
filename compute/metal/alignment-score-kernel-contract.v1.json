@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "burrete.compute.metal-kernel-contract.v1",
-  "kernel": "burrete_alignment_score_v1",
+  "schemaVersion": "burette.compute.metal-kernel-contract.v1",
+  "kernel": "burette_alignment_score_v1",
   "source": "alignment-score.v1.metal",
   "dispatch": {
     "threads": "pairCount",

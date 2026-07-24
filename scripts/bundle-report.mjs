@@ -114,7 +114,7 @@ const report = {
 await mkdir(reportDir, { recursive: true });
 await writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`);
 await writeFile(textPath, [
-  "Burrete web bundle report",
+  "Burette web bundle report",
   `Generated: ${report.generatedAt}`,
   `Dist: ${distRoot}`,
   "",

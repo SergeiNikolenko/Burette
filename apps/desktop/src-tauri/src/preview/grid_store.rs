@@ -31,11 +31,20 @@ struct RegisteredGridRuntime {
     database_path: PathBuf,
     format: &'static str,
     cancel_token: Arc<AtomicBool>,
+    ingest_worker: Option<thread::JoinHandle<()>>,
 }
 
 impl Drop for RegisteredGridRuntime {
     fn drop(&mut self) {
+        // Signal cancellation, then wait for the ingest worker to stop before
+        // deleting the runtime directory. The worker holds a WAL-mode SQLite
+        // connection, so removing the directory while it is still writing races
+        // its `-wal`/`-shm` files: `remove_dir_all` can lose to a concurrently
+        // re-created file and silently leave the directory behind.
         self.cancel_token.store(true, Ordering::Relaxed);
+        if let Some(worker) = self.ingest_worker.take() {
+            let _ = worker.join();
+        }
         if let Some(runtime_dir) = self.database_path.parent() {
             let _ = std::fs::remove_dir_all(runtime_dir);
         }
@@ -74,6 +83,7 @@ pub(crate) struct GridCollectionSummary {
 pub(crate) struct GridStoreHandle {
     pub(crate) database_path: PathBuf,
     pub(crate) cancel_token: Arc<AtomicBool>,
+    pub(crate) ingest_worker: Option<thread::JoinHandle<()>>,
     pub(crate) summary: GridCollectionSummary,
 }
 
@@ -166,9 +176,9 @@ pub(crate) struct GridQuery {
     pub(crate) limit: usize,
 }
 
-pub(crate) type GridColumnFilter = burrete_compute_protocol::ColumnFilter;
-pub(crate) type GridDescriptorFilter = burrete_compute_protocol::DescriptorFilter;
-pub(crate) type GridAnalysisFilter = burrete_compute_protocol::AnalysisFilter;
+pub(crate) type GridColumnFilter = burette_compute_protocol::ColumnFilter;
+pub(crate) type GridDescriptorFilter = burette_compute_protocol::DescriptorFilter;
+pub(crate) type GridAnalysisFilter = burette_compute_protocol::AnalysisFilter;
 
 #[derive(Debug, Clone)]
 pub(crate) struct GridDescriptorSort {
@@ -252,11 +262,13 @@ impl GridRuntimeRegistry {
         database_path: PathBuf,
         format: &'static str,
         cancel_token: Arc<AtomicBool>,
+        ingest_worker: Option<thread::JoinHandle<()>>,
     ) -> Result<(), String> {
         let runtime = Arc::new(RegisteredGridRuntime {
             database_path,
             format,
             cancel_token,
+            ingest_worker,
         });
         let existing = self
             .entries
@@ -433,10 +445,11 @@ pub(crate) fn build_grid_store_with_options(
         let _ = std::fs::remove_file(&database_path);
         return Ok(None);
     }
-    if first_batch.complete {
+    let ingest_worker = if first_batch.complete {
         grid_identity::finalize_source_revision(&connection)?;
+        None
     } else {
-        spawn_grid_ingest_worker(
+        Some(spawn_grid_ingest_worker(
             database_path.clone(),
             extension.to_string(),
             text,
@@ -444,11 +457,12 @@ pub(crate) fn build_grid_store_with_options(
             first_batch.next_index,
             options.smiles_column.clone(),
             cancel_token.clone(),
-        );
-    }
+        ))
+    };
     Ok(Some(GridStoreHandle {
         database_path,
         cancel_token,
+        ingest_worker,
         summary: GridCollectionSummary {
             format,
             records_total: records_indexed,
@@ -540,7 +554,7 @@ fn fetch_page(database_path: &Path, query: &GridQuery) -> Result<GridPageResult,
     let limit = query.limit.clamp(1, 240);
     let offset = query.offset;
     let sort_clause = page_sort_clause(query.descriptor_sort.as_ref(), &query.sort);
-    let text_query = burrete_compute_protocol::GridTextQuery::Text {
+    let text_query = burette_compute_protocol::GridTextQuery::Text {
         text: query.query.clone(),
     };
     let predicate = grid_predicate::plan_grid_predicate(
@@ -982,7 +996,7 @@ fn spawn_grid_ingest_worker(
     mut next_index: usize,
     smiles_column: Option<String>,
     cancel_token: Arc<AtomicBool>,
-) {
+) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let Ok(connection) = open_grid_database(&database_path) else {
             return;
@@ -1029,7 +1043,7 @@ fn spawn_grid_ingest_worker(
                 return;
             }
         }
-    });
+    })
 }
 
 fn initialize_schema(connection: &Connection) -> Result<(), String> {
@@ -1814,7 +1828,7 @@ fn parse_delimited_table_batch(
         .collect();
     let encoding_index = raw_headers
         .iter()
-        .position(|value| normalize_column_name(value) == "burrete_encoding");
+        .position(|value| normalize_column_name(value) == "burette_encoding");
     let headers: Vec<_> = raw_headers
         .into_iter()
         .map(|value| {
@@ -2496,13 +2510,13 @@ fn is_molfile_counts_line(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burrete_compute_protocol::{
+    use burette_compute_protocol::{
         AnalysisFilter, CapabilityMaturity, ColumnFilterKind, FilteredGridScope, GridScope,
         GridTextQuery, RepresentativePolicy, WorkflowTemplateId,
     };
 
     fn temp_runtime_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("burrete-grid-store-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("burette-grid-store-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("create temp runtime dir");
         dir
     }
@@ -3406,8 +3420,8 @@ mod tests {
 
     #[test]
     fn reopens_saved_grid_rows_with_molblocks_or_smiles() {
-        let csv = "burrete_encoding,index,name,smiles,molblock\n\
-                   escaped-v1,0,From SDF,,Molecule\\n  Burrete\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n\
+        let csv = "burette_encoding,index,name,smiles,molblock\n\
+                   escaped-v1,0,From SDF,,Molecule\\n  Burette\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n\
                    escaped-v1,1,From SMILES,CC,\n";
         let batch = parse_delimited_table_batch(
             csv,
@@ -3436,7 +3450,7 @@ mod tests {
 
     #[test]
     fn reopens_saved_grid_cells_with_reversible_escapes() {
-        let csv = "burrete_encoding,index,name,smiles,molblock,Note\n\
+        let csv = "burette_encoding,index,name,smiles,molblock,Note\n\
                    escaped-v1,0,Path\\\\name,,Molecule \\\\ literal\\nM  END,Line 1\\nLine 2 \\\\ tail\n";
         let batch = parse_delimited_table_batch(
             csv,
@@ -3465,8 +3479,8 @@ mod tests {
 
     #[test]
     fn accepts_molblock_only_rows_beside_multiple_smiles_columns() {
-        let csv = "burrete_encoding,name,target_smiles,proposal_smiles,molblock\n\
-                   escaped-v1,From SDF,,,Molecule\\n  Burrete\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n";
+        let csv = "burette_encoding,name,target_smiles,proposal_smiles,molblock\n\
+                   escaped-v1,From SDF,,,Molecule\\n  Burette\\n\\n  1  0  0  0  0  0  0  0  0  0999 V2000\\nM  END\n";
         let batch = parse_delimited_table_batch(csv, ',', 0, 0, 100, &GridParseOptions::default())
             .expect("parse molblock-only row");
 
@@ -3846,6 +3860,7 @@ mod tests {
                 handle.database_path.clone(),
                 handle.summary.format,
                 handle.cancel_token.clone(),
+                handle.ingest_worker,
             )
             .expect("register grid runtime");
         registry
@@ -3886,6 +3901,7 @@ mod tests {
                 handle.database_path,
                 handle.summary.format,
                 handle.cancel_token,
+                handle.ingest_worker,
             )
             .expect("register grid runtime");
         let lease = registry
@@ -3929,6 +3945,7 @@ mod tests {
                 old_handle.database_path,
                 old_handle.summary.format,
                 old_handle.cancel_token,
+                old_handle.ingest_worker,
             )
             .expect("register old grid runtime");
         let old_lease = registry
@@ -3947,6 +3964,7 @@ mod tests {
                 new_handle.database_path,
                 new_handle.summary.format,
                 new_handle.cancel_token,
+                new_handle.ingest_worker,
             )
             .expect("replace grid runtime");
 
@@ -3989,6 +4007,7 @@ mod tests {
                 handle.database_path,
                 handle.summary.format,
                 handle.cancel_token,
+                handle.ingest_worker,
             )
             .expect("register namespaced grid runtime");
 
@@ -4357,7 +4376,7 @@ mod tests {
     #[test]
     fn appends_sdf_records_to_existing_grid_store() {
         let runtime_dir = temp_runtime_dir();
-        let sdf = "First\n  Burrete\n\nM  END\n$$$$\nSecond\n  Burrete\n\nM  END\n$$$$\n";
+        let sdf = "First\n  Burette\n\nM  END\n$$$$\nSecond\n  Burette\n\nM  END\n$$$$\n";
 
         let handle = build_grid_store(&runtime_dir, "sdf", sdf.as_bytes())
             .expect("build grid store")
@@ -4372,7 +4391,7 @@ mod tests {
         let appended = append_grid_text(
             &handle.database_path,
             "sdf",
-            "Third\n  Burrete\n\nM  END\n$$$$\n",
+            "Third\n  Burette\n\nM  END\n$$$$\n",
             &GridParseOptions::default(),
         )
         .expect("append sdf");

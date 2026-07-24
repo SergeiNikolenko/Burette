@@ -77,7 +77,7 @@ function replaceMolstarStructureInPlace(
     });
     try {
       iframe.contentWindow?.postMessage({
-        source: "burrete-host",
+        source: "burette-host",
         body: {
           type: "replaceMolstarStructure",
           requestId,
