@@ -2452,6 +2452,14 @@ assert.match(structureInfoPanel, /const xtbMissing = xtbStatus\?\.installed === 
 assert.match(structureInfoPanel, /install: \(\) => void actions\.installXtb\(\)/);
 assert.match(structureInfoPanel, /function conformerTools\(status: ShellViewState\["conformerStatus"\]\): EngineTool\[\]/);
 assert.match(structureInfoPanel, /const XTB_MORE_OPERATIONS = \[/);
+// The runtime refuses a direct job above the atom cap and tells you to select
+// something; the card knows the count already, so it says so before the click.
+assert.match(structureInfoPanel, /structureAtomCountFromSummary\(compositionSummary\)/);
+assert.match(structureInfoPanel, /const oversizedForDirectJob = !jobScopedToSelection/);
+assert.match(structureInfoPanel, /const xtbBlocked = xtbMissing \|\| oversizedForDirectJob/);
+assert.match(structureInfoPanel, /const crestDisabled = !canRunCrest \|\| oversized \|\| status\?\.crest\.installed === false/);
+assert.match(directChemistryGuard, /export const DIRECT_CHEMISTRY_JOB_ATOM_LIMIT = 300/);
+assert.match(directChemistryGuard, /export function structureAtomCountFromSummary\(summary: StructureCompositionSummary\)/);
 // Short mutually exclusive sets are switches, not dropdowns, and the engine's own
 // tokens ("gfnff", "verytight", "ch2cl2") never reach the reader untranslated.
 assert.match(structureInfoPanel, /function InlineSegmentedControl\(\{/);

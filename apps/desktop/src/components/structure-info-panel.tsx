@@ -10,6 +10,7 @@ import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewe
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow, type StructureViewerSelector } from "../lib/structure-composition";
 import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
+import { DIRECT_CHEMISTRY_JOB_ATOM_LIMIT, structureAtomCountFromSummary } from "../lib/direct-chemistry-guard";
 import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureText } from "../lib/structure-text";
@@ -207,6 +208,20 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
   // Only a checked-and-missing binary disables the run buttons; an unchecked one
   // is not yet known to be missing.
   const xtbMissing = xtbStatus?.installed === false;
+  // A direct job on a whole protein is refused once it starts, with a message
+  // telling you to select something first. The atom count is already parsed, so
+  // the card can say that before the click instead of after it.
+  const structureAtoms = compositionSummary ? structureAtomCountFromSummary(compositionSummary) : null;
+  const jobScopedToSelection = Boolean(selectedEntity || viewerLigandSelection);
+  const oversizedForDirectJob = !jobScopedToSelection
+    && structureAtoms !== null
+    && structureAtoms > DIRECT_CHEMISTRY_JOB_ATOM_LIMIT;
+  const oversizedNotice: EngineTool[] = oversizedForDirectJob ? [{
+    name: "Scope",
+    installed: false,
+    hint: `This structure has ${structureAtoms.toLocaleString()} atoms. Select a ligand or chain first — direct runs are capped at ${DIRECT_CHEMISTRY_JOB_ATOM_LIMIT}.`,
+  }] : [];
+  const xtbBlocked = xtbMissing || oversizedForDirectJob;
   const openXtbSettingsFor = (scope: XtbSettingsScope) => {
     setXtbSettingsScope(scope);
     setXtbSettingsOpen(true);
@@ -316,6 +331,7 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           settings={conformerSettings}
           open={conformerOpen}
           setOpen={setConformerOpen}
+          oversizedNotice={oversizedNotice}
           actions={actions}
         />
 
@@ -330,9 +346,12 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           summaryTooltip="Hamiltonian, convergence, charge, spin, solvation, and parallelism for xTB calculations."
           summaryModified={xtbSettingsModified(xtbSettings)}
           onReset={xtbSettingsModified(xtbSettings) ? () => actions.setXtbSettings(defaultXtbSettings) : undefined}
+          // xTB takes the viewer's selection as its scope the same way CREST does,
+          // and that changes what the run costs - worth saying out loud.
+          scope={jobScopedToSelection ? "Scope: selected object" : undefined}
           notice={(
             <EngineToolNotice
-              tools={[{
+              tools={[...oversizedNotice, {
                 name: "xTB",
                 installed: xtbStatus?.installed !== false,
                 hint: xtbStatus?.installHint ?? "",
@@ -343,12 +362,12 @@ export function StructureInfoPanel({ document, textDocument, dockDrops, conforme
           )}
         >
           <div className="structure-brief-actions structure-brief-actions-grid">
-            <XtbActionButton label="Optimize" tooltip={XTB_ACTION_TOOLTIPS.optimize} disabled={xtbMissing} onClick={() => void actions.runXtbActiveOperation("optimize")} onContextMenu={showXtbSettingsFor("optimize")} />
-            <XtbActionButton label="Properties" tooltip={XTB_ACTION_TOOLTIPS.properties} disabled={xtbMissing} onClick={() => void actions.runXtbActiveOperation("properties")} onContextMenu={showXtbSettingsFor("properties")} />
-            <XtbActionButton label="Frequencies" tooltip={XTB_ACTION_TOOLTIPS["optimized-hessian"]} disabled={xtbMissing} onClick={() => void actions.runXtbActiveOperation("optimized-hessian")} onContextMenu={showXtbSettingsFor("optimized-hessian")} />
+            <XtbActionButton label="Optimize" tooltip={XTB_ACTION_TOOLTIPS.optimize} disabled={xtbBlocked} onClick={() => void actions.runXtbActiveOperation("optimize")} onContextMenu={showXtbSettingsFor("optimize")} />
+            <XtbActionButton label="Properties" tooltip={XTB_ACTION_TOOLTIPS.properties} disabled={xtbBlocked} onClick={() => void actions.runXtbActiveOperation("properties")} onContextMenu={showXtbSettingsFor("properties")} />
+            <XtbActionButton label="Frequencies" tooltip={XTB_ACTION_TOOLTIPS["optimized-hessian"]} disabled={xtbBlocked} onClick={() => void actions.runXtbActiveOperation("optimized-hessian")} onContextMenu={showXtbSettingsFor("optimized-hessian")} />
             {/* Four of the seven operations are specialist runs, and giving them the
                 same weight as Optimize made the card read as a wall of buttons. */}
-            <button type="button" className="dock-action" disabled={xtbMissing} onClick={showXtbMoreMenu}>
+            <button type="button" className="dock-action" disabled={xtbBlocked} onClick={showXtbMoreMenu}>
               More
               <ShortcutTooltip label="IP/EA, Fukui, molecular dynamics, and metadynamics runs." />
             </button>
@@ -1084,6 +1103,7 @@ function ConformerWorkflowCard({
   settings,
   open,
   setOpen,
+  oversizedNotice,
   actions,
 }: {
   document: ViewerDocument;
@@ -1093,6 +1113,7 @@ function ConformerWorkflowCard({
   settings: ShellViewState["conformerSettings"];
   open: boolean;
   setOpen: (updater: (open: boolean) => boolean) => void;
+  oversizedNotice: EngineTool[];
   actions: ShellActions;
 }) {
   const [settingsPanel, setSettingsPanel] = useState<"all" | "crest" | "prism" | null>(null);
@@ -1104,7 +1125,10 @@ function ConformerWorkflowCard({
   const canRunPrism = canInspectConformerEnsemble(document.extension);
   if (!canShowConformerWorkflow(document.extension, document.renderer) && !selectedConformerAction) return null;
   if (!canRunCrest && !canRunPrism) return null;
-  const crestDisabled = !canRunCrest || status?.crest.installed === false;
+  // CREST reads the whole structure the same way xTB does, so the atom cap
+  // applies to it too. PRISM only prunes an existing ensemble file.
+  const oversized = oversizedNotice.length > 0;
+  const crestDisabled = !canRunCrest || oversized || status?.crest.installed === false;
   const prismDisabled = !canRunPrism || status?.prism.installed === false;
   const showSettingsFor = (panel: "crest" | "prism") => (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -1123,7 +1147,7 @@ function ConformerWorkflowCard({
       scope={selectedConformerAction ? "Scope: selected object" : undefined}
       notice={(
         <EngineToolNotice
-          tools={conformerTools(status)}
+          tools={[...oversizedNotice, ...conformerTools(status)]}
           onCheck={() => void actions.checkConformerStatus()}
         />
       )}
