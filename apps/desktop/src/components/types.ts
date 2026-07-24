@@ -199,6 +199,8 @@ export type ShellActions = {
   toggleDockTab: (area: DockArea, kind: DockTabKind) => void;
   setDockOpen: (area: DockArea, open: boolean) => void;
   setDockSize: (area: DockArea, size: number) => void;
+  setGridColumnFilter: (columnId: string, part: "min" | "max" | "text", value: string) => void;
+  clearGridColumnFilters: (columnId?: string) => void;
   openDockTab: (area: DockArea, kind: DockTabKind) => void;
   closeDockTab: (area: DockArea, tabId: string) => void;
   setDockActiveTab: (area: DockArea, kind: DockTabKind) => void;
@@ -255,6 +257,25 @@ export type ShellActions = {
   setUpdatePreferences: (preferences: UpdatePreferences) => void;
 };
 
+// A copy of the grid runtime's filter model, published by the grid so the Info
+// panel can draw filters for data that lives inside the preview frame.
+export type GridFilterColumn = {
+  id: string;
+  label: string;
+  type: "number" | "text";
+  filter?: { min: string; max: string; text: string };
+  min?: number;
+  max?: number;
+  bins?: number[];
+};
+
+export type GridFilterModel = {
+  documentId: string | null;
+  visible: number;
+  total: number;
+  columns: GridFilterColumn[];
+};
+
 export type ShellViewState = {
   documents: ViewerDocument[];
   textDocuments: TextFileDocument[];
@@ -309,5 +330,6 @@ export type ShellViewState = {
   xtbSettings: XtbSettings;
   xtbJobs: XtbJob[];
   update: UpdateState;
+  gridFilterModel: GridFilterModel | null;
   buildInfo: BuildInfo;
 };

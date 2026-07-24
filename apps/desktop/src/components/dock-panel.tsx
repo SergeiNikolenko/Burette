@@ -374,6 +374,7 @@ function DockPanelContent({
     if (dockStructureDocument?.renderer === "spectrum") return <SpectrumInfoPanel document={dockStructureDocument} />;
     return (
       <StructureInfoPanel
+        gridFilterModel={state.gridFilterModel}
         document={dockStructureDocument}
         textDocument={activeTextDocument}
         dockDrops={dockDrops}

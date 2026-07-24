@@ -7464,3 +7464,118 @@ img.settings-open-destination-icon {
     transform: none;
   }
 }
+
+/* Column filters for the active grid, drawn from the model the grid runtime
+   publishes. One card per column, the distribution visible on numeric ones. */
+.grid-filter-count {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.grid-filter-search {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 30px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 9px;
+  color: var(--text-primary);
+  background: var(--control-fill, rgba(255, 255, 255, 0.06));
+  font: 400 12px/1.2 inherit;
+  outline: none;
+}
+.grid-filter-list {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  max-height: 420px;
+  margin-top: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.grid-filter-more {
+  padding: 6px 2px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.grid-filter-card {
+  display: grid;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--control-fill, rgba(255, 255, 255, 0.05));
+}
+.grid-filter-card.active {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.grid-filter-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.grid-filter-card header span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid-filter-clear {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: var(--text-secondary);
+  background: transparent;
+  font-size: 11px;
+  cursor: pointer;
+}
+.grid-filter-clear:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+.grid-filter-histogram {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 38px;
+}
+.grid-filter-bin {
+  flex: 1 1 0;
+  min-height: 1px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--text-primary) 16%, transparent);
+}
+.grid-filter-bin.in-range {
+  background: color-mix(in srgb, var(--accent) 62%, transparent);
+}
+.grid-filter-range {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.grid-filter-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.grid-filter-card input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 26px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 7px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  font: 400 12px/1.2 inherit;
+  outline: none;
+}

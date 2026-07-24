@@ -27,6 +27,7 @@ import { useAppFepWorkflows } from "./hooks/use-app-fep-workflows";
 import { useAppGenerate3DConformer } from "./hooks/use-app-generate-3d-conformer";
 import { useAppGridWorkflows } from "./hooks/use-app-grid-workflows";
 import { useGridNativeMenuState } from "./hooks/use-grid-native-menu-state";
+import { useAppGridFilterModel } from "./hooks/use-app-grid-filter-model";
 import { useAppHostRuntimeOperations } from "./hooks/use-app-host-runtime-operations";
 import { useAgentFocusLayout } from "./hooks/use-agent-focus-layout";
 import { useHostedMcpWidget } from "./hooks/use-hosted-mcp-widget";
@@ -105,7 +106,7 @@ import { detectContentSpectrumPaths } from "./lib/content-spectrum-detection";
 import { structureExtensionFromPath } from "./lib/file-routing";
 import { isHostedKetcherWidget, isHostedMcpWidget } from "./lib/hosted-mcp-widget";
 import type { StructureDragPayload } from "./lib/structure-drag";
-import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "./lib/viewer-bridge";
+import { activeViewerIframeForDocument, isKnownViewerMessageSource, postMessageToViewerSource } from "./lib/viewer-bridge";
 import { trackWebDemoScreenView, trackWebDemoStructureView } from "./lib/web-demo-analytics";
 import {
   configureWorkspaceHistoryExtras,
@@ -267,6 +268,12 @@ export default function App() {
     updateDirtyGridDocument,
   } = useAppDirtyGridDocuments();
   const { activeGridMenuState, updateGridMenuState } = useGridNativeMenuState(activeDocument, documents);
+  const {
+    activeGridFilterModel,
+    updateGridFilterModel,
+    setGridColumnFilter,
+    clearGridColumnFilters,
+  } = useAppGridFilterModel(activeDocument, documents, postMessageToViewerSource);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [viewerLigandSelections, setViewerLigandSelections] = useState<Record<string, ViewerLigandSelection | null>>({});
   const [structureOverlayModes, setStructureOverlayModes] = useState<Record<string, StructureOverlayMode>>({});
@@ -828,6 +835,7 @@ export default function App() {
     skipNextPreferenceRefreshRef,
     toggleSidebar,
     updateDirtyGridDocument,
+    updateGridFilterModel,
     updateGridMenuState,
     writeGridPerfMetric,
     xyzrenderOrientationRefRef,
@@ -843,6 +851,8 @@ export default function App() {
   });
 
   const actions = useAppShellActions({
+    setGridColumnFilter,
+    clearGridColumnFilters,
     activeDocument,
     addDockDrop,
     addXyzrenderSheetItemsToDocument,
@@ -980,6 +990,7 @@ export default function App() {
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
   const state = useAppShellViewState({
+    gridFilterModel: activeGridFilterModel,
     documents,
     textDocuments,
     tabs,
