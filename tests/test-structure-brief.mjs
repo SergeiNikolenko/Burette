@@ -298,6 +298,18 @@ const defaultDockingDocument = document("sdf", {
 });
 assert.equal(rowValue(usefulElements(defaultDockingDocument), "Active pose"), "Default");
 
+const trajectoryDocument = document("docking", {
+  dockingRequest: {
+    receptorPath: "/tmp/topology.pdb",
+    ligandPaths: ["/tmp/01_start.xtc", "/tmp/02_middle.xtc", "/tmp/03_final.xtc"],
+  },
+});
+assert.equal(documentKind(trajectoryDocument), "Trajectory");
+assert.equal(rowValue(usefulElements(trajectoryDocument), "Topology"), "topology.pdb");
+assert.equal(rowValue(usefulElements(trajectoryDocument), "Segments"), "3");
+assert.ok(structureBriefForDocument(trajectoryDocument, "10 MB").notes.includes("Trajectory segments share one topology"));
+assert.ok(!structureBriefForDocument(trajectoryDocument, "10 MB").notes.some((note) => note.includes("Docking")));
+
 const mergedDocument = document("sdf", {
   mergedCollection: {
     sourcePaths: ["/tmp/a.sdf", "/tmp/b.sdf"],

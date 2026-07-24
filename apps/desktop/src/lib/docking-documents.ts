@@ -50,6 +50,15 @@ export function isMolstarCoordinateTrajectorySource(path: string) {
   return MOLSTAR_COORDINATE_TRAJECTORY_EXTENSIONS.has(extensionForDocking(path));
 }
 
+export function isTrajectoryDocumentRequest(request: DockingDocumentRequest | null | undefined) {
+  return Boolean(
+    request
+      && !request.sceneMode
+      && request.ligandPaths.length > 0
+      && request.ligandPaths.every(isMolstarCoordinateTrajectorySource),
+  );
+}
+
 function uniqueDockingPaths(paths: string[]) {
   return Array.from(new Set(paths.filter((path) => path && path.trim().length > 0)));
 }

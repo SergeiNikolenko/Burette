@@ -31,6 +31,9 @@ export type MdsmoothResult = {
   trajectoryPath: string;
   topologyPath: string | null;
   outputPath: string;
+  // "pdb" when the run had a real topology to write back, "xyz" when all it knew
+  // was elements and positions. The viewer needs it to parse the result correctly.
+  outputFormat?: "pdb" | "xyz";
   signal: MdsmoothSignal;
   selection: string;
   selectedAtomCount: number;

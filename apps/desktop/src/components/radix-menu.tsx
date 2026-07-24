@@ -1,7 +1,21 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { createRoot, type Root as ReactRoot } from "react-dom/client";
-import * as ContextMenu from "@radix-ui/react-context-menu";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { MenuItemSpec } from "./menu-types";
 
 type RadixDropdownProps = {
@@ -26,21 +40,20 @@ export function RadixDropdownMenu({
   const container = useThemePortalContainer();
 
   return (
-    <DropdownMenu.Root modal={false}>
-      <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
-      <DropdownMenu.Portal container={container}>
-        <DropdownMenu.Content
-          className={contentClassName ? `radix-menu ${contentClassName}` : "radix-menu"}
-          align={align}
-          side={side}
-          sideOffset={sideOffset}
-          alignOffset={alignOffset}
-          collisionPadding={8}
-        >
-          {items.map((item, index) => renderDropdownItem(item, index))}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuContent
+        className={contentClassName}
+        container={container}
+        align={align}
+        side={side}
+        sideOffset={sideOffset}
+        alignOffset={alignOffset}
+        collisionPadding={8}
+      >
+        {items.map((item, index) => renderDropdownItem(item, index))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -91,60 +104,59 @@ function RadixContextMenuLauncher({
   }, [point.x, point.y]);
 
   return (
-    <ContextMenu.Root modal={false} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <ContextMenu.Trigger asChild>
+    <ContextMenu modal={false} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <ContextMenuTrigger asChild>
         <span
           ref={triggerRef}
           className="radix-context-menu-trigger"
           style={{ left: point.x, top: point.y }}
           aria-hidden="true"
         />
-      </ContextMenu.Trigger>
-      <ContextMenu.Portal container={container}>
-        <ContextMenu.Content className="radix-menu" collisionPadding={8}>
-          {items.map((item, index) => renderContextItem(item, index))}
-        </ContextMenu.Content>
-      </ContextMenu.Portal>
-    </ContextMenu.Root>
+      </ContextMenuTrigger>
+      <ContextMenuContent container={container} collisionPadding={8}>
+        {items.map((item, index) => renderContextItem(item, index))}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
 function renderDropdownItem(item: MenuItemSpec, index: number) {
   if (item.kind === "separator") {
-    return <DropdownMenu.Separator key={`separator-${index}`} className="radix-menu-separator" />;
+    return <DropdownMenuSeparator key={`separator-${index}`} />;
   }
 
   return (
-    <DropdownMenu.Item
+    <DropdownMenuItem
       key={item.id}
-      className="radix-menu-item"
       disabled={item.disabled}
       onSelect={() => item.action?.()}
     >
       {renderItemBody(item)}
-      {item.accelerator ? <kbd>{item.accelerator}</kbd> : null}
-    </DropdownMenu.Item>
+      {item.accelerator ? <DropdownMenuShortcut>{item.accelerator}</DropdownMenuShortcut> : null}
+    </DropdownMenuItem>
   );
 }
 
 function renderContextItem(item: MenuItemSpec, index: number) {
   if (item.kind === "separator") {
-    return <ContextMenu.Separator key={`separator-${index}`} className="radix-menu-separator" />;
+    return <ContextMenuSeparator key={`separator-${index}`} />;
   }
 
   return (
-    <ContextMenu.Item
+    <ContextMenuItem
       key={item.id}
-      className="radix-menu-item"
       disabled={item.disabled}
       onSelect={() => item.action?.()}
     >
       {renderItemBody(item)}
-      {item.accelerator ? <kbd>{item.accelerator}</kbd> : null}
-    </ContextMenu.Item>
+      {item.accelerator ? <ContextMenuShortcut>{item.accelerator}</ContextMenuShortcut> : null}
+    </ContextMenuItem>
   );
 }
 
+// The item's own layout stays local: a menu entry here can carry an icon and a second
+// line of detail, which the shadcn item does not model. It sits inside the shadcn
+// item, so spacing, hover and disabled states still come from the component.
 function renderItemBody(item: Extract<MenuItemSpec, { kind: "item" }>) {
   return (
     <span className="radix-menu-item-body">
